@@ -3,7 +3,6 @@ Bioprocess Benchmarking Dataset Structure
 JAX-compatible dataclasses for standardized bioprocess data
 """
 
-from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 import jax.numpy as jnp
