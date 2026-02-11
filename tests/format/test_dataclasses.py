@@ -210,5 +210,184 @@ def test_static_variable():
     assert var.unit == "1/h"
 
 
+def test_volume_change_creation():
+    """Test VolumeChange creation"""
+    from bpbench import VolumeChange
+    
+    # Test continuous, controlled volume change
+    vc_continuous = VolumeChange(
+        name="feed1",
+        controlled=True,
+        continuous=True,
+        unit="L/h",
+        feed_medium="glucose_feed"
+    )
+    assert vc_continuous.name == "feed1"
+    assert vc_continuous.controlled is True
+    assert vc_continuous.continuous is True
+    assert vc_continuous.unit == "L/h"
+    
+    # Test discrete volume change
+    vc_discrete = VolumeChange(
+        name="bolus_addition",
+        controlled=True,
+        continuous=False,
+        unit="L",
+        timepoints=jnp.array([10.0, 20.0]),
+        values=jnp.array([0.5, 0.3])
+    )
+    assert vc_discrete.continuous is False
+    assert vc_discrete.timepoints.shape == (2,)
+    assert vc_discrete.values.shape == (2,)
+
+
+def test_volume_creation():
+    """Test Volume creation"""
+    from bpbench import Volume, VolumeChange
+    
+    vc = VolumeChange(
+        name="feed1",
+        controlled=True,
+        continuous=True,
+        unit="L/h"
+    )
+    
+    volume = Volume(
+        volume_changes={"feed1": vc},
+        initial_volume=1.0,
+        volume_unit="L"
+    )
+    
+    assert volume.initial_volume == 1.0
+    assert volume.volume_unit == "L"
+    assert "feed1" in volume.volume_changes
+    assert volume.volume_changes["feed1"].name == "feed1"
+
+
+def test_volume_validation_continuous():
+    """Test Volume validation with continuous feed"""
+    from bpbench import Volume, VolumeChange
+    
+    # Create continuous feed with known rate
+    times = jnp.array([0., 10., 20., 30.])
+    rates = jnp.array([0.1, 0.1, 0.1, 0.1])  # constant 0.1 L/h
+    
+    raw = RawTimeSeries(timepoints=times, values=rates)
+    ts = TimeSeries(name='feed_rate', unit='L/h', raw=raw)
+    
+    vc = VolumeChange(
+        name='feed',
+        controlled=True,
+        continuous=True,
+        unit='L/h',
+        timeseries=ts
+    )
+    
+    volume = Volume(
+        volume_changes={'feed': vc},
+        initial_volume=1.0,
+        volume_unit='L'
+    )
+    
+    time_axis = TimeAxis(unit='hours', start=0.0, end=30.0, time_reference='inoculation')
+    
+    # Expected: 1.0 + 0.1*30 = 4.0 L
+    is_valid, msg = volume.validate_volume_consistency(time_axis=time_axis, final_volume=4.0)
+    assert is_valid is True
+    assert "4.00" in msg
+
+
+def test_volume_validation_discrete():
+    """Test Volume validation with discrete additions"""
+    from bpbench import Volume, VolumeChange
+    
+    vc = VolumeChange(
+        name='bolus',
+        controlled=True,
+        continuous=False,
+        unit='L',
+        timepoints=jnp.array([10.0, 20.0, 30.0]),
+        values=jnp.array([0.5, 0.5, 0.5])
+    )
+    
+    volume = Volume(
+        volume_changes={'bolus': vc},
+        initial_volume=2.0,
+        volume_unit='L'
+    )
+    
+    # Expected: 2.0 + 0.5 + 0.5 + 0.5 = 3.5 L
+    is_valid, msg = volume.validate_volume_consistency(final_volume=3.5)
+    assert is_valid is True
+    assert "3.50" in msg
+
+
+def test_volume_validation_inconsistency():
+    """Test Volume validation detects inconsistencies"""
+    from bpbench import Volume, VolumeChange
+    
+    vc = VolumeChange(
+        name='bolus',
+        controlled=True,
+        continuous=False,
+        unit='L',
+        timepoints=jnp.array([10.0]),
+        values=jnp.array([1.0])
+    )
+    
+    volume = Volume(
+        volume_changes={'bolus': vc},
+        initial_volume=1.0,
+        volume_unit='L'
+    )
+    
+    # Expected final: 2.0, but we claim it's 3.0 (50% difference)
+    is_valid, msg = volume.validate_volume_consistency(final_volume=3.0)
+    assert is_valid is False
+    assert "inconsistency" in msg.lower()
+
+
+def test_process_with_volume():
+    """Test Process creation with Volume"""
+    from bpbench import Volume, VolumeChange
+    
+    vc = VolumeChange(name='feed', controlled=True, continuous=True, unit='L/h')
+    volume = Volume(volume_changes={'feed': vc}, initial_volume=1.0)
+    
+    process = Process(
+        process_id="fed_batch_001",
+        process_type="fed_batch",
+        volume=volume
+    )
+    
+    assert process.volume is not None
+    assert process.volume.initial_volume == 1.0
+    assert "feed" in process.volume.volume_changes
+
+
+def test_process_backward_compatibility():
+    """Test Process backward compatibility properties"""
+    raw = RawTimeSeries(
+        timepoints=jnp.array([0., 12., 24.]),
+        values=jnp.array([0.1, 1.2, 3.5])
+    )
+    
+    biomass_ts = TimeSeries(name="Biomass", unit="g/L", role="state", raw=raw)
+    temp_ts = TimeSeries(name="Temperature", unit="K", role="control", raw=raw)
+    
+    process = Process(
+        process_id="test",
+        process_type="batch",
+        dynamic_states={"biomass": biomass_ts},
+        dynamic_controls={"temperature": temp_ts}
+    )
+    
+    # Test backward compatibility
+    assert process.states == process.dynamic_states
+    assert process.controls == process.dynamic_controls
+    assert "biomass" in process.states
+    assert "temperature" in process.controls
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

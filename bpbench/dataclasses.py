@@ -219,16 +219,30 @@ class Process:
 
     reactor: Optional[ReactorProperties] = None
     
-    # Backward compatibility properties
-    @property
-    def states(self) -> Dict[str, TimeSeries]:
-        """Backward compatibility: returns dynamic_states"""
-        return self.dynamic_states
+    # Backward compatibility: accept old field names
+    states: Optional[Dict[str, TimeSeries]] = field(default=None)
+    controls: Optional[Dict[str, TimeSeries]] = field(default=None)
     
-    @property
-    def controls(self) -> Dict[str, TimeSeries]:
-        """Backward compatibility: returns dynamic_controls"""
-        return self.dynamic_controls
+    def __post_init__(self):
+        """Handle backward compatibility for old field names"""
+        # If old 'states' parameter is used, copy to 'dynamic_states'
+        if self.states is not None and len(self.states) > 0:
+            if len(self.dynamic_states) == 0:
+                self.dynamic_states = self.states
+            self.states = None
+        
+        # If old 'controls' parameter is used, copy to 'dynamic_controls'
+        if self.controls is not None and len(self.controls) > 0:
+            if len(self.dynamic_controls) == 0:
+                self.dynamic_controls = self.controls
+            self.controls = None
+        
+        # Make states and controls point to the new fields for property-like access
+        # (Note: This won't persist through serialization but helps with runtime compatibility)
+        if self.states is None:
+            object.__setattr__(self, 'states', self.dynamic_states)
+        if self.controls is None:
+            object.__setattr__(self, 'controls', self.dynamic_controls)
 
 
 # ============================================================
@@ -342,7 +356,18 @@ tree_util.register_pytree_node(
         (obj.process_id, obj.process_type, obj.replicate_id)
     ),
     lambda data, children: Process(
-        data[0], data[1], data[2], *children
+        process_id=data[0], 
+        process_type=data[1], 
+        replicate_id=data[2],
+        time=children[0],
+        dynamic_states=children[1],
+        dynamic_controls=children[2],
+        static_controls=children[3],
+        volume=children[4],
+        feeds=children[5],
+        static_parameters=children[6],
+        event_times=children[7],
+        reactor=children[8]
     )
 )
 
