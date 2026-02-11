@@ -72,8 +72,16 @@ def load_dataset(base_path: Path) -> BenchmarkDataset:
     # Load arrays
     arrays_store = {}
     with h5py.File(base_path / "arrays.h5", "r") as f:
-        for key in f.keys():
-            arrays_store[key] = jnp.array(f[key][:])
+        def load_datasets(group, prefix=""):
+            """Recursively load all datasets from HDF5"""
+            for key in group.keys():
+                item = group[key]
+                full_key = f"{prefix}/{key}" if prefix else key
+                if isinstance(item, h5py.Dataset):
+                    arrays_store[full_key] = jnp.array(item[:])
+                elif isinstance(item, h5py.Group):
+                    load_datasets(item, full_key)
+        load_datasets(f)
     
     # Reconstruct arrays in metadata
     _restore_arrays(metadata_dict, arrays_store)

@@ -141,7 +141,7 @@ class BenchmarkDataset:
 tree_util.register_pytree_node(
     TimeAxis,
     lambda obj: ((obj.start, obj.end), (obj.unit, obj.time_reference)),
-    lambda data, children: TimeAxis(children[0], *children[1:], *data)
+    lambda data, children: TimeAxis(data[0], children[0], children[1], data[1])
 )
 
 tree_util.register_pytree_node(
