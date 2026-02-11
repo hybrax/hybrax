@@ -51,7 +51,7 @@ def sample_dataset():
         process_id="batch_001",
         process_type="batch",
         time=time_axis,
-        states={"biomass": biomass},
+        dynamic_states={"biomass": biomass},
         feeds={"feed1": feed},
         static_parameters={"mu_max": StaticVariable(value=0.5, unit="1/h")},
         reactor=ReactorProperties(
@@ -110,8 +110,8 @@ def test_save_load_yaml_hdf5(sample_dataset):
         assert process.process_type == "batch"
         
         # Verify timeseries data
-        assert "biomass" in process.states
-        biomass = process.states["biomass"]
+        assert "biomass" in process.dynamic_states
+        biomass = process.dynamic_states["biomass"]
         assert biomass.name == "Biomass"
         assert biomass.raw is not None
         assert biomass.raw.timepoints.shape == (5,)

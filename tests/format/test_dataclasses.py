@@ -366,7 +366,7 @@ def test_process_with_volume():
 
 
 def test_process_backward_compatibility():
-    """Test Process backward compatibility properties"""
+    """Test Process with new field names"""
     raw = RawTimeSeries(
         timepoints=jnp.array([0., 12., 24.]),
         values=jnp.array([0.1, 1.2, 3.5])
@@ -382,11 +382,9 @@ def test_process_backward_compatibility():
         dynamic_controls={"temperature": temp_ts}
     )
     
-    # Test backward compatibility
-    assert process.states == process.dynamic_states
-    assert process.controls == process.dynamic_controls
-    assert "biomass" in process.states
-    assert "temperature" in process.controls
+    # Test new field names work correctly
+    assert "biomass" in process.dynamic_states
+    assert "temperature" in process.dynamic_controls
 
 
 if __name__ == "__main__":

@@ -114,7 +114,7 @@ def test_process_pytree():
         process_id="batch_001",
         process_type="batch",
         time=time_axis,
-        states={"biomass": biomass}
+        dynamic_states={"biomass": biomass}
     )
     
     # Check it can be flattened and unflattened
@@ -123,7 +123,7 @@ def test_process_pytree():
     
     assert reconstructed.process_id == process.process_id
     assert reconstructed.process_type == process.process_type
-    assert "biomass" in reconstructed.states
+    assert "biomass" in reconstructed.dynamic_states
 
 
 if __name__ == "__main__":

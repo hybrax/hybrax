@@ -212,37 +212,12 @@ class Process:
 
     feeds: Dict[str, Feed] = field(default_factory=dict)
     
-    # Keep static_parameters for backward compatibility and other static values
+    # Keep static_parameters for other static values
     static_parameters: Dict[str, StaticVariable] = field(default_factory=dict)
 
     event_times: Optional[jnp.ndarray] = None  # sorted discontinuity times
 
     reactor: Optional[ReactorProperties] = None
-    
-    # Backward compatibility: accept old field names
-    states: Optional[Dict[str, TimeSeries]] = field(default=None)
-    controls: Optional[Dict[str, TimeSeries]] = field(default=None)
-    
-    def __post_init__(self):
-        """Handle backward compatibility for old field names"""
-        # If old 'states' parameter is used, copy to 'dynamic_states'
-        if self.states is not None and len(self.states) > 0:
-            if len(self.dynamic_states) == 0:
-                self.dynamic_states = self.states
-            self.states = None
-        
-        # If old 'controls' parameter is used, copy to 'dynamic_controls'
-        if self.controls is not None and len(self.controls) > 0:
-            if len(self.dynamic_controls) == 0:
-                self.dynamic_controls = self.controls
-            self.controls = None
-        
-        # Make states and controls point to the new fields for property-like access
-        # (Note: This won't persist through serialization but helps with runtime compatibility)
-        if self.states is None:
-            object.__setattr__(self, 'states', self.dynamic_states)
-        if self.controls is None:
-            object.__setattr__(self, 'controls', self.dynamic_controls)
 
 
 # ============================================================
