@@ -1,0 +1,66 @@
+"""
+BPbench: Bioprocess Benchmarking Dataset Structure
+
+A JAX-compatible framework for standardized bioprocess data management
+and benchmarking across multiple case studies.
+"""
+
+__version__ = "0.1.0"
+
+# Import core dataclasses
+from .dataclasses import (
+    # Low-level structures
+    TimeAxis,
+    RawTimeSeries,
+    SplineRepresentation,
+    TimeSeries,
+    StaticVariable,
+    FeedComponent,
+    Feed,
+    ReactorProperties,
+    # Higher-level structures
+    Process,
+    CaseStudy,
+    BenchmarkDataset,
+)
+
+# Import utilities
+from .utils import (
+    get_event_times,
+    leave_one_process_out,
+    iter_loocv,
+)
+
+# Import serialization functions
+from .serialization import (
+    save_dataset,
+    load_dataset,
+    save_dataset_json,
+    load_dataset_json,
+)
+
+__all__ = [
+    # Version
+    "__version__",
+    # Dataclasses
+    "TimeAxis",
+    "RawTimeSeries",
+    "SplineRepresentation",
+    "TimeSeries",
+    "StaticVariable",
+    "FeedComponent",
+    "Feed",
+    "ReactorProperties",
+    "Process",
+    "CaseStudy",
+    "BenchmarkDataset",
+    # Utils
+    "get_event_times",
+    "leave_one_process_out",
+    "iter_loocv",
+    # Serialization
+    "save_dataset",
+    "load_dataset",
+    "save_dataset_json",
+    "load_dataset_json",
+]
