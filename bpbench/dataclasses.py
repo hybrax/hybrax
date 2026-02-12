@@ -81,6 +81,7 @@ class ReactorProperties:
     working_volume: float  # nominal/geometric volume
     volume_unit: str
     density: Optional[float] = None  # often implicitly 1 kg/L
+    density_unit: str  # typically "kg/L"
 
 
 @dataclass
