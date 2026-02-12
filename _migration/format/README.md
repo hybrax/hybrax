@@ -174,6 +174,35 @@ for case_id, train_ids, test_id in iter_loocv(dataset):
     # Your modeling code here...
 ```
 
+### Inspecting Process Structure
+
+Use `print_structure()` to display a hierarchical view of a Process object:
+
+```python
+from bpbench import print_structure, load_dataset
+
+# Load a dataset
+dataset = load_dataset(Path("data/my_dataset"))
+process = dataset.case_studies["case1"].processes["proc1"]
+
+# Display the complete structure
+print_structure(process)
+
+# Show sample data values
+print_structure(process, show_values=True)
+```
+
+This displays:
+- Process metadata (ID, type, replicate)
+- Time axis information
+- Dynamic states and controls with data ranges
+- Static controls and parameters
+- Volume tracking and feed information
+- Event times
+- Reactor properties
+
+See `examples/demo_print_structure.py` for a complete demonstration.
+
 ## Key Features
 
 ### JAX Compatibility
