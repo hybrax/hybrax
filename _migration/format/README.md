@@ -100,7 +100,7 @@ process = Process(
     process_id="batch_001",
     process_type="batch",
     time=time_axis,
-    states={"biomass": biomass},
+    dynamic_states={"biomass": biomass},
     reactor=ReactorProperties(
         working_volume=1.0,
         volume_unit="L"
@@ -234,6 +234,42 @@ glucose_feed = Feed(
 )
 
 process.feeds["feed1"] = glucose_feed
+```
+
+## Examples
+
+The `examples/` directory contains sample implementations demonstrating how to use BPbench:
+
+### Legacy Examples (00_old_examples, 01_prol_v1)
+These directories contain older example implementations that demonstrate early versions of the data structure. They are kept for reference but may not reflect the current best practices.
+
+### Current Example: PROL v2 (02_prol_v2)
+
+The **examples/02_prol_v2/** directory contains a complete, documented example of loading experimental data into the BPbench format:
+
+- **load_data.ipynb**: Jupyter notebook demonstrating the complete workflow:
+  1. Loading CSV data (online measurements, offline measurements, discrete events)
+  2. Creating BPbench data structures (TimeAxis, TimeSeries, Volume, Feed, etc.)
+  3. Assembling a complete Process object for an E. coli fed-batch process
+  4. Validating volume consistency
+  5. Visualizing the data
+  6. Saving to HDF5 format
+  7. Loading and verifying the saved data
+
+- **original_data/**: Contains sample CSV files from an E. coli fed-batch experiment for Protein L production
+  - `260212_exp_onl.csv`: Online measurements (Temperature, Volume, Feed rate)
+  - `260212_exp_off.csv`: Offline measurements (Biomass, Glycerol, Product)
+  - `260212_exp_dsp.csv`: Discrete event times
+  - `data_info.md`: Description of the data files
+
+- **bpbench_format/**: Output directory containing the saved dataset
+  - `metadata.yaml`: Human-readable structure
+  - `arrays.h5`: Efficient binary storage for arrays
+
+To run the example:
+```bash
+cd examples/02_prol_v2
+jupyter notebook load_data.ipynb
 ```
 
 ## Module Structure
