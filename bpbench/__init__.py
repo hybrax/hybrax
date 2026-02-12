@@ -32,6 +32,7 @@ from .utils import (
     get_event_times,
     leave_one_process_out,
     iter_loocv,
+    print_structure,
 )
 
 # Import serialization functions
@@ -63,6 +64,7 @@ __all__ = [
     "get_event_times",
     "leave_one_process_out",
     "iter_loocv",
+    "print_structure",
     # Serialization
     "save_dataset",
     "load_dataset",
