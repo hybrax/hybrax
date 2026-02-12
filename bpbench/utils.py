@@ -137,10 +137,10 @@ def print_structure(process: Process, indent: int = 0, show_values: bool = False
     if process.event_times is not None and len(process.event_times) > 0:
         print(f"\n{prefix}Event Times: ({len(process.event_times)} total)")
         if len(process.event_times) <= 10:
-            print(f"{prefix}  {list(process.event_times)}")
+            print(f"{prefix}  {process.event_times}")
         else:
-            print(f"{prefix}  First 5: {list(process.event_times[:5])}")
-            print(f"{prefix}  Last 5: {list(process.event_times[-5:])}")
+            print(f"{prefix}  First 5: {process.event_times[:5]}")
+            print(f"{prefix}  Last 5: {process.event_times[-5:]}")
     
     # Reactor properties
     if process.reactor is not None:
@@ -169,9 +169,9 @@ def _print_timeseries_info(ts: TimeSeries, prefix: str, show_values: bool = Fals
             print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f}")
             
             if show_values and n_points <= 5:
-                print(f"{prefix}    Values: {list(ts.raw.values)}")
+                print(f"{prefix}    Values: {ts.raw.values}")
             elif show_values:
-                print(f"{prefix}    First 3: {list(ts.raw.values[:3])}")
+                print(f"{prefix}    First 3: {ts.raw.values[:3]}")
         
         if ts.raw.measurement_std is not None:
             print(f"{prefix}    Measurement std: provided")
