@@ -40,11 +40,29 @@ Process
  ├─ process_id: str
  ├─ process_type: str (batch, fed_batch, continuous)
  ├─ time: TimeAxis
- ├─ states: Dict[str, TimeSeries]
- ├─ controls: Dict[str, TimeSeries]
+ ├─ dynamic_states: Dict[str, TimeSeries]  # Biomass, substrate, product
+ ├─ dynamic_controls: Dict[str, TimeSeries]  # pH, temperature (if varying)
+ ├─ static_controls: Dict[str, StaticVariable]  # Temperature (if constant)
+ ├─ volume: Volume  # Special handling for volume tracking
+ │    └─ volume_changes: Dict[str, VolumeChange]  # Feed, sampling, etc.
  ├─ feeds: Dict[str, Feed]
  ├─ static_parameters: Dict[str, StaticVariable]
  └─ reactor: ReactorProperties
+
+Volume
+ ├─ volume_changes: Dict[str, VolumeChange]
+ ├─ initial_volume: float
+ └─ volume_unit: str
+
+VolumeChange
+ ├─ name: str
+ ├─ controlled: bool  # True if controlled, False if modeled
+ ├─ continuous: bool  # True if continuous, False if discrete
+ ├─ unit: str
+ ├─ feed_medium: Optional[str]  # Reference to feed name
+ ├─ timeseries: Optional[TimeSeries]  # For continuous changes
+ ├─ timepoints: Optional[ndarray]  # For discrete changes
+ └─ values: Optional[ndarray]  # For discrete changes
 ```
 
 ## Quick Start

@@ -18,6 +18,9 @@ from .dataclasses import (
     FeedComponent,
     Feed,
     ReactorProperties,
+    # Volume-related structures
+    VolumeChange,
+    Volume,
     # Higher-level structures
     Process,
     CaseStudy,
@@ -51,6 +54,8 @@ __all__ = [
     "FeedComponent",
     "Feed",
     "ReactorProperties",
+    "VolumeChange",
+    "Volume",
     "Process",
     "CaseStudy",
     "BenchmarkDataset",

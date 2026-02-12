@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from .dataclasses import (
     BenchmarkDataset, CaseStudy, Process, TimeSeries, TimeAxis,
     RawTimeSeries, SplineRepresentation, Feed, FeedComponent,
-    StaticVariable, ReactorProperties
+    StaticVariable, ReactorProperties, Volume, VolumeChange
 )
 
 
@@ -116,9 +116,35 @@ def _dataset_to_dict(dataset: BenchmarkDataset) -> Dict:
     }
 
 
+def _volume_change_to_dict(vc: VolumeChange) -> Dict:
+    """Convert VolumeChange to dictionary"""
+    return {
+        "name": vc.name,
+        "controlled": vc.controlled,
+        "continuous": vc.continuous,
+        "unit": vc.unit,
+        "feed_medium": vc.feed_medium,
+        "timeseries": _timeseries_to_dict(vc.timeseries) if vc.timeseries else None,
+        "timepoints": vc.timepoints,  # will be extracted for HDF5
+        "values": vc.values  # will be extracted for HDF5
+    }
+
+
+def _volume_to_dict(volume: Volume) -> Dict:
+    """Convert Volume to dictionary"""
+    return {
+        "volume_changes": {
+            name: _volume_change_to_dict(vc)
+            for name, vc in volume.volume_changes.items()
+        },
+        "initial_volume": volume.initial_volume,
+        "volume_unit": volume.volume_unit
+    }
+
+
 def _process_to_dict(process: Process) -> Dict:
     """Convert process to dictionary"""
-    return {
+    result = {
         "process_id": process.process_id,
         "process_type": process.process_type,
         "replicate_id": process.replicate_id,
@@ -128,13 +154,17 @@ def _process_to_dict(process: Process) -> Dict:
             "end": process.time.end,
             "time_reference": process.time.time_reference
         } if process.time else None,
-        "states": {
+        "dynamic_states": {
             name: _timeseries_to_dict(ts)
-            for name, ts in process.states.items()
+            for name, ts in process.dynamic_states.items()
         },
-        "controls": {
+        "dynamic_controls": {
             name: _timeseries_to_dict(ts)
-            for name, ts in process.controls.items()
+            for name, ts in process.dynamic_controls.items()
+        },
+        "static_controls": {
+            name: {"value": sc.value, "unit": sc.unit}
+            for name, sc in process.static_controls.items()
         },
         "feeds": {
             name: {
@@ -162,6 +192,12 @@ def _process_to_dict(process: Process) -> Dict:
             "density": process.reactor.density
         } if process.reactor else None
     }
+    
+    # Add volume if present
+    if process.volume is not None:
+        result["volume"] = _volume_to_dict(process.volume)
+    
+    return result
 
 
 def _timeseries_to_dict(ts: TimeSeries) -> Dict:
@@ -234,16 +270,39 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
                     time_reference=p_data["time"]["time_reference"]
                 )
             
-            # Reconstruct states
-            states = {
-                name: _dict_to_timeseries(ts_data)
-                for name, ts_data in p_data.get("states", {}).items()
-            }
+            # Reconstruct dynamic states (try new field name first, fall back to old)
+            dynamic_states = {}
+            if "dynamic_states" in p_data:
+                dynamic_states = {
+                    name: _dict_to_timeseries(ts_data)
+                    for name, ts_data in p_data.get("dynamic_states", {}).items()
+                }
+            elif "states" in p_data:  # Backward compatibility
+                dynamic_states = {
+                    name: _dict_to_timeseries(ts_data)
+                    for name, ts_data in p_data.get("states", {}).items()
+                }
             
-            # Reconstruct controls
-            controls = {
-                name: _dict_to_timeseries(ts_data)
-                for name, ts_data in p_data.get("controls", {}).items()
+            # Reconstruct dynamic controls (try new field name first, fall back to old)
+            dynamic_controls = {}
+            if "dynamic_controls" in p_data:
+                dynamic_controls = {
+                    name: _dict_to_timeseries(ts_data)
+                    for name, ts_data in p_data.get("dynamic_controls", {}).items()
+                }
+            elif "controls" in p_data:  # Backward compatibility
+                dynamic_controls = {
+                    name: _dict_to_timeseries(ts_data)
+                    for name, ts_data in p_data.get("controls", {}).items()
+                }
+            
+            # Reconstruct static controls
+            static_controls = {
+                name: StaticVariable(
+                    value=sc_data["value"],
+                    unit=sc_data["unit"]
+                )
+                for name, sc_data in p_data.get("static_controls", {}).items()
             }
             
             # Reconstruct feeds
@@ -281,14 +340,21 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
                     density=p_data["reactor"].get("density")
                 )
             
+            # Reconstruct volume
+            volume = None
+            if p_data.get("volume"):
+                volume = _dict_to_volume(p_data["volume"])
+            
             # Reconstruct process
             processes[p_id] = Process(
                 process_id=p_data["process_id"],
                 process_type=p_data["process_type"],
                 replicate_id=p_data.get("replicate_id"),
                 time=time,
-                states=states,
-                controls=controls,
+                dynamic_states=dynamic_states,
+                dynamic_controls=dynamic_controls,
+                static_controls=static_controls,
+                volume=volume,
                 feeds=feeds,
                 static_parameters=static_parameters,
                 event_times=p_data.get("event_times"),
@@ -307,6 +373,32 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
     return BenchmarkDataset(
         metadata=data.get("metadata", {}),
         case_studies=case_studies
+    )
+
+
+def _dict_to_volume(vol_data: Dict) -> Volume:
+    """Reconstruct Volume from dictionary"""
+    volume_changes = {}
+    for name, vc_data in vol_data.get("volume_changes", {}).items():
+        timeseries = None
+        if vc_data.get("timeseries"):
+            timeseries = _dict_to_timeseries(vc_data["timeseries"])
+        
+        volume_changes[name] = VolumeChange(
+            name=vc_data["name"],
+            controlled=vc_data["controlled"],
+            continuous=vc_data["continuous"],
+            unit=vc_data["unit"],
+            feed_medium=vc_data.get("feed_medium"),
+            timeseries=timeseries,
+            timepoints=vc_data.get("timepoints"),
+            values=vc_data.get("values")
+        )
+    
+    return Volume(
+        volume_changes=volume_changes,
+        initial_volume=vol_data.get("initial_volume"),
+        volume_unit=vol_data["volume_unit"]
     )
 
 
