@@ -3,7 +3,7 @@ Utility functions for bioprocess benchmarking
 """
 
 import jax.numpy as jnp
-from typing import Tuple, List, Generator, Optional
+from typing import Tuple, List, Generator
 from .dataclasses import Process, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
 
 

@@ -4,8 +4,6 @@ Tests for BPbench utility functions
 
 import pytest
 import jax.numpy as jnp
-from io import StringIO
-import sys
 from bpbench import (
     Process, TimeSeries, RawTimeSeries, TimeAxis,
     ReactorProperties, StaticVariable, Feed, FeedComponent,
