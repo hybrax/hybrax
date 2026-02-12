@@ -105,7 +105,7 @@ biomass = TimeSeries(
 # 3. Build process
 process = Process(
     "batch_001", "batch",
-    time=time, states={"biomass": biomass}
+    time=time, dynamic_states={"biomass": biomass}
 )
 
 # 4. Assemble case study
