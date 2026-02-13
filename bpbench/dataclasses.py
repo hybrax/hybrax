@@ -32,9 +32,22 @@ class RawTimeSeries:
 
 @dataclass
 class SplineRepresentation:
-    """Fitted spline representation of time series data"""
+    """
+    Fitted spline representation of time series data.
+    
+    The spline is segmented based on discontinuities (e.g., process.event_times).
+    Each segment has its own coefficients, allowing for different polynomial
+    behavior in different time regions.
+    
+    For cumulative data (like feed volumes), this representation allows:
+    - Smooth interpolation of cumulative values
+    - Computation of rates (derivatives) at any time point
+    - Handling of discontinuities in the rate profile
+    """
     type: str  # e.g. "cubic_hermite", "linear", "zero_order_hold"
-    coefficients: jnp.ndarray  # shape (M, C), outer dim = num segments, the number of segments depends on the process.event_times
+    breakpoints: jnp.ndarray  # shape (K,), segment boundaries (including start and end)
+    coefficients: jnp.ndarray  # shape (M, C), M segments with C coefficients each
+    discontinuous: bool = False  # True if spline has discontinuities
     fit_residual_std: Optional[float] = None  # goodness of fit
     notes: Optional[str] = None  # any additional info about fitting
 
@@ -145,16 +158,26 @@ class Volume:
         
         for name, change in self.volume_changes.items():
             if change.continuous and change.timeseries is not None:
-                # For continuous changes, integrate over time
-                if time_axis is not None and change.timeseries.raw is not None:
-                    # Simple trapezoidal integration
+                # For continuous changes, check if data is cumulative or rate
+                if change.timeseries.raw is not None:
                     times = change.timeseries.raw.timepoints
-                    rates = change.timeseries.raw.values
+                    values = change.timeseries.raw.values
+                    
                     if len(times) > 1:
-                        dt = jnp.diff(times)
-                        avg_rates = (rates[:-1] + rates[1:]) / 2.0
-                        change_vol = jnp.sum(dt * avg_rates)
-                        total_change += float(change_vol)
+                        # Check unit to determine if cumulative or rate
+                        if change.unit == "L" or change.unit == self.volume_unit:
+                            # Cumulative volume: final - initial
+                            change_vol = float(values[-1] - values[0])
+                        elif "/" in change.unit:
+                            # Rate (e.g., "L/h"): integrate using trapezoidal rule
+                            dt = jnp.diff(times)
+                            avg_rates = (values[:-1] + values[1:]) / 2.0
+                            change_vol = float(jnp.sum(dt * avg_rates))
+                        else:
+                            # Unknown unit, assume cumulative
+                            change_vol = float(values[-1] - values[0])
+                        
+                        total_change += change_vol
                         messages.append(f"  {name}: +{change_vol:.2f} {self.volume_unit} (continuous)")
             elif not change.continuous and change.values is not None:
                 # For discrete changes, sum all values
