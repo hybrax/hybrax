@@ -51,9 +51,9 @@ def sample_dataset():
         process_id="batch_001",
         process_type="batch",
         time=time_axis,
-        dynamic_states={"biomass": biomass},
+        dynamic_variables={"biomass": biomass},
         feeds={"feed1": feed},
-        static_parameters={"mu_max": StaticVariable(value=0.5, unit="1/h")},
+        static_variables={"mu_max": StaticVariable(value=0.5, unit="1/h")},
         reactor=ReactorProperties(
             working_volume=1.0,
             volume_unit="L"
@@ -110,8 +110,8 @@ def test_save_load_yaml_hdf5(sample_dataset):
         assert process.process_type == "batch"
         
         # Verify timeseries data
-        assert "biomass" in process.dynamic_states
-        biomass = process.dynamic_states["biomass"]
+        assert "biomass" in process.dynamic_variables
+        biomass = process.dynamic_variables["biomass"]
         assert biomass.name == "Biomass"
         assert biomass.raw is not None
         assert biomass.raw.timepoints.shape == (5,)
@@ -159,8 +159,8 @@ def test_feed_serialization(sample_dataset):
         assert feed.components["glucose"].concentration == 500.0
 
 
-def test_static_parameters_serialization(sample_dataset):
-    """Test that static parameters are properly serialized and loaded"""
+def test_static_variables_serialization(sample_dataset):
+    """Test that static variables are properly serialized and loaded"""
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_dataset"
         
@@ -169,9 +169,9 @@ def test_static_parameters_serialization(sample_dataset):
         
         process = loaded_dataset.case_studies["ecoli"].processes["batch_001"]
         
-        # Verify static parameter
-        assert "mu_max" in process.static_parameters
-        mu_max = process.static_parameters["mu_max"]
+        # Verify static variable
+        assert "mu_max" in process.static_variables
+        mu_max = process.static_variables["mu_max"]
         assert mu_max.value == 0.5
         assert mu_max.unit == "1/h"
 

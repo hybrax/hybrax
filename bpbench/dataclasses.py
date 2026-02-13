@@ -32,9 +32,25 @@ class RawTimeSeries:
 
 @dataclass
 class SplineRepresentation:
-    """Fitted spline representation of time series data"""
+    """
+    Fitted spline representation of time series data.
+    
+    The spline is segmented based on discontinuities (e.g., process.event_times).
+    Each segment has its own coefficients, allowing for different polynomial
+    behavior in different time regions.
+    
+    Note: K breakpoints define K-1 segments, so M = K-1 where M is the number
+    of segments (first dimension of coefficients array).
+    
+    For cumulative data (like feed volumes), this representation allows:
+    - Smooth interpolation of cumulative values
+    - Computation of rates (derivatives) at any time point
+    - Handling of discontinuities in the rate profile
+    """
     type: str  # e.g. "cubic_hermite", "linear", "zero_order_hold"
-    coefficients: jnp.ndarray  # shape (M, C), outer dim = num segments, the number of segments depends on the process.event_times
+    breakpoints: jnp.ndarray  # shape (K,), segment boundaries (including start and end)
+    coefficients: jnp.ndarray  # shape (M, C), M=K-1 segments with C coefficients each
+    discontinuous: bool = False  # True if spline has discontinuities
     fit_residual_std: Optional[float] = None  # goodness of fit
     notes: Optional[str] = None  # any additional info about fitting
 
@@ -145,16 +161,26 @@ class Volume:
         
         for name, change in self.volume_changes.items():
             if change.continuous and change.timeseries is not None:
-                # For continuous changes, integrate over time
-                if time_axis is not None and change.timeseries.raw is not None:
-                    # Simple trapezoidal integration
+                # For continuous changes, check if data is cumulative or rate
+                if change.timeseries.raw is not None:
                     times = change.timeseries.raw.timepoints
-                    rates = change.timeseries.raw.values
+                    values = change.timeseries.raw.values
+                    
                     if len(times) > 1:
-                        dt = jnp.diff(times)
-                        avg_rates = (rates[:-1] + rates[1:]) / 2.0
-                        change_vol = jnp.sum(dt * avg_rates)
-                        total_change += float(change_vol)
+                        # Check unit to determine if cumulative or rate
+                        if change.unit == "L" or change.unit == self.volume_unit:
+                            # Cumulative volume: final - initial
+                            change_vol = float(values[-1] - values[0])
+                        elif "/" in change.unit:
+                            # Rate (e.g., "L/h"): integrate using trapezoidal rule
+                            dt = jnp.diff(times)
+                            avg_rates = (values[:-1] + values[1:]) / 2.0
+                            change_vol = float(jnp.sum(dt * avg_rates))
+                        else:
+                            # Unknown unit, assume cumulative
+                            change_vol = float(values[-1] - values[0])
+                        
+                        total_change += change_vol
                         messages.append(f"  {name}: +{change_vol:.2f} {self.volume_unit} (continuous)")
             elif not change.continuous and change.values is not None:
                 # For discrete changes, sum all values
@@ -184,17 +210,17 @@ class Volume:
             return (True, "Volume changes calculated:\n" + "\n".join(messages))
     
     def validate_feed_components(self, process_feeds: Dict[str, Feed], 
-                                 dynamic_states: Dict[str, TimeSeries]) -> tuple[bool, str]:
+                                 dynamic_variables: Dict[str, TimeSeries]) -> tuple[bool, str]:
         """
         Validate that feed compositions are properly defined for volume changes.
         
         For each VolumeChange with a feed_medium reference:
         - The referenced feed must exist in process_feeds
-        - Warning if feed components don't cover all dynamic states
+        - Warning if feed components don't cover all dynamic variables
         
         Args:
             process_feeds: Dictionary of Feed objects from Process.feeds
-            dynamic_states: Dictionary of TimeSeries from Process.dynamic_states
+            dynamic_variables: Dictionary of TimeSeries from Process.dynamic_variables
             
         Returns:
             (is_valid, message): Tuple of validation result and descriptive message
@@ -220,13 +246,13 @@ class Volume:
             # If there's a feed, validate component coverage
             if feed is not None:
                 missing_components = []
-                for state_name in dynamic_states.keys():
-                    if state_name not in feed.components:
-                        missing_components.append(state_name)
+                for var_name in dynamic_variables.keys():
+                    if var_name not in feed.components:
+                        missing_components.append(var_name)
                 
                 if missing_components:
                     messages.append(f"WARNING: VolumeChange '{vc_name}' feed '{feed.name}' "
-                                  f"is missing concentrations for dynamic states: {missing_components}")
+                                  f"is missing concentrations for dynamic variables: {missing_components}")
         
         if not messages:
             return (True, "All feed components properly defined")
@@ -246,33 +272,31 @@ class Process:
     Structure:
     - process_id: Unique identifier
     - process_type: "batch", "fed_batch", "continuous"
+    - replicate_id: Replicate identifier (e.g., "R1", "rep1")
     - time: Time axis definition
-    - dynamic_states: Time-varying biological states (biomass, substrate, product)
-    - dynamic_controls: Time-varying controlled variables (pH, temperature if changed)
-    - static_controls: Time-constant controlled variables (temperature if constant)
-    - volume: Volume tracking with all volume changes
+    - dynamic_variables: Time-varying variables (biomass, substrate, product, temperature, etc.)
+    - static_variables: Time-constant variables (inductor strength, initial concentrations, etc.)
+    - volume: Volume tracking with all volume changes (feeds, sampling, evaporation)
     - reactor: Reactor properties
     - feeds: Feed medium definitions
     - event_times: Discontinuity times
     """
     process_id: str
     process_type: str  # "batch", "fed_batch", "continuous"
-    replicate_id: Optional[str] = None  # e.g. "rep1", "rep2"
+    replicate_id: Optional[str] = None  # e.g. "rep1", "rep2", "R1"
 
     time: Optional[TimeAxis] = None
 
-    # New organization: separate dynamic states, dynamic controls, and static controls
-    dynamic_states: Dict[str, TimeSeries] = field(default_factory=dict)
-    dynamic_controls: Dict[str, TimeSeries] = field(default_factory=dict)
-    static_controls: Dict[str, StaticVariable] = field(default_factory=dict)
+    # Unified dynamic variables (combines what were states and controls)
+    dynamic_variables: Dict[str, TimeSeries] = field(default_factory=dict)
     
-    # Volume gets its own special handling
+    # Unified static variables (combines what were static_controls and static_parameters)
+    static_variables: Dict[str, StaticVariable] = field(default_factory=dict)
+    
+    # Volume gets its own special handling (includes cumulative feed data)
     volume: Optional[Volume] = None
 
     feeds: Dict[str, Feed] = field(default_factory=dict)
-    
-    # Keep static_parameters for other static values
-    static_parameters: Dict[str, StaticVariable] = field(default_factory=dict)
 
     event_times: Optional[jnp.ndarray] = None  # sorted discontinuity times
 
@@ -385,8 +409,8 @@ tree_util.register_pytree_node(
 tree_util.register_pytree_node(
     Process,
     lambda obj: (
-        (obj.time, obj.dynamic_states, obj.dynamic_controls, obj.static_controls,
-         obj.volume, obj.feeds, obj.static_parameters, obj.event_times, obj.reactor),
+        (obj.time, obj.dynamic_variables, obj.static_variables,
+         obj.volume, obj.feeds, obj.event_times, obj.reactor),
         (obj.process_id, obj.process_type, obj.replicate_id)
     ),
     lambda data, children: Process(
@@ -394,14 +418,12 @@ tree_util.register_pytree_node(
         process_type=data[1], 
         replicate_id=data[2],
         time=children[0],
-        dynamic_states=children[1],
-        dynamic_controls=children[2],
-        static_controls=children[3],
-        volume=children[4],
-        feeds=children[5],
-        static_parameters=children[6],
-        event_times=children[7],
-        reactor=children[8]
+        dynamic_variables=children[1],
+        static_variables=children[2],
+        volume=children[3],
+        feeds=children[4],
+        event_times=children[5],
+        reactor=children[6]
     )
 )
 

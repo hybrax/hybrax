@@ -33,6 +33,10 @@ from .utils import (
     leave_one_process_out,
     iter_loocv,
     print_structure,
+)
+
+# Import spline utilities
+from .splines import (
     fit_cubic_spline,
     compute_rate_from_cumulative,
 )
