@@ -206,8 +206,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# BPbench - generated data from notebook execution
-examples/prol_imported_notebook/
-# Generated plots from notebooks
-examples/**/process_data_visualization.png
-examples/**/*_executed.ipynb
+# Shitty Windows files
+*:Zone.Identifier
