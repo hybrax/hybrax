@@ -92,15 +92,25 @@ class VolumeChange:
     Volume changes can be:
     - Controlled (e.g., programmed feed rate) or modeled (e.g., evaporation)
     - Discrete (e.g., bolus addition) or continuous (e.g., continuous feed)
+    
+    For continuous changes:
+    - timeseries.raw should contain the originally measured data (cumulative volumes in L or rates in L/h)
+    - timeseries.spline should contain the fitted spline representation
+    - The unit field indicates whether data is cumulative ("L") or rate ("L/h")
+    
+    Feed validation:
+    - If feed_medium is specified, the referenced Feed must exist in Process.feeds
+    - All dynamic state concentrations in the feed should be defined
     """
     name: str
     controlled: bool  # True if controlled, False if modeled
     continuous: bool  # True if continuous, False if discrete
-    unit: str  # e.g. "L/h" for continuous, "L" for discrete
+    unit: str  # e.g. "L" for cumulative volumes, "L/h" for rates, "L" for discrete
     feed_medium: Optional[str] = None  # Reference to feed name in Process.feeds
-    timeseries: Optional[TimeSeries] = None  # For continuous changes
+    timeseries: Optional[TimeSeries] = None  # For continuous changes (cumulative or rate)
     timepoints: Optional[jnp.ndarray] = None  # For discrete changes (when they occur)
     values: Optional[jnp.ndarray] = None  # For discrete changes (volumes added)
+    feed: Optional[Feed] = None  # Feed composition (inline definition alternative to feed_medium)
 
 
 @dataclass
@@ -174,6 +184,56 @@ class Volume:
             messages.insert(0, f"Initial volume: {self.initial_volume:.2f} {self.volume_unit}")
             messages.append(f"Calculated final: {calculated_final:.2f} {self.volume_unit}")
             return (True, "Volume changes calculated:\n" + "\n".join(messages))
+    
+    def validate_feed_components(self, process_feeds: Dict[str, Feed], 
+                                 dynamic_states: Dict[str, TimeSeries]) -> tuple[bool, str]:
+        """
+        Validate that feed compositions are properly defined for volume changes.
+        
+        For each VolumeChange with a feed_medium reference:
+        - The referenced feed must exist in process_feeds
+        - Warning if feed components don't cover all dynamic states
+        
+        Args:
+            process_feeds: Dictionary of Feed objects from Process.feeds
+            dynamic_states: Dictionary of TimeSeries from Process.dynamic_states
+            
+        Returns:
+            (is_valid, message): Tuple of validation result and descriptive message
+        """
+        messages = []
+        all_valid = True
+        
+        for vc_name, vc in self.volume_changes.items():
+            # Check if this volume change has a feed
+            feed = None
+            if vc.feed_medium is not None:
+                # Reference to Process.feeds
+                if vc.feed_medium not in process_feeds:
+                    messages.append(f"ERROR: VolumeChange '{vc_name}' references feed '{vc.feed_medium}' "
+                                  f"which is not defined in Process.feeds")
+                    all_valid = False
+                else:
+                    feed = process_feeds[vc.feed_medium]
+            elif vc.feed is not None:
+                # Inline feed definition
+                feed = vc.feed
+            
+            # If there's a feed, validate component coverage
+            if feed is not None:
+                missing_components = []
+                for state_name in dynamic_states.keys():
+                    if state_name not in feed.components:
+                        missing_components.append(state_name)
+                
+                if missing_components:
+                    messages.append(f"WARNING: VolumeChange '{vc_name}' feed '{feed.name}' "
+                                  f"is missing concentrations for dynamic states: {missing_components}")
+        
+        if not messages:
+            return (True, "All feed components properly defined")
+        
+        return (all_valid, "\n".join(messages))
 
 
 # ============================================================
@@ -307,7 +367,7 @@ tree_util.register_pytree_node(
 tree_util.register_pytree_node(
     VolumeChange,
     lambda obj: (
-        (obj.timeseries, obj.timepoints, obj.values),
+        (obj.timeseries, obj.timepoints, obj.values, obj.feed),
         (obj.name, obj.controlled, obj.continuous, obj.unit, obj.feed_medium)
     ),
     lambda data, children: VolumeChange(
