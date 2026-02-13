@@ -21,6 +21,7 @@ bpbench/
 **Key Components**:
 - **Low-level structures**: TimeAxis, RawTimeSeries, SplineRepresentation, TimeSeries
 - **Medium-level structures**: StaticVariable, FeedComponent, Feed, ReactorProperties
+- **Volume structures**: VolumeChange, Volume (with feed validation)
 - **High-level structures**: Process, CaseStudy, BenchmarkDataset
 - **PyTree registration**: All dataclasses registered for JAX compatibility
 
@@ -29,6 +30,9 @@ bpbench/
 - All structures are immutable by design (frozen could be added if needed)
 - JAX PyTree registration enables automatic differentiation and JIT compilation
 - Hierarchical structure: Dataset → CaseStudy → Process → TimeSeries
+- Volume changes store raw measurements (cumulative volumes in L, not rates)
+- Spline fitting used to compute rates from cumulative data as needed
+- Feed components validated to ensure consistency with dynamic states
 
 ### serialization.py
 
@@ -57,11 +61,16 @@ bpbench/
 - `get_event_times()`: Extract discontinuity times for ODE solvers
 - `leave_one_process_out()`: Generate cross-validation splits for single case study
 - `iter_loocv()`: Iterator for leave-one-out across all case studies
+- `print_structure()`: Display hierarchical view of Process object structure
+- `fit_cubic_spline()`: Fit cubic or linear splines to time series data with discontinuity handling
+- `compute_rate_from_cumulative()`: Compute rates (derivatives) from cumulative volume splines
 
 **Design Decisions**:
 - Generator-based CV functions for memory efficiency
 - Explicit separation of train/test process IDs
 - Works seamlessly with the hierarchical data structure
+- Spline fitting supports both cubic (for smooth data) and linear (for discontinuities)
+- Cumulative data preserved in raw form; rates computed from splines as needed
 
 ## Design Philosophy
 

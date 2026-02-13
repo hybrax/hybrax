@@ -387,5 +387,80 @@ def test_process_backward_compatibility():
     assert "temperature" in process.dynamic_controls
 
 
+def test_volume_feed_validation():
+    """Test Volume feed component validation"""
+    from bpbench import Volume, VolumeChange, Feed, FeedComponent
+    
+    # Create a feed with glucose component
+    glucose_feed = Feed(
+        name="glucose_feed",
+        density=1.1,
+        density_unit="kg/L",
+        components={
+            "glucose": FeedComponent(concentration=500.0, unit="g/L")
+        }
+    )
+    
+    # Create VolumeChange with feed reference
+    vc = VolumeChange(
+        name='feed',
+        controlled=True,
+        continuous=True,
+        unit='L',
+        feed_medium='glucose_feed'
+    )
+    
+    volume = Volume(
+        volume_changes={'feed': vc},
+        initial_volume=1.0,
+        volume_unit='L'
+    )
+    
+    # Test with feed that exists but is missing some components
+    process_feeds = {'glucose_feed': glucose_feed}
+    dynamic_states = {
+        'biomass': TimeSeries(name='biomass', unit='g/L'),
+        'glucose': TimeSeries(name='glucose', unit='g/L')
+    }
+    
+    is_valid, msg = volume.validate_feed_components(process_feeds, dynamic_states)
+    # Should return True (no errors) but with warning about missing biomass
+    assert is_valid is True, "Should be valid even with warnings"
+    assert 'warning' in msg.lower(), "Should contain warning"
+    assert 'biomass' in msg.lower(), "Should warn about missing biomass"
+    
+    # Test with missing feed reference - should return False
+    is_valid, msg = volume.validate_feed_components({}, dynamic_states)
+    assert is_valid is False, "Should be invalid when feed reference doesn't exist"
+    assert 'error' in msg.lower(), "Should contain error message"
+    assert 'not defined' in msg.lower(), "Should indicate feed is not defined"
+
+
+def test_volume_change_with_inline_feed():
+    """Test VolumeChange with inline feed definition"""
+    from bpbench import VolumeChange, Feed, FeedComponent
+    
+    inline_feed = Feed(
+        name="inline_feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "substrate": FeedComponent(concentration=100.0, unit="g/L")
+        }
+    )
+    
+    vc = VolumeChange(
+        name='feed',
+        controlled=True,
+        continuous=True,
+        unit='L',
+        feed=inline_feed
+    )
+    
+    assert vc.feed is not None
+    assert vc.feed.name == "inline_feed"
+    assert "substrate" in vc.feed.components
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

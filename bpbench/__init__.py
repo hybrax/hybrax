@@ -33,6 +33,8 @@ from .utils import (
     leave_one_process_out,
     iter_loocv,
     print_structure,
+    fit_cubic_spline,
+    compute_rate_from_cumulative,
 )
 
 # Import serialization functions
@@ -65,6 +67,8 @@ __all__ = [
     "leave_one_process_out",
     "iter_loocv",
     "print_structure",
+    "fit_cubic_spline",
+    "compute_rate_from_cumulative",
     # Serialization
     "save_dataset",
     "load_dataset",
