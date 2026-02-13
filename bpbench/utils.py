@@ -270,7 +270,11 @@ def fit_cubic_spline(timepoints: jnp.ndarray, values: jnp.ndarray,
             
             if len(t_seg) >= 2:
                 # Linear fit for this segment
-                slope = (v_seg[-1] - v_seg[0]) / (t_seg[-1] - t_seg[0]) if t_seg[-1] > t_seg[0] else 0
+                dt = t_seg[-1] - t_seg[0]
+                if dt > 1e-10:  # Use epsilon tolerance to avoid division by near-zero
+                    slope = (v_seg[-1] - v_seg[0]) / dt
+                else:
+                    slope = 0.0
                 intercept = v_seg[0] - slope * t_seg[0]
                 coeffs.append([intercept, slope])
             else:
@@ -312,7 +316,11 @@ def fit_cubic_spline(timepoints: jnp.ndarray, values: jnp.ndarray,
             breakpoints = jnp.array(t_np)
             coeffs = []
             for i in range(len(t_np) - 1):
-                slope = (v_np[i+1] - v_np[i]) / (t_np[i+1] - t_np[i]) if t_np[i+1] > t_np[i] else 0
+                dt = t_np[i+1] - t_np[i]
+                if dt > 1e-10:  # Use epsilon tolerance to avoid division by near-zero
+                    slope = (v_np[i+1] - v_np[i]) / dt
+                else:
+                    slope = 0.0
                 intercept = v_np[i] - slope * t_np[i]
                 coeffs.append([intercept, slope])
             coeffs_array = jnp.array(coeffs)

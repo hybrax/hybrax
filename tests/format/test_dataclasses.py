@@ -416,7 +416,7 @@ def test_volume_feed_validation():
         volume_unit='L'
     )
     
-    # Test with feed that exists
+    # Test with feed that exists but is missing some components
     process_feeds = {'glucose_feed': glucose_feed}
     dynamic_states = {
         'biomass': TimeSeries(name='biomass', unit='g/L'),
@@ -424,14 +424,16 @@ def test_volume_feed_validation():
     }
     
     is_valid, msg = volume.validate_feed_components(process_feeds, dynamic_states)
-    assert is_valid is True
-    # Should warn about missing biomass concentration in feed
-    assert 'biomass' in msg.lower()
+    # Should return True (no errors) but with warning about missing biomass
+    assert is_valid is True, "Should be valid even with warnings"
+    assert 'warning' in msg.lower(), "Should contain warning"
+    assert 'biomass' in msg.lower(), "Should warn about missing biomass"
     
-    # Test with missing feed reference
+    # Test with missing feed reference - should return False
     is_valid, msg = volume.validate_feed_components({}, dynamic_states)
-    assert is_valid is False
-    assert 'not defined' in msg.lower()
+    assert is_valid is False, "Should be invalid when feed reference doesn't exist"
+    assert 'error' in msg.lower(), "Should contain error message"
+    assert 'not defined' in msg.lower(), "Should indicate feed is not defined"
 
 
 def test_volume_change_with_inline_feed():
