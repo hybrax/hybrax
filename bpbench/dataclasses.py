@@ -39,6 +39,9 @@ class SplineRepresentation:
     Each segment has its own coefficients, allowing for different polynomial
     behavior in different time regions.
     
+    Note: K breakpoints define K-1 segments, so M = K-1 where M is the number
+    of segments (first dimension of coefficients array).
+    
     For cumulative data (like feed volumes), this representation allows:
     - Smooth interpolation of cumulative values
     - Computation of rates (derivatives) at any time point
@@ -46,7 +49,7 @@ class SplineRepresentation:
     """
     type: str  # e.g. "cubic_hermite", "linear", "zero_order_hold"
     breakpoints: jnp.ndarray  # shape (K,), segment boundaries (including start and end)
-    coefficients: jnp.ndarray  # shape (M, C), M segments with C coefficients each
+    coefficients: jnp.ndarray  # shape (M, C), M=K-1 segments with C coefficients each
     discontinuous: bool = False  # True if spline has discontinuities
     fit_residual_std: Optional[float] = None  # goodness of fit
     notes: Optional[str] = None  # any additional info about fitting

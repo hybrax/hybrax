@@ -22,7 +22,8 @@ def fit_cubic_spline(timepoints: jnp.ndarray, values: jnp.ndarray,
     Args:
         timepoints: Time points of measurements (shape: N,)
         values: Measured values at timepoints (shape: N,)
-        discontinuities: Optional array of time points where discontinuities occur
+        discontinuities: Optional array of time points where discontinuities occur.
+                        None or empty array means no discontinuities.
         
     Returns:
         SplineRepresentation object with fitted spline coefficients
