@@ -47,6 +47,7 @@ from .inspect import (
 
 # Import serialization functions
 from . import serialization
+from . import validate
 
 __all__ = [
     # Version
@@ -74,4 +75,5 @@ __all__ = [
     "compute_rate_from_cumulative",
     # Modules
     "serialization",
+    "validate",
 ]
