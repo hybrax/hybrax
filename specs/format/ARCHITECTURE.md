@@ -325,9 +325,6 @@ FeedMedium(
         ),
     }
 )
-        "yeast_extract": FeedComponent(concentration=10.0, unit="g/L"),
-    }
-)
 ```
 
 **Feed References in VolumeChange**:
