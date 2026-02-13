@@ -261,3 +261,70 @@ def test_print_structure_with_many_event_times(capsys):
     # Should show first 5 and last 5 for many events
     assert "First 5:" in captured.out
     assert "Last 5:" in captured.out
+
+
+def test_fit_cubic_spline():
+    """Test cubic spline fitting for cumulative data"""
+    from bpbench import fit_cubic_spline
+    
+    # Create cumulative volume data
+    times = jnp.array([0., 1., 2., 3., 4., 5.])
+    cumulative_vol = jnp.array([0., 0.1, 0.3, 0.6, 1.0, 1.5])
+    
+    spline = fit_cubic_spline(times, cumulative_vol)
+    
+    assert spline is not None
+    assert spline.type in ["cubic_hermite", "linear"]
+    assert len(spline.breakpoints) > 0
+    assert spline.coefficients.shape[0] > 0
+    assert spline.fit_residual_std is not None
+
+
+def test_fit_cubic_spline_with_discontinuities():
+    """Test spline fitting with discontinuities"""
+    from bpbench import fit_cubic_spline
+    
+    times = jnp.array([0., 1., 2., 3., 4., 5.])
+    values = jnp.array([0., 0.5, 1.0, 1.5, 2.0, 2.5])
+    discontinuities = jnp.array([2.5])  # Discontinuity in the middle
+    
+    spline = fit_cubic_spline(times, values, discontinuities)
+    
+    assert spline is not None
+    assert spline.discontinuous is True
+    assert len(spline.breakpoints) > 0
+
+
+def test_compute_rate_from_cumulative():
+    """Test computing rate from cumulative spline"""
+    from bpbench import fit_cubic_spline, compute_rate_from_cumulative
+    
+    # Create cumulative volume with constant rate (linear growth)
+    times = jnp.array([0., 1., 2., 3., 4.])
+    cumulative_vol = jnp.array([0., 0.5, 1.0, 1.5, 2.0])  # Rate = 0.5 L/h
+    
+    spline = fit_cubic_spline(times, cumulative_vol)
+    
+    # Compute rates at the same time points
+    eval_times = jnp.array([0., 1., 2., 3., 4.])
+    rates = compute_rate_from_cumulative(spline, eval_times)
+    
+    assert rates is not None
+    assert rates.shape == eval_times.shape
+    # For linear cumulative data, rates should be approximately constant
+    assert jnp.all(rates >= 0)  # Rates should be non-negative
+
+
+def test_spline_with_few_points():
+    """Test spline fitting with very few points"""
+    from bpbench import fit_cubic_spline
+    
+    # Only 2 points - should fall back to linear
+    times = jnp.array([0., 5.])
+    values = jnp.array([0., 1.0])
+    
+    spline = fit_cubic_spline(times, values)
+    
+    assert spline is not None
+    assert spline.type == "linear"
+    assert len(spline.breakpoints) == 2
