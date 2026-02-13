@@ -34,9 +34,7 @@ class RawTimeSeries:
 class SplineRepresentation:
     """Fitted spline representation of time series data"""
     type: str  # e.g. "cubic_hermite", "linear", "zero_order_hold"
-    breakpoints: jnp.ndarray  # shape (M+1,), sorted
-    coefficients: jnp.ndarray  # shape (M, C), outer dim = num segments
-    discontinuous: bool  # if True, contributes to process.event_times
+    coefficients: jnp.ndarray  # shape (M, C), outer dim = num segments, the number of segments depends on the process.event_times
     fit_residual_std: Optional[float] = None  # goodness of fit
     notes: Optional[str] = None  # any additional info about fitting
 
