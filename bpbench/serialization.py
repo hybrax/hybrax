@@ -163,12 +163,21 @@ def _volume_to_dict(volume: Volume) -> Dict:
 
 def _volume_change_to_dict(vc: VolumeChange) -> Dict:
     """Convert VolumeChange to dictionary"""
+    # Store feed_medium as a reference (name) rather than the full object
+    # The actual feed medium should be stored separately in the process
+    feed_medium_ref = None
+    if vc.feed_medium is not None:
+        if isinstance(vc.feed_medium, FeedMedium):
+            feed_medium_ref = vc.feed_medium.name
+        else:
+            feed_medium_ref = vc.feed_medium  # Already a string reference
+    
     return {
         "name": vc.name,
         "unit": vc.unit,
         "controlled": vc.controlled,
         "continuous": vc.continuous,
-        "feed_medium": vc.feed_medium,
+        "feed_medium": feed_medium_ref,
         "timeseries": _timeseries_to_dict(vc.timeseries) if vc.timeseries else None
     }
 
