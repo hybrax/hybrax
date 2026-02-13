@@ -42,7 +42,7 @@ def simple_process():
         process_id="test_001",
         process_type="batch",
         time=time_axis,
-        dynamic_states={"biomass": biomass},
+        dynamic_variables={"biomass": biomass},
         reactor=reactor
     )
     
@@ -146,15 +146,18 @@ def complex_process():
         process_type="fed_batch",
         replicate_id="rep1",
         time=time_axis,
-        dynamic_states={"biomass": biomass, "glucose": glucose},
-        dynamic_controls={"temperature": temperature},
-        static_controls={"pH": StaticVariable(value=7.0, unit="pH")},
-        volume=volume,
-        feeds={"Glucose feed": feed},
-        static_parameters={
+        dynamic_variables={
+            "biomass": biomass, 
+            "glucose": glucose,
+            "temperature": temperature
+        },
+        static_variables={
+            "pH": StaticVariable(value=7.0, unit="pH"),
             "mu_max": StaticVariable(value=0.5, unit="1/h"),
             "Ks": StaticVariable(value=0.1, unit="g/L")
         },
+        volume=volume,
+        feeds={"Glucose feed": feed},
         event_times=event_times,
         reactor=reactor
     )
@@ -188,18 +191,17 @@ def test_print_structure_complex(complex_process, capsys):
     assert "fed_batch" in captured.out
     assert "rep1" in captured.out
     
-    # Check dynamic states
-    assert "Dynamic States: (2 total)" in captured.out
+    # Check dynamic variables
+    assert "Dynamic Variables:" in captured.out
     assert "Biomass" in captured.out
     assert "Glucose" in captured.out
-    
-    # Check dynamic controls
-    assert "Dynamic Controls: (1 total)" in captured.out
     assert "Temperature" in captured.out
     
-    # Check static controls
-    assert "Static Controls: (1 total)" in captured.out
+    # Check static variables
+    assert "Static Variables:" in captured.out
     assert "pH" in captured.out
+    assert "mu_max" in captured.out
+    assert "Ks" in captured.out
     
     # Check volume
     assert "Volume:" in captured.out
@@ -210,11 +212,6 @@ def test_print_structure_complex(complex_process, capsys):
     # Check feeds
     assert "Feeds: (1 total)" in captured.out
     assert "Glucose feed" in captured.out
-    
-    # Check static parameters
-    assert "Static Parameters: (2 total)" in captured.out
-    assert "mu_max" in captured.out
-    assert "Ks" in captured.out
     
     # Check event times
     assert "Event Times: (3 total)" in captured.out

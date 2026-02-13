@@ -89,22 +89,16 @@ def print_structure(process: Process, indent: int = 0, show_values: bool = False
         print(f"{prefix}  Range: {process.time.start:.2f} to {process.time.end:.2f} {process.time.unit}")
         print(f"{prefix}  Reference: {process.time.time_reference}")
     
-    # Dynamic states
-    if process.dynamic_states:
-        print(f"\n{prefix}Dynamic States: ({len(process.dynamic_states)} total)")
-        for name, ts in process.dynamic_states.items():
+    # Dynamic variables (combines states and controls)
+    if process.dynamic_variables:
+        print(f"\n{prefix}Dynamic Variables: ({len(process.dynamic_variables)} total)")
+        for name, ts in process.dynamic_variables.items():
             _print_timeseries_info(ts, prefix + "  ", show_values)
     
-    # Dynamic controls
-    if process.dynamic_controls:
-        print(f"\n{prefix}Dynamic Controls: ({len(process.dynamic_controls)} total)")
-        for name, ts in process.dynamic_controls.items():
-            _print_timeseries_info(ts, prefix + "  ", show_values)
-    
-    # Static controls
-    if process.static_controls:
-        print(f"\n{prefix}Static Controls: ({len(process.static_controls)} total)")
-        for name, var in process.static_controls.items():
+    # Static variables (combines static controls and parameters)
+    if process.static_variables:
+        print(f"\n{prefix}Static Variables: ({len(process.static_variables)} total)")
+        for name, var in process.static_variables.items():
             print(f"{prefix}  {name}: {var.value} {var.unit}")
     
     # Volume information
@@ -126,12 +120,6 @@ def print_structure(process: Process, indent: int = 0, show_values: bool = False
                 print(f"{prefix}    Components: ({len(feed.components)} total)")
                 for comp_name, comp in feed.components.items():
                     print(f"{prefix}      {comp_name}: {comp.concentration} {comp.unit}")
-    
-    # Static parameters
-    if process.static_parameters:
-        print(f"\n{prefix}Static Parameters: ({len(process.static_parameters)} total)")
-        for name, var in process.static_parameters.items():
-            print(f"{prefix}  {name}: {var.value} {var.unit}")
     
     # Event times
     if process.event_times is not None and len(process.event_times) > 0:

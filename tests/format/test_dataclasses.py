@@ -378,13 +378,15 @@ def test_process_backward_compatibility():
     process = Process(
         process_id="test",
         process_type="batch",
-        dynamic_states={"biomass": biomass_ts},
-        dynamic_controls={"temperature": temp_ts}
+        dynamic_variables={
+            "biomass": biomass_ts,
+            "temperature": temp_ts
+        }
     )
     
     # Test new field names work correctly
-    assert "biomass" in process.dynamic_states
-    assert "temperature" in process.dynamic_controls
+    assert "biomass" in process.dynamic_variables
+    assert "temperature" in process.dynamic_variables
 
 
 def test_volume_feed_validation():
@@ -418,19 +420,19 @@ def test_volume_feed_validation():
     
     # Test with feed that exists but is missing some components
     process_feeds = {'glucose_feed': glucose_feed}
-    dynamic_states = {
+    dynamic_variables = {
         'biomass': TimeSeries(name='biomass', unit='g/L'),
         'glucose': TimeSeries(name='glucose', unit='g/L')
     }
     
-    is_valid, msg = volume.validate_feed_components(process_feeds, dynamic_states)
+    is_valid, msg = volume.validate_feed_components(process_feeds, dynamic_variables)
     # Should return True (no errors) but with warning about missing biomass
     assert is_valid is True, "Should be valid even with warnings"
     assert 'warning' in msg.lower(), "Should contain warning"
     assert 'biomass' in msg.lower(), "Should warn about missing biomass"
     
     # Test with missing feed reference - should return False
-    is_valid, msg = volume.validate_feed_components({}, dynamic_states)
+    is_valid, msg = volume.validate_feed_components({}, dynamic_variables)
     assert is_valid is False, "Should be invalid when feed reference doesn't exist"
     assert 'error' in msg.lower(), "Should contain error message"
     assert 'not defined' in msg.lower(), "Should indicate feed is not defined"

@@ -154,17 +154,13 @@ def _process_to_dict(process: Process) -> Dict:
             "end": process.time.end,
             "time_reference": process.time.time_reference
         } if process.time else None,
-        "dynamic_states": {
+        "dynamic_variables": {
             name: _timeseries_to_dict(ts)
-            for name, ts in process.dynamic_states.items()
+            for name, ts in process.dynamic_variables.items()
         },
-        "dynamic_controls": {
-            name: _timeseries_to_dict(ts)
-            for name, ts in process.dynamic_controls.items()
-        },
-        "static_controls": {
-            name: {"value": sc.value, "unit": sc.unit}
-            for name, sc in process.static_controls.items()
+        "static_variables": {
+            name: {"value": sv.value, "unit": sv.unit}
+            for name, sv in process.static_variables.items()
         },
         "feeds": {
             name: {
@@ -180,10 +176,6 @@ def _process_to_dict(process: Process) -> Dict:
                 }
             }
             for name, feed in process.feeds.items()
-        },
-        "static_parameters": {
-            name: {"value": sp.value, "unit": sp.unit}
-            for name, sp in process.static_parameters.items()
         },
         "event_times": process.event_times,  # will be extracted
         "reactor": {
@@ -270,40 +262,71 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
                     time_reference=p_data["time"]["time_reference"]
                 )
             
-            # Reconstruct dynamic states (try new field name first, fall back to old)
-            dynamic_states = {}
-            if "dynamic_states" in p_data:
-                dynamic_states = {
-                    name: _dict_to_timeseries(ts_data)
-                    for name, ts_data in p_data.get("dynamic_states", {}).items()
-                }
-            elif "states" in p_data:  # Backward compatibility
-                dynamic_states = {
-                    name: _dict_to_timeseries(ts_data)
-                    for name, ts_data in p_data.get("states", {}).items()
-                }
+            # Reconstruct dynamic variables (combine old dynamic_states and dynamic_controls)
+            dynamic_variables = {}
             
-            # Reconstruct dynamic controls (try new field name first, fall back to old)
-            dynamic_controls = {}
-            if "dynamic_controls" in p_data:
-                dynamic_controls = {
+            # Try new unified field first
+            if "dynamic_variables" in p_data:
+                dynamic_variables = {
                     name: _dict_to_timeseries(ts_data)
-                    for name, ts_data in p_data.get("dynamic_controls", {}).items()
+                    for name, ts_data in p_data["dynamic_variables"].items()
                 }
-            elif "controls" in p_data:  # Backward compatibility
-                dynamic_controls = {
-                    name: _dict_to_timeseries(ts_data)
-                    for name, ts_data in p_data.get("controls", {}).items()
-                }
+            else:
+                # Backward compatibility: merge dynamic_states and dynamic_controls
+                if "dynamic_states" in p_data:
+                    dynamic_variables.update({
+                        name: _dict_to_timeseries(ts_data)
+                        for name, ts_data in p_data["dynamic_states"].items()
+                    })
+                elif "states" in p_data:  # Even older compatibility
+                    dynamic_variables.update({
+                        name: _dict_to_timeseries(ts_data)
+                        for name, ts_data in p_data["states"].items()
+                    })
+                
+                if "dynamic_controls" in p_data:
+                    dynamic_variables.update({
+                        name: _dict_to_timeseries(ts_data)
+                        for name, ts_data in p_data["dynamic_controls"].items()
+                    })
+                elif "controls" in p_data:  # Even older compatibility
+                    dynamic_variables.update({
+                        name: _dict_to_timeseries(ts_data)
+                        for name, ts_data in p_data["controls"].items()
+                    })
             
-            # Reconstruct static controls
-            static_controls = {
-                name: StaticVariable(
-                    value=sc_data["value"],
-                    unit=sc_data["unit"]
-                )
-                for name, sc_data in p_data.get("static_controls", {}).items()
-            }
+            # Reconstruct static variables (combine old static_controls and static_parameters)
+            static_variables = {}
+            
+            # Try new unified field first
+            if "static_variables" in p_data:
+                static_variables = {
+                    name: StaticVariable(
+                        value=sv_data["value"],
+                        unit=sv_data["unit"]
+                    )
+                    for name, sv_data in p_data["static_variables"].items()
+                }
+            else:
+                # Backward compatibility: merge static_controls and static_parameters
+                if "static_controls" in p_data:
+                    static_variables.update({
+                        name: StaticVariable(
+                            value=sc_data["value"],
+                            unit=sc_data["unit"]
+                        )
+                        for name, sc_data in p_data["static_controls"].items()
+                    })
+                
+                if "static_parameters" in p_data:
+                    static_variables.update({
+                        name: StaticVariable(
+                            value=sp_data["value"],
+                            unit=sp_data["unit"]
+                        )
+                        for name, sp_data in p_data["static_parameters"].items()
+                    })
+            
             
             # Reconstruct feeds
             feeds = {}
@@ -321,15 +344,6 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
                     density_unit=feed_data["density_unit"],
                     components=components
                 )
-            
-            # Reconstruct static parameters
-            static_parameters = {
-                name: StaticVariable(
-                    value=sp_data["value"],
-                    unit=sp_data["unit"]
-                )
-                for name, sp_data in p_data.get("static_parameters", {}).items()
-            }
             
             # Reconstruct reactor
             reactor = None
@@ -351,12 +365,10 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
                 process_type=p_data["process_type"],
                 replicate_id=p_data.get("replicate_id"),
                 time=time,
-                dynamic_states=dynamic_states,
-                dynamic_controls=dynamic_controls,
-                static_controls=static_controls,
+                dynamic_variables=dynamic_variables,
+                static_variables=static_variables,
                 volume=volume,
                 feeds=feeds,
-                static_parameters=static_parameters,
                 event_times=p_data.get("event_times"),
                 reactor=reactor
             )
