@@ -58,11 +58,14 @@ VolumeChange
  ├─ name: str
  ├─ controlled: bool  # True if controlled, False if modeled
  ├─ continuous: bool  # True if continuous, False if discrete
- ├─ unit: str
+ ├─ unit: str  # "L" for cumulative, "L/h" for rate
  ├─ feed_medium: Optional[str]  # Reference to feed name
- ├─ timeseries: Optional[TimeSeries]  # For continuous changes
+ ├─ feed: Optional[Feed]  # Inline feed definition
+ ├─ timeseries: Optional[TimeSeries]  # For continuous changes (cumulative or rate)
  ├─ timepoints: Optional[ndarray]  # For discrete changes
  └─ values: Optional[ndarray]  # For discrete changes
+
+**Note**: Volume changes should be stored in their originally measured form (typically cumulative volumes in L). Use spline fitting to compute rates when needed.
 ```
 
 ## Quick Start
