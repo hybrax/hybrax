@@ -90,7 +90,11 @@ def validate_feed_components(volume: Volume,
                             process_feeds: Dict[str, FeedMedium], 
                             dynamic_variables: Dict[str, TimeSeries]) -> Tuple[bool, str]:
     """
-    Validate that feed compositions are properly defined for volume changes.
+    DEPRECATED: Validate that feed compositions are properly defined for volume changes.
+    
+    NOTE: This function is deprecated as FeedMedium objects are now stored inline
+    in VolumeChange.feed_medium, not in a separate Process.feeds dictionary.
+    Kept for backward compatibility but may be removed in future versions.
     
     For each VolumeChange with a feed_medium reference:
     - The referenced feed must exist in process_feeds
@@ -98,7 +102,7 @@ def validate_feed_components(volume: Volume,
     
     Args:
         volume: Volume object containing volume changes
-        process_feeds: Dictionary of FeedMedium objects from Process.feeds
+        process_feeds: Dictionary of FeedMedium objects (deprecated - no longer part of BioProcess)
         dynamic_variables: Dictionary of TimeSeries from Process.dynamic_variables
         
     Returns:
@@ -109,23 +113,29 @@ def validate_feed_components(volume: Volume,
     
     for vc_name, vc in volume.volume_changes.items():
         # Check if this volume change has a feed
+        feed = None
         if vc.feed_medium is not None:
-            # Reference to Process.feeds
-            if vc.feed_medium not in process_feeds:
+            if isinstance(vc.feed_medium, FeedMedium):
+                # Feed is stored inline - use it directly
+                feed = vc.feed_medium
+            elif vc.feed_medium in process_feeds:
+                # Feed is referenced by name in the process_feeds dict
+                feed = process_feeds[vc.feed_medium]
+            else:
                 messages.append(f"ERROR: VolumeChange '{vc_name}' references feed '{vc.feed_medium}' "
                               f"which is not defined in Process.feeds")
                 all_valid = False
-            else:
-                feed = process_feeds[vc.feed_medium]
-                # Check component coverage
-                missing_components = []
-                for var_name in dynamic_variables.keys():
-                    if var_name not in feed.components:
-                        missing_components.append(var_name)
-                
-                if missing_components:
-                    messages.append(f"WARNING: VolumeChange '{vc_name}' feed '{feed.name}' "
-                                  f"is missing concentrations for dynamic variables: {missing_components}")
+        
+        # If there's a feed, validate component coverage
+        if feed is not None:
+            missing_components = []
+            for var_name in dynamic_variables.keys():
+                if var_name not in feed.components:
+                    missing_components.append(var_name)
+            
+            if missing_components:
+                messages.append(f"WARNING: VolumeChange '{vc_name}' feed '{feed.name}' "
+                              f"is missing concentrations for dynamic variables: {missing_components}")
     
     if not messages:
         return (True, "All feed components properly defined")

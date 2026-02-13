@@ -163,8 +163,8 @@ def _volume_to_dict(volume: Volume) -> Dict:
 
 def _volume_change_to_dict(vc: VolumeChange) -> Dict:
     """Convert VolumeChange to dictionary"""
-    # Store feed_medium as a reference (name) rather than the full object
-    # The actual feed medium should be stored separately in the process
+    # Store feed_medium as a reference name
+    # FeedMedium objects are stored inline in VolumeChange.feed_medium
     feed_medium_ref = None
     if vc.feed_medium is not None:
         if isinstance(vc.feed_medium, FeedMedium):
@@ -193,7 +193,9 @@ def _timeseries_to_dict(ts: TimeSeries) -> Dict:
             "values": ts.raw.values,
             "measurement_std": ts.raw.measurement_std
         } if ts.raw else None,
-        "spline": None  # Spline is placeholder for now
+        # Spline is intentionally omitted as it's a placeholder in the current dataclass
+        # and should be computed on-demand from raw data when needed
+        "spline": None
     }
 
 
