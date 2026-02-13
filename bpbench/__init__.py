@@ -15,6 +15,7 @@ from .dataclasses import (
     SplineRepresentation,
     TimeSeries,
     StaticVariable,
+    BioProcessMetadata,
     # Volume-related structures
     VolumeChange,
     Volume,
@@ -33,10 +34,10 @@ from .dataclasses import (
 #     iter_loocv,
 # )
 
-# # Import inspect
-# from .inspect import (
-#     print_structure,
-# )
+# Import inspect
+from .inspect import (
+    print_structure,
+)
 
 # # Import spline utilities
 # from .splines import (
@@ -44,13 +45,8 @@ from .dataclasses import (
 #     compute_rate_from_cumulative,
 # )
 
-# # Import serialization functions
-# from .serialization import (
-#     save_dataset,
-#     load_dataset,
-#     save_dataset_json,
-#     load_dataset_json,
-# )
+# Import serialization functions
+from . import serialization
 
 __all__ = [
     # Version
@@ -76,9 +72,6 @@ __all__ = [
     "print_structure",
     "fit_cubic_spline",
     "compute_rate_from_cumulative",
-    # Serialization
-    "save_dataset",
-    "load_dataset",
-    "save_dataset_json",
-    "load_dataset_json",
+    # Modules
+    "serialization",
 ]
