@@ -6,6 +6,7 @@ NOTE: This module needs to be updated to work with the new data structure.
 For now, serialization functions are disabled.
 """
 
+# Imports kept for future implementation when serialization is updated
 import yaml
 import h5py
 import json
