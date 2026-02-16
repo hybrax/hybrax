@@ -769,7 +769,7 @@ my_dataset.json         # Single file
 
 ### Backward Compatibility
 
-Note: The current implementation does not include backward compatibility for older data structures. If you have datasets with the old structure (e.g., `dynamic_variables`/`dynamic_states`, `dynamic_controls`, `time`, `static_variables`, `controlled`, `raw`, `RawTimeSeries`), you will need to migrate them to the new format with `time_axis`, `process_variables`, `is_controlled`, and direct TimeSeries structure.
+Note: The current implementation does not include backward compatibility for older data structures. If you have datasets with the old structure (e.g., separate `dynamic_variables` and `static_variables` fields, `time` field, `controlled` field, `raw` wrapper, `RawTimeSeries` class), you will need to migrate them to the new format with `time_axis`, unified `process_variables`, `is_controlled` field, and direct TimeSeries structure (no raw wrapper).
 
 ## Usage Patterns
 
