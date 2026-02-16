@@ -11,25 +11,13 @@ import jax.numpy as jnp
 
 
 # ============================================================
-# Modelling Structures
+# Modelling Structures - CURRENTLY PLACEHOLDERS
 # ============================================================
 
 @dataclass
 class SplineRepresentation:
     """
-    Fitted spline representation of time series data.
-    
-    The spline is segmented based on discontinuities (e.g., process.event_times).
-    Each segment has its own coefficients, allowing for different polynomial
-    behavior in different time regions.
-    
-    Note: K breakpoints define K-1 segments, so M = K-1 where M is the number
-    of segments (first dimension of coefficients array).
-    
-    For cumulative data (like feed volumes), this representation allows:
-    - Smooth interpolation of cumulative values
-    - Computation of rates (derivatives) at any time point
-    - Handling of discontinuities in the rate profile
+    Fitted spline representation of TimeSeries and StaticVariable data.
     """
     # TODO for later: This is a placehold for processed data that can be filled later.
     # type: str  # e.g. "cubic_hermite", "linear", "zero_order_hold"
@@ -54,7 +42,9 @@ class DiscreteEvents:
 @dataclass
 class TimeAxis:
     """
-    Time axis definition for a bioprocess
+    Time axis definition for a bioprocess. Here critically 
+      * the unit of time is referenced,
+      * the start and end times are defined.
     """
     unit:  str  # e.g. "hours", "days"
     start: float
@@ -63,45 +53,52 @@ class TimeAxis:
 
 
 @dataclass
-class RawTimeSeries:
+class StaticVariable:
     """
-    Raw experimental measurements
+    Raw experimental value for a time-independent parameter
     """
-    timepoints: jnp.ndarray          # shape (N,)
-    values:     jnp.ndarray          # shape (N,)
-    measurement_std: Optional[jnp.ndarray] = None  # measurement uncertainty
+    value: float
 
 
 @dataclass
 class TimeSeries:
     """
-    Time-dependent variable (state or control)
+    Raw experimental time-dependent measurements
+    """
+    timepoints: jnp.ndarray
+    values:     jnp.ndarray
+
+
+@dataclass
+class ProcessVariable:
+    """
+    Process variable
     """
     name: str  # original name from paper
     unit: str  # e.g. "g/L", "g/L/h", "°C" 
-    controlled: bool # True if this variable is a control input, False if it's a state variable
-    raw: Optional[RawTimeSeries] = None
+    is_controlled: bool # True if this variable is a control input, False if it's a state variable
+    values: TimeSeries | StaticVariable
     spline: Optional[SplineRepresentation] = None
 
-
 @dataclass
-class StaticVariable:
-    """
-    Time-independent parameter
-    """
-    name: str
-    value: float
-    unit: str
-
-
-@dataclass
-class FeedComponent:
+class FeedMediumComponent:
     """
     Single component in a feed medium
     """
     name: str # eg. "glucose", "ammonium", "inductor"
-    concentration: float
     unit: str  # e.g. "g/L", "mM"
+    concentration: TimeSeries | StaticVariable
+    is_controlled: bool
+
+@dataclass
+class ReactorMediumComponent:
+    """
+    Single component in the bioreactor
+    """
+    name: str # eg. "glucose", "ammonium", "inductor"
+    unit: str  # e.g. "g/L", "mM"
+    concentration: TimeSeries | StaticVariable
+    is_intracellular: bool # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in mass balance calculations
 
 
 @dataclass
@@ -110,10 +107,19 @@ class FeedMedium:
     Feed medium definition for mass balance calculations
     """
     name: str
+    density: float # often assumed as 1 kg/L for aqueous solutions, but can be specified if known
+    density_unit: str  # typically "kg/L"
+    components: Dict[str, FeedMediumComponent] = field(default_factory=dict)
+
+@dataclass
+class ReactorMedium:
+    """
+    Feed medium definition for mass balance calculations
+    """
+    name: str
     density: float
     density_unit: str  # typically "kg/L"
-    components: Dict[str, FeedComponent] = field(default_factory=dict)
-
+    components: Dict[str, ReactorMediumComponent] = field(default_factory=dict)
 
 @dataclass
 class BioProcessMetadata:
@@ -133,10 +139,10 @@ class VolumeChange:
     """
     name: str
     unit: str  # e.g. "L", "m3", "kg", not allowed is "L/h" or "kg/h" as they are ususally derived values
-    controlled: bool  # True if controlled, False if modeled
-    continuous: bool  # True if continuous, False if discrete
-    feed_medium: Optional[FeedMedium] = None  # Reference to feed name in Process.feeds
-    timeseries: Optional[TimeSeries] = None  # For continuous changes (cumulative or rate)
+    is_controlled: bool  # True if controlled, False if modeled
+    is_continuous: bool  # True if continuous, False if discrete
+    feed_medium: FeedMedium  # Reference to feed name in Process.feeds
+    values: TimeSeries  # For continuous changes (cumulative or rate)
 
 
 @dataclass
@@ -150,9 +156,7 @@ class Volume:
     - Affected by multiple operations (feeds, sampling, evaporation)
     """
     initial_volume: float
-    volume_unit: str  # e.g. "L", "m3", "kg"
-    density: float    # often implicitly 1 kg/L
-    density_unit: str # typically "kg/L"
+    unit: str  # e.g. "L", "m3", "kg"
     volume_changes: Dict[str, VolumeChange] = field(default_factory=dict)
 
 # ============================================================
@@ -164,18 +168,13 @@ class BioProcess:
     """
     Single experimental bioprocess run.
     
-    Structure:
-    - metadata: Static information about the process (type, notes, etc.)
-    - time: Time axis definition
-    - dynamic_variables: Time-varying variables (biomass, substrate, product, temperature, etc.)
-    - static_variables: Time-constant variables (inductor strength, initial concentrations, etc.)
-    - volume: Volume tracking with all volume changes (feeds, sampling, evaporation)
+    Structure: # TODO for later!
     """
     metadata: BioProcessMetadata
-    time: TimeAxis
+    time_axis: TimeAxis
     volume: Volume
-    dynamic_variables: Dict[str, TimeSeries] = field(default_factory=dict)
-    static_variables: Dict[str, StaticVariable] = field(default_factory=dict)
+    reactor_medium: Dict[str, ReactorMedium] = field(default_factory=dict)
+    process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     
 
     # TODO for later: event_times is already a preprocessing step and will be considered in the future.
