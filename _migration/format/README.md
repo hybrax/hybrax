@@ -34,36 +34,30 @@ CaseStudy
  ├─ case_id: str
  ├─ organism: str
  ├─ citation: str
- └─ processes: Dict[str, Process]
+ └─ processes: Dict[str, BioProcess]
 
-Process
- ├─ process_id: str
- ├─ process_type: str (batch, fed_batch, continuous)
+BioProcess
+ ├─ metadata: BioProcessMetadata
+ │    ├─ name: str
+ │    ├─ process_type: str (batch, fed_batch, continuous)
+ │    └─ notes: Optional[str]
  ├─ time: TimeAxis
- ├─ dynamic_states: Dict[str, TimeSeries]  # Biomass, substrate, product
- ├─ dynamic_controls: Dict[str, TimeSeries]  # pH, temperature (if varying)
- ├─ static_controls: Dict[str, StaticVariable]  # Temperature (if constant)
- ├─ volume: Volume  # Special handling for volume tracking
- │    └─ volume_changes: Dict[str, VolumeChange]  # Feed, sampling, etc.
- ├─ feeds: Dict[str, Feed]
- ├─ static_parameters: Dict[str, StaticVariable]
- └─ reactor: ReactorProperties
-
-Volume
- ├─ volume_changes: Dict[str, VolumeChange]
- ├─ initial_volume: float
- └─ volume_unit: str
+ ├─ dynamic_variables: Dict[str, TimeSeries]  # States and controls (biomass, substrate, pH, temperature)
+ ├─ static_variables: Dict[str, StaticVariable]  # Time-independent parameters
+ └─ volume: Volume  # Special handling for volume tracking
+      ├─ initial_volume: float
+      ├─ volume_unit: str
+      ├─ density: float
+      ├─ density_unit: str
+      └─ volume_changes: Dict[str, VolumeChange]  # Feed, sampling, etc.
 
 VolumeChange
  ├─ name: str
  ├─ controlled: bool  # True if controlled, False if modeled
  ├─ continuous: bool  # True if continuous, False if discrete
- ├─ unit: str  # "L" for cumulative, "L/h" for rate
- ├─ feed_medium: Optional[str]  # Reference to feed name
- ├─ feed: Optional[Feed]  # Inline feed definition
- ├─ timeseries: Optional[TimeSeries]  # For continuous changes (cumulative or rate)
- ├─ timepoints: Optional[ndarray]  # For discrete changes
- └─ values: Optional[ndarray]  # For discrete changes
+ ├─ unit: str  # "L", "m3", "kg" (not allowed: "L/h" as rates are derived)
+ ├─ feed_medium: Optional[FeedMedium]  # Reference to feed or inline definition
+ └─ timeseries: Optional[TimeSeries]  # TimeSeries object for both continuous and discrete changes
 
 **Note**: Volume changes should be stored in their originally measured form (typically cumulative volumes in L). Use spline fitting to compute rates when needed.
 ```
@@ -75,9 +69,9 @@ VolumeChange
 ```python
 import jax.numpy as jnp
 from bpbench import (
-    BenchmarkDataset, CaseStudy, Process,
+    BenchmarkDataset, CaseStudy, BioProcess, BioProcessMetadata,
     TimeSeries, RawTimeSeries, TimeAxis,
-    ReactorProperties, StaticVariable
+    Volume, StaticVariable
 )
 
 # Create a simple batch process
@@ -90,23 +84,27 @@ time_axis = TimeAxis(
 
 biomass = TimeSeries(
     name="Biomass",
-    canonical_name="biomass",
     unit="g/L",
-    role="state",
+    controlled=False,  # This is a state variable (measured output)
     raw=RawTimeSeries(
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
     )
 )
 
-process = Process(
-    process_id="batch_001",
-    process_type="batch",
+process = BioProcess(
+    metadata=BioProcessMetadata(
+        name="batch_001",
+        process_type="batch",
+        notes="Example batch process"
+    ),
     time=time_axis,
-    dynamic_states={"biomass": biomass},
-    reactor=ReactorProperties(
-        working_volume=1.0,
-        volume_unit="L"
+    dynamic_variables={"biomass": biomass},
+    volume=Volume(
+        initial_volume=1.0,
+        volume_unit="L",
+        density=1.0,
+        density_unit="kg/L"
     )
 )
 
@@ -177,9 +175,9 @@ for case_id, train_ids, test_id in iter_loocv(dataset):
     # Your modeling code here...
 ```
 
-### Inspecting Process Structure
+### Inspecting BioProcess Structure
 
-Use `print_structure()` to display a hierarchical view of a Process object:
+Use `print_structure()` to display a hierarchical view of a BioProcess object:
 
 ```python
 from bpbench import print_structure, load_dataset
@@ -196,13 +194,11 @@ print_structure(process, show_values=True)
 ```
 
 This displays:
-- Process metadata (ID, type, replicate)
+- Process metadata (name, type, notes)
 - Time axis information
-- Dynamic states and controls with data ranges
-- Static controls and parameters
+- Dynamic variables with data ranges
+- Static variables
 - Volume tracking and feed information
-- Event times
-- Reactor properties
 
 See `examples/demo_print_structure.py` for a complete demonstration.
 
@@ -219,7 +215,7 @@ from jax import grad, jit
 def process_loss(process_params, process):
     # Your model here
     predictions = model(process_params, process)
-    return jnp.mean((predictions - process.states["biomass"].raw.values)**2)
+    return jnp.mean((predictions - process.dynamic_variables["biomass"].raw.values)**2)
 
 # Automatic differentiation works!
 loss_grad = grad(process_loss)
@@ -253,19 +249,27 @@ biomass.spline = spline
 Support for complex feed media:
 
 ```python
-from bpbench import Feed, FeedComponent
+from bpbench import FeedMedium, FeedComponent
 
-glucose_feed = Feed(
+glucose_feed = FeedMedium(
     name="Glucose feed",
     density=1.1,
     density_unit="kg/L",
     components={
-        "glucose": FeedComponent(concentration=500.0, unit="g/L"),
-        "NH4Cl": FeedComponent(concentration=10.0, unit="g/L")
+        "glucose": FeedComponent(
+            name="glucose",
+            concentration=500.0, 
+            unit="g/L"
+        ),
+        "NH4Cl": FeedComponent(
+            name="NH4Cl",
+            concentration=10.0, 
+            unit="g/L"
+        )
     }
 )
 
-process.feeds["feed1"] = glucose_feed
+# Feed media are referenced in VolumeChange objects
 ```
 
 ## Examples
@@ -281,8 +285,8 @@ The **examples/02_prol_v2/** directory contains a complete, documented example o
 
 - **load_data.ipynb**: Jupyter notebook demonstrating the complete workflow:
   1. Loading CSV data (online measurements, offline measurements, discrete events)
-  2. Creating BPbench data structures (TimeAxis, TimeSeries, Volume, Feed, etc.)
-  3. Assembling a complete Process object for an E. coli fed-batch process
+  2. Creating BPbench data structures (TimeAxis, TimeSeries, Volume, FeedMedium, etc.)
+  3. Assembling a complete BioProcess object for an E. coli fed-batch process
   4. Validating volume consistency
   5. Visualizing the data
   6. Saving to HDF5 format

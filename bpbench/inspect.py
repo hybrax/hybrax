@@ -1,17 +1,17 @@
 import jax.numpy as jnp
 from typing import Tuple, List, Generator
-from .dataclasses import Process, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
+from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
 
 
-def print_structure(process: Process, indent: int = 0, show_values: bool = False) -> None:
+def print_structure(process: BioProcess, indent: int = 0, show_values: bool = False) -> None:
     """
-    Print a hierarchical view of the Process object structure.
+    Print a hierarchical view of the BioProcess object structure.
     
-    This function displays the complete structure of a Process object in a 
+    This function displays the complete structure of a BioProcess object in a 
     human-readable format, showing all fields, their types, and sizes.
     
     Args:
-        process: Process object to inspect
+        process: BioProcess object to inspect
         indent: Starting indentation level (used internally for recursion)
         show_values: If True, show sample values for arrays (first few elements)
         
@@ -26,14 +26,14 @@ def print_structure(process: Process, indent: int = 0, show_values: bool = False
     # Header
     if indent == 0:
         print("=" * 80)
-        print("Process Structure")
+        print("BioProcess Structure")
         print("=" * 80)
     
-    # Basic information
-    print(f"{prefix}Process ID: {process.process_id}")
-    print(f"{prefix}Process Type: {process.process_type}")
-    if process.replicate_id:
-        print(f"{prefix}Replicate ID: {process.replicate_id}")
+    # Basic information - BioProcess uses metadata instead of direct fields
+    print(f"{prefix}Process Name: {process.metadata.name}")
+    print(f"{prefix}Process Type: {process.metadata.process_type}")
+    if process.metadata.notes:
+        print(f"{prefix}Notes: {process.metadata.notes}")
     
     # Time axis
     if process.time is not None:
@@ -57,47 +57,22 @@ def print_structure(process: Process, indent: int = 0, show_values: bool = False
     if process.volume is not None:
         print(f"\n{prefix}Volume:")
         print(f"{prefix}  Initial: {process.volume.initial_volume} {process.volume.volume_unit}")
+        print(f"{prefix}  Density: {process.volume.density} {process.volume.density_unit}")
         if process.volume.volume_changes:
             print(f"{prefix}  Volume Changes: ({len(process.volume.volume_changes)} total)")
             for name, change in process.volume.volume_changes.items():
                 _print_volume_change_info(change, prefix + "    ", show_values)
     
-    # Feeds
-    if process.feeds:
-        print(f"\n{prefix}Feeds: ({len(process.feeds)} total)")
-        for name, feed in process.feeds.items():
-            print(f"{prefix}  {name}:")
-            print(f"{prefix}    Density: {feed.density} {feed.density_unit}")
-            if feed.components:
-                print(f"{prefix}    Components: ({len(feed.components)} total)")
-                for comp_name, comp in feed.components.items():
-                    print(f"{prefix}      {comp_name}: {comp.concentration} {comp.unit}")
-    
-    # Event times
-    if process.event_times is not None and len(process.event_times) > 0:
-        print(f"\n{prefix}Event Times: ({len(process.event_times)} total)")
-        if len(process.event_times) <= 10:
-            print(f"{prefix}  {process.event_times}")
-        else:
-            print(f"{prefix}  First 5: {process.event_times[:5]}")
-            print(f"{prefix}  Last 5: {process.event_times[-5:]}")
-    
-    # Reactor properties
-    if process.reactor is not None:
-        print(f"\n{prefix}Reactor:")
-        print(f"{prefix}  Working Volume: {process.reactor.working_volume} {process.reactor.volume_unit}")
-        if process.reactor.density is not None:
-            print(f"{prefix}  Density: {process.reactor.density}")
-    
     if indent == 0:
         print("=" * 80)
 
 
+
 def _print_timeseries_info(ts: TimeSeries, prefix: str, show_values: bool = False) -> None:
     """Helper function to print TimeSeries information."""
-    print(f"{prefix}{ts.name} (canonical: {ts.canonical_name or 'N/A'})")
+    print(f"{prefix}{ts.name}")
     print(f"{prefix}  Unit: {ts.unit}")
-    print(f"{prefix}  Role: {ts.role}")
+    print(f"{prefix}  Controlled: {ts.controlled}")
     
     if ts.raw is not None:
         n_points = len(ts.raw.timepoints)
@@ -117,11 +92,7 @@ def _print_timeseries_info(ts: TimeSeries, prefix: str, show_values: bool = Fals
             print(f"{prefix}    Measurement std: provided")
     
     if ts.spline is not None:
-        print(f"{prefix}  Spline: {ts.spline.type}")
-        print(f"{prefix}    Breakpoints: {len(ts.spline.breakpoints)}")
-        print(f"{prefix}    Discontinuous: {ts.spline.discontinuous}")
-        if ts.spline.fit_residual_std is not None:
-            print(f"{prefix}    Fit residual std: {ts.spline.fit_residual_std:.4f}")
+        print(f"{prefix}  Spline: available")
 
 
 def _print_volume_change_info(change: VolumeChange, prefix: str, show_values: bool = False) -> None:
@@ -134,7 +105,7 @@ def _print_volume_change_info(change: VolumeChange, prefix: str, show_values: bo
     if change.feed_medium:
         print(f"{prefix}  Feed Medium: {change.feed_medium}")
     
-    if change.continuous and change.timeseries is not None:
+    if change.timeseries is not None:
         print(f"{prefix}  TimeSeries: {change.timeseries.name}")
         if change.timeseries.raw is not None:
             n_points = len(change.timeseries.raw.timepoints)
@@ -143,9 +114,9 @@ def _print_volume_change_info(change: VolumeChange, prefix: str, show_values: bo
                 v_range = (float(jnp.min(change.timeseries.raw.values)), 
                           float(jnp.max(change.timeseries.raw.values)))
                 print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f} {change.unit}")
-    
-    if not change.continuous and change.timepoints is not None:
-        print(f"{prefix}  Discrete Events: {len(change.timepoints)}")
-        if change.values is not None:
-            total_vol = float(jnp.sum(change.values))
-            print(f"{prefix}    Total Volume: {total_vol:.2f} {change.unit}")
+                if change.continuous:
+                    total_change = float(change.timeseries.raw.values[-1] - change.timeseries.raw.values[0])
+                    print(f"{prefix}    Total change: {total_change:.2f} {change.unit}")
+                else:
+                    total_change = float(jnp.sum(change.timeseries.raw.values))
+                    print(f"{prefix}    Total change: {total_change:.2f} {change.unit}")
