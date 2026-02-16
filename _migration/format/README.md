@@ -41,25 +41,53 @@ BioProcess
  │    ├─ name: str
  │    ├─ process_type: str (batch, fed_batch, continuous)
  │    └─ notes: Optional[str]
- ├─ time: TimeAxis
- ├─ dynamic_variables: Dict[str, TimeSeries]  # States and controls (biomass, substrate, pH, temperature)
- ├─ static_variables: Dict[str, StaticVariable]  # Time-independent parameters
- └─ volume: Volume  # Special handling for volume tracking
+ ├─ time_axis: TimeAxis
+ │    ├─ unit: str
+ │    ├─ start: float
+ │    ├─ end: float
+ │    └─ time_reference: str
+ ├─ reactor_medium: Dict[str, ReactorMedium]
+ │    ├─ name: str
+ │    ├─ density: float
+ │    ├─ density_unit: str
+ │    └─ components: Dict[str, ReactorMediumComponent]
+ │         ├─ name: str
+ │         ├─ unit: str
+ │         ├─ concentration: TimeSeries | StaticVariable
+ │         └─ is_intracellular: bool
+ ├─ process_variables: Dict[str, ProcessVariable]
+ │    ├─ name: str
+ │    ├─ unit: str
+ │    ├─ is_controlled: bool  # True for controls, False for states
+ │    ├─ values: TimeSeries | StaticVariable
+ │    └─ spline: Optional[SplineRepresentation]
+ └─ volume: Volume
       ├─ initial_volume: float
-      ├─ volume_unit: str
-      ├─ density: float
-      ├─ density_unit: str
-      └─ volume_changes: Dict[str, VolumeChange]  # Feed, sampling, etc.
+      ├─ unit: str
+      └─ volume_changes: Dict[str, VolumeChange]
+           ├─ name: str
+           ├─ unit: str
+           ├─ is_controlled: bool
+           ├─ is_continuous: bool
+           ├─ feed_medium: FeedMedium
+           └─ values: TimeSeries
 
-VolumeChange
+TimeSeries
+ ├─ timepoints: jnp.ndarray
+ └─ values: jnp.ndarray
+
+StaticVariable
+ └─ value: float
+
+FeedMedium
  ├─ name: str
- ├─ controlled: bool  # True if controlled, False if modeled
- ├─ continuous: bool  # True if continuous, False if discrete
- ├─ unit: str  # "L", "m3", "kg" (not allowed: "L/h" as rates are derived)
- ├─ feed_medium: Optional[FeedMedium]  # Reference to feed or inline definition
- └─ timeseries: Optional[TimeSeries]  # TimeSeries object for both continuous and discrete changes
-
-**Note**: Volume changes should be stored in their originally measured form (typically cumulative volumes in L). Use spline fitting to compute rates when needed.
+ ├─ density: float
+ ├─ density_unit: str
+ └─ components: Dict[str, FeedMediumComponent]
+      ├─ name: str
+      ├─ unit: str
+      ├─ concentration: TimeSeries | StaticVariable
+      └─ is_controlled: bool
 ```
 
 ## Quick Start
@@ -70,7 +98,7 @@ VolumeChange
 import jax.numpy as jnp
 from bpbench import (
     BenchmarkDataset, CaseStudy, BioProcess, BioProcessMetadata,
-    TimeSeries, RawTimeSeries, TimeAxis,
+    TimeSeries, TimeAxis, ProcessVariable, ReactorMedium, ReactorMediumComponent,
     Volume, StaticVariable
 )
 
@@ -82,14 +110,41 @@ time_axis = TimeAxis(
     time_reference="inoculation"
 )
 
-biomass = TimeSeries(
+# Process variable with time series data
+biomass = ProcessVariable(
     name="Biomass",
     unit="g/L",
-    controlled=False,  # This is a state variable (measured output)
-    raw=RawTimeSeries(
+    is_controlled=False,  # State variable (measured output)
+    values=TimeSeries(
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
     )
+)
+
+# Static process variable
+temperature = ProcessVariable(
+    name="Temperature",
+    unit="°C",
+    is_controlled=True,  # Control variable
+    values=StaticVariable(value=37.0)
+)
+
+# Reactor medium with components
+reactor = ReactorMedium(
+    name="Batch medium",
+    density=1.0,
+    density_unit="kg/L",
+    components={
+        "glucose": ReactorMediumComponent(
+            name="glucose",
+            unit="g/L",
+            concentration=TimeSeries(
+                timepoints=jnp.array([0., 12., 24., 36., 48.]),
+                values=jnp.array([20.0, 15.2, 8.5, 2.1, 0.1])
+            ),
+            is_intracellular=False
+        )
+    }
 )
 
 process = BioProcess(
@@ -98,13 +153,12 @@ process = BioProcess(
         process_type="batch",
         notes="Example batch process"
     ),
-    time=time_axis,
-    dynamic_variables={"biomass": biomass},
+    time_axis=time_axis,
+    process_variables={"biomass": biomass, "temperature": temperature},
+    reactor_medium={"main": reactor},
     volume=Volume(
         initial_volume=1.0,
-        volume_unit="L",
-        density=1.0,
-        density_unit="kg/L"
+        unit="L"
     )
 )
 
@@ -196,8 +250,8 @@ print_structure(process, show_values=True)
 This displays:
 - Process metadata (name, type, notes)
 - Time axis information
-- Dynamic variables with data ranges
-- Static variables
+- Process variables (states and controls)
+- Reactor medium components
 - Volume tracking and feed information
 
 See `examples/demo_print_structure.py` for a complete demonstration.
@@ -215,7 +269,8 @@ from jax import grad, jit
 def process_loss(process_params, process):
     # Your model here
     predictions = model(process_params, process)
-    return jnp.mean((predictions - process.dynamic_variables["biomass"].raw.values)**2)
+    biomass_data = process.process_variables["biomass"].values.values
+    return jnp.mean((predictions - biomass_data)**2)
 
 # Automatic differentiation works!
 loss_grad = grad(process_loss)
@@ -226,50 +281,78 @@ fast_loss = jit(process_loss)
 
 ### Time Series Support
 
-- **Raw data**: Experimental measurements with uncertainty
-- **Spline representations**: Fitted curves (cubic hermite, linear, zero-order hold)
-- **Event times**: Discontinuities for ODE solvers
+TimeSeries and StaticVariable can be used for all measurements:
 
 ```python
-from bpbench import SplineRepresentation
-
-spline = SplineRepresentation(
-    type="cubic_hermite",
-    breakpoints=jnp.array([0., 12., 24., 36., 48.]),
-    coefficients=jnp.array([[...]]),  # Spline coefficients
-    discontinuous=False,
-    fit_residual_std=0.05
+# Time-varying measurement
+biomass_ts = TimeSeries(
+    timepoints=jnp.array([0., 12., 24., 36., 48.]),
+    values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
 )
 
-biomass.spline = spline
+# Constant value
+temperature_static = StaticVariable(value=37.0)
+
+# Use in ProcessVariable
+biomass_var = ProcessVariable(
+    name="Biomass",
+    unit="g/L",
+    is_controlled=False,
+    values=biomass_ts
+)
+
+# Optional spline fitting (placeholder for future processing)
+from bpbench import SplineRepresentation
+# biomass_var.spline = SplineRepresentation(...)
 ```
 
 ### Feed Definitions
 
-Support for complex feed media:
+Support for complex feed media and volume changes:
 
 ```python
-from bpbench import FeedMedium, FeedComponent
+from bpbench import FeedMedium, FeedMediumComponent, VolumeChange
 
+# Define feed medium composition
 glucose_feed = FeedMedium(
     name="Glucose feed",
     density=1.1,
     density_unit="kg/L",
     components={
-        "glucose": FeedComponent(
+        "glucose": FeedMediumComponent(
             name="glucose",
-            concentration=500.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=StaticVariable(value=500.0),
+            is_controlled=True
         ),
-        "NH4Cl": FeedComponent(
+        "NH4Cl": FeedMediumComponent(
             name="NH4Cl",
-            concentration=10.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=StaticVariable(value=10.0),
+            is_controlled=True
         )
     }
 )
 
-# Feed media are referenced in VolumeChange objects
+# Define volume change with feed
+feed_volume_change = VolumeChange(
+    name="Glucose feed",
+    unit="L",
+    is_controlled=True,
+    is_continuous=True,
+    feed_medium=glucose_feed,
+    values=TimeSeries(
+        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        values=jnp.array([0., 0.05, 0.12, 0.22, 0.35])  # Cumulative volume
+    )
+)
+
+# Add to volume tracking
+volume = Volume(
+    initial_volume=1.0,
+    unit="L",
+    volume_changes={"feed": feed_volume_change}
+)
 ```
 
 ## Examples
