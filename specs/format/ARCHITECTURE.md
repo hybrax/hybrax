@@ -54,23 +54,25 @@ Level 2: BioProcess
   │    ├─ name: str
   │    ├─ process_type: str (batch/fed_batch/continuous)
   │    └─ notes: Optional[str]
-  ├── time: TimeAxis
-  ├── dynamic_variables: Dict[str, TimeSeries]
-  ├── static_variables: Dict[str, StaticVariable]
+  ├── time_axis: TimeAxis
+  ├── reactor_medium: Dict[str, ReactorMedium]
+  ├── process_variables: Dict[str, ProcessVariable]
   └── volume: Volume
 
 Level 1: Supporting Structures
-  ├── TimeSeries (raw + spline representations)
+  ├── ProcessVariable (with TimeSeries or StaticVariable values)
+  ├── ReactorMedium (with ReactorMediumComponent definitions)
+  ├── FeedMedium (with FeedMediumComponent definitions)
   ├── Volume (with VolumeChange operations)
-  ├── FeedMedium (with FeedComponent definitions)
   └── BioProcessMetadata
 
 Level 0: Primitive Components
   ├── TimeAxis
-  ├── RawTimeSeries
-  ├── SplineRepresentation
-  ├── StaticVariable
-  └── FeedComponent
+  ├── TimeSeries (timepoints and values only)
+  ├── SplineRepresentation (placeholder for future)
+  ├── StaticVariable (value only)
+  ├── ReactorMediumComponent
+  └── FeedMediumComponent
 ```
 
 ### Key Hierarchy Principles
@@ -79,7 +81,9 @@ Level 0: Primitive Components
 2. **Dictionaries for collections**: All collections use string keys for easy lookup
 3. **Optional fields**: Most fields are optional to support partial datasets
 4. **Type safety**: All structures use type hints for clarity
-5. **Unified variables**: dynamic_variables combines states and controls (distinguished by controlled field)
+5. **Unified variables**: process_variables combines states and controls (distinguished by is_controlled field)
+6. **Flexible values**: ProcessVariable values can be either TimeSeries or StaticVariable
+7. **Medium-based organization**: Reactor and feed media contain component dictionaries
 
 ## Module Descriptions
 
@@ -91,30 +95,36 @@ Level 0: Primitive Components
 
 #### Low-Level Structures (Level 0)
 - **TimeAxis**: Time reference with unit, start/end bounds, and reference point
-- **RawTimeSeries**: Experimental measurements (timepoints, values, optional measurement_std)
-- **SplineRepresentation**: Fitted piecewise polynomial (type, breakpoints, coefficients, discontinuous flag)
-- **StaticVariable**: Single numeric parameter with name, value, and unit
-- **FeedComponent**: Single component in a feed medium (name, concentration, unit)
+- **TimeSeries**: Raw experimental measurements (timepoints, values arrays only)
+- **SplineRepresentation**: Placeholder for future fitted piecewise polynomial representation
+- **StaticVariable**: Single numeric value (no name or unit - stored in parent)
+- **ReactorMediumComponent**: Single component in reactor medium (name, unit, concentration, is_intracellular flag)
+- **FeedMediumComponent**: Single component in feed medium (name, unit, concentration, is_controlled flag)
 - **BioProcessMetadata**: Process metadata (name, process_type, notes)
 
 #### Composed Structures (Level 1)
-- **TimeSeries**: Combines raw measurements with optional spline representation
-  - Fields: name, unit, controlled (bool), raw, spline
+- **ProcessVariable**: Process parameter with metadata
+  - Fields: name, unit, is_controlled (bool), values (TimeSeries | StaticVariable), spline (optional)
+- **ReactorMedium**: Complete reactor medium definition
+  - Fields: name, density, density_unit, components (Dict[str, ReactorMediumComponent])
 - **FeedMedium**: Complete feed medium definition
-  - Fields: name, density, density_unit, components (Dict[str, FeedComponent])
+  - Fields: name, density, density_unit, components (Dict[str, FeedMediumComponent])
 - **VolumeChange**: Individual volume operation (controlled/modeled, continuous/discrete)
-  - Fields: name, controlled, continuous, unit, feed_medium, timeseries
+  - Fields: name, unit, is_controlled, is_continuous, feed_medium, values (TimeSeries)
 
 #### Volume Container
 - **Volume**: Special container for all volume-related information
-  - Fields: initial_volume, volume_unit, density, density_unit, volume_changes (Dict[str, VolumeChange])
+  - Fields: initial_volume, unit, volume_changes (Dict[str, VolumeChange])
+  - Note: Density information moved to ReactorMedium
 
 #### Process Level (Level 2)
 - **BioProcess**: Complete experimental run with all associated data
-  - Unified dynamic_variables (combines states and controls, distinguished by controlled field)
-  - Unified static_variables (time-independent parameters)
+  - Unified process_variables (combines states and controls, distinguished by is_controlled field)
+  - No more separate static_variables field (use StaticVariable in process_variables instead)
+  - ReactorMedium dictionary stores reactor composition with components
   - Special volume handling separate from state variables
   - Metadata stored in BioProcessMetadata
+  - Uses time_axis instead of time
 
 #### Study Organization (Level 3-4)
 - **CaseStudy**: Collection of processes from one publication/dataset
@@ -125,11 +135,13 @@ Level 0: Primitive Components
 - All structures are mutable to allow incremental construction
 - JAX PyTree registration enables automatic differentiation and JIT compilation
 - Hierarchical structure: Dataset → CaseStudy → BioProcess → Variables
-- **Unified variables**: `dynamic_variables` combines states and controls (distinguished by controlled field)
+- **Unified variables**: `process_variables` combines states and controls (distinguished by is_controlled field)
 - **Metadata separation**: Process metadata stored in BioProcessMetadata object
-- **No canonical names**: TimeSeries only has name field (original name from paper)
-- Volume changes store cumulative volumes, with timeseries as TimeSeries objects
-- Spline fitting used to compute rates from cumulative data as needed
+- **Simplified naming**: ProcessVariable and components have name field with original name from paper
+- **Flexible values**: TimeSeries or StaticVariable can be used for variable values
+- **Medium-based organization**: ReactorMedium and FeedMedium separate concentration data by context
+- Volume changes store cumulative volumes as TimeSeries (values field, not timeseries field)
+- Spline fitting is placeholder for future implementation
 - **Feed medium handling**: FeedMedium objects stored in VolumeChange (not at process level)
 
 ### serialization.py
@@ -147,9 +159,9 @@ Level 0: Primitive Components
 ```
 YAML + HDF5 Approach:
   metadata.yaml          arrays.h5
-  ├── Structure         ├── /case1/proc1/biomass/raw/values
-  ├── Metadata          ├── /case1/proc1/biomass/raw/timepoints
-  └── Array refs        └── /case1/proc1/temperature/spline/coefficients
+  ├── Structure         ├── /case1/proc1/process_variables/biomass/values/timepoints
+  ├── Metadata          ├── /case1/proc1/process_variables/biomass/values/values
+  └── Array refs        └── /case1/proc1/reactor_medium/main/components/glucose/concentration/timepoints
 ```
 
 **Design Decisions**:
@@ -187,14 +199,17 @@ YAML + HDF5 Approach:
 
 **Spline Representation Details**:
 ```python
+# NOTE: SplineRepresentation is currently a placeholder for future implementation
+# The structure below is planned but not yet implemented
 SplineRepresentation(
-    type="cubic_hermite",           # polynomial type
-    breakpoints=[0, 2, 4, 6, 8],   # K breakpoints → K-1 segments
-    coefficients=[[c0, c1, c2, c3], # M=K-1 segments, C coefficients each
-                  [c0, c1, c2, c3],
-                  ...],
-    discontinuous=True,             # if rate has jumps
-    fit_residual_std=0.05           # goodness of fit
+    # Future fields:
+    # type="cubic_hermite",           # polynomial type
+    # breakpoints=[0, 2, 4, 6, 8],   # K breakpoints → K-1 segments
+    # coefficients=[[c0, c1, c2, c3], # M=K-1 segments, C coefficients each
+    #               [c0, c1, c2, c3],
+    #               ...],
+    # discontinuous=True,             # if rate has jumps
+    # fit_residual_std=0.05           # goodness of fit
 )
 ```
 
@@ -240,44 +255,47 @@ Volume is handled separately from state variables because it's special:
 ```python
 Volume(
     initial_volume=1.5,  # L
-    volume_unit="L",
-    density=1.0,  # kg/L
-    density_unit="kg/L",
+    unit="L",
     volume_changes={
         "carbon_feed": VolumeChange(
             name="Carbon feed",
-            controlled=True,      # programmed feed rate
-            continuous=True,      # not discrete
-            unit="L",            # cumulative volume
+            is_controlled=True,      # programmed feed rate
+            is_continuous=True,      # not discrete
+            unit="L",                # cumulative volume
             feed_medium=FeedMedium(
                 name="glucose_medium",
                 density=1.05,
                 density_unit="kg/L",
-                components={...}
+                components={
+                    "glucose": FeedMediumComponent(
+                        name="glucose",
+                        unit="g/L",
+                        concentration=200.0,  # StaticVariable value
+                        is_controlled=True
+                    )
+                }
             ),
-            timeseries=TimeSeries(...)  # cumulative volume over time
+            values=TimeSeries(
+                timepoints=jnp.array([0., 12., 24., 36., 48.]),
+                values=jnp.array([0., 0.1, 0.25, 0.45, 0.7])
+            )
         ),
         "base_feed": VolumeChange(
             name="Base feed",
-            controlled=False,     # PID-controlled, needs modeling
-            continuous=True,
+            is_controlled=False,     # PID-controlled, needs modeling
+            is_continuous=True,
             unit="L",
             feed_medium=FeedMedium(...),
-            timeseries=TimeSeries(...)
+            values=TimeSeries(...)
         ),
         "sampling": VolumeChange(
             name="Sampling",
-            controlled=True,
-            continuous=False,     # discrete events
+            is_controlled=True,
+            is_continuous=False,     # discrete events
             unit="L",
-            timeseries=TimeSeries(
-                name="Sampling",
-                unit="L",
-                controlled=True,
-                raw=RawTimeSeries(
-                    timepoints=jnp.array([2.0, 4.0, 6.0]),
-                    values=jnp.array([-0.05, -0.05, -0.05])  # negative = removal
-                )
+            values=TimeSeries(
+                timepoints=jnp.array([2.0, 4.0, 6.0]),
+                values=jnp.array([-0.05, -0.05, -0.05])  # negative = removal
             )
         )
     }
@@ -285,12 +303,13 @@ Volume(
 ```
 
 **Key Points**:
-- `controlled=True`: Feed rate is a design choice (input to optimization)
-- `controlled=False`: Feed rate must be modeled (e.g., pH control with base)
-- `continuous=True`: Use timeseries with cumulative volumes
-- `continuous=False`: Use timeseries with discrete timepoints/values
+- `is_controlled=True`: Feed rate is a design choice (input to optimization)
+- `is_controlled=False`: Feed rate must be modeled (e.g., pH control with base)
+- `is_continuous=True`: Use TimeSeries with cumulative volumes
+- `is_continuous=False`: Use TimeSeries with discrete timepoints/values
 - Unit field: "L" for cumulative volumes (rates are derived)
 - Feed medium stored inline in VolumeChange (not at process level)
+- TimeSeries directly contains timepoints and values (no raw wrapper)
 
 **Volume Validation**:
 ```python
@@ -298,92 +317,142 @@ Volume(
 # For now, manually check: initial + sum(changes) ≈ final
 ```
 
-### 2. Feed Composition Structure
+### 2. Feed and Reactor Medium Structure
 
-Feeds define medium compositions for mass balance calculations:
+Feeds and reactor media define compositions for mass balance calculations:
 
+**Reactor Medium**:
+```python
+ReactorMedium(
+    name="Main reactor medium",
+    density=1.0,  # kg/L
+    density_unit="kg/L",
+    components={
+        "biomass": ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=TimeSeries(
+                timepoints=jnp.array([0., 12., 24., 36., 48.]),
+                values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
+            ),
+            is_intracellular=False
+        ),
+        "glucose": ReactorMediumComponent(
+            name="glucose",
+            unit="g/L",
+            concentration=TimeSeries(...),
+            is_intracellular=False
+        ),
+        "active_biomass": ReactorMediumComponent(
+            name="active_biomass",
+            unit="g/L",
+            concentration=TimeSeries(...),
+            is_intracellular=True  # Used for mass balance adjustments
+        ),
+    }
+)
+```
+
+**Feed Medium**:
 ```python
 FeedMedium(
     name="Glucose feed medium",
     density=1.02,  # kg/L
     density_unit="kg/L",
     components={
-        "glucose": FeedComponent(
+        "glucose": FeedMediumComponent(
             name="glucose",
-            concentration=200.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=200.0,  # Can be StaticVariable or TimeSeries
+            is_controlled=True
         ),
-        "glycerol": FeedComponent(
+        "glycerol": FeedMediumComponent(
             name="glycerol",
-            concentration=50.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=50.0,
+            is_controlled=True
         ),
-        "yeast_extract": FeedComponent(
+        "yeast_extract": FeedMediumComponent(
             name="yeast_extract",
-            concentration=10.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=10.0,
+            is_controlled=True
         ),
     }
 )
 ```
 
-**Feed References in VolumeChange**:
-```python
-# Feed media are stored inline in VolumeChange
-VolumeChange(
-    name="Feed 1",
-    feed_medium=FeedMedium(
-        name="glucose_medium",
-        density=1.05,
-        density_unit="kg/L",
-        components={...}
-    ),
-    ...
-)
-```
+**Key Points**:
+- ReactorMediumComponent has `is_intracellular` flag for mass balance calculations
+- FeedMediumComponent has `is_controlled` flag
+- Both use concentration field that can be TimeSeries or StaticVariable (float)
+- Feed media are stored inline in VolumeChange (not at process level)
 
-### 3. TimeSeries Dual Representation
+### 3. ProcessVariable Structure
 
-Time series data has both raw measurements and fitted representations:
+ProcessVariables unify states and controls with flexible value types:
 
 ```python
-TimeSeries(
-    name="Biomass (CDW)",               # original name from paper
-    unit="g/L",
-    controlled=False,                   # False = state variable, True = control input
+ProcessVariable(
+    name="Temperature",
+    unit="K",
+    is_controlled=True,  # True = control input, False = state variable
     
-    # Raw experimental measurements
-    raw=RawTimeSeries(
-        timepoints=jnp.array([0, 1, 2, 4, 8, 12]),
-        values=jnp.array([0.1, 0.3, 0.8, 2.1, 4.5, 6.0]),
-        measurement_std=jnp.array([0.01, 0.02, 0.05, 0.1, 0.2, 0.3])  # optional
+    # Option 1: Time-series data
+    values=TimeSeries(
+        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        values=jnp.array([310., 310., 310., 310., 310.])
     ),
     
-    # Fitted spline representation
-    spline=SplineRepresentation(
-        type="cubic_hermite",
-        breakpoints=jnp.array([0, 4, 8, 12]),  # segment boundaries
-        coefficients=jnp.array([[...], [...], [...]]),  # polynomial coefficients
-        discontinuous=False,
-        fit_residual_std=0.05
-    )
+    # Option 2: Static value (for time-independent parameters)
+    # values=StaticVariable(value=310.0),
+    
+    # Optional spline representation (placeholder for future)
+    spline=None
 )
 ```
 
 **Benefits**:
-- Preserves original measurements with uncertainty
-- Provides smooth interpolation via splines
-- Enables analytical derivatives (rates from cumulative data)
-- Handles measurement noise naturally
+- Preserves original measurements
+- Flexible value types (TimeSeries or StaticVariable)
+- Unified structure for states and controls
+- Optional spline fitting for future interpolation
+- Clear metadata (name, unit, control status)
 
 **Usage**:
-- Use `raw` for plotting original data points
-- Use `spline` for ODE solver interpolation
-- Compute rates: `compute_rate_from_cumulative(spline, times)`
+```python
+BioProcess(
+    process_variables={
+        # State variables (measured outputs)
+        "biomass": ProcessVariable(
+            name="Biomass (CDW)",
+            unit="g/L",
+            is_controlled=False,
+            values=TimeSeries(...)
+        ),
+        
+        # Control variables (manipulated inputs)
+        "temperature": ProcessVariable(
+            name="Temperature",
+            unit="K",
+            is_controlled=True,
+            values=TimeSeries(...)
+        ),
+        
+        # Static parameters
+        "max_temp": ProcessVariable(
+            name="Maximum temperature",
+            unit="K",
+            is_controlled=False,
+            values=StaticVariable(value=315.0)
+        ),
+    }
+)
+```
 
-### 4. Unified Dynamic Variables
+### 4. Unified Process Variables
 
-**Design**: All time-varying data is stored in `dynamic_variables` with a `controlled` field to distinguish states from controls.
+**Design**: All data is stored in `process_variables` with an `is_controlled` field to distinguish states from controls, and flexible value types.
 
 ```python
 BioProcess(
@@ -391,26 +460,59 @@ BioProcess(
         name="fed_batch_001",
         process_type="fed_batch"
     ),
-    dynamic_variables={
-        # States (measured outputs)
-        "biomass": TimeSeries(..., controlled=False),
-        "substrate": TimeSeries(..., controlled=False),
-        "product": TimeSeries(..., controlled=False),
+    time_axis=TimeAxis(
+        unit="hours",
+        start=0.0,
+        end=48.0,
+        time_reference="inoculation"
+    ),
+    process_variables={
+        # States (measured outputs) with time-series data
+        "biomass": ProcessVariable(
+            name="Biomass (CDW)",
+            unit="g/L",
+            is_controlled=False,
+            values=TimeSeries(...)
+        ),
+        "substrate": ProcessVariable(
+            name="Glucose",
+            unit="g/L",
+            is_controlled=False,
+            values=TimeSeries(...)
+        ),
         
         # Controls (manipulated inputs)
-        "temperature": TimeSeries(..., controlled=True),
-        "pH": TimeSeries(..., controlled=True),
-        "DO": TimeSeries(..., controlled=True),
+        "temperature": ProcessVariable(
+            name="Temperature",
+            unit="K",
+            is_controlled=True,
+            values=TimeSeries(...)
+        ),
+        
+        # Static parameters
+        "initial_glucose": ProcessVariable(
+            name="Initial glucose",
+            unit="g/L",
+            is_controlled=False,
+            values=StaticVariable(value=10.0)
+        ),
+    },
+    reactor_medium={
+        "main": ReactorMedium(...)
     }
 )
 ```
 
 **Benefits**:
-- Simpler API (one dictionary instead of two)
-- Flexible (controlled field distinguishes when needed)
+- Simpler API (one dictionary for all variables)
+- Flexible (is_controlled field distinguishes when needed)
+- Supports both time-series and static values
 - Some variables can be both (e.g., pH: controlled but also measured)
 
-**Note**: Volume changes are NOT in dynamic_variables (special handling in `BioProcess.volume`)
+**Note**: 
+- Volume changes are NOT in process_variables (special handling in `BioProcess.volume`)
+- Reactor composition stored in `reactor_medium` dictionary
+- No separate `static_variables` field (use StaticVariable values in process_variables)
 
 ### 5. Event Times for Discontinuities
 
@@ -429,7 +531,7 @@ Discontinuities in control profiles will require special handling for ODE solver
 - Induction events (gene expression triggers)
 - Feed rate changes (step changes in control)
 
-**Usage with splines**:
+**Usage with splines** (future):
 ```python
 # Fit spline with discontinuities (future implementation)
 # spline = fit_cubic_spline(
@@ -438,7 +540,7 @@ Discontinuities in control profiles will require special handling for ODE solver
 # )
 ```
 
-**Utility function**:
+**Utility function** (future):
 ```python
 # Future implementation
 # event_times = get_event_times(process)
@@ -461,18 +563,18 @@ All BPbench dataclasses are registered as PyTrees:
 
 ```python
 tree_util.register_pytree_node(
-    TimeSeries,
+    ProcessVariable,
     # Flatten: Extract leaves (arrays) and nodes (metadata)
     lambda obj: (
-        (obj.raw, obj.spline),           # leaves (can be None)
-        (obj.name, obj.unit, obj.controlled)  # nodes
+        (obj.values, obj.spline),           # leaves (can be None)
+        (obj.name, obj.unit, obj.is_controlled)  # nodes
     ),
     # Unflatten: Reconstruct from leaves and nodes
-    lambda nodes, leaves: TimeSeries(
+    lambda nodes, leaves: ProcessVariable(
         name=nodes[0],
         unit=nodes[1],
-        controlled=nodes[2],
-        raw=leaves[0],
+        is_controlled=nodes[2],
+        values=leaves[0],
         spline=leaves[1]
     )
 )
@@ -488,7 +590,7 @@ from jax import grad, jit
 def model_loss(params, process):
     """Loss function for bioprocess model"""
     predictions = simulate_process(params, process)
-    biomass_data = process.dynamic_variables["biomass"].raw.values
+    biomass_data = process.process_variables["biomass"].values.values
     return jnp.mean((predictions - biomass_data)**2)
 
 # Compute gradient w.r.t. parameters
@@ -531,13 +633,15 @@ tree_util.tree_structure(process)
 
 **Registered Structures**:
 - TimeAxis (leaves: start, end)
-- RawTimeSeries (leaves: timepoints, values, measurement_std)
-- SplineRepresentation (leaves: breakpoints, coefficients)
-- TimeSeries (leaves: raw, spline)
+- TimeSeries (leaves: timepoints, values)
+- SplineRepresentation (placeholder for future)
 - StaticVariable (leaves: value)
-- VolumeChange (leaves: timeseries, timepoints, values)
+- ProcessVariable (leaves: values, spline)
+- ReactorMediumComponent (leaves: concentration)
+- FeedMediumComponent (leaves: concentration)
+- VolumeChange (leaves: values)
 - Volume (leaves: all VolumeChange objects)
-- Process (leaves: time, all variables, volume)
+- BioProcess (leaves: time_axis, all variables, volume, reactor_medium)
 - CaseStudy (leaves: all processes)
 - BenchmarkDataset (leaves: all case studies)
 
@@ -570,14 +674,14 @@ case_studies:
         metadata:
           name: DoE1_R1
           process_type: fed_batch
-        dynamic_variables:
+        process_variables:
           biomass:
             name: Biomass
-            controlled: false
+            is_controlled: false
             unit: g/L
-            raw:
-              timepoints: "__array__:case_studies/prol_v3/processes/DoE1_R1/biomass/raw/timepoints"
-              values: "__array__:case_studies/prol_v3/processes/DoE1_R1/biomass/raw/values"
+            values:
+              timepoints: "__array__:case_studies/prol_v3/processes/DoE1_R1/process_variables/biomass/values/timepoints"
+              values: "__array__:case_studies/prol_v3/processes/DoE1_R1/process_variables/biomass/values/values"
 ```
 
 **HDF5 Structure**:
@@ -587,14 +691,22 @@ arrays.h5
 │   └── prol_v3/
 │       └── processes/
 │           └── DoE1_R1/
-│               ├── biomass/
-│               │   └── raw/
-│               │       ├── timepoints [array: (7,)]
-│               │       └── values [array: (7,)]
-│               └── temperature/
-│                   └── raw/
-│                       ├── timepoints [array: (1457,)]
-│                       └── values [array: (1457,)]
+│               ├── process_variables/
+│               │   ├── biomass/
+│               │   │   └── values/
+│               │   │       ├── timepoints [array: (7,)]
+│               │   │       └── values [array: (7,)]
+│               │   └── temperature/
+│               │       └── values/
+│               │           ├── timepoints [array: (1457,)]
+│               │           └── values [array: (1457,)]
+│               └── reactor_medium/
+│                   └── main/
+│                       └── components/
+│                           └── glucose/
+│                               └── concentration/
+│                                   ├── timepoints [array: (50,)]
+│                                   └── values [array: (50,)]
 ```
 
 **Advantages**:
@@ -624,9 +736,12 @@ my_dataset.json         # Single file
     "prol_v3": {
       "processes": {
         "DoE1_R1": {
-          "dynamic_variables": {
+          "process_variables": {
             "biomass": {
-              "raw": {
+              "name": "Biomass (CDW)",
+              "unit": "g/L",
+              "is_controlled": false,
+              "values": {
                 "timepoints": [0.0, 2.04, 4.05, 6.14, 8.17, 9.22, 10.22],
                 "values": [27.45, 36.5, 40.0, 39.5, 38.2, 35.1, 22.93]
               }
@@ -654,7 +769,7 @@ my_dataset.json         # Single file
 
 ### Backward Compatibility
 
-Note: The current implementation does not include backward compatibility for older data structures. If you have datasets with the old structure (e.g., `dynamic_states`, `dynamic_controls`, `process_id`, `role`, `canonical_name`), you will need to migrate them to the new format.
+Note: The current implementation does not include backward compatibility for older data structures. If you have datasets with the old structure (e.g., `dynamic_variables`/`dynamic_states`, `dynamic_controls`, `time`, `static_variables`, `controlled`, `raw`, `RawTimeSeries`), you will need to migrate them to the new format with `time_axis`, `process_variables`, `is_controlled`, and direct TimeSeries structure.
 
 ## Usage Patterns
 
@@ -673,97 +788,114 @@ time_axis = TimeAxis(
     time_reference="inoculation"
 )
 
-# 2. Create time series for states
-biomass = TimeSeries(
+# 2. Create process variables for states (time-series)
+biomass = ProcessVariable(
     name="Biomass (CDW)",
     unit="g/L",
-    controlled=False,  # state variable
-    raw=RawTimeSeries(
+    is_controlled=False,  # state variable
+    values=TimeSeries(
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
-        values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
-        measurement_std=jnp.array([0.01, 0.05, 0.1, 0.15, 0.2])
+        values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
     )
 )
 
-# 3. Create time series for controls
-temperature = TimeSeries(
+# 3. Create process variables for controls
+temperature = ProcessVariable(
     name="Temperature",
     unit="K",
-    controlled=True,  # control input
-    raw=RawTimeSeries(
+    is_controlled=True,  # control input
+    values=TimeSeries(
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([310., 310., 310., 310., 310.])
     )
 )
 
-# 4. Define feed medium
+# 4. Create static process variables
+initial_glucose = ProcessVariable(
+    name="Initial glucose",
+    unit="g/L",
+    is_controlled=False,
+    values=StaticVariable(value=10.0)
+)
+
+# 5. Define feed medium
 glucose_feed = FeedMedium(
     name="Glucose feed",
     density=1.05,
     density_unit="kg/L",
     components={
-        "glucose": FeedComponent(
+        "glucose": FeedMediumComponent(
             name="glucose",
-            concentration=200.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=200.0,  # StaticVariable value
+            is_controlled=True
         ),
-        "yeast_extract": FeedComponent(
+        "yeast_extract": FeedMediumComponent(
             name="yeast_extract",
-            concentration=20.0, 
-            unit="g/L"
+            unit="g/L",
+            concentration=20.0,
+            is_controlled=True
         )
     }
 )
 
-# 5. Create volume tracking
-volume = Volume(
-    initial_volume=1.0,
-    volume_unit="L",
+# 6. Create reactor medium
+reactor_medium = ReactorMedium(
+    name="Main medium",
     density=1.0,
     density_unit="kg/L",
+    components={
+        "biomass": ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=TimeSeries(
+                timepoints=jnp.array([0., 12., 24., 36., 48.]),
+                values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
+            ),
+            is_intracellular=False
+        )
+    }
+)
+
+# 7. Create volume tracking
+volume = Volume(
+    initial_volume=1.0,
+    unit="L",
     volume_changes={
         "feed": VolumeChange(
             name="Glucose feed",
-            controlled=True,
-            continuous=True,
+            is_controlled=True,
+            is_continuous=True,
             unit="L",
             feed_medium=glucose_feed,
-            timeseries=TimeSeries(
-                name="Feed cumulative",
-                unit="L",
-                controlled=True,
-                raw=RawTimeSeries(
-                    timepoints=jnp.array([0., 12., 24., 36., 48.]),
-                    values=jnp.array([0., 0.1, 0.25, 0.45, 0.7])
-                )
+            values=TimeSeries(
+                timepoints=jnp.array([0., 12., 24., 36., 48.]),
+                values=jnp.array([0., 0.1, 0.25, 0.45, 0.7])
             )
         )
     }
 )
 
-# 6. Build process
+# 8. Build process
 process = BioProcess(
     metadata=BioProcessMetadata(
         name="batch_001",
         process_type="batch",
         notes="Example batch process, replicate R1"
     ),
-    time=time_axis,
-    dynamic_variables={
+    time_axis=time_axis,
+    process_variables={
         "biomass": biomass,
-        "temperature": temperature
+        "temperature": temperature,
+        "initial_glucose": initial_glucose
     },
-    static_variables={
-        "initial_glucose": StaticVariable(
-            name="initial_glucose",
-            value=10.0, 
-            unit="g/L"
-        )
+    reactor_medium={
+        "main": reactor_medium
     },
     volume=volume
 )
 
-# 8. Assemble case study
+# 9. Assemble case study
 case_study = CaseStudy(
     case_id="ecoli_2024",
     organism="Escherichia coli K-12",
@@ -771,7 +903,7 @@ case_study = CaseStudy(
     processes={"batch_001": process}
 )
 
-# 9. Create dataset
+# 10. Create dataset
 dataset = BenchmarkDataset(
     metadata={
         "name": "E. coli Batch Dataset",
@@ -782,10 +914,10 @@ dataset = BenchmarkDataset(
     case_studies={"ecoli_2024": case_study}
 )
 
-# 10. Save dataset
+# 11. Save dataset
 save_dataset(dataset, Path("data/ecoli_dataset"))
 
-# 11. Load and verify
+# 12. Load and verify
 loaded = load_dataset(Path("data/ecoli_dataset"))
 print(f"Loaded {len(loaded.case_studies)} case studies")
 ```
@@ -795,20 +927,23 @@ print(f"Loaded {len(loaded.case_studies)} case studies")
 ```python
 from bpbench import fit_cubic_spline, compute_rate_from_cumulative
 
+# Note: Spline fitting is currently a placeholder and not yet implemented
+
+# Future implementation:
 # Fit spline to cumulative feed data
-feed_ts = process.volume.volume_changes["feed"].timeseries
-spline = fit_cubic_spline(
-    times=feed_ts.raw.timepoints,
-    values=feed_ts.raw.values,
-    event_times=process.event_times
-)
+# feed_ts = process.volume.volume_changes["feed"].values
+# spline = fit_cubic_spline(
+#     times=feed_ts.timepoints,
+#     values=feed_ts.values,
+#     event_times=process.event_times
+# )
 
 # Compute feed rate from cumulative volume
-eval_times = jnp.linspace(0, 48, 1000)
-feed_rate = compute_rate_from_cumulative(spline, eval_times)
+# eval_times = jnp.linspace(0, 48, 1000)
+# feed_rate = compute_rate_from_cumulative(spline, eval_times)
 
-# Add spline to time series
-feed_ts.spline = spline
+# Add spline to process variable
+# process.process_variables["feed_cumulative"].spline = spline
 ```
 
 ### Cross-Validation Workflow
@@ -832,7 +967,7 @@ for case_id, train_ids, test_id in iter_loocv(dataset):
     
     # Evaluate on test
     # predictions = model.predict(test_process)
-    # evaluate(predictions, test_process.dynamic_variables["biomass"])
+    # evaluate(predictions, test_process.process_variables["biomass"])
 ```
 
 ### Inspecting Data Structure
@@ -855,10 +990,10 @@ print_structure(process, show_values=True)
 initial_vol = process.volume.initial_volume
 final_vol = initial_vol
 for vc in process.volume.volume_changes.values():
-    if vc.timeseries:
-        final_vol += vc.timeseries.raw.values[-1]
+    if vc.values:
+        final_vol += vc.values.values[-1]
 
-print(f"Final volume: {final_vol} {process.volume.volume_unit}")
+print(f"Final volume: {final_vol} {process.volume.unit}")
 ```
 
 ## Extension Points
@@ -874,7 +1009,7 @@ To add a new field to any dataclass:
 @dataclass
 class BioProcess:
     # ... existing fields ...
-    ph_measurements: Optional[TimeSeries] = None  # new field
+    ph_measurements: Optional[ProcessVariable] = None  # new field
 ```
 
 2. **Update PyTree registration**:
@@ -883,7 +1018,7 @@ tree_util.register_pytree_node(
     BioProcess,
     lambda obj: (
         # Add new field to leaves if it contains arrays
-        (obj.time, obj.dynamic_variables, obj.volume, obj.ph_measurements),
+        (obj.time_axis, obj.process_variables, obj.reactor_medium, obj.volume, obj.ph_measurements),
         # nodes remain the same
         (obj.metadata, ...)
     ),
@@ -1076,28 +1211,31 @@ Typical performance on modern hardware:
 ### 1. Always Specify Units
 ```python
 # Good
-biomass = TimeSeries(name="Biomass", unit="g/L", ...)
+biomass = ProcessVariable(name="Biomass", unit="g/L", is_controlled=False, ...)
 
 # Bad - ambiguous
-biomass = TimeSeries(name="Biomass", unit="", ...)
+biomass = ProcessVariable(name="Biomass", unit="", is_controlled=False, ...)
 ```
 
 ### 2. Use Descriptive Names
 ```python
 # Good - descriptive name from paper
-biomass = TimeSeries(name="Biomass (CDW)", unit="g/L", ...)
+biomass = ProcessVariable(name="Biomass (CDW)", unit="g/L", is_controlled=False, ...)
 
 # Also good - short descriptive name
-biomass = TimeSeries(name="Biomass", unit="g/L", ...)
+biomass = ProcessVariable(name="Biomass", unit="g/L", is_controlled=False, ...)
 ```
 
 ### 3. Store Cumulative Data, Compute Rates
 ```python
-# Store cumulative feed volume
-feed_cumulative = TimeSeries(unit="L", raw=RawTimeSeries(...))
+# Store cumulative feed volume in VolumeChange
+feed_cumulative = VolumeChange(
+    unit="L",
+    values=TimeSeries(...)
+)
 
-# Compute rate when needed
-feed_rate = compute_rate_from_cumulative(feed_cumulative.spline, times)
+# Compute rate when needed (future implementation)
+# feed_rate = compute_rate_from_cumulative(feed_cumulative.spline, times)
 ```
 
 ### 4. Validate Volume Balance
@@ -1105,21 +1243,21 @@ feed_rate = compute_rate_from_cumulative(feed_cumulative.spline, times)
 # Manually validate volume balance
 initial_vol = process.volume.initial_volume
 total_change = sum(
-    vc.timeseries.raw.values[-1]
+    vc.values.values[-1]
     for vc in process.volume.volume_changes.values()
-    if vc.timeseries
+    if vc.values
 )
 final_vol = initial_vol + total_change
 print(f"Final volume: {final_vol} L")
 ```
 
-### 5. Use Controlled Field to Distinguish States from Controls
+### 5. Use is_controlled Field to Distinguish States from Controls
 ```python
 # State variable (measured output)
-biomass = TimeSeries(name="Biomass", controlled=False, ...)
+biomass = ProcessVariable(name="Biomass", unit="g/L", is_controlled=False, ...)
 
 # Control input (manipulated)
-temperature = TimeSeries(name="Temperature", controlled=True, ...)
+temperature = ProcessVariable(name="Temperature", unit="K", is_controlled=True, ...)
 ```
 
 ## Troubleshooting
@@ -1130,9 +1268,21 @@ temperature = TimeSeries(name="Temperature", controlled=True, ...)
 - **Cause**: Using old API (pre-refactor)
 - **Solution**: Use `process.metadata.name` instead of `process.process_id`
 
-**Issue**: "TimeSeries has no attribute 'role'"
+**Issue**: "BioProcess has no attribute 'time'"
 - **Cause**: Using old API
-- **Solution**: Use `controlled` field instead of `role`
+- **Solution**: Use `process.time_axis` instead of `process.time`
+
+**Issue**: "BioProcess has no attribute 'dynamic_variables'"
+- **Cause**: Using old API
+- **Solution**: Use `process.process_variables` instead of `process.dynamic_variables`
+
+**Issue**: "ProcessVariable has no attribute 'controlled'"
+- **Cause**: Using old API
+- **Solution**: Use `is_controlled` field instead of `controlled`
+
+**Issue**: "TimeSeries has no attribute 'raw'"
+- **Cause**: Using old API
+- **Solution**: TimeSeries now directly contains `timepoints` and `values`, not a `raw` wrapper
 
 **Issue**: Volume validation shows imbalance
 - **Cause**: Potential coding error in volume tracking
