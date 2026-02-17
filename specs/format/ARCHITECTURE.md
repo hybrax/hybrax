@@ -28,10 +28,12 @@ BPbench is a JAX-compatible framework for standardized bioprocess data managemen
 ```
 bpbench/
 ├── __init__.py           # Package exports and version
-├── dataclasses.py        # Core data structures (441 lines)
-├── serialization.py      # I/O operations (509 lines)
-├── splines.py            # Spline fitting utilities (226 lines)
-└── utils.py              # Helper functions (206 lines)
+├── dataclasses.py        # Core data structures
+├── serialization.py      # I/O operations (YAML+HDF5 and JSON)
+├── validate.py           # Data validation utilities
+├── inspect.py            # Inspection utilities (print_structure)
+├── splines.py            # Spline fitting utilities
+└── utils.py              # Helper functions
 ```
 
 ## Core Data Structure Hierarchy
@@ -55,7 +57,7 @@ Level 2: BioProcess
   │    ├─ process_type: str (batch/fed_batch/continuous)
   │    └─ notes: Optional[str]
   ├── time_axis: TimeAxis
-  ├── reactor_medium: Dict[str, ReactorMedium]
+  ├── reactor_medium: ReactorMedium
   ├── process_variables: Dict[str, ProcessVariable]
   └── volume: Volume
 
@@ -148,33 +150,45 @@ Level 0: Primitive Components
 
 **Purpose**: Handles saving and loading of datasets in multiple formats.
 
+**Status**: ✅ Fully implemented and tested with the current data structure.
+
 **Key Functions**:
 - `save_dataset(dataset, path)` / `load_dataset(path)`: YAML + HDF5 (recommended for efficiency)
 - `save_dataset_json(dataset, path)` / `load_dataset_json(path)`: Pure JSON (human-readable)
 - `_extract_arrays()`: Recursively finds and extracts JAX/NumPy arrays from nested structures
 - `_restore_arrays()`: Reconstructs full object hierarchy from YAML metadata + HDF5 arrays
+- Helper functions for converting to/from dictionaries: `_process_to_dict()`, `_dict_to_process()`, etc.
 
 **Architecture**:
 
 ```
 YAML + HDF5 Approach:
   metadata.yaml          arrays.h5
-  ├── Structure         ├── /case1/proc1/process_variables/biomass/values/timepoints
-  ├── Metadata          ├── /case1/proc1/process_variables/biomass/values/values
-  └── Array refs        └── /case1/proc1/reactor_medium/main/components/glucose/concentration/timepoints
+  ├── Structure         ├── /case1/proc1/process_variables/temperature/values/timepoints
+  ├── Metadata          ├── /case1/proc1/process_variables/temperature/values/values
+  └── Array refs        └── /case1/proc1/reactor_medium/components/biomass/concentration/timepoints
 ```
+
+**Supported Data Structures**:
+- ProcessVariable with TimeSeries or StaticVariable values
+- ReactorMedium and ReactorMediumComponent
+- FeedMedium and FeedMediumComponent (inline in VolumeChange)
+- Volume and VolumeChange with continuous/discrete tracking
+- All nested dictionaries and JAX/NumPy arrays
 
 **Design Decisions**:
 - **Hybrid YAML+HDF5**: Separates human-readable metadata from binary numerical data
 - **JSON alternative**: Provides simple single-file option for smaller datasets
 - **Recursive extraction**: Automatically finds arrays at any nesting level
-- **Path-based keys**: HDF5 groups mirror the hierarchical structure (e.g., `case1/proc1/biomass/raw/values`)
+- **Path-based keys**: HDF5 groups mirror the hierarchical structure (e.g., `case1/proc1/biomass/values`)
+- **Type preservation**: Stores type information to correctly reconstruct TimeSeries vs StaticVariable
 
 **Implementation Notes**:
 - Arrays stored as separate HDF5 datasets with reference paths in YAML
 - Custom NumpyEncoder handles JAX/NumPy array serialization for JSON
 - Deserialization reconstructs full object hierarchy with proper types
 - HDF5 ~10x faster than JSON for large numerical arrays
+- Both formats tested and working in `examples/01_prol/load_data.ipynb`
 
 ### splines.py
 
@@ -241,6 +255,57 @@ SplineRepresentation(
 - Explicit separation of train/test process IDs
 - Works seamlessly with the hierarchical data structure
 - Utilities support both manual inspection and automated workflows
+
+### validate.py
+
+**Purpose**: Validation utilities for bioprocess data integrity checks.
+
+**Key Functions**:
+- `validate_volume_consistency(volume, time_axis, final_volume, plot)`: Validate volume mass balance
+  - Calculates total volume change from all operations (feeds, sampling, evaporation)
+  - Handles both continuous (cumulative) and discrete volume changes
+  - Supports rate-based data (e.g., L/h) with trapezoidal integration
+  - Compares calculated final volume with expected/measured values
+  - Optional plotting with matplotlib to visualize:
+    - Individual volume changes over time
+    - Total volume trajectory
+    - Initial, calculated, and expected final volumes
+  - Returns (is_valid, message) tuple with detailed breakdown
+  - Flags inconsistencies >5% relative difference
+
+- `validate_feed_components(volume, process_feeds, dynamic_variables)`: *(Deprecated)*
+  - Legacy function for checking feed component definitions
+  - Replaced by inline FeedMedium storage in VolumeChange
+
+**Implementation Details**:
+```python
+# Volume balance calculation
+total_change = 0.0
+for change in volume.volume_changes.values():
+    if change.is_continuous:
+        # Cumulative: final - initial
+        if "/" not in change.unit:
+            change_vol = values[-1] - values[0]
+        # Rate: integrate with trapezoidal rule
+        else:
+            change_vol = integrate(times, values)
+    else:  # Discrete
+        change_vol = sum(values)
+    total_change += change_vol
+
+calculated_final = initial_volume + total_change
+```
+
+**Plotting Output**:
+When `plot=True`, generates a 2-subplot figure:
+1. **Individual Volume Changes**: Line plots for each feed/sampling operation
+2. **Total Volume**: Combined trajectory with markers for initial/final volumes
+
+**Design Decisions**:
+- Validation is optional but recommended before modeling
+- Plotting requires matplotlib (optional dependency)
+- Tolerates small numerical errors (5% threshold)
+- Provides detailed messages for debugging inconsistencies
 
 ## Key Design Patterns
 

@@ -46,7 +46,7 @@ BioProcess
  │    ├─ start: float
  │    ├─ end: float
  │    └─ time_reference: str
- ├─ reactor_medium: Dict[str, ReactorMedium]
+ ├─ reactor_medium: ReactorMedium
  │    ├─ name: str
  │    ├─ density: float
  │    ├─ density_unit: str
@@ -155,7 +155,7 @@ process = BioProcess(
     ),
     time_axis=time_axis,
     process_variables={"biomass": biomass, "temperature": temperature},
-    reactor_medium={"main": reactor},
+    reactor_medium=reactor,
     volume=Volume(
         initial_volume=1.0,
         unit="L"
@@ -181,34 +181,53 @@ dataset = BenchmarkDataset(
 
 ### Serialization
 
+BPbench supports two serialization formats, both fully compatible with the current data structure:
+
 #### YAML + HDF5 (Recommended)
 
 ```python
 from pathlib import Path
-from bpbench import save_dataset, load_dataset
+from bpbench import serialization
 
 # Save
-save_dataset(dataset, Path("data/my_dataset"))
+serialization.save_dataset(dataset, Path("data/my_dataset"))
 
 # Load
-loaded_dataset = load_dataset(Path("data/my_dataset"))
+loaded_dataset = serialization.load_dataset(Path("data/my_dataset"))
 ```
 
 This creates two files:
-- `metadata.yaml`: Human-readable structure
-- `arrays.h5`: Efficient binary storage for arrays
+- `metadata.yaml`: Human-readable structure with all metadata
+- `arrays.h5`: Efficient binary storage for JAX/NumPy arrays
+
+Benefits:
+- **Compact**: Binary storage for large arrays
+- **Human-readable**: YAML for metadata inspection
+- **Fast**: HDF5 optimized for numerical data
 
 #### JSON (Alternative)
 
 ```python
-from bpbench import save_dataset_json, load_dataset_json
+from bpbench import serialization
 
 # Save
-save_dataset_json(dataset, Path("data/my_dataset.json"))
+serialization.save_dataset_json(dataset, Path("data/my_dataset.json"))
 
 # Load
-loaded_dataset = load_dataset_json(Path("data/my_dataset.json"))
+loaded_dataset = serialization.load_dataset_json(Path("data/my_dataset.json"))
 ```
+
+Benefits:
+- **Single file**: Everything in one JSON file
+- **Portable**: Works everywhere JSON is supported
+- **Debuggable**: Easy to inspect and edit manually
+
+Both formats preserve all data including:
+- Process metadata and structure
+- ReactorMedium and ProcessVariable definitions
+- TimeSeries and StaticVariable values
+- Volume tracking and feed compositions
+- All JAX arrays with proper dtype
 
 ### Cross-Validation
 
@@ -255,6 +274,38 @@ This displays:
 - Volume tracking and feed information
 
 See `examples/demo_print_structure.py` for a complete demonstration.
+
+### Validating Volume Consistency
+
+The `validate_volume_consistency()` function checks that volume changes are consistent with expected final volumes:
+
+```python
+from bpbench import validate
+
+# Validate volume balance
+is_valid, message = validate.validate_volume_consistency(
+    process.volume,
+    time_axis=process.time_axis,
+    final_volume=2.5,  # Expected final volume in L
+    plot=True  # Generate visualization plots
+)
+
+print(message)
+if not is_valid:
+    print("⚠️ Volume inconsistency detected!")
+```
+
+The function:
+- Calculates total volume change from all feeds, sampling, and other operations
+- Compares calculated final volume with expected/measured values
+- Optionally generates plots showing:
+  - Individual volume changes over time
+  - Total volume trajectory
+  - Initial, calculated, and expected final volumes
+- Handles both continuous (cumulative) and discrete volume changes
+- Supports rate-based data (e.g., L/h) with automatic integration
+
+See the `examples/01_prol/load_data.ipynb` notebook for a complete example.
 
 ## Key Features
 

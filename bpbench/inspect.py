@@ -43,14 +43,13 @@ def print_structure(process: BioProcess, indent: int = 0, show_values: bool = Fa
     
     # Reactor medium
     if process.reactor_medium:
-        print(f"\n{prefix}Reactor Medium: ({len(process.reactor_medium)} total)")
-        for name, medium in process.reactor_medium.items():
-            print(f"{prefix}  {name}:")
-            print(f"{prefix}    Density: {medium.density} {medium.density_unit}")
-            if medium.components:
-                print(f"{prefix}    Components: ({len(medium.components)} total)")
-                for comp_name, comp in medium.components.items():
-                    _print_reactor_component_info(comp, prefix + "      ", show_values)
+        print(f"\n{prefix}Reactor Medium:")
+        print(f"{prefix}  Name: {process.reactor_medium.name}")
+        print(f"{prefix}  Density: {process.reactor_medium.density} {process.reactor_medium.density_unit}")
+        if process.reactor_medium.components:
+            print(f"{prefix}  Components: ({len(process.reactor_medium.components)} total)")
+            for comp_name, comp in process.reactor_medium.components.items():
+                _print_reactor_component_info(comp, prefix + "    ", show_values)
     
     # Process variables (pH, temperature, etc.)
     if process.process_variables:
