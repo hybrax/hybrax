@@ -40,6 +40,7 @@ from .dataclasses import (
 # Import inspect
 from .inspect import (
     print_structure,
+    print_dataset_structure
 )
 
 # # Import spline utilities
@@ -73,6 +74,7 @@ __all__ = [
     "BenchmarkDataset",
     # Utils
     "print_structure",
+    "print_dataset_structure",
     # Modules
     "serialization",
     "validate",

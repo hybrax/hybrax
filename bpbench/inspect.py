@@ -2,7 +2,6 @@ import jax.numpy as jnp
 from typing import Tuple, List, Generator
 from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
 
-
 def print_structure(process: BioProcess, indent: int = 0, show_values: bool = False) -> None:
     """
     Print a hierarchical view of the BioProcess object structure.
@@ -174,3 +173,108 @@ def _print_volume_change_info(change: VolumeChange, prefix: str, show_values: bo
             else:
                 total_change = float(jnp.sum(change.values.values))
                 print(f"{prefix}    Total change: {total_change:.2f} {change.unit}")
+
+
+def _count_datapoints_in_value(value) -> int:
+    """
+    Count datapoints in a value which may be a TimeSeries or StaticVariable.
+    TimeSeries -> number of timepoints
+    StaticVariable -> count as 1
+    """
+    try:
+        if hasattr(value, "timepoints"):
+            return int(len(value.timepoints))
+        elif hasattr(value, "value"):
+            return 1
+    except Exception:
+        # If something unexpected (e.g., None or incompatible), treat as 0
+        return 0
+    return 0
+
+
+def _count_datapoints_in_process(process: BioProcess) -> int:
+    """
+    Count all datapoints (time series lengths + static entries) contained in a BioProcess.
+    This includes:
+      - process_variables (TimeSeries / StaticVariable)
+      - reactor_medium component concentrations (TimeSeries / StaticVariable)
+      - volume changes (their TimeSeries)
+      - feed medium components referenced in volume changes (TimeSeries / StaticVariable)
+    """
+    total = 0
+
+    # Process variables
+    for pv in process.process_variables.values():
+        total += _count_datapoints_in_value(pv.values)
+
+    # Reactor medium components
+    if getattr(process, "reactor_medium", None) is not None:
+        for comp in process.reactor_medium.components.values():
+            total += _count_datapoints_in_value(comp.concentration)
+
+    # Volume changes and their feed media components
+    if getattr(process, "volume", None) is not None and process.volume.volume_changes:
+        for vc in process.volume.volume_changes.values():
+            if getattr(vc, "values", None) is not None:
+                total += _count_datapoints_in_value(vc.values)
+            # feed medium components
+            if getattr(vc, "feed_medium", None) is not None:
+                for fcomp in vc.feed_medium.components.values():
+                    total += _count_datapoints_in_value(fcomp.concentration)
+
+    return total
+
+
+def print_dataset_structure(dataset: BenchmarkDataset, show_values: bool = False) -> None:
+    """
+    Print a hierarchical view of the BenchmarkDataset:
+      - top-level metadata
+      - case studies and their metadata
+      - processes under each case study (with a per-process datapoint count)
+      - final total datapoints in the dataset (sum of all TimeSeries lengths + static entries)
+
+    Args:
+        dataset: BenchmarkDataset object to inspect
+        show_values: currently unused at dataset level, kept for API parity
+    """
+    print("=" * 80)
+    print("Benchmark Dataset Structure")
+    print("=" * 80)
+
+    # Metadata
+    print("Metadata:")
+    if dataset.metadata:
+        for k, v in dataset.metadata.items():
+            print(f"  {k}: {v}")
+    else:
+        print("  (no metadata)")
+
+    print("\nCase Studies:")
+    total_datapoints = 0
+    if not dataset.case_studies:
+        print("  (no case studies)")
+    else:
+        for cs_key, cs in dataset.case_studies.items():
+            cs_header = f"{cs_key}"
+            try:
+                # show both stored case_id and key if they differ
+                cs_header += f"  (case_id: {cs.case_id})"
+            except Exception:
+                pass
+            print(f"  - {cs_header}")
+            print(f"      Organism: {cs.organism}")
+            print(f"      Citation: {cs.citation}")
+            n_procs = len(cs.processes) if cs.processes else 0
+            print(f"      Processes: {n_procs}")
+            if cs.processes:
+                for p_key, proc in cs.processes.items():
+                    try:
+                        name = proc.metadata.name
+                    except Exception:
+                        name = "<unnamed process>"
+                    proc_dp = _count_datapoints_in_process(proc)
+                    total_datapoints += proc_dp
+                    print(f"        * {p_key}: {name}  (datapoints: {proc_dp})")
+    print("\n" + "-" * 80)
+    print(f"Total datapoints in dataset: {total_datapoints}")
+    print("=" * 80)
