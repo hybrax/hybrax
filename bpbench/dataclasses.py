@@ -173,7 +173,7 @@ class BioProcess:
     metadata: BioProcessMetadata
     time_axis: TimeAxis
     volume: Volume
-    reactor_medium: Dict[str, ReactorMedium] = field(default_factory=dict)
+    reactor_medium: ReactorMedium
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     
 
