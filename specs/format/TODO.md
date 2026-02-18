@@ -14,7 +14,9 @@
 
 * Maybe the `ReactorMedium` could be a subclass of the `FeedMedium`.
     * I think they could both be subclasses from Medium with both then pointing to `<Reactor,Feed>MediumComponent` which have both `is_intracellular` and `is_controlled` tags and then set `ReactorMediumComponent.is_controlled=False` and `FeedMediumComponent.is_intracellular=False` to default.
-* Reimplement all the tests
+
+* Reimplement all the tests for the package
+* How do we deal with initial concentrations and how do we indicate if they are controlled?
     
 * **Possible future compatabilities:**
     * How would I implement perfusion? - No idea.
