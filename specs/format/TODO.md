@@ -5,11 +5,13 @@
         * this should check if there are any problems in the code when going from 1 to several
     * Add new case studies -> they will bring their own challenges.
     * fix the accidentally deleted `01_kittler/data_preprocessing`
+    * add correct density to the `01_kittler` data
 
 * **Validation functions for `/bpbench/validate.py`**
     * Verify that a volume change is purely positive or purely negative: 
     * If positive, verify that all dynamic state variables (i.e., concentrations) that are part of the reactor are also defined here.
     * `TimeSeries` check if shapes are correct and if time points are ordered.
+    * in the `00_combined/*` folder we could have `validate/*` subfolder where all validation tests are done for all proccesses of the dataset.
 
 * Maybe the `ReactorMedium` could be a subclass of the `FeedMedium`.
     * I think they could both be subclasses from Medium with both then pointing to `<Reactor,Feed>MediumComponent` which have both `is_intracellular` and `is_controlled` tags and then set `ReactorMediumComponent.is_controlled=False` and `FeedMediumComponent.is_intracellular=False` to default.
