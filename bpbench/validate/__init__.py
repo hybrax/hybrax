@@ -4,7 +4,7 @@ Validation utilities for bioprocess data
 
 import jax.numpy as jnp
 from typing import Dict, List, Optional, Tuple
-from .dataclasses import BioProcess, TimeSeries, VolumeChange
+from ..dataclasses import BioProcess, TimeSeries, VolumeChange
 
 
 def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
@@ -196,7 +196,15 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
         A tuple ``(all_valid, messages)`` where ``all_valid`` is ``True`` only
         when every individual check passes and ``messages`` is a list of
         human-readable result strings (one per check).
+
+    Raises:
+        TypeError: If ``process`` is not a :class:`BioProcess` instance.
     """
+    if not isinstance(process, BioProcess):
+        raise TypeError(
+            f"validate_process() expects a BioProcess instance, "
+            f"got {type(process).__name__!r}"
+        )
     all_valid = True
     messages: List[str] = []
 
@@ -258,10 +266,19 @@ def validate_volume_consistency(process: BioProcess,
     are considered.
 
     Args:
-        TODO: these have to be redone
-        
+        process: BioProcess object whose volume changes are validated.
+        final_volume: Expected final volume in the process's volume unit.  When
+            provided the function checks that the sum of all volume changes plus
+            ``process.volume.initial_volume`` is within 5 % of this value.
+
     Returns:
-        TODO: these have to be redone
+        A tuple ``(is_valid, message, total_change)`` where:
+
+        - ``is_valid`` is ``True`` when the relative deviation between the
+          calculated and expected final volume is ≤ 5 %.
+        - ``message`` is a human-readable summary of the volume balance.
+        - ``total_change`` is the net volume change (sum of all individual
+          volume changes, in the process's volume unit).
     """
 
     volume = process.volume

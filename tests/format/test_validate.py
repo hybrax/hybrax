@@ -23,6 +23,7 @@ from bpbench import (
     validate_volume_change_states,
     validate_biomass_in_reactor_medium,
     validate_process,
+    validate_volume_consistency,
 )
 
 
@@ -321,6 +322,131 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         assert all_valid is False
         assert any("monotonically" in m for m in messages)
+
+    def test_wrong_type_raises_type_error(self):
+        """validate_process() must raise TypeError for non-BioProcess arguments."""
+        with pytest.raises(TypeError, match="BioProcess"):
+            validate_process("not a process")
+
+    def test_wrong_type_dict_raises_type_error(self):
+        with pytest.raises(TypeError):
+            validate_process({"metadata": "fake"})
+
+    def test_wrong_type_none_raises_type_error(self):
+        with pytest.raises(TypeError):
+            validate_process(None)
+
+    def test_process_with_static_only_components(self):
+        """A process with only static components should pass (biomass check aside)."""
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                    is_intracellular=False,
+                ),
+            },
+        )
+        all_valid, messages = validate_process(process)
+        # biomass is present, no dynamic TS to fail -> should be valid
+        assert all_valid is True
+
+    def test_process_with_process_variable_timeseries(self):
+        """Invalid TimeSeries in a process variable must be caught."""
+        bad_ts = _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])  # non-monotonic
+        pv = ProcessVariable(
+            name="temperature", unit="°C", is_controlled=True, values=bad_ts
+        )
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                    is_intracellular=False,
+                ),
+            },
+            process_variables={"temperature": pv},
+        )
+        all_valid, messages = validate_process(process)
+        assert all_valid is False
+        assert any("temperature" in m for m in messages)
+
+
+# ---------------------------------------------------------------------------
+# validate_volume_consistency
+# ---------------------------------------------------------------------------
+
+class TestValidateVolumeConsistency:
+    def _make_process_with_volume(self, initial_volume, changes):
+        """Build a BioProcess with given volume changes for consistency tests."""
+        volume_changes = {}
+        for name, (is_continuous, timepoints, values, feed_medium) in changes.items():
+            volume_changes[name] = VolumeChange(
+                name=name,
+                unit="L",
+                is_controlled=True,
+                is_continuous=is_continuous,
+                feed_medium=feed_medium or FeedMedium(name="f", density=1.0, density_unit="kg/L"),
+                values=_ts(timepoints, values),
+            )
+        return BioProcess(
+            metadata=BioProcessMetadata(name="test", process_type="fed_batch"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=10.0,
+                               time_reference="inoculation"),
+            volume=Volume(initial_volume=initial_volume, unit="L",
+                          volume_changes=volume_changes),
+            reactor_medium=ReactorMedium(
+                name="medium", density=1.0, density_unit="kg/L",
+            ),
+        )
+
+    def test_continuous_volume_balance_ok(self):
+        # Cumulative feed: 0 -> 1 L => total change = 1 L; initial=1, expected final=2
+        process = self._make_process_with_volume(
+            initial_volume=1.0,
+            changes={
+                "feed": (True, [0.0, 10.0], [0.0, 1.0], None),
+            },
+        )
+        ok, msg, delta = validate_volume_consistency(process, final_volume=2.0)
+        assert ok is True
+        assert "OK" in msg
+        assert abs(delta - 1.0) < 1e-6
+
+    def test_discrete_volume_balance_ok(self):
+        # Discrete boluses: 0.5 + 0.5 = 1.0 L; initial=1, expected final=2
+        process = self._make_process_with_volume(
+            initial_volume=1.0,
+            changes={
+                "bolus": (False, [2.0, 5.0], [0.5, 0.5], None),
+            },
+        )
+        ok, msg, delta = validate_volume_consistency(process, final_volume=2.0)
+        assert ok is True
+        assert abs(delta - 1.0) < 1e-6
+
+    def test_volume_inconsistency_detected(self):
+        # Cumulative feed: 0 -> 0.1 L; initial=1, expected final=3 (large mismatch)
+        process = self._make_process_with_volume(
+            initial_volume=1.0,
+            changes={
+                "feed": (True, [0.0, 10.0], [0.0, 0.1], None),
+            },
+        )
+        ok, msg, delta = validate_volume_consistency(process, final_volume=3.0)
+        assert ok is False
+        assert "inconsistency" in msg.lower()
+
+    def test_negative_volume_change(self):
+        # Sampling: cumulative removal 0 -> -0.2 L; initial=2, expected final=1.8
+        process = self._make_process_with_volume(
+            initial_volume=2.0,
+            changes={
+                "sample": (True, [0.0, 10.0], [0.0, -0.2], None),
+            },
+        )
+        ok, msg, delta = validate_volume_consistency(process, final_volume=1.8)
+        assert ok is True
 
 
 if __name__ == "__main__":

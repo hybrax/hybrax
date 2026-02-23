@@ -1,467 +1,263 @@
 """
-Basic tests for BPbench data structures
+Tests for BPbench data structures (current architecture).
 """
 
 import pytest
 import jax.numpy as jnp
+
 from bpbench import (
-    BenchmarkDataset, CaseStudy, Process,
-    TimeSeries, RawTimeSeries, TimeAxis,
-    ReactorProperties, StaticVariable,
-    get_event_times, leave_one_process_out, iter_loocv
+    TimeAxis,
+    TimeSeries,
+    StaticVariable,
+    BioProcessMetadata,
+    ProcessVariable,
+    FeedMediumComponent,
+    ReactorMediumComponent,
+    FeedMedium,
+    ReactorMedium,
+    VolumeChange,
+    Volume,
+    BioProcess,
+    CaseStudy,
+    BenchmarkDataset,
 )
 
 
+# ---------------------------------------------------------------------------
+# Low-level structures
+# ---------------------------------------------------------------------------
+
 def test_time_axis_creation():
-    """Test TimeAxis creation"""
-    time_axis = TimeAxis(
-        unit="hours",
-        start=0.0,
-        end=48.0,
-        time_reference="inoculation"
-    )
-    assert time_axis.unit == "hours"
-    assert time_axis.start == 0.0
-    assert time_axis.end == 48.0
-    assert time_axis.time_reference == "inoculation"
-
-
-def test_raw_timeseries_creation():
-    """Test RawTimeSeries creation"""
-    raw = RawTimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
-        values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
-    )
-    assert raw.timepoints.shape == (5,)
-    assert raw.values.shape == (5,)
-    assert raw.measurement_std is None
+    ta = TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation")
+    assert ta.unit == "hours"
+    assert ta.start == 0.0
+    assert ta.end == 48.0
+    assert ta.time_reference == "inoculation"
 
 
 def test_timeseries_creation():
-    """Test TimeSeries creation"""
-    raw = RawTimeSeries(
+    ts = TimeSeries(
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
-        values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
+        values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
-    
-    timeseries = TimeSeries(
-        name="Biomass",
-        canonical_name="biomass",
-        unit="g/L",
-        role="state",
-        raw=raw
-    )
-    
-    assert timeseries.name == "Biomass"
-    assert timeseries.canonical_name == "biomass"
-    assert timeseries.unit == "g/L"
-    assert timeseries.role == "state"
-    assert timeseries.raw is not None
+    assert ts.timepoints.shape == (5,)
+    assert ts.values.shape == (5,)
 
 
-def test_process_creation():
-    """Test Process creation"""
-    time_axis = TimeAxis(
-        unit="hours",
-        start=0.0,
-        end=48.0,
-        time_reference="inoculation"
+def test_static_variable_creation():
+    sv = StaticVariable(value=0.5)
+    assert sv.value == 0.5
+
+
+def test_bioprocess_metadata_creation():
+    meta = BioProcessMetadata(name="batch_001", process_type="batch")
+    assert meta.name == "batch_001"
+    assert meta.process_type == "batch"
+    assert meta.notes is None
+
+
+def test_bioprocess_metadata_with_notes():
+    meta = BioProcessMetadata(name="fb_001", process_type="fed_batch", notes="Replicate A")
+    assert meta.notes == "Replicate A"
+
+
+# ---------------------------------------------------------------------------
+# Component structures
+# ---------------------------------------------------------------------------
+
+def test_process_variable_timeseries():
+    ts = TimeSeries(
+        timepoints=jnp.array([0., 1., 2.]),
+        values=jnp.array([37.0, 37.0, 37.0]),
     )
-    
-    reactor = ReactorProperties(
-        working_volume=1.0,
-        volume_unit="L"
+    pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
+    assert pv.name == "temperature"
+    assert pv.is_controlled is True
+    assert pv.spline is None
+    assert hasattr(pv.values, "timepoints")
+
+
+def test_process_variable_static():
+    sv = StaticVariable(value=7.0)
+    pv = ProcessVariable(name="pH", unit="", is_controlled=False, values=sv)
+    assert pv.name == "pH"
+    assert isinstance(pv.values, StaticVariable)
+
+
+def test_feed_medium_component_static():
+    fmc = FeedMediumComponent(
+        name="glucose", unit="g/L",
+        concentration=StaticVariable(value=500.0),
+        is_controlled=True,
     )
-    
-    process = Process(
-        process_id="batch_001",
-        process_type="batch",
-        time=time_axis,
-        reactor=reactor
+    assert fmc.name == "glucose"
+    assert fmc.concentration.value == 500.0
+
+
+def test_feed_medium_component_timeseries():
+    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([100.0, 200.0]))
+    fmc = FeedMediumComponent(name="glucose", unit="g/L", concentration=ts, is_controlled=True)
+    assert hasattr(fmc.concentration, "timepoints")
+
+
+def test_reactor_medium_component_timeseries():
+    ts = TimeSeries(timepoints=jnp.array([0., 1., 2.]), values=jnp.array([0.1, 0.5, 1.0]))
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    assert rc.name == "biomass"
+    assert rc.is_intracellular is False
+
+
+def test_reactor_medium_component_static():
+    rc = ReactorMediumComponent(
+        name="biomass", unit="g/L",
+        concentration=StaticVariable(value=1.0),
+        is_intracellular=False,
     )
-    
-    assert process.process_id == "batch_001"
-    assert process.process_type == "batch"
-    assert process.time is not None
-    assert process.reactor is not None
+    assert isinstance(rc.concentration, StaticVariable)
+
+
+# ---------------------------------------------------------------------------
+# Medium-level structures
+# ---------------------------------------------------------------------------
+
+def test_feed_medium_empty_components():
+    fm = FeedMedium(name="glucose_feed", density=1.0, density_unit="kg/L")
+    assert fm.name == "glucose_feed"
+    assert fm.components == {}
+
+
+def test_feed_medium_with_components():
+    fmc = FeedMediumComponent(
+        name="glucose", unit="g/L",
+        concentration=StaticVariable(value=500.0),
+        is_controlled=True,
+    )
+    fm = FeedMedium(
+        name="glucose_feed", density=1.1, density_unit="kg/L",
+        components={"glucose": fmc},
+    )
+    assert "glucose" in fm.components
+    assert fm.density == 1.1
+
+
+def test_reactor_medium_empty_components():
+    rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L")
+    assert rm.components == {}
+
+
+def test_reactor_medium_with_components():
+    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc})
+    assert "biomass" in rm.components
+
+
+def test_volume_change_continuous():
+    ts = TimeSeries(timepoints=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
+    fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
+    vc = VolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
+                      feed_medium=fm, values=ts)
+    assert vc.name == "feed"
+    assert vc.is_continuous is True
+    assert vc.values.timepoints.shape == (3,)
+
+
+def test_volume_change_discrete():
+    ts = TimeSeries(timepoints=jnp.array([2.0, 5.0]), values=jnp.array([0.5, 0.5]))
+    fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
+    vc = VolumeChange(name="bolus", unit="L", is_controlled=True, is_continuous=False,
+                      feed_medium=fm, values=ts)
+    assert vc.is_continuous is False
+
+
+def test_volume_default_volume_changes():
+    vol = Volume(initial_volume=1.0, unit="L")
+    assert vol.initial_volume == 1.0
+    assert vol.volume_changes == {}
+
+
+def test_volume_with_changes():
+    ts = TimeSeries(timepoints=jnp.array([0., 10.]), values=jnp.array([0.0, 0.5]))
+    fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
+    vc = VolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
+                      feed_medium=fm, values=ts)
+    vol = Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc})
+    assert "feed" in vol.volume_changes
+
+
+# ---------------------------------------------------------------------------
+# Process-level structures
+# ---------------------------------------------------------------------------
+
+def test_bioprocess_minimal():
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="batch_001", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=24.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
+    )
+    assert process.metadata.name == "batch_001"
+    assert process.metadata.process_type == "batch"
+    assert process.process_variables == {}
+
+
+def test_bioprocess_with_process_variables():
+    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([37.0, 37.0]))
+    pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
+        process_variables={"temperature": pv},
+    )
+    assert "temperature" in process.process_variables
 
 
 def test_case_study_creation():
-    """Test CaseStudy creation"""
-    process = Process(
-        process_id="batch_001",
-        process_type="batch"
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=24.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
-    
-    case_study = CaseStudy(
+    cs = CaseStudy(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
-        processes={"batch_001": process}
+        processes={"p1": process},
     )
-    
-    assert case_study.case_id == "ecoli_study"
-    assert case_study.organism == "Escherichia coli"
-    assert len(case_study.processes) == 1
+    assert cs.case_id == "ecoli_study"
+    assert cs.organism == "Escherichia coli"
+    assert "p1" in cs.processes
 
 
 def test_benchmark_dataset_creation():
-    """Test BenchmarkDataset creation"""
-    process = Process(
-        process_id="batch_001",
-        process_type="batch"
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=24.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
-    
-    case_study = CaseStudy(
+    cs = CaseStudy(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
-        processes={"batch_001": process}
+        processes={"p1": process},
     )
-    
     dataset = BenchmarkDataset(
-        metadata={
-            "name": "Test Dataset",
-            "version": "0.1.0"
-        },
-        case_studies={"ecoli": case_study}
+        metadata={"name": "Test Dataset", "version": "0.1.0"},
+        case_studies={"ecoli": cs},
     )
-    
     assert dataset.metadata["name"] == "Test Dataset"
+    assert "ecoli" in dataset.case_studies
     assert len(dataset.case_studies) == 1
 
 
-def test_get_event_times():
-    """Test get_event_times utility"""
-    process = Process(
-        process_id="batch_001",
-        process_type="batch",
-        event_times=jnp.array([12.0, 24.0, 36.0])
-    )
-    
-    event_times = get_event_times(process)
-    assert event_times.shape == (3,)
-    
-    # Test with None
-    process_no_events = Process(
-        process_id="batch_002",
-        process_type="batch"
-    )
-    event_times_empty = get_event_times(process_no_events)
-    assert event_times_empty.shape == (0,)
-
-
-def test_leave_one_process_out():
-    """Test leave_one_process_out utility"""
-    processes = {
-        "p1": Process(process_id="p1", process_type="batch"),
-        "p2": Process(process_id="p2", process_type="batch"),
-        "p3": Process(process_id="p3", process_type="batch")
-    }
-    
-    case_study = CaseStudy(
-        case_id="test",
-        organism="Test organism",
-        citation="Test citation",
-        processes=processes
-    )
-    
-    splits = list(leave_one_process_out(case_study))
-    assert len(splits) == 3
-    
-    # Check first split
-    train_ids, test_id = splits[0]
-    assert len(train_ids) == 2
-    assert test_id in ["p1", "p2", "p3"]
-    assert test_id not in train_ids
-
-
-def test_iter_loocv():
-    """Test iter_loocv utility"""
-    processes = {
-        "p1": Process(process_id="p1", process_type="batch"),
-        "p2": Process(process_id="p2", process_type="batch")
-    }
-    
-    case_study = CaseStudy(
-        case_id="test",
-        organism="Test organism",
-        citation="Test citation",
-        processes=processes
-    )
-    
-    dataset = BenchmarkDataset(
-        metadata={"name": "Test"},
-        case_studies={"case1": case_study}
-    )
-    
-    cv_splits = list(iter_loocv(dataset))
-    assert len(cv_splits) == 2
-    
-    case_id, train_ids, test_id = cv_splits[0]
-    assert case_id == "case1"
-    assert len(train_ids) == 1
-
-
-def test_static_variable():
-    """Test StaticVariable creation"""
-    var = StaticVariable(value=0.5, unit="1/h")
-    assert var.value == 0.5
-    assert var.unit == "1/h"
-
-
-def test_volume_change_creation():
-    """Test VolumeChange creation"""
-    from bpbench import VolumeChange
-    
-    # Test continuous, controlled volume change
-    vc_continuous = VolumeChange(
-        name="feed1",
-        controlled=True,
-        continuous=True,
-        unit="L/h",
-        feed_medium="glucose_feed"
-    )
-    assert vc_continuous.name == "feed1"
-    assert vc_continuous.controlled is True
-    assert vc_continuous.continuous is True
-    assert vc_continuous.unit == "L/h"
-    
-    # Test discrete volume change
-    vc_discrete = VolumeChange(
-        name="bolus_addition",
-        controlled=True,
-        continuous=False,
-        unit="L",
-        timepoints=jnp.array([10.0, 20.0]),
-        values=jnp.array([0.5, 0.3])
-    )
-    assert vc_discrete.continuous is False
-    assert vc_discrete.timepoints.shape == (2,)
-    assert vc_discrete.values.shape == (2,)
-
-
-def test_volume_creation():
-    """Test Volume creation"""
-    from bpbench import Volume, VolumeChange
-    
-    vc = VolumeChange(
-        name="feed1",
-        controlled=True,
-        continuous=True,
-        unit="L/h"
-    )
-    
-    volume = Volume(
-        volume_changes={"feed1": vc},
-        initial_volume=1.0,
-        volume_unit="L"
-    )
-    
-    assert volume.initial_volume == 1.0
-    assert volume.volume_unit == "L"
-    assert "feed1" in volume.volume_changes
-    assert volume.volume_changes["feed1"].name == "feed1"
-
-
-def test_volume_validation_continuous():
-    """Test Volume validation with continuous feed"""
-    from bpbench import Volume, VolumeChange
-    
-    # Create continuous feed with known rate
-    times = jnp.array([0., 10., 20., 30.])
-    rates = jnp.array([0.1, 0.1, 0.1, 0.1])  # constant 0.1 L/h
-    
-    raw = RawTimeSeries(timepoints=times, values=rates)
-    ts = TimeSeries(name='feed_rate', unit='L/h', raw=raw)
-    
-    vc = VolumeChange(
-        name='feed',
-        controlled=True,
-        continuous=True,
-        unit='L/h',
-        timeseries=ts
-    )
-    
-    volume = Volume(
-        volume_changes={'feed': vc},
-        initial_volume=1.0,
-        volume_unit='L'
-    )
-    
-    time_axis = TimeAxis(unit='hours', start=0.0, end=30.0, time_reference='inoculation')
-    
-    # Expected: 1.0 + 0.1*30 = 4.0 L
-    is_valid, msg = volume.validate_volume_consistency(time_axis=time_axis, final_volume=4.0)
-    assert is_valid is True
-    assert "4.00" in msg
-
-
-def test_volume_validation_discrete():
-    """Test Volume validation with discrete additions"""
-    from bpbench import Volume, VolumeChange
-    
-    vc = VolumeChange(
-        name='bolus',
-        controlled=True,
-        continuous=False,
-        unit='L',
-        timepoints=jnp.array([10.0, 20.0, 30.0]),
-        values=jnp.array([0.5, 0.5, 0.5])
-    )
-    
-    volume = Volume(
-        volume_changes={'bolus': vc},
-        initial_volume=2.0,
-        volume_unit='L'
-    )
-    
-    # Expected: 2.0 + 0.5 + 0.5 + 0.5 = 3.5 L
-    is_valid, msg = volume.validate_volume_consistency(final_volume=3.5)
-    assert is_valid is True
-    assert "3.50" in msg
-
-
-def test_volume_validation_inconsistency():
-    """Test Volume validation detects inconsistencies"""
-    from bpbench import Volume, VolumeChange
-    
-    vc = VolumeChange(
-        name='bolus',
-        controlled=True,
-        continuous=False,
-        unit='L',
-        timepoints=jnp.array([10.0]),
-        values=jnp.array([1.0])
-    )
-    
-    volume = Volume(
-        volume_changes={'bolus': vc},
-        initial_volume=1.0,
-        volume_unit='L'
-    )
-    
-    # Expected final: 2.0, but we claim it's 3.0 (50% difference)
-    is_valid, msg = volume.validate_volume_consistency(final_volume=3.0)
-    assert is_valid is False
-    assert "inconsistency" in msg.lower()
-
-
-def test_process_with_volume():
-    """Test Process creation with Volume"""
-    from bpbench import Volume, VolumeChange
-    
-    vc = VolumeChange(name='feed', controlled=True, continuous=True, unit='L/h')
-    volume = Volume(volume_changes={'feed': vc}, initial_volume=1.0)
-    
-    process = Process(
-        process_id="fed_batch_001",
-        process_type="fed_batch",
-        volume=volume
-    )
-    
-    assert process.volume is not None
-    assert process.volume.initial_volume == 1.0
-    assert "feed" in process.volume.volume_changes
-
-
-def test_process_backward_compatibility():
-    """Test Process with new field names"""
-    raw = RawTimeSeries(
-        timepoints=jnp.array([0., 12., 24.]),
-        values=jnp.array([0.1, 1.2, 3.5])
-    )
-    
-    biomass_ts = TimeSeries(name="Biomass", unit="g/L", role="state", raw=raw)
-    temp_ts = TimeSeries(name="Temperature", unit="K", role="control", raw=raw)
-    
-    process = Process(
-        process_id="test",
-        process_type="batch",
-        dynamic_variables={
-            "biomass": biomass_ts,
-            "temperature": temp_ts
-        }
-    )
-    
-    # Test new field names work correctly
-    assert "biomass" in process.dynamic_variables
-    assert "temperature" in process.dynamic_variables
-
-
-def test_volume_feed_validation():
-    """Test Volume feed component validation"""
-    from bpbench import Volume, VolumeChange, Feed, FeedComponent
-    
-    # Create a feed with glucose component
-    glucose_feed = Feed(
-        name="glucose_feed",
-        density=1.1,
-        density_unit="kg/L",
-        components={
-            "glucose": FeedComponent(concentration=500.0, unit="g/L")
-        }
-    )
-    
-    # Create VolumeChange with feed reference
-    vc = VolumeChange(
-        name='feed',
-        controlled=True,
-        continuous=True,
-        unit='L',
-        feed_medium='glucose_feed'
-    )
-    
-    volume = Volume(
-        volume_changes={'feed': vc},
-        initial_volume=1.0,
-        volume_unit='L'
-    )
-    
-    # Test with feed that exists but is missing some components
-    process_feeds = {'glucose_feed': glucose_feed}
-    dynamic_variables = {
-        'biomass': TimeSeries(name='biomass', unit='g/L'),
-        'glucose': TimeSeries(name='glucose', unit='g/L')
-    }
-    
-    is_valid, msg = volume.validate_feed_components(process_feeds, dynamic_variables)
-    # Should return True (no errors) but with warning about missing biomass
-    assert is_valid is True, "Should be valid even with warnings"
-    assert 'warning' in msg.lower(), "Should contain warning"
-    assert 'biomass' in msg.lower(), "Should warn about missing biomass"
-    
-    # Test with missing feed reference - should return False
-    is_valid, msg = volume.validate_feed_components({}, dynamic_variables)
-    assert is_valid is False, "Should be invalid when feed reference doesn't exist"
-    assert 'error' in msg.lower(), "Should contain error message"
-    assert 'not defined' in msg.lower(), "Should indicate feed is not defined"
-
-
-def test_volume_change_with_inline_feed():
-    """Test VolumeChange with inline feed definition"""
-    from bpbench import VolumeChange, Feed, FeedComponent
-    
-    inline_feed = Feed(
-        name="inline_feed",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "substrate": FeedComponent(concentration=100.0, unit="g/L")
-        }
-    )
-    
-    vc = VolumeChange(
-        name='feed',
-        controlled=True,
-        continuous=True,
-        unit='L',
-        feed=inline_feed
-    )
-    
-    assert vc.feed is not None
-    assert vc.feed.name == "inline_feed"
-    assert "substrate" in vc.feed.components
+def test_benchmark_dataset_empty():
+    dataset = BenchmarkDataset()
+    assert dataset.metadata == {}
+    assert dataset.case_studies == {}
 
 
 if __name__ == "__main__":

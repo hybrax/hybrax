@@ -1,5 +1,5 @@
 """
-Tests for serialization functionality
+Tests for bpbench.serialization functionality (current architecture).
 """
 
 import pytest
@@ -8,172 +8,253 @@ from pathlib import Path
 import tempfile
 
 from bpbench import (
-    BenchmarkDataset, CaseStudy, Process,
-    TimeSeries, RawTimeSeries, TimeAxis,
-    ReactorProperties, Feed, FeedComponent,
+    BenchmarkDataset,
+    CaseStudy,
+    BioProcess,
+    BioProcessMetadata,
+    TimeAxis,
+    TimeSeries,
     StaticVariable,
-    save_dataset, load_dataset,
-    save_dataset_json, load_dataset_json
+    ProcessVariable,
+    ReactorMediumComponent,
+    ReactorMedium,
+    FeedMediumComponent,
+    FeedMedium,
+    VolumeChange,
+    Volume,
+)
+from bpbench.serialization import (
+    save_dataset,
+    load_dataset,
+    save_dataset_json,
+    load_dataset_json,
 )
 
 
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
 @pytest.fixture
 def sample_dataset():
-    """Create a sample dataset for testing"""
-    time_axis = TimeAxis(
-        unit="hours",
-        start=0.0,
-        end=48.0,
-        time_reference="inoculation"
+    """Build a minimal but realistic BenchmarkDataset for serialization tests."""
+    biomass_ts = TimeSeries(
+        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
-    
-    biomass = TimeSeries(
-        name="Biomass",
-        canonical_name="biomass",
-        unit="g/L",
-        role="state",
-        raw=RawTimeSeries(
-            timepoints=jnp.array([0., 12., 24., 36., 48.]),
-            values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0])
-        )
+    glucose_ts = TimeSeries(
+        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        values=jnp.array([20.0, 15.0, 8.0, 2.0, 0.5]),
     )
-    
-    feed = Feed(
-        name="Glucose feed",
-        density=1.1,
-        density_unit="kg/L",
-        components={
-            "glucose": FeedComponent(concentration=500.0, unit="g/L")
-        }
+    biomass_rc = ReactorMediumComponent(
+        name="biomass", unit="g/L",
+        concentration=biomass_ts,
+        is_intracellular=False,
     )
-    
-    process = Process(
-        process_id="batch_001",
-        process_type="batch",
-        time=time_axis,
-        dynamic_variables={"biomass": biomass},
-        feeds={"feed1": feed},
-        static_variables={"mu_max": StaticVariable(value=0.5, unit="1/h")},
-        reactor=ReactorProperties(
-            working_volume=1.0,
-            volume_unit="L"
-        )
+    glucose_rc = ReactorMediumComponent(
+        name="glucose", unit="g/L",
+        concentration=glucose_ts,
+        is_intracellular=False,
     )
-    
+    reactor_medium = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={"biomass": biomass_rc, "glucose": glucose_rc},
+    )
+
+    feed_comp = FeedMediumComponent(
+        name="glucose", unit="g/L",
+        concentration=StaticVariable(value=500.0),
+        is_controlled=True,
+    )
+    feed_medium = FeedMedium(
+        name="glucose_feed", density=1.1, density_unit="kg/L",
+        components={"glucose": feed_comp},
+    )
+    feed_ts = TimeSeries(
+        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
+    )
+    volume_change = VolumeChange(
+        name="glucose_feed", unit="L",
+        is_controlled=True, is_continuous=True,
+        feed_medium=feed_medium,
+        values=feed_ts,
+    )
+    volume = Volume(
+        initial_volume=1.0, unit="L",
+        volume_changes={"glucose_feed": volume_change},
+    )
+
+    temp_ts = TimeSeries(
+        timepoints=jnp.array([0., 12., 24.]),
+        values=jnp.array([37.0, 37.0, 37.0]),
+    )
+    pv_temp = ProcessVariable(
+        name="temperature", unit="°C", is_controlled=True, values=temp_ts
+    )
+    pv_ph = ProcessVariable(
+        name="pH", unit="", is_controlled=False, values=StaticVariable(value=7.0)
+    )
+
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="fed_batch_001", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation"),
+        volume=volume,
+        reactor_medium=reactor_medium,
+        process_variables={"temperature": pv_temp, "pH": pv_ph},
+    )
+
     case_study = CaseStudy(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
-        processes={"batch_001": process}
+        processes={"fed_batch_001": process},
     )
-    
-    dataset = BenchmarkDataset(
-        metadata={
-            "name": "Test Dataset",
-            "version": "0.1.0",
-            "description": "Test dataset for serialization"
-        },
-        case_studies={"ecoli": case_study}
+
+    return BenchmarkDataset(
+        metadata={"name": "Test Dataset", "version": "0.1.0",
+                  "description": "Test dataset for serialization"},
+        case_studies={"ecoli": case_study},
     )
-    
-    return dataset
 
 
-def test_save_load_yaml_hdf5(sample_dataset):
-    """Test YAML + HDF5 serialization"""
+# ---------------------------------------------------------------------------
+# YAML + HDF5 serialization
+# ---------------------------------------------------------------------------
+
+def test_save_creates_files(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_dataset"
-        
-        # Save
         save_dataset(sample_dataset, save_path)
-        
-        # Check files exist
         assert (save_path / "metadata.yaml").exists()
         assert (save_path / "arrays.h5").exists()
-        
-        # Load
-        loaded_dataset = load_dataset(save_path)
-        
-        # Verify metadata
-        assert loaded_dataset.metadata["name"] == "Test Dataset"
-        assert loaded_dataset.metadata["version"] == "0.1.0"
-        
-        # Verify structure
-        assert "ecoli" in loaded_dataset.case_studies
-        case_study = loaded_dataset.case_studies["ecoli"]
-        assert case_study.case_id == "ecoli_study"
-        assert case_study.organism == "Escherichia coli"
-        
-        # Verify process
-        assert "batch_001" in case_study.processes
-        process = case_study.processes["batch_001"]
-        assert process.process_type == "batch"
-        
-        # Verify timeseries data
-        assert "biomass" in process.dynamic_variables
-        biomass = process.dynamic_variables["biomass"]
-        assert biomass.name == "Biomass"
-        assert biomass.raw is not None
-        assert biomass.raw.timepoints.shape == (5,)
 
 
-def test_save_load_json(sample_dataset):
-    """Test JSON serialization"""
+def test_save_load_roundtrip_metadata(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        assert loaded.metadata["name"] == "Test Dataset"
+        assert loaded.metadata["version"] == "0.1.0"
+
+
+def test_save_load_roundtrip_structure(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        assert "ecoli" in loaded.case_studies
+        cs = loaded.case_studies["ecoli"]
+        assert cs.case_id == "ecoli_study"
+        assert cs.organism == "Escherichia coli"
+        assert "fed_batch_001" in cs.processes
+
+
+def test_save_load_roundtrip_process_metadata(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        assert proc.metadata.name == "fed_batch_001"
+        assert proc.metadata.process_type == "fed_batch"
+
+
+def test_save_load_roundtrip_timeseries(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        biomass = proc.reactor_medium.components["biomass"]
+        assert hasattr(biomass.concentration, "timepoints")
+        assert biomass.concentration.timepoints.shape == (5,)
+        assert jnp.allclose(
+            biomass.concentration.values,
+            jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
+        )
+
+
+def test_save_load_roundtrip_static_variable(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        ph = proc.process_variables["pH"]
+        assert isinstance(ph.values, StaticVariable)
+        assert ph.values.value == pytest.approx(7.0)
+
+
+def test_save_load_roundtrip_volume(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        assert proc.volume.initial_volume == pytest.approx(1.0)
+        assert "glucose_feed" in proc.volume.volume_changes
+        vc = proc.volume.volume_changes["glucose_feed"]
+        assert vc.is_continuous is True
+        assert vc.values.timepoints.shape == (5,)
+
+
+def test_save_load_roundtrip_feed_medium(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        vc = proc.volume.volume_changes["glucose_feed"]
+        assert vc.feed_medium is not None
+        assert vc.feed_medium.name == "glucose_feed"
+        assert "glucose" in vc.feed_medium.components
+        assert vc.feed_medium.components["glucose"].concentration.value == pytest.approx(500.0)
+
+
+# ---------------------------------------------------------------------------
+# JSON serialization
+# ---------------------------------------------------------------------------
+
+def test_json_save_creates_file(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_dataset.json"
-        
-        # Save
         save_dataset_json(sample_dataset, save_path)
-        
-        # Check file exists
         assert save_path.exists()
-        
-        # Load
-        loaded_dataset = load_dataset_json(save_path)
-        
-        # Verify metadata
-        assert loaded_dataset.metadata["name"] == "Test Dataset"
-        
-        # Verify structure
-        assert "ecoli" in loaded_dataset.case_studies
-        case_study = loaded_dataset.case_studies["ecoli"]
-        assert case_study.organism == "Escherichia coli"
 
 
-def test_feed_serialization(sample_dataset):
-    """Test that feed data is properly serialized and loaded"""
+def test_json_roundtrip_metadata(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        
-        save_dataset(sample_dataset, save_path)
-        loaded_dataset = load_dataset(save_path)
-        
-        process = loaded_dataset.case_studies["ecoli"].processes["batch_001"]
-        
-        # Verify feed
-        assert "feed1" in process.feeds
-        feed = process.feeds["feed1"]
-        assert feed.name == "Glucose feed"
-        assert feed.density == 1.1
-        assert "glucose" in feed.components
-        assert feed.components["glucose"].concentration == 500.0
+        save_path = Path(tmpdir) / "test_dataset.json"
+        save_dataset_json(sample_dataset, save_path)
+        loaded = load_dataset_json(save_path)
+
+        assert loaded.metadata["name"] == "Test Dataset"
+        assert "ecoli" in loaded.case_studies
+        assert loaded.case_studies["ecoli"].organism == "Escherichia coli"
 
 
-def test_static_variables_serialization(sample_dataset):
-    """Test that static variables are properly serialized and loaded"""
+def test_json_roundtrip_timeseries(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        
-        save_dataset(sample_dataset, save_path)
-        loaded_dataset = load_dataset(save_path)
-        
-        process = loaded_dataset.case_studies["ecoli"].processes["batch_001"]
-        
-        # Verify static variable
-        assert "mu_max" in process.static_variables
-        mu_max = process.static_variables["mu_max"]
-        assert mu_max.value == 0.5
-        assert mu_max.unit == "1/h"
+        save_path = Path(tmpdir) / "test_dataset.json"
+        save_dataset_json(sample_dataset, save_path)
+        loaded = load_dataset_json(save_path)
+
+        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        biomass = proc.reactor_medium.components["biomass"]
+        assert biomass.concentration.timepoints.shape == (5,)
+        assert jnp.allclose(
+            biomass.concentration.values,
+            jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
+        )
 
 
 if __name__ == "__main__":
