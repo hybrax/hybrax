@@ -52,6 +52,14 @@ from .inspect import (
 # Import serialization functions
 from . import serialization
 from . import validate
+from .validate import (
+    validate_timeseries_shape,
+    validate_volume_change_sign,
+    validate_volume_change_states,
+    validate_biomass_in_reactor_medium,
+    validate_process,
+    validate_volume_consistency,
+)
 
 __all__ = [
     # Version
@@ -78,4 +86,11 @@ __all__ = [
     # Modules
     "serialization",
     "validate",
+    # Validation functions
+    "validate_timeseries_shape",
+    "validate_volume_change_sign",
+    "validate_volume_change_states",
+    "validate_biomass_in_reactor_medium",
+    "validate_process",
+    "validate_volume_consistency",
 ]
