@@ -8,7 +8,7 @@ from .dataclasses import BioProcess
 
 
 def validate_volume_consistency(process: BioProcess,
-                                final_volume: Optional[float] = None) -> Tuple[bool, str]:
+                                final_volume: Optional[float] = None) -> Tuple[bool, str, float]:
     """
     Validate that volume changes sum to expected final volume.
     
