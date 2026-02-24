@@ -21,7 +21,6 @@ from bpbench import (
     CaseStudy,
     BenchmarkDataset,
     print_process_structure,
-    print_structure,          # backward-compatible alias
     print_dataset_structure,
     plot_process,
     plot_case_study,
