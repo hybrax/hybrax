@@ -1,129 +1,165 @@
 """
-Test JAX compatibility and PyTree functionality
+Test JAX compatibility with BPbench dataclasses.
+
+Regular Python dataclasses are NOT registered as JAX PyTrees by default.
+These tests verify that JAX arrays embedded in our dataclasses work correctly
+with JAX operations (jit, grad, vmap, etc.) when extracted from the structures.
 """
 
 import pytest
 import jax
 import jax.numpy as jnp
-from jax import tree_util
 
 from bpbench import (
-    TimeAxis, RawTimeSeries, TimeSeries,
-    StaticVariable, ReactorProperties, Process
+    TimeAxis,
+    TimeSeries,
+    StaticVariable,
+    BioProcessMetadata,
+    ReactorMediumComponent,
+    ReactorMedium,
+    Volume,
+    BioProcess,
+    ProcessVariable,
 )
 
 
-def test_timeaxis_pytree():
-    """Test TimeAxis is a valid PyTree"""
-    time_axis = TimeAxis(
-        unit="hours",
-        start=0.0,
-        end=48.0,
-        time_reference="inoculation"
-    )
-    
-    # Check it can be flattened and unflattened
-    leaves, treedef = tree_util.tree_flatten(time_axis)
-    reconstructed = tree_util.tree_unflatten(treedef, leaves)
-    
-    assert reconstructed.unit == time_axis.unit
-    assert reconstructed.start == time_axis.start
-    assert reconstructed.end == time_axis.end
-    assert reconstructed.time_reference == time_axis.time_reference
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _ts(timepoints, values):
+    return TimeSeries(timepoints=jnp.array(timepoints), values=jnp.array(values))
 
 
-def test_raw_timeseries_pytree():
-    """Test RawTimeSeries is a valid PyTree"""
-    raw = RawTimeSeries(
-        timepoints=jnp.array([0., 12., 24.]),
-        values=jnp.array([0.1, 1.2, 3.5])
+def _make_process():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    return BioProcess(
+        metadata=BioProcessMetadata(name="test", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=2.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L",
+                                     components={"biomass": rc}),
     )
-    
-    # Check it can be flattened and unflattened
-    leaves, treedef = tree_util.tree_flatten(raw)
-    reconstructed = tree_util.tree_unflatten(treedef, leaves)
-    
-    assert jnp.allclose(reconstructed.timepoints, raw.timepoints)
-    assert jnp.allclose(reconstructed.values, raw.values)
 
 
-def test_timeseries_pytree():
-    """Test TimeSeries is a valid PyTree"""
-    raw = RawTimeSeries(
-        timepoints=jnp.array([0., 12., 24.]),
-        values=jnp.array([0.1, 1.2, 3.5])
-    )
-    
-    timeseries = TimeSeries(
-        name="Biomass",
-        unit="g/L",
-        role="state",
-        raw=raw
-    )
-    
-    # Check it can be flattened and unflattened
-    leaves, treedef = tree_util.tree_flatten(timeseries)
-    reconstructed = tree_util.tree_unflatten(treedef, leaves)
-    
-    assert reconstructed.name == timeseries.name
-    assert reconstructed.unit == timeseries.unit
-    assert jnp.allclose(reconstructed.raw.values, timeseries.raw.values)
+# ---------------------------------------------------------------------------
+# JAX array storage in dataclasses
+# ---------------------------------------------------------------------------
+
+def test_timeseries_stores_jax_arrays():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    assert isinstance(ts.timepoints, jnp.ndarray)
+    assert isinstance(ts.values, jnp.ndarray)
+    assert ts.timepoints.shape == (3,)
+    assert ts.values.shape == (3,)
 
 
-def test_jax_transformations():
-    """Test that PyTrees work with JAX transformations"""
-    raw = RawTimeSeries(
-        timepoints=jnp.array([0., 12., 24.]),
-        values=jnp.array([0.1, 1.2, 3.5])
-    )
-    
-    # Define a simple function
-    def compute_mean(raw_ts):
-        return jnp.mean(raw_ts.values)
-    
-    # Test basic computation
-    result = compute_mean(raw)
-    assert isinstance(result, jnp.ndarray)
-    
-    # Test with jit
-    jit_compute = jax.jit(compute_mean)
-    result_jit = jit_compute(raw)
-    assert jnp.allclose(result, result_jit)
+def test_reactor_component_stores_timeseries():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    assert isinstance(rc.concentration.values, jnp.ndarray)
 
 
-def test_process_pytree():
-    """Test Process is a valid PyTree"""
-    time_axis = TimeAxis(
-        unit="hours",
-        start=0.0,
-        end=48.0,
-        time_reference="inoculation"
-    )
-    
-    biomass = TimeSeries(
-        name="Biomass",
-        unit="g/L",
-        role="state",
-        raw=RawTimeSeries(
-            timepoints=jnp.array([0., 12., 24.]),
-            values=jnp.array([0.1, 1.2, 3.5])
-        )
-    )
-    
-    process = Process(
-        process_id="batch_001",
-        process_type="batch",
-        time=time_axis,
-        dynamic_variables={"biomass": biomass}
-    )
-    
-    # Check it can be flattened and unflattened
-    leaves, treedef = tree_util.tree_flatten(process)
-    reconstructed = tree_util.tree_unflatten(treedef, leaves)
-    
-    assert reconstructed.process_id == process.process_id
-    assert reconstructed.process_type == process.process_type
-    assert "biomass" in reconstructed.dynamic_variables
+def test_jax_operations_on_timeseries_values():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    mean_val = jnp.mean(ts.values)
+    assert float(mean_val) == pytest.approx((0.1 + 0.5 + 1.0) / 3, rel=1e-5)
+
+
+def test_jax_operations_on_timepoints():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    diffs = jnp.diff(ts.timepoints)
+    assert jnp.all(diffs > 0)
+
+
+# ---------------------------------------------------------------------------
+# JAX transformations on arrays extracted from dataclasses
+# ---------------------------------------------------------------------------
+
+def test_jit_on_timeseries_values():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+
+    @jax.jit
+    def compute_mean(values):
+        return jnp.mean(values)
+
+    result = compute_mean(ts.values)
+    assert float(result) == pytest.approx((0.1 + 0.5 + 1.0) / 3, rel=1e-5)
+
+
+def test_jit_on_multiple_arrays():
+    ts = _ts([0., 1., 2., 3.], [0.0, 0.5, 1.0, 1.5])
+
+    @jax.jit
+    def trapezoid_integral(timepoints, values):
+        return jnp.trapezoid(values, timepoints)
+
+    result = trapezoid_integral(ts.timepoints, ts.values)
+    assert float(result) == pytest.approx(2.25, rel=1e-4)
+
+
+def test_grad_on_timeseries_values():
+    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+
+    def sum_fn(values):
+        return jnp.sum(values ** 2)
+
+    grad_fn = jax.grad(sum_fn)
+    grad = grad_fn(ts.values)
+    expected = 2 * ts.values
+    assert jnp.allclose(grad, expected)
+
+
+def test_vmap_on_timeseries():
+    # Create a batch of values and use vmap
+    batch_values = jnp.stack([
+        jnp.array([0.1, 0.5, 1.0]),
+        jnp.array([0.2, 0.6, 1.2]),
+    ])
+
+    @jax.vmap
+    def compute_max(values):
+        return jnp.max(values)
+
+    results = compute_max(batch_values)
+    assert results.shape == (2,)
+    assert float(results[0]) == pytest.approx(1.0, rel=1e-5)
+    assert float(results[1]) == pytest.approx(1.2, rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# JAX with BioProcess data extraction
+# ---------------------------------------------------------------------------
+
+def test_extract_and_operate_on_bioprocess_data():
+    process = _make_process()
+
+    # Extract the biomass TimeSeries from the process
+    biomass_ts = process.reactor_medium.components["biomass"].concentration
+
+    # Apply JAX operations
+    mean_biomass = jnp.mean(biomass_ts.values)
+    assert float(mean_biomass) == pytest.approx((0.1 + 0.5 + 1.0) / 3, rel=1e-5)
+
+
+def test_jit_with_extracted_arrays():
+    process = _make_process()
+    biomass_ts = process.reactor_medium.components["biomass"].concentration
+
+    @jax.jit
+    def growth_rate_approx(values, timepoints):
+        return jnp.diff(values) / jnp.diff(timepoints)
+
+    rates = growth_rate_approx(biomass_ts.values, biomass_ts.timepoints)
+    assert rates.shape == (2,)
+    assert jnp.all(rates > 0)
+
+
+def test_static_variable_is_plain_float():
+    sv = StaticVariable(value=3.14)
+    # StaticVariable stores a plain Python float, not a JAX array
+    assert sv.value == pytest.approx(3.14)
 
 
 if __name__ == "__main__":
