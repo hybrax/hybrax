@@ -42,6 +42,7 @@ from .inspect import (
 # Import serialization functions
 from . import serialization
 from . import validate
+from . import mechanistic
 from .validate import (
     validate_timeseries_shape,
     validate_volume_change_sign,
@@ -88,4 +89,5 @@ __all__ = [
     # Modules
     "serialization",
     "validate",
+    "mechanistic",
 ]
