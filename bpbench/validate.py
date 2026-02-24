@@ -4,7 +4,7 @@ Validation utilities for bioprocess data
 
 import jax.numpy as jnp
 from typing import Dict, List, Optional, Tuple
-from ..dataclasses import BioProcess, TimeSeries, VolumeChange
+from .dataclasses import BioProcess, TimeSeries, VolumeChange
 
 
 def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
@@ -214,14 +214,14 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
         for comp_name, comp in process.reactor_medium.components.items():
             if hasattr(comp.concentration, "timepoints"):
                 ok, msg = validate_timeseries_shape(comp.concentration, name=comp_name)
-                messages.append(msg)
+                messages.append((ok, msg))
                 all_valid = all_valid and ok
 
     # Process variables
     for pv_name, pv in process.process_variables.items():
         if hasattr(pv.values, "timepoints"):
             ok, msg = validate_timeseries_shape(pv.values, name=pv_name)
-            messages.append(msg)
+            messages.append((ok, msg))
             all_valid = all_valid and ok
 
     # Volume changes
@@ -229,24 +229,24 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
         for vc_name, vc in process.volume.volume_changes.items():
             if vc.values is not None:
                 ok, msg = validate_timeseries_shape(vc.values, name=vc_name)
-                messages.append(msg)
+                messages.append((ok, msg))
                 all_valid = all_valid and ok
 
         # --- Volume change sign checks ---
         for vc_name, vc in process.volume.volume_changes.items():
             if vc.values is not None:
                 ok, msg = validate_volume_change_sign(vc)
-                messages.append(msg)
+                messages.append((ok, msg))
                 all_valid = all_valid and ok
 
         # --- State-variable / feed-medium coverage ---
         ok, msg = validate_volume_change_states(process)
-        messages.append(msg)
+        messages.append((ok, msg))
         all_valid = all_valid and ok
 
     # --- Biomass check ---
     ok, msg = validate_biomass_in_reactor_medium(process)
-    messages.append(msg)
+    messages.append((ok, msg))
     all_valid = all_valid and ok
 
     return all_valid, messages
