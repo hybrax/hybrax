@@ -1,5 +1,5 @@
 """
-Tests for bpbench.inspect utility functions (print_structure, print_dataset_structure).
+Tests for bpbench.inspect utility functions.
 """
 
 import pytest
@@ -20,8 +20,11 @@ from bpbench import (
     Volume,
     CaseStudy,
     BenchmarkDataset,
-    print_structure,
+    print_process_structure,
+    print_structure,          # backward-compatible alias
     print_dataset_structure,
+    plot_process,
+    plot_case_study,
 )
 
 
@@ -108,7 +111,156 @@ def complex_process():
 
 
 # ---------------------------------------------------------------------------
-# print_structure tests
+# print_process_structure tests (verbosity=3 – full, default)
+# ---------------------------------------------------------------------------
+
+def test_print_process_structure_simple(simple_process, capsys):
+    print_process_structure(simple_process)
+    captured = capsys.readouterr()
+
+    assert "BioProcess Structure" in captured.out
+    assert "test_001" in captured.out
+    assert "batch" in captured.out
+    assert "0.00 to 48.00 hours" in captured.out
+    assert "biomass" in captured.out
+    assert "g/L" in captured.out
+    assert "Initial: 1.0 L" in captured.out
+
+
+def test_print_process_structure_shows_process_name(simple_process, capsys):
+    print_process_structure(simple_process)
+    captured = capsys.readouterr()
+    assert "Process Name: test_001" in captured.out
+
+
+def test_print_process_structure_shows_process_type(simple_process, capsys):
+    print_process_structure(simple_process)
+    captured = capsys.readouterr()
+    assert "Process Type: batch" in captured.out
+
+
+def test_print_process_structure_shows_time_range(simple_process, capsys):
+    print_process_structure(simple_process)
+    captured = capsys.readouterr()
+    assert "Range: 0.00 to 48.00 hours" in captured.out
+    assert "inoculation" in captured.out
+
+
+def test_print_process_structure_shows_reactor_medium(simple_process, capsys):
+    print_process_structure(simple_process)
+    captured = capsys.readouterr()
+    assert "Reactor Medium:" in captured.out
+    assert "medium" in captured.out
+    assert "Components: (1 total)" in captured.out
+
+
+def test_print_process_structure_complex_shows_variables(complex_process, capsys):
+    print_process_structure(complex_process)
+    captured = capsys.readouterr()
+
+    assert "test_fed_batch_001" in captured.out
+    assert "fed_batch" in captured.out
+    assert "Replicate 1" in captured.out
+
+    assert "biomass" in captured.out
+    assert "glucose" in captured.out
+
+    assert "Process Variables:" in captured.out
+    assert "temperature" in captured.out
+    assert "pH" in captured.out
+
+    assert "Volume:" in captured.out
+    assert "Initial: 1.0 L" in captured.out
+    assert "Volume Changes: (1 total)" in captured.out
+    assert "glucose_feed" in captured.out
+
+
+def test_print_process_structure_no_crash_minimal():
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="minimal", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    try:
+        print_process_structure(process)
+    except Exception as exc:
+        pytest.fail(f"print_process_structure raised {exc} unexpectedly!")
+
+
+def test_print_process_structure_static_concentration(capsys):
+    rc = ReactorMediumComponent(
+        name="biomass", unit="g/L",
+        concentration=StaticVariable(value=2.0), is_intracellular=False
+    )
+    rm = ReactorMedium(name="m", density=1.0, density_unit="kg/L", components={"biomass": rc})
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="static_test", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=5.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=rm,
+    )
+    print_process_structure(process)
+    captured = capsys.readouterr()
+    assert "Static Concentration: 2.0" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Verbosity level 2 tests
+# ---------------------------------------------------------------------------
+
+def test_print_process_structure_verbosity2_shows_names(complex_process, capsys):
+    print_process_structure(complex_process, verbosity=2)
+    captured = capsys.readouterr()
+    assert "test_fed_batch_001" in captured.out
+    assert "temperature" in captured.out
+    assert "biomass" in captured.out
+
+
+def test_print_process_structure_verbosity2_no_units(complex_process, capsys):
+    print_process_structure(complex_process, verbosity=2)
+    captured = capsys.readouterr()
+    # Value ranges should not appear at verbosity 2
+    assert "Value range:" not in captured.out
+    # Units not printed individually
+    assert "Unit:" not in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Verbosity level 1 tests
+# ---------------------------------------------------------------------------
+
+def test_print_process_structure_verbosity1_lists_variables(complex_process, capsys):
+    print_process_structure(complex_process, verbosity=1)
+    captured = capsys.readouterr()
+    assert "Process:" in captured.out
+    assert "temperature" in captured.out or "Process Variables:" in captured.out
+
+
+def test_print_process_structure_verbosity1_minimal_output(complex_process, capsys):
+    print_process_structure(complex_process, verbosity=1)
+    captured = capsys.readouterr()
+    # Should not show detailed fields
+    assert "Value range:" not in captured.out
+    assert "Unit:" not in captured.out
+    assert "TimeSeries Data:" not in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat alias: print_structure
+# ---------------------------------------------------------------------------
+
+def test_print_structure_alias(simple_process, capsys):
+    print_structure(simple_process)
+    captured = capsys.readouterr()
+    assert "BioProcess Structure" in captured.out
+    assert "Process Name: test_001" in captured.out
+    assert "Process Type: batch" in captured.out
+    assert "Range: 0.00 to 48.00 hours" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# print_structure tests kept for regression (use alias)
 # ---------------------------------------------------------------------------
 
 def test_print_structure_simple(simple_process, capsys):
@@ -155,32 +307,21 @@ def test_print_structure_complex_shows_variables(complex_process, capsys):
     print_structure(complex_process)
     captured = capsys.readouterr()
 
-    # Process info
     assert "test_fed_batch_001" in captured.out
     assert "fed_batch" in captured.out
     assert "Replicate 1" in captured.out
 
-    # Reactor medium components
     assert "biomass" in captured.out
     assert "glucose" in captured.out
 
-    # Process variables
     assert "Process Variables:" in captured.out
     assert "temperature" in captured.out
     assert "pH" in captured.out
 
-    # Volume info
     assert "Volume:" in captured.out
     assert "Initial: 1.0 L" in captured.out
     assert "Volume Changes: (1 total)" in captured.out
     assert "glucose_feed" in captured.out
-
-
-def test_print_structure_with_show_values(simple_process, capsys):
-    print_structure(simple_process, show_values=True)
-    captured = capsys.readouterr()
-    # With show_values=True and <= 5 points the actual values array is shown
-    assert "Values:" in captured.out or "First 3:" in captured.out
 
 
 def test_print_structure_no_crash_minimal():
@@ -286,8 +427,100 @@ def test_print_dataset_structure_empty(capsys):
     captured = capsys.readouterr()
     assert "Benchmark Dataset Structure" in captured.out
     assert "(no case studies)" in captured.out
-    assert "Total datapoints in dataset: 0" in captured.out
 
+
+def test_print_dataset_structure_verbosity2(sample_dataset, capsys):
+    print_dataset_structure(sample_dataset, verbosity=2)
+    captured = capsys.readouterr()
+    assert "Benchmark Dataset Structure" in captured.out
+    assert "ecoli" in captured.out
+    assert "Escherichia coli" in captured.out
+    assert "p1" in captured.out
+    # Citation and datapoints should NOT appear
+    assert "Doe 2024" not in captured.out
+    assert "datapoints:" not in captured.out
+
+
+def test_print_dataset_structure_verbosity1(sample_dataset, capsys):
+    print_dataset_structure(sample_dataset, verbosity=1)
+    captured = capsys.readouterr()
+    assert "Benchmark Dataset Structure" in captured.out
+    assert "ecoli" in captured.out
+    # Organism, citation and process names should NOT appear at verbosity 1
+    assert "Escherichia coli" not in captured.out
+    assert "Doe 2024" not in captured.out
+    assert "p1" not in captured.out
+
+
+def test_print_dataset_structure_empty_verbosity1(capsys):
+    dataset = BenchmarkDataset()
+    print_dataset_structure(dataset, verbosity=1)
+    captured = capsys.readouterr()
+    assert "Benchmark Dataset Structure" in captured.out
+    assert "(no case studies)" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# plot_process smoke tests
+# ---------------------------------------------------------------------------
+
+def test_plot_process_returns_figure(complex_process):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig = plot_process(complex_process)
+    assert fig is not None
+    plt.close(fig)
+
+
+def test_plot_process_simple(simple_process):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig = plot_process(simple_process)
+    assert fig is not None
+    plt.close(fig)
+
+
+def test_plot_process_empty():
+    """A process with no plottable variables should still return a figure."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="empty", process_type="batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    fig = plot_process(process)
+    assert fig is not None
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# plot_case_study smoke tests
+# ---------------------------------------------------------------------------
+
+def test_plot_case_study_returns_figure(sample_dataset):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    cs = list(sample_dataset.case_studies.values())[0]
+    fig = plot_case_study(cs)
+    assert fig is not None
+    plt.close(fig)
+
+
+def test_plot_case_study_empty():
+    """A case study with no processes should still return a figure."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    cs = CaseStudy(case_id="empty", organism="None", citation="None")
+    fig = plot_case_study(cs)
+    assert fig is not None
+    plt.close(fig)
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
