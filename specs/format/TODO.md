@@ -5,20 +5,11 @@
         * Martens, et al. 2025 - synthetic mammalian case study.
 
 * **Validation functions for `/bpbench/validate.py`**
-    * Verify that a volume change is purely positive or purely negative: 
-    * If positive, verify that all dynamic state variables (i.e., concentrations) that are part of the reactor are also defined here.
-    * `TimeSeries` check if shapes are correct and if time points are ordered.
-    * in the `00_combined/*` folder we could have `validate/*` subfolder where all validation tests are done for all proccesses of the dataset.
-    * check if the reactor medium has a clearly defined ``biomass`` compound
-
-* Maybe the `ReactorMedium` could be a subclass of the `FeedMedium`.
-    * I think they could both be subclasses from Medium with both then pointing to `<Reactor,Feed>MediumComponent` which have both `is_intracellular` and `is_controlled` tags and then set `ReactorMediumComponent.is_controlled=False` and `FeedMediumComponent.is_intracellular=False` to default.
-
-* Reimplement all the tests for the package
-* How do we deal with initial concentrations and how do we indicate if they are controlled?
+    * ...
     
 * **Possible future compatabilities:**
     * How would I implement perfusion? - No idea.
+    * How do we deal with initial concentrations and how do we indicate if they are controlled?
 
 # Modeling Choices
 
@@ -103,3 +94,10 @@ TimeSeries:
 * ✅ add correct density to the `01_kittler` data
 * ✅ new notebook per case study where all processes are loaded & saved
         * this should check if there are any problems in the code when going from 1 to several
+* **Validation functions for `/bpbench/validate.py`**
+    * ✅ Verify that a volume change is purely positive or purely negative: 
+    * ✅ If positive, verify that all dynamic state variables (i.e., concentrations) that are part of the reactor are also defined here.
+    * ✅ `TimeSeries` check if shapes are correct and if time points are ordered.
+    * ✅ in the `00_combined/*` folder we could have `validate/*` subfolder where all validation tests are done for all proccesses of the dataset.
+    * ✅ check if the reactor medium has a clearly defined ``biomass`` compound
+* ✅ Reimplement all the tests for the package
