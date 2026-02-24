@@ -465,7 +465,7 @@ def test_print_dataset_structure_empty_verbosity1(capsys):
 # ---------------------------------------------------------------------------
 
 def test_plot_process_returns_figure(complex_process):
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig = plot_process(complex_process)
@@ -474,7 +474,7 @@ def test_plot_process_returns_figure(complex_process):
 
 
 def test_plot_process_simple(simple_process):
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig = plot_process(simple_process)
@@ -484,7 +484,7 @@ def test_plot_process_simple(simple_process):
 
 def test_plot_process_empty():
     """A process with no plottable variables should still return a figure."""
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     process = BioProcess(
@@ -503,7 +503,7 @@ def test_plot_process_empty():
 # ---------------------------------------------------------------------------
 
 def test_plot_case_study_returns_figure(sample_dataset):
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     cs = list(sample_dataset.case_studies.values())[0]
@@ -514,14 +514,13 @@ def test_plot_case_study_returns_figure(sample_dataset):
 
 def test_plot_case_study_empty():
     """A case study with no processes should still return a figure."""
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     cs = CaseStudy(case_id="empty", organism="None", citation="None")
     fig = plot_case_study(cs)
     assert fig is not None
     plt.close(fig)
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
