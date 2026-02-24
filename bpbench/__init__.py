@@ -34,7 +34,6 @@ from .dataclasses import (
 # Import inspect
 from .inspect import (
     print_process_structure,
-    print_structure,       # backward-compatible alias for print_process_structure
     print_dataset_structure,
     plot_process,
     plot_case_study,

@@ -106,14 +106,6 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
 
     print("=" * 80)
 
-
-# Backward-compatible alias
-def print_structure(process: BioProcess, verbosity: int = 3, **kwargs) -> None:
-    """Alias for :func:`print_process_structure` kept for backward compatibility."""
-    print_process_structure(process, verbosity=verbosity)
-
-
-
 def _print_process_variable_info(pv, prefix: str) -> None:
     """Helper function to print ProcessVariable information (verbosity=3)."""
     print(f"{prefix}{pv.name}")
@@ -274,31 +266,33 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
                     except Exception:
                         name = "<unnamed process>"
                     print(f"      * {p_key}: {name}")
-    else:
-        # Level 3
-        total_datapoints = 0
-        for cs_key, cs in dataset.case_studies.items():
-            cs_header = f"{cs_key}"
-            try:
-                cs_header += f"  (case_id: {cs.case_id})"
-            except Exception:
-                pass
+    
+    total_datapoints = 0
+    for cs_key, cs in dataset.case_studies.items():
+        cs_header = f"{cs_key}"
+        try:
+            cs_header += f"  (case_id: {cs.case_id})"
+        except Exception:
+            pass
+        if verbosity == 3:
             print(f"  - {cs_header}")
             print(f"      Organism: {cs.organism}")
             print(f"      Citation: {cs.citation}")
-            n_procs = len(cs.processes) if cs.processes else 0
+        n_procs = len(cs.processes) if cs.processes else 0
+        if verbosity == 3:
             print(f"      Processes: {n_procs}")
-            if cs.processes:
-                for p_key, proc in cs.processes.items():
-                    try:
-                        name = proc.metadata.name
-                    except Exception:
-                        name = "<unnamed process>"
-                    proc_dp = _count_datapoints_in_process(proc)
-                    total_datapoints += proc_dp
+        if cs.processes:
+            for p_key, proc in cs.processes.items():
+                try:
+                    name = proc.metadata.name
+                except Exception:
+                    name = "<unnamed process>"
+                proc_dp = _count_datapoints_in_process(proc)
+                total_datapoints += proc_dp
+                if verbosity == 3:
                     print(f"        * {p_key}: {name}  (datapoints: {proc_dp})")
-        print("\n" + "-" * 80)
-        print(f"Total datapoints in dataset: {total_datapoints}")
+    print("\n" + "-" * 80)
+    print(f"Total datapoints in dataset: {total_datapoints}")
 
     print("=" * 80)
 
@@ -316,6 +310,7 @@ def _collect_process_panels(process: BioProcess):
       - 'type': 'dynamic' | 'static'
       - for dynamic: 'x' (timepoints array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
+      - optional: 'render': 'line' | 'bar'
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0
     t_end = float(process.time_axis.end) if process.time_axis else 1.0
@@ -332,6 +327,7 @@ def _collect_process_panels(process: BioProcess):
                     'type': 'dynamic',
                     'x': comp.concentration.timepoints,
                     'y': comp.concentration.values,
+                    'render': 'line',
                 })
             else:
                 panels.append({
@@ -351,6 +347,7 @@ def _collect_process_panels(process: BioProcess):
                     'type': 'dynamic',
                     'x': pv.values.timepoints,
                     'y': pv.values.values,
+                    'render': 'line',
                 })
             else:
                 panels.append({
@@ -365,11 +362,14 @@ def _collect_process_panels(process: BioProcess):
         for vc in process.volume.volume_changes.values():
             unit_label = f" [{vc.unit}]" if vc.unit else ""
             if vc.values is not None and hasattr(vc.values, 'timepoints'):
+                is_continuous = getattr(vc, "is_continuous", True)
+                render = 'line' if is_continuous else 'bar'
                 panels.append({
                     'title': f"{vc.name}{unit_label}",
                     'type': 'dynamic',
                     'x': vc.values.timepoints,
                     'y': vc.values.values,
+                    'render': render,
                 })
 
     return panels
@@ -386,9 +386,17 @@ def _draw_panel(ax, panel, label=None, color=None):
     if panel['type'] == 'dynamic':
         x = panel['x']
         y = panel['y']
-        n = len(x)
-        fmt = 'o-' if n <= 30 else '-'
-        ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
+        render = panel.get('render', 'line')
+
+        if render == 'bar':
+            # Bar plot for discrete (non-continuous) volume changes
+            delta = x[-1]-x[0]
+            width = delta/30
+            ax.bar(x, y, label=label, width=width, edgecolor="k", **plot_kwargs)
+        else:
+            n = len(x)
+            fmt = 'o-' if n <= 30 else '-'
+            ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
     else:
         ax.hlines(
             panel['value'], panel['t_start'], panel['t_end'],
@@ -396,6 +404,97 @@ def _draw_panel(ax, panel, label=None, color=None):
         )
         ax.set_xlim(panel['t_start'], panel['t_end'])
 
+
+def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=None):
+    """
+    Plot all dynamic and static variables for every process in a CaseStudy.
+
+    All unique variables are discovered across every process first.  Each
+    variable gets its own subplot and all processes are overlaid using
+    distinct colours.  TimeSeries with ≤ 30 points are drawn with markers;
+    longer series are lines only.
+
+    Args:
+        case_study: CaseStudy object to plot.
+        figsize_per_panel: ``(width, height)`` in inches for each subplot.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    import matplotlib.pyplot as plt
+
+    variable_map = {}
+
+    for proc_key, process in case_study.processes.items():
+        time_unit = process.time_axis.unit if process.time_axis else "time"
+
+        for panel in _collect_process_panels(process):
+            key = panel['title']
+            if key not in variable_map:
+                variable_map[key] = {
+                    'title': panel['title'],
+                    'time_unit': time_unit,
+                    'data': [],
+                }
+            entry = dict(panel)
+            entry['label'] = proc_key
+            variable_map[key]['data'].append(entry)
+
+    if not variable_map:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
+                transform=ax.transAxes)
+        return fig
+
+    panels = list(variable_map.values())
+    fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    # Collect legend entries once (process key -> (handle, label))
+    legend_handles_by_label = {}
+
+    for i, panel_meta in enumerate(panels):
+        ax = axes_flat[i]
+        for j, data in enumerate(panel_meta['data']):
+            color = colors[j % len(colors)]
+            _draw_panel(ax, data, label=data['label'], color=color)
+
+        ax.set_title(panel_meta['title'])
+        ax.set_xlabel(f"time [{panel_meta['time_unit']}]")
+        ax.grid(True, alpha=0.3)
+
+        # harvest handles/labels from this axis (without drawing a per-axis legend)
+        handles, labels = ax.get_legend_handles_labels()
+        for h, lab in zip(handles, labels):
+            if lab and lab not in legend_handles_by_label:
+                legend_handles_by_label[lab] = h
+
+    for j in range(len(panels), len(axes_flat)):
+        axes_flat[j].set_visible(False)
+
+    fig.suptitle(f"Case Study: {case_study.case_id}", fontsize=12)
+
+    if legend_handles_by_label:
+        labels = list(legend_handles_by_label.keys())
+        handles = [legend_handles_by_label[l] for l in labels]
+        # Put one shared legend at bottom
+        fig.legend(
+            handles, labels,
+            loc="lower center",
+            ncol=min(len(labels), 5),
+            fontsize="small",
+            frameon=True,
+            fancybox=False,
+            edgecolor="k",
+            bbox_to_anchor=(0.5, 0.0),
+        )
+        fig.tight_layout(rect=(0, 0.06, 1, 1))
+    else:
+        fig.tight_layout()
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+    fig.show()
 
 def _make_figure(n_panels, figsize_per_panel):
     """Create a two-column figure with the correct number of rows."""
@@ -410,7 +509,7 @@ def _make_figure(n_panels, figsize_per_panel):
     return fig, axes.flatten()
 
 
-def plot_process(process: BioProcess, figsize_per_panel=(5, 3)):
+def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     """
     Plot all dynamic and static variables of a BioProcess in a two-column figure.
 
@@ -442,7 +541,7 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3)):
         ax = axes_flat[i]
         _draw_panel(ax, panel)
         ax.set_title(panel['title'])
-        ax.set_xlabel(time_unit)
+        ax.set_xlabel(f"time [{time_unit}]")
         ax.grid(True, alpha=0.3)
 
     for j in range(len(panels), len(axes_flat)):
@@ -452,74 +551,6 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3)):
         f"{process.metadata.name} ({process.metadata.process_type})", fontsize=12
     )
     fig.tight_layout()
-    return fig
-
-
-def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3)):
-    """
-    Plot all dynamic and static variables for every process in a CaseStudy.
-
-    All unique variables are discovered across every process first.  Each
-    variable gets its own subplot and all processes are overlaid using
-    distinct colours.  TimeSeries with ≤ 30 points are drawn with markers;
-    longer series are lines only.
-
-    Args:
-        case_study: CaseStudy object to plot.
-        figsize_per_panel: ``(width, height)`` in inches for each subplot.
-
-    Returns:
-        matplotlib.figure.Figure
-    """
-    import matplotlib.pyplot as plt
-
-    # First pass: collect unique variable keys and their data per process.
-    # key: (category, variable_name) -> {'title', 'time_unit', 'data': [...]}
-    variable_map = {}
-
-    for proc_key, process in case_study.processes.items():
-        t_start = float(process.time_axis.start) if process.time_axis else 0.0
-        t_end = float(process.time_axis.end) if process.time_axis else 1.0
-        time_unit = process.time_axis.unit if process.time_axis else "time"
-
-        for panel in _collect_process_panels(process):
-            # Re-derive a stable key from the title (category already implicit)
-            # We use title as the key so identical variable names map together.
-            key = panel['title']
-            if key not in variable_map:
-                variable_map[key] = {
-                    'title': panel['title'],
-                    'time_unit': time_unit,
-                    'data': [],
-                }
-            entry = dict(panel)
-            entry['label'] = proc_key
-            variable_map[key]['data'].append(entry)
-
-    if not variable_map:
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
-                transform=ax.transAxes)
-        return fig
-
-    panels = list(variable_map.values())
-    fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-    for i, panel_meta in enumerate(panels):
-        ax = axes_flat[i]
-        for j, data in enumerate(panel_meta['data']):
-            color = colors[j % len(colors)]
-            _draw_panel(ax, data, label=data['label'], color=color)
-        ax.set_title(panel_meta['title'])
-        ax.set_xlabel(panel_meta['time_unit'])
-        ax.grid(True, alpha=0.3)
-        if len(panel_meta['data']) > 1:
-            ax.legend(fontsize='small')
-
-    for j in range(len(panels), len(axes_flat)):
-        axes_flat[j].set_visible(False)
-
-    fig.suptitle(f"Case Study: {case_study.case_id}", fontsize=12)
-    fig.tight_layout()
-    return fig
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+    fig.show()
