@@ -33,8 +33,11 @@ from .dataclasses import (
 
 # Import inspect
 from .inspect import (
-    print_structure,
-    print_dataset_structure
+    print_process_structure,
+    print_structure,       # backward-compatible alias for print_process_structure
+    print_dataset_structure,
+    plot_process,
+    plot_case_study,
 )
 
 # Import serialization functions
@@ -61,8 +64,11 @@ __all__ = [
     "CaseStudy",
     "BenchmarkDataset",
     # Utils
+    "print_process_structure",
     "print_structure",
     "print_dataset_structure",
+    "plot_process",
+    "plot_case_study",
     # Modules
     "serialization",
     "validate",

@@ -1,82 +1,125 @@
 import jax.numpy as jnp
-from typing import Tuple, List, Generator
 from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
 
-def print_structure(process: BioProcess, indent: int = 0, show_values: bool = False) -> None:
+
+def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
     """
     Print a hierarchical view of the BioProcess object structure.
-    
-    This function displays the complete structure of a BioProcess object in a 
-    human-readable format, showing all fields, their types, and sizes.
-    
+
     Args:
         process: BioProcess object to inspect
-        indent: Starting indentation level (used internally for recursion)
-        show_values: If True, show sample values for arrays (first few elements)
-        
+        verbosity: Detail level (1=minimal, 2=medium, 3=full)
+
+            - Level 3 (most verbose): full details including units, value ranges, spline info
+            - Level 2 (mid verbose): variable names and data type/size, no units or value ranges
+            - Level 1 (least verbose): just which variables are saved, no other details
+
     Example:
-        >>> from bpbench import load_dataset
-        >>> dataset = load_dataset("path/to/dataset")
-        >>> process = dataset.case_studies["case1"].processes["proc1"]
-        >>> print_structure(process)
+        >>> print_process_structure(process, verbosity=1)
+        >>> print_process_structure(process, verbosity=2)
+        >>> print_process_structure(process)
     """
-    prefix = "  " * indent
-    
-    # Header
-    if indent == 0:
-        print("=" * 80)
-        print("BioProcess Structure")
-        print("=" * 80)
-    
-    # Basic information - BioProcess uses metadata instead of direct fields
-    print(f"{prefix}Process Name: {process.metadata.name}")
-    print(f"{prefix}Process Type: {process.metadata.process_type}")
-    if process.metadata.notes:
-        print(f"{prefix}Notes: {process.metadata.notes}")
-    
-    # Time axis
-    if process.time_axis is not None:
-        print(f"\n{prefix}Time:")
-        print(f"{prefix}  Range: {process.time_axis.start:.2f} to {process.time_axis.end:.2f} {process.time_axis.unit}")
-        print(f"{prefix}  Reference: {process.time_axis.time_reference}")
-    
-    # Reactor medium
-    if process.reactor_medium:
-        print(f"\n{prefix}Reactor Medium:")
-        print(f"{prefix}  Name: {process.reactor_medium.name}")
-        print(f"{prefix}  Density: {process.reactor_medium.density} {process.reactor_medium.density_unit}")
-        if process.reactor_medium.components:
-            print(f"{prefix}  Components: ({len(process.reactor_medium.components)} total)")
-            for comp_name, comp in process.reactor_medium.components.items():
-                _print_reactor_component_info(comp, prefix + "    ", show_values)
-    
-    # Process variables (pH, temperature, etc.)
-    if process.process_variables:
-        print(f"\n{prefix}Process Variables: ({len(process.process_variables)} total)")
-        for name, pv in process.process_variables.items():
-            _print_process_variable_info(pv, prefix + "  ", show_values)
-    
-    # Volume information
-    if process.volume is not None:
-        print(f"\n{prefix}Volume:")
-        print(f"{prefix}  Initial: {process.volume.initial_volume} {process.volume.unit}")
-        if process.volume.volume_changes:
-            print(f"{prefix}  Volume Changes: ({len(process.volume.volume_changes)} total)")
-            for name, change in process.volume.volume_changes.items():
-                _print_volume_change_info(change, prefix + "    ", show_values)
-    
-    if indent == 0:
-        print("=" * 80)
+    print("=" * 80)
+    print("BioProcess Structure")
+    print("=" * 80)
+
+    if verbosity == 1:
+        # Level 1: just list variable names
+        print(f"Process: {process.metadata.name} ({process.metadata.process_type})")
+        if process.reactor_medium and process.reactor_medium.components:
+            print(f"Reactor Medium Components: {list(process.reactor_medium.components.keys())}")
+        if process.process_variables:
+            print(f"Process Variables: {list(process.process_variables.keys())}")
+        if process.volume and process.volume.volume_changes:
+            print(f"Volume Changes: {list(process.volume.volume_changes.keys())}")
+
+    elif verbosity == 2:
+        # Level 2: names, controlled status, data type/size – no units or value ranges
+        print(f"Process Name: {process.metadata.name}")
+        print(f"Process Type: {process.metadata.process_type}")
+        if process.metadata.notes:
+            print(f"Notes: {process.metadata.notes}")
+
+        if process.time_axis is not None:
+            print(f"\nTime: {process.time_axis.start:.2f} to {process.time_axis.end:.2f}")
+
+        if process.reactor_medium and process.reactor_medium.components:
+            print(f"\nReactor Medium: {process.reactor_medium.name}")
+            print(f"  Components: ({len(process.reactor_medium.components)} total)")
+            for comp in process.reactor_medium.components.values():
+                if hasattr(comp.concentration, 'timepoints'):
+                    n = len(comp.concentration.timepoints)
+                    print(f"    - {comp.name}: TimeSeries ({n} points)")
+                else:
+                    print(f"    - {comp.name}: Static")
+
+        if process.process_variables:
+            print(f"\nProcess Variables: ({len(process.process_variables)} total)")
+            for pv in process.process_variables.values():
+                if hasattr(pv.values, 'timepoints'):
+                    n = len(pv.values.timepoints)
+                    print(f"  - {pv.name}: TimeSeries ({n} points), controlled={pv.is_controlled}")
+                else:
+                    print(f"  - {pv.name}: Static ({pv.values.value}), controlled={pv.is_controlled}")
+
+        if process.volume is not None:
+            print(f"\nVolume: {process.volume.initial_volume}")
+            if process.volume.volume_changes:
+                print(f"  Volume Changes: ({len(process.volume.volume_changes)} total)")
+                for vc in process.volume.volume_changes.values():
+                    n = len(vc.values.timepoints) if vc.values is not None else 0
+                    print(f"    - {vc.name}: {'Continuous' if vc.is_continuous else 'Discrete'} ({n} points)")
+
+    else:
+        # Level 3 (default): full details
+        print(f"Process Name: {process.metadata.name}")
+        print(f"Process Type: {process.metadata.process_type}")
+        if process.metadata.notes:
+            print(f"Notes: {process.metadata.notes}")
+
+        if process.time_axis is not None:
+            print(f"\nTime:")
+            print(f"  Range: {process.time_axis.start:.2f} to {process.time_axis.end:.2f} {process.time_axis.unit}")
+            print(f"  Reference: {process.time_axis.time_reference}")
+
+        if process.reactor_medium:
+            print(f"\nReactor Medium:")
+            print(f"  Name: {process.reactor_medium.name}")
+            print(f"  Density: {process.reactor_medium.density} {process.reactor_medium.density_unit}")
+            if process.reactor_medium.components:
+                print(f"  Components: ({len(process.reactor_medium.components)} total)")
+                for comp in process.reactor_medium.components.values():
+                    _print_reactor_component_info(comp, "    ")
+
+        if process.process_variables:
+            print(f"\nProcess Variables: ({len(process.process_variables)} total)")
+            for pv in process.process_variables.values():
+                _print_process_variable_info(pv, "  ")
+
+        if process.volume is not None:
+            print(f"\nVolume:")
+            print(f"  Initial: {process.volume.initial_volume} {process.volume.unit}")
+            if process.volume.volume_changes:
+                print(f"  Volume Changes: ({len(process.volume.volume_changes)} total)")
+                for change in process.volume.volume_changes.values():
+                    _print_volume_change_info(change, "    ")
+
+    print("=" * 80)
+
+
+# Backward-compatible alias
+def print_structure(process: BioProcess, verbosity: int = 3, **kwargs) -> None:
+    """Alias for :func:`print_process_structure` kept for backward compatibility."""
+    print_process_structure(process, verbosity=verbosity)
 
 
 
-def _print_process_variable_info(pv, prefix: str, show_values: bool = False) -> None:
-    """Helper function to print ProcessVariable information."""
+def _print_process_variable_info(pv, prefix: str) -> None:
+    """Helper function to print ProcessVariable information (verbosity=3)."""
     print(f"{prefix}{pv.name}")
     print(f"{prefix}  Unit: {pv.unit}")
     print(f"{prefix}  Controlled: {pv.is_controlled}")
-    
-    # Check if values is TimeSeries or StaticVariable
+
     if hasattr(pv.values, 'timepoints'):  # TimeSeries
         ts = pv.values
         n_points = len(ts.timepoints)
@@ -86,25 +129,19 @@ def _print_process_variable_info(pv, prefix: str, show_values: bool = False) -> 
             v_range = (float(jnp.min(ts.values)), float(jnp.max(ts.values)))
             print(f"{prefix}    Time range: {t_range[0]:.2f} to {t_range[1]:.2f}")
             print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f}")
-            
-            if show_values and n_points <= 5:
-                print(f"{prefix}    Values: {ts.values}")
-            elif show_values:
-                print(f"{prefix}    First 3: {ts.values[:3]}")
     elif hasattr(pv.values, 'value'):  # StaticVariable
         print(f"{prefix}  Static Value: {pv.values.value}")
-    
+
     if pv.spline is not None:
         print(f"{prefix}  Spline: available")
 
 
-def _print_reactor_component_info(comp, prefix: str, show_values: bool = False) -> None:
-    """Helper function to print ReactorMediumComponent information."""
+def _print_reactor_component_info(comp, prefix: str) -> None:
+    """Helper function to print ReactorMediumComponent information (verbosity=3)."""
     print(f"{prefix}{comp.name}")
     print(f"{prefix}  Unit: {comp.unit}")
     print(f"{prefix}  Intracellular: {comp.is_intracellular}")
-    
-    # Check if concentration is TimeSeries or StaticVariable
+
     if hasattr(comp.concentration, 'timepoints'):  # TimeSeries
         ts = comp.concentration
         n_points = len(ts.timepoints)
@@ -114,58 +151,26 @@ def _print_reactor_component_info(comp, prefix: str, show_values: bool = False) 
             v_range = (float(jnp.min(ts.values)), float(jnp.max(ts.values)))
             print(f"{prefix}    Time range: {t_range[0]:.2f} to {t_range[1]:.2f}")
             print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f}")
-            
-            if show_values and n_points <= 5:
-                print(f"{prefix}    Values: {ts.values}")
-            elif show_values:
-                print(f"{prefix}    First 3: {ts.values[:3]}")
     elif hasattr(comp.concentration, 'value'):  # StaticVariable
         print(f"{prefix}  Static Concentration: {comp.concentration.value}")
 
 
-def _print_timeseries_info(ts: TimeSeries, prefix: str, show_values: bool = False) -> None:
-    """Helper function to print TimeSeries information."""
-    print(f"{prefix}{ts.name}")
-    print(f"{prefix}  Unit: {ts.unit}")
-    print(f"{prefix}  Controlled: {ts.controlled}")
-    
-    if ts.raw is not None:
-        n_points = len(ts.raw.timepoints)
-        print(f"{prefix}  Raw Data: {n_points} points")
-        if n_points > 0:
-            t_range = (float(ts.raw.timepoints[0]), float(ts.raw.timepoints[-1]))
-            v_range = (float(jnp.min(ts.raw.values)), float(jnp.max(ts.raw.values)))
-            print(f"{prefix}    Time range: {t_range[0]:.2f} to {t_range[1]:.2f}")
-            print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f}")
-            
-            if show_values and n_points <= 5:
-                print(f"{prefix}    Values: {ts.raw.values}")
-            elif show_values:
-                print(f"{prefix}    First 3: {ts.raw.values[:3]}")
-        
-        if ts.raw.measurement_std is not None:
-            print(f"{prefix}    Measurement std: provided")
-    
-    if ts.spline is not None:
-        print(f"{prefix}  Spline: available")
-
-
-def _print_volume_change_info(change: VolumeChange, prefix: str, show_values: bool = False) -> None:
-    """Helper function to print VolumeChange information."""
+def _print_volume_change_info(change: VolumeChange, prefix: str) -> None:
+    """Helper function to print VolumeChange information (verbosity=3)."""
     print(f"{prefix}{change.name}:")
     print(f"{prefix}  Type: {'Controlled' if change.is_controlled else 'Modeled'}, "
           f"{'Continuous' if change.is_continuous else 'Discrete'}")
     print(f"{prefix}  Unit: {change.unit}")
-    
+
     if change.feed_medium:
         print(f"{prefix}  Feed Medium: {change.feed_medium.name}")
-    
+
     if change.values is not None:
         n_points = len(change.values.timepoints)
         print(f"{prefix}  TimeSeries Points: {n_points}")
         if n_points > 0:
-            v_range = (float(jnp.min(change.values.values)), 
-                      float(jnp.max(change.values.values)))
+            v_range = (float(jnp.min(change.values.values)),
+                       float(jnp.max(change.values.values)))
             print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f} {change.unit}")
             if change.is_continuous:
                 total_change = float(change.values.values[-1] - change.values.values[0])
@@ -225,23 +230,25 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
     return total
 
 
-def print_dataset_structure(dataset: BenchmarkDataset, show_values: bool = False) -> None:
+def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> None:
     """
-    Print a hierarchical view of the BenchmarkDataset:
-      - top-level metadata
-      - case studies and their metadata
-      - processes under each case study (with a per-process datapoint count)
-      - final total datapoints in the dataset (sum of all TimeSeries lengths + static entries)
+    Print a hierarchical view of the BenchmarkDataset.
 
     Args:
         dataset: BenchmarkDataset object to inspect
-        show_values: currently unused at dataset level, kept for API parity
+        verbosity: Detail level (1=minimal, 2=medium, 3=full)
+
+            - Level 3 (most verbose): metadata, all case-study details (organism, citation),
+              per-process datapoint counts, and total datapoints
+            - Level 2 (mid verbose): metadata, case-study names with organism and process
+              names listed (no citations, no datapoint counts)
+            - Level 1 (least verbose): metadata, case-study names and process count only
     """
     print("=" * 80)
     print("Benchmark Dataset Structure")
     print("=" * 80)
 
-    # Metadata
+    # Metadata – shown at all verbosity levels
     print("Metadata:")
     if dataset.metadata:
         for k, v in dataset.metadata.items():
@@ -250,14 +257,29 @@ def print_dataset_structure(dataset: BenchmarkDataset, show_values: bool = False
         print("  (no metadata)")
 
     print("\nCase Studies:")
-    total_datapoints = 0
     if not dataset.case_studies:
         print("  (no case studies)")
+    elif verbosity == 1:
+        for cs_key, cs in dataset.case_studies.items():
+            n_procs = len(cs.processes) if cs.processes else 0
+            print(f"  - {cs_key}  ({n_procs} processes)")
+    elif verbosity == 2:
+        for cs_key, cs in dataset.case_studies.items():
+            n_procs = len(cs.processes) if cs.processes else 0
+            print(f"  - {cs_key}  |  Organism: {cs.organism}  |  Processes: {n_procs}")
+            if cs.processes:
+                for p_key, proc in cs.processes.items():
+                    try:
+                        name = proc.metadata.name
+                    except Exception:
+                        name = "<unnamed process>"
+                    print(f"      * {p_key}: {name}")
     else:
+        # Level 3
+        total_datapoints = 0
         for cs_key, cs in dataset.case_studies.items():
             cs_header = f"{cs_key}"
             try:
-                # show both stored case_id and key if they differ
                 cs_header += f"  (case_id: {cs.case_id})"
             except Exception:
                 pass
@@ -275,6 +297,229 @@ def print_dataset_structure(dataset: BenchmarkDataset, show_values: bool = False
                     proc_dp = _count_datapoints_in_process(proc)
                     total_datapoints += proc_dp
                     print(f"        * {p_key}: {name}  (datapoints: {proc_dp})")
-    print("\n" + "-" * 80)
-    print(f"Total datapoints in dataset: {total_datapoints}")
+        print("\n" + "-" * 80)
+        print(f"Total datapoints in dataset: {total_datapoints}")
+
     print("=" * 80)
+
+
+# ---------------------------------------------------------------------------
+# Plotting helpers
+# ---------------------------------------------------------------------------
+
+def _collect_process_panels(process: BioProcess):
+    """
+    Collect all plottable panels from a BioProcess.
+
+    Returns a list of dicts, each with:
+      - 'title': str
+      - 'type': 'dynamic' | 'static'
+      - for dynamic: 'x' (timepoints array), 'y' (values array)
+      - for static:  't_start' (float), 't_end' (float), 'value' (float)
+    """
+    t_start = float(process.time_axis.start) if process.time_axis else 0.0
+    t_end = float(process.time_axis.end) if process.time_axis else 1.0
+
+    panels = []
+
+    # Reactor medium components
+    if process.reactor_medium and process.reactor_medium.components:
+        for comp in process.reactor_medium.components.values():
+            unit_label = f" [{comp.unit}]" if comp.unit else ""
+            if hasattr(comp.concentration, 'timepoints'):
+                panels.append({
+                    'title': f"{comp.name}{unit_label}",
+                    'type': 'dynamic',
+                    'x': comp.concentration.timepoints,
+                    'y': comp.concentration.values,
+                })
+            else:
+                panels.append({
+                    'title': f"{comp.name}{unit_label}",
+                    'type': 'static',
+                    't_start': t_start, 't_end': t_end,
+                    'value': float(comp.concentration.value),
+                })
+
+    # Process variables
+    if process.process_variables:
+        for pv in process.process_variables.values():
+            unit_label = f" [{pv.unit}]" if pv.unit else ""
+            if hasattr(pv.values, 'timepoints'):
+                panels.append({
+                    'title': f"{pv.name}{unit_label}",
+                    'type': 'dynamic',
+                    'x': pv.values.timepoints,
+                    'y': pv.values.values,
+                })
+            else:
+                panels.append({
+                    'title': f"{pv.name}{unit_label}",
+                    'type': 'static',
+                    't_start': t_start, 't_end': t_end,
+                    'value': float(pv.values.value),
+                })
+
+    # Volume changes
+    if process.volume and process.volume.volume_changes:
+        for vc in process.volume.volume_changes.values():
+            unit_label = f" [{vc.unit}]" if vc.unit else ""
+            if vc.values is not None and hasattr(vc.values, 'timepoints'):
+                panels.append({
+                    'title': f"{vc.name}{unit_label}",
+                    'type': 'dynamic',
+                    'x': vc.values.timepoints,
+                    'y': vc.values.values,
+                })
+
+    return panels
+
+
+def _draw_panel(ax, panel, label=None, color=None):
+    """Draw a single panel (dynamic or static) onto *ax*."""
+    import matplotlib.pyplot as plt
+
+    plot_kwargs = {}
+    if color is not None:
+        plot_kwargs['color'] = color
+
+    if panel['type'] == 'dynamic':
+        x = panel['x']
+        y = panel['y']
+        n = len(x)
+        fmt = 'o-' if n <= 30 else '-'
+        ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
+    else:
+        ax.hlines(
+            panel['value'], panel['t_start'], panel['t_end'],
+            linestyles='--', label=label, **plot_kwargs,
+        )
+        ax.set_xlim(panel['t_start'], panel['t_end'])
+
+
+def _make_figure(n_panels, figsize_per_panel):
+    """Create a two-column figure with the correct number of rows."""
+    import matplotlib.pyplot as plt
+
+    n_cols = 2
+    n_rows = max(1, (n_panels + 1) // 2)
+    fig, axes = plt.subplots(
+        n_rows, n_cols, squeeze=False,
+        figsize=(figsize_per_panel[0] * n_cols, figsize_per_panel[1] * n_rows),
+    )
+    return fig, axes.flatten()
+
+
+def plot_process(process: BioProcess, figsize_per_panel=(5, 3)):
+    """
+    Plot all dynamic and static variables of a BioProcess in a two-column figure.
+
+    Each variable gets its own subplot.  TimeSeries with ≤ 30 points are drawn
+    with markers; longer series are drawn as lines only.  StaticVariable values
+    are shown as horizontal dashed lines spanning the process time range.
+
+    Args:
+        process: BioProcess object to plot.
+        figsize_per_panel: ``(width, height)`` in inches for each subplot.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    import matplotlib.pyplot as plt
+
+    time_unit = process.time_axis.unit if process.time_axis else "time"
+    panels = _collect_process_panels(process)
+
+    if not panels:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
+                transform=ax.transAxes)
+        return fig
+
+    fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
+
+    for i, panel in enumerate(panels):
+        ax = axes_flat[i]
+        _draw_panel(ax, panel)
+        ax.set_title(panel['title'])
+        ax.set_xlabel(time_unit)
+        ax.grid(True, alpha=0.3)
+
+    for j in range(len(panels), len(axes_flat)):
+        axes_flat[j].set_visible(False)
+
+    fig.suptitle(
+        f"{process.metadata.name} ({process.metadata.process_type})", fontsize=12
+    )
+    fig.tight_layout()
+    return fig
+
+
+def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3)):
+    """
+    Plot all dynamic and static variables for every process in a CaseStudy.
+
+    All unique variables are discovered across every process first.  Each
+    variable gets its own subplot and all processes are overlaid using
+    distinct colours.  TimeSeries with ≤ 30 points are drawn with markers;
+    longer series are lines only.
+
+    Args:
+        case_study: CaseStudy object to plot.
+        figsize_per_panel: ``(width, height)`` in inches for each subplot.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    import matplotlib.pyplot as plt
+
+    # First pass: collect unique variable keys and their data per process.
+    # key: (category, variable_name) -> {'title', 'time_unit', 'data': [...]}
+    variable_map = {}
+
+    for proc_key, process in case_study.processes.items():
+        t_start = float(process.time_axis.start) if process.time_axis else 0.0
+        t_end = float(process.time_axis.end) if process.time_axis else 1.0
+        time_unit = process.time_axis.unit if process.time_axis else "time"
+
+        for panel in _collect_process_panels(process):
+            # Re-derive a stable key from the title (category already implicit)
+            # We use title as the key so identical variable names map together.
+            key = panel['title']
+            if key not in variable_map:
+                variable_map[key] = {
+                    'title': panel['title'],
+                    'time_unit': time_unit,
+                    'data': [],
+                }
+            entry = dict(panel)
+            entry['label'] = proc_key
+            variable_map[key]['data'].append(entry)
+
+    if not variable_map:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
+                transform=ax.transAxes)
+        return fig
+
+    panels = list(variable_map.values())
+    fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    for i, panel_meta in enumerate(panels):
+        ax = axes_flat[i]
+        for j, data in enumerate(panel_meta['data']):
+            color = colors[j % len(colors)]
+            _draw_panel(ax, data, label=data['label'], color=color)
+        ax.set_title(panel_meta['title'])
+        ax.set_xlabel(panel_meta['time_unit'])
+        ax.grid(True, alpha=0.3)
+        if len(panel_meta['data']) > 1:
+            ax.legend(fontsize='small')
+
+    for j in range(len(panels), len(axes_flat)):
+        axes_flat[j].set_visible(False)
+
+    fig.suptitle(f"Case Study: {case_study.case_id}", fontsize=12)
+    fig.tight_layout()
+    return fig

@@ -20,5 +20,8 @@ setup(
             "flake8>=4.0.0",
             "mypy>=0.950",
         ],
+        "plotting": [
+            "matplotlib>=3.0.0",
+        ],
     },
 )
