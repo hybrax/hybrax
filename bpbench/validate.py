@@ -4,7 +4,7 @@ Validation utilities for bioprocess data
 
 import jax.numpy as jnp
 from typing import Dict, List, Optional, Tuple
-from .dataclasses import BioProcess, TimeSeries, VolumeChange
+from .dataclasses import BioProcess, CaseStudy, TimeSeries, VolumeChange
 
 
 def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
@@ -318,3 +318,113 @@ def validate_volume_consistency(process: BioProcess,
         return (False, "Volume inconsistency detected:\n" + "\n".join(messages), delta)
     else:
         return (True, "Volume balance OK:\n" + "\n".join(messages), delta)
+
+
+def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str]]]:
+    """
+    Validate all processes in a case study and check cross-process consistency.
+
+    Runs :func:`validate_process` for every process in the case study, then
+    verifies that all processes share identical structure:
+
+    - The same reactor-medium component names, each with the same concentration
+      type (``TimeSeries`` or ``StaticVariable``).
+    - The same process-variable names, each with the same value type
+      (``TimeSeries`` or ``StaticVariable``).
+    - The same volume-change names.
+
+    Args:
+        case_study: :class:`CaseStudy` object to validate.
+
+    Returns:
+        A tuple ``(all_valid, report)`` where ``all_valid`` is ``True`` only
+        when every per-process validation passes *and* the cross-process
+        structure is consistent, and ``report`` is a dict mapping each process
+        name to its list of validation messages.  Cross-process consistency
+        errors are stored under the key ``"__consistency__"``.
+
+    Raises:
+        TypeError: If ``case_study`` is not a :class:`CaseStudy` instance.
+    """
+    if not isinstance(case_study, CaseStudy):
+        raise TypeError(
+            f"validate_case_study() expects a CaseStudy instance, "
+            f"got {type(case_study).__name__!r}"
+        )
+
+    all_valid = True
+    report: Dict[str, List[str]] = {}
+
+    # --- Per-process validation ---
+    for proc_name, process in case_study.processes.items():
+        ok, messages = validate_process(process)
+        report[proc_name] = messages
+        all_valid = all_valid and ok
+
+    if not case_study.processes:
+        return all_valid, report
+
+    # --- Cross-process consistency ---
+    consistency_errors: List[str] = []
+
+    # Build a reference signature from the first process
+    first_name, first_process = next(iter(case_study.processes.items()))
+
+    def _reactor_signature(process: BioProcess) -> Dict[str, str]:
+        """Map each reactor medium component name to its concentration type name."""
+        if not process.reactor_medium or not process.reactor_medium.components:
+            return {}
+        return {
+            name: type(comp.concentration).__name__
+            for name, comp in process.reactor_medium.components.items()
+        }
+
+    def _pv_signature(process: BioProcess) -> Dict[str, str]:
+        """Map each process variable name to its value type name."""
+        return {
+            name: type(pv.values).__name__
+            for name, pv in process.process_variables.items()
+        }
+
+    def _vc_names(process: BioProcess) -> set:
+        """Return the set of volume change names for a process."""
+        if not process.volume or not process.volume.volume_changes:
+            return set()
+        return set(process.volume.volume_changes.keys())
+
+    ref_reactor = _reactor_signature(first_process)
+    ref_pv = _pv_signature(first_process)
+    ref_vc = _vc_names(first_process)
+
+    for proc_name, process in case_study.processes.items():
+        if proc_name == first_name:
+            continue
+
+        reactor_sig = _reactor_signature(process)
+        if reactor_sig != ref_reactor:
+            consistency_errors.append(
+                f"Process '{proc_name}' reactor medium components differ from "
+                f"'{first_name}': expected {ref_reactor}, got {reactor_sig}"
+            )
+
+        pv_sig = _pv_signature(process)
+        if pv_sig != ref_pv:
+            consistency_errors.append(
+                f"Process '{proc_name}' process variables differ from "
+                f"'{first_name}': expected {ref_pv}, got {pv_sig}"
+            )
+
+        vc_names = _vc_names(process)
+        if vc_names != ref_vc:
+            consistency_errors.append(
+                f"Process '{proc_name}' volume change names differ from "
+                f"'{first_name}': expected {sorted(ref_vc)}, got {sorted(vc_names)}"
+            )
+
+    if consistency_errors:
+        all_valid = False
+        report["__consistency__"] = consistency_errors
+    else:
+        report["__consistency__"] = ["Cross-process structure is consistent — OK"]
+
+    return all_valid, report

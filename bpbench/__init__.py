@@ -49,6 +49,7 @@ from .validate import (
     validate_biomass_in_reactor_medium,
     validate_process,
     validate_volume_consistency,
+    validate_case_study,
 )
 
 __all__ = [
@@ -83,6 +84,7 @@ __all__ = [
     "validate_biomass_in_reactor_medium",
     "validate_process",
     "validate_volume_consistency",
+    "validate_case_study",
     # Modules
     "serialization",
     "validate",
