@@ -18,12 +18,14 @@ from bpbench import (
     VolumeChange,
     Volume,
     BioProcess,
+    CaseStudy,
     validate_timeseries_shape,
     validate_volume_change_sign,
     validate_volume_change_states,
     validate_biomass_in_reactor_medium,
     validate_process,
     validate_volume_consistency,
+    validate_case_study,
 )
 
 
@@ -447,6 +449,226 @@ class TestValidateVolumeConsistency:
         )
         ok, msg, delta = validate_volume_consistency(process, final_volume=1.8)
         assert ok is True
+
+
+# ---------------------------------------------------------------------------
+# validate_case_study
+# ---------------------------------------------------------------------------
+
+def _make_biomass_process(
+    biomass_ts,
+    extra_components=None,
+    process_variables=None,
+    volume_changes=None,
+):
+    """Build a minimal valid BioProcess with a biomass component."""
+    components = {
+        "biomass": ReactorMediumComponent(
+            name="biomass", unit="g/L",
+            concentration=biomass_ts,
+            is_intracellular=False,
+        )
+    }
+    if extra_components:
+        components.update(extra_components)
+    return _make_process(
+        reactor_components=components,
+        process_variables=process_variables or {},
+        volume_changes=volume_changes or {},
+    )
+
+
+def _make_feed_medium(component_names):
+    """Build a FeedMedium with StaticVariable concentrations for the given names."""
+    return FeedMedium(
+        name="f",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            name: FeedMediumComponent(
+                name=name, unit="g/L",
+                concentration=StaticVariable(value=0.0),
+                is_controlled=True,
+            )
+            for name in component_names
+        },
+    )
+
+
+class TestValidateCaseStudy:
+    def _case_study(self, processes):
+        return CaseStudy(
+            case_id="cs1",
+            organism="E. coli",
+            citation="Test et al.",
+            processes=processes,
+        )
+
+    def test_valid_case_study_all_ok(self):
+        ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(_ts([0.0, 1.0, 2.0], [0.2, 0.6, 1.1]))
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is True
+        assert "run1" in report
+        assert "run2" in report
+        assert "OK" in report["__consistency__"][0]
+
+    def test_empty_case_study(self):
+        cs = self._case_study({})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is True
+        assert report == {}
+
+    def test_single_process_case_study(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p = _make_biomass_process(ts)
+        cs = self._case_study({"run1": p})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is True
+        assert "run1" in report
+        assert "OK" in report["__consistency__"][0]
+
+    def test_inconsistent_reactor_medium_components(self):
+        """Processes with different reactor medium components should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        # p2 has an extra 'glucose' component
+        p2 = _make_biomass_process(
+            ts,
+            extra_components={
+                "glucose": ReactorMediumComponent(
+                    name="glucose", unit="g/L",
+                    concentration=StaticVariable(value=10.0),
+                    is_intracellular=False,
+                )
+            },
+        )
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("reactor medium" in e for e in report["__consistency__"])
+
+    def test_inconsistent_process_variable_names(self):
+        """Processes with different process variable names should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        pv = ProcessVariable(
+            name="temperature", unit="°C", is_controlled=True,
+            values=_ts([0.0, 1.0], [37.0, 37.0]),
+        )
+        p1 = _make_biomass_process(ts, process_variables={"temperature": pv})
+        p2 = _make_biomass_process(ts)  # no process variables
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("process variables" in e for e in report["__consistency__"])
+
+    def test_inconsistent_process_variable_types(self):
+        """Same variable name but different type (TimeSeries vs StaticVariable) fails."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        pv_ts = ProcessVariable(
+            name="temperature", unit="°C", is_controlled=True,
+            values=_ts([0.0, 1.0], [37.0, 37.0]),
+        )
+        pv_static = ProcessVariable(
+            name="temperature", unit="°C", is_controlled=True,
+            values=StaticVariable(value=37.0),
+        )
+        p1 = _make_biomass_process(ts, process_variables={"temperature": pv_ts})
+        p2 = _make_biomass_process(ts, process_variables={"temperature": pv_static})
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("process variables" in e for e in report["__consistency__"])
+
+    def test_inconsistent_volume_change_names(self):
+        """Processes with different volume change names should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        vc = VolumeChange(
+            name="feed", unit="L", is_controlled=True, is_continuous=True,
+            feed_medium=_make_feed_medium(["biomass"]),
+            values=_ts([0.0, 1.0], [0.0, 0.1]),
+        )
+        p1 = _make_biomass_process(ts, volume_changes={"feed": vc})
+        p2 = _make_biomass_process(ts)  # no volume changes
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("volume change" in e for e in report["__consistency__"])
+
+    def test_invalid_process_propagates_failure(self):
+        """If any process is invalid, all_valid should be False."""
+        good_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
+        bad_ts = _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])  # non-monotonic
+        p1 = _make_biomass_process(good_ts)
+        p2 = _make_biomass_process(bad_ts)
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("monotonically" in m for m in report["run2"])
+
+    def test_wrong_type_raises_type_error(self):
+        with pytest.raises(TypeError, match="CaseStudy"):
+            validate_case_study("not a case study")
+
+    def test_wrong_type_none_raises_type_error(self):
+        with pytest.raises(TypeError):
+            validate_case_study(None)
+
+    def test_inconsistent_reactor_medium_units(self):
+        """Same component name and type but different units should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)  # biomass unit is "g/L"
+        p2 = _make_biomass_process(ts)
+        # Override the biomass component unit in p2
+        p2.reactor_medium.components["biomass"] = ReactorMediumComponent(
+            name="biomass", unit="mmol/L",
+            concentration=ts,
+            is_intracellular=False,
+        )
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("reactor medium" in e for e in report["__consistency__"])
+
+    def test_inconsistent_process_variable_units(self):
+        """Same process variable name and type but different units should fail."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        pv1 = ProcessVariable(
+            name="temperature", unit="°C", is_controlled=True,
+            values=_ts([0.0, 1.0], [37.0, 37.0]),
+        )
+        pv2 = ProcessVariable(
+            name="temperature", unit="K", is_controlled=True,
+            values=_ts([0.0, 1.0], [310.0, 310.0]),
+        )
+        p1 = _make_biomass_process(ts, process_variables={"temperature": pv1})
+        p2 = _make_biomass_process(ts, process_variables={"temperature": pv2})
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("process variables" in e for e in report["__consistency__"])
+
+    def test_inconsistent_volume_change_units(self):
+        """Same volume change name but different units should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        vc1 = VolumeChange(
+            name="feed", unit="L", is_controlled=True, is_continuous=True,
+            feed_medium=_make_feed_medium(["biomass"]),
+            values=_ts([0.0, 1.0], [0.0, 0.1]),
+        )
+        vc2 = VolumeChange(
+            name="feed", unit="mL", is_controlled=True, is_continuous=True,
+            feed_medium=_make_feed_medium(["biomass"]),
+            values=_ts([0.0, 1.0], [0.0, 100.0]),
+        )
+        p1 = _make_biomass_process(ts, volume_changes={"feed": vc1})
+        p2 = _make_biomass_process(ts, volume_changes={"feed": vc2})
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("volume change" in e for e in report["__consistency__"])
 
 
 if __name__ == "__main__":
