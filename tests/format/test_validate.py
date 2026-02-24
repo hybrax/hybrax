@@ -616,6 +616,60 @@ class TestValidateCaseStudy:
         with pytest.raises(TypeError):
             validate_case_study(None)
 
+    def test_inconsistent_reactor_medium_units(self):
+        """Same component name and type but different units should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)  # biomass unit is "g/L"
+        p2 = _make_biomass_process(ts)
+        # Override the biomass component unit in p2
+        p2.reactor_medium.components["biomass"] = ReactorMediumComponent(
+            name="biomass", unit="mmol/L",
+            concentration=ts,
+            is_intracellular=False,
+        )
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("reactor medium" in e for e in report["__consistency__"])
+
+    def test_inconsistent_process_variable_units(self):
+        """Same process variable name and type but different units should fail."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        pv1 = ProcessVariable(
+            name="temperature", unit="°C", is_controlled=True,
+            values=_ts([0.0, 1.0], [37.0, 37.0]),
+        )
+        pv2 = ProcessVariable(
+            name="temperature", unit="K", is_controlled=True,
+            values=_ts([0.0, 1.0], [310.0, 310.0]),
+        )
+        p1 = _make_biomass_process(ts, process_variables={"temperature": pv1})
+        p2 = _make_biomass_process(ts, process_variables={"temperature": pv2})
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("process variables" in e for e in report["__consistency__"])
+
+    def test_inconsistent_volume_change_units(self):
+        """Same volume change name but different units should fail consistency."""
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        vc1 = VolumeChange(
+            name="feed", unit="L", is_controlled=True, is_continuous=True,
+            feed_medium=_make_feed_medium(["biomass"]),
+            values=_ts([0.0, 1.0], [0.0, 0.1]),
+        )
+        vc2 = VolumeChange(
+            name="feed", unit="mL", is_controlled=True, is_continuous=True,
+            feed_medium=_make_feed_medium(["biomass"]),
+            values=_ts([0.0, 1.0], [0.0, 100.0]),
+        )
+        p1 = _make_biomass_process(ts, volume_changes={"feed": vc1})
+        p2 = _make_biomass_process(ts, volume_changes={"feed": vc2})
+        cs = self._case_study({"run1": p1, "run2": p2})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert any("volume change" in e for e in report["__consistency__"])
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

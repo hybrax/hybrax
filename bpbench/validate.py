@@ -328,10 +328,10 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
     verifies that all processes share identical structure:
 
     - The same reactor-medium component names, each with the same concentration
-      type (``TimeSeries`` or ``StaticVariable``).
+      type (``TimeSeries`` or ``StaticVariable``) and unit.
     - The same process-variable names, each with the same value type
-      (``TimeSeries`` or ``StaticVariable``).
-    - The same volume-change names.
+      (``TimeSeries`` or ``StaticVariable``) and unit.
+    - The same volume-change names and units.
 
     Args:
         case_study: :class:`CaseStudy` object to validate.
@@ -370,31 +370,31 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
     # Build a reference signature from the first process
     first_name, first_process = next(iter(case_study.processes.items()))
 
-    def _reactor_signature(process: BioProcess) -> Dict[str, str]:
-        """Map each reactor medium component name to its concentration type name."""
+    def _reactor_signature(process: BioProcess) -> Dict[str, Tuple[str, str]]:
+        """Map each reactor medium component name to (concentration type name, unit)."""
         if not process.reactor_medium or not process.reactor_medium.components:
             return {}
         return {
-            name: type(comp.concentration).__name__
+            name: (type(comp.concentration).__name__, comp.unit)
             for name, comp in process.reactor_medium.components.items()
         }
 
-    def _pv_signature(process: BioProcess) -> Dict[str, str]:
-        """Map each process variable name to its value type name."""
+    def _pv_signature(process: BioProcess) -> Dict[str, Tuple[str, str]]:
+        """Map each process variable name to (value type name, unit)."""
         return {
-            name: type(pv.values).__name__
+            name: (type(pv.values).__name__, pv.unit)
             for name, pv in process.process_variables.items()
         }
 
-    def _vc_names(process: BioProcess) -> set:
-        """Return the set of volume change names for a process."""
+    def _vc_signature(process: BioProcess) -> Dict[str, str]:
+        """Map each volume change name to its unit."""
         if not process.volume or not process.volume.volume_changes:
-            return set()
-        return set(process.volume.volume_changes.keys())
+            return {}
+        return {name: vc.unit for name, vc in process.volume.volume_changes.items()}
 
     ref_reactor = _reactor_signature(first_process)
     ref_pv = _pv_signature(first_process)
-    ref_vc = _vc_names(first_process)
+    ref_vc = _vc_signature(first_process)
 
     for proc_name, process in case_study.processes.items():
         if proc_name == first_name:
@@ -414,11 +414,11 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
                 f"'{first_name}': expected {ref_pv}, got {pv_sig}"
             )
 
-        vc_names = _vc_names(process)
-        if vc_names != ref_vc:
+        vc_sig = _vc_signature(process)
+        if vc_sig != ref_vc:
             consistency_errors.append(
-                f"Process '{proc_name}' volume change names differ from "
-                f"'{first_name}': expected {sorted(ref_vc)}, got {sorted(vc_names)}"
+                f"Process '{proc_name}' volume changes differ from "
+                f"'{first_name}': expected {ref_vc}, got {vc_sig}"
             )
 
     if consistency_errors:
