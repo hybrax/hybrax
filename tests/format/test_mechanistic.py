@@ -477,6 +477,188 @@ class TestGetMassBalance:
 
 
 # ---------------------------------------------------------------------------
+# Biomass-at-index-0 reordering tests
+# ---------------------------------------------------------------------------
+
+class TestBiomassAtIndexZero:
+
+    def _make_process_glucose_first(self):
+        """Process where glucose is inserted before biomass in the dict."""
+        rm = ReactorMedium(
+            name="medium", density=1.0, density_unit="kg/L",
+            components={
+                "glucose": ReactorMediumComponent(
+                    name="glucose", unit="g/L",
+                    concentration=_ts([0., 10.], [10.0, 1.0]),
+                    is_intracellular=False,
+                ),
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts([0., 10.], [0.5, 4.0]),
+                    is_intracellular=False,
+                ),
+            },
+        )
+        return BioProcess(
+            metadata=BioProcessMetadata(name="reorder", process_type="batch"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=10.0,
+                               time_reference="inoculation"),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=rm,
+        )
+
+    def test_biomass_is_always_first(self):
+        mb = get_mass_balance(self._make_process_glucose_first())
+        assert mb.species_names[0] == "biomass"
+
+    def test_biomass_idx_is_zero(self):
+        mb = get_mass_balance(self._make_process_glucose_first())
+        assert mb.biomass_idx == 0
+
+    def test_glucose_is_second(self):
+        mb = get_mass_balance(self._make_process_glucose_first())
+        assert mb.species_names[1] == "glucose"
+
+    def test_reaction_uses_biomass_at_index_0(self):
+        """dc[biomass]/dt = qX * X when biomass is reordered to index 0."""
+        mb = get_mass_balance(self._make_process_glucose_first())
+        X, S, V = 2.0, 5.0, 1.0
+        # state is [biomass, glucose, V] after reordering
+        dc = mb(jnp.array([X, S, V]), jnp.array([0.3, -0.15]), jnp.zeros(0))
+        assert float(dc[0]) == pytest.approx(0.3 * X, rel=1e-5)
+        assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Intracellular components tests
+# ---------------------------------------------------------------------------
+
+def _make_process_with_intracellular():
+    """Process with an intracellular product component."""
+    feed = FeedMedium(
+        name="glucose_feed", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=StaticVariable(value=0.0),
+                is_controlled=False,
+            ),
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="g/L",
+                concentration=StaticVariable(value=500.0),
+                is_controlled=False,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=_ts([0., 10.], [0.5, 4.0]),
+                is_intracellular=False,
+            ),
+            "product": ReactorMediumComponent(
+                name="product", unit="g/L",
+                concentration=_ts([0., 10.], [0.0, 1.0]),
+                is_intracellular=True,
+            ),
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="g/L",
+                concentration=_ts([0., 10.], [10.0, 1.0]),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vc = VolumeChange(
+        name="feed", unit="L", is_controlled=True, is_continuous=True,
+        feed_medium=feed,
+        values=_ts([0., 5., 10.], [0.0, 0.25, 0.5]),
+    )
+    return BioProcess(
+        metadata=BioProcessMetadata(name="intracellular", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0,
+                           time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L",
+                      volume_changes={"feed": vc}),
+        reactor_medium=rm,
+    )
+
+
+class TestIntracellular:
+
+    def test_intracellular_indices_populated(self):
+        mb = get_mass_balance(_make_process_with_intracellular())
+        assert len(mb.intracellular_indices) == 1
+
+    def test_intracellular_indices_correct(self):
+        mb = get_mass_balance(_make_process_with_intracellular())
+        # biomass is at 0, product (intracellular) should be at 1
+        assert mb.species_names[mb.intracellular_indices[0]] == "product"
+
+    def test_no_intracellular_indices_for_normal_process(self):
+        mb = get_mass_balance(_make_process())
+        assert mb.intracellular_indices == ()
+
+    def test_biomass_still_at_index_0(self):
+        mb = get_mass_balance(_make_process_with_intracellular())
+        assert mb.biomass_idx == 0
+        assert mb.species_names[0] == "biomass"
+
+    def test_x_active_used_in_reaction(self):
+        """Reaction uses X_active = biomass - product, not biomass_measured."""
+        mb = get_mass_balance(_make_process_with_intracellular())
+        # state: [biomass_active=2.0, product=0.5, glucose=5.0, V=1.0]
+        X_active = 2.0 - 0.5  # = 1.5
+        qX, qP, qS = 0.4, 0.1, -0.2
+        dc = mb(jnp.array([2.0, 0.5, 5.0, 1.0]),
+                jnp.array([qX, qP, qS]),
+                jnp.zeros(0))
+        # No flow: pure reaction
+        assert float(dc[0]) == pytest.approx(qX * X_active, rel=1e-5)
+        assert float(dc[1]) == pytest.approx(qP * X_active, rel=1e-5)
+        assert float(dc[2]) == pytest.approx(qS * X_active, rel=1e-5)
+
+    def test_x_active_with_flow(self):
+        """Full balance with flow uses X_active."""
+        mb = get_mass_balance(_make_process_with_intracellular())
+        X_meas, P, S, V, F = 2.0, 0.5, 5.0, 1.0, 0.1
+        X_active = X_meas - P
+        qX, qP, qS = 0.4, 0.1, -0.2
+        Cin_glucose = 500.0
+        dc = mb(jnp.array([X_meas, P, S, V]),
+                jnp.array([qX, qP, qS]),
+                jnp.array([F]))
+        # biomass in feed = 0, product not in feed = 0
+        assert float(dc[0]) == pytest.approx(
+            qX * X_active + (F/V) * (0.0 - X_meas), rel=1e-5)
+        assert float(dc[1]) == pytest.approx(
+            qP * X_active + (F/V) * (0.0 - P), rel=1e-5)
+        assert float(dc[2]) == pytest.approx(
+            qS * X_active + (F/V) * (Cin_glucose - S), rel=1e-5)
+        assert float(dc[3]) == pytest.approx(F, rel=1e-5)
+
+    def test_intracellular_jit_compatible(self):
+        mb = get_mass_balance(_make_process_with_intracellular())
+        dc = eqx.filter_jit(mb)(
+            jnp.array([2.0, 0.5, 5.0, 1.0]),
+            jnp.array([0.4, 0.1, -0.2]),
+            jnp.zeros(0),
+        )
+        assert dc.shape == (4,)
+
+    def test_no_intracellular_backward_compat(self):
+        """Without intracellular components, behaviour is unchanged (X_active == X_measured)."""
+        mb = get_mass_balance(_make_batch_process())
+        X = 2.0
+        dc = mb(jnp.array([X, 5.0, 1.0]),
+                jnp.array([0.3, -0.15]),
+                jnp.zeros(0))
+        assert float(dc[0]) == pytest.approx(0.3 * X, rel=1e-5)
+        assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
 # Integration: ControlSplines + MassBalance wired together
 # ---------------------------------------------------------------------------
 

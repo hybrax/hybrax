@@ -157,7 +157,7 @@ class MassBalance(eqx.Module):
     Created by :func:`get_mass_balance`; do not instantiate directly.
 
     The state vector is ``c = [c_species..., V]`` where the last element is
-    the reactor volume.
+    the reactor volume.  Biomass is always at index 0.
 
     Attributes
     ----------
@@ -171,11 +171,16 @@ class MassBalance(eqx.Module):
     output_size : int
         Same as :attr:`c_size`.
     species_names : tuple[str, ...]
-        Ordering of species in *c* and *q*.
+        Ordering of species in *c* and *q*.  Biomass is always first.
     flow_names : tuple[str, ...]
         Ordering of continuous flow streams in *u_flow*.
     biomass_idx : int
-        Index of ``"biomass"`` in :attr:`species_names`.
+        Index of ``"biomass"`` in :attr:`species_names` (always 0).
+    intracellular_indices : tuple[int, ...]
+        Indices of intracellular species in :attr:`species_names`.
+        Intracellular components (e.g., intracellular product) accumulate
+        inside the cells.  Active biomass is therefore:
+        ``X_active = c[biomass_idx] - sum(c[i] for i in intracellular_indices)``.
     Cin : jnp.ndarray, shape (n_flows, n_species)
         Feed composition matrix: ``Cin[k, i]`` is the concentration of
         species *i* in feed stream *k*.
@@ -196,6 +201,7 @@ class MassBalance(eqx.Module):
     species_names: tuple = eqx.field(static=True)
     flow_names: tuple = eqx.field(static=True)
     biomass_idx: int = eqx.field(static=True)
+    intracellular_indices: tuple = eqx.field(static=True)
     Cin: jnp.ndarray
 
     def __call__(
@@ -210,6 +216,8 @@ class MassBalance(eqx.Module):
         ----------
         c:
             State vector ``[c_species..., V]``, shape ``(c_size,)``.
+            Biomass (measured) is at index 0; intracellular components follow
+            in the positions given by :attr:`intracellular_indices`.
         q:
             Specific rates aligned with :attr:`species_names`, shape
             ``(q_size,)``.
@@ -229,19 +237,31 @@ class MassBalance(eqx.Module):
 
         .. math::
 
-            \\frac{dc_i}{dt} = q_i \\cdot X
+            X_{active} = c_{biomass} - \\sum_{i \\in intracellular} c_i
+
+            \\frac{dc_i}{dt} = q_i \\cdot X_{active}
                 + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,i} - c_i)
 
             \\frac{dV}{dt} = \\sum_k f_k
 
-        where :math:`X = c[\\text{biomass\\_idx}]`.
+        where :math:`X_{active}` is the active biomass concentration
+        (measured biomass minus intracellular component concentrations).
         """
         c_species = c[: self.q_size]
         V = c[self.q_size]
-        X = c[self.biomass_idx]
 
-        # Reaction contribution: q_i * X
-        reaction = q * X
+        # Active biomass: measured biomass minus intracellular components
+        X_measured = c[self.biomass_idx]
+        if len(self.intracellular_indices) > 0:
+            intracellular_sum = jnp.sum(
+                c_species[jnp.array(self.intracellular_indices)]
+            )
+        else:
+            intracellular_sum = jnp.zeros(())
+        X_active = X_measured - intracellular_sum
+
+        # Reaction contribution: q_i * X_active
+        reaction = q * X_active
 
         # Feed / dilution contribution (zero when u_flow_size == 0)
         # u_flow: (n_flows,),  Cin: (n_flows, n_species)
@@ -349,22 +369,29 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
     ValueError
         If no ``"biomass"`` component is found in the reactor medium.
     """
-    # --- Species ordering (from reactor medium, insertion order) ---
-    species_names: Tuple[str, ...] = tuple(
-        process.reactor_medium.components.keys()
-    )
-    n_species = len(species_names)
-
-    biomass_idx: int = -1
-    for i, name in enumerate(species_names):
+    # --- Species ordering: biomass always at index 0 ---
+    all_component_names = list(process.reactor_medium.components.keys())
+    biomass_name: str = ""
+    for name in all_component_names:
         if name.strip().lower() == "biomass":
-            biomass_idx = i
+            biomass_name = name
             break
-    if biomass_idx < 0:
+    if not biomass_name:
         raise ValueError(
             "No 'biomass' component found in process.reactor_medium.components. "
-            f"Available components: {list(species_names)}"
+            f"Available components: {all_component_names}"
         )
+    other_names = [n for n in all_component_names if n != biomass_name]
+    species_names: Tuple[str, ...] = (biomass_name,) + tuple(other_names)
+    n_species = len(species_names)
+    biomass_idx: int = 0  # always 0 by construction
+
+    # --- Intracellular indices ---
+    intracellular_indices: List[int] = []
+    for i, name in enumerate(species_names):
+        comp = process.reactor_medium.components[name]
+        if comp.is_intracellular:
+            intracellular_indices.append(i)
 
     # --- Flow ordering (continuous controlled volume changes) ---
     flow_names: List[str] = []
@@ -399,5 +426,6 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
         species_names=tuple(species_names),
         flow_names=tuple(flow_names),
         biomass_idx=biomass_idx,
+        intracellular_indices=tuple(intracellular_indices),
         Cin=jnp.array(Cin_np),
     )
