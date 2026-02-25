@@ -39,6 +39,9 @@ from .inspect import (
     plot_case_study,
 )
 
+# Backward-compat alias
+print_structure = print_process_structure
+
 # Import serialization functions
 from . import serialization
 from . import validate
