@@ -39,9 +39,6 @@ from .inspect import (
     plot_case_study,
 )
 
-# Backward-compat alias
-print_structure = print_process_structure
-
 # Import serialization functions
 from . import serialization
 from . import validate
@@ -77,7 +74,6 @@ __all__ = [
     "BenchmarkDataset",
     # Utils
     "print_process_structure",
-    "print_structure",
     "print_dataset_structure",
     "plot_process",
     "plot_case_study",
