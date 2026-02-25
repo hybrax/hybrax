@@ -3,6 +3,8 @@
 * **NEXT steps:**
     * Add new case studies -> they will bring their own challenges.
         * Martens, et al. 2025 - synthetic mammalian case study.
+    * Add mass balance functionality
+        * for that, I think
 
 * **Validation functions for `/bpbench/validate.py`**
     * ...
