@@ -16,8 +16,10 @@ get_control_splines(process) -> ControlSplines
     **flow rates** (derivative of the cumulative-volume spline).
 
 get_mass_balance(process) -> MassBalance
-    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow)`` computes the
-    full mass-balance RHS ``dc/dt`` (including ``dV/dt``).
+    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
+    computes the full mass-balance RHS ``dc/dt`` (including ``dV/dt``).
+    Uncontrolled continuous volume changes (modeled feeds) are supported via
+    the optional ``f_modeled`` argument.
 
 Usage with JIT
 --------------
@@ -30,6 +32,8 @@ to compile them::
 
     u      = eqx.filter_jit(ctrl)(t)
     dc_dt  = eqx.filter_jit(mb)(c, q, u_flow)
+    # With modeled flows (e.g. base feed):
+    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
 """
 
 from __future__ import annotations
@@ -168,12 +172,17 @@ class MassBalance(eqx.Module):
         :attr:`species_names`).
     u_flow_size : int
         Number of continuous controlled flow streams.
+    f_modeled_size : int
+        Number of continuous uncontrolled (modeled) flow streams.
     output_size : int
         Same as :attr:`c_size`.
     species_names : tuple[str, ...]
         Ordering of species in *c* and *q*.  Biomass is always first.
     flow_names : tuple[str, ...]
-        Ordering of continuous flow streams in *u_flow*.
+        Ordering of continuous controlled flow streams in *u_flow*.
+    modeled_flow_names : tuple[str, ...]
+        Ordering of continuous uncontrolled (modeled) flow streams in
+        *f_modeled*.
     biomass_idx : int
         Index of ``"biomass"`` in :attr:`species_names` (always 0).
     intracellular_indices : tuple[int, ...]
@@ -182,8 +191,10 @@ class MassBalance(eqx.Module):
         inside the cells.  Active biomass is therefore:
         ``X_active = c[biomass_idx] - sum(c[i] for i in intracellular_indices)``.
     Cin : jnp.ndarray, shape (n_flows, n_species)
-        Feed composition matrix: ``Cin[k, i]`` is the concentration of
-        species *i* in feed stream *k*.
+        Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
+        concentration of species *i* in controlled feed stream *k*.
+    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_species)
+        Feed composition matrix for modeled (uncontrolled) flows.
 
     Notes
     -----
@@ -192,23 +203,29 @@ class MassBalance(eqx.Module):
         import equinox as eqx
         mb    = get_mass_balance(process)
         dc_dt = eqx.filter_jit(mb)(c, q, u_flow)
+        # With modeled flows:
+        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
     """
 
     c_size: int = eqx.field(static=True)
     q_size: int = eqx.field(static=True)
     u_flow_size: int = eqx.field(static=True)
+    f_modeled_size: int = eqx.field(static=True)
     output_size: int = eqx.field(static=True)
     species_names: tuple = eqx.field(static=True)
     flow_names: tuple = eqx.field(static=True)
+    modeled_flow_names: tuple = eqx.field(static=True)
     biomass_idx: int = eqx.field(static=True)
     intracellular_indices: tuple = eqx.field(static=True)
     Cin: jnp.ndarray
+    Cin_modeled: jnp.ndarray
 
     def __call__(
         self,
         c: jnp.ndarray,
         q: jnp.ndarray,
         u_flow: jnp.ndarray,
+        f_modeled: jnp.ndarray,
     ) -> jnp.ndarray:
         """Compute the mass-balance RHS ``dc/dt``.
 
@@ -222,9 +239,13 @@ class MassBalance(eqx.Module):
             Specific rates aligned with :attr:`species_names`, shape
             ``(q_size,)``.
         u_flow:
-            Volumetric flow rates for each continuous feed stream (volume /
-            time, matching the units of the stored ``VolumeChange``),
-            shape ``(u_flow_size,)``.
+            Volumetric flow rates for each continuous controlled feed stream
+            (volume / time, matching the units of the stored
+            ``VolumeChange``), shape ``(u_flow_size,)``.
+        f_modeled:
+            Volumetric flow rates for each continuous uncontrolled (modeled)
+            feed stream, shape ``(f_modeled_size,)``.  Pass
+            ``jnp.zeros(0)`` when there are no modeled flows.
 
         Returns
         -------
@@ -245,7 +266,8 @@ class MassBalance(eqx.Module):
             \\frac{dV}{dt} = \\sum_k f_k
 
         where :math:`X_{active}` is the active biomass concentration
-        (measured biomass minus intracellular component concentrations).
+        (measured biomass minus intracellular component concentrations),
+        and the sums over *k* include both controlled and modeled flows.
         """
         c_species = c[: self.q_size]
         V = c[self.q_size]
@@ -263,13 +285,21 @@ class MassBalance(eqx.Module):
         # Reaction contribution: q_i * X_active
         reaction = q * X_active
 
-        # Feed / dilution contribution (zero when u_flow_size == 0)
+        # Controlled feed / dilution contribution (zero when u_flow_size == 0)
         # u_flow: (n_flows,),  Cin: (n_flows, n_species)
         feed_contrib = u_flow[:, None] * (self.Cin - c_species[None, :])
         feed_term = jnp.sum(feed_contrib, axis=0) / V
+        dV = jnp.sum(u_flow)
+
+        # Modeled (uncontrolled) feed contribution
+        if self.f_modeled_size > 0:
+            modeled_contrib = f_modeled[:, None] * (
+                self.Cin_modeled - c_species[None, :]
+            )
+            feed_term = feed_term + jnp.sum(modeled_contrib, axis=0) / V
+            dV = dV + jnp.sum(f_modeled)
 
         dc_species = reaction + feed_term
-        dV = jnp.sum(u_flow)
 
         return jnp.append(dc_species, dV)
 
@@ -361,8 +391,8 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
     Returns
     -------
     MassBalance
-        An ``eqx.Module`` whose ``__call__(c, q, u_flow)`` computes the
-        mass-balance RHS ``dc/dt``.
+        An ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
+        computes the mass-balance RHS ``dc/dt``.
 
     Raises
     ------
@@ -393,39 +423,51 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
         if comp.is_intracellular:
             intracellular_indices.append(i)
 
-    # --- Flow ordering (continuous controlled volume changes) ---
+    # --- Helper to build a Cin matrix for a list of volume-change names ---
+    def _build_cin(vc_names):
+        n = len(vc_names)
+        Cin_np = np.zeros((n, n_species), dtype=float)
+        for k, vc_name in enumerate(vc_names):
+            feed = process.volume.volume_changes[vc_name].feed_medium
+            for j, sp_name in enumerate(species_names):
+                if sp_name not in feed.components:
+                    continue
+                conc = feed.components[sp_name].concentration
+                if isinstance(conc, StaticVariable):
+                    Cin_np[k, j] = float(conc.value)
+                else:
+                    raise NotImplementedError(
+                        "TimeSeries feed concentrations are not yet supported in get_mass_balance. "
+                        f"Found TimeSeries for species '{sp_name}' in feed '{feed.name}' of volume change '{vc_name}'."
+                    )
+        return Cin_np
+
+    # --- Controlled continuous flows ---
     flow_names: List[str] = []
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.is_controlled and vc.is_continuous:
             flow_names.append(vc_name)
-    n_flows = len(flow_names)
 
-    # --- Feed composition matrix Cin: (n_flows, n_species) ---
-    Cin_np = np.zeros((n_flows, n_species), dtype=float)
-    for k, vc_name in enumerate(flow_names):
-        feed = process.volume.volume_changes[vc_name].feed_medium
-        for j, sp_name in enumerate(species_names):
-            if sp_name not in feed.components:
-                continue
-            conc = feed.components[sp_name].concentration
-            if isinstance(conc, StaticVariable):
-                Cin_np[k, j] = float(conc.value)
-            else:
-                raise NotImplementedError(
-                    "TimeSeries feed concentrations are not yet supported in get_mass_balance. "
-                    f"Found TimeSeries for species '{sp_name}' in feed '{feed.name}' of volume change '{vc_name}'."
-                )
-                # TimeSeries feed concentration → use the mean
-                # Cin_np[k, j] = float(jnp.mean(jnp.asarray(conc.values)))
+    # --- Modeled (uncontrolled) continuous flows ---
+    modeled_flow_names: List[str] = []
+    for vc_name, vc in process.volume.volume_changes.items():
+        if (not vc.is_controlled) and vc.is_continuous:
+            modeled_flow_names.append(vc_name)
+
+    Cin_np = _build_cin(flow_names)
+    Cin_modeled_np = _build_cin(modeled_flow_names)
 
     return MassBalance(
         c_size=n_species + 1,
         q_size=n_species,
-        u_flow_size=n_flows,
+        u_flow_size=len(flow_names),
+        f_modeled_size=len(modeled_flow_names),
         output_size=n_species + 1,
         species_names=tuple(species_names),
         flow_names=tuple(flow_names),
+        modeled_flow_names=tuple(modeled_flow_names),
         biomass_idx=biomass_idx,
         intracellular_indices=tuple(intracellular_indices),
         Cin=jnp.array(Cin_np),
+        Cin_modeled=jnp.array(Cin_modeled_np),
     )

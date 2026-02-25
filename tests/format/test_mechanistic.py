@@ -385,13 +385,15 @@ class TestGetMassBalance:
         mb = get_mass_balance(_make_process())
         dc = mb(jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
-                jnp.array([0.05]))
+                jnp.array([0.05]),
+                jnp.zeros(0))
         assert dc.shape == (3,)
 
     def test_call_shape_batch(self):
         mb = get_mass_balance(_make_batch_process())
         dc = mb(jnp.array([1.0, 5.0, 1.0]),
                 jnp.array([0.2, -0.1]),
+                jnp.zeros(0),
                 jnp.zeros(0))
         assert dc.shape == (3,)
 
@@ -399,13 +401,15 @@ class TestGetMassBalance:
         mb = get_mass_balance(_make_process())
         dc = mb(jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
-                jnp.array([0.05]))
+                jnp.array([0.05]),
+                jnp.zeros(0))
         assert float(dc[-1]) == pytest.approx(0.05, rel=1e-5)
 
     def test_dV_zero_in_batch(self):
         mb = get_mass_balance(_make_batch_process())
         dc = mb(jnp.array([1.0, 5.0, 1.0]),
                 jnp.array([0.2, -0.1]),
+                jnp.zeros(0),
                 jnp.zeros(0))
         assert float(dc[-1]) == pytest.approx(0.0)
 
@@ -414,6 +418,7 @@ class TestGetMassBalance:
         X = 2.0
         dc = mb(jnp.array([X, 5.0, 1.0]),
                 jnp.array([0.3, -0.15]),
+                jnp.zeros(0),
                 jnp.zeros(0))
         assert float(dc[0]) == pytest.approx(0.3 * X, rel=1e-5)
         assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
@@ -421,7 +426,7 @@ class TestGetMassBalance:
     def test_dilution_term_zero_q(self):
         mb = get_mass_balance(_make_process())
         X, S, V, F = 1.0, 10.0, 1.0, 0.1
-        dc = mb(jnp.array([X, S, V]), jnp.zeros(2), jnp.array([F]))
+        dc = mb(jnp.array([X, S, V]), jnp.zeros(2), jnp.array([F]), jnp.zeros(0))
         assert float(dc[0]) == pytest.approx((F / V) * (0.0 - X), rel=1e-4)
         assert float(dc[1]) == pytest.approx((F / V) * (500.0 - S), rel=1e-4)
         assert float(dc[2]) == pytest.approx(F, rel=1e-5)
@@ -429,7 +434,7 @@ class TestGetMassBalance:
     def test_full_balance_combined(self):
         mb = get_mass_balance(_make_process())
         X, S, V, F, qX, qS = 2.0, 5.0, 1.5, 0.08, 0.4, -0.2
-        dc = mb(jnp.array([X, S, V]), jnp.array([qX, qS]), jnp.array([F]))
+        dc = mb(jnp.array([X, S, V]), jnp.array([qX, qS]), jnp.array([F]), jnp.zeros(0))
         assert float(dc[0]) == pytest.approx(qX * X + (F/V)*(0.0 - X), rel=1e-5)
         assert float(dc[1]) == pytest.approx(qS * X + (F/V)*(500.0 - S), rel=1e-5)
         assert float(dc[2]) == pytest.approx(F, rel=1e-5)
@@ -438,21 +443,24 @@ class TestGetMassBalance:
         mb = get_mass_balance(_make_process())
         dc = eqx.filter_jit(mb)(jnp.array([0.5, 10.0, 1.0]),
                                 jnp.array([0.3, -0.15]),
-                                jnp.array([0.05]))
+                                jnp.array([0.05]),
+                                jnp.zeros(0))
         assert dc.shape == (3,)
 
     def test_filter_jit_matches_eager(self):
         mb = get_mass_balance(_make_process())
         args = (jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
-                jnp.array([0.05]))
+                jnp.array([0.05]),
+                jnp.zeros(0))
         assert jnp.allclose(mb(*args), eqx.filter_jit(mb)(*args), atol=1e-6)
 
     def test_grad_wrt_c(self):
         mb = get_mass_balance(_make_process())
         q = jnp.array([0.3, -0.15])
         u_flow = jnp.array([0.05])
-        g = eqx.filter_jit(jax.grad(lambda c: jnp.sum(mb(c, q, u_flow))))(
+        f_mod = jnp.zeros(0)
+        g = eqx.filter_jit(jax.grad(lambda c: jnp.sum(mb(c, q, u_flow, f_mod))))(
             jnp.array([0.5, 10.0, 1.0]))
         assert g.shape == (3,)
 
@@ -460,19 +468,20 @@ class TestGetMassBalance:
         mb = get_mass_balance(_make_process())
         c = jnp.array([0.5, 10.0, 1.0])
         u_flow = jnp.array([0.05])
-        g = eqx.filter_jit(jax.grad(lambda q: jnp.sum(mb(c, q, u_flow))))(
+        f_mod = jnp.zeros(0)
+        g = eqx.filter_jit(jax.grad(lambda q: jnp.sum(mb(c, q, u_flow, f_mod))))(
             jnp.array([0.3, -0.15]))
         assert g.shape == (2,)
 
     def test_vmap_over_batch_of_states(self):
         mb = get_mass_balance(_make_process())
-        fn = eqx.filter_jit(jax.vmap(mb, in_axes=(0, 0, 0)))
+        fn = eqx.filter_jit(jax.vmap(mb, in_axes=(0, 0, 0, None)))
         B = 4
         c = jnp.stack([jnp.array([0.5 + i*0.3, 10.0 - i, 1.0 + i*0.1])
                        for i in range(B)])
         q = jnp.tile(jnp.array([0.3, -0.15]), (B, 1))
         u = jnp.tile(jnp.array([0.05]), (B, 1))
-        dc = fn(c, q, u)
+        dc = fn(c, q, u, jnp.zeros(0))
         assert dc.shape == (B, 3)
 
 
@@ -524,7 +533,7 @@ class TestBiomassAtIndexZero:
         mb = get_mass_balance(self._make_process_glucose_first())
         X, S, V = 2.0, 5.0, 1.0
         # state is [biomass, glucose, V] after reordering
-        dc = mb(jnp.array([X, S, V]), jnp.array([0.3, -0.15]), jnp.zeros(0))
+        dc = mb(jnp.array([X, S, V]), jnp.array([0.3, -0.15]), jnp.zeros(0), jnp.zeros(0))
         assert float(dc[0]) == pytest.approx(0.3 * X, rel=1e-5)
         assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
 
@@ -613,6 +622,7 @@ class TestIntracellular:
         qX, qP, qS = 0.4, 0.1, -0.2
         dc = mb(jnp.array([2.0, 0.5, 5.0, 1.0]),
                 jnp.array([qX, qP, qS]),
+                jnp.zeros(0),
                 jnp.zeros(0))
         # No flow: pure reaction
         assert float(dc[0]) == pytest.approx(qX * X_active, rel=1e-5)
@@ -628,7 +638,8 @@ class TestIntracellular:
         Cin_glucose = 500.0
         dc = mb(jnp.array([X_meas, P, S, V]),
                 jnp.array([qX, qP, qS]),
-                jnp.array([F]))
+                jnp.array([F]),
+                jnp.zeros(0))
         # biomass in feed = 0, product not in feed = 0
         assert float(dc[0]) == pytest.approx(
             qX * X_active + (F/V) * (0.0 - X_meas), rel=1e-5)
@@ -644,6 +655,7 @@ class TestIntracellular:
             jnp.array([2.0, 0.5, 5.0, 1.0]),
             jnp.array([0.4, 0.1, -0.2]),
             jnp.zeros(0),
+            jnp.zeros(0),
         )
         assert dc.shape == (4,)
 
@@ -653,9 +665,204 @@ class TestIntracellular:
         X = 2.0
         dc = mb(jnp.array([X, 5.0, 1.0]),
                 jnp.array([0.3, -0.15]),
+                jnp.zeros(0),
                 jnp.zeros(0))
         assert float(dc[0]) == pytest.approx(0.3 * X, rel=1e-5)
         assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Modeled (uncontrolled continuous) flow tests
+# ---------------------------------------------------------------------------
+
+def _make_process_with_modeled_flow():
+    """Process with a controlled carbon feed and an uncontrolled base feed."""
+    carbon_feed_medium = FeedMedium(
+        name="carbon_feed", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=StaticVariable(value=0.0),
+                is_controlled=False,
+            ),
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="g/L",
+                concentration=StaticVariable(value=500.0),
+                is_controlled=False,
+            ),
+        },
+    )
+    base_feed_medium = FeedMedium(
+        name="base_feed", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=StaticVariable(value=0.0),
+                is_controlled=False,
+            ),
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="g/L",
+                concentration=StaticVariable(value=0.0),
+                is_controlled=False,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=_ts([0., 5., 10., 20.], [0.5, 1.0, 2.0, 4.0]),
+                is_intracellular=False,
+            ),
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="g/L",
+                concentration=_ts([0., 5., 10., 20.], [10.0, 8.0, 5.0, 1.0]),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vc_dict = {
+        "carbon_feed": VolumeChange(
+            name="carbon_feed", unit="L", is_controlled=True, is_continuous=True,
+            feed_medium=carbon_feed_medium,
+            values=_ts([0., 5., 10., 20.], [0.0, 0.25, 0.5, 1.0]),
+        ),
+        "base_feed": VolumeChange(
+            name="base_feed", unit="L", is_controlled=False, is_continuous=True,
+            feed_medium=base_feed_medium,
+            values=_ts([0., 5., 10., 20.], [0.0, 0.1, 0.2, 0.4]),
+        ),
+    }
+    return BioProcess(
+        metadata=BioProcessMetadata(name="test_modeled", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=20.0,
+                           time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes=vc_dict),
+        reactor_medium=rm,
+    )
+
+
+class TestModeledFlow:
+
+    def test_modeled_flow_names(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        assert mb.modeled_flow_names == ("base_feed",)
+
+    def test_f_modeled_size(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        assert mb.f_modeled_size == 1
+
+    def test_cin_modeled_shape(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        assert mb.Cin_modeled.shape == (1, 2)
+
+    def test_cin_modeled_values(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        assert float(mb.Cin_modeled[0, 0]) == pytest.approx(0.0)
+        assert float(mb.Cin_modeled[0, 1]) == pytest.approx(0.0)
+
+    def test_no_modeled_flow_for_simple_process(self):
+        mb = get_mass_balance(_make_process())
+        assert mb.modeled_flow_names == ()
+        assert mb.f_modeled_size == 0
+        assert mb.Cin_modeled.shape == (0, 2)
+
+    def test_no_modeled_flow_for_batch(self):
+        mb = get_mass_balance(_make_batch_process())
+        assert mb.modeled_flow_names == ()
+        assert mb.f_modeled_size == 0
+
+    def test_uncontrolled_flow_is_modeled_not_controlled(self):
+        """Uncontrolled continuous flow appears in modeled_flow_names, not flow_names."""
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        assert "base_feed" not in mb.flow_names
+        assert "base_feed" in mb.modeled_flow_names
+        assert "carbon_feed" in mb.flow_names
+        assert "carbon_feed" not in mb.modeled_flow_names
+
+    def test_call_shape_with_modeled_flow(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        dc = mb(jnp.array([0.5, 10.0, 1.0]),
+                jnp.array([0.3, -0.15]),
+                jnp.array([0.05]),
+                jnp.array([0.02]))
+        assert dc.shape == (3,)
+
+    def test_dV_includes_modeled_flow(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        F_ctrl, F_mod = 0.05, 0.02
+        dc = mb(jnp.array([0.5, 10.0, 1.0]),
+                jnp.array([0.0, 0.0]),
+                jnp.array([F_ctrl]),
+                jnp.array([F_mod]))
+        assert float(dc[-1]) == pytest.approx(F_ctrl + F_mod, rel=1e-5)
+
+    def test_dilution_with_modeled_flow(self):
+        """Modeled flow dilutes species in the reactor."""
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        X, S, V = 1.0, 10.0, 1.0
+        F_ctrl, F_mod = 0.1, 0.05
+        # Both feeds: carbon has Cin_glucose=500, base has Cin_glucose=0
+        dc = mb(jnp.array([X, S, V]), jnp.zeros(2),
+                jnp.array([F_ctrl]), jnp.array([F_mod]))
+        # Expected: (F_ctrl/V)*(500-S) + (F_mod/V)*(0-S) for glucose
+        expected_glucose = (F_ctrl / V) * (500.0 - S) + (F_mod / V) * (0.0 - S)
+        assert float(dc[1]) == pytest.approx(expected_glucose, rel=1e-4)
+
+    def test_full_balance_with_modeled_flow(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        X, S, V = 2.0, 5.0, 1.5
+        F_ctrl, F_mod = 0.08, 0.03
+        qX, qS = 0.4, -0.2
+        dc = mb(jnp.array([X, S, V]), jnp.array([qX, qS]),
+                jnp.array([F_ctrl]), jnp.array([F_mod]))
+        expected_X = qX * X + (F_ctrl/V)*(0.0-X) + (F_mod/V)*(0.0-X)
+        expected_S = qS * X + (F_ctrl/V)*(500.0-S) + (F_mod/V)*(0.0-S)
+        expected_dV = F_ctrl + F_mod
+        assert float(dc[0]) == pytest.approx(expected_X, rel=1e-5)
+        assert float(dc[1]) == pytest.approx(expected_S, rel=1e-5)
+        assert float(dc[2]) == pytest.approx(expected_dV, rel=1e-5)
+
+    def test_jit_with_modeled_flow(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        dc = eqx.filter_jit(mb)(
+            jnp.array([0.5, 10.0, 1.0]),
+            jnp.array([0.3, -0.15]),
+            jnp.array([0.05]),
+            jnp.array([0.02]),
+        )
+        assert dc.shape == (3,)
+
+    def test_jit_matches_eager_with_modeled_flow(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        args = (jnp.array([0.5, 10.0, 1.0]),
+                jnp.array([0.3, -0.15]),
+                jnp.array([0.05]),
+                jnp.array([0.02]))
+        assert jnp.allclose(mb(*args), eqx.filter_jit(mb)(*args), atol=1e-6)
+
+    def test_grad_wrt_f_modeled(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        c = jnp.array([0.5, 10.0, 1.0])
+        q = jnp.array([0.3, -0.15])
+        u_flow = jnp.array([0.05])
+        g = eqx.filter_jit(
+            jax.grad(lambda fm: jnp.sum(mb(c, q, u_flow, fm)))
+        )(jnp.array([0.02]))
+        assert g.shape == (1,)
+
+    def test_vmap_with_modeled_flow(self):
+        mb = get_mass_balance(_make_process_with_modeled_flow())
+        fn = eqx.filter_jit(jax.vmap(mb, in_axes=(0, 0, 0, 0)))
+        B = 4
+        c = jnp.stack([jnp.array([0.5 + i*0.3, 10.0 - i, 1.0 + i*0.1])
+                       for i in range(B)])
+        q = jnp.tile(jnp.array([0.3, -0.15]), (B, 1))
+        u = jnp.tile(jnp.array([0.05]), (B, 1))
+        f_mod = jnp.tile(jnp.array([0.02]), (B, 1))
+        dc = fn(c, q, u, f_mod)
+        assert dc.shape == (B, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -673,7 +880,7 @@ class TestIntegration:
         def ode_rhs(t, c, q):
             u = ctrl(t)
             u_flow = u[jnp.array(list(ctrl.flow_indices))]
-            return mb(c, q, u_flow)
+            return mb(c, q, u_flow, jnp.zeros(0))
 
         dc = ode_rhs(jnp.array(5.0),
                      jnp.array([0.5, 10.0, 1.0]),
@@ -694,7 +901,7 @@ class TestIntegration:
         t = jnp.array(5.0)
         u = ctrl(t)
         u_flow = u[jnp.array(list(ctrl.flow_indices))]
-        dc = mb(jnp.array([1.0, 8.0, 1.2]), jnp.zeros(2), u_flow)
+        dc = mb(jnp.array([1.0, 8.0, 1.2]), jnp.zeros(2), u_flow, jnp.zeros(0))
         assert float(dc[-1]) == pytest.approx(float(u_flow[0]), rel=1e-4)
 
 
