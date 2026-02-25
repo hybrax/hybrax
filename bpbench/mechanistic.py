@@ -384,8 +384,12 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
             if isinstance(conc, StaticVariable):
                 Cin_np[k, j] = float(conc.value)
             else:
+                raise NotImplementedError(
+                    "TimeSeries feed concentrations are not yet supported in get_mass_balance. "
+                    f"Found TimeSeries for species '{sp_name}' in feed '{feed.name}' of volume change '{vc_name}'."
+                )
                 # TimeSeries feed concentration → use the mean
-                Cin_np[k, j] = float(jnp.mean(jnp.asarray(conc.values)))
+                # Cin_np[k, j] = float(jnp.mean(jnp.asarray(conc.values)))
 
     return MassBalance(
         c_size=n_species + 1,
