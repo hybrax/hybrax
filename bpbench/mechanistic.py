@@ -16,10 +16,10 @@ get_control_splines(process) -> ControlSplines
     **flow rates** (derivative of the cumulative-volume spline).
 
 get_mass_balance(process) -> MassBalance
-    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, u_modeled_flow)``
+    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
     computes the full mass-balance RHS ``dc/dt`` (including ``dV/dt``).
     Uncontrolled continuous volume changes (modeled feeds) are supported via
-    the optional ``u_modeled_flow`` argument.
+    the optional ``f_modeled`` argument.
 
 Usage with JIT
 --------------
@@ -33,7 +33,7 @@ to compile them::
     u      = eqx.filter_jit(ctrl)(t)
     dc_dt  = eqx.filter_jit(mb)(c, q, u_flow)
     # With modeled flows (e.g. base feed):
-    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, u_modeled_flow)
+    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
 """
 
 from __future__ import annotations
@@ -172,7 +172,7 @@ class MassBalance(eqx.Module):
         :attr:`species_names`).
     u_flow_size : int
         Number of continuous controlled flow streams.
-    u_modeled_flow_size : int
+    f_modeled_size : int
         Number of continuous uncontrolled (modeled) flow streams.
     output_size : int
         Same as :attr:`c_size`.
@@ -182,7 +182,7 @@ class MassBalance(eqx.Module):
         Ordering of continuous controlled flow streams in *u_flow*.
     modeled_flow_names : tuple[str, ...]
         Ordering of continuous uncontrolled (modeled) flow streams in
-        *u_modeled_flow*.
+        *f_modeled*.
     biomass_idx : int
         Index of ``"biomass"`` in :attr:`species_names` (always 0).
     intracellular_indices : tuple[int, ...]
@@ -204,13 +204,13 @@ class MassBalance(eqx.Module):
         mb    = get_mass_balance(process)
         dc_dt = eqx.filter_jit(mb)(c, q, u_flow)
         # With modeled flows:
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, u_modeled_flow)
+        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
     """
 
     c_size: int = eqx.field(static=True)
     q_size: int = eqx.field(static=True)
     u_flow_size: int = eqx.field(static=True)
-    u_modeled_flow_size: int = eqx.field(static=True)
+    f_modeled_size: int = eqx.field(static=True)
     output_size: int = eqx.field(static=True)
     species_names: tuple = eqx.field(static=True)
     flow_names: tuple = eqx.field(static=True)
@@ -225,7 +225,7 @@ class MassBalance(eqx.Module):
         c: jnp.ndarray,
         q: jnp.ndarray,
         u_flow: jnp.ndarray,
-        u_modeled_flow: jnp.ndarray = None,
+        f_modeled: jnp.ndarray,
     ) -> jnp.ndarray:
         """Compute the mass-balance RHS ``dc/dt``.
 
@@ -242,10 +242,10 @@ class MassBalance(eqx.Module):
             Volumetric flow rates for each continuous controlled feed stream
             (volume / time, matching the units of the stored
             ``VolumeChange``), shape ``(u_flow_size,)``.
-        u_modeled_flow:
+        f_modeled:
             Volumetric flow rates for each continuous uncontrolled (modeled)
-            feed stream, shape ``(u_modeled_flow_size,)``.  Optional; can be
-            omitted when ``u_modeled_flow_size == 0``.
+            feed stream, shape ``(f_modeled_size,)``.  Pass
+            ``jnp.zeros(0)`` when there are no modeled flows.
 
         Returns
         -------
@@ -292,12 +292,12 @@ class MassBalance(eqx.Module):
         dV = jnp.sum(u_flow)
 
         # Modeled (uncontrolled) feed contribution
-        if self.u_modeled_flow_size > 0:
-            modeled_contrib = u_modeled_flow[:, None] * (
+        if self.f_modeled_size > 0:
+            modeled_contrib = f_modeled[:, None] * (
                 self.Cin_modeled - c_species[None, :]
             )
             feed_term = feed_term + jnp.sum(modeled_contrib, axis=0) / V
-            dV = dV + jnp.sum(u_modeled_flow)
+            dV = dV + jnp.sum(f_modeled)
 
         dc_species = reaction + feed_term
 
@@ -391,7 +391,7 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
     Returns
     -------
     MassBalance
-        An ``eqx.Module`` whose ``__call__(c, q, u_flow, u_modeled_flow)``
+        An ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
         computes the mass-balance RHS ``dc/dt``.
 
     Raises
@@ -461,7 +461,7 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
         c_size=n_species + 1,
         q_size=n_species,
         u_flow_size=len(flow_names),
-        u_modeled_flow_size=len(modeled_flow_names),
+        f_modeled_size=len(modeled_flow_names),
         output_size=n_species + 1,
         species_names=tuple(species_names),
         flow_names=tuple(flow_names),
