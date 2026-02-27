@@ -1,10 +1,23 @@
 # Here is just a general TODO for the future.
 
 * **NEXT steps:**
-    * Add new case studies -> they will bring their own challenges.
-        * Martens, et al. 2025 - synthetic mammalian case study.
     * Add mass balance functionality
-        * for that, I think
+        * currently I asked the Agent to rewrite the mass balance equation to include modeled feed rates.
+        * this changed the examples/{03*, 04*}.ipynb notebooks -> check if they are correct.
+        * especially 04 seems to run very slow, why? figure this out
+        * NEXT: 
+            1. use diffrax, not solve_ivp to solve the integration
+            2. add discrete sampling events.
+                * for that we need a function that calculates the delta for reactor concentrations + Volume at every event
+                * the diffrax integration has to stop the deltas have to be calculated and then the diffrax integration has to start again.
+    * Add new case studies -> they will bring their own challenges.
+        * Martens, et al. 2025
+            * Synthetic mammalian case study
+            * Simulated dataset needs multiple adaptations:
+                * it is too diverse - they have 3 bioreactor scales and 30 different cell lines such a diverse dataset does only make sense in an iterative approach as they do it. I have to think how I could reduce the complexity - e.g. by randomly choosing one cell line & generate 3 datasets for the 3 scales 
+                * They apply measurement error only on the last data point - i may need to rewrite parts of their code. 
+                * The question: should we still include this dataset? - I think yes, to make the benchmarking more diverse. It is also good to have it because it is an mammalian process - albeit simulated.
+    
 
 * **Validation functions for `/bpbench/validate.py`**
     * ...
@@ -12,6 +25,12 @@
 * **Possible future compatabilities:**
     * How would I implement perfusion? - No idea.
     * How do we deal with initial concentrations and how do we indicate if they are controlled?
+
+# What do acutally test in the benchmarking
+    * Do we acutally need to predict base feed rates, or is it good enough to set them to 0 or a constant?
+    * Different scaling methods
+    * Different Augmentation methods
+    * Different ML methods
 
 # Modeling Choices
 
