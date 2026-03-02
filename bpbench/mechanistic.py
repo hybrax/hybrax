@@ -45,7 +45,7 @@ import interpax
 import jax.numpy as jnp
 import numpy as np
 
-from .dataclasses import BioProcess, StaticVariable, TimeSeries
+from .dataclasses import BioProcess, SplineRepresentation, StaticVariable, TimeSeries
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +80,18 @@ def _make_spline(timepoints: jnp.ndarray,
         t = jnp.array([t[0], t[0] + 1.0])
         v = jnp.array([v[0], v[0]])
     return interpax.CubicSpline(t, v, bc_type="natural", check=False)
+
+
+def _make_spline_from_rep(rep: SplineRepresentation) -> interpax.CubicSpline:
+    """Build an interpax.CubicSpline from a stored SplineRepresentation.
+
+    Uses only the first segment.  For multi-segment splines the caller
+    should use :func:`bpbench.splines.build_interpax_spline` instead.
+    """
+    ni = int(rep.n[0])
+    xi = rep.x[0, :ni]
+    yi = rep.y[0, :ni]
+    return interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +366,9 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     for pv_name, pv in process.process_variables.items():
         if not pv.is_controlled:
             continue
-        if isinstance(pv.values, TimeSeries):
+        if pv.spline is not None:
+            sp = _make_spline_from_rep(pv.spline)
+        elif isinstance(pv.values, TimeSeries):
             sp = _make_spline(pv.values.timepoints, pv.values.values)
         else:
             # StaticVariable: constant spline over the full process time span

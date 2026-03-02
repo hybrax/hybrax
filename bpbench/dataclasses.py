@@ -17,22 +17,35 @@ import jax.numpy as jnp
 @dataclass
 class SplineRepresentation:
     """
-    Fitted spline representation of TimeSeries and StaticVariable data.
+    Serializable spline representation that can reconstruct an interpax spline.
+
+    Stores per-segment control points (x, y) padded to fixed shapes so that
+    all splines in a dataset share the same array dimensions.  This is critical
+    for JAX JIT compilation (no shape-driven recompilation).
+
+    Reconstruction:
+        For each segment *i* (``i < n_segments``), build
+        ``interpax.CubicSpline(x[i, :n[i]], y[i, :n[i]])`` and evaluate
+        within ``[segment_boundaries[i], segment_boundaries[i+1]]``.
     """
-    # TODO for later: This is a placehold for processed data that can be filled later.
-    # type: str  # e.g. "cubic_hermite", "linear", "zero_order_hold"
-    # breakpoints: jnp.ndarray  # shape (K,), segment boundaries (including start and end)
-    # coefficients: jnp.ndarray  # shape (M, C), M=K-1 segments with C coefficients each
-    # discontinuous: bool = False  # True if spline has discontinuities
-    # fit_residual_std: Optional[float] = None  # goodness of fit
-    # notes: Optional[str] = None  # any additional info about fitting
+    kind: str  # e.g. "interpax_cubic", "smoothing_bspline_approx"
+    x: jnp.ndarray  # shape (max_segments, max_ctrl_points) – padded
+    y: jnp.ndarray  # shape (max_segments, max_ctrl_points) – padded
+    n: jnp.ndarray  # shape (max_segments,) – valid point count per segment
+    n_segments: int
+    segment_boundaries: jnp.ndarray  # shape (max_segments + 1,) – padded
+    bc_type: str = "natural"
+    spline_metadata: Optional[dict] = None  # e.g. {"s": 0.1, "n_ctrl": 128}
+
 
 @dataclass
 class DiscreteEvents:
     """
-    Stores discrete events
+    Stores discrete event times (bolus feeds, sampling, volume jumps, etc.).
     """
-    # TODO for later: This is a placehold for processed data that can be filled later.
+    times: jnp.ndarray  # sorted, unique event times
+    labels: Optional[list] = None
+    metadata: Optional[dict] = None
 
 
 # ============================================================
@@ -175,11 +188,7 @@ class BioProcess:
     volume: Volume
     reactor_medium: ReactorMedium
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
-    
-
-    # TODO for later: event_times is already a preprocessing step and will be considered in the future.
-    # event_times: Optional[jnp.ndarray] = None  # sorted discontinuity times
-    # - event_times: Discontinuity times, these should not be inferred without visual inspection, therefore here they are parsed directly
+    discrete_events: Optional[DiscreteEvents] = None
 
 
 # ============================================================

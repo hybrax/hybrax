@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from .dataclasses import (
     BenchmarkDataset, CaseStudy, BioProcess, TimeSeries, TimeAxis,
-    SplineRepresentation, FeedMedium, FeedMediumComponent,
+    SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
     StaticVariable, BioProcessMetadata, Volume, VolumeChange,
     ReactorMedium, ReactorMediumComponent, ProcessVariable
 )
@@ -193,6 +193,10 @@ def _process_to_dict(process: BioProcess) -> Dict:
     if process.volume is not None:
         result["volume"] = _volume_to_dict(process.volume)
     
+    # Add discrete events if present
+    if process.discrete_events is not None:
+        result["discrete_events"] = _discrete_events_to_dict(process.discrete_events)
+    
     return result
 
 
@@ -226,7 +230,7 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
         "unit": pv.unit,
         "is_controlled": pv.is_controlled,
         "values": _timeseries_or_static_to_dict(pv.values),
-        "spline": None  # Spline is placeholder for now
+        "spline": _spline_to_dict(pv.spline) if pv.spline is not None else None,
     }
 
 
@@ -384,12 +388,18 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     if p_data.get("volume"):
         volume = _dict_to_volume(p_data["volume"])
     
+    # Reconstruct discrete events
+    discrete_events = None
+    if p_data.get("discrete_events"):
+        discrete_events = _dict_to_discrete_events(p_data["discrete_events"])
+
     return BioProcess(
         metadata=metadata,
         time_axis=time_axis,
         volume=volume,
         reactor_medium=reactor_medium,
-        process_variables=process_variables
+        process_variables=process_variables,
+        discrete_events=discrete_events,
     )
 
 
@@ -420,12 +430,15 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
 
 def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
     """Reconstruct ProcessVariable from dictionary"""
+    spline = None
+    if pv_data.get("spline") is not None:
+        spline = _dict_to_spline(pv_data["spline"])
     return ProcessVariable(
         name=pv_data["name"],
         unit=pv_data["unit"],
         is_controlled=pv_data["is_controlled"],
         values=_dict_to_timeseries_or_static(pv_data["values"]),
-        spline=None  # Spline is placeholder for now
+        spline=spline,
     )
 
 
@@ -501,6 +514,74 @@ def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
         unit=comp_data["unit"],
         is_controlled=comp_data["is_controlled"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"])
+    )
+
+
+# ============================================================
+# SplineRepresentation and DiscreteEvents serialization helpers
+# ============================================================
+
+def _spline_to_dict(spline: SplineRepresentation) -> Dict:
+    """Convert SplineRepresentation to dictionary"""
+    return {
+        "kind": spline.kind,
+        "x": spline.x,
+        "y": spline.y,
+        "n": spline.n,
+        "n_segments": spline.n_segments,
+        "segment_boundaries": spline.segment_boundaries,
+        "bc_type": spline.bc_type,
+        "spline_metadata": spline.spline_metadata,
+    }
+
+
+def _dict_to_spline(data: Dict) -> SplineRepresentation:
+    """Reconstruct SplineRepresentation from dictionary"""
+    x = data["x"]
+    y = data["y"]
+    n = data["n"]
+    seg_b = data["segment_boundaries"]
+
+    # Ensure JAX arrays
+    if not isinstance(x, jnp.ndarray):
+        x = jnp.array(x)
+    if not isinstance(y, jnp.ndarray):
+        y = jnp.array(y)
+    if not isinstance(n, jnp.ndarray):
+        n = jnp.array(n)
+    if not isinstance(seg_b, jnp.ndarray):
+        seg_b = jnp.array(seg_b)
+
+    return SplineRepresentation(
+        kind=data["kind"],
+        x=x,
+        y=y,
+        n=n,
+        n_segments=data["n_segments"],
+        segment_boundaries=seg_b,
+        bc_type=data.get("bc_type", "natural"),
+        spline_metadata=data.get("spline_metadata"),
+    )
+
+
+def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
+    """Convert DiscreteEvents to dictionary"""
+    return {
+        "times": de.times,
+        "labels": de.labels,
+        "metadata": de.metadata,
+    }
+
+
+def _dict_to_discrete_events(data: Dict) -> DiscreteEvents:
+    """Reconstruct DiscreteEvents from dictionary"""
+    times = data["times"]
+    if not isinstance(times, jnp.ndarray):
+        times = jnp.array(times)
+    return DiscreteEvents(
+        times=times,
+        labels=data.get("labels"),
+        metadata=data.get("metadata"),
     )
 
 
