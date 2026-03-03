@@ -12,6 +12,7 @@ from .dataclasses import (
     # Low-level structures
     TimeAxis,
     SplineRepresentation,
+    DiscreteEvents,
     TimeSeries,
     StaticVariable,
     BioProcessMetadata,
@@ -59,6 +60,7 @@ __all__ = [
     # Dataclasses
     "TimeAxis",
     "SplineRepresentation",
+    "DiscreteEvents",
     "TimeSeries",
     "StaticVariable",
     "BioProcessMetadata",

@@ -1,225 +1,347 @@
 """
-Spline fitting and manipulation functions for bioprocess time series data
+Spline fitting, serialization and evaluation for bioprocess time series data.
 
-This module provides utilities for fitting splines to cumulative measurements
-(like feed volumes) and computing rates from those splines.
+This module is the canonical place for:
+- Discrete event detection from VolumeChanges
+- Segmented spline fitting (interpolating or smoothing)
+- Conversion of SciPy smoothing B-spline → interpax-compatible parameters
+- Reconstruction of interpax splines from stored SplineRepresentation
+- Piecewise spline evaluation compatible with JAX JIT
+
+All heavy arrays are stored in padded, fixed-shape format so that JAX
+never recompiles due to shape changes.
 """
 
+from __future__ import annotations
+
+from typing import List, Optional, Tuple
+
 import jax.numpy as jnp
-from typing import Optional
-from .dataclasses import SplineRepresentation
+import numpy as np
+from scipy import interpolate
+
+from .dataclasses import (
+    BioProcess,
+    DiscreteEvents,
+    SplineRepresentation,
+    TimeSeries,
+)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+DEFAULT_MAX_SEGMENTS = 16
+DEFAULT_MAX_CTRL_POINTS = 128
+SMOOTHING_THRESHOLD = 100  # > 100 points → smoothing spline
 
 
-def fit_cubic_spline(timepoints: jnp.ndarray, values: jnp.ndarray, 
-                     discontinuities: Optional[jnp.ndarray] = None) -> SplineRepresentation:
+# ---------------------------------------------------------------------------
+# 1) Discrete event detection
+# ---------------------------------------------------------------------------
+
+def detect_discrete_events(process: BioProcess) -> DiscreteEvents:
+    """Detect discrete event times from non-continuous VolumeChanges.
+
+    Parameters
+    ----------
+    process:
+        A BioProcess whose ``volume.volume_changes`` may contain discrete
+        (``is_continuous=False``) entries.
+
+    Returns
+    -------
+    DiscreteEvents
+        Sorted, unique event times and optional labels.
     """
-    Fit a cubic spline to time series data, handling discontinuities.
-    
-    This function fits piecewise cubic splines between discontinuity points.
-    For cumulative data (like cumulative volumes), this preserves monotonicity
-    and allows computation of rates via differentiation.
-    
-    Args:
-        timepoints: Time points of measurements (shape: N,)
-        values: Measured values at timepoints (shape: N,)
-        discontinuities: Optional array of time points where discontinuities occur.
-                        None or empty array means no discontinuities.
-        
-    Returns:
-        SplineRepresentation object with fitted spline coefficients
-        
-    Example:
-        >>> times = jnp.array([0., 1., 2., 3., 4.])
-        >>> cumulative_vol = jnp.array([0., 0.1, 0.3, 0.6, 1.0])
-        >>> spline = fit_cubic_spline(times, cumulative_vol)
-    """
-    from scipy import interpolate
-    import numpy as np
-    
-    # Convert JAX arrays to numpy for scipy
-    t_np = np.array(timepoints)
-    v_np = np.array(values)
-    
-    if discontinuities is not None and len(discontinuities) > 0:
-        # Split data at discontinuities and fit separate splines
-        disc_np = np.array(discontinuities)
-        
-        # Find segments between discontinuities
-        segments = []
-        breakpoints = [t_np[0]]
-        
-        for disc_time in disc_np:
-            # Find indices before and after discontinuity
-            mask_before = t_np <= disc_time
-            if np.any(mask_before):
-                idx = np.where(mask_before)[0][-1]
-                if idx < len(t_np) - 1:
-                    breakpoints.append(disc_time)
-        
-        breakpoints.append(t_np[-1])
-        breakpoints = np.unique(np.array(breakpoints))
-        
-        # Use linear interpolation for simplicity when discontinuities present
-        # (cubic splines across discontinuities would require more sophisticated handling)
-        coeffs = []
-        for i in range(len(breakpoints) - 1):
-            mask = (t_np >= breakpoints[i]) & (t_np <= breakpoints[i+1])
-            t_seg = t_np[mask]
-            v_seg = v_np[mask]
-            
-            if len(t_seg) >= 2:
-                # Linear fit for this segment
-                dt = t_seg[-1] - t_seg[0]
-                if dt > 1e-10:  # Use epsilon tolerance to avoid division by near-zero
-                    slope = (v_seg[-1] - v_seg[0]) / dt
-                else:
-                    slope = 0.0
-                intercept = v_seg[0] - slope * t_seg[0]
-                coeffs.append([intercept, slope])
-            else:
-                coeffs.append([v_seg[0], 0.0])
-        
-        coeffs_array = jnp.array(coeffs)
-        fit_type = "linear"
-        is_discontinuous = True
-        
-        # Evaluate for residuals
-        predicted = np.zeros_like(v_np)
-        for i, t in enumerate(t_np):
-            # Find segment
-            seg_idx = np.searchsorted(np.array(breakpoints[:-1]), t, side='right') - 1
-            seg_idx = max(0, min(seg_idx, len(coeffs_array) - 1))
-            
-            if coeffs_array.shape[1] == 2:
-                predicted[i] = coeffs_array[seg_idx, 0] + coeffs_array[seg_idx, 1] * t
-            else:
-                predicted[i] = v_np[i]
-        
-    else:
-        # Fit cubic spline to entire dataset
-        if len(t_np) >= 4:
-            # Use cubic spline
-            cs = interpolate.CubicSpline(t_np, v_np, bc_type='natural')
-            
-            # Extract breakpoints and coefficients
-            breakpoints = jnp.array(cs.x)
-            # CubicSpline stores coefficients in shape (n_segments, 4) for [c3, c2, c1, c0]
-            coeffs_array = jnp.array(cs.c.T)  # Transpose to (n_segments, 4)
-            fit_type = "cubic_hermite"
-            is_discontinuous = False
-            
-            # Calculate fit residual using the fitted spline
-            predicted = cs(t_np)
-        else:
-            # Fall back to linear interpolation for few points
-            breakpoints = jnp.array(t_np)
-            coeffs = []
-            for i in range(len(t_np) - 1):
-                dt = t_np[i+1] - t_np[i]
-                if dt > 1e-10:  # Use epsilon tolerance to avoid division by near-zero
-                    slope = (v_np[i+1] - v_np[i]) / dt
-                else:
-                    slope = 0.0
-                intercept = v_np[i] - slope * t_np[i]
-                coeffs.append([intercept, slope])
-            coeffs_array = jnp.array(coeffs)
-            fit_type = "linear"
-            is_discontinuous = False
-            
-            # Linear evaluation
-            predicted = np.zeros_like(v_np)
-            for i, t in enumerate(t_np):
-                # Find segment
-                seg_idx = np.searchsorted(np.array(breakpoints[:-1]), t, side='right') - 1
-                seg_idx = max(0, min(seg_idx, len(coeffs_array) - 1))
-                
-                if coeffs_array.shape[1] == 2:
-                    predicted[i] = coeffs_array[seg_idx, 0] + coeffs_array[seg_idx, 1] * t
-                else:
-                    predicted[i] = v_np[i]  # Fallback
-    
-    # Calculate fit residual
-    residuals = v_np - predicted
-    fit_residual_std = float(np.std(residuals))
-    
-    return SplineRepresentation(
-        type=fit_type,
-        breakpoints=breakpoints,
-        coefficients=coeffs_array,
-        discontinuous=is_discontinuous,
-        fit_residual_std=fit_residual_std,
-        notes=f"Fitted with {len(breakpoints)} breakpoints"
+    times: list = []
+    labels: list = []
+    for vc_name, vc in process.volume.volume_changes.items():
+        if not vc.is_continuous:
+            tp = np.array(vc.values.timepoints).tolist()
+            times.extend(tp)
+            labels.extend([vc_name] * len(tp))
+
+    if not times:
+        return DiscreteEvents(times=jnp.zeros(0))
+
+    # Sort and deduplicate
+    order = np.argsort(times)
+    sorted_times = np.array(times)[order]
+    sorted_labels = [labels[i] for i in order]
+    unique_times, unique_idx = np.unique(sorted_times, return_index=True)
+    unique_labels = [sorted_labels[i] for i in unique_idx]
+
+    return DiscreteEvents(
+        times=jnp.array(unique_times),
+        labels=unique_labels,
     )
 
 
-def compute_rate_from_cumulative(spline: SplineRepresentation, 
-                                 eval_times: jnp.ndarray) -> jnp.ndarray:
+# ---------------------------------------------------------------------------
+# 2) Segment boundaries from events
+# ---------------------------------------------------------------------------
+
+def make_segment_boundaries(
+    t_min: float, t_max: float, event_times: jnp.ndarray
+) -> np.ndarray:
+    """Return segment boundaries ``[t_min, ...events..., t_max]``.
+
+    Only events strictly inside ``(t_min, t_max)`` are included.
+    The result is a strictly-increasing numpy array.
     """
-    Compute rate (derivative) from cumulative volume spline.
-    
-    For cumulative data stored as splines, this computes the instantaneous
-    rate at specified time points.
-    
-    Args:
-        spline: SplineRepresentation of cumulative data
-        eval_times: Times at which to evaluate the rate
-        
-    Returns:
-        Array of rate values at eval_times
-        
-    Example:
-        >>> # spline represents cumulative volume
-        >>> times = jnp.array([0., 1., 2., 3.])
-        >>> rates = compute_rate_from_cumulative(spline, times)
-        >>> # rates[i] is the instantaneous feed rate at times[i]
+    ev = np.asarray(event_times, dtype=float)
+    interior = ev[(ev > t_min) & (ev < t_max)]
+    boundaries = np.unique(np.concatenate([[t_min], interior, [t_max]]))
+    return boundaries
+
+
+# ---------------------------------------------------------------------------
+# 3) Split a TimeSeries into segments
+# ---------------------------------------------------------------------------
+
+def split_timeseries(
+    ts: TimeSeries, boundaries: np.ndarray
+) -> List[TimeSeries]:
+    """Split *ts* into segments defined by *boundaries*.
+
+    Points that fall exactly on a boundary belong to both adjacent segments
+    (duplicated at split point) to ensure each segment covers its endpoints.
+    Segments with fewer than 2 points are still returned.
     """
-    import numpy as np
-    
-    eval_times_np = np.array(eval_times)
-    
-    if spline.type == "cubic_hermite":
-        # For cubic splines, compute analytical derivative
-        # Coefficients are [c3, c2, c1, c0] for c3*t^3 + c2*t^2 + c1*t + c0
-        # Derivative is 3*c3*t^2 + 2*c2*t + c1
-        
-        rates = np.zeros_like(eval_times_np)
-        breakpoints_np = np.array(spline.breakpoints)
-        coeffs_np = np.array(spline.coefficients)
-        
-        for i, t in enumerate(eval_times_np):
-            # Find which segment this time belongs to
-            seg_idx = np.searchsorted(breakpoints_np[:-1], t, side='right') - 1
-            seg_idx = max(0, min(seg_idx, len(coeffs_np) - 1))
-            
-            # Get segment start time
-            t0 = breakpoints_np[seg_idx]
-            dt = t - t0
-            
-            # Compute derivative: d/dt[c3*dt^3 + c2*dt^2 + c1*dt + c0]
-            if coeffs_np.shape[1] >= 4:
-                c3, c2, c1, c0 = coeffs_np[seg_idx]
-                rates[i] = 3*c3*dt**2 + 2*c2*dt + c1
+    t = np.asarray(ts.timepoints)
+    v = np.asarray(ts.values)
+
+    # Sort by time
+    order = np.argsort(t)
+    t = t[order]
+    v = v[order]
+
+    segments: List[TimeSeries] = []
+    for i in range(len(boundaries) - 1):
+        lo, hi = boundaries[i], boundaries[i + 1]
+        mask = (t >= lo) & (t <= hi)
+        seg_t = t[mask]
+        seg_v = v[mask]
+        # Remove duplicates (keep first)
+        _, idx = np.unique(seg_t, return_index=True)
+        seg_t = seg_t[idx]
+        seg_v = seg_v[idx]
+        segments.append(
+            TimeSeries(
+                timepoints=jnp.array(seg_t),
+                values=jnp.array(seg_v),
+            )
+        )
+    return segments
+
+
+# ---------------------------------------------------------------------------
+# 4) Choose fitting strategy
+# ---------------------------------------------------------------------------
+
+def choose_spline_kind(n_points: int) -> str:
+    """Pick ``'smoothing_bspline'`` for large N, else ``'cubic_interp'``."""
+    if n_points > SMOOTHING_THRESHOLD:
+        return "smoothing_bspline"
+    return "cubic_interp"
+
+
+# ---------------------------------------------------------------------------
+# 5) SciPy smoothing → interpax-compatible control points
+# ---------------------------------------------------------------------------
+
+def _fit_smoothing_segment(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    s: float,
+    n_ctrl: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points.
+
+    Returns ``(x_ctrl, y_ctrl)`` suitable for ``interpax.CubicSpline``.
+    """
+    if len(x) < 4:
+        # Not enough points for cubic; return raw points
+        return x.copy(), y.copy()
+
+    tck = interpolate.splrep(x, y, s=s, k=3)
+    x_ctrl = np.linspace(x[0], x[-1], n_ctrl)
+    y_ctrl = interpolate.splev(x_ctrl, tck)
+    return x_ctrl, np.asarray(y_ctrl)
+
+
+def _fit_interp_segment(
+    x: np.ndarray, y: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """For ≤ SMOOTHING_THRESHOLD points, store original sorted/unique data."""
+    _, idx = np.unique(x, return_index=True)
+    return x[idx].copy(), y[idx].copy()
+
+
+# ---------------------------------------------------------------------------
+# 6) Main fitting entry point
+# ---------------------------------------------------------------------------
+
+def fit_timeseries_spline(
+    ts: TimeSeries,
+    *,
+    boundaries: Optional[np.ndarray] = None,
+    smoothing_s: float = 0.0,
+    n_ctrl: int = DEFAULT_MAX_CTRL_POINTS,
+    max_segments: int = DEFAULT_MAX_SEGMENTS,
+    max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
+) -> SplineRepresentation:
+    """Fit a (segmented) spline to a TimeSeries, returning a padded representation.
+
+    Parameters
+    ----------
+    ts:
+        Input time series.
+    boundaries:
+        Segment boundaries (from ``make_segment_boundaries``).  If *None*,
+        a single segment spanning the full time range is used.
+    smoothing_s:
+        Smoothing factor passed to ``scipy.interpolate.splrep`` when the
+        segment has more than ``SMOOTHING_THRESHOLD`` points.  0 means
+        interpolation through all points.
+    n_ctrl:
+        Number of control points to resample smoothing splines onto.
+    max_segments:
+        Padding dimension for segments.
+    max_ctrl_points:
+        Padding dimension for control points per segment.
+
+    Returns
+    -------
+    SplineRepresentation
+        Padded, serializable representation.
+    """
+    t_np = np.asarray(ts.timepoints)
+    v_np = np.asarray(ts.values)
+
+    # Sort + deduplicate
+    order = np.argsort(t_np)
+    t_np = t_np[order]
+    v_np = v_np[order]
+    _, uidx = np.unique(t_np, return_index=True)
+    t_np = t_np[uidx]
+    v_np = v_np[uidx]
+
+    if boundaries is None:
+        boundaries = np.array([t_np[0], t_np[-1]])
+
+    # Split into segments
+    segments = split_timeseries(
+        TimeSeries(timepoints=jnp.array(t_np), values=jnp.array(v_np)),
+        boundaries,
+    )
+    actual_n_segments = len(segments)
+
+    # Per-segment fitting
+    xs: List[np.ndarray] = []
+    ys: List[np.ndarray] = []
+    ns: List[int] = []
+    kind = "interpax_cubic"
+
+    for seg in segments:
+        seg_t = np.asarray(seg.timepoints)
+        seg_v = np.asarray(seg.values)
+        n_pts = len(seg_t)
+
+        if n_pts < 2:
+            # Constant / single point → duplicate to two points
+            if n_pts == 1:
+                seg_t = np.array([seg_t[0], seg_t[0] + 1e-6])
+                seg_v = np.array([seg_v[0], seg_v[0]])
             else:
-                # Fallback to numerical differentiation
-                rates[i] = 0.0
-                
-    elif spline.type == "linear":
-        # For linear splines, derivative is simply the slope
-        rates = np.zeros_like(eval_times_np)
-        breakpoints_np = np.array(spline.breakpoints)
-        coeffs_np = np.array(spline.coefficients)
-        
-        for i, t in enumerate(eval_times_np):
-            seg_idx = np.searchsorted(breakpoints_np[:-1], t, side='right') - 1
-            seg_idx = max(0, min(seg_idx, len(coeffs_np) - 1))
-            
-            if coeffs_np.shape[1] >= 2:
-                # Linear: intercept + slope*t, so derivative is slope
-                rates[i] = coeffs_np[seg_idx, 1]
-            else:
-                rates[i] = 0.0
-    else:
-        # Unknown spline type, return zeros
-        rates = np.zeros_like(eval_times_np)
-    
-    return jnp.array(rates)
+                # Empty segment — should not normally happen
+                seg_t = np.array([0.0, 1e-6])
+                seg_v = np.array([0.0, 0.0])
+            xs.append(seg_t)
+            ys.append(seg_v)
+            ns.append(len(seg_t))
+            continue
+
+        strategy = choose_spline_kind(n_pts)
+        if strategy == "smoothing_bspline":
+            kind = "smoothing_bspline_approx"
+            xc, yc = _fit_smoothing_segment(seg_t, seg_v, s=smoothing_s, n_ctrl=n_ctrl)
+        else:
+            xc, yc = _fit_interp_segment(seg_t, seg_v)
+
+        xs.append(xc)
+        ys.append(yc)
+        ns.append(len(xc))
+
+    # Pad to fixed shapes
+    x_padded = np.zeros((max_segments, max_ctrl_points))
+    y_padded = np.zeros((max_segments, max_ctrl_points))
+    n_padded = np.zeros(max_segments, dtype=int)
+    boundary_padded = np.full(max_segments + 1, boundaries[-1])
+    boundary_padded[: len(boundaries)] = boundaries
+
+    for i in range(actual_n_segments):
+        n_pts = min(ns[i], max_ctrl_points)
+        x_padded[i, :n_pts] = xs[i][:n_pts]
+        y_padded[i, :n_pts] = ys[i][:n_pts]
+        n_padded[i] = n_pts
+
+    metadata = {
+        "smoothing_s": float(smoothing_s),
+        "n_ctrl": int(n_ctrl),
+        "actual_segments": int(actual_n_segments),
+    }
+
+    return SplineRepresentation(
+        kind=kind,
+        x=jnp.array(x_padded),
+        y=jnp.array(y_padded),
+        n=jnp.array(n_padded),
+        n_segments=actual_n_segments,
+        segment_boundaries=jnp.array(boundary_padded),
+        bc_type="natural",
+        spline_metadata=metadata,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 7) Reconstruction: SplineRepresentation → callable interpax evaluator
+# ---------------------------------------------------------------------------
+
+def build_interpax_spline(rep: SplineRepresentation):
+    """Reconstruct a list of ``interpax.CubicSpline`` objects from stored params.
+
+    Returns ``(splines, boundaries)`` where *splines* is a list of
+    ``interpax.CubicSpline`` (one per segment) and *boundaries* is a 1-D
+    array of length ``n_segments + 1``.
+
+    For use **outside** JIT.  Inside a jitted function, use
+    :func:`evaluate_spline_at` instead.
+    """
+    import interpax
+
+    splines = []
+    for i in range(rep.n_segments):
+        ni = int(rep.n[i])
+        xi = rep.x[i, :ni]
+        yi = rep.y[i, :ni]
+        sp = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
+        splines.append(sp)
+
+    boundaries = np.asarray(rep.segment_boundaries[: rep.n_segments + 1])
+    return splines, boundaries
+
+
+def evaluate_spline_at(rep: SplineRepresentation, t: float) -> float:
+    """Evaluate a segmented spline at scalar time *t* (not jitted).
+
+    This is a convenience for plotting / verification.  For JIT-compiled
+    evaluation inside diffrax, pass the reconstructed ``interpax.CubicSpline``
+    objects directly.
+    """
+    splines, boundaries = build_interpax_spline(rep)
+    idx = int(np.searchsorted(boundaries[1:], float(t), side="right"))
+    idx = max(0, min(idx, rep.n_segments - 1))
+    return float(splines[idx](t))
