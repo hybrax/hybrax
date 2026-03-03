@@ -1,6 +1,13 @@
 # Here is just a general TODO for the future.
 
 * **NEXT steps:**
+    * Reimplement Splines:
+        * Check if everything works as intended.
+        * Currently everything is a notebook in 00_combined, but I should do the spline fitting in the separate examples
+        * the function `bpbench.splines.detect_discrete_events` should be renames to `detect_discrete_volume_changes` as it clearly does not detect all discrete events (e.g., in the control `TimeSeries`)
+        * the `bpbench.plot_process` function should plot the splines if they are filled in the process field. Also they should again return the figure object.
+        * after splines are re-implemented, re-combine the dataset and make the integration again 
+            * also here, maybe integrating them in the examples is better than in combined.
     * Add mass balance functionality
         * currently I asked the Agent to rewrite the mass balance equation to include modeled feed rates.
         * this changed the examples/{03*, 04*}.ipynb notebooks -> check if they are correct.
@@ -17,6 +24,7 @@
                 * it is too diverse - they have 3 bioreactor scales and 30 different cell lines such a diverse dataset does only make sense in an iterative approach as they do it. I have to think how I could reduce the complexity - e.g. by randomly choosing one cell line & generate 3 datasets for the 3 scales 
                 * They apply measurement error only on the last data point - i may need to rewrite parts of their code. 
                 * The question: should we still include this dataset? - I think yes, to make the benchmarking more diverse. It is also good to have it because it is an mammalian process - albeit simulated.
+            * BUT: I should include it, because it has bolus feeds
     
 
 * **Validation functions for `/bpbench/validate.py`**
