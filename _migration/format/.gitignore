@@ -208,6 +208,3 @@ __marimo__/
 
 # Shitty Windows files
 *:Zone.Identifier
-
-# Notebook output directories
-examples/00_combined/06_spline_serialization_output/
