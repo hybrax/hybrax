@@ -10,8 +10,7 @@
         * and then in theory everything with "full data" and afterwards with "sparse data"
     * Reimplement Splines:
         * Check if everything works as intended.
-        * Currently everything is a notebook in 00_combined, but I should do the spline fitting in the separate examples
-        * the function `bpbench.splines.detect_discrete_events` should be renames to `detect_discrete_volume_changes` as it clearly does not detect all discrete events (e.g., in the control `TimeSeries`)
+        * the function `bpbench.splines.detect_discrete_events` should be renames to `detect_discrete_state_events` as it clearly does not detect all discrete events (e.g., in the control `TimeSeries`)
         * the `bpbench.plot_process` function should plot the splines if they are filled in the process field. Also they should again return the figure object.
         * after splines are re-implemented, re-combine the dataset and make the integration again 
             * also here, maybe integrating them in the examples is better than in combined.

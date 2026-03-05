@@ -42,7 +42,7 @@ SMOOTHING_THRESHOLD = 100  # > 100 points → smoothing spline
 # 1) Discrete event detection
 # ---------------------------------------------------------------------------
 
-def detect_discrete_events(process: BioProcess) -> DiscreteEvents:
+def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     """Detect discrete event times from non-continuous VolumeChanges.
 
     Parameters
