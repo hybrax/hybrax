@@ -616,9 +616,9 @@ def evaluate_timeseries_spline_at(rep: SplineRepresentation, t: float) -> float:
             if adf_t == 0.0:
                 import warnings
                 warnings.warn(
-                    f"ADF is zero at t={t}; this indicates an invalid volume "
-                    "calculation (e.g. zero initial volume). Returning raw "
-                    "spline value.",
+                    f"ADF (Accumulated Dilution Factor) is zero at t={t}; "
+                    "this indicates an invalid volume calculation "
+                    "(e.g. zero initial volume). Returning raw spline value.",
                     stacklevel=2,
                 )
                 return c_star_hat  # Avoid division by zero
