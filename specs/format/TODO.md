@@ -19,6 +19,7 @@
         Hesselberg-Thomsen, V., Groves, T., McCubbin, T., Martínez-Monge, I., de Mas, I. M., & Nielsen, L. K. (2024). Ps
         eudo batch transformation: A novel method to correct for mass removal through sample withdrawal of fed-batch fermentations. bioRxiv, 2024-05.
         ```
+        * extend the `pseudo_batch_transform_timeseries` to mixed continuous + discrete volume streams.
     * Add mass balance functionality
         * currently I asked the Agent to rewrite the mass balance equation to include modeled feed rates.
         * this changed the examples/{03*, 04*}.ipynb notebooks -> check if they are correct.

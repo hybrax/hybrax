@@ -479,6 +479,8 @@ def pseudo_batch_transform_timeseries(
 
     cumulative_adf = 1.0
     cumulative_feed_term = 0.0
+    # TODO: this feed term calculation assumes that there are only discrete feed events and no continuous feed; 
+    # need to extend if we want to support continuous feeds in the future
     V_current = V0
 
     for ev_time, delta_v, c_feed in events:
