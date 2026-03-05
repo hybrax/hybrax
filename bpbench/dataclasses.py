@@ -164,7 +164,7 @@ class FeedVolumeChange(BaseVolumeChange):
 
     All delta values should be >= 0.
     """
-    feed_medium: FeedMedium = field(default=None)
+    feed_medium: FeedMedium
 
 
 @dataclass
