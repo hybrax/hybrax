@@ -567,5 +567,277 @@ def test_compute_volume_at_times():
     assert abs(vol[4] - 1.2) < 1e-6
 
 
+# ---------------------------------------------------------------------------
+# Test: compute_volume_at_times with continuous feeds
+# ---------------------------------------------------------------------------
+
+def test_compute_volume_at_times_continuous():
+    """Volume should increase smoothly with continuous cumulative feed."""
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L", components={},
+    )
+    vol = Volume(
+        initial_volume=1.0, unit="L",
+        volume_changes={
+            "cont_feed": FeedVolumeChange(
+                name="cont_feed", unit="L",
+                is_controlled=True, is_continuous=True,
+                feed_medium=_make_feed("cont"),
+                values=_ts([0.0, 5.0, 10.0, 20.0], [0.0, 0.25, 0.5, 1.0]),
+            ),
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="test", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=20.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+    times = np.array([0.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0])
+    v = compute_volume_at_times(proc, times)
+    # At t=0: V = 1.0 + 0.0 = 1.0
+    assert abs(v[0] - 1.0) < 1e-6
+    # At t=5: V = 1.0 + 0.25 = 1.25
+    assert abs(v[2] - 1.25) < 1e-6
+    # At t=10: V = 1.0 + 0.5 = 1.5
+    assert abs(v[4] - 1.5) < 1e-6
+    # At t=20: V = 1.0 + 1.0 = 2.0
+    assert abs(v[6] - 2.0) < 1e-6
+    # Interpolated at t=2.5: V = 1.0 + interp(2.5, ...) = 1.0 + 0.125 = 1.125
+    assert abs(v[1] - 1.125) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Tests: pseudo-batch transform with continuous, mixed, and discrete feeds
+# ---------------------------------------------------------------------------
+
+def _make_process_continuous_only(glucose_feed_conc=100.0):
+    """Process with only a continuous cumulative feed and glucose measurements."""
+    feed_medium = FeedMedium(
+        name="cont_feed_medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=StaticVariable(value=glucose_feed_conc),
+                is_controlled=True,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [10.0, 8.0, 6.0, 4.0, 2.0],
+                ),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=1.0, unit="L",
+        volume_changes={
+            "cont_feed": FeedVolumeChange(
+                name="cont_feed", unit="L",
+                is_controlled=True, is_continuous=True,
+                feed_medium=feed_medium,
+                values=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [0.0, 0.1, 0.2, 0.3, 0.4],
+                ),
+            ),
+        },
+    )
+    return BioProcess(
+        metadata=BioProcessMetadata(name="test_cont", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=20.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+
+def test_pseudobatch_continuous_only_adf():
+    """For continuous-only feed, ADF should equal V(t)/V(t0) and increase smoothly."""
+    proc = _make_process_continuous_only()
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+    # ADF at measurement times via interpolation
+    meas_times = np.array([0.0, 5.0, 10.0, 15.0, 20.0])
+    adf_at_meas = np.interp(meas_times, pb["adf_times"], pb["adf_values"])
+
+    # V(t) = 1.0 + cumulative feed
+    expected_v = np.array([1.0, 1.1, 1.2, 1.3, 1.4])
+    expected_adf = expected_v / expected_v[0]
+    np.testing.assert_allclose(adf_at_meas, expected_adf, rtol=1e-6)
+
+
+def test_pseudobatch_continuous_only_cstar():
+    """c* should account for continuous dilution and feed contribution."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+    # c* should not be just adf*c (feed_term should be nonzero)
+    conc = np.array([10.0, 8.0, 6.0, 4.0, 2.0])
+    adf_at_meas = np.interp(pb["times"], pb["adf_times"], pb["adf_values"])
+    feed_at_meas = np.interp(pb["times"], pb["feed_term_times"], pb["feed_term_values"])
+
+    np.testing.assert_allclose(pb["c_star"], adf_at_meas * conc - feed_at_meas, rtol=1e-10)
+    # feed_term should be > 0 at later times (glucose is in feed)
+    assert feed_at_meas[-1] > 0, "Feed term should be positive for species in feed"
+
+
+def test_pseudobatch_mixed_continuous_discrete():
+    """Mixed continuous + discrete should include both in ADF and feed_term."""
+    proc = _make_process_with_discrete()
+    # Use biomass (not in feed) to check ADF only
+    bio_ts = proc.reactor_medium.components["biomass"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "biomass", bio_ts)
+
+    # ADF should account for both continuous cumulative and discrete bolus
+    meas_times = np.array([0.0, 5.0, 10.0, 20.0])
+    adf_at_meas = np.interp(meas_times, pb["adf_times"], pb["adf_values"])
+
+    # V(0) = 1.0 (initial)
+    # Continuous: cum = [0.0, 0.25, 0.5, 1.0] at [0, 5, 10, 20]
+    # Discrete bolus: +0.1 at t=3, +0.1 at t=12
+    # V(0)  = 1.0 + 0.0 = 1.0
+    # V(5)  = 1.0 + 0.25 + 0.1 = 1.35 (bolus at t=3)
+    # V(10) = 1.0 + 0.5 + 0.1 = 1.6  (bolus at t=3 only)
+    # V(20) = 1.0 + 1.0 + 0.1 + 0.1 = 2.2 (both boluses)
+    expected_v = np.array([1.0, 1.35, 1.6, 2.2])
+    expected_adf = expected_v / expected_v[0]
+    np.testing.assert_allclose(adf_at_meas, expected_adf, rtol=1e-6)
+
+
+def test_pseudobatch_discrete_only_regression():
+    """Discrete-only transform should match the expected ADF and feed_term."""
+    V0 = 1.0
+    delta_v = 0.2
+    c_feed = 500.0
+
+    proc = _make_process_with_bolus_feed(
+        V0=V0, feed_times=[50.0], feed_vols=[delta_v],
+        glucose_feed_conc=c_feed,
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+    # Before feed (t=0, t=25): ADF = 1.0, feed_term = 0.0
+    adf_before = np.interp(25.0, pb["adf_times"], pb["adf_values"])
+    feed_before = np.interp(25.0, pb["feed_term_times"], pb["feed_term_values"])
+    assert abs(adf_before - 1.0) < 1e-10
+    assert abs(feed_before - 0.0) < 1e-10
+
+    # After feed (t=75): ADF = V_after / V_before = 1.2 / 1.0 = 1.2
+    adf_after = np.interp(75.0, pb["adf_times"], pb["adf_values"])
+    assert abs(adf_after - 1.2) < 1e-6
+
+    # feed_term after: ADF * c_feed * (delta_v / V_after) = 1.2 * 500 * (0.2/1.2)
+    expected_feed = 1.2 * c_feed * (delta_v / 1.2)
+    feed_after = np.interp(75.0, pb["feed_term_times"], pb["feed_term_values"])
+    assert abs(feed_after - expected_feed) < 1e-4
+
+
+def test_pseudobatch_continuous_not_cumulative_raises():
+    """Non-cumulative continuous series should raise NotImplementedError."""
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=_ts([0.0, 5.0, 10.0], [5.0, 3.0, 1.0]),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=1.0, unit="L",
+        volume_changes={
+            "bad_feed": FeedVolumeChange(
+                name="bad_feed", unit="L",
+                is_controlled=True, is_continuous=True,
+                feed_medium=_make_feed("bad"),
+                # Decreasing values → not cumulative
+                values=_ts([0.0, 5.0, 10.0], [0.5, 0.3, 0.1]),
+            ),
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="test_bad", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    with pytest.raises(NotImplementedError, match="cumulative"):
+        pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+
+def test_pseudobatch_volume_positive_validation():
+    """Volume <= 0 should raise ValueError."""
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=_ts([0.0, 5.0], [5.0, 3.0]),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=0.5, unit="L",
+        volume_changes={
+            # Discrete bolus that removes more than initial volume
+            "big_sample": FeedVolumeChange(
+                name="big_sample", unit="L",
+                is_controlled=True, is_continuous=False,
+                feed_medium=_make_feed("dummy"),
+                values=_ts([2.0], [-1.0]),
+            ),
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="test_neg", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=5.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    with pytest.raises(ValueError, match="positive"):
+        pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+
+def test_pseudobatch_continuous_backtransform_roundtrip():
+    """Fitting and back-transforming a continuous-only process should give
+    reasonable values (no NaN/Inf)."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
+
+    # Evaluate at several times
+    for t in [0.0, 5.0, 10.0, 15.0, 20.0]:
+        val = evaluate_timeseries_spline_at(rep, t)
+        assert np.isfinite(val), f"Non-finite value at t={t}: {val}"
+        assert val >= 0, f"Negative concentration at t={t}: {val}"
+
+
+def test_pseudobatch_metadata_has_interp_key():
+    """New metadata should contain 'interp': 'linear'."""
+    proc = _make_process_with_bolus_feed()
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
+    tr = rep.spline_metadata["transform"]
+    assert tr["interp"] == "linear"
+    assert "adf_times" in tr
+    assert "adf_values" in tr
+    assert "feed_term_times" in tr
+    assert "feed_term_values" in tr
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
