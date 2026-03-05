@@ -78,9 +78,8 @@ def _make_process(
             values=_ts([0., 5., 10., 20.], [0.0, 0.25, 0.5, 1.0]),
         )
     if with_uncontrolled_flow:
-        vc_dict["evaporation"] = FeedVolumeChange(
+        vc_dict["evaporation"] = SampleVolumeChange(
             name="evaporation", unit="L", is_controlled=False, is_continuous=True,
-            feed_medium=_make_feed("water"),
             values=_ts([0., 10., 20.], [0.0, -0.01, -0.02]),
         )
     if with_discrete_vc:
