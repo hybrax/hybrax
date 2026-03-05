@@ -15,6 +15,11 @@
         * the `bpbench.plot_process` function should plot the splines if they are filled in the process field. Also they should again return the figure object.
         * after splines are re-implemented, re-combine the dataset and make the integration again 
             * also here, maybe integrating them in the examples is better than in combined.
+        * also: the splines have to be fitted on the pseudo-concentrations from hesselberg, so that we have continuous rates (this should be only done in the backend.)
+        ```
+        Hesselberg-Thomsen, V., Groves, T., McCubbin, T., Martínez-Monge, I., de Mas, I. M., & Nielsen, L. K. (2024). Ps
+        eudo batch transformation: A novel method to correct for mass removal through sample withdrawal of fed-batch fermentations. bioRxiv, 2024-05.
+        ```
     * Add mass balance functionality
         * currently I asked the Agent to rewrite the mass balance equation to include modeled feed rates.
         * this changed the examples/{03*, 04*}.ipynb notebooks -> check if they are correct.
