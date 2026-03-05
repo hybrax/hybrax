@@ -390,7 +390,8 @@ def _step_eval(step_times: np.ndarray, step_values: np.ndarray, t: float) -> flo
 
     The function takes value ``step_values[i]`` for
     ``step_times[i] <= t < step_times[i+1]`` (the last value extends to +∞).
-    Before the first step time the initial value ``step_values[0]`` is used.
+    For ``t < step_times[0]``, ``step_values[0]`` is returned (i.e. the
+    initial value applies for all times before the first step transition).
     """
     step_times = np.asarray(step_times, dtype=float)
     step_values = np.asarray(step_values, dtype=float)
@@ -613,6 +614,13 @@ def evaluate_timeseries_spline_at(rep: SplineRepresentation, t: float) -> float:
                 t,
             )
             if adf_t == 0.0:
+                import warnings
+                warnings.warn(
+                    f"ADF is zero at t={t}; this indicates an invalid volume "
+                    "calculation (e.g. zero initial volume). Returning raw "
+                    "spline value.",
+                    stacklevel=2,
+                )
                 return c_star_hat  # Avoid division by zero
             return (c_star_hat + feed_t) / adf_t
 
