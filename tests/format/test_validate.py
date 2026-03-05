@@ -15,7 +15,8 @@ from bpbench import (
     FeedMediumComponent,
     FeedMedium,
     ReactorMedium,
-    VolumeChange,
+    FeedVolumeChange,
+    SampleVolumeChange,
     Volume,
     BioProcess,
     CaseStudy,
@@ -112,8 +113,8 @@ class TestValidateTimeSeriesShape:
 # ---------------------------------------------------------------------------
 
 class TestValidateVolumeChangeSign:
-    def _vc(self, values, name="feed"):
-        return VolumeChange(
+    def _feed_vc(self, values, name="feed"):
+        return FeedVolumeChange(
             name=name,
             unit="L",
             is_controlled=True,
@@ -122,28 +123,37 @@ class TestValidateVolumeChangeSign:
             values=_ts([0.0, 1.0], values),
         )
 
+    def _sample_vc(self, values, name="sample"):
+        return SampleVolumeChange(
+            name=name,
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
+            values=_ts([0.0, 1.0], values),
+        )
+
     def test_purely_positive(self):
-        vc = self._vc([0.1, 0.2])
+        vc = self._feed_vc([0.1, 0.2])
         ok, msg = validate_volume_change_sign(vc)
         assert ok is True
-        assert "positive" in msg
+        assert "non-negative" in msg
 
     def test_purely_negative(self):
-        vc = self._vc([-0.1, -0.2])
+        vc = self._sample_vc([-0.1, -0.2])
         ok, msg = validate_volume_change_sign(vc)
         assert ok is True
-        assert "negative" in msg
+        assert "non-positive" in msg
 
     def test_zero_values_are_positive(self):
-        vc = self._vc([0.0, 0.0])
+        vc = self._feed_vc([0.0, 0.0])
         ok, msg = validate_volume_change_sign(vc)
         assert ok is True
 
     def test_mixed_signs_invalid(self):
-        vc = self._vc([0.1, -0.2])
+        vc = self._feed_vc([0.1, -0.2])
         ok, msg = validate_volume_change_sign(vc)
         assert ok is False
-        assert "mixed" in msg.lower()
+        assert "negative" in msg.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -169,14 +179,23 @@ class TestValidateVolumeChangeStates:
 
     def _vc(self, feed_medium, positive=True):
         vals = [0.1, 0.2] if positive else [-0.1, -0.2]
-        return VolumeChange(
-            name="feed_vc",
-            unit="L",
-            is_controlled=True,
-            is_continuous=True,
-            feed_medium=feed_medium,
-            values=_ts([0.0, 1.0], vals),
-        )
+        if positive:
+            return FeedVolumeChange(
+                name="feed_vc",
+                unit="L",
+                is_controlled=True,
+                is_continuous=True,
+                feed_medium=feed_medium,
+                values=_ts([0.0, 1.0], vals),
+            )
+        else:
+            return SampleVolumeChange(
+                name="feed_vc",
+                unit="L",
+                is_controlled=True,
+                is_continuous=True,
+                values=_ts([0.0, 1.0], vals),
+            )
 
     def test_all_states_covered(self):
         process = _make_process(
@@ -287,7 +306,7 @@ class TestValidateProcess:
                 ),
             },
         )
-        vc = VolumeChange(
+        vc = FeedVolumeChange(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -383,14 +402,23 @@ class TestValidateVolumeConsistency:
         """Build a BioProcess with given volume changes for consistency tests."""
         volume_changes = {}
         for name, (is_continuous, timepoints, values, feed_medium) in changes.items():
-            volume_changes[name] = VolumeChange(
-                name=name,
-                unit="L",
-                is_controlled=True,
-                is_continuous=is_continuous,
-                feed_medium=feed_medium or FeedMedium(name="f", density=1.0, density_unit="kg/L"),
-                values=_ts(timepoints, values),
-            )
+            if any(v < 0 for v in values):
+                volume_changes[name] = SampleVolumeChange(
+                    name=name,
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=is_continuous,
+                    values=_ts(timepoints, values),
+                )
+            else:
+                volume_changes[name] = FeedVolumeChange(
+                    name=name,
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=is_continuous,
+                    feed_medium=feed_medium or FeedMedium(name="f", density=1.0, density_unit="kg/L"),
+                    values=_ts(timepoints, values),
+                )
         return BioProcess(
             metadata=BioProcessMetadata(name="test", process_type="fed_batch"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=10.0,
@@ -585,7 +613,7 @@ class TestValidateCaseStudy:
     def test_inconsistent_volume_change_names(self):
         """Processes with different volume change names should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        vc = VolumeChange(
+        vc = FeedVolumeChange(
             name="feed", unit="L", is_controlled=True, is_continuous=True,
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 0.1]),
@@ -653,12 +681,12 @@ class TestValidateCaseStudy:
     def test_inconsistent_volume_change_units(self):
         """Same volume change name but different units should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        vc1 = VolumeChange(
+        vc1 = FeedVolumeChange(
             name="feed", unit="L", is_controlled=True, is_continuous=True,
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 0.1]),
         )
-        vc2 = VolumeChange(
+        vc2 = FeedVolumeChange(
             name="feed", unit="mL", is_controlled=True, is_continuous=True,
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 100.0]),

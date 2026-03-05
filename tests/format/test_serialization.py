@@ -20,7 +20,7 @@ from bpbench import (
     ReactorMedium,
     FeedMediumComponent,
     FeedMedium,
-    VolumeChange,
+    FeedVolumeChange,
     Volume,
 )
 from bpbench.serialization import (
@@ -74,7 +74,7 @@ def sample_dataset():
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
-    volume_change = VolumeChange(
+    volume_change = FeedVolumeChange(
         name="glucose_feed", unit="L",
         is_controlled=True, is_continuous=True,
         feed_medium=feed_medium,

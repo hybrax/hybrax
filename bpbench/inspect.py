@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
+from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, TimeSeries, FeedVolumeChange
 
 
 def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
@@ -147,14 +147,14 @@ def _print_reactor_component_info(comp, prefix: str) -> None:
         print(f"{prefix}  Static Concentration: {comp.concentration.value}")
 
 
-def _print_volume_change_info(change: VolumeChange, prefix: str) -> None:
+def _print_volume_change_info(change, prefix: str) -> None:
     """Helper function to print VolumeChange information (verbosity=3)."""
     print(f"{prefix}{change.name}:")
     print(f"{prefix}  Type: {'Controlled' if change.is_controlled else 'Modeled'}, "
           f"{'Continuous' if change.is_continuous else 'Discrete'}")
     print(f"{prefix}  Unit: {change.unit}")
 
-    if change.feed_medium:
+    if isinstance(change, FeedVolumeChange) and change.feed_medium:
         print(f"{prefix}  Feed Medium: {change.feed_medium.name}")
 
     if change.values is not None:
@@ -215,7 +215,7 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
             if getattr(vc, "values", None) is not None:
                 total += _count_datapoints_in_value(vc.values)
             # feed medium components
-            if getattr(vc, "feed_medium", None) is not None:
+            if getattr(vc, "feed_medium", None) is not None and isinstance(vc, FeedVolumeChange):
                 for fcomp in vc.feed_medium.components.values():
                     total += _count_datapoints_in_value(fcomp.concentration)
 

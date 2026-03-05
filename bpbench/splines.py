@@ -24,6 +24,7 @@ from scipy import interpolate
 from .dataclasses import (
     BioProcess,
     DiscreteEvents,
+    FeedVolumeChange,
     SplineRepresentation,
     StaticVariable,
     TimeSeries,
@@ -443,11 +444,11 @@ def pseudo_batch_transform_timeseries(
     conc = np.asarray(ts.values, dtype=float)
     n = len(times)
 
-    # --- Collect discrete bolus events ---
+    # --- Collect discrete bolus events (only from FeedVolumeChange) ---
     # Each event: (time, delta_volume, feed_concentration_for_species)
     events: List[Tuple[float, float, float]] = []
     for _vc_name, vc in process.volume.volume_changes.items():
-        if not vc.is_continuous:
+        if not vc.is_continuous and isinstance(vc, FeedVolumeChange):
             ev_times = np.asarray(vc.values.timepoints, dtype=float)
             ev_vols = np.asarray(vc.values.values, dtype=float)
             # Get feed concentration of this species from feed medium
