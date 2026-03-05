@@ -17,6 +17,8 @@ from bpbench.splines import (
     detect_discrete_events, make_segment_boundaries, split_timeseries,
     choose_spline_kind, fit_timeseries_spline, build_interpax_spline,
     evaluate_spline_at, SMOOTHING_THRESHOLD,
+    compute_volume_at_times, pseudo_batch_transform_timeseries,
+    fit_state_timeseries_spline_pseudobatch, evaluate_timeseries_spline_at,
 )
 from bpbench.serialization import save_dataset_json, load_dataset_json
 from bpbench import BenchmarkDataset, CaseStudy
@@ -339,6 +341,230 @@ def test_no_spline_backward_compat():
 
     loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["x"]
     assert loaded_pv.spline is None
+
+
+# ---------------------------------------------------------------------------
+# Pseudo-batch helpers
+# ---------------------------------------------------------------------------
+
+def _make_process_with_bolus_feed(
+    V0=1.0,
+    feed_times=None,
+    feed_vols=None,
+    glucose_feed_conc=500.0,
+    glucose_times=None,
+    glucose_values=None,
+):
+    """Helper: minimal BioProcess with a bolus feed and glucose measurements."""
+    if feed_times is None:
+        feed_times = [50.0]
+    if feed_vols is None:
+        feed_vols = [0.2]
+    if glucose_times is None:
+        glucose_times = [0.0, 25.0, 50.0, 75.0, 100.0]
+    if glucose_values is None:
+        glucose_values = [10.0, 8.0, 6.0, 7.5, 5.0]
+
+    feed_medium = FeedMedium(
+        name="bolus_feed_medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=StaticVariable(value=glucose_feed_conc),
+                is_controlled=True,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=_ts(glucose_times, glucose_values),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=V0, unit="L",
+        volume_changes={
+            "bolus_feed": VolumeChange(
+                name="bolus_feed", unit="L",
+                is_controlled=True, is_continuous=False,
+                feed_medium=feed_medium,
+                values=_ts(feed_times, feed_vols),
+            ),
+        },
+    )
+    return BioProcess(
+        metadata=BioProcessMetadata(name="test_pb", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=max(glucose_times),
+                           time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test A: evaluate_timeseries_spline_at falls back for non-pseudo-batch reps
+# ---------------------------------------------------------------------------
+
+def test_evaluate_timeseries_spline_at_fallback():
+    """Without pseudo-batch metadata, evaluate_timeseries_spline_at equals evaluate_spline_at."""
+    ts = _ts([0., 1., 2., 3., 4.], [0., 1., 4., 9., 16.])
+    rep = fit_timeseries_spline(ts)
+    for t_val in [0.0, 1.5, 3.0, 4.0]:
+        expected = evaluate_spline_at(rep, t_val)
+        actual = evaluate_timeseries_spline_at(rep, t_val)
+        assert abs(actual - expected) < 1e-10, (
+            f"Fallback mismatch at t={t_val}: {actual} vs {expected}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test B: Pseudo-batch metadata is JSON-serializable
+# ---------------------------------------------------------------------------
+
+def test_pseudobatch_metadata_json_serializable():
+    """SplineRepresentation with pseudo-batch metadata survives JSON roundtrip."""
+    import json
+
+    proc = _make_process_with_bolus_feed()
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    rep = fit_state_timeseries_spline_pseudobatch(
+        glucose_ts, proc, "glucose",
+    )
+    # Verify metadata is present
+    assert "transform" in rep.spline_metadata
+    tr = rep.spline_metadata["transform"]
+    assert tr["name"] == "pseudo_batch"
+    assert tr["species"] == "glucose"
+
+    # Roundtrip via json
+    meta_json = json.dumps(rep.spline_metadata)
+    meta_loaded = json.loads(meta_json)
+    assert meta_loaded["transform"]["name"] == "pseudo_batch"
+    assert meta_loaded["transform"]["adf_step_values"] == tr["adf_step_values"]
+
+    # Full dataset roundtrip
+    pv = ProcessVariable(
+        name="glucose", unit="mmol/L", is_controlled=False,
+        values=glucose_ts, spline=rep,
+    )
+    proc.process_variables["glucose"] = pv
+    cs = CaseStudy(case_id="cs", organism="CHO", citation="test",
+                   processes={"p": proc})
+    ds = BenchmarkDataset(metadata={"name": "test"}, case_studies={"cs": cs})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test_pb.json"
+        save_dataset_json(ds, path)
+        loaded = load_dataset_json(path)
+
+    loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["glucose"]
+    assert loaded_pv.spline is not None
+    loaded_tr = loaded_pv.spline.spline_metadata["transform"]
+    assert loaded_tr["name"] == "pseudo_batch"
+    # Evaluate loaded spline with backtransform
+    for t_val in [0.0, 25.0, 75.0]:
+        orig = evaluate_timeseries_spline_at(rep, t_val)
+        loaded_val = evaluate_timeseries_spline_at(loaded_pv.spline, t_val)
+        assert abs(orig - loaded_val) < 1e-4, (
+            f"Roundtrip mismatch at t={t_val}: {orig} vs {loaded_val}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test C: Backtransform reintroduces jumps at feed events
+# ---------------------------------------------------------------------------
+
+def test_pseudobatch_backtransform_has_jump():
+    """Evaluating just before/after a bolus feed should show a discontinuity."""
+    V0 = 1.0
+    t_feed = 50.0
+    delta_v = 0.2
+    c_feed_glucose = 500.0
+
+    # Simple scenario: glucose decreasing linearly, then bolus at t=50 adds
+    # concentrated glucose, causing a jump up in true concentration.
+    proc = _make_process_with_bolus_feed(
+        V0=V0,
+        feed_times=[t_feed],
+        feed_vols=[delta_v],
+        glucose_feed_conc=c_feed_glucose,
+        glucose_times=[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 100.0],
+        glucose_values=[10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 7.0, 6.0, 5.0, 4.0],
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    rep = fit_state_timeseries_spline_pseudobatch(
+        glucose_ts, proc, "glucose",
+    )
+
+    eps = 1e-6
+    val_before = evaluate_timeseries_spline_at(rep, t_feed - eps)
+    val_after = evaluate_timeseries_spline_at(rep, t_feed + eps)
+
+    # There should be a jump (discontinuity) at the feed time.
+    jump = val_after - val_before
+    # The feed adds concentrated glucose to a diluted reactor, so the
+    # concentration should jump up (positive direction).
+    assert abs(jump) > 0.1, (
+        f"Expected a jump at t_feed={t_feed}, got val_before={val_before}, "
+        f"val_after={val_after}, jump={jump}"
+    )
+    # Direction: feed conc (500) >> reactor conc (~5), so concentration goes up
+    assert jump > 0, (
+        f"Expected positive jump from glucose bolus, got jump={jump}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test D: Species not in feed → feed term is 0, no crash
+# ---------------------------------------------------------------------------
+
+def test_pseudobatch_species_not_in_feed():
+    """For a species absent from the feed medium, the transform should not crash
+    and the feed term should be zero (transform reduces to ADF * c)."""
+    proc = _make_process_with_bolus_feed()
+    # Add a 'biomass' component to reactor medium (not in feed)
+    proc.reactor_medium.components["biomass"] = ReactorMediumComponent(
+        name="biomass", unit="cells/L",
+        concentration=_ts([0.0, 25.0, 50.0, 75.0, 100.0],
+                          [1.0, 2.0, 4.0, 8.0, 16.0]),
+        is_intracellular=False,
+    )
+    bio_ts = proc.reactor_medium.components["biomass"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "biomass", bio_ts)
+
+    # Feed term should be zero everywhere
+    assert np.allclose(pb["feed_term_step_values"], 0.0), (
+        f"Feed term should be 0 for species not in feed, got {pb['feed_term_step_values']}"
+    )
+
+    # Should not crash when fitting and evaluating
+    rep = fit_state_timeseries_spline_pseudobatch(bio_ts, proc, "biomass")
+    val = evaluate_timeseries_spline_at(rep, 25.0)
+    assert np.isfinite(val), f"Expected finite value, got {val}"
+
+
+# ---------------------------------------------------------------------------
+# Test: compute_volume_at_times
+# ---------------------------------------------------------------------------
+
+def test_compute_volume_at_times():
+    """Volume should increase at bolus feed events."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0, feed_times=[50.0], feed_vols=[0.2],
+    )
+    times = np.array([0.0, 25.0, 49.9, 50.0, 75.0, 100.0])
+    vol = compute_volume_at_times(proc, times)
+    # Before feed: V = 1.0
+    assert abs(vol[0] - 1.0) < 1e-6
+    assert abs(vol[1] - 1.0) < 1e-6
+    assert abs(vol[2] - 1.0) < 1e-6
+    # At and after feed: V = 1.2
+    assert abs(vol[3] - 1.2) < 1e-6
+    assert abs(vol[4] - 1.2) < 1e-6
 
 
 if __name__ == "__main__":
