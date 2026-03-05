@@ -15,6 +15,7 @@ never recompiles due to shape changes.
 
 from __future__ import annotations
 
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 import jax.numpy as jnp
@@ -354,10 +355,54 @@ def evaluate_spline_at(rep: SplineRepresentation, t: float) -> float:
 # 8) Pseudo-batch transformation for state variables
 # ---------------------------------------------------------------------------
 
+def _eval_cumulative_volume_change(
+    vc_timepoints: np.ndarray,
+    vc_values: np.ndarray,
+    t_array: np.ndarray,
+) -> np.ndarray:
+    """Interpolate cumulative added volume at arbitrary times.
+
+    Parameters
+    ----------
+    vc_timepoints:
+        Sorted time grid for the cumulative volume series.
+    vc_values:
+        Cumulative added volume at each time in *vc_timepoints*.
+        Must be monotonically non-decreasing (within tolerance).
+    t_array:
+        Times at which to evaluate.
+
+    Returns
+    -------
+    np.ndarray
+        Interpolated cumulative added volume at each time in *t_array*.
+
+    Raises
+    ------
+    NotImplementedError
+        If values are not monotonically non-decreasing (not cumulative).
+    """
+    tp = np.asarray(vc_timepoints, dtype=float)
+    vals = np.asarray(vc_values, dtype=float)
+    t_array = np.asarray(t_array, dtype=float)
+
+    # Validate monotonically non-decreasing (cumulative)
+    diffs = np.diff(vals)
+    if np.any(diffs < -1e-12):
+        raise NotImplementedError(
+            "Continuous volume changes must be provided as cumulative added "
+            "volume vs time. The supplied series is not monotonically "
+            "non-decreasing."
+        )
+
+    return np.interp(t_array, tp, vals, left=vals[0], right=vals[-1])
+
+
 def compute_volume_at_times(
     process: BioProcess, times: np.ndarray
 ) -> np.ndarray:
-    """Compute reactor volume at given times using initial volume and discrete feeds.
+    """Compute reactor volume at given times using initial volume, discrete
+    bolus feeds, and continuous cumulative feeds.
 
     Parameters
     ----------
@@ -372,16 +417,20 @@ def compute_volume_at_times(
         Volume at each time (same shape as *times*).
     """
     times = np.asarray(times, dtype=float)
-    vol = np.full_like(times, process.volume.initial_volume)
+    vol = np.full_like(times, float(process.volume.initial_volume))
 
     for _vc_name, vc in process.volume.volume_changes.items():
-        if not vc.is_continuous:
+        if vc.is_continuous:
+            # Continuous cumulative feed: interpolate cumulative added volume
+            ev_times = np.asarray(vc.values.timepoints, dtype=float)
+            ev_vols = np.asarray(vc.values.values, dtype=float)
+            vol = vol + _eval_cumulative_volume_change(ev_times, ev_vols, times)
+        else:
             # Discrete bolus: add delta volumes at event times
             ev_times = np.asarray(vc.values.timepoints, dtype=float)
             ev_vols = np.asarray(vc.values.values, dtype=float)
             for et, ev in zip(ev_times, ev_vols):
                 vol = vol + np.where(times >= et, ev, 0.0)
-        # Future: handle continuous feeds, sampling, etc.
 
     return vol
 
@@ -420,7 +469,8 @@ def pseudo_batch_transform_timeseries(
 ) -> Dict:
     """Compute pseudo-batch transformed concentration for a state variable.
 
-    Implements the discrete pseudo-batch transform from
+    Supports both discrete (bolus) and continuous (cumulative) feed volume
+    changes. Implements the pseudo-batch transform based on
     Hesselberg-Thomsen et al. (bioRxiv 2024.05.27.596043).
 
     Parameters
@@ -437,85 +487,102 @@ def pseudo_batch_transform_timeseries(
     dict with keys:
         ``times`` – measurement times (np array),
         ``c_star`` – pseudo-batch transformed concentration,
-        ``adf_step_times``, ``adf_step_values`` – ADF step function data,
-        ``feed_term_step_times``, ``feed_term_step_values`` – feed term step data.
+        ``adf_times``, ``adf_values`` – ADF on the unified time grid,
+        ``feed_term_times``, ``feed_term_values`` – feed term on the grid.
+
+    Also includes legacy aliases ``adf_step_times``, ``adf_step_values``,
+    ``feed_term_step_times``, ``feed_term_step_values`` for backward
+    compatibility.
     """
     times = np.asarray(ts.timepoints, dtype=float)
     conc = np.asarray(ts.values, dtype=float)
-    n = len(times)
-
-    # --- Collect discrete bolus events (only from FeedVolumeChange) ---
-    # Each event: (time, delta_volume, feed_concentration_for_species)
-    events: List[Tuple[float, float, float]] = []
-    for _vc_name, vc in process.volume.volume_changes.items():
-        if not vc.is_continuous and isinstance(vc, FeedVolumeChange):
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            ev_vols = np.asarray(vc.values.values, dtype=float)
-            # Get feed concentration of this species from feed medium
-            c_feed = 0.0
-            if vc.feed_medium is not None and species_name in vc.feed_medium.components:
-                comp = vc.feed_medium.components[species_name]
-                if isinstance(comp.concentration, StaticVariable):
-                    c_feed = float(comp.concentration.value)
-                # Future: handle time-varying feed concentration
-            for et, ev in zip(ev_times, ev_vols):
-                events.append((float(et), float(ev), c_feed))
-
-    events.sort(key=lambda x: x[0])
 
     V0 = float(process.volume.initial_volume)
 
-    # --- Build step functions for ADF and feed_term at measurement times ---
-    # Volume just before each event (cumulative)
-    # ADF_i = product_{k : event_k_time <= times[i]} (V_after_k / V_before_k)
-    # where V_after_k = V_before_k + delta_V_k  (S=0 for now)
+    # ---- Collect discrete bolus event times ---------------------------------
+    discrete_event_times: List[float] = []
+    for _vc_name, vc in process.volume.volume_changes.items():
+        if not vc.is_continuous:
+            ev_times = np.asarray(vc.values.timepoints, dtype=float)
+            for et in ev_times:
+                discrete_event_times.append(float(et))
 
-    # Build event-aligned step data for ADF and feed_term
-    # ADF starts at 1.0 before any event
-    adf_step_times = [times[0] if n > 0 else 0.0]
-    adf_step_values = [1.0]
-    feed_term_step_times = [times[0] if n > 0 else 0.0]
-    feed_term_step_values = [0.0]
+    # ---- Build unified time grid --------------------------------------------
+    # Insert a point just before each discrete event so that linear
+    # interpolation preserves the step discontinuity.
+    _EPS = 1e-10
+    pre_event_times = [et - _EPS for et in discrete_event_times if et - _EPS > 0]
+    t_grid = np.unique(np.concatenate([
+        times,
+        np.array(discrete_event_times),
+        np.array(pre_event_times) if pre_event_times else np.array([]),
+    ]))
 
-    cumulative_adf = 1.0
-    cumulative_feed_term = 0.0
-    # TODO: this feed term calculation assumes that there are only discrete feed events and no continuous feed; 
-    # need to extend if we want to support continuous feeds in the future
-    V_current = V0
+    # ---- Compute total volume on the grid -----------------------------------
+    V_grid = compute_volume_at_times(process, t_grid)
+    if np.any(V_grid <= 0):
+        raise ValueError(
+            "Volume must be positive at all evaluation times. "
+            f"Minimum volume encountered: {V_grid.min():.6g}."
+        )
 
-    for ev_time, delta_v, c_feed in events:
-        V_before = V_current
-        V_after = V_before + delta_v
-        # ADF factor for this event: V_after / V_before  (S=0)
-        if V_before > 0:
-            cumulative_adf *= V_after / V_before
-        # Feed term increment: ADF_at_event * c_feed * (delta_v / V_after)
-        feed_increment = cumulative_adf * c_feed * (delta_v / V_after) if V_after > 0 else 0.0
-        cumulative_feed_term += feed_increment
-        V_current = V_after
+    # ---- ADF ----------------------------------------------------------------
+    V0_grid = V_grid[0]
+    ADF_grid = V_grid / V0_grid
 
-        adf_step_times.append(ev_time)
-        adf_step_values.append(cumulative_adf)
-        feed_term_step_times.append(ev_time)
-        feed_term_step_values.append(cumulative_feed_term)
+    # ---- Feed term accumulation ---------------------------------------------
+    feed_term_grid = np.zeros_like(t_grid)
 
-    adf_step_times = np.array(adf_step_times, dtype=float)
-    adf_step_values = np.array(adf_step_values, dtype=float)
-    feed_term_step_times = np.array(feed_term_step_times, dtype=float)
-    feed_term_step_values = np.array(feed_term_step_values, dtype=float)
+    for _vc_name, vc in process.volume.volume_changes.items():
+        if not isinstance(vc, FeedVolumeChange):
+            continue
 
-    # --- Compute c* at measurement times ---
-    adf_at_meas = _step_eval_array(adf_step_times, adf_step_values, times)
-    feed_at_meas = _step_eval_array(feed_term_step_times, feed_term_step_values, times)
+        # Resolve feed concentration for the requested species
+        c_feed = 0.0
+        if vc.feed_medium is not None and species_name in vc.feed_medium.components:
+            comp = vc.feed_medium.components[species_name]
+            if isinstance(comp.concentration, StaticVariable):
+                c_feed = float(comp.concentration.value)
+
+        if vc.is_continuous:
+            # Continuous cumulative feed contribution
+            ev_times = np.asarray(vc.values.timepoints, dtype=float)
+            ev_vols = np.asarray(vc.values.values, dtype=float)
+            cum_at_grid = _eval_cumulative_volume_change(ev_times, ev_vols, t_grid)
+            for i in range(1, len(t_grid)):
+                delta_v_c = cum_at_grid[i] - cum_at_grid[i - 1]
+                if delta_v_c > 0 and V_grid[i] > 0:
+                    feed_term_grid[i] += ADF_grid[i] * c_feed * (delta_v_c / V_grid[i])
+        else:
+            # Discrete bolus: add increment at event times
+            ev_times = np.asarray(vc.values.timepoints, dtype=float)
+            ev_vols = np.asarray(vc.values.values, dtype=float)
+            for et, ev in zip(ev_times, ev_vols):
+                idx = np.searchsorted(t_grid, float(et), side="left")
+                if idx < len(t_grid) and np.isclose(t_grid[idx], float(et)):
+                    if V_grid[idx] > 0:
+                        feed_term_grid[idx] += ADF_grid[idx] * c_feed * (float(ev) / V_grid[idx])
+
+    # Cumulative sum of the feed term increments
+    feed_term_grid = np.cumsum(feed_term_grid)
+
+    # ---- Compute c* at measurement times ------------------------------------
+    adf_at_meas = np.interp(times, t_grid, ADF_grid)
+    feed_at_meas = np.interp(times, t_grid, feed_term_grid)
     c_star = adf_at_meas * conc - feed_at_meas
 
     return {
         "times": times,
         "c_star": c_star,
-        "adf_step_times": adf_step_times,
-        "adf_step_values": adf_step_values,
-        "feed_term_step_times": feed_term_step_times,
-        "feed_term_step_values": feed_term_step_values,
+        "adf_times": t_grid,
+        "adf_values": ADF_grid,
+        "feed_term_times": t_grid,
+        "feed_term_values": feed_term_grid,
+        # Legacy aliases for backward compatibility
+        "adf_step_times": t_grid,
+        "adf_step_values": ADF_grid,
+        "feed_term_step_times": t_grid,
+        "feed_term_step_values": feed_term_grid,
     }
 
 
@@ -581,10 +648,16 @@ def fit_state_timeseries_spline_pseudobatch(
     rep.spline_metadata["transform"] = {
         "name": "pseudo_batch",
         "species": species_name,
-        "adf_step_times": pb["adf_step_times"].tolist(),
-        "adf_step_values": pb["adf_step_values"].tolist(),
-        "feed_term_step_times": pb["feed_term_step_times"].tolist(),
-        "feed_term_step_values": pb["feed_term_step_values"].tolist(),
+        "interp": "linear",
+        "adf_times": pb["adf_times"].tolist(),
+        "adf_values": pb["adf_values"].tolist(),
+        "feed_term_times": pb["feed_term_times"].tolist(),
+        "feed_term_values": pb["feed_term_values"].tolist(),
+        # Legacy aliases for backward compatibility
+        "adf_step_times": pb["adf_times"].tolist(),
+        "adf_step_values": pb["adf_values"].tolist(),
+        "feed_term_step_times": pb["feed_term_times"].tolist(),
+        "feed_term_step_values": pb["feed_term_values"].tolist(),
     }
 
     return rep
@@ -606,18 +679,35 @@ def evaluate_timeseries_spline_at(rep: SplineRepresentation, t: float) -> float:
         tr = meta["transform"]
         if tr.get("name") == "pseudo_batch":
             c_star_hat = evaluate_spline_at(rep, t)
-            adf_t = _step_eval(
-                np.array(tr["adf_step_times"]),
-                np.array(tr["adf_step_values"]),
-                t,
-            )
-            feed_t = _step_eval(
-                np.array(tr["feed_term_step_times"]),
-                np.array(tr["feed_term_step_values"]),
-                t,
-            )
+            # Use linear interpolation (preferred), fall back to step eval
+            # for legacy metadata without "adf_times".
+            if "adf_times" in tr:
+                adf_t = float(np.interp(
+                    t,
+                    np.array(tr["adf_times"]),
+                    np.array(tr["adf_values"]),
+                    left=tr["adf_values"][0],
+                    right=tr["adf_values"][-1],
+                ))
+                feed_t = float(np.interp(
+                    t,
+                    np.array(tr["feed_term_times"]),
+                    np.array(tr["feed_term_values"]),
+                    left=tr["feed_term_values"][0],
+                    right=tr["feed_term_values"][-1],
+                ))
+            else:
+                adf_t = _step_eval(
+                    np.array(tr["adf_step_times"]),
+                    np.array(tr["adf_step_values"]),
+                    t,
+                )
+                feed_t = _step_eval(
+                    np.array(tr["feed_term_step_times"]),
+                    np.array(tr["feed_term_step_values"]),
+                    t,
+                )
             if adf_t == 0.0:
-                import warnings
                 warnings.warn(
                     f"ADF (Accumulated Dilution Factor) is zero at t={t}; "
                     "this indicates an invalid volume calculation "
