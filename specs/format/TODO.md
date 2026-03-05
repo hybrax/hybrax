@@ -1,6 +1,13 @@
 # Here is just a general TODO for the future.
 
 * **NEXT steps:**
+    * BOLUS FEEDs
+        * There are multiple layers to the problem
+            * bolus feed (volume change) + sampling (no volume change) at the same time
+            * bolus feed (volume change) + sampling (no volume change) at different times
+            * bolus feed (volume change) + sampling (volume change) at same times
+            * bolus feed (volume change) + sampling (volume change) at different times
+        * and then in theory everything with "full data" and afterwards with "sparse data"
     * Reimplement Splines:
         * Check if everything works as intended.
         * Currently everything is a notebook in 00_combined, but I should do the spline fitting in the separate examples
