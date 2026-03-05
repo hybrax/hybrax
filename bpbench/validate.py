@@ -4,7 +4,7 @@ Validation utilities for bioprocess data
 
 import jax.numpy as jnp
 from typing import Dict, List, Optional, Tuple
-from .dataclasses import BioProcess, CaseStudy, TimeSeries, VolumeChange
+from .dataclasses import BioProcess, CaseStudy, TimeSeries, FeedVolumeChange, SampleVolumeChange
 
 
 def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
@@ -52,37 +52,57 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
 
 
 def validate_volume_change_sign(
-    volume_change: VolumeChange,
+    volume_change,
 ) -> Tuple[bool, str]:
     """
-    Verify that a volume change is purely positive or purely negative.
+    Verify that a volume change has correct sign for its type.
 
-    For a *continuous* volume change the individual values (e.g. a feed rate)
-    must all be ≥ 0 (purely positive/zero) or all be ≤ 0 (purely
-    negative/zero).  For a *discrete* volume change the individual event
-    values must satisfy the same constraint.
+    For a ``FeedVolumeChange`` all values must be ≥ 0.
+    For a ``SampleVolumeChange`` all values must be ≤ 0.
+    If the concrete type is unknown, fall back to verifying that the change is
+    purely positive or purely negative (never mixed).
 
     Args:
-        volume_change: VolumeChange object whose sign consistency is checked.
+        volume_change: FeedVolumeChange or SampleVolumeChange object.
 
     Returns:
-        A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when the
-        change is purely positive or purely negative and ``message`` contains a
-        human-readable summary.
+        A tuple ``(is_valid, message)``.
     """
     vals = jnp.asarray(volume_change.values.values)
-    all_non_negative = bool(jnp.all(vals >= 0))
-    all_non_positive = bool(jnp.all(vals <= 0))
+    eps = 1e-12
 
-    if all_non_negative or all_non_positive:
-        sign = "positive" if all_non_negative else "negative"
-        return True, (
-            f"Volume change '{volume_change.name}' is purely {sign} — OK"
+    if isinstance(volume_change, FeedVolumeChange):
+        if bool(jnp.all(vals >= -eps)):
+            return True, (
+                f"Volume change '{volume_change.name}' (FeedVolumeChange) has all non-negative values — OK"
+            )
+        return False, (
+            f"Volume change '{volume_change.name}' (FeedVolumeChange) contains negative values. "
+            "Feed volume changes must have all values >= 0."
         )
-    return False, (
-        f"Volume change '{volume_change.name}' contains mixed positive and "
-        "negative values. Each volume change must be purely positive or purely negative."
-    )
+    elif isinstance(volume_change, SampleVolumeChange):
+        if bool(jnp.all(vals <= eps)):
+            return True, (
+                f"Volume change '{volume_change.name}' (SampleVolumeChange) has all non-positive values — OK"
+            )
+        return False, (
+            f"Volume change '{volume_change.name}' (SampleVolumeChange) contains positive values. "
+            "Sample volume changes must have all values <= 0."
+        )
+    else:
+        # Fallback for unknown types
+        all_non_negative = bool(jnp.all(vals >= 0))
+        all_non_positive = bool(jnp.all(vals <= 0))
+
+        if all_non_negative or all_non_positive:
+            sign = "positive" if all_non_negative else "negative"
+            return True, (
+                f"Volume change '{volume_change.name}' is purely {sign} — OK"
+            )
+        return False, (
+            f"Volume change '{volume_change.name}' contains mixed positive and "
+            "negative values. Each volume change must be purely positive or purely negative."
+        )
 
 
 def validate_volume_change_states(
@@ -125,6 +145,8 @@ def validate_volume_change_states(
             continue  # only check positive (inflowing) volume changes
 
         # Check that the feed medium defines all state variables
+        if not isinstance(vc, FeedVolumeChange):
+            continue  # SampleVolumeChange has no feed medium
         feed = vc.feed_medium
         if feed is None:
             errors.append(

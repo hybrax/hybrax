@@ -45,7 +45,7 @@ import interpax
 import jax.numpy as jnp
 import numpy as np
 
-from .dataclasses import BioProcess, SplineRepresentation, StaticVariable, TimeSeries
+from .dataclasses import BioProcess, FeedVolumeChange, SplineRepresentation, StaticVariable, TimeSeries
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +442,10 @@ def get_mass_balance(process: BioProcess) -> MassBalance:
         n = len(vc_names)
         Cin_np = np.zeros((n, n_species), dtype=float)
         for k, vc_name in enumerate(vc_names):
-            feed = process.volume.volume_changes[vc_name].feed_medium
+            vc = process.volume.volume_changes[vc_name]
+            if not isinstance(vc, FeedVolumeChange):
+                continue  # SampleVolumeChange has no feed medium
+            feed = vc.feed_medium
             for j, sp_name in enumerate(species_names):
                 if sp_name not in feed.components:
                     continue

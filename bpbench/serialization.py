@@ -13,7 +13,8 @@ from typing import Any, Dict, Optional, Union
 from .dataclasses import (
     BenchmarkDataset, CaseStudy, BioProcess, TimeSeries, TimeAxis,
     SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
-    StaticVariable, BioProcessMetadata, Volume, VolumeChange,
+    StaticVariable, BioProcessMetadata, Volume, BaseVolumeChange,
+    FeedVolumeChange, SampleVolumeChange,
     ReactorMedium, ReactorMediumComponent, ProcessVariable
 )
 
@@ -263,19 +264,26 @@ def _volume_to_dict(volume: Volume) -> Dict:
     }
 
 
-def _volume_change_to_dict(vc: VolumeChange) -> Dict:
-    """Convert VolumeChange to dictionary"""
-    return {
+def _volume_change_to_dict(vc) -> Dict:
+    """Convert FeedVolumeChange or SampleVolumeChange to dictionary"""
+    result = {
         "name": vc.name,
         "unit": vc.unit,
         "is_controlled": vc.is_controlled,
         "is_continuous": vc.is_continuous,
-        "feed_medium": _feed_medium_to_dict(vc.feed_medium) if vc.feed_medium else None,
         "values": {
             "timepoints": vc.values.timepoints,
             "values": vc.values.values
         } if vc.values else None
     }
+    if isinstance(vc, FeedVolumeChange):
+        result["type"] = "FeedVolumeChange"
+        result["feed_medium"] = _feed_medium_to_dict(vc.feed_medium) if vc.feed_medium else None
+    elif isinstance(vc, SampleVolumeChange):
+        result["type"] = "SampleVolumeChange"
+    else:
+        raise ValueError(f"Unknown volume change type: {type(vc)}")
+    return result
 
 
 def _feed_medium_to_dict(feed: FeedMedium) -> Dict:
@@ -469,27 +477,41 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
     )
 
 
-def _dict_to_volume_change(vc_data: Dict) -> VolumeChange:
-    """Reconstruct VolumeChange from dictionary"""
+def _dict_to_volume_change(vc_data: Dict):
+    """Reconstruct FeedVolumeChange or SampleVolumeChange from dictionary"""
+    vc_type = vc_data.get("type")
+    if vc_type is None:
+        raise ValueError(
+            "Old VolumeChange schema detected (missing 'type'). "
+            "Please regenerate datasets by running "
+            "examples/*/01_load_single_process.ipynb and "
+            "examples/*/02_load_all_processes.ipynb."
+        )
+
     values = None
     if vc_data.get("values"):
         values = TimeSeries(
             timepoints=vc_data["values"]["timepoints"],
             values=vc_data["values"]["values"]
         )
-    
-    feed_medium = None
-    if vc_data.get("feed_medium"):
-        feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-    
-    return VolumeChange(
+
+    common = dict(
         name=vc_data["name"],
         unit=vc_data["unit"],
         is_controlled=vc_data["is_controlled"],
         is_continuous=vc_data["is_continuous"],
-        feed_medium=feed_medium,
-        values=values
+        values=values,
     )
+
+    if vc_type == "FeedVolumeChange":
+        feed_medium = None
+        if vc_data.get("feed_medium"):
+            feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
+        return FeedVolumeChange(**common, feed_medium=feed_medium)
+    elif vc_type == "SampleVolumeChange":
+        return SampleVolumeChange(**common)
+    else:
+        raise ValueError(f"Unknown volume change type: {vc_type}")
 
 
 def _dict_to_feed_medium(feed_data: Dict) -> FeedMedium:

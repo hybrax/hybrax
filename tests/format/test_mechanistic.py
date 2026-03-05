@@ -15,7 +15,7 @@ import bpbench
 from bpbench import (
     BioProcess, BioProcessMetadata, TimeAxis, TimeSeries, StaticVariable,
     ReactorMedium, ReactorMediumComponent, FeedMedium, FeedMediumComponent,
-    VolumeChange, Volume, ProcessVariable,
+    FeedVolumeChange, SampleVolumeChange, Volume, ProcessVariable,
 )
 from bpbench.mechanistic import (
     ControlSplines, MassBalance, get_control_splines, get_mass_balance,
@@ -72,21 +72,20 @@ def _make_process(
     )
     vc_dict = {}
     if with_controlled_flow:
-        vc_dict["feed"] = VolumeChange(
+        vc_dict["feed"] = FeedVolumeChange(
             name="feed", unit="L", is_controlled=True, is_continuous=True,
             feed_medium=_make_feed("glucose_feed"),
             values=_ts([0., 5., 10., 20.], [0.0, 0.25, 0.5, 1.0]),
         )
     if with_uncontrolled_flow:
-        vc_dict["evaporation"] = VolumeChange(
+        vc_dict["evaporation"] = FeedVolumeChange(
             name="evaporation", unit="L", is_controlled=False, is_continuous=True,
             feed_medium=_make_feed("water"),
             values=_ts([0., 10., 20.], [0.0, -0.01, -0.02]),
         )
     if with_discrete_vc:
-        vc_dict["sampling"] = VolumeChange(
+        vc_dict["sampling"] = SampleVolumeChange(
             name="sampling", unit="L", is_controlled=True, is_continuous=False,
-            feed_medium=_make_feed("sample_waste"),
             values=_ts([5., 10.], [-0.05, -0.05]),
         )
     pv_dict = {}
@@ -579,7 +578,7 @@ def _make_process_with_intracellular():
             ),
         },
     )
-    vc = VolumeChange(
+    vc = FeedVolumeChange(
         name="feed", unit="L", is_controlled=True, is_continuous=True,
         feed_medium=feed,
         values=_ts([0., 5., 10.], [0.0, 0.25, 0.5]),
@@ -723,12 +722,12 @@ def _make_process_with_modeled_flow():
         },
     )
     vc_dict = {
-        "carbon_feed": VolumeChange(
+        "carbon_feed": FeedVolumeChange(
             name="carbon_feed", unit="L", is_controlled=True, is_continuous=True,
             feed_medium=carbon_feed_medium,
             values=_ts([0., 5., 10., 20.], [0.0, 0.25, 0.5, 1.0]),
         ),
-        "base_feed": VolumeChange(
+        "base_feed": FeedVolumeChange(
             name="base_feed", unit="L", is_controlled=False, is_continuous=True,
             feed_medium=base_feed_medium,
             values=_ts([0., 5., 10., 20.], [0.0, 0.1, 0.2, 0.4]),

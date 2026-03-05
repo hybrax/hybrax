@@ -16,7 +16,7 @@ from bpbench import (
     ReactorMedium,
     FeedMedium,
     FeedMediumComponent,
-    VolumeChange,
+    FeedVolumeChange,
     Volume,
     CaseStudy,
     BenchmarkDataset,
@@ -92,7 +92,7 @@ def complex_process():
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
-    vc = VolumeChange(
+    vc = FeedVolumeChange(
         name="glucose_feed", unit="L",
         is_controlled=True, is_continuous=True,
         feed_medium=fm, values=feed_ts,

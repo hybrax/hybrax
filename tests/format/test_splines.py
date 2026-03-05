@@ -11,10 +11,10 @@ from pathlib import Path
 from bpbench import (
     BioProcess, BioProcessMetadata, TimeAxis, TimeSeries, StaticVariable,
     ReactorMedium, ReactorMediumComponent, FeedMedium, FeedMediumComponent,
-    VolumeChange, Volume, ProcessVariable, SplineRepresentation, DiscreteEvents,
+    FeedVolumeChange, Volume, ProcessVariable, SplineRepresentation, DiscreteEvents,
 )
 from bpbench.splines import (
-    detect_discrete_events, make_segment_boundaries, split_timeseries,
+    detect_discrete_state_events, make_segment_boundaries, split_timeseries,
     choose_spline_kind, fit_timeseries_spline, build_interpax_spline,
     evaluate_spline_at, SMOOTHING_THRESHOLD,
     compute_volume_at_times, pseudo_batch_transform_timeseries,
@@ -52,13 +52,13 @@ def _make_process_with_discrete():
     vol = Volume(
         initial_volume=1.0, unit="L",
         volume_changes={
-            "continuous_feed": VolumeChange(
+            "continuous_feed": FeedVolumeChange(
                 name="continuous_feed", unit="L",
                 is_controlled=True, is_continuous=True,
                 feed_medium=_make_feed("cont"),
                 values=_ts([0., 5., 10., 20.], [0.0, 0.25, 0.5, 1.0]),
             ),
-            "bolus": VolumeChange(
+            "bolus": FeedVolumeChange(
                 name="bolus", unit="L",
                 is_controlled=True, is_continuous=False,
                 feed_medium=_make_feed("bolus"),
@@ -93,12 +93,12 @@ def test_discrete_events_with_labels():
 
 
 # ---------------------------------------------------------------------------
-# detect_discrete_events
+# detect_discrete_state_events
 # ---------------------------------------------------------------------------
 
 def test_detect_discrete_events():
     proc = _make_process_with_discrete()
-    de = detect_discrete_events(proc)
+    de = detect_discrete_state_events(proc)
     assert de.times.shape[0] == 2
     assert jnp.allclose(de.times, jnp.array([3.0, 12.0]))
     assert de.labels is not None
@@ -111,7 +111,7 @@ def test_detect_discrete_events_no_discrete():
     vol = Volume(
         initial_volume=1.0, unit="L",
         volume_changes={
-            "feed": VolumeChange(
+            "feed": FeedVolumeChange(
                 name="feed", unit="L",
                 is_controlled=True, is_continuous=True,
                 feed_medium=_make_feed(),
@@ -124,7 +124,7 @@ def test_detect_discrete_events_no_discrete():
         time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="inoculation"),
         volume=vol, reactor_medium=rm,
     )
-    de = detect_discrete_events(proc)
+    de = detect_discrete_state_events(proc)
     assert de.times.shape[0] == 0
 
 
@@ -388,7 +388,7 @@ def _make_process_with_bolus_feed(
     vol = Volume(
         initial_volume=V0, unit="L",
         volume_changes={
-            "bolus_feed": VolumeChange(
+            "bolus_feed": FeedVolumeChange(
                 name="bolus_feed", unit="L",
                 is_controlled=True, is_continuous=False,
                 feed_medium=feed_medium,

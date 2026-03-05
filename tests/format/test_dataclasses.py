@@ -15,7 +15,7 @@ from bpbench import (
     ReactorMediumComponent,
     FeedMedium,
     ReactorMedium,
-    VolumeChange,
+    FeedVolumeChange,
     Volume,
     BioProcess,
     CaseStudy,
@@ -155,8 +155,8 @@ def test_reactor_medium_with_components():
 def test_volume_change_continuous():
     ts = TimeSeries(timepoints=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = VolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
-                      feed_medium=fm, values=ts)
+    vc = FeedVolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
+                          feed_medium=fm, values=ts)
     assert vc.name == "feed"
     assert vc.is_continuous is True
     assert vc.values.timepoints.shape == (3,)
@@ -165,8 +165,8 @@ def test_volume_change_continuous():
 def test_volume_change_discrete():
     ts = TimeSeries(timepoints=jnp.array([2.0, 5.0]), values=jnp.array([0.5, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = VolumeChange(name="bolus", unit="L", is_controlled=True, is_continuous=False,
-                      feed_medium=fm, values=ts)
+    vc = FeedVolumeChange(name="bolus", unit="L", is_controlled=True, is_continuous=False,
+                          feed_medium=fm, values=ts)
     assert vc.is_continuous is False
 
 
@@ -179,8 +179,8 @@ def test_volume_default_volume_changes():
 def test_volume_with_changes():
     ts = TimeSeries(timepoints=jnp.array([0., 10.]), values=jnp.array([0.0, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = VolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
-                      feed_medium=fm, values=ts)
+    vc = FeedVolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
+                          feed_medium=fm, values=ts)
     vol = Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc})
     assert "feed" in vol.volume_changes
 

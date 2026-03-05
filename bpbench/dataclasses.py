@@ -4,7 +4,7 @@ JAX-compatible dataclasses for standardized bioprocess data
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 import jax.numpy as jnp
 
 # TODO for later: standardize unit spelling so it might be used for unit checks
@@ -144,18 +144,41 @@ class BioProcessMetadata:
     notes: Optional[str] = None
 
 @dataclass
-class VolumeChange:
+class BaseVolumeChange:
     """
-    Represents a volume change event (discrete or continuous).
-    
+    Base class for volume change events (discrete or continuous).
+
     Note: volume changes are saved in the volume unit (i.e., L, m3, kg), not as a rate.
     """
     name: str
-    unit: str  # e.g. "L", "m3", "kg", not allowed is "L/h" or "kg/h" as they are ususally derived values
+    unit: str  # e.g. "L", "m3", "kg", not allowed is "L/h" or "kg/h" as they are usually derived values
     is_controlled: bool  # True if controlled, False if modeled
     is_continuous: bool  # True if continuous, False if discrete
-    feed_medium: FeedMedium  # Reference to feed name in Process.feeds
     values: TimeSeries  # For continuous changes (cumulative or rate)
+
+
+@dataclass
+class FeedVolumeChange(BaseVolumeChange):
+    """
+    Volume change from a feed (inflow). Includes the feed medium composition.
+
+    All delta values should be >= 0.
+    """
+    feed_medium: FeedMedium = field(default=None)
+
+
+@dataclass
+class SampleVolumeChange(BaseVolumeChange):
+    """
+    Volume change from sampling (outflow). No feed medium.
+
+    All delta values should be <= 0.
+    """
+    pass
+
+
+# Union type alias for convenience
+VolumeChange = Union[FeedVolumeChange, SampleVolumeChange]
 
 
 @dataclass
