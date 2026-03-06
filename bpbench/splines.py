@@ -538,7 +538,7 @@ def _prepare_pseudobatch_inputs(
     # Build accumulated_feed and concentration_in_feed arrays
     if len(feed_streams) == 1:
         accumulated_feed = feed_streams[0][0]
-        concentration_in_feed: object = feed_streams[0][1]
+        concentration_in_feed: float = feed_streams[0][1]
     elif len(feed_streams) > 1:
         # Multiple feeds: stack as columns
         accumulated_feed = np.column_stack([fs[0] for fs in feed_streams])
