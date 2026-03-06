@@ -636,11 +636,15 @@ def pseudo_batch_transform_timeseries(
     # Only bolus feeds produce concentration discontinuities.  Sampling events
     # change volume but NOT concentration, so they must NOT receive epsilon
     # pre-event points.
+    # Small time offset used to create pre-event grid points for bolus feeds.
+    # Linear interpolation between t_event - _EPS and t_event then produces
+    # the desired concentration discontinuity.
     _EPS = 1e-10
-    # bolus_at_meas: list of (meas_index, total_delta_V, weighted_c_feed_sum)
-    # keyed by measurement index where the bolus coincides.
+
+    # Map measurement index → list of (delta_volume, c_feed) tuples for all
+    # bolus feed events that coincide with that measurement time.
     from collections import defaultdict
-    _bolus_by_meas: Dict[int, List[Tuple[float, float]]] = defaultdict(list)
+    _bolus_by_measurement_idx: Dict[int, List[Tuple[float, float]]] = defaultdict(list)
 
     for _vc_name, vc in process.volume.volume_changes.items():
         if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
@@ -656,14 +660,14 @@ def pseudo_batch_transform_timeseries(
             # Find measurement index that coincides with this event
             meas_idx = int(np.searchsorted(times, float(et), side="left"))
             if meas_idx < len(times) and np.isclose(times[meas_idx], float(et)):
-                _bolus_by_meas[meas_idx].append((float(ev), c_feed))
+                _bolus_by_measurement_idx[meas_idx].append((float(ev), c_feed))
 
     # ---- Build unified time grid with ADF / feed-term -----------------------
     grid_times_list: List[float] = list(times)
     grid_adf_list: List[float] = list(adf_meas)
     grid_feed_list: List[float] = list(feed_term_meas)
 
-    for meas_idx, bolus_list in _bolus_by_meas.items():
+    for meas_idx, bolus_list in _bolus_by_measurement_idx.items():
         t_b = float(times[meas_idx])
         t_pre = t_b - _EPS
         if t_pre <= float(times[0]):
@@ -699,7 +703,7 @@ def pseudo_batch_transform_timeseries(
     ADF_grid = np.array(grid_adf_list, dtype=float)[order]
     feed_term_grid = np.array(grid_feed_list, dtype=float)[order]
 
-    # Deduplicate (keep first occurrence for times within eps/10)
+    # Deduplicate: two grid points within _EPS/10 are considered identical
     if len(t_grid) > 1:
         keep = np.concatenate([[True], np.diff(t_grid) > _EPS / 10])
         t_grid = t_grid[keep]
