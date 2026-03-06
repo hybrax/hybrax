@@ -494,7 +494,8 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
 
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
-    fig.show()
+    # fig.show()
+    return fig
 
 def _make_figure(n_panels, figsize_per_panel):
     """Create a two-column figure with the correct number of rows."""
@@ -553,4 +554,5 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
-    fig.show()
+    # fig.show()
+    return fig
