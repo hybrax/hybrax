@@ -839,5 +839,271 @@ def test_pseudobatch_metadata_has_interp_key():
     assert "feed_term_values" in tr
 
 
+# ---------------------------------------------------------------------------
+# Tests: pseudobatch package integration – direct comparison
+# ---------------------------------------------------------------------------
+
+from pseudobatch import pseudobatch_transform as pb_transform
+from pseudobatch.data_correction import accumulated_dilution_factor as pb_adf
+from bpbench.splines import _prepare_pseudobatch_inputs
+
+
+def test_prepare_pseudobatch_inputs_discrete_only():
+    """_prepare_pseudobatch_inputs extracts correct arrays for discrete bolus."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0, feed_times=[50.0], feed_vols=[0.2], glucose_feed_conc=500.0,
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    inputs = _prepare_pseudobatch_inputs(proc, "glucose", glucose_ts)
+
+    np.testing.assert_array_equal(inputs["times"], [0.0, 25.0, 50.0, 75.0, 100.0])
+    # Reactor volume: V0=1.0, bolus +0.2 at t=50
+    expected_vol = np.array([1.0, 1.0, 1.2, 1.2, 1.2])
+    np.testing.assert_allclose(inputs["reactor_volume"], expected_vol)
+    # Accumulated feed
+    expected_feed = np.array([0.0, 0.0, 0.2, 0.2, 0.2])
+    np.testing.assert_allclose(inputs["accumulated_feed"], expected_feed)
+    assert inputs["concentration_in_feed"] == 500.0
+    np.testing.assert_array_equal(inputs["sample_volume"], np.zeros(5))
+
+
+def test_prepare_pseudobatch_inputs_continuous_only():
+    """_prepare_pseudobatch_inputs extracts correct arrays for continuous feed."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    inputs = _prepare_pseudobatch_inputs(proc, "glucose", glucose_ts)
+
+    expected_vol = np.array([1.0, 1.1, 1.2, 1.3, 1.4])
+    np.testing.assert_allclose(inputs["reactor_volume"], expected_vol)
+    expected_feed = np.array([0.0, 0.1, 0.2, 0.3, 0.4])
+    np.testing.assert_allclose(inputs["accumulated_feed"], expected_feed)
+    assert inputs["concentration_in_feed"] == 100.0
+
+
+def test_prepare_pseudobatch_inputs_species_not_in_feed():
+    """Species not present in feed should give concentration_in_feed = 0."""
+    proc = _make_process_with_bolus_feed()
+    proc.reactor_medium.components["biomass"] = ReactorMediumComponent(
+        name="biomass", unit="cells/L",
+        concentration=_ts([0.0, 25.0, 50.0, 75.0, 100.0],
+                          [1.0, 2.0, 4.0, 8.0, 16.0]),
+        is_intracellular=False,
+    )
+    bio_ts = proc.reactor_medium.components["biomass"].concentration
+    inputs = _prepare_pseudobatch_inputs(proc, "biomass", bio_ts)
+    assert inputs["concentration_in_feed"] == 0.0
+
+
+def test_pseudobatch_cstar_matches_direct_call_discrete():
+    """c_star from pseudo_batch_transform_timeseries matches direct pseudobatch call
+    for a discrete bolus feed."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0, feed_times=[50.0], feed_vols=[0.2], glucose_feed_conc=500.0,
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+    # Direct pseudobatch call
+    inputs = _prepare_pseudobatch_inputs(proc, "glucose", glucose_ts)
+    c_star_direct = pb_transform(
+        measured_concentration=inputs["measured_conc"],
+        reactor_volume=inputs["reactor_volume"],
+        accumulated_feed=inputs["accumulated_feed"],
+        concentration_in_feed=inputs["concentration_in_feed"],
+        sample_volume=inputs["sample_volume"],
+    )
+    np.testing.assert_allclose(pb["c_star"], c_star_direct, rtol=1e-10)
+
+
+def test_pseudobatch_cstar_matches_direct_call_continuous():
+    """c_star from pseudo_batch_transform_timeseries matches direct pseudobatch call
+    for a continuous feed."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+    inputs = _prepare_pseudobatch_inputs(proc, "glucose", glucose_ts)
+    c_star_direct = pb_transform(
+        measured_concentration=inputs["measured_conc"],
+        reactor_volume=inputs["reactor_volume"],
+        accumulated_feed=inputs["accumulated_feed"],
+        concentration_in_feed=inputs["concentration_in_feed"],
+        sample_volume=inputs["sample_volume"],
+    )
+    np.testing.assert_allclose(pb["c_star"], c_star_direct, rtol=1e-10)
+
+
+def test_pseudobatch_cstar_matches_direct_call_mixed():
+    """c_star matches for a process with both continuous and discrete feeds."""
+    proc = _make_process_with_discrete()
+    bio_ts = proc.reactor_medium.components["biomass"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "biomass", bio_ts)
+
+    inputs = _prepare_pseudobatch_inputs(proc, "biomass", bio_ts)
+    c_star_direct = pb_transform(
+        measured_concentration=inputs["measured_conc"],
+        reactor_volume=inputs["reactor_volume"],
+        accumulated_feed=inputs["accumulated_feed"],
+        concentration_in_feed=inputs["concentration_in_feed"],
+        sample_volume=inputs["sample_volume"],
+    )
+    np.testing.assert_allclose(pb["c_star"], c_star_direct, rtol=1e-10)
+
+
+def test_pseudobatch_backtransform_identity_at_measurement_times():
+    """Backtransform of c_star at measurement times should recover original concentrations."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0, feed_times=[50.0], feed_vols=[0.2], glucose_feed_conc=500.0,
+    )
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+
+    times = pb["times"]
+    c_star = pb["c_star"]
+    adf_at_meas = np.interp(times, pb["adf_times"], pb["adf_values"])
+    feed_at_meas = np.interp(times, pb["feed_term_times"], pb["feed_term_values"])
+
+    # ĉ(t) = (c_star + feed_term) / ADF should recover original concentrations
+    conc_recovered = (c_star + feed_at_meas) / adf_at_meas
+    np.testing.assert_allclose(
+        conc_recovered,
+        np.asarray(glucose_ts.values, dtype=float),
+        rtol=1e-10,
+    )
+
+
+def test_pseudobatch_with_sample_volume_change():
+    """Process with SampleVolumeChange should be handled correctly."""
+    from bpbench import SampleVolumeChange
+
+    feed_medium = FeedMedium(
+        name="feed", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=StaticVariable(value=100.0),
+                is_controlled=True,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [10.0, 8.0, 6.0, 5.0, 4.0],
+                ),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=1.0, unit="L",
+        volume_changes={
+            "feed": FeedVolumeChange(
+                name="feed", unit="L",
+                is_controlled=True, is_continuous=False,
+                feed_medium=feed_medium,
+                values=_ts([10.0], [0.2]),
+            ),
+            "sample": SampleVolumeChange(
+                name="sample", unit="L",
+                is_controlled=True, is_continuous=False,
+                values=_ts([5.0], [-0.05]),
+            ),
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="test_sample", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=20.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    inputs = _prepare_pseudobatch_inputs(proc, "glucose", glucose_ts)
+
+    # Sample volume should be positive where sampling occurs (t=5)
+    assert abs(inputs["sample_volume"][1] - 0.05) < 1e-6
+    assert inputs["sample_volume"][0] == 0.0
+
+    # c_star should be computable without error
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+    assert len(pb["c_star"]) == 5
+    assert np.all(np.isfinite(pb["c_star"]))
+
+
+def test_pseudobatch_multiple_feed_streams():
+    """Process with multiple feed streams should produce correct inputs."""
+    feed_medium_1 = FeedMedium(
+        name="feed1", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=StaticVariable(value=200.0),
+                is_controlled=True,
+            ),
+        },
+    )
+    feed_medium_2 = FeedMedium(
+        name="feed2", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=StaticVariable(value=50.0),
+                is_controlled=True,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose", unit="mmol/L",
+                concentration=_ts([0.0, 10.0, 20.0], [10.0, 7.0, 5.0]),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=1.0, unit="L",
+        volume_changes={
+            "feed1": FeedVolumeChange(
+                name="feed1", unit="L",
+                is_controlled=True, is_continuous=False,
+                feed_medium=feed_medium_1,
+                values=_ts([5.0], [0.1]),
+            ),
+            "feed2": FeedVolumeChange(
+                name="feed2", unit="L",
+                is_controlled=True, is_continuous=False,
+                feed_medium=feed_medium_2,
+                values=_ts([15.0], [0.2]),
+            ),
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="test_multi", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=20.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+    glucose_ts = proc.reactor_medium.components["glucose"].concentration
+    inputs = _prepare_pseudobatch_inputs(proc, "glucose", glucose_ts)
+
+    # Multiple feeds → 2D accumulated_feed, array concentration_in_feed
+    assert inputs["accumulated_feed"].ndim == 2
+    assert inputs["accumulated_feed"].shape == (3, 2)
+    np.testing.assert_array_equal(inputs["concentration_in_feed"], [200.0, 50.0])
+
+    # c_star should be computable without error
+    pb = pseudo_batch_transform_timeseries(proc, "glucose", glucose_ts)
+    assert len(pb["c_star"]) == 3
+    assert np.all(np.isfinite(pb["c_star"]))
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
