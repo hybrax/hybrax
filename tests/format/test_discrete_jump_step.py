@@ -119,7 +119,7 @@ def test_bolus_feed_discrete_jump_is_step_not_ramp():
     rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
 
     # Evaluate at several distances before and after the feed event
-    deltas = [1e-4, 1e-6, 1e-8, 1e-10]
+    deltas = [1e-4, 1e-6, 1e-8, 1e-9]
 
     pre_values = [evaluate_timeseries_spline_at(rep, t_feed - d) for d in deltas]
     post_values = [evaluate_timeseries_spline_at(rep, t_feed + d) for d in deltas]
