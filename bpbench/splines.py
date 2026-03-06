@@ -529,11 +529,17 @@ def _prepare_pseudobatch_inputs(
                 feed_streams.append((cum_feed, c_feed))
 
         elif isinstance(vc, SampleVolumeChange):
-            # Sample volumes are negative in BPbench, pseudobatch expects positive
+            # Sample volumes are negative in BPbench, pseudobatch expects positive.
+            # Also adjust reactor_volume for subsequent times: pseudobatch
+            # requires "volume just BEFORE sampling", so at measurement times
+            # strictly after the sampling event the volume must reflect the
+            # prior sample removal.
             for et, ev in zip(ev_times, ev_vals):
                 for i, t in enumerate(times):
                     if np.isclose(t, et):
                         sample_volume[i] += abs(float(ev))
+                # ev is negative; this decreases volume for times > et
+                reactor_volume += np.where(times > et, float(ev), 0.0)
 
     # Build accumulated_feed and concentration_in_feed arrays
     if len(feed_streams) == 1:
@@ -607,71 +613,102 @@ def pseudo_batch_transform_timeseries(
         sample_volume=inputs["sample_volume"],
     )
 
-    # ---- Build unified time grid for ADF / feed-term metadata ----------------
-    # Insert a point just before each discrete event so that linear
-    # interpolation preserves the step discontinuity.
-    discrete_event_times: List[float] = []
-    for _vc_name, vc in process.volume.volume_changes.items():
-        if not vc.is_continuous:
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            for et in ev_times:
-                discrete_event_times.append(float(et))
-
-    _EPS = 1e-10
-    pre_event_times = [et - _EPS for et in discrete_event_times if et - _EPS > 0]
-    t_grid = np.unique(np.concatenate([
-        times,
-        np.array(discrete_event_times),
-        np.array(pre_event_times) if pre_event_times else np.array([]),
-    ]))
-
-    # ---- Compute total volume on the grid -----------------------------------
-    V_grid = compute_volume_at_times(process, t_grid)
-    if np.any(V_grid <= 0):
+    # ---- Validate volume is positive ----------------------------------------
+    V_check = compute_volume_at_times(process, times)
+    if np.any(V_check <= 0):
         raise ValueError(
             "Volume must be positive at all evaluation times. "
-            f"Minimum volume encountered: {V_grid.min():.6g}."
+            f"Minimum volume encountered: {V_check.min():.6g}."
         )
 
-    # ---- ADF ----------------------------------------------------------------
-    V0_grid = V_grid[0]
-    ADF_grid = V_grid / V0_grid
+    # ---- ADF at measurement times via pseudobatch ---------------------------
+    # Use the same formula as pseudobatch_transform internally uses so that
+    # backtransform ĉ(t) = (ĉ*(t) + feed_term(t)) / ADF(t) recovers the
+    # original measured concentrations exactly at measurement times.
+    after_sample_vol = inputs["reactor_volume"] - inputs["sample_volume"]
+    adf_meas = accumulated_dilution_factor(after_sample_vol, inputs["sample_volume"])
 
-    # ---- Feed term accumulation on the grid ---------------------------------
-    feed_term_grid = np.zeros_like(t_grid)
+    # ---- Feed term at measurement times (derived for exact recovery) --------
+    # c* = c · ADF − cumsum(fed_species_term)  ⟹  feed_term = c · ADF − c*
+    feed_term_meas = measured_conc * adf_meas - c_star
+
+    # ---- Collect bolus feed events (for pre-event epsilon grid points) ------
+    # Only bolus feeds produce concentration discontinuities.  Sampling events
+    # change volume but NOT concentration, so they must NOT receive epsilon
+    # pre-event points.
+    # Small time offset used to create pre-event grid points for bolus feeds.
+    # Linear interpolation between t_event - _EPS and t_event then produces
+    # the desired concentration discontinuity.
+    _EPS = 1e-10
+
+    # Map measurement index → list of (delta_volume, c_feed) tuples for all
+    # bolus feed events that coincide with that measurement time.
+    from collections import defaultdict
+    _bolus_by_measurement_idx: Dict[int, List[Tuple[float, float]]] = defaultdict(list)
 
     for _vc_name, vc in process.volume.volume_changes.items():
-        if not isinstance(vc, FeedVolumeChange):
+        if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
             continue
-
-        # Resolve feed concentration for the requested species
         c_feed = 0.0
         if vc.feed_medium is not None and species_name in vc.feed_medium.components:
             comp = vc.feed_medium.components[species_name]
             if isinstance(comp.concentration, StaticVariable):
                 c_feed = float(comp.concentration.value)
+        ev_times = np.asarray(vc.values.timepoints, dtype=float)
+        ev_vols = np.asarray(vc.values.values, dtype=float)
+        for et, ev in zip(ev_times, ev_vols):
+            # Find measurement index that coincides with this event
+            meas_idx = int(np.searchsorted(times, float(et), side="left"))
+            if meas_idx < len(times) and np.isclose(times[meas_idx], float(et)):
+                _bolus_by_measurement_idx[meas_idx].append((float(ev), c_feed))
 
-        if vc.is_continuous:
-            # Continuous cumulative feed contribution
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            ev_vols = np.asarray(vc.values.values, dtype=float)
-            cum_at_grid = _eval_cumulative_volume_change(ev_times, ev_vols, t_grid)
-            for i in range(1, len(t_grid)):
-                delta_v_c = cum_at_grid[i] - cum_at_grid[i - 1]
-                if delta_v_c > 0 and V_grid[i] > 0:
-                    feed_term_grid[i] += ADF_grid[i] * c_feed * (delta_v_c / V_grid[i])
+    # ---- Build unified time grid with ADF / feed-term -----------------------
+    grid_times_list: List[float] = list(times)
+    grid_adf_list: List[float] = list(adf_meas)
+    grid_feed_list: List[float] = list(feed_term_meas)
+
+    for meas_idx, bolus_list in _bolus_by_measurement_idx.items():
+        t_b = float(times[meas_idx])
+        t_pre = t_b - _EPS
+        if t_pre <= float(times[0]):
+            continue  # No pre-event point before the first time
+
+        adf_post = float(adf_meas[meas_idx])
+        V_before = float(inputs["reactor_volume"][meas_idx])  # includes bolus
+
+        # Total bolus volume and feed-term contribution at this event
+        total_dv = sum(dv for dv, _ in bolus_list)
+        V_no_bolus = V_before - total_dv
+
+        # Pre-bolus ADF
+        if V_before > 0 and V_no_bolus > 0:
+            adf_pre = adf_post * V_no_bolus / V_before
         else:
-            # Discrete bolus: add increment at event times
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            ev_vols = np.asarray(vc.values.values, dtype=float)
-            for et, ev in zip(ev_times, ev_vols):
-                idx = np.searchsorted(t_grid, float(et), side="left")
-                if idx < len(t_grid) and np.isclose(t_grid[idx], float(et)):
-                    if V_grid[idx] > 0:
-                        feed_term_grid[idx] += ADF_grid[idx] * c_feed * (float(ev) / V_grid[idx])
+            adf_pre = adf_post
 
-    # Cumulative sum of the feed term increments
-    feed_term_grid = np.cumsum(feed_term_grid)
+        # Pre-bolus feed term: subtract the bolus contribution
+        delta_feed = sum(
+            adf_post * cf * dv / V_before if V_before > 0 else 0.0
+            for dv, cf in bolus_list
+        )
+        feed_term_pre = float(feed_term_meas[meas_idx]) - delta_feed
+
+        grid_times_list.append(t_pre)
+        grid_adf_list.append(adf_pre)
+        grid_feed_list.append(feed_term_pre)
+
+    # Sort and deduplicate the grid
+    order = np.argsort(grid_times_list)
+    t_grid = np.array(grid_times_list, dtype=float)[order]
+    ADF_grid = np.array(grid_adf_list, dtype=float)[order]
+    feed_term_grid = np.array(grid_feed_list, dtype=float)[order]
+
+    # Deduplicate: two grid points within _EPS/10 are considered identical
+    if len(t_grid) > 1:
+        keep = np.concatenate([[True], np.diff(t_grid) > _EPS / 10])
+        t_grid = t_grid[keep]
+        ADF_grid = ADF_grid[keep]
+        feed_term_grid = feed_term_grid[keep]
 
     return {
         "times": times,
