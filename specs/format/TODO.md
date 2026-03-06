@@ -1,6 +1,10 @@
 # Here is just a general TODO for the future.
 
 * **NEXT steps:**
+    * Spline fits are clearly broken right now. I have to think how to calculate the pseudo-batch transformation.
+        * first I should make a continuos volume spline, then add the discrete jumps that I get my continuous volume spline.
+        * from there I then should caclculate the pseudobatch transformation with t+- delta 
+        * then calculate the splines from the other states.
     * BOLUS FEEDs
         * There are multiple layers to the problem
             * bolus feed (volume change) + sampling (no volume change) at the same time
