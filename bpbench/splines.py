@@ -22,10 +22,14 @@ import jax.numpy as jnp
 import numpy as np
 from scipy import interpolate
 
+from pseudobatch import pseudobatch_transform as _pseudobatch_transform
+from pseudobatch.data_correction import accumulated_dilution_factor
+
 from .dataclasses import (
     BioProcess,
     DiscreteEvents,
     FeedVolumeChange,
+    SampleVolumeChange,
     SplineRepresentation,
     StaticVariable,
     TimeSeries,
@@ -462,12 +466,108 @@ def _step_eval_array(
     return step_values[idx]
 
 
+def _prepare_pseudobatch_inputs(
+    process: BioProcess,
+    species_name: str,
+    ts: TimeSeries,
+) -> dict:
+    """Extract flat numpy arrays from BPbench data model for pseudobatch.
+
+    Converts the hierarchical BioProcess structure into the arrays that
+    :func:`pseudobatch.pseudobatch_transform` expects.
+
+    Parameters
+    ----------
+    process:
+        BioProcess for the run.
+    species_name:
+        Name of the reactor medium species.
+    ts:
+        TimeSeries of the species concentration.
+
+    Returns
+    -------
+    dict with keys ``times``, ``measured_conc``, ``reactor_volume``,
+    ``accumulated_feed``, ``concentration_in_feed``, ``sample_volume``.
+    """
+    times = np.asarray(ts.timepoints, dtype=float)
+    measured_conc = np.asarray(ts.values, dtype=float)
+    n = len(times)
+
+    # 1. Reactor volume (before sampling) at measurement times
+    reactor_volume = np.full(n, float(process.volume.initial_volume))
+
+    # Track accumulated feed per feed stream
+    feed_streams: List[Tuple[np.ndarray, float]] = []
+
+    # Track sample volumes
+    sample_volume = np.zeros(n)
+
+    for _vc_name, vc in process.volume.volume_changes.items():
+        ev_times = np.asarray(vc.values.timepoints, dtype=float)
+        ev_vals = np.asarray(vc.values.values, dtype=float)
+
+        if isinstance(vc, FeedVolumeChange):
+            # Get concentration of species in this feed
+            c_feed = 0.0
+            if vc.feed_medium is not None and species_name in vc.feed_medium.components:
+                comp = vc.feed_medium.components[species_name]
+                if isinstance(comp.concentration, StaticVariable):
+                    c_feed = float(comp.concentration.value)
+
+            if vc.is_continuous:
+                # Cumulative feed: interpolate at measurement times
+                cum_feed = _eval_cumulative_volume_change(ev_times, ev_vals, times)
+                reactor_volume += cum_feed
+                feed_streams.append((cum_feed, c_feed))
+            else:
+                # Discrete bolus: cumulative sum at measurement times
+                cum_feed = np.zeros(n)
+                for et, ev in zip(ev_times, ev_vals):
+                    cum_feed += np.where(times >= et, ev, 0.0)
+                reactor_volume += cum_feed
+                feed_streams.append((cum_feed, c_feed))
+
+        elif isinstance(vc, SampleVolumeChange):
+            # Sample volumes are negative in BPbench, pseudobatch expects positive
+            for et, ev in zip(ev_times, ev_vals):
+                for i, t in enumerate(times):
+                    if np.isclose(t, et):
+                        sample_volume[i] += abs(float(ev))
+
+    # Build accumulated_feed and concentration_in_feed arrays
+    if len(feed_streams) == 1:
+        accumulated_feed = feed_streams[0][0]
+        concentration_in_feed: float = feed_streams[0][1]
+    elif len(feed_streams) > 1:
+        # Multiple feeds: stack as columns
+        accumulated_feed = np.column_stack([fs[0] for fs in feed_streams])
+        concentration_in_feed = np.array([fs[1] for fs in feed_streams])
+    else:
+        # No feeds
+        accumulated_feed = np.zeros(n)
+        concentration_in_feed = 0.0
+
+    return {
+        "times": times,
+        "measured_conc": measured_conc,
+        "reactor_volume": reactor_volume,
+        "accumulated_feed": accumulated_feed,
+        "concentration_in_feed": concentration_in_feed,
+        "sample_volume": sample_volume,
+    }
+
+
 def pseudo_batch_transform_timeseries(
     process: BioProcess,
     species_name: str,
     ts: TimeSeries,
 ) -> Dict:
     """Compute pseudo-batch transformed concentration for a state variable.
+
+    Uses the ``pseudobatch`` package for the core transform and builds a
+    unified time grid (with pre-event epsilon points) for the ADF and
+    feed-term metadata required by :func:`evaluate_timeseries_spline_at`.
 
     Supports both discrete (bolus) and continuous (cumulative) feed volume
     changes. Implements the pseudo-batch transform based on
@@ -494,12 +594,22 @@ def pseudo_batch_transform_timeseries(
     ``feed_term_step_times``, ``feed_term_step_values`` for backward
     compatibility.
     """
-    times = np.asarray(ts.timepoints, dtype=float)
-    conc = np.asarray(ts.values, dtype=float)
+    # ---- Prepare inputs and compute c* via pseudobatch package ---------------
+    inputs = _prepare_pseudobatch_inputs(process, species_name, ts)
+    times = inputs["times"]
+    measured_conc = inputs["measured_conc"]
 
-    V0 = float(process.volume.initial_volume)
+    c_star = _pseudobatch_transform(
+        measured_concentration=inputs["measured_conc"],
+        reactor_volume=inputs["reactor_volume"],
+        accumulated_feed=inputs["accumulated_feed"],
+        concentration_in_feed=inputs["concentration_in_feed"],
+        sample_volume=inputs["sample_volume"],
+    )
 
-    # ---- Collect discrete bolus event times ---------------------------------
+    # ---- Build unified time grid for ADF / feed-term metadata ----------------
+    # Insert a point just before each discrete event so that linear
+    # interpolation preserves the step discontinuity.
     discrete_event_times: List[float] = []
     for _vc_name, vc in process.volume.volume_changes.items():
         if not vc.is_continuous:
@@ -507,9 +617,6 @@ def pseudo_batch_transform_timeseries(
             for et in ev_times:
                 discrete_event_times.append(float(et))
 
-    # ---- Build unified time grid --------------------------------------------
-    # Insert a point just before each discrete event so that linear
-    # interpolation preserves the step discontinuity.
     _EPS = 1e-10
     pre_event_times = [et - _EPS for et in discrete_event_times if et - _EPS > 0]
     t_grid = np.unique(np.concatenate([
@@ -530,7 +637,7 @@ def pseudo_batch_transform_timeseries(
     V0_grid = V_grid[0]
     ADF_grid = V_grid / V0_grid
 
-    # ---- Feed term accumulation ---------------------------------------------
+    # ---- Feed term accumulation on the grid ---------------------------------
     feed_term_grid = np.zeros_like(t_grid)
 
     for _vc_name, vc in process.volume.volume_changes.items():
@@ -565,11 +672,6 @@ def pseudo_batch_transform_timeseries(
 
     # Cumulative sum of the feed term increments
     feed_term_grid = np.cumsum(feed_term_grid)
-
-    # ---- Compute c* at measurement times ------------------------------------
-    adf_at_meas = np.interp(times, t_grid, ADF_grid)
-    feed_at_meas = np.interp(times, t_grid, feed_term_grid)
-    c_star = adf_at_meas * conc - feed_at_meas
 
     return {
         "times": times,
