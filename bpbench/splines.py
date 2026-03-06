@@ -466,6 +466,49 @@ def _step_eval_array(
     return step_values[idx]
 
 
+def _step_interp(
+    grid_times: np.ndarray, grid_values: np.ndarray, t: float,
+    *, eps: float = 2e-10,
+) -> float:
+    """Step interpolation at epsilon boundaries, linear interpolation elsewhere.
+
+    At bolus-feed discontinuity boundaries (consecutive grid points closer
+    than *eps*), uses piecewise-constant (step) evaluation so that the
+    backtransformed concentration jumps instantaneously.  For wider intervals
+    falls back to linear interpolation so that ADF / feed-term vary smoothly
+    between regular measurement times.
+    """
+    grid_times = np.asarray(grid_times, dtype=float)
+    grid_values = np.asarray(grid_values, dtype=float)
+
+    if len(grid_times) == 0:
+        return 0.0
+    if len(grid_times) == 1:
+        return float(grid_values[0])
+
+    idx = int(np.searchsorted(grid_times, float(t), side="right")) - 1
+
+    # Clamp to valid range
+    if idx < 0:
+        return float(grid_values[0])
+    if idx >= len(grid_times) - 1:
+        return float(grid_values[-1])
+
+    gap = grid_times[idx + 1] - grid_times[idx]
+
+    if gap < eps:
+        # Epsilon boundary → step behaviour
+        if t < grid_times[idx + 1]:
+            return float(grid_values[idx])
+        return float(grid_values[idx + 1])
+
+    # Regular interval → linear interpolation
+    frac = (t - grid_times[idx]) / gap
+    return float(
+        grid_values[idx] + frac * (grid_values[idx + 1] - grid_values[idx])
+    )
+
+
 def _prepare_pseudobatch_inputs(
     process: BioProcess,
     species_name: str,
@@ -787,7 +830,7 @@ def fit_state_timeseries_spline_pseudobatch(
     rep.spline_metadata["transform"] = {
         "name": "pseudo_batch",
         "species": species_name,
-        "interp": "linear",
+        "interp": "step",
         "adf_times": pb["adf_times"].tolist(),
         "adf_values": pb["adf_values"].tolist(),
         "feed_term_times": pb["feed_term_times"].tolist(),
@@ -818,23 +861,21 @@ def evaluate_timeseries_spline_at(rep: SplineRepresentation, t: float) -> float:
         tr = meta["transform"]
         if tr.get("name") == "pseudo_batch":
             c_star_hat = evaluate_spline_at(rep, t)
-            # Use linear interpolation (preferred), fall back to step eval
-            # for legacy metadata without "adf_times".
+            # Use step (piecewise-constant) evaluation at bolus-feed epsilon
+            # boundaries so that the backtransformed concentration jumps
+            # instantaneously; fall back to linear interpolation for wider
+            # grid intervals (e.g. continuous feed).
             if "adf_times" in tr:
-                adf_t = float(np.interp(
-                    t,
+                adf_t = _step_interp(
                     np.array(tr["adf_times"]),
                     np.array(tr["adf_values"]),
-                    left=tr["adf_values"][0],
-                    right=tr["adf_values"][-1],
-                ))
-                feed_t = float(np.interp(
                     t,
+                )
+                feed_t = _step_interp(
                     np.array(tr["feed_term_times"]),
                     np.array(tr["feed_term_values"]),
-                    left=tr["feed_term_values"][0],
-                    right=tr["feed_term_values"][-1],
-                ))
+                    t,
+                )
             else:
                 adf_t = _step_eval(
                     np.array(tr["adf_step_times"]),

@@ -827,12 +827,12 @@ def test_pseudobatch_continuous_backtransform_roundtrip():
 
 
 def test_pseudobatch_metadata_has_interp_key():
-    """New metadata should contain 'interp': 'linear'."""
+    """New metadata should contain 'interp': 'step'."""
     proc = _make_process_with_bolus_feed()
     glucose_ts = proc.reactor_medium.components["glucose"].concentration
     rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
     tr = rep.spline_metadata["transform"]
-    assert tr["interp"] == "linear"
+    assert tr["interp"] == "step"
     assert "adf_times" in tr
     assert "adf_values" in tr
     assert "feed_term_times" in tr
