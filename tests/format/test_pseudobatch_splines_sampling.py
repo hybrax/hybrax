@@ -29,8 +29,7 @@ from bpbench.splines import (
     build_pseudobatch_inputs,
     build_splines,
     to_spline_representation,
-    evaluate_from_spline_representation,
-    evaluate_from_spline_representation_at,
+    build_backtransform_spline,
 )
 
 
@@ -96,13 +95,14 @@ def test_sampling_only_no_concentration_jump():
     )
 
     rep = _fit_and_get_rep(proc, "glucose")
+    bt = build_backtransform_spline(rep)
 
     # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
     eps = 5e-4
     # No jump at either sampling time
     for t_s in [2.0, 5.0]:
-        val_before = evaluate_from_spline_representation_at(rep, t_s - eps)
-        val_after = evaluate_from_spline_representation_at(rep, t_s + eps)
+        val_before = float(bt(jnp.array(t_s - eps)))
+        val_after = float(bt(jnp.array(t_s + eps)))
         jump = abs(val_after - val_before)
         assert jump < 1e-3, (
             f"Sampling should NOT cause a concentration jump at t={t_s}; "
@@ -111,7 +111,7 @@ def test_sampling_only_no_concentration_jump():
 
     # Overall curve should stay approximately constant at ~10
     t_eval = np.linspace(0.0, 6.0, 50)
-    c_hat = evaluate_from_spline_representation(rep, t_eval)
+    c_hat = np.array([float(bt(jnp.array(t))) for t in t_eval])
     assert np.max(c_hat) - np.min(c_hat) < 0.5, (
         f"Concentration should remain approximately constant; "
         f"range = {np.max(c_hat) - np.min(c_hat):.4f}"
@@ -176,10 +176,11 @@ def test_bolus_only_has_concentration_jump():
     )
 
     rep = _fit_and_get_rep(proc, "glucose")
+    bt = build_backtransform_spline(rep)
 
     eps = 5e-4
-    val_before = evaluate_from_spline_representation_at(rep, 2.0 - eps)
-    val_after = evaluate_from_spline_representation_at(rep, 2.0 + eps)
+    val_before = float(bt(jnp.array(2.0 - eps)))
+    val_after = float(bt(jnp.array(2.0 + eps)))
     jump = abs(val_after - val_before)
 
     assert jump > 0.1, (
@@ -277,12 +278,13 @@ def test_mixed_continuous_bolus_sampling():
     )
 
     rep = _fit_and_get_rep(proc, "glucose")
+    bt = build_backtransform_spline(rep)
 
     eps = 5e-4
 
     # 1) No jump at sampling time (t=4)
-    val_before_sample = evaluate_from_spline_representation_at(rep, 4.0 - eps)
-    val_after_sample = evaluate_from_spline_representation_at(rep, 4.0 + eps)
+    val_before_sample = float(bt(jnp.array(4.0 - eps)))
+    val_after_sample = float(bt(jnp.array(4.0 + eps)))
     sample_jump = abs(val_after_sample - val_before_sample)
     assert sample_jump < 0.05, (
         f"Sampling should NOT cause a large concentration jump at t=4.0; "
@@ -290,8 +292,8 @@ def test_mixed_continuous_bolus_sampling():
     )
 
     # 2) Jump at bolus feed time (t=3)
-    val_before_bolus = evaluate_from_spline_representation_at(rep, 3.0 - eps)
-    val_after_bolus = evaluate_from_spline_representation_at(rep, 3.0 + eps)
+    val_before_bolus = float(bt(jnp.array(3.0 - eps)))
+    val_after_bolus = float(bt(jnp.array(3.0 + eps)))
     bolus_jump = abs(val_after_bolus - val_before_bolus)
     assert bolus_jump > 0.1, (
         f"Bolus feed should cause a concentration jump at t=3.0; "
@@ -299,8 +301,8 @@ def test_mixed_continuous_bolus_sampling():
     )
 
     # 3) No step discontinuity at a non-event time (continuous feed is smooth)
-    val_before_smooth = evaluate_from_spline_representation_at(rep, 2.5 - eps)
-    val_after_smooth = evaluate_from_spline_representation_at(rep, 2.5 + eps)
+    val_before_smooth = float(bt(jnp.array(2.5 - eps)))
+    val_after_smooth = float(bt(jnp.array(2.5 + eps)))
     smooth_jump = abs(val_after_smooth - val_before_smooth)
     assert smooth_jump < 0.05, (
         f"Continuous feed should not create a large step at t=2.5; "

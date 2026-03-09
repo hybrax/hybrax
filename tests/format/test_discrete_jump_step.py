@@ -25,7 +25,7 @@ from bpbench.splines import (
     build_pseudobatch_inputs,
     build_splines,
     to_spline_representation,
-    evaluate_from_spline_representation_at,
+    build_backtransform_spline,
 )
 
 
@@ -95,10 +95,12 @@ def test_step_jump_at_bolus():
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
 
+    bt = build_backtransform_spline(rep)
+
     # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
     eps = 5e-4
-    val_before = evaluate_from_spline_representation_at(rep, 10.0 - eps)
-    val_after = evaluate_from_spline_representation_at(rep, 10.0 + eps)
+    val_before = float(bt(jnp.array(10.0 - eps)))
+    val_after = float(bt(jnp.array(10.0 + eps)))
 
     jump = abs(val_after - val_before)
     assert jump > 0.1, f"Expected discontinuity at bolus time, got jump={jump}"
@@ -112,8 +114,9 @@ def test_step_consistent_at_different_distances():
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
 
-    val_close = evaluate_from_spline_representation_at(rep, 10.0 + 5e-4)
-    val_far = evaluate_from_spline_representation_at(rep, 10.0 + 0.1)
+    bt = build_backtransform_spline(rep)
+    val_close = float(bt(jnp.array(10.0 + 5e-4)))
+    val_far = float(bt(jnp.array(10.0 + 0.1)))
 
     # Both should be similar (within spline interpolation tolerance).
     # Note: with linear ADF interpolation on the dense grid, the sharp ramp
@@ -161,9 +164,11 @@ def test_no_jump_for_sampling():
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
 
+    bt = build_backtransform_spline(rep)
+
     eps = 1e-6
-    val_before = evaluate_from_spline_representation_at(rep, 10.0 - eps)
-    val_after = evaluate_from_spline_representation_at(rep, 10.0 + eps)
+    val_before = float(bt(jnp.array(10.0 - eps)))
+    val_after = float(bt(jnp.array(10.0 + eps)))
 
     # Should be smooth across sampling (no jump)
     assert abs(val_after - val_before) < 0.5, (

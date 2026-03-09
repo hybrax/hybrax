@@ -20,8 +20,7 @@ from bpbench.splines import (
     choose_spline_kind, fit_timeseries_spline, build_interpax_spline,
     evaluate_spline_at, SMOOTHING_THRESHOLD,
     build_pseudobatch_inputs, build_splines, evaluate_real_concentration,
-    to_spline_representation, evaluate_from_spline_representation,
-    evaluate_from_spline_representation_at,
+    to_spline_representation, build_backtransform_spline, BacktransformSpline,
 )
 from bpbench.serialization import save_dataset_json, load_dataset_json
 from bpbench import BenchmarkDataset, CaseStudy
@@ -234,7 +233,7 @@ def test_build_interpax_spline():
     splines, boundaries = build_interpax_spline(rep)
     assert len(splines) == 1
     assert len(boundaries) == 2
-    val = float(splines[0](jnp.float64(1.0)))
+    val = float(splines[0](jnp.array(1.0)))
     assert abs(val - 1.0) < 1e-4
 
 
@@ -496,7 +495,7 @@ def test_pseudobatch_species_not_in_feed():
 # ---------------------------------------------------------------------------
 
 def test_spline_representation_roundtrip_bolus():
-    """to_spline_representation -> evaluate_from_spline_representation
+    """to_spline_representation -> build_backtransform_spline
     matches evaluate_real_concentration for a bolus feed process."""
     proc = _make_process_with_bolus_feed(
         V0=1.0, feed_times=[50.0], feed_vols=[0.2], glucose_feed_conc=500.0,
@@ -512,15 +511,18 @@ def test_spline_representation_roundtrip_bolus():
     assert rep.spline_metadata["transform"]["species"] == "glucose"
     assert rep.spline_metadata["transform"]["feed_corr_interp"] == "linear"
 
+    bt = build_backtransform_spline(rep)
+    assert isinstance(bt, BacktransformSpline)
+
     t_eval = np.linspace(0.0, 100.0, 50)
     direct = evaluate_real_concentration(t_eval, splines)
-    from_rep = evaluate_from_spline_representation(rep, t_eval)
+    from_rep = np.array([float(bt(jnp.array(t))) for t in t_eval])
 
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
 
 
 def test_spline_representation_roundtrip_continuous():
-    """to_spline_representation -> evaluate_from_spline_representation
+    """to_spline_representation -> build_backtransform_spline
     matches evaluate_real_concentration for a continuous feed process."""
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
@@ -529,21 +531,24 @@ def test_spline_representation_roundtrip_continuous():
     rep = to_spline_representation(inputs, splines, "glucose")
     assert rep.spline_metadata["transform"]["feed_corr_interp"] == "cubic"
 
+    bt = build_backtransform_spline(rep)
+
     t_eval = np.linspace(0.0, 20.0, 30)
     direct = evaluate_real_concentration(t_eval, splines)
-    from_rep = evaluate_from_spline_representation(rep, t_eval)
+    from_rep = np.array([float(bt(jnp.array(t))) for t in t_eval])
 
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
 
 
 def test_spline_representation_scalar():
-    """evaluate_from_spline_representation_at works for scalar evaluation."""
+    """BacktransformSpline works for scalar evaluation."""
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
 
-    val = evaluate_from_spline_representation_at(rep, 25.0)
+    bt = build_backtransform_spline(rep)
+    val = float(bt(jnp.array(25.0)))
     assert np.isfinite(val)
     assert val > 0
 
@@ -559,10 +564,12 @@ def test_backtransform_has_jump_at_bolus():
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
 
+    bt = build_backtransform_spline(rep)
+
     # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
     eps = 5e-4
-    val_before = evaluate_from_spline_representation_at(rep, 50.0 - eps)
-    val_after = evaluate_from_spline_representation_at(rep, 50.0 + eps)
+    val_before = float(bt(jnp.array(50.0 - eps)))
+    val_after = float(bt(jnp.array(50.0 + eps)))
 
     jump = abs(val_after - val_before)
     assert jump > 0.1, (
@@ -578,8 +585,9 @@ def test_continuous_backtransform_no_nan():
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
 
+    bt = build_backtransform_spline(rep)
     for t in [0.0, 5.0, 10.0, 15.0, 20.0]:
-        val = evaluate_from_spline_representation_at(rep, t)
+        val = float(bt(jnp.array(t)))
         assert np.isfinite(val), f"Non-finite value at t={t}: {val}"
         assert val >= 0, f"Negative concentration at t={t}: {val}"
 
@@ -613,9 +621,11 @@ def test_pseudobatch_spline_json_roundtrip():
     loaded_tr = loaded_comp.spline.spline_metadata["transform"]
     assert loaded_tr["name"] == "pseudo_batch"
 
+    bt_orig = build_backtransform_spline(rep)
+    bt_loaded = build_backtransform_spline(loaded_comp.spline)
     for t_val in [0.0, 25.0, 75.0]:
-        orig = evaluate_from_spline_representation_at(rep, t_val)
-        loaded_val = evaluate_from_spline_representation_at(loaded_comp.spline, t_val)
+        orig = float(bt_orig(jnp.array(t_val)))
+        loaded_val = float(bt_loaded(jnp.array(t_val)))
         assert abs(orig - loaded_val) < 1e-4, (
             f"Roundtrip mismatch at t={t_val}: {orig} vs {loaded_val}"
         )
@@ -700,8 +710,9 @@ def test_pseudobatch_with_sample_volume_change():
     # Full pipeline should work
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
+    bt = build_backtransform_spline(rep)
     t_eval = np.linspace(0.0, 20.0, 20)
-    vals = evaluate_from_spline_representation(rep, t_eval)
+    vals = np.array([float(bt(jnp.array(t))) for t in t_eval])
     assert np.all(np.isfinite(vals))
 
 
@@ -772,9 +783,50 @@ def test_pseudobatch_multiple_feed_streams():
     # Full pipeline
     splines = build_splines(inputs, proc, "glucose")
     rep = to_spline_representation(inputs, splines, "glucose")
+    bt = build_backtransform_spline(rep)
     t_eval = np.linspace(0.0, 20.0, 20)
-    vals = evaluate_from_spline_representation(rep, t_eval)
+    vals = np.array([float(bt(jnp.array(t))) for t in t_eval])
     assert np.all(np.isfinite(vals))
+
+
+# ---------------------------------------------------------------------------
+# JIT compatibility
+# ---------------------------------------------------------------------------
+
+def test_backtransform_spline_jit_bolus():
+    """BacktransformSpline should be JIT-compilable (bolus/linear feed_corr)."""
+    import equinox as eqx
+
+    proc = _make_process_with_bolus_feed(
+        V0=1.0, feed_times=[50.0], feed_vols=[0.2], glucose_feed_conc=500.0,
+        glucose_times=[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 100.0],
+        glucose_values=[10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 7.0, 6.0, 5.0, 4.0],
+    )
+    inputs = build_pseudobatch_inputs(proc, "glucose")
+    splines = build_splines(inputs, proc, "glucose")
+    rep = to_spline_representation(inputs, splines, "glucose")
+    bt = build_backtransform_spline(rep)
+
+    jit_fn = eqx.filter_jit(bt)
+    val = jit_fn(jnp.array(25.0))
+    assert np.isfinite(float(val))
+    assert float(val) > 0
+
+
+def test_backtransform_spline_jit_continuous():
+    """BacktransformSpline should be JIT-compilable (continuous/cubic feed_corr)."""
+    import equinox as eqx
+
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    inputs = build_pseudobatch_inputs(proc, "glucose")
+    splines = build_splines(inputs, proc, "glucose")
+    rep = to_spline_representation(inputs, splines, "glucose")
+    bt = build_backtransform_spline(rep)
+
+    jit_fn = eqx.filter_jit(bt)
+    val = jit_fn(jnp.array(10.0))
+    assert np.isfinite(float(val))
+    assert float(val) > 0
 
 
 if __name__ == "__main__":

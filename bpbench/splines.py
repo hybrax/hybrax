@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Dict, Any, List, Optional, Tuple
 
 import numpy as np
+import equinox as eqx
 import interpax
 import jax.numpy as jnp
 from scipy import interpolate
@@ -650,8 +651,14 @@ def to_spline_representation(
     -------
     SplineRepresentation
         Minimal representation that can reconstruct backtransformed
-        concentrations via :func:`evaluate_from_spline_representation`.
+        concentrations via :func:`build_backtransform_spline`.
     """
+    # Check if concentration is effectively zero everywhere.
+    # Cubic splines through near-zero constant values oscillate wildly
+    # when combined with the pseudobatch backtransform; bypass it entirely.
+    meas_conc = np.asarray(inputs["meas_conc"], dtype=float)
+    is_constant = float(np.max(np.abs(meas_conc))) < 1e-10
+
     # Fit c* spline as a single-segment SplineRepresentation
     ts_star = TimeSeries(
         timepoints=jnp.array(inputs["meas_times"]),
@@ -696,6 +703,8 @@ def to_spline_representation(
         "name": "pseudo_batch",
         "species": species_name,
         "feed_corr_interp": feed_corr_interp,
+        "is_constant": is_constant,
+        "constant_value": float(np.mean(meas_conc)) if is_constant else None,
         # ADF: compact grid with only step transition points
         "adf_times": adf_compact_t.tolist(),
         "adf_values": adf_compact_v.tolist(),
@@ -707,63 +716,98 @@ def to_spline_representation(
     return rep
 
 
-def evaluate_from_spline_representation(
-    rep: SplineRepresentation,
-    t_eval: np.ndarray,
-) -> np.ndarray:
-    """Reconstruct backtransformed concentration from a stored SplineRepresentation.
+class BacktransformSpline(eqx.Module):
+    """JIT-compatible evaluation of backtransformed pseudobatch splines.
 
-    Applies the inverse pseudobatch transform:
-        c(t) = (c*(t) + feed_corr(t)) / ADF(t)
+    Reconstructs the real concentration via the inverse pseudobatch transform:
+        ``c(t) = (c*(t) + feed_corr(t)) / ADF(t)``
+
+    For species with constant (or near-constant) measured concentrations,
+    the backtransform is bypassed and the stored constant value is returned
+    directly (avoiding cubic spline oscillation artifacts).
+
+    All fields are JAX arrays or ``eqx.Module`` instances, so this object
+    can be passed through ``eqx.filter_jit`` and used inside JIT-compiled
+    functions (e.g. ODE right-hand sides).
+
+    Build with :func:`build_backtransform_spline` from a stored
+    :class:`SplineRepresentation`.
+    """
+    c_star_spline: interpax.CubicSpline
+    adf_times: jnp.ndarray
+    adf_values: jnp.ndarray
+    fc_spline: interpax.CubicSpline
+    fc_times: jnp.ndarray
+    fc_values: jnp.ndarray
+    use_cubic_fc: bool = eqx.field(static=True)
+    is_constant: bool = eqx.field(static=True)
+    constant_value: jnp.ndarray
+
+    def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
+        """Evaluate backtransformed concentration at time(s) *t*."""
+        if self.is_constant:
+            return self.constant_value + t * 0.0  # keep JAX tracing happy
+        cs = self.c_star_spline(t)
+        adf = jnp.interp(t, self.adf_times, self.adf_values)
+        if self.use_cubic_fc:
+            fc = self.fc_spline(t)
+        else:
+            fc = jnp.interp(t, self.fc_times, self.fc_values)
+        adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+        return (cs + fc) / adf
+
+
+def build_backtransform_spline(rep: SplineRepresentation) -> BacktransformSpline:
+    """Build a JIT-compatible :class:`BacktransformSpline` from a stored
+    :class:`SplineRepresentation`.
+
+    This is meant to be called **once** (outside JIT).  The returned module
+    can then be passed into ``eqx.filter_jit``-compiled functions.
 
     Parameters
     ----------
     rep:
         SplineRepresentation with ``spline_metadata["transform"]`` containing
         ADF and feed_corr grids (as produced by :func:`to_spline_representation`).
-    t_eval:
-        Times at which to evaluate.
 
     Returns
     -------
-    np.ndarray
-        Backtransformed concentrations at t_eval.
+    BacktransformSpline
     """
-    t_eval = np.asarray(t_eval, dtype=float)
     tr = rep.spline_metadata["transform"]
 
-    # c* from stored spline
-    spline_list, boundaries = build_interpax_spline(rep)
-    # Vectorized evaluation across segments
-    cs = np.empty_like(t_eval)
-    for i, t in enumerate(t_eval):
-        idx = int(np.searchsorted(boundaries[1:], float(t), side="right"))
-        idx = max(0, min(idx, rep.n_segments - 1))
-        cs[i] = float(spline_list[idx](t))
+    is_constant = tr.get("is_constant", False)
+    constant_value = jnp.array(tr.get("constant_value") or 0.0)
 
-    # ADF from stored grid
-    adf_times = np.array(tr["adf_times"])
-    adf_values = np.array(tr["adf_values"])
-    adf = np.interp(t_eval, adf_times, adf_values)
+    # c* spline (single segment for pseudobatch representations)
+    ni = int(rep.n[0])
+    xi = rep.x[0, :ni]
+    yi = rep.y[0, :ni]
+    c_star_spline = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
+
+    # ADF grid
+    adf_times = jnp.array(tr["adf_times"], dtype=float)
+    adf_values = jnp.array(tr["adf_values"], dtype=float)
 
     # Feed correction
-    fc_times = np.array(tr["feed_corr_times"])
-    fc_values = np.array(tr["feed_corr_values"])
+    fc_times = jnp.array(tr["feed_corr_times"], dtype=float)
+    fc_values = jnp.array(tr["feed_corr_values"], dtype=float)
+    use_cubic_fc = tr.get("feed_corr_interp") == "cubic"
 
-    if tr.get("feed_corr_interp") == "cubic":
-        fc_spline = make_interpax_spline(fc_times, fc_values)
-        fc = np.asarray(fc_spline(jnp.asarray(t_eval)))
-    else:
-        fc = np.interp(t_eval, fc_times, fc_values)
+    # Build feed_corr spline (used when use_cubic_fc=True; dummy otherwise,
+    # but must be a valid CubicSpline to keep the pytree structure fixed)
+    fc_spline = make_interpax_spline(
+        np.asarray(fc_times), np.asarray(fc_values)
+    )
 
-    adf = np.where(np.abs(adf) < 1e-12, 1e-12, adf)
-
-    return (cs + fc) / adf
-
-
-def evaluate_from_spline_representation_at(
-    rep: SplineRepresentation,
-    t: float,
-) -> float:
-    """Scalar version of :func:`evaluate_from_spline_representation`."""
-    return float(evaluate_from_spline_representation(rep, np.array([t]))[0])
+    return BacktransformSpline(
+        c_star_spline=c_star_spline,
+        adf_times=adf_times,
+        adf_values=adf_values,
+        fc_spline=fc_spline,
+        fc_times=fc_times,
+        fc_values=fc_values,
+        use_cubic_fc=use_cubic_fc,
+        is_constant=is_constant,
+        constant_value=constant_value,
+    )
