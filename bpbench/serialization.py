@@ -220,7 +220,8 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "name": comp.name,
         "unit": comp.unit,
         "is_intracellular": comp.is_intracellular,
-        "concentration": _timeseries_or_static_to_dict(comp.concentration)
+        "concentration": _timeseries_or_static_to_dict(comp.concentration),
+        "spline": _spline_to_dict(comp.spline) if comp.spline is not None else None,
     }
 
 
@@ -428,11 +429,15 @@ def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
 
 def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     """Reconstruct ReactorMediumComponent from dictionary"""
+    spline = None
+    if comp_data.get("spline") is not None:
+        spline = _dict_to_spline(comp_data["spline"])
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
         is_intracellular=comp_data["is_intracellular"],
-        concentration=_dict_to_timeseries_or_static(comp_data["concentration"])
+        concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
+        spline=spline,
     )
 
 

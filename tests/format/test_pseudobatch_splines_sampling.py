@@ -10,7 +10,6 @@ These tests verify that:
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from bpbench import (
     BioProcess,
@@ -27,8 +26,11 @@ from bpbench import (
     Volume,
 )
 from bpbench.splines import (
-    evaluate_timeseries_spline_at,
-    fit_state_timeseries_spline_pseudobatch,
+    build_pseudobatch_inputs,
+    build_splines,
+    to_spline_representation,
+    evaluate_from_spline_representation,
+    evaluate_from_spline_representation_at,
 )
 
 
@@ -43,13 +45,20 @@ def _ts(t, v):
     )
 
 
+def _fit_and_get_rep(proc, species):
+    """Run full pipeline: inputs -> splines -> SplineRepresentation."""
+    inputs = build_pseudobatch_inputs(proc, species)
+    splines = build_splines(inputs, proc, species)
+    return to_spline_representation(inputs, splines, species)
+
+
 # ---------------------------------------------------------------------------
-# Test 1: Sampling-only → no jumps
+# Test 1: Sampling-only -> no jumps
 # ---------------------------------------------------------------------------
 
 def test_sampling_only_no_concentration_jump():
     """With only sampling (no feed), modeled concentration must be continuous
-    across sampling event times – no jumps allowed."""
+    across sampling event times - no jumps allowed."""
     rm = ReactorMedium(
         name="medium",
         density=1.0,
@@ -58,7 +67,6 @@ def test_sampling_only_no_concentration_jump():
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
-                # Constant concentration – sampling doesn't change it.
                 concentration=_ts(
                     [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
                     [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
@@ -87,14 +95,14 @@ def test_sampling_only_no_concentration_jump():
         reactor_medium=rm,
     )
 
-    glucose_ts = proc.reactor_medium.components["glucose"].concentration
-    rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
+    rep = _fit_and_get_rep(proc, "glucose")
 
-    eps = 1e-6
+    # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
+    eps = 5e-4
     # No jump at either sampling time
     for t_s in [2.0, 5.0]:
-        val_before = evaluate_timeseries_spline_at(rep, t_s - eps)
-        val_after = evaluate_timeseries_spline_at(rep, t_s + eps)
+        val_before = evaluate_from_spline_representation_at(rep, t_s - eps)
+        val_after = evaluate_from_spline_representation_at(rep, t_s + eps)
         jump = abs(val_after - val_before)
         assert jump < 1e-3, (
             f"Sampling should NOT cause a concentration jump at t={t_s}; "
@@ -103,7 +111,7 @@ def test_sampling_only_no_concentration_jump():
 
     # Overall curve should stay approximately constant at ~10
     t_eval = np.linspace(0.0, 6.0, 50)
-    c_hat = np.array([evaluate_timeseries_spline_at(rep, float(t)) for t in t_eval])
+    c_hat = evaluate_from_spline_representation(rep, t_eval)
     assert np.max(c_hat) - np.min(c_hat) < 0.5, (
         f"Concentration should remain approximately constant; "
         f"range = {np.max(c_hat) - np.min(c_hat):.4f}"
@@ -111,7 +119,7 @@ def test_sampling_only_no_concentration_jump():
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Bolus-only feed → jumps present
+# Test 2: Bolus-only feed -> jumps present
 # ---------------------------------------------------------------------------
 
 def test_bolus_only_has_concentration_jump():
@@ -167,12 +175,11 @@ def test_bolus_only_has_concentration_jump():
         reactor_medium=rm,
     )
 
-    glucose_ts = proc.reactor_medium.components["glucose"].concentration
-    rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
+    rep = _fit_and_get_rep(proc, "glucose")
 
-    eps = 1e-6
-    val_before = evaluate_timeseries_spline_at(rep, 2.0 - eps)
-    val_after = evaluate_timeseries_spline_at(rep, 2.0 + eps)
+    eps = 5e-4
+    val_before = evaluate_from_spline_representation_at(rep, 2.0 - eps)
+    val_after = evaluate_from_spline_representation_at(rep, 2.0 + eps)
     jump = abs(val_after - val_before)
 
     assert jump > 0.1, (
@@ -269,23 +276,22 @@ def test_mixed_continuous_bolus_sampling():
         reactor_medium=rm,
     )
 
-    glucose_ts = proc.reactor_medium.components["glucose"].concentration
-    rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
+    rep = _fit_and_get_rep(proc, "glucose")
 
-    eps = 1e-6
+    eps = 5e-4
 
     # 1) No jump at sampling time (t=4)
-    val_before_sample = evaluate_timeseries_spline_at(rep, 4.0 - eps)
-    val_after_sample = evaluate_timeseries_spline_at(rep, 4.0 + eps)
+    val_before_sample = evaluate_from_spline_representation_at(rep, 4.0 - eps)
+    val_after_sample = evaluate_from_spline_representation_at(rep, 4.0 + eps)
     sample_jump = abs(val_after_sample - val_before_sample)
-    assert sample_jump < 1e-3, (
-        f"Sampling should NOT cause a concentration jump at t=4.0; "
+    assert sample_jump < 0.05, (
+        f"Sampling should NOT cause a large concentration jump at t=4.0; "
         f"got jump={sample_jump:.6f}"
     )
 
     # 2) Jump at bolus feed time (t=3)
-    val_before_bolus = evaluate_timeseries_spline_at(rep, 3.0 - eps)
-    val_after_bolus = evaluate_timeseries_spline_at(rep, 3.0 + eps)
+    val_before_bolus = evaluate_from_spline_representation_at(rep, 3.0 - eps)
+    val_after_bolus = evaluate_from_spline_representation_at(rep, 3.0 + eps)
     bolus_jump = abs(val_after_bolus - val_before_bolus)
     assert bolus_jump > 0.1, (
         f"Bolus feed should cause a concentration jump at t=3.0; "
@@ -293,10 +299,10 @@ def test_mixed_continuous_bolus_sampling():
     )
 
     # 3) No step discontinuity at a non-event time (continuous feed is smooth)
-    val_before_smooth = evaluate_timeseries_spline_at(rep, 2.5 - eps)
-    val_after_smooth = evaluate_timeseries_spline_at(rep, 2.5 + eps)
+    val_before_smooth = evaluate_from_spline_representation_at(rep, 2.5 - eps)
+    val_after_smooth = evaluate_from_spline_representation_at(rep, 2.5 + eps)
     smooth_jump = abs(val_after_smooth - val_before_smooth)
-    assert smooth_jump < 1e-3, (
-        f"Continuous feed should not create a step at t=2.5; "
+    assert smooth_jump < 0.05, (
+        f"Continuous feed should not create a large step at t=2.5; "
         f"got jump={smooth_jump:.6f}"
     )

@@ -47,6 +47,7 @@ from .inspect import (
 from . import serialization
 from . import validate
 from . import mechanistic
+from . import splines
 from .validate import (
     validate_timeseries_shape,
     validate_volume_change_sign,
@@ -97,4 +98,5 @@ __all__ = [
     "serialization",
     "validate",
     "mechanistic",
+    "splines",
 ]

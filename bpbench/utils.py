@@ -6,8 +6,6 @@ import jax.numpy as jnp
 from typing import Tuple, List, Generator
 from .dataclasses import Process, CaseStudy, BenchmarkDataset, TimeSeries, VolumeChange
 
-# Import spline functions to re-export them
-from .splines import fit_cubic_spline, compute_rate_from_cumulative
 
 
 

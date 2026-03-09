@@ -112,6 +112,7 @@ class ReactorMediumComponent:
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
     is_intracellular: bool # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in mass balance calculations
+    spline: Optional[SplineRepresentation] = None
 
 
 @dataclass

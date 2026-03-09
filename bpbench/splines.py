@@ -1,29 +1,36 @@
 """
-Spline fitting, serialization and evaluation for bioprocess time series data.
+Pseudobatch normalization utilities and spline storage for bioprocess data.
 
-This module is the canonical place for:
-- Discrete event detection from VolumeChanges
-- Segmented spline fitting (interpolating or smoothing)
-- Conversion of SciPy smoothing B-spline → interpax-compatible parameters
-- Reconstruction of interpax splines from stored SplineRepresentation
-- Piecewise spline evaluation compatible with JAX JIT
-- Pseudo-batch transformation for state variables with discrete feed events
+This module provides:
+- Pseudobatch transform computation (c*, ADF, feed correction)
+- Conversion of pseudobatch results to SplineRepresentation for minimal storage
+- Reconstruction of backtransformed concentrations from stored SplineRepresentation
+- Core spline infrastructure (fitting, evaluation, segmentation)
 
-All heavy arrays are stored in padded, fixed-shape format so that JAX
-never recompiles due to shape changes.
+Design goals:
+- Always compute the pseudobatch transform (c*) and the ADF / feed-correction
+  at measurement times only.
+- Avoid computing ADF by doing a dense-grid cumprod: that incorrectly treats
+  continuous cumulative feed as many small discrete dilutions.
+- Interpolate:
+    - c* : Cubic spline (smooth pseudobatch space)
+    - ADF and feed_correction: piecewise-linear interpolation between
+      measurement times (no cubic overshoot, no fake steps)
+- Keep a dense time grid (measurement times + feed event times with t-eps for
+  discrete events) for plotting reactor volumes, but do NOT compute ADF on
+  that dense grid.
 """
 
 from __future__ import annotations
 
-import warnings
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 
-import jax.numpy as jnp
 import numpy as np
+import interpax
+import jax.numpy as jnp
 from scipy import interpolate
-
-from pseudobatch import pseudobatch_transform as _pseudobatch_transform
-from pseudobatch.data_correction import accumulated_dilution_factor
+import pseudobatch
+import pseudobatch.data_correction
 
 from .dataclasses import (
     BioProcess,
@@ -35,18 +42,25 @@ from .dataclasses import (
     TimeSeries,
 )
 
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
+# Small epsilon used when inserting pre-event points for discrete bolus events.
+# Must be large enough to survive float32 quantization but tiny relative to true
+# sampling intervals.
+_EPS = 1e-4
+
 DEFAULT_MAX_SEGMENTS = 16
 DEFAULT_MAX_CTRL_POINTS = 128
-SMOOTHING_THRESHOLD = 100  # > 100 points → smoothing spline
+SMOOTHING_THRESHOLD = 100  # > 100 points -> smoothing spline
 
 
-# ---------------------------------------------------------------------------
-# 1) Discrete event detection
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Core spline infrastructure (fitting, evaluation, segmentation)
+# ===========================================================================
+
 
 def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     """Detect discrete event times from non-continuous VolumeChanges.
@@ -73,7 +87,6 @@ def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     if not times:
         return DiscreteEvents(times=jnp.zeros(0))
 
-    # Sort and deduplicate
     order = np.argsort(times)
     sorted_times = np.array(times)[order]
     sorted_labels = [labels[i] for i in order]
@@ -85,10 +98,6 @@ def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
         labels=unique_labels,
     )
 
-
-# ---------------------------------------------------------------------------
-# 2) Segment boundaries from events
-# ---------------------------------------------------------------------------
 
 def make_segment_boundaries(
     t_min: float, t_max: float, event_times: jnp.ndarray
@@ -104,10 +113,6 @@ def make_segment_boundaries(
     return boundaries
 
 
-# ---------------------------------------------------------------------------
-# 3) Split a TimeSeries into segments
-# ---------------------------------------------------------------------------
-
 def split_timeseries(
     ts: TimeSeries, boundaries: np.ndarray
 ) -> List[TimeSeries]:
@@ -115,12 +120,9 @@ def split_timeseries(
 
     Points that fall exactly on a boundary belong to both adjacent segments
     (duplicated at split point) to ensure each segment covers its endpoints.
-    Segments with fewer than 2 points are still returned.
     """
     t = np.asarray(ts.timepoints)
     v = np.asarray(ts.values)
-
-    # Sort by time
     order = np.argsort(t)
     t = t[order]
     v = v[order]
@@ -131,7 +133,6 @@ def split_timeseries(
         mask = (t >= lo) & (t <= hi)
         seg_t = t[mask]
         seg_v = v[mask]
-        # Remove duplicates (keep first)
         _, idx = np.unique(seg_t, return_index=True)
         seg_t = seg_t[idx]
         seg_v = seg_v[idx]
@@ -144,20 +145,12 @@ def split_timeseries(
     return segments
 
 
-# ---------------------------------------------------------------------------
-# 4) Choose fitting strategy
-# ---------------------------------------------------------------------------
-
 def choose_spline_kind(n_points: int) -> str:
     """Pick ``'smoothing_bspline'`` for large N, else ``'cubic_interp'``."""
     if n_points > SMOOTHING_THRESHOLD:
         return "smoothing_bspline"
     return "cubic_interp"
 
-
-# ---------------------------------------------------------------------------
-# 5) SciPy smoothing → interpax-compatible control points
-# ---------------------------------------------------------------------------
 
 def _fit_smoothing_segment(
     x: np.ndarray,
@@ -166,14 +159,9 @@ def _fit_smoothing_segment(
     s: float,
     n_ctrl: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points.
-
-    Returns ``(x_ctrl, y_ctrl)`` suitable for ``interpax.CubicSpline``.
-    """
+    """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points."""
     if len(x) < 4:
-        # Not enough points for cubic; return raw points
         return x.copy(), y.copy()
-
     tck = interpolate.splrep(x, y, s=s, k=3)
     x_ctrl = np.linspace(x[0], x[-1], n_ctrl)
     y_ctrl = interpolate.splev(x_ctrl, tck)
@@ -183,14 +171,10 @@ def _fit_smoothing_segment(
 def _fit_interp_segment(
     x: np.ndarray, y: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """For ≤ SMOOTHING_THRESHOLD points, store original sorted/unique data."""
+    """For <= SMOOTHING_THRESHOLD points, store original sorted/unique data."""
     _, idx = np.unique(x, return_index=True)
     return x[idx].copy(), y[idx].copy()
 
-
-# ---------------------------------------------------------------------------
-# 6) Main fitting entry point
-# ---------------------------------------------------------------------------
 
 def fit_timeseries_spline(
     ts: TimeSeries,
@@ -201,35 +185,10 @@ def fit_timeseries_spline(
     max_segments: int = DEFAULT_MAX_SEGMENTS,
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
 ) -> SplineRepresentation:
-    """Fit a (segmented) spline to a TimeSeries, returning a padded representation.
-
-    Parameters
-    ----------
-    ts:
-        Input time series.
-    boundaries:
-        Segment boundaries (from ``make_segment_boundaries``).  If *None*,
-        a single segment spanning the full time range is used.
-    smoothing_s:
-        Smoothing factor passed to ``scipy.interpolate.splrep`` when the
-        segment has more than ``SMOOTHING_THRESHOLD`` points.  0 means
-        interpolation through all points.
-    n_ctrl:
-        Number of control points to resample smoothing splines onto.
-    max_segments:
-        Padding dimension for segments.
-    max_ctrl_points:
-        Padding dimension for control points per segment.
-
-    Returns
-    -------
-    SplineRepresentation
-        Padded, serializable representation.
-    """
+    """Fit a (segmented) spline to a TimeSeries, returning a padded representation."""
     t_np = np.asarray(ts.timepoints)
     v_np = np.asarray(ts.values)
 
-    # Sort + deduplicate
     order = np.argsort(t_np)
     t_np = t_np[order]
     v_np = v_np[order]
@@ -240,14 +199,12 @@ def fit_timeseries_spline(
     if boundaries is None:
         boundaries = np.array([t_np[0], t_np[-1]])
 
-    # Split into segments
     segments = split_timeseries(
         TimeSeries(timepoints=jnp.array(t_np), values=jnp.array(v_np)),
         boundaries,
     )
     actual_n_segments = len(segments)
 
-    # Per-segment fitting
     xs: List[np.ndarray] = []
     ys: List[np.ndarray] = []
     ns: List[int] = []
@@ -259,12 +216,10 @@ def fit_timeseries_spline(
         n_pts = len(seg_t)
 
         if n_pts < 2:
-            # Constant / single point → duplicate to two points
             if n_pts == 1:
                 seg_t = np.array([seg_t[0], seg_t[0] + 1e-6])
                 seg_v = np.array([seg_v[0], seg_v[0]])
             else:
-                # Empty segment — should not normally happen
                 seg_t = np.array([0.0, 1e-6])
                 seg_v = np.array([0.0, 0.0])
             xs.append(seg_t)
@@ -283,7 +238,6 @@ def fit_timeseries_spline(
         ys.append(yc)
         ns.append(len(xc))
 
-    # Pad to fixed shapes
     x_padded = np.zeros((max_segments, max_ctrl_points))
     y_padded = np.zeros((max_segments, max_ctrl_points))
     n_padded = np.zeros(max_segments, dtype=int)
@@ -314,22 +268,13 @@ def fit_timeseries_spline(
     )
 
 
-# ---------------------------------------------------------------------------
-# 7) Reconstruction: SplineRepresentation → callable interpax evaluator
-# ---------------------------------------------------------------------------
-
 def build_interpax_spline(rep: SplineRepresentation):
     """Reconstruct a list of ``interpax.CubicSpline`` objects from stored params.
 
     Returns ``(splines, boundaries)`` where *splines* is a list of
     ``interpax.CubicSpline`` (one per segment) and *boundaries* is a 1-D
     array of length ``n_segments + 1``.
-
-    For use **outside** JIT.  Inside a jitted function, use
-    :func:`evaluate_spline_at` instead.
     """
-    import interpax
-
     splines = []
     for i in range(rep.n_segments):
         ni = int(rep.n[i])
@@ -343,570 +288,482 @@ def build_interpax_spline(rep: SplineRepresentation):
 
 
 def evaluate_spline_at(rep: SplineRepresentation, t: float) -> float:
-    """Evaluate a segmented spline at scalar time *t* (not jitted).
-
-    This is a convenience for plotting / verification.  For JIT-compiled
-    evaluation inside diffrax, pass the reconstructed ``interpax.CubicSpline``
-    objects directly.
-    """
+    """Evaluate a segmented spline at scalar time *t* (not jitted)."""
     splines, boundaries = build_interpax_spline(rep)
     idx = int(np.searchsorted(boundaries[1:], float(t), side="right"))
     idx = max(0, min(idx, rep.n_segments - 1))
     return float(splines[idx](t))
 
 
-# ---------------------------------------------------------------------------
-# 8) Pseudo-batch transformation for state variables
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Pseudobatch transform pipeline
+# ===========================================================================
 
-def _eval_cumulative_volume_change(
-    vc_timepoints: np.ndarray,
-    vc_values: np.ndarray,
-    t_array: np.ndarray,
-) -> np.ndarray:
-    """Interpolate cumulative added volume at arbitrary times.
 
-    Parameters
-    ----------
-    vc_timepoints:
-        Sorted time grid for the cumulative volume series.
-    vc_values:
-        Cumulative added volume at each time in *vc_timepoints*.
-        Must be monotonically non-decreasing (within tolerance).
-    t_array:
-        Times at which to evaluate.
-
-    Returns
-    -------
-    np.ndarray
-        Interpolated cumulative added volume at each time in *t_array*.
-
-    Raises
-    ------
-    NotImplementedError
-        If values are not monotonically non-decreasing (not cumulative).
+def _build_dense_time_grid(process: BioProcess, meas_times: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
-    tp = np.asarray(vc_timepoints, dtype=float)
-    vals = np.asarray(vc_values, dtype=float)
-    t_array = np.asarray(t_array, dtype=float)
-
-    # Validate monotonically non-decreasing (cumulative)
-    diffs = np.diff(vals)
-    if np.any(diffs < -1e-12):
-        raise NotImplementedError(
-            "Continuous volume changes must be provided as cumulative added "
-            "volume vs time. The supplied series is not monotonically "
-            "non-decreasing."
-        )
-
-    return np.interp(t_array, tp, vals, left=vals[0], right=vals[-1])
-
-
-def compute_volume_at_times(
-    process: BioProcess, times: np.ndarray
-) -> np.ndarray:
-    """Compute reactor volume at given times using initial volume, discrete
-    bolus feeds, and continuous cumulative feeds.
-
-    Parameters
-    ----------
-    process:
-        A BioProcess with ``volume.initial_volume`` and ``volume.volume_changes``.
-    times:
-        1-D array of times at which to evaluate volume.
-
-    Returns
-    -------
-    np.ndarray
-        Volume at each time (same shape as *times*).
+    Build dense time grid = sorted(unique(measurement times + event times)).
+    For discrete (bolus) events we insert t - EPS so we have a point on both
+    sides of the step (sharp step representation).
+    Returns:
+        dense_times, meas_indices_into_dense
     """
-    times = np.asarray(times, dtype=float)
-    vol = np.full_like(times, float(process.volume.initial_volume))
+    extra_times = set()
 
-    for _vc_name, vc in process.volume.volume_changes.items():
-        if vc.is_continuous:
-            # Continuous cumulative feed: interpolate cumulative added volume
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            ev_vols = np.asarray(vc.values.values, dtype=float)
-            vol = vol + _eval_cumulative_volume_change(ev_times, ev_vols, times)
-        else:
-            # Discrete bolus: add delta volumes at event times
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            ev_vols = np.asarray(vc.values.values, dtype=float)
-            for et, ev in zip(ev_times, ev_vols):
-                vol = vol + np.where(times >= et, ev, 0.0)
+    for vc_name, vc in process.volume.volume_changes.items():
+        ev_t = np.asarray(vc.values.timepoints, dtype=float)
+        for t in ev_t:
+            extra_times.add(float(t))
+            if not vc.is_continuous:
+                t_pre = float(t) - _EPS
+                if t_pre > 0:
+                    extra_times.add(t_pre)
+                if isinstance(vc, SampleVolumeChange):
+                    extra_times.add(float(t) + _EPS)
 
-    return vol
+    all_times = np.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
+
+    meas_indices = np.array([np.argmin(np.abs(all_times - mt)) for mt in meas_times], dtype=int)
+    assert np.allclose(all_times[meas_indices], meas_times, atol=_EPS / 2), \
+        "Some measurement times not found in dense grid"
+
+    return all_times, meas_indices
 
 
-def _step_eval(step_times: np.ndarray, step_values: np.ndarray, t: float) -> float:
-    """Evaluate a piecewise-constant (step) function at scalar *t*.
-
-    The function takes value ``step_values[i]`` for
-    ``step_times[i] <= t < step_times[i+1]`` (the last value extends to +∞).
-    For ``t < step_times[0]``, ``step_values[0]`` is returned (i.e. the
-    initial value applies for all times before the first step transition).
+def _compute_dense_volumes(process: BioProcess, dense_times: np.ndarray, species_name: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Any]:
     """
-    step_times = np.asarray(step_times, dtype=float)
-    step_values = np.asarray(step_values, dtype=float)
-    idx = int(np.searchsorted(step_times, float(t), side="right")) - 1
-    idx = max(0, min(idx, len(step_values) - 1))
-    return float(step_values[idx])
-
-
-def _step_eval_array(
-    step_times: np.ndarray, step_values: np.ndarray, t_array: np.ndarray
-) -> np.ndarray:
-    """Vectorized version of :func:`_step_eval`."""
-    step_times = np.asarray(step_times, dtype=float)
-    step_values = np.asarray(step_values, dtype=float)
-    t_array = np.asarray(t_array, dtype=float)
-    idx = np.searchsorted(step_times, t_array, side="right").astype(int) - 1
-    idx = np.clip(idx, 0, len(step_values) - 1)
-    return step_values[idx]
-
-
-def _step_interp(
-    grid_times: np.ndarray, grid_values: np.ndarray, t: float,
-    *, eps: float = 2e-10,
-) -> float:
-    """Step interpolation at epsilon boundaries, linear interpolation elsewhere.
-
-    At bolus-feed discontinuity boundaries (consecutive grid points closer
-    than *eps*), uses piecewise-constant (step) evaluation so that the
-    backtransformed concentration jumps instantaneously.  For wider intervals
-    falls back to linear interpolation so that ADF / feed-term vary smoothly
-    between regular measurement times.
+    Compute reactor_volume (dense), accumulated_feed (dense), sample_volume (dense)
+    and concentration_in_feed for a given species on the dense grid.
     """
-    grid_times = np.asarray(grid_times, dtype=float)
-    grid_values = np.asarray(grid_values, dtype=float)
-
-    if len(grid_times) == 0:
-        return 0.0
-    if len(grid_times) == 1:
-        return float(grid_values[0])
-
-    idx = int(np.searchsorted(grid_times, float(t), side="right")) - 1
-
-    # Clamp to valid range
-    if idx < 0:
-        return float(grid_values[0])
-    if idx >= len(grid_times) - 1:
-        return float(grid_values[-1])
-
-    gap = grid_times[idx + 1] - grid_times[idx]
-
-    if gap < eps:
-        # Epsilon boundary → step behaviour
-        if t < grid_times[idx + 1]:
-            return float(grid_values[idx])
-        return float(grid_values[idx + 1])
-
-    # Regular interval → linear interpolation
-    frac = (t - grid_times[idx]) / gap
-    return float(
-        grid_values[idx] + frac * (grid_values[idx + 1] - grid_values[idx])
-    )
-
-
-def _prepare_pseudobatch_inputs(
-    process: BioProcess,
-    species_name: str,
-    ts: TimeSeries,
-) -> dict:
-    """Extract flat numpy arrays from BPbench data model for pseudobatch.
-
-    Converts the hierarchical BioProcess structure into the arrays that
-    :func:`pseudobatch.pseudobatch_transform` expects.
-
-    Parameters
-    ----------
-    process:
-        BioProcess for the run.
-    species_name:
-        Name of the reactor medium species.
-    ts:
-        TimeSeries of the species concentration.
-
-    Returns
-    -------
-    dict with keys ``times``, ``measured_conc``, ``reactor_volume``,
-    ``accumulated_feed``, ``concentration_in_feed``, ``sample_volume``.
-    """
-    times = np.asarray(ts.timepoints, dtype=float)
-    measured_conc = np.asarray(ts.values, dtype=float)
-    n = len(times)
-
-    # 1. Reactor volume (before sampling) at measurement times
+    n = len(dense_times)
     reactor_volume = np.full(n, float(process.volume.initial_volume))
-
-    # Track accumulated feed per feed stream
-    feed_streams: List[Tuple[np.ndarray, float]] = []
-
-    # Track sample volumes
+    feed_streams = []
     sample_volume = np.zeros(n)
 
-    for _vc_name, vc in process.volume.volume_changes.items():
+    for vc_name, vc in process.volume.volume_changes.items():
         ev_times = np.asarray(vc.values.timepoints, dtype=float)
         ev_vals = np.asarray(vc.values.values, dtype=float)
 
         if isinstance(vc, FeedVolumeChange):
-            # Get concentration of species in this feed
             c_feed = 0.0
-            if vc.feed_medium is not None and species_name in vc.feed_medium.components:
-                comp = vc.feed_medium.components[species_name]
-                if isinstance(comp.concentration, StaticVariable):
-                    c_feed = float(comp.concentration.value)
+            if (vc.feed_medium is not None and species_name in vc.feed_medium.components):
+                fc = vc.feed_medium.components[species_name]
+                if isinstance(fc.concentration, StaticVariable):
+                    c_feed = float(fc.concentration.value)
 
             if vc.is_continuous:
-                # Cumulative feed: interpolate at measurement times
-                cum_feed = _eval_cumulative_volume_change(ev_times, ev_vals, times)
-                reactor_volume += cum_feed
-                feed_streams.append((cum_feed, c_feed))
+                cum_feed = np.interp(dense_times, ev_times, ev_vals,
+                                     left=ev_vals[0], right=ev_vals[-1])
             else:
-                # Discrete bolus: cumulative sum at measurement times
                 cum_feed = np.zeros(n)
                 for et, ev in zip(ev_times, ev_vals):
-                    cum_feed += np.where(times >= et, ev, 0.0)
-                reactor_volume += cum_feed
-                feed_streams.append((cum_feed, c_feed))
+                    cum_feed += np.where(dense_times >= et, float(ev), 0.0)
+
+            reactor_volume += cum_feed
+            feed_streams.append((cum_feed, c_feed))
 
         elif isinstance(vc, SampleVolumeChange):
-            # Sample volumes are negative in BPbench, pseudobatch expects positive.
-            # Also adjust reactor_volume for subsequent times: pseudobatch
-            # requires "volume just BEFORE sampling", so at measurement times
-            # strictly after the sampling event the volume must reflect the
-            # prior sample removal.
             for et, ev in zip(ev_times, ev_vals):
-                for i, t in enumerate(times):
-                    if np.isclose(t, et):
-                        sample_volume[i] += abs(float(ev))
-                # ev is negative; this decreases volume for times > et
-                reactor_volume += np.where(times > et, float(ev), 0.0)
+                idx = np.argmin(np.abs(dense_times - et))
+                if np.isclose(dense_times[idx], et, atol=_EPS / 2):
+                    sample_volume[idx] += abs(float(ev))
+                reactor_volume += np.where(dense_times > et, float(ev), 0.0)
 
-    # Build accumulated_feed and concentration_in_feed arrays
     if len(feed_streams) == 1:
         accumulated_feed = feed_streams[0][0]
-        concentration_in_feed: float = feed_streams[0][1]
+        concentration_in_feed = feed_streams[0][1]
     elif len(feed_streams) > 1:
-        # Multiple feeds: stack as columns
         accumulated_feed = np.column_stack([fs[0] for fs in feed_streams])
         concentration_in_feed = np.array([fs[1] for fs in feed_streams])
     else:
-        # No feeds
         accumulated_feed = np.zeros(n)
         concentration_in_feed = 0.0
 
-    return {
-        "times": times,
-        "measured_conc": measured_conc,
-        "reactor_volume": reactor_volume,
-        "accumulated_feed": accumulated_feed,
-        "concentration_in_feed": concentration_in_feed,
-        "sample_volume": sample_volume,
-    }
+    return reactor_volume, accumulated_feed, sample_volume, concentration_in_feed
 
 
-def pseudo_batch_transform_timeseries(
-    process: BioProcess,
-    species_name: str,
-    ts: TimeSeries,
-) -> Dict:
-    """Compute pseudo-batch transformed concentration for a state variable.
-
-    Uses the ``pseudobatch`` package for the core transform and builds a
-    unified time grid (with pre-event epsilon points) for the ADF and
-    feed-term metadata required by :func:`evaluate_timeseries_spline_at`.
-
-    Supports both discrete (bolus) and continuous (cumulative) feed volume
-    changes. Implements the pseudo-batch transform based on
-    Hesselberg-Thomsen et al. (bioRxiv 2024.05.27.596043).
-
-    Parameters
-    ----------
-    process:
-        BioProcess for the run.
-    species_name:
-        Name of the reactor medium species (e.g. ``"glucose"``).
-    ts:
-        TimeSeries of the species concentration.
-
-    Returns
-    -------
-    dict with keys:
-        ``times`` – measurement times (np array),
-        ``c_star`` – pseudo-batch transformed concentration,
-        ``adf_times``, ``adf_values`` – ADF on the unified time grid,
-        ``feed_term_times``, ``feed_term_values`` – feed term on the grid.
-
-    Also includes legacy aliases ``adf_step_times``, ``adf_step_values``,
-    ``feed_term_step_times``, ``feed_term_step_values`` for backward
-    compatibility.
+def make_interpax_spline(t: np.ndarray, y: np.ndarray, bc_type: str = "natural"):
     """
-    # ---- Prepare inputs and compute c* via pseudobatch package ---------------
-    inputs = _prepare_pseudobatch_inputs(process, species_name, ts)
-    times = inputs["times"]
-    measured_conc = inputs["measured_conc"]
+    Build a robust interpax.CubicSpline from numpy arrays. Ensures unique, sorted knots.
+    """
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    order = np.argsort(t)
+    t, y = t[order], y[order]
+    _, idx = np.unique(t, return_index=True)
+    t, y = t[idx], y[idx]
+    if len(t) < 2:
+        t = np.array([t[0], t[0] + 1e-6])
+        y = np.array([y[0], y[0]])
+    return interpax.CubicSpline(jnp.asarray(t), jnp.asarray(y), bc_type=bc_type, check=False)
 
-    c_star = _pseudobatch_transform(
-        measured_concentration=inputs["measured_conc"],
-        reactor_volume=inputs["reactor_volume"],
-        accumulated_feed=inputs["accumulated_feed"],
-        concentration_in_feed=inputs["concentration_in_feed"],
-        sample_volume=inputs["sample_volume"],
-    )
 
-    # ---- Validate volume is positive ----------------------------------------
-    V_check = compute_volume_at_times(process, times)
-    if np.any(V_check <= 0):
-        raise ValueError(
-            "Volume must be positive at all evaluation times. "
-            f"Minimum volume encountered: {V_check.min():.6g}."
-        )
+def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str, Any]:
+    """
+    Build canonical inputs for pseudobatch normalization.
 
-    # ---- ADF at measurement times via pseudobatch ---------------------------
-    # Use the same formula as pseudobatch_transform internally uses so that
-    # backtransform ĉ(t) = (ĉ*(t) + feed_term(t)) / ADF(t) recovers the
-    # original measured concentrations exactly at measurement times.
-    after_sample_vol = inputs["reactor_volume"] - inputs["sample_volume"]
-    adf_meas = accumulated_dilution_factor(after_sample_vol, inputs["sample_volume"])
+    Returned dict contains:
+      - meas_times, meas_conc, c_star (arrays at measurement times)
+      - dense_times, meas_indices
+      - reactor_volume_dense, sample_volume_dense, accumulated_feed_dense,
+        concentration_in_feed
+      - adf_at_meas, feed_corr_at_meas
+      - has_discrete_feed (bool)
 
-    # ---- Feed term at measurement times (derived for exact recovery) --------
-    # c* = c · ADF − cumsum(fed_species_term)  ⟹  feed_term = c · ADF − c*
-    feed_term_meas = measured_conc * adf_meas - c_star
+    Notes
+    -----
+    ADF and feed_correction are computed only at measurement times
+    (this avoids treating continuous feeds as discrete dilutions).
+    """
+    # --- measurements
+    comp = process.reactor_medium.components[species_name]
+    ts = comp.concentration
+    assert isinstance(ts, TimeSeries), f"{species_name} must be a TimeSeries"
+    meas_times = np.asarray(ts.timepoints, dtype=float)
+    meas_conc = np.asarray(ts.values, dtype=float)
 
-    # ---- Collect bolus feed events (for pre-event epsilon grid points) ------
-    # Only bolus feeds produce concentration discontinuities.  Sampling events
-    # change volume but NOT concentration, so they must NOT receive epsilon
-    # pre-event points.
-    # Small time offset used to create pre-event grid points for bolus feeds.
-    # Linear interpolation between t_event - _EPS and t_event then produces
-    # the desired concentration discontinuity.
-    _EPS = 1e-10
+    # --- dense grid and indices
+    dense_times, meas_indices = _build_dense_time_grid(process, meas_times)
 
-    # Map measurement index → list of (delta_volume, c_feed) tuples for all
-    # bolus feed events that coincide with that measurement time.
-    from collections import defaultdict
-    _bolus_by_measurement_idx: Dict[int, List[Tuple[float, float]]] = defaultdict(list)
+    # --- dense volumes / feeds / samples
+    reactor_volume_dense, accumulated_feed_dense, sample_volume_dense, concentration_in_feed = \
+        _compute_dense_volumes(process, dense_times, species_name)
+
+    # --- slice at measurement indices
+    mi = meas_indices
+    rv_at_meas = reactor_volume_dense[mi]
+    sv_at_meas = sample_volume_dense[mi]
+
+    af = accumulated_feed_dense
+    if af.ndim == 1:
+        af_at_meas = af[mi]
+    else:
+        af_at_meas = af[mi, :]
+
+    # --- ADF from BOLUS FEEDS ONLY (dense grid, then sliced)
+    n_dense = len(dense_times)
+    bolus_vol_dense = np.full(n_dense, float(process.volume.initial_volume))
 
     for _vc_name, vc in process.volume.volume_changes.items():
-        if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
-            continue
-        c_feed = 0.0
-        if vc.feed_medium is not None and species_name in vc.feed_medium.components:
-            comp = vc.feed_medium.components[species_name]
-            if isinstance(comp.concentration, StaticVariable):
-                c_feed = float(comp.concentration.value)
-        ev_times = np.asarray(vc.values.timepoints, dtype=float)
-        ev_vols = np.asarray(vc.values.values, dtype=float)
-        for et, ev in zip(ev_times, ev_vols):
-            # Find measurement index that coincides with this event
-            meas_idx = int(np.searchsorted(times, float(et), side="left"))
-            if meas_idx < len(times) and np.isclose(times[meas_idx], float(et)):
-                _bolus_by_measurement_idx[meas_idx].append((float(ev), c_feed))
+        if isinstance(vc, FeedVolumeChange) and not vc.is_continuous:
+            ev_times = np.asarray(vc.values.timepoints, dtype=float)
+            ev_vals = np.asarray(vc.values.values, dtype=float)
+            for et, ev in zip(ev_times, ev_vals):
+                bolus_vol_dense += np.where(dense_times >= et, float(ev), 0.0)
 
-    # ---- Build unified time grid with ADF / feed-term -----------------------
-    grid_times_list: List[float] = list(times)
-    grid_adf_list: List[float] = list(adf_meas)
-    grid_feed_list: List[float] = list(feed_term_meas)
+    no_sample_dense = np.zeros(n_dense)
+    adf_dense = pseudobatch.data_correction.accumulated_dilution_factor(
+        bolus_vol_dense, no_sample_dense
+    )
+    adf_at_meas = adf_dense[mi]
 
-    for meas_idx, bolus_list in _bolus_by_measurement_idx.items():
-        t_b = float(times[meas_idx])
-        t_pre = t_b - _EPS
-        if t_pre <= float(times[0]):
-            continue  # No pre-event point before the first time
+    # --- pseudobatch transform using bolus-only ADF
+    def _fed_species_term(accum_feed, conc_in_feed):
+        feed_in_interval = np.diff(accum_feed, prepend=accum_feed[0])
+        return adf_at_meas * feed_in_interval * conc_in_feed / rv_at_meas
 
-        adf_post = float(adf_meas[meas_idx])
-        V_before = float(inputs["reactor_volume"][meas_idx])  # includes bolus
-
-        # Total bolus volume and feed-term contribution at this event
-        total_dv = sum(dv for dv, _ in bolus_list)
-        V_no_bolus = V_before - total_dv
-
-        # Pre-bolus ADF
-        if V_before > 0 and V_no_bolus > 0:
-            adf_pre = adf_post * V_no_bolus / V_before
-        else:
-            adf_pre = adf_post
-
-        # Pre-bolus feed term: subtract the bolus contribution
-        delta_feed = sum(
-            adf_post * cf * dv / V_before if V_before > 0 else 0.0
-            for dv, cf in bolus_list
+    if af_at_meas.ndim == 1:
+        c_star = meas_conc * adf_at_meas - np.cumsum(
+            _fed_species_term(af_at_meas, concentration_in_feed)
         )
-        feed_term_pre = float(feed_term_meas[meas_idx]) - delta_feed
+    else:
+        fed_sum = np.zeros(len(meas_times))
+        for i in range(af_at_meas.shape[1]):
+            fed_sum += _fed_species_term(af_at_meas[:, i], concentration_in_feed[i])
+        c_star = meas_conc * adf_at_meas - np.cumsum(fed_sum)
 
-        grid_times_list.append(t_pre)
-        grid_adf_list.append(adf_pre)
-        grid_feed_list.append(feed_term_pre)
+    feed_corr_at_meas = meas_conc * adf_at_meas - c_star
 
-    # Sort and deduplicate the grid
-    order = np.argsort(grid_times_list)
-    t_grid = np.array(grid_times_list, dtype=float)[order]
-    ADF_grid = np.array(grid_adf_list, dtype=float)[order]
-    feed_term_grid = np.array(grid_feed_list, dtype=float)[order]
-
-    # Deduplicate: two grid points within _EPS/10 are considered identical
-    if len(t_grid) > 1:
-        keep = np.concatenate([[True], np.diff(t_grid) > _EPS / 10])
-        t_grid = t_grid[keep]
-        ADF_grid = ADF_grid[keep]
-        feed_term_grid = feed_term_grid[keep]
+    has_discrete_feed = any(not vc.is_continuous for vc in process.volume.volume_changes.values())
 
     return {
-        "times": times,
-        "c_star": c_star,
-        "adf_times": t_grid,
-        "adf_values": ADF_grid,
-        "feed_term_times": t_grid,
-        "feed_term_values": feed_term_grid,
-        # Legacy aliases for backward compatibility
-        "adf_step_times": t_grid,
-        "adf_step_values": ADF_grid,
-        "feed_term_step_times": t_grid,
-        "feed_term_step_values": feed_term_grid,
+        "meas_times": meas_times,
+        "meas_conc": meas_conc,
+        "c_star": np.asarray(c_star),
+        "dense_times": dense_times,
+        "meas_indices": meas_indices,
+        "reactor_volume_dense": reactor_volume_dense,
+        "sample_volume_dense": sample_volume_dense,
+        "accumulated_feed_dense": accumulated_feed_dense,
+        "concentration_in_feed": concentration_in_feed,
+        "adf_dense": np.asarray(adf_dense),
+        "adf_at_meas": np.asarray(adf_at_meas),
+        "feed_corr_at_meas": np.asarray(feed_corr_at_meas),
+        "has_discrete_feed": has_discrete_feed,
     }
 
 
-def fit_state_timeseries_spline_pseudobatch(
-    ts: TimeSeries,
-    process: BioProcess,
+def build_splines(inputs: Dict[str, Any],
+                   process: "BioProcess | None" = None,
+                   species_name: "str | None" = None) -> Dict[str, Any]:
+    """
+    Build interpolators from the result of build_pseudobatch_inputs.
+
+    When *process* and *species_name* are supplied the interpolation grid for
+    ADF and feed_correction is augmented with points just before / after every
+    discrete (bolus) feed event so that the backtransform reproduces the sharp
+    concentration drops caused by dilution.
+
+    Returns dict:
+      - spline_cstar : interpax.CubicSpline built from (meas_times, c_star)
+      - interp_times, adf_interp, feed_corr_interp  (arrays for np.interp)
+    """
+    spline_cstar = make_interpax_spline(inputs["meas_times"], inputs["c_star"])
+
+    interp_times = inputs["meas_times"].copy()
+    interp_adf = inputs["adf_at_meas"].copy()
+    interp_fc = inputs["feed_corr_at_meas"].copy()
+
+    if process is not None and species_name is not None:
+        meas_t = inputs["meas_times"]
+
+        bolus_events = []
+        for _vc_name, vc in process.volume.volume_changes.items():
+            if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
+                continue
+            c_feed = 0.0
+            if (vc.feed_medium is not None
+                    and species_name in vc.feed_medium.components):
+                fc_comp = vc.feed_medium.components[species_name]
+                if isinstance(fc_comp.concentration, StaticVariable):
+                    c_feed = float(fc_comp.concentration.value)
+            for t_b in np.asarray(vc.values.timepoints, dtype=float):
+                if not np.any(np.abs(meas_t - t_b) < _EPS * 2):
+                    bolus_events.append((float(t_b), c_feed))
+
+        bolus_events.sort(key=lambda x: x[0])
+
+        dense_t = inputs["dense_times"]
+        dense_adf = inputs["adf_dense"]
+
+        for t_b, c_feed in bolus_events:
+            t_pre = t_b - _EPS
+
+            order = np.argsort(interp_times)
+            interp_times = interp_times[order]
+            interp_adf = interp_adf[order]
+            interp_fc = interp_fc[order]
+
+            adf_pre = float(np.interp(t_pre, dense_t, dense_adf))
+            adf_post = float(np.interp(t_b, dense_t, dense_adf))
+
+            mask = interp_times <= t_pre
+            fc_pre = float(interp_fc[mask][-1]) if mask.any() else 0.0
+
+            cs_val = float(spline_cstar(jnp.array(t_b)))
+
+            c_pre = (cs_val + fc_pre) / max(adf_pre, 1e-12)
+
+            v_pre = float(np.interp(t_pre, dense_t,
+                                    inputs["reactor_volume_dense"]))
+            v_post = float(np.interp(t_b, dense_t,
+                                     inputs["reactor_volume_dense"]))
+            v_feed = v_post - v_pre
+
+            c_post = (c_pre * v_pre + c_feed * v_feed) / v_post
+
+            fc_post = c_post * adf_post - cs_val
+
+            interp_times = np.append(interp_times, [t_pre, t_b])
+            interp_adf = np.append(interp_adf, [adf_pre, adf_post])
+            interp_fc = np.append(interp_fc, [fc_pre, fc_post])
+
+        order = np.argsort(interp_times)
+        interp_times = interp_times[order]
+        interp_adf = interp_adf[order]
+        interp_fc = interp_fc[order]
+
+    spline_feed_corr = None
+    if not inputs.get("has_discrete_feed", False):
+        spline_feed_corr = make_interpax_spline(
+            inputs["meas_times"], inputs["feed_corr_at_meas"]
+        )
+
+    return {
+        "spline_cstar": spline_cstar,
+        "spline_feed_corr": spline_feed_corr,
+        "meas_times": interp_times,
+        "adf_at_meas": interp_adf,
+        "feed_corr_at_meas": interp_fc,
+        "dense_times": inputs["dense_times"],
+        "adf_dense": inputs["adf_dense"],
+    }
+
+
+def evaluate_real_concentration(t_eval: np.ndarray, splines: Dict[str, Any]) -> np.ndarray:
+    """
+    Backtransform c*(t) -> c(t) at arbitrary evaluation times t_eval.
+
+    Uses:
+      - c*(t) via interpax.CubicSpline (smooth)
+      - ADF via dense grid (correct step-wise behaviour at bolus events)
+      - feed_correction via np.interp (piecewise-linear from augmented grid)
+
+    Returns:
+      array of backtransformed concentrations evaluated at t_eval
+    """
+    t_eval = np.asarray(t_eval, dtype=float)
+    cs = np.asarray(splines["spline_cstar"](jnp.asarray(t_eval)))
+
+    adf = np.interp(t_eval, splines["dense_times"], splines["adf_dense"])
+    if splines.get("spline_feed_corr") is not None:
+        fc = np.asarray(splines["spline_feed_corr"](jnp.asarray(t_eval)))
+    else:
+        fc = np.interp(t_eval, splines["meas_times"], splines["feed_corr_at_meas"])
+
+    adf = np.where(np.abs(adf) < 1e-12, 1e-12, adf)
+
+    return (cs + fc) / adf
+
+
+# ===========================================================================
+# SplineRepresentation conversion and evaluation
+# ===========================================================================
+
+
+def to_spline_representation(
+    inputs: Dict[str, Any],
+    splines: Dict[str, Any],
     species_name: str,
     *,
-    boundaries: Optional[np.ndarray] = None,
-    smoothing_s: float = 0.0,
-    n_ctrl: int = DEFAULT_MAX_CTRL_POINTS,
-    max_segments: int = DEFAULT_MAX_SEGMENTS,
+    max_segments: int = 1,
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
 ) -> SplineRepresentation:
-    """Fit a spline in pseudo-batch space for a state variable.
+    """Convert pseudobatch pipeline outputs to a minimal SplineRepresentation.
 
-    The returned ``SplineRepresentation`` stores backtransform metadata so
-    that :func:`evaluate_timeseries_spline_at` can map back to true
-    concentration (with discrete jumps at feed events).
+    The c* cubic spline knots are stored in the main x/y arrays (single segment).
+    ADF and feed_correction grids are stored in ``spline_metadata["transform"]``
+    as compact lists (JSON-serializable).
 
     Parameters
     ----------
-    ts:
-        Measured concentration time series for the species.
-    process:
-        BioProcess for the run (provides volume/feed info).
+    inputs:
+        Result of :func:`build_pseudobatch_inputs`.
+    splines:
+        Result of :func:`build_splines`.
     species_name:
-        Name of the species (must exist in reactor_medium and optionally
-        in the feed medium of discrete volume changes).
-    boundaries:
-        Segment boundaries.  If *None*, a single segment is used.
-    smoothing_s, n_ctrl, max_segments, max_ctrl_points:
-        Forwarded to :func:`fit_timeseries_spline`.
+        Name of the species.
+    max_segments, max_ctrl_points:
+        Padding dimensions for JAX compatibility.
 
     Returns
     -------
     SplineRepresentation
-        Spline fitted in pseudo-batch space, with transform metadata stored
-        in ``spline_metadata["transform"]``.
+        Minimal representation that can reconstruct backtransformed
+        concentrations via :func:`evaluate_from_spline_representation`.
     """
-    pb = pseudo_batch_transform_timeseries(process, species_name, ts)
-
-    # Build a TimeSeries in pseudo-batch space
+    # Fit c* spline as a single-segment SplineRepresentation
     ts_star = TimeSeries(
-        timepoints=jnp.array(pb["times"]),
-        values=jnp.array(pb["c_star"]),
+        timepoints=jnp.array(inputs["meas_times"]),
+        values=jnp.array(inputs["c_star"]),
     )
-
-    # Fit spline on pseudo-batch concentration (no segmented boundaries needed
-    # because pseudo-batch removes discontinuities)
     rep = fit_timeseries_spline(
         ts_star,
-        boundaries=boundaries,
-        smoothing_s=smoothing_s,
-        n_ctrl=n_ctrl,
         max_segments=max_segments,
         max_ctrl_points=max_ctrl_points,
     )
 
-    # Store backtransform metadata (all JSON-serializable)
+    # Determine feed_corr interpolation mode
+    has_discrete = inputs.get("has_discrete_feed", False)
+    feed_corr_interp = "linear" if has_discrete else "cubic"
+
+    # Compress dense ADF grid: keep only points where ADF value changes
+    # (ADF is a step function that only changes at bolus feed events).
+    # This reduces storage from thousands of points to ~2*N_bolus + 2.
+    dense_t = inputs["dense_times"]
+    dense_adf = inputs["adf_dense"]
+    n_dense = len(dense_adf)
+    if n_dense > 2:
+        keep = np.zeros(n_dense, dtype=bool)
+        keep[0] = True   # always keep first
+        keep[-1] = True  # always keep last
+        # Keep points where ADF changes AND the point before each change
+        changes = np.abs(np.diff(dense_adf)) > 1e-12
+        for i in range(len(changes)):
+            if changes[i]:
+                keep[i] = True      # point before change
+                keep[i + 1] = True  # point after change
+        adf_compact_t = dense_t[keep]
+        adf_compact_v = dense_adf[keep]
+    else:
+        adf_compact_t = dense_t
+        adf_compact_v = dense_adf
+
+    # Store backtransform metadata (all JSON-serializable via lists)
     if rep.spline_metadata is None:
         rep.spline_metadata = {}
     rep.spline_metadata["transform"] = {
         "name": "pseudo_batch",
         "species": species_name,
-        "interp": "step",
-        "adf_times": pb["adf_times"].tolist(),
-        "adf_values": pb["adf_values"].tolist(),
-        "feed_term_times": pb["feed_term_times"].tolist(),
-        "feed_term_values": pb["feed_term_values"].tolist(),
-        # Legacy aliases for backward compatibility
-        "adf_step_times": pb["adf_times"].tolist(),
-        "adf_step_values": pb["adf_values"].tolist(),
-        "feed_term_step_times": pb["feed_term_times"].tolist(),
-        "feed_term_step_values": pb["feed_term_values"].tolist(),
+        "feed_corr_interp": feed_corr_interp,
+        # ADF: compact grid with only step transition points
+        "adf_times": adf_compact_t.tolist(),
+        "adf_values": adf_compact_v.tolist(),
+        # Feed correction: augmented measurement grid from build_splines
+        "feed_corr_times": splines["meas_times"].tolist(),
+        "feed_corr_values": splines["feed_corr_at_meas"].tolist(),
     }
 
     return rep
 
 
-def evaluate_timeseries_spline_at(rep: SplineRepresentation, t: float) -> float:
-    """Evaluate a spline at scalar *t*, applying backtransform if present.
-
-    If ``rep.spline_metadata`` contains a ``"transform"`` with
-    ``name == "pseudo_batch"``, the spline value (in pseudo-batch space) is
-    backtransformed to true concentration, re-introducing discrete jumps:
-
-        ĉ(t) = (ĉ*(t) + feed_term(t)) / ADF(t)
-
-    Otherwise falls back to :func:`evaluate_spline_at`.
-    """
-    meta = rep.spline_metadata
-    if meta is not None and "transform" in meta:
-        tr = meta["transform"]
-        if tr.get("name") == "pseudo_batch":
-            c_star_hat = evaluate_spline_at(rep, t)
-            # Use step (piecewise-constant) evaluation at bolus-feed epsilon
-            # boundaries so that the backtransformed concentration jumps
-            # instantaneously; fall back to linear interpolation for wider
-            # grid intervals (e.g. continuous feed).
-            if "adf_times" in tr:
-                adf_t = _step_interp(
-                    np.array(tr["adf_times"]),
-                    np.array(tr["adf_values"]),
-                    t,
-                )
-                feed_t = _step_interp(
-                    np.array(tr["feed_term_times"]),
-                    np.array(tr["feed_term_values"]),
-                    t,
-                )
-            else:
-                adf_t = _step_eval(
-                    np.array(tr["adf_step_times"]),
-                    np.array(tr["adf_step_values"]),
-                    t,
-                )
-                feed_t = _step_eval(
-                    np.array(tr["feed_term_step_times"]),
-                    np.array(tr["feed_term_step_values"]),
-                    t,
-                )
-            if adf_t == 0.0:
-                warnings.warn(
-                    f"ADF (Accumulated Dilution Factor) is zero at t={t}; "
-                    "this indicates an invalid volume calculation "
-                    "(e.g. zero initial volume). Returning raw spline value.",
-                    stacklevel=2,
-                )
-                return c_star_hat  # Avoid division by zero
-            return (c_star_hat + feed_t) / adf_t
-
-    # No transform → plain evaluation
-    return evaluate_spline_at(rep, t)
-
-
-def evaluate_timeseries_spline(
-    rep: SplineRepresentation, t_array: np.ndarray
+def evaluate_from_spline_representation(
+    rep: SplineRepresentation,
+    t_eval: np.ndarray,
 ) -> np.ndarray:
-    """Vectorized version of :func:`evaluate_timeseries_spline_at`.
+    """Reconstruct backtransformed concentration from a stored SplineRepresentation.
 
-    Returns an array of backtransformed (or plain) spline values.
+    Applies the inverse pseudobatch transform:
+        c(t) = (c*(t) + feed_corr(t)) / ADF(t)
+
+    Parameters
+    ----------
+    rep:
+        SplineRepresentation with ``spline_metadata["transform"]`` containing
+        ADF and feed_corr grids (as produced by :func:`to_spline_representation`).
+    t_eval:
+        Times at which to evaluate.
+
+    Returns
+    -------
+    np.ndarray
+        Backtransformed concentrations at t_eval.
     """
-    t_array = np.asarray(t_array, dtype=float)
-    return np.array([evaluate_timeseries_spline_at(rep, float(t)) for t in t_array])
+    t_eval = np.asarray(t_eval, dtype=float)
+    tr = rep.spline_metadata["transform"]
+
+    # c* from stored spline
+    spline_list, boundaries = build_interpax_spline(rep)
+    # Vectorized evaluation across segments
+    cs = np.empty_like(t_eval)
+    for i, t in enumerate(t_eval):
+        idx = int(np.searchsorted(boundaries[1:], float(t), side="right"))
+        idx = max(0, min(idx, rep.n_segments - 1))
+        cs[i] = float(spline_list[idx](t))
+
+    # ADF from stored grid
+    adf_times = np.array(tr["adf_times"])
+    adf_values = np.array(tr["adf_values"])
+    adf = np.interp(t_eval, adf_times, adf_values)
+
+    # Feed correction
+    fc_times = np.array(tr["feed_corr_times"])
+    fc_values = np.array(tr["feed_corr_values"])
+
+    if tr.get("feed_corr_interp") == "cubic":
+        fc_spline = make_interpax_spline(fc_times, fc_values)
+        fc = np.asarray(fc_spline(jnp.asarray(t_eval)))
+    else:
+        fc = np.interp(t_eval, fc_times, fc_values)
+
+    adf = np.where(np.abs(adf) < 1e-12, 1e-12, adf)
+
+    return (cs + fc) / adf
+
+
+def evaluate_from_spline_representation_at(
+    rep: SplineRepresentation,
+    t: float,
+) -> float:
+    """Scalar version of :func:`evaluate_from_spline_representation`."""
+    return float(evaluate_from_spline_representation(rep, np.array([t]))[0])
