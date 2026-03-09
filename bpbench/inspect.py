@@ -395,7 +395,7 @@ def _draw_panel(ax, panel, label=None, color=None):
             ax.bar(x, y, label=label, width=width, edgecolor="k", **plot_kwargs)
         else:
             n = len(x)
-            fmt = 'o-' if n <= 30 else '-'
+            fmt = 'o-' if n <= 50 else '-'
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
     else:
         ax.hlines(
