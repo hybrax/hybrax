@@ -1,3 +1,4 @@
+import numpy as np
 import jax.numpy as jnp
 from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, FeedVolumeChange
 
@@ -312,6 +313,8 @@ def _collect_process_panels(process: BioProcess):
       - for dynamic: 'x' (timepoints array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
+      - optional: 'spline': SplineRepresentation (if available)
+      - optional: 'spline_type': 'backtransform' | 'direct'
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0
     t_end = float(process.time_axis.end) if process.time_axis else 1.0
@@ -323,14 +326,18 @@ def _collect_process_panels(process: BioProcess):
         for comp in process.reactor_medium.components.values():
             unit_label = f" [{comp.unit}]" if comp.unit else ""
             if hasattr(comp.concentration, 'timepoints'):
-                panels.append({
+                panel = {
                     'title': f"{comp.name}{unit_label}",
                     'category': 'ReactorMedium',
                     'type': 'dynamic',
                     'x': comp.concentration.timepoints,
                     'y': comp.concentration.values,
                     'render': 'line',
-                })
+                }
+                if comp.spline is not None:
+                    panel['spline'] = comp.spline
+                    panel['spline_type'] = 'backtransform'
+                panels.append(panel)
             else:
                 panels.append({
                     'title': f"{comp.name}{unit_label}",
@@ -345,14 +352,18 @@ def _collect_process_panels(process: BioProcess):
         for pv in process.process_variables.values():
             unit_label = f" [{pv.unit}]" if pv.unit else ""
             if hasattr(pv.values, 'timepoints'):
-                panels.append({
+                panel = {
                     'title': f"{pv.name}{unit_label}",
                     'category': 'ProcessVariable',
                     'type': 'dynamic',
                     'x': pv.values.timepoints,
                     'y': pv.values.values,
                     'render': 'line',
-                })
+                }
+                if pv.spline is not None:
+                    panel['spline'] = pv.spline
+                    panel['spline_type'] = 'direct'
+                panels.append(panel)
             else:
                 panels.append({
                     'title': f"{pv.name}{unit_label}",
@@ -369,21 +380,24 @@ def _collect_process_panels(process: BioProcess):
             if vc.values is not None and hasattr(vc.values, 'timepoints'):
                 is_continuous = getattr(vc, "is_continuous", True)
                 render = 'line' if is_continuous else 'bar'
-                panels.append({
+                panel = {
                     'title': f"{vc.name}{unit_label}",
                     'category': 'VolumeChange',
                     'type': 'dynamic',
                     'x': vc.values.timepoints,
                     'y': vc.values.values,
                     'render': render,
-                })
+                }
+                if getattr(vc, 'spline', None) is not None:
+                    panel['spline'] = vc.spline
+                    panel['spline_type'] = 'direct'
+                panels.append(panel)
 
     return panels
 
 
 def _pad_constant_ylim(ax, values):
     """If *values* are practically constant, pad the y-axis to avoid noisy scaling."""
-    import numpy as np
     y = np.asarray(values, dtype=float)
     y = y[np.isfinite(y)]
     if len(y) == 0:
@@ -394,11 +408,32 @@ def _pad_constant_ylim(ax, values):
     # Consider "practically constant" when range < 1e-6 * |mean| (or absolute < 1e-12)
     if span < max(abs(mean) * 1e-6, 1e-12):
         pad = max(abs(mean) * 0.1, 1.0) if abs(mean) > 1e-12 else 1.0
-        ax.set_ylim(mean - pad, mean + pad)
+        new_lo, new_hi = mean - pad, mean + pad
+        cur_lo, cur_hi = ax.get_ylim()
+        # Only expand, never shrink
+        ax.set_ylim(min(cur_lo, new_lo), max(cur_hi, new_hi))
 
 
-def _draw_panel(ax, panel, label=None, color=None):
-    """Draw a single panel (dynamic or static) onto *ax*."""
+def _evaluate_spline_curve(spline, spline_type, t_start, t_end, n_points=500):
+    """Evaluate a spline over [t_start, t_end] and return (t_plot, y_plot)."""
+    from .splines import build_backtransform_spline, evaluate_spline_at
+
+    t_plot = np.linspace(t_start, t_end, n_points)
+    if spline_type == 'backtransform':
+        bt = build_backtransform_spline(spline)
+        y_plot = np.array([float(bt(jnp.array(t))) for t in t_plot])
+    else:
+        y_plot = np.array([evaluate_spline_at(spline, t) for t in t_plot])
+    return t_plot, y_plot
+
+
+def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
+    """Draw a single panel (dynamic or static) onto *ax*.
+
+    If the panel has a ``'spline'`` key, the spline curve is drawn and raw
+    data is shown as scatter points (no connecting lines).  Otherwise raw
+    data is drawn with ``'o-'`` markers.
+    """
     plot_kwargs = {}
     if color is not None:
         plot_kwargs['color'] = color
@@ -408,21 +443,42 @@ def _draw_panel(ax, panel, label=None, color=None):
     if label is None:
         label = 'data'
 
+    has_spline = 'spline' in panel and panel['spline'] is not None
+
     if panel['type'] == 'dynamic':
         x = panel['x']
         y = panel['y']
         render = panel.get('render', 'line')
+
+        n = len(x)
 
         if render == 'bar':
             # Bar plot for discrete (non-continuous) volume changes
             delta = float(x[-1] - x[0])
             width = max(delta / 30, 0.1)
             ax.bar(x, y, label=label, width=width, edgecolor="k", **plot_kwargs)
+        elif has_spline and n <= 50:
+            # Scatter for raw data when spline is available and few points
+            ax.scatter(x, y, s=16, zorder=5, label=label, **plot_kwargs)
         else:
-            n = len(x)
             fmt = 'o-' if n <= 50 else '-'
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
+
+        if render != 'bar':
             _pad_constant_ylim(ax, y)
+
+        # Draw spline curve
+        if has_spline and t_start is not None and t_end is not None:
+            try:
+                t_plot, y_plot = _evaluate_spline_curve(
+                    panel['spline'], panel.get('spline_type', 'direct'),
+                    t_start, t_end,
+                )
+                ax.plot(t_plot, y_plot, '--', color='red', lw=1.5,
+                        alpha=0.8, label='spline')
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Could not evaluate spline for {panel.get('title', '?')}: {e}")
     else:
         ax.hlines(
             panel['value'], panel['t_start'], panel['t_end'],
@@ -474,6 +530,11 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
             entry['label'] = proc_key
             variable_map[key]['data'].append(entry)
 
+    # some white space to the side
+    delta_t_global = t_global_end - t_global_start
+    t_global_start -= delta_t_global * 0.05
+    t_global_end += delta_t_global * 0.05
+
     if not variable_map:
         fig, ax = plt.subplots()
         ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
@@ -491,7 +552,8 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
         ax = axes_flat[i]
         for j, data in enumerate(panel_meta['data']):
             color = colors[j % len(colors)]
-            _draw_panel(ax, data, label=data['label'], color=color)
+            _draw_panel(ax, data, label=data['label'], color=color,
+                        t_start=t_global_start, t_end=t_global_end)
 
         category = panel_meta['data'][0].get('category', '') if panel_meta['data'] else ''
         ax.set_title(f"{panel_meta['title']} ({category})")
@@ -501,7 +563,6 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
 
         # Pad y-axis if all overlaid data for this panel is practically constant
         # Skip bar-rendered panels (discrete events) — let matplotlib auto-scale
-        import numpy as np
         has_bar = any(d.get('render') == 'bar' for d in panel_meta['data'])
         if not has_bar:
             all_y = []
@@ -595,7 +656,7 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
 
     for i, panel in enumerate(panels):
         ax = axes_flat[i]
-        _draw_panel(ax, panel)
+        _draw_panel(ax, panel, t_start=t_start, t_end=t_end)
         category = panel.get('category', '')
         ax.set_title(f"{panel['title']} ({category})")
         ax.set_xlabel(f"time [{time_unit}]")
