@@ -281,7 +281,9 @@ def test_spline_json_roundtrip():
     assert loaded_pv.spline is not None
     assert loaded_pv.spline.kind == rep.kind
     assert loaded_pv.spline.n_segments == rep.n_segments
-    assert jnp.allclose(loaded_pv.spline.n, rep.n)
+    # Compare valid segment counts (loaded may have different padding)
+    n_seg = rep.n_segments
+    assert jnp.allclose(loaded_pv.spline.n[:n_seg], rep.n[:n_seg])
 
     for t_val in [0.0, 1.0, 2.0, 3.0, 4.0]:
         orig = evaluate_spline_at(rep, t_val)

@@ -549,42 +549,74 @@ def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
 # ============================================================
 
 def _spline_to_dict(spline: SplineRepresentation) -> Dict:
-    """Convert SplineRepresentation to dictionary"""
+    """Convert SplineRepresentation to dictionary (unpadded for compact JSON)."""
+    n_seg = spline.n_segments
+    n_per_seg = [int(spline.n[i]) for i in range(n_seg)]
     return {
         "kind": spline.kind,
-        "x": spline.x,
-        "y": spline.y,
-        "n": spline.n,
-        "n_segments": spline.n_segments,
-        "segment_boundaries": spline.segment_boundaries,
+        "x": [np.asarray(spline.x[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
+        "y": [np.asarray(spline.y[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
+        "n": n_per_seg,
+        "n_segments": n_seg,
+        "segment_boundaries": np.asarray(spline.segment_boundaries[:n_seg + 1]).tolist(),
         "bc_type": spline.bc_type,
         "spline_metadata": spline.spline_metadata,
     }
 
 
 def _dict_to_spline(data: Dict) -> SplineRepresentation:
-    """Reconstruct SplineRepresentation from dictionary"""
-    x = data["x"]
-    y = data["y"]
-    n = data["n"]
-    seg_b = data["segment_boundaries"]
+    """Reconstruct SplineRepresentation from dictionary.
 
-    # Ensure JAX arrays
-    if not isinstance(x, jnp.ndarray):
+    Handles both the compact unpadded format (list-of-lists) and the legacy
+    padded format (``__ndarray__`` dicts or pre-converted jnp arrays).
+    """
+    n_segments = data["n_segments"]
+    x_raw = data["x"]
+    y_raw = data["y"]
+    n_raw = data["n"]
+    seg_b_raw = data["segment_boundaries"]
+
+    # Detect format: new unpadded (list-of-lists) vs old padded (ndarray)
+    is_unpadded = (
+        isinstance(x_raw, list)
+        and len(x_raw) > 0
+        and isinstance(x_raw[0], list)
+    )
+
+    if is_unpadded:
+        # New compact format: re-pad to exact size
+        n_per_seg = [int(v) for v in n_raw]
+        max_ctrl = max(len(row) for row in x_raw)
+
+        x = np.zeros((n_segments, max_ctrl))
+        y = np.zeros((n_segments, max_ctrl))
+        for i in range(n_segments):
+            ni = len(x_raw[i])
+            x[i, :ni] = x_raw[i]
+            y[i, :ni] = y_raw[i]
+
+        n_arr = np.array(n_per_seg, dtype=int)
+        seg_b = np.zeros(n_segments + 1)
+        for i, v in enumerate(seg_b_raw):
+            seg_b[i] = v
+
         x = jnp.array(x)
-    if not isinstance(y, jnp.ndarray):
         y = jnp.array(y)
-    if not isinstance(n, jnp.ndarray):
-        n = jnp.array(n)
-    if not isinstance(seg_b, jnp.ndarray):
+        n_arr = jnp.array(n_arr)
         seg_b = jnp.array(seg_b)
+    else:
+        # Legacy padded format
+        x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
+        y = y_raw if isinstance(y_raw, jnp.ndarray) else jnp.array(y_raw)
+        n_arr = n_raw if isinstance(n_raw, jnp.ndarray) else jnp.array(n_raw)
+        seg_b = seg_b_raw if isinstance(seg_b_raw, jnp.ndarray) else jnp.array(seg_b_raw)
 
     return SplineRepresentation(
         kind=data["kind"],
         x=x,
         y=y,
-        n=n,
-        n_segments=data["n_segments"],
+        n=n_arr,
+        n_segments=n_segments,
         segment_boundaries=seg_b,
         bc_type=data.get("bc_type", "natural"),
         spline_metadata=data.get("spline_metadata"),
