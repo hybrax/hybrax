@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, TimeSeries, FeedVolumeChange
+from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, FeedVolumeChange
 
 
 def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
@@ -307,6 +307,7 @@ def _collect_process_panels(process: BioProcess):
 
     Returns a list of dicts, each with:
       - 'title': str
+      - 'category': 'ReactorMedium' | 'ProcessVariable' | 'VolumeChange'
       - 'type': 'dynamic' | 'static'
       - for dynamic: 'x' (timepoints array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
@@ -324,6 +325,7 @@ def _collect_process_panels(process: BioProcess):
             if hasattr(comp.concentration, 'timepoints'):
                 panels.append({
                     'title': f"{comp.name}{unit_label}",
+                    'category': 'ReactorMedium',
                     'type': 'dynamic',
                     'x': comp.concentration.timepoints,
                     'y': comp.concentration.values,
@@ -332,6 +334,7 @@ def _collect_process_panels(process: BioProcess):
             else:
                 panels.append({
                     'title': f"{comp.name}{unit_label}",
+                    'category': 'ReactorMedium',
                     'type': 'static',
                     't_start': t_start, 't_end': t_end,
                     'value': float(comp.concentration.value),
@@ -344,6 +347,7 @@ def _collect_process_panels(process: BioProcess):
             if hasattr(pv.values, 'timepoints'):
                 panels.append({
                     'title': f"{pv.name}{unit_label}",
+                    'category': 'ProcessVariable',
                     'type': 'dynamic',
                     'x': pv.values.timepoints,
                     'y': pv.values.values,
@@ -352,6 +356,7 @@ def _collect_process_panels(process: BioProcess):
             else:
                 panels.append({
                     'title': f"{pv.name}{unit_label}",
+                    'category': 'ProcessVariable',
                     'type': 'static',
                     't_start': t_start, 't_end': t_end,
                     'value': float(pv.values.value),
@@ -366,6 +371,7 @@ def _collect_process_panels(process: BioProcess):
                 render = 'line' if is_continuous else 'bar'
                 panels.append({
                     'title': f"{vc.name}{unit_label}",
+                    'category': 'VolumeChange',
                     'type': 'dynamic',
                     'x': vc.values.timepoints,
                     'y': vc.values.values,
@@ -375,13 +381,32 @@ def _collect_process_panels(process: BioProcess):
     return panels
 
 
+def _pad_constant_ylim(ax, values):
+    """If *values* are practically constant, pad the y-axis to avoid noisy scaling."""
+    import numpy as np
+    y = np.asarray(values, dtype=float)
+    y = y[np.isfinite(y)]
+    if len(y) == 0:
+        return
+    ymin, ymax = float(y.min()), float(y.max())
+    span = ymax - ymin
+    mean = (ymin + ymax) / 2.0
+    # Consider "practically constant" when range < 1e-6 * |mean| (or absolute < 1e-12)
+    if span < max(abs(mean) * 1e-6, 1e-12):
+        pad = max(abs(mean) * 0.1, 1.0) if abs(mean) > 1e-12 else 1.0
+        ax.set_ylim(mean - pad, mean + pad)
+
+
 def _draw_panel(ax, panel, label=None, color=None):
     """Draw a single panel (dynamic or static) onto *ax*."""
-    import matplotlib.pyplot as plt
-
     plot_kwargs = {}
     if color is not None:
         plot_kwargs['color'] = color
+    else:
+        plot_kwargs['color'] = 'black'
+
+    if label is None:
+        label = 'data'
 
     if panel['type'] == 'dynamic':
         x = panel['x']
@@ -390,19 +415,20 @@ def _draw_panel(ax, panel, label=None, color=None):
 
         if render == 'bar':
             # Bar plot for discrete (non-continuous) volume changes
-            delta = x[-1]-x[0]
-            width = delta/30
+            delta = float(x[-1] - x[0])
+            width = max(delta / 30, 0.1)
             ax.bar(x, y, label=label, width=width, edgecolor="k", **plot_kwargs)
         else:
             n = len(x)
             fmt = 'o-' if n <= 50 else '-'
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
+            _pad_constant_ylim(ax, y)
     else:
         ax.hlines(
             panel['value'], panel['t_start'], panel['t_end'],
             linestyles='--', label=label, **plot_kwargs,
         )
-        ax.set_xlim(panel['t_start'], panel['t_end'])
+        _pad_constant_ylim(ax, [panel['value']])
 
 
 def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=None):
@@ -425,8 +451,16 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
 
     variable_map = {}
 
+    # Determine global x-axis range across all processes
+    t_global_start = float("inf")
+    t_global_end = float("-inf")
+    time_unit = "time"
+
     for proc_key, process in case_study.processes.items():
-        time_unit = process.time_axis.unit if process.time_axis else "time"
+        if process.time_axis is not None:
+            time_unit = process.time_axis.unit
+            t_global_start = min(t_global_start, float(process.time_axis.start))
+            t_global_end = max(t_global_end, float(process.time_axis.end))
 
         for panel in _collect_process_panels(process):
             key = panel['title']
@@ -459,9 +493,25 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
             color = colors[j % len(colors)]
             _draw_panel(ax, data, label=data['label'], color=color)
 
-        ax.set_title(panel_meta['title'])
+        category = panel_meta['data'][0].get('category', '') if panel_meta['data'] else ''
+        ax.set_title(f"{panel_meta['title']} ({category})")
         ax.set_xlabel(f"time [{panel_meta['time_unit']}]")
+        ax.set_xlim(t_global_start, t_global_end)
         ax.grid(True, alpha=0.3)
+
+        # Pad y-axis if all overlaid data for this panel is practically constant
+        # Skip bar-rendered panels (discrete events) — let matplotlib auto-scale
+        import numpy as np
+        has_bar = any(d.get('render') == 'bar' for d in panel_meta['data'])
+        if not has_bar:
+            all_y = []
+            for data in panel_meta['data']:
+                if data['type'] == 'dynamic':
+                    all_y.extend(np.asarray(data['y'], dtype=float).tolist())
+                else:
+                    all_y.append(data['value'])
+            if all_y:
+                _pad_constant_ylim(ax, all_y)
 
         # harvest handles/labels from this axis (without drawing a per-axis legend)
         handles, labels = ax.get_legend_handles_labels()
@@ -518,6 +568,9 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     with markers; longer series are drawn as lines only.  StaticVariable values
     are shown as horizontal dashed lines spanning the process time range.
 
+    All subplots share the same x-axis range (``TimeAxis.start`` to
+    ``TimeAxis.end``).
+
     Args:
         process: BioProcess object to plot.
         figsize_per_panel: ``(width, height)`` in inches for each subplot.
@@ -528,6 +581,8 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     import matplotlib.pyplot as plt
 
     time_unit = process.time_axis.unit if process.time_axis else "time"
+    t_start = float(process.time_axis.start) if process.time_axis else 0.0
+    t_end = float(process.time_axis.end) if process.time_axis else 1.0
     panels = _collect_process_panels(process)
 
     if not panels:
@@ -541,8 +596,11 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     for i, panel in enumerate(panels):
         ax = axes_flat[i]
         _draw_panel(ax, panel)
-        ax.set_title(panel['title'])
+        category = panel.get('category', '')
+        ax.set_title(f"{panel['title']} ({category})")
         ax.set_xlabel(f"time [{time_unit}]")
+        ax.set_xlim(t_start, t_end)
+        ax.legend(fontsize='small')
         ax.grid(True, alpha=0.3)
 
     for j in range(len(panels), len(axes_flat)):

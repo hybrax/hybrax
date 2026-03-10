@@ -284,6 +284,8 @@ def _volume_change_to_dict(vc) -> Dict:
         result["type"] = "SampleVolumeChange"
     else:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
+
+    result["spline"] = _spline_to_dict(vc.spline) if getattr(vc, 'spline', None) is not None else None
     return result
 
 
@@ -508,13 +510,17 @@ def _dict_to_volume_change(vc_data: Dict):
         values=values,
     )
 
+    spline = None
+    if vc_data.get("spline") is not None:
+        spline = _dict_to_spline(vc_data["spline"])
+
     if vc_type == "FeedVolumeChange":
         feed_medium = None
         if vc_data.get("feed_medium"):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-        return FeedVolumeChange(**common, feed_medium=feed_medium)
+        return FeedVolumeChange(**common, feed_medium=feed_medium, spline=spline)
     elif vc_type == "SampleVolumeChange":
-        return SampleVolumeChange(**common)
+        return SampleVolumeChange(**common, spline=spline)
     else:
         raise ValueError(f"Unknown volume change type: {vc_type}")
 

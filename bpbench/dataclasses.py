@@ -166,6 +166,7 @@ class FeedVolumeChange(BaseVolumeChange):
     All delta values should be >= 0.
     """
     feed_medium: FeedMedium
+    spline: Optional[SplineRepresentation] = None
 
 
 @dataclass
@@ -175,7 +176,7 @@ class SampleVolumeChange(BaseVolumeChange):
 
     All delta values should be <= 0.
     """
-    pass
+    spline: Optional[SplineRepresentation] = None
 
 
 # Union type alias for convenience

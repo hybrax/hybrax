@@ -296,6 +296,38 @@ def evaluate_spline_at(rep: SplineRepresentation, t: float) -> float:
     return float(splines[idx](t))
 
 
+def make_constant_spline(
+    value: float,
+    t_min: float,
+    t_max: float,
+    max_segments: int = DEFAULT_MAX_SEGMENTS,
+    max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
+) -> SplineRepresentation:
+    """Create a SplineRepresentation for a constant value over [t_min, t_max]."""
+    x_padded = np.zeros((max_segments, max_ctrl_points))
+    y_padded = np.zeros((max_segments, max_ctrl_points))
+    n_padded = np.zeros(max_segments, dtype=int)
+    boundary_padded = np.full(max_segments + 1, t_max)
+
+    x_padded[0, 0] = t_min
+    x_padded[0, 1] = t_max
+    y_padded[0, 0] = value
+    y_padded[0, 1] = value
+    n_padded[0] = 2
+    boundary_padded[0] = t_min
+
+    return SplineRepresentation(
+        kind="interpax_cubic",
+        x=jnp.array(x_padded),
+        y=jnp.array(y_padded),
+        n=jnp.array(n_padded),
+        n_segments=1,
+        segment_boundaries=jnp.array(boundary_padded),
+        bc_type="natural",
+        spline_metadata={"constant_value": float(value)},
+    )
+
+
 # ===========================================================================
 # Pseudobatch transform pipeline
 # ===========================================================================
