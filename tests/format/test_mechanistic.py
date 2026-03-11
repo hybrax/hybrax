@@ -19,8 +19,10 @@ from bpbench import (
 )
 from bpbench.mechanistic import (
     ControlSplines, MassBalance, get_control_splines, get_mass_balance,
-    _make_spline,
+    extract_discrete_events, apply_discrete_event,
+    estimate_specific_rates, integrate_process,
 )
+from bpbench.splines import make_interpax_spline
 
 
 # ---------------------------------------------------------------------------
@@ -134,55 +136,55 @@ def _make_batch_process():
 
 
 # ---------------------------------------------------------------------------
-# _make_spline helper tests
+# make_interpax_spline helper tests
 # ---------------------------------------------------------------------------
 
-class TestMakeSpline:
+class TestMakeInterpaxSpline:
     def test_returns_interpax_spline(self):
         import interpax
-        sp = _make_spline(jnp.array([0., 1., 2., 3.]), jnp.array([0., 1., 4., 9.]))
+        sp = make_interpax_spline(np.array([0., 1., 2., 3.]), np.array([0., 1., 4., 9.]))
         assert isinstance(sp, interpax.CubicSpline)
 
     def test_is_eqx_module(self):
-        sp = _make_spline(jnp.array([0., 1., 2., 3.]), jnp.array([0., 1., 4., 9.]))
+        sp = make_interpax_spline(np.array([0., 1., 2., 3.]), np.array([0., 1., 4., 9.]))
         assert isinstance(sp, eqx.Module)
 
     def test_eval_at_knots(self):
-        t = jnp.array([0., 1., 2., 3.])
-        v = jnp.array([0., 1., 4., 9.])
-        sp = _make_spline(t, v)
+        t = np.array([0., 1., 2., 3.])
+        v = np.array([0., 1., 4., 9.])
+        sp = make_interpax_spline(t, v)
         for ti, vi in zip(t, v):
             assert float(sp(ti)) == pytest.approx(float(vi), abs=1e-4)
 
     def test_single_point_constant(self):
-        sp = _make_spline(jnp.array([5.0]), jnp.array([42.0]))
+        sp = make_interpax_spline(np.array([5.0]), np.array([42.0]))
         assert float(sp(5.0)) == pytest.approx(42.0, rel=1e-5)
 
     def test_two_point_linear(self):
-        sp = _make_spline(jnp.array([0., 10.]), jnp.array([0., 5.]))
+        sp = make_interpax_spline(np.array([0., 10.]), np.array([0., 5.]))
         assert float(sp(5.0)) == pytest.approx(2.5, rel=1e-4)
 
     def test_derivative_of_linear_is_slope(self):
-        sp = _make_spline(jnp.array([0., 10.]), jnp.array([0., 5.]))
+        sp = make_interpax_spline(np.array([0., 10.]), np.array([0., 5.]))
         assert float(sp.derivative()(5.0)) == pytest.approx(0.5, rel=1e-4)
 
     def test_derivative_of_cumulative_gives_flow(self):
         """Derivative of a linear cumulative-volume curve = constant flow rate."""
         flow = 0.05
-        t = jnp.array([0., 5., 10., 15., 20.])
-        cum = jnp.array([flow * float(ti) for ti in [0., 5., 10., 15., 20.]])
-        sp = _make_spline(t, cum)
+        t = np.array([0., 5., 10., 15., 20.])
+        cum = np.array([flow * ti for ti in [0., 5., 10., 15., 20.]])
+        sp = make_interpax_spline(t, cum)
         for ti in [2.0, 7.0, 12.0, 17.0]:
             assert float(sp.derivative()(ti)) == pytest.approx(flow, rel=1e-3)
 
     def test_spline_jittable(self):
-        sp = _make_spline(jnp.array([0., 1., 2., 3.]), jnp.array([0., 1., 4., 9.]))
+        sp = make_interpax_spline(np.array([0., 1., 2., 3.]), np.array([0., 1., 4., 9.]))
         fn = eqx.filter_jit(sp)
         result = fn(jnp.array(1.5))
         assert result.shape == ()
 
     def test_derivative_jittable(self):
-        sp = _make_spline(jnp.array([0., 1., 2., 3.]), jnp.array([0., 1., 4., 9.]))
+        sp = make_interpax_spline(np.array([0., 1., 2., 3.]), np.array([0., 1., 4., 9.]))
         fn = eqx.filter_jit(sp.derivative())
         result = fn(jnp.array(1.5))
         assert result.shape == ()
@@ -473,7 +475,7 @@ class TestGetMassBalance:
 
     def test_vmap_over_batch_of_states(self):
         mb = get_mass_balance(_make_process())
-        fn = eqx.filter_jit(jax.vmap(mb, in_axes=(0, 0, 0, None)))
+        fn = eqx.filter_jit(eqx.filter_vmap(mb, in_axes=(0, 0, 0, None)))
         B = 4
         c = jnp.stack([jnp.array([0.5 + i*0.3, 10.0 - i, 1.0 + i*0.1])
                        for i in range(B)])
@@ -852,7 +854,7 @@ class TestModeledFlow:
 
     def test_vmap_with_modeled_flow(self):
         mb = get_mass_balance(_make_process_with_modeled_flow())
-        fn = eqx.filter_jit(jax.vmap(mb, in_axes=(0, 0, 0, 0)))
+        fn = eqx.filter_jit(eqx.filter_vmap(mb, in_axes=(0, 0, 0, 0)))
         B = 4
         c = jnp.stack([jnp.array([0.5 + i*0.3, 10.0 - i, 1.0 + i*0.1])
                        for i in range(B)])
@@ -915,11 +917,301 @@ class TestModuleExport:
         assert hasattr(mech, "ControlSplines")
         assert hasattr(mech, "MassBalance")
 
+    def test_new_functions_accessible(self):
+        import bpbench.mechanistic as mech
+        assert hasattr(mech, "extract_discrete_events")
+        assert hasattr(mech, "apply_discrete_event")
+        assert hasattr(mech, "estimate_specific_rates")
+        assert hasattr(mech, "integrate_process")
+
     def test_mechanistic_in_bpbench_namespace(self):
         assert hasattr(bpbench, "mechanistic")
 
     def test_mechanistic_in_all(self):
         assert "mechanistic" in bpbench.__all__
+
+
+# ---------------------------------------------------------------------------
+# extract_discrete_events tests
+# ---------------------------------------------------------------------------
+
+class TestExtractDiscreteEvents:
+
+    def test_sampling_only(self):
+        process = _make_process(with_controlled_flow=True,
+                                with_controlled_pv=False,
+                                with_discrete_vc=True)
+        mb = get_mass_balance(process)
+        events = extract_discrete_events(process, mb)
+        assert len(events) == 2
+        for ev in events:
+            assert ev['kind'] == 'sample'
+            assert ev['dV'] < 0
+            assert ev['Cin'] is None
+
+    def test_bolus_feed(self):
+        """Process with a discrete bolus feed."""
+        feed_medium = FeedMedium(
+            name="bolus_feed", density=1.0, density_unit="kg/L",
+            components={
+                "biomass": FeedMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=StaticVariable(value=0.0),
+                    is_controlled=False,
+                ),
+                "glucose": FeedMediumComponent(
+                    name="glucose", unit="g/L",
+                    concentration=StaticVariable(value=300.0),
+                    is_controlled=False,
+                ),
+            },
+        )
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus", unit="L", is_controlled=True, is_continuous=False,
+            feed_medium=feed_medium,
+            values=_ts([5.0], [0.1]),
+        )
+        mb = get_mass_balance(process)
+        events = extract_discrete_events(process, mb)
+        assert len(events) == 1
+        assert events[0]['kind'] == 'bolus_feed'
+        assert events[0]['dV'] == pytest.approx(0.1)
+        # Cin aligned with species_names
+        bio_idx = mb.species_names.index("biomass")
+        glu_idx = mb.species_names.index("glucose")
+        assert events[0]['Cin'][bio_idx] == pytest.approx(0.0)
+        assert events[0]['Cin'][glu_idx] == pytest.approx(300.0)
+
+    def test_no_discrete_events(self):
+        process = _make_process(with_controlled_flow=True, with_controlled_pv=False,
+                                with_discrete_vc=False)
+        mb = get_mass_balance(process)
+        events = extract_discrete_events(process, mb)
+        assert events == []
+
+    def test_events_sorted_by_time(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False,
+                                with_discrete_vc=True)
+        mb = get_mass_balance(process)
+        events = extract_discrete_events(process, mb)
+        times = [ev['t'] for ev in events]
+        assert times == sorted(times)
+
+    def test_cin_length_matches_species(self):
+        feed_medium = FeedMedium(
+            name="bf", density=1.0, density_unit="kg/L",
+            components={
+                "biomass": FeedMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=StaticVariable(value=0.0),
+                    is_controlled=False,
+                ),
+                "glucose": FeedMediumComponent(
+                    name="glucose", unit="g/L",
+                    concentration=StaticVariable(value=100.0),
+                    is_controlled=False,
+                ),
+            },
+        )
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus", unit="L", is_controlled=True, is_continuous=False,
+            feed_medium=feed_medium,
+            values=_ts([3.0], [0.05]),
+        )
+        mb = get_mass_balance(process)
+        events = extract_discrete_events(process, mb)
+        assert len(events[0]['Cin']) == len(mb.species_names)
+
+
+# ---------------------------------------------------------------------------
+# apply_discrete_event tests
+# ---------------------------------------------------------------------------
+
+class TestApplyDiscreteEvent:
+
+    def test_sampling_concentrations_unchanged(self):
+        state = jnp.array([2.0, 5.0, 1.0])  # [X, S, V]
+        event = dict(t=5.0, kind='sample', dV=-0.05, Cin=None, source='sampling')
+        new_state = apply_discrete_event(state, event)
+        assert float(new_state[0]) == pytest.approx(2.0, rel=1e-6)
+        assert float(new_state[1]) == pytest.approx(5.0, rel=1e-6)
+        assert float(new_state[2]) == pytest.approx(0.95, rel=1e-6)
+
+    def test_bolus_feed_mixing(self):
+        state = jnp.array([2.0, 5.0, 1.0])  # [X, S, V]
+        Cin = np.array([0.0, 300.0])
+        event = dict(t=5.0, kind='bolus_feed', dV=0.1, Cin=Cin, source='bolus')
+        new_state = apply_discrete_event(state, event)
+        V_new = 1.1
+        X_new = (2.0 * 1.0 + 0.0 * 0.1) / V_new
+        S_new = (5.0 * 1.0 + 300.0 * 0.1) / V_new
+        assert float(new_state[0]) == pytest.approx(X_new, rel=1e-5)
+        assert float(new_state[1]) == pytest.approx(S_new, rel=1e-5)
+        assert float(new_state[2]) == pytest.approx(V_new, rel=1e-5)
+
+    def test_state_shape_preserved(self):
+        state = jnp.array([1.0, 2.0, 3.0, 0.5])
+        event = dict(t=1.0, kind='sample', dV=-0.01, Cin=None, source='s')
+        new_state = apply_discrete_event(state, event)
+        assert new_state.shape == state.shape
+
+    def test_zero_dV_no_change(self):
+        """Zero dV event should not change concentrations."""
+        state = jnp.array([2.0, 5.0, 1.0])
+        event = dict(t=5.0, kind='sample', dV=0.0, Cin=None, source='s')
+        new_state = apply_discrete_event(state, event)
+        assert jnp.allclose(new_state, state, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# estimate_specific_rates tests
+# ---------------------------------------------------------------------------
+
+class TestEstimateSpecificRates:
+
+    def test_constant_q_exponential_growth(self):
+        """With constant q and no feed, exponential growth gives back q."""
+        # Simple batch: dX/dt = q_X * X, dS/dt = q_S * X, V=1 constant
+        q_X_true = 0.3
+        q_S_true = -0.1
+        t = np.linspace(0, 10, 50)
+        X0, S0 = 1.0, 10.0
+        X = X0 * np.exp(q_X_true * t)
+        S = S0 + (q_S_true / q_X_true) * X0 * (np.exp(q_X_true * t) - 1)
+        S = np.maximum(S, 0.0)
+
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_mass_balance(process)
+
+        conc_splines = {
+            "biomass": make_interpax_spline(t, X),
+            "glucose": make_interpax_spline(t, S),
+        }
+
+        t_eval = np.linspace(0.5, 9.5, 20)
+        q_est = estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval)
+
+        # q_X should be ~0.3, q_S should be ~-0.1
+        assert q_est.shape == (20, 2)
+        np.testing.assert_allclose(q_est[:, 0], q_X_true, rtol=0.05)
+        np.testing.assert_allclose(q_est[:, 1], q_S_true, rtol=0.05)
+
+
+# ---------------------------------------------------------------------------
+# integrate_process tests
+# ---------------------------------------------------------------------------
+
+class TestIntegrateProcess:
+
+    def _setup_batch_integration(self):
+        """Set up a batch process with known constant q for testing."""
+        q_X = 0.3
+        q_S = -0.1
+
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_mass_balance(process)
+
+        q_arr = jnp.array([q_X, q_S])
+        q_spline = make_interpax_spline(
+            np.array([0.0, 10.0]),
+            np.array([[q_X, q_S], [q_X, q_S]]),
+        )
+
+        def q_func(t):
+            return q_arr
+
+        return process, ctrl, mb, q_func, q_X, q_S
+
+    def test_batch_accuracy(self):
+        """Forward integration with known q recovers analytical solution."""
+        process, ctrl, mb, q_func, q_X, q_S = self._setup_batch_integration()
+        t_eval = np.linspace(0, 10, 50)
+
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+
+        # Analytical solution
+        X0 = 0.5  # from _make_batch_process
+        S0 = 10.0
+        V0 = 1.0
+        X_true = X0 * np.exp(q_X * result['t'])
+        S_true = S0 + (q_S / q_X) * X0 * (np.exp(q_X * result['t']) - 1)
+
+        # RMSE should be very small
+        rmse_X = np.sqrt(np.mean((result['c'][:, 0] - X_true) ** 2))
+        rmse_S = np.sqrt(np.mean((result['c'][:, 1] - S_true) ** 2))
+        assert rmse_X < 1e-3, f"Biomass RMSE = {rmse_X}"
+        assert rmse_S < 1e-3, f"Glucose RMSE = {rmse_S}"
+
+    def test_volume_constant_in_batch(self):
+        """Volume should stay constant in batch mode."""
+        process, ctrl, mb, q_func, _, _ = self._setup_batch_integration()
+        t_eval = np.linspace(0, 10, 20)
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        np.testing.assert_allclose(result['V'], 1.0, atol=1e-6)
+
+    def test_with_sampling_events(self):
+        """Volume drops at sampling events, concentrations stay continuous."""
+        process = _make_process(with_controlled_flow=True,
+                                with_controlled_pv=False,
+                                with_discrete_vc=True)
+        ctrl = get_control_splines(process)
+        mb = get_mass_balance(process)
+
+        q_func = lambda t: jnp.zeros(mb.q_size)
+        t_eval = np.linspace(0, 20, 100)
+
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        assert 't' in result
+        assert 'c' in result
+        assert 'V' in result
+
+        # Volume should be lower after sampling
+        V_early = result['V'][result['t'] < 4.0]
+        V_late = result['V'][result['t'] > 11.0]
+        assert np.mean(V_late) > np.mean(V_early) - 0.2  # feed increases volume
+
+    def test_output_format(self):
+        """Check returned dict has expected keys and shapes."""
+        process, ctrl, mb, q_func, _, _ = self._setup_batch_integration()
+        t_eval = np.linspace(0, 10, 30)
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        assert set(result.keys()) == {'t', 'c', 'V'}
+        assert result['c'].shape[1] == mb.q_size
+        assert result['V'].shape[0] == result['c'].shape[0]
+        assert result['t'].shape[0] == result['c'].shape[0]
+
+    def test_default_settings_accuracy(self):
+        """Default rtol/atol settings produce RMSE < 1e-4 for a simple batch."""
+        process, ctrl, mb, q_func, q_X, q_S = self._setup_batch_integration()
+        t_eval = np.linspace(0, 10, 100)
+
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+
+        X0 = 0.5
+        S0 = 10.0
+        X_true = X0 * np.exp(q_X * result['t'])
+        S_true = S0 + (q_S / q_X) * X0 * (np.exp(q_X * result['t']) - 1)
+
+        rmse = np.sqrt(np.mean((result['c'][:, 0] - X_true) ** 2 +
+                                (result['c'][:, 1] - S_true) ** 2))
+        assert rmse < 1e-4, f"Overall RMSE = {rmse}"
+
+    def test_fedbatch_volume_increases(self):
+        """Fed-batch integration should show increasing volume."""
+        process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
+        ctrl = get_control_splines(process)
+        mb = get_mass_balance(process)
+
+        q_func = lambda t: jnp.zeros(mb.q_size)
+        t_eval = np.linspace(0, 20, 50)
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+
+        # Volume should increase over time due to feed
+        assert result['V'][-1] > result['V'][0]
 
 
 if __name__ == "__main__":

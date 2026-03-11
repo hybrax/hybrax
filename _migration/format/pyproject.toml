@@ -65,6 +65,12 @@ bpbench = ["py.typed"]
 line-length = 100
 target-version = ["py38", "py39", "py310", "py311"]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:jax.core.mapped_aval is deprecated:DeprecationWarning",
+    "ignore:jax.core.unmapped_aval is deprecated:DeprecationWarning",
+]
+
 [tool.mypy]
 python_version = "3.8"
 warn_return_any = true
