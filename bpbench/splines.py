@@ -809,11 +809,16 @@ class BacktransformSpline(eqx.Module):
         if self.use_cubic_fc:
             dfc_cubic = self.fc_spline.derivative()
         else:
-            # Precompute slopes of piecewise-linear fc interpolation
+            # Precompute slopes of piecewise-linear fc interpolation.
+            # Step-transition intervals (very narrow dt) produce extreme
+            # slopes that are numerical artifacts — zero them out.
             dfc_cubic = None
+            _fc_dt = jnp.diff(self.fc_times)
             _fc_slopes = jnp.diff(self.fc_values) / jnp.maximum(
-                jnp.diff(self.fc_times), jnp.array(1e-12)
+                _fc_dt, jnp.array(1e-12)
             )
+            median_dt = jnp.median(_fc_dt)
+            _fc_slopes = jnp.where(_fc_dt < 0.1 * median_dt, 0.0, _fc_slopes)
             _fc_times = self.fc_times
 
         def _deriv(t):

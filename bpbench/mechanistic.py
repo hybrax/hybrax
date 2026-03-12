@@ -27,8 +27,11 @@ extract_discrete_events(process, mb) -> list[dict]
 apply_discrete_event(state, event) -> jnp.ndarray
     Apply a single discrete event to the ODE state vector.
 
+build_q_func(process, ctrl, mb, conc_splines) -> Callable
+    Build an analytical, JIT-compilable q(t) callable from splines.
+
 estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval) -> np.ndarray
-    Estimate specific rates q(t) via ODE RHS inversion.
+    Estimate specific rates q(t) via ODE RHS inversion (convenience wrapper).
 
 integrate_process(process, ctrl, mb, q_func, t_eval) -> dict
     Full hybrid ODE integration with discrete event handling.
@@ -55,6 +58,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import diffrax
 import equinox as eqx
 import interpax
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -624,23 +628,27 @@ def build_conc_splines(
 
 
 # ---------------------------------------------------------------------------
-# Specific rate estimation (ODE RHS inversion)
+# Analytical q(t) builder and specific rate estimation
 # ---------------------------------------------------------------------------
 
-def estimate_specific_rates(
+def build_q_func(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
     conc_splines: Dict[str, Any],
-    t_eval: np.ndarray,
-) -> np.ndarray:
-    """Estimate specific rates q(t) via ODE RHS inversion.
+) -> Callable:
+    """Build an analytical, JIT-compilable ``q(t)`` callable.
 
-    Uses the concentration splines and their derivatives to invert the
-    ODE RHS equation for q(t):
+    Returns a function ``q(t) -> jnp.ndarray`` that evaluates specific rates
+    at *any* time ``t`` using the analytical spline derivatives:
 
     .. math::
-        q_i = \\frac{dc_i/dt - \\text{feed\\_term}}{X_{active}}
+        q_i(t) = \\frac{dc_i/dt - \\text{feed\\_term}_i}{X_{active}}
+
+    All components (concentration derivatives, volume, flow rates, active
+    biomass) are evaluated analytically from splines and discrete-event
+    data via ``jnp.searchsorted``.  The returned callable is compatible
+    with ``jax.jit``.
 
     Parameters
     ----------
@@ -652,23 +660,16 @@ def estimate_specific_rates(
         :class:`RhsOde` module (provides species ordering, Cin, etc.).
     conc_splines:
         Dict mapping species name → callable spline that supports
-        ``spline(t)`` and ``spline.derivative()(t)`` (e.g.,
-        :class:`~bpbench.splines.BacktransformSpline` or
-        ``interpax.CubicSpline``).
-    t_eval:
-        1-D array of time points at which to estimate q.
+        ``spline(t)`` and ``spline.derivative()(t)``.
 
     Returns
     -------
-    np.ndarray, shape (len(t_eval), n_species)
-        Estimated specific rates at each time point.
+    Callable
+        ``q_func(t) -> jnp.ndarray`` of shape ``(n_species,)``.
     """
-    t_eval = np.asarray(t_eval, dtype=float)
     n_sp = mb.q_size
-    n_pts = len(t_eval)
-    q_out = np.zeros((n_pts, n_sp))
 
-    # Build cumulative volume splines for continuous flows
+    # -- Cumulative volume splines for continuous flows --
     cum_splines_ctrl = []
     for fn in mb.flow_names:
         vc = process.volume.volume_changes[fn]
@@ -693,69 +694,118 @@ def estimate_specific_rates(
             )
         cum_splines_mod.append(sp)
 
-    # Cumulative discrete volume changes
+    # -- Discrete events: precompute sorted times and cumulative dV --
     events = extract_discrete_events(process, mb)
+    if events:
+        ev_sorted = sorted(events, key=lambda e: e['t'])
+        ev_times = jnp.array([e['t'] for e in ev_sorted])
+        ev_dV_cum = jnp.cumsum(jnp.array([e['dV'] for e in ev_sorted]))
+    else:
+        ev_times = None
+        ev_dV_cum = None
 
-    V0 = float(process.volume.initial_volume)
-    Cin = np.array(mb.Cin)
-    Cin_mod = np.array(mb.Cin_modeled)
+    V0 = jnp.array(float(process.volume.initial_volume))
+    Cin = jnp.array(mb.Cin)
+    Cin_mod = jnp.array(mb.Cin_modeled)
 
-    flow_idx = list(ctrl.flow_indices)
+    # -- Pre-build derivative callables (created once, reused every call) --
+    conc_derivs = [conc_splines[s].derivative() for s in mb.species_names]
+    conc_evals = [conc_splines[s] for s in mb.species_names]
+    flow_derivs_ctrl = [sp.derivative() for sp in cum_splines_ctrl]
+    flow_derivs_mod = [sp.derivative() for sp in cum_splines_mod]
 
-    for k, t in enumerate(t_eval):
-        tj = jnp.array(t)
+    biomass_idx = mb.biomass_idx
+    intra_idx = mb.intracellular_indices
+    u_flow_size = mb.u_flow_size
+    f_mod_size = mb.f_modeled_size
 
-        # Concentrations from splines
-        c_t = np.array([float(conc_splines[s](tj)) for s in mb.species_names])
-        c_t = np.maximum(c_t, 0.0)
+    def q_func(t):
+        # Concentrations
+        c_t = jnp.stack([conc_evals[i](t) for i in range(n_sp)])
+        c_t = jnp.maximum(c_t, 0.0)
 
-        # Volume at time t
+        # Concentration derivatives (analytical)
+        dc_dt = jnp.stack([conc_derivs[i](t) for i in range(n_sp)])
+
+        # Volume: V0 + continuous flows + discrete events
         V_t = V0
         for sp in cum_splines_ctrl:
-            V_t += float(sp(tj))
+            V_t = V_t + sp(t)
         for sp in cum_splines_mod:
-            V_t += float(sp(tj))
-        for ev in events:
-            if ev['t'] <= t:
-                V_t += ev['dV']
-        V_t = max(V_t, 1e-10)
+            V_t = V_t + sp(t)
+        if ev_times is not None:
+            idx = jnp.searchsorted(ev_times, t, side='right')
+            V_t = V_t + jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
+        V_t = jnp.maximum(V_t, jnp.array(1e-10))
 
-        # Flow rates
-        u_flow = np.zeros(mb.u_flow_size)
-        for i, sp in enumerate(cum_splines_ctrl):
-            u_flow[i] = float(sp.derivative()(tj))
+        # Flow rates (derivatives of cumulative volume splines)
+        if u_flow_size > 0:
+            u_flow = jnp.stack([flow_derivs_ctrl[i](t) for i in range(u_flow_size)])
+        else:
+            u_flow = jnp.zeros(0)
+        if f_mod_size > 0:
+            f_mod = jnp.stack([flow_derivs_mod[i](t) for i in range(f_mod_size)])
+        else:
+            f_mod = jnp.zeros(0)
 
-        f_mod = np.zeros(mb.f_modeled_size)
-        for i, sp in enumerate(cum_splines_mod):
-            f_mod[i] = float(sp.derivative()(tj))
-
-        # Feed contributions: (f/V) * (C_in - c)
-        feed_term = np.zeros(n_sp)
-        if mb.u_flow_size > 0:
-            feed_ctrl = np.sum(
+        # Feed term: sum_k (f_k / V) * (C_in_k - c)
+        feed_term = jnp.zeros(n_sp)
+        if u_flow_size > 0:
+            feed_term = feed_term + jnp.sum(
                 (u_flow[:, None] / V_t) * (Cin - c_t[None, :]), axis=0
             )
-            feed_term += feed_ctrl
-        if mb.f_modeled_size > 0:
-            feed_modeled = np.sum(
+        if f_mod_size > 0:
+            feed_term = feed_term + jnp.sum(
                 (f_mod[:, None] / V_t) * (Cin_mod - c_t[None, :]), axis=0
             )
-            feed_term += feed_modeled
-
-        # Concentration derivatives from splines (analytical)
-        dc_t = np.zeros(n_sp)
-        for i, s in enumerate(mb.species_names):
-            dc_t[i] = float(conc_splines[s].derivative()(tj))
 
         # Active biomass
-        X_active = c_t[mb.biomass_idx]
-        for idx in mb.intracellular_indices:
-            X_active -= c_t[idx]
-        X_active = max(X_active, 1e-6)
+        X_active = c_t[biomass_idx]
+        for i in intra_idx:
+            X_active = X_active - c_t[i]
+        X_active = jnp.maximum(X_active, jnp.array(1e-6))
 
-        # q_i = (dc_i/dt - feed_term_i) / X_active
-        q_out[k] = (dc_t - feed_term) / X_active
+        return (dc_dt - feed_term) / X_active
 
+    return q_func
+
+
+def estimate_specific_rates(
+    process: BioProcess,
+    ctrl: ControlSplines,
+    mb: RhsOde,
+    conc_splines: Dict[str, Any],
+    t_eval: np.ndarray,
+) -> np.ndarray:
+    """Estimate specific rates q(t) via ODE RHS inversion.
+
+    Convenience wrapper around :func:`build_q_func` that evaluates the
+    analytical rate function at the given time points.
+
+    Parameters
+    ----------
+    process:
+        A :class:`~bpbench.BioProcess` instance.
+    ctrl:
+        :class:`ControlSplines` module for evaluating control signals.
+    mb:
+        :class:`RhsOde` module (provides species ordering, Cin, etc.).
+    conc_splines:
+        Dict mapping species name → callable spline that supports
+        ``spline(t)`` and ``spline.derivative()(t)``.
+    t_eval:
+        1-D array of time points at which to estimate q.
+
+    Returns
+    -------
+    np.ndarray, shape (len(t_eval), n_species)
+        Estimated specific rates at each time point.
+    """
+    t_eval = np.asarray(t_eval, dtype=float)
+    q_func = build_q_func(process, ctrl, mb, conc_splines)
+    q_out = np.zeros((len(t_eval), mb.q_size))
+    for k, t in enumerate(t_eval):
+        q_out[k] = np.asarray(q_func(jnp.array(t)))
     return q_out
 
 
@@ -859,16 +909,12 @@ def integrate_process(
 ) -> Dict[str, Any]:
     """Full hybrid ODE integration with discrete event handling.
 
-    Integrates the ODE segment-by-segment.  Segments are
-    separated by discrete events (sampling, bolus feeds).  Between events
-    the ODE is solved with ``diffrax.Dopri5``.  At event boundaries,
-    :func:`apply_discrete_event` is applied.
+    Integrates the ODE segment-by-segment using ``jax.lax.scan`` over
+    segments separated by discrete events.  The entire scan is JIT-compiled
+    once via ``eqx.filter_jit``; subsequent calls reuse the compiled code.
 
-    ``diffeqsolve`` is called directly (not wrapped in ``eqx.filter_jit``)
-    so that diffrax handles its own internal JIT compilation of the step
-    function.  This avoids tracing the entire solve loop into a single XLA
-    program, which would cause extremely slow compilation when splines have
-    many knots.
+    Between events the ODE is solved with ``diffrax.Tsit5``.  At event
+    boundaries, discrete state updates (sampling, bolus feeds) are applied.
 
     Concentrations that span large magnitudes (e.g. cell counts at 1e9)
     are automatically normalized for numerical conditioning, then
@@ -913,8 +959,8 @@ def integrate_process(
     # Per-species scale factors for numerical conditioning
     scales = _compute_scale_factors(process, mb)
     scale_vec = jnp.array(scales)  # (n_sp,)
-    # Full state scale: [scales..., 1.0] (volume is not scaled)
-    state_scale = jnp.append(scale_vec, 1.0)
+    state_scale = jnp.append(scale_vec, 1.0)  # [scales..., 1.0]
+    state_dim = n_sp + 1
 
     # Build modeled flow splines
     cum_splines_mod = []
@@ -934,6 +980,7 @@ def integrate_process(
     event_times = sorted(set(ev['t'] for ev in events))
     event_times_in_range = [t for t in event_times if t_start < t < t_end]
     boundaries = [t_start] + event_times_in_range + [t_end]
+    n_seg = len(boundaries) - 1
 
     # Build event lookup
     event_lookup: Dict[float, List[Dict]] = {}
@@ -957,22 +1004,19 @@ def integrate_process(
         return dc_dt_orig / state_scale
 
     term = diffrax.ODETerm(rhs_normalized)
-    solver = diffrax.Dopri5()
+    solver = diffrax.Tsit5()
     stepsize_controller = diffrax.PIDController(rtol=rtol, atol=atol)
 
     # Normalized initial state
-    state_norm = jnp.array(np.append(c0, V0)) / state_scale
+    state_norm_init = jnp.array(np.append(c0, V0)) / state_scale
 
-    # Segment-by-segment integration
-    t_segments = []
-    c_segments = []
-    V_segments = []
-
-    for seg_idx in range(len(boundaries) - 1):
+    # ---------------------------------------------------------------
+    # Pre-build padded segment time arrays
+    # ---------------------------------------------------------------
+    seg_t_arrays = []
+    for seg_idx in range(n_seg):
         t_lo = boundaries[seg_idx]
         t_hi = boundaries[seg_idx + 1]
-
-        # Select eval points in this segment
         mask = (t_eval >= t_lo) & (t_eval <= t_hi)
         t_seg = t_eval[mask]
         if len(t_seg) == 0:
@@ -982,30 +1026,135 @@ def integrate_process(
                 t_seg = np.concatenate([[t_lo], t_seg])
             if t_seg[-1] < t_hi - 1e-12:
                 t_seg = np.concatenate([t_seg, [t_hi]])
+        seg_t_arrays.append(t_seg)
 
-        dt0 = min(0.1, (t_hi - t_lo) / 10.0)
+    max_ts_len = max(len(ts) for ts in seg_t_arrays)
 
-        sol = diffrax.diffeqsolve(
-            term,
-            solver,
-            t0=t_lo,
-            t1=t_hi,
-            dt0=dt0,
-            y0=state_norm,
-            saveat=diffrax.SaveAt(ts=jnp.array(t_seg)),
-            stepsize_controller=stepsize_controller,
-            max_steps=max_steps,
-        )
-        ys_norm = sol.ys
+    seg_t_valid_len = []
+    seg_t_padded_list = []
+    for ts in seg_t_arrays:
+        n_valid = len(ts)
+        seg_t_valid_len.append(n_valid)
+        if n_valid < max_ts_len:
+            pad = np.full(max_ts_len - n_valid, ts[-1])
+            seg_t_padded_list.append(np.concatenate([ts, pad]))
+        else:
+            seg_t_padded_list.append(ts)
 
-        # Un-normalize
-        ys_orig = ys_norm * state_scale[None, :]
+    # Stack into JAX arrays for lax.scan
+    seg_t_lo = jnp.array([boundaries[i] for i in range(n_seg)])
+    seg_t_hi = jnp.array([boundaries[i + 1] for i in range(n_seg)])
+    seg_ts_padded = jnp.stack(seg_t_padded_list)      # (n_seg, max_ts_len)
+    seg_n_valid = jnp.array(seg_t_valid_len)           # (n_seg,)
 
-        c_seg = jnp.maximum(ys_orig[:, :n_sp], 0.0)
-        V_seg = jnp.maximum(ys_orig[:, n_sp], 1e-10)
+    # ---------------------------------------------------------------
+    # Pre-build padded event arrays for each segment boundary
+    # ---------------------------------------------------------------
+    max_ev = max(
+        (len(event_lookup.get(boundaries[i + 1], []))
+         for i in range(n_seg)),
+        default=0,
+    )
+    max_ev = max(max_ev, 1)  # at least 1 slot for padding
 
-        # Store results (skip last point if not final segment to avoid duplication)
-        if seg_idx < len(boundaries) - 2:
+    ev_n_arr = np.zeros(n_seg, dtype=np.int32)
+    ev_dV_arr = np.zeros((n_seg, max_ev))
+    ev_is_bolus_arr = np.zeros((n_seg, max_ev), dtype=bool)
+    ev_Cin_arr = np.zeros((n_seg, max_ev, n_sp))
+
+    for i in range(n_seg - 1):
+        evs = event_lookup.get(boundaries[i + 1], [])
+        ev_n_arr[i] = len(evs)
+        for j, ev in enumerate(evs):
+            ev_dV_arr[i, j] = ev['dV']
+            if ev['kind'] == 'bolus_feed' and ev['Cin'] is not None:
+                ev_is_bolus_arr[i, j] = True
+                ev_Cin_arr[i, j] = ev['Cin']
+    # Last segment has no events (ev_n_arr[-1] stays 0)
+
+    ev_n_jnp = jnp.array(ev_n_arr)
+    ev_dV_jnp = jnp.array(ev_dV_arr)
+    ev_is_bolus_jnp = jnp.array(ev_is_bolus_arr)
+    ev_Cin_jnp = jnp.array(ev_Cin_arr)
+
+    # ---------------------------------------------------------------
+    # JIT-compiled scan over segments
+    # ---------------------------------------------------------------
+    @eqx.filter_jit
+    def _run_scan(y0_norm, s_t_lo, s_t_hi, s_ts, s_n_valid,
+                  s_ev_n, s_ev_dV, s_ev_is_bolus, s_ev_Cin):
+
+        def _scan_body(carry, x):
+            state_n = carry
+            t_lo, t_hi, ts, n_val, n_ev, e_dV, e_bolus, e_Cin = x
+
+            dt0 = jnp.minimum(0.1, (t_hi - t_lo) / 10.0)
+
+            sol = diffrax.diffeqsolve(
+                term, solver,
+                t0=t_lo, t1=t_hi, dt0=dt0,
+                y0=state_n,
+                saveat=diffrax.SaveAt(ts=ts),
+                stepsize_controller=stepsize_controller,
+                max_steps=max_steps,
+            )
+            ys_norm = sol.ys  # (max_ts_len, state_dim)
+
+            # Apply discrete events at boundary (in original coords)
+            state_orig = ys_norm[-1] * state_scale
+
+            def _apply_event(state, j):
+                dV = e_dV[j]
+                is_bolus = e_bolus[j]
+                Cin = e_Cin[j]
+                c = state[:n_sp]
+                V = state[n_sp]
+                V_new = V + dV
+                c_bolus = (c * V + Cin * dV) / jnp.maximum(V_new, 1e-10)
+                c_new = jnp.where(is_bolus, c_bolus, c)
+                V_new = jnp.maximum(V_new, 1e-10)
+                c_new = jnp.maximum(c_new, 0.0)
+                new_state = jnp.append(c_new, V_new)
+                active = j < n_ev
+                return jnp.where(active, new_state, state)
+
+            state_orig = jax.lax.fori_loop(
+                0, max_ev, lambda j, s: _apply_event(s, j), state_orig
+            )
+            state_n_next = state_orig / state_scale
+
+            return state_n_next, ys_norm
+
+        xs = (s_t_lo, s_t_hi, s_ts, s_n_valid,
+              s_ev_n, s_ev_dV, s_ev_is_bolus, s_ev_Cin)
+        _, all_ys = jax.lax.scan(_scan_body, y0_norm, xs)
+        return all_ys  # (n_seg, max_ts_len, state_dim)
+
+    all_ys_norm = _run_scan(
+        state_norm_init,
+        seg_t_lo, seg_t_hi, seg_ts_padded, seg_n_valid,
+        ev_n_jnp, ev_dV_jnp, ev_is_bolus_jnp, ev_Cin_jnp,
+    )
+
+    # ---------------------------------------------------------------
+    # Post-process: un-normalize, extract valid points, concatenate
+    # ---------------------------------------------------------------
+    all_ys_orig = all_ys_norm * state_scale[None, None, :]  # (n_seg, max_ts_len, state_dim)
+
+    t_segments = []
+    c_segments = []
+    V_segments = []
+
+    for seg_idx in range(n_seg):
+        n_valid = seg_t_valid_len[seg_idx]
+        ys_seg = all_ys_orig[seg_idx, :n_valid, :]
+
+        c_seg = jnp.maximum(ys_seg[:, :n_sp], 0.0)
+        V_seg = jnp.maximum(ys_seg[:, n_sp], 1e-10)
+        t_seg = seg_t_arrays[seg_idx]
+
+        # Skip last point of non-final segments to avoid duplication
+        if seg_idx < n_seg - 1:
             t_segments.append(np.asarray(t_seg[:-1]))
             c_segments.append(np.asarray(c_seg[:-1]))
             V_segments.append(np.asarray(V_seg[:-1]))
@@ -1013,16 +1162,6 @@ def integrate_process(
             t_segments.append(np.asarray(t_seg))
             c_segments.append(np.asarray(c_seg))
             V_segments.append(np.asarray(V_seg))
-
-        # Apply discrete events at boundary (in original coordinates)
-        if seg_idx < len(boundaries) - 2:
-            state_orig = jnp.array(
-                [float(c_seg[-1, i]) for i in range(n_sp)] + [float(V_seg[-1])]
-            )
-            t_event = boundaries[seg_idx + 1]
-            for ev in event_lookup.get(t_event, []):
-                state_orig = apply_discrete_event(state_orig, ev)
-            state_norm = state_orig / state_scale
 
     t_out = np.concatenate(t_segments)
     c_out = np.vstack(c_segments)
