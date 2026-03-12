@@ -30,7 +30,7 @@ apply_discrete_event(state, event) -> jnp.ndarray
 build_q_func(process, ctrl, mb, conc_splines) -> Callable
     Build an analytical, JIT-compilable q(t) callable from splines.
 
-estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval) -> np.ndarray
+estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval) -> jnp.ndarray
     Estimate specific rates q(t) via ODE RHS inversion (convenience wrapper).
 
 integrate_process(process, ctrl, mb, q_func, t_eval) -> dict
@@ -60,7 +60,6 @@ import equinox as eqx
 import interpax
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 from .dataclasses import BioProcess, FeedVolumeChange, SampleVolumeChange, SplineRepresentation, StaticVariable, TimeSeries
 from .splines import make_interpax_spline, build_interpax_spline, build_backtransform_spline
@@ -331,8 +330,8 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
             sp = build_interpax_spline(vc.spline)[0][0]
         else:
             sp = make_interpax_spline(
-                np.asarray(vc.values.timepoints),
-                np.asarray(vc.values.values),
+                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.values),
             )
         control_names.append(vc_name)
         flow_indices.append(idx)
@@ -348,16 +347,16 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
             sp = build_interpax_spline(pv.spline)[0][0]
         elif isinstance(pv.values, TimeSeries):
             sp = make_interpax_spline(
-                np.asarray(pv.values.timepoints),
-                np.asarray(pv.values.values),
+                jnp.asarray(pv.values.timepoints),
+                jnp.asarray(pv.values.values),
             )
         else:
             # StaticVariable: constant spline over the full process time span
             t_start = float(process.time_axis.start)
             t_end = float(process.time_axis.end)
             sp = make_interpax_spline(
-                np.array([t_start, t_end]),
-                np.array([float(pv.values.value), float(pv.values.value)]),
+                jnp.array([t_start, t_end]),
+                jnp.array([float(pv.values.value), float(pv.values.value)]),
             )
         control_names.append(pv_name)
         ctrl_indices.append(idx)
@@ -420,7 +419,7 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
     # --- Helper to build a Cin matrix for a list of volume-change names ---
     def _build_cin(vc_names):
         n = len(vc_names)
-        Cin_np = np.zeros((n, n_species), dtype=float)
+        Cin = jnp.zeros((n, n_species), dtype=float)
         for k, vc_name in enumerate(vc_names):
             vc = process.volume.volume_changes[vc_name]
             if not isinstance(vc, FeedVolumeChange):
@@ -431,13 +430,13 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
                     continue
                 conc = feed.components[sp_name].concentration
                 if isinstance(conc, StaticVariable):
-                    Cin_np[k, j] = float(conc.value)
+                    Cin = Cin.at[k, j].set(float(conc.value))
                 else:
                     raise NotImplementedError(
                         "TimeSeries feed concentrations are not yet supported in get_rhs_ode. "
                         f"Found TimeSeries for species '{sp_name}' in feed '{feed.name}' of volume change '{vc_name}'."
                     )
-        return Cin_np
+        return Cin
 
     # --- Controlled continuous flows ---
     flow_names: List[str] = []
@@ -451,8 +450,8 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
         if (not vc.is_controlled) and vc.is_continuous:
             modeled_flow_names.append(vc_name)
 
-    Cin_np = _build_cin(flow_names)
-    Cin_modeled_np = _build_cin(modeled_flow_names)
+    Cin = _build_cin(flow_names)
+    Cin_modeled = _build_cin(modeled_flow_names)
 
     return RhsOde(
         c_size=n_species + 1,
@@ -465,8 +464,8 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
         modeled_flow_names=tuple(modeled_flow_names),
         biomass_idx=biomass_idx,
         intracellular_indices=tuple(intracellular_indices),
-        Cin=jnp.array(Cin_np),
-        Cin_modeled=jnp.array(Cin_modeled_np),
+        Cin=Cin,
+        Cin_modeled=Cin_modeled,
     )
 
 
@@ -494,7 +493,7 @@ def extract_discrete_events(
         - ``t`` (float): event time
         - ``kind`` (str): ``'sample'`` or ``'bolus_feed'``
         - ``dV`` (float): signed volume change (positive = add, negative = remove)
-        - ``Cin`` (np.ndarray | None): feed composition aligned with
+        - ``Cin`` (jnp.ndarray | None): feed composition aligned with
           ``mb.species_names`` (None for sampling)
         - ``source`` (str): name of the originating VolumeChange
     """
@@ -505,21 +504,21 @@ def extract_discrete_events(
         if vc.is_continuous:
             continue
 
-        tp = np.asarray(vc.values.timepoints, dtype=float)
-        vv = np.asarray(vc.values.values, dtype=float)
+        tp = jnp.asarray(vc.values.timepoints, dtype=float)
+        vv = jnp.asarray(vc.values.values, dtype=float)
 
         for t_event, dV_event in zip(tp, vv):
             if abs(dV_event) < 1e-15:
                 continue
 
             if dV_event > 0 and isinstance(vc, FeedVolumeChange):
-                Cin_event = np.zeros(n_sp)
+                Cin_event = jnp.zeros(n_sp)
                 if vc.feed_medium is not None:
                     for j, sp_name in enumerate(mb.species_names):
                         if sp_name in vc.feed_medium.components:
                             conc = vc.feed_medium.components[sp_name].concentration
                             if isinstance(conc, StaticVariable):
-                                Cin_event[j] = float(conc.value)
+                                Cin_event = Cin_event.at[j].set(float(conc.value))
                 events.append(dict(
                     t=float(t_event),
                     kind='bolus_feed',
@@ -620,8 +619,8 @@ def build_conc_splines(
         else:
             ts = comp.concentration
             conc_splines[sp_name] = make_interpax_spline(
-                np.asarray(ts.timepoints, dtype=float),
-                np.asarray(ts.values, dtype=float),
+                jnp.asarray(ts.timepoints, dtype=float),
+                jnp.asarray(ts.values, dtype=float),
             )
 
     return conc_splines
@@ -677,8 +676,8 @@ def build_q_func(
             sp = build_interpax_spline(vc.spline)[0][0]
         else:
             sp = make_interpax_spline(
-                np.asarray(vc.values.timepoints),
-                np.asarray(vc.values.values),
+                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.values),
             )
         cum_splines_ctrl.append(sp)
 
@@ -689,8 +688,8 @@ def build_q_func(
             sp = build_interpax_spline(vc.spline)[0][0]
         else:
             sp = make_interpax_spline(
-                np.asarray(vc.values.timepoints),
-                np.asarray(vc.values.values),
+                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.values),
             )
         cum_splines_mod.append(sp)
 
@@ -775,8 +774,8 @@ def estimate_specific_rates(
     ctrl: ControlSplines,
     mb: RhsOde,
     conc_splines: Dict[str, Any],
-    t_eval: np.ndarray,
-) -> np.ndarray:
+    t_eval: jnp.ndarray,
+) -> jnp.ndarray:
     """Estimate specific rates q(t) via ODE RHS inversion.
 
     Convenience wrapper around :func:`build_q_func` that evaluates the
@@ -798,14 +797,14 @@ def estimate_specific_rates(
 
     Returns
     -------
-    np.ndarray, shape (len(t_eval), n_species)
+    jnp.ndarray, shape (len(t_eval), n_species)
         Estimated specific rates at each time point.
     """
-    t_eval = np.asarray(t_eval, dtype=float)
+    t_eval = jnp.asarray(t_eval, dtype=float)
     q_func = build_q_func(process, ctrl, mb, conc_splines)
-    q_out = np.zeros((len(t_eval), mb.q_size))
+    q_out = jnp.zeros((len(t_eval), mb.q_size))
     for k, t in enumerate(t_eval):
-        q_out[k] = np.asarray(q_func(jnp.array(t)))
+        q_out = q_out.at[k].set(q_func(jnp.array(t)))
     return q_out
 
 
@@ -876,22 +875,22 @@ def _build_segment_rhs(mb, ctrl, q_func, cum_splines_mod, conc_splines=None):
     return rhs
 
 
-def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> np.ndarray:
+def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> jnp.ndarray:
     """Compute per-species scale factors for numerical conditioning.
 
     Returns an array of shape (n_species,) where each entry is the
     max absolute concentration for that species (clamped to >= 1.0 so
     species with small values are not artificially inflated).
     """
-    scales = np.ones(mb.q_size)
+    scales = jnp.ones(mb.q_size)
     for i, sp_name in enumerate(mb.species_names):
-        vals = np.asarray(
+        vals = jnp.asarray(
             process.reactor_medium.components[sp_name].concentration.values,
             dtype=float,
         )
-        s = np.max(np.abs(vals))
+        s = float(jnp.max(jnp.abs(vals)))
         if s > 1.0:
-            scales[i] = s
+            scales = scales.at[i].set(s)
     return scales
 
 
@@ -900,7 +899,7 @@ def integrate_process(
     ctrl: ControlSplines,
     mb: RhsOde,
     q_func: Callable,
-    t_eval: np.ndarray,
+    t_eval: jnp.ndarray,
     *,
     conc_splines: Optional[Dict[str, Any]] = None,
     rtol: float = 1e-6,
@@ -951,7 +950,7 @@ def integrate_process(
         where ``c`` has shape ``(len(t_eval), n_species)`` and ``V`` has
         shape ``(len(t_eval),)``.
     """
-    t_eval = np.asarray(t_eval, dtype=float)
+    t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
     n_sp = mb.q_size
@@ -970,8 +969,8 @@ def integrate_process(
             sp = build_interpax_spline(vc.spline)[0][0]
         else:
             sp = make_interpax_spline(
-                np.asarray(vc.values.timepoints),
-                np.asarray(vc.values.values),
+                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.values),
             )
         cum_splines_mod.append(sp)
 
@@ -988,11 +987,11 @@ def integrate_process(
         event_lookup.setdefault(ev['t'], []).append(ev)
 
     # Initial state (in original coordinates)
-    c0 = np.array([
-        float(np.asarray(process.reactor_medium.components[s].concentration.values[0]))
+    c0 = jnp.array([
+        float(jnp.asarray(process.reactor_medium.components[s].concentration.values[0]))
         for s in mb.species_names
     ])
-    c0 = np.maximum(c0, 0.0)
+    c0 = jnp.maximum(c0, 0.0)
     V0 = float(process.volume.initial_volume)
 
     # Build RHS in original coordinates, then wrap for normalized state
@@ -1008,7 +1007,7 @@ def integrate_process(
     stepsize_controller = diffrax.PIDController(rtol=rtol, atol=atol)
 
     # Normalized initial state
-    state_norm_init = jnp.array(np.append(c0, V0)) / state_scale
+    state_norm_init = jnp.append(c0, V0) / state_scale
 
     # ---------------------------------------------------------------
     # Pre-build padded segment time arrays
@@ -1020,12 +1019,12 @@ def integrate_process(
         mask = (t_eval >= t_lo) & (t_eval <= t_hi)
         t_seg = t_eval[mask]
         if len(t_seg) == 0:
-            t_seg = np.array([t_lo, t_hi])
+            t_seg = jnp.array([t_lo, t_hi])
         else:
             if t_seg[0] > t_lo + 1e-12:
-                t_seg = np.concatenate([[t_lo], t_seg])
+                t_seg = jnp.concatenate([jnp.array([t_lo]), t_seg])
             if t_seg[-1] < t_hi - 1e-12:
-                t_seg = np.concatenate([t_seg, [t_hi]])
+                t_seg = jnp.concatenate([t_seg, jnp.array([t_hi])])
         seg_t_arrays.append(t_seg)
 
     max_ts_len = max(len(ts) for ts in seg_t_arrays)
@@ -1036,8 +1035,8 @@ def integrate_process(
         n_valid = len(ts)
         seg_t_valid_len.append(n_valid)
         if n_valid < max_ts_len:
-            pad = np.full(max_ts_len - n_valid, ts[-1])
-            seg_t_padded_list.append(np.concatenate([ts, pad]))
+            pad = jnp.full(max_ts_len - n_valid, ts[-1])
+            seg_t_padded_list.append(jnp.concatenate([ts, pad]))
         else:
             seg_t_padded_list.append(ts)
 
@@ -1057,25 +1056,20 @@ def integrate_process(
     )
     max_ev = max(max_ev, 1)  # at least 1 slot for padding
 
-    ev_n_arr = np.zeros(n_seg, dtype=np.int32)
-    ev_dV_arr = np.zeros((n_seg, max_ev))
-    ev_is_bolus_arr = np.zeros((n_seg, max_ev), dtype=bool)
-    ev_Cin_arr = np.zeros((n_seg, max_ev, n_sp))
+    ev_n_arr = jnp.zeros(n_seg, dtype=jnp.int32)
+    ev_dV_arr = jnp.zeros((n_seg, max_ev))
+    ev_is_bolus_arr = jnp.zeros((n_seg, max_ev), dtype=bool)
+    ev_Cin_arr = jnp.zeros((n_seg, max_ev, n_sp))
 
     for i in range(n_seg - 1):
         evs = event_lookup.get(boundaries[i + 1], [])
-        ev_n_arr[i] = len(evs)
+        ev_n_arr = ev_n_arr.at[i].set(len(evs))
         for j, ev in enumerate(evs):
-            ev_dV_arr[i, j] = ev['dV']
+            ev_dV_arr = ev_dV_arr.at[i, j].set(ev['dV'])
             if ev['kind'] == 'bolus_feed' and ev['Cin'] is not None:
-                ev_is_bolus_arr[i, j] = True
-                ev_Cin_arr[i, j] = ev['Cin']
+                ev_is_bolus_arr = ev_is_bolus_arr.at[i, j].set(True)
+                ev_Cin_arr = ev_Cin_arr.at[i, j].set(jnp.asarray(ev['Cin']))
     # Last segment has no events (ev_n_arr[-1] stays 0)
-
-    ev_n_jnp = jnp.array(ev_n_arr)
-    ev_dV_jnp = jnp.array(ev_dV_arr)
-    ev_is_bolus_jnp = jnp.array(ev_is_bolus_arr)
-    ev_Cin_jnp = jnp.array(ev_Cin_arr)
 
     # ---------------------------------------------------------------
     # JIT-compiled scan over segments
@@ -1133,7 +1127,7 @@ def integrate_process(
     all_ys_norm = _run_scan(
         state_norm_init,
         seg_t_lo, seg_t_hi, seg_ts_padded, seg_n_valid,
-        ev_n_jnp, ev_dV_jnp, ev_is_bolus_jnp, ev_Cin_jnp,
+        ev_n_arr, ev_dV_arr, ev_is_bolus_arr, ev_Cin_arr,
     )
 
     # ---------------------------------------------------------------
@@ -1155,16 +1149,16 @@ def integrate_process(
 
         # Skip last point of non-final segments to avoid duplication
         if seg_idx < n_seg - 1:
-            t_segments.append(np.asarray(t_seg[:-1]))
-            c_segments.append(np.asarray(c_seg[:-1]))
-            V_segments.append(np.asarray(V_seg[:-1]))
+            t_segments.append(t_seg[:-1])
+            c_segments.append(c_seg[:-1])
+            V_segments.append(V_seg[:-1])
         else:
-            t_segments.append(np.asarray(t_seg))
-            c_segments.append(np.asarray(c_seg))
-            V_segments.append(np.asarray(V_seg))
+            t_segments.append(t_seg)
+            c_segments.append(c_seg)
+            V_segments.append(V_seg)
 
-    t_out = np.concatenate(t_segments)
-    c_out = np.vstack(c_segments)
-    V_out = np.concatenate(V_segments)
+    t_out = jnp.concatenate(t_segments)
+    c_out = jnp.vstack(c_segments)
+    V_out = jnp.concatenate(V_segments)
 
     return {'t': t_out, 'c': c_out, 'V': V_out}

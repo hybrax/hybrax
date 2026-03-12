@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from typing import Dict, Any, List, Optional, Tuple
 
-import numpy as np
 import equinox as eqx
 import interpax
 import jax.numpy as jnp
@@ -81,18 +80,18 @@ def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     labels: list = []
     for vc_name, vc in process.volume.volume_changes.items():
         if not vc.is_continuous:
-            tp = np.array(vc.values.timepoints).tolist()
+            tp = jnp.asarray(vc.values.timepoints).tolist()
             times.extend(tp)
             labels.extend([vc_name] * len(tp))
 
     if not times:
         return DiscreteEvents(times=jnp.zeros(0))
 
-    order = np.argsort(times)
-    sorted_times = np.array(times)[order]
-    sorted_labels = [labels[i] for i in order]
-    unique_times, unique_idx = np.unique(sorted_times, return_index=True)
-    unique_labels = [sorted_labels[i] for i in unique_idx]
+    order = jnp.argsort(jnp.array(times))
+    sorted_times = jnp.array(times)[order]
+    sorted_labels = [labels[int(i)] for i in order]
+    unique_times, unique_idx = jnp.unique(sorted_times, return_index=True)
+    unique_labels = [sorted_labels[int(i)] for i in unique_idx]
 
     return DiscreteEvents(
         times=jnp.array(unique_times),
@@ -102,29 +101,29 @@ def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
 
 def make_segment_boundaries(
     t_min: float, t_max: float, event_times: jnp.ndarray
-) -> np.ndarray:
+) -> jnp.ndarray:
     """Return segment boundaries ``[t_min, ...events..., t_max]``.
 
     Only events strictly inside ``(t_min, t_max)`` are included.
-    The result is a strictly-increasing numpy array.
+    The result is a strictly-increasing array.
     """
-    ev = np.asarray(event_times, dtype=float)
+    ev = jnp.asarray(event_times, dtype=float)
     interior = ev[(ev > t_min) & (ev < t_max)]
-    boundaries = np.unique(np.concatenate([[t_min], interior, [t_max]]))
+    boundaries = jnp.unique(jnp.concatenate([jnp.array([t_min]), interior, jnp.array([t_max])]))
     return boundaries
 
 
 def split_timeseries(
-    ts: TimeSeries, boundaries: np.ndarray
+    ts: TimeSeries, boundaries: jnp.ndarray
 ) -> List[TimeSeries]:
     """Split *ts* into segments defined by *boundaries*.
 
     Points that fall exactly on a boundary belong to both adjacent segments
     (duplicated at split point) to ensure each segment covers its endpoints.
     """
-    t = np.asarray(ts.timepoints)
-    v = np.asarray(ts.values)
-    order = np.argsort(t)
+    t = jnp.asarray(ts.timepoints)
+    v = jnp.asarray(ts.values)
+    order = jnp.argsort(t)
     t = t[order]
     v = v[order]
 
@@ -134,7 +133,7 @@ def split_timeseries(
         mask = (t >= lo) & (t <= hi)
         seg_t = t[mask]
         seg_v = v[mask]
-        _, idx = np.unique(seg_t, return_index=True)
+        _, idx = jnp.unique(seg_t, return_index=True)
         seg_t = seg_t[idx]
         seg_v = seg_v[idx]
         segments.append(
@@ -154,75 +153,76 @@ def choose_spline_kind(n_points: int) -> str:
 
 
 def _fit_smoothing_segment(
-    x: np.ndarray,
-    y: np.ndarray,
+    x: jnp.ndarray,
+    y: jnp.ndarray,
     *,
     s: float,
     n_ctrl: int,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points."""
+    import numpy as _np  # scipy interop
     if len(x) < 4:
-        return x.copy(), y.copy()
-    tck = interpolate.splrep(x, y, s=s, k=3)
-    x_ctrl = np.linspace(x[0], x[-1], n_ctrl)
-    y_ctrl = interpolate.splev(x_ctrl, tck)
-    return x_ctrl, np.asarray(y_ctrl)
+        return x, y
+    tck = interpolate.splrep(_np.asarray(x), _np.asarray(y), s=s, k=3)
+    x_ctrl = jnp.linspace(float(x[0]), float(x[-1]), n_ctrl)
+    y_ctrl = jnp.asarray(interpolate.splev(_np.asarray(x_ctrl), tck))
+    return x_ctrl, y_ctrl
 
 
 def _fit_interp_segment(
-    x: np.ndarray, y: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
+    x: jnp.ndarray, y: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """For <= SMOOTHING_THRESHOLD points, store original sorted/unique data."""
-    _, idx = np.unique(x, return_index=True)
-    return x[idx].copy(), y[idx].copy()
+    _, idx = jnp.unique(x, return_index=True)
+    return x[idx], y[idx]
 
 
 def fit_timeseries_spline(
     ts: TimeSeries,
     *,
-    boundaries: Optional[np.ndarray] = None,
+    boundaries: Optional[jnp.ndarray] = None,
     smoothing_s: float = 0.0,
     n_ctrl: int = DEFAULT_MAX_CTRL_POINTS,
     max_segments: int = DEFAULT_MAX_SEGMENTS,
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
 ) -> SplineRepresentation:
     """Fit a (segmented) spline to a TimeSeries, returning a padded representation."""
-    t_np = np.asarray(ts.timepoints)
-    v_np = np.asarray(ts.values)
+    t_arr = jnp.asarray(ts.timepoints)
+    v_arr = jnp.asarray(ts.values)
 
-    order = np.argsort(t_np)
-    t_np = t_np[order]
-    v_np = v_np[order]
-    _, uidx = np.unique(t_np, return_index=True)
-    t_np = t_np[uidx]
-    v_np = v_np[uidx]
+    order = jnp.argsort(t_arr)
+    t_arr = t_arr[order]
+    v_arr = v_arr[order]
+    _, uidx = jnp.unique(t_arr, return_index=True)
+    t_arr = t_arr[uidx]
+    v_arr = v_arr[uidx]
 
     if boundaries is None:
-        boundaries = np.array([t_np[0], t_np[-1]])
+        boundaries = jnp.array([t_arr[0], t_arr[-1]])
 
     segments = split_timeseries(
-        TimeSeries(timepoints=jnp.array(t_np), values=jnp.array(v_np)),
+        TimeSeries(timepoints=jnp.array(t_arr), values=jnp.array(v_arr)),
         boundaries,
     )
     actual_n_segments = len(segments)
 
-    xs: List[np.ndarray] = []
-    ys: List[np.ndarray] = []
+    xs: List[jnp.ndarray] = []
+    ys: List[jnp.ndarray] = []
     ns: List[int] = []
     kind = "interpax_cubic"
 
     for seg in segments:
-        seg_t = np.asarray(seg.timepoints)
-        seg_v = np.asarray(seg.values)
+        seg_t = jnp.asarray(seg.timepoints)
+        seg_v = jnp.asarray(seg.values)
         n_pts = len(seg_t)
 
         if n_pts < 2:
             if n_pts == 1:
-                seg_t = np.array([seg_t[0], seg_t[0] + 1e-6])
-                seg_v = np.array([seg_v[0], seg_v[0]])
+                seg_t = jnp.array([seg_t[0], seg_t[0] + 1e-6])
+                seg_v = jnp.array([seg_v[0], seg_v[0]])
             else:
-                seg_t = np.array([0.0, 1e-6])
-                seg_v = np.array([0.0, 0.0])
+                seg_t = jnp.array([0.0, 1e-6])
+                seg_v = jnp.array([0.0, 0.0])
             xs.append(seg_t)
             ys.append(seg_v)
             ns.append(len(seg_t))
@@ -239,17 +239,17 @@ def fit_timeseries_spline(
         ys.append(yc)
         ns.append(len(xc))
 
-    x_padded = np.zeros((max_segments, max_ctrl_points))
-    y_padded = np.zeros((max_segments, max_ctrl_points))
-    n_padded = np.zeros(max_segments, dtype=int)
-    boundary_padded = np.full(max_segments + 1, boundaries[-1])
-    boundary_padded[: len(boundaries)] = boundaries
+    x_padded = jnp.zeros((max_segments, max_ctrl_points))
+    y_padded = jnp.zeros((max_segments, max_ctrl_points))
+    n_padded = jnp.zeros(max_segments, dtype=int)
+    boundary_padded = jnp.full(max_segments + 1, float(boundaries[-1]))
+    boundary_padded = boundary_padded.at[: len(boundaries)].set(boundaries)
 
     for i in range(actual_n_segments):
         n_pts = min(ns[i], max_ctrl_points)
-        x_padded[i, :n_pts] = xs[i][:n_pts]
-        y_padded[i, :n_pts] = ys[i][:n_pts]
-        n_padded[i] = n_pts
+        x_padded = x_padded.at[i, :n_pts].set(xs[i][:n_pts])
+        y_padded = y_padded.at[i, :n_pts].set(ys[i][:n_pts])
+        n_padded = n_padded.at[i].set(n_pts)
 
     metadata = {
         "smoothing_s": float(smoothing_s),
@@ -284,14 +284,14 @@ def build_interpax_spline(rep: SplineRepresentation):
         sp = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
         splines.append(sp)
 
-    boundaries = np.asarray(rep.segment_boundaries[: rep.n_segments + 1])
+    boundaries = jnp.asarray(rep.segment_boundaries[: rep.n_segments + 1])
     return splines, boundaries
 
 
 def evaluate_spline_at(rep: SplineRepresentation, t: float) -> float:
     """Evaluate a segmented spline at scalar time *t* (not jitted)."""
     splines, boundaries = build_interpax_spline(rep)
-    idx = int(np.searchsorted(boundaries[1:], float(t), side="right"))
+    idx = int(jnp.searchsorted(boundaries[1:], float(t), side="right"))
     idx = max(0, min(idx, rep.n_segments - 1))
     return float(splines[idx](t))
 
@@ -304,17 +304,17 @@ def make_constant_spline(
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
 ) -> SplineRepresentation:
     """Create a SplineRepresentation for a constant value over [t_min, t_max]."""
-    x_padded = np.zeros((max_segments, max_ctrl_points))
-    y_padded = np.zeros((max_segments, max_ctrl_points))
-    n_padded = np.zeros(max_segments, dtype=int)
-    boundary_padded = np.full(max_segments + 1, t_max)
+    x_padded = jnp.zeros((max_segments, max_ctrl_points))
+    y_padded = jnp.zeros((max_segments, max_ctrl_points))
+    n_padded = jnp.zeros(max_segments, dtype=int)
+    boundary_padded = jnp.full(max_segments + 1, t_max)
 
-    x_padded[0, 0] = t_min
-    x_padded[0, 1] = t_max
-    y_padded[0, 0] = value
-    y_padded[0, 1] = value
-    n_padded[0] = 2
-    boundary_padded[0] = t_min
+    x_padded = x_padded.at[0, 0].set(t_min)
+    x_padded = x_padded.at[0, 1].set(t_max)
+    y_padded = y_padded.at[0, 0].set(value)
+    y_padded = y_padded.at[0, 1].set(value)
+    n_padded = n_padded.at[0].set(2)
+    boundary_padded = boundary_padded.at[0].set(t_min)
 
     return SplineRepresentation(
         kind="interpax_cubic",
@@ -333,7 +333,7 @@ def make_constant_spline(
 # ===========================================================================
 
 
-def _build_dense_time_grid(process: BioProcess, meas_times: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def _build_dense_time_grid(process: BioProcess, meas_times: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """
     Build dense time grid = sorted(unique(measurement times + event times)).
     For discrete (bolus) events we insert t - EPS so we have a point on both
@@ -344,7 +344,7 @@ def _build_dense_time_grid(process: BioProcess, meas_times: np.ndarray) -> Tuple
     extra_times = set()
 
     for vc_name, vc in process.volume.volume_changes.items():
-        ev_t = np.asarray(vc.values.timepoints, dtype=float)
+        ev_t = jnp.asarray(vc.values.timepoints, dtype=float)
         for t in ev_t:
             extra_times.add(float(t))
             if not vc.is_continuous:
@@ -354,28 +354,28 @@ def _build_dense_time_grid(process: BioProcess, meas_times: np.ndarray) -> Tuple
                 if isinstance(vc, SampleVolumeChange):
                     extra_times.add(float(t) + _EPS)
 
-    all_times = np.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
+    all_times = jnp.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
 
-    meas_indices = np.array([np.argmin(np.abs(all_times - mt)) for mt in meas_times], dtype=int)
-    assert np.allclose(all_times[meas_indices], meas_times, atol=_EPS / 2), \
+    meas_indices = jnp.array([int(jnp.argmin(jnp.abs(all_times - mt))) for mt in meas_times], dtype=int)
+    assert jnp.allclose(all_times[meas_indices], meas_times, atol=_EPS / 2), \
         "Some measurement times not found in dense grid"
 
     return all_times, meas_indices
 
 
-def _compute_dense_volumes(process: BioProcess, dense_times: np.ndarray, species_name: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Any]:
+def _compute_dense_volumes(process: BioProcess, dense_times: jnp.ndarray, species_name: str) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, Any]:
     """
     Compute reactor_volume (dense), accumulated_feed (dense), sample_volume (dense)
     and concentration_in_feed for a given species on the dense grid.
     """
     n = len(dense_times)
-    reactor_volume = np.full(n, float(process.volume.initial_volume))
+    reactor_volume = jnp.full(n, float(process.volume.initial_volume))
     feed_streams = []
-    sample_volume = np.zeros(n)
+    sample_volume = jnp.zeros(n)
 
     for vc_name, vc in process.volume.volume_changes.items():
-        ev_times = np.asarray(vc.values.timepoints, dtype=float)
-        ev_vals = np.asarray(vc.values.values, dtype=float)
+        ev_times = jnp.asarray(vc.values.timepoints, dtype=float)
+        ev_vals = jnp.asarray(vc.values.values, dtype=float)
 
         if isinstance(vc, FeedVolumeChange):
             c_feed = 0.0
@@ -385,49 +385,49 @@ def _compute_dense_volumes(process: BioProcess, dense_times: np.ndarray, species
                     c_feed = float(fc.concentration.value)
 
             if vc.is_continuous:
-                cum_feed = np.interp(dense_times, ev_times, ev_vals,
+                cum_feed = jnp.interp(dense_times, ev_times, ev_vals,
                                      left=ev_vals[0], right=ev_vals[-1])
             else:
-                cum_feed = np.zeros(n)
+                cum_feed = jnp.zeros(n)
                 for et, ev in zip(ev_times, ev_vals):
-                    cum_feed += np.where(dense_times >= et, float(ev), 0.0)
+                    cum_feed = cum_feed + jnp.where(dense_times >= et, float(ev), 0.0)
 
-            reactor_volume += cum_feed
+            reactor_volume = reactor_volume + cum_feed
             feed_streams.append((cum_feed, c_feed))
 
         elif isinstance(vc, SampleVolumeChange):
             for et, ev in zip(ev_times, ev_vals):
-                idx = np.argmin(np.abs(dense_times - et))
-                if np.isclose(dense_times[idx], et, atol=_EPS / 2):
-                    sample_volume[idx] += abs(float(ev))
-                reactor_volume += np.where(dense_times > et, float(ev), 0.0)
+                idx = int(jnp.argmin(jnp.abs(dense_times - et)))
+                if jnp.isclose(dense_times[idx], et, atol=_EPS / 2):
+                    sample_volume = sample_volume.at[idx].add(abs(float(ev)))
+                reactor_volume = reactor_volume + jnp.where(dense_times > et, float(ev), 0.0)
 
     if len(feed_streams) == 1:
         accumulated_feed = feed_streams[0][0]
         concentration_in_feed = feed_streams[0][1]
     elif len(feed_streams) > 1:
-        accumulated_feed = np.column_stack([fs[0] for fs in feed_streams])
-        concentration_in_feed = np.array([fs[1] for fs in feed_streams])
+        accumulated_feed = jnp.column_stack([fs[0] for fs in feed_streams])
+        concentration_in_feed = jnp.array([fs[1] for fs in feed_streams])
     else:
-        accumulated_feed = np.zeros(n)
+        accumulated_feed = jnp.zeros(n)
         concentration_in_feed = 0.0
 
     return reactor_volume, accumulated_feed, sample_volume, concentration_in_feed
 
 
-def make_interpax_spline(t: np.ndarray, y: np.ndarray, bc_type: str = "natural"):
+def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural"):
     """
-    Build a robust interpax.CubicSpline from numpy arrays. Ensures unique, sorted knots.
+    Build a robust interpax.CubicSpline from arrays. Ensures unique, sorted knots.
     """
-    t = np.asarray(t, dtype=float)
-    y = np.asarray(y, dtype=float)
-    order = np.argsort(t)
+    t = jnp.asarray(t, dtype=float)
+    y = jnp.asarray(y, dtype=float)
+    order = jnp.argsort(t)
     t, y = t[order], y[order]
-    _, idx = np.unique(t, return_index=True)
+    _, idx = jnp.unique(t, return_index=True)
     t, y = t[idx], y[idx]
     if len(t) < 2:
-        t = np.array([t[0], t[0] + 1e-6])
-        y = np.array([y[0], y[0]])
+        t = jnp.array([t[0], t[0] + 1e-6])
+        y = jnp.array([y[0], y[0]])
     return interpax.CubicSpline(jnp.asarray(t), jnp.asarray(y), bc_type=bc_type, check=False)
 
 
@@ -448,12 +448,14 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     ADF and feed_correction are computed only at measurement times
     (this avoids treating continuous feeds as discrete dilutions).
     """
+    import numpy as _np  # pseudobatch interop
+
     # --- measurements
     comp = process.reactor_medium.components[species_name]
     ts = comp.concentration
     assert isinstance(ts, TimeSeries), f"{species_name} must be a TimeSeries"
-    meas_times = np.asarray(ts.timepoints, dtype=float)
-    meas_conc = np.asarray(ts.values, dtype=float)
+    meas_times = jnp.asarray(ts.timepoints, dtype=float)
+    meas_conc = jnp.asarray(ts.values, dtype=float)
 
     # --- dense grid and indices
     dense_times, meas_indices = _build_dense_time_grid(process, meas_times)
@@ -475,35 +477,36 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
 
     # --- ADF from BOLUS FEEDS ONLY (dense grid, then sliced)
     n_dense = len(dense_times)
-    bolus_vol_dense = np.full(n_dense, float(process.volume.initial_volume))
+    bolus_vol_dense = jnp.full(n_dense, float(process.volume.initial_volume))
 
     for _vc_name, vc in process.volume.volume_changes.items():
         if isinstance(vc, FeedVolumeChange) and not vc.is_continuous:
-            ev_times = np.asarray(vc.values.timepoints, dtype=float)
-            ev_vals = np.asarray(vc.values.values, dtype=float)
+            ev_times = jnp.asarray(vc.values.timepoints, dtype=float)
+            ev_vals = jnp.asarray(vc.values.values, dtype=float)
             for et, ev in zip(ev_times, ev_vals):
-                bolus_vol_dense += np.where(dense_times >= et, float(ev), 0.0)
+                bolus_vol_dense = bolus_vol_dense + jnp.where(dense_times >= et, float(ev), 0.0)
 
-    no_sample_dense = np.zeros(n_dense)
-    adf_dense = pseudobatch.data_correction.accumulated_dilution_factor(
-        bolus_vol_dense, no_sample_dense
-    )
+    no_sample_dense = jnp.zeros(n_dense)
+    # pseudobatch requires numpy arrays
+    adf_dense = jnp.asarray(pseudobatch.data_correction.accumulated_dilution_factor(
+        _np.asarray(bolus_vol_dense), _np.asarray(no_sample_dense)
+    ))
     adf_at_meas = adf_dense[mi]
 
     # --- pseudobatch transform using bolus-only ADF
     def _fed_species_term(accum_feed, conc_in_feed):
-        feed_in_interval = np.diff(accum_feed, prepend=accum_feed[0])
+        feed_in_interval = jnp.diff(accum_feed, prepend=accum_feed[0])
         return adf_at_meas * feed_in_interval * conc_in_feed / rv_at_meas
 
     if af_at_meas.ndim == 1:
-        c_star = meas_conc * adf_at_meas - np.cumsum(
+        c_star = meas_conc * adf_at_meas - jnp.cumsum(
             _fed_species_term(af_at_meas, concentration_in_feed)
         )
     else:
-        fed_sum = np.zeros(len(meas_times))
+        fed_sum = jnp.zeros(len(meas_times))
         for i in range(af_at_meas.shape[1]):
-            fed_sum += _fed_species_term(af_at_meas[:, i], concentration_in_feed[i])
-        c_star = meas_conc * adf_at_meas - np.cumsum(fed_sum)
+            fed_sum = fed_sum + _fed_species_term(af_at_meas[:, i], concentration_in_feed[i])
+        c_star = meas_conc * adf_at_meas - jnp.cumsum(fed_sum)
 
     feed_corr_at_meas = meas_conc * adf_at_meas - c_star
 
@@ -512,16 +515,16 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     return {
         "meas_times": meas_times,
         "meas_conc": meas_conc,
-        "c_star": np.asarray(c_star),
+        "c_star": jnp.asarray(c_star),
         "dense_times": dense_times,
         "meas_indices": meas_indices,
         "reactor_volume_dense": reactor_volume_dense,
         "sample_volume_dense": sample_volume_dense,
         "accumulated_feed_dense": accumulated_feed_dense,
         "concentration_in_feed": concentration_in_feed,
-        "adf_dense": np.asarray(adf_dense),
-        "adf_at_meas": np.asarray(adf_at_meas),
-        "feed_corr_at_meas": np.asarray(feed_corr_at_meas),
+        "adf_dense": jnp.asarray(adf_dense),
+        "adf_at_meas": jnp.asarray(adf_at_meas),
+        "feed_corr_at_meas": jnp.asarray(feed_corr_at_meas),
         "has_discrete_feed": has_discrete_feed,
     }
 
@@ -539,13 +542,13 @@ def build_splines(inputs: Dict[str, Any],
 
     Returns dict:
       - spline_cstar : interpax.CubicSpline built from (meas_times, c_star)
-      - interp_times, adf_interp, feed_corr_interp  (arrays for np.interp)
+      - interp_times, adf_interp, feed_corr_interp  (arrays for jnp.interp)
     """
     spline_cstar = make_interpax_spline(inputs["meas_times"], inputs["c_star"])
 
-    interp_times = inputs["meas_times"].copy()
-    interp_adf = inputs["adf_at_meas"].copy()
-    interp_fc = inputs["feed_corr_at_meas"].copy()
+    interp_times = jnp.array(inputs["meas_times"])
+    interp_adf = jnp.array(inputs["adf_at_meas"])
+    interp_fc = jnp.array(inputs["feed_corr_at_meas"])
 
     if process is not None and species_name is not None:
         meas_t = inputs["meas_times"]
@@ -560,8 +563,8 @@ def build_splines(inputs: Dict[str, Any],
                 fc_comp = vc.feed_medium.components[species_name]
                 if isinstance(fc_comp.concentration, StaticVariable):
                     c_feed = float(fc_comp.concentration.value)
-            for t_b in np.asarray(vc.values.timepoints, dtype=float):
-                if not np.any(np.abs(meas_t - t_b) < _EPS * 2):
+            for t_b in jnp.asarray(vc.values.timepoints, dtype=float):
+                if not jnp.any(jnp.abs(meas_t - t_b) < _EPS * 2):
                     bolus_events.append((float(t_b), c_feed))
 
         bolus_events.sort(key=lambda x: x[0])
@@ -572,24 +575,24 @@ def build_splines(inputs: Dict[str, Any],
         for t_b, c_feed in bolus_events:
             t_pre = t_b - _EPS
 
-            order = np.argsort(interp_times)
+            order = jnp.argsort(interp_times)
             interp_times = interp_times[order]
             interp_adf = interp_adf[order]
             interp_fc = interp_fc[order]
 
-            adf_pre = float(np.interp(t_pre, dense_t, dense_adf))
-            adf_post = float(np.interp(t_b, dense_t, dense_adf))
+            adf_pre = float(jnp.interp(t_pre, dense_t, dense_adf))
+            adf_post = float(jnp.interp(t_b, dense_t, dense_adf))
 
             mask = interp_times <= t_pre
-            fc_pre = float(interp_fc[mask][-1]) if mask.any() else 0.0
+            fc_pre = float(interp_fc[mask][-1]) if jnp.any(mask) else 0.0
 
             cs_val = float(spline_cstar(jnp.array(t_b)))
 
             c_pre = (cs_val + fc_pre) / max(adf_pre, 1e-12)
 
-            v_pre = float(np.interp(t_pre, dense_t,
+            v_pre = float(jnp.interp(t_pre, dense_t,
                                     inputs["reactor_volume_dense"]))
-            v_post = float(np.interp(t_b, dense_t,
+            v_post = float(jnp.interp(t_b, dense_t,
                                      inputs["reactor_volume_dense"]))
             v_feed = v_post - v_pre
 
@@ -597,11 +600,11 @@ def build_splines(inputs: Dict[str, Any],
 
             fc_post = c_post * adf_post - cs_val
 
-            interp_times = np.append(interp_times, [t_pre, t_b])
-            interp_adf = np.append(interp_adf, [adf_pre, adf_post])
-            interp_fc = np.append(interp_fc, [fc_pre, fc_post])
+            interp_times = jnp.append(interp_times, jnp.array([t_pre, t_b]))
+            interp_adf = jnp.append(interp_adf, jnp.array([adf_pre, adf_post]))
+            interp_fc = jnp.append(interp_fc, jnp.array([fc_pre, fc_post]))
 
-        order = np.argsort(interp_times)
+        order = jnp.argsort(interp_times)
         interp_times = interp_times[order]
         interp_adf = interp_adf[order]
         interp_fc = interp_fc[order]
@@ -623,28 +626,28 @@ def build_splines(inputs: Dict[str, Any],
     }
 
 
-def evaluate_real_concentration(t_eval: np.ndarray, splines: Dict[str, Any]) -> np.ndarray:
+def evaluate_real_concentration(t_eval: jnp.ndarray, splines: Dict[str, Any]) -> jnp.ndarray:
     """
     Backtransform c*(t) -> c(t) at arbitrary evaluation times t_eval.
 
     Uses:
       - c*(t) via interpax.CubicSpline (smooth)
       - ADF via dense grid (correct step-wise behaviour at bolus events)
-      - feed_correction via np.interp (piecewise-linear from augmented grid)
+      - feed_correction via jnp.interp (piecewise-linear from augmented grid)
 
     Returns:
       array of backtransformed concentrations evaluated at t_eval
     """
-    t_eval = np.asarray(t_eval, dtype=float)
-    cs = np.asarray(splines["spline_cstar"](jnp.asarray(t_eval)))
+    t_eval = jnp.asarray(t_eval, dtype=float)
+    cs = jnp.asarray(splines["spline_cstar"](jnp.asarray(t_eval)))
 
-    adf = np.interp(t_eval, splines["dense_times"], splines["adf_dense"])
+    adf = jnp.interp(t_eval, splines["dense_times"], splines["adf_dense"])
     if splines.get("spline_feed_corr") is not None:
-        fc = np.asarray(splines["spline_feed_corr"](jnp.asarray(t_eval)))
+        fc = jnp.asarray(splines["spline_feed_corr"](jnp.asarray(t_eval)))
     else:
-        fc = np.interp(t_eval, splines["meas_times"], splines["feed_corr_at_meas"])
+        fc = jnp.interp(t_eval, splines["meas_times"], splines["feed_corr_at_meas"])
 
-    adf = np.where(np.abs(adf) < 1e-12, 1e-12, adf)
+    adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
 
     return (cs + fc) / adf
 
@@ -688,8 +691,8 @@ def to_spline_representation(
     # Check if concentration is effectively zero everywhere.
     # Cubic splines through near-zero constant values oscillate wildly
     # when combined with the pseudobatch backtransform; bypass it entirely.
-    meas_conc = np.asarray(inputs["meas_conc"], dtype=float)
-    is_constant = float(np.max(np.abs(meas_conc))) < 1e-10
+    meas_conc = jnp.asarray(inputs["meas_conc"], dtype=float)
+    is_constant = float(jnp.max(jnp.abs(meas_conc))) < 1e-10
 
     # Fit c* spline as a single-segment SplineRepresentation
     ts_star = TimeSeries(
@@ -713,15 +716,13 @@ def to_spline_representation(
     dense_adf = inputs["adf_dense"]
     n_dense = len(dense_adf)
     if n_dense > 2:
-        keep = np.zeros(n_dense, dtype=bool)
-        keep[0] = True   # always keep first
-        keep[-1] = True  # always keep last
-        # Keep points where ADF changes AND the point before each change
-        changes = np.abs(np.diff(dense_adf)) > 1e-12
-        for i in range(len(changes)):
-            if changes[i]:
-                keep[i] = True      # point before change
-                keep[i + 1] = True  # point after change
+        # Vectorized: mark points before and after each change
+        changes = jnp.abs(jnp.diff(dense_adf)) > 1e-12
+        keep_before = jnp.concatenate([changes, jnp.array([False])])
+        keep_after = jnp.concatenate([jnp.array([False]), changes])
+        keep = keep_before | keep_after
+        keep = keep.at[0].set(True)
+        keep = keep.at[-1].set(True)
         adf_compact_t = dense_t[keep]
         adf_compact_v = dense_adf[keep]
     else:
@@ -736,7 +737,7 @@ def to_spline_representation(
         "species": species_name,
         "feed_corr_interp": feed_corr_interp,
         "is_constant": is_constant,
-        "constant_value": float(np.mean(meas_conc)) if is_constant else None,
+        "constant_value": float(jnp.mean(meas_conc)) if is_constant else None,
         # ADF: compact grid with only step transition points
         "adf_times": adf_compact_t.tolist(),
         "adf_values": adf_compact_v.tolist(),
@@ -878,9 +879,7 @@ def build_backtransform_spline(rep: SplineRepresentation) -> BacktransformSpline
 
     # Build feed_corr spline (used when use_cubic_fc=True; dummy otherwise,
     # but must be a valid CubicSpline to keep the pytree structure fixed)
-    fc_spline = make_interpax_spline(
-        np.asarray(fc_times), np.asarray(fc_values)
-    )
+    fc_spline = make_interpax_spline(fc_times, fc_values)
 
     return BacktransformSpline(
         c_star_spline=c_star_spline,
