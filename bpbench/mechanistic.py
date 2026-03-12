@@ -2,7 +2,7 @@
 Mechanistic API for BPbench.
 
 Provides JAX/Equinox-compatible modules for building continuous-time control
-functions and mass-balance ODEs directly from a :class:`~bpbench.BioProcess`.
+functions and ODE right-hand sides directly from a :class:`~bpbench.BioProcess`.
 
 All modules are fully JAX-jittable via ``equinox.filter_jit``.  Spline
 evaluation uses ``interpax.CubicSpline``, which is itself an
@@ -15,9 +15,9 @@ get_control_splines(process) -> ControlSplines
     signals at time ``t``.  Continuous volume-change feeds are returned as
     **flow rates** (derivative of the cumulative-volume spline).
 
-get_mass_balance(process) -> MassBalance
+get_rhs_ode(process) -> RhsOde
     Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
-    computes the full mass-balance RHS ``dc/dt`` (including ``dV/dt``).
+    computes the ODE RHS ``dc/dt`` (including ``dV/dt``).
     Uncontrolled continuous volume changes (modeled feeds) are supported via
     the optional ``f_modeled`` argument.
 
@@ -28,7 +28,7 @@ apply_discrete_event(state, event) -> jnp.ndarray
     Apply a single discrete event to the ODE state vector.
 
 estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval) -> np.ndarray
-    Estimate specific rates q(t) via mass-balance inversion.
+    Estimate specific rates q(t) via ODE RHS inversion.
 
 integrate_process(process, ctrl, mb, q_func, t_eval) -> dict
     Full hybrid ODE integration with discrete event handling.
@@ -40,7 +40,7 @@ to compile them::
 
     import equinox as eqx
     ctrl = get_control_splines(process)
-    mb   = get_mass_balance(process)
+    mb   = get_rhs_ode(process)
 
     u      = eqx.filter_jit(ctrl)(t)
     dc_dt  = eqx.filter_jit(mb)(c, q, u_flow)
@@ -132,13 +132,13 @@ class ControlSplines(eqx.Module):
 
 
 # ---------------------------------------------------------------------------
-# MassBalance module
+# RhsOde module
 # ---------------------------------------------------------------------------
 
-class MassBalance(eqx.Module):
-    """JAX/Equinox module implementing the generalized fed-batch mass balance.
+class RhsOde(eqx.Module):
+    """JAX/Equinox module implementing the generalized fed-batch ODE RHS.
 
-    Created by :func:`get_mass_balance`; do not instantiate directly.
+    Created by :func:`get_rhs_ode`; do not instantiate directly.
 
     The state vector is ``c = [c_species..., V]`` where the last element is
     the reactor volume.  Biomass is always at index 0.
@@ -181,7 +181,7 @@ class MassBalance(eqx.Module):
     JIT usage::
 
         import equinox as eqx
-        mb    = get_mass_balance(process)
+        mb    = get_rhs_ode(process)
         dc_dt = eqx.filter_jit(mb)(c, q, u_flow)
         # With modeled flows:
         dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
@@ -207,7 +207,7 @@ class MassBalance(eqx.Module):
         u_flow: jnp.ndarray,
         f_modeled: jnp.ndarray,
     ) -> jnp.ndarray:
-        """Compute the mass-balance RHS ``dc/dt``.
+        """Compute the ODE RHS ``dc/dt``.
 
         Parameters
         ----------
@@ -234,7 +234,7 @@ class MassBalance(eqx.Module):
 
         Notes
         -----
-        Mass balance implemented:
+        ODE RHS implemented:
 
         .. math::
 
@@ -369,16 +369,8 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
         _is_derivative=tuple(is_derivative_list),
     )
 
-def get_mass_balance(process: BioProcess) -> MassBalance:
-    """
-    This is a backwards compatability function to illustrate that I changed this function name from
-    get_mass_balance to get_rhs_ode, since it is more descriptive of what the function actually does.
-    The old name is still supported for now but will eventually be removed.
-    """
-    return get_rhs_ode(process)
-
-def get_rhs_ode(process: BioProcess) -> MassBalance:
-    """Build a :class:`MassBalance` module from a :class:`BioProcess`.
+def get_rhs_ode(process: BioProcess) -> RhsOde:
+    """Build a :class:`RhsOde` module from a :class:`BioProcess`.
 
     Parameters
     ----------
@@ -388,9 +380,9 @@ def get_rhs_ode(process: BioProcess) -> MassBalance:
 
     Returns
     -------
-    MassBalance
+    RhsOde
         An ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
-        computes the mass-balance RHS ``dc/dt``.
+        computes the ODE RHS ``dc/dt``.
 
     Raises
     ------
@@ -438,7 +430,7 @@ def get_rhs_ode(process: BioProcess) -> MassBalance:
                     Cin_np[k, j] = float(conc.value)
                 else:
                     raise NotImplementedError(
-                        "TimeSeries feed concentrations are not yet supported in get_mass_balance. "
+                        "TimeSeries feed concentrations are not yet supported in get_rhs_ode. "
                         f"Found TimeSeries for species '{sp_name}' in feed '{feed.name}' of volume change '{vc_name}'."
                     )
         return Cin_np
@@ -458,7 +450,7 @@ def get_rhs_ode(process: BioProcess) -> MassBalance:
     Cin_np = _build_cin(flow_names)
     Cin_modeled_np = _build_cin(modeled_flow_names)
 
-    return MassBalance(
+    return RhsOde(
         c_size=n_species + 1,
         q_size=n_species,
         u_flow_size=len(flow_names),
@@ -480,7 +472,7 @@ def get_rhs_ode(process: BioProcess) -> MassBalance:
 
 def extract_discrete_events(
     process: BioProcess,
-    mb: MassBalance,
+    mb: RhsOde,
 ) -> List[Dict[str, Any]]:
     """Extract discrete events (sampling, bolus feeds) from a BioProcess.
 
@@ -489,7 +481,7 @@ def extract_discrete_events(
     process:
         A :class:`~bpbench.BioProcess` instance.
     mb:
-        A :class:`MassBalance` module (used to align ``Cin`` with species ordering).
+        A :class:`RhsOde` module (used to align ``Cin`` with species ordering).
 
     Returns
     -------
@@ -582,7 +574,7 @@ def apply_discrete_event(
 
 def build_conc_splines(
     process: BioProcess,
-    mb: "MassBalance",
+    mb: "RhsOde",
 ) -> Dict[str, Any]:
     """Build concentration splines from stored backtransform splines or raw data.
 
@@ -600,7 +592,7 @@ def build_conc_splines(
     process:
         A :class:`~bpbench.BioProcess` instance.
     mb:
-        A :class:`MassBalance` module (provides species ordering).
+        A :class:`RhsOde` module (provides species ordering).
 
     Returns
     -------
@@ -632,20 +624,20 @@ def build_conc_splines(
 
 
 # ---------------------------------------------------------------------------
-# Specific rate estimation (mass-balance inversion)
+# Specific rate estimation (ODE RHS inversion)
 # ---------------------------------------------------------------------------
 
 def estimate_specific_rates(
     process: BioProcess,
     ctrl: ControlSplines,
-    mb: MassBalance,
+    mb: RhsOde,
     conc_splines: Dict[str, Any],
     t_eval: np.ndarray,
 ) -> np.ndarray:
-    """Estimate specific rates q(t) via mass-balance inversion.
+    """Estimate specific rates q(t) via ODE RHS inversion.
 
     Uses the concentration splines and their derivatives to invert the
-    mass-balance equation for q(t):
+    ODE RHS equation for q(t):
 
     .. math::
         q_i = \\frac{dc_i/dt - \\text{feed\\_term}}{X_{active}}
@@ -657,7 +649,7 @@ def estimate_specific_rates(
     ctrl:
         :class:`ControlSplines` module for evaluating control signals.
     mb:
-        :class:`MassBalance` module (provides species ordering, Cin, etc.).
+        :class:`RhsOde` module (provides species ordering, Cin, etc.).
     conc_splines:
         Dict mapping species name → callable spline that supports
         ``spline(t)`` and ``spline.derivative()(t)`` (e.g.,
@@ -708,20 +700,14 @@ def estimate_specific_rates(
     Cin = np.array(mb.Cin)
     Cin_mod = np.array(mb.Cin_modeled)
 
-    # Normalization: scale concentrations so all species are O(1)
-    scales = _compute_scale_factors(process, mb)
-    Cin_norm = Cin / scales[None, :]
-    Cin_mod_norm = Cin_mod / scales[None, :] if Cin_mod.size > 0 else Cin_mod
-
     flow_idx = list(ctrl.flow_indices)
 
     for k, t in enumerate(t_eval):
         tj = jnp.array(t)
 
-        # Concentrations from splines (then normalize)
+        # Concentrations from splines
         c_t = np.array([float(conc_splines[s](tj)) for s in mb.species_names])
         c_t = np.maximum(c_t, 0.0)
-        c_norm = c_t / scales
 
         # Volume at time t
         V_t = V0
@@ -743,42 +729,32 @@ def estimate_specific_rates(
         for i, sp in enumerate(cum_splines_mod):
             f_mod[i] = float(sp.derivative()(tj))
 
-        # Feed contributions (in normalized coordinates)
-        feed_norm = np.zeros(n_sp)
+        # Feed contributions: (f/V) * (C_in - c)
+        feed_term = np.zeros(n_sp)
         if mb.u_flow_size > 0:
             feed_ctrl = np.sum(
-                (u_flow[:, None] / V_t) * (Cin_norm - c_norm[None, :]), axis=0
+                (u_flow[:, None] / V_t) * (Cin - c_t[None, :]), axis=0
             )
-            feed_norm += feed_ctrl
+            feed_term += feed_ctrl
         if mb.f_modeled_size > 0:
             feed_modeled = np.sum(
-                (f_mod[:, None] / V_t) * (Cin_mod_norm - c_norm[None, :]), axis=0
+                (f_mod[:, None] / V_t) * (Cin_mod - c_t[None, :]), axis=0
             )
-            feed_norm += feed_modeled
+            feed_term += feed_modeled
 
-        # Concentration derivatives from splines (in normalized coordinates)
-        dc_norm = np.zeros(n_sp)
+        # Concentration derivatives from splines (analytical)
+        dc_t = np.zeros(n_sp)
         for i, s in enumerate(mb.species_names):
-            sp = conc_splines[s]
-            if hasattr(sp, 'derivative'):
-                dc_norm[i] = float(sp.derivative()(tj)) / scales[i]
-            else:
-                # BacktransformSpline doesn't have .derivative()
-                # Use finite differences
-                dt = 1e-4
-                dc_norm[i] = (float(sp(tj + dt)) - float(sp(tj - dt))) / (2 * dt * scales[i])
+            dc_t[i] = float(conc_splines[s].derivative()(tj))
 
-        # Active biomass (compute in original coordinates, then normalize)
+        # Active biomass
         X_active = c_t[mb.biomass_idx]
         for idx in mb.intracellular_indices:
             X_active -= c_t[idx]
         X_active = max(X_active, 1e-6)
-        X_active_norm = X_active / scales[mb.biomass_idx]
 
-        # q_i = (dc_i/dt - feed_i) / X_active
-        #      = (scales[i] * dc_norm_i - scales[i] * feed_norm_i) / (scales[bio] * X_active_norm)
-        #      = (scales[i] / scales[bio]) * (dc_norm_i - feed_norm_i) / X_active_norm
-        q_out[k] = (scales / scales[mb.biomass_idx]) * (dc_norm - feed_norm) / X_active_norm
+        # q_i = (dc_i/dt - feed_term_i) / X_active
+        q_out[k] = (dc_t - feed_term) / X_active
 
     return q_out
 
@@ -830,7 +806,7 @@ def _build_segment_rhs(mb, ctrl, q_func, cum_splines_mod, conc_splines=None):
             # Reaction term with spline-based X_active
             reaction = q * X_active
 
-            # Feed terms (same as MassBalance.__call__)
+            # Feed terms (same as RhsOde.__call__)
             feed_term = jnp.zeros(mb.q_size)
             dV = jnp.zeros(())
             if mb.u_flow_size > 0:
@@ -850,7 +826,7 @@ def _build_segment_rhs(mb, ctrl, q_func, cum_splines_mod, conc_splines=None):
     return rhs
 
 
-def _compute_scale_factors(process: BioProcess, mb: "MassBalance") -> np.ndarray:
+def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> np.ndarray:
     """Compute per-species scale factors for numerical conditioning.
 
     Returns an array of shape (n_species,) where each entry is the
@@ -872,7 +848,7 @@ def _compute_scale_factors(process: BioProcess, mb: "MassBalance") -> np.ndarray
 def integrate_process(
     process: BioProcess,
     ctrl: ControlSplines,
-    mb: MassBalance,
+    mb: RhsOde,
     q_func: Callable,
     t_eval: np.ndarray,
     *,
@@ -883,7 +859,7 @@ def integrate_process(
 ) -> Dict[str, Any]:
     """Full hybrid ODE integration with discrete event handling.
 
-    Integrates the mass-balance ODE segment-by-segment.  Segments are
+    Integrates the ODE segment-by-segment.  Segments are
     separated by discrete events (sampling, bolus feeds).  Between events
     the ODE is solved with ``diffrax.Dopri5``.  At event boundaries,
     :func:`apply_discrete_event` is applied.
@@ -905,7 +881,7 @@ def integrate_process(
     ctrl:
         :class:`ControlSplines` module.
     mb:
-        :class:`MassBalance` module.
+        :class:`RhsOde` module.
     q_func:
         Callable ``q_func(t) -> jnp.ndarray`` returning specific rates
         aligned with ``mb.species_names``.

@@ -788,6 +788,51 @@ class BacktransformSpline(eqx.Module):
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         return (cs + fc) / adf
 
+    def derivative(self):
+        """Return a callable evaluating dc/dt at time *t*.
+
+        Between discrete events ADF is piecewise constant, so:
+
+        .. math::
+            \\frac{dc}{dt} = \\frac{dc^*/dt + dfc/dt}{\\text{ADF}}
+
+        ``dc^*/dt`` uses the analytical cubic spline derivative.
+        ``dfc/dt`` uses:
+
+        * The cubic spline derivative when ``use_cubic_fc`` is True
+          (continuous feeds — smooth feed correction).
+        * The exact piecewise-constant derivative of the linear
+          interpolation when ``use_cubic_fc`` is False (bolus feeds —
+          step-like feed correction).
+        """
+        dc_star = self.c_star_spline.derivative()
+        if self.use_cubic_fc:
+            dfc_cubic = self.fc_spline.derivative()
+        else:
+            # Precompute slopes of piecewise-linear fc interpolation
+            dfc_cubic = None
+            _fc_slopes = jnp.diff(self.fc_values) / jnp.maximum(
+                jnp.diff(self.fc_times), jnp.array(1e-12)
+            )
+            _fc_times = self.fc_times
+
+        def _deriv(t):
+            if self.is_constant:
+                return t * 0.0
+            adf = jnp.interp(t, self.adf_times, self.adf_values)
+            adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+            dc_star_dt = dc_star(t)
+            if dfc_cubic is not None:
+                dfc_dt = dfc_cubic(t)
+            else:
+                # Exact derivative of jnp.interp (piecewise constant)
+                idx = jnp.searchsorted(_fc_times, t) - 1
+                idx = jnp.clip(idx, 0, len(_fc_slopes) - 1)
+                dfc_dt = _fc_slopes[idx]
+            return (dc_star_dt + dfc_dt) / adf
+
+        return _deriv
+
 
 def build_backtransform_spline(rep: SplineRepresentation) -> BacktransformSpline:
     """Build a JIT-compatible :class:`BacktransformSpline` from a stored

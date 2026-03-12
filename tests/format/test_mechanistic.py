@@ -1,5 +1,5 @@
 """
-Tests for bpbench.mechanistic: get_control_splines and get_mass_balance.
+Tests for bpbench.mechanistic: get_control_splines and get_rhs_ode.
 
 All JAX-jit tests use eqx.filter_jit (the equinox-idiomatic way to JIT
 modules that contain JAX-array fields).
@@ -18,7 +18,7 @@ from bpbench import (
     FeedVolumeChange, SampleVolumeChange, Volume, ProcessVariable,
 )
 from bpbench.mechanistic import (
-    ControlSplines, MassBalance, get_control_splines, get_mass_balance,
+    ControlSplines, RhsOde, get_control_splines, get_rhs_ode,
     extract_discrete_events, apply_discrete_event,
     estimate_specific_rates, integrate_process,
 )
@@ -313,54 +313,54 @@ class TestGetControlSplines:
 
 
 # ---------------------------------------------------------------------------
-# MassBalance tests
+# RhsOde tests
 # ---------------------------------------------------------------------------
 
-class TestGetMassBalance:
+class TestGetRhsOde:
 
-    def test_returns_mass_balance_instance(self):
-        assert isinstance(get_mass_balance(_make_process()), MassBalance)
+    def test_returns_rhs_ode_instance(self):
+        assert isinstance(get_rhs_ode(_make_process()), RhsOde)
 
     def test_is_eqx_module(self):
-        assert isinstance(get_mass_balance(_make_process()), eqx.Module)
+        assert isinstance(get_rhs_ode(_make_process()), eqx.Module)
 
     def test_c_size(self):
-        assert get_mass_balance(_make_process()).c_size == 3
+        assert get_rhs_ode(_make_process()).c_size == 3
 
     def test_q_size(self):
-        assert get_mass_balance(_make_process()).q_size == 2
+        assert get_rhs_ode(_make_process()).q_size == 2
 
     def test_u_flow_size_fedbatch(self):
-        assert get_mass_balance(_make_process()).u_flow_size == 1
+        assert get_rhs_ode(_make_process()).u_flow_size == 1
 
     def test_u_flow_size_batch(self):
-        assert get_mass_balance(_make_batch_process()).u_flow_size == 0
+        assert get_rhs_ode(_make_batch_process()).u_flow_size == 0
 
     def test_output_size(self):
-        assert get_mass_balance(_make_process()).output_size == 3
+        assert get_rhs_ode(_make_process()).output_size == 3
 
     def test_species_names(self):
-        assert get_mass_balance(_make_process()).species_names == ("biomass", "glucose")
+        assert get_rhs_ode(_make_process()).species_names == ("biomass", "glucose")
 
     def test_flow_names(self):
-        assert get_mass_balance(_make_process()).flow_names == ("feed",)
+        assert get_rhs_ode(_make_process()).flow_names == ("feed",)
 
     def test_flow_names_empty_batch(self):
-        assert get_mass_balance(_make_batch_process()).flow_names == ()
+        assert get_rhs_ode(_make_batch_process()).flow_names == ()
 
     def test_biomass_idx(self):
-        assert get_mass_balance(_make_process()).biomass_idx == 0
+        assert get_rhs_ode(_make_process()).biomass_idx == 0
 
     def test_cin_shape(self):
-        assert get_mass_balance(_make_process()).Cin.shape == (1, 2)
+        assert get_rhs_ode(_make_process()).Cin.shape == (1, 2)
 
     def test_cin_values_biomass_and_glucose(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         assert float(mb.Cin[0, 0]) == pytest.approx(0.0)
         assert float(mb.Cin[0, 1]) == pytest.approx(500.0)
 
     def test_cin_empty_for_batch(self):
-        assert get_mass_balance(_make_batch_process()).Cin.shape == (0, 2)
+        assert get_rhs_ode(_make_batch_process()).Cin.shape == (0, 2)
 
     def test_no_biomass_raises(self):
         rm = ReactorMedium(
@@ -379,10 +379,10 @@ class TestGetMassBalance:
             reactor_medium=rm,
         )
         with pytest.raises(ValueError, match="biomass"):
-            get_mass_balance(p)
+            get_rhs_ode(p)
 
     def test_call_shape_fedbatch(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         dc = mb(jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
                 jnp.array([0.05]),
@@ -390,7 +390,7 @@ class TestGetMassBalance:
         assert dc.shape == (3,)
 
     def test_call_shape_batch(self):
-        mb = get_mass_balance(_make_batch_process())
+        mb = get_rhs_ode(_make_batch_process())
         dc = mb(jnp.array([1.0, 5.0, 1.0]),
                 jnp.array([0.2, -0.1]),
                 jnp.zeros(0),
@@ -398,7 +398,7 @@ class TestGetMassBalance:
         assert dc.shape == (3,)
 
     def test_dV_equals_sum_u_flow(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         dc = mb(jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
                 jnp.array([0.05]),
@@ -406,7 +406,7 @@ class TestGetMassBalance:
         assert float(dc[-1]) == pytest.approx(0.05, rel=1e-5)
 
     def test_dV_zero_in_batch(self):
-        mb = get_mass_balance(_make_batch_process())
+        mb = get_rhs_ode(_make_batch_process())
         dc = mb(jnp.array([1.0, 5.0, 1.0]),
                 jnp.array([0.2, -0.1]),
                 jnp.zeros(0),
@@ -414,7 +414,7 @@ class TestGetMassBalance:
         assert float(dc[-1]) == pytest.approx(0.0)
 
     def test_reaction_only_batch(self):
-        mb = get_mass_balance(_make_batch_process())
+        mb = get_rhs_ode(_make_batch_process())
         X = 2.0
         dc = mb(jnp.array([X, 5.0, 1.0]),
                 jnp.array([0.3, -0.15]),
@@ -424,7 +424,7 @@ class TestGetMassBalance:
         assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
 
     def test_dilution_term_zero_q(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         X, S, V, F = 1.0, 10.0, 1.0, 0.1
         dc = mb(jnp.array([X, S, V]), jnp.zeros(2), jnp.array([F]), jnp.zeros(0))
         assert float(dc[0]) == pytest.approx((F / V) * (0.0 - X), rel=1e-4)
@@ -432,7 +432,7 @@ class TestGetMassBalance:
         assert float(dc[2]) == pytest.approx(F, rel=1e-5)
 
     def test_full_balance_combined(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         X, S, V, F, qX, qS = 2.0, 5.0, 1.5, 0.08, 0.4, -0.2
         dc = mb(jnp.array([X, S, V]), jnp.array([qX, qS]), jnp.array([F]), jnp.zeros(0))
         assert float(dc[0]) == pytest.approx(qX * X + (F/V)*(0.0 - X), rel=1e-5)
@@ -440,7 +440,7 @@ class TestGetMassBalance:
         assert float(dc[2]) == pytest.approx(F, rel=1e-5)
 
     def test_callable_under_filter_jit(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         dc = eqx.filter_jit(mb)(jnp.array([0.5, 10.0, 1.0]),
                                 jnp.array([0.3, -0.15]),
                                 jnp.array([0.05]),
@@ -448,7 +448,7 @@ class TestGetMassBalance:
         assert dc.shape == (3,)
 
     def test_filter_jit_matches_eager(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         args = (jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
                 jnp.array([0.05]),
@@ -456,7 +456,7 @@ class TestGetMassBalance:
         assert jnp.allclose(mb(*args), eqx.filter_jit(mb)(*args), atol=1e-6)
 
     def test_grad_wrt_c(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         q = jnp.array([0.3, -0.15])
         u_flow = jnp.array([0.05])
         f_mod = jnp.zeros(0)
@@ -465,7 +465,7 @@ class TestGetMassBalance:
         assert g.shape == (3,)
 
     def test_grad_wrt_q(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         c = jnp.array([0.5, 10.0, 1.0])
         u_flow = jnp.array([0.05])
         f_mod = jnp.zeros(0)
@@ -474,7 +474,7 @@ class TestGetMassBalance:
         assert g.shape == (2,)
 
     def test_vmap_over_batch_of_states(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         fn = eqx.filter_jit(eqx.filter_vmap(mb, in_axes=(0, 0, 0, None)))
         B = 4
         c = jnp.stack([jnp.array([0.5 + i*0.3, 10.0 - i, 1.0 + i*0.1])
@@ -517,20 +517,20 @@ class TestBiomassAtIndexZero:
         )
 
     def test_biomass_is_always_first(self):
-        mb = get_mass_balance(self._make_process_glucose_first())
+        mb = get_rhs_ode(self._make_process_glucose_first())
         assert mb.species_names[0] == "biomass"
 
     def test_biomass_idx_is_zero(self):
-        mb = get_mass_balance(self._make_process_glucose_first())
+        mb = get_rhs_ode(self._make_process_glucose_first())
         assert mb.biomass_idx == 0
 
     def test_glucose_is_second(self):
-        mb = get_mass_balance(self._make_process_glucose_first())
+        mb = get_rhs_ode(self._make_process_glucose_first())
         assert mb.species_names[1] == "glucose"
 
     def test_reaction_uses_biomass_at_index_0(self):
         """dc[biomass]/dt = qX * X when biomass is reordered to index 0."""
-        mb = get_mass_balance(self._make_process_glucose_first())
+        mb = get_rhs_ode(self._make_process_glucose_first())
         X, S, V = 2.0, 5.0, 1.0
         # state is [biomass, glucose, V] after reordering
         dc = mb(jnp.array([X, S, V]), jnp.array([0.3, -0.15]), jnp.zeros(0), jnp.zeros(0))
@@ -597,26 +597,26 @@ def _make_process_with_intracellular():
 class TestIntracellular:
 
     def test_intracellular_indices_populated(self):
-        mb = get_mass_balance(_make_process_with_intracellular())
+        mb = get_rhs_ode(_make_process_with_intracellular())
         assert len(mb.intracellular_indices) == 1
 
     def test_intracellular_indices_correct(self):
-        mb = get_mass_balance(_make_process_with_intracellular())
+        mb = get_rhs_ode(_make_process_with_intracellular())
         # biomass is at 0, product (intracellular) should be at 1
         assert mb.species_names[mb.intracellular_indices[0]] == "product"
 
     def test_no_intracellular_indices_for_normal_process(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         assert mb.intracellular_indices == ()
 
     def test_biomass_still_at_index_0(self):
-        mb = get_mass_balance(_make_process_with_intracellular())
+        mb = get_rhs_ode(_make_process_with_intracellular())
         assert mb.biomass_idx == 0
         assert mb.species_names[0] == "biomass"
 
     def test_x_active_used_in_reaction(self):
         """Reaction uses X_active = biomass - product, not biomass_measured."""
-        mb = get_mass_balance(_make_process_with_intracellular())
+        mb = get_rhs_ode(_make_process_with_intracellular())
         # state: [biomass_active=2.0, product=0.5, glucose=5.0, V=1.0]
         X_active = 2.0 - 0.5  # = 1.5
         qX, qP, qS = 0.4, 0.1, -0.2
@@ -631,7 +631,7 @@ class TestIntracellular:
 
     def test_x_active_with_flow(self):
         """Full balance with flow uses X_active."""
-        mb = get_mass_balance(_make_process_with_intracellular())
+        mb = get_rhs_ode(_make_process_with_intracellular())
         X_meas, P, S, V, F = 2.0, 0.5, 5.0, 1.0, 0.1
         X_active = X_meas - P
         qX, qP, qS = 0.4, 0.1, -0.2
@@ -650,7 +650,7 @@ class TestIntracellular:
         assert float(dc[3]) == pytest.approx(F, rel=1e-5)
 
     def test_intracellular_jit_compatible(self):
-        mb = get_mass_balance(_make_process_with_intracellular())
+        mb = get_rhs_ode(_make_process_with_intracellular())
         dc = eqx.filter_jit(mb)(
             jnp.array([2.0, 0.5, 5.0, 1.0]),
             jnp.array([0.4, 0.1, -0.2]),
@@ -661,7 +661,7 @@ class TestIntracellular:
 
     def test_no_intracellular_backward_compat(self):
         """Without intracellular components, behaviour is unchanged (X_active == X_measured)."""
-        mb = get_mass_balance(_make_batch_process())
+        mb = get_rhs_ode(_make_batch_process())
         X = 2.0
         dc = mb(jnp.array([X, 5.0, 1.0]),
                 jnp.array([0.3, -0.15]),
@@ -746,43 +746,43 @@ def _make_process_with_modeled_flow():
 class TestModeledFlow:
 
     def test_modeled_flow_names(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         assert mb.modeled_flow_names == ("base_feed",)
 
     def test_f_modeled_size(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         assert mb.f_modeled_size == 1
 
     def test_cin_modeled_shape(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         assert mb.Cin_modeled.shape == (1, 2)
 
     def test_cin_modeled_values(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         assert float(mb.Cin_modeled[0, 0]) == pytest.approx(0.0)
         assert float(mb.Cin_modeled[0, 1]) == pytest.approx(0.0)
 
     def test_no_modeled_flow_for_simple_process(self):
-        mb = get_mass_balance(_make_process())
+        mb = get_rhs_ode(_make_process())
         assert mb.modeled_flow_names == ()
         assert mb.f_modeled_size == 0
         assert mb.Cin_modeled.shape == (0, 2)
 
     def test_no_modeled_flow_for_batch(self):
-        mb = get_mass_balance(_make_batch_process())
+        mb = get_rhs_ode(_make_batch_process())
         assert mb.modeled_flow_names == ()
         assert mb.f_modeled_size == 0
 
     def test_uncontrolled_flow_is_modeled_not_controlled(self):
         """Uncontrolled continuous flow appears in modeled_flow_names, not flow_names."""
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         assert "base_feed" not in mb.flow_names
         assert "base_feed" in mb.modeled_flow_names
         assert "carbon_feed" in mb.flow_names
         assert "carbon_feed" not in mb.modeled_flow_names
 
     def test_call_shape_with_modeled_flow(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         dc = mb(jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
                 jnp.array([0.05]),
@@ -790,7 +790,7 @@ class TestModeledFlow:
         assert dc.shape == (3,)
 
     def test_dV_includes_modeled_flow(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         F_ctrl, F_mod = 0.05, 0.02
         dc = mb(jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.0, 0.0]),
@@ -800,7 +800,7 @@ class TestModeledFlow:
 
     def test_dilution_with_modeled_flow(self):
         """Modeled flow dilutes species in the reactor."""
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         X, S, V = 1.0, 10.0, 1.0
         F_ctrl, F_mod = 0.1, 0.05
         # Both feeds: carbon has Cin_glucose=500, base has Cin_glucose=0
@@ -811,7 +811,7 @@ class TestModeledFlow:
         assert float(dc[1]) == pytest.approx(expected_glucose, rel=1e-4)
 
     def test_full_balance_with_modeled_flow(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         X, S, V = 2.0, 5.0, 1.5
         F_ctrl, F_mod = 0.08, 0.03
         qX, qS = 0.4, -0.2
@@ -825,7 +825,7 @@ class TestModeledFlow:
         assert float(dc[2]) == pytest.approx(expected_dV, rel=1e-5)
 
     def test_jit_with_modeled_flow(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         dc = eqx.filter_jit(mb)(
             jnp.array([0.5, 10.0, 1.0]),
             jnp.array([0.3, -0.15]),
@@ -835,7 +835,7 @@ class TestModeledFlow:
         assert dc.shape == (3,)
 
     def test_jit_matches_eager_with_modeled_flow(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         args = (jnp.array([0.5, 10.0, 1.0]),
                 jnp.array([0.3, -0.15]),
                 jnp.array([0.05]),
@@ -843,7 +843,7 @@ class TestModeledFlow:
         assert jnp.allclose(mb(*args), eqx.filter_jit(mb)(*args), atol=1e-6)
 
     def test_grad_wrt_f_modeled(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         c = jnp.array([0.5, 10.0, 1.0])
         q = jnp.array([0.3, -0.15])
         u_flow = jnp.array([0.05])
@@ -853,7 +853,7 @@ class TestModeledFlow:
         assert g.shape == (1,)
 
     def test_vmap_with_modeled_flow(self):
-        mb = get_mass_balance(_make_process_with_modeled_flow())
+        mb = get_rhs_ode(_make_process_with_modeled_flow())
         fn = eqx.filter_jit(eqx.filter_vmap(mb, in_axes=(0, 0, 0, 0)))
         B = 4
         c = jnp.stack([jnp.array([0.5 + i*0.3, 10.0 - i, 1.0 + i*0.1])
@@ -866,7 +866,7 @@ class TestModeledFlow:
 
 
 # ---------------------------------------------------------------------------
-# Integration: ControlSplines + MassBalance wired together
+# Integration: ControlSplines + RhsOde wired together
 # ---------------------------------------------------------------------------
 
 class TestIntegration:
@@ -874,7 +874,7 @@ class TestIntegration:
     def test_wired_ode_step(self):
         process = _make_process()
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
 
         @eqx.filter_jit
         def ode_rhs(t, c, q):
@@ -890,14 +890,14 @@ class TestIntegration:
     def test_flow_index_aligns_with_flow_names(self):
         process = _make_process()
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         assert len(ctrl.flow_indices) == mb.u_flow_size
         assert ctrl.control_names[ctrl.flow_indices[0]] == mb.flow_names[0]
 
     def test_dV_from_wired_ode_equals_flow_rate(self):
         process = _make_process()
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         t = jnp.array(5.0)
         u = ctrl(t)
         u_flow = u[jnp.array(list(ctrl.flow_indices))]
@@ -913,9 +913,9 @@ class TestModuleExport:
     def test_functions_accessible(self):
         import bpbench.mechanistic as mech
         assert hasattr(mech, "get_control_splines")
-        assert hasattr(mech, "get_mass_balance")
+        assert hasattr(mech, "get_rhs_ode")
         assert hasattr(mech, "ControlSplines")
-        assert hasattr(mech, "MassBalance")
+        assert hasattr(mech, "RhsOde")
 
     def test_new_functions_accessible(self):
         import bpbench.mechanistic as mech
@@ -941,7 +941,7 @@ class TestExtractDiscreteEvents:
         process = _make_process(with_controlled_flow=True,
                                 with_controlled_pv=False,
                                 with_discrete_vc=True)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         events = extract_discrete_events(process, mb)
         assert len(events) == 2
         for ev in events:
@@ -972,7 +972,7 @@ class TestExtractDiscreteEvents:
             feed_medium=feed_medium,
             values=_ts([5.0], [0.1]),
         )
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         events = extract_discrete_events(process, mb)
         assert len(events) == 1
         assert events[0]['kind'] == 'bolus_feed'
@@ -986,14 +986,14 @@ class TestExtractDiscreteEvents:
     def test_no_discrete_events(self):
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False,
                                 with_discrete_vc=False)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         events = extract_discrete_events(process, mb)
         assert events == []
 
     def test_events_sorted_by_time(self):
         process = _make_process(with_controlled_flow=False, with_controlled_pv=False,
                                 with_discrete_vc=True)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         events = extract_discrete_events(process, mb)
         times = [ev['t'] for ev in events]
         assert times == sorted(times)
@@ -1020,7 +1020,7 @@ class TestExtractDiscreteEvents:
             feed_medium=feed_medium,
             values=_ts([3.0], [0.05]),
         )
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
         events = extract_discrete_events(process, mb)
         assert len(events[0]['Cin']) == len(mb.species_names)
 
@@ -1084,7 +1084,7 @@ class TestEstimateSpecificRates:
 
         process = _make_batch_process()
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
 
         conc_splines = {
             "biomass": make_interpax_spline(t, X),
@@ -1113,7 +1113,7 @@ class TestIntegrateProcess:
 
         process = _make_batch_process()
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
 
         q_arr = jnp.array([q_X, q_S])
         q_spline = make_interpax_spline(
@@ -1159,7 +1159,7 @@ class TestIntegrateProcess:
                                 with_controlled_pv=False,
                                 with_discrete_vc=True)
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
 
         q_func = lambda t: jnp.zeros(mb.q_size)
         t_eval = np.linspace(0, 20, 100)
@@ -1204,7 +1204,7 @@ class TestIntegrateProcess:
         """Fed-batch integration should show increasing volume."""
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
         ctrl = get_control_splines(process)
-        mb = get_mass_balance(process)
+        mb = get_rhs_ode(process)
 
         q_func = lambda t: jnp.zeros(mb.q_size)
         t_eval = np.linspace(0, 20, 50)

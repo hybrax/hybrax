@@ -111,14 +111,14 @@ class ReactorMediumComponent:
     name: str # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
-    is_intracellular: bool # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in mass balance calculations
+    is_intracellular: bool # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in ODE RHS calculations
     spline: Optional[SplineRepresentation] = None
 
 
 @dataclass
 class FeedMedium:
     """
-    Feed medium definition for mass balance calculations
+    Feed medium definition for ODE RHS calculations.
     """
     name: str
     density: float # often assumed as 1 kg/L for aqueous solutions, but can be specified if known
@@ -128,7 +128,7 @@ class FeedMedium:
 @dataclass
 class ReactorMedium:
     """
-    Feed medium definition for mass balance calculations
+    Reactor medium definition for ODE RHS calculations.
     """
     name: str
     density: float
