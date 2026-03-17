@@ -36,6 +36,7 @@ dependencies = [
     "interpax>=0.3.0",
     "scipy>=1.7.0",
     "pseudobatch>=1.0.0",
+    "diffrax>=0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -45,9 +46,12 @@ dev = [
     "black>=22.0.0",
     "flake8>=4.0.0",
     "mypy>=0.950",
+    "ruff>=0.15.6",
+    "ipdb>=0.13.13",
 ]
 plotting = [
     "matplotlib>=3.0.0",
+    "plotly>=6.6.0",
 ]
 
 [project.urls]
