@@ -66,6 +66,33 @@ from .splines import make_interpax_spline, build_interpax_spline, build_backtran
 
 
 # ---------------------------------------------------------------------------
+# Batched spline helpers
+# ---------------------------------------------------------------------------
+
+_DEFAULT_BATCH_KNOTS = 128
+
+
+def _batch_splines(
+    spline_list: List[interpax.CubicSpline],
+    t_start: float,
+    t_end: float,
+    n_knots: int = _DEFAULT_BATCH_KNOTS,
+) -> interpax.PPoly:
+    """Resample splines onto a shared uniform grid and stack into a single PPoly.
+
+    The returned PPoly has coefficients of shape ``(4, n_knots-1, n_splines)``
+    so that evaluating at scalar ``t`` returns ``(n_splines,)`` in one call.
+    """
+    x_common = jnp.linspace(t_start, t_end, n_knots)
+    resampled = [
+        interpax.CubicSpline(x_common, sp(x_common), bc_type="natural", check=False)
+        for sp in spline_list
+    ]
+    c_stacked = jnp.stack([s.c for s in resampled], axis=-1)  # (4, m, n)
+    return interpax.PPoly.construct_fast(c_stacked, x_common, extrapolate=True)
+
+
+# ---------------------------------------------------------------------------
 # ControlSplines module
 # ---------------------------------------------------------------------------
 
@@ -104,8 +131,9 @@ class ControlSplines(eqx.Module):
     control_names: tuple = eqx.field(static=True)
     flow_indices: tuple = eqx.field(static=True)
     ctrl_indices: tuple = eqx.field(static=True)
-    _splines: list          # list of interpax.CubicSpline (each an eqx.Module)
-    _is_derivative: tuple = eqx.field(static=True)  # True → return d/dt
+    _batched: interpax.PPoly          # batched PPoly with shape (4, m, n_controls)
+    _deriv_mask: jnp.ndarray          # boolean mask: True → return d/dt
+    _n_controls: int = eqx.field(static=True)
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
         """Evaluate all controlled signals at scalar time *t*.
@@ -122,16 +150,11 @@ class ControlSplines(eqx.Module):
             :attr:`control_names`.  Continuous volume-change entries are
             **flow rates** (first derivative of the cumulative-volume spline).
         """
-        if len(self._is_derivative) == 0:
+        if self._n_controls == 0:
             return jnp.zeros(0)
-        values = []
-        for spline, is_deriv in zip(self._splines, self._is_derivative):
-            if is_deriv:
-                val = spline.derivative()(t)
-            else:
-                val = spline(t)
-            values.append(val)
-        return jnp.stack(values)
+        vals = self._batched(t)         # (n_controls,)
+        dvals = self._batched(t, nu=1)  # (n_controls,) — derivative
+        return jnp.where(self._deriv_mask, dvals, vals)
 
 
 # ---------------------------------------------------------------------------
@@ -364,12 +387,25 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
         is_derivative_list.append(False)
         idx += 1
 
+    # Batch all splines into a single PPoly for vectorized evaluation
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
+    if splines:
+        batched = _batch_splines(splines, t_start, t_end)
+    else:
+        # Dummy 1-interval PPoly for empty case
+        batched = interpax.PPoly.construct_fast(
+            jnp.zeros((4, 1, 0)), jnp.array([0.0, 1.0]), extrapolate=True
+        )
+    deriv_mask = jnp.array(is_derivative_list, dtype=bool)
+
     return ControlSplines(
         control_names=tuple(control_names),
         flow_indices=tuple(flow_indices),
         ctrl_indices=tuple(ctrl_indices),
-        _splines=splines,
-        _is_derivative=tuple(is_derivative_list),
+        _batched=batched,
+        _deriv_mask=deriv_mask,
+        _n_controls=len(splines),
     )
 
 def get_rhs_ode(process: BioProcess) -> RhsOde:
@@ -667,6 +703,8 @@ def build_q_func(
         ``q_func(t) -> jnp.ndarray`` of shape ``(n_species,)``.
     """
     n_sp = mb.q_size
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
 
     # -- Cumulative volume splines for continuous flows --
     cum_splines_ctrl = []
@@ -693,6 +731,14 @@ def build_q_func(
             )
         cum_splines_mod.append(sp)
 
+    # -- Batch all volume splines into a single PPoly --
+    all_vol_splines = cum_splines_ctrl + cum_splines_mod
+    n_vol = len(all_vol_splines)
+    if n_vol > 0:
+        batched_vol = _batch_splines(all_vol_splines, t_start, t_end)
+    else:
+        batched_vol = None
+
     # -- Discrete events: precompute sorted times and cumulative dV --
     events = extract_discrete_events(process, mb)
     if events:
@@ -707,11 +753,11 @@ def build_q_func(
     Cin = jnp.array(mb.Cin)
     Cin_mod = jnp.array(mb.Cin_modeled)
 
-    # -- Pre-build derivative callables (created once, reused every call) --
-    conc_derivs = [conc_splines[s].derivative() for s in mb.species_names]
+    # -- Per-species concentration spline evaluators --
+    # Uses original BacktransformSpline evaluations (exact piecewise-linear fc)
+    # to avoid Gibbs oscillation from cubic resampling of step-like fc data.
     conc_evals = [conc_splines[s] for s in mb.species_names]
-    flow_derivs_ctrl = [sp.derivative() for sp in cum_splines_ctrl]
-    flow_derivs_mod = [sp.derivative() for sp in cum_splines_mod]
+    deriv_evals = [conc_splines[s].derivative() for s in mb.species_names]
 
     biomass_idx = mb.biomass_idx
     intra_idx = mb.intracellular_indices
@@ -719,32 +765,29 @@ def build_q_func(
     f_mod_size = mb.f_modeled_size
 
     def q_func(t):
-        # Concentrations
+        # Concentrations — per-species spline evaluation
         c_t = jnp.stack([conc_evals[i](t) for i in range(n_sp)])
         c_t = jnp.maximum(c_t, 0.0)
 
-        # Concentration derivatives (analytical)
-        dc_dt = jnp.stack([conc_derivs[i](t) for i in range(n_sp)])
+        # Concentration derivatives (analytical) — per-species
+        dc_dt = jnp.stack([deriv_evals[i](t) for i in range(n_sp)])
 
         # Volume: V0 + continuous flows + discrete events
         V_t = V0
-        for sp in cum_splines_ctrl:
-            V_t = V_t + sp(t)
-        for sp in cum_splines_mod:
-            V_t = V_t + sp(t)
+        if batched_vol is not None:
+            V_t = V_t + jnp.sum(batched_vol(t))  # single batched eval
         if ev_times is not None:
             idx = jnp.searchsorted(ev_times, t, side='right')
             V_t = V_t + jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
         V_t = jnp.maximum(V_t, jnp.array(1e-10))
 
-        # Flow rates (derivatives of cumulative volume splines)
-        if u_flow_size > 0:
-            u_flow = jnp.stack([flow_derivs_ctrl[i](t) for i in range(u_flow_size)])
+        # Flow rates (derivatives of cumulative volume splines) — batched
+        if u_flow_size > 0 or f_mod_size > 0:
+            all_flow_rates = batched_vol(t, nu=1)  # (n_vol,)
+            u_flow = all_flow_rates[:u_flow_size] if u_flow_size > 0 else jnp.zeros(0)
+            f_mod = all_flow_rates[u_flow_size:] if f_mod_size > 0 else jnp.zeros(0)
         else:
             u_flow = jnp.zeros(0)
-        if f_mod_size > 0:
-            f_mod = jnp.stack([flow_derivs_mod[i](t) for i in range(f_mod_size)])
-        else:
             f_mod = jnp.zeros(0)
 
         # Feed term: sum_k (f_k / V) * (C_in_k - c)
@@ -760,8 +803,8 @@ def build_q_func(
 
         # Active biomass
         X_active = c_t[biomass_idx]
-        for i in intra_idx:
-            X_active = X_active - c_t[i]
+        if len(intra_idx) > 0:
+            X_active = X_active - jnp.sum(c_t[jnp.array(intra_idx)])
         X_active = jnp.maximum(X_active, jnp.array(1e-6))
 
         return (dc_dt - feed_term) / X_active
@@ -802,60 +845,56 @@ def estimate_specific_rates(
     """
     t_eval = jnp.asarray(t_eval, dtype=float)
     q_func = build_q_func(process, ctrl, mb, conc_splines)
-    q_out = jnp.zeros((len(t_eval), mb.q_size))
-    for k, t in enumerate(t_eval):
-        q_out = q_out.at[k].set(q_func(jnp.array(t)))
-    return q_out
+    q_func_jit = eqx.filter_jit(q_func)
+    return jax.vmap(q_func_jit)(t_eval)
 
 
 # ---------------------------------------------------------------------------
 # Full hybrid ODE integration
 # ---------------------------------------------------------------------------
 
-def _build_segment_rhs(mb, ctrl, q_func, cum_splines_mod, conc_splines=None):
+def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
     """Build the ODE right-hand side function for a segment.
 
     Parameters
     ----------
-    conc_splines : dict or None
-        If provided, a dict mapping species name → callable spline.
-        When given, the RHS uses spline-evaluated concentrations for the
-        active-biomass term (``X_active``) instead of the ODE state.  This
-        prevents the exponential error amplification that occurs when
-        biomass spans many orders of magnitude (e.g. 1e6 → 1e9 cells/mL).
+    batched_mod : interpax.PPoly or None
+        Batched PPoly for modeled (uncontrolled) cumulative volume splines.
+        Evaluate with ``batched_mod(t, nu=1)`` to get flow rates.
+    conc_eval_list : list of callables or None
+        Per-species concentration spline callables (e.g. BacktransformSpline).
+        If provided, the RHS uses spline-evaluated concentrations for the
+        active-biomass term (``X_active``) instead of the ODE state.
     """
     flow_idx = jnp.array(list(ctrl.flow_indices))
 
-    if conc_splines is not None:
-        # Build list of splines aligned with species_names for biomass
-        # and intracellular species
-        bio_spline = conc_splines[mb.species_names[mb.biomass_idx]]
-        intra_splines = [conc_splines[mb.species_names[i]]
-                         for i in mb.intracellular_indices]
+    if conc_eval_list is not None:
+        biomass_idx = mb.biomass_idx
+        intra_idx = jnp.array(mb.intracellular_indices) if mb.intracellular_indices else None
 
     def rhs(t, state, args):
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
         q = q_func(t)
 
-        f_mod = jnp.zeros(mb.f_modeled_size)
-        for i, sp in enumerate(cum_splines_mod):
-            f_mod = f_mod.at[i].set(sp.derivative()(t))
+        # Modeled flow rates via batched PPoly derivative
+        if batched_mod is not None:
+            f_mod = batched_mod(t, nu=1)  # (n_modeled_flows,)
+        else:
+            f_mod = jnp.zeros(mb.f_modeled_size)
 
-        if conc_splines is not None:
-            # Override X_active from splines for numerical stability
-            X_active = bio_spline(t)
-            for isp in intra_splines:
-                X_active = X_active - isp(t)
+        if conc_eval_list is not None:
+            all_conc = jnp.stack([sp(t) for sp in conc_eval_list])
+            X_active = all_conc[biomass_idx]
+            if intra_idx is not None:
+                X_active = X_active - jnp.sum(all_conc[intra_idx])
             X_active = jnp.maximum(X_active, 1e-6)
 
             c_species = state[:mb.q_size]
             V = state[mb.q_size]
 
-            # Reaction term with spline-based X_active
             reaction = q * X_active
 
-            # Feed terms (same as RhsOde.__call__)
             feed_term = jnp.zeros(mb.q_size)
             dV = jnp.zeros(())
             if mb.u_flow_size > 0:
@@ -902,8 +941,8 @@ def integrate_process(
     t_eval: jnp.ndarray,
     *,
     conc_splines: Optional[Dict[str, Any]] = None,
-    rtol: float = 1e-6,
-    atol: float = 1e-8,
+    rtol: float = 1e-4,
+    atol: float = 1e-6,
     max_steps: int = 16384,
 ) -> Dict[str, Any]:
     """Full hybrid ODE integration with discrete event handling.
@@ -961,8 +1000,8 @@ def integrate_process(
     state_scale = jnp.append(scale_vec, 1.0)  # [scales..., 1.0]
     state_dim = n_sp + 1
 
-    # Build modeled flow splines
-    cum_splines_mod = []
+    # Build modeled flow splines (batched)
+    cum_splines_mod_list = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
         if vc.spline is not None:
@@ -972,7 +1011,8 @@ def integrate_process(
                 jnp.asarray(vc.values.timepoints),
                 jnp.asarray(vc.values.values),
             )
-        cum_splines_mod.append(sp)
+        cum_splines_mod_list.append(sp)
+    batched_mod = _batch_splines(cum_splines_mod_list, t_start, t_end) if cum_splines_mod_list else None
 
     # Extract discrete events and build segment boundaries
     events = extract_discrete_events(process, mb)
@@ -994,8 +1034,15 @@ def integrate_process(
     c0 = jnp.maximum(c0, 0.0)
     V0 = float(process.volume.initial_volume)
 
+    # Build per-species concentration spline evaluators for X_active
+    # (avoids cubic resampling of piecewise-linear fc in batched approach)
+    if conc_splines is not None:
+        conc_eval_list = [conc_splines[s] for s in mb.species_names]
+    else:
+        conc_eval_list = None
+
     # Build RHS in original coordinates, then wrap for normalized state
-    rhs_original = _build_segment_rhs(mb, ctrl, q_func, cum_splines_mod, conc_splines)
+    rhs_original = _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list)
 
     def rhs_normalized(t, state_norm, args):
         state_orig = state_norm * state_scale
@@ -1117,14 +1164,15 @@ def integrate_process(
             )
             state_n_next = state_orig / state_scale
 
-            return state_n_next, ys_norm
+            n_steps = sol.stats["num_steps"]
+            return state_n_next, (ys_norm, n_steps)
 
         xs = (s_t_lo, s_t_hi, s_ts, s_n_valid,
               s_ev_n, s_ev_dV, s_ev_is_bolus, s_ev_Cin)
-        _, all_ys = jax.lax.scan(_scan_body, y0_norm, xs)
-        return all_ys  # (n_seg, max_ts_len, state_dim)
+        _, (all_ys, all_steps) = jax.lax.scan(_scan_body, y0_norm, xs)
+        return all_ys, all_steps  # (n_seg, max_ts_len, state_dim), (n_seg,)
 
-    all_ys_norm = _run_scan(
+    all_ys_norm, all_steps = _run_scan(
         state_norm_init,
         seg_t_lo, seg_t_hi, seg_ts_padded, seg_n_valid,
         ev_n_arr, ev_dV_arr, ev_is_bolus_arr, ev_Cin_arr,
@@ -1161,4 +1209,10 @@ def integrate_process(
     c_out = jnp.vstack(c_segments)
     V_out = jnp.concatenate(V_segments)
 
-    return {'t': t_out, 'c': c_out, 'V': V_out}
+    return {
+        't': t_out, 'c': c_out, 'V': V_out,
+        'stats': {
+            'num_steps': int(jnp.sum(all_steps)),
+            'steps_per_segment': all_steps,
+        },
+    }

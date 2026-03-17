@@ -260,9 +260,10 @@ class TestGetControlSplines:
 
     def test_flow_rate_integrated_matches_cumulative_volume(self):
         """Integrating the spline flow rate must reproduce cumulative volume."""
-        from scipy.integrate import quad
         cs = get_control_splines(_make_process(with_controlled_pv=False))
-        total, _ = quad(lambda t: float(cs(jnp.array(t))[0]), 0.0, 20.0)
+        t_dense = np.linspace(0.0, 20.0, 10_000)
+        rates = np.array([float(cs(jnp.array(t))[0]) for t in t_dense])
+        total = np.trapezoid(rates, t_dense)
         assert total == pytest.approx(1.0, rel=1e-3)
 
     def test_ctrl_pv_value_at_knots(self):
@@ -1179,13 +1180,16 @@ class TestIntegrateProcess:
         process, ctrl, mb, q_func, _, _ = self._setup_batch_integration()
         t_eval = np.linspace(0, 10, 30)
         result = integrate_process(process, ctrl, mb, q_func, t_eval)
-        assert set(result.keys()) == {'t', 'c', 'V'}
+        assert {'t', 'c', 'V', 'stats'} == set(result.keys())
         assert result['c'].shape[1] == mb.q_size
         assert result['V'].shape[0] == result['c'].shape[0]
         assert result['t'].shape[0] == result['c'].shape[0]
 
     def test_default_settings_accuracy(self):
-        """Default rtol/atol settings produce RMSE < 1e-4 for a simple batch."""
+        """Default rtol/atol settings produce RMSE < 1e-3 for a simple batch.
+
+        Default tolerances are rtol=1e-4, atol=1e-6 (float32-friendly).
+        """
         process, ctrl, mb, q_func, q_X, q_S = self._setup_batch_integration()
         t_eval = np.linspace(0, 10, 100)
 
@@ -1198,7 +1202,7 @@ class TestIntegrateProcess:
 
         rmse = np.sqrt(np.mean((result['c'][:, 0] - X_true) ** 2 +
                                 (result['c'][:, 1] - S_true) ** 2))
-        assert rmse < 1e-4, f"Overall RMSE = {rmse}"
+        assert rmse < 1e-3, f"Overall RMSE = {rmse}"
 
     def test_fedbatch_volume_increases(self):
         """Fed-batch integration should show increasing volume."""

@@ -892,3 +892,168 @@ def build_backtransform_spline(rep: SplineRepresentation) -> BacktransformSpline
         is_constant=is_constant,
         constant_value=constant_value,
     )
+
+
+# =====================================================================
+# Batched backtransform spline (vectorized N-species evaluation)
+# =====================================================================
+
+_DEFAULT_BATCH_KNOTS = 128
+
+
+class BatchedBacktransformSpline(eqx.Module):
+    """Vectorized evaluation of N concentration splines in a single call.
+
+    Resamples all per-species ``c*`` and feed-correction splines onto a
+    shared uniform knot grid and stacks their polynomial coefficients into
+    batched ``interpax.PPoly`` objects.  A single call evaluates all N
+    species simultaneously, replacing the N separate Python-loop calls
+    that dominate ODE RHS cost.
+
+    Build with :func:`build_batched_conc_splines`.
+    """
+
+    c_star_ppoly: interpax.PPoly     # coeff shape (4, m, n_sp)
+    fc_ppoly: interpax.PPoly         # coeff shape (4, m, n_sp)
+    adf_times: jnp.ndarray           # (n_adf,)
+    adf_values: jnp.ndarray          # (n_adf,)
+    constant_mask: jnp.ndarray       # (n_sp,) bool
+    constant_values: jnp.ndarray     # (n_sp,)
+    n_species: int = eqx.field(static=True)
+
+    def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
+        """Evaluate all species concentrations at scalar time *t*.
+
+        Returns
+        -------
+        jnp.ndarray
+            Shape ``(n_sp,)``.
+        """
+        cs = self.c_star_ppoly(t)   # (n_sp,)
+        fc = self.fc_ppoly(t)       # (n_sp,)
+        adf = jnp.interp(t, self.adf_times, self.adf_values)
+        adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+        result = (cs + fc) / adf
+        return jnp.where(self.constant_mask, self.constant_values, result)
+
+    def eval_derivative(self, t: jnp.ndarray) -> jnp.ndarray:
+        """Evaluate dc/dt for all species at scalar time *t*.
+
+        Uses ``PPoly(t, nu=1)`` for analytical cubic-spline derivatives.
+
+        Returns
+        -------
+        jnp.ndarray
+            Shape ``(n_sp,)``.
+        """
+        dc_star = self.c_star_ppoly(t, nu=1)  # (n_sp,)
+        dfc = self.fc_ppoly(t, nu=1)           # (n_sp,)
+        adf = jnp.interp(t, self.adf_times, self.adf_values)
+        adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+        result = (dc_star + dfc) / adf
+        return jnp.where(self.constant_mask, 0.0, result)
+
+
+def build_batched_conc_splines(
+    conc_splines,
+    species_names,
+    t_start: float,
+    t_end: float,
+    n_knots: int = _DEFAULT_BATCH_KNOTS,
+):
+    """Build a :class:`BatchedBacktransformSpline` from individual splines.
+
+    Handles mixed spline types: ``BacktransformSpline`` objects are
+    decomposed into their ``c*`` and ``fc`` components; plain
+    ``interpax.CubicSpline`` objects are treated as ``c* = spline``,
+    ``fc = 0``, ``ADF = 1``.
+
+    Parameters
+    ----------
+    conc_splines : dict
+        Mapping species name → callable spline (BacktransformSpline or
+        CubicSpline).
+    species_names : list[str]
+        Ordered species names (determines column order in batched arrays).
+    t_start, t_end : float
+        Time range for resampling.
+    n_knots : int
+        Number of uniformly-spaced knots for resampling (default 128).
+
+    Returns
+    -------
+    BatchedBacktransformSpline
+    """
+    x_common = jnp.linspace(t_start, t_end, n_knots)
+    n_sp = len(species_names)
+
+    c_star_resampled = []
+    fc_resampled = []
+    constant_mask_list = []
+    constant_values_list = []
+    adf_times = None
+    adf_values = None
+
+    for sp_name in species_names:
+        sp = conc_splines[sp_name]
+
+        if isinstance(sp, BacktransformSpline):
+            if adf_times is None:
+                adf_times = sp.adf_times
+                adf_values = sp.adf_values
+
+            constant_mask_list.append(sp.is_constant)
+            constant_values_list.append(float(sp.constant_value))
+
+            if sp.is_constant:
+                # Dummy splines for constant species (masked out in eval)
+                c_star_resampled.append(jnp.zeros(n_knots))
+                fc_resampled.append(jnp.zeros(n_knots))
+            else:
+                c_star_resampled.append(sp.c_star_spline(x_common))
+                if sp.use_cubic_fc:
+                    fc_resampled.append(sp.fc_spline(x_common))
+                else:
+                    # Piecewise-linear fc → resample via jnp.interp
+                    fc_resampled.append(
+                        jnp.interp(x_common, sp.fc_times, sp.fc_values)
+                    )
+        else:
+            # Plain CubicSpline or other callable: treat as c*=spline, fc=0, ADF=1
+            constant_mask_list.append(False)
+            constant_values_list.append(0.0)
+            c_star_resampled.append(sp(x_common))
+            fc_resampled.append(jnp.zeros(n_knots))
+
+    # If no BacktransformSpline was found, use trivial ADF
+    if adf_times is None:
+        adf_times = jnp.array([t_start, t_end])
+        adf_values = jnp.array([1.0, 1.0])
+
+    # Build batched PPoly for c* splines
+    c_star_cubic = [
+        interpax.CubicSpline(x_common, y, bc_type="natural", check=False)
+        for y in c_star_resampled
+    ]
+    c_star_c = jnp.stack([s.c for s in c_star_cubic], axis=-1)  # (4, m, n_sp)
+    c_star_ppoly = interpax.PPoly.construct_fast(
+        c_star_c, x_common, extrapolate=True
+    )
+
+    # Build batched PPoly for fc splines
+    fc_cubic = [
+        interpax.CubicSpline(x_common, y, bc_type="natural", check=False)
+        for y in fc_resampled
+    ]
+    fc_c = jnp.stack([s.c for s in fc_cubic], axis=-1)  # (4, m, n_sp)
+    fc_ppoly = interpax.PPoly.construct_fast(fc_c, x_common, extrapolate=True)
+
+    return BatchedBacktransformSpline(
+        c_star_ppoly=c_star_ppoly,
+        fc_ppoly=fc_ppoly,
+        adf_times=adf_times,
+        adf_values=adf_values,
+        constant_mask=jnp.array(constant_mask_list, dtype=bool),
+        constant_values=jnp.array(constant_values_list),
+        n_species=n_sp,
+    )
