@@ -34,6 +34,7 @@ estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval) -> jnp.ndarray
     Estimate specific rates q(t) via ODE RHS inversion (convenience wrapper).
 
 integrate_process(process, ctrl, mb, q_func, t_eval) -> dict
+integrate_process_pseudospace(process, ctrl, mb, q_func, t_eval) -> dict
     Full hybrid ODE integration with discrete event handling.
 
 Usage with JIT
@@ -931,6 +932,348 @@ def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> jnp.ndarray:
         if s > 1.0:
             scales = scales.at[i].set(s)
     return scales
+
+
+def _piecewise_linear_value_and_slope(
+    t: jnp.ndarray,
+    knot_t: jnp.ndarray,
+    knot_v: jnp.ndarray,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Evaluate piecewise-linear value and slope at scalar time t."""
+    knot_t = jnp.asarray(knot_t, dtype=float)
+    knot_v = jnp.asarray(knot_v, dtype=float)
+
+    if len(knot_t) < 2:
+        return knot_v[0], jnp.array(0.0)
+
+    t0 = knot_t[0]
+    tN = knot_t[-1]
+    t_clip = jnp.clip(jnp.asarray(t, dtype=float), t0, tN)
+
+    right = jnp.searchsorted(knot_t, t_clip, side="right")
+    left_idx = jnp.clip(right - 1, 0, len(knot_t) - 2)
+    right_idx = left_idx + 1
+
+    x0 = knot_t[left_idx]
+    x1 = knot_t[right_idx]
+    y0 = knot_v[left_idx]
+    y1 = knot_v[right_idx]
+
+    denom = jnp.maximum(x1 - x0, 1e-12)
+    alpha = (t_clip - x0) / denom
+    val = y0 + alpha * (y1 - y0)
+    slope = (y1 - y0) / denom
+
+    outside = (t < t0) | (t > tN)
+    slope = jnp.where(outside, 0.0, slope)
+    return val, slope
+
+
+def _build_pseudobatch_transforms(
+    process: BioProcess,
+    mb: "RhsOde",
+) -> List[Dict[str, Any]]:
+    """Build per-species pseudo-batch transform descriptors.
+
+    Each descriptor supports:
+      c* = adf(t) * c - fc(t)
+      c  = (c* + fc(t)) / adf(t)
+      dc*/dt = adf * dc/dt + d(adf)/dt * c - d(fc)/dt
+    """
+    transforms: List[Dict[str, Any]] = []
+    for sp_name in mb.species_names:
+        comp = process.reactor_medium.components[sp_name]
+        rep = comp.spline
+        tr = (
+            rep.spline_metadata.get("transform")
+            if rep is not None and rep.spline_metadata is not None
+            else None
+        )
+        if tr is None:
+            transforms.append({"kind": "identity"})
+            continue
+
+        adf_t = jnp.asarray(tr["adf_times"], dtype=float)
+        adf_v = jnp.asarray(tr["adf_values"], dtype=float)
+        fc_t = jnp.asarray(tr["feed_corr_times"], dtype=float)
+        fc_v = jnp.asarray(tr["feed_corr_values"], dtype=float)
+        fc_interp = str(tr.get("feed_corr_interp", "linear"))
+
+        fc_spline = None
+        if fc_interp == "cubic":
+            fc_spline = make_interpax_spline(fc_t, fc_v)
+
+        transforms.append(
+            {
+                "kind": "pb",
+                "adf_t": adf_t,
+                "adf_v": adf_v,
+                "fc_t": fc_t,
+                "fc_v": fc_v,
+                "fc_interp": fc_interp,
+                "fc_spline": fc_spline,
+            }
+        )
+        if fc_interp != "cubic":
+            if len(fc_t) < 2:
+                transforms[-1]["fc_slopes"] = jnp.array([0.0], dtype=float)
+            else:
+                fc_dt = jnp.diff(fc_t)
+                fc_slopes = jnp.diff(fc_v) / jnp.maximum(fc_dt, 1e-12)
+                median_dt = jnp.median(fc_dt)
+                fc_slopes = jnp.where(fc_dt < 0.1 * median_dt, 0.0, fc_slopes)
+                transforms[-1]["fc_slopes"] = fc_slopes
+
+    return transforms
+
+
+def integrate_process_pseudospace(
+    process: BioProcess,
+    ctrl: ControlSplines,
+    mb: RhsOde,
+    q_func: Callable,
+    t_eval: jnp.ndarray,
+    *,
+    conc_splines: Optional[Dict[str, Any]] = None,
+    rtol: float = 1e-6,
+    atol: float = 1e-8,
+    use_jump_ts: bool = True,
+    max_steps: int = 16384,
+) -> Dict[str, Any]:
+    """Integrate in c* (pseudo-batch) space with a single ``diffeqsolve``."""
+    t_eval = jnp.asarray(t_eval, dtype=float)
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
+    n_sp = mb.q_size
+
+    transforms = _build_pseudobatch_transforms(process, mb)
+
+    # Shared ADF is process-level and identical across species in pseudobatch.
+    adf_t = None
+    adf_v = None
+    for tr in transforms:
+        if tr["kind"] == "pb":
+            adf_t = tr["adf_t"]
+            adf_v = tr["adf_v"]
+            break
+    if adf_t is None:
+        adf_t = jnp.asarray([t_start, t_end], dtype=float)
+        adf_v = jnp.asarray([1.0, 1.0], dtype=float)
+
+    # Per-species feed-correction representations.
+    fc_is_cubic: List[bool] = []
+    fc_cubic: List[Optional[interpax.CubicSpline]] = []
+    fc_cubic_deriv: List[Optional[interpax.PPoly]] = []
+    fc_t_list: List[jnp.ndarray] = []
+    fc_v_list: List[jnp.ndarray] = []
+    for tr in transforms:
+        if tr["kind"] == "pb" and tr.get("fc_interp") == "cubic":
+            fc_is_cubic.append(True)
+            fc_cubic.append(tr["fc_spline"])
+            fc_cubic_deriv.append(tr["fc_spline"].derivative())
+            fc_t_list.append(jnp.asarray([t_start, t_end], dtype=float))
+            fc_v_list.append(jnp.asarray([0.0, 0.0], dtype=float))
+        elif tr["kind"] == "pb":
+            fc_is_cubic.append(False)
+            fc_cubic.append(None)
+            fc_cubic_deriv.append(None)
+            fc_t_list.append(jnp.asarray(tr["fc_t"], dtype=float))
+            fc_v_list.append(jnp.asarray(tr["fc_v"], dtype=float))
+        else:
+            fc_is_cubic.append(False)
+            fc_cubic.append(None)
+            fc_cubic_deriv.append(None)
+            fc_t_list.append(jnp.asarray([t_start, t_end], dtype=float))
+            fc_v_list.append(jnp.asarray([0.0, 0.0], dtype=float))
+
+    if conc_splines is not None:
+        bio_spline = conc_splines[mb.species_names[mb.biomass_idx]]
+        intra_splines = [
+            conc_splines[mb.species_names[i]] for i in mb.intracellular_indices
+        ]
+    else:
+        bio_spline = None
+        intra_splines = []
+
+    # Modeled (uncontrolled) continuous flows.
+    cum_splines_mod: List[interpax.CubicSpline] = []
+    for fn in mb.modeled_flow_names:
+        vc = process.volume.volume_changes[fn]
+        if vc.spline is not None:
+            sp = build_interpax_spline(vc.spline)[0][0]
+        else:
+            sp = make_interpax_spline(
+                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.values),
+            )
+        cum_splines_mod.append(sp)
+    batched_mod = (
+        _batch_splines(cum_splines_mod, t_start, t_end)
+        if len(cum_splines_mod) > 0
+        else None
+    )
+
+    events = extract_discrete_events(process, mb)
+    if events:
+        ev_sorted = sorted(events, key=lambda e: e["t"])
+        ev_times = jnp.asarray([e["t"] for e in ev_sorted], dtype=float)
+        ev_dV_cum = jnp.cumsum(
+            jnp.asarray([e["dV"] for e in ev_sorted], dtype=float)
+        )
+        jump_times = sorted(
+            set(float(e["t"]) for e in ev_sorted if t_start < float(e["t"]) < t_end)
+        )
+    else:
+        ev_times = None
+        ev_dV_cum = None
+        jump_times = []
+    jump_ts = (
+        jnp.asarray(jump_times, dtype=float)
+        if (use_jump_ts and jump_times)
+        else None
+    )
+
+    flow_idx = jnp.array(list(ctrl.flow_indices))
+    Cin = jnp.array(mb.Cin)
+    Cin_mod = jnp.array(mb.Cin_modeled)
+    V0 = jnp.array(float(process.volume.initial_volume))
+
+    # Initial state: [c*_0, V_cont_0], where c*_0 == c_0.
+    c0 = jnp.array(
+        [
+            float(jnp.asarray(process.reactor_medium.components[s].concentration.values[0]))
+            for s in mb.species_names
+        ]
+    )
+    c0 = jnp.maximum(c0, 0.0)
+    y0 = jnp.append(c0, jnp.array(0.0))
+
+    scales = _compute_scale_factors(process, mb)
+    state_scale = jnp.append(jnp.array(scales), 1.0)
+
+    def _eval_fc_and_dfc(t):
+        fc_vals = []
+        dfc_vals = []
+        for i in range(n_sp):
+            if fc_is_cubic[i]:
+                fc_i = fc_cubic[i](t)
+                dfc_i = fc_cubic_deriv[i](t)
+            else:
+                ft = fc_t_list[i]
+                fv = fc_v_list[i]
+                fc_i = jnp.interp(t, ft, fv)
+                tr = transforms[i]
+                if tr["kind"] == "pb" and "fc_slopes" in tr:
+                    sl = tr["fc_slopes"]
+                    idx = jnp.clip(jnp.searchsorted(ft, t) - 1, 0, sl.shape[0] - 1)
+                    dfc_i = sl[idx]
+                else:
+                    _, dfc_i = _piecewise_linear_value_and_slope(t, ft, fv)
+            fc_vals.append(fc_i)
+            dfc_vals.append(dfc_i)
+        return jnp.stack(fc_vals), jnp.stack(dfc_vals)
+
+    def rhs_cstar(t, state, args):
+        c_star = state[:n_sp]
+        V_cont = state[n_sp]
+
+        adf = jnp.interp(t, adf_t, adf_v)
+        adf = jnp.maximum(adf, 1e-12)
+        fc, dfc = _eval_fc_and_dfc(t)
+        c = (c_star + fc) / adf
+        c = jnp.maximum(c, 0.0)
+
+        V_disc = jnp.zeros(())
+        if ev_times is not None:
+            idx = jnp.searchsorted(ev_times, t, side="right")
+            V_disc = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
+        V = jnp.maximum(V0 + V_cont + V_disc, 1e-10)
+
+        u = ctrl(t)
+        u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
+        q = q_func(t)
+
+        if bio_spline is not None:
+            X_active = bio_spline(t)
+            for spl in intra_splines:
+                X_active = X_active - spl(t)
+        else:
+            X_active = c[mb.biomass_idx]
+            for i in mb.intracellular_indices:
+                X_active = X_active - c[i]
+        X_active = jnp.maximum(X_active, 1e-6)
+
+        reaction = q * X_active
+        feed_term = jnp.zeros(n_sp)
+        dV_cont = jnp.zeros(())
+        if mb.u_flow_size > 0:
+            feed_term = feed_term + jnp.sum(
+                (u_flow[:, None] / V) * (Cin - c[None, :]), axis=0
+            )
+            dV_cont = dV_cont + jnp.sum(u_flow)
+        if mb.f_modeled_size > 0:
+            f_mod = (
+                batched_mod(t, nu=1)
+                if batched_mod is not None
+                else jnp.zeros(mb.f_modeled_size)
+            )
+            feed_term = feed_term + jnp.sum(
+                (f_mod[:, None] / V) * (Cin_mod - c[None, :]), axis=0
+            )
+            dV_cont = dV_cont + jnp.sum(f_mod)
+
+        dc = reaction + feed_term
+        dc_star = adf * dc - dfc
+        return jnp.append(dc_star, dV_cont)
+
+    def rhs_normalized(t, state_n, args):
+        state = state_n * state_scale
+        dstate = rhs_cstar(t, state, args)
+        return dstate / state_scale
+
+    term = diffrax.ODETerm(rhs_normalized)
+    solver = diffrax.Tsit5()
+    controller = diffrax.PIDController(rtol=rtol, atol=atol, jump_ts=jump_ts)
+    dt0 = min(0.1, max((t_end - t_start) / 100.0, 1e-6))
+
+    @eqx.filter_jit
+    def _solve(ts):
+        return diffrax.diffeqsolve(
+            term,
+            solver,
+            t0=t_start,
+            t1=t_end,
+            dt0=dt0,
+            y0=y0 / state_scale,
+            saveat=diffrax.SaveAt(ts=ts),
+            stepsize_controller=controller,
+            max_steps=max_steps,
+        )
+
+    sol = _solve(t_eval)
+    ys = sol.ys * state_scale[None, :]
+    c_star_out = ys[:, :n_sp]
+    V_cont_out = ys[:, n_sp]
+
+    adf_out = jnp.interp(t_eval, adf_t, adf_v)
+    fc_out, _ = jax.vmap(_eval_fc_and_dfc)(t_eval)
+    c_out = (c_star_out + fc_out) / jnp.maximum(adf_out[:, None], 1e-12)
+    c_out = jnp.maximum(c_out, 0.0)
+
+    if ev_times is not None:
+        idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="right"))(t_eval)
+        V_disc_out = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
+    else:
+        V_disc_out = jnp.zeros_like(t_eval)
+    V_out = jnp.maximum(V0 + V_cont_out + V_disc_out, 1e-10)
+
+    return {
+        "t": t_eval,
+        "c": c_out,
+        "V": V_out,
+        "stats": {"num_steps": int(sol.stats["num_steps"])},
+        "_solve": _solve,
+    }
 
 
 def integrate_process(

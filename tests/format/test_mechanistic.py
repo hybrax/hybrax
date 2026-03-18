@@ -20,9 +20,15 @@ from bpbench import (
 from bpbench.mechanistic import (
     ControlSplines, RhsOde, get_control_splines, get_rhs_ode,
     extract_discrete_events, apply_discrete_event,
-    estimate_specific_rates, integrate_process,
+    estimate_specific_rates, integrate_process, integrate_process_pseudospace,
+    build_conc_splines, build_q_func,
 )
-from bpbench.splines import make_interpax_spline
+from bpbench.splines import (
+    make_interpax_spline,
+    build_pseudobatch_inputs,
+    build_splines,
+    to_spline_representation,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +139,27 @@ def _make_batch_process():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
+
+
+def _sample_on_observation_grid(
+    sim_t: jnp.ndarray,
+    sim_y: jnp.ndarray,
+    t_obs: jnp.ndarray,
+) -> jnp.ndarray:
+    distances = jnp.abs(sim_t[:, None] - t_obs[None, :])
+    nearest_indices = jnp.argmin(distances, axis=0)
+    return sim_y[nearest_indices]
+
+
+def _interp_on_grid(
+    sim_t: jnp.ndarray,
+    sim_y: jnp.ndarray,
+    t_obs: jnp.ndarray,
+) -> jnp.ndarray:
+    out = jnp.zeros((len(t_obs), sim_y.shape[1]))
+    for i in range(sim_y.shape[1]):
+        out = out.at[:, i].set(jnp.interp(t_obs, sim_t, sim_y[:, i]))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1216,6 +1243,144 @@ class TestIntegrateProcess:
 
         # Volume should increase over time due to feed
         assert result['V'][-1] > result['V'][0]
+
+    def test_pseudospace_matches_segmented_with_sampling_and_bolus(self):
+        """Single-pass pseudo-space integration should match segmented integration."""
+        process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
+
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([4.0, 9.0, 14.0, 18.0], [-0.003, -0.004, -0.003, -0.002]),
+        )
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=25.0, biomass_conc=0.0),
+            values=_ts([6.0, 12.0, 16.0], [0.003, 0.002, 0.002]),
+        )
+
+        t_obs = jnp.linspace(0.0, 20.0, 121)
+        biomass = 0.4 * jnp.exp(0.08 * t_obs)
+        glucose = jnp.maximum(40.0 - 1.4 * t_obs - 0.03 * (t_obs ** 2), 0.5)
+        process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
+        process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
+
+        for sp_name in ("biomass", "glucose"):
+            inputs = build_pseudobatch_inputs(process, sp_name)
+            spl = build_splines(inputs, process=process, species_name=sp_name)
+            rep = to_spline_representation(inputs, spl, sp_name)
+            process.reactor_medium.components[sp_name].spline = rep
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        conc_splines = build_conc_splines(process, mb)
+        q_func = build_q_func(process, ctrl, mb, conc_splines)
+
+        t_eval = jnp.linspace(0.0, 20.0, 181)
+        ref = integrate_process(
+            process,
+            ctrl,
+            mb,
+            q_func,
+            t_eval,
+            conc_splines=conc_splines,
+        )
+        pseudo = integrate_process_pseudospace(
+            process,
+            ctrl,
+            mb,
+            q_func,
+            t_eval,
+            conc_splines=conc_splines,
+        )
+
+        c_ref = _sample_on_observation_grid(ref["t"], ref["c"], t_eval)
+        V_ref = _sample_on_observation_grid(ref["t"], ref["V"][:, None], t_eval)[:, 0]
+        c_pseudo = _sample_on_observation_grid(pseudo["t"], pseudo["c"], t_eval)
+        V_pseudo = _sample_on_observation_grid(pseudo["t"], pseudo["V"][:, None], t_eval)[:, 0]
+
+        max_c_diff = float(jnp.max(jnp.abs(c_ref - c_pseudo)))
+        max_v_diff = float(jnp.max(jnp.abs(V_ref - V_pseudo)))
+
+        assert max_c_diff < 20.0
+        assert max_v_diff < 1e-5
+
+        for t_bolus in [6.0, 12.0, 16.0]:
+            t_pre = t_bolus - 0.01
+            t_post = t_bolus + 0.01
+            i_pre = int(jnp.argmin(jnp.abs(t_eval - t_pre)))
+            i_post = int(jnp.argmin(jnp.abs(t_eval - t_post)))
+            assert float(jnp.max(jnp.abs(c_ref[i_pre] - c_pseudo[i_pre]))) < 20.0
+            assert float(jnp.max(jnp.abs(c_ref[i_post] - c_pseudo[i_post]))) < 20.0
+
+    def test_pseudospace_runs_without_transform_metadata(self):
+        process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=200.0, biomass_conc=0.0),
+            values=_ts([6.0], [0.05]),
+        )
+
+        t_obs = jnp.linspace(0.0, 20.0, 81)
+        biomass = 0.4 * jnp.exp(0.08 * t_obs)
+        glucose = jnp.maximum(40.0 - 1.4 * t_obs - 0.03 * (t_obs ** 2), 0.5)
+        process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
+        process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        q_func = lambda t: jnp.array([0.1, -0.2])
+        t_eval_coarse = jnp.linspace(0.0, 20.0, 41)
+        out_coarse = integrate_process_pseudospace(
+            process=process,
+            ctrl=ctrl,
+            mb=mb,
+            q_func=q_func,
+            t_eval=t_eval_coarse,
+        )
+        out_dense = integrate_process_pseudospace(
+            process=process,
+            ctrl=ctrl,
+            mb=mb,
+            q_func=q_func,
+            t_eval=t_obs,
+        )
+        ref = integrate_process(
+            process=process,
+            ctrl=ctrl,
+            mb=mb,
+            q_func=q_func,
+            t_eval=t_eval_coarse,
+        )
+
+        assert out_coarse["c"].shape == (len(t_eval_coarse), mb.q_size)
+        assert out_coarse["V"].shape == (len(t_eval_coarse),)
+        assert jnp.all(jnp.isfinite(out_coarse["c"]))
+        assert jnp.all(jnp.isfinite(out_coarse["V"]))
+
+        y_dense_on_coarse = _interp_on_grid(out_dense["t"], out_dense["c"], t_eval_coarse)
+        max_grid_sensitivity = float(jnp.max(jnp.abs(out_coarse["c"] - y_dense_on_coarse)))
+        assert max_grid_sensitivity < 1.0
+
+        V_dense_on_coarse = jnp.interp(t_eval_coarse, out_dense["t"], out_dense["V"])
+        max_V_grid_sensitivity = float(jnp.max(jnp.abs(out_coarse["V"] - V_dense_on_coarse)))
+        assert max_V_grid_sensitivity < 1e-4
+
+        y_ref = _interp_on_grid(ref["t"], ref["c"], t_eval_coarse)
+        max_ref_diff = float(jnp.max(jnp.abs(out_coarse["c"] - y_ref)))
+        assert max_ref_diff < 25.0
+
+        V_ref = jnp.interp(t_eval_coarse, ref["t"], ref["V"])
+        max_V_ref_diff = float(jnp.max(jnp.abs(out_coarse["V"] - V_ref)))
+        assert max_V_ref_diff < 1e-4
 
 
 if __name__ == "__main__":
