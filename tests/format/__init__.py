@@ -15,28 +15,38 @@ def test_imports():
     """Test that all main exports are available"""
     # Dataclasses
     assert hasattr(bpbench, 'TimeAxis')
-    assert hasattr(bpbench, 'RawTimeSeries')
     assert hasattr(bpbench, 'Interpolator')
-    assert hasattr(bpbench, 'SplineRepresentation')
+    assert hasattr(bpbench, 'DiscreteEvents')
     assert hasattr(bpbench, 'TimeSeries')
     assert hasattr(bpbench, 'StaticVariable')
-    assert hasattr(bpbench, 'FeedComponent')
-    assert hasattr(bpbench, 'Feed')
-    assert hasattr(bpbench, 'ReactorProperties')
-    assert hasattr(bpbench, 'Process')
+    assert hasattr(bpbench, 'BioProcessMetadata')
+    assert hasattr(bpbench, 'ProcessVariable')
+    assert hasattr(bpbench, 'FeedMediumComponent')
+    assert hasattr(bpbench, 'ReactorMediumComponent')
+    assert hasattr(bpbench, 'FeedMedium')
+    assert hasattr(bpbench, 'ReactorMedium')
+    assert hasattr(bpbench, 'BaseVolumeChange')
+    assert hasattr(bpbench, 'FeedVolumeChange')
+    assert hasattr(bpbench, 'SampleVolumeChange')
+    assert hasattr(bpbench, 'VolumeChange')
+    assert hasattr(bpbench, 'Volume')
+    assert hasattr(bpbench, 'BioProcess')
     assert hasattr(bpbench, 'CaseStudy')
     assert hasattr(bpbench, 'BenchmarkDataset')
     
     # Utils
-    assert hasattr(bpbench, 'get_event_times')
-    assert hasattr(bpbench, 'leave_one_process_out')
-    assert hasattr(bpbench, 'iter_loocv')
+    assert hasattr(bpbench, 'print_process_structure')
+    assert hasattr(bpbench, 'print_dataset_structure')
+    assert hasattr(bpbench, 'plot_process')
+    assert hasattr(bpbench, 'plot_case_study')
+    assert hasattr(bpbench, 'validate_process')
+    assert hasattr(bpbench, 'validate_case_study')
     
-    # Serialization
-    assert hasattr(bpbench, 'save_dataset')
-    assert hasattr(bpbench, 'load_dataset')
-    assert hasattr(bpbench, 'save_dataset_json')
-    assert hasattr(bpbench, 'load_dataset_json')
+    # Modules
+    assert hasattr(bpbench, 'serialization')
+    assert hasattr(bpbench, 'validate')
+    assert hasattr(bpbench, 'mechanistic')
+    assert hasattr(bpbench, 'splines')
 
 
 def test_all_exports():

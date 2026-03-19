@@ -331,7 +331,7 @@ def _collect_process_panels(process: BioProcess):
       - for dynamic: 'x' (timepoints array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
-      - optional: 'spline': SplineRepresentation (if available)
+      - optional: 'spline': Interpolator (if available)
       - optional: 'spline_type': 'backtransform' | 'direct'
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0

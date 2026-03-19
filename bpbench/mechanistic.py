@@ -59,7 +59,7 @@ import interpax
 import jax
 import jax.numpy as jnp
 
-from .dataclasses import BioProcess, FeedVolumeChange, SampleVolumeChange, SplineRepresentation, StaticVariable, TimeSeries
+from .dataclasses import BioProcess, FeedVolumeChange, SampleVolumeChange, StaticVariable, TimeSeries
 from .splines import make_interpax_spline, build_interpax_spline, build_backtransform_spline
 
 

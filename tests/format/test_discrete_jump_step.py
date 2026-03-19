@@ -1,6 +1,6 @@
 """
 Tests verifying that ADF and feed-term produce correct step behaviour
-during the pseudo-batch backtransform via SplineRepresentation.
+during the pseudo-batch backtransform via Interpolator.
 """
 
 import numpy as np
@@ -24,7 +24,7 @@ from bpbench import (
 from bpbench.splines import (
     build_pseudobatch_inputs,
     build_splines,
-    to_spline_representation,
+    to_interpolator,
     build_backtransform_spline,
 )
 
@@ -93,7 +93,7 @@ def test_step_jump_at_bolus():
     proc = _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     bt = build_backtransform_spline(rep)
 
@@ -112,7 +112,7 @@ def test_step_consistent_at_different_distances():
     proc = _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     bt = build_backtransform_spline(rep)
     val_close = float(bt(jnp.array(10.0 + 5e-4)))
@@ -162,7 +162,7 @@ def test_no_jump_for_sampling():
 
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     bt = build_backtransform_spline(rep)
 

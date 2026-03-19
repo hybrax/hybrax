@@ -12,7 +12,6 @@ from .dataclasses import (
     # Low-level structures
     TimeAxis,
     Interpolator,
-    SplineRepresentation,
     DiscreteEvents,
     TimeSeries,
     StaticVariable,
@@ -66,7 +65,6 @@ __all__ = [
     # Dataclasses
     "TimeAxis",
     "Interpolator",
-    "SplineRepresentation",
     "DiscreteEvents",
     "TimeSeries",
     "StaticVariable",

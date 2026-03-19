@@ -48,10 +48,6 @@ class Interpolator:
         self.spline_metadata = value
 
 
-# Backward-compatible alias while the runtime still refers to splines.
-SplineRepresentation = Interpolator
-
-
 @dataclass
 class DiscreteEvents:
     """

@@ -3,8 +3,8 @@ Pseudobatch normalization utilities and spline storage for bioprocess data.
 
 This module provides:
 - Pseudobatch transform computation (c*, ADF, feed correction)
-- Conversion of pseudobatch results to SplineRepresentation for minimal storage
-- Reconstruction of backtransformed concentrations from stored SplineRepresentation
+- Conversion of pseudobatch results to Interpolator objects for minimal storage
+- Reconstruction of backtransformed concentrations from stored Interpolator objects
 - Core spline infrastructure (fitting, evaluation, segmentation)
 
 Design goals:
@@ -36,8 +36,8 @@ from .dataclasses import (
     BioProcess,
     DiscreteEvents,
     FeedVolumeChange,
+    Interpolator,
     SampleVolumeChange,
-    SplineRepresentation,
     StaticVariable,
     TimeSeries,
 )
@@ -185,8 +185,8 @@ def fit_timeseries_spline(
     n_ctrl: int = DEFAULT_MAX_CTRL_POINTS,
     max_segments: int = DEFAULT_MAX_SEGMENTS,
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
-) -> SplineRepresentation:
-    """Fit a (segmented) spline to a TimeSeries, returning a padded representation."""
+) -> Interpolator:
+    """Fit a segmented cubic Interpolator to a TimeSeries."""
     t_arr = jnp.asarray(ts.timepoints)
     v_arr = jnp.asarray(ts.values)
 
@@ -259,7 +259,7 @@ def fit_timeseries_spline(
         "fit_strategy": "smoothing_bspline" if used_smoothing_fit else "cubic_interp",
     }
 
-    return SplineRepresentation(
+    return Interpolator(
         kind=kind,
         x=jnp.array(x_padded),
         y=jnp.array(y_padded),
@@ -271,13 +271,23 @@ def fit_timeseries_spline(
     )
 
 
-def build_interpax_spline(rep: SplineRepresentation):
+def _require_cubic_interpolator(rep: Interpolator, *, context: str) -> None:
+    """Reject non-cubic interpolators in runtime code until support is added."""
+    if rep.kind != "interpax_cubic":
+        raise NotImplementedError(
+            f"{context} only supports kind='interpax_cubic' in runtime code; "
+            f"got {rep.kind!r}."
+        )
+
+
+def build_interpax_spline(rep: Interpolator):
     """Reconstruct a list of ``interpax.CubicSpline`` objects from stored params.
 
     Returns ``(splines, boundaries)`` where *splines* is a list of
     ``interpax.CubicSpline`` (one per segment) and *boundaries* is a 1-D
     array of length ``n_segments + 1``.
     """
+    _require_cubic_interpolator(rep, context="build_interpax_spline")
     splines = []
     for i in range(rep.n_segments):
         ni = int(rep.n[i])
@@ -290,8 +300,8 @@ def build_interpax_spline(rep: SplineRepresentation):
     return splines, boundaries
 
 
-def evaluate_spline_at(rep: SplineRepresentation, t: float) -> float:
-    """Evaluate a segmented spline at scalar time *t* (not jitted)."""
+def evaluate_spline_at(rep: Interpolator, t: float) -> float:
+    """Evaluate a segmented cubic interpolator at scalar time *t* (not jitted)."""
     splines, boundaries = build_interpax_spline(rep)
     idx = int(jnp.searchsorted(boundaries[1:], float(t), side="right"))
     idx = max(0, min(idx, rep.n_segments - 1))
@@ -304,8 +314,8 @@ def make_constant_spline(
     t_max: float,
     max_segments: int = DEFAULT_MAX_SEGMENTS,
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
-) -> SplineRepresentation:
-    """Create a SplineRepresentation for a constant value over [t_min, t_max]."""
+) -> Interpolator:
+    """Create a cubic Interpolator for a constant value over [t_min, t_max]."""
     x_padded = jnp.zeros((max_segments, max_ctrl_points))
     y_padded = jnp.zeros((max_segments, max_ctrl_points))
     n_padded = jnp.zeros(max_segments, dtype=int)
@@ -318,7 +328,7 @@ def make_constant_spline(
     n_padded = n_padded.at[0].set(2)
     boundary_padded = boundary_padded.at[0].set(t_min)
 
-    return SplineRepresentation(
+    return Interpolator(
         kind="interpax_cubic",
         x=jnp.array(x_padded),
         y=jnp.array(y_padded),
@@ -655,19 +665,19 @@ def evaluate_real_concentration(t_eval: jnp.ndarray, splines: Dict[str, Any]) ->
 
 
 # ===========================================================================
-# SplineRepresentation conversion and evaluation
+# Interpolator conversion and evaluation
 # ===========================================================================
 
 
-def to_spline_representation(
+def to_interpolator(
     inputs: Dict[str, Any],
     splines: Dict[str, Any],
     species_name: str,
     *,
     max_segments: int = 1,
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
-) -> SplineRepresentation:
-    """Convert pseudobatch pipeline outputs to a minimal SplineRepresentation.
+) -> Interpolator:
+    """Convert pseudobatch pipeline outputs to a minimal Interpolator.
 
     The c* cubic spline knots are stored in the main x/y arrays (single segment).
     ADF and feed_correction grids are stored in ``spline_metadata["transform"]``
@@ -686,7 +696,7 @@ def to_spline_representation(
 
     Returns
     -------
-    SplineRepresentation
+    Interpolator
         Minimal representation that can reconstruct backtransformed
         concentrations via :func:`build_backtransform_spline`.
     """
@@ -696,7 +706,7 @@ def to_spline_representation(
     meas_conc = jnp.asarray(inputs["meas_conc"], dtype=float)
     is_constant = float(jnp.max(jnp.abs(meas_conc))) < 1e-10
 
-    # Fit c* spline as a single-segment SplineRepresentation
+    # Fit c* spline as a single-segment Interpolator
     ts_star = TimeSeries(
         timepoints=jnp.array(inputs["meas_times"]),
         values=jnp.array(inputs["c_star"]),
@@ -766,7 +776,7 @@ class BacktransformSpline(eqx.Module):
     functions (e.g. ODE right-hand sides).
 
     Build with :func:`build_backtransform_spline` from a stored
-    :class:`SplineRepresentation`.
+    :class:`Interpolator`.
     """
     c_star_spline: interpax.CubicSpline
     adf_times: jnp.ndarray
@@ -842,9 +852,9 @@ class BacktransformSpline(eqx.Module):
         return _deriv
 
 
-def build_backtransform_spline(rep: SplineRepresentation) -> BacktransformSpline:
+def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
     """Build a JIT-compatible :class:`BacktransformSpline` from a stored
-    :class:`SplineRepresentation`.
+    :class:`Interpolator`.
 
     This is meant to be called **once** (outside JIT).  The returned module
     can then be passed into ``eqx.filter_jit``-compiled functions.
@@ -852,13 +862,14 @@ def build_backtransform_spline(rep: SplineRepresentation) -> BacktransformSpline
     Parameters
     ----------
     rep:
-        SplineRepresentation with ``spline_metadata["transform"]`` containing
-        ADF and feed_corr grids (as produced by :func:`to_spline_representation`).
+        Interpolator with ``spline_metadata["transform"]`` containing
+        ADF and feed_corr grids (as produced by :func:`to_interpolator`).
 
     Returns
     -------
     BacktransformSpline
     """
+    _require_cubic_interpolator(rep, context="build_backtransform_spline")
     tr = rep.spline_metadata["transform"]
 
     is_constant = tr.get("is_constant", False)

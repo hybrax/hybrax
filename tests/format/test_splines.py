@@ -13,16 +13,16 @@ from bpbench import (
     BioProcess, BioProcessMetadata, TimeAxis, TimeSeries, StaticVariable,
     ReactorMedium, ReactorMediumComponent, FeedMedium, FeedMediumComponent,
     FeedVolumeChange, SampleVolumeChange, Volume, ProcessVariable,
-    Interpolator, SplineRepresentation, DiscreteEvents,
+    Interpolator, DiscreteEvents,
 )
 from bpbench.splines import (
     detect_discrete_state_events, make_segment_boundaries, split_timeseries,
     choose_spline_kind, fit_timeseries_spline, build_interpax_spline,
     evaluate_spline_at, SMOOTHING_THRESHOLD,
     build_pseudobatch_inputs, build_splines, evaluate_real_concentration,
-    to_spline_representation, build_backtransform_spline, BacktransformSpline,
+    to_interpolator, build_backtransform_spline, BacktransformSpline,
 )
-from bpbench.serialization import save_dataset_json, load_dataset_json
+from bpbench.serialization import save_dataset, save_dataset_json, load_dataset, load_dataset_json
 from bpbench import BenchmarkDataset, CaseStudy
 
 
@@ -248,7 +248,7 @@ def test_evaluate_spline_at_multi_segment():
 
 
 # ---------------------------------------------------------------------------
-# SplineRepresentation serialization round-trip (JSON)
+# Interpolator serialization round-trip (JSON)
 # ---------------------------------------------------------------------------
 
 def test_spline_json_roundtrip():
@@ -496,11 +496,11 @@ def test_pseudobatch_species_not_in_feed():
 
 
 # ---------------------------------------------------------------------------
-# Pseudobatch pipeline: to_spline_representation + evaluate roundtrip
+# Pseudobatch pipeline: to_interpolator + evaluate roundtrip
 # ---------------------------------------------------------------------------
 
-def test_spline_representation_roundtrip_bolus():
-    """to_spline_representation -> build_backtransform_spline
+def test_interpolator_roundtrip_bolus():
+    """to_interpolator -> build_backtransform_spline
     matches evaluate_real_concentration for a bolus feed process."""
     proc = _make_process_with_bolus_feed(
         V0=1.0, feed_times=[50.0], feed_vols=[0.2], glucose_feed_conc=500.0,
@@ -510,7 +510,7 @@ def test_spline_representation_roundtrip_bolus():
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
 
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
     assert rep.spline_metadata is not None
     assert rep.spline_metadata["transform"]["name"] == "pseudo_batch"
     assert rep.spline_metadata["transform"]["species"] == "glucose"
@@ -526,14 +526,14 @@ def test_spline_representation_roundtrip_bolus():
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
 
 
-def test_spline_representation_roundtrip_continuous():
-    """to_spline_representation -> build_backtransform_spline
+def test_interpolator_roundtrip_continuous():
+    """to_interpolator -> build_backtransform_spline
     matches evaluate_real_concentration for a continuous feed process."""
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
 
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
     assert rep.spline_metadata["transform"]["feed_corr_interp"] == "cubic"
 
     bt = build_backtransform_spline(rep)
@@ -545,12 +545,12 @@ def test_spline_representation_roundtrip_continuous():
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
 
 
-def test_spline_representation_scalar():
+def test_interpolator_scalar():
     """BacktransformSpline works for scalar evaluation."""
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     bt = build_backtransform_spline(rep)
     val = float(bt(jnp.array(25.0)))
@@ -567,7 +567,7 @@ def test_backtransform_has_jump_at_bolus():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     bt = build_backtransform_spline(rep)
 
@@ -588,7 +588,7 @@ def test_continuous_backtransform_no_nan():
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     bt = build_backtransform_spline(rep)
     for t in [0.0, 5.0, 10.0, 15.0, 20.0]:
@@ -598,7 +598,7 @@ def test_continuous_backtransform_no_nan():
 
 
 # ---------------------------------------------------------------------------
-# SplineRepresentation JSON serialization with backtransform metadata
+# Interpolator JSON serialization with backtransform metadata
 # ---------------------------------------------------------------------------
 
 def test_pseudobatch_spline_json_roundtrip():
@@ -606,7 +606,7 @@ def test_pseudobatch_spline_json_roundtrip():
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     # Attach to a ReactorMediumComponent
     comp = proc.reactor_medium.components["glucose"]
@@ -645,7 +645,7 @@ def test_pseudobatch_metadata_json_serializable():
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
 
     assert "transform" in rep.spline_metadata
     tr = rep.spline_metadata["transform"]
@@ -753,6 +753,84 @@ def test_ppoly_interpolator_json_roundtrip():
     np.testing.assert_allclose(loaded_interp.coefficients, interp.coefficients)
 
 
+def test_linear_interpolator_hybrid_roundtrip():
+    interp = Interpolator(
+        kind="interpax_linear",
+        x=jnp.array([[0.0, 1.0, 2.0]]),
+        y=jnp.array([[0.0, 2.0, 4.0]]),
+        n=jnp.array([3]),
+        n_segments=1,
+        segment_boundaries=jnp.array([0.0, 2.0]),
+        bc_type=None,
+        spline_metadata={"source": "test"},
+    )
+    pv = ProcessVariable(
+        name="linear_var",
+        unit="g/L",
+        is_controlled=False,
+        values=_ts([0.0, 1.0, 2.0], [0.0, 2.0, 4.0]),
+        spline=interp,
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+        process_variables={"linear_var": pv},
+    )
+    ds = BenchmarkDataset(
+        metadata={"name": "test"},
+        case_studies={"cs": CaseStudy(case_id="cs", organism="E. coli", citation="test", processes={"p": proc})},
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "hybrid"
+        save_dataset(ds, path)
+        loaded = load_dataset(path)
+
+    loaded_interp = loaded.case_studies["cs"].processes["p"].process_variables["linear_var"].spline
+    assert loaded_interp is not None
+    assert loaded_interp.kind == "interpax_linear"
+    assert loaded_interp.interpolator_metadata == {"source": "test"}
+
+
+def test_runtime_rejects_linear_interpolator():
+    interp = Interpolator(
+        kind="interpax_linear",
+        x=jnp.array([[0.0, 1.0, 2.0]]),
+        y=jnp.array([[0.0, 1.0, 2.0]]),
+        n=jnp.array([3]),
+        n_segments=1,
+        segment_boundaries=jnp.array([0.0, 2.0]),
+        bc_type=None,
+    )
+
+    with pytest.raises(NotImplementedError, match="interpax_cubic"):
+        build_interpax_spline(interp)
+
+    with pytest.raises(NotImplementedError, match="interpax_cubic"):
+        evaluate_spline_at(interp, 1.0)
+
+
+def test_runtime_rejects_ppoly_backtransform():
+    interp = Interpolator(
+        kind="interpax_ppoly",
+        x=jnp.array([0.0, 1.0, 2.0]),
+        coefficients=jnp.ones((4, 2)),
+        spline_metadata={
+            "transform": {
+                "adf_times": [0.0, 2.0],
+                "adf_values": [1.0, 1.0],
+                "feed_corr_times": [0.0, 2.0],
+                "feed_corr_values": [0.0, 0.0],
+            }
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="interpax_cubic"):
+        build_backtransform_spline(interp)
+
+
 # ---------------------------------------------------------------------------
 # Pseudobatch with sample volume change
 # ---------------------------------------------------------------------------
@@ -811,7 +889,7 @@ def test_pseudobatch_with_sample_volume_change():
 
     # Full pipeline should work
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
     bt = build_backtransform_spline(rep)
     t_eval = np.linspace(0.0, 20.0, 20)
     vals = np.array([float(bt(jnp.array(t))) for t in t_eval])
@@ -884,7 +962,7 @@ def test_pseudobatch_multiple_feed_streams():
 
     # Full pipeline
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
     bt = build_backtransform_spline(rep)
     t_eval = np.linspace(0.0, 20.0, 20)
     vals = np.array([float(bt(jnp.array(t))) for t in t_eval])
@@ -906,7 +984,7 @@ def test_backtransform_spline_jit_bolus():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
     bt = build_backtransform_spline(rep)
 
     jit_fn = eqx.filter_jit(bt)
@@ -922,7 +1000,7 @@ def test_backtransform_spline_jit_continuous():
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_spline_representation(inputs, splines, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
     bt = build_backtransform_spline(rep)
 
     jit_fn = eqx.filter_jit(bt)

@@ -28,7 +28,7 @@ from bpbench import (
 from bpbench.splines import (
     build_pseudobatch_inputs,
     build_splines,
-    to_spline_representation,
+    to_interpolator,
     build_backtransform_spline,
 )
 
@@ -45,10 +45,10 @@ def _ts(t, v):
 
 
 def _fit_and_get_rep(proc, species):
-    """Run full pipeline: inputs -> splines -> SplineRepresentation."""
+    """Run full pipeline: inputs -> splines -> Interpolator."""
     inputs = build_pseudobatch_inputs(proc, species)
     splines = build_splines(inputs, proc, species)
-    return to_spline_representation(inputs, splines, species)
+    return to_interpolator(inputs, splines, species)
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ import bpbench
 from bpbench import (
     BioProcess, BioProcessMetadata, TimeAxis, TimeSeries, StaticVariable,
     ReactorMedium, ReactorMediumComponent, FeedMedium, FeedMediumComponent,
-    FeedVolumeChange, SampleVolumeChange, Volume, ProcessVariable,
+    FeedVolumeChange, SampleVolumeChange, Volume, ProcessVariable, Interpolator,
 )
 from bpbench.mechanistic import (
     ControlSplines, RhsOde, get_control_splines, get_rhs_ode,
@@ -27,7 +27,7 @@ from bpbench.splines import (
     make_interpax_spline,
     build_pseudobatch_inputs,
     build_splines,
-    to_spline_representation,
+    to_interpolator,
 )
 
 
@@ -338,6 +338,21 @@ class TestGetControlSplines:
         cs = get_control_splines(_make_process(with_controlled_pv=False))
         g = eqx.filter_jit(jax.grad(lambda t: cs(t)[0]))(jnp.array(10.0))
         assert g.shape == ()  # scalar gradient (second deriv of cumulative vol)
+
+    def test_rejects_non_cubic_control_interpolator(self):
+        process = _make_process(with_controlled_flow=False)
+        process.process_variables["pH"].spline = Interpolator(
+            kind="interpax_linear",
+            x=jnp.array([[0.0, 10.0, 20.0]]),
+            y=jnp.array([[7.0, 7.0, 7.0]]),
+            n=jnp.array([3]),
+            n_segments=1,
+            segment_boundaries=jnp.array([0.0, 20.0]),
+            bc_type=None,
+        )
+
+        with pytest.raises(NotImplementedError, match="interpax_cubic"):
+            get_control_splines(process)
 
 
 # ---------------------------------------------------------------------------
@@ -1283,7 +1298,7 @@ class TestIntegrateProcess:
         for sp_name in ("biomass", "glucose"):
             inputs = build_pseudobatch_inputs(process, sp_name)
             spl = build_splines(inputs, process=process, species_name=sp_name)
-            rep = to_spline_representation(inputs, spl, sp_name)
+            rep = to_interpolator(inputs, spl, sp_name)
             process.reactor_medium.components[sp_name].spline = rep
 
         ctrl = get_control_splines(process)

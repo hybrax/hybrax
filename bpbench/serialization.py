@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from .dataclasses import (
     BenchmarkDataset, BioProcessCollection, CaseStudy, BioProcess, TimeSeries, TimeAxis,
-    Interpolator, SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
+    Interpolator, DiscreteEvents, FeedMedium, FeedMediumComponent,
     StaticVariable, BioProcessMetadata, Volume, VolumeChange,
     FeedVolumeChange, SampleVolumeChange,
     ReactorMedium, ReactorMediumComponent, ProcessVariable
@@ -815,17 +815,6 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
         bc_type=data.get("bc_type", "natural"),
         spline_metadata=metadata,
     )
-
-
-def _spline_to_dict(spline: SplineRepresentation) -> Dict:
-    """Backward-compatible wrapper for older internal call sites."""
-    return _interpolator_to_dict(spline)
-
-
-def _dict_to_spline(data: Dict) -> SplineRepresentation:
-    """Backward-compatible wrapper for older internal call sites."""
-    return _dict_to_interpolator(data)
-
 
 def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
     """Convert DiscreteEvents to dictionary"""
