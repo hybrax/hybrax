@@ -210,6 +210,7 @@ def fit_timeseries_spline(
     ys: List[jnp.ndarray] = []
     ns: List[int] = []
     kind = "interpax_cubic"
+    used_smoothing_fit = False
 
     for seg in segments:
         seg_t = jnp.asarray(seg.timepoints)
@@ -230,7 +231,7 @@ def fit_timeseries_spline(
 
         strategy = choose_spline_kind(n_pts)
         if strategy == "smoothing_bspline":
-            kind = "smoothing_bspline_approx"
+            used_smoothing_fit = True
             xc, yc = _fit_smoothing_segment(seg_t, seg_v, s=smoothing_s, n_ctrl=n_ctrl)
         else:
             xc, yc = _fit_interp_segment(seg_t, seg_v)
@@ -255,6 +256,7 @@ def fit_timeseries_spline(
         "smoothing_s": float(smoothing_s),
         "n_ctrl": int(n_ctrl),
         "actual_segments": int(actual_n_segments),
+        "fit_strategy": "smoothing_bspline" if used_smoothing_fit else "cubic_interp",
     }
 
     return SplineRepresentation(

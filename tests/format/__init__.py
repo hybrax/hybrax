@@ -16,6 +16,7 @@ def test_imports():
     # Dataclasses
     assert hasattr(bpbench, 'TimeAxis')
     assert hasattr(bpbench, 'RawTimeSeries')
+    assert hasattr(bpbench, 'Interpolator')
     assert hasattr(bpbench, 'SplineRepresentation')
     assert hasattr(bpbench, 'TimeSeries')
     assert hasattr(bpbench, 'StaticVariable')

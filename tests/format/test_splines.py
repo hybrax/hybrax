@@ -13,7 +13,7 @@ from bpbench import (
     BioProcess, BioProcessMetadata, TimeAxis, TimeSeries, StaticVariable,
     ReactorMedium, ReactorMediumComponent, FeedMedium, FeedMediumComponent,
     FeedVolumeChange, SampleVolumeChange, Volume, ProcessVariable,
-    SplineRepresentation, DiscreteEvents,
+    Interpolator, SplineRepresentation, DiscreteEvents,
 )
 from bpbench.splines import (
     detect_discrete_state_events, make_segment_boundaries, split_timeseries,
@@ -190,7 +190,7 @@ def test_choose_smoothing():
 def test_fit_simple_cubic():
     ts = _ts([0., 1., 2., 3., 4., 5.], [0., 1., 4., 9., 16., 25.])
     rep = fit_timeseries_spline(ts)
-    assert isinstance(rep, SplineRepresentation)
+    assert isinstance(rep, Interpolator)
     assert rep.kind == "interpax_cubic"
     assert rep.n_segments == 1
     assert int(rep.n[0]) == 6
@@ -252,7 +252,7 @@ def test_evaluate_spline_at_multi_segment():
 # ---------------------------------------------------------------------------
 
 def test_spline_json_roundtrip():
-    """SplineRepresentation survives JSON save/load."""
+    """Interpolator survives JSON save/load."""
     ts = _ts([0., 1., 2., 3., 4.], [0., 0.5, 1.5, 3.0, 5.0])
     rep = fit_timeseries_spline(ts)
 
@@ -275,8 +275,11 @@ def test_spline_json_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
         save_dataset_json(ds, path)
+        payload = path.read_text()
         loaded = load_dataset_json(path)
 
+    assert '"interpolator"' in payload
+    assert '"spline"' not in payload
     loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["test_var"]
     assert loaded_pv.spline is not None
     assert loaded_pv.spline.kind == rep.kind
@@ -599,7 +602,7 @@ def test_continuous_backtransform_no_nan():
 # ---------------------------------------------------------------------------
 
 def test_pseudobatch_spline_json_roundtrip():
-    """SplineRepresentation with pseudobatch metadata survives JSON roundtrip."""
+    """Interpolator with pseudobatch metadata survives JSON roundtrip."""
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
@@ -616,8 +619,10 @@ def test_pseudobatch_spline_json_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test_pb.json"
         save_dataset_json(ds, path)
+        payload = path.read_text()
         loaded = load_dataset_json(path)
 
+    assert '"interpolator"' in payload
     loaded_comp = loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"]
     assert loaded_comp.spline is not None
     loaded_tr = loaded_comp.spline.spline_metadata["transform"]
@@ -651,6 +656,101 @@ def test_pseudobatch_metadata_json_serializable():
     meta_json = json.dumps(rep.spline_metadata)
     meta_loaded = json.loads(meta_json)
     assert meta_loaded["transform"]["name"] == "pseudo_batch"
+
+
+def test_linear_interpolator_json_roundtrip():
+    interp = Interpolator(
+        kind="interpax_linear",
+        x=jnp.array([[0.0, 1.0, 2.0]]),
+        y=jnp.array([[0.0, 2.0, 4.0]]),
+        n=jnp.array([3]),
+        n_segments=1,
+        segment_boundaries=jnp.array([0.0, 2.0]),
+        bc_type=None,
+        spline_metadata={"source": "test"},
+    )
+    pv = ProcessVariable(
+        name="linear_var",
+        unit="g/L",
+        is_controlled=False,
+        values=_ts([0.0, 1.0, 2.0], [0.0, 2.0, 4.0]),
+        spline=interp,
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+        process_variables={"linear_var": pv},
+    )
+    ds = BenchmarkDataset(
+        metadata={"name": "test"},
+        case_studies={"cs": CaseStudy(case_id="cs", organism="E. coli", citation="test", processes={"p": proc})},
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "linear.json"
+        save_dataset_json(ds, path)
+        loaded = load_dataset_json(path)
+
+    loaded_interp = loaded.case_studies["cs"].processes["p"].process_variables["linear_var"].spline
+    assert loaded_interp is not None
+    assert loaded_interp.kind == "interpax_linear"
+    assert loaded_interp.bc_type is None
+    assert loaded_interp.interpolator_metadata == {"source": "test"}
+
+
+def test_ppoly_interpolator_json_roundtrip():
+    interp = Interpolator(
+        kind="interpax_ppoly",
+        x=jnp.array([0.0, 1.0, 2.0]),
+        coefficients=jnp.array(
+            [
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 1.0],
+            ]
+        ),
+        extrapolate=False,
+        spline_metadata={"axis": 0},
+    )
+    rm = ReactorMedium(
+        name="m",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose",
+                unit="g/L",
+                concentration=_ts([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]),
+                is_intracellular=False,
+                spline=interp,
+            )
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=rm,
+    )
+    ds = BenchmarkDataset(
+        metadata={"name": "test"},
+        case_studies={"cs": CaseStudy(case_id="cs", organism="E. coli", citation="test", processes={"p": proc})},
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "ppoly.json"
+        save_dataset_json(ds, path)
+        loaded = load_dataset_json(path)
+
+    loaded_interp = loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"].spline
+    assert loaded_interp is not None
+    assert loaded_interp.kind == "interpax_ppoly"
+    assert loaded_interp.extrapolate is False
+    np.testing.assert_allclose(loaded_interp.x, interp.x)
+    np.testing.assert_allclose(loaded_interp.coefficients, interp.coefficients)
 
 
 # ---------------------------------------------------------------------------

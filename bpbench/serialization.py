@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from .dataclasses import (
     BenchmarkDataset, BioProcessCollection, CaseStudy, BioProcess, TimeSeries, TimeAxis,
-    SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
+    Interpolator, SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
     StaticVariable, BioProcessMetadata, Volume, VolumeChange,
     FeedVolumeChange, SampleVolumeChange,
     ReactorMedium, ReactorMediumComponent, ProcessVariable
@@ -355,7 +355,7 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "unit": comp.unit,
         "is_intracellular": comp.is_intracellular,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
-        "spline": _spline_to_dict(comp.spline) if comp.spline is not None else None,
+        "interpolator": _interpolator_to_dict(comp.spline) if comp.spline is not None else None,
     }
 
 
@@ -366,7 +366,7 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
         "unit": pv.unit,
         "is_controlled": pv.is_controlled,
         "values": _timeseries_or_static_to_dict(pv.values),
-        "spline": _spline_to_dict(pv.spline) if pv.spline is not None else None,
+        "interpolator": _interpolator_to_dict(pv.spline) if pv.spline is not None else None,
     }
 
 
@@ -419,7 +419,9 @@ def _volume_change_to_dict(vc) -> Dict:
     else:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
 
-    result["spline"] = _spline_to_dict(vc.spline) if getattr(vc, 'spline', None) is not None else None
+    result["interpolator"] = (
+        _interpolator_to_dict(vc.spline) if getattr(vc, "spline", None) is not None else None
+    )
     return result
 
 
@@ -582,8 +584,9 @@ def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
 def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     """Reconstruct ReactorMediumComponent from dictionary"""
     spline = None
-    if comp_data.get("spline") is not None:
-        spline = _dict_to_spline(comp_data["spline"])
+    interpolator_data = comp_data.get("interpolator", comp_data.get("spline"))
+    if interpolator_data is not None:
+        spline = _dict_to_interpolator(interpolator_data)
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
@@ -596,8 +599,9 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
 def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
     """Reconstruct ProcessVariable from dictionary"""
     spline = None
-    if pv_data.get("spline") is not None:
-        spline = _dict_to_spline(pv_data["spline"])
+    interpolator_data = pv_data.get("interpolator", pv_data.get("spline"))
+    if interpolator_data is not None:
+        spline = _dict_to_interpolator(interpolator_data)
     return ProcessVariable(
         name=pv_data["name"],
         unit=pv_data["unit"],
@@ -661,8 +665,9 @@ def _dict_to_volume_change(vc_data: Dict):
     )
 
     spline = None
-    if vc_data.get("spline") is not None:
-        spline = _dict_to_spline(vc_data["spline"])
+    interpolator_data = vc_data.get("interpolator", vc_data.get("spline"))
+    if interpolator_data is not None:
+        spline = _dict_to_interpolator(interpolator_data)
 
     if vc_type == "FeedVolumeChange":
         feed_medium = None
@@ -701,38 +706,73 @@ def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
 
 
 # ============================================================
-# SplineRepresentation and DiscreteEvents serialization helpers
+# Interpolator and DiscreteEvents serialization helpers
 # ============================================================
 
-def _spline_to_dict(spline: SplineRepresentation) -> Dict:
-    """Convert SplineRepresentation to dictionary (unpadded for compact JSON)."""
-    n_seg = spline.n_segments
-    n_per_seg = [int(spline.n[i]) for i in range(n_seg)]
-    return {
-        "kind": spline.kind,
-        "x": [np.asarray(spline.x[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
-        "y": [np.asarray(spline.y[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
-        "n": n_per_seg,
-        "n_segments": n_seg,
-        "segment_boundaries": np.asarray(spline.segment_boundaries[:n_seg + 1]).tolist(),
-        "bc_type": spline.bc_type,
-        "spline_metadata": spline.spline_metadata,
-    }
+_SEGMENTED_INTERPOLATOR_KINDS = {
+    "interpax_cubic",
+    "interpax_linear",
+}
 
 
-def _dict_to_spline(data: Dict) -> SplineRepresentation:
-    """Reconstruct SplineRepresentation from dictionary.
+def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
+    """Convert Interpolator to dictionary (compact JSON/YAML form)."""
+    result = {"kind": interpolator.kind}
 
-    Handles both the compact unpadded format (list-of-lists) and the legacy
-    padded format (``__ndarray__`` dicts or pre-converted jnp arrays).
-    """
+    if interpolator.kind in _SEGMENTED_INTERPOLATOR_KINDS:
+        n_seg = int(interpolator.n_segments or 0)
+        n_per_seg = [int(interpolator.n[i]) for i in range(n_seg)]
+        result.update(
+            {
+                "x": [np.asarray(interpolator.x[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
+                "y": [np.asarray(interpolator.y[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
+                "n": n_per_seg,
+                "n_segments": n_seg,
+                "segment_boundaries": np.asarray(
+                    interpolator.segment_boundaries[:n_seg + 1]
+                ).tolist(),
+                "bc_type": interpolator.bc_type,
+            }
+        )
+    elif interpolator.kind == "interpax_ppoly":
+        result.update(
+            {
+                "x": np.asarray(interpolator.x).tolist(),
+                "coefficients": np.asarray(interpolator.coefficients).tolist(),
+                "extrapolate": interpolator.extrapolate,
+            }
+        )
+    else:
+        raise ValueError(f"Unsupported interpolator kind for serialization: {interpolator.kind}")
+
+    result["interpolator_metadata"] = interpolator.interpolator_metadata
+    return result
+
+
+def _dict_to_interpolator(data: Dict) -> Interpolator:
+    """Reconstruct Interpolator from compact or legacy dictionary formats."""
+    kind = data["kind"]
+    metadata = data.get("interpolator_metadata", data.get("spline_metadata"))
+
+    if kind == "interpax_ppoly":
+        x_raw = data["x"]
+        coeff_raw = data["coefficients"]
+        x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
+        coefficients = coeff_raw if isinstance(coeff_raw, jnp.ndarray) else jnp.array(coeff_raw)
+        return Interpolator(
+            kind=kind,
+            x=x,
+            coefficients=coefficients,
+            extrapolate=data.get("extrapolate", True),
+            spline_metadata=metadata,
+        )
+
     n_segments = data["n_segments"]
     x_raw = data["x"]
     y_raw = data["y"]
     n_raw = data["n"]
     seg_b_raw = data["segment_boundaries"]
 
-    # Detect format: new unpadded (list-of-lists) vs old padded (ndarray)
     is_unpadded = (
         isinstance(x_raw, list)
         and len(x_raw) > 0
@@ -740,7 +780,6 @@ def _dict_to_spline(data: Dict) -> SplineRepresentation:
     )
 
     if is_unpadded:
-        # New compact format: re-pad to exact size
         n_per_seg = [int(v) for v in n_raw]
         max_ctrl = max(len(row) for row in x_raw)
 
@@ -761,22 +800,31 @@ def _dict_to_spline(data: Dict) -> SplineRepresentation:
         n_arr = jnp.array(n_arr)
         seg_b = jnp.array(seg_b)
     else:
-        # Legacy padded format
         x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
         y = y_raw if isinstance(y_raw, jnp.ndarray) else jnp.array(y_raw)
         n_arr = n_raw if isinstance(n_raw, jnp.ndarray) else jnp.array(n_raw)
         seg_b = seg_b_raw if isinstance(seg_b_raw, jnp.ndarray) else jnp.array(seg_b_raw)
 
-    return SplineRepresentation(
-        kind=data["kind"],
+    return Interpolator(
+        kind=kind,
         x=x,
         y=y,
         n=n_arr,
         n_segments=n_segments,
         segment_boundaries=seg_b,
         bc_type=data.get("bc_type", "natural"),
-        spline_metadata=data.get("spline_metadata"),
+        spline_metadata=metadata,
     )
+
+
+def _spline_to_dict(spline: SplineRepresentation) -> Dict:
+    """Backward-compatible wrapper for older internal call sites."""
+    return _interpolator_to_dict(spline)
+
+
+def _dict_to_spline(data: Dict) -> SplineRepresentation:
+    """Backward-compatible wrapper for older internal call sites."""
+    return _dict_to_interpolator(data)
 
 
 def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:

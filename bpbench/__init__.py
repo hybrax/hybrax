@@ -11,6 +11,7 @@ __version__ = "0.1.0"
 from .dataclasses import (
     # Low-level structures
     TimeAxis,
+    Interpolator,
     SplineRepresentation,
     DiscreteEvents,
     TimeSeries,
@@ -64,6 +65,7 @@ __all__ = [
     "__version__",
     # Dataclasses
     "TimeAxis",
+    "Interpolator",
     "SplineRepresentation",
     "DiscreteEvents",
     "TimeSeries",

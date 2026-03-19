@@ -15,27 +15,41 @@ import jax.numpy as jnp
 # ============================================================
 
 @dataclass
-class SplineRepresentation:
+class Interpolator:
     """
-    Serializable spline representation that can reconstruct an interpax spline.
+    Serializable interpax interpolator representation.
 
-    Stores per-segment control points (x, y) padded to fixed shapes so that
-    all splines in a dataset share the same array dimensions.  This is critical
-    for JAX JIT compilation (no shape-driven recompilation).
+    Supported kinds currently include:
+    - ``interpax_cubic`` and ``interpax_linear`` as segmented knot/value data
+    - ``interpax_ppoly`` as breakpoint/coefficient data
 
-    Reconstruction:
-        For each segment *i* (``i < n_segments``), build
-        ``interpax.CubicSpline(x[i, :n[i]], y[i, :n[i]])`` and evaluate
-        within ``[segment_boundaries[i], segment_boundaries[i+1]]``.
+    For segmented interpolators, per-segment control points are padded to fixed
+    shapes so that all interpolators in a dataset share common array dimensions.
+    This keeps the stored representation JAX-friendly.
     """
-    kind: str  # e.g. "interpax_cubic", "smoothing_bspline_approx"
-    x: jnp.ndarray  # shape (max_segments, max_ctrl_points) – padded
-    y: jnp.ndarray  # shape (max_segments, max_ctrl_points) – padded
-    n: jnp.ndarray  # shape (max_segments,) – valid point count per segment
-    n_segments: int
-    segment_boundaries: jnp.ndarray  # shape (max_segments + 1,) – padded
-    bc_type: str = "natural"
-    spline_metadata: Optional[dict] = None  # e.g. {"s": 0.1, "n_ctrl": 128}
+    kind: str  # e.g. "interpax_cubic", "interpax_linear", "interpax_ppoly"
+    x: jnp.ndarray
+    y: Optional[jnp.ndarray] = None
+    n: Optional[jnp.ndarray] = None
+    n_segments: Optional[int] = None
+    segment_boundaries: Optional[jnp.ndarray] = None
+    bc_type: Optional[str] = "natural"
+    coefficients: Optional[jnp.ndarray] = None
+    extrapolate: Optional[bool] = True
+    spline_metadata: Optional[dict] = None
+
+    @property
+    def interpolator_metadata(self) -> Optional[dict]:
+        """Preferred generic alias for serialized metadata."""
+        return self.spline_metadata
+
+    @interpolator_metadata.setter
+    def interpolator_metadata(self, value: Optional[dict]) -> None:
+        self.spline_metadata = value
+
+
+# Backward-compatible alias while the runtime still refers to splines.
+SplineRepresentation = Interpolator
 
 
 @dataclass
@@ -91,7 +105,7 @@ class ProcessVariable:
     unit: str  # e.g. "g/L", "g/L/h", "°C" 
     is_controlled: bool # True if this variable is a control input, False if it's a state variable
     values: TimeSeries | StaticVariable
-    spline: Optional[SplineRepresentation] = None
+    spline: Optional[Interpolator] = None
 
 @dataclass
 class FeedMediumComponent:
@@ -112,7 +126,7 @@ class ReactorMediumComponent:
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
     is_intracellular: bool # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in ODE RHS calculations
-    spline: Optional[SplineRepresentation] = None
+    spline: Optional[Interpolator] = None
 
 
 @dataclass
@@ -166,7 +180,7 @@ class FeedVolumeChange(VolumeChange):
     All delta values should be >= 0.
     """
     feed_medium: FeedMedium
-    spline: Optional[SplineRepresentation] = None
+    spline: Optional[Interpolator] = None
 
 
 @dataclass
@@ -176,7 +190,7 @@ class SampleVolumeChange(VolumeChange):
 
     All delta values should be <= 0.
     """
-    spline: Optional[SplineRepresentation] = None
+    spline: Optional[Interpolator] = None
 
 
 # Union type alias for convenience
