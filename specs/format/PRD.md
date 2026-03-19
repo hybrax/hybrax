@@ -42,6 +42,9 @@ There will be 3-6 packages:
 
 ## Open questions
 - DATA AUGMENTATION?
+- Should case-study metadata such as `case_id`, `organism`, and `citation` be required for loading?
+    - Similarly, should per-process metadata like `metadata.name` and `metadata.process_type` remain mandatory, or should the loader tolerate missing fields and fill reasonable defaults?
+    - Requiring these fields keeps the schema explicit, but it is a bit annoying for minimal datasets and quick experiments. We should decide whether strictness here is worth the friction.
 
 
 ## Example snippets
