@@ -33,6 +33,13 @@
             2. add discrete sampling events.
                 * for that we need a function that calculates the delta for reactor concentrations + Volume at every event
                 * the diffrax integration has to stop the deltas have to be calculated and then the diffrax integration has to start again.
+    * Support time-varying feed concentrations in the mechanistic code
+        * the schema already allows `FeedMediumComponent.concentration` to be either `TimeSeries` or `StaticVariable`
+        * however, `get_rhs_ode()` currently raises when a feed concentration is a `TimeSeries`
+        * this should be supported consistently for:
+            * continuous feed terms in the RHS
+            * discrete bolus-feed event composition (`Cin`)
+            * any helper/spline/inversion code paths that assume static feed composition
     * Add new case studies -> they will bring their own challenges.
         * Martens, et al. 2025
             * Synthetic mammalian case study
