@@ -9,6 +9,7 @@ import tempfile
 
 from bpbench import (
     BenchmarkDataset,
+    BioProcessCollection,
     CaseStudy,
     BioProcess,
     BioProcessMetadata,
@@ -25,9 +26,13 @@ from bpbench import (
 )
 from bpbench.serialization import (
     save_dataset,
+    save_process_collection,
     load_dataset,
+    load_process_collection,
     save_dataset_json,
+    save_process_collection_json,
     load_dataset_json,
+    load_process_collection_json,
 )
 
 
@@ -36,8 +41,8 @@ from bpbench.serialization import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def sample_dataset():
-    """Build a minimal but realistic BenchmarkDataset for serialization tests."""
+def sample_process():
+    """Build a minimal but realistic BioProcess for serialization tests."""
     biomass_ts = TimeSeries(
         timepoints=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
@@ -96,7 +101,7 @@ def sample_dataset():
         name="pH", unit="", is_controlled=False, values=StaticVariable(value=7.0)
     )
 
-    process = BioProcess(
+    return BioProcess(
         metadata=BioProcessMetadata(name="fed_batch_001", process_type="fed_batch"),
         time_axis=TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation"),
         volume=volume,
@@ -104,11 +109,33 @@ def sample_dataset():
         process_variables={"temperature": pv_temp, "pH": pv_ph},
     )
 
+
+@pytest.fixture
+def sample_collection(sample_process):
+    """Build a minimal but realistic BioProcessCollection for serialization tests."""
+    return BioProcessCollection(
+        metadata=None,
+        processes={"fed_batch_001": sample_process},
+    )
+
+
+@pytest.fixture
+def sample_collection_with_metadata(sample_process):
+    """Build a BioProcessCollection that carries top-level collection metadata."""
+    return BioProcessCollection(
+        metadata={"source": "raw_lab_export", "instrument": "ambr250"},
+        processes={"fed_batch_001": sample_process},
+    )
+
+
+@pytest.fixture
+def sample_dataset(sample_process):
+    """Build a minimal but realistic BenchmarkDataset for serialization tests."""
     case_study = CaseStudy(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
-        processes={"fed_batch_001": process},
+        processes={"fed_batch_001": sample_process},
     )
 
     return BenchmarkDataset(
@@ -121,6 +148,33 @@ def sample_dataset():
 # ---------------------------------------------------------------------------
 # YAML + HDF5 serialization
 # ---------------------------------------------------------------------------
+
+def test_save_process_collection_creates_files(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection"
+        save_process_collection(sample_collection, save_path)
+        assert (save_path / "metadata.yaml").exists()
+        assert (save_path / "arrays.h5").exists()
+
+
+def test_save_load_process_collection_roundtrip(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection"
+        save_process_collection(sample_collection, save_path)
+        loaded = load_process_collection(save_path)
+
+        assert loaded.metadata is None
+        assert "fed_batch_001" in loaded.processes
+        assert loaded.processes["fed_batch_001"].metadata.name == "fed_batch_001"
+
+
+def test_save_load_process_collection_metadata_roundtrip(sample_collection_with_metadata):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection"
+        save_process_collection(sample_collection_with_metadata, save_path)
+        loaded = load_process_collection(save_path)
+
+        assert loaded.metadata == {"source": "raw_lab_export", "instrument": "ambr250"}
 
 def test_save_creates_files(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -223,6 +277,40 @@ def test_save_load_roundtrip_feed_medium(sample_dataset):
 # ---------------------------------------------------------------------------
 # JSON serialization
 # ---------------------------------------------------------------------------
+
+def test_json_save_process_collection_creates_file(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection.json"
+        save_process_collection_json(sample_collection, save_path)
+        assert save_path.exists()
+
+
+def test_json_process_collection_roundtrip(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection.json"
+        save_process_collection_json(sample_collection, save_path)
+        loaded = load_process_collection_json(save_path)
+
+        assert loaded.metadata is None
+        assert "fed_batch_001" in loaded.processes
+        assert loaded.processes["fed_batch_001"].metadata.process_type == "fed_batch"
+
+
+def test_json_process_with_optional_metadata_roundtrip(sample_process):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection.json"
+        process = BioProcess(
+            metadata=None,
+            time_axis=sample_process.time_axis,
+            volume=sample_process.volume,
+            reactor_medium=sample_process.reactor_medium,
+            process_variables=sample_process.process_variables,
+        )
+        collection = BioProcessCollection(processes={"fed_batch_001": process})
+        save_process_collection_json(collection, save_path)
+        loaded = load_process_collection_json(save_path)
+
+        assert loaded.processes["fed_batch_001"].metadata is None
 
 def test_json_save_creates_file(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:

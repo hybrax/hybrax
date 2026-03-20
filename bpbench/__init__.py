@@ -30,6 +30,7 @@ from .dataclasses import (
     ReactorMedium,
     # Higher-level structures
     BioProcess,
+    BioProcessCollection,
     CaseStudy,
     BenchmarkDataset,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "VolumeChange",
     "Volume",
     "BioProcess",
+    "BioProcessCollection",
     "CaseStudy",
     "BenchmarkDataset",
     # Utils

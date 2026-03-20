@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from .dataclasses import (
-    BenchmarkDataset, CaseStudy, BioProcess, TimeSeries, TimeAxis,
+    BenchmarkDataset, BioProcessCollection, CaseStudy, BioProcess, TimeSeries, TimeAxis,
     SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
     StaticVariable, BioProcessMetadata, Volume, BaseVolumeChange,
     FeedVolumeChange, SampleVolumeChange,
@@ -55,6 +55,32 @@ def save_dataset(dataset: BenchmarkDataset, base_path: Path) -> None:
     print(f"✓ Dataset saved to {base_path}")
 
 
+def save_process_collection(collection: BioProcessCollection, base_path: Path) -> None:
+    """
+    Save a BioProcessCollection using the hybrid YAML + HDF5 approach.
+
+    Args:
+        collection: BioProcessCollection to save
+        base_path: Directory path where files will be saved
+    """
+    base_path = Path(base_path)
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    metadata_dict = _process_collection_to_dict(collection)
+
+    arrays_store = {}
+    _extract_arrays(metadata_dict, arrays_store, prefix="")
+
+    with open(base_path / "metadata.yaml", "w") as f:
+        yaml.dump(metadata_dict, f, default_flow_style=False, sort_keys=False)
+
+    with h5py.File(base_path / "arrays.h5", "w") as f:
+        for key, array in arrays_store.items():
+            f.create_dataset(key, data=array)
+
+    print(f"✓ Process collection saved to {base_path}")
+
+
 def load_dataset(base_path: Path) -> BenchmarkDataset:
     """
     Load dataset from YAML + HDF5
@@ -95,6 +121,41 @@ def load_dataset(base_path: Path) -> BenchmarkDataset:
     return dataset
 
 
+def load_process_collection(base_path: Path) -> BioProcessCollection:
+    """
+    Load a BioProcessCollection from the hybrid YAML + HDF5 format.
+
+    Args:
+        base_path: Directory path where files are stored
+
+    Returns:
+        Reconstructed BioProcessCollection
+    """
+    base_path = Path(base_path)
+
+    with open(base_path / "metadata.yaml", "r") as f:
+        metadata_dict = yaml.safe_load(f)
+
+    arrays_store = {}
+    with h5py.File(base_path / "arrays.h5", "r") as f:
+        def load_datasets(group, prefix=""):
+            """Recursively load all datasets from HDF5"""
+            for key in group.keys():
+                item = group[key]
+                full_key = f"{prefix}/{key}" if prefix else key
+                if isinstance(item, h5py.Dataset):
+                    arrays_store[full_key] = jnp.array(item[:])
+                elif isinstance(item, h5py.Group):
+                    load_datasets(item, full_key)
+        load_datasets(f)
+
+    _restore_arrays(metadata_dict, arrays_store)
+    collection = _dict_to_process_collection(metadata_dict)
+
+    print(f"✓ Process collection loaded from {base_path}")
+    return collection
+
+
 def save_dataset_json(dataset: BenchmarkDataset, json_path: Path) -> None:
     """
     Save dataset as single JSON file (human-readable but larger)
@@ -112,6 +173,25 @@ def save_dataset_json(dataset: BenchmarkDataset, json_path: Path) -> None:
         json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
     
     print(f"✓ Dataset saved to {json_path}")
+
+
+def save_process_collection_json(collection: BioProcessCollection, json_path: Path) -> None:
+    """
+    Save a BioProcessCollection as a single JSON file.
+
+    Args:
+        collection: BioProcessCollection to save
+        json_path: File path where JSON will be saved
+    """
+    json_path = Path(json_path)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data_dict = _process_collection_to_dict(collection)
+
+    with open(json_path, "w") as f:
+        json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
+
+    print(f"✓ Process collection saved to {json_path}")
 
 
 def load_dataset_json(json_path: Path) -> BenchmarkDataset:
@@ -146,6 +226,37 @@ def load_dataset_json(json_path: Path) -> BenchmarkDataset:
     return dataset
 
 
+def load_process_collection_json(json_path: Path) -> BioProcessCollection:
+    """
+    Load a BioProcessCollection from JSON.
+
+    Args:
+        json_path: Path to JSON file
+
+    Returns:
+        Reconstructed BioProcessCollection
+    """
+    json_path = Path(json_path)
+
+    with open(json_path, "r") as f:
+        data_dict = json.load(f)
+
+    def restore_arrays(obj):
+        if isinstance(obj, dict):
+            if "__ndarray__" in obj:
+                return jnp.array(obj["__ndarray__"], dtype=obj["dtype"])
+            return {k: restore_arrays(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [restore_arrays(item) for item in obj]
+        return obj
+
+    data_dict = restore_arrays(data_dict)
+    collection = _dict_to_process_collection(data_dict)
+
+    print(f"✓ Process collection loaded from {json_path}")
+    return collection
+
+
 # ============================================================
 # Helper Functions for YAML + HDF5
 # ============================================================
@@ -155,28 +266,40 @@ def _dataset_to_dict(dataset: BenchmarkDataset) -> Dict:
     return {
         "metadata": dataset.metadata,
         "case_studies": {
-            cs_id: {
-                "case_id": cs.case_id,
-                "organism": cs.organism,
-                "citation": cs.citation,
-                "processes": {
-                    p_id: _process_to_dict(p)
-                    for p_id, p in cs.processes.items()
-                }
-            }
+            cs_id: _case_study_to_dict(cs)
             for cs_id, cs in dataset.case_studies.items()
         }
+    }
+
+
+def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
+    """Convert BioProcessCollection to nested dictionary."""
+    return {
+        "metadata": collection.metadata,
+        "processes": {
+            p_id: _process_to_dict(process)
+            for p_id, process in collection.processes.items()
+        },
+    }
+
+
+def _case_study_to_dict(case_study: CaseStudy) -> Dict:
+    """Convert CaseStudy to nested dictionary."""
+    return {
+        "case_id": case_study.case_id,
+        "organism": case_study.organism,
+        "citation": case_study.citation,
+        "processes": {
+            p_id: _process_to_dict(process)
+            for p_id, process in case_study.processes.items()
+        },
     }
 
 
 def _process_to_dict(process: BioProcess) -> Dict:
     """Convert BioProcess to dictionary"""
     result = {
-        "metadata": {
-            "name": process.metadata.name,
-            "process_type": process.metadata.process_type,
-            "notes": process.metadata.notes
-        },
+        "metadata": _process_metadata_to_dict(process.metadata),
         "time_axis": {
             "unit": process.time_axis.unit,
             "start": process.time_axis.start,
@@ -199,6 +322,17 @@ def _process_to_dict(process: BioProcess) -> Dict:
         result["discrete_events"] = _discrete_events_to_dict(process.discrete_events)
     
     return result
+
+
+def _process_metadata_to_dict(metadata: Optional[BioProcessMetadata]) -> Optional[Dict]:
+    """Convert BioProcessMetadata to dictionary."""
+    if metadata is None:
+        return None
+    return {
+        "name": metadata.name,
+        "process_type": metadata.process_type,
+        "notes": metadata.notes,
+    }
 
 
 def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> Dict:
@@ -346,17 +480,7 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
     case_studies = {}
     
     for cs_id, cs_data in data.get("case_studies", {}).items():
-        processes = {}
-        
-        for p_id, p_data in cs_data.get("processes", {}).items():
-            processes[p_id] = _dict_to_process(p_data)
-        
-        case_studies[cs_id] = CaseStudy(
-            case_id=cs_data["case_id"],
-            organism=cs_data["organism"],
-            citation=cs_data["citation"],
-            processes=processes
-        )
+        case_studies[cs_id] = _dict_to_case_study(cs_data)
     
     return BenchmarkDataset(
         metadata=data.get("metadata", {}),
@@ -364,14 +488,40 @@ def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
     )
 
 
+def _dict_to_process_collection(data: Dict) -> BioProcessCollection:
+    """Reconstruct BioProcessCollection from dictionary."""
+    return BioProcessCollection(
+        metadata=data.get("metadata"),
+        processes={
+            p_id: _dict_to_process(p_data)
+            for p_id, p_data in data.get("processes", {}).items()
+        },
+    )
+
+
+def _dict_to_case_study(data: Dict) -> CaseStudy:
+    """Reconstruct CaseStudy from dictionary."""
+    return CaseStudy(
+        case_id=data["case_id"],
+        organism=data["organism"],
+        citation=data["citation"],
+        processes={
+            p_id: _dict_to_process(p_data)
+            for p_id, p_data in data.get("processes", {}).items()
+        },
+    )
+
+
 def _dict_to_process(p_data: Dict) -> BioProcess:
     """Reconstruct BioProcess from dictionary"""
     # Reconstruct metadata
-    metadata = BioProcessMetadata(
-        name=p_data["metadata"]["name"],
-        process_type=p_data["metadata"]["process_type"],
-        notes=p_data["metadata"].get("notes")
-    )
+    metadata = None
+    if p_data.get("metadata") is not None:
+        metadata = BioProcessMetadata(
+            name=p_data["metadata"]["name"],
+            process_type=p_data["metadata"]["process_type"],
+            notes=p_data["metadata"].get("notes")
+        )
     
     # Reconstruct time axis
     time_axis = None
