@@ -145,7 +145,7 @@ class BioProcessMetadata:
     notes: Optional[str] = None
 
 @dataclass
-class BaseVolumeChange:
+class VolumeChange:
     """
     Base class for volume change events (discrete or continuous).
 
@@ -159,7 +159,7 @@ class BaseVolumeChange:
 
 
 @dataclass
-class FeedVolumeChange(BaseVolumeChange):
+class FeedVolumeChange(VolumeChange):
     """
     Volume change from a feed (inflow). Includes the feed medium composition.
 
@@ -170,7 +170,7 @@ class FeedVolumeChange(BaseVolumeChange):
 
 
 @dataclass
-class SampleVolumeChange(BaseVolumeChange):
+class SampleVolumeChange(VolumeChange):
     """
     Volume change from sampling (outflow). No feed medium.
 

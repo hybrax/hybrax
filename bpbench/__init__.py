@@ -21,7 +21,7 @@ from .dataclasses import (
     FeedMediumComponent,
     ReactorMediumComponent,
     # Volume-related structures
-    BaseVolumeChange,
+    VolumeChange,
     FeedVolumeChange,
     SampleVolumeChange,
     VolumeChange,
@@ -74,7 +74,7 @@ __all__ = [
     "ReactorMediumComponent",
     "FeedMedium",
     "ReactorMedium",
-    "BaseVolumeChange",
+    "VolumeChange",
     "FeedVolumeChange",
     "SampleVolumeChange",
     "VolumeChange",

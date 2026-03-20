@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional, Union
 from .dataclasses import (
     BenchmarkDataset, BioProcessCollection, CaseStudy, BioProcess, TimeSeries, TimeAxis,
     SplineRepresentation, DiscreteEvents, FeedMedium, FeedMediumComponent,
-    StaticVariable, BioProcessMetadata, Volume, BaseVolumeChange,
+    StaticVariable, BioProcessMetadata, Volume, VolumeChange,
     FeedVolumeChange, SampleVolumeChange,
     ReactorMedium, ReactorMediumComponent, ProcessVariable
 )
