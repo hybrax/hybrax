@@ -221,6 +221,16 @@ class BioProcess:
 # ============================================================
 
 @dataclass
+class BioProcessCollection:
+    """
+    Wrapper for a dict of `BioProcess` instances and optional metadata. Useful for raw
+    data that's not a full-fledged case-study.
+    """
+    metadata: Optional[Dict] = None
+    processes: Dict[str, BioProcess] = field(default_factory=dict)
+    
+
+@dataclass
 class CaseStudy:
     """Collection of processes from one publication/dataset"""
     case_id: str
