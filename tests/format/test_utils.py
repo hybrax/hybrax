@@ -187,6 +187,19 @@ def test_print_process_structure_no_crash_minimal():
         pytest.fail(f"print_process_structure raised {exc} unexpectedly!")
 
 
+def test_print_process_structure_no_metadata_uses_fallbacks(capsys):
+    process = BioProcess(
+        metadata=None,
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    print_process_structure(process)
+    captured = capsys.readouterr()
+    assert "Process Name: <unnamed process>" in captured.out
+    assert "Process Type: <unknown type>" in captured.out
+
+
 def test_print_process_structure_static_concentration(capsys):
     rc = ReactorMediumComponent(
         name="biomass", unit="g/L",
@@ -225,6 +238,19 @@ def test_print_process_structure_verbosity2_no_units(complex_process, capsys):
     assert "Unit:" not in captured.out
 
 
+def test_print_process_structure_verbosity2_no_metadata_uses_fallbacks(capsys):
+    process = BioProcess(
+        metadata=None,
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    print_process_structure(process, verbosity=2)
+    captured = capsys.readouterr()
+    assert "Process Name: <unnamed process>" in captured.out
+    assert "Process Type: <unknown type>" in captured.out
+
+
 # ---------------------------------------------------------------------------
 # Verbosity level 1 tests
 # ---------------------------------------------------------------------------
@@ -243,6 +269,18 @@ def test_print_process_structure_verbosity1_minimal_output(complex_process, caps
     assert "Value range:" not in captured.out
     assert "Unit:" not in captured.out
     assert "TimeSeries Data:" not in captured.out
+
+
+def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
+    process = BioProcess(
+        metadata=None,
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    print_process_structure(process, verbosity=1)
+    captured = capsys.readouterr()
+    assert "Process: <unnamed process> (<unknown type>)" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +369,25 @@ def test_print_dataset_structure_verbosity2(sample_dataset, capsys):
     assert "datapoints:" not in captured.out
 
 
+def test_print_dataset_structure_handles_process_without_metadata(capsys):
+    process = BioProcess(
+        metadata=None,
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    cs = CaseStudy(
+        case_id="raw_data",
+        organism="Unknown",
+        citation="n/a",
+        processes={"p1": process},
+    )
+    dataset = BenchmarkDataset(case_studies={"raw": cs})
+    print_dataset_structure(dataset, verbosity=2)
+    captured = capsys.readouterr()
+    assert "p1: <unnamed process>" in captured.out
+
+
 def test_print_dataset_structure_verbosity1(sample_dataset, capsys):
     print_dataset_structure(sample_dataset, verbosity=1)
     captured = capsys.readouterr()
@@ -385,6 +442,30 @@ def test_plot_process_empty():
     )
     fig = plot_process(process)
     assert fig is not None
+    plt.close(fig)
+
+
+def test_plot_process_no_metadata_uses_fallback_title():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    process = BioProcess(
+        metadata=None,
+        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+        process_variables={
+            "temperature": ProcessVariable(
+                name="temperature",
+                unit="C",
+                is_controlled=True,
+                values=TimeSeries(timepoints=jnp.array([0.0, 1.0]), values=jnp.array([37.0, 37.0])),
+            )
+        },
+    )
+    fig = plot_process(process)
+    assert fig._suptitle is not None
+    assert fig._suptitle.get_text() == "<unnamed process> (<unknown type>)"
     plt.close(fig)
 
 

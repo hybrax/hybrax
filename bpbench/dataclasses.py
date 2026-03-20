@@ -208,7 +208,7 @@ class BioProcess:
     
     Structure: # TODO for later!
     """
-    metadata: BioProcessMetadata
+    metadata: Optional[BioProcessMetadata]
     time_axis: TimeAxis
     volume: Volume
     reactor_medium: ReactorMedium

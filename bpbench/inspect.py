@@ -3,6 +3,27 @@ import jax.numpy as jnp
 from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, FeedVolumeChange
 
 
+def _get_process_name(process: BioProcess) -> str:
+    """Return a safe display name even when process metadata is absent."""
+    metadata = getattr(process, "metadata", None)
+    name = getattr(metadata, "name", None)
+    return name if name else "<unnamed process>"
+
+
+def _get_process_type(process: BioProcess) -> str:
+    """Return a safe display type even when process metadata is absent."""
+    metadata = getattr(process, "metadata", None)
+    process_type = getattr(metadata, "process_type", None)
+    return process_type if process_type else "<unknown type>"
+
+
+def _get_process_notes(process: BioProcess) -> str | None:
+    """Return notes when present; otherwise ``None``."""
+    metadata = getattr(process, "metadata", None)
+    notes = getattr(metadata, "notes", None)
+    return notes if notes else None
+
+
 def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
     """
     Print a hierarchical view of the BioProcess object structure.
@@ -23,10 +44,13 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
     print("=" * 80)
     print("BioProcess Structure")
     print("=" * 80)
+    process_name = _get_process_name(process)
+    process_type = _get_process_type(process)
+    process_notes = _get_process_notes(process)
 
     if verbosity == 1:
         # Level 1: just list variable names
-        print(f"Process: {process.metadata.name} ({process.metadata.process_type})")
+        print(f"Process: {process_name} ({process_type})")
         if process.reactor_medium and process.reactor_medium.components:
             print(f"Reactor Medium Components: {list(process.reactor_medium.components.keys())}")
         if process.process_variables:
@@ -36,10 +60,10 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
 
     elif verbosity == 2:
         # Level 2: names, controlled status, data type/size – no units or value ranges
-        print(f"Process Name: {process.metadata.name}")
-        print(f"Process Type: {process.metadata.process_type}")
-        if process.metadata.notes:
-            print(f"Notes: {process.metadata.notes}")
+        print(f"Process Name: {process_name}")
+        print(f"Process Type: {process_type}")
+        if process_notes:
+            print(f"Notes: {process_notes}")
 
         if process.time_axis is not None:
             print(f"\nTime: {process.time_axis.start:.2f} to {process.time_axis.end:.2f}")
@@ -73,10 +97,10 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
 
     else:
         # Level 3 (default): full details
-        print(f"Process Name: {process.metadata.name}")
-        print(f"Process Type: {process.metadata.process_type}")
-        if process.metadata.notes:
-            print(f"Notes: {process.metadata.notes}")
+        print(f"Process Name: {process_name}")
+        print(f"Process Type: {process_type}")
+        if process_notes:
+            print(f"Notes: {process_notes}")
 
         if process.time_axis is not None:
             print(f"\nTime:")
@@ -262,10 +286,7 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
             print(f"  - {cs_key}  |  Organism: {cs.organism}  |  Processes: {n_procs}")
             if cs.processes:
                 for p_key, proc in cs.processes.items():
-                    try:
-                        name = proc.metadata.name
-                    except Exception:
-                        name = "<unnamed process>"
+                    name = _get_process_name(proc)
                     print(f"      * {p_key}: {name}")
     
     total_datapoints = 0
@@ -284,10 +305,7 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
             print(f"      Processes: {n_procs}")
         if cs.processes:
             for p_key, proc in cs.processes.items():
-                try:
-                    name = proc.metadata.name
-                except Exception:
-                    name = "<unnamed process>"
+                name = _get_process_name(proc)
                 proc_dp = _count_datapoints_in_process(proc)
                 total_datapoints += proc_dp
                 if verbosity == 3:
@@ -667,9 +685,7 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     for j in range(len(panels), len(axes_flat)):
         axes_flat[j].set_visible(False)
 
-    fig.suptitle(
-        f"{process.metadata.name} ({process.metadata.process_type})", fontsize=12
-    )
+    fig.suptitle(f"{_get_process_name(process)} ({_get_process_type(process)})", fontsize=12)
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
