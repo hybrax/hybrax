@@ -24,9 +24,6 @@ get_rhs_ode(process) -> RhsOde
 extract_discrete_events(process, mb) -> list[dict]
     Extract discrete events (sampling, bolus feeds) from a BioProcess.
 
-apply_discrete_event(state, event) -> jnp.ndarray
-    Apply a single discrete event to the ODE state vector.
-
 build_q_func(process, ctrl, mb, conc_splines) -> Callable
     Build an analytical, JIT-compilable q(t) callable from splines.
 
@@ -574,42 +571,6 @@ def extract_discrete_events(
 
     events.sort(key=lambda e: e['t'])
     return events
-
-
-def apply_discrete_event(
-    state: jnp.ndarray,
-    event: Dict[str, Any],
-) -> jnp.ndarray:
-    """Apply a single discrete event to the ODE state vector.
-
-    Parameters
-    ----------
-    state:
-        Current state ``[c_species..., V]``.
-    event:
-        Event dict as returned by :func:`extract_discrete_events`.
-
-    Returns
-    -------
-    jnp.ndarray
-        Updated state vector after applying the event.
-    """
-    n_sp = state.shape[0] - 1
-    c = state[:n_sp]
-    V = state[n_sp]
-    dV = event['dV']
-
-    if event['kind'] == 'bolus_feed' and event['Cin'] is not None:
-        V_new = V + dV
-        c_new = (c * V + jnp.asarray(event['Cin']) * dV) / V_new
-    else:
-        # Sampling: concentrations unchanged, volume changes
-        V_new = V + dV
-        c_new = c
-
-    V_new = jnp.maximum(V_new, 1e-10)
-    c_new = jnp.maximum(c_new, 0.0)
-    return jnp.append(c_new, V_new)
 
 
 def build_conc_splines(

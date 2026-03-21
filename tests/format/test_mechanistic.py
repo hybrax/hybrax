@@ -19,7 +19,7 @@ from bpbench import (
 )
 from bpbench.mechanistic import (
     ControlSplines, RhsOde, get_control_splines, get_rhs_ode,
-    extract_discrete_events, apply_discrete_event,
+    extract_discrete_events,
     estimate_specific_rates, integrate_process, integrate_process_pseudospace,
     build_conc_splines, build_q_func,
 )
@@ -948,7 +948,6 @@ class TestModuleExport:
     def test_new_functions_accessible(self):
         import bpbench.mechanistic as mech
         assert hasattr(mech, "extract_discrete_events")
-        assert hasattr(mech, "apply_discrete_event")
         assert hasattr(mech, "estimate_specific_rates")
         assert hasattr(mech, "integrate_process")
 
@@ -1051,46 +1050,6 @@ class TestExtractDiscreteEvents:
         mb = get_rhs_ode(process)
         events = extract_discrete_events(process, mb)
         assert len(events[0]['Cin']) == len(mb.species_names)
-
-
-# ---------------------------------------------------------------------------
-# apply_discrete_event tests
-# ---------------------------------------------------------------------------
-
-class TestApplyDiscreteEvent:
-
-    def test_sampling_concentrations_unchanged(self):
-        state = jnp.array([2.0, 5.0, 1.0])  # [X, S, V]
-        event = dict(t=5.0, kind='sample', dV=-0.05, Cin=None, source='sampling')
-        new_state = apply_discrete_event(state, event)
-        assert float(new_state[0]) == pytest.approx(2.0, rel=1e-6)
-        assert float(new_state[1]) == pytest.approx(5.0, rel=1e-6)
-        assert float(new_state[2]) == pytest.approx(0.95, rel=1e-6)
-
-    def test_bolus_feed_mixing(self):
-        state = jnp.array([2.0, 5.0, 1.0])  # [X, S, V]
-        Cin = np.array([0.0, 300.0])
-        event = dict(t=5.0, kind='bolus_feed', dV=0.1, Cin=Cin, source='bolus')
-        new_state = apply_discrete_event(state, event)
-        V_new = 1.1
-        X_new = (2.0 * 1.0 + 0.0 * 0.1) / V_new
-        S_new = (5.0 * 1.0 + 300.0 * 0.1) / V_new
-        assert float(new_state[0]) == pytest.approx(X_new, rel=1e-5)
-        assert float(new_state[1]) == pytest.approx(S_new, rel=1e-5)
-        assert float(new_state[2]) == pytest.approx(V_new, rel=1e-5)
-
-    def test_state_shape_preserved(self):
-        state = jnp.array([1.0, 2.0, 3.0, 0.5])
-        event = dict(t=1.0, kind='sample', dV=-0.01, Cin=None, source='s')
-        new_state = apply_discrete_event(state, event)
-        assert new_state.shape == state.shape
-
-    def test_zero_dV_no_change(self):
-        """Zero dV event should not change concentrations."""
-        state = jnp.array([2.0, 5.0, 1.0])
-        event = dict(t=5.0, kind='sample', dV=0.0, Cin=None, source='s')
-        new_state = apply_discrete_event(state, event)
-        assert jnp.allclose(new_state, state, atol=1e-10)
 
 
 # ---------------------------------------------------------------------------
@@ -1243,6 +1202,57 @@ class TestIntegrateProcess:
 
         # Volume should increase over time due to feed
         assert result['V'][-1] > result['V'][0]
+
+    def test_discrete_bolus_event_applies_mixing_jump(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=300.0, biomass_conc=0.0),
+            values=_ts([5.0], [0.1]),
+        )
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        q_func = lambda t: jnp.zeros(mb.q_size)
+        t_eval = jnp.array([0.0, 4.9, 5.0, 5.1])
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+
+        V_new = 1.1
+        X_new = (0.5 * 1.0 + 0.0 * 0.1) / V_new
+        S_new = (10.0 * 1.0 + 300.0 * 0.1) / V_new
+
+        assert float(result["c"][1, 0]) == pytest.approx(0.5, rel=1e-6)
+        assert float(result["c"][1, 1]) == pytest.approx(10.0, rel=1e-6)
+        assert float(result["V"][1]) == pytest.approx(1.0, rel=1e-6)
+        assert float(result["c"][2, 0]) == pytest.approx(X_new, rel=1e-6)
+        assert float(result["c"][2, 1]) == pytest.approx(S_new, rel=1e-6)
+        assert float(result["V"][2]) == pytest.approx(V_new, rel=1e-6)
+
+    def test_discrete_sampling_event_preserves_concentrations(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.1]),
+        )
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        q_func = lambda t: jnp.zeros(mb.q_size)
+        t_eval = jnp.array([0.0, 4.9, 5.0, 5.1])
+        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+
+        assert float(result["c"][1, 0]) == pytest.approx(0.5, rel=1e-6)
+        assert float(result["c"][1, 1]) == pytest.approx(10.0, rel=1e-6)
+        assert float(result["V"][1]) == pytest.approx(1.0, rel=1e-6)
+        assert float(result["c"][2, 0]) == pytest.approx(0.5, rel=1e-6)
+        assert float(result["c"][2, 1]) == pytest.approx(10.0, rel=1e-6)
+        assert float(result["V"][2]) == pytest.approx(0.9, rel=1e-6)
 
     def test_pseudospace_matches_segmented_with_sampling_and_bolus(self):
         """Single-pass pseudo-space integration should match segmented integration."""
