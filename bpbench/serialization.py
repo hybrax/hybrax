@@ -1,15 +1,10 @@
-"""
-Serialization utilities for bioprocess benchmarking dataset
-Hybrid approach: YAML for metadata + HDF5 for arrays
-"""
+"""Serialization utilities for bioprocess benchmarking dataset."""
 
-import yaml
-import h5py
 import json
 import jax.numpy as jnp
 import numpy as np
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Optional, Union
 from .dataclasses import (
     BenchmarkDataset, BioProcessCollection, CaseStudy, BioProcess, TimeSeries, TimeAxis,
     Interpolator, DiscreteEvents, FeedMedium, FeedMediumComponent,
@@ -18,142 +13,64 @@ from .dataclasses import (
     ReactorMedium, ReactorMediumComponent, ProcessVariable
 )
 
+DEFAULT_JSON_FILENAME = "data.json"
 
-# ============================================================
-# Serialization to YAML + HDF5
-# ============================================================
 
-def save_dataset(dataset: BenchmarkDataset, base_path: Path) -> None:
+def _resolve_json_path(path: Path) -> Path:
+    """Return the JSON path used by the current JSON-only serializer."""
+    path = Path(path)
+    if path.suffix == ".json":
+        return path
+    return path / DEFAULT_JSON_FILENAME
+
+
+def _resolve_existing_json_path(path: Path) -> Path:
+    """Resolve a load path and enforce JSON-only inputs."""
+    path = Path(path)
+    json_path = _resolve_json_path(path)
+    if json_path.exists():
+        return json_path
+
+    if path.suffix and path.suffix != ".json":
+        raise FileNotFoundError(
+            f"Only JSON serialization is supported. Expected a '.json' file, got '{path}'."
+        )
+
+    raise FileNotFoundError(f"Expected JSON dataset at '{json_path}'.")
+
+
+def save_dataset(dataset: BenchmarkDataset, path: Path) -> None:
+    """Save a dataset as JSON.
+
+    `path` may be a JSON file path or a directory, in which case `data.json`
+    is written inside it.
     """
-    Save dataset using hybrid approach:
-    - metadata.yaml: human-readable structure
-    - arrays.h5: efficient binary storage for JAX arrays
-    
-    Args:
-        dataset: BenchmarkDataset to save
-        base_path: Directory path where files will be saved
+    save_dataset_json(dataset, _resolve_json_path(path))
+
+
+def save_process_collection(collection: BioProcessCollection, path: Path) -> None:
+    """Save a process collection as JSON.
+
+    `path` may be a JSON file path or a directory, in which case `data.json`
+    is written inside it.
     """
-    base_path = Path(base_path)
-    base_path.mkdir(parents=True, exist_ok=True)
-    
-    # Convert dataset to nested dict
-    metadata_dict = _dataset_to_dict(dataset)
-    
-    # Extract arrays and replace with references
-    arrays_store = {}
-    _extract_arrays(metadata_dict, arrays_store, prefix="")
-    
-    # Save human-readable metadata
-    with open(base_path / "metadata.yaml", "w") as f:
-        yaml.dump(metadata_dict, f, default_flow_style=False, sort_keys=False)
-    
-    # Save arrays efficiently
-    with h5py.File(base_path / "arrays.h5", "w") as f:
-        for key, array in arrays_store.items():
-            f.create_dataset(key, data=array)
-    
-    print(f"✓ Dataset saved to {base_path}")
+    save_process_collection_json(collection, _resolve_json_path(path))
 
 
-def save_process_collection(collection: BioProcessCollection, base_path: Path) -> None:
+def load_dataset(path: Path) -> BenchmarkDataset:
+    """Load a dataset from JSON.
+
+    `path` may be a JSON file path or a directory containing `data.json`.
     """
-    Save a BioProcessCollection using the hybrid YAML + HDF5 approach.
+    return load_dataset_json(_resolve_existing_json_path(path))
 
-    Args:
-        collection: BioProcessCollection to save
-        base_path: Directory path where files will be saved
+
+def load_process_collection(path: Path) -> BioProcessCollection:
+    """Load a process collection from JSON.
+
+    `path` may be a JSON file path or a directory containing `data.json`.
     """
-    base_path = Path(base_path)
-    base_path.mkdir(parents=True, exist_ok=True)
-
-    metadata_dict = _process_collection_to_dict(collection)
-
-    arrays_store = {}
-    _extract_arrays(metadata_dict, arrays_store, prefix="")
-
-    with open(base_path / "metadata.yaml", "w") as f:
-        yaml.dump(metadata_dict, f, default_flow_style=False, sort_keys=False)
-
-    with h5py.File(base_path / "arrays.h5", "w") as f:
-        for key, array in arrays_store.items():
-            f.create_dataset(key, data=array)
-
-    print(f"✓ Process collection saved to {base_path}")
-
-
-def load_dataset(base_path: Path) -> BenchmarkDataset:
-    """
-    Load dataset from YAML + HDF5
-    
-    Args:
-        base_path: Directory path where files are stored
-        
-    Returns:
-        Reconstructed BenchmarkDataset
-    """
-    base_path = Path(base_path)
-    
-    # Load metadata
-    with open(base_path / "metadata.yaml", "r") as f:
-        metadata_dict = yaml.safe_load(f)
-    
-    # Load arrays
-    arrays_store = {}
-    with h5py.File(base_path / "arrays.h5", "r") as f:
-        def load_datasets(group, prefix=""):
-            """Recursively load all datasets from HDF5"""
-            for key in group.keys():
-                item = group[key]
-                full_key = f"{prefix}/{key}" if prefix else key
-                if isinstance(item, h5py.Dataset):
-                    arrays_store[full_key] = jnp.array(item[:])
-                elif isinstance(item, h5py.Group):
-                    load_datasets(item, full_key)
-        load_datasets(f)
-    
-    # Reconstruct arrays in metadata
-    _restore_arrays(metadata_dict, arrays_store)
-    
-    # Reconstruct dataclasses
-    dataset = _dict_to_dataset(metadata_dict)
-    
-    print(f"✓ Dataset loaded from {base_path}")
-    return dataset
-
-
-def load_process_collection(base_path: Path) -> BioProcessCollection:
-    """
-    Load a BioProcessCollection from the hybrid YAML + HDF5 format.
-
-    Args:
-        base_path: Directory path where files are stored
-
-    Returns:
-        Reconstructed BioProcessCollection
-    """
-    base_path = Path(base_path)
-
-    with open(base_path / "metadata.yaml", "r") as f:
-        metadata_dict = yaml.safe_load(f)
-
-    arrays_store = {}
-    with h5py.File(base_path / "arrays.h5", "r") as f:
-        def load_datasets(group, prefix=""):
-            """Recursively load all datasets from HDF5"""
-            for key in group.keys():
-                item = group[key]
-                full_key = f"{prefix}/{key}" if prefix else key
-                if isinstance(item, h5py.Dataset):
-                    arrays_store[full_key] = jnp.array(item[:])
-                elif isinstance(item, h5py.Group):
-                    load_datasets(item, full_key)
-        load_datasets(f)
-
-    _restore_arrays(metadata_dict, arrays_store)
-    collection = _dict_to_process_collection(metadata_dict)
-
-    print(f"✓ Process collection loaded from {base_path}")
-    return collection
+    return load_process_collection_json(_resolve_existing_json_path(path))
 
 
 def save_dataset_json(dataset: BenchmarkDataset, json_path: Path) -> None:
@@ -258,7 +175,7 @@ def load_process_collection_json(json_path: Path) -> BioProcessCollection:
 
 
 # ============================================================
-# Helper Functions for YAML + HDF5
+# Helper Functions
 # ============================================================
 
 def _dataset_to_dict(dataset: BenchmarkDataset) -> Dict:
@@ -446,35 +363,6 @@ def _feed_component_to_dict(comp: FeedMediumComponent) -> Dict:
         "is_controlled": comp.is_controlled,
         "concentration": _timeseries_or_static_to_dict(comp.concentration)
     }
-
-
-def _extract_arrays(obj: Any, store: Dict, prefix: str) -> None:
-    """Recursively extract JAX arrays and replace with references"""
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            new_prefix = f"{prefix}/{key}" if prefix else key
-            if isinstance(value, (jnp.ndarray, np.ndarray)):
-                store[new_prefix] = value
-                obj[key] = f"@array:{new_prefix}"
-            else:
-                _extract_arrays(value, store, new_prefix)
-    elif isinstance(obj, list):
-        for i, item in enumerate(obj):
-            _extract_arrays(item, store, f"{prefix}/{i}")
-
-
-def _restore_arrays(obj: Any, store: Dict) -> None:
-    """Recursively restore JAX arrays from references"""
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if isinstance(value, str) and value.startswith("@array:"):
-                array_key = value[7:]  # remove "@array:" prefix
-                obj[key] = store[array_key]
-            else:
-                _restore_arrays(value, store)
-    elif isinstance(obj, list):
-        for item in obj:
-            _restore_arrays(item, store)
 
 
 def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
@@ -716,7 +604,7 @@ _SEGMENTED_INTERPOLATOR_KINDS = {
 
 
 def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
-    """Convert Interpolator to dictionary (compact JSON/YAML form)."""
+    """Convert Interpolator to dictionary (compact JSON form)."""
     result = {"kind": interpolator.kind}
 
     if interpolator.kind in _SEGMENTED_INTERPOLATOR_KINDS:
@@ -750,7 +638,7 @@ def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
 
 
 def _dict_to_interpolator(data: Dict) -> Interpolator:
-    """Reconstruct Interpolator from compact or legacy dictionary formats."""
+    """Reconstruct Interpolator from compact dictionary formats."""
     kind = data["kind"]
     metadata = data.get("interpolator_metadata", data.get("spline_metadata"))
 

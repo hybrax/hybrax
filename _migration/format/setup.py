@@ -9,8 +9,6 @@ setup(
         "jax>=0.4.0",
         "jaxlib>=0.4.0",
         "numpy>=1.20.0",
-        "pyyaml>=5.4.0",
-        "h5py>=3.0.0",
     ],
     extras_require={
         "dev": [

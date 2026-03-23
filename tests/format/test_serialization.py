@@ -1,6 +1,4 @@
-"""
-Tests for bpbench.serialization functionality (current architecture).
-"""
+"""Tests for bpbench.serialization functionality."""
 
 import pytest
 import jax.numpy as jnp
@@ -146,15 +144,14 @@ def sample_dataset(sample_process):
 
 
 # ---------------------------------------------------------------------------
-# YAML + HDF5 serialization
+# Default JSON serialization
 # ---------------------------------------------------------------------------
 
-def test_save_process_collection_creates_files(sample_collection):
+def test_save_process_collection_creates_data_json_in_directory(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_collection"
         save_process_collection(sample_collection, save_path)
-        assert (save_path / "metadata.yaml").exists()
-        assert (save_path / "arrays.h5").exists()
+        assert (save_path / "data.json").exists()
 
 
 def test_save_load_process_collection_roundtrip(sample_collection):
@@ -176,12 +173,11 @@ def test_save_load_process_collection_metadata_roundtrip(sample_collection_with_
 
         assert loaded.metadata == {"source": "raw_lab_export", "instrument": "ambr250"}
 
-def test_save_creates_files(sample_dataset):
+def test_save_creates_data_json_in_directory(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_dataset"
         save_dataset(sample_dataset, save_path)
-        assert (save_path / "metadata.yaml").exists()
-        assert (save_path / "arrays.h5").exists()
+        assert (save_path / "data.json").exists()
 
 
 def test_save_load_roundtrip_metadata(sample_dataset):
@@ -275,7 +271,7 @@ def test_save_load_roundtrip_feed_medium(sample_dataset):
 
 
 # ---------------------------------------------------------------------------
-# JSON serialization
+# Explicit JSON path serialization
 # ---------------------------------------------------------------------------
 
 def test_json_save_process_collection_creates_file(sample_collection):
@@ -343,6 +339,25 @@ def test_json_roundtrip_timeseries(sample_dataset):
             biomass.concentration.values,
             jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
         )
+
+
+def test_default_api_accepts_explicit_json_paths(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset.json"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        assert save_path.exists()
+        assert loaded.metadata["name"] == "Test Dataset"
+
+
+def test_default_load_rejects_non_json_file_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "dataset.yaml"
+        save_path.write_text("metadata: {}\n")
+
+        with pytest.raises(FileNotFoundError, match="Only JSON serialization is supported"):
+            load_dataset(save_path)
 
 
 if __name__ == "__main__":
