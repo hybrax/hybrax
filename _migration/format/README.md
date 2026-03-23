@@ -7,7 +7,7 @@ A JAX-compatible framework for standardized bioprocess data management and bench
 BPbench provides a hierarchical data structure for organizing bioprocess experiments, enabling:
 - **Unified benchmarking**: Compare modeling approaches across multiple case studies
 - **JAX compatibility**: Full PyTree integration for automatic differentiation and JIT compilation
-- **Flexible serialization**: YAML+HDF5 for efficiency or JSON for simplicity
+- **Serialization**: JSON export for benchmark datasets and process collections
 - **Cross-validation utilities**: Built-in support for leave-one-process-out validation
 
 ## Installation
