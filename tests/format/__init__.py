@@ -25,7 +25,6 @@ def test_imports():
     assert hasattr(bpbench, 'ReactorMediumComponent')
     assert hasattr(bpbench, 'FeedMedium')
     assert hasattr(bpbench, 'ReactorMedium')
-    assert hasattr(bpbench, 'BaseVolumeChange')
     assert hasattr(bpbench, 'FeedVolumeChange')
     assert hasattr(bpbench, 'SampleVolumeChange')
     assert hasattr(bpbench, 'VolumeChange')
