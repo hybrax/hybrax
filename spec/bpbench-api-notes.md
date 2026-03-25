@@ -10,10 +10,11 @@ ergonomic improvements.
 
 ### Current State
 
-- `bpbench` dataclasses use `Interpolator`.
-- serialization already writes `interpolator`.
-- some runtime code still refers to `.spline`.
-- deserialization currently contains fallback logic for both names.
+- `bpbench` should expose `Interpolator` as the field type and
+  `interpolator` as the serialized field name.
+- some local reference copies may still contain older `.spline` usage, but
+  `bp-train` should target the renamed `interpolator` API.
+- deserialization fallback for older serialized artifacts remains useful.
 
 ### Impact on `bp-train`
 
@@ -27,33 +28,16 @@ ergonomic improvements.
 
 - keep backward-compatible read support for `spline` in `bpbench`,
 - stop introducing new `.spline` usage in downstream code,
-- gradually normalize runtime code to `.interpolator` naming or at least to the
-  new `Interpolator` terminology.
+- treat any stale `.spline` references in local examples or reference copies as
+  migration cleanup rather than the target API.
 
-## 2. `BenchmarkDataset` Dataclass / Serialization Mismatch
-
-### Current State
-
-`reference/bpbench/serialization.py` expects `dataset.case_studies`, but the
-`BenchmarkDataset` dataclass shown in `reference/bpbench/dataclasses.py` only
-declares `metadata`.
-
-### Impact on `bp-train`
-
-This is a correctness issue in the reference API surface and should be resolved
-upstream to avoid downstream ambiguity.
-
-### Requested Direction
-
-- align `BenchmarkDataset` dataclass and serializer,
-- add a minimal serialization test covering round-trip behavior.
-
-## 3. Official Process-Collection-First Workflow
+## 2. Process-Collection-First Workflow
 
 ### Current State
 
-`bp-train` primarily wants to consume `BioProcessCollection` JSON rather than
-full benchmark datasets.
+`bp-train` intentionally works with `BioProcessCollection` artifacts rather
+than full `BenchmarkDataset` wrappers in V1. This keeps the data path aligned
+with `hybrax-prep` outputs and reduces avoidable complexity.
 
 ### Requested Direction
 
@@ -61,6 +45,26 @@ full benchmark datasets.
   first-class APIs,
 - document them clearly in `bpbench`,
 - ensure example workflows demonstrate this path.
+
+## 3. Relationship to `bpbench.mechanistic`
+
+### Current State
+
+`bpbench.mechanistic` already provides a correct reference implementation for
+control evaluation and ODE wrapper logic.
+
+### Impact on `bp-train`
+
+V1 of `bp-train` should not depend on it as the runtime implementation, because
+the training package needs a path optimized for JIT stability, padded shapes,
+and compile-time behavior. Its conventions remain worth mirroring.
+
+### Requested Direction
+
+- keep `bpbench.mechanistic` as a correctness-oriented baseline,
+- let `bp-train` reimplement the runtime path for performance reasons,
+- preserve useful conventions such as control ordering and modeled-feed
+  positional alignment where practical.
 
 ## 4. Stronger Metadata for Control Semantics
 

@@ -13,7 +13,8 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 
 ## 2. V1 Goals
 
-- Load `bpbench` JSON artifacts using `bpbench` deserialization.
+- Load `bpbench` `BioProcessCollection` JSON artifacts using `bpbench`
+  deserialization.
 - Standardize controls and measured states into a training-ready prepared
   artifact.
 - Support a hybrid config approach:
@@ -68,7 +69,9 @@ V1 is split into three phases.
 
 - Input artifact is a `bpbench` JSON file, usually emitted by `hybrax-prep` or a
   `bpbench` example workflow.
-- The loader uses `bpbench.serialization.load_process_collection(...)`.
+- The loader uses `bpbench.serialization.load_process_collection_json(...)`
+  when given a JSON file path and otherwise follows the
+  process-collection-first `bpbench` loading path.
 - The loaded object is treated as a `BioProcessCollection` plus metadata.
 
 ### 5.2 Phase B: Preparation
@@ -117,9 +120,8 @@ It must preserve all fields from the input and may modify or add:
 
 The prepared artifact is the canonical input to V1 training.
 
-The prepared artifact does not have to store the final padded runtime arrays
-verbatim. V1 allows those arrays to be materialized at training-load time from
-the transformed `bpbench` data plus prep metadata.
+The prepared artifact stores the final padded runtime arrays needed by V1
+training. V1 does not rebuild those arrays at training-load time.
 
 ### 6.3 Optional Run Config
 
@@ -205,13 +207,17 @@ def transform_states(process, config):
 
 Data augmentation hooks are intentionally deferred.
 
+These hooks are called per process while iterating over the loaded
+`BioProcessCollection`.
+
 ### 8.3 Allowed Hook Responsibilities
 
 Hooks may:
 
 - convert cumulative traces to rates,
 - combine traces into derived controls,
-- derive `V_sample_acc` from a measured volume trace,
+- derive `V_sample_acc` from precomputed jump metadata or user-supplied
+  sampling schedules,
 - rename variables,
 - update `is_controlled`,
 - attach or replace `Interpolator` payloads,
@@ -237,17 +243,21 @@ The preparation step converts raw `bpbench` data into `prepared.json`.
 ### 9.2 Processing Steps
 
 1. Load the raw `BioProcessCollection`.
-2. Resolve case-study-specific config in code.
-3. Apply `transform_controls(process, config)` to each process.
-4. Apply `transform_states(process, config)` to each process.
-5. Build default derived controls required by the V1 runtime contract when they
+2. Run first-pass `bpbench` validation on the raw collection, at minimum by
+   calling `bpbench.validate_process(...)` for each process before custom
+   transforms.
+3. Resolve case-study-specific config in code.
+4. Apply `transform_controls(process, config)` to each process.
+5. Apply `transform_states(process, config)` to each process.
+6. Build default derived controls required by the V1 runtime contract when they
    were not already provided by user code.
-6. Validate control roles, state roles, feed semantics, and required
+7. Validate control roles, state roles, feed semantics, and required
    interpolators.
-7. Generate control interpolation payloads and training metadata.
-8. Compute any required model scaling statistics.
-9. Update or add prep metadata.
-10. Serialize the full transformed collection as `prepared.json`.
+8. Generate control interpolation payloads, padded runtime arrays, and training
+   metadata.
+9. Compute any required model scaling statistics.
+10. Update or add prep metadata.
+11. Serialize the full transformed collection as `prepared.json`.
 
 ### 9.3 Validation Rules
 
@@ -256,11 +266,15 @@ Prep must fail fast if:
 - a config-declared control is missing,
 - a required `Interpolator` is missing,
 - feed stream metadata is underspecified,
+- feed-media coverage is invalid for a positive feed stream,
 - a required initial condition cannot be constructed,
 - control ordering is inconsistent,
 - shapes or units are irreconcilable,
 - a variable is required both as a measured state and a control without a
   clearly declared role.
+
+This validation layer should reuse existing `bpbench` checks where possible
+rather than reimplementing them from scratch.
 
 ## 10. Control Semantics
 
@@ -278,7 +292,9 @@ Control ordering is:
    - continuous controlled volume changes,
    - controlled process variables.
 
-This order must be written into the prepared artifact metadata.
+This matches the ordering convention already used by
+`bpbench.mechanistic.ControlSplines` and must be written into the prepared
+artifact metadata.
 
 ### 10.3 Rates vs Cumulative Traces
 
@@ -309,7 +325,7 @@ V1 supports dynamic volume only, but the integrated volume state is not the
 fully realized reactor volume.
 
 If the raw dataset contains volume but not explicit feed rates, the user may
-derive feed-rate controls from volume in `transform_controls(...)`.
+derive feed-rate controls from preprocessing outputs in `transform_controls(...)`.
 
 The V1 runtime contract is:
 
@@ -327,50 +343,62 @@ runtime-only helper.
 
 ### 10.6 Default Sampling-Control Construction
 
-V1 provides a default rule for constructing `V_sample_acc` when user code has
-not already done so.
+V1 does not detect volume jumps on its own. It consumes jump information that
+was already detected during upstream preprocessing, typically by `hybrax-prep`,
+or information provided explicitly by user code.
 
 Default behavior:
 
-- inspect the available volume trace,
-- detect negative discontinuities in that trace,
-- interpret those discontinuities as sampling events,
+- read jump annotations already present in the input or prepared JSON,
+- interpret jumps with negative `delta_V` as sampling events,
 - accumulate their magnitudes into a monotone cumulative control
   `V_sample_acc(t)`,
+- approximate each increment as a short ramp rather than an instantaneous jump,
 - write the resulting derived control and its metadata into `prepared.json`.
 
 This default must be overrideable in `custom.py`.
 
 Reasons for override include:
 
-- no usable volume trace is present,
+- no usable upstream jump metadata is present,
 - the user wants to provide explicit sampling times and amounts,
-- negative volume discontinuities should not be interpreted as sampling,
 - the case study requires a different reconstruction rule.
 
 ## 11. Control Representation for V1 Runtime
 
 V1 no longer exposes a segmented public controls API. Instead it uses a dense,
-single-interpolator representation built during preparation.
+single-interpolator representation built during preparation and persisted in
+`prepared.json`.
 
 ### 11.1 Build Strategy
 
 For each experiment:
 
 - start from `bpbench` `Interpolator` objects,
-- elevate linear or quadratic splines to cubic exactly before downstream
-  handling,
-- split conceptually at known segment boundaries if needed,
-- evaluate each control and its first derivative on dense per-segment grids,
-- increase grid density until the linear interpolation error is below a chosen
-  threshold,
+- reimplement the runtime controls path inside `bp-train` rather than reusing
+  `bpbench.mechanistic`, because V1 optimizes for runtime and compile-time
+  behavior rather than reference correctness,
+- reuse `bpbench.mechanistic` conventions where useful, especially deterministic
+  control ordering and feed classification,
+- convert upstream detected positive `delta_V` jumps into short bolus-feed
+  ramps,
+- convert upstream detected negative `delta_V` jumps into short
+  `V_sample_acc` ramps,
+- evaluate each control and its first derivative on dense grids,
+- start from a fixed initial grid density and then double the number of points
+  until the control-wise interpolation error is below the configured threshold
+  or a maximum refinement level is reached,
+- measure interpolation error against the original source control on a denser
+  reference grid,
+- use `max_rel_error` as the acceptance criterion, with default `1e-4`,
+  normalized by the cross-experiment value spread of the corresponding trace so
+  that constant-in-one-experiment traces remain well-defined,
 - combine those grids into one monotone time grid per experiment,
 - build a single linear interpolation payload over the full experiment.
 
 ### 11.2 Segment Boundaries and Events
 
-V1 does not expose segment iteration to downstream users, but it does preserve
-boundary information for solver stepping.
+V1 does not expose segment iteration to downstream users.
 
 The controls payload keeps:
 
@@ -379,47 +407,41 @@ The controls payload keeps:
 - control derivatives,
 - step boundary times for the step size controller.
 
-In addition, the controls payload must contain a cumulative sampling control
-`V_sample_acc(t)` with discontinuities at sampling times. Those sampling times
-must also be present in the boundary/jump-time information passed to the solver.
+Step boundary times (`step_ts`) must include the start and end times of
+approximated bolus ramps, approximated `V_sample_acc` ramps, and any other
+control boundaries introduced during preparation.
 
 ### 11.3 Bolus Approximation in V1
 
-Bolus and sampling are treated differently in V1.
+Bolus and sampling use the same V1 approximation pattern.
 
-Bolus events are not modeled as true instantaneous runtime events in the
-controls layer. Instead:
-
-- bolus feed events are approximated during prep as short periods of high feed
-  rate,
-- the duration is the shortest time difference in the original online data,
-- tests must verify that the integrated added amount matches the intended bolus
-  amount.
-
-Sampling events are represented by a dummy control variable
-`V_sample_acc(t)`, the total sampled volume removed up to time `t`.
-
-- `V_sample_acc` is piecewise-constant with discontinuities at sampling times,
+- upstream preprocessing provides jump annotations in the JSON,
+- jumps with positive `delta_V` are interpreted as bolus-feed additions,
+- jumps with negative `delta_V` are interpreted as sampling removals,
+- each such jump is converted during prep into a short ramp whose duration is
+  the shortest time difference in the original online data,
+- bolus ramps contribute to feed-rate controls,
+- sampling ramps contribute to the cumulative dummy control `V_sample_acc(t)`,
 - `V_sample_acc` is stored in `prepared.json` as a derived control trace with an
   `Interpolator` and provenance metadata,
-- sampling times are forwarded as `jump_ts` or equivalent solver-guidance times,
-- the wrapper reconstructs `V_real = V_cont - V_sample_acc` at each RHS call,
-- tests must verify that reconstructed physical volume matches the intended
-  sampled-volume history.
+- `step_ts` includes the boundaries of these ramps,
+- the wrapper reconstructs `V_real = V_cont - V_sample_acc` at each RHS call.
 
-This is a deliberate V1 simplification and should be documented as such.
+Tests must verify that integrated bolus additions and integrated sampled-volume
+removals match their intended amounts.
 
 ### 11.4 Global Padding
 
 The control store uses one global padded shape across all experiments in the
 prepared dataset. This is required to avoid JIT recompilation.
 
-The prepared artifact or derived training object must record:
+The prepared artifact must record:
 
 - number of experiments,
 - maximum grid length,
 - number of controls,
-- any padding lengths or masks needed downstream.
+- any padding lengths or masks needed downstream,
+- the full padded control arrays needed by the V1 runtime.
 
 ## 12. Model Abstraction
 
@@ -453,12 +475,31 @@ The call must return a `ReactionOutputs`-like structure with:
 - `reaction_terms`: reaction or source terms in concentration space, excluding
   dilution and feed transport,
 - `modeled_feed_rates`: a vector aligned with config-declared modeled feed
-  streams. If there are no modeled feeds, this is an empty vector.
+  streams. If there are no modeled feeds, this is `jnp.zeros((0,))`.
 
 The exact container type may be a small dataclass, namedtuple, or equivalent,
 but the two fields above are semantically required.
 
-### 12.3 Reaction-Only Contract
+### 12.3 Trainable Partitioning Contract
+
+`partition_trainable()` returns two pytrees with the same module structure:
+
+- a trainable pytree,
+- a static or frozen pytree.
+
+This follows the Equinox-style partitioning pattern used in `hybrax-train`.
+
+Default behavior:
+
+- the reaction module should expose a `.model` attribute for the neural network
+  submodule,
+- if `partition_trainable()` is not overridden, the default implementation
+  treats the parameters of `.model` as trainable and the remaining leaves as
+  static,
+- if `.model` is absent and no custom `partition_trainable()` is provided, prep
+  or model construction must fail fast.
+
+### 12.4 Reaction-Only Contract
 
 The user reaction module does not implement dilution in V1.
 
@@ -472,15 +513,16 @@ The wrapper handles:
 - combining reaction and transport contributions into the final state
   derivative.
 
-### 12.4 Observations
+### 12.5 Observations
 
 `observe(...)` remains in the abstraction but defaults to identity.
 
-In V1 the trainer may call it post-integration.
+In V1 it should be called during integration or trajectory saving rather than
+as a purely post-hoc transformation of the final trajectory.
 
-The spec should explicitly note that this boundary may need revision once
-stateful models are introduced, because post-hoc observation reconstruction is
-not equivalent to online observation generation for models with internal state.
+V1 still supports stateless models only. Models whose observation path depends
+on internal recurrent state are out of scope and should fail design review
+rather than being accepted silently.
 
 ## 13. Scaling
 
@@ -555,11 +597,25 @@ runtime contract strict:
 - the wrapper must know its source kind, aligned index, and inlet composition,
 - controlled feeds come from the prepared control vector,
 - modeled feeds come from `ReactionOutputs.modeled_feed_rates`,
-- `ReactionOutputs.modeled_feed_rates` must be aligned with the configured list
-  of modeled feed streams.
+- `ReactionOutputs.modeled_feed_rates` must follow the same positional
+  convention used by `bpbench.mechanistic.RhsOde`, aligned to the ordered list
+  of explicit modeled feed streams declared in the process metadata.
 
 There is no partially automatic mode in which some dilution terms come from the
 wrapper and others are manually implemented in user code.
+
+### 14.4 Relationship to `bpbench.mechanistic`
+
+V1 does not reuse `bpbench.mechanistic` as its runtime implementation.
+
+Instead `bp-train` reimplements the controls and wrapper path with stronger
+focus on JIT stability, padded shapes, and compile-time behavior. Existing
+`bpbench.mechanistic` patterns remain valuable references for:
+
+- deterministic control ordering,
+- feed classification,
+- positional modeled-feed conventions,
+- wrapper math used as a correctness baseline in tests.
 
 ## 15. Training Data Object
 
@@ -575,13 +631,18 @@ The minimum V1 training data object per experiment is:
 ### 15.1 `y_meas`
 
 - contains only measured target variables,
-- uses config-defined column order,
+- uses config-defined column order by variable name,
+- may be a subset of all dynamic states,
+- does not include `V_cont`,
 - is padded across experiments for batching.
 
 ### 15.2 `y0`
 
 - uses first measured values for observed states,
 - uses config/code overrides for modeled but unobserved states,
+- appends `V_cont` as the final state entry,
+- initializes `V_cont(0)` from the first point of the prepared volume trace in
+  the input JSON lineage,
 - must be fully resolvable during prep.
 
 ### 15.3 Training Grid
@@ -598,17 +659,18 @@ not part of the V1 loss contract.
 - real-space integration only,
 - no pseudo-batch dynamics,
 - dynamic volume represented by an integrated continuous state `V_cont`,
+- `V_cont` is always the last entry in the state vector,
 - realized reactor volume reconstructed in the wrapper as
   `V_real = V_cont - V_sample_acc`.
 
 ### 16.2 Step Boundaries
 
 The step size controller should receive boundary times derived during control
-preparation. This reduces solver pathologies around discontinuity-like regions
-without exposing a segmented public API.
+preparation. This reduces solver pathologies around steep ramp regions without
+exposing a segmented public API.
 
-These boundary times must include sampling-event times because `V_sample_acc`
-has discontinuities there.
+These boundary times must include the start and end times of both bolus ramps
+and `V_sample_acc` ramps.
 
 ### 16.3 Expected Runtime Objects
 
@@ -620,9 +682,9 @@ that all experiments in the prepared artifact can share one compiled shape.
 At minimum, the prepared artifact metadata should include:
 
 - source input path or dataset id,
-- hash of the input JSON,
+- SHA-256 hash of the raw bytes of the input JSON file, stored as a hex string,
 - prep timestamp,
-- config path or config hash,
+- SHA-256 hash of the raw bytes of `custom.py`, stored as a hex string,
 - names of applied transform hooks,
 - control ordering,
 - whether volume is dynamic,
@@ -656,6 +718,10 @@ prepared.json
 train-config.json
 ```
 
+`model_api.py` is the home of the reaction-module and `ReactionOutputs`
+contracts. `defaults.py` contains default prep and training settings such as
+the dense-grid refinement parameters.
+
 This is illustrative only; exact filenames may change.
 
 ## 19. Testing Requirements
@@ -664,20 +730,23 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 
 ### 19.1 Control Prep Tests
 
-- exact elevation of linear/quadratic source splines,
+- padded runtime arrays are written to `prepared.json` and load back without
+  shape ambiguity,
 - dense-grid linear interpolation error is below threshold,
 - global padding shapes are stable,
 - config-defined control ordering is preserved,
 - missing controls fail fast,
 - cumulative-to-rate transformation hooks work as expected,
-- default `V_sample_acc` construction from negative volume discontinuities works
-  as expected,
+- default `V_sample_acc` construction from upstream negative `delta_V` jump
+  annotations works as expected,
 - user override of default `V_sample_acc` construction works as expected.
 
 ### 19.2 Event Approximation Tests
 
 - bolus approximation adds exactly the intended amount,
 - boundary times are passed through correctly,
+- reconstructed `V_real` matches the measured volume trace at measurement times
+  within tolerance,
 - reconstructed `V_real` matches the intended sampled-volume history,
 - solver does not exhibit excessive rejected steps around approximated events.
 
@@ -685,6 +754,8 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 
 - dilution and feed transport are applied correctly,
 - multiple feed streams sum correctly,
+- feed-medium composition is applied correctly, including zero contribution for
+  absent species,
 - dynamic volume state updates correctly,
 - user reaction terms are combined correctly with wrapper-managed transport.
 
@@ -692,6 +763,7 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 
 - a single train step produces gradients,
 - only parameters returned by `partition_trainable()` receive gradients,
+- frozen parameters from `partition_trainable()` remain gradient-free,
 - measurement-time loss uses the expected padded arrays and masks.
 
 ## 20. Implementation Order
@@ -700,12 +772,14 @@ Recommended implementation order:
 
 1. preparation pipeline that loads raw `bpbench` JSON and writes `prepared.json`,
 2. validation layer and prep metadata,
-3. control preparation path with dense linear interpolation and global padding,
-4. training data object with padded measurement arrays,
-5. user model abstraction and `partition_trainable()` flow,
-6. library wrapper with full dilution handling,
-7. minimal trainer with one train step and tests,
-8. then evaluate whether the architecture is good enough before adding more
+3. a concrete `custom.py` for the first real dataset, developed early enough to
+   stress the API before it hardens,
+4. control preparation path with dense linear interpolation and global padding,
+5. training data object with padded measurement arrays,
+6. user model abstraction and `partition_trainable()` flow,
+7. library wrapper with full dilution handling,
+8. minimal trainer with one train step and tests,
+9. then evaluate whether the architecture is good enough before adding more
    features.
 
 ## 21. Deferred Items
@@ -719,4 +793,5 @@ These are explicitly deferred beyond V1:
 - pseudo-batch dynamics,
 - alternative runtime contracts where the user manually handles dilution,
 - more sophisticated treatment of bolus events,
-- adaptive knot placement beyond the simple dense-grid refinement strategy.
+- adaptive knot placement beyond the simple dense-grid refinement strategy,
+- automatic jump detection inside `bp-train`.
