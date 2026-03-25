@@ -115,7 +115,7 @@ def main() -> int:
 
     if not notebooks:
         print("No notebooks found.", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     failures: list[tuple[Path, str]] = []
     print(f"Running {len(notebooks)} notebooks")
@@ -137,7 +137,8 @@ def main() -> int:
 
     passed = len(notebooks) - len(failures)
     print(f"Counts: pass={passed} fail={len(failures)} total={len(notebooks)}")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
