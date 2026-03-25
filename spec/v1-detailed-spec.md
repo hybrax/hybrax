@@ -66,7 +66,7 @@ V1 is split into three phases.
 
 ### 5.1 Phase A: Raw Data Load
 
-- Input artifact is a `bpbench` JSON file, usually emitted by `bp-prep` or a
+- Input artifact is a `bpbench` JSON file, usually emitted by `hybrax-prep` or a
   `bpbench` example workflow.
 - The loader uses `bpbench.serialization.load_process_collection(...)`.
 - The loaded object is treated as a `BioProcessCollection` plus metadata.
