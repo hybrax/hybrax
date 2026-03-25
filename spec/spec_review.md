@@ -49,6 +49,8 @@ an upstream rename or a local adapter layer.
 before V1 implementation begins, or whether bp-train wraps all field access
 behind a helper (e.g. `get_interpolator(variable)`). Add to `bpbench-api-notes`.
 
+**Answer:** The field was renamed to `interpolator` in bpbench.
+
 ### 2.2 `BenchmarkDataset` dataclass/serializer mismatch — may be resolved
 
 The `bpbench-api-notes` flag a mismatch: serializer expects `case_studies` but
@@ -58,6 +60,8 @@ so both fields are present in 0.1.0.
 
 **Action:** Verify against actual serialization round-trip test and close the
 item in `bpbench-api-notes` if confirmed fixed.
+
+**Answer**: `BenchmarkDataset` has an attribute `metadata` and one `case_studies`. However, `bp-train` should work with `BioProcessCollection` for now. This makes our lives easier. Please change everywhere in the spec and API docs.
 
 ### 2.3 `bpbench.mechanistic` already exists and overlaps with the spec
 
@@ -88,6 +92,8 @@ valuable and should be replicated or borrowed.
 
 **Action:** Add a paragraph to the spec stating the choice and the reason.
 
+**Answer:** `bp-train` will need code that is optimized for run- and compile time whereas the integration methods in `bpbench.mechanistic` only care about correctness, mostly for testing purposes. Therefore we should reimplement these things in `bp-train`. However, we should take inspiration from patterns like the feed classification etc.
+
 ### 2.4 `DiscreteEvents` field is not used by the spec
 
 `BioProcess.discrete_events` is `Optional[DiscreteEvents]` with fields `times`,
@@ -103,6 +109,8 @@ label, from `detected_jumps` metadata in the input JSON, or from user code in
 **Action:** Specify the bolus source. Likely: `DiscreteEvents` with a label
 convention (e.g. `"bolus"`) or a fallback to user-supplied times in
 `transform_controls`.
+
+**Answer**: For v1 we only consider discrete events that are detected by hybrax prep and thus in the input JSON. Jumps with positive `delta_V` are bolus feed, jumps with negative `delta_V` are sampling events.
 
 ### 2.5 `SampleVolumeChange` values are already present in bpbench
 
@@ -121,16 +129,7 @@ only needed when no `SampleVolumeChange` entries exist in the artifact.
 fall back to discontinuity detection only when `volume.volume_changes` contains
 no `SampleVolumeChange` instances.
 
-### 2.6 Feed inlet composition is already in `FeedMedium`
-
-The spec says each feed stream needs "inlet composition" as metadata (§10.4).
-`FeedVolumeChange.feed_medium` already carries a `FeedMedium` with
-`FeedMediumComponent` entries. The wrapper can read inlet compositions directly
-from `process.volume.volume_changes[name].feed_medium.components` without
-needing extra metadata fields.
-
-The spec should state this explicitly rather than treating it as something the
-user must supply.
+**Answer:** Important: v1 should not include any functionality for detecting volume jumps etc.! This should have already happened during pre-processing with hybrax-prep. We only use the detected jumps already present in the JSON (or alternatively users can detect jumps in user code themselves).
 
 ---
 
@@ -157,6 +156,8 @@ that are explicitly **rejected** in answers-3.md Q7.
 with a clear statement: the controls payload is a single dense linear
 interpolation array; segment boundaries survive only as `step_ts`.
 
+**Answer:** The reviewer is right. We should be consistent here and fully follow the new strategy of bolus ramps and no segments. We can actually refine it even more: Let's create ramps and `step_ts` for `V_sample_acc` as well (instead of worrying about instantaneous jumps and using `jump_ts`). Then we're using the same pattern for both samples and bolus.
+
 ### 3.2 The "increase grid density until error is below threshold" rule needs a concrete algorithm
 
 The spec says "increase grid density until the linear interpolation error is
@@ -175,6 +176,8 @@ interpolation error is below threshold") has no pass criterion.
 **Action:** Add a concrete algorithm description and expose the threshold as a
 configurable parameter with a sensible default (e.g. `max_rel_error = 1e-4`).
 
+**Answer:** Let's have a configurable `max_rel_error` (default 1e-4) here which is relative to the spread of values in the trace in questions across all experiments (so that we don't have issues when a trace is constant in an experiment).
+
 ### 3.3 Elevation of linear/quadratic splines — `Interpolator` kinds
 
 The spec says "elevate linear or quadratic splines to cubic exactly" (§11.1).
@@ -185,6 +188,8 @@ form), which is a different representation.
 
 **Action:** Specify the elevation rule for each `kind`, or restrict V1 input to
 `interpax_linear` and `interpax_cubic` only and fail fast otherwise.
+
+**Answer:** Since we're linearly interpolating all controls in v1 we actually don't need to elevate to cubic for now (this would only be necessary if we want to create linear combinations of splines or similar). We should drop mention of spline elevation from the spec entirely.
 
 ### 3.4 Global padding — padded shape written to `prepared.json` or derived at load time?
 
@@ -203,6 +208,8 @@ one-time build.
 `prepared.json`, or re-materialize at load time. Document the chosen approach
 and the reasoning.
 
+**Action:** Let's make our lives easier and just store the padded arrays in `prepared.json`; no ambiguity and less faff.
+
 ---
 
 ## 4. Volume and Wrapper Contract — Gaps
@@ -217,6 +224,8 @@ state variables.
 
 **Action:** Add a bullet to §15.2: `V_cont(0) = process.volume.initial_volume`.
 
+**Answer:** We should get the initial volume from the volume trace in the input JSON.
+
 ### 4.2 State vector ordering — where does `V_cont` sit?
 
 The spec defines the state vector as containing measured concentration states
@@ -227,6 +236,8 @@ contracts.
 **Action:** Specify `V_cont` position in the state vector (e.g. always last, or
 config-defined). Also clarify that `y_meas` does **not** include `V_cont` unless
 volume is a measured target.
+
+**Answer:** `V_cont` should always be last.
 
 ### 4.3 Modeled feeds and `ReactionOutputs.modeled_feed_rates`
 
@@ -244,6 +255,8 @@ by position — the same convention could be adopted.
 **Action:** Add a concrete config declaration format for modeled feeds (e.g.
 `modeled_feed_names: List[str]` in `custom.py`) and specify index alignment
 rules.
+
+**Answer:** We can use the same convention as in `bpbench.mechanistic.RhsOde`.
 
 ### 4.4 Feed medium coverage validation
 
@@ -271,6 +284,8 @@ be. Equinox uses a filter function or a pytree-matched boolean mask (via
 `partition_trainable() -> Tuple[eqx.Module, eqx.Module]` returning
 `(trainable_leaves, static_leaves)` in the style of `eqx.partition`.
 
+**Answer:** Yes, it should return two PyTrees of the same eqx.Module (similar to how it's done in the hybrax-train reference).
+
 ### 5.2 Default `partition_trainable()` behavior
 
 The answers say the default should "take all neural network params if not
@@ -281,6 +296,8 @@ A more robust default: treat the entire module as trainable (i.e. partition
 returns `(model, eqx.nn.StateIndex())` or equivalent). Document the default
 clearly so researchers know to override when they have static parameters (e.g.
 fixed kinetic constants).
+
+**Answer:** Similar to hybrax-train the user RHS eqx.Module should have a `.model` attribute (the neural net). The params of this should be returned as trainable per default.
 
 ### 5.3 `observe()` and its post-hoc limitation
 
@@ -295,6 +312,8 @@ wrong results.
 once on the full integrated trajectory. Models that require per-step observation
 (e.g. growth-rate reconstruction from latent LSTM state) are not supported and
 will produce incorrect results without an error."
+
+**Answer:** Let's change this to instead of post-hoc rather call observe during integration for saving output (similar to hybrax-train; have another look at how it's done there).
 
 ---
 
@@ -326,6 +345,8 @@ The spec says "config path or config hash". Since `custom.py` is code, hashing
 it is more useful than a path (paths break across machines). The spec should
 clarify what gets hashed: the `custom.py` file bytes, a subset of config
 objects, or both.
+
+**Answer:** Let's hash the `custom.py` file bytes as well as the JSON bytes.
 
 ---
 
