@@ -159,6 +159,8 @@ Code-level configuration lives in `custom.py` and is the place for:
 - trainable partitioning,
 - control transformation hooks,
 - state transformation hooks,
+- reactor/feed semantic enrichment when the raw artifact is missing training-
+  required medium definitions,
 - case-study-specific mappings that are too structural or semantic for plain
   JSON.
 
@@ -221,6 +223,11 @@ Hooks may:
 - rename variables,
 - update `is_controlled`,
 - attach or replace `Interpolator` payloads,
+- populate or repair `reactor_medium.components`,
+- populate or repair feed-medium component metadata needed for downstream
+  transport and dilution,
+- declare biomass and other state/species semantics needed by the training
+  runtime,
 - compute scaling statistics,
 - enrich process metadata needed for training.
 
@@ -249,15 +256,19 @@ The preparation step converts raw `bpbench` data into `prepared.json`.
 3. Resolve case-study-specific config in code.
 4. Apply `transform_controls(process, config)` to each process.
 5. Apply `transform_states(process, config)` to each process.
-6. Build default derived controls required by the V1 runtime contract when they
+6. Enrich reactor/feed component semantics in code when the raw artifact does
+   not yet contain the medium definitions required for training.
+7. Build default derived controls required by the V1 runtime contract when they
    were not already provided by user code.
-7. Validate control roles, state roles, feed semantics, and required
-   interpolators.
-8. Generate control interpolation payloads, padded runtime arrays, and training
-   metadata.
-9. Compute any required model scaling statistics.
-10. Update or add prep metadata.
-11. Serialize the full transformed collection as `prepared.json`.
+8. Validate control roles, state roles, feed semantics, reactor/feed component
+   completeness, and required interpolators.
+9. Run strict post-transform `bpbench` validation on the prepared processes
+   before writing `prepared.json`.
+10. Generate control interpolation payloads, padded runtime arrays, and
+    training metadata.
+11. Compute any required model scaling statistics.
+12. Update or add prep metadata.
+13. Serialize the full transformed collection as `prepared.json`.
 
 ### 9.3 Validation Rules
 
@@ -267,6 +278,9 @@ Prep must fail fast if:
 - a required `Interpolator` is missing,
 - feed stream metadata is underspecified,
 - feed-media coverage is invalid for a positive feed stream,
+- `reactor_medium.components` or feed-medium component metadata is missing for a
+  dataset that is intended for training,
+- biomass or other required dynamic species semantics are missing after prep,
 - a required initial condition cannot be constructed,
 - control ordering is inconsistent,
 - shapes or units are irreconcilable,
@@ -275,6 +289,11 @@ Prep must fail fast if:
 
 This validation layer should reuse existing `bpbench` checks where possible
 rather than reimplementing them from scratch.
+
+The intended V1 contract is that strict post-transform `bpbench` validation runs
+before `prepared.json` is written. If the raw input is incomplete, the
+expectation is that `custom.py` enriches the required medium/species semantics
+during prep rather than downstream code working around them later.
 
 ## 10. Control Semantics
 
@@ -317,6 +336,7 @@ compute transport and dilution:
 - source kind: `control` or `modeled`,
 - source index in the aligned control vector or modeled-feed vector,
 - inlet composition,
+- explicit component metadata aligned to the prepared species/state semantics,
 - any required mapping to state/species order.
 
 ### 10.5 Dynamic Volume Only
