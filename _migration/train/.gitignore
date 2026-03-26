@@ -6,6 +6,13 @@ reference/
 *-local/
 *.override.*
 
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+# don't track pixi.toml and pixi.lock for now (pixi only used for local dev)
+pixi.toml
+pixi.lock
+
 # python stuff:
 # Byte-compiled / optimized / DLL files
 __pycache__/
