@@ -30,9 +30,13 @@ def resolve_config(module: ModuleType | None, config: Any | None) -> dict[str, A
         if hasattr(module, "get_config"):
             module_config = module.get_config()
             if module_config is not None:
-                resolved.update(dict(module_config))
+                if not isinstance(module_config, dict):
+                    raise TypeError("custom.get_config() must return a dict or None")
+                resolved.update(module_config)
         elif hasattr(module, "CONFIG"):
-            resolved.update(dict(module.CONFIG))
+            if not isinstance(module.CONFIG, dict):
+                raise TypeError("custom.CONFIG must be a dict")
+            resolved.update(module.CONFIG)
 
     if config is not None:
         resolved.update(dict(config))

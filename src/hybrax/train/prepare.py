@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+import warnings
 
 from bpbench.dataclasses import BioProcessCollection
 from bpbench.serialization import load_process_collection_json, save_process_collection_json
@@ -45,7 +46,9 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def load_raw_collection(input_json: str | Path) -> BioProcessCollection:
+def load_raw_collection(input_json: str | Path | BioProcessCollection) -> BioProcessCollection:
+    if isinstance(input_json, BioProcessCollection):
+        return input_json
     return load_process_collection_json(Path(input_json))
 
 
@@ -64,14 +67,19 @@ def _default_build_sample_acc(process, process_name, collection_metadata, config
 def _pad_process_payload(
     payload: dict[str, Any],
     max_grid_length: int,
-    max_controls: int,
+    global_control_names: list[str],
+    max_step_ts_length: int,
 ) -> dict[str, Any]:
     grid = list(payload["grid"])
     values = [list(row) for row in payload["values"]]
     derivatives = [list(row) for row in payload["derivatives"]]
+    step_ts = list(payload["step_ts"])
 
     grid_length = len(grid)
-    control_count = len(values[0]) if values else 0
+    local_control_names = list(payload["control_names"])
+    control_count = len(local_control_names)
+    global_index = {name: idx for idx, name in enumerate(global_control_names)}
+    max_controls = len(global_control_names)
 
     padded_grid = grid + [0.0] * (max_grid_length - grid_length)
     grid_mask = [True] * grid_length + [False] * (max_grid_length - grid_length)
@@ -79,15 +87,26 @@ def _pad_process_payload(
     padded_values = []
     padded_derivatives = []
     for row, deriv_row in zip(values, derivatives, strict=False):
-        padded_values.append(row + [0.0] * (max_controls - control_count))
-        padded_derivatives.append(deriv_row + [0.0] * (max_controls - control_count))
+        global_row = [0.0] * max_controls
+        global_deriv_row = [0.0] * max_controls
+        for local_idx, control_name in enumerate(local_control_names):
+            target_idx = global_index[control_name]
+            global_row[target_idx] = row[local_idx]
+            global_deriv_row[target_idx] = deriv_row[local_idx]
+        padded_values.append(global_row)
+        padded_derivatives.append(global_deriv_row)
 
     zero_row = [0.0] * max_controls
     for _ in range(max_grid_length - grid_length):
         padded_values.append(list(zero_row))
         padded_derivatives.append(list(zero_row))
 
-    control_mask = [True] * control_count + [False] * (max_controls - control_count)
+    control_mask = [False] * max_controls
+    for control_name in local_control_names:
+        control_mask[global_index[control_name]] = True
+
+    padded_step_ts = step_ts + [0.0] * (max_step_ts_length - len(step_ts))
+    step_ts_mask = [True] * len(step_ts) + [False] * (max_step_ts_length - len(step_ts))
 
     return {
         "dense_grid": padded_grid,
@@ -95,19 +114,79 @@ def _pad_process_payload(
         "control_values": padded_values,
         "control_derivatives": padded_derivatives,
         "control_mask": control_mask,
+        "step_ts": padded_step_ts,
+        "step_ts_mask": step_ts_mask,
         "grid_length": grid_length,
         "control_count": control_count,
     }
 
 
+def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) -> None:
+    failed = [name for name, entry in validation_report.items() if not entry["ok"]]
+    if failed:
+        warnings.warn(
+            f"bpbench validation reported non-OK status for {len(failed)} process(es); "
+            "see metadata['bp_train']['bpbench_validation'] for details",
+            stacklevel=2,
+        )
+
+
+def _validate_prepared_control_contract(
+    process_sources: dict[str, list[Any]],
+    sample_sources: dict[str, Any],
+    *,
+    require_consistent_controls: bool,
+) -> None:
+    reference_names: list[str] | None = None
+
+    for process_name, sources in process_sources.items():
+        control_names = [source.name for source in sources]
+        if BP_TRAIN_SAMPLE_ACC_NAME in control_names:
+            raise ValueError(
+                f"{process_name}: reserved control name {BP_TRAIN_SAMPLE_ACC_NAME} "
+                "may not be produced by transform_controls"
+            )
+        if len(control_names) != len(set(control_names)):
+            raise ValueError(f"{process_name}: duplicate control names after transforms")
+        if sample_sources[process_name].name != BP_TRAIN_SAMPLE_ACC_NAME:
+            raise ValueError(f"{process_name}: sample-acc source must be named {BP_TRAIN_SAMPLE_ACC_NAME}")
+
+        if require_consistent_controls:
+            if reference_names is None:
+                reference_names = control_names
+            elif control_names != reference_names:
+                raise ValueError(
+                    f"{process_name}: control names/order differ across processes; "
+                    "either make hooks consistent or disable require_consistent_controls"
+                )
+
+
+def _build_global_control_axis(
+    process_order: list[str],
+    process_sources: dict[str, list[Any]],
+) -> list[str]:
+    seen: set[str] = set()
+    global_names: list[str] = []
+
+    for process_name in process_order:
+        for source in process_sources[process_name]:
+            if source.name in seen:
+                continue
+            seen.add(source.name)
+            global_names.append(source.name)
+
+    global_names.append(BP_TRAIN_SAMPLE_ACC_NAME)
+    return global_names
+
+
 def prepare_artifact(
-    input_json: str | Path,
+    input_json: str | Path | BioProcessCollection,
     output_json: str | Path,
     *,
     custom_py: str | Path | None = None,
     config: dict[str, Any] | None = None,
 ) -> BioProcessCollection:
-    input_path = Path(input_json)
+    input_path = None if isinstance(input_json, BioProcessCollection) else Path(input_json)
     output_path = Path(output_json)
 
     custom_module = load_custom_module(custom_py)
@@ -117,11 +196,13 @@ def prepare_artifact(
     defaults.update(user_config)
     resolved_config = defaults
 
-    raw_collection = load_raw_collection(input_path)
+    raw_collection = load_raw_collection(input_json)
     validation_report = validate_raw_collection(
         raw_collection,
         strict=bool(resolved_config.get("strict_bpbench_validation", False)),
     )
+    if not bool(resolved_config.get("strict_bpbench_validation", False)):
+        _warn_on_validation_report(validation_report)
 
     collection = deepcopy(raw_collection)
 
@@ -170,15 +251,27 @@ def prepare_artifact(
         process_sources[process_name] = control_sources
         sample_sources[process_name] = sample_source
 
+    _validate_prepared_control_contract(
+        process_sources=process_sources,
+        sample_sources=sample_sources,
+        require_consistent_controls=bool(resolved_config.get("require_consistent_controls", True)),
+    )
+
     spread_inputs = {
         process_name: sources + [sample_sources[process_name]]
         for process_name, sources in process_sources.items()
     }
     signal_spreads = compute_signal_spreads(spread_inputs)
 
+    process_order = list(collection.processes.keys())
+    global_control_names = _build_global_control_axis(
+        process_order=process_order,
+        process_sources=process_sources,
+    )
+
     process_payloads: dict[str, dict[str, Any]] = {}
     max_grid_length = 0
-    max_controls = 0
+    max_step_ts_length = 0
 
     for process_name, process in collection.processes.items():
         sources = list(process_sources[process_name]) + [sample_sources[process_name]]
@@ -191,14 +284,14 @@ def prepare_artifact(
         process_payloads[process_name] = {
             "control_names": [source.name for source in sources],
             "control_metadata": {source.name: source.metadata for source in sources},
-            "sample_acc_index": len(sources) - 1,
+            "sample_acc_index": global_control_names.index(BP_TRAIN_SAMPLE_ACC_NAME),
             "step_ts": payload["step_ts"],
             "grid": payload["grid"],
             "values": payload["values"],
             "derivatives": payload["derivatives"],
         }
         max_grid_length = max(max_grid_length, len(payload["grid"]))
-        max_controls = max(max_controls, len(sources))
+        max_step_ts_length = max(max_step_ts_length, len(payload["step_ts"]))
 
     source_hash = _sha256_hex(_read_bytes(input_path))
     custom_hash = _sha256_hex(_read_bytes(custom_py))
@@ -206,7 +299,7 @@ def prepare_artifact(
     existing_metadata = dict(collection.metadata or {})
     bp_train_metadata: dict[str, Any] = {
         "prepared_at": _utc_now_iso(),
-        "source_input_path": str(input_path),
+        "source_input_path": None if input_path is None else str(input_path),
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
         "transform_hooks": {
@@ -216,11 +309,16 @@ def prepare_artifact(
         },
         "dynamic_volume": True,
         "bpbench_validation": validation_report,
-        "process_order": list(collection.processes.keys()),
+        "process_order": process_order,
+        "global_control_names": global_control_names,
+        "global_control_name_to_index": {
+            name: idx for idx, name in enumerate(global_control_names)
+        },
         "shape_metadata": {
             "n_processes": len(collection.processes),
             "max_grid_length": max_grid_length,
-            "max_controls": max_controls,
+            "max_controls": len(global_control_names),
+            "max_step_ts_length": max_step_ts_length,
         },
         "processes": {},
     }
@@ -229,17 +327,22 @@ def prepare_artifact(
         padded = _pad_process_payload(
             payload=payload,
             max_grid_length=max_grid_length,
-            max_controls=max_controls,
+            global_control_names=global_control_names,
+            max_step_ts_length=max_step_ts_length,
         )
         bp_train_metadata["processes"][process_name] = {
-            "control_names": payload["control_names"],
+            "local_control_names": payload["control_names"],
             "control_name_to_index": {
-                name: idx for idx, name in enumerate(payload["control_names"])
+                name: idx for idx, name in enumerate(global_control_names)
+            },
+            "local_to_global_index": {
+                name: global_control_names.index(name) for name in payload["control_names"]
             },
             "control_metadata": payload["control_metadata"],
             "sample_acc_index": payload["sample_acc_index"],
             "sample_acc_name": BP_TRAIN_SAMPLE_ACC_NAME,
-            "step_ts": payload["step_ts"],
+            "step_ts": padded["step_ts"],
+            "step_ts_mask": padded["step_ts_mask"],
             "grid_length": padded["grid_length"],
             "control_count": padded["control_count"],
             "dense_grid": padded["dense_grid"],

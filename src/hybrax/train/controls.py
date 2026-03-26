@@ -7,6 +7,8 @@ import numpy as np
 from bpbench.dataclasses import (
     BioProcess,
     FeedVolumeChange,
+    FeedMedium,
+    FeedMediumComponent,
     ProcessVariable,
     SampleVolumeChange,
     StaticVariable,
@@ -112,6 +114,7 @@ def _make_source_from_xy(
     times: np.ndarray,
     values: np.ndarray,
     metadata: dict[str, Any] | None = None,
+    fallback_end: float | None = None,
 ) -> SignalSource:
     times = _as_numpy(times)
     values = _as_numpy(values)
@@ -123,7 +126,10 @@ def _make_source_from_xy(
     if times.size == 0:
         raise ValueError(f"{name}: empty time series")
     if times.size == 1:
-        times = np.asarray([times[0], times[0] + 1.0], dtype=float)
+        end = times[0] + 1.0 if fallback_end is None else max(float(fallback_end), float(times[0]))
+        if end == times[0]:
+            end = float(times[0]) + 1.0
+        times = np.asarray([times[0], end], dtype=float)
         values = np.asarray([values[0], values[0]], dtype=float)
 
     return SignalSource(
@@ -165,6 +171,7 @@ def _make_source_from_process_variable(
             times=process_variable.values.timepoints,
             values=process_variable.values.values,
             metadata={"source": "timeseries"},
+            fallback_end=float(process.time_axis.end),
         )
 
     if isinstance(process_variable.values, StaticVariable):
@@ -184,18 +191,56 @@ def _make_source_from_process_variable(
     raise TypeError(f"Unsupported process-variable value type for {name}")
 
 
-def _make_source_from_volume_change(name: str, values: TimeSeries) -> SignalSource:
+def _serialize_concentration(value: TimeSeries | StaticVariable) -> dict[str, Any]:
+    if isinstance(value, StaticVariable):
+        return {
+            "kind": "static",
+            "value": float(value.value),
+        }
+    return {
+        "kind": "timeseries",
+        "timepoints": _as_numpy(value.timepoints).tolist(),
+        "values": _as_numpy(value.values).tolist(),
+    }
+
+
+def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
+    components: dict[str, Any] = {}
+    for component_name, component in feed_medium.components.items():
+        assert isinstance(component, FeedMediumComponent)
+        components[component_name] = {
+            "name": component.name,
+            "unit": component.unit,
+            "concentration": _serialize_concentration(component.concentration),
+            "is_controlled": bool(component.is_controlled),
+        }
+
+    return {
+        "name": feed_medium.name,
+        "density": float(feed_medium.density),
+        "density_unit": feed_medium.density_unit,
+        "components": components,
+    }
+
+
+def _make_source_from_volume_change(name: str, volume_change: FeedVolumeChange) -> SignalSource:
     return _make_source_from_xy(
         name=name,
         kind="volume_change",
-        times=values.timepoints,
-        values=values.values,
-        metadata={"source": "timeseries"},
+        times=volume_change.values.timepoints,
+        values=volume_change.values.values,
+        metadata={
+            "source": "timeseries",
+            "source_kind": "control",
+            "signal_family": "feed",
+            "feed_name": name,
+            "inlet_feed_medium": _serialize_feed_medium(volume_change.feed_medium),
+        },
     )
 
 
-def _collect_time_axis_points(process: BioProcess) -> np.ndarray:
-    times: list[float] = [float(process.time_axis.start), float(process.time_axis.end)]
+def _collect_online_time_points(process: BioProcess) -> np.ndarray:
+    times: list[float] = []
 
     for process_variable in process.process_variables.values():
         if isinstance(process_variable.values, TimeSeries):
@@ -208,14 +253,17 @@ def _collect_time_axis_points(process: BioProcess) -> np.ndarray:
 
 
 def get_shortest_time_diff(process: BioProcess) -> float:
-    points = _collect_time_axis_points(process)
+    points = _collect_online_time_points(process)
+    total_duration = max(float(process.time_axis.end) - float(process.time_axis.start), 1.0)
     if points.size <= 1:
-        return 1.0
+        return total_duration / 100.0
 
+    points = np.unique(np.round(points, decimals=9))
     diffs = np.diff(points)
-    diffs = diffs[diffs > 0]
+    meaningful_floor = max(total_duration * 1e-6, 1e-9)
+    diffs = diffs[diffs > meaningful_floor]
     if diffs.size == 0:
-        return 1.0
+        return total_duration / 100.0
     return float(np.min(diffs))
 
 
@@ -295,8 +343,8 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
             delta_v = float(delta_v)
             ramp_end = min(event_time + ramp_duration, t_end)
             rate = 0.0 if ramp_end <= event_time else delta_v / (ramp_end - event_time)
-            times.extend([event_time, ramp_end])
-            values.extend([rate, 0.0])
+            times.extend([event_time, event_time, ramp_end])
+            values.extend([0.0, rate, 0.0])
             step_ts.extend([event_time, ramp_end])
 
         if times[-1] < t_end:
@@ -308,7 +356,14 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
             kind="volume_change",
             times=np.asarray(times, dtype=float),
             values=np.asarray(values, dtype=float),
-            metadata={"source": "bolus_ramp", "ramp_duration": ramp_duration},
+            metadata={
+                "source": "bolus_ramp",
+                "source_kind": "control",
+                "signal_family": "feed",
+                "feed_name": name,
+                "ramp_duration": ramp_duration,
+                "inlet_feed_medium": _serialize_feed_medium(volume_change.feed_medium),
+            },
         )
         source.step_ts = _dedupe_sorted(step_ts + source.step_ts)
         sources.append(source)
@@ -325,13 +380,13 @@ def select_control_sources(
     process_var_sources: dict[str, SignalSource] = {}
 
     for name, volume_change in process.volume.volume_changes.items():
-        if isinstance(volume_change, FeedVolumeChange) and not volume_change.is_continuous:
+        if not isinstance(volume_change, FeedVolumeChange):
             continue
         if not volume_change.is_controlled:
             continue
-        if not getattr(volume_change, "is_continuous", False):
+        if not volume_change.is_continuous:
             continue
-        volume_sources[name] = _make_source_from_volume_change(name, volume_change.values)
+        volume_sources[name] = _make_source_from_volume_change(name, volume_change)
 
     for source in build_bolus_sources(process):
         if source.name in volume_sources:
@@ -406,9 +461,6 @@ def build_dense_payload(
     spreads: dict[str, float],
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    if not sources:
-        sources = [build_sample_acc_source_default(process)]
-
     start = float(process.time_axis.start)
     end = float(process.time_axis.end)
     initial_grid_points = int(config.get("initial_grid_points", 16))
