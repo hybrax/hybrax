@@ -61,7 +61,9 @@ def _serialize_concentration(value: TimeSeries | StaticVariable) -> dict[str, ob
     }
 
 
-def _serialize_reactor_component(component: ReactorMediumComponent) -> dict[str, object]:
+def _serialize_reactor_component(
+    component: ReactorMediumComponent,
+) -> dict[str, object]:
     return {
         "name": component.name,
         "unit": component.unit,
@@ -112,14 +114,21 @@ def summarize_process_semantics(process) -> dict[str, object]:
             continue
 
         all_feed_changes.append(change_name)
-        feed_medium_present_by_change[change_name] = volume_change.feed_medium is not None
-        if volume_change.feed_medium is None or not volume_change.feed_medium.components:
+        feed_medium_present_by_change[change_name] = (
+            volume_change.feed_medium is not None
+        )
+        if (
+            volume_change.feed_medium is None
+            or not volume_change.feed_medium.components
+        ):
             feed_component_names_by_change[change_name] = []
             feed_component_details_by_change[change_name] = {}
         else:
             component_details = {
                 name: _serialize_feed_component(component)
-                for name, component in sorted(volume_change.feed_medium.components.items())
+                for name, component in sorted(
+                    volume_change.feed_medium.components.items()
+                )
             }
             feed_component_details_by_change[change_name] = component_details
             feed_component_names_by_change[change_name] = list(component_details.keys())
@@ -142,7 +151,9 @@ def summarize_process_semantics(process) -> dict[str, object]:
     }
 
 
-def ensure_prepared_training_semantics(collection: BioProcessCollection) -> dict[str, dict[str, object]]:
+def ensure_prepared_training_semantics(
+    collection: BioProcessCollection,
+) -> dict[str, dict[str, object]]:
     report: dict[str, dict[str, object]] = {}
     errors: list[str] = []
 
@@ -154,7 +165,9 @@ def ensure_prepared_training_semantics(collection: BioProcessCollection) -> dict
             process_errors.append("reactor_medium.components is empty after prep")
 
         if not summary["has_biomass"]:
-            process_errors.append("reactor medium does not define a biomass component after prep")
+            process_errors.append(
+                "reactor medium does not define a biomass component after prep"
+            )
 
         for change_name in summary["all_feed_changes"]:
             if not summary["feed_medium_present_by_change"].get(change_name, False):

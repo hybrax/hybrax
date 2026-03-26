@@ -9,7 +9,10 @@ from typing import Any
 import warnings
 
 from bpbench.dataclasses import BioProcessCollection
-from bpbench.serialization import load_process_collection_json, save_process_collection_json
+from bpbench.serialization import (
+    load_process_collection_json,
+    save_process_collection_json,
+)
 
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
@@ -52,7 +55,9 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def load_raw_collection(input_json: str | Path | BioProcessCollection) -> BioProcessCollection:
+def load_raw_collection(
+    input_json: str | Path | BioProcessCollection,
+) -> BioProcessCollection:
     if isinstance(input_json, BioProcessCollection):
         return input_json
     return load_process_collection_json(Path(input_json))
@@ -230,9 +235,13 @@ def _validate_prepared_control_contract(
                 "may not be produced by transform_controls"
             )
         if len(control_names) != len(set(control_names)):
-            raise ValueError(f"{process_name}: duplicate control names after transforms")
+            raise ValueError(
+                f"{process_name}: duplicate control names after transforms"
+            )
         if sample_sources[process_name].name != BP_TRAIN_SAMPLE_ACC_NAME:
-            raise ValueError(f"{process_name}: sample-acc source must be named {BP_TRAIN_SAMPLE_ACC_NAME}")
+            raise ValueError(
+                f"{process_name}: sample-acc source must be named {BP_TRAIN_SAMPLE_ACC_NAME}"
+            )
 
         if require_consistent_controls:
             if reference_names is None:
@@ -269,7 +278,9 @@ def prepare_artifact(
     custom_py: str | Path | None = None,
     config: dict[str, Any] | None = None,
 ) -> BioProcessCollection:
-    input_path = None if isinstance(input_json, BioProcessCollection) else Path(input_json)
+    input_path = (
+        None if isinstance(input_json, BioProcessCollection) else Path(input_json)
+    )
     output_path = Path(output_json)
 
     custom_module = load_custom_module(custom_py)
@@ -289,8 +300,12 @@ def prepare_artifact(
 
     collection = deepcopy(raw_collection)
 
-    transform_controls = get_hook(custom_module, "transform_controls", _default_transform_controls)
-    transform_states = get_hook(custom_module, "transform_states", _default_transform_states)
+    transform_controls = get_hook(
+        custom_module, "transform_controls", _default_transform_controls
+    )
+    transform_states = get_hook(
+        custom_module, "transform_states", _default_transform_states
+    )
     build_sample_acc = get_hook(
         custom_module,
         "build_sample_acc_series",
@@ -327,8 +342,7 @@ def prepare_artifact(
         required_control_names_by_process = required_control_names
     else:
         required_control_names_by_process = {
-            name: list(required_control_names)
-            for name in collection.processes
+            name: list(required_control_names) for name in collection.processes
         }
 
     for process_name, process in collection.processes.items():
@@ -340,7 +354,9 @@ def prepare_artifact(
         ensure_required_controls(
             process_name=process_name,
             available_control_names=[source.name for source in control_sources],
-            required_control_names=required_control_names_by_process.get(process_name, []),
+            required_control_names=required_control_names_by_process.get(
+                process_name, []
+            ),
         )
         sample_source = build_sample_acc(
             process,
@@ -354,7 +370,9 @@ def prepare_artifact(
     _validate_prepared_control_contract(
         process_sources=process_sources,
         sample_sources=sample_sources,
-        require_consistent_controls=bool(resolved_config.get("require_consistent_controls", True)),
+        require_consistent_controls=bool(
+            resolved_config.get("require_consistent_controls", True)
+        ),
     )
 
     spread_inputs = {
@@ -403,9 +421,15 @@ def prepare_artifact(
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
         "transform_hooks": {
-            "transform_controls": getattr(transform_controls, "__name__", str(transform_controls)),
-            "transform_states": getattr(transform_states, "__name__", str(transform_states)),
-            "build_sample_acc_series": getattr(build_sample_acc, "__name__", str(build_sample_acc)),
+            "transform_controls": getattr(
+                transform_controls, "__name__", str(transform_controls)
+            ),
+            "transform_states": getattr(
+                transform_states, "__name__", str(transform_states)
+            ),
+            "build_sample_acc_series": getattr(
+                build_sample_acc, "__name__", str(build_sample_acc)
+            ),
         },
         "dynamic_volume": True,
         "bpbench_validation": prepared_validation_report,
@@ -442,7 +466,8 @@ def prepare_artifact(
                 name: idx for idx, name in enumerate(global_control_names)
             },
             "local_to_global_index": {
-                name: global_control_names.index(name) for name in payload["control_names"]
+                name: global_control_names.index(name)
+                for name in payload["control_names"]
             },
             "control_metadata": payload["control_metadata"],
             "sample_acc_index": payload["sample_acc_index"],

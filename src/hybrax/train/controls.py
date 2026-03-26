@@ -49,7 +49,9 @@ def _safe_interp(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.ndarray:
     return np.interp(x, xp, fp, left=fp[0], right=fp[-1])
 
 
-def _piecewise_linear_derivative(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.ndarray:
+def _piecewise_linear_derivative(
+    x: np.ndarray, xp: np.ndarray, fp: np.ndarray
+) -> np.ndarray:
     if xp.size <= 1:
         return np.zeros_like(x, dtype=float)
 
@@ -60,7 +62,9 @@ def _piecewise_linear_derivative(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) 
     return slopes[indices]
 
 
-def _compact_ppoly_breaks(x: np.ndarray, coefficients: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _compact_ppoly_breaks(
+    x: np.ndarray, coefficients: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     breaks: list[float] = []
     coeff_cols: list[np.ndarray] = []
     for idx in range(x.size - 1):
@@ -126,7 +130,11 @@ def _make_source_from_xy(
     if times.size == 0:
         raise ValueError(f"{name}: empty time series")
     if times.size == 1:
-        end = times[0] + 1.0 if fallback_end is None else max(float(fallback_end), float(times[0]))
+        end = (
+            times[0] + 1.0
+            if fallback_end is None
+            else max(float(fallback_end), float(times[0]))
+        )
         if end == times[0]:
             end = float(times[0]) + 1.0
         times = np.asarray([times[0], end], dtype=float)
@@ -138,7 +146,9 @@ def _make_source_from_xy(
         times=times,
         values=values,
         evaluator=lambda ts: _safe_interp(_as_numpy(ts), times, values),
-        derivative=lambda ts: _piecewise_linear_derivative(_as_numpy(ts), times, values),
+        derivative=lambda ts: _piecewise_linear_derivative(
+            _as_numpy(ts), times, values
+        ),
         step_ts=_dedupe_sorted(times.tolist()),
         metadata=dict(metadata or {}),
     )
@@ -149,7 +159,10 @@ def _make_source_from_process_variable(
     name: str,
     process_variable: ProcessVariable,
 ) -> SignalSource:
-    if process_variable.spline is not None and process_variable.spline.kind == "interpax_ppoly":
+    if (
+        process_variable.spline is not None
+        and process_variable.spline.kind == "interpax_ppoly"
+    ):
         x = _as_numpy(process_variable.spline.x)
         coefficients = _as_numpy(process_variable.spline.coefficients)
         breaks, _ = _compact_ppoly_breaks(x, coefficients)
@@ -182,7 +195,10 @@ def _make_source_from_process_variable(
             kind="process_variable",
             times=np.asarray([t_start, t_end], dtype=float),
             values=np.asarray(
-                [float(process_variable.values.value), float(process_variable.values.value)],
+                [
+                    float(process_variable.values.value),
+                    float(process_variable.values.value),
+                ],
                 dtype=float,
             ),
             metadata={"source": "static"},
@@ -223,7 +239,9 @@ def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
     }
 
 
-def _make_source_from_volume_change(name: str, volume_change: FeedVolumeChange) -> SignalSource:
+def _make_source_from_volume_change(
+    name: str, volume_change: FeedVolumeChange
+) -> SignalSource:
     return _make_source_from_xy(
         name=name,
         kind="volume_change",
@@ -244,7 +262,9 @@ def _collect_online_time_points(process: BioProcess) -> np.ndarray:
 
     for process_variable in process.process_variables.values():
         if isinstance(process_variable.values, TimeSeries):
-            times.extend(float(t) for t in _as_numpy(process_variable.values.timepoints))
+            times.extend(
+                float(t) for t in _as_numpy(process_variable.values.timepoints)
+            )
 
     for volume_change in process.volume.volume_changes.values():
         times.extend(float(t) for t in _as_numpy(volume_change.values.timepoints))
@@ -254,7 +274,9 @@ def _collect_online_time_points(process: BioProcess) -> np.ndarray:
 
 def get_shortest_time_diff(process: BioProcess) -> float:
     points = _collect_online_time_points(process)
-    total_duration = max(float(process.time_axis.end) - float(process.time_axis.start), 1.0)
+    total_duration = max(
+        float(process.time_axis.end) - float(process.time_axis.start), 1.0
+    )
     if points.size <= 1:
         return total_duration / 100.0
 
@@ -390,7 +412,9 @@ def select_control_sources(
 
     for source in build_bolus_sources(process):
         if source.name in volume_sources:
-            raise ValueError(f"{process_name}: duplicate control source name {source.name}")
+            raise ValueError(
+                f"{process_name}: duplicate control source name {source.name}"
+            )
         volume_sources[source.name] = source
 
     for name, process_variable in process.process_variables.items():
@@ -412,11 +436,15 @@ def select_control_sources(
         missing = [name for name in explicit if name not in all_names]
         if missing:
             missing_str = ", ".join(missing)
-            raise ValueError(f"{process_name}: control_order references missing controls: {missing_str}")
+            raise ValueError(
+                f"{process_name}: control_order references missing controls: {missing_str}"
+            )
         ordered_names.extend(explicit)
 
     volume_names = [name for name in volume_sources if name not in ordered_names]
-    process_var_names = [name for name in process_var_sources if name not in ordered_names]
+    process_var_names = [
+        name for name in process_var_sources if name not in ordered_names
+    ]
 
     ordered_names.extend(volume_names)
     ordered_names.extend(process_var_names)
@@ -430,7 +458,9 @@ def select_control_sources(
     return sources
 
 
-def compute_signal_spreads(process_sources: dict[str, list[SignalSource]]) -> dict[str, float]:
+def compute_signal_spreads(
+    process_sources: dict[str, list[SignalSource]],
+) -> dict[str, float]:
     values_by_name: dict[str, list[float]] = {}
 
     for sources in process_sources.values():
@@ -445,7 +475,9 @@ def compute_signal_spreads(process_sources: dict[str, list[SignalSource]]) -> di
     return spreads
 
 
-def _linear_interp_from_grid(ts: np.ndarray, grid: np.ndarray, values: np.ndarray) -> np.ndarray:
+def _linear_interp_from_grid(
+    ts: np.ndarray, grid: np.ndarray, values: np.ndarray
+) -> np.ndarray:
     if values.ndim == 1:
         return _safe_interp(ts, grid, values)
 
@@ -494,7 +526,9 @@ def build_dense_payload(
         rel_errors = np.zeros_like(source_values)
         for idx, source in enumerate(sources):
             denom = spreads.get(source.name, 1.0)
-            rel_errors[:, idx] = np.abs(source_values[:, idx] - interp_values[:, idx]) / denom
+            rel_errors[:, idx] = (
+                np.abs(source_values[:, idx] - interp_values[:, idx]) / denom
+            )
 
         failing = np.any(rel_errors > max_rel_error, axis=1)
         if not np.any(failing):
