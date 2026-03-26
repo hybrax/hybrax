@@ -1,5 +1,10 @@
-# ref-specific stuff:
+# repo-specific stuff:
 reference/
+
+# no local dev stuff
+*-local/
+*-local/
+*.override.*
 
 # python stuff:
 # Byte-compiled / optimized / DLL files
