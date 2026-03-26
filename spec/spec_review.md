@@ -26,13 +26,10 @@ The sections below go through these and other findings in order of impact.
 
 ## 2. bpbench API Gaps and Mismatches
 
-### 2.1 `.spline` vs `.interpolator` naming — live state differs from api-notes
+### 2.1 `interpolator` naming
 
-The `bpbench-api-notes.md` says "some runtime code still refers to `.spline`".
-In practice this is broader than that note implies: the dataclass field on
-`FeedVolumeChange`, `SampleVolumeChange`, and `ProcessVariable` is **`spline`**
-(not `interpolator`) in bpbench 0.1.0. The `Interpolator` class itself is the
-correct type, but the attribute name is still `spline`.
+The target API is `interpolator`. The `Interpolator` class remains the correct
+type.
 
 Concretely:
 
@@ -42,14 +39,12 @@ SampleVolumeChange(..., spline: Optional[Interpolator] = None)
 ProcessVariable(..., spline: Optional[Interpolator] = None)
 ```
 
-The spec assumes bp-train can write `variable.interpolator`. It cannot without
-an upstream rename or a local adapter layer.
+The spec should therefore treat `interpolator` as canonical.
 
-**Action required:** Decide whether bpbench renames the field to `interpolator`
-before V1 implementation begins, or whether bp-train wraps all field access
-behind a helper (e.g. `get_interpolator(variable)`). Add to `bpbench-api-notes`.
+**Action required:** Use `interpolator` directly in `bp-train` code and docs.
 
-**Answer:** The field was renamed to `interpolator` in bpbench.
+**Answer:** The field was renamed to `interpolator` in bpbench. `bp-train`
+should therefore use `interpolator` directly.
 
 ### 2.2 `BenchmarkDataset` dataclass/serializer mismatch — may be resolved
 
@@ -425,7 +420,7 @@ three Q&A threads:
 
 | Priority | Item |
 |---|---|
-| Blocker | Resolve `.spline` vs `.interpolator` field naming with bpbench team before any bp-train code that reads these fields. |
+| Closed | Use `interpolator` directly as the bp-train API. |
 | Blocker | Decide whether bpbench.mechanistic is reused or replaced; document the choice in the spec. |
 | High | Specify bolus event source (DiscreteEvents vs custom.py vs detected_jumps metadata). |
 | High | Update §10.6 V_sample_acc construction to prefer SampleVolumeChange entries over heuristic detection. |

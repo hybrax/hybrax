@@ -648,6 +648,12 @@ The minimum V1 training data object per experiment is:
 - `controls`,
 - optional `state_interpolators`.
 
+In V1, state interpolators are preserved in the transformed `bpbench`
+collection itself via the canonical `interpolator` field on state-bearing
+objects. They do not need to be duplicated into a separate `bp_train` metadata
+store unless a later augmentation pipeline requires a runtime-optimized state
+interpolator payload.
+
 ### 15.1 `y_meas`
 
 - contains only measured target variables,
@@ -738,6 +744,9 @@ bp_train/
 custom.py
 prepared.json
 train-config.json
+examples/
+  01_kittler_2022/
+    custom.py
 ```
 
 `model_api.py` is the home of the reaction-module and `ReactionOutputs`
@@ -748,7 +757,7 @@ the dense-grid refinement parameters.
 V1 should also expose a package CLI entrypoint:
 
 ```text
-bp-train prepare --input input.json --output prepared.json --custom custom.py
+bp-train prepare --input input.json --output prepared.json --custom examples/01_kittler_2022/custom.py
 ```
 
 `prepare` is the first subcommand. Additional subcommands such as `train` can be

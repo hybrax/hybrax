@@ -159,12 +159,10 @@ def _make_source_from_process_variable(
     name: str,
     process_variable: ProcessVariable,
 ) -> SignalSource:
-    if (
-        process_variable.spline is not None
-        and process_variable.spline.kind == "interpax_ppoly"
-    ):
-        x = _as_numpy(process_variable.spline.x)
-        coefficients = _as_numpy(process_variable.spline.coefficients)
+    interpolator = process_variable.interpolator
+    if interpolator is not None and interpolator.kind == "interpax_ppoly":
+        x = _as_numpy(interpolator.x)
+        coefficients = _as_numpy(interpolator.coefficients)
         breaks, _ = _compact_ppoly_breaks(x, coefficients)
         return SignalSource(
             name=name,

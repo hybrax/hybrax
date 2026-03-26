@@ -12,8 +12,7 @@ ergonomic improvements.
 
 - `bpbench` should expose `Interpolator` as the field type and
   `interpolator` as the serialized field name.
-- some local reference copies may still contain older `.spline` usage, but
-  `bp-train` should target the renamed `interpolator` API.
+- `bp-train` should target the renamed `interpolator` API.
 - deserialization fallback for older serialized artifacts remains useful.
 
 ### Impact on `bp-train`
@@ -26,10 +25,8 @@ ergonomic improvements.
 
 ### Requested Direction
 
-- keep backward-compatible read support for `spline` in `bpbench`,
-- stop introducing new `.spline` usage in downstream code,
-- treat any stale `.spline` references in local examples or reference copies as
-  migration cleanup rather than the target API.
+- use `interpolator` as the target downstream API,
+- avoid introducing fresh direct `.spline` access in downstream code.
 
 ## 2. Process-Collection-First Workflow
 
