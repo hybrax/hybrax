@@ -725,6 +725,7 @@ One possible package layout is:
 
 ```text
 bp_train/
+  cli.py
   prepare.py
   controls.py
   training_data.py
@@ -743,6 +744,15 @@ train-config.json
 contracts. `utils.py` contains internal helpers such as user-hook loading and
 config resolution. `defaults.py` contains default prep and training settings such as
 the dense-grid refinement parameters.
+
+V1 should also expose a package CLI entrypoint:
+
+```text
+bp-train prepare --input input.json --output prepared.json --custom custom.py
+```
+
+`prepare` is the first subcommand. Additional subcommands such as `train` can be
+added later without changing the overall entrypoint shape.
 
 This is illustrative only; exact filenames may change.
 

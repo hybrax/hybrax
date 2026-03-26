@@ -9,6 +9,9 @@ dependencies = [
     "jax>=0.4.30",
 ]
 
+[project.scripts]
+bp-train = "bp_train.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "ipdb>=0.13.13",
