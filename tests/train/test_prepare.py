@@ -81,6 +81,103 @@ def _make_feed_collection() -> BioProcessCollection:
     return BioProcessCollection(metadata={"case_study": {"case_id": "synthetic"}}, processes={"p1": process})
 
 
+def _write_sample_semantics_custom_py(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "from bpbench.dataclasses import ReactorMediumComponent, TimeSeries",
+                "import jax.numpy as jnp",
+                "",
+                "def transform_states(process, config):",
+                "    process.reactor_medium.components['biomass'] = ReactorMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=TimeSeries(",
+                "            timepoints=jnp.asarray([0.0, 1.0]),",
+                "            values=jnp.asarray([0.1, 0.2]),",
+                "        ),",
+                "        is_intracellular=False,",
+                "    )",
+                "    return process",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_feed_semantics_custom_py(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "from bpbench.dataclasses import FeedMediumComponent, ReactorMediumComponent, StaticVariable, TimeSeries",
+                "import jax.numpy as jnp",
+                "",
+                "def transform_states(process, config):",
+                "    process.reactor_medium.components['biomass'] = ReactorMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=StaticVariable(0.1),",
+                "        is_intracellular=False,",
+                "    )",
+                "    process.reactor_medium.components['glucose'] = ReactorMediumComponent(",
+                "        name='glucose',",
+                "        unit='g/L',",
+                "        concentration=TimeSeries(",
+                "            timepoints=jnp.asarray([0.0, 1.0]),",
+                "            values=jnp.asarray([1.0, 1.2]),",
+                "        ),",
+                "        is_intracellular=False,",
+                "    )",
+                "    process.volume.volume_changes['feed_A'].feed_medium.components['biomass'] = FeedMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=StaticVariable(0.0),",
+                "        is_controlled=False,",
+                "    )",
+                "    return process",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "from bpbench.dataclasses import FeedMediumComponent, ReactorMediumComponent, StaticVariable, TimeSeries",
+                "import jax.numpy as jnp",
+                "",
+                "def transform_states(process, config):",
+                "    process.reactor_medium.components['biomass'] = ReactorMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=StaticVariable(0.1),",
+                "        is_intracellular=False,",
+                "    )",
+                "    process.reactor_medium.components['glucose'] = ReactorMediumComponent(",
+                "        name='glucose',",
+                "        unit='g/L',",
+                "        concentration=TimeSeries(",
+                "            timepoints=jnp.asarray([0.0, 1.0]),",
+                "            values=jnp.asarray([1.0, 1.2]),",
+                "        ),",
+                "        is_intracellular=False,",
+                "    )",
+                "    process.volume.volume_changes['feed_A'].feed_medium.components = {}",
+                "    process.volume.volume_changes['feed_A'].feed_medium.components['biomass'] = FeedMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=StaticVariable(0.0),",
+                "        is_controlled=False,",
+                "    )",
+                "    return process",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def _make_invalid_collection() -> BioProcessCollection:
     process = BioProcess(
         metadata=BioProcessMetadata(name="invalid", process_type="fed_batch"),
@@ -139,7 +236,19 @@ def _make_two_process_collection() -> BioProcessCollection:
                     )
                 },
             ),
-            reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+            reactor_medium=ReactorMedium(
+                name="rm",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=StaticVariable(0.1),
+                        is_intracellular=False,
+                    )
+                },
+            ),
             process_variables={
                 "CF": ProcessVariable(
                     name="CF",
@@ -234,8 +343,10 @@ def test_load_raw_collection_reads_input():
 
 def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     output = tmp_path / "prepared.json"
+    custom_py = tmp_path / "custom.py"
+    _write_sample_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning, match="bpbench validation reported non-OK status"):
-        prepare_artifact(_make_invalid_collection(), output)
+        prepare_artifact(_make_invalid_collection(), output, custom_py=custom_py)
 
     prepared = load_process_collection_json(output)
     metadata = prepared.metadata["bp_train"]
@@ -254,7 +365,13 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     assert len(process_md["step_ts"]) == metadata["shape_metadata"]["max_step_ts_length"]
     assert len(process_md["step_ts_mask"]) == metadata["shape_metadata"]["max_step_ts_length"]
     assert any(v > 0 for row in process_md["control_values"] for v in row)
-    assert any(not entry["ok"] for entry in metadata["bpbench_validation"].values())
+    assert any(not entry["ok"] for entry in metadata["bpbench_validation_raw"].values())
+    assert all(entry["ok"] for entry in metadata["bpbench_validation"].values())
+    assert all(entry["ok"] for entry in metadata["bpbench_validation_prepared"].values())
+    assert metadata["prepared_semantics_validation"][first_name]["ok"] is True
+    semantics = metadata["semantics_provenance"]["processes"][first_name]
+    assert semantics["changed_by_hooks"] == ["transform_states"]
+    assert semantics["reactor_components_added"] == ["biomass"]
     assert process_md["control_mask"] == [True]
 
 
@@ -275,8 +392,7 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
     )
 
     output = tmp_path / "prepared-custom.json"
-    with pytest.warns(UserWarning):
-        prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
 
     prepared = load_process_collection_json(output)
     metadata = prepared.metadata["bp_train"]
@@ -289,8 +405,10 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
 
 def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):
     output = tmp_path / "prepared-sample.json"
+    custom_py = tmp_path / "custom.py"
+    _write_sample_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning):
-        prepare_artifact(_make_invalid_collection(), output)
+        prepare_artifact(_make_invalid_collection(), output, custom_py=custom_py)
 
     prepared = load_process_collection_json(output)
     metadata = prepared.metadata["bp_train"]
@@ -309,19 +427,66 @@ def test_load_raw_collection_accepts_in_memory_collection():
 
 def test_prepare_artifact_persists_feed_metadata_and_global_axis(tmp_path):
     output = tmp_path / "prepared-feed.json"
+    custom_py = tmp_path / "custom-feed.py"
+    _write_feed_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning):
-        prepare_artifact(_make_feed_collection(), output)
+        prepare_artifact(_make_feed_collection(), output, custom_py=custom_py)
 
     prepared = load_process_collection_json(output)
     metadata = prepared.metadata["bp_train"]
     process_md = metadata["processes"]["p1"]
     feed_md = process_md["control_metadata"]["feed_A"]
+    semantics = metadata["semantics_provenance"]["processes"]["p1"]
 
     assert metadata["global_control_names"] == ["feed_A", "V_sample_acc"]
     assert process_md["control_mask"] == [True, True]
     assert feed_md["signal_family"] == "feed"
     assert feed_md["source_kind"] == "control"
     assert feed_md["inlet_feed_medium"]["components"]["glucose"]["unit"] == "g/L"
+    assert "biomass" in feed_md["inlet_feed_medium"]["components"]
+    assert semantics["reactor_components_added"] == ["biomass", "glucose"]
+    assert semantics["feed_components_added"] == {"feed_A": ["biomass"]}
+
+
+def test_prepare_artifact_fails_without_required_medium_enrichment(tmp_path):
+    with pytest.warns(UserWarning), pytest.raises(
+        ValueError,
+        match="prepared semantics validation failed",
+    ):
+        prepare_artifact(_make_invalid_collection(), tmp_path / "prepared-missing-medium.json")
+
+
+def test_prepare_artifact_fails_strict_post_transform_bpbench_validation(tmp_path):
+    custom_py = tmp_path / "custom-incomplete-feed.py"
+    _write_feed_semantics_incomplete_custom_py(custom_py)
+
+    with pytest.warns(UserWarning), pytest.raises(
+        ValueError,
+        match="bpbench validation failed",
+    ):
+        prepare_artifact(_make_feed_collection(), tmp_path / "prepared-incomplete-feed.json", custom_py=custom_py)
+
+
+def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path):
+    collection = _make_feed_collection()
+    process = collection.processes["p1"]
+    process.reactor_medium.components["biomass"] = ReactorMediumComponent(
+        name="biomass",
+        unit="g/L",
+        concentration=StaticVariable(0.1),
+        is_intracellular=False,
+    )
+    process.volume.volume_changes["feed_A"].values = TimeSeries(
+        timepoints=jnp.asarray([0.0, 1.0]),
+        values=jnp.asarray([0.0, 0.0]),
+    )
+    process.volume.volume_changes["feed_A"].feed_medium.components = {}
+
+    with pytest.raises(
+        ValueError,
+        match="feed 'feed_A' has no feed-medium component metadata after prep",
+    ):
+        prepare_artifact(collection, tmp_path / "prepared-zero-feed.json")
 
 
 def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
@@ -340,12 +505,12 @@ def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
         encoding="utf-8",
     )
 
-    with pytest.warns(UserWarning), pytest.raises(ValueError, match="control names/order differ"):
+    with pytest.raises(ValueError, match="control names/order differ"):
         prepare_artifact(_make_two_process_collection(), tmp_path / "prepared-bad.json", custom_py=custom_py)
 
 
 def test_prepare_artifact_fails_on_missing_required_control(tmp_path):
-    with pytest.warns(UserWarning), pytest.raises(ValueError, match="config-declared controls are missing"):
+    with pytest.raises(ValueError, match="config-declared controls are missing"):
         prepare_artifact(
             _make_two_process_collection(),
             tmp_path / "prepared-missing.json",

@@ -19,7 +19,13 @@ from .controls import (
     select_control_sources,
 )
 from .custom import get_hook, load_custom_module, resolve_config
-from .validation import ensure_required_controls, validate_raw_collection
+from .validation import (
+    ensure_prepared_training_semantics,
+    ensure_required_controls,
+    summarize_process_semantics,
+    validate_collection,
+    validate_raw_collection,
+)
 
 
 @dataclass
@@ -126,9 +132,86 @@ def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) 
     if failed:
         warnings.warn(
             f"bpbench validation reported non-OK status for {len(failed)} process(es); "
-            "see metadata['bp_train']['bpbench_validation'] for details",
+            "see metadata['bp_train']['bpbench_validation_raw'] for details",
             stacklevel=2,
         )
+
+
+def _added_names(before: list[str], after: list[str]) -> list[str]:
+    before_set = set(before)
+    return [name for name in after if name not in before_set]
+
+
+def _modified_names(
+    before: dict[str, dict[str, object]],
+    after: dict[str, dict[str, object]],
+) -> list[str]:
+    shared = set(before) & set(after)
+    return sorted(name for name in shared if before[name] != after[name])
+
+
+def _build_semantics_provenance(
+    raw_snapshots: dict[str, dict[str, object]],
+    controls_snapshots: dict[str, dict[str, object]],
+    prepared_snapshots: dict[str, dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    provenance: dict[str, dict[str, object]] = {}
+
+    for process_name, raw_summary in raw_snapshots.items():
+        after_controls = controls_snapshots[process_name]
+        prepared_summary = prepared_snapshots[process_name]
+        changed_by_hooks: list[str] = []
+        if after_controls != raw_summary:
+            changed_by_hooks.append("transform_controls")
+        if prepared_summary != after_controls:
+            changed_by_hooks.append("transform_states")
+
+        raw_feed = raw_summary["feed_component_names_by_change"]
+        prepared_feed = prepared_summary["feed_component_names_by_change"]
+        feed_components_added = {
+            change_name: _added_names(
+                raw_feed.get(change_name, []),
+                prepared_feed.get(change_name, []),
+            )
+            for change_name in sorted(prepared_feed)
+        }
+        feed_components_added = {
+            change_name: names
+            for change_name, names in feed_components_added.items()
+            if names
+        }
+        raw_feed_details = raw_summary["feed_component_details_by_change"]
+        prepared_feed_details = prepared_summary["feed_component_details_by_change"]
+        feed_components_modified = {
+            change_name: _modified_names(
+                raw_feed_details.get(change_name, {}),
+                prepared_feed_details.get(change_name, {}),
+            )
+            for change_name in sorted(prepared_feed_details)
+        }
+        feed_components_modified = {
+            change_name: names
+            for change_name, names in feed_components_modified.items()
+            if names
+        }
+
+        provenance[process_name] = {
+            "raw": raw_summary,
+            "prepared": prepared_summary,
+            "changed_by_hooks": changed_by_hooks,
+            "reactor_components_added": _added_names(
+                raw_summary["reactor_component_names"],
+                prepared_summary["reactor_component_names"],
+            ),
+            "reactor_components_modified": _modified_names(
+                raw_summary["reactor_component_details"],
+                prepared_summary["reactor_component_details"],
+            ),
+            "feed_components_added": feed_components_added,
+            "feed_components_modified": feed_components_modified,
+        }
+
+    return provenance
 
 
 def _validate_prepared_control_contract(
@@ -214,10 +297,27 @@ def prepare_artifact(
         _default_build_sample_acc,
     )
 
+    raw_semantics = {
+        process_name: summarize_process_semantics(process)
+        for process_name, process in collection.processes.items()
+    }
+    controls_semantics: dict[str, dict[str, object]] = {}
+    prepared_semantics: dict[str, dict[str, object]] = {}
+
     for process_name, process in list(collection.processes.items()):
         process = transform_controls(process, resolved_config)
+        controls_semantics[process_name] = summarize_process_semantics(process)
         process = transform_states(process, resolved_config)
+        prepared_semantics[process_name] = summarize_process_semantics(process)
         collection.processes[process_name] = process
+
+    semantics_validation_report = ensure_prepared_training_semantics(collection)
+    prepared_validation_report = validate_collection(collection, strict=True)
+    semantics_provenance = _build_semantics_provenance(
+        raw_snapshots=raw_semantics,
+        controls_snapshots=controls_semantics,
+        prepared_snapshots=prepared_semantics,
+    )
 
     process_sources: dict[str, list[Any]] = {}
     sample_sources: dict[str, Any] = {}
@@ -308,7 +408,13 @@ def prepare_artifact(
             "build_sample_acc_series": getattr(build_sample_acc, "__name__", str(build_sample_acc)),
         },
         "dynamic_volume": True,
-        "bpbench_validation": validation_report,
+        "bpbench_validation": prepared_validation_report,
+        "bpbench_validation_raw": validation_report,
+        "bpbench_validation_prepared": prepared_validation_report,
+        "prepared_semantics_validation": semantics_validation_report,
+        "semantics_provenance": {
+            "processes": semantics_provenance,
+        },
         "process_order": process_order,
         "global_control_names": global_control_names,
         "global_control_name_to_index": {
