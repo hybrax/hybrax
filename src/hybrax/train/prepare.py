@@ -18,7 +18,7 @@ from .controls import (
     compute_signal_spreads,
     select_control_sources,
 )
-from .custom import get_hook, load_custom_module, resolve_config
+from .utils import get_hook, load_custom_module, resolve_config
 from .validation import (
     ensure_prepared_training_semantics,
     ensure_required_controls,

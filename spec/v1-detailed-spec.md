@@ -732,6 +732,7 @@ bp_train/
   trainer.py
   model_api.py
   validation.py
+  utils.py
   defaults.py
 custom.py
 prepared.json
@@ -739,7 +740,8 @@ train-config.json
 ```
 
 `model_api.py` is the home of the reaction-module and `ReactionOutputs`
-contracts. `defaults.py` contains default prep and training settings such as
+contracts. `utils.py` contains internal helpers such as user-hook loading and
+config resolution. `defaults.py` contains default prep and training settings such as
 the dense-grid refinement parameters.
 
 This is illustrative only; exact filenames may change.
