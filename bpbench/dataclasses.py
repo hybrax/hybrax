@@ -36,16 +36,7 @@ class Interpolator:
     bc_type: Optional[str] = "natural"
     coefficients: Optional[jnp.ndarray] = None
     extrapolate: Optional[bool] = True
-    spline_metadata: Optional[dict] = None
-
-    @property
-    def interpolator_metadata(self) -> Optional[dict]:
-        """Preferred generic alias for serialized metadata."""
-        return self.spline_metadata
-
-    @interpolator_metadata.setter
-    def interpolator_metadata(self, value: Optional[dict]) -> None:
-        self.spline_metadata = value
+    interpolator_metadata: Optional[dict] = None
 
 
 @dataclass
@@ -101,7 +92,7 @@ class ProcessVariable:
     unit: str  # e.g. "g/L", "g/L/h", "°C" 
     is_controlled: bool # True if this variable is a control input, False if it's a state variable
     values: TimeSeries | StaticVariable
-    spline: Optional[Interpolator] = None
+    interpolator: Optional[Interpolator] = None
 
 @dataclass
 class FeedMediumComponent:
@@ -122,7 +113,7 @@ class ReactorMediumComponent:
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
     is_intracellular: bool # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in ODE RHS calculations
-    spline: Optional[Interpolator] = None
+    interpolator: Optional[Interpolator] = None
 
 
 @dataclass
@@ -176,7 +167,7 @@ class FeedVolumeChange(VolumeChange):
     All delta values should be >= 0.
     """
     feed_medium: FeedMedium
-    spline: Optional[Interpolator] = None
+    interpolator: Optional[Interpolator] = None
 
 
 @dataclass
@@ -186,7 +177,7 @@ class SampleVolumeChange(VolumeChange):
 
     All delta values should be <= 0.
     """
-    spline: Optional[Interpolator] = None
+    interpolator: Optional[Interpolator] = None
 
 
 # Union type alias for convenience

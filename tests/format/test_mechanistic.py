@@ -341,7 +341,7 @@ class TestGetControlSplines:
 
     def test_rejects_non_cubic_control_interpolator(self):
         process = _make_process(with_controlled_flow=False)
-        process.process_variables["pH"].spline = Interpolator(
+        process.process_variables["pH"].interpolator = Interpolator(
             kind="interpax_linear",
             x=jnp.array([[0.0, 10.0, 20.0]]),
             y=jnp.array([[7.0, 7.0, 7.0]]),
@@ -1299,7 +1299,7 @@ class TestIntegrateProcess:
             inputs = build_pseudobatch_inputs(process, sp_name)
             spl = build_splines(inputs, process=process, species_name=sp_name)
             rep = to_interpolator(inputs, spl, sp_name)
-            process.reactor_medium.components[sp_name].spline = rep
+            process.reactor_medium.components[sp_name].interpolator = rep
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)

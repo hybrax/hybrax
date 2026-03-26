@@ -276,8 +276,8 @@ def test_metadata_interp_tag_is_step():
     # (build a simple process with a bolus feed, fit the spline)
     # ...
     rep = fit_state_timeseries_spline_pseudobatch(glucose_ts, proc, "glucose")
-    assert rep.spline_metadata["transform"]["interp"] == "step", (
-        f"Expected interp='step', got '{rep.spline_metadata['transform']['interp']}'"
+    assert rep.interpolator_metadata["transform"]["interp"] == "step", (
+        f"Expected interp='step', got '{rep.interpolator_metadata['transform']['interp']}'"
     )
 ```
 

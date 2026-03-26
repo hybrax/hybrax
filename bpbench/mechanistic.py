@@ -347,8 +347,8 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     for vc_name, vc in process.volume.volume_changes.items():
         if not (vc.is_controlled and vc.is_continuous):
             continue
-        if vc.spline is not None:
-            sp = build_interpax_spline(vc.spline)[0][0]
+        if vc.interpolator is not None:
+            sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
                 jnp.asarray(vc.values.timepoints),
@@ -364,8 +364,8 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     for pv_name, pv in process.process_variables.items():
         if not pv.is_controlled:
             continue
-        if pv.spline is not None:
-            sp = build_interpax_spline(pv.spline)[0][0]
+        if pv.interpolator is not None:
+            sp = build_interpax_spline(pv.interpolator)[0][0]
         elif isinstance(pv.values, TimeSeries):
             sp = make_interpax_spline(
                 jnp.asarray(pv.values.timepoints),
@@ -579,7 +579,7 @@ def build_conc_splines(
 ) -> Dict[str, Any]:
     """Build concentration splines from stored backtransform splines or raw data.
 
-    Uses the pre-fitted ``comp.spline`` (backtransform spline built during
+    Uses the pre-fitted ``comp.interpolator`` (backtransform spline built during
     the pseudobatch step) when available.  The backtransform spline maps
     from the continuous pseudobatch domain back to reactor concentrations,
     correctly handling bolus feeds and sampling events without requiring
@@ -605,15 +605,15 @@ def build_conc_splines(
     for sp_name in mb.species_names:
         comp = process.reactor_medium.components[sp_name]
         if (
-            comp.spline is not None
-            and comp.spline.spline_metadata
-            and "transform" in comp.spline.spline_metadata
+            comp.interpolator is not None
+            and comp.interpolator.interpolator_metadata
+            and "transform" in comp.interpolator.interpolator_metadata
         ):
             # Backtransform spline: continuous in pseudobatch domain,
             # correctly accounts for bolus feeds / sampling.
-            conc_splines[sp_name] = build_backtransform_spline(comp.spline)
-        elif comp.spline is not None:
-            conc_splines[sp_name] = build_interpax_spline(comp.spline)[0][0]
+            conc_splines[sp_name] = build_backtransform_spline(comp.interpolator)
+        elif comp.interpolator is not None:
+            conc_splines[sp_name] = build_interpax_spline(comp.interpolator)[0][0]
         else:
             ts = comp.concentration
             conc_splines[sp_name] = make_interpax_spline(
@@ -672,8 +672,8 @@ def build_q_func(
     cum_splines_ctrl = []
     for fn in mb.flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.spline is not None:
-            sp = build_interpax_spline(vc.spline)[0][0]
+        if vc.interpolator is not None:
+            sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
                 jnp.asarray(vc.values.timepoints),
@@ -684,8 +684,8 @@ def build_q_func(
     cum_splines_mod = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.spline is not None:
-            sp = build_interpax_spline(vc.spline)[0][0]
+        if vc.interpolator is not None:
+            sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
                 jnp.asarray(vc.values.timepoints),
@@ -944,10 +944,10 @@ def _build_pseudobatch_transforms(
     transforms: List[Dict[str, Any]] = []
     for sp_name in mb.species_names:
         comp = process.reactor_medium.components[sp_name]
-        rep = comp.spline
+        rep = comp.interpolator
         tr = (
-            rep.spline_metadata.get("transform")
-            if rep is not None and rep.spline_metadata is not None
+            rep.interpolator_metadata.get("transform")
+            if rep is not None and rep.interpolator_metadata is not None
             else None
         )
         if tr is None:
@@ -1060,8 +1060,8 @@ def integrate_process_pseudospace(
     cum_splines_mod: List[interpax.CubicSpline] = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.spline is not None:
-            sp = build_interpax_spline(vc.spline)[0][0]
+        if vc.interpolator is not None:
+            sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
                 jnp.asarray(vc.values.timepoints),
@@ -1308,8 +1308,8 @@ def integrate_process(
     cum_splines_mod_list = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.spline is not None:
-            sp = build_interpax_spline(vc.spline)[0][0]
+        if vc.interpolator is not None:
+            sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
                 jnp.asarray(vc.values.timepoints),

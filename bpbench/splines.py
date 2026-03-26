@@ -267,7 +267,7 @@ def fit_timeseries_spline(
         n_segments=actual_n_segments,
         segment_boundaries=jnp.array(boundary_padded),
         bc_type="natural",
-        spline_metadata=metadata,
+        interpolator_metadata=metadata,
     )
 
 
@@ -336,7 +336,7 @@ def make_constant_spline(
         n_segments=1,
         segment_boundaries=jnp.array(boundary_padded),
         bc_type="natural",
-        spline_metadata={"constant_value": float(value)},
+        interpolator_metadata={"constant_value": float(value)},
     )
 
 
@@ -680,7 +680,7 @@ def to_interpolator(
     """Convert pseudobatch pipeline outputs to a minimal Interpolator.
 
     The c* cubic spline knots are stored in the main x/y arrays (single segment).
-    ADF and feed_correction grids are stored in ``spline_metadata["transform"]``
+    ADF and feed_correction grids are stored in ``interpolator_metadata["transform"]``
     as compact lists (JSON-serializable).
 
     Parameters
@@ -742,9 +742,9 @@ def to_interpolator(
         adf_compact_v = dense_adf
 
     # Store backtransform metadata (all JSON-serializable via lists)
-    if rep.spline_metadata is None:
-        rep.spline_metadata = {}
-    rep.spline_metadata["transform"] = {
+    if rep.interpolator_metadata is None:
+        rep.interpolator_metadata = {}
+    rep.interpolator_metadata["transform"] = {
         "name": "pseudo_batch",
         "species": species_name,
         "feed_corr_interp": feed_corr_interp,
@@ -862,7 +862,7 @@ def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
     Parameters
     ----------
     rep:
-        Interpolator with ``spline_metadata["transform"]`` containing
+        Interpolator with ``interpolator_metadata["transform"]`` containing
         ADF and feed_corr grids (as produced by :func:`to_interpolator`).
 
     Returns
@@ -870,7 +870,7 @@ def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
     BacktransformSpline
     """
     _require_cubic_interpolator(rep, context="build_backtransform_spline")
-    tr = rep.spline_metadata["transform"]
+    tr = rep.interpolator_metadata["transform"]
 
     is_constant = tr.get("is_constant", False)
     constant_value = jnp.array(tr.get("constant_value") or 0.0)

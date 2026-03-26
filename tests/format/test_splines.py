@@ -258,7 +258,7 @@ def test_spline_json_roundtrip():
 
     pv = ProcessVariable(
         name="test_var", unit="g/L", is_controlled=True,
-        values=ts, spline=rep,
+        values=ts, interpolator=rep,
     )
     rm = ReactorMedium(name="m", density=1.0, density_unit="kg/L")
     proc = BioProcess(
@@ -281,16 +281,16 @@ def test_spline_json_roundtrip():
     assert '"interpolator"' in payload
     assert '"spline"' not in payload
     loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["test_var"]
-    assert loaded_pv.spline is not None
-    assert loaded_pv.spline.kind == rep.kind
-    assert loaded_pv.spline.n_segments == rep.n_segments
+    assert loaded_pv.interpolator is not None
+    assert loaded_pv.interpolator.kind == rep.kind
+    assert loaded_pv.interpolator.n_segments == rep.n_segments
     # Compare valid segment counts (loaded may have different padding)
     n_seg = rep.n_segments
-    assert jnp.allclose(loaded_pv.spline.n[:n_seg], rep.n[:n_seg])
+    assert jnp.allclose(loaded_pv.interpolator.n[:n_seg], rep.n[:n_seg])
 
     for t_val in [0.0, 1.0, 2.0, 3.0, 4.0]:
         orig = evaluate_spline_at(rep, t_val)
-        loaded_val = evaluate_spline_at(loaded_pv.spline, t_val)
+        loaded_val = evaluate_spline_at(loaded_pv.interpolator, t_val)
         assert abs(orig - loaded_val) < 1e-6, f"At t={t_val}: orig={orig}, loaded={loaded_val}"
 
 
@@ -320,8 +320,8 @@ def test_discrete_events_json_roundtrip():
     assert loaded_proc.discrete_events.labels == ["a", "b"]
 
 
-def test_no_spline_backward_compat():
-    """Datasets without spline fields still load fine."""
+def test_no_interpolator_field():
+    """Datasets without interpolator fields still load fine."""
     rm = ReactorMedium(name="m", density=1.0, density_unit="kg/L")
     pv = ProcessVariable(name="x", unit="g/L", is_controlled=False,
                          values=_ts([0., 1.], [1., 2.]))
@@ -342,7 +342,7 @@ def test_no_spline_backward_compat():
         loaded = load_dataset_json(path)
 
     loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["x"]
-    assert loaded_pv.spline is None
+    assert loaded_pv.interpolator is None
 
 
 # ---------------------------------------------------------------------------
@@ -511,10 +511,10 @@ def test_interpolator_roundtrip_bolus():
     splines = build_splines(inputs, proc, "glucose")
 
     rep = to_interpolator(inputs, splines, "glucose")
-    assert rep.spline_metadata is not None
-    assert rep.spline_metadata["transform"]["name"] == "pseudo_batch"
-    assert rep.spline_metadata["transform"]["species"] == "glucose"
-    assert rep.spline_metadata["transform"]["feed_corr_interp"] == "linear"
+    assert rep.interpolator_metadata is not None
+    assert rep.interpolator_metadata["transform"]["name"] == "pseudo_batch"
+    assert rep.interpolator_metadata["transform"]["species"] == "glucose"
+    assert rep.interpolator_metadata["transform"]["feed_corr_interp"] == "linear"
 
     bt = build_backtransform_spline(rep)
     assert isinstance(bt, BacktransformSpline)
@@ -534,7 +534,7 @@ def test_interpolator_roundtrip_continuous():
     splines = build_splines(inputs, proc, "glucose")
 
     rep = to_interpolator(inputs, splines, "glucose")
-    assert rep.spline_metadata["transform"]["feed_corr_interp"] == "cubic"
+    assert rep.interpolator_metadata["transform"]["feed_corr_interp"] == "cubic"
 
     bt = build_backtransform_spline(rep)
 
@@ -610,7 +610,7 @@ def test_pseudobatch_spline_json_roundtrip():
 
     # Attach to a ReactorMediumComponent
     comp = proc.reactor_medium.components["glucose"]
-    comp.spline = rep
+    comp.interpolator = rep
 
     cs = CaseStudy(case_id="cs", organism="CHO", citation="test",
                    processes={"p": proc})
@@ -624,12 +624,12 @@ def test_pseudobatch_spline_json_roundtrip():
 
     assert '"interpolator"' in payload
     loaded_comp = loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"]
-    assert loaded_comp.spline is not None
-    loaded_tr = loaded_comp.spline.spline_metadata["transform"]
+    assert loaded_comp.interpolator is not None
+    loaded_tr = loaded_comp.interpolator.interpolator_metadata["transform"]
     assert loaded_tr["name"] == "pseudo_batch"
 
     bt_orig = build_backtransform_spline(rep)
-    bt_loaded = build_backtransform_spline(loaded_comp.spline)
+    bt_loaded = build_backtransform_spline(loaded_comp.interpolator)
     for t_val in [0.0, 25.0, 75.0]:
         orig = float(bt_orig(jnp.array(t_val)))
         loaded_val = float(bt_loaded(jnp.array(t_val)))
@@ -647,13 +647,13 @@ def test_pseudobatch_metadata_json_serializable():
     splines = build_splines(inputs, proc, "glucose")
     rep = to_interpolator(inputs, splines, "glucose")
 
-    assert "transform" in rep.spline_metadata
-    tr = rep.spline_metadata["transform"]
+    assert "transform" in rep.interpolator_metadata
+    tr = rep.interpolator_metadata["transform"]
     assert tr["name"] == "pseudo_batch"
     assert tr["species"] == "glucose"
 
     # Should be JSON-serializable
-    meta_json = json.dumps(rep.spline_metadata)
+    meta_json = json.dumps(rep.interpolator_metadata)
     meta_loaded = json.loads(meta_json)
     assert meta_loaded["transform"]["name"] == "pseudo_batch"
 
@@ -667,14 +667,14 @@ def test_linear_interpolator_json_roundtrip():
         n_segments=1,
         segment_boundaries=jnp.array([0.0, 2.0]),
         bc_type=None,
-        spline_metadata={"source": "test"},
+        interpolator_metadata={"source": "test"},
     )
     pv = ProcessVariable(
         name="linear_var",
         unit="g/L",
         is_controlled=False,
         values=_ts([0.0, 1.0, 2.0], [0.0, 2.0, 4.0]),
-        spline=interp,
+        interpolator=interp,
     )
     proc = BioProcess(
         metadata=BioProcessMetadata(name="p", process_type="batch"),
@@ -693,7 +693,7 @@ def test_linear_interpolator_json_roundtrip():
         save_dataset_json(ds, path)
         loaded = load_dataset_json(path)
 
-    loaded_interp = loaded.case_studies["cs"].processes["p"].process_variables["linear_var"].spline
+    loaded_interp = loaded.case_studies["cs"].processes["p"].process_variables["linear_var"].interpolator
     assert loaded_interp is not None
     assert loaded_interp.kind == "interpax_linear"
     assert loaded_interp.bc_type is None
@@ -713,7 +713,7 @@ def test_ppoly_interpolator_json_roundtrip():
             ]
         ),
         extrapolate=False,
-        spline_metadata={"axis": 0},
+        interpolator_metadata={"axis": 0},
     )
     rm = ReactorMedium(
         name="m",
@@ -725,7 +725,7 @@ def test_ppoly_interpolator_json_roundtrip():
                 unit="g/L",
                 concentration=_ts([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]),
                 is_intracellular=False,
-                spline=interp,
+                interpolator=interp,
             )
         },
     )
@@ -745,7 +745,7 @@ def test_ppoly_interpolator_json_roundtrip():
         save_dataset_json(ds, path)
         loaded = load_dataset_json(path)
 
-    loaded_interp = loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"].spline
+    loaded_interp = loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"].interpolator
     assert loaded_interp is not None
     assert loaded_interp.kind == "interpax_ppoly"
     assert loaded_interp.extrapolate is False
@@ -762,14 +762,14 @@ def test_linear_interpolator_hybrid_roundtrip():
         n_segments=1,
         segment_boundaries=jnp.array([0.0, 2.0]),
         bc_type=None,
-        spline_metadata={"source": "test"},
+        interpolator_metadata={"source": "test"},
     )
     pv = ProcessVariable(
         name="linear_var",
         unit="g/L",
         is_controlled=False,
         values=_ts([0.0, 1.0, 2.0], [0.0, 2.0, 4.0]),
-        spline=interp,
+        interpolator=interp,
     )
     proc = BioProcess(
         metadata=BioProcessMetadata(name="p", process_type="batch"),
@@ -788,7 +788,7 @@ def test_linear_interpolator_hybrid_roundtrip():
         save_dataset(ds, path)
         loaded = load_dataset(path)
 
-    loaded_interp = loaded.case_studies["cs"].processes["p"].process_variables["linear_var"].spline
+    loaded_interp = loaded.case_studies["cs"].processes["p"].process_variables["linear_var"].interpolator
     assert loaded_interp is not None
     assert loaded_interp.kind == "interpax_linear"
     assert loaded_interp.interpolator_metadata == {"source": "test"}
@@ -817,7 +817,7 @@ def test_runtime_rejects_ppoly_backtransform():
         kind="interpax_ppoly",
         x=jnp.array([0.0, 1.0, 2.0]),
         coefficients=jnp.ones((4, 2)),
-        spline_metadata={
+        interpolator_metadata={
             "transform": {
                 "adf_times": [0.0, 2.0],
                 "adf_values": [1.0, 1.0],

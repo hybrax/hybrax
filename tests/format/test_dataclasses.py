@@ -11,6 +11,7 @@ from bpbench import (
     StaticVariable,
     BioProcessMetadata,
     ProcessVariable,
+    Interpolator,
     FeedMediumComponent,
     ReactorMediumComponent,
     FeedMedium,
@@ -73,7 +74,7 @@ def test_process_variable_timeseries():
     pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
     assert pv.name == "temperature"
     assert pv.is_controlled is True
-    assert pv.spline is None
+    assert pv.interpolator is None
     assert hasattr(pv.values, "timepoints")
 
 
@@ -82,6 +83,18 @@ def test_process_variable_static():
     pv = ProcessVariable(name="pH", unit="", is_controlled=False, values=sv)
     assert pv.name == "pH"
     assert isinstance(pv.values, StaticVariable)
+
+
+def test_process_variable_stores_interpolator():
+    rep = Interpolator(kind="interpax_ppoly", x=jnp.array([0.0, 1.0]), coefficients=jnp.zeros((1, 1)))
+    pv = ProcessVariable(
+        name="temperature",
+        unit="C",
+        is_controlled=True,
+        values=StaticVariable(value=37.0),
+        interpolator=rep,
+    )
+    assert pv.interpolator is rep
 
 
 def test_feed_medium_component_static():
@@ -160,6 +173,22 @@ def test_volume_change_continuous():
     assert vc.name == "feed"
     assert vc.is_continuous is True
     assert vc.values.timepoints.shape == (3,)
+
+
+def test_feed_volume_change_stores_interpolator():
+    ts = TimeSeries(timepoints=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
+    fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
+    rep = Interpolator(kind="interpax_ppoly", x=jnp.array([0.0, 1.0]), coefficients=jnp.zeros((1, 1)))
+    vc = FeedVolumeChange(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=ts,
+        interpolator=rep,
+    )
+    assert vc.interpolator is rep
 
 
 def test_volume_change_discrete():

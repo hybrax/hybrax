@@ -272,7 +272,7 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "unit": comp.unit,
         "is_intracellular": comp.is_intracellular,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
-        "interpolator": _interpolator_to_dict(comp.spline) if comp.spline is not None else None,
+        "interpolator": _interpolator_to_dict(comp.interpolator) if comp.interpolator is not None else None,
     }
 
 
@@ -283,7 +283,7 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
         "unit": pv.unit,
         "is_controlled": pv.is_controlled,
         "values": _timeseries_or_static_to_dict(pv.values),
-        "interpolator": _interpolator_to_dict(pv.spline) if pv.spline is not None else None,
+        "interpolator": _interpolator_to_dict(pv.interpolator) if pv.interpolator is not None else None,
     }
 
 
@@ -337,7 +337,7 @@ def _volume_change_to_dict(vc) -> Dict:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
 
     result["interpolator"] = (
-        _interpolator_to_dict(vc.spline) if getattr(vc, "spline", None) is not None else None
+        _interpolator_to_dict(vc.interpolator) if getattr(vc, "interpolator", None) is not None else None
     )
     return result
 
@@ -471,31 +471,31 @@ def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
 
 def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     """Reconstruct ReactorMediumComponent from dictionary"""
-    spline = None
-    interpolator_data = comp_data.get("interpolator", comp_data.get("spline"))
+    interpolator = None
+    interpolator_data = comp_data.get("interpolator")
     if interpolator_data is not None:
-        spline = _dict_to_interpolator(interpolator_data)
+        interpolator = _dict_to_interpolator(interpolator_data)
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
         is_intracellular=comp_data["is_intracellular"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
-        spline=spline,
+        interpolator=interpolator,
     )
 
 
 def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
     """Reconstruct ProcessVariable from dictionary"""
-    spline = None
-    interpolator_data = pv_data.get("interpolator", pv_data.get("spline"))
+    interpolator = None
+    interpolator_data = pv_data.get("interpolator")
     if interpolator_data is not None:
-        spline = _dict_to_interpolator(interpolator_data)
+        interpolator = _dict_to_interpolator(interpolator_data)
     return ProcessVariable(
         name=pv_data["name"],
         unit=pv_data["unit"],
         is_controlled=pv_data["is_controlled"],
         values=_dict_to_timeseries_or_static(pv_data["values"]),
-        spline=spline,
+        interpolator=interpolator,
     )
 
 
@@ -552,18 +552,18 @@ def _dict_to_volume_change(vc_data: Dict):
         values=values,
     )
 
-    spline = None
-    interpolator_data = vc_data.get("interpolator", vc_data.get("spline"))
+    interpolator = None
+    interpolator_data = vc_data.get("interpolator")
     if interpolator_data is not None:
-        spline = _dict_to_interpolator(interpolator_data)
+        interpolator = _dict_to_interpolator(interpolator_data)
 
     if vc_type == "FeedVolumeChange":
         feed_medium = None
         if vc_data.get("feed_medium"):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-        return FeedVolumeChange(**common, feed_medium=feed_medium, spline=spline)
+        return FeedVolumeChange(**common, feed_medium=feed_medium, interpolator=interpolator)
     elif vc_type == "SampleVolumeChange":
-        return SampleVolumeChange(**common, spline=spline)
+        return SampleVolumeChange(**common, interpolator=interpolator)
     else:
         raise ValueError(f"Unknown volume change type: {vc_type}")
 
@@ -640,7 +640,7 @@ def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
 def _dict_to_interpolator(data: Dict) -> Interpolator:
     """Reconstruct Interpolator from compact dictionary formats."""
     kind = data["kind"]
-    metadata = data.get("interpolator_metadata", data.get("spline_metadata"))
+    metadata = data.get("interpolator_metadata")
 
     if kind == "interpax_ppoly":
         x_raw = data["x"]
@@ -652,7 +652,7 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
             x=x,
             coefficients=coefficients,
             extrapolate=data.get("extrapolate", True),
-            spline_metadata=metadata,
+            interpolator_metadata=metadata,
         )
 
     n_segments = data["n_segments"]
@@ -701,7 +701,7 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
         n_segments=n_segments,
         segment_boundaries=seg_b,
         bc_type=data.get("bc_type", "natural"),
-        spline_metadata=metadata,
+        interpolator_metadata=metadata,
     )
 
 def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
