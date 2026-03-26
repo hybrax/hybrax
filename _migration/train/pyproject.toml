@@ -17,3 +17,6 @@ dev = [
     "plotly>=6.6.0",
     "pytest>=8.0",
 ]
+
+[tool.setuptools]
+packages = ["bp_train"]
