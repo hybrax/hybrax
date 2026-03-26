@@ -1,0 +1,17 @@
+[project]
+name = "bp-train"
+version = "0.1.0"
+description = "Bioprocess hybrid model setup and training with Jax and Diffrax"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26",
+    "jax>=0.4.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipdb>=0.13.13",
+    "pip>=26.0.1",
+    "pytest>=8.0",
+]
