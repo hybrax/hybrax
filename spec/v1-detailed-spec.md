@@ -23,6 +23,8 @@ augmentation, checkpointing, LOO-CV, and stateful models.
   - optional lightweight JSON for run settings.
 - Build a controls representation that avoids recompilation by using globally
   padded shapes.
+- Materialize runtime control payloads as JAX arrays with stable collection-wide
+  shapes rather than ragged Python containers.
 - Convert controls to a dense linear-interpolation payload so the solver only
   performs a single interpolation lookup per experiment at runtime.
 - Provide a library-owned RHS wrapper that handles all dilution and feed
@@ -187,8 +189,7 @@ V1 uses a `custom.py` module for all non-default researcher code.
 ### 8.1 Required or Expected Contents
 
 - user model definition,
-- control preprocessing hook,
-- state preprocessing hook,
+- process-collection preprocessing hook,
 - optional observation model,
 - optional explicit config objects defined as Python code,
 - optional code that constructs or enriches `bpbench` dataclass objects before
@@ -199,18 +200,15 @@ V1 uses a `custom.py` module for all non-default researcher code.
 V1 standardizes the following default hook signatures:
 
 ```python
-def transform_controls(process, config):
-    return process
-
-
-def transform_states(process, config):
-    return process
+def transform_process_collection(collection, config):
+    return collection
 ```
 
 Data augmentation hooks are intentionally deferred.
 
-These hooks are called per process while iterating over the loaded
-`BioProcessCollection`.
+`transform_process_collection(...)` is called once and receives the raw
+`BioProcessCollection`; it returns the updated collection used for the rest of
+prep.
 
 ### 8.3 Allowed Hook Responsibilities
 
@@ -229,13 +227,18 @@ Hooks may:
 - declare biomass and other state/species semantics needed by the training
   runtime,
 - compute scaling statistics,
-- enrich process metadata needed for training.
+- enrich process metadata needed for training,
+- rename process keys during prep when upstream artifacts use inconvenient
+  names.
 
 Hooks should not:
 
 - perform training,
 - mutate runtime training state,
 - leave ambiguous semantics unresolved.
+
+Helper utilities for common transform tasks (for example process renaming) may
+be added later, but V1 does not require them.
 
 ## 9. Preparation Pipeline
 
@@ -254,21 +257,21 @@ The preparation step converts raw `bpbench` data into `prepared.json`.
    calling `bpbench.validate_process(...)` for each process before custom
    transforms.
 3. Resolve case-study-specific config in code.
-4. Apply `transform_controls(process, config)` to each process.
-5. Apply `transform_states(process, config)` to each process.
-6. Enrich reactor/feed component semantics in code when the raw artifact does
+4. Apply `transform_process_collection(collection, config)` once for
+   collection-level changes such as process-key normalization.
+5. Enrich reactor/feed component semantics in code when the raw artifact does
    not yet contain the medium definitions required for training.
-7. Build default derived controls required by the V1 runtime contract when they
+6. Build default derived controls required by the V1 runtime contract when they
    were not already provided by user code.
-8. Validate control roles, state roles, feed semantics, reactor/feed component
+7. Validate control roles, state roles, feed semantics, reactor/feed component
    completeness, and required interpolators.
-9. Run strict post-transform `bpbench` validation on the prepared processes
+8. Run strict post-transform `bpbench` validation on the prepared processes
    before writing `prepared.json`.
-10. Generate control interpolation payloads, padded runtime arrays, and
+9. Generate control interpolation payloads, padded runtime arrays, and
     training metadata.
-11. Compute any required model scaling statistics.
-12. Update or add prep metadata.
-13. Serialize the full transformed collection as `prepared.json`.
+10. Compute any required model scaling statistics.
+11. Update or add prep metadata.
+12. Serialize the full transformed collection as `prepared.json`.
 
 ### 9.3 Validation Rules
 
@@ -322,7 +325,7 @@ solver. For continuous feeds and similar volume changes, this means rate
 signals, not cumulative quantities.
 
 If the raw artifact does not distinguish cumulative from rate traces, the user
-must resolve this in `transform_controls(...)`.
+must resolve this in `transform_process_collection(...)`.
 
 ### 10.4 Feed Streams
 
@@ -345,7 +348,8 @@ V1 supports dynamic volume only, but the integrated volume state is not the
 fully realized reactor volume.
 
 If the raw dataset contains volume but not explicit feed rates, the user may
-derive feed-rate controls from preprocessing outputs in `transform_controls(...)`.
+derive feed-rate controls from preprocessing outputs in
+`transform_process_collection(...)`.
 
 The V1 runtime contract is:
 
@@ -389,6 +393,32 @@ Reasons for override include:
 V1 no longer exposes a segmented public controls API. Instead it uses a dense,
 single-interpolator representation built during preparation and persisted in
 `prepared.json`.
+
+The runtime implementation is JAX-first. `bpbench` and `bp-train` both live in a
+JAX-based stack, so the controls store should load the prepared payload into a
+small number of padded JAX arrays, not a Python list of variable-shape arrays.
+The canonical runtime representation is therefore one collection-level array per
+payload kind, for example:
+
+- `dense_grid`: `[n_processes, max_grid_length]`
+- `dense_grid_mask`: `[n_processes, max_grid_length]`
+- `control_values`: `[n_processes, max_grid_length, max_controls]`
+- `control_derivatives`: `[n_processes, max_grid_length, max_controls]`
+- `step_ts`: `[n_processes, max_step_ts_length]`
+- `step_ts_mask`: `[n_processes, max_step_ts_length]`
+
+Per-process runtime views may exist as thin wrappers over those arrays, but they
+should not become the canonical storage format.
+
+The runtime controls store should also enforce that every prepared process uses
+the same control names in the same order. If a prepared artifact violates that
+invariant, store construction must fail fast rather than offering a secondary
+"local-order" runtime API.
+
+Process-name normalization belongs in preparation, not in the runtime controls
+store. If upstream artifacts use awkward keys such as `process=...`, V1 should
+offer an explicit prep-time renaming option and persist the chosen names into
+the prepared artifact.
 
 ### 11.1 Build Strategy
 
@@ -455,6 +485,11 @@ removals match their intended amounts.
 The control store uses one global padded shape across all experiments in the
 prepared dataset. This is required to avoid JIT recompilation.
 
+This padding guarantee applies both to the persisted JSON payload and to the
+loaded runtime `ControlsStore`. V1 should not strip those arrays into
+variable-length Python lists at load time, because that would reintroduce
+shape instability and Python dispatch overhead.
+
 The prepared artifact must record:
 
 - number of experiments,
@@ -462,6 +497,15 @@ The prepared artifact must record:
 - number of controls,
 - any padding lengths or masks needed downstream,
 - the full padded control arrays needed by the V1 runtime.
+
+When code needs an active per-process prefix for plotting or debugging, it may
+derive that view from stored lengths or masks, but the underlying runtime store
+remains padded and globally aligned.
+
+Because V1 assumes one collection-wide control ordering, `eval(...)` and
+`eval_derivative(...)` should return values in that shared order. V1 should not
+add a separate runtime `eval_local(...)` path unless a concrete downstream use
+case appears later.
 
 ## 12. Model Abstraction
 
@@ -702,6 +746,10 @@ and `V_sample_acc` ramps.
 
 The runtime path should be JIT-friendly and rely on globally padded arrays so
 that all experiments in the prepared artifact can share one compiled shape.
+
+For V1, prefer one stacked JAX array per payload kind plus lightweight
+per-process index metadata over Python containers of per-process arrays. This
+is the better default for both compile-time stability and runtime batching.
 
 ## 17. Metadata in `prepared.json`
 

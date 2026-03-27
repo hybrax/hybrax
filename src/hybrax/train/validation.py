@@ -177,7 +177,8 @@ def ensure_prepared_training_semantics(
                 continue
             if not summary["feed_component_names_by_change"].get(change_name):
                 process_errors.append(
-                    f"feed '{change_name}' has no feed-medium component metadata after prep"
+                    f"feed '{change_name}' has no "
+                    "feed-medium component metadata after prep"
                 )
 
         report[process_name] = {

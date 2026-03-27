@@ -63,16 +63,40 @@ def load_raw_collection(
     return load_process_collection_json(Path(input_json))
 
 
-def _default_transform_controls(process, config):
-    return process
-
-
-def _default_transform_states(process, config):
-    return process
-
-
 def _default_build_sample_acc(process, process_name, collection_metadata, config):
     return build_sample_acc_source_default(process)
+
+
+def _rename_processes(
+    collection: BioProcessCollection,
+    config: dict[str, Any],
+) -> BioProcessCollection:
+    rename_map = config.get("process_rename_map")
+    if rename_map is None:
+        return collection
+    if not isinstance(rename_map, dict):
+        raise TypeError("process_rename_map must be a dict from old name to new name")
+
+    renamed_processes: dict[str, Any] = {}
+    for process_name, process in collection.processes.items():
+        new_name = process_name
+        if process_name in rename_map:
+            new_name = str(rename_map[process_name])
+            process.metadata.name = new_name
+        if new_name in renamed_processes:
+            raise ValueError(f"duplicate renamed process key: {new_name}")
+        renamed_processes[new_name] = process
+
+    collection.processes = renamed_processes
+    return collection
+
+
+def _default_transform_process_collection(
+    collection: BioProcessCollection,
+    config: dict[str, Any],
+) -> BioProcessCollection:
+    """Apply default process-collection transforms before prep."""
+    return _rename_processes(collection, config)
 
 
 def _pad_process_payload(
@@ -112,10 +136,6 @@ def _pad_process_payload(
         padded_values.append(list(zero_row))
         padded_derivatives.append(list(zero_row))
 
-    control_mask = [False] * max_controls
-    for control_name in local_control_names:
-        control_mask[global_index[control_name]] = True
-
     padded_step_ts = step_ts + [0.0] * (max_step_ts_length - len(step_ts))
     step_ts_mask = [True] * len(step_ts) + [False] * (max_step_ts_length - len(step_ts))
 
@@ -124,7 +144,6 @@ def _pad_process_payload(
         "dense_grid_mask": grid_mask,
         "control_values": padded_values,
         "control_derivatives": padded_derivatives,
-        "control_mask": control_mask,
         "step_ts": padded_step_ts,
         "step_ts_mask": step_ts_mask,
         "grid_length": grid_length,
@@ -157,19 +176,15 @@ def _modified_names(
 
 def _build_semantics_provenance(
     raw_snapshots: dict[str, dict[str, object]],
-    controls_snapshots: dict[str, dict[str, object]],
     prepared_snapshots: dict[str, dict[str, object]],
 ) -> dict[str, dict[str, object]]:
     provenance: dict[str, dict[str, object]] = {}
 
-    for process_name, raw_summary in raw_snapshots.items():
-        after_controls = controls_snapshots[process_name]
-        prepared_summary = prepared_snapshots[process_name]
+    for process_name, prepared_summary in prepared_snapshots.items():
+        raw_summary = raw_snapshots.get(process_name, prepared_summary)
         changed_by_hooks: list[str] = []
-        if after_controls != raw_summary:
-            changed_by_hooks.append("transform_controls")
-        if prepared_summary != after_controls:
-            changed_by_hooks.append("transform_states")
+        if prepared_summary != raw_summary:
+            changed_by_hooks.append("transform_process_collection")
 
         raw_feed = raw_summary["feed_component_names_by_change"]
         prepared_feed = prepared_summary["feed_component_names_by_change"]
@@ -232,7 +247,7 @@ def _validate_prepared_control_contract(
         if BP_TRAIN_SAMPLE_ACC_NAME in control_names:
             raise ValueError(
                 f"{process_name}: reserved control name {BP_TRAIN_SAMPLE_ACC_NAME} "
-                "may not be produced by transform_controls"
+                "may not be produced by transform_process_collection"
             )
         if len(control_names) != len(set(control_names)):
             raise ValueError(
@@ -300,37 +315,28 @@ def prepare_artifact(
 
     collection = deepcopy(raw_collection)
 
-    transform_controls = get_hook(
-        custom_module, "transform_controls", _default_transform_controls
-    )
-    transform_states = get_hook(
-        custom_module, "transform_states", _default_transform_states
+    transform_process_collection = get_hook(
+        custom_module,
+        "transform_process_collection",
+        _default_transform_process_collection,
     )
     build_sample_acc = get_hook(
-        custom_module,
-        "build_sample_acc_series",
-        _default_build_sample_acc,
+        custom_module, "build_sample_acc_series", _default_build_sample_acc
     )
-
     raw_semantics = {
         process_name: summarize_process_semantics(process)
         for process_name, process in collection.processes.items()
     }
-    controls_semantics: dict[str, dict[str, object]] = {}
-    prepared_semantics: dict[str, dict[str, object]] = {}
+    collection = transform_process_collection(collection, resolved_config)
 
-    for process_name, process in list(collection.processes.items()):
-        process = transform_controls(process, resolved_config)
-        controls_semantics[process_name] = summarize_process_semantics(process)
-        process = transform_states(process, resolved_config)
+    prepared_semantics: dict[str, dict[str, object]] = {}
+    for process_name, process in collection.processes.items():
         prepared_semantics[process_name] = summarize_process_semantics(process)
-        collection.processes[process_name] = process
 
     semantics_validation_report = ensure_prepared_training_semantics(collection)
     prepared_validation_report = validate_collection(collection, strict=True)
     semantics_provenance = _build_semantics_provenance(
         raw_snapshots=raw_semantics,
-        controls_snapshots=controls_semantics,
         prepared_snapshots=prepared_semantics,
     )
 
@@ -421,11 +427,10 @@ def prepare_artifact(
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
         "transform_hooks": {
-            "transform_controls": getattr(
-                transform_controls, "__name__", str(transform_controls)
-            ),
-            "transform_states": getattr(
-                transform_states, "__name__", str(transform_states)
+            "transform_process_collection": getattr(
+                transform_process_collection,
+                "__name__",
+                str(transform_process_collection),
             ),
             "build_sample_acc_series": getattr(
                 build_sample_acc, "__name__", str(build_sample_acc)
@@ -480,7 +485,6 @@ def prepare_artifact(
             "dense_grid_mask": padded["dense_grid_mask"],
             "control_values": padded["control_values"],
             "control_derivatives": padded["control_derivatives"],
-            "control_mask": padded["control_mask"],
         }
 
     existing_metadata[resolved_config["metadata_namespace"]] = bp_train_metadata
