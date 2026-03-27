@@ -102,7 +102,6 @@ class FeedMediumComponent:
     name: str # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
-    is_controlled: bool
 
 @dataclass
 class ReactorMediumComponent:
