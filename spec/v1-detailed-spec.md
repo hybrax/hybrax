@@ -159,8 +159,7 @@ Code-level configuration lives in `custom.py` and is the place for:
 - user model definition,
 - model input and output scaling logic,
 - trainable partitioning,
-- control transformation hooks,
-- state transformation hooks,
+- process-collection transformation hooks,
 - reactor/feed semantic enrichment when the raw artifact is missing training-
   required medium definitions,
 - case-study-specific mappings that are too structural or semantic for plain
@@ -216,8 +215,8 @@ Hooks may:
 
 - convert cumulative traces to rates,
 - combine traces into derived controls,
-- derive `V_sample_acc` from precomputed jump metadata or user-supplied
-  sampling schedules,
+- derive `V_sample_acc` from sample-volume traces or user-supplied sampling
+  schedules,
 - rename variables,
 - update `is_controlled`,
 - attach or replace `Interpolator` payloads,
@@ -367,14 +366,12 @@ runtime-only helper.
 
 ### 10.6 Default Sampling-Control Construction
 
-V1 does not detect volume jumps on its own. It consumes jump information that
-was already detected during upstream preprocessing, typically by `hybrax-prep`,
-or information provided explicitly by user code.
+V1 default sampling control construction reads `SampleVolumeChange` traces from
+the process data directly. User code may override this behavior.
 
 Default behavior:
 
-- read jump annotations already present in the input or prepared JSON,
-- interpret jumps with negative `delta_V` as sampling events,
+- read `SampleVolumeChange` events,
 - accumulate their magnitudes into a monotone cumulative control
   `V_sample_acc(t)`,
 - approximate each increment as a short ramp rather than an instantaneous jump,
@@ -384,7 +381,7 @@ This default must be overrideable in `custom.py`.
 
 Reasons for override include:
 
-- no usable upstream jump metadata is present,
+- no usable sample-volume trace is present,
 - the user wants to provide explicit sampling times and amounts,
 - the case study requires a different reconstruction rule.
 
@@ -401,11 +398,11 @@ The canonical runtime representation is therefore one collection-level array per
 payload kind, for example:
 
 - `dense_grid`: `[n_processes, max_grid_length]`
-- `dense_grid_mask`: `[n_processes, max_grid_length]`
 - `control_values`: `[n_processes, max_grid_length, max_controls]`
 - `control_derivatives`: `[n_processes, max_grid_length, max_controls]`
 - `step_ts`: `[n_processes, max_step_ts_length]`
-- `step_ts_mask`: `[n_processes, max_step_ts_length]`
+- `grid_lengths`: `[n_processes]`
+- `step_ts_lengths`: `[n_processes]`
 
 Per-process runtime views may exist as thin wrappers over those arrays, but they
 should not become the canonical storage format.
@@ -430,10 +427,8 @@ For each experiment:
   behavior rather than reference correctness,
 - reuse `bpbench.mechanistic` conventions where useful, especially deterministic
   control ordering and feed classification,
-- convert upstream detected positive `delta_V` jumps into short bolus-feed
-  ramps,
-- convert upstream detected negative `delta_V` jumps into short
-  `V_sample_acc` ramps,
+- convert non-continuous controlled feed additions into short bolus-feed ramps,
+- convert sample-volume removals into short `V_sample_acc` ramps,
 - evaluate each control and its first derivative on dense grids,
 - start from a fixed initial grid density and then double the number of points
   until the control-wise interpolation error is below the configured threshold
@@ -465,11 +460,11 @@ control boundaries introduced during preparation.
 
 Bolus and sampling use the same V1 approximation pattern.
 
-- upstream preprocessing provides jump annotations in the JSON,
-- jumps with positive `delta_V` are interpreted as bolus-feed additions,
-- jumps with negative `delta_V` are interpreted as sampling removals,
-- each such jump is converted during prep into a short ramp whose duration is
-  the shortest time difference in the original online data,
+- non-continuous controlled feed additions are interpreted as bolus-feed
+  additions,
+- `SampleVolumeChange` removals are interpreted as sampling removals,
+- each event is converted during prep into a short ramp whose duration is the
+  shortest time difference in the original online data,
 - bolus ramps contribute to feed-rate controls,
 - sampling ramps contribute to the cumulative dummy control `V_sample_acc(t)`,
 - `V_sample_acc` is stored in `prepared.json` as a derived control trace with an
@@ -826,8 +821,8 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 - config-defined control ordering is preserved,
 - missing controls fail fast,
 - cumulative-to-rate transformation hooks work as expected,
-- default `V_sample_acc` construction from upstream negative `delta_V` jump
-  annotations works as expected,
+- default `V_sample_acc` construction from `SampleVolumeChange` traces works as
+  expected,
 - user override of default `V_sample_acc` construction works as expected.
 
 ### 19.2 Event Approximation Tests
