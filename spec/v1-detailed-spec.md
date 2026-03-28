@@ -683,8 +683,7 @@ The minimum V1 training data object per experiment is:
 - `t_meas`,
 - `y_meas`,
 - `y0`,
-- `controls`,
-- optional `state_interpolators`.
+- `controls`.
 
 In V1, state interpolators are preserved in the transformed `bpbench`
 collection itself via the canonical `interpolator` field on state-bearing
@@ -702,12 +701,10 @@ interpolator payload.
 
 ### 15.2 `y0`
 
-- uses first measured values for observed states,
-- uses config/code overrides for modeled but unobserved states,
+- uses first measured values for observed target states,
 - appends `V_cont` as the final state entry,
-- initializes `V_cont(0)` from the first point of the prepared volume trace in
-  the input JSON lineage,
-- must be fully resolvable during prep.
+- currently initializes `V_cont(0)` from `process.volume.initial_volume`,
+- is constructed at training-data build time from the prepared collection.
 
 ### 15.3 Training Grid
 
@@ -759,7 +756,8 @@ At minimum, the prepared artifact metadata should include:
 - any updates applied to `is_controlled`,
 - provenance for derived controls such as `V_sample_acc`,
 - scaling metadata or a reference to where it is stored,
-- shape metadata needed to interpret padded arrays.
+- runtime control-build settings and per-process control/source metadata needed
+  to rebuild padded runtime controls in `ControlsStore`.
 
 V1 should store this under an explicit package-specific namespace such as
 `metadata["bp_train"]` to avoid collisions with upstream `bpbench` metadata.
@@ -850,7 +848,7 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 
 ## 20. Implementation Order
 
-Recommended implementation order:
+Recommended implementation order (historical planning baseline):
 
 1. preparation pipeline that loads raw `bpbench` JSON and writes `prepared.json`,
 2. validation layer and prep metadata,
@@ -863,6 +861,13 @@ Recommended implementation order:
 8. minimal trainer with one train step and tests,
 9. then evaluate whether the architecture is good enough before adding more
    features.
+
+Status as of March 28, 2026:
+
+- Steps 1-8 above are implemented in code,
+- wrapper-correctness tests from Spec 19.3 are implemented,
+- next work should focus on the remaining Phase C roadmap items beyond the
+  minimal single-process path.
 
 ## 21. Deferred Items
 
