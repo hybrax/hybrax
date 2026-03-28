@@ -122,8 +122,9 @@ It must preserve all fields from the input and may modify or add:
 
 The prepared artifact is the canonical input to V1 training.
 
-The prepared artifact stores the final padded runtime arrays needed by V1
-training. V1 does not rebuild those arrays at training-load time.
+The prepared artifact stores structural control metadata and preparation
+provenance. Dense interpolation payloads and padded runtime arrays are built by
+`ControlsStore` at load time from the prepared process collection.
 
 ### 6.3 Optional Run Config
 
@@ -266,8 +267,8 @@ The preparation step converts raw `bpbench` data into `prepared.json`.
    completeness, and required interpolators.
 8. Run strict post-transform `bpbench` validation on the prepared processes
    before writing `prepared.json`.
-9. Generate control interpolation payloads, padded runtime arrays, and
-    training metadata.
+9. Persist structural runtime-control metadata needed to rebuild controls at
+   training-load time.
 10. Compute any required model scaling statistics.
 11. Update or add prep metadata.
 12. Serialize the full transformed collection as `prepared.json`.
@@ -388,8 +389,8 @@ Reasons for override include:
 ## 11. Control Representation for V1 Runtime
 
 V1 no longer exposes a segmented public controls API. Instead it uses a dense,
-single-interpolator representation built during preparation and persisted in
-`prepared.json`.
+single-interpolator representation built by `ControlsStore` at runtime from the
+prepared process collection.
 
 The runtime implementation is JAX-first. `bpbench` and `bp-train` both live in a
 JAX-based stack, so the controls store should load the prepared payload into a
@@ -407,10 +408,9 @@ payload kind, for example:
 Per-process runtime views may exist as thin wrappers over those arrays, but they
 should not become the canonical storage format.
 
-The runtime controls store should also enforce that every prepared process uses
-the same control names in the same order. If a prepared artifact violates that
-invariant, store construction must fail fast rather than offering a secondary
-"local-order" runtime API.
+The runtime controls store enforces one shared control ordering across
+processes. If a prepared artifact contains differing control names/order across
+processes, store construction must fail fast.
 
 Process-name normalization belongs in preparation, not in the runtime controls
 store. If upstream artifacts use awkward keys such as `process=...`, V1 should
@@ -480,18 +480,17 @@ removals match their intended amounts.
 The control store uses one global padded shape across all experiments in the
 prepared dataset. This is required to avoid JIT recompilation.
 
-This padding guarantee applies both to the persisted JSON payload and to the
-loaded runtime `ControlsStore`. V1 should not strip those arrays into
-variable-length Python lists at load time, because that would reintroduce
-shape instability and Python dispatch overhead.
+This padding guarantee applies to the runtime `ControlsStore`. V1 should not
+strip those arrays into variable-length Python lists at load time, because that
+would reintroduce shape instability and Python dispatch overhead.
 
 The prepared artifact must record:
 
-- number of experiments,
-- maximum grid length,
-- number of controls,
-- any padding lengths or masks needed downstream,
-- the full padded control arrays needed by the V1 runtime.
+- stable process order,
+- structural control metadata needed to recover control sources (including
+  custom `V_sample_acc` sources),
+- runtime-control build settings (grid refinement/error config),
+- validation and semantic provenance.
 
 When code needs an active per-process prefix for plotting or debugging, it may
 derive that view from stored lengths or masks, but the underlying runtime store
@@ -814,8 +813,7 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 
 ### 19.1 Control Prep Tests
 
-- padded runtime arrays are written to `prepared.json` and load back without
-  shape ambiguity,
+- prepared metadata is structural and does not persist padded dense arrays,
 - dense-grid linear interpolation error is below threshold,
 - global padding shapes are stable,
 - config-defined control ordering is preserved,

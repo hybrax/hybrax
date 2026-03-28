@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
 import json
-from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
@@ -20,6 +18,8 @@ from bpbench.dataclasses import (
     TimeSeries,
     Volume,
 )
+
+from pathlib import Path
 
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import prepare_artifact
@@ -111,6 +111,28 @@ def _prepare_two_process(tmp_path: Path) -> Path:
     return output
 
 
+def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
+    custom_py = tmp_path / "custom-inconsistent.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "CONFIG = {'require_consistent_controls': False}",
+                "",
+                "def transform_process_collection(collection, config):",
+                "    p1 = collection.processes['p1']",
+                "    p2 = collection.processes['p2']",
+                "    p1.process_variables['CF'].is_controlled = True",
+                "    p2.process_variables['T'].is_controlled = True",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "prepared-inconsistent.json"
+    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+    return output
+
+
 def test_controls_store_loads_by_process_name_and_index(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
 
@@ -192,7 +214,6 @@ def test_controls_store_rejects_different_control_order(tmp_path):
     payload = json.loads(prepared_json.read_text(encoding="utf-8"))
     process_md = payload["metadata"]["bp_train"]["processes"]["p2"]
     process_md["local_control_names"] = ["T", "CF", "V_sample_acc"]
-    process_md["local_to_global_index"] = {"T": 1, "CF": 0, "V_sample_acc": 2}
     prepared_json.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(
@@ -217,16 +238,54 @@ def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
     )
 
 
-def test_plot_prepared_controls_module_import_has_no_side_effects():
-    module_path = (
-        Path(__file__).resolve().parent.parent
-        / "tmp/2026-03-26-phase-a-b-spec-impl/plot_prepared_controls.py"
+def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
+    custom_py = tmp_path / "custom-sample.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "import numpy as np",
+                "from bp_train.controls import SignalSource",
+                "",
+                "CONFIG = {'control_order': ['CF', 'T']}",
+                "",
+                "def transform_process_collection(collection, config):",
+                "    for process in collection.processes.values():",
+                "        process.process_variables['CF'].is_controlled = True",
+                "        process.process_variables['T'].is_controlled = True",
+                "    return collection",
+                "",
+                "def build_sample_acc_series(process, process_name, collection_metadata, config):",
+                "    t0 = float(process.time_axis.start)",
+                "    t1 = float(process.time_axis.end)",
+                "    times = np.asarray([t0, t1], dtype=float)",
+                "    values = np.asarray([0.0, 0.2], dtype=float)",
+                "    return SignalSource(",
+                "        name='V_sample_acc',",
+                "        kind='derived_control',",
+                "        times=times,",
+                "        values=values,",
+                "        evaluator=lambda ts: np.interp(np.asarray(ts, dtype=float), times, values, left=values[0], right=values[-1]),",
+                "        derivative=lambda ts: np.full_like(np.asarray(ts, dtype=float), 0.2, dtype=float),",
+                "        step_ts=[t0, t1],",
+                "        metadata={'source': 'custom_test'},",
+                "    )",
+            ]
+        ),
+        encoding="utf-8",
     )
-    spec = importlib.util.spec_from_file_location(
-        "plot_prepared_controls_test", module_path
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert callable(module.plot_prepared_artifact)
+    output = tmp_path / "prepared-custom-sample.json"
+    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+
+    store = ControlsStore.from_json(output)
+    controls = store.get_controls("p1")
+    end_value = controls.eval(1.0)[controls.sample_acc_global_index]
+    assert end_value == pytest.approx(0.2)
+
+
+def test_controls_store_rejects_not_consistent_controls_at_init(tmp_path):
+    prepared_json = _prepare_two_process_inconsistent_controls(tmp_path)
+    with pytest.raises(
+        ValueError,
+        match="identical control names/order across processes",
+    ):
+        ControlsStore.from_json(prepared_json)

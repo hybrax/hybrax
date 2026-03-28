@@ -23,6 +23,7 @@ from bpbench.dataclasses import (
 from bpbench.serialization import load_process_collection_json
 
 from bp_train.controls import build_bolus_sources, get_shortest_time_diff
+from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
 
 INPUT_JSON = Path(__file__).resolve().parent.parent / "input.json"
@@ -362,36 +363,14 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     prepared = load_process_collection_json(output)
     metadata = prepared.metadata["bp_train"]
 
-    assert metadata["shape_metadata"]["n_processes"] == len(prepared.processes)
-    assert metadata["shape_metadata"]["max_grid_length"] >= 2
-    assert metadata["shape_metadata"]["max_controls"] >= 1
+    assert metadata["process_order"] == list(prepared.processes.keys())
+    assert metadata["runtime_controls_config"]["initial_grid_points"] >= 2
 
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
     assert process_md["sample_acc_name"] == "V_sample_acc"
-    assert (
-        metadata["global_control_names"][process_md["sample_acc_index"]]
-        == "V_sample_acc"
-    )
-    assert (
-        len(process_md["dense_grid"]) == metadata["shape_metadata"]["max_grid_length"]
-    )
-    assert (
-        len(process_md["control_values"])
-        == metadata["shape_metadata"]["max_grid_length"]
-    )
-    assert (
-        len(process_md["control_values"][0])
-        == metadata["shape_metadata"]["max_controls"]
-    )
-    assert (
-        len(process_md["step_ts"]) == metadata["shape_metadata"]["max_step_ts_length"]
-    )
-    assert (
-        len(process_md["step_ts_mask"])
-        == metadata["shape_metadata"]["max_step_ts_length"]
-    )
-    assert any(v > 0 for row in process_md["control_values"] for v in row)
+    assert process_md["local_control_names"][-1] == "V_sample_acc"
+    assert process_md["control_metadata"]["V_sample_acc"]["event_count"] >= 1
     assert any(not entry["ok"] for entry in metadata["bpbench_validation_raw"].values())
     assert all(entry["ok"] for entry in metadata["bpbench_validation"].values())
     assert all(
@@ -401,6 +380,23 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     semantics = metadata["semantics_provenance"]["processes"][first_name]
     assert semantics["changed_by_hooks"] == ["transform_process_collection"]
     assert semantics["reactor_components_added"] == ["biomass"]
+
+
+def test_prepare_artifact_does_not_persist_padded_control_arrays(tmp_path):
+    output = tmp_path / "prepared-minimal.json"
+    custom_py = tmp_path / "custom.py"
+    _write_sample_semantics_custom_py(custom_py)
+    with pytest.warns(UserWarning):
+        prepare_artifact(_make_invalid_collection(), output, custom_py=custom_py)
+
+    prepared = load_process_collection_json(output)
+    process_md = prepared.metadata["bp_train"]["processes"]["invalid"]
+
+    assert "dense_grid" not in process_md
+    assert "control_values" not in process_md
+    assert "control_derivatives" not in process_md
+    assert "step_ts" not in process_md
+    assert "step_ts_mask" not in process_md
 
 
 def test_prepare_artifact_respects_custom_control_order(tmp_path):
@@ -519,15 +515,10 @@ def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):
     with pytest.warns(UserWarning):
         prepare_artifact(_make_invalid_collection(), output, custom_py=custom_py)
 
-    prepared = load_process_collection_json(output)
-    metadata = prepared.metadata["bp_train"]
-    process_md = metadata["processes"]["invalid"]
-    sample_idx = process_md["sample_acc_index"]
-    last_true_idx = max(
-        i for i, flag in enumerate(process_md["dense_grid_mask"]) if flag
-    )
-
-    assert process_md["control_values"][last_true_idx][sample_idx] == pytest.approx(0.1)
+    store = ControlsStore.from_json(output)
+    controls = store.get_controls("invalid")
+    end_t = _make_invalid_collection().processes["invalid"].time_axis.end
+    assert controls.eval(end_t)[controls.sample_acc_global_index] == pytest.approx(0.1)
 
 
 def test_load_raw_collection_accepts_in_memory_collection():
@@ -536,7 +527,7 @@ def test_load_raw_collection_accepts_in_memory_collection():
     assert loaded is collection
 
 
-def test_prepare_artifact_persists_feed_metadata_and_global_axis(tmp_path):
+def test_prepare_artifact_persists_feed_metadata(tmp_path):
     output = tmp_path / "prepared-feed.json"
     custom_py = tmp_path / "custom-feed.py"
     _write_feed_semantics_custom_py(custom_py)
@@ -549,7 +540,7 @@ def test_prepare_artifact_persists_feed_metadata_and_global_axis(tmp_path):
     feed_md = process_md["control_metadata"]["feed_A"]
     semantics = metadata["semantics_provenance"]["processes"]["p1"]
 
-    assert metadata["global_control_names"] == ["feed_A", "V_sample_acc"]
+    assert process_md["local_control_names"] == ["feed_A", "V_sample_acc"]
     assert feed_md["signal_family"] == "feed"
     assert feed_md["source_kind"] == "control"
     assert feed_md["inlet_feed_medium"]["components"]["glucose"]["unit"] == "g/L"

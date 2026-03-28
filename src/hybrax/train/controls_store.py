@@ -10,6 +10,22 @@ import numpy as np
 from bpbench.dataclasses import BioProcessCollection
 from bpbench.serialization import load_process_collection_json
 
+from .controls import (
+    BP_TRAIN_SAMPLE_ACC_NAME,
+    SignalSource,
+    build_dense_payload,
+    build_sample_acc_source_default,
+    compute_signal_spreads,
+    select_control_sources,
+)
+
+
+DEFAULT_RUNTIME_CONTROLS_CONFIG: dict[str, Any] = {
+    "initial_grid_points": 16,
+    "max_rel_error": 1e-4,
+    "max_refinement_rounds": 8,
+}
+
 
 def _as_jax_array(values: Any, *, dtype: Any = jnp.float32) -> jax.Array:
     """Convert JSON-loaded values into a JAX array."""
@@ -43,6 +59,20 @@ def _interp_columns(
         return jnp.interp(ts, grid, column, left=column[0], right=column[-1])
 
     return jax.vmap(_interp_column, in_axes=1, out_axes=1)(values)
+
+
+def _piecewise_linear_derivative(
+    ts: np.ndarray,
+    xp: np.ndarray,
+    fp: np.ndarray,
+) -> np.ndarray:
+    if xp.size <= 1:
+        return np.zeros_like(ts, dtype=float)
+    dx = np.diff(xp)
+    slopes = np.divide(np.diff(fp), dx, out=np.zeros_like(dx), where=dx != 0)
+    indices = np.searchsorted(xp[1:], ts, side="right")
+    indices = np.clip(indices, 0, slopes.size - 1)
+    return slopes[indices]
 
 
 class PerProcessControls(eqx.Module):
@@ -153,8 +183,140 @@ class ControlsStore(eqx.Module):
     step_ts_lengths: jax.Array
     # Shared control index of the cumulative sampled-volume control.
     sample_acc_global_index: int
-    # Raw per-process metadata entries needed to construct thin runtime views.
+    # Runtime-built per-process metadata entries needed to construct thin views.
     _process_md_by_name: dict[str, dict[str, Any]]
+
+    @staticmethod
+    def _runtime_controls_config(
+        metadata: dict[str, Any],
+        metadata_namespace: str,
+    ) -> dict[str, Any]:
+        bp_train = metadata.get(metadata_namespace, {})
+        cfg = dict(DEFAULT_RUNTIME_CONTROLS_CONFIG)
+        cfg.update(dict(bp_train.get("runtime_controls_config", {})))
+        return cfg
+
+    @staticmethod
+    def _process_order(
+        collection: BioProcessCollection,
+        metadata: dict[str, Any],
+        metadata_namespace: str,
+    ) -> list[str]:
+        bp_train = metadata.get(metadata_namespace, {})
+        process_order = bp_train.get("process_order")
+        if process_order is None:
+            return list(collection.processes.keys())
+        return list(process_order)
+
+    @staticmethod
+    def _ordered_control_sources(
+        process_name: str,
+        sources: list[Any],
+        process_md: dict[str, Any] | None,
+    ) -> tuple[list[str], list[Any]]:
+        source_by_name = {source.name: source for source in sources}
+        source_names = list(source_by_name.keys())
+
+        if not process_md or "local_control_names" not in process_md:
+            return source_names, [source_by_name[name] for name in source_names]
+
+        local_control_names = list(process_md["local_control_names"])
+        expected_names = [
+            name for name in local_control_names if name != BP_TRAIN_SAMPLE_ACC_NAME
+        ]
+
+        if set(expected_names) != set(source_names):
+            raise ValueError(
+                f"{process_name}: controls derived from prepared process do not match "
+                "prepared metadata local_control_names"
+            )
+
+        return expected_names, [source_by_name[name] for name in expected_names]
+
+    @staticmethod
+    def _sample_source_from_prepared_metadata(
+        process_name: str,
+        process_md: dict[str, Any] | None,
+    ) -> SignalSource | None:
+        if not process_md:
+            return None
+        sample_md = process_md.get("sample_acc_source")
+        if sample_md is None:
+            return None
+        times = np.asarray(sample_md["times"], dtype=float)
+        values = np.asarray(sample_md["values"], dtype=float)
+        if times.size == 0 or values.size == 0 or times.size != values.size:
+            raise ValueError(
+                f"{process_name}: invalid sample_acc_source in prepared metadata"
+            )
+        return SignalSource(
+            name=BP_TRAIN_SAMPLE_ACC_NAME,
+            kind="derived_control",
+            times=times,
+            values=values,
+            evaluator=lambda ts: np.interp(
+                np.asarray(ts, dtype=float),
+                times,
+                values,
+                left=float(values[0]),
+                right=float(values[-1]),
+            ),
+            derivative=lambda ts: _piecewise_linear_derivative(
+                np.asarray(ts, dtype=float), times, values
+            ),
+            step_ts=[float(v) for v in sample_md.get("step_ts", [])],
+            metadata=dict(sample_md.get("metadata", {})),
+        )
+
+    @staticmethod
+    def _pad_payload(
+        *,
+        payload: dict[str, Any],
+        local_control_names: list[str],
+        global_control_names: list[str],
+        max_grid_length: int,
+        max_step_ts_length: int,
+    ) -> tuple[
+        list[float], list[list[float]], list[list[float]], list[float], int, int
+    ]:
+        grid = list(payload["grid"])
+        values = [list(row) for row in payload["values"]]
+        derivatives = [list(row) for row in payload["derivatives"]]
+        step_ts = list(payload["step_ts"])
+
+        grid_length = len(grid)
+        step_ts_length = len(step_ts)
+        max_controls = len(global_control_names)
+        global_index = {name: idx for idx, name in enumerate(global_control_names)}
+
+        dense_grid = grid + [0.0] * (max_grid_length - grid_length)
+
+        control_values = []
+        control_derivatives = []
+        for row, deriv_row in zip(values, derivatives, strict=False):
+            global_row = [0.0] * max_controls
+            global_deriv = [0.0] * max_controls
+            for local_idx, control_name in enumerate(local_control_names):
+                idx = global_index[control_name]
+                global_row[idx] = row[local_idx]
+                global_deriv[idx] = deriv_row[local_idx]
+            control_values.append(global_row)
+            control_derivatives.append(global_deriv)
+
+        zero_row = [0.0] * max_controls
+        for _ in range(max_grid_length - grid_length):
+            control_values.append(list(zero_row))
+            control_derivatives.append(list(zero_row))
+
+        step_ts_padded = step_ts + [0.0] * (max_step_ts_length - step_ts_length)
+        return (
+            dense_grid,
+            control_values,
+            control_derivatives,
+            step_ts_padded,
+            grid_length,
+            step_ts_length,
+        )
 
     @classmethod
     def from_collection(
@@ -165,17 +327,96 @@ class ControlsStore(eqx.Module):
     ) -> ControlsStore:
         """Build a JAX-backed runtime store from a prepared `BioProcessCollection`."""
         metadata = dict(collection.metadata or {})
-        if metadata_namespace not in metadata:
-            raise KeyError(
-                f"metadata namespace '{metadata_namespace}' "
-                "missing from prepared collection"
-            )
+        cfg = cls._runtime_controls_config(metadata, metadata_namespace)
+        process_order = cls._process_order(collection, metadata, metadata_namespace)
+        bp_train = dict(metadata.get(metadata_namespace, {}))
+        prepared_process_md = dict(bp_train.get("processes", {}))
 
-        bp_train = metadata[metadata_namespace]
-        process_order = list(bp_train["process_order"])
-        global_control_names = list(bp_train["global_control_names"])
-        global_control_name_to_index = dict(bp_train["global_control_name_to_index"])
-        processes_metadata = dict(bp_train["processes"])
+        process_sources: dict[str, list[Any]] = {}
+        process_sample_sources: dict[str, Any] = {}
+        process_control_names: dict[str, list[str]] = {}
+        process_control_metadata: dict[str, dict[str, Any]] = {}
+        reference_control_names: list[str] | None = None
+
+        for process_name in process_order:
+            process = collection.processes[process_name]
+            selected = select_control_sources(
+                process_name=process_name,
+                process=process,
+                config=cfg,
+            )
+            prepared_md = prepared_process_md.get(process_name)
+            ordered_names, ordered_sources = cls._ordered_control_sources(
+                process_name=process_name,
+                sources=selected,
+                process_md=prepared_md,
+            )
+            sample_source = cls._sample_source_from_prepared_metadata(
+                process_name=process_name,
+                process_md=prepared_md,
+            )
+            if sample_source is None:
+                sample_source = build_sample_acc_source_default(process)
+            if sample_source.name != BP_TRAIN_SAMPLE_ACC_NAME:
+                raise ValueError(
+                    f"{process_name}: sample control must be named "
+                    f"{BP_TRAIN_SAMPLE_ACC_NAME}"
+                )
+
+            local_names = [*ordered_names, sample_source.name]
+            if reference_control_names is None:
+                reference_control_names = local_names
+            elif local_names != reference_control_names:
+                raise ValueError(
+                    "controls store requires identical control names/order across "
+                    f"processes; {process_name!r} has {local_names!r} but "
+                    f"expected {reference_control_names!r}"
+                )
+
+            process_sources[process_name] = ordered_sources
+            process_sample_sources[process_name] = sample_source
+            process_control_names[process_name] = local_names
+            process_control_metadata[process_name] = {
+                source.name: source.metadata
+                for source in [*ordered_sources, sample_source]
+            }
+
+        if reference_control_names is None:
+            raise ValueError("process collection is empty")
+
+        global_control_names = list(reference_control_names)
+
+        global_control_name_to_index = {
+            name: idx for idx, name in enumerate(global_control_names)
+        }
+
+        spread_inputs = {
+            process_name: [
+                *process_sources[process_name],
+                process_sample_sources[process_name],
+            ]
+            for process_name in process_order
+        }
+        spreads = compute_signal_spreads(spread_inputs)
+
+        payloads_by_process: dict[str, dict[str, Any]] = {}
+        max_grid_length = 0
+        max_step_ts_length = 0
+        for process_name in process_order:
+            process = collection.processes[process_name]
+            sources = [
+                *process_sources[process_name],
+                process_sample_sources[process_name],
+            ]
+            payload = build_dense_payload(
+                process=process,
+                sources=sources,
+                spreads=spreads,
+                config=cfg,
+            )
+            payloads_by_process[process_name] = payload
+            max_grid_length = max(max_grid_length, len(payload["grid"]))
+            max_step_ts_length = max(max_step_ts_length, len(payload["step_ts"]))
 
         dense_grid_rows = []
         control_value_rows = []
@@ -183,41 +424,59 @@ class ControlsStore(eqx.Module):
         step_ts_rows = []
         grid_lengths = []
         step_ts_lengths = []
-        reference_control_names: list[str] | None = None
+        processes_metadata: dict[str, dict[str, Any]] = {}
 
         for process_name in process_order:
-            process_md = processes_metadata[process_name]
-            local_control_names = list(process_md["local_control_names"])
-            if reference_control_names is None:
-                reference_control_names = local_control_names
-            elif local_control_names != reference_control_names:
-                raise ValueError(
-                    "controls store requires identical control names/order across "
-                    f"processes; {process_name!r} has {local_control_names!r} but "
-                    f"expected {reference_control_names!r}"
-                )
-
-            dense_grid_rows.append(process_md["dense_grid"])
-            control_value_rows.append(process_md["control_values"])
-            control_derivative_rows.append(process_md["control_derivatives"])
-            step_ts_rows.append(process_md["step_ts"])
-            grid_lengths.append(int(process_md["grid_length"]))
-            step_ts_lengths.append(
-                int(sum(bool(flag) for flag in process_md["step_ts_mask"]))
+            payload = payloads_by_process[process_name]
+            local_names = process_control_names[process_name]
+            (
+                dense_grid,
+                control_values,
+                control_derivatives,
+                step_ts,
+                grid_length,
+                step_ts_length,
+            ) = cls._pad_payload(
+                payload=payload,
+                local_control_names=local_names,
+                global_control_names=global_control_names,
+                max_grid_length=max_grid_length,
+                max_step_ts_length=max_step_ts_length,
             )
+
+            dense_grid_rows.append(dense_grid)
+            control_value_rows.append(control_values)
+            control_derivative_rows.append(control_derivatives)
+            step_ts_rows.append(step_ts)
+            grid_lengths.append(grid_length)
+            step_ts_lengths.append(step_ts_length)
+            processes_metadata[process_name] = {
+                "local_control_names": local_names,
+                "control_metadata": process_control_metadata[process_name],
+                "sample_acc_name": BP_TRAIN_SAMPLE_ACC_NAME,
+            }
+
+        shape_metadata = {
+            "n_processes": len(process_order),
+            "max_grid_length": max_grid_length,
+            "max_controls": len(global_control_names),
+            "max_step_ts_length": max_step_ts_length,
+        }
 
         return cls(
             process_order=process_order,
             global_control_names=global_control_names,
             global_control_name_to_index=global_control_name_to_index,
-            shape_metadata=dict(bp_train["shape_metadata"]),
+            shape_metadata=shape_metadata,
             dense_grid=_as_jax_array(dense_grid_rows),
             control_values=_as_jax_array(control_value_rows),
             control_derivatives=_as_jax_array(control_derivative_rows),
             step_ts=_as_jax_array(step_ts_rows),
             grid_lengths=jnp.asarray(grid_lengths, dtype=jnp.int32),
             step_ts_lengths=jnp.asarray(step_ts_lengths, dtype=jnp.int32),
-            sample_acc_global_index=global_control_name_to_index["V_sample_acc"],
+            sample_acc_global_index=global_control_name_to_index[
+                BP_TRAIN_SAMPLE_ACC_NAME
+            ],
             _process_md_by_name=processes_metadata,
         )
 
@@ -237,13 +496,12 @@ class ControlsStore(eqx.Module):
         process_name, process_index = _coerce_index(process, self.process_order)
         process_md = self._process_md_by_name[process_name]
         sample_acc_name = str(process_md["sample_acc_name"])
-        local_names = list(process_md["local_control_names"])
 
         return PerProcessControls(
             process_name=process_name,
             process_index=process_index,
-            control_names=local_names,
-            control_name_to_index={name: idx for idx, name in enumerate(local_names)},
+            control_names=self.global_control_names,
+            control_name_to_index=self.global_control_name_to_index,
             global_control_names=self.global_control_names,
             global_control_name_to_index=self.global_control_name_to_index,
             dense_grid=self.dense_grid[process_index],
