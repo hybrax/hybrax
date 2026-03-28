@@ -125,6 +125,100 @@ def _make_single_process_collection(
     return BioProcessCollection(processes={"p1": process}, metadata={})
 
 
+def _make_multi_feed_two_species_collection() -> BioProcessCollection:
+    feed_a = FeedMedium(
+        name="feed_a",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "X": FeedMediumComponent(
+                name="X",
+                unit="g/L",
+                concentration=StaticVariable(10.0),
+                is_controlled=False,
+            ),
+        },
+    )
+    feed_b = FeedMedium(
+        name="feed_b",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "P": FeedMediumComponent(
+                name="P",
+                unit="g/L",
+                concentration=StaticVariable(5.0),
+                is_controlled=False,
+            ),
+        },
+    )
+
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_A": FeedVolumeChange(
+                    name="feed_A",
+                    unit="L/h",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        timepoints=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([0.2, 0.2]),
+                    ),
+                    feed_medium=feed_a,
+                ),
+                "feed_B": FeedVolumeChange(
+                    name="feed_B",
+                    unit="L/h",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        timepoints=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([0.3, 0.3]),
+                    ),
+                    feed_medium=feed_b,
+                ),
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        timepoints=jnp.asarray([1.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={
+            "X": ProcessVariable(
+                name="X",
+                unit="g/L",
+                is_controlled=False,
+                values=TimeSeries(
+                    timepoints=jnp.asarray([0.0, 2.0]),
+                    values=jnp.asarray([1.0, 1.0]),
+                ),
+            ),
+            "P": ProcessVariable(
+                name="P",
+                unit="g/L",
+                is_controlled=False,
+                values=TimeSeries(
+                    timepoints=jnp.asarray([0.0, 2.0]),
+                    values=jnp.asarray([2.0, 2.0]),
+                ),
+            ),
+        },
+    )
+    return BioProcessCollection(processes={"p1": process}, metadata={})
+
+
 def test_wrapper_reconstructs_real_volume_and_merges_reaction_with_transport():
     collection = _make_single_process_collection(
         feed_rate=0.2,
@@ -178,6 +272,32 @@ def test_wrapper_merges_controlled_and_modeled_feed_transport():
     # modeled:    0.3 * (2 - 1) / 1 = +0.3
     assert dy[0] == pytest.approx(0.2, rel=1e-6)
     assert dy[1] == pytest.approx(0.4, rel=1e-6)
+
+
+def test_wrapper_multiple_controlled_feeds_sum_and_apply_composition_per_species():
+    collection = _make_multi_feed_two_species_collection()
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    reaction_module = ConstantReactionModule(
+        reaction_terms=jnp.asarray([0.0, 0.0], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = LibraryRhsWrapper.from_process_controls(
+        reaction_module=reaction_module,
+        controls=controls,
+        species_names=["X", "P"],
+    )
+
+    y = jnp.asarray([1.0, 2.0, 1.2], dtype=jnp.float32)
+    dy = wrapper(2.0, y)
+
+    # At t=2.0, sample_acc=0.1 => V_real = V_cont - V_sample_acc = 1.2 - 0.1 = 1.1
+    # X numerator: 0.2 * (10 - 1) + 0.3 * (0 - 1) = 1.5 -> dX = 1.5 / 1.1
+    # P numerator: 0.2 * (0 - 2) + 0.3 * (5 - 2) = 0.5 -> dP = 0.5 / 1.1
+    # dV_cont: 0.2 + 0.3 = 0.5
+    assert dy.shape == (3,)
+    assert dy[0] == pytest.approx(1.3636364, rel=1e-6)
+    assert dy[1] == pytest.approx(0.45454547, rel=1e-6)
+    assert dy[2] == pytest.approx(0.5, rel=1e-6)
 
 
 def test_wrapper_rejects_modeled_rate_shape_mismatch():
