@@ -62,6 +62,45 @@ SMOOTHING_THRESHOLD = 100  # > 100 points -> smoothing spline
 # ===========================================================================
 
 
+def _has_spline_state(ts: TimeSeries) -> bool:
+    """Return True when a TimeSeries contains spline coefficients."""
+    return (
+        getattr(ts, "breaks", None) is not None
+        and getattr(ts, "coeffs", None) is not None
+    )
+
+
+def _has_discrete_samples(ts: TimeSeries) -> bool:
+    """Return True when a TimeSeries contains sample grids."""
+    return (
+        getattr(ts, "times", None) is not None
+        and getattr(ts, "values", None) is not None
+    )
+
+
+def _series_reference_times(ts: TimeSeries) -> jnp.ndarray:
+    """Return a representative grid for a TimeSeries."""
+    if _has_discrete_samples(ts):
+        return jnp.asarray(ts.times, dtype=float)
+    if _has_spline_state(ts):
+        return jnp.asarray(ts.breaks, dtype=float)
+    raise ValueError("TimeSeries must provide discrete samples or spline state")
+
+
+def _evaluate_timeseries_on_grid(ts: TimeSeries, grid: jnp.ndarray) -> jnp.ndarray:
+    """Evaluate a TimeSeries on a target grid with spline-first semantics."""
+    t_grid = jnp.asarray(grid, dtype=float)
+    if _has_spline_state(ts) and hasattr(ts, "evaluate_many"):
+        return jnp.asarray(ts.evaluate_many(t_grid), dtype=float)
+    if _has_discrete_samples(ts):
+        base_t = jnp.asarray(ts.times, dtype=float)
+        base_v = jnp.asarray(ts.values, dtype=float)
+        return jnp.interp(t_grid, base_t, base_v, left=base_v[0], right=base_v[-1])
+    raise ValueError(
+        "TimeSeries cannot be evaluated without spline or discrete samples"
+    )
+
+
 def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     """Detect discrete event times from non-continuous VolumeChanges.
 
@@ -80,7 +119,7 @@ def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     labels: list = []
     for vc_name, vc in process.volume.volume_changes.items():
         if not vc.is_continuous:
-            tp = jnp.asarray(vc.values.timepoints).tolist()
+            tp = jnp.asarray(vc.values.times).tolist()
             times.extend(tp)
             labels.extend([vc_name] * len(tp))
 
@@ -109,19 +148,19 @@ def make_segment_boundaries(
     """
     ev = jnp.asarray(event_times, dtype=float)
     interior = ev[(ev > t_min) & (ev < t_max)]
-    boundaries = jnp.unique(jnp.concatenate([jnp.array([t_min]), interior, jnp.array([t_max])]))
+    boundaries = jnp.unique(
+        jnp.concatenate([jnp.array([t_min]), interior, jnp.array([t_max])])
+    )
     return boundaries
 
 
-def split_timeseries(
-    ts: TimeSeries, boundaries: jnp.ndarray
-) -> List[TimeSeries]:
+def split_timeseries(ts: TimeSeries, boundaries: jnp.ndarray) -> List[TimeSeries]:
     """Split *ts* into segments defined by *boundaries*.
 
     Points that fall exactly on a boundary belong to both adjacent segments
     (duplicated at split point) to ensure each segment covers its endpoints.
     """
-    t = jnp.asarray(ts.timepoints)
+    t = jnp.asarray(ts.times)
     v = jnp.asarray(ts.values)
     order = jnp.argsort(t)
     t = t[order]
@@ -138,7 +177,7 @@ def split_timeseries(
         seg_v = seg_v[idx]
         segments.append(
             TimeSeries(
-                timepoints=jnp.array(seg_t),
+                times=jnp.array(seg_t),
                 values=jnp.array(seg_v),
             )
         )
@@ -161,6 +200,7 @@ def _fit_smoothing_segment(
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points."""
     import numpy as _np  # scipy interop
+
     if len(x) < 4:
         return x, y
     tck = interpolate.splrep(_np.asarray(x), _np.asarray(y), s=s, k=3)
@@ -187,7 +227,7 @@ def fit_timeseries_spline(
     max_ctrl_points: int = DEFAULT_MAX_CTRL_POINTS,
 ) -> Interpolator:
     """Fit a segmented cubic Interpolator to a TimeSeries."""
-    t_arr = jnp.asarray(ts.timepoints)
+    t_arr = jnp.asarray(ts.times)
     v_arr = jnp.asarray(ts.values)
 
     order = jnp.argsort(t_arr)
@@ -201,7 +241,7 @@ def fit_timeseries_spline(
         boundaries = jnp.array([t_arr[0], t_arr[-1]])
 
     segments = split_timeseries(
-        TimeSeries(timepoints=jnp.array(t_arr), values=jnp.array(v_arr)),
+        TimeSeries(times=jnp.array(t_arr), values=jnp.array(v_arr)),
         boundaries,
     )
     actual_n_segments = len(segments)
@@ -213,7 +253,7 @@ def fit_timeseries_spline(
     used_smoothing_fit = False
 
     for seg in segments:
-        seg_t = jnp.asarray(seg.timepoints)
+        seg_t = jnp.asarray(seg.times)
         seg_v = jnp.asarray(seg.values)
         n_pts = len(seg_t)
 
@@ -345,7 +385,9 @@ def make_constant_spline(
 # ===========================================================================
 
 
-def _build_dense_time_grid(process: BioProcess, meas_times: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def _build_dense_time_grid(
+    process: BioProcess, meas_times: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """
     Build dense time grid = sorted(unique(measurement times + event times)).
     For discrete (bolus) events we insert t - EPS so we have a point on both
@@ -356,7 +398,7 @@ def _build_dense_time_grid(process: BioProcess, meas_times: jnp.ndarray) -> Tupl
     extra_times = set()
 
     for vc_name, vc in process.volume.volume_changes.items():
-        ev_t = jnp.asarray(vc.values.timepoints, dtype=float)
+        ev_t = _series_reference_times(vc.values)
         for t in ev_t:
             extra_times.add(float(t))
             if not vc.is_continuous:
@@ -368,14 +410,19 @@ def _build_dense_time_grid(process: BioProcess, meas_times: jnp.ndarray) -> Tupl
 
     all_times = jnp.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
 
-    meas_indices = jnp.array([int(jnp.argmin(jnp.abs(all_times - mt))) for mt in meas_times], dtype=int)
-    assert jnp.allclose(all_times[meas_indices], meas_times, atol=_EPS / 2), \
+    meas_indices = jnp.array(
+        [int(jnp.argmin(jnp.abs(all_times - mt))) for mt in meas_times], dtype=int
+    )
+    assert jnp.allclose(all_times[meas_indices], meas_times, atol=_EPS / 2), (
         "Some measurement times not found in dense grid"
+    )
 
     return all_times, meas_indices
 
 
-def _compute_dense_volumes(process: BioProcess, dense_times: jnp.ndarray, species_name: str) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, Any]:
+def _compute_dense_volumes(
+    process: BioProcess, dense_times: jnp.ndarray, species_name: str
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, Any]:
     """
     Compute reactor_volume (dense), accumulated_feed (dense), sample_volume (dense)
     and concentration_in_feed for a given species on the dense grid.
@@ -386,20 +433,18 @@ def _compute_dense_volumes(process: BioProcess, dense_times: jnp.ndarray, specie
     sample_volume = jnp.zeros(n)
 
     for vc_name, vc in process.volume.volume_changes.items():
-        ev_times = jnp.asarray(vc.values.timepoints, dtype=float)
-        ev_vals = jnp.asarray(vc.values.values, dtype=float)
-
         if isinstance(vc, FeedVolumeChange):
             c_feed = 0.0
-            if (vc.feed_medium is not None and species_name in vc.feed_medium.components):
+            if vc.feed_medium is not None and species_name in vc.feed_medium.components:
                 fc = vc.feed_medium.components[species_name]
                 if isinstance(fc.concentration, StaticVariable):
                     c_feed = float(fc.concentration.value)
 
             if vc.is_continuous:
-                cum_feed = jnp.interp(dense_times, ev_times, ev_vals,
-                                     left=ev_vals[0], right=ev_vals[-1])
+                cum_feed = _evaluate_timeseries_on_grid(vc.values, dense_times)
             else:
+                ev_times = jnp.asarray(vc.values.times, dtype=float)
+                ev_vals = jnp.asarray(vc.values.values, dtype=float)
                 cum_feed = jnp.zeros(n)
                 for et, ev in zip(ev_times, ev_vals):
                     cum_feed = cum_feed + jnp.where(dense_times >= et, float(ev), 0.0)
@@ -408,11 +453,15 @@ def _compute_dense_volumes(process: BioProcess, dense_times: jnp.ndarray, specie
             feed_streams.append((cum_feed, c_feed))
 
         elif isinstance(vc, SampleVolumeChange):
+            ev_times = jnp.asarray(vc.values.times, dtype=float)
+            ev_vals = jnp.asarray(vc.values.values, dtype=float)
             for et, ev in zip(ev_times, ev_vals):
                 idx = int(jnp.argmin(jnp.abs(dense_times - et)))
                 if jnp.isclose(dense_times[idx], et, atol=_EPS / 2):
                     sample_volume = sample_volume.at[idx].add(abs(float(ev)))
-                reactor_volume = reactor_volume + jnp.where(dense_times > et, float(ev), 0.0)
+                reactor_volume = reactor_volume + jnp.where(
+                    dense_times > et, float(ev), 0.0
+                )
 
     if len(feed_streams) == 1:
         accumulated_feed = feed_streams[0][0]
@@ -440,7 +489,9 @@ def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural
     if len(t) < 2:
         t = jnp.array([t[0], t[0] + 1e-6])
         y = jnp.array([y[0], y[0]])
-    return interpax.CubicSpline(jnp.asarray(t), jnp.asarray(y), bc_type=bc_type, check=False)
+    return interpax.CubicSpline(
+        jnp.asarray(t), jnp.asarray(y), bc_type=bc_type, check=False
+    )
 
 
 def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str, Any]:
@@ -466,15 +517,19 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     comp = process.reactor_medium.components[species_name]
     ts = comp.concentration
     assert isinstance(ts, TimeSeries), f"{species_name} must be a TimeSeries"
-    meas_times = jnp.asarray(ts.timepoints, dtype=float)
-    meas_conc = jnp.asarray(ts.values, dtype=float)
+    meas_times = _series_reference_times(ts)
+    meas_conc = _evaluate_timeseries_on_grid(ts, meas_times)
 
     # --- dense grid and indices
     dense_times, meas_indices = _build_dense_time_grid(process, meas_times)
 
     # --- dense volumes / feeds / samples
-    reactor_volume_dense, accumulated_feed_dense, sample_volume_dense, concentration_in_feed = \
-        _compute_dense_volumes(process, dense_times, species_name)
+    (
+        reactor_volume_dense,
+        accumulated_feed_dense,
+        sample_volume_dense,
+        concentration_in_feed,
+    ) = _compute_dense_volumes(process, dense_times, species_name)
 
     # --- slice at measurement indices
     mi = meas_indices
@@ -493,16 +548,20 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
 
     for _vc_name, vc in process.volume.volume_changes.items():
         if isinstance(vc, FeedVolumeChange) and not vc.is_continuous:
-            ev_times = jnp.asarray(vc.values.timepoints, dtype=float)
+            ev_times = jnp.asarray(vc.values.times, dtype=float)
             ev_vals = jnp.asarray(vc.values.values, dtype=float)
             for et, ev in zip(ev_times, ev_vals):
-                bolus_vol_dense = bolus_vol_dense + jnp.where(dense_times >= et, float(ev), 0.0)
+                bolus_vol_dense = bolus_vol_dense + jnp.where(
+                    dense_times >= et, float(ev), 0.0
+                )
 
     no_sample_dense = jnp.zeros(n_dense)
     # pseudobatch requires numpy arrays
-    adf_dense = jnp.asarray(pseudobatch.data_correction.accumulated_dilution_factor(
-        _np.asarray(bolus_vol_dense), _np.asarray(no_sample_dense)
-    ))
+    adf_dense = jnp.asarray(
+        pseudobatch.data_correction.accumulated_dilution_factor(
+            _np.asarray(bolus_vol_dense), _np.asarray(no_sample_dense)
+        )
+    )
     adf_at_meas = adf_dense[mi]
 
     # --- pseudobatch transform using bolus-only ADF
@@ -517,12 +576,16 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     else:
         fed_sum = jnp.zeros(len(meas_times))
         for i in range(af_at_meas.shape[1]):
-            fed_sum = fed_sum + _fed_species_term(af_at_meas[:, i], concentration_in_feed[i])
+            fed_sum = fed_sum + _fed_species_term(
+                af_at_meas[:, i], concentration_in_feed[i]
+            )
         c_star = meas_conc * adf_at_meas - jnp.cumsum(fed_sum)
 
     feed_corr_at_meas = meas_conc * adf_at_meas - c_star
 
-    has_discrete_feed = any(not vc.is_continuous for vc in process.volume.volume_changes.values())
+    has_discrete_feed = any(
+        not vc.is_continuous for vc in process.volume.volume_changes.values()
+    )
 
     return {
         "meas_times": meas_times,
@@ -541,9 +604,11 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     }
 
 
-def build_splines(inputs: Dict[str, Any],
-                   process: "BioProcess | None" = None,
-                   species_name: "str | None" = None) -> Dict[str, Any]:
+def build_splines(
+    inputs: Dict[str, Any],
+    process: "BioProcess | None" = None,
+    species_name: "str | None" = None,
+) -> Dict[str, Any]:
     """
     Build interpolators from the result of build_pseudobatch_inputs.
 
@@ -570,12 +635,11 @@ def build_splines(inputs: Dict[str, Any],
             if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
                 continue
             c_feed = 0.0
-            if (vc.feed_medium is not None
-                    and species_name in vc.feed_medium.components):
+            if vc.feed_medium is not None and species_name in vc.feed_medium.components:
                 fc_comp = vc.feed_medium.components[species_name]
                 if isinstance(fc_comp.concentration, StaticVariable):
                     c_feed = float(fc_comp.concentration.value)
-            for t_b in jnp.asarray(vc.values.timepoints, dtype=float):
+            for t_b in jnp.asarray(vc.values.times, dtype=float):
                 if not jnp.any(jnp.abs(meas_t - t_b) < _EPS * 2):
                     bolus_events.append((float(t_b), c_feed))
 
@@ -602,10 +666,8 @@ def build_splines(inputs: Dict[str, Any],
 
             c_pre = (cs_val + fc_pre) / max(adf_pre, 1e-12)
 
-            v_pre = float(jnp.interp(t_pre, dense_t,
-                                    inputs["reactor_volume_dense"]))
-            v_post = float(jnp.interp(t_b, dense_t,
-                                     inputs["reactor_volume_dense"]))
+            v_pre = float(jnp.interp(t_pre, dense_t, inputs["reactor_volume_dense"]))
+            v_post = float(jnp.interp(t_b, dense_t, inputs["reactor_volume_dense"]))
             v_feed = v_post - v_pre
 
             c_post = (c_pre * v_pre + c_feed * v_feed) / v_post
@@ -638,7 +700,9 @@ def build_splines(inputs: Dict[str, Any],
     }
 
 
-def evaluate_real_concentration(t_eval: jnp.ndarray, splines: Dict[str, Any]) -> jnp.ndarray:
+def evaluate_real_concentration(
+    t_eval: jnp.ndarray, splines: Dict[str, Any]
+) -> jnp.ndarray:
     """
     Backtransform c*(t) -> c(t) at arbitrary evaluation times t_eval.
 
@@ -708,7 +772,7 @@ def to_interpolator(
 
     # Fit c* spline as a single-segment Interpolator
     ts_star = TimeSeries(
-        timepoints=jnp.array(inputs["meas_times"]),
+        times=jnp.array(inputs["meas_times"]),
         values=jnp.array(inputs["c_star"]),
     )
     rep = fit_timeseries_spline(
@@ -778,6 +842,7 @@ class BacktransformSpline(eqx.Module):
     Build with :func:`build_backtransform_spline` from a stored
     :class:`Interpolator`.
     """
+
     c_star_spline: interpax.CubicSpline
     adf_times: jnp.ndarray
     adf_values: jnp.ndarray
@@ -926,12 +991,12 @@ class BatchedBacktransformSpline(eqx.Module):
     Build with :func:`build_batched_conc_splines`.
     """
 
-    c_star_ppoly: interpax.PPoly     # coeff shape (4, m, n_sp)
-    fc_ppoly: interpax.PPoly         # coeff shape (4, m, n_sp)
-    adf_times: jnp.ndarray           # (n_adf,)
-    adf_values: jnp.ndarray          # (n_adf,)
-    constant_mask: jnp.ndarray       # (n_sp,) bool
-    constant_values: jnp.ndarray     # (n_sp,)
+    c_star_ppoly: interpax.PPoly  # coeff shape (4, m, n_sp)
+    fc_ppoly: interpax.PPoly  # coeff shape (4, m, n_sp)
+    adf_times: jnp.ndarray  # (n_adf,)
+    adf_values: jnp.ndarray  # (n_adf,)
+    constant_mask: jnp.ndarray  # (n_sp,) bool
+    constant_values: jnp.ndarray  # (n_sp,)
     n_species: int = eqx.field(static=True)
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
@@ -942,8 +1007,8 @@ class BatchedBacktransformSpline(eqx.Module):
         jnp.ndarray
             Shape ``(n_sp,)``.
         """
-        cs = self.c_star_ppoly(t)   # (n_sp,)
-        fc = self.fc_ppoly(t)       # (n_sp,)
+        cs = self.c_star_ppoly(t)  # (n_sp,)
+        fc = self.fc_ppoly(t)  # (n_sp,)
         adf = jnp.interp(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         result = (cs + fc) / adf
@@ -960,7 +1025,7 @@ class BatchedBacktransformSpline(eqx.Module):
             Shape ``(n_sp,)``.
         """
         dc_star = self.c_star_ppoly(t, nu=1)  # (n_sp,)
-        dfc = self.fc_ppoly(t, nu=1)           # (n_sp,)
+        dfc = self.fc_ppoly(t, nu=1)  # (n_sp,)
         adf = jnp.interp(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         result = (dc_star + dfc) / adf
@@ -1028,9 +1093,7 @@ def build_batched_conc_splines(
                     fc_resampled.append(sp.fc_spline(x_common))
                 else:
                     # Piecewise-linear fc → resample via jnp.interp
-                    fc_resampled.append(
-                        jnp.interp(x_common, sp.fc_times, sp.fc_values)
-                    )
+                    fc_resampled.append(jnp.interp(x_common, sp.fc_times, sp.fc_values))
         else:
             # Plain CubicSpline or other callable: treat as c*=spline, fc=0, ADF=1
             constant_mask_list.append(False)
@@ -1049,9 +1112,7 @@ def build_batched_conc_splines(
         for y in c_star_resampled
     ]
     c_star_c = jnp.stack([s.c for s in c_star_cubic], axis=-1)  # (4, m, n_sp)
-    c_star_ppoly = interpax.PPoly.construct_fast(
-        c_star_c, x_common, extrapolate=True
-    )
+    c_star_ppoly = interpax.PPoly.construct_fast(c_star_c, x_common, extrapolate=True)
 
     # Build batched PPoly for fc splines
     fc_cubic = [

@@ -73,8 +73,10 @@ BioProcess
            └─ values: TimeSeries
 
 TimeSeries
- ├─ timepoints: jnp.ndarray
- └─ values: jnp.ndarray
+ ├─ times: jnp.ndarray
+ ├─ values: jnp.ndarray
+ ├─ breaks / coeffs / segment_start_piece_idx (optional spline state)
+ └─ canonical API only (legacy `timepoints` removed)
 
 StaticVariable
  └─ value: float
@@ -89,3 +91,13 @@ FeedMedium
       ├─ concentration: TimeSeries | StaticVariable
       └─ is_controlled: bool
 ```
+
+## TimeSeries Migration
+
+- Hard break applied: use `TimeSeries(times=..., values=...)` and `.times`.
+- Legacy `timepoints` constructor/property are removed.
+- Serialization is canonical-only (`times` + `values` for discrete payloads).
+- Spline-only series in pseudobatch workflows currently use spline breakpoints
+  as the fallback measurement grid when no discrete sample grid is provided.
+  Provide explicit discrete samples when exact experimental sampling times are
+  required.

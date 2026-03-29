@@ -4,17 +4,30 @@ Validation utilities for bioprocess data
 
 import jax.numpy as jnp
 from typing import Dict, List, Optional, Tuple
-from .dataclasses import BioProcess, CaseStudy, TimeSeries, FeedVolumeChange, SampleVolumeChange
+from .dataclasses import (
+    BioProcess,
+    CaseStudy,
+    TimeSeries,
+    FeedVolumeChange,
+    SampleVolumeChange,
+)
+
+
+def _is_dynamic_series(value: object) -> bool:
+    """Return True when *value* looks like a TimeSeries-like dynamic object."""
+    times = getattr(value, "times", None)
+    values = getattr(value, "values", None)
+    return times is not None and values is not None
 
 
 def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
     """
-    Check that a TimeSeries has consistent shapes and ordered time points.
+    Check that a TimeSeries has consistent shapes and ordered times.
 
     Verifies:
-    - ``timepoints`` and ``values`` are 1-D arrays.
+    - ``times`` and ``values`` are 1-D arrays.
     - Both arrays have the same length.
-    - ``timepoints`` are strictly monotonically increasing (no duplicates).
+    - ``times`` are strictly monotonically increasing (no duplicates).
 
     Args:
         ts: TimeSeries object to validate.
@@ -27,27 +40,35 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
     label = f"'{name}' " if name else ""
     errors: List[str] = []
 
-    tp = jnp.asarray(ts.timepoints)
+    if not _is_dynamic_series(ts):
+        return (
+            False,
+            f"TimeSeries {label}invalid:\n  - missing discrete times/values arrays",
+        )
+
+    tp = jnp.asarray(ts.times)
     vals = jnp.asarray(ts.values)
 
     if tp.ndim != 1:
-        errors.append(f"timepoints must be 1-D, got shape {tp.shape}")
+        errors.append(f"times must be 1-D, got shape {tp.shape}")
     if vals.ndim != 1:
         errors.append(f"values must be 1-D, got shape {vals.shape}")
 
     if tp.ndim == 1 and vals.ndim == 1:
         if tp.shape[0] != vals.shape[0]:
             errors.append(
-                f"timepoints length ({tp.shape[0]}) does not match "
+                f"times length ({tp.shape[0]}) does not match "
                 f"values length ({vals.shape[0]})"
             )
         if tp.shape[0] > 1:
             diffs = jnp.diff(tp)
             if not bool(jnp.all(diffs > 0)):
-                errors.append("timepoints are not strictly monotonically increasing")
+                errors.append("times are not strictly monotonically increasing")
 
     if errors:
-        return False, f"TimeSeries {label}invalid:\n" + "\n".join(f"  - {e}" for e in errors)
+        return False, f"TimeSeries {label}invalid:\n" + "\n".join(
+            f"  - {e}" for e in errors
+        )
     return True, f"TimeSeries {label}OK"
 
 
@@ -96,9 +117,7 @@ def validate_volume_change_sign(
 
         if all_non_negative or all_non_positive:
             sign = "positive" if all_non_negative else "negative"
-            return True, (
-                f"Volume change '{volume_change.name}' is purely {sign} — OK"
-            )
+            return True, (f"Volume change '{volume_change.name}' is purely {sign} — OK")
         return False, (
             f"Volume change '{volume_change.name}' contains mixed positive and "
             "negative values. Each volume change must be purely positive or purely negative."
@@ -128,11 +147,14 @@ def validate_volume_change_states(
     state_names: List[str] = []
     if process.reactor_medium and process.reactor_medium.components:
         for comp_name, comp in process.reactor_medium.components.items():
-            if hasattr(comp.concentration, "timepoints"):
+            if _is_dynamic_series(comp.concentration):
                 state_names.append(comp_name)
 
     if not state_names:
-        return True, "No dynamic state variables found in reactor medium — check skipped"
+        return (
+            True,
+            "No dynamic state variables found in reactor medium — check skipped",
+        )
 
     errors: List[str] = []
 
@@ -188,8 +210,7 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
         )
 
     biomass_keys = [
-        k for k in process.reactor_medium.components
-        if k.strip().lower() == "biomass"
+        k for k in process.reactor_medium.components if k.strip().lower() == "biomass"
     ]
 
     if biomass_keys:
@@ -234,14 +255,14 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     # Reactor medium components
     if process.reactor_medium:
         for comp_name, comp in process.reactor_medium.components.items():
-            if hasattr(comp.concentration, "timepoints"):
+            if _is_dynamic_series(comp.concentration):
                 ok, msg = validate_timeseries_shape(comp.concentration, name=comp_name)
                 messages.append(msg)
                 all_valid = all_valid and ok
 
     # Process variables
     for pv_name, pv in process.process_variables.items():
-        if hasattr(pv.values, "timepoints"):
+        if _is_dynamic_series(pv.values):
             ok, msg = validate_timeseries_shape(pv.values, name=pv_name)
             messages.append(msg)
             all_valid = all_valid and ok
@@ -274,17 +295,18 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     return all_valid, messages
 
 
-def validate_volume_consistency(process: BioProcess,
-                                final_volume: Optional[float] = None) -> Tuple[bool, str, float]:
+def validate_volume_consistency(
+    process: BioProcess, final_volume: Optional[float] = None
+) -> Tuple[bool, str, float]:
     """
     Validate that volume changes sum to expected final volume.
-    
+
     This function checks whether the sum of all volume changes (feeds, sampling, etc.)
-    is consistent with the expected final volume. It handles both continuous 
+    is consistent with the expected final volume. It handles both continuous
     (cumulative time series) and discrete volume changes.
-    
+
     Note: as these values may be on different time-scale and this check is supposed to be
-    run _before_ any modeling or spline interpolation happens, here only the last time points 
+    run _before_ any modeling or spline interpolation happens, here only the last time points
     are considered.
 
     Args:
@@ -304,11 +326,11 @@ def validate_volume_consistency(process: BioProcess,
     """
 
     volume = process.volume
-    
+
     # Calculate total volume change and collect data for plotting
     total_change = 0.0
     messages = []
-    
+
     for name, change in volume.volume_changes.items():
         if change.is_continuous:
             # For continuous changes, data should be cumulative
@@ -316,26 +338,30 @@ def validate_volume_consistency(process: BioProcess,
             # Cumulative volume: final - initial
             change_vol = float(values[-1] - values[0])
             total_change += change_vol
-            messages.append(f"  {name:15}: {change_vol:+8.2f} {volume.unit} (continuous)")
+            messages.append(
+                f"  {name:15}: {change_vol:+8.2f} {volume.unit} (continuous)"
+            )
         elif not change.is_continuous:
             # For discrete changes, sum all values from the timeseries
             values = change.values.values
             change_vol = float(jnp.sum(values))
             total_change += change_vol
             messages.append(f"  {name:15}: {change_vol:+8.2f} {volume.unit} (discrete)")
-    
+
     calculated_final = volume.initial_volume + total_change
-    
+
     diff = abs(calculated_final - final_volume)
     delta = total_change
     rel_diff = diff / final_volume if final_volume > 0 else 0
-    
+
     messages.insert(0, f"Initial volume   : {volume.initial_volume:8.2f} {volume.unit}")
     messages.append(f"Total change     : {total_change:8.2f} {volume.unit}")
     messages.append(f"Calculated final : {calculated_final:8.2f} {volume.unit}")
     messages.append(f"Expected final   : {final_volume:8.2f} {volume.unit}")
-    messages.append(f"Difference       : {diff:8.2f} {volume.unit} ({rel_diff*100:.1f}%)")
-    
+    messages.append(
+        f"Difference       : {diff:8.2f} {volume.unit} ({rel_diff * 100:.1f}%)"
+    )
+
     if rel_diff > 0.05:  # More than 5% difference
         return (False, "Volume inconsistency detected:\n" + "\n".join(messages), delta)
     else:

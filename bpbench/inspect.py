@@ -3,6 +3,32 @@ import jax.numpy as jnp
 from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, FeedVolumeChange
 
 
+def _is_dynamic_series(value: object) -> bool:
+    """Return True when *value* looks like a time-varying series."""
+    times = getattr(value, "times", None)
+    values = getattr(value, "values", None)
+    return times is not None and values is not None
+
+
+def _is_spline_only_series(value: object) -> bool:
+    """Return True for spline-backed series without discrete samples."""
+    breaks = getattr(value, "breaks", None)
+    coeffs = getattr(value, "coeffs", None)
+    times = getattr(value, "times", None)
+    values = getattr(value, "values", None)
+    return (
+        breaks is not None and coeffs is not None and times is None and values is None
+    )
+
+
+def _has_spline_state(value: object) -> bool:
+    """Return True when a series carries spline coefficients."""
+    return (
+        getattr(value, "breaks", None) is not None
+        and getattr(value, "coeffs", None) is not None
+    )
+
+
 def _get_process_name(process: BioProcess) -> str:
     """Return a safe display name even when process metadata is absent."""
     metadata = getattr(process, "metadata", None)
@@ -52,7 +78,9 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
         # Level 1: just list variable names
         print(f"Process: {process_name} ({process_type})")
         if process.reactor_medium and process.reactor_medium.components:
-            print(f"Reactor Medium Components: {list(process.reactor_medium.components.keys())}")
+            print(
+                f"Reactor Medium Components: {list(process.reactor_medium.components.keys())}"
+            )
         if process.process_variables:
             print(f"Process Variables: {list(process.process_variables.keys())}")
         if process.volume and process.volume.volume_changes:
@@ -66,34 +94,57 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
             print(f"Notes: {process_notes}")
 
         if process.time_axis is not None:
-            print(f"\nTime: {process.time_axis.start:.2f} to {process.time_axis.end:.2f}")
+            print(
+                f"\nTime: {process.time_axis.start:.2f} to {process.time_axis.end:.2f}"
+            )
 
         if process.reactor_medium and process.reactor_medium.components:
             print(f"\nReactor Medium: {process.reactor_medium.name}")
             print(f"  Components: ({len(process.reactor_medium.components)} total)")
             for comp in process.reactor_medium.components.values():
-                if hasattr(comp.concentration, 'timepoints'):
-                    n = len(comp.concentration.timepoints)
+                if _is_dynamic_series(comp.concentration):
+                    n = len(comp.concentration.times)
                     print(f"    - {comp.name}: TimeSeries ({n} points)")
+                elif _is_spline_only_series(comp.concentration):
+                    n = len(comp.concentration.breaks)
+                    print(f"    - {comp.name}: Spline-only ({n} breakpoints)")
                 else:
                     print(f"    - {comp.name}: Static")
 
         if process.process_variables:
             print(f"\nProcess Variables: ({len(process.process_variables)} total)")
             for pv in process.process_variables.values():
-                if hasattr(pv.values, 'timepoints'):
-                    n = len(pv.values.timepoints)
-                    print(f"  - {pv.name}: TimeSeries ({n} points), controlled={pv.is_controlled}")
+                if _is_dynamic_series(pv.values):
+                    n = len(pv.values.times)
+                    print(
+                        f"  - {pv.name}: TimeSeries ({n} points), controlled={pv.is_controlled}"
+                    )
+                elif _is_spline_only_series(pv.values):
+                    n = len(pv.values.breaks)
+                    print(
+                        f"  - {pv.name}: Spline-only ({n} breakpoints), controlled={pv.is_controlled}"
+                    )
                 else:
-                    print(f"  - {pv.name}: Static ({pv.values.value}), controlled={pv.is_controlled}")
+                    print(
+                        f"  - {pv.name}: Static ({pv.values.value}), controlled={pv.is_controlled}"
+                    )
 
         if process.volume is not None:
             print(f"\nVolume: {process.volume.initial_volume}")
             if process.volume.volume_changes:
                 print(f"  Volume Changes: ({len(process.volume.volume_changes)} total)")
                 for vc in process.volume.volume_changes.values():
-                    n = len(vc.values.timepoints) if vc.values is not None else 0
-                    print(f"    - {vc.name}: {'Continuous' if vc.is_continuous else 'Discrete'} ({n} points)")
+                    if vc.values is None:
+                        n = 0
+                    elif _is_dynamic_series(vc.values):
+                        n = len(vc.values.times)
+                    elif _is_spline_only_series(vc.values):
+                        n = len(vc.values.breaks)
+                    else:
+                        n = 0
+                    print(
+                        f"    - {vc.name}: {'Continuous' if vc.is_continuous else 'Discrete'} ({n} points)"
+                    )
 
     else:
         # Level 3 (default): full details
@@ -104,13 +155,17 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
 
         if process.time_axis is not None:
             print(f"\nTime:")
-            print(f"  Range: {process.time_axis.start:.2f} to {process.time_axis.end:.2f} {process.time_axis.unit}")
+            print(
+                f"  Range: {process.time_axis.start:.2f} to {process.time_axis.end:.2f} {process.time_axis.unit}"
+            )
             print(f"  Reference: {process.time_axis.time_reference}")
 
         if process.reactor_medium:
             print(f"\nReactor Medium:")
             print(f"  Name: {process.reactor_medium.name}")
-            print(f"  Density: {process.reactor_medium.density} {process.reactor_medium.density_unit}")
+            print(
+                f"  Density: {process.reactor_medium.density} {process.reactor_medium.density_unit}"
+            )
             if process.reactor_medium.components:
                 print(f"  Components: ({len(process.reactor_medium.components)} total)")
                 for comp in process.reactor_medium.components.values():
@@ -131,22 +186,27 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
 
     print("=" * 80)
 
+
 def _print_process_variable_info(pv, prefix: str) -> None:
     """Helper function to print ProcessVariable information (verbosity=3)."""
     print(f"{prefix}{pv.name}")
     print(f"{prefix}  Unit: {pv.unit}")
     print(f"{prefix}  Controlled: {pv.is_controlled}")
 
-    if hasattr(pv.values, 'timepoints'):  # TimeSeries
+    if _is_dynamic_series(pv.values):  # TimeSeries
         ts = pv.values
-        n_points = len(ts.timepoints)
+        n_points = len(ts.times)
         print(f"{prefix}  TimeSeries Data: {n_points} points")
         if n_points > 0:
-            t_range = (float(ts.timepoints[0]), float(ts.timepoints[-1]))
+            t_range = (float(ts.times[0]), float(ts.times[-1]))
             v_range = (float(jnp.min(ts.values)), float(jnp.max(ts.values)))
             print(f"{prefix}    Time range: {t_range[0]:.2f} to {t_range[1]:.2f}")
             print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f}")
-    elif hasattr(pv.values, 'value'):  # StaticVariable
+    elif _is_spline_only_series(pv.values):
+        ts = pv.values
+        n_breaks = len(ts.breaks)
+        print(f"{prefix}  Spline-only Data: {n_breaks} breakpoints")
+    elif hasattr(pv.values, "value"):  # StaticVariable
         print(f"{prefix}  Static Value: {pv.values.value}")
 
     if pv.interpolator is not None:
@@ -159,36 +219,59 @@ def _print_reactor_component_info(comp, prefix: str) -> None:
     print(f"{prefix}  Unit: {comp.unit}")
     print(f"{prefix}  Intracellular: {comp.is_intracellular}")
 
-    if hasattr(comp.concentration, 'timepoints'):  # TimeSeries
+    if _is_dynamic_series(comp.concentration):  # TimeSeries
         ts = comp.concentration
-        n_points = len(ts.timepoints)
+        n_points = len(ts.times)
         print(f"{prefix}  TimeSeries Data: {n_points} points")
         if n_points > 0:
-            t_range = (float(ts.timepoints[0]), float(ts.timepoints[-1]))
+            t_range = (float(ts.times[0]), float(ts.times[-1]))
             v_range = (float(jnp.min(ts.values)), float(jnp.max(ts.values)))
             print(f"{prefix}    Time range: {t_range[0]:.2f} to {t_range[1]:.2f}")
             print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f}")
-    elif hasattr(comp.concentration, 'value'):  # StaticVariable
+    elif _is_spline_only_series(comp.concentration):
+        ts = comp.concentration
+        n_breaks = len(ts.breaks)
+        print(f"{prefix}  Spline-only Data: {n_breaks} breakpoints")
+    elif hasattr(comp.concentration, "value"):  # StaticVariable
         print(f"{prefix}  Static Concentration: {comp.concentration.value}")
 
 
 def _print_volume_change_info(change, prefix: str) -> None:
     """Helper function to print VolumeChange information (verbosity=3)."""
     print(f"{prefix}{change.name}:")
-    print(f"{prefix}  Type: {'Controlled' if change.is_controlled else 'Modeled'}, "
-          f"{'Continuous' if change.is_continuous else 'Discrete'}")
+    print(
+        f"{prefix}  Type: {'Controlled' if change.is_controlled else 'Modeled'}, "
+        f"{'Continuous' if change.is_continuous else 'Discrete'}"
+    )
     print(f"{prefix}  Unit: {change.unit}")
 
     if isinstance(change, FeedVolumeChange) and change.feed_medium:
         print(f"{prefix}  Feed Medium: {change.feed_medium.name}")
 
     if change.values is not None:
-        n_points = len(change.values.timepoints)
-        print(f"{prefix}  TimeSeries Points: {n_points}")
-        if n_points > 0:
-            v_range = (float(jnp.min(change.values.values)),
-                       float(jnp.max(change.values.values)))
-            print(f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f} {change.unit}")
+        if _is_dynamic_series(change.values):
+            n_points = len(change.values.times)
+            print(f"{prefix}  TimeSeries Points: {n_points}")
+            domain_start = float(change.values.times[0]) if n_points > 0 else None
+            domain_end = float(change.values.times[-1]) if n_points > 0 else None
+        elif _is_spline_only_series(change.values):
+            n_points = len(change.values.breaks)
+            print(f"{prefix}  Spline-only Points: {n_points}")
+            domain_start = float(change.values.breaks[0]) if n_points > 0 else None
+            domain_end = float(change.values.breaks[-1]) if n_points > 0 else None
+        else:
+            n_points = 0
+            domain_start = None
+            domain_end = None
+
+        if _is_dynamic_series(change.values) and n_points > 0:
+            v_range = (
+                float(jnp.min(change.values.values)),
+                float(jnp.max(change.values.values)),
+            )
+            print(
+                f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f} {change.unit}"
+            )
             if change.is_continuous:
                 total_change = float(change.values.values[-1] - change.values.values[0])
                 print(f"{prefix}    Total change: {total_change:.2f} {change.unit}")
@@ -196,16 +279,30 @@ def _print_volume_change_info(change, prefix: str) -> None:
                 total_change = float(jnp.sum(change.values.values))
                 print(f"{prefix}    Total change: {total_change:.2f} {change.unit}")
 
+        if (
+            change.is_continuous
+            and domain_start is not None
+            and domain_end is not None
+            and _has_spline_state(change.values)
+            and hasattr(change.values, "integrate")
+        ):
+            integral = float(change.values.integrate(domain_start, domain_end))
+            print(
+                f"{prefix}    Series integral over span: {integral:.4f} {change.unit}*time"
+            )
+
 
 def _count_datapoints_in_value(value) -> int:
     """
     Count datapoints in a value which may be a TimeSeries or StaticVariable.
-    TimeSeries -> number of timepoints
+    TimeSeries -> number of times
     StaticVariable -> count as 1
     """
     try:
-        if hasattr(value, "timepoints"):
-            return int(len(value.timepoints))
+        if _is_dynamic_series(value):
+            return int(len(value.times))
+        elif _is_spline_only_series(value):
+            return int(len(value.breaks))
         elif hasattr(value, "value"):
             return 1
     except Exception:
@@ -240,7 +337,9 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
             if getattr(vc, "values", None) is not None:
                 total += _count_datapoints_in_value(vc.values)
             # feed medium components
-            if getattr(vc, "feed_medium", None) is not None and isinstance(vc, FeedVolumeChange):
+            if getattr(vc, "feed_medium", None) is not None and isinstance(
+                vc, FeedVolumeChange
+            ):
                 for fcomp in vc.feed_medium.components.values():
                     total += _count_datapoints_in_value(fcomp.concentration)
 
@@ -288,7 +387,7 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
                 for p_key, proc in cs.processes.items():
                     name = _get_process_name(proc)
                     print(f"      * {p_key}: {name}")
-    
+
     total_datapoints = 0
     for cs_key, cs in dataset.case_studies.items():
         cs_header = f"{cs_key}"
@@ -320,6 +419,7 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
 # Plotting helpers
 # ---------------------------------------------------------------------------
 
+
 def _collect_process_panels(process: BioProcess):
     """
     Collect all plottable panels from a BioProcess.
@@ -328,7 +428,7 @@ def _collect_process_panels(process: BioProcess):
       - 'title': str
       - 'category': 'ReactorMedium' | 'ProcessVariable' | 'VolumeChange'
       - 'type': 'dynamic' | 'static'
-      - for dynamic: 'x' (timepoints array), 'y' (values array)
+      - for dynamic: 'x' (times array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
       - optional: 'interpolator': Interpolator (if available)
@@ -343,73 +443,118 @@ def _collect_process_panels(process: BioProcess):
     if process.reactor_medium and process.reactor_medium.components:
         for comp in process.reactor_medium.components.values():
             unit_label = f" [{comp.unit}]" if comp.unit else ""
-            if hasattr(comp.concentration, 'timepoints'):
+            if _is_dynamic_series(comp.concentration):
                 panel = {
-                    'title': f"{comp.name}{unit_label}",
-                    'category': 'ReactorMedium',
-                    'type': 'dynamic',
-                    'x': comp.concentration.timepoints,
-                    'y': comp.concentration.values,
-                    'render': 'line',
+                    "title": f"{comp.name}{unit_label}",
+                    "category": "ReactorMedium",
+                    "type": "dynamic",
+                    "x": comp.concentration.times,
+                    "y": comp.concentration.values,
+                    "render": "line",
                 }
                 if comp.interpolator is not None:
-                    panel['interpolator'] = comp.interpolator
-                    panel['interpolator_type'] = 'backtransform'
+                    panel["interpolator"] = comp.interpolator
+                    panel["interpolator_type"] = "backtransform"
                 panels.append(panel)
-            else:
-                panels.append({
-                    'title': f"{comp.name}{unit_label}",
-                    'category': 'ReactorMedium',
-                    'type': 'static',
-                    't_start': t_start, 't_end': t_end,
-                    'value': float(comp.concentration.value),
-                })
+            elif _is_spline_only_series(comp.concentration):
+                x = jnp.asarray(comp.concentration.breaks)
+                y = comp.concentration.evaluate_many(x)
+                panels.append(
+                    {
+                        "title": f"{comp.name}{unit_label}",
+                        "category": "ReactorMedium",
+                        "type": "dynamic",
+                        "x": x,
+                        "y": y,
+                        "render": "line",
+                    }
+                )
+            elif hasattr(comp.concentration, "value"):
+                panels.append(
+                    {
+                        "title": f"{comp.name}{unit_label}",
+                        "category": "ReactorMedium",
+                        "type": "static",
+                        "t_start": t_start,
+                        "t_end": t_end,
+                        "value": float(comp.concentration.value),
+                    }
+                )
 
     # Process variables
     if process.process_variables:
         for pv in process.process_variables.values():
             unit_label = f" [{pv.unit}]" if pv.unit else ""
-            if hasattr(pv.values, 'timepoints'):
+            if _is_dynamic_series(pv.values):
                 panel = {
-                    'title': f"{pv.name}{unit_label}",
-                    'category': 'ProcessVariable',
-                    'type': 'dynamic',
-                    'x': pv.values.timepoints,
-                    'y': pv.values.values,
-                    'render': 'line',
+                    "title": f"{pv.name}{unit_label}",
+                    "category": "ProcessVariable",
+                    "type": "dynamic",
+                    "x": pv.values.times,
+                    "y": pv.values.values,
+                    "render": "line",
                 }
                 if pv.interpolator is not None:
-                    panel['interpolator'] = pv.interpolator
-                    panel['interpolator_type'] = 'direct'
+                    panel["interpolator"] = pv.interpolator
+                    panel["interpolator_type"] = "direct"
                 panels.append(panel)
-            else:
-                panels.append({
-                    'title': f"{pv.name}{unit_label}",
-                    'category': 'ProcessVariable',
-                    'type': 'static',
-                    't_start': t_start, 't_end': t_end,
-                    'value': float(pv.values.value),
-                })
+            elif _is_spline_only_series(pv.values):
+                x = jnp.asarray(pv.values.breaks)
+                y = pv.values.evaluate_many(x)
+                panels.append(
+                    {
+                        "title": f"{pv.name}{unit_label}",
+                        "category": "ProcessVariable",
+                        "type": "dynamic",
+                        "x": x,
+                        "y": y,
+                        "render": "line",
+                    }
+                )
+            elif hasattr(pv.values, "value"):
+                panels.append(
+                    {
+                        "title": f"{pv.name}{unit_label}",
+                        "category": "ProcessVariable",
+                        "type": "static",
+                        "t_start": t_start,
+                        "t_end": t_end,
+                        "value": float(pv.values.value),
+                    }
+                )
 
     # Volume changes
     if process.volume and process.volume.volume_changes:
         for vc in process.volume.volume_changes.values():
             unit_label = f" [{vc.unit}]" if vc.unit else ""
-            if vc.values is not None and hasattr(vc.values, 'timepoints'):
+            if vc.values is not None and _is_dynamic_series(vc.values):
                 is_continuous = getattr(vc, "is_continuous", True)
-                render = 'line' if is_continuous else 'bar'
+                render = "line" if is_continuous else "bar"
                 panel = {
-                    'title': f"{vc.name}{unit_label}",
-                    'category': 'VolumeChange',
-                    'type': 'dynamic',
-                    'x': vc.values.timepoints,
-                    'y': vc.values.values,
-                    'render': render,
+                    "title": f"{vc.name}{unit_label}",
+                    "category": "VolumeChange",
+                    "type": "dynamic",
+                    "x": vc.values.times,
+                    "y": vc.values.values,
+                    "render": render,
                 }
-                if getattr(vc, 'interpolator', None) is not None:
-                    panel['interpolator'] = vc.interpolator
-                    panel['interpolator_type'] = 'direct'
+                if getattr(vc, "interpolator", None) is not None:
+                    panel["interpolator"] = vc.interpolator
+                    panel["interpolator_type"] = "direct"
                 panels.append(panel)
+            elif vc.values is not None and _is_spline_only_series(vc.values):
+                x = jnp.asarray(vc.values.breaks)
+                y = vc.values.evaluate_many(x)
+                panels.append(
+                    {
+                        "title": f"{vc.name}{unit_label}",
+                        "category": "VolumeChange",
+                        "type": "dynamic",
+                        "x": x,
+                        "y": y,
+                        "render": "line",
+                    }
+                )
 
     return panels
 
@@ -432,12 +577,14 @@ def _pad_constant_ylim(ax, values):
         ax.set_ylim(min(cur_lo, new_lo), max(cur_hi, new_hi))
 
 
-def _evaluate_interpolator_curve(interpolator, interpolator_type, t_start, t_end, n_points=500):
+def _evaluate_interpolator_curve(
+    interpolator, interpolator_type, t_start, t_end, n_points=500
+):
     """Evaluate an interpolator over [t_start, t_end] and return (t_plot, y_plot)."""
     from .splines import build_backtransform_spline, evaluate_spline_at
 
     t_plot = np.linspace(t_start, t_end, n_points)
-    if interpolator_type == 'backtransform':
+    if interpolator_type == "backtransform":
         bt = build_backtransform_spline(interpolator)
         y_plot = np.array([float(bt(jnp.array(t))) for t in t_plot])
     else:
@@ -454,23 +601,23 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
     """
     plot_kwargs = {}
     if color is not None:
-        plot_kwargs['color'] = color
+        plot_kwargs["color"] = color
     else:
-        plot_kwargs['color'] = 'black'
+        plot_kwargs["color"] = "black"
 
     if label is None:
-        label = 'data'
+        label = "data"
 
-    has_interpolator = 'interpolator' in panel and panel['interpolator'] is not None
+    has_interpolator = "interpolator" in panel and panel["interpolator"] is not None
 
-    if panel['type'] == 'dynamic':
-        x = panel['x']
-        y = panel['y']
-        render = panel.get('render', 'line')
+    if panel["type"] == "dynamic":
+        x = panel["x"]
+        y = panel["y"]
+        render = panel.get("render", "line")
 
         n = len(x)
 
-        if render == 'bar':
+        if render == "bar":
             # Bar plot for discrete (non-continuous) volume changes
             delta = float(x[-1] - x[0])
             width = max(delta / 30, 0.1)
@@ -479,30 +626,46 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
             # Scatter for raw data when an interpolator is available and few points
             ax.scatter(x, y, s=16, zorder=5, label=label, **plot_kwargs)
         else:
-            fmt = 'o-' if n <= 50 else '-'
+            fmt = "o-" if n <= 50 else "-"
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
 
-        if render != 'bar':
+        if render != "bar":
             _pad_constant_ylim(ax, y)
 
         # Draw interpolator curve
         if has_interpolator and t_start is not None and t_end is not None:
             try:
                 t_plot, y_plot = _evaluate_interpolator_curve(
-                    panel['interpolator'], panel.get('interpolator_type', 'direct'),
-                    t_start, t_end,
+                    panel["interpolator"],
+                    panel.get("interpolator_type", "direct"),
+                    t_start,
+                    t_end,
                 )
-                ax.plot(t_plot, y_plot, '--', color='red', lw=1.5,
-                        alpha=0.8, label='interpolator')
+                ax.plot(
+                    t_plot,
+                    y_plot,
+                    "--",
+                    color="red",
+                    lw=1.5,
+                    alpha=0.8,
+                    label="interpolator",
+                )
             except Exception as e:
                 import warnings
-                warnings.warn(f"Could not evaluate interpolator for {panel.get('title', '?')}: {e}")
+
+                warnings.warn(
+                    f"Could not evaluate interpolator for {panel.get('title', '?')}: {e}"
+                )
     else:
         ax.hlines(
-            panel['value'], panel['t_start'], panel['t_end'],
-            linestyles='--', label=label, **plot_kwargs,
+            panel["value"],
+            panel["t_start"],
+            panel["t_end"],
+            linestyles="--",
+            label=label,
+            **plot_kwargs,
         )
-        _pad_constant_ylim(ax, [panel['value']])
+        _pad_constant_ylim(ax, [panel["value"]])
 
 
 def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=None):
@@ -537,16 +700,16 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
             t_global_end = max(t_global_end, float(process.time_axis.end))
 
         for panel in _collect_process_panels(process):
-            key = panel['title']
+            key = panel["title"]
             if key not in variable_map:
                 variable_map[key] = {
-                    'title': panel['title'],
-                    'time_unit': time_unit,
-                    'data': [],
+                    "title": panel["title"],
+                    "time_unit": time_unit,
+                    "data": [],
                 }
             entry = dict(panel)
-            entry['label'] = proc_key
-            variable_map[key]['data'].append(entry)
+            entry["label"] = proc_key
+            variable_map[key]["data"].append(entry)
 
     # some white space to the side
     delta_t_global = t_global_end - t_global_start
@@ -555,25 +718,39 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
 
     if not variable_map:
         fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No variables to plot",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         return fig
 
     panels = list(variable_map.values())
     fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     # Collect legend entries once (process key -> (handle, label))
     legend_handles_by_label = {}
 
     for i, panel_meta in enumerate(panels):
         ax = axes_flat[i]
-        for j, data in enumerate(panel_meta['data']):
+        for j, data in enumerate(panel_meta["data"]):
             color = colors[j % len(colors)]
-            _draw_panel(ax, data, label=data['label'], color=color,
-                        t_start=t_global_start, t_end=t_global_end)
+            _draw_panel(
+                ax,
+                data,
+                label=data["label"],
+                color=color,
+                t_start=t_global_start,
+                t_end=t_global_end,
+            )
 
-        category = panel_meta['data'][0].get('category', '') if panel_meta['data'] else ''
+        category = (
+            panel_meta["data"][0].get("category", "") if panel_meta["data"] else ""
+        )
         ax.set_title(f"{panel_meta['title']} ({category})")
         ax.set_xlabel(f"time [{panel_meta['time_unit']}]")
         ax.set_xlim(t_global_start, t_global_end)
@@ -581,14 +758,14 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
 
         # Pad y-axis if all overlaid data for this panel is practically constant
         # Skip bar-rendered panels (discrete events) — let matplotlib auto-scale
-        has_bar = any(d.get('render') == 'bar' for d in panel_meta['data'])
+        has_bar = any(d.get("render") == "bar" for d in panel_meta["data"])
         if not has_bar:
             all_y = []
-            for data in panel_meta['data']:
-                if data['type'] == 'dynamic':
-                    all_y.extend(np.asarray(data['y'], dtype=float).tolist())
+            for data in panel_meta["data"]:
+                if data["type"] == "dynamic":
+                    all_y.extend(np.asarray(data["y"], dtype=float).tolist())
                 else:
-                    all_y.append(data['value'])
+                    all_y.append(data["value"])
             if all_y:
                 _pad_constant_ylim(ax, all_y)
 
@@ -608,7 +785,8 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
         handles = [legend_handles_by_label[l] for l in labels]
         # Put one shared legend at bottom
         fig.legend(
-            handles, labels,
+            handles,
+            labels,
             loc="lower center",
             ncol=min(len(labels), 5),
             fontsize="small",
@@ -622,9 +800,10 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
         fig.tight_layout()
 
     if save_path is not None:
-        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
     # fig.show()
     return fig
+
 
 def _make_figure(n_panels, figsize_per_panel):
     """Create a two-column figure with the correct number of rows."""
@@ -633,7 +812,9 @@ def _make_figure(n_panels, figsize_per_panel):
     n_cols = 2
     n_rows = max(1, (n_panels + 1) // 2)
     fig, axes = plt.subplots(
-        n_rows, n_cols, squeeze=False,
+        n_rows,
+        n_cols,
+        squeeze=False,
         figsize=(figsize_per_panel[0] * n_cols, figsize_per_panel[1] * n_rows),
     )
     return fig, axes.flatten()
@@ -666,8 +847,14 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
 
     if not panels:
         fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "No variables to plot", ha='center', va='center',
-                transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No variables to plot",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         return fig
 
     fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
@@ -675,19 +862,21 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     for i, panel in enumerate(panels):
         ax = axes_flat[i]
         _draw_panel(ax, panel, t_start=t_start, t_end=t_end)
-        category = panel.get('category', '')
+        category = panel.get("category", "")
         ax.set_title(f"{panel['title']} ({category})")
         ax.set_xlabel(f"time [{time_unit}]")
         ax.set_xlim(t_start, t_end)
-        ax.legend(fontsize='small')
+        ax.legend(fontsize="small")
         ax.grid(True, alpha=0.3)
 
     for j in range(len(panels), len(axes_flat)):
         axes_flat[j].set_visible(False)
 
-    fig.suptitle(f"{_get_process_name(process)} ({_get_process_type(process)})", fontsize=12)
+    fig.suptitle(
+        f"{_get_process_name(process)} ({_get_process_type(process)})", fontsize=12
+    )
     fig.tight_layout()
     if save_path is not None:
-        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
     # fig.show()
     return fig

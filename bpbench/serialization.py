@@ -6,11 +6,25 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Optional, Union
 from .dataclasses import (
-    BenchmarkDataset, BioProcessCollection, CaseStudy, BioProcess, TimeSeries, TimeAxis,
-    Interpolator, DiscreteEvents, FeedMedium, FeedMediumComponent,
-    StaticVariable, BioProcessMetadata, Volume, VolumeChange,
-    FeedVolumeChange, SampleVolumeChange,
-    ReactorMedium, ReactorMediumComponent, ProcessVariable
+    BenchmarkDataset,
+    BioProcessCollection,
+    CaseStudy,
+    BioProcess,
+    TimeSeries,
+    TimeAxis,
+    Interpolator,
+    DiscreteEvents,
+    FeedMedium,
+    FeedMediumComponent,
+    StaticVariable,
+    BioProcessMetadata,
+    Volume,
+    VolumeChange,
+    FeedVolumeChange,
+    SampleVolumeChange,
+    ReactorMedium,
+    ReactorMediumComponent,
+    ProcessVariable,
 )
 
 DEFAULT_JSON_FILENAME = "data.json"
@@ -76,23 +90,25 @@ def load_process_collection(path: Path) -> BioProcessCollection:
 def save_dataset_json(dataset: BenchmarkDataset, json_path: Path) -> None:
     """
     Save dataset as single JSON file (human-readable but larger)
-    
+
     Args:
         dataset: BenchmarkDataset to save
         json_path: File path where JSON will be saved
     """
     json_path = Path(json_path)
     json_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     data_dict = _dataset_to_dict(dataset)
-    
+
     with open(json_path, "w") as f:
         json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
-    
+
     print(f"✓ Dataset saved to {json_path}")
 
 
-def save_process_collection_json(collection: BioProcessCollection, json_path: Path) -> None:
+def save_process_collection_json(
+    collection: BioProcessCollection, json_path: Path
+) -> None:
     """
     Save a BioProcessCollection as a single JSON file.
 
@@ -114,18 +130,18 @@ def save_process_collection_json(collection: BioProcessCollection, json_path: Pa
 def load_dataset_json(json_path: Path) -> BenchmarkDataset:
     """
     Load dataset from JSON
-    
+
     Args:
         json_path: Path to JSON file
-        
+
     Returns:
         Reconstructed BenchmarkDataset
     """
     json_path = Path(json_path)
-    
+
     with open(json_path, "r") as f:
         data_dict = json.load(f)
-    
+
     # Restore arrays
     def restore_arrays(obj):
         if isinstance(obj, dict):
@@ -135,10 +151,10 @@ def load_dataset_json(json_path: Path) -> BenchmarkDataset:
         elif isinstance(obj, list):
             return [restore_arrays(item) for item in obj]
         return obj
-    
+
     data_dict = restore_arrays(data_dict)
     dataset = _dict_to_dataset(data_dict)
-    
+
     print(f"✓ Dataset loaded from {json_path}")
     return dataset
 
@@ -178,14 +194,14 @@ def load_process_collection_json(json_path: Path) -> BioProcessCollection:
 # Helper Functions
 # ============================================================
 
+
 def _dataset_to_dict(dataset: BenchmarkDataset) -> Dict:
     """Convert dataset to nested dictionary"""
     return {
         "metadata": dataset.metadata,
         "case_studies": {
-            cs_id: _case_study_to_dict(cs)
-            for cs_id, cs in dataset.case_studies.items()
-        }
+            cs_id: _case_study_to_dict(cs) for cs_id, cs in dataset.case_studies.items()
+        },
     }
 
 
@@ -221,23 +237,27 @@ def _process_to_dict(process: BioProcess) -> Dict:
             "unit": process.time_axis.unit,
             "start": process.time_axis.start,
             "end": process.time_axis.end,
-            "time_reference": process.time_axis.time_reference
-        } if process.time_axis else None,
-        "reactor_medium": _reactor_medium_to_dict(process.reactor_medium) if process.reactor_medium else None,
+            "time_reference": process.time_axis.time_reference,
+        }
+        if process.time_axis
+        else None,
+        "reactor_medium": _reactor_medium_to_dict(process.reactor_medium)
+        if process.reactor_medium
+        else None,
         "process_variables": {
             name: _process_variable_to_dict(pv)
             for name, pv in process.process_variables.items()
         },
     }
-    
+
     # Add volume if present
     if process.volume is not None:
         result["volume"] = _volume_to_dict(process.volume)
-    
+
     # Add discrete events if present
     if process.discrete_events is not None:
         result["discrete_events"] = _discrete_events_to_dict(process.discrete_events)
-    
+
     return result
 
 
@@ -261,7 +281,7 @@ def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> Dict:
         "components": {
             name: _reactor_component_to_dict(comp)
             for name, comp in reactor_medium.components.items()
-        }
+        },
     }
 
 
@@ -272,7 +292,9 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "unit": comp.unit,
         "is_intracellular": comp.is_intracellular,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
-        "interpolator": _interpolator_to_dict(comp.interpolator) if comp.interpolator is not None else None,
+        "interpolator": _interpolator_to_dict(comp.interpolator)
+        if comp.interpolator is not None
+        else None,
     }
 
 
@@ -283,23 +305,48 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
         "unit": pv.unit,
         "is_controlled": pv.is_controlled,
         "values": _timeseries_or_static_to_dict(pv.values),
-        "interpolator": _interpolator_to_dict(pv.interpolator) if pv.interpolator is not None else None,
+        "interpolator": _interpolator_to_dict(pv.interpolator)
+        if pv.interpolator is not None
+        else None,
     }
+
+
+def _timeseries_to_dict_payload(
+    value: TimeSeries, *, include_type: bool = True
+) -> Dict:
+    """Serialize TimeSeries using canonical keys."""
+    times = getattr(value, "times", None)
+
+    payload = {
+        "times": times,
+        "values": value.values,
+    }
+    if include_type:
+        payload["type"] = "TimeSeries"
+
+    if hasattr(value, "derived"):
+        payload["derived"] = bool(value.derived)
+    if getattr(value, "jump_times", None) is not None:
+        payload["jump_times"] = value.jump_times
+    if getattr(value, "breaks", None) is not None:
+        payload["breaks"] = value.breaks
+    if getattr(value, "coeffs", None) is not None:
+        payload["coeffs"] = value.coeffs
+    if getattr(value, "segment_start_piece_idx", None) is not None:
+        payload["segment_start_piece_idx"] = value.segment_start_piece_idx
+    if hasattr(value, "continuity_side"):
+        payload["continuity_side"] = value.continuity_side
+    if getattr(value, "metadata", None) is not None:
+        payload["metadata"] = value.metadata
+    return payload
 
 
 def _timeseries_or_static_to_dict(value: Union[TimeSeries, StaticVariable]) -> Dict:
     """Convert TimeSeries or StaticVariable to dictionary"""
     if isinstance(value, TimeSeries):
-        return {
-            "type": "TimeSeries",
-            "timepoints": value.timepoints,
-            "values": value.values
-        }
+        return _timeseries_to_dict_payload(value, include_type=True)
     elif isinstance(value, StaticVariable):
-        return {
-            "type": "StaticVariable",
-            "value": value.value
-        }
+        return {"type": "StaticVariable", "value": value.value}
     else:
         raise ValueError(f"Unknown value type: {type(value)}")
 
@@ -312,7 +359,7 @@ def _volume_to_dict(volume: Volume) -> Dict:
         "volume_changes": {
             name: _volume_change_to_dict(vc)
             for name, vc in volume.volume_changes.items()
-        }
+        },
     }
 
 
@@ -323,21 +370,26 @@ def _volume_change_to_dict(vc) -> Dict:
         "unit": vc.unit,
         "is_controlled": vc.is_controlled,
         "is_continuous": vc.is_continuous,
-        "values": {
-            "timepoints": vc.values.timepoints,
-            "values": vc.values.values
-        } if vc.values else None
+        "values": (
+            _timeseries_to_dict_payload(vc.values, include_type=False)
+            if vc.values
+            else None
+        ),
     }
     if isinstance(vc, FeedVolumeChange):
         result["type"] = "FeedVolumeChange"
-        result["feed_medium"] = _feed_medium_to_dict(vc.feed_medium) if vc.feed_medium else None
+        result["feed_medium"] = (
+            _feed_medium_to_dict(vc.feed_medium) if vc.feed_medium else None
+        )
     elif isinstance(vc, SampleVolumeChange):
         result["type"] = "SampleVolumeChange"
     else:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
 
     result["interpolator"] = (
-        _interpolator_to_dict(vc.interpolator) if getattr(vc, "interpolator", None) is not None else None
+        _interpolator_to_dict(vc.interpolator)
+        if getattr(vc, "interpolator", None) is not None
+        else None
     )
     return result
 
@@ -351,7 +403,7 @@ def _feed_medium_to_dict(feed: FeedMedium) -> Dict:
         "components": {
             name: _feed_component_to_dict(comp)
             for name, comp in feed.components.items()
-        }
+        },
     }
 
 
@@ -361,20 +413,19 @@ def _feed_component_to_dict(comp: FeedMediumComponent) -> Dict:
         "name": comp.name,
         "unit": comp.unit,
         "is_controlled": comp.is_controlled,
-        "concentration": _timeseries_or_static_to_dict(comp.concentration)
+        "concentration": _timeseries_or_static_to_dict(comp.concentration),
     }
 
 
 def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
     """Reconstruct BenchmarkDataset from dictionary"""
     case_studies = {}
-    
+
     for cs_id, cs_data in data.get("case_studies", {}).items():
         case_studies[cs_id] = _dict_to_case_study(cs_data)
-    
+
     return BenchmarkDataset(
-        metadata=data.get("metadata", {}),
-        case_studies=case_studies
+        metadata=data.get("metadata", {}), case_studies=case_studies
     )
 
 
@@ -410,9 +461,9 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
         metadata = BioProcessMetadata(
             name=p_data["metadata"]["name"],
             process_type=p_data["metadata"]["process_type"],
-            notes=p_data["metadata"].get("notes")
+            notes=p_data["metadata"].get("notes"),
         )
-    
+
     # Reconstruct time axis
     time_axis = None
     if p_data.get("time_axis"):
@@ -420,25 +471,25 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
             unit=p_data["time_axis"]["unit"],
             start=p_data["time_axis"]["start"],
             end=p_data["time_axis"]["end"],
-            time_reference=p_data["time_axis"]["time_reference"]
+            time_reference=p_data["time_axis"]["time_reference"],
         )
-    
+
     # Reconstruct reactor medium
     reactor_medium = None
     if p_data.get("reactor_medium"):
         reactor_medium = _dict_to_reactor_medium(p_data["reactor_medium"])
-    
+
     # Reconstruct process variables
     process_variables = {
         name: _dict_to_process_variable(pv_data)
         for name, pv_data in p_data.get("process_variables", {}).items()
     }
-    
+
     # Reconstruct volume
     volume = None
     if p_data.get("volume"):
         volume = _dict_to_volume(p_data["volume"])
-    
+
     # Reconstruct discrete events
     discrete_events = None
     if p_data.get("discrete_events"):
@@ -460,12 +511,12 @@ def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
         name: _dict_to_reactor_component(comp_data)
         for name, comp_data in rm_data.get("components", {}).items()
     }
-    
+
     return ReactorMedium(
         name=rm_data["name"],
         density=rm_data["density"],
         density_unit=rm_data["density_unit"],
-        components=components
+        components=components,
     )
 
 
@@ -499,13 +550,43 @@ def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
     )
 
 
-def _dict_to_timeseries_or_static(value_data: Dict) -> Union[TimeSeries, StaticVariable]:
+def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
+    """Reconstruct TimeSeries from a typed or untyped serialized payload."""
+    times = value_data.get("times")
+    values = value_data.get("values")
+
+    kwargs: Dict = {"values": values}
+    if values is not None:
+        if times is None:
+            raise ValueError(
+                "TimeSeries payload with discrete values must include 'times'."
+            )
+        kwargs["times"] = times
+
+    if "derived" in value_data:
+        kwargs["derived"] = bool(value_data["derived"])
+    if "jump_times" in value_data:
+        kwargs["jump_times"] = value_data["jump_times"]
+    if "breaks" in value_data:
+        kwargs["breaks"] = value_data["breaks"]
+    if "coeffs" in value_data:
+        kwargs["coeffs"] = value_data["coeffs"]
+    if "segment_start_piece_idx" in value_data:
+        kwargs["segment_start_piece_idx"] = value_data["segment_start_piece_idx"]
+    if "continuity_side" in value_data:
+        kwargs["continuity_side"] = value_data["continuity_side"]
+    if "metadata" in value_data:
+        kwargs["metadata"] = value_data["metadata"]
+
+    return TimeSeries(**kwargs)
+
+
+def _dict_to_timeseries_or_static(
+    value_data: Dict,
+) -> Union[TimeSeries, StaticVariable]:
     """Reconstruct TimeSeries or StaticVariable from dictionary"""
     if value_data["type"] == "TimeSeries":
-        return TimeSeries(
-            timepoints=value_data["timepoints"],
-            values=value_data["values"]
-        )
+        return _timeseries_from_dict_payload(value_data)
     elif value_data["type"] == "StaticVariable":
         return StaticVariable(value=value_data["value"])
     else:
@@ -518,11 +599,11 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
         name: _dict_to_volume_change(vc_data)
         for name, vc_data in vol_data.get("volume_changes", {}).items()
     }
-    
+
     return Volume(
         initial_volume=vol_data["initial_volume"],
         unit=vol_data["unit"],
-        volume_changes=volume_changes
+        volume_changes=volume_changes,
     )
 
 
@@ -539,10 +620,7 @@ def _dict_to_volume_change(vc_data: Dict):
 
     values = None
     if vc_data.get("values"):
-        values = TimeSeries(
-            timepoints=vc_data["values"]["timepoints"],
-            values=vc_data["values"]["values"]
-        )
+        values = _timeseries_from_dict_payload(vc_data["values"])
 
     common = dict(
         name=vc_data["name"],
@@ -561,7 +639,9 @@ def _dict_to_volume_change(vc_data: Dict):
         feed_medium = None
         if vc_data.get("feed_medium"):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-        return FeedVolumeChange(**common, feed_medium=feed_medium, interpolator=interpolator)
+        return FeedVolumeChange(
+            **common, feed_medium=feed_medium, interpolator=interpolator
+        )
     elif vc_type == "SampleVolumeChange":
         return SampleVolumeChange(**common, interpolator=interpolator)
     else:
@@ -574,12 +654,12 @@ def _dict_to_feed_medium(feed_data: Dict) -> FeedMedium:
         name: _dict_to_feed_component(comp_data)
         for name, comp_data in feed_data.get("components", {}).items()
     }
-    
+
     return FeedMedium(
         name=feed_data["name"],
         density=feed_data["density"],
         density_unit=feed_data["density_unit"],
-        components=components
+        components=components,
     )
 
 
@@ -589,7 +669,7 @@ def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
         name=comp_data["name"],
         unit=comp_data["unit"],
         is_controlled=comp_data["is_controlled"],
-        concentration=_dict_to_timeseries_or_static(comp_data["concentration"])
+        concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
     )
 
 
@@ -612,12 +692,18 @@ def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
         n_per_seg = [int(interpolator.n[i]) for i in range(n_seg)]
         result.update(
             {
-                "x": [np.asarray(interpolator.x[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
-                "y": [np.asarray(interpolator.y[i, :n_per_seg[i]]).tolist() for i in range(n_seg)],
+                "x": [
+                    np.asarray(interpolator.x[i, : n_per_seg[i]]).tolist()
+                    for i in range(n_seg)
+                ],
+                "y": [
+                    np.asarray(interpolator.y[i, : n_per_seg[i]]).tolist()
+                    for i in range(n_seg)
+                ],
                 "n": n_per_seg,
                 "n_segments": n_seg,
                 "segment_boundaries": np.asarray(
-                    interpolator.segment_boundaries[:n_seg + 1]
+                    interpolator.segment_boundaries[: n_seg + 1]
                 ).tolist(),
                 "bc_type": interpolator.bc_type,
             }
@@ -631,7 +717,9 @@ def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
             }
         )
     else:
-        raise ValueError(f"Unsupported interpolator kind for serialization: {interpolator.kind}")
+        raise ValueError(
+            f"Unsupported interpolator kind for serialization: {interpolator.kind}"
+        )
 
     result["interpolator_metadata"] = interpolator.interpolator_metadata
     return result
@@ -646,7 +734,9 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
         x_raw = data["x"]
         coeff_raw = data["coefficients"]
         x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
-        coefficients = coeff_raw if isinstance(coeff_raw, jnp.ndarray) else jnp.array(coeff_raw)
+        coefficients = (
+            coeff_raw if isinstance(coeff_raw, jnp.ndarray) else jnp.array(coeff_raw)
+        )
         return Interpolator(
             kind=kind,
             x=x,
@@ -662,9 +752,7 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
     seg_b_raw = data["segment_boundaries"]
 
     is_unpadded = (
-        isinstance(x_raw, list)
-        and len(x_raw) > 0
-        and isinstance(x_raw[0], list)
+        isinstance(x_raw, list) and len(x_raw) > 0 and isinstance(x_raw[0], list)
     )
 
     if is_unpadded:
@@ -691,7 +779,9 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
         x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
         y = y_raw if isinstance(y_raw, jnp.ndarray) else jnp.array(y_raw)
         n_arr = n_raw if isinstance(n_raw, jnp.ndarray) else jnp.array(n_raw)
-        seg_b = seg_b_raw if isinstance(seg_b_raw, jnp.ndarray) else jnp.array(seg_b_raw)
+        seg_b = (
+            seg_b_raw if isinstance(seg_b_raw, jnp.ndarray) else jnp.array(seg_b_raw)
+        )
 
     return Interpolator(
         kind=kind,
@@ -703,6 +793,7 @@ def _dict_to_interpolator(data: Dict) -> Interpolator:
         bc_type=data.get("bc_type", "natural"),
         interpolator_metadata=metadata,
     )
+
 
 def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
     """Convert DiscreteEvents to dictionary"""
@@ -729,8 +820,10 @@ def _dict_to_discrete_events(data: Dict) -> DiscreteEvents:
 # JSON Encoder for numpy/JAX arrays
 # ============================================================
 
+
 class NumpyEncoder(json.JSONEncoder):
     """JSON encoder that handles numpy/JAX arrays"""
+
     def default(self, obj):
         if isinstance(obj, (jnp.ndarray, np.ndarray)):
             return {"__ndarray__": obj.tolist(), "dtype": str(obj.dtype)}

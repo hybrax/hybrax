@@ -59,8 +59,18 @@ import interpax
 import jax
 import jax.numpy as jnp
 
-from .dataclasses import BioProcess, FeedVolumeChange, SampleVolumeChange, StaticVariable, TimeSeries
-from .splines import make_interpax_spline, build_interpax_spline, build_backtransform_spline
+from .dataclasses import (
+    BioProcess,
+    FeedVolumeChange,
+    SampleVolumeChange,
+    StaticVariable,
+    TimeSeries,
+)
+from .splines import (
+    make_interpax_spline,
+    build_interpax_spline,
+    build_backtransform_spline,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +103,7 @@ def _batch_splines(
 # ---------------------------------------------------------------------------
 # ControlSplines module
 # ---------------------------------------------------------------------------
+
 
 class ControlSplines(eqx.Module):
     """JAX/Equinox module that evaluates all controlled signals at time *t*.
@@ -129,8 +140,8 @@ class ControlSplines(eqx.Module):
     control_names: tuple = eqx.field(static=True)
     flow_indices: tuple = eqx.field(static=True)
     ctrl_indices: tuple = eqx.field(static=True)
-    _batched: interpax.PPoly          # batched PPoly with shape (4, m, n_controls)
-    _deriv_mask: jnp.ndarray          # boolean mask: True → return d/dt
+    _batched: interpax.PPoly  # batched PPoly with shape (4, m, n_controls)
+    _deriv_mask: jnp.ndarray  # boolean mask: True → return d/dt
     _n_controls: int = eqx.field(static=True)
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
@@ -150,7 +161,7 @@ class ControlSplines(eqx.Module):
         """
         if self._n_controls == 0:
             return jnp.zeros(0)
-        vals = self._batched(t)         # (n_controls,)
+        vals = self._batched(t)  # (n_controls,)
         dvals = self._batched(t, nu=1)  # (n_controls,) — derivative
         return jnp.where(self._deriv_mask, dvals, vals)
 
@@ -158,6 +169,7 @@ class ControlSplines(eqx.Module):
 # ---------------------------------------------------------------------------
 # RhsOde module
 # ---------------------------------------------------------------------------
+
 
 class RhsOde(eqx.Module):
     """JAX/Equinox module implementing the generalized fed-batch ODE RHS.
@@ -312,6 +324,7 @@ class RhsOde(eqx.Module):
 # Factory functions
 # ---------------------------------------------------------------------------
 
+
 def get_control_splines(process: BioProcess) -> ControlSplines:
     """Build a :class:`ControlSplines` module from a :class:`BioProcess`.
 
@@ -351,7 +364,7 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
             sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
-                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.times),
                 jnp.asarray(vc.values.values),
             )
         control_names.append(vc_name)
@@ -368,7 +381,7 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
             sp = build_interpax_spline(pv.interpolator)[0][0]
         elif isinstance(pv.values, TimeSeries):
             sp = make_interpax_spline(
-                jnp.asarray(pv.values.timepoints),
+                jnp.asarray(pv.values.times),
                 jnp.asarray(pv.values.values),
             )
         else:
@@ -405,6 +418,7 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
         _deriv_mask=deriv_mask,
         _n_controls=len(splines),
     )
+
 
 def get_rhs_ode(process: BioProcess) -> RhsOde:
     """Build a :class:`RhsOde` module from a :class:`BioProcess`.
@@ -507,6 +521,7 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
 # Discrete event handling
 # ---------------------------------------------------------------------------
 
+
 def extract_discrete_events(
     process: BioProcess,
     mb: RhsOde,
@@ -538,7 +553,7 @@ def extract_discrete_events(
         if vc.is_continuous:
             continue
 
-        tp = jnp.asarray(vc.values.timepoints, dtype=float)
+        tp = jnp.asarray(vc.values.times, dtype=float)
         vv = jnp.asarray(vc.values.values, dtype=float)
 
         for t_event, dV_event in zip(tp, vv):
@@ -553,23 +568,27 @@ def extract_discrete_events(
                             conc = vc.feed_medium.components[sp_name].concentration
                             if isinstance(conc, StaticVariable):
                                 Cin_event = Cin_event.at[j].set(float(conc.value))
-                events.append(dict(
-                    t=float(t_event),
-                    kind='bolus_feed',
-                    dV=float(dV_event),
-                    Cin=Cin_event,
-                    source=vc_name,
-                ))
+                events.append(
+                    dict(
+                        t=float(t_event),
+                        kind="bolus_feed",
+                        dV=float(dV_event),
+                        Cin=Cin_event,
+                        source=vc_name,
+                    )
+                )
             else:
-                events.append(dict(
-                    t=float(t_event),
-                    kind='sample',
-                    dV=float(dV_event),
-                    Cin=None,
-                    source=vc_name,
-                ))
+                events.append(
+                    dict(
+                        t=float(t_event),
+                        kind="sample",
+                        dV=float(dV_event),
+                        Cin=None,
+                        source=vc_name,
+                    )
+                )
 
-    events.sort(key=lambda e: e['t'])
+    events.sort(key=lambda e: e["t"])
     return events
 
 
@@ -617,7 +636,7 @@ def build_conc_splines(
         else:
             ts = comp.concentration
             conc_splines[sp_name] = make_interpax_spline(
-                jnp.asarray(ts.timepoints, dtype=float),
+                jnp.asarray(ts.times, dtype=float),
                 jnp.asarray(ts.values, dtype=float),
             )
 
@@ -627,6 +646,7 @@ def build_conc_splines(
 # ---------------------------------------------------------------------------
 # Analytical q(t) builder and specific rate estimation
 # ---------------------------------------------------------------------------
+
 
 def build_q_func(
     process: BioProcess,
@@ -676,7 +696,7 @@ def build_q_func(
             sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
-                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.times),
                 jnp.asarray(vc.values.values),
             )
         cum_splines_ctrl.append(sp)
@@ -688,7 +708,7 @@ def build_q_func(
             sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
-                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.times),
                 jnp.asarray(vc.values.values),
             )
         cum_splines_mod.append(sp)
@@ -704,9 +724,9 @@ def build_q_func(
     # -- Discrete events: precompute sorted times and cumulative dV --
     events = extract_discrete_events(process, mb)
     if events:
-        ev_sorted = sorted(events, key=lambda e: e['t'])
-        ev_times = jnp.array([e['t'] for e in ev_sorted])
-        ev_dV_cum = jnp.cumsum(jnp.array([e['dV'] for e in ev_sorted]))
+        ev_sorted = sorted(events, key=lambda e: e["t"])
+        ev_times = jnp.array([e["t"] for e in ev_sorted])
+        ev_dV_cum = jnp.cumsum(jnp.array([e["dV"] for e in ev_sorted]))
     else:
         ev_times = None
         ev_dV_cum = None
@@ -739,7 +759,7 @@ def build_q_func(
         if batched_vol is not None:
             V_t = V_t + jnp.sum(batched_vol(t))  # single batched eval
         if ev_times is not None:
-            idx = jnp.searchsorted(ev_times, t, side='right')
+            idx = jnp.searchsorted(ev_times, t, side="right")
             V_t = V_t + jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
         V_t = jnp.maximum(V_t, jnp.array(1e-10))
 
@@ -815,6 +835,7 @@ def estimate_specific_rates(
 # Full hybrid ODE integration
 # ---------------------------------------------------------------------------
 
+
 def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
     """Build the ODE right-hand side function for a segment.
 
@@ -832,7 +853,9 @@ def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
 
     if conc_eval_list is not None:
         biomass_idx = mb.biomass_idx
-        intra_idx = jnp.array(mb.intracellular_indices) if mb.intracellular_indices else None
+        intra_idx = (
+            jnp.array(mb.intracellular_indices) if mb.intracellular_indices else None
+        )
 
     def rhs(t, state, args):
         u = ctrl(t)
@@ -852,7 +875,7 @@ def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
                 X_active = X_active - jnp.sum(all_conc[intra_idx])
             X_active = jnp.maximum(X_active, 1e-6)
 
-            c_species = state[:mb.q_size]
+            c_species = state[: mb.q_size]
             V = state[mb.q_size]
 
             reaction = q * X_active
@@ -1064,7 +1087,7 @@ def integrate_process_pseudospace(
             sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
-                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.times),
                 jnp.asarray(vc.values.values),
             )
         cum_splines_mod.append(sp)
@@ -1078,9 +1101,7 @@ def integrate_process_pseudospace(
     if events:
         ev_sorted = sorted(events, key=lambda e: e["t"])
         ev_times = jnp.asarray([e["t"] for e in ev_sorted], dtype=float)
-        ev_dV_cum = jnp.cumsum(
-            jnp.asarray([e["dV"] for e in ev_sorted], dtype=float)
-        )
+        ev_dV_cum = jnp.cumsum(jnp.asarray([e["dV"] for e in ev_sorted], dtype=float))
         jump_times = sorted(
             set(float(e["t"]) for e in ev_sorted if t_start < float(e["t"]) < t_end)
         )
@@ -1089,9 +1110,7 @@ def integrate_process_pseudospace(
         ev_dV_cum = None
         jump_times = []
     jump_ts = (
-        jnp.asarray(jump_times, dtype=float)
-        if (use_jump_ts and jump_times)
-        else None
+        jnp.asarray(jump_times, dtype=float) if (use_jump_ts and jump_times) else None
     )
 
     flow_idx = jnp.array(list(ctrl.flow_indices))
@@ -1102,7 +1121,11 @@ def integrate_process_pseudospace(
     # Initial state: [c*_0, V_cont_0], where c*_0 == c_0.
     c0 = jnp.array(
         [
-            float(jnp.asarray(process.reactor_medium.components[s].concentration.values[0]))
+            float(
+                jnp.asarray(
+                    process.reactor_medium.components[s].concentration.values[0]
+                )
+            )
             for s in mb.species_names
         ]
     )
@@ -1312,15 +1335,19 @@ def integrate_process(
             sp = build_interpax_spline(vc.interpolator)[0][0]
         else:
             sp = make_interpax_spline(
-                jnp.asarray(vc.values.timepoints),
+                jnp.asarray(vc.values.times),
                 jnp.asarray(vc.values.values),
             )
         cum_splines_mod_list.append(sp)
-    batched_mod = _batch_splines(cum_splines_mod_list, t_start, t_end) if cum_splines_mod_list else None
+    batched_mod = (
+        _batch_splines(cum_splines_mod_list, t_start, t_end)
+        if cum_splines_mod_list
+        else None
+    )
 
     # Extract discrete events and build segment boundaries
     events = extract_discrete_events(process, mb)
-    event_times = sorted(set(ev['t'] for ev in events))
+    event_times = sorted(set(ev["t"] for ev in events))
     event_times_in_range = [t for t in event_times if t_start < t < t_end]
     boundaries = [t_start] + event_times_in_range + [t_end]
     n_seg = len(boundaries) - 1
@@ -1328,13 +1355,19 @@ def integrate_process(
     # Build event lookup
     event_lookup: Dict[float, List[Dict]] = {}
     for ev in events:
-        event_lookup.setdefault(ev['t'], []).append(ev)
+        event_lookup.setdefault(ev["t"], []).append(ev)
 
     # Initial state (in original coordinates)
-    c0 = jnp.array([
-        float(jnp.asarray(process.reactor_medium.components[s].concentration.values[0]))
-        for s in mb.species_names
-    ])
+    c0 = jnp.array(
+        [
+            float(
+                jnp.asarray(
+                    process.reactor_medium.components[s].concentration.values[0]
+                )
+            )
+            for s in mb.species_names
+        ]
+    )
     c0 = jnp.maximum(c0, 0.0)
     V0 = float(process.volume.initial_volume)
 
@@ -1394,15 +1427,14 @@ def integrate_process(
     # Stack into JAX arrays for lax.scan
     seg_t_lo = jnp.array([boundaries[i] for i in range(n_seg)])
     seg_t_hi = jnp.array([boundaries[i + 1] for i in range(n_seg)])
-    seg_ts_padded = jnp.stack(seg_t_padded_list)      # (n_seg, max_ts_len)
-    seg_n_valid = jnp.array(seg_t_valid_len)           # (n_seg,)
+    seg_ts_padded = jnp.stack(seg_t_padded_list)  # (n_seg, max_ts_len)
+    seg_n_valid = jnp.array(seg_t_valid_len)  # (n_seg,)
 
     # ---------------------------------------------------------------
     # Pre-build padded event arrays for each segment boundary
     # ---------------------------------------------------------------
     max_ev = max(
-        (len(event_lookup.get(boundaries[i + 1], []))
-         for i in range(n_seg)),
+        (len(event_lookup.get(boundaries[i + 1], [])) for i in range(n_seg)),
         default=0,
     )
     max_ev = max(max_ev, 1)  # at least 1 slot for padding
@@ -1416,19 +1448,27 @@ def integrate_process(
         evs = event_lookup.get(boundaries[i + 1], [])
         ev_n_arr = ev_n_arr.at[i].set(len(evs))
         for j, ev in enumerate(evs):
-            ev_dV_arr = ev_dV_arr.at[i, j].set(ev['dV'])
-            if ev['kind'] == 'bolus_feed' and ev['Cin'] is not None:
+            ev_dV_arr = ev_dV_arr.at[i, j].set(ev["dV"])
+            if ev["kind"] == "bolus_feed" and ev["Cin"] is not None:
                 ev_is_bolus_arr = ev_is_bolus_arr.at[i, j].set(True)
-                ev_Cin_arr = ev_Cin_arr.at[i, j].set(jnp.asarray(ev['Cin']))
+                ev_Cin_arr = ev_Cin_arr.at[i, j].set(jnp.asarray(ev["Cin"]))
     # Last segment has no events (ev_n_arr[-1] stays 0)
 
     # ---------------------------------------------------------------
     # JIT-compiled scan over segments
     # ---------------------------------------------------------------
     @eqx.filter_jit
-    def _run_scan(y0_norm, s_t_lo, s_t_hi, s_ts, s_n_valid,
-                  s_ev_n, s_ev_dV, s_ev_is_bolus, s_ev_Cin):
-
+    def _run_scan(
+        y0_norm,
+        s_t_lo,
+        s_t_hi,
+        s_ts,
+        s_n_valid,
+        s_ev_n,
+        s_ev_dV,
+        s_ev_is_bolus,
+        s_ev_Cin,
+    ):
         def _scan_body(carry, x):
             state_n = carry
             t_lo, t_hi, ts, n_val, n_ev, e_dV, e_bolus, e_Cin = x
@@ -1436,8 +1476,11 @@ def integrate_process(
             dt0 = jnp.minimum(0.1, (t_hi - t_lo) / 10.0)
 
             sol = diffrax.diffeqsolve(
-                term, solver,
-                t0=t_lo, t1=t_hi, dt0=dt0,
+                term,
+                solver,
+                t0=t_lo,
+                t1=t_hi,
+                dt0=dt0,
                 y0=state_n,
                 saveat=diffrax.SaveAt(ts=ts),
                 stepsize_controller=stepsize_controller,
@@ -1471,21 +1514,28 @@ def integrate_process(
             n_steps = sol.stats["num_steps"]
             return state_n_next, (ys_norm, n_steps)
 
-        xs = (s_t_lo, s_t_hi, s_ts, s_n_valid,
-              s_ev_n, s_ev_dV, s_ev_is_bolus, s_ev_Cin)
+        xs = (s_t_lo, s_t_hi, s_ts, s_n_valid, s_ev_n, s_ev_dV, s_ev_is_bolus, s_ev_Cin)
         _, (all_ys, all_steps) = jax.lax.scan(_scan_body, y0_norm, xs)
         return all_ys, all_steps  # (n_seg, max_ts_len, state_dim), (n_seg,)
 
     all_ys_norm, all_steps = _run_scan(
         state_norm_init,
-        seg_t_lo, seg_t_hi, seg_ts_padded, seg_n_valid,
-        ev_n_arr, ev_dV_arr, ev_is_bolus_arr, ev_Cin_arr,
+        seg_t_lo,
+        seg_t_hi,
+        seg_ts_padded,
+        seg_n_valid,
+        ev_n_arr,
+        ev_dV_arr,
+        ev_is_bolus_arr,
+        ev_Cin_arr,
     )
 
     # ---------------------------------------------------------------
     # Post-process: un-normalize, extract valid points, concatenate
     # ---------------------------------------------------------------
-    all_ys_orig = all_ys_norm * state_scale[None, None, :]  # (n_seg, max_ts_len, state_dim)
+    all_ys_orig = (
+        all_ys_norm * state_scale[None, None, :]
+    )  # (n_seg, max_ts_len, state_dim)
 
     t_segments = []
     c_segments = []
@@ -1514,9 +1564,11 @@ def integrate_process(
     V_out = jnp.concatenate(V_segments)
 
     return {
-        't': t_out, 'c': c_out, 'V': V_out,
-        'stats': {
-            'num_steps': int(jnp.sum(all_steps)),
-            'steps_per_segment': all_steps,
+        "t": t_out,
+        "c": c_out,
+        "V": V_out,
+        "stats": {
+            "num_steps": int(jnp.sum(all_steps)),
+            "steps_per_segment": all_steps,
         },
     }
