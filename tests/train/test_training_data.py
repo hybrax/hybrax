@@ -37,7 +37,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                     is_controlled=False,
                     is_continuous=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([2.0]),
+                        times=jnp.asarray([2.0]),
                         values=jnp.asarray([-0.1]),
                     ),
                 )
@@ -62,7 +62,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 2.0, 4.0]),
+                    times=jnp.asarray([0.0, 2.0, 4.0]),
                     values=jnp.asarray([1.0, 1.2, 1.4]),
                 ),
             ),
@@ -71,7 +71,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 2.0, 4.0]),
+                    times=jnp.asarray([0.0, 2.0, 4.0]),
                     values=jnp.asarray([0.2, 0.3, 0.4]),
                 ),
             ),
@@ -80,7 +80,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 unit="K",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 2.0, 4.0]),
+                    times=jnp.asarray([0.0, 2.0, 4.0]),
                     values=jnp.asarray([300.0, 301.0, 302.0]),
                 ),
             ),
@@ -100,7 +100,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                     is_controlled=False,
                     is_continuous=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([2.0]),
+                        times=jnp.asarray([2.0]),
                         values=jnp.asarray([-0.2]),
                     ),
                 )
@@ -125,7 +125,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 1.0]),
+                    times=jnp.asarray([0.0, 1.0]),
                     values=jnp.asarray([1.1, 1.3]),
                 ),
             ),
@@ -134,7 +134,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 1.0]),
+                    times=jnp.asarray([0.0, 1.0]),
                     values=jnp.asarray([0.25, 0.35]),
                 ),
             ),
@@ -143,7 +143,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 unit="K",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 1.0]),
+                    times=jnp.asarray([0.0, 1.0]),
                     values=jnp.asarray([299.0, 300.0]),
                 ),
             ),

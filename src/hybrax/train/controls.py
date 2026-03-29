@@ -179,7 +179,7 @@ def _make_source_from_process_variable(
         return _make_source_from_xy(
             name=name,
             kind="process_variable",
-            times=process_variable.values.timepoints,
+            times=process_variable.values.times,
             values=process_variable.values.values,
             metadata={"source": "timeseries"},
             fallback_end=float(process.time_axis.end),
@@ -213,7 +213,7 @@ def _serialize_concentration(value: TimeSeries | StaticVariable) -> dict[str, An
         }
     return {
         "kind": "timeseries",
-        "timepoints": _as_numpy(value.timepoints).tolist(),
+        "times": _as_numpy(value.times).tolist(),
         "values": _as_numpy(value.values).tolist(),
     }
 
@@ -243,7 +243,7 @@ def _make_source_from_volume_change(
     return _make_source_from_xy(
         name=name,
         kind="volume_change",
-        times=volume_change.values.timepoints,
+        times=volume_change.values.times,
         values=volume_change.values.values,
         metadata={
             "source": "timeseries",
@@ -260,12 +260,10 @@ def _collect_online_time_points(process: BioProcess) -> np.ndarray:
 
     for process_variable in process.process_variables.values():
         if isinstance(process_variable.values, TimeSeries):
-            times.extend(
-                float(t) for t in _as_numpy(process_variable.values.timepoints)
-            )
+            times.extend(float(t) for t in _as_numpy(process_variable.values.times))
 
     for volume_change in process.volume.volume_changes.values():
-        times.extend(float(t) for t in _as_numpy(volume_change.values.timepoints))
+        times.extend(float(t) for t in _as_numpy(volume_change.values.times))
 
     return np.asarray(sorted(set(times)), dtype=float)
 
@@ -292,7 +290,7 @@ def build_sample_acc_source_default(process: BioProcess) -> SignalSource:
     for volume_change in process.volume.volume_changes.values():
         if not isinstance(volume_change, SampleVolumeChange):
             continue
-        times = _as_numpy(volume_change.values.timepoints)
+        times = _as_numpy(volume_change.values.times)
         values = _as_numpy(volume_change.values.values)
         for t, delta in zip(times.tolist(), values.tolist(), strict=False):
             sample_changes.append((float(t), abs(float(delta))))
@@ -352,7 +350,7 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
 
         event_pairs = list(
             zip(
-                _as_numpy(volume_change.values.timepoints).tolist(),
+                _as_numpy(volume_change.values.times).tolist(),
                 _as_numpy(volume_change.values.values).tolist(),
                 strict=False,
             )

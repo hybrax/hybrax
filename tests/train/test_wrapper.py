@@ -20,7 +20,11 @@ from bpbench.dataclasses import (
 
 from bp_train.controls_store import ControlsStore
 from bp_train.model_api import ReactionOutputs, UserReactionModule
-from bp_train.wrapper import LibraryRhsWrapper, ModeledFeedSpec
+from bp_train.wrapper import (
+    LibraryRhsWrapper,
+    ModeledFeedSpec,
+    _component_series_from_serialized,
+)
 
 
 class ConstantReactionModule(UserReactionModule):
@@ -92,7 +96,7 @@ def _make_single_process_collection(
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.0, 2.0]),
+                        times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([feed_rate, feed_rate]),
                     ),
                     feed_medium=feed_medium,
@@ -103,7 +107,7 @@ def _make_single_process_collection(
                     is_controlled=False,
                     is_continuous=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([1.0]),
+                        times=jnp.asarray([1.0]),
                         values=jnp.asarray([-0.1]),
                     ),
                 ),
@@ -116,7 +120,7 @@ def _make_single_process_collection(
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 2.0]),
+                    times=jnp.asarray([0.0, 2.0]),
                     values=jnp.asarray([1.0, 1.0]),
                 ),
             )
@@ -166,7 +170,7 @@ def _make_multi_feed_two_species_collection() -> BioProcessCollection:
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.0, 2.0]),
+                        times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([0.2, 0.2]),
                     ),
                     feed_medium=feed_a,
@@ -177,7 +181,7 @@ def _make_multi_feed_two_species_collection() -> BioProcessCollection:
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.0, 2.0]),
+                        times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([0.3, 0.3]),
                     ),
                     feed_medium=feed_b,
@@ -188,7 +192,7 @@ def _make_multi_feed_two_species_collection() -> BioProcessCollection:
                     is_controlled=False,
                     is_continuous=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([1.0]),
+                        times=jnp.asarray([1.0]),
                         values=jnp.asarray([-0.1]),
                     ),
                 ),
@@ -201,7 +205,7 @@ def _make_multi_feed_two_species_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 2.0]),
+                    times=jnp.asarray([0.0, 2.0]),
                     values=jnp.asarray([1.0, 1.0]),
                 ),
             ),
@@ -210,7 +214,7 @@ def _make_multi_feed_two_species_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 2.0]),
+                    times=jnp.asarray([0.0, 2.0]),
                     values=jnp.asarray([2.0, 2.0]),
                 ),
             ),
@@ -378,4 +382,61 @@ def test_wrapper_rejects_non_eqx_reaction_module():
             reaction_module=_NonEqxReactionModule(),
             controls=controls,
             species_names=["X"],
+        )
+
+
+def test_component_series_from_serialized_accepts_canonical_times():
+    xp, fp = _component_series_from_serialized(
+        {
+            "concentration": {
+                "kind": "timeseries",
+                "times": [0.0, 1.0],
+                "values": [2.0, 3.0],
+            }
+        }
+    )
+    assert xp.tolist() == pytest.approx([0.0, 1.0])
+    assert fp.tolist() == pytest.approx([2.0, 3.0])
+
+
+def test_component_series_from_serialized_falls_back_to_legacy_timepoints():
+    xp, fp = _component_series_from_serialized(
+        {
+            "concentration": {
+                "kind": "timeseries",
+                "timepoints": [0.0, 1.0],
+                "values": [2.0, 3.0],
+            }
+        }
+    )
+    assert xp.tolist() == pytest.approx([0.0, 1.0])
+    assert fp.tolist() == pytest.approx([2.0, 3.0])
+
+
+def test_component_series_from_serialized_accepts_equal_times_and_timepoints():
+    xp, fp = _component_series_from_serialized(
+        {
+            "concentration": {
+                "kind": "timeseries",
+                "times": [0.0, 1.0],
+                "timepoints": [0.0, 1.0],
+                "values": [2.0, 3.0],
+            }
+        }
+    )
+    assert xp.tolist() == pytest.approx([0.0, 1.0])
+    assert fp.tolist() == pytest.approx([2.0, 3.0])
+
+
+def test_component_series_from_serialized_rejects_conflicting_times_and_timepoints():
+    with pytest.raises(ValueError, match="conflicting 'times' and 'timepoints'"):
+        _component_series_from_serialized(
+            {
+                "concentration": {
+                    "kind": "timeseries",
+                    "times": [0.0, 1.0],
+                    "timepoints": [0.0, 2.0],
+                    "values": [2.0, 3.0],
+                }
+            }
         )

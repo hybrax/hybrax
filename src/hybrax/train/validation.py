@@ -56,7 +56,7 @@ def _serialize_concentration(value: TimeSeries | StaticVariable) -> dict[str, ob
         }
     return {
         "kind": "timeseries",
-        "timepoints": np.asarray(value.timepoints, dtype=float).tolist(),
+        "times": np.asarray(value.times, dtype=float).tolist(),
         "values": np.asarray(value.values, dtype=float).tolist(),
     }
 

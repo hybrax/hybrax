@@ -66,12 +66,12 @@ def _timeseries_numpy(process, variable_name: str) -> tuple[np.ndarray, np.ndarr
     """Extract measurement time/value arrays from a process variable."""
     variable = process.process_variables[variable_name]
     values = variable.values
-    if not hasattr(values, "timepoints") or not hasattr(values, "values"):
+    if not hasattr(values, "times") or not hasattr(values, "values"):
         raise ValueError(
             f"{process.metadata.name}: target variable {variable_name!r} must be a "
-            "time-series variable with timepoints and values"
+            "time-series variable with times and values"
         )
-    ts = np.asarray(values.timepoints, dtype=float)
+    ts = np.asarray(values.times, dtype=float)
     ys = np.asarray(values.values, dtype=float)
     if ts.ndim != 1 or ys.ndim != 1 or ts.size != ys.size:
         raise ValueError(

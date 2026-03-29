@@ -39,7 +39,7 @@ def _make_feed_collection() -> BioProcessCollection:
                 name="glucose",
                 unit="g/L",
                 concentration=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 1.0]),
+                    times=jnp.asarray([0.0, 1.0]),
                     values=jnp.asarray([20.0, 20.0]),
                 ),
                 is_controlled=False,
@@ -59,7 +59,7 @@ def _make_feed_collection() -> BioProcessCollection:
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.0, 1.0]),
+                        times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([0.1, 0.1]),
                     ),
                     feed_medium=feed_medium,
@@ -73,7 +73,7 @@ def _make_feed_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 1.0]),
+                    times=jnp.asarray([0.0, 1.0]),
                     values=jnp.asarray([1.0, 1.2]),
                 ),
             )
@@ -97,7 +97,7 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
-                "            timepoints=jnp.asarray([0.0, 1.0]),",
+                "            times=jnp.asarray([0.0, 1.0]),",
                 "            values=jnp.asarray([0.1, 0.2]),",
                 "        ),",
                 "        is_intracellular=False,",
@@ -128,7 +128,7 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "        name='glucose',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
-                "            timepoints=jnp.asarray([0.0, 1.0]),",
+                "            times=jnp.asarray([0.0, 1.0]),",
                 "            values=jnp.asarray([1.0, 1.2]),",
                 "        ),",
                 "        is_intracellular=False,",
@@ -165,7 +165,7 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "        name='glucose',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
-                "            timepoints=jnp.asarray([0.0, 1.0]),",
+                "            times=jnp.asarray([0.0, 1.0]),",
                 "            values=jnp.asarray([1.0, 1.2]),",
                 "        ),",
                 "        is_intracellular=False,",
@@ -198,7 +198,7 @@ def _make_invalid_collection() -> BioProcessCollection:
                     is_controlled=False,
                     is_continuous=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.5]),
+                        times=jnp.asarray([0.5]),
                         values=jnp.asarray([-0.1]),
                     ),
                 )
@@ -211,7 +211,7 @@ def _make_invalid_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 1.0]),
+                    times=jnp.asarray([0.0, 1.0]),
                     values=jnp.asarray([1.0, 1.2]),
                 ),
             )
@@ -238,7 +238,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                         is_controlled=False,
                         is_continuous=False,
                         values=TimeSeries(
-                            timepoints=jnp.asarray([0.5]),
+                            times=jnp.asarray([0.5]),
                             values=jnp.asarray([-0.1]),
                         ),
                     )
@@ -263,7 +263,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                     unit="g/L",
                     is_controlled=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.0, 1.0]),
+                        times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([1.0, 1.1]),
                     ),
                 ),
@@ -272,7 +272,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                     unit="C",
                     is_controlled=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([0.0, 1.0]),
+                        times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([30.0, 31.0]),
                     ),
                 ),
@@ -310,7 +310,7 @@ def _make_bolus_collection() -> BioProcessCollection:
                     is_controlled=True,
                     is_continuous=False,
                     values=TimeSeries(
-                        timepoints=jnp.asarray([5.0]),
+                        times=jnp.asarray([5.0]),
                         values=jnp.asarray([1.0]),
                     ),
                     feed_medium=feed_medium,
@@ -336,7 +336,7 @@ def _make_bolus_collection() -> BioProcessCollection:
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
-                    timepoints=jnp.asarray([0.0, 5.0, 10.0]),
+                    times=jnp.asarray([0.0, 5.0, 10.0]),
                     values=jnp.asarray([1.0, 1.0, 1.0]),
                 ),
             )
@@ -590,7 +590,7 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
         is_intracellular=False,
     )
     process.volume.volume_changes["feed_A"].values = TimeSeries(
-        timepoints=jnp.asarray([0.0, 1.0]),
+        times=jnp.asarray([0.0, 1.0]),
         values=jnp.asarray([0.0, 0.0]),
     )
     process.volume.volume_changes["feed_A"].feed_medium.components = {}

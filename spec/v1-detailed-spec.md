@@ -122,6 +122,15 @@ It must preserve all fields from the input and may modify or add:
 
 The prepared artifact is the canonical input to V1 training.
 
+`TimeSeries` data in prepared artifacts should use canonical `bpbench`
+`times`/`values` fields. Beyond carrying sampled traces, `TimeSeries` also
+supports higher-level operations that V1 code may rely on where useful,
+including:
+
+- arithmetic combinations between compatible series,
+- differentiation via `deriv(...)`,
+- spline-based evaluation/integration for represented series.
+
 The prepared artifact stores structural control metadata and preparation
 provenance. Dense interpolation payloads and padded runtime arrays are built by
 `ControlsStore` at load time from the prepared process collection.

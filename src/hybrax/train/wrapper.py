@@ -30,7 +30,29 @@ def _component_series_from_serialized(
             [value, value], dtype=np.float32
         )
     if kind == "timeseries":
-        xp = np.asarray(concentration["timepoints"], dtype=np.float32)
+        times_raw = concentration.get("times")
+        legacy_times_raw = concentration.get("timepoints")
+        if times_raw is None and legacy_times_raw is None:
+            raise ValueError("timeseries concentration payload must include 'times'")
+
+        if times_raw is not None and legacy_times_raw is not None:
+            times = np.asarray(times_raw, dtype=np.float32)
+            legacy_times = np.asarray(legacy_times_raw, dtype=np.float32)
+            if times.shape != legacy_times.shape or not np.array_equal(
+                times,
+                legacy_times,
+            ):
+                raise ValueError(
+                    "timeseries concentration payload has conflicting "
+                    "'times' and 'timepoints'"
+                )
+            xp = times
+        else:
+            xp = np.asarray(
+                times_raw if times_raw is not None else legacy_times_raw,
+                dtype=np.float32,
+            )
+
         fp = np.asarray(concentration["values"], dtype=np.float32)
         if xp.ndim != 1 or fp.ndim != 1 or xp.size != fp.size or xp.size == 0:
             raise ValueError(
