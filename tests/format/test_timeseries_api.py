@@ -1,4 +1,4 @@
-"""Phase 1 parity tests for vendored bpbench.time_series module."""
+"""Stable API tests for bpbench TimeSeries behavior."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def test_io_round_trip_preserves_canonical_fields() -> None:
         coeffs=[[1.0, 2.0, 3.0, 4.0], [2.0, 3.0, 4.0, 5.0]],
         segment_start_piece_idx=[0],
         continuity_side="left",
-        metadata={"source": "phase1-test"},
+        metadata={"source": "api-test"},
     )
 
     payload = original.to_dict()
@@ -73,7 +73,7 @@ def test_io_round_trip_preserves_canonical_fields() -> None:
     )
     assert rebuilt.derived is True
     assert rebuilt.continuity_side == "left"
-    assert rebuilt.metadata == {"source": "phase1-test"}
+    assert rebuilt.metadata == {"source": "api-test"}
 
 
 def test_exact_add_matches_pointwise_eval() -> None:
@@ -107,6 +107,25 @@ def test_exact_add_matches_pointwise_eval() -> None:
 
 
 def test_public_bpbench_timeseries_rejects_legacy_timepoints_constructor() -> None:
-    public_ts_cls = bpbench.TimeSeries
+    assert bpbench.TimeSeries is TimeSeries
     with pytest.raises(TypeError):
-        public_ts_cls(timepoints=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
+        bpbench.TimeSeries(timepoints=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
+
+
+def test_canonical_times_mode_keeps_strict_invariants() -> None:
+    with pytest.raises(ValueError, match="times and values must have the same length"):
+        bpbench.TimeSeries(
+            times=np.array([0.0, 1.0, 2.0]),
+            values=np.array([1.0, 2.0]),
+        )
+    with pytest.raises(ValueError, match="times must be strictly increasing"):
+        bpbench.TimeSeries(
+            times=np.array([0.0, 0.0, 1.0]),
+            values=np.array([1.0, 2.0, 3.0]),
+        )
+
+
+def test_timepoints_property_is_removed() -> None:
+    ts = bpbench.TimeSeries(times=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
+    with pytest.raises(AttributeError):
+        _ = ts.timepoints

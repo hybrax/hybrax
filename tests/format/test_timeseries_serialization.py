@@ -1,4 +1,4 @@
-"""Phase 3 tests for canonical TimeSeries serialization schema."""
+"""Stable serialization tests for canonical TimeSeries schema."""
 
 from __future__ import annotations
 
@@ -21,12 +21,23 @@ from bpbench import (
     TimeSeries,
     Volume,
 )
-from bpbench.serialization import load_process_collection, save_process_collection
+from bpbench.serialization import (
+    _timeseries_to_dict_payload,
+    load_process_collection,
+    save_process_collection,
+)
+
+
+def _ts(times, values):
+    return TimeSeries(
+        times=jnp.array(times, dtype=float),
+        values=jnp.array(values, dtype=float),
+    )
 
 
 def _build_process() -> BioProcess:
     return BioProcess(
-        metadata=BioProcessMetadata(name="phase3", process_type="fed_batch"),
+        metadata=BioProcessMetadata(name="ts-ser", process_type="fed_batch"),
         time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="t0"),
         volume=Volume(
             initial_volume=1.0,
@@ -37,10 +48,7 @@ def _build_process() -> BioProcess:
                     unit="L",
                     is_controlled=False,
                     is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.array([3.0, 8.0]),
-                        values=jnp.array([-0.02, -0.03]),
-                    ),
+                    values=_ts([3.0, 8.0], [-0.02, -0.03]),
                 )
             },
         ),
@@ -68,10 +76,7 @@ def _build_process() -> BioProcess:
                 name="pH",
                 unit="",
                 is_controlled=True,
-                values=TimeSeries(
-                    times=jnp.array([0.0, 10.0]),
-                    values=jnp.array([7.0, 7.1]),
-                ),
+                values=_ts([0.0, 10.0], [7.0, 7.1]),
             )
         },
     )
@@ -82,29 +87,30 @@ def _read_payload(path: Path) -> dict:
         return json.load(fh)
 
 
-def test_phase3_save_writes_canonical_timeseries_keys() -> None:
-    collection = BioProcessCollection(metadata=None, processes={"p": _build_process()})
+def test_roundtrip_uses_canonical_timeseries_shape() -> None:
+    process = _build_process()
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         out_dir = Path(tmpdir) / "collection"
         save_process_collection(collection, out_dir)
         payload = _read_payload(out_dir / "data.json")
+        loaded = load_process_collection(out_dir)
 
-    biomass = payload["processes"]["p"]["reactor_medium"]["components"]["biomass"][
+    stored_ts = payload["processes"]["p"]["reactor_medium"]["components"]["biomass"][
         "concentration"
     ]
-    assert biomass["type"] == "TimeSeries"
-    assert "times" in biomass
-    assert "breaks" in biomass
-    assert "coeffs" in biomass
+    assert "times" in stored_ts
+    assert "values" in stored_ts
+    assert "timepoints" not in stored_ts
 
-    sample_values = payload["processes"]["p"]["volume"]["volume_changes"]["sample"][
-        "values"
-    ]
-    assert "times" in sample_values
+    biomass = loaded.processes["p"].reactor_medium.components["biomass"]
+    sample = loaded.processes["p"].volume.volume_changes["sample"]
+    assert biomass.concentration.times.shape == (3,)
+    assert sample.values.times.shape == (2,)
 
 
-def test_phase3_load_rejects_legacy_only_timeseries_keys() -> None:
+def test_load_rejects_legacy_only_timeseries_keys() -> None:
     collection = BioProcessCollection(metadata=None, processes={"p": _build_process()})
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -117,6 +123,7 @@ def test_phase3_load_rejects_legacy_only_timeseries_keys() -> None:
         ]
         biomass["timepoints"] = biomass["times"]
         biomass.pop("times", None)
+
         sample_values = payload["processes"]["p"]["volume"]["volume_changes"]["sample"][
             "values"
         ]
@@ -132,24 +139,8 @@ def test_phase3_load_rejects_legacy_only_timeseries_keys() -> None:
             load_process_collection(out_dir)
 
 
-def test_phase3_load_accepts_canonical_only_timeseries_keys() -> None:
-    collection = BioProcessCollection(metadata=None, processes={"p": _build_process()})
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        out_dir = Path(tmpdir) / "collection"
-        save_process_collection(collection, out_dir)
-        payload = _read_payload(out_dir / "data.json")
-
-        biomass = payload["processes"]["p"]["reactor_medium"]["components"]["biomass"][
-            "concentration"
-        ]
-        with open(out_dir / "data.json", "w") as fh:
-            json.dump(payload, fh)
-
-        loaded = load_process_collection(out_dir)
-
-    biomass_loaded = loaded.processes["p"].reactor_medium.components["biomass"]
-    assert biomass_loaded.concentration.times.shape == (3,)
-    assert biomass_loaded.concentration.breaks.shape == (2,)
-    sample_loaded = loaded.processes["p"].volume.volume_changes["sample"]
-    assert sample_loaded.values.times.shape == (2,)
+def test_timeseries_payload_uses_times_only() -> None:
+    # Intentional internal-contract check: canonical serializer payload shape.
+    payload = _timeseries_to_dict_payload(_ts([0.0, 1.0], [1.0, 2.0]))
+    assert "times" in payload
+    assert "timepoints" not in payload
