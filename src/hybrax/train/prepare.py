@@ -16,8 +16,11 @@ from bpbench.serialization import (
 
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
-    build_sample_acc_source_default,
     select_control_sources,
+)
+from .defaults import (
+    default_build_sample_acc_series,
+    default_transform_process_collection,
 )
 from .utils import get_hook, load_custom_module, resolve_config
 from .validation import (
@@ -59,42 +62,6 @@ def load_raw_collection(
     if isinstance(input_json, BioProcessCollection):
         return input_json
     return load_process_collection_json(Path(input_json))
-
-
-def _default_build_sample_acc(process, process_name, collection_metadata, config):
-    return build_sample_acc_source_default(process)
-
-
-def _rename_processes(
-    collection: BioProcessCollection,
-    config: dict[str, Any],
-) -> BioProcessCollection:
-    rename_map = config.get("process_rename_map")
-    if rename_map is None:
-        return collection
-    if not isinstance(rename_map, dict):
-        raise TypeError("process_rename_map must be a dict from old name to new name")
-
-    renamed_processes: dict[str, Any] = {}
-    for process_name, process in collection.processes.items():
-        new_name = process_name
-        if process_name in rename_map:
-            new_name = str(rename_map[process_name])
-            process.metadata.name = new_name
-        if new_name in renamed_processes:
-            raise ValueError(f"duplicate renamed process key: {new_name}")
-        renamed_processes[new_name] = process
-
-    collection.processes = renamed_processes
-    return collection
-
-
-def _default_transform_process_collection(
-    collection: BioProcessCollection,
-    config: dict[str, Any],
-) -> BioProcessCollection:
-    """Apply default process-collection transforms before prep."""
-    return _rename_processes(collection, config)
 
 
 def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) -> None:
@@ -246,10 +213,12 @@ def prepare_artifact(
     transform_process_collection = get_hook(
         custom_module,
         "transform_process_collection",
-        _default_transform_process_collection,
+        default_transform_process_collection,
     )
     build_sample_acc = get_hook(
-        custom_module, "build_sample_acc_series", _default_build_sample_acc
+        custom_module,
+        "build_sample_acc_series",
+        default_build_sample_acc_series,
     )
     raw_semantics = {
         process_name: summarize_process_semantics(process)

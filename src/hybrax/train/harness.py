@@ -9,10 +9,14 @@ from typing import Any
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 from bpbench.serialization import load_process_collection_json
 
-from .model_api import ReactionOutputs, UserReactionModule, partition_trainable
+from .defaults import (
+    DefaultReactionModule,
+    default_build_modeled_feeds,
+    default_build_reaction_module,
+)
+from .model_api import UserReactionModule, partition_trainable
 from .trainer import single_process_measurement_loss
 from .training_data import (
     PerProcessTrainingData,
@@ -60,38 +64,6 @@ class TrainHarnessResult:
     suspicious_step_spikes_by_process: dict[str, int]
 
 
-class DefaultReactionModule(UserReactionModule):
-    """Minimal default reaction model for harness runs.
-
-    This model predicts concentration-space reaction terms from species states.
-    It ignores controls and emits no modeled feed rates.
-    """
-
-    model: eqx.nn.MLP
-
-    def __init__(self, *, n_species: int, key: jax.Array):
-        self.model = eqx.nn.MLP(
-            in_size=n_species,
-            out_size=n_species,
-            width_size=max(8, 2 * n_species),
-            depth=2,
-            key=key,
-        )
-
-    def __call__(
-        self,
-        t: jax.Array,
-        c_species: jax.Array,
-        controls_vector: jax.Array,
-    ) -> ReactionOutputs:
-        del t, controls_vector
-        reaction_terms = jnp.asarray(self.model(c_species), dtype=c_species.dtype)
-        return ReactionOutputs(
-            reaction_terms=reaction_terms,
-            modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
-        )
-
-
 def _ensure_process_names(
     store: TrainingDataStore,
     requested: tuple[str, ...] | None,
@@ -133,13 +105,11 @@ def _build_reaction_module(
     custom_module,
     custom_config: dict[str, Any],
 ) -> UserReactionModule:
-    hook = get_hook(custom_module, "build_reaction_module", None)
-    if hook is None:
-        return DefaultReactionModule(
-            n_species=len(store.target_names),
-            key=jax.random.key(int(config.seed)),
-        )
-
+    hook = get_hook(
+        custom_module,
+        "build_reaction_module",
+        default_build_reaction_module,
+    )
     module = hook(
         target_names=list(store.target_names),
         process_names=list(store.process_order),
@@ -159,9 +129,7 @@ def _build_modeled_feeds(
     custom_config: dict[str, Any],
     target_names: tuple[str, ...],
 ) -> tuple[ModeledFeedSpec, ...]:
-    hook = get_hook(custom_module, "build_modeled_feeds", None)
-    if hook is None:
-        return ()
+    hook = get_hook(custom_module, "build_modeled_feeds", default_build_modeled_feeds)
     payload = hook(target_names=list(target_names), config=custom_config)
     return _as_modeled_feed_specs(payload)
 
