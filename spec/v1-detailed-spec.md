@@ -907,7 +907,8 @@ One possible package layout is:
 bp_train/
   cli.py
   prepare.py
-  controls.py
+  controls.py                # prep-time: signal sources, adaptive grid, dense payload
+  controls_store.py           # runtime: padded JAX tensors, eval(t) under JIT
   training_data.py
   wrapper.py
   trainer.py
@@ -922,6 +923,15 @@ examples/
   01_kittler_2022/
     custom.py
 ```
+
+`controls.py` owns prep-time signal processing: building `SignalSource` objects
+from raw process data (volume changes, process variables), adaptive dense-grid
+refinement, and computing the dense payload (grid, values, derivatives).
+`controls_store.py` owns the runtime side: it loads the dense payload produced
+by `controls.py`, pads and stacks tensors across processes into globally-shaped
+JAX arrays, and exposes `PerProcessControls.eval(t)` for use inside the JIT'd
+ODE solver. The prep/runtime split keeps numpy-only adaptive algorithms out of
+the JAX-traced training path.
 
 `model_api.py` is the home of the reaction-module and `ReactionOutputs`
 contracts. `utils.py` contains internal helpers such as user-hook loading and
