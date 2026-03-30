@@ -8,6 +8,13 @@ from .trainer import (
     single_process_measurement_loss,
     single_process_train_step,
 )
+from .harness import (
+    DefaultReactionModule,
+    TrainHarnessConfig,
+    TrainHarnessResult,
+    train_collection,
+    train_from_prepared_json,
+)
 
 __all__ = [
     "ControlsStore",
@@ -23,6 +30,11 @@ __all__ = [
     "simulate_measurement_states",
     "single_process_measurement_loss",
     "single_process_train_step",
+    "DefaultReactionModule",
+    "TrainHarnessConfig",
+    "TrainHarnessResult",
+    "train_collection",
+    "train_from_prepared_json",
     "load_raw_collection",
     "prepare_artifact",
 ]

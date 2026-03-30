@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import equinox as eqx
 import jax
@@ -11,6 +10,25 @@ from bpbench.dataclasses import BioProcessCollection
 from bpbench.serialization import load_process_collection_json
 
 from .controls_store import ControlsStore, PerProcessControls
+
+
+TARGET_SOURCE_AUTO = "auto"
+TARGET_SOURCE_PROCESS_VARIABLES = "process_variables"
+TARGET_SOURCE_REACTOR_COMPONENTS = "reactor_components"
+TARGET_SOURCES = {
+    TARGET_SOURCE_AUTO,
+    TARGET_SOURCE_PROCESS_VARIABLES,
+    TARGET_SOURCE_REACTOR_COMPONENTS,
+}
+
+
+def _normalize_target_source(target_source: str) -> str:
+    value = str(target_source)
+    if value not in TARGET_SOURCES:
+        raise ValueError(
+            f"target_source must be one of {sorted(TARGET_SOURCES)!r}, got {value!r}"
+        )
+    return value
 
 
 def _coerce_process_index(
@@ -29,59 +47,203 @@ def _coerce_process_index(
     return process_order[index], index
 
 
-def _measurement_targets(
-    process,
-    configured_order: list[str] | None,
-) -> list[str]:
-    """Determine ordered measured target names for one process."""
-    measured = [
+def _process_variable_targets(process) -> list[str]:
+    return [
         name
         for name, variable in process.process_variables.items()
         if not bool(variable.is_controlled)
     ]
-    if configured_order is None:
-        return measured
-    missing = [
-        name for name in configured_order if name not in process.process_variables
-    ]
-    if missing:
-        raise ValueError(
-            f"{process.metadata.name}: configured target variables missing from process "
-            f"variables: {missing}"
-        )
-    controlled = [
-        name
-        for name in configured_order
-        if bool(process.process_variables[name].is_controlled)
-    ]
-    if controlled:
-        raise ValueError(
-            f"{process.metadata.name}: configured target variables must be measured "
-            f"(is_controlled=False), got controlled targets: {controlled}"
-        )
-    return list(configured_order)
 
 
-def _timeseries_numpy(process, variable_name: str) -> tuple[np.ndarray, np.ndarray]:
-    """Extract measurement time/value arrays from a process variable."""
-    variable = process.process_variables[variable_name]
-    values = variable.values
+def _is_timeseries_compatible(values) -> bool:
+    if not hasattr(values, "times") or not hasattr(values, "values"):
+        return False
+    ts = np.asarray(values.times)
+    ys = np.asarray(values.values)
+    return (
+        ts.ndim == 1
+        and ys.ndim == 1
+        and ts.size > 0
+        and ys.size > 0
+        and ts.size == ys.size
+    )
+
+
+def _reactor_component_timeseries_targets(process) -> list[str]:
+    components = getattr(process.reactor_medium, "components", {}) or {}
+    targets: list[str] = []
+    for name, component in components.items():
+        if _is_timeseries_compatible(component.concentration):
+            targets.append(name)
+    return targets
+
+
+def _supports_configured_process_variables(
+    process,
+    configured_order: list[str],
+) -> bool:
+    for name in configured_order:
+        variable = process.process_variables.get(name)
+        if variable is None or bool(variable.is_controlled):
+            return False
+    return True
+
+
+def _supports_configured_reactor_components(
+    process,
+    configured_order: list[str],
+) -> bool:
+    components = getattr(process.reactor_medium, "components", {}) or {}
+    for name in configured_order:
+        component = components.get(name)
+        if component is None:
+            return False
+        if not _is_timeseries_compatible(component.concentration):
+            return False
+    return True
+
+
+def _resolve_target_source(
+    collection: BioProcessCollection,
+    process_order: list[str],
+    configured_order: list[str] | None,
+    target_source: str,
+) -> str:
+    requested = _normalize_target_source(target_source)
+    if requested != TARGET_SOURCE_AUTO:
+        return requested
+
+    if configured_order is not None:
+        process_variable_ok = all(
+            _supports_configured_process_variables(
+                collection.processes[process_name],
+                configured_order,
+            )
+            for process_name in process_order
+        )
+        if process_variable_ok:
+            return TARGET_SOURCE_PROCESS_VARIABLES
+
+        reactor_component_ok = all(
+            _supports_configured_reactor_components(
+                collection.processes[process_name],
+                configured_order,
+            )
+            for process_name in process_order
+        )
+        if reactor_component_ok:
+            return TARGET_SOURCE_REACTOR_COMPONENTS
+
+        raise ValueError(
+            "target_source='auto' could not resolve configured targets across "
+            "all processes as either measured process variables or reactor "
+            "components"
+        )
+
+    if all(
+        len(_process_variable_targets(collection.processes[process_name])) > 0
+        for process_name in process_order
+    ):
+        return TARGET_SOURCE_PROCESS_VARIABLES
+
+    if all(
+        len(_reactor_component_timeseries_targets(collection.processes[process_name]))
+        > 0
+        for process_name in process_order
+    ):
+        return TARGET_SOURCE_REACTOR_COMPONENTS
+
+    raise ValueError(
+        "target_source='auto' could not find a valid shared target source "
+        "across processes"
+    )
+
+
+def _measurement_targets(
+    process,
+    configured_order: list[str] | None,
+    target_source: str,
+) -> list[str]:
+    """Determine ordered measured target names for one process."""
+    if target_source == TARGET_SOURCE_PROCESS_VARIABLES:
+        measured = _process_variable_targets(process)
+        if configured_order is None:
+            return measured
+        missing = [
+            name for name in configured_order if name not in process.process_variables
+        ]
+        if missing:
+            raise ValueError(
+                f"{process.metadata.name}: configured target variables missing from process "
+                f"variables: {missing}"
+            )
+        controlled = [
+            name
+            for name in configured_order
+            if bool(process.process_variables[name].is_controlled)
+        ]
+        if controlled:
+            raise ValueError(
+                f"{process.metadata.name}: configured target variables must be measured "
+                f"(is_controlled=False), got controlled targets: {controlled}"
+            )
+        return list(configured_order)
+
+    if target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
+        measured = _reactor_component_timeseries_targets(process)
+        if configured_order is None:
+            return measured
+        components = getattr(process.reactor_medium, "components", {}) or {}
+        missing = [name for name in configured_order if name not in components]
+        if missing:
+            raise ValueError(
+                f"{process.metadata.name}: configured target components missing from "
+                f"reactor_medium.components: {missing}"
+            )
+        invalid = [
+            name
+            for name in configured_order
+            if not _is_timeseries_compatible(components[name].concentration)
+        ]
+        if invalid:
+            raise ValueError(
+                f"{process.metadata.name}: configured target components must be "
+                "time-series compatible (times+values), got: "
+                f"{invalid}"
+            )
+        return list(configured_order)
+
+    raise ValueError(f"unsupported target_source: {target_source!r}")
+
+
+def _timeseries_numpy(
+    process,
+    target_name: str,
+    target_source: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Extract measurement time/value arrays from one target source."""
+    if target_source == TARGET_SOURCE_PROCESS_VARIABLES:
+        values = process.process_variables[target_name].values
+    elif target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
+        values = process.reactor_medium.components[target_name].concentration
+    else:
+        raise ValueError(f"unsupported target_source: {target_source!r}")
+
     if not hasattr(values, "times") or not hasattr(values, "values"):
         raise ValueError(
-            f"{process.metadata.name}: target variable {variable_name!r} must be a "
+            f"{process.metadata.name}: target {target_name!r} must be a "
             "time-series variable with times and values"
         )
     ts = np.asarray(values.times, dtype=float)
     ys = np.asarray(values.values, dtype=float)
     if ts.ndim != 1 or ys.ndim != 1 or ts.size != ys.size:
         raise ValueError(
-            f"{process.metadata.name}: target variable {variable_name!r} has invalid "
+            f"{process.metadata.name}: target {target_name!r} has invalid "
             "time/value shape"
         )
     if ts.size == 0:
         raise ValueError(
-            f"{process.metadata.name}: target variable {variable_name!r} has no "
-            "measurement points"
+            f"{process.metadata.name}: target {target_name!r} has no measurement points"
         )
     return ts, ys
 
@@ -95,6 +257,8 @@ class PerProcessTrainingData(eqx.Module):
     process_index: int
     # Ordered measured target names.
     target_names: list[str]
+    # Source family of targets (`process_variables` or `reactor_components`).
+    target_source: str
     # Number of active measurement rows for this process.
     n_meas: int
     # Padded measurement times for this process.
@@ -131,6 +295,8 @@ class TrainingDataStore(eqx.Module):
     process_order: list[str]
     # Ordered measured target names (shared across processes).
     target_names: list[str]
+    # Source family of targets (`process_variables` or `reactor_components`).
+    target_source: str
     # Mapping from target name to column index in y-measurement arrays.
     target_name_to_index: dict[str, int]
     # Shared controls store for this prepared artifact.
@@ -152,6 +318,7 @@ class TrainingDataStore(eqx.Module):
         collection: BioProcessCollection,
         *,
         target_variable_order: list[str] | None = None,
+        target_source: str = TARGET_SOURCE_PROCESS_VARIABLES,
         metadata_namespace: str = "bp_train",
     ) -> TrainingDataStore:
         """Build training-data tensors from a prepared process collection."""
@@ -162,12 +329,22 @@ class TrainingDataStore(eqx.Module):
         process_order = list(controls_store.process_order)
 
         target_order = list(target_variable_order) if target_variable_order else None
+        resolved_target_source = _resolve_target_source(
+            collection=collection,
+            process_order=process_order,
+            configured_order=target_order,
+            target_source=target_source,
+        )
         per_process_targets: dict[str, list[str]] = {}
         reference_targets: list[str] | None = None
 
         for process_name in process_order:
             process = collection.processes[process_name]
-            current_targets = _measurement_targets(process, target_order)
+            current_targets = _measurement_targets(
+                process,
+                target_order,
+                resolved_target_source,
+            )
             per_process_targets[process_name] = current_targets
 
             if reference_targets is None:
@@ -200,7 +377,11 @@ class TrainingDataStore(eqx.Module):
             target_columns = []
             shared_ts: np.ndarray | None = None
             for target_name in process_targets:
-                ts, ys = _timeseries_numpy(process, target_name)
+                ts, ys = _timeseries_numpy(
+                    process,
+                    target_name,
+                    resolved_target_source,
+                )
                 if shared_ts is None:
                     shared_ts = ts
                 elif not np.array_equal(ts, shared_ts):
@@ -245,6 +426,7 @@ class TrainingDataStore(eqx.Module):
         return cls(
             process_order=process_order,
             target_names=target_names,
+            target_source=resolved_target_source,
             target_name_to_index=target_name_to_index,
             controls_store=controls_store,
             t_meas=jnp.asarray(t_meas),
@@ -260,6 +442,7 @@ class TrainingDataStore(eqx.Module):
         prepared_json: str | Path,
         *,
         target_variable_order: list[str] | None = None,
+        target_source: str = TARGET_SOURCE_PROCESS_VARIABLES,
         metadata_namespace: str = "bp_train",
     ) -> TrainingDataStore:
         """Load a prepared JSON artifact and construct a training-data store."""
@@ -267,6 +450,7 @@ class TrainingDataStore(eqx.Module):
         return cls.from_collection(
             collection,
             target_variable_order=target_variable_order,
+            target_source=target_source,
             metadata_namespace=metadata_namespace,
         )
 
@@ -277,6 +461,7 @@ class TrainingDataStore(eqx.Module):
             process_name=process_name,
             process_index=process_index,
             target_names=self.target_names,
+            target_source=self.target_source,
             n_meas=int(self.n_meas[process_index]),
             t_meas=self.t_meas[process_index],
             y_meas=self.y_meas[process_index],

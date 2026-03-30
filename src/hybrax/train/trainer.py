@@ -17,6 +17,9 @@ def simulate_measurement_states(
     process_data: PerProcessTrainingData,
     *,
     max_steps: int = 100_000,
+    rtol: float = 1e-5,
+    atol: float = 1e-7,
+    use_jump_ts: bool = True,
 ) -> jax.Array:
     """Simulate full state trajectories at active measurement timestamps."""
     ts = process_data.active_t_meas
@@ -27,10 +30,11 @@ def simulate_measurement_states(
 
     term = diffrax.ODETerm(lambda t, y, args: wrapper(t, y))
     solver = diffrax.Tsit5()
+    jump_ts = process_data.controls.active_step_ts if use_jump_ts else None
     stepsize_controller = diffrax.PIDController(
-        rtol=1e-5,
-        atol=1e-7,
-        jump_ts=process_data.controls.active_step_ts,
+        rtol=float(rtol),
+        atol=float(atol),
+        jump_ts=jump_ts,
     )
     solution = diffrax.diffeqsolve(
         term,
@@ -49,9 +53,21 @@ def simulate_measurement_states(
 def single_process_measurement_loss(
     wrapper: LibraryRhsWrapper,
     process_data: PerProcessTrainingData,
+    *,
+    max_solver_steps: int = 100_000,
+    solver_rtol: float = 1e-5,
+    solver_atol: float = 1e-7,
+    solver_use_jump_ts: bool = True,
 ) -> jax.Array:
     """Compute masked MSE over padded measurement arrays for one process."""
-    states_active = simulate_measurement_states(wrapper, process_data)
+    states_active = simulate_measurement_states(
+        wrapper,
+        process_data,
+        max_steps=max_solver_steps,
+        rtol=solver_rtol,
+        atol=solver_atol,
+        use_jump_ts=solver_use_jump_ts,
+    )
     state_species_active = states_active[:, :-1]
     y_pred_active = jnp.asarray(
         wrapper.reaction_module.observe(state_species_active),
@@ -86,6 +102,10 @@ def single_process_train_step(
     process_data: PerProcessTrainingData,
     *,
     learning_rate: float = 1e-3,
+    max_solver_steps: int = 100_000,
+    solver_rtol: float = 1e-5,
+    solver_atol: float = 1e-7,
+    solver_use_jump_ts: bool = True,
 ) -> tuple[LibraryRhsWrapper, jax.Array, eqx.Module]:
     """Run one train step and return `(updated_wrapper, loss, trainable_grads)`."""
     trainable, static = partition_trainable(wrapper.reaction_module)
@@ -97,7 +117,14 @@ def single_process_train_step(
             wrapper,
             reaction_module,
         )
-        return single_process_measurement_loss(candidate_wrapper, process_data)
+        return single_process_measurement_loss(
+            candidate_wrapper,
+            process_data,
+            max_solver_steps=max_solver_steps,
+            solver_rtol=solver_rtol,
+            solver_atol=solver_atol,
+            solver_use_jump_ts=solver_use_jump_ts,
+        )
 
     loss, grads = eqx.filter_value_and_grad(_loss_fn)(trainable)
     updates = jtu.tree_map(

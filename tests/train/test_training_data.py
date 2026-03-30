@@ -181,6 +181,122 @@ def _prepare_collection(tmp_path: Path) -> Path:
     return output
 
 
+def _make_reactor_target_collection() -> BioProcessCollection:
+    p1 = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=4.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([2.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0, 4.0]),
+                        values=jnp.asarray([0.2, 0.3, 0.4]),
+                    ),
+                    is_intracellular=False,
+                ),
+                "product": ReactorMediumComponent(
+                    name="product",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0, 4.0]),
+                        values=jnp.asarray([0.0, 0.1, 0.2]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={
+            "temperature": ProcessVariable(
+                name="temperature",
+                unit="K",
+                is_controlled=True,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 2.0, 4.0]),
+                    values=jnp.asarray([300.0, 300.5, 301.0]),
+                ),
+            )
+        },
+    )
+    p2 = BioProcess(
+        metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=4.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.2,
+            unit="L",
+            volume_changes={
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([2.0]),
+                        values=jnp.asarray([-0.15]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]),
+                        values=jnp.asarray([0.25, 0.35]),
+                    ),
+                    is_intracellular=False,
+                ),
+                "product": ReactorMediumComponent(
+                    name="product",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]),
+                        values=jnp.asarray([0.02, 0.09]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={
+            "temperature": ProcessVariable(
+                name="temperature",
+                unit="K",
+                is_controlled=True,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 1.0]),
+                    values=jnp.asarray([299.0, 300.0]),
+                ),
+            )
+        },
+    )
+    return BioProcessCollection(processes={"p1": p1, "p2": p2}, metadata={})
+
+
 def test_training_data_store_builds_padded_measurement_arrays(tmp_path):
     prepared_json = _prepare_collection(tmp_path)
     store = TrainingDataStore.from_json(prepared_json, target_variable_order=["X"])
@@ -278,3 +394,54 @@ def test_training_data_store_rejects_controlled_target_in_configured_order(tmp_p
         match="must be measured .* controlled targets",
     ):
         TrainingDataStore.from_json(prepared_json, target_variable_order=["CF"])
+
+
+def test_training_data_store_supports_reactor_component_targets():
+    store = TrainingDataStore.from_collection(
+        _make_reactor_target_collection(),
+        target_variable_order=["biomass", "product"],
+        target_source="reactor_components",
+    )
+
+    assert store.target_source == "reactor_components"
+    assert store.target_names == ["biomass", "product"]
+    assert tuple(store.y_meas.shape) == (2, 3, 2)
+    assert np.asarray(store.y0[0]).tolist() == pytest.approx([0.2, 0.0, 1.0])
+    assert np.asarray(store.y0[1]).tolist() == pytest.approx([0.25, 0.02, 1.2])
+
+
+def test_training_data_store_auto_falls_back_to_reactor_components():
+    store = TrainingDataStore.from_collection(
+        _make_reactor_target_collection(),
+        target_variable_order=["biomass"],
+        target_source="auto",
+    )
+    assert store.target_source == "reactor_components"
+    assert store.target_names == ["biomass"]
+
+
+def test_training_data_store_auto_prefers_process_variables_when_available(tmp_path):
+    prepared_json = _prepare_collection(tmp_path)
+    store = TrainingDataStore.from_json(
+        prepared_json,
+        target_source="auto",
+    )
+    assert store.target_source == "process_variables"
+    assert store.target_names == ["X"]
+
+
+def test_training_data_store_auto_reactor_fallback_requires_timeseries_compatible():
+    collection = _make_reactor_target_collection()
+    collection.processes["p1"].reactor_medium.components[
+        "biomass"
+    ].concentration = StaticVariable(0.2)
+
+    with pytest.raises(
+        ValueError,
+        match="target_source='auto' could not resolve configured targets",
+    ):
+        TrainingDataStore.from_collection(
+            collection,
+            target_variable_order=["biomass"],
+            target_source="auto",
+        )

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from .harness import TrainHarnessConfig, train_from_prepared_json
 from .prepare import prepare_artifact
+from .training_data import TARGET_SOURCES
 
 
 def _load_config(config_path: str | None) -> dict[str, Any] | None:
@@ -34,6 +37,105 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     prepare_parser.set_defaults(handler=_handle_prepare)
 
+    train_parser = subparsers.add_parser(
+        "train",
+        help="Run minimal one/multi-process training from a prepared artifact.",
+    )
+    train_parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to prepared JSON.",
+    )
+    train_parser.add_argument(
+        "--custom",
+        help="Optional custom.py path exposing build_reaction_module hooks.",
+    )
+    train_parser.add_argument(
+        "--config",
+        help="Optional JSON runtime config.",
+    )
+    train_parser.add_argument(
+        "--process",
+        action="append",
+        default=[],
+        help=(
+            "Process name to include. Can be passed multiple times or as a "
+            "comma-separated list."
+        ),
+    )
+    train_parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        help=(
+            "Target variable name to train against. Can be passed multiple times "
+            "or as a comma-separated list."
+        ),
+    )
+    train_parser.add_argument(
+        "--target-source",
+        default="auto",
+        choices=sorted(TARGET_SOURCES),
+        help=(
+            "Source family for training targets: process_variables, "
+            "reactor_components, or auto."
+        ),
+    )
+    train_parser.add_argument(
+        "--steps",
+        type=int,
+        default=50,
+        help="Number of training steps.",
+    )
+    train_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=1e-3,
+        help="Learning rate.",
+    )
+    train_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for default model initialization.",
+    )
+    train_parser.add_argument(
+        "--log-every",
+        type=int,
+        default=10,
+        help="Emit progress log every N steps.",
+    )
+    train_parser.add_argument(
+        "--solver-max-steps",
+        type=int,
+        default=100_000,
+        help="Maximum diffrax solver steps per simulation call.",
+    )
+    train_parser.add_argument(
+        "--solver-rtol",
+        type=float,
+        default=1e-5,
+        help="Diffrax relative tolerance.",
+    )
+    train_parser.add_argument(
+        "--solver-atol",
+        type=float,
+        default=1e-7,
+        help="Diffrax absolute tolerance.",
+    )
+    train_parser.add_argument(
+        "--no-jump-ts",
+        action="store_true",
+        help="Disable passing control step boundaries as jump_ts to the solver.",
+    )
+    train_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Python logging level.",
+    )
+    train_parser.set_defaults(handler=_handle_train)
+
     return parser
 
 
@@ -43,6 +145,51 @@ def _handle_prepare(args: argparse.Namespace) -> int:
         output_json=args.output,
         custom_py=args.custom,
         config=_load_config(args.config),
+    )
+    return 0
+
+
+def _split_multi_values(raw_values: list[str]) -> tuple[str, ...]:
+    values: list[str] = []
+    for value in raw_values:
+        values.extend([part.strip() for part in value.split(",") if part.strip() != ""])
+    return tuple(values)
+
+
+def _handle_train(args: argparse.Namespace) -> int:
+    logging.basicConfig(
+        level=getattr(logging, str(args.log_level)),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    selected_processes = _split_multi_values(args.process)
+    selected_targets = _split_multi_values(args.target)
+    config = TrainHarnessConfig(
+        process_names=selected_processes if selected_processes else None,
+        target_variable_order=selected_targets if selected_targets else None,
+        target_source=str(args.target_source),
+        steps=int(args.steps),
+        learning_rate=float(args.learning_rate),
+        seed=int(args.seed),
+        log_every=int(args.log_every),
+        solver_max_steps=int(args.solver_max_steps),
+        solver_rtol=float(args.solver_rtol),
+        solver_atol=float(args.solver_atol),
+        solver_use_jump_ts=not bool(args.no_jump_ts),
+    )
+    result = train_from_prepared_json(
+        prepared_json=args.input,
+        config=config,
+        custom_py=args.custom,
+        runtime_config=_load_config(args.config),
+    )
+    first = result.mean_loss_by_step[0]
+    last = result.mean_loss_by_step[-1]
+    delta = last - first
+    logging.getLogger(__name__).info(
+        "training complete: first_mean_loss=%.6g last_mean_loss=%.6g delta=%.6g",
+        first,
+        last,
+        delta,
     )
     return 0
 

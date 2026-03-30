@@ -18,6 +18,7 @@ from bpbench.dataclasses import (
 )
 
 from bp_train.model_api import ReactionOutputs, UserReactionModule
+import bp_train.trainer as trainer_module
 from bp_train.trainer import single_process_measurement_loss, single_process_train_step
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import LibraryRhsWrapper
@@ -208,3 +209,67 @@ def test_measurement_loss_ignores_padded_rows_via_mask():
     )
     poisoned_loss = single_process_measurement_loss(wrapper, process_poisoned)
     assert poisoned_loss == pytest.approx(base_loss, rel=1e-6, abs=1e-6)
+
+
+def test_single_process_train_step_accepts_nondefault_solver_settings():
+    wrapper, process_data = _build_wrapper_and_process()
+
+    wrapper_updated, loss, grads = single_process_train_step(
+        wrapper,
+        process_data,
+        learning_rate=1e-2,
+        max_solver_steps=500_000,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        solver_use_jump_ts=False,
+    )
+
+    assert jnp.isfinite(loss)
+    assert grads.model.weight is not None
+    assert wrapper_updated.reaction_module.model.weight.shape == (1, 1)
+
+
+def test_measurement_loss_forwards_nondefault_solver_options(monkeypatch):
+    wrapper, process_data = _build_wrapper_and_process()
+    captured: dict[str, object] = {}
+
+    def _fake_simulate_measurement_states(
+        wrapper_arg,
+        process_data_arg,
+        *,
+        max_steps,
+        rtol,
+        atol,
+        use_jump_ts,
+    ):
+        captured["wrapper"] = wrapper_arg
+        captured["process_data"] = process_data_arg
+        captured["max_steps"] = max_steps
+        captured["rtol"] = rtol
+        captured["atol"] = atol
+        captured["use_jump_ts"] = use_jump_ts
+        n_meas = int(process_data_arg.n_meas)
+        return jnp.stack([process_data_arg.y0] * n_meas, axis=0)
+
+    monkeypatch.setattr(
+        trainer_module,
+        "simulate_measurement_states",
+        _fake_simulate_measurement_states,
+    )
+
+    loss = single_process_measurement_loss(
+        wrapper,
+        process_data,
+        max_solver_steps=321_000,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        solver_use_jump_ts=False,
+    )
+
+    assert jnp.isfinite(loss)
+    assert captured["wrapper"] is wrapper
+    assert captured["process_data"] is process_data
+    assert captured["max_steps"] == 321_000
+    assert captured["rtol"] == pytest.approx(1e-4)
+    assert captured["atol"] == pytest.approx(1e-6)
+    assert captured["use_jump_ts"] is False
