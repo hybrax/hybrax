@@ -91,6 +91,12 @@ V1 is split into three phases.
 - It builds a training dataset with padded measurement arrays and control
   interpolation payloads.
 - The trainer calls a library-owned wrapper around a user-defined model.
+- V1 uses a batched training harness:
+  - one optimizer update per batch,
+  - one JIT-compiled batched train-step function per run (unless explicitly
+    rebuilt),
+  - per-sample losses computed with `jax.vmap`,
+  - parameter updates applied through Optax optimizers.
 
 ## 6. Artifact Model
 
@@ -140,7 +146,7 @@ provenance. Dense interpolation payloads and padded runtime arrays are built by
 An optional lightweight JSON config may store:
 
 - paths,
-- optimizer hyperparameters,
+- optimizer settings (`optimizer_name`, `learning_rate`),
 - solver tolerances,
 - batch size,
 - random seed,
@@ -510,6 +516,19 @@ Because V1 assumes one collection-wide control ordering, `eval(...)` and
 add a separate runtime `eval_local(...)` path unless a concrete downstream use
 case appears later.
 
+### 11.5 Batched Controls Evaluator
+
+For batch training, V1 should also expose a minimal all-process controls
+evaluator that works directly on padded stacked arrays and avoids Python
+metadata lookups in the hot path.
+
+Target contract:
+
+- construction from `ControlsStore`,
+- `eval(process_idx: int, t: jax.Array) -> jax.Array`,
+- no process-name fields or per-process dict lookups in the runtime-critical
+  path.
+
 ## 12. Model Abstraction
 
 V1 supports stateless user models only.
@@ -722,6 +741,14 @@ V1 trains only against real measurement timestamps.
 Deterministic resampling is allowed in the data layer for future use, but it is
 not part of the V1 loss contract.
 
+During batched training, per-process measurement timestamps are selected by
+index and the active measurement prefix is used for solver integration.
+Loss calculation still uses padded arrays plus masks.
+
+Future benchmark note (non-normative): profile dynamic-slice active-prefix
+integration against padded timestamp strategies (for example padding by repeated
+last timestamp) and keep whichever is faster/stabler.
+
 ## 16. Solver Behavior
 
 ### 16.1 Integration Mode
@@ -750,6 +777,104 @@ that all experiments in the prepared artifact can share one compiled shape.
 For V1, prefer one stacked JAX array per payload kind plus lightweight
 per-process index metadata over Python containers of per-process arrays. This
 is the better default for both compile-time stability and runtime batching.
+
+### 16.4 Batched Train-Step Contract
+
+V1 training-harness batching semantics are:
+
+- `steps` means number of optimizer updates,
+- each update consumes exactly one full batch,
+- total sampled process indices per run is always `steps * batch_size`,
+- `batch_size=None` resolves at runtime to `len(selected_processes)`,
+- no `drop_last_batch` behavior in V1.
+- if `process_names=None`, selected processes are exactly `store.process_order`,
+- if `process_names` is provided, names must be unique and known in the store;
+  otherwise fail fast.
+
+Batch index-stream behavior:
+
+- base mode is deterministic round-robin across selected processes,
+- `shuffle_batches=True` shuffles each round-robin cycle,
+- `batch_seed` controls all batch-index randomness.
+
+Determinism contract:
+
+- if `batch_seed is None`, batching randomness falls back to `seed`,
+- with same prepared artifact, selected process set/order, and effective config,
+  the index stream and update order must be identical.
+
+Canonical index-stream algorithm:
+
+1. Build canonical selected index vector in selected process order.
+2. Repeatedly append one cycle until stream length >= `steps * batch_size`:
+   - if `shuffle_batches=False`, cycle = selected index vector as-is,
+   - if `shuffle_batches=True`, cycle = deterministic permutation of selected
+     index vector using the active RNG stream.
+3. Truncate stream to exactly `steps * batch_size`.
+4. Reshape to `[steps, batch_size]`.
+
+Optimization and loss behavior:
+
+- optimizer backend is Optax,
+- V1 exposes `optimizer_name in {"adam", "sgd"}` and `learning_rate`,
+- default optimizer is `adam`,
+- `learning_rate` must be strictly positive,
+- batch loss is mean of per-sample process losses in the current batch.
+
+Compile/shape stability behavior:
+
+- one batched train-step JIT boundary should be built per run under stable
+  config and shapes,
+- runtime should record the JIT input-signature summary in logs/results,
+- runtime should record how often the train-step function was rebuilt in Python
+  as a practical proxy for recompile risk.
+
+Logging behavior:
+
+- `log_every` controls step-based logging cadence,
+- per-process losses logged at each logging step are for sampled batch members
+  only.
+
+### 16.5 Batching Config And Validation Contract
+
+Canonical batching config for V1 training harness:
+
+- `steps: int` (optimizer updates),
+- `batch_size: int | None = None`,
+- `shuffle_batches: bool = True`,
+- `batch_seed: int | None = None`,
+- `optimizer_name: str = "adam"` with allowed values `{"adam", "sgd"}`,
+- `learning_rate: float`.
+
+Runtime resolution rules:
+
+- effective `batch_size = len(selected_processes)` if config value is `None`,
+- effective RNG seed for batching = `batch_seed` when provided, else `seed`.
+
+Fail-fast runtime validation:
+
+- `steps <= 0` is invalid,
+- effective `batch_size <= 0` is invalid,
+- `learning_rate <= 0` is invalid,
+- unknown process names in `process_names` are invalid,
+- duplicate entries in explicit `process_names` are invalid,
+- empty selected process set is invalid,
+- unsupported `optimizer_name` is invalid.
+
+Validation errors should be explicit `ValueError` messages naming the offending
+field/condition.
+
+### 16.6 Batch Telemetry Contract
+
+V1 batch-oriented training results/logs should include at minimum:
+
+- batch mean loss by step,
+- sampled per-process losses at logging steps,
+- batch composition by step (process names or indices),
+- first compile/warmup time for the train-step JIT boundary,
+- per-step runtime timings,
+- JIT input-signature summary,
+- train-step rebuild count in Python (practical proxy for recompile risk).
 
 ## 17. Metadata in `prepared.json`
 
@@ -853,7 +978,14 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 - a single train step produces gradients,
 - only parameters returned by `partition_trainable()` receive gradients,
 - frozen parameters from `partition_trainable()` remain gradient-free,
-- measurement-time loss uses the expected padded arrays and masks.
+- measurement-time loss uses the expected padded arrays and masks,
+- batch-size/repeat behavior is correct (including single-process with
+  `batch_size > 1`),
+- batch index generation is deterministic with fixed seed/config,
+- training loss decreases on toy data,
+- invalid batching config fails fast,
+- train-step input signatures are stable across updates in stable-shape runs,
+- no explicit train-step rebuild path is triggered in stable-shape runs.
 
 ## 20. Implementation Order
 
