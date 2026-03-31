@@ -445,6 +445,38 @@ def test_prepare_artifact_can_rename_processes(tmp_path):
     ]
 
 
+def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
+    """Provenance must detect changes even when processes are renamed."""
+    output = tmp_path / "prepared-renamed-provenance.json"
+    prepare_artifact(
+        _make_two_process_collection(),
+        output,
+        config={
+            "process_rename_map": {
+                "p1": "process=p1",
+                "p2": "process=p2",
+            }
+        },
+    )
+
+    prepared = load_process_collection_json(output)
+    prov = prepared.metadata["bp_train"][
+        "semantics_provenance"
+    ]["processes"]
+    for new_name in ["process=p1", "process=p2"]:
+        entry = prov[new_name]
+        assert (
+            "transform_process_collection"
+            in entry["changed_by_hooks"]
+        ), (
+            f"provenance for {new_name!r} should record "
+            "the transform hook as a changer"
+        )
+        assert entry["raw"] == entry["prepared"], (
+            "pure rename should resolve the correct raw snapshot"
+        )
+
+
 def test_prepare_artifact_rejects_duplicate_process_renames(tmp_path):
     with pytest.raises(ValueError, match="duplicate renamed process key"):
         prepare_artifact(

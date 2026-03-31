@@ -90,13 +90,17 @@ def _modified_names(
 def _build_semantics_provenance(
     raw_snapshots: dict[str, dict[str, object]],
     prepared_snapshots: dict[str, dict[str, object]],
+    reverse_rename_map: dict[str, str],
 ) -> dict[str, dict[str, object]]:
     provenance: dict[str, dict[str, object]] = {}
 
     for process_name, prepared_summary in prepared_snapshots.items():
-        raw_summary = raw_snapshots.get(process_name, prepared_summary)
+        old_name = reverse_rename_map.get(process_name, process_name)
+        raw_summary = raw_snapshots.get(old_name, prepared_summary)
         changed_by_hooks: list[str] = []
-        if prepared_summary != raw_summary:
+        # A pure rename (no semantic changes) should still be flagged.
+        was_renamed = process_name in reverse_rename_map
+        if was_renamed or prepared_summary != raw_summary:
             changed_by_hooks.append("transform_process_collection")
 
         raw_feed = raw_summary["feed_component_names_by_change"]
@@ -168,7 +172,8 @@ def _validate_prepared_control_contract(
             )
         if sample_sources[process_name].name != BP_TRAIN_SAMPLE_ACC_NAME:
             raise ValueError(
-                f"{process_name}: sample-acc source must be named {BP_TRAIN_SAMPLE_ACC_NAME}"
+                f"{process_name}: sample-acc source "
+                f"must be named {BP_TRAIN_SAMPLE_ACC_NAME}"
             )
 
         if require_consistent_controls:
@@ -177,7 +182,8 @@ def _validate_prepared_control_contract(
             elif control_names != reference_names:
                 raise ValueError(
                     f"{process_name}: control names/order differ across processes; "
-                    "either make hooks consistent or disable require_consistent_controls"
+                    "either make hooks consistent or disable "
+                    "require_consistent_controls"
                 )
 
 
@@ -224,7 +230,15 @@ def prepare_artifact(
         process_name: summarize_process_semantics(process)
         for process_name, process in collection.processes.items()
     }
+    for process_name, process in collection.processes.items():
+        process.metadata._pre_transform_key = process_name
     collection = transform_process_collection(collection, resolved_config)
+    reverse_rename_map = {}
+    for process_name, process in collection.processes.items():
+        old_name = process.metadata._pre_transform_key
+        del process.metadata._pre_transform_key
+        if old_name != process_name:
+            reverse_rename_map[process_name] = old_name
 
     prepared_semantics: dict[str, dict[str, object]] = {}
     for process_name, process in collection.processes.items():
@@ -235,6 +249,7 @@ def prepare_artifact(
     semantics_provenance = _build_semantics_provenance(
         raw_snapshots=raw_semantics,
         prepared_snapshots=prepared_semantics,
+        reverse_rename_map=reverse_rename_map,
     )
 
     process_sources: dict[str, list[Any]] = {}
