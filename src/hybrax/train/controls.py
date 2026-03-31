@@ -253,7 +253,11 @@ def _make_source_from_volume_change(
             "source_kind": "control",
             "signal_family": "feed",
             "feed_name": name,
-            "inlet_feed_medium": _serialize_feed_medium(volume_change.feed_medium),
+            "inlet_feed_medium": (
+                _serialize_feed_medium(volume_change.feed_medium)
+                if volume_change.feed_medium is not None
+                else None
+            ),
         },
     )
 
@@ -395,7 +399,11 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
                 "signal_family": "feed",
                 "feed_name": name,
                 "ramp_duration": ramp_duration,
-                "inlet_feed_medium": _serialize_feed_medium(volume_change.feed_medium),
+                "inlet_feed_medium": (
+                    _serialize_feed_medium(volume_change.feed_medium)
+                    if volume_change.feed_medium is not None
+                    else None
+                ),
             },
         )
         source.step_ts = _dedupe_sorted(step_ts + source.step_ts)
@@ -448,7 +456,8 @@ def select_control_sources(
         if missing:
             missing_str = ", ".join(missing)
             raise ValueError(
-                f"{process_name}: control_order references missing controls: {missing_str}"
+                f"{process_name}: control_order references missing controls:"
+                f" {missing_str}"
             )
         ordered_names.extend(explicit)
 

@@ -26,6 +26,7 @@ from bp_train.controls import (
     BOLUS_DUPLICATE_THRESHOLD_REL,
     build_bolus_sources,
     get_shortest_time_diff,
+    select_control_sources,
 )
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
@@ -97,7 +98,8 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
                 "",
                 "def transform_process_collection(collection, config):",
                 "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = ReactorMediumComponent(",
+                "    process.reactor_medium.components['biomass'] = "
+                "ReactorMediumComponent(",
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
@@ -117,18 +119,22 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bpbench.dataclasses import FeedMediumComponent, ReactorMediumComponent, StaticVariable, TimeSeries",
+                "from bpbench.dataclasses import ("
+                "FeedMediumComponent, ReactorMediumComponent, "
+                "StaticVariable, TimeSeries)",
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = ReactorMediumComponent(",
+                "    process.reactor_medium.components['biomass'] = "
+                "ReactorMediumComponent(",
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.1),",
                 "        is_intracellular=False,",
                 "    )",
-                "    process.reactor_medium.components['glucose'] = ReactorMediumComponent(",
+                "    process.reactor_medium.components['glucose'] = "
+                "ReactorMediumComponent(",
                 "        name='glucose',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
@@ -137,7 +143,8 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "        ),",
                 "        is_intracellular=False,",
                 "    )",
-                "    process.volume.volume_changes['feed_A'].feed_medium.components['biomass'] = FeedMediumComponent(",
+                "    process.volume.volume_changes['feed_A']"
+                ".feed_medium.components['biomass'] = FeedMediumComponent(",
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.0),",
@@ -154,18 +161,22 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bpbench.dataclasses import FeedMediumComponent, ReactorMediumComponent, StaticVariable, TimeSeries",
+                "from bpbench.dataclasses import ("
+                "FeedMediumComponent, ReactorMediumComponent, "
+                "StaticVariable, TimeSeries)",
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = ReactorMediumComponent(",
+                "    process.reactor_medium.components['biomass'] = "
+                "ReactorMediumComponent(",
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.1),",
                 "        is_intracellular=False,",
                 "    )",
-                "    process.reactor_medium.components['glucose'] = ReactorMediumComponent(",
+                "    process.reactor_medium.components['glucose'] = "
+                "ReactorMediumComponent(",
                 "        name='glucose',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
@@ -174,8 +185,10 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "        ),",
                 "        is_intracellular=False,",
                 "    )",
-                "    process.volume.volume_changes['feed_A'].feed_medium.components = {}",
-                "    process.volume.volume_changes['feed_A'].feed_medium.components['biomass'] = FeedMediumComponent(",
+                "    process.volume.volume_changes['feed_A']"
+                ".feed_medium.components = {}",
+                "    process.volume.volume_changes['feed_A']"
+                ".feed_medium.components['biomass'] = FeedMediumComponent(",
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.0),",
@@ -769,3 +782,71 @@ def test_get_shortest_time_diff_ignores_near_duplicate_boundaries():
     collection = load_raw_collection(INPUT_JSON)
     process = collection.processes[next(iter(collection.processes))]
     assert get_shortest_time_diff(process) > 1e-4
+
+
+def test_select_control_sources_handles_null_feed_medium():
+    """select_control_sources must not crash with AttributeError when
+    feed_medium is None; semantic validation handles the clear error."""
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=1.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_A": FeedVolumeChange(
+                    name="feed_A",
+                    unit="L/h",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]),
+                        values=jnp.asarray([0.1, 0.1]),
+                    ),
+                    # feed_medium=None is allowed at runtime even though the
+                    # type annotation forbids it; dataclasses do not enforce
+                    # field types, so None can reach this code path when data
+                    # is incomplete before semantic validation runs.
+                    feed_medium=None,  # type: ignore[arg-type]
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={},
+    )
+    sources = select_control_sources("p1", process, {})
+    assert len(sources) == 1
+    assert sources[0].name == "feed_A"
+    assert sources[0].metadata["inlet_feed_medium"] is None
+
+
+def test_build_bolus_sources_handles_null_feed_medium():
+    """build_bolus_sources must not crash with AttributeError when
+    feed_medium is None (bolus / is_continuous=False path)."""
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_bolus": FeedVolumeChange(
+                    name="feed_bolus",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([5.0]),
+                        values=jnp.asarray([1.0]),
+                    ),
+                    feed_medium=None,  # type: ignore[arg-type]
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={},
+    )
+    sources = build_bolus_sources(process)
+    assert len(sources) == 1
+    assert sources[0].name == "feed_bolus"
+    assert sources[0].metadata["inlet_feed_medium"] is None

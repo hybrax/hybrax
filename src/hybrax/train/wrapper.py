@@ -176,7 +176,7 @@ class LibraryRhsWrapper(eqx.Module):
             if metadata.get("source_kind") != "control":
                 continue
 
-            inlet = metadata.get("inlet_feed_medium", {})
+            inlet = metadata.get("inlet_feed_medium") or {}
             components = inlet.get("components", {})
 
             per_species_series: list[tuple[np.ndarray, np.ndarray]] = []
@@ -216,7 +216,8 @@ class LibraryRhsWrapper(eqx.Module):
 
         if BP_TRAIN_SAMPLE_ACC_NAME not in controls.control_name_to_index:
             raise ValueError(
-                f"controls payload missing required sample control {BP_TRAIN_SAMPLE_ACC_NAME}"
+                "controls payload missing required sample control"
+                f" {BP_TRAIN_SAMPLE_ACC_NAME}"
             )
 
         return cls(
@@ -294,14 +295,16 @@ class LibraryRhsWrapper(eqx.Module):
         if reaction_outputs.reaction_terms.shape != c_species.shape:
             raise ValueError(
                 "reaction_terms must match species shape "
-                f"{tuple(c_species.shape)}, got {tuple(reaction_outputs.reaction_terms.shape)}"
+                f"{tuple(c_species.shape)},"
+                f" got {tuple(reaction_outputs.reaction_terms.shape)}"
             )
 
         expected_modeled_shape = (len(self.modeled_feed_names),)
         if reaction_outputs.modeled_feed_rates.shape != expected_modeled_shape:
             raise ValueError(
                 "modeled_feed_rates must match modeled feed metadata shape "
-                f"{expected_modeled_shape}, got {tuple(reaction_outputs.modeled_feed_rates.shape)}"
+                f"{expected_modeled_shape},"
+                f" got {tuple(reaction_outputs.modeled_feed_rates.shape)}"
             )
 
         controlled_rates = controls_vector[self.controlled_feed_control_indices]
