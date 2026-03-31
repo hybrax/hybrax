@@ -445,3 +445,30 @@ def test_training_data_store_auto_reactor_fallback_requires_timeseries_compatibl
             target_variable_order=["biomass"],
             target_source="auto",
         )
+
+
+def test_training_data_store_gather_batch_by_process_indices(tmp_path):
+    prepared_json = _prepare_collection(tmp_path)
+    store = TrainingDataStore.from_json(prepared_json, target_variable_order=["X"])
+
+    batch = store.gather_batch(jnp.asarray([1, 0, 1], dtype=jnp.int32))
+
+    assert np.asarray(batch.process_indices).tolist() == [1, 0, 1]
+    assert tuple(batch.t_meas.shape) == (3, 3)
+    assert tuple(batch.y_meas.shape) == (3, 3, 1)
+    assert tuple(batch.meas_mask.shape) == (3, 3)
+    assert np.asarray(batch.n_meas).tolist() == [2, 3, 2]
+    assert np.asarray(batch.y0[0]).tolist() == pytest.approx([0.25, 1.5])
+    assert np.asarray(batch.y0[1]).tolist() == pytest.approx([0.2, 1.0])
+
+
+def test_training_data_store_gather_batch_rejects_invalid_indices(tmp_path):
+    prepared_json = _prepare_collection(tmp_path)
+    store = TrainingDataStore.from_json(prepared_json, target_variable_order=["X"])
+
+    with pytest.raises(ValueError, match="1D"):
+        store.gather_batch(jnp.asarray([[0, 1]], dtype=jnp.int32))
+    with pytest.raises(ValueError, match="non-empty"):
+        store.gather_batch(jnp.asarray([], dtype=jnp.int32))
+    with pytest.raises(IndexError, match="out of range"):
+        store.gather_batch(jnp.asarray([0, 2], dtype=jnp.int32))

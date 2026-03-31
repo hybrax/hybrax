@@ -19,7 +19,13 @@ from bpbench.dataclasses import (
 
 from bp_train.model_api import ReactionOutputs, UserReactionModule
 import bp_train.trainer as trainer_module
-from bp_train.trainer import single_process_measurement_loss, single_process_train_step
+from bp_train.trainer import (
+    batched_measurement_loss,
+    batched_train_step,
+    single_process_measurement_loss,
+    single_process_train_step,
+    summarize_train_step_input_signature,
+)
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import LibraryRhsWrapper
 
@@ -131,6 +137,20 @@ def _build_wrapper_and_process():
         species_names=process_data.target_names,
     )
     return wrapper, process_data
+
+
+def _build_store_and_wrapper():
+    store = TrainingDataStore.from_collection(
+        _make_two_process_collection(),
+        target_variable_order=["X"],
+    )
+    p1_data = store.get_process("p1")
+    wrapper = LibraryRhsWrapper.from_process_controls(
+        reaction_module=_LinearReactionModule(),
+        controls=p1_data.controls,
+        species_names=p1_data.target_names,
+    )
+    return store, wrapper
 
 
 def _build_wrapper_and_process_with_custom_partition():
@@ -273,3 +293,118 @@ def test_measurement_loss_forwards_nondefault_solver_options(monkeypatch):
     assert captured["rtol"] == pytest.approx(1e-4)
     assert captured["atol"] == pytest.approx(1e-6)
     assert captured["use_jump_ts"] is False
+
+
+def test_batched_measurement_loss_matches_mean_of_single_process_losses():
+    store, wrapper = _build_store_and_wrapper()
+    batch_indices = jnp.asarray([0, 1, 1], dtype=jnp.int32)
+
+    loss_batched = batched_measurement_loss(wrapper, store, batch_indices)
+
+    expected_losses = []
+    for idx in batch_indices.tolist():
+        process_data = store.get_process(idx)
+        process_wrapper = eqx.tree_at(
+            lambda current: current.controls,
+            wrapper,
+            process_data.controls,
+        )
+        expected_losses.append(
+            single_process_measurement_loss(process_wrapper, process_data)
+        )
+    expected_mean = jnp.mean(jnp.asarray(expected_losses))
+    assert loss_batched == pytest.approx(float(expected_mean), rel=1e-6, abs=1e-6)
+
+
+@pytest.mark.parametrize("optimizer_name", ["adam", "sgd"])
+def test_batched_train_step_updates_weights_for_supported_optimizers(optimizer_name):
+    store, wrapper = _build_store_and_wrapper()
+    batch_indices = jnp.asarray([0, 1, 0], dtype=jnp.int32)
+    weight_before = np.asarray(wrapper.reaction_module.model.weight)
+
+    wrapper_updated, loss, grads, opt_state = batched_train_step(
+        wrapper,
+        store,
+        batch_indices,
+        optimizer_name=optimizer_name,
+        learning_rate=1e-2,
+    )
+
+    assert jnp.isfinite(loss)
+    assert grads.model.weight is not None
+    assert opt_state is not None
+    weight_after = np.asarray(wrapper_updated.reaction_module.model.weight)
+    assert not np.allclose(weight_before, weight_after)
+
+
+def test_batched_train_step_rejects_unsupported_optimizer_name():
+    store, wrapper = _build_store_and_wrapper()
+    with pytest.raises(ValueError, match="optimizer_name"):
+        batched_train_step(
+            wrapper,
+            store,
+            jnp.asarray([0, 1], dtype=jnp.int32),
+            optimizer_name="rmsprop",
+            learning_rate=1e-2,
+        )
+
+
+@pytest.mark.parametrize("invalid_lr", [0.0, -1e-3])
+def test_batched_train_step_rejects_nonpositive_learning_rate(invalid_lr):
+    store, wrapper = _build_store_and_wrapper()
+    with pytest.raises(ValueError, match="learning_rate"):
+        batched_train_step(
+            wrapper,
+            store,
+            jnp.asarray([0, 1], dtype=jnp.int32),
+            optimizer_name="adam",
+            learning_rate=invalid_lr,
+        )
+
+
+def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
+    sig_a = summarize_train_step_input_signature("adam", 1e-3, 42)
+    sig_b = summarize_train_step_input_signature("adam", 2e-3, 42)
+    assert sig_a != sig_b
+
+
+def test_train_step_input_signature_summary_stable_across_batch_updates():
+    store, wrapper = _build_store_and_wrapper()
+    batch_indices = jnp.asarray([0, 1, 0], dtype=jnp.int32)
+
+    trainable_before, static_before = trainer_module.partition_trainable(
+        wrapper.reaction_module
+    )
+    optimizer = trainer_module._build_optimizer("adam", 1e-2)
+    opt_state_before = optimizer.init(trainable_before)
+    signature_before = summarize_train_step_input_signature(
+        trainable_before,
+        static_before,
+        batch_indices,
+        opt_state_before,
+    )
+
+    wrapper_updated, _loss, _grads, opt_state = batched_train_step(
+        wrapper,
+        store,
+        batch_indices,
+        optimizer_name="adam",
+        learning_rate=1e-2,
+        optimizer_state=opt_state_before,
+    )
+    trainable_filter = jax.tree_util.tree_map(
+        lambda leaf: leaf is not None,
+        trainable_before,
+        is_leaf=lambda value: value is None,
+    )
+    trainable_after, static_after = eqx.partition(
+        wrapper_updated.reaction_module,
+        trainable_filter,
+    )
+    signature_after = summarize_train_step_input_signature(
+        trainable_after,
+        static_after,
+        batch_indices,
+        opt_state,
+    )
+    assert signature_before == signature_after

@@ -87,17 +87,13 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
         captured["custom_py"] = custom_py
         captured["runtime_config"] = runtime_config
         return TrainHarnessResult(
-            final_reaction_module=None,  # type: ignore[arg-type]
-            process_names=("p1",),
             mean_loss_by_step=(1.0, 0.5),
-            loss_by_process={"p1": (1.0, 0.5)},
-            compile_time_seconds_by_process={"p1": 0.1},
-            step_time_seconds_by_process={"p1": (0.01, 0.01)},
-            compile_count_by_process={"p1": 1},
-            total_compile_seconds=0.1,
-            total_compile_count=1,
-            total_step_seconds=0.02,
-            suspicious_step_spikes_by_process={"p1": 0},
+            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+            batch_process_names_by_step=(("p1",), ("p1",)),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01, 0.01),
+            train_step_input_signature=(("array", (1,), "int32"),),
+            train_step_rebuild_count=1,
         )
 
     monkeypatch.setattr(cli, "train_from_prepared_json", fake_train_from_prepared_json)
@@ -121,6 +117,13 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
             "reactor_components",
             "--steps",
             "7",
+            "--batch-size",
+            "4",
+            "--batch-seed",
+            "99",
+            "--optimizer",
+            "sgd",
+            "--no-shuffle-batches",
             "--learning-rate",
             "0.02",
             "--seed",
@@ -143,6 +146,10 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
     assert cfg.target_variable_order == ("X", "P", "G")
     assert cfg.target_source == "reactor_components"
     assert cfg.steps == 7
+    assert cfg.batch_size == 4
+    assert cfg.batch_seed == 99
+    assert cfg.shuffle_batches is False
+    assert cfg.optimizer_name == "sgd"
     assert cfg.learning_rate == 0.02
     assert cfg.seed == 12
     assert cfg.log_every == 3

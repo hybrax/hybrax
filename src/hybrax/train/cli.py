@@ -88,6 +88,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of training steps.",
     )
     train_parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="Batch size. Defaults to the number of selected processes.",
+    )
+    train_parser.add_argument(
+        "--batch-seed",
+        type=int,
+        help="Seed used for batch index generation.",
+    )
+    train_parser.add_argument(
+        "--optimizer",
+        default="adam",
+        choices=["adam", "sgd"],
+        help="Optimizer to use for batched updates.",
+    )
+    shuffle_group = train_parser.add_mutually_exclusive_group()
+    shuffle_group.add_argument(
+        "--shuffle-batches",
+        dest="shuffle_batches",
+        action="store_true",
+        help="Shuffle selected processes when building batches.",
+    )
+    shuffle_group.add_argument(
+        "--no-shuffle-batches",
+        dest="shuffle_batches",
+        action="store_false",
+        help="Keep batch construction deterministic and round-robin.",
+    )
+    train_parser.set_defaults(shuffle_batches=True)
+    train_parser.add_argument(
         "--learning-rate",
         type=float,
         default=1e-3,
@@ -168,6 +198,10 @@ def _handle_train(args: argparse.Namespace) -> int:
         target_variable_order=selected_targets if selected_targets else None,
         target_source=str(args.target_source),
         steps=int(args.steps),
+        batch_size=None if args.batch_size is None else int(args.batch_size),
+        shuffle_batches=bool(args.shuffle_batches),
+        batch_seed=None if args.batch_seed is None else int(args.batch_seed),
+        optimizer_name=str(args.optimizer),
         learning_rate=float(args.learning_rate),
         seed=int(args.seed),
         log_every=int(args.log_every),

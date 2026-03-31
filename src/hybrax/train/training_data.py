@@ -288,6 +288,23 @@ class PerProcessTrainingData(eqx.Module):
         return self.meas_mask[: self.n_meas]
 
 
+class BatchTrainingData(eqx.Module):
+    """Batch view over stacked training tensors for process-index batches."""
+
+    # Process indices used to gather this batch view.
+    process_indices: jax.Array
+    # Gathered measurement times `[batch_size, max_n_meas]`.
+    t_meas: jax.Array
+    # Gathered measurement values `[batch_size, max_n_meas, n_targets]`.
+    y_meas: jax.Array
+    # Gathered measurement masks `[batch_size, max_n_meas]`.
+    meas_mask: jax.Array
+    # Gathered active measurement counts `[batch_size]`.
+    n_meas: jax.Array
+    # Gathered initial state vectors `[batch_size, n_targets + 1]`.
+    y0: jax.Array
+
+
 class TrainingDataStore(eqx.Module):
     """Collection-level training-data store built from a prepared collection."""
 
@@ -468,4 +485,27 @@ class TrainingDataStore(eqx.Module):
             meas_mask=self.meas_mask[process_index],
             y0=self.y0[process_index],
             controls=self.controls_store.get_controls(process_name),
+        )
+
+    def gather_batch(
+        self, process_indices: jax.Array | np.ndarray
+    ) -> BatchTrainingData:
+        """Gather a process-index batch view over stacked training-data tensors."""
+        indices = jnp.asarray(process_indices, dtype=jnp.int32)
+        if indices.ndim != 1:
+            raise ValueError("process_indices must be a 1D array")
+        if indices.size == 0:
+            raise ValueError("process_indices must be non-empty")
+
+        n_processes = len(self.process_order)
+        if bool(jnp.any(indices < 0)) or bool(jnp.any(indices >= n_processes)):
+            raise IndexError("process index out of range in process_indices")
+
+        return BatchTrainingData(
+            process_indices=indices,
+            t_meas=self.t_meas[indices],
+            y_meas=self.y_meas[indices],
+            meas_mask=self.meas_mask[indices],
+            n_meas=self.n_meas[indices],
+            y0=self.y0[indices],
         )

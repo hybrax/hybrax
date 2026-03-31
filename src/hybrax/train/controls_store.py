@@ -158,6 +158,34 @@ class PerProcessControls(eqx.Module):
         return values
 
 
+class BatchControls(eqx.Module):
+    """All-process controls evaluator with index-based runtime lookup."""
+
+    # Padded dense grids `[n_processes, max_grid_length]` with right-clamped tail.
+    dense_grid: jax.Array
+    # Padded control values `[n_processes, max_grid_length, max_controls]`.
+    control_values: jax.Array
+
+    def eval(self, process_idx: int, t: jax.Array) -> jax.Array:
+        """Evaluate controls for one process index at one or more times."""
+        if isinstance(process_idx, (int, np.integer)):
+            idx = int(process_idx)
+            n_processes = int(self.dense_grid.shape[0])
+            if idx < 0 or idx >= n_processes:
+                raise IndexError(f"process index out of range: {idx}")
+
+        grid = self.dense_grid[process_idx]
+        values = self.control_values[process_idx]
+
+        query = jnp.asarray(t, dtype=grid.dtype)
+        scalar_input = query.ndim == 0
+        query_1d = jnp.atleast_1d(query)
+        out = _interp_columns(query_1d, grid, values)
+        if scalar_input:
+            return out[0]
+        return out
+
+
 class ControlsStore(eqx.Module):
     """Collection-level loader and index for prepared, padded JAX control tensors."""
 
@@ -513,4 +541,32 @@ class ControlsStore(eqx.Module):
             control_metadata=dict(process_md["control_metadata"]),
             sample_acc_name=sample_acc_name,
             sample_acc_global_index=self.sample_acc_global_index,
+        )
+
+    def as_batch_controls(self) -> BatchControls:
+        """Build a minimal index-based controls evaluator for batch training."""
+        max_grid_length = self.dense_grid.shape[1]
+        tail_mask = (
+            jnp.arange(max_grid_length, dtype=jnp.int32)[None, :]
+            >= self.grid_lengths[:, None]
+        )
+        last_index = jnp.clip(self.grid_lengths - 1, 0, max_grid_length - 1)
+        last_grid = self.dense_grid[
+            jnp.arange(self.dense_grid.shape[0], dtype=jnp.int32),
+            last_index,
+        ]
+        last_values = self.control_values[
+            jnp.arange(self.control_values.shape[0], dtype=jnp.int32),
+            last_index,
+            :,
+        ]
+        grid_clamped = jnp.where(tail_mask, last_grid[:, None], self.dense_grid)
+        values_clamped = jnp.where(
+            tail_mask[:, :, None],
+            last_values[:, None, :],
+            self.control_values,
+        )
+        return BatchControls(
+            dense_grid=grid_clamped,
+            control_values=values_clamped,
         )

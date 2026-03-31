@@ -289,3 +289,30 @@ def test_controls_store_rejects_not_consistent_controls_at_init(tmp_path):
         match="identical control names/order across processes",
     ):
         ControlsStore.from_json(prepared_json)
+
+
+def test_controls_store_batch_controls_eval_by_index(tmp_path):
+    prepared_json = _prepare_two_process(tmp_path)
+    store = ControlsStore.from_json(prepared_json)
+    batch_controls = store.as_batch_controls()
+
+    scalar = batch_controls.eval(0, jnp.asarray(0.25))
+    assert scalar.shape == (3,)
+    assert scalar[store.global_control_name_to_index["CF"]] == pytest.approx(1.025)
+    assert scalar[store.global_control_name_to_index["T"]] == pytest.approx(30.25)
+
+    values = batch_controls.eval(0, jnp.asarray([0.25, 1.5], dtype=jnp.float32))
+    assert values.shape == (2, 3)
+    assert values[0, store.global_control_name_to_index["CF"]] == pytest.approx(1.025)
+    assert values[1, store.global_control_name_to_index["CF"]] == pytest.approx(1.1)
+
+
+def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_path):
+    prepared_json = _prepare_two_process(tmp_path)
+    store = ControlsStore.from_json(prepared_json)
+    batch_controls = store.as_batch_controls()
+
+    with pytest.raises(IndexError, match="out of range"):
+        batch_controls.eval(2, jnp.asarray(0.25))
+    with pytest.raises(IndexError, match="out of range"):
+        batch_controls.eval(999, jnp.asarray(0.25))
