@@ -22,7 +22,11 @@ from bpbench.dataclasses import (
 )
 from bpbench.serialization import load_process_collection_json
 
-from bp_train.controls import build_bolus_sources, get_shortest_time_diff
+from bp_train.controls import (
+    BOLUS_DUPLICATE_THRESHOLD_REL,
+    build_bolus_sources,
+    get_shortest_time_diff,
+)
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
 
@@ -675,6 +679,90 @@ def test_build_bolus_sources_stay_zero_before_event():
 
     assert source.evaluator(jnp.asarray([2.5]))[0] == pytest.approx(0.0)
     assert source.evaluator(jnp.asarray([5.5]))[0] > 0.0
+
+
+def _make_bolus_collection_with_duplicate_times(
+    t1: float, t2: float
+) -> BioProcessCollection:
+    """Return a bolus collection whose single feed has two events at t1 and t2."""
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "X": FeedMediumComponent(
+                name="X",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="bolus", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_bolus": FeedVolumeChange(
+                    name="feed_bolus",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([t1, t2]),
+                        values=jnp.asarray([0.5, 0.5]),
+                    ),
+                    feed_medium=feed_medium,
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "X": ReactorMediumComponent(
+                    name="X",
+                    unit="g/L",
+                    concentration=StaticVariable(0.0),
+                    is_intracellular=False,
+                )
+            },
+        ),
+        process_variables={
+            "X": ProcessVariable(
+                name="X",
+                unit="g/L",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 5.0, 10.0]),
+                    values=jnp.asarray([1.0, 1.0, 1.0]),
+                ),
+            )
+        },
+    )
+    return BioProcessCollection(
+        metadata={"case_study": {"case_id": "bolus"}}, processes={"bolus": process}
+    )
+
+
+def test_build_bolus_sources_raises_on_near_duplicate_timestamps():
+    # threshold = BOLUS_DUPLICATE_THRESHOLD_REL * (10 - 0) = 1e-3; gap is 5e-4
+    gap = 0.5 * BOLUS_DUPLICATE_THRESHOLD_REL * 10.0
+    collection = _make_bolus_collection_with_duplicate_times(5.0, 5.0 + gap)
+    process = collection.processes["bolus"]
+    with pytest.raises(ValueError, match="duplicate.*timestamp|timestamp.*duplicate"):
+        build_bolus_sources(process)
+
+
+def test_build_bolus_sources_allows_events_outside_threshold():
+    # Two events that are far enough apart should succeed.
+    collection = _make_bolus_collection_with_duplicate_times(3.0, 7.0)
+    process = collection.processes["bolus"]
+    sources = build_bolus_sources(process)
+    assert len(sources) == 1
 
 
 def test_get_shortest_time_diff_ignores_near_duplicate_boundaries():

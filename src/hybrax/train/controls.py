@@ -31,6 +31,9 @@ class SignalSource:
     metadata: dict[str, Any]
 
 
+BOLUS_DUPLICATE_THRESHOLD_REL = 1e-4
+
+
 def _as_numpy(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=float)
 
@@ -355,6 +358,18 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
                 strict=False,
             )
         )
+
+        threshold = BOLUS_DUPLICATE_THRESHOLD_REL * (
+            t_end - float(process.time_axis.start)
+        )
+        event_times = sorted(float(et) for et, _ in event_pairs)
+        for i in range(len(event_times) - 1):
+            if event_times[i + 1] - event_times[i] < threshold:
+                raise ValueError(
+                    f"Feed '{name}' has duplicate bolus timestamps:"
+                    f" {event_times[i]} and {event_times[i + 1]} are within"
+                    f" the deduplication threshold ({threshold:.3g})."
+                )
 
         for event_time, delta_v in event_pairs:
             event_time = float(event_time)
