@@ -42,11 +42,11 @@ from bpbench.serialization import (
 def sample_process():
     """Build a minimal but realistic BioProcess for serialization tests."""
     biomass_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     glucose_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([20.0, 15.0, 8.0, 2.0, 0.5]),
     )
     biomass_rc = ReactorMediumComponent(
@@ -74,7 +74,7 @@ def sample_process():
         components={"glucose": feed_comp},
     )
     feed_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
     volume_change = FeedVolumeChange(
@@ -89,7 +89,7 @@ def sample_process():
     )
 
     temp_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24.]),
+        times=jnp.array([0., 12., 24.]),
         values=jnp.array([37.0, 37.0, 37.0]),
     )
     pv_temp = ProcessVariable(
@@ -222,8 +222,8 @@ def test_save_load_roundtrip_timeseries(sample_dataset):
 
         proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
         biomass = proc.reactor_medium.components["biomass"]
-        assert hasattr(biomass.concentration, "timepoints")
-        assert biomass.concentration.timepoints.shape == (5,)
+        assert hasattr(biomass.concentration, "times")
+        assert biomass.concentration.times.shape == (5,)
         assert jnp.allclose(
             biomass.concentration.values,
             jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
@@ -253,7 +253,7 @@ def test_save_load_roundtrip_volume(sample_dataset):
         assert "glucose_feed" in proc.volume.volume_changes
         vc = proc.volume.volume_changes["glucose_feed"]
         assert vc.is_continuous is True
-        assert vc.values.timepoints.shape == (5,)
+        assert vc.values.times.shape == (5,)
 
 
 def test_save_load_roundtrip_feed_medium(sample_dataset):
@@ -334,7 +334,7 @@ def test_json_roundtrip_timeseries(sample_dataset):
 
         proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
         biomass = proc.reactor_medium.components["biomass"]
-        assert biomass.concentration.timepoints.shape == (5,)
+        assert biomass.concentration.times.shape == (5,)
         assert jnp.allclose(
             biomass.concentration.values,
             jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),

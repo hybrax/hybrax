@@ -31,7 +31,7 @@ from bpbench import BenchmarkDataset, CaseStudy
 # ---------------------------------------------------------------------------
 
 def _ts(t, v):
-    return TimeSeries(timepoints=jnp.array(t, dtype=float),
+    return TimeSeries(times=jnp.array(t, dtype=float),
                       values=jnp.array(v, dtype=float))
 
 
@@ -158,15 +158,15 @@ def test_split_timeseries_single_segment():
     ts = _ts([0., 2., 4., 6.], [1., 2., 3., 4.])
     segments = split_timeseries(ts, np.array([0.0, 6.0]))
     assert len(segments) == 1
-    assert segments[0].timepoints.shape[0] == 4
+    assert segments[0].times.shape[0] == 4
 
 
 def test_split_timeseries_two_segments():
     ts = _ts([0., 1., 2., 3., 4., 5.], [10., 20., 30., 40., 50., 60.])
     segments = split_timeseries(ts, np.array([0.0, 2.5, 5.0]))
     assert len(segments) == 2
-    assert segments[0].timepoints.shape[0] == 3
-    assert segments[1].timepoints.shape[0] == 3
+    assert segments[0].times.shape[0] == 3
+    assert segments[1].times.shape[0] == 3
 
 
 # ---------------------------------------------------------------------------

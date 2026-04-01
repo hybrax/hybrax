@@ -34,7 +34,7 @@ from bpbench import (
 @pytest.fixture
 def simple_process():
     ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
@@ -50,11 +50,11 @@ def simple_process():
 @pytest.fixture
 def complex_process():
     biomass_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     glucose_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([20.0, 15.0, 8.0, 2.0, 0.5]),
     )
     biomass_rc = ReactorMediumComponent(
@@ -71,7 +71,7 @@ def complex_process():
     temp_pv = ProcessVariable(
         name="temperature", unit="°C", is_controlled=True,
         values=TimeSeries(
-            timepoints=jnp.array([0., 12., 24.]),
+            times=jnp.array([0., 12., 24.]),
             values=jnp.array([37.0, 37.0, 37.0]),
         ),
     )
@@ -89,7 +89,7 @@ def complex_process():
         },
     )
     feed_ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
     vc = FeedVolumeChange(
@@ -288,7 +288,7 @@ def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
 # ---------------------------------------------------------------------------
 
 def _make_minimal_process(name):
-    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
+    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
     rm = ReactorMedium(name="m", density=1.0, density_unit="kg/L", components={"biomass": rc})
     return BioProcess(
@@ -459,7 +459,7 @@ def test_plot_process_no_metadata_uses_fallback_title():
                 name="temperature",
                 unit="C",
                 is_controlled=True,
-                values=TimeSeries(timepoints=jnp.array([0.0, 1.0]), values=jnp.array([37.0, 37.0])),
+                values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([37.0, 37.0])),
             )
         },
     )

@@ -38,10 +38,10 @@ def test_time_axis_creation():
 
 def test_timeseries_creation():
     ts = TimeSeries(
-        timepoints=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0., 12., 24., 36., 48.]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
-    assert ts.timepoints.shape == (5,)
+    assert ts.times.shape == (5,)
     assert ts.values.shape == (5,)
 
 
@@ -68,14 +68,14 @@ def test_bioprocess_metadata_with_notes():
 
 def test_process_variable_timeseries():
     ts = TimeSeries(
-        timepoints=jnp.array([0., 1., 2.]),
+        times=jnp.array([0., 1., 2.]),
         values=jnp.array([37.0, 37.0, 37.0]),
     )
     pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
     assert pv.name == "temperature"
     assert pv.is_controlled is True
     assert pv.interpolator is None
-    assert hasattr(pv.values, "timepoints")
+    assert hasattr(pv.values, "times")
 
 
 def test_process_variable_static():
@@ -108,13 +108,13 @@ def test_feed_medium_component_static():
 
 
 def test_feed_medium_component_timeseries():
-    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([100.0, 200.0]))
+    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([100.0, 200.0]))
     fmc = FeedMediumComponent(name="glucose", unit="g/L", concentration=ts, is_controlled=True)
-    assert hasattr(fmc.concentration, "timepoints")
+    assert hasattr(fmc.concentration, "times")
 
 
 def test_reactor_medium_component_timeseries():
-    ts = TimeSeries(timepoints=jnp.array([0., 1., 2.]), values=jnp.array([0.1, 0.5, 1.0]))
+    ts = TimeSeries(times=jnp.array([0., 1., 2.]), values=jnp.array([0.1, 0.5, 1.0]))
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
     assert rc.name == "biomass"
     assert rc.is_intracellular is False
@@ -159,24 +159,24 @@ def test_reactor_medium_empty_components():
 
 
 def test_reactor_medium_with_components():
-    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
+    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
     rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc})
     assert "biomass" in rm.components
 
 
 def test_volume_change_continuous():
-    ts = TimeSeries(timepoints=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
+    ts = TimeSeries(times=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
     vc = FeedVolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
                           feed_medium=fm, values=ts)
     assert vc.name == "feed"
     assert vc.is_continuous is True
-    assert vc.values.timepoints.shape == (3,)
+    assert vc.values.times.shape == (3,)
 
 
 def test_feed_volume_change_stores_interpolator():
-    ts = TimeSeries(timepoints=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
+    ts = TimeSeries(times=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
     rep = Interpolator(kind="interpax_ppoly", x=jnp.array([0.0, 1.0]), coefficients=jnp.zeros((1, 1)))
     vc = FeedVolumeChange(
@@ -192,7 +192,7 @@ def test_feed_volume_change_stores_interpolator():
 
 
 def test_volume_change_discrete():
-    ts = TimeSeries(timepoints=jnp.array([2.0, 5.0]), values=jnp.array([0.5, 0.5]))
+    ts = TimeSeries(times=jnp.array([2.0, 5.0]), values=jnp.array([0.5, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
     vc = FeedVolumeChange(name="bolus", unit="L", is_controlled=True, is_continuous=False,
                           feed_medium=fm, values=ts)
@@ -206,7 +206,7 @@ def test_volume_default_volume_changes():
 
 
 def test_volume_with_changes():
-    ts = TimeSeries(timepoints=jnp.array([0., 10.]), values=jnp.array([0.0, 0.5]))
+    ts = TimeSeries(times=jnp.array([0., 10.]), values=jnp.array([0.0, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
     vc = FeedVolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
                           feed_medium=fm, values=ts)
@@ -231,7 +231,7 @@ def test_bioprocess_minimal():
 
 
 def test_bioprocess_with_process_variables():
-    ts = TimeSeries(timepoints=jnp.array([0., 1.]), values=jnp.array([37.0, 37.0]))
+    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([37.0, 37.0]))
     pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),

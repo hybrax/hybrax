@@ -39,7 +39,7 @@ from bpbench.splines import (
 
 def _ts(t, v):
     return TimeSeries(
-        timepoints=jnp.array(t, dtype=float),
+        times=jnp.array(t, dtype=float),
         values=jnp.array(v, dtype=float),
     )
 

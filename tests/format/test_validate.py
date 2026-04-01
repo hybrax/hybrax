@@ -36,7 +36,7 @@ from bpbench import (
 
 def _ts(timepoints, values):
     """Shorthand for building a TimeSeries."""
-    return TimeSeries(timepoints=jnp.array(timepoints), values=jnp.array(values))
+    return TimeSeries(times=jnp.array(timepoints), values=jnp.array(values))
 
 
 def _make_process(
@@ -82,25 +82,19 @@ class TestValidateTimeSeriesShape:
         assert ok is True
 
     def test_unordered_timepoints(self):
-        ts = _ts([0.0, 2.0, 1.0], [1.0, 2.0, 3.0])
-        ok, msg = validate_timeseries_shape(ts, name="glucose")
-        assert ok is False
-        assert "monotonically" in msg
+        with pytest.raises(ValueError, match="strictly increasing"):
+            _ts([0.0, 2.0, 1.0], [1.0, 2.0, 3.0])
 
     def test_duplicate_timepoints(self):
-        ts = _ts([0.0, 1.0, 1.0], [1.0, 2.0, 3.0])
-        ok, msg = validate_timeseries_shape(ts)
-        assert ok is False
-        assert "monotonically" in msg
+        with pytest.raises(ValueError, match="strictly increasing"):
+            _ts([0.0, 1.0, 1.0], [1.0, 2.0, 3.0])
 
     def test_length_mismatch(self):
-        ts = TimeSeries(
-            timepoints=jnp.array([0.0, 1.0, 2.0]),
-            values=jnp.array([1.0, 2.0]),
-        )
-        ok, msg = validate_timeseries_shape(ts)
-        assert ok is False
-        assert "does not match" in msg
+        with pytest.raises(ValueError, match="same length"):
+            TimeSeries(
+                times=jnp.array([0.0, 1.0, 2.0]),
+                values=jnp.array([1.0, 2.0]),
+            )
 
     def test_name_appears_in_message(self):
         ts = _ts([0.0, 1.0], [1.0, 2.0])
@@ -329,20 +323,9 @@ class TestValidateProcess:
         assert all("invalid" not in m.lower() for m in messages)
 
     def test_invalid_process_returns_false(self):
-        # Unordered time points -> invalid TimeSeries
-        bad_ts = _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
-                    concentration=bad_ts,
-                    is_intracellular=False,
-                ),
-            },
-        )
-        all_valid, messages = validate_process(process)
-        assert all_valid is False
-        assert any("monotonically" in m for m in messages)
+        # Unordered time points -> TimeSeries now rejects at construction
+        with pytest.raises(ValueError, match="strictly increasing"):
+            _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
 
     def test_wrong_type_raises_type_error(self):
         """validate_process() must raise TypeError for non-BioProcess arguments."""
@@ -373,24 +356,9 @@ class TestValidateProcess:
         assert all_valid is True
 
     def test_process_with_process_variable_timeseries(self):
-        """Invalid TimeSeries in a process variable must be caught."""
-        bad_ts = _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])  # non-monotonic
-        pv = ProcessVariable(
-            name="temperature", unit="°C", is_controlled=True, values=bad_ts
-        )
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
-                    concentration=StaticVariable(value=1.0),
-                    is_intracellular=False,
-                ),
-            },
-            process_variables={"temperature": pv},
-        )
-        all_valid, messages = validate_process(process)
-        assert all_valid is False
-        assert any("temperature" in m for m in messages)
+        """Invalid TimeSeries (non-monotonic) is now rejected at construction."""
+        with pytest.raises(ValueError, match="strictly increasing"):
+            _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
 
 
 # ---------------------------------------------------------------------------
@@ -626,15 +594,9 @@ class TestValidateCaseStudy:
         assert any("volume change" in e for e in report["__consistency__"])
 
     def test_invalid_process_propagates_failure(self):
-        """If any process is invalid, all_valid should be False."""
-        good_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
-        bad_ts = _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])  # non-monotonic
-        p1 = _make_biomass_process(good_ts)
-        p2 = _make_biomass_process(bad_ts)
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
-        assert all_valid is False
-        assert any("monotonically" in m for m in report["run2"])
+        """Non-monotonic times are now rejected at TimeSeries construction."""
+        with pytest.raises(ValueError, match="strictly increasing"):
+            _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
 
     def test_wrong_type_raises_type_error(self):
         with pytest.raises(TypeError, match="CaseStudy"):

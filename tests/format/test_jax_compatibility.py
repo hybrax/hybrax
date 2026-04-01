@@ -28,7 +28,7 @@ from bpbench import (
 # ---------------------------------------------------------------------------
 
 def _ts(timepoints, values):
-    return TimeSeries(timepoints=jnp.array(timepoints), values=jnp.array(values))
+    return TimeSeries(times=jnp.array(timepoints), values=jnp.array(values))
 
 
 def _make_process():
@@ -49,9 +49,9 @@ def _make_process():
 
 def test_timeseries_stores_jax_arrays():
     ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
-    assert isinstance(ts.timepoints, jnp.ndarray)
+    assert isinstance(ts.times, jnp.ndarray)
     assert isinstance(ts.values, jnp.ndarray)
-    assert ts.timepoints.shape == (3,)
+    assert ts.times.shape == (3,)
     assert ts.values.shape == (3,)
 
 
@@ -69,7 +69,7 @@ def test_jax_operations_on_timeseries_values():
 
 def test_jax_operations_on_timepoints():
     ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
-    diffs = jnp.diff(ts.timepoints)
+    diffs = jnp.diff(ts.times)
     assert jnp.all(diffs > 0)
 
 
@@ -95,7 +95,7 @@ def test_jit_on_multiple_arrays():
     def trapezoid_integral(timepoints, values):
         return jnp.trapezoid(values, timepoints)
 
-    result = trapezoid_integral(ts.timepoints, ts.values)
+    result = trapezoid_integral(ts.times, ts.values)
     assert float(result) == pytest.approx(2.25, rel=1e-4)
 
 
@@ -151,7 +151,7 @@ def test_jit_with_extracted_arrays():
     def growth_rate_approx(values, timepoints):
         return jnp.diff(values) / jnp.diff(timepoints)
 
-    rates = growth_rate_approx(biomass_ts.values, biomass_ts.timepoints)
+    rates = growth_rate_approx(biomass_ts.values, biomass_ts.times)
     assert rates.shape == (2,)
     assert jnp.all(rates > 0)
 
