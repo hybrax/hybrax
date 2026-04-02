@@ -4,6 +4,7 @@ and pseudobatch transform pipeline.
 """
 
 import pytest
+import jax
 import jax.numpy as jnp
 import numpy as np
 import tempfile
@@ -1007,6 +1008,115 @@ def test_backtransform_spline_jit_continuous():
     val = jit_fn(jnp.array(10.0))
     assert np.isfinite(float(val))
     assert float(val) > 0
+
+
+# ---------------------------------------------------------------------------
+# PCHIP fallback for spline oscillation
+# ---------------------------------------------------------------------------
+
+def _make_process_sharp_profile():
+    """Process with a species that has a sharp 0→peak→0 profile (triggers PCHIP)."""
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "acetate": ReactorMediumComponent(
+                name="acetate", unit="g/L",
+                concentration=_ts(
+                    [0.0, 2.0, 3.0, 4.5, 6.0, 7.5, 9.0, 10.0],
+                    [0.0, 0.15, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(initial_volume=1.0, unit="L", volume_changes={})
+    return BioProcess(
+        metadata=BioProcessMetadata(name="test_pchip", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0,
+                           time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+
+def _make_process_smooth_profile():
+    """Process with a smooth monotone species (no PCHIP needed)."""
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=_ts(
+                    [0.0, 2.0, 5.0, 8.0, 10.0],
+                    [0.1, 0.5, 2.0, 5.0, 8.0],
+                ),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(initial_volume=1.0, unit="L", volume_changes={})
+    return BioProcess(
+        metadata=BioProcessMetadata(name="test_smooth", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0,
+                           time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+
+class TestPchipFallback:
+    def test_pchip_fallback_triggered(self):
+        """Sharp 0→peak→0 profile should trigger PCHIP fallback."""
+        proc = _make_process_sharp_profile()
+        inputs = build_pseudobatch_inputs(proc, "acetate")
+        splines = build_splines(inputs, proc, "acetate")
+        assert inputs.get("cstar_interp") == "pchip"
+
+        # Verify the spline stays non-negative on a dense grid
+        t_dense = jnp.linspace(0.0, 10.0, 500)
+        c_dense = jax.vmap(splines["spline_cstar"])(t_dense)
+        assert float(jnp.min(c_dense)) >= -1e-8
+
+    def test_pchip_fallback_not_triggered(self):
+        """Smooth monotone profile should NOT trigger PCHIP fallback."""
+        proc = _make_process_smooth_profile()
+        inputs = build_pseudobatch_inputs(proc, "biomass")
+        splines = build_splines(inputs, proc, "biomass")
+        assert inputs.get("cstar_interp", "cubic") == "cubic"
+
+    def test_pchip_backtransform_roundtrip(self):
+        """PCHIP spline serialized and rebuilt recovers measurement values."""
+        proc = _make_process_sharp_profile()
+        inputs = build_pseudobatch_inputs(proc, "acetate")
+        splines = build_splines(inputs, proc, "acetate")
+        rep = to_interpolator(inputs, splines, "acetate")
+
+        assert rep.interpolator_metadata["transform"]["cstar_interp"] == "pchip"
+
+        bt = build_backtransform_spline(rep)
+        # Evaluate at measurement times
+        meas_t = jnp.array(inputs["meas_times"])
+        meas_c = jnp.array(inputs["meas_conc"])
+        for t, c_expected in zip(meas_t, meas_c):
+            c_bt = float(bt(t))
+            assert abs(c_bt - float(c_expected)) < 1e-4, (
+                f"At t={float(t):.2f}: backtransform={c_bt:.6f}, "
+                f"expected={float(c_expected):.6f}"
+            )
+
+    def test_pchip_nonnegative_concentration(self):
+        """BacktransformSpline from PCHIP should not go significantly negative."""
+        proc = _make_process_sharp_profile()
+        inputs = build_pseudobatch_inputs(proc, "acetate")
+        splines = build_splines(inputs, proc, "acetate")
+        rep = to_interpolator(inputs, splines, "acetate")
+        bt = build_backtransform_spline(rep)
+
+        t_dense = jnp.linspace(0.0, 10.0, 500)
+        c_dense = jnp.array([float(bt(t)) for t in t_dense])
+        assert float(jnp.min(c_dense)) >= -1e-6, (
+            f"BacktransformSpline went negative: min={float(jnp.min(c_dense)):.6f}"
+        )
 
 
 if __name__ == "__main__":

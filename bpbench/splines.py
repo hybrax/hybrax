@@ -27,6 +27,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import equinox as eqx
 import interpax
+import jax
 import jax.numpy as jnp
 from scipy import interpolate
 import pseudobatch
@@ -476,10 +477,8 @@ def _compute_dense_volumes(
     return reactor_volume, accumulated_feed, sample_volume, concentration_in_feed
 
 
-def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural"):
-    """
-    Build a robust interpax.CubicSpline from arrays. Ensures unique, sorted knots.
-    """
+def _prepare_knots(t: jnp.ndarray, y: jnp.ndarray):
+    """Sort and deduplicate knots. Returns (t, y) with at least 2 points."""
     t = jnp.asarray(t, dtype=float)
     y = jnp.asarray(y, dtype=float)
     order = jnp.argsort(t)
@@ -489,9 +488,26 @@ def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural
     if len(t) < 2:
         t = jnp.array([t[0], t[0] + 1e-6])
         y = jnp.array([y[0], y[0]])
-    return interpax.CubicSpline(
-        jnp.asarray(t), jnp.asarray(y), bc_type=bc_type, check=False
-    )
+    return jnp.asarray(t), jnp.asarray(y)
+
+
+def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural"):
+    """
+    Build a robust interpax.CubicSpline from arrays. Ensures unique, sorted knots.
+    """
+    t, y = _prepare_knots(t, y)
+    return interpax.CubicSpline(t, y, bc_type=bc_type, check=False)
+
+
+def make_pchip_spline(t: jnp.ndarray, y: jnp.ndarray):
+    """
+    Build an interpax.PchipInterpolator from arrays. Ensures unique, sorted knots.
+
+    PCHIP preserves monotonicity between consecutive knots, preventing
+    overshoot that can cause negative concentrations from sparse data.
+    """
+    t, y = _prepare_knots(t, y)
+    return interpax.PchipInterpolator(t, y, check=False)
 
 
 def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str, Any]:
@@ -622,6 +638,20 @@ def build_splines(
       - interp_times, adf_interp, feed_corr_interp  (arrays for jnp.interp)
     """
     spline_cstar = make_interpax_spline(inputs["meas_times"], inputs["c_star"])
+
+    # If c* values are all non-negative but the cubic spline goes negative,
+    # switch to PCHIP to prevent overshoot that causes negative concentrations.
+    c_star_vals = jnp.asarray(inputs["c_star"], dtype=float)
+    if float(jnp.min(c_star_vals)) >= 0.0 and len(c_star_vals) >= 2:
+        t_dense = jnp.linspace(
+            float(inputs["meas_times"][0]),
+            float(inputs["meas_times"][-1]),
+            max(200, 10 * len(inputs["meas_times"])),
+        )
+        c_dense = jax.vmap(spline_cstar)(t_dense)
+        if float(jnp.min(c_dense)) < -1e-8:
+            spline_cstar = make_pchip_spline(inputs["meas_times"], inputs["c_star"])
+            inputs["cstar_interp"] = "pchip"
 
     interp_times = jnp.array(inputs["meas_times"])
     interp_adf = jnp.array(inputs["adf_at_meas"])
@@ -812,6 +842,7 @@ def to_interpolator(
         "name": "pseudo_batch",
         "species": species_name,
         "feed_corr_interp": feed_corr_interp,
+        "cstar_interp": inputs.get("cstar_interp", "cubic"),
         "is_constant": is_constant,
         "constant_value": float(jnp.mean(meas_conc)) if is_constant else None,
         # ADF: compact grid with only step transition points
@@ -843,7 +874,7 @@ class BacktransformSpline(eqx.Module):
     :class:`Interpolator`.
     """
 
-    c_star_spline: interpax.CubicSpline
+    c_star_spline: interpax.CubicSpline  # or PchipInterpolator (PPoly subclass)
     adf_times: jnp.ndarray
     adf_values: jnp.ndarray
     fc_spline: interpax.CubicSpline
@@ -944,7 +975,11 @@ def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
     ni = int(rep.n[0])
     xi = rep.x[0, :ni]
     yi = rep.y[0, :ni]
-    c_star_spline = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
+    cstar_method = tr.get("cstar_interp", "cubic")
+    if cstar_method == "pchip":
+        c_star_spline = interpax.PchipInterpolator(xi, yi, check=False)
+    else:
+        c_star_spline = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
 
     # ADF grid
     adf_times = jnp.array(tr["adf_times"], dtype=float)
