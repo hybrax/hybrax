@@ -292,7 +292,138 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     messages.append(msg)
     all_valid = all_valid and ok
 
+    # --- Measurement/sampling alignment check ---
+    ok, msg = validate_measurement_sampling_alignment(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    # --- Intracellular unit consistency check ---
+    ok, msg = validate_intracellular_units(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
     return all_valid, messages
+
+
+def validate_measurement_sampling_alignment(
+    process: BioProcess,
+    rel_threshold: float = 1e-4,
+) -> Tuple[bool, str]:
+    """
+    Check that reactor medium measurement times are not slightly offset from
+    sampling times.
+
+    When a concentration measurement is taken just *after* a sampling event
+    (e.g. 0.0003 h later), the accumulated dilution factor (ADF) in the
+    pseudobatch transform may use the wrong reactor volume, corrupting the
+    normalisation and downstream spline calculations.
+
+    This function flags every measurement time point that is close to (but not
+    exactly at) a sampling time point, where "close" means within
+    ``rel_threshold`` of the total process length.
+
+    Args:
+        process: BioProcess object to validate.
+        rel_threshold: Maximum relative deviation (fraction of process length)
+            that is considered "suspiciously close".  Default is ``1e-4``
+            (0.01 %).
+
+    Returns:
+        A tuple ``(is_valid, message)`` where ``is_valid`` is ``False`` when
+        at least one near-miss is detected.
+    """
+    # Collect sampling times from SampleVolumeChange objects
+    sampling_times_list: List[float] = []
+    if process.volume and process.volume.volume_changes:
+        for vc in process.volume.volume_changes.values():
+            if isinstance(vc, SampleVolumeChange) and _is_dynamic_series(vc.values):
+                sampling_times_list.extend(float(t) for t in jnp.asarray(vc.values.times))
+
+    if not sampling_times_list:
+        return True, "No sampling events — measurement/sampling alignment check skipped"
+
+    sampling_times = jnp.array(sorted(sampling_times_list))
+    proc_length = float(process.time_axis.end - process.time_axis.start)
+    if proc_length <= 0:
+        return True, "Process length is zero — measurement/sampling alignment check skipped"
+    abs_threshold = rel_threshold * proc_length
+
+    warnings: List[str] = []
+
+    if process.reactor_medium and process.reactor_medium.components:
+        for comp_name, comp in process.reactor_medium.components.items():
+            if not _is_dynamic_series(comp.concentration):
+                continue
+            meas_times = jnp.asarray(comp.concentration.times)
+            for mt in meas_times:
+                mt_f = float(mt)
+                idx = int(jnp.argmin(jnp.abs(sampling_times - mt_f)))
+                nearest_st = float(sampling_times[idx])
+                delta = mt_f - nearest_st
+                if 0 < delta <= abs_threshold:
+                    warnings.append(
+                        f"  '{comp_name}': measurement at t={mt_f:.6f} is "
+                        f"{delta:.6f} {process.time_axis.unit} after sampling "
+                        f"at t={nearest_st:.6f} "
+                        f"({delta / proc_length * 100:.4f}% of process length)"
+                    )
+
+    if warnings:
+        header = (
+            "Measurement times are slightly offset from sampling times. "
+            "This can lead to incorrect ADF values in the pseudobatch "
+            "normalisation and errors in the spline calculation.\n"
+        )
+        return False, header + "\n".join(warnings)
+    return True, "Measurement/sampling time alignment — OK"
+
+
+def validate_intracellular_units(
+    process: BioProcess,
+) -> Tuple[bool, str]:
+    """Check that intracellular components use the same unit as biomass.
+
+    When the mechanistic ODE module computes the active biomass
+    (``X_active = c_biomass - sum(c_intracellular)``), it subtracts raw
+    numerical values.  If the intracellular components have a different
+    unit (e.g. mg/L vs g/L), the subtraction is physically meaningless
+    and leads to wildly incorrect specific rates.
+
+    Args:
+        process: BioProcess object to validate.
+
+    Returns:
+        A tuple ``(is_valid, message)``.
+    """
+    if not process.reactor_medium or not process.reactor_medium.components:
+        return True, "Intracellular unit check skipped — no reactor medium components"
+
+    # Find biomass component
+    biomass_unit: Optional[str] = None
+    for name, comp in process.reactor_medium.components.items():
+        if name.strip().lower() == "biomass":
+            biomass_unit = comp.unit
+            break
+    if biomass_unit is None:
+        return True, "Intracellular unit check skipped — no biomass component found"
+
+    warnings: List[str] = []
+    for name, comp in process.reactor_medium.components.items():
+        if comp.is_intracellular and comp.unit != biomass_unit:
+            warnings.append(
+                f"  '{name}' has unit '{comp.unit}' but biomass has "
+                f"unit '{biomass_unit}'"
+            )
+
+    if warnings:
+        header = (
+            "Intracellular component units differ from biomass unit. "
+            "This will cause incorrect X_active computation in the "
+            "mechanistic ODE module (raw numerical subtraction without "
+            "unit conversion).\n"
+        )
+        return False, header + "\n".join(warnings)
+    return True, "Intracellular component units — OK"
 
 
 def validate_volume_consistency(

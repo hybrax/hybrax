@@ -24,6 +24,8 @@ from bpbench import (
     validate_volume_change_sign,
     validate_volume_change_states,
     validate_biomass_in_reactor_medium,
+    validate_measurement_sampling_alignment,
+    validate_intracellular_units,
     validate_process,
     validate_volume_consistency,
     validate_case_study,
@@ -659,6 +661,169 @@ class TestValidateCaseStudy:
         all_valid, report = validate_case_study(cs)
         assert all_valid is False
         assert any("volume change" in e for e in report["__consistency__"])
+
+
+# ---------------------------------------------------------------------------
+# validate_measurement_sampling_alignment
+# ---------------------------------------------------------------------------
+
+class TestValidateMeasurementSamplingAlignment:
+    def _sample_vc(self, times, values):
+        return SampleVolumeChange(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts(times, values),
+        )
+
+    def test_aligned_times_pass(self):
+        """Measurement times exactly match sampling times — should pass."""
+        sample_times = [2.0, 5.0, 8.0]
+        sample_vals = [-0.01, -0.01, -0.01]
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts([2.0, 5.0, 8.0], [0.1, 0.5, 1.0]),
+                    is_intracellular=False,
+                ),
+            },
+            volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
+        )
+        ok, msg = validate_measurement_sampling_alignment(process)
+        assert ok is True
+        assert "OK" in msg
+
+    def test_small_delay_detected(self):
+        """Measurement 0.0003 h after sampling in a 10 h process (0.003%) — should warn."""
+        sample_times = [2.0, 5.0, 8.0]
+        sample_vals = [-0.01, -0.01, -0.01]
+        # Measurements are slightly after sampling
+        meas_times = [2.0003, 5.0003, 8.0003]
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts(meas_times, [0.1, 0.5, 1.0]),
+                    is_intracellular=False,
+                ),
+            },
+            volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
+        )
+        ok, msg = validate_measurement_sampling_alignment(process)
+        assert ok is False
+        assert "biomass" in msg
+        assert "ADF" in msg
+
+    def test_large_gap_passes(self):
+        """Measurements far from any sampling time — not a misalignment, should pass."""
+        sample_times = [2.0, 8.0]
+        sample_vals = [-0.01, -0.01]
+        meas_times = [0.5, 5.0, 9.5]  # far from 2.0 and 8.0
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts(meas_times, [0.1, 0.5, 1.0]),
+                    is_intracellular=False,
+                ),
+            },
+            volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
+        )
+        ok, msg = validate_measurement_sampling_alignment(process)
+        assert ok is True
+
+    def test_no_sampling_events_skipped(self):
+        """Process with no SampleVolumeChange — check should be skipped."""
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts([0.0, 5.0, 10.0], [0.1, 0.5, 1.0]),
+                    is_intracellular=False,
+                ),
+            },
+        )
+        ok, msg = validate_measurement_sampling_alignment(process)
+        assert ok is True
+        assert "skipped" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# validate_intracellular_units
+# ---------------------------------------------------------------------------
+
+class TestValidateIntracellularUnits:
+    def test_same_units_pass(self):
+        """Intracellular component with same unit as biomass — should pass."""
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts([0.0, 1.0], [0.1, 1.0]),
+                    is_intracellular=False,
+                ),
+                "product": ReactorMediumComponent(
+                    name="product", unit="g/L",
+                    concentration=_ts([0.0, 1.0], [0.0, 0.5]),
+                    is_intracellular=True,
+                ),
+            },
+        )
+        ok, msg = validate_intracellular_units(process)
+        assert ok is True
+        assert "OK" in msg
+
+    def test_different_units_fail(self):
+        """Intracellular component with mg/L vs biomass g/L — should warn."""
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts([0.0, 1.0], [0.1, 1.0]),
+                    is_intracellular=False,
+                ),
+                "plasmid": ReactorMediumComponent(
+                    name="plasmid", unit="mg/L",
+                    concentration=_ts([0.0, 1.0], [0.0, 50.0]),
+                    is_intracellular=True,
+                ),
+            },
+        )
+        ok, msg = validate_intracellular_units(process)
+        assert ok is False
+        assert "plasmid" in msg
+        assert "mg/L" in msg
+
+    def test_no_intracellular_pass(self):
+        """No intracellular components — should pass."""
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=_ts([0.0, 1.0], [0.1, 1.0]),
+                    is_intracellular=False,
+                ),
+            },
+        )
+        ok, msg = validate_intracellular_units(process)
+        assert ok is True
+
+    def test_no_biomass_skipped(self):
+        """No biomass component — check should be skipped."""
+        process = _make_process(
+            reactor_components={
+                "glucose": ReactorMediumComponent(
+                    name="glucose", unit="g/L",
+                    concentration=_ts([0.0, 1.0], [10.0, 5.0]),
+                    is_intracellular=False,
+                ),
+            },
+        )
+        ok, msg = validate_intracellular_units(process)
+        assert ok is True
+        assert "skipped" in msg.lower()
 
 
 if __name__ == "__main__":
