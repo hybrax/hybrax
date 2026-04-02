@@ -617,7 +617,10 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
 
         n = len(x)
 
-        if render == "bar":
+        if n == 0:
+            # Nothing to plot (e.g. empty volume change); add invisible artist for legend
+            ax.plot([], [], label=label, **plot_kwargs)
+        elif render == "bar":
             # Bar plot for discrete (non-continuous) volume changes
             delta = float(x[-1] - x[0])
             width = max(delta / 30, 0.1)
@@ -628,9 +631,6 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
         else:
             fmt = "o-" if n <= 50 else "-"
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
-
-        if render != "bar":
-            _pad_constant_ylim(ax, y)
 
         # Draw interpolator curve
         if has_interpolator and t_start is not None and t_end is not None:
@@ -665,7 +665,7 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
             label=label,
             **plot_kwargs,
         )
-        _pad_constant_ylim(ax, [panel["value"]])
+
 
 
 def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=None):
@@ -862,6 +862,12 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     for i, panel in enumerate(panels):
         ax = axes_flat[i]
         _draw_panel(ax, panel, t_start=t_start, t_end=t_end)
+        # Pad y-axis for constant-valued panels (skip bar-rendered discrete events)
+        if panel.get("render") != "bar":
+            if panel["type"] == "dynamic":
+                _pad_constant_ylim(ax, panel["y"])
+            else:
+                _pad_constant_ylim(ax, [panel["value"]])
         category = panel.get("category", "")
         ax.set_title(f"{panel['title']} ({category})")
         ax.set_xlabel(f"time [{time_unit}]")
