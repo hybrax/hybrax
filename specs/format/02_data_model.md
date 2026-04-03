@@ -1,0 +1,379 @@
+# Data Model
+
+Source: `bpbench/dataclasses.py`
+
+## Purpose
+
+The data model defines a hierarchical set of Python dataclasses that describe bioprocess experiments from raw measurements up to multi-study benchmark datasets. Every class uses standard `@dataclass` decorators (not `eqx.Module`) because the outer containers hold `Dict[str, ...]` fields that are manipulated outside the JAX JIT boundary. The one exception is `TimeSeries`, which lives in the `time_series/` subpackage and is an `eqx.Module`.
+
+## Design Rationale
+
+- **Dict keyed by name, not lists:** Components are stored as `Dict[str, Component]` (e.g., `reactor_medium.components["glucose"]`). This gives O(1) lookup, produces clean JSON keys, and makes iteration order explicit.
+- **Volume is separate from states and controls:** Volume is affected by multiple operations (feeds, sampling, evaporation) and enters the ODE differently from states. See [Design Rationale: Volume](01_design_rationale.md#3-volume-as-a-first-class-concept).
+- **`is_intracellular` flag:** Some products accumulate inside cells (e.g., inclusion bodies). The mass balance needs to compute active biomass as `X_active = X_measured - sum(intracellular)`. The flag on `ReactorMediumComponent` marks these species.
+- **Feed/Sample subtypes:** `FeedVolumeChange` and `SampleVolumeChange` enforce sign conventions at the type level and only feeds carry a `FeedMedium` reference (sampling removes reactor contents at current concentrations).
+- **`TimeSeries | StaticVariable` union:** Concentrations and process variables can be either time-varying (measured) or constant (known). The union type handles both cases cleanly.
+
+## Class Reference
+
+### Low-Level Structures
+
+#### `TimeAxis`
+Defines the time domain for a bioprocess.
+
+```python
+@dataclass
+class TimeAxis:
+    unit: str           # e.g. "h", "days"
+    start: float        # process start time
+    end: float          # process end time
+    time_reference: str  # "inoculation", "first_feed", or "operator_defined"
+```
+
+The `time_reference` field documents what `t=0` corresponds to, which is critical for aligning data across processes.
+
+#### `StaticVariable`
+A single time-independent scalar value.
+
+```python
+@dataclass
+class StaticVariable:
+    value: float
+```
+
+Used for constant feed concentrations, fixed parameters, etc.
+
+#### `Interpolator`
+Serializable representation of a fitted spline or interpolator.
+
+```python
+@dataclass
+class Interpolator:
+    kind: str                                    # "interpax_cubic", "interpax_linear", "interpax_ppoly"
+    x: jnp.ndarray                               # knot positions or breakpoints
+    y: Optional[jnp.ndarray]                      # knot values (for cubic/linear)
+    n: Optional[jnp.ndarray]                      # number of valid points per segment
+    n_segments: Optional[int]                     # number of active segments
+    segment_boundaries: Optional[jnp.ndarray]     # segment boundary times
+    bc_type: Optional[str]                        # boundary condition type
+    coefficients: Optional[jnp.ndarray]           # polynomial coefficients (for ppoly)
+    extrapolate: Optional[bool]                   # whether to extrapolate beyond domain
+    interpolator_metadata: Optional[dict]         # additional metadata (e.g., pseudobatch transform info)
+```
+
+Per-segment control points are padded to fixed shapes so all interpolators in a dataset share common array dimensions, keeping the representation JAX-friendly.
+
+#### `DiscreteEvents`
+Stores discrete event times (bolus feeds, sampling, volume jumps).
+
+```python
+@dataclass
+class DiscreteEvents:
+    times: jnp.ndarray          # sorted, unique event times
+    labels: Optional[list]       # optional labels for each event
+    metadata: Optional[dict]     # additional event metadata
+```
+
+### Medium Components
+
+#### `ReactorMediumComponent`
+A single species (biomass, substrate, product) measured in the reactor.
+
+```python
+@dataclass
+class ReactorMediumComponent:
+    name: str                                    # e.g. "glucose", "biomass"
+    unit: str                                    # e.g. "g/L", "mM"
+    concentration: TimeSeries | StaticVariable   # measured concentration over time
+    is_intracellular: bool                       # True for intracellular products (e.g., inclusion bodies)
+    interpolator: Optional[Interpolator]         # optional fitted spline representation
+```
+
+The `is_intracellular` flag is used by the mechanistic module to compute active biomass: `X_active = X_total - sum(intracellular species)`.
+
+#### `FeedMediumComponent`
+A single species in a feed stream.
+
+```python
+@dataclass
+class FeedMediumComponent:
+    name: str                                    # e.g. "glucose", "ammonium"
+    unit: str                                    # e.g. "g/L"
+    concentration: TimeSeries | StaticVariable   # feed concentration (usually static)
+    is_controlled: bool                          # whether concentration is operator-controlled
+```
+
+#### `ReactorMedium`
+The reactor contents: a collection of components with density information.
+
+```python
+@dataclass
+class ReactorMedium:
+    name: str
+    density: float        # often 1.0 kg/L for aqueous solutions
+    density_unit: str     # typically "kg/L"
+    components: Dict[str, ReactorMediumComponent]
+```
+
+#### `FeedMedium`
+A feed stream: composition and density.
+
+```python
+@dataclass
+class FeedMedium:
+    name: str
+    density: float
+    density_unit: str
+    components: Dict[str, FeedMediumComponent]
+```
+
+### Process Variables
+
+#### `ProcessVariable`
+Non-concentration signals such as pH, temperature, dissolved oxygen, or off-gas measurements.
+
+```python
+@dataclass
+class ProcessVariable:
+    name: str                                    # original name from paper
+    unit: str                                    # e.g. "°C", "%", "L/h"
+    is_controlled: bool                          # True for controls (pH, DO), False for states (off-gas)
+    values: TimeSeries | StaticVariable
+    interpolator: Optional[Interpolator]
+```
+
+The `is_controlled` flag determines whether this variable is treated as a known input (control) or an observed output (state) in the mechanistic module.
+
+### Volume Operations
+
+#### `VolumeChange` (base)
+Base class for volume change events.
+
+```python
+@dataclass
+class VolumeChange:
+    name: str
+    unit: str             # "L", "m3", "kg" — NOT rates like "L/h"
+    is_controlled: bool   # True if operator-controlled
+    is_continuous: bool   # True for continuous flows, False for bolus/discrete events
+    values: TimeSeries    # cumulative volume change over time
+```
+
+Volume changes store cumulative volumes (not rates), because rates are usually derived quantities.
+
+#### `FeedVolumeChange(VolumeChange)`
+Inflow with associated feed medium composition. All delta values must be >= 0.
+
+```python
+@dataclass
+class FeedVolumeChange(VolumeChange):
+    feed_medium: FeedMedium
+    interpolator: Optional[Interpolator]
+```
+
+#### `SampleVolumeChange(VolumeChange)`
+Outflow from sampling. All delta values must be <= 0.
+
+```python
+@dataclass
+class SampleVolumeChange(VolumeChange):
+    interpolator: Optional[Interpolator]
+```
+
+Sampling removes reactor contents at current concentrations, so no separate medium definition is needed.
+
+#### `Volume`
+Container aggregating initial volume and all volume change operations.
+
+```python
+@dataclass
+class Volume:
+    initial_volume: float
+    unit: str                                      # "L", "m3", "kg"
+    volume_changes: Dict[str, VolumeChange]        # keyed by operation name
+```
+
+### Process Level
+
+#### `BioProcessMetadata`
+Static metadata about a process run.
+
+```python
+@dataclass
+class BioProcessMetadata:
+    name: str                    # process identifier
+    process_type: str            # "batch", "fed_batch", or "continuous"
+    notes: Optional[str]         # free-text notes
+```
+
+#### `BioProcess`
+A single experimental bioprocess run. This is the central object in BPbench.
+
+```python
+@dataclass
+class BioProcess:
+    metadata: Optional[BioProcessMetadata]
+    time_axis: TimeAxis
+    volume: Volume
+    reactor_medium: ReactorMedium
+    process_variables: Dict[str, ProcessVariable]
+    discrete_events: Optional[DiscreteEvents]
+```
+
+### Collection Level
+
+#### `BioProcessCollection`
+A lightweight wrapper for multiple processes without full case-study metadata.
+
+```python
+@dataclass
+class BioProcessCollection:
+    metadata: Optional[Dict]
+    processes: Dict[str, BioProcess]
+```
+
+#### `CaseStudy`
+Processes from one publication or experimental campaign.
+
+```python
+@dataclass
+class CaseStudy:
+    case_id: str           # unique identifier
+    organism: str          # e.g. "E. coli", "S. cerevisiae", "CHO"
+    citation: str          # publication reference
+    processes: Dict[str, BioProcess]
+```
+
+#### `BenchmarkDataset`
+Top-level container for cross-study benchmarking.
+
+```python
+@dataclass
+class BenchmarkDataset:
+    metadata: Dict[str, str]                    # name, version, description, etc.
+    case_studies: Dict[str, CaseStudy]
+```
+
+## Examples
+
+### Constructing a Minimal Batch Process
+
+```python
+import bpbench as bp
+import jax.numpy as jnp
+
+# Time axis
+time_axis = bp.TimeAxis(unit="h", start=0.0, end=24.0, time_reference="inoculation")
+
+# Reactor medium with biomass and glucose
+reactor_medium = bp.ReactorMedium(
+    name="minimal_medium",
+    density=1.0,
+    density_unit="kg/L",
+    components={
+        "biomass": bp.ReactorMediumComponent(
+            name="biomass", unit="g/L",
+            concentration=bp.TimeSeries(
+                times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
+                values=jnp.array([0.5, 1.2, 3.1, 7.5, 12.0]),
+            ),
+            is_intracellular=False,
+        ),
+        "glucose": bp.ReactorMediumComponent(
+            name="glucose", unit="g/L",
+            concentration=bp.TimeSeries(
+                times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
+                values=jnp.array([20.0, 17.5, 12.0, 4.0, 0.1]),
+            ),
+            is_intracellular=False,
+        ),
+    },
+)
+
+# Volume (batch = no changes)
+volume = bp.Volume(initial_volume=1.0, unit="L")
+
+# Assemble the process
+process = bp.BioProcess(
+    metadata=bp.BioProcessMetadata(name="batch_001", process_type="batch"),
+    time_axis=time_axis,
+    volume=volume,
+    reactor_medium=reactor_medium,
+)
+```
+
+### Constructing a Fed-Batch Process with a Bolus Feed
+
+```python
+import bpbench as bp
+import jax.numpy as jnp
+
+time_axis = bp.TimeAxis(unit="h", start=0.0, end=48.0, time_reference="inoculation")
+
+# Feed medium (glucose solution)
+feed_medium = bp.FeedMedium(
+    name="glucose_feed",
+    density=1.05,
+    density_unit="kg/L",
+    components={
+        "glucose": bp.FeedMediumComponent(
+            name="glucose", unit="g/L",
+            concentration=bp.StaticVariable(value=500.0),
+        ),
+        "biomass": bp.FeedMediumComponent(
+            name="biomass", unit="g/L",
+            concentration=bp.StaticVariable(value=0.0),
+        ),
+    },
+)
+
+# Volume with a bolus feed at t=12h and sampling at t=6h, t=18h
+volume = bp.Volume(
+    initial_volume=1.0,
+    unit="L",
+    volume_changes={
+        "glucose_bolus": bp.FeedVolumeChange(
+            name="glucose_bolus", unit="L",
+            is_controlled=True, is_continuous=False,
+            values=bp.TimeSeries(
+                times=jnp.array([12.0]),
+                values=jnp.array([0.1]),
+            ),
+            feed_medium=feed_medium,
+        ),
+        "sampling": bp.SampleVolumeChange(
+            name="sampling", unit="L",
+            is_controlled=True, is_continuous=False,
+            values=bp.TimeSeries(
+                times=jnp.array([6.0, 18.0]),
+                values=jnp.array([-0.005, -0.005]),
+            ),
+        ),
+    },
+)
+
+# ... add reactor_medium and assemble as above
+```
+
+### Accessing Nested Fields
+
+```python
+# Get glucose concentration time series
+glucose_ts = process.reactor_medium.components["glucose"].concentration
+print(glucose_ts.times)   # jnp.array([0.0, 6.0, 12.0, ...])
+print(glucose_ts.values)  # jnp.array([20.0, 17.5, 12.0, ...])
+
+# Iterate over all volume changes
+for name, vc in process.volume.volume_changes.items():
+    print(f"{name}: {type(vc).__name__}, continuous={vc.is_continuous}")
+
+# Check process type
+print(process.metadata.process_type)  # "batch" or "fed_batch"
+```
+
+## See Also
+
+- [Design Rationale](01_design_rationale.md) -- cross-cutting decisions behind this model
+- [TimeSeries](06_time_series.md) -- the `TimeSeries` class in detail
+- [Serialization](03_serialization.md) -- how these structures are saved/loaded as JSON
+- [Validation](04_validation.md) -- integrity checks on these structures

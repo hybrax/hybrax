@@ -2,13 +2,9 @@
 
 A JAX-compatible framework for standardized bioprocess data management and benchmarking across multiple case studies.
 
-## Overview
+## Motivation
 
-BPbench provides a hierarchical data structure for organizing bioprocess experiments, enabling:
-- **Unified benchmarking**: Compare modeling approaches across multiple case studies
-- **JAX compatibility**: Full PyTree integration for automatic differentiation and JIT compilation
-- **Serialization**: JSON export for benchmark datasets and process collections
-- **Cross-validation utilities**: Built-in support for leave-one-process-out validation
+Bioprocess modeling research lacks standardized data formats, making it difficult to compare modeling approaches across labs and publications. BPbench provides a common hierarchical data structure with built-in validation, serialization, and mechanistic modeling support. Built on JAX and Equinox, it enables automatic differentiation through ODE integration for gradient-based hybrid model training.
 
 ## Installation
 
@@ -20,6 +16,44 @@ For development:
 ```bash
 pip install -e ".[dev]"
 ```
+
+## Quick Start
+
+```python
+import bpbench as bp
+
+# Load a benchmark dataset from JSON
+dataset = bp.serialization.load_dataset("examples/00_combined/01_combined_dataset/data.json")
+
+# Explore the dataset
+bp.print_dataset_structure(dataset, verbosity=1)
+
+# Access a specific process
+case_study = dataset.case_studies["kittler_2022"]
+process = case_study.processes["batch_001"]
+
+# Validate data integrity
+is_valid, messages = bp.validate_process(process)
+
+# Inspect a single process
+bp.print_process_structure(process, verbosity=3)
+
+# Plot
+fig = bp.plot_process(process)
+```
+
+## Modules
+
+| Module | Description |
+|--------|-------------|
+| [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (BenchmarkDataset, CaseStudy, BioProcess, etc.) |
+| [`time_series`](documentation/06_time_series.md) | Time-series container with optional fitted spline coefficients (JAX pytree) |
+| [`splines`](documentation/07_splines.md) | Pseudobatch transformation and segmented spline fitting |
+| [`mechanistic`](documentation/08_mechanistic.md) | Auto-generated ODE RHS, control splines, integration |
+| [`serialization`](documentation/03_serialization.md) | JSON save/load for the full data hierarchy |
+| [`validate`](documentation/04_validation.md) | Data integrity checks (9 validators) |
+| [`inspect`](documentation/05_inspection.md) | Text printing and matplotlib visualization |
+| [`utils`](documentation/09_utilities.md) | Cross-validation helpers (leave-one-process-out) |
 
 ## Data Structure
 
@@ -91,6 +125,23 @@ FeedMedium
       ├─ concentration: TimeSeries | StaticVariable
       └─ is_controlled: bool
 ```
+
+## Ecosystem Context
+
+BPbench is the data foundation for a planned ecosystem of bioprocess modeling packages:
+
+| Package | Purpose | Status |
+|---------|---------|--------|
+| **bp-form** (current BPbench) | Data classes, I/O, validation, basic simulation | Active development |
+| **bp-bench** | Pre-processed case study database | Planned |
+| **bp-prep** | Web app for preprocessing raw data | Planned |
+| **bp-train** | Training utilities (LOO-CV, augmentation) | Planned |
+| **bp-sim** | Data generation with DoE support | Planned |
+| **bp-opt** | Post-training model optimization | Planned |
+
+## Documentation
+
+See the [full documentation](documentation/README.md) for detailed module guides, design rationale, and examples.
 
 ## TimeSeries Migration
 
