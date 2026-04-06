@@ -1053,3 +1053,9 @@ Current limitations:
 - `bp-train` currently delegates mechanistic RHS evaluation to
   `bpbench.mechanistic.RhsOde`, so training/batching-specific performance
   optimizations in that mechanistic inner loop must be implemented in bpbench.
+- The current reaction-module contract is `specific_rates q` plus
+  `modeled_feed_rates`, and the mechanistic RHS applies `q * X_active` before
+  adding transport/dilution terms. This means arbitrary non-transport,
+  non-dilution process terms that should bypass `X_active` scaling (for example
+  crystallization kinetics independent of biomass) are not cleanly representable
+  in the current API.
