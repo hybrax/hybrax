@@ -92,9 +92,3 @@ def default_build_reaction_module(
         n_species=len(target_names),
         key=jax.random.key(int(seed)),
     )
-
-
-def default_build_modeled_feeds(*, target_names: list[str], config: dict[str, Any]):
-    """Default train hook for modeled-feed declarations."""
-    del target_names, config
-    return ()

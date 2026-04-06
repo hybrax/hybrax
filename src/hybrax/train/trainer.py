@@ -10,7 +10,7 @@ import diffrax
 
 from .controls_store import BatchControls
 from .model_api import partition_trainable
-from .training_data import PerProcessTrainingData, TrainingDataStore
+from .training_data import PerProcessTrainingData
 from .wrapper import HybridOdeWrapper
 
 
@@ -215,88 +215,6 @@ def single_process_measurement_loss(
     return jnp.sum(masked_sq_err) / denom
 
 
-def batched_measurement_loss(
-    wrapper: HybridOdeWrapper,
-    store: TrainingDataStore,
-    process_indices: jax.Array,
-    *,
-    max_solver_steps: int = 100_000,
-    solver_rtol: float = 1e-5,
-    solver_atol: float = 1e-7,
-    solver_use_jump_ts: bool = True,
-) -> jax.Array:
-    """Compute mean process loss over a process-index batch."""
-    batch = store.gather_batch(process_indices)
-    batch_controls = store.controls_store.as_batch_controls()
-    batch_t_meas = _clamp_padded_time_rows(batch.t_meas, batch.n_meas)
-
-    jump_ts_rows = None
-    if solver_use_jump_ts:
-        jump_ts_rows = _clamp_padded_time_rows(
-            store.controls_store.step_ts[batch.process_indices],
-            store.controls_store.step_ts_lengths[batch.process_indices],
-        )
-
-    def _sample_loss(
-        process_idx: jax.Array,
-        t_meas: jax.Array,
-        y_meas: jax.Array,
-        meas_mask: jax.Array,
-        n_meas: jax.Array,
-        y0: jax.Array,
-        jump_ts: jax.Array | None,
-    ) -> jax.Array:
-        controls = _BatchIndexedControls(
-            batch_controls=batch_controls,
-            process_idx=process_idx,
-        )
-        sample_wrapper = eqx.tree_at(
-            lambda current: current.controls, wrapper, controls
-        )
-        return _measurement_loss_from_arrays(
-            sample_wrapper,
-            t_meas=t_meas,
-            y_meas=y_meas,
-            meas_mask=meas_mask,
-            n_meas=n_meas,
-            y0=y0,
-            jump_ts=jump_ts,
-            max_solver_steps=max_solver_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-        )
-
-    if jump_ts_rows is None:
-        per_sample = jax.vmap(
-            lambda process_idx, t_meas, y_meas, meas_mask, n_meas, y0: _sample_loss(
-                process_idx,
-                t_meas,
-                y_meas,
-                meas_mask,
-                n_meas,
-                y0,
-                None,
-            )
-        )(
-            batch.process_indices,
-            batch_t_meas,
-            batch.y_meas,
-            batch.meas_mask,
-            batch.n_meas,
-            batch.y0,
-        )
-    else:
-        per_sample = jax.vmap(_sample_loss)(
-            batch.process_indices,
-            batch_t_meas,
-            batch.y_meas,
-            batch.meas_mask,
-            batch.n_meas,
-            batch.y0,
-            jump_ts_rows,
-        )
-    return jnp.mean(per_sample)
-
 
 def _build_optimizer(
     optimizer_name: str, learning_rate: float
@@ -316,54 +234,6 @@ def _build_optimizer(
         base,
     )
 
-
-def batched_train_step(
-    wrapper: HybridOdeWrapper,
-    store: TrainingDataStore,
-    process_indices: jax.Array,
-    *,
-    optimizer_name: str = "adam",
-    learning_rate: float = 1e-3,
-    optimizer_state: optax.OptState | None = None,
-    max_solver_steps: int = 100_000,
-    solver_rtol: float = 1e-5,
-    solver_atol: float = 1e-7,
-    solver_use_jump_ts: bool = True,
-) -> tuple[HybridOdeWrapper, jax.Array, eqx.Module, optax.OptState]:
-    """Run one Optax-backed batch update and return updated wrapper/loss/grads/state."""
-    optimizer = _build_optimizer(optimizer_name, learning_rate)
-    trainable, static = partition_trainable(wrapper.reaction_module)
-    opt_state = (
-        optimizer_state if optimizer_state is not None else optimizer.init(trainable)
-    )
-
-    def _loss_fn(trainable_params: eqx.Module) -> jax.Array:
-        reaction_module = eqx.combine(trainable_params, static)
-        candidate_wrapper = eqx.tree_at(
-            lambda current: current.reaction_module,
-            wrapper,
-            reaction_module,
-        )
-        return batched_measurement_loss(
-            candidate_wrapper,
-            store,
-            process_indices,
-            max_solver_steps=max_solver_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-            solver_use_jump_ts=solver_use_jump_ts,
-        )
-
-    loss, grads = eqx.filter_value_and_grad(_loss_fn)(trainable)
-    updates, next_opt_state = optimizer.update(grads, opt_state, params=trainable)
-    trainable_updated = eqx.apply_updates(trainable, updates)
-    reaction_module_updated = eqx.combine(trainable_updated, static)
-    wrapper_updated = eqx.tree_at(
-        lambda current: current.reaction_module,
-        wrapper,
-        reaction_module_updated,
-    )
-    return wrapper_updated, loss, grads, next_opt_state
 
 
 def single_process_train_step(
