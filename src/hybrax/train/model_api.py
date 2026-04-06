@@ -99,15 +99,17 @@ class ReactionOutputs(eqx.Module):
 
     Attributes
     ----------
-    reaction_terms:
-        Concentration-space reaction/source terms excluding feed transport and
-        dilution, aligned with the species state vector.
+    specific_rates:
+        Specific rates ``q_i`` for each species, aligned with the species state
+        vector.  These are multiplied by ``X_active`` inside the mechanistic
+        ODE (``dc_i/dt = q_i * X_active + transport``).
     modeled_feed_rates:
-        Modeled feed-rate vector aligned with explicitly declared modeled feed
-        stream metadata. Use a zero-length array when there are no modeled feeds.
+        Volumetric flow rates for uncontrolled (modeled) feed streams, aligned
+        with the modeled-flow ordering from the mechanistic ODE module.
+        Use a zero-length array when there are no modeled flows.
     """
 
-    reaction_terms: jax.Array
+    specific_rates: jax.Array
     modeled_feed_rates: jax.Array
 
 

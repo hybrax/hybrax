@@ -1,339 +1,258 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import numpy as np
+from bpbench.dataclasses import BioProcess, FeedVolumeChange
+from bpbench.mechanistic import RhsOde, get_rhs_ode
 
-from .controls import BP_TRAIN_SAMPLE_ACC_NAME
 from .controls_store import PerProcessControls
-from .model_api import ReactionOutputs
 
 
-def _component_series_from_serialized(
-    component_payload: dict[str, Any] | None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Parse one serialized feed-medium component concentration into `(xp, fp)`."""
-    if component_payload is None:
-        return np.asarray([0.0, 1.0], dtype=np.float32), np.asarray(
-            [0.0, 0.0], dtype=np.float32
-        )
+def _build_augmented_controls_names(
+    control_names: list[str],
+    controlled_flow_names: tuple[str, ...],
+    modeled_flow_names: tuple[str, ...],
+    species_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Build descriptive names for each element of the augmented controls vector."""
+    names: list[str] = list(control_names)
+    for flow_name in controlled_flow_names:
+        for species_name in species_names:
+            names.append(f"cin:{flow_name}:{species_name}")
+    for flow_name in modeled_flow_names:
+        for species_name in species_names:
+            names.append(f"cin:{flow_name}:{species_name}")
+    return tuple(names)
 
-    concentration = component_payload.get("concentration", {})
-    kind = concentration.get("kind")
-    if kind == "static":
-        value = float(concentration["value"])
-        return np.asarray([0.0, 1.0], dtype=np.float32), np.asarray(
-            [value, value], dtype=np.float32
-        )
-    if kind == "timeseries":
-        times_raw = concentration.get("times")
-        legacy_times_raw = concentration.get("timepoints")
-        if times_raw is None and legacy_times_raw is None:
-            raise ValueError("timeseries concentration payload must include 'times'")
 
-        if times_raw is not None and legacy_times_raw is not None:
-            times = np.asarray(times_raw, dtype=np.float32)
-            legacy_times = np.asarray(legacy_times_raw, dtype=np.float32)
-            if times.shape != legacy_times.shape or not np.array_equal(
-                times,
-                legacy_times,
+def _build_augmented_controls_units(
+    control_metadata: dict[str, dict[str, Any]],
+    control_names: list[str],
+    process: BioProcess,
+    controlled_flow_names: tuple[str, ...],
+    modeled_flow_names: tuple[str, ...],
+    species_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Build unit strings for each element of the augmented controls vector."""
+    units: list[str] = []
+
+    # Units for base controls
+    for name in control_names:
+        md = control_metadata.get(name, {})
+        # Try to get unit from metadata, then from volume change or process variable
+        unit = md.get("unit", "")
+        if not unit:
+            if name in process.volume.volume_changes:
+                unit = process.volume.volume_changes[name].unit
+            elif name in process.process_variables:
+                unit = process.process_variables[name].unit
+        units.append(str(unit))
+
+    # Units for controlled feed Cin entries
+    for flow_name in controlled_flow_names:
+        vc = process.volume.volume_changes.get(flow_name)
+        for species_name in species_names:
+            if (
+                vc is not None
+                and isinstance(vc, FeedVolumeChange)
+                and vc.feed_medium is not None
+                and species_name in vc.feed_medium.components
             ):
-                raise ValueError(
-                    "timeseries concentration payload has conflicting "
-                    "'times' and 'timepoints'"
-                )
-            xp = times
-        else:
-            xp = np.asarray(
-                times_raw if times_raw is not None else legacy_times_raw,
-                dtype=np.float32,
-            )
+                units.append(str(vc.feed_medium.components[species_name].unit))
+            else:
+                units.append("")
 
-        fp = np.asarray(concentration["values"], dtype=np.float32)
-        if xp.ndim != 1 or fp.ndim != 1 or xp.size != fp.size or xp.size == 0:
-            raise ValueError(
-                "invalid timeseries concentration payload in feed metadata"
-            )
-        if xp.size == 1:
-            return np.asarray([xp[0], xp[0] + 1.0], dtype=np.float32), np.asarray(
-                [fp[0], fp[0]], dtype=np.float32
-            )
-        return xp, fp
-    raise ValueError(f"unsupported feed-medium concentration kind: {kind!r}")
+    # Units for modeled feed Cin entries
+    for flow_name in modeled_flow_names:
+        vc = process.volume.volume_changes.get(flow_name)
+        for species_name in species_names:
+            if (
+                vc is not None
+                and isinstance(vc, FeedVolumeChange)
+                and vc.feed_medium is not None
+                and species_name in vc.feed_medium.components
+            ):
+                units.append(str(vc.feed_medium.components[species_name].unit))
+            else:
+                units.append("")
+
+    return tuple(units)
 
 
-def _pad_series_bank(
-    bank: list[list[tuple[np.ndarray, np.ndarray]]],
-    *,
-    n_species: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Pad `[n_streams][n_species]` concentration series into dense 3D arrays."""
-    if not bank:
-        return (
-            np.zeros((0, n_species, 2), dtype=np.float32),
-            np.zeros((0, n_species, 2), dtype=np.float32),
-        )
+class HybridOdeWrapper(eqx.Module):
+    """ODE wrapper that delegates mechanistic transport to bpbench's RhsOde.
 
-    max_points = max(xp.size for stream in bank for xp, _ in stream)
-    max_points = max(max_points, 2)
-    n_streams = len(bank)
-    xp_out = np.zeros((n_streams, n_species, max_points), dtype=np.float32)
-    fp_out = np.zeros((n_streams, n_species, max_points), dtype=np.float32)
+    The user's reaction module receives the species state plus an augmented
+    controls vector (base controls + flattened Cin) and returns specific rates
+    ``q`` and modeled feed rates.  The mechanistic ODE then computes the full
+    state derivative including ``q * X_active``, transport, and dilution.
+    """
 
-    for stream_idx, stream in enumerate(bank):
-        for species_idx, (xp, fp) in enumerate(stream):
-            n = xp.size
-            xp_out[stream_idx, species_idx, :n] = xp
-            fp_out[stream_idx, species_idx, :n] = fp
-            xp_out[stream_idx, species_idx, n:] = xp[n - 1]
-            fp_out[stream_idx, species_idx, n:] = fp[n - 1]
-
-    return xp_out, fp_out
-
-
-def _interp_series_1d(t: jax.Array, xp: jax.Array, fp: jax.Array) -> jax.Array:
-    return jnp.interp(t, xp, fp, left=fp[0], right=fp[-1])
-
-
-def _evaluate_cin(t: jax.Array, xp: jax.Array, fp: jax.Array) -> jax.Array:
-    """Evaluate concentration matrix `Cin` for all streams/species at time `t`."""
-    eval_species = jax.vmap(_interp_series_1d, in_axes=(None, 0, 0), out_axes=0)
-    eval_streams = jax.vmap(eval_species, in_axes=(None, 0, 0), out_axes=0)
-    return eval_streams(t, xp, fp)
-
-
-def _transport_term(
-    rates: jax.Array,
-    cin: jax.Array,
-    c_species: jax.Array,
-    v_real: jax.Array,
-) -> jax.Array:
-    """Compute sum_k `f_k * (Cin_k - c) / V_real`."""
-    if cin.shape[0] == 0:
-        return jnp.zeros_like(c_species)
-    contrib = rates[:, None] * (cin - c_species[None, :])
-    return jnp.sum(contrib, axis=0) / v_real
-
-
-@dataclass(frozen=True)
-class ModeledFeedSpec:
-    """Static metadata for one modeled feed stream."""
-
-    name: str
-    component_concentrations: dict[str, float]
-
-
-class LibraryRhsWrapper(eqx.Module):
-    """Library-owned RHS wrapper with dilution/feed transport ownership."""
-
+    rhs_ode: RhsOde
     reaction_module: Any
     controls: PerProcessControls
-    species_names: tuple[str, ...] = eqx.field(static=True)
+
+    flow_control_indices: jax.Array
+    sample_acc_control_index: int = eqx.field(static=True)
     min_real_volume: float = eqx.field(static=True)
 
-    controlled_feed_names: tuple[str, ...] = eqx.field(static=True)
-    controlled_feed_control_indices: jax.Array
-    controlled_feed_cin_xp: jax.Array
-    controlled_feed_cin_fp: jax.Array
-
-    modeled_feed_names: tuple[str, ...] = eqx.field(static=True)
-    modeled_feed_cin_xp: jax.Array
-    modeled_feed_cin_fp: jax.Array
-
-    sample_acc_control_index: int = eqx.field(static=True)
+    species_names: tuple[str, ...] = eqx.field(static=True)
+    augmented_controls_names: tuple[str, ...] = eqx.field(static=True)
+    augmented_controls_units: tuple[str, ...] = eqx.field(static=True)
 
     @classmethod
-    def from_process_controls(
+    def from_process(
         cls,
         *,
         reaction_module: Any,
+        process: BioProcess,
         controls: PerProcessControls,
-        species_names: list[str] | tuple[str, ...],
-        modeled_feeds: list[ModeledFeedSpec] | None = None,
         min_real_volume: float = 1e-8,
-    ) -> "LibraryRhsWrapper":
-        """Build wrapper from per-process controls plus explicit species ordering."""
-        if not isinstance(reaction_module, eqx.Module):
-            raise TypeError("reaction_module must be an `eqx.Module` instance")
+    ) -> HybridOdeWrapper:
+        """Build a wrapper from a BioProcess and per-process controls."""
+        rhs_ode = get_rhs_ode(process)
 
-        ordered_species = tuple(species_names)
-        n_species = len(ordered_species)
-
-        controlled_feed_names: list[str] = []
-        controlled_feed_indices: list[int] = []
-        controlled_series_bank: list[list[tuple[np.ndarray, np.ndarray]]] = []
-
-        for control_name in controls.control_names:
-            if control_name == BP_TRAIN_SAMPLE_ACC_NAME:
-                continue
-            metadata = controls.control_metadata.get(control_name, {})
-            if metadata.get("signal_family") != "feed":
-                continue
-            if metadata.get("source_kind") != "control":
-                continue
-
-            inlet = metadata.get("inlet_feed_medium") or {}
-            components = inlet.get("components", {})
-
-            per_species_series: list[tuple[np.ndarray, np.ndarray]] = []
-            for species_name in ordered_species:
-                component_payload = components.get(species_name)
-                per_species_series.append(
-                    _component_series_from_serialized(component_payload)
+        # Map RhsOde controlled flow names → controls vector indices
+        flow_control_indices: list[int] = []
+        for flow_name in rhs_ode.flow_names:
+            if flow_name not in controls.control_name_to_index:
+                raise ValueError(
+                    f"RhsOde flow '{flow_name}' not found in controls; "
+                    f"available: {list(controls.control_name_to_index.keys())}"
                 )
+            flow_control_indices.append(controls.control_name_to_index[flow_name])
 
-            controlled_feed_names.append(control_name)
-            controlled_feed_indices.append(controls.control_name_to_index[control_name])
-            controlled_series_bank.append(per_species_series)
-
-        ctrl_xp, ctrl_fp = _pad_series_bank(controlled_series_bank, n_species=n_species)
-
-        modeled_feed_specs = modeled_feeds or []
-        modeled_names = [spec.name for spec in modeled_feed_specs]
-        if len(set(modeled_names)) != len(modeled_names):
-            raise ValueError("modeled feed names must be unique")
-        modeled_feed_names: list[str] = []
-        modeled_series_bank: list[list[tuple[np.ndarray, np.ndarray]]] = []
-
-        for feed_spec in modeled_feed_specs:
-            per_species_series = []
-            for species_name in ordered_species:
-                value = float(feed_spec.component_concentrations.get(species_name, 0.0))
-                per_species_series.append(
-                    (
-                        np.asarray([0.0, 1.0], dtype=np.float32),
-                        np.asarray([value, value], dtype=np.float32),
-                    )
-                )
-            modeled_feed_names.append(feed_spec.name)
-            modeled_series_bank.append(per_species_series)
-
-        mdl_xp, mdl_fp = _pad_series_bank(modeled_series_bank, n_species=n_species)
-
-        if BP_TRAIN_SAMPLE_ACC_NAME not in controls.control_name_to_index:
-            raise ValueError(
-                "controls payload missing required sample control"
-                f" {BP_TRAIN_SAMPLE_ACC_NAME}"
-            )
-
-        return cls(
-            reaction_module=reaction_module,
-            controls=controls,
-            species_names=ordered_species,
-            min_real_volume=float(min_real_volume),
-            controlled_feed_names=tuple(controlled_feed_names),
-            controlled_feed_control_indices=jnp.asarray(
-                controlled_feed_indices, dtype=jnp.int32
-            ),
-            controlled_feed_cin_xp=jnp.asarray(ctrl_xp, dtype=jnp.float32),
-            controlled_feed_cin_fp=jnp.asarray(ctrl_fp, dtype=jnp.float32),
-            modeled_feed_names=tuple(modeled_feed_names),
-            modeled_feed_cin_xp=jnp.asarray(mdl_xp, dtype=jnp.float32),
-            modeled_feed_cin_fp=jnp.asarray(mdl_fp, dtype=jnp.float32),
-            sample_acc_control_index=int(controls.sample_acc_global_index),
+        aug_names = _build_augmented_controls_names(
+            control_names=controls.control_names,
+            controlled_flow_names=rhs_ode.flow_names,
+            modeled_flow_names=rhs_ode.modeled_flow_names,
+            species_names=rhs_ode.species_names,
+        )
+        aug_units = _build_augmented_controls_units(
+            control_metadata=controls.control_metadata,
+            control_names=controls.control_names,
+            process=process,
+            controlled_flow_names=rhs_ode.flow_names,
+            modeled_flow_names=rhs_ode.modeled_flow_names,
+            species_names=rhs_ode.species_names,
         )
 
-    def _call_reaction_module(
-        self,
-        t: jax.Array,
-        c_species: jax.Array,
-        controls_vector: jax.Array,
-    ) -> ReactionOutputs:
-        outputs = self.reaction_module(t, c_species, controls_vector)
-        if not hasattr(outputs, "reaction_terms") or not hasattr(
-            outputs, "modeled_feed_rates"
-        ):
-            raise TypeError(
-                "reaction_module output must expose `reaction_terms` and "
-                "`modeled_feed_rates`"
-            )
-        return ReactionOutputs(
-            reaction_terms=jnp.asarray(outputs.reaction_terms, dtype=c_species.dtype),
-            modeled_feed_rates=jnp.asarray(
-                outputs.modeled_feed_rates,
-                dtype=c_species.dtype,
-            ),
+        return cls(
+            rhs_ode=rhs_ode,
+            reaction_module=reaction_module,
+            controls=controls,
+            flow_control_indices=jnp.asarray(flow_control_indices, dtype=jnp.int32),
+            sample_acc_control_index=int(controls.sample_acc_global_index),
+            min_real_volume=float(min_real_volume),
+            species_names=rhs_ode.species_names,
+            augmented_controls_names=aug_names,
+            augmented_controls_units=aug_units,
         )
 
     def __call__(self, t: float | jax.Array, y: jax.Array) -> jax.Array:
-        """Compute full state derivative `[dc_species/dt..., dV_cont/dt]`.
-
-        Notes
-        -----
-        The wrapped reaction module is called as
-        `reaction_module(t, c_species, controls_vector)` and must return
-        `ReactionOutputs`-compatible fields.
-        """
+        """Compute full state derivative ``[dc_species/dt..., dV/dt]``."""
         if y.ndim != 1:
             raise ValueError("state vector y must be rank-1")
         expected_state_size = len(self.species_names) + 1
         if y.shape[0] != expected_state_size:
             raise ValueError(
-                "state vector y must have shape "
-                f"({expected_state_size},), got {tuple(y.shape)}"
+                f"state vector y must have shape ({expected_state_size},), "
+                f"got {tuple(y.shape)}"
             )
 
         t_arr = jnp.asarray(t, dtype=y.dtype)
-        c_species = y[:-1]
-        v_cont = y[-1]
+        c_species = jnp.clip(y[:-1], 0.0)
+        v_cont = jnp.maximum(y[-1], jnp.asarray(self.min_real_volume))
+
+        # Evaluate controls at time t
         controls_vector = self.controls.eval(t_arr)
 
-        sample_acc = controls_vector[self.sample_acc_control_index]
-        v_real = jnp.maximum(v_cont - sample_acc, jnp.asarray(self.min_real_volume))
+        # Real volume = container volume - sampled volume
+        v_sample_acc = controls_vector[self.sample_acc_control_index]
+        v_real = jnp.maximum(v_cont - v_sample_acc, jnp.asarray(self.min_real_volume))
 
-        reaction_outputs = self._call_reaction_module(t_arr, c_species, controls_vector)
+        # Controlled flow rates from controls vector
+        u_flow = controls_vector[self.flow_control_indices]
 
-        if reaction_outputs.reaction_terms.ndim != 1:
-            raise ValueError("reaction_terms must be a rank-1 vector")
-        if reaction_outputs.modeled_feed_rates.ndim != 1:
-            raise ValueError("modeled_feed_rates must be a rank-1 vector")
+        # Flatten Cin/Cin_modeled and append to controls for MLP input
+        cin_flat = jnp.concatenate([
+            self.rhs_ode.Cin.reshape(-1),
+            self.rhs_ode.Cin_modeled.reshape(-1),
+        ])
+        augmented_controls = jnp.concatenate([controls_vector, cin_flat])
 
-        if reaction_outputs.reaction_terms.shape != c_species.shape:
+        # User's MLP: specific rates + modeled feed rates
+        outputs = self.reaction_module(t_arr, c_species, augmented_controls)
+        if not hasattr(outputs, "specific_rates") or not hasattr(
+            outputs, "modeled_feed_rates"
+        ):
+            raise TypeError(
+                "reaction_module output must expose `specific_rates` and "
+                "`modeled_feed_rates`"
+            )
+        specific_rates = jnp.asarray(outputs.specific_rates, dtype=y.dtype)
+        modeled_feed_rates = jnp.asarray(outputs.modeled_feed_rates, dtype=y.dtype)
+
+        if specific_rates.shape != c_species.shape:
             raise ValueError(
-                "reaction_terms must match species shape "
-                f"{tuple(c_species.shape)},"
-                f" got {tuple(reaction_outputs.reaction_terms.shape)}"
+                f"specific_rates must match species shape {tuple(c_species.shape)}, "
+                f"got {tuple(specific_rates.shape)}"
+            )
+        expected_modeled_shape = (self.rhs_ode.f_modeled_size,)
+        if modeled_feed_rates.shape != expected_modeled_shape:
+            raise ValueError(
+                f"modeled_feed_rates must have shape {expected_modeled_shape}, "
+                f"got {tuple(modeled_feed_rates.shape)}"
             )
 
-        expected_modeled_shape = (len(self.modeled_feed_names),)
-        if reaction_outputs.modeled_feed_rates.shape != expected_modeled_shape:
-            raise ValueError(
-                "modeled_feed_rates must match modeled feed metadata shape "
-                f"{expected_modeled_shape},"
-                f" got {tuple(reaction_outputs.modeled_feed_rates.shape)}"
-            )
+        # Build RhsOde state vector [c_species..., V_real]
+        c_rhs = jnp.concatenate([c_species, jnp.asarray([v_real], dtype=y.dtype)])
 
-        controlled_rates = controls_vector[self.controlled_feed_control_indices]
-        controlled_cin = _evaluate_cin(
-            t_arr,
-            self.controlled_feed_cin_xp,
-            self.controlled_feed_cin_fp,
-        )
-        controlled_term = _transport_term(
-            controlled_rates,
-            controlled_cin,
-            c_species,
-            v_real,
-        )
+        # RhsOde: dc/dt = q * X_active + transport(Cin, u_flow, f_modeled)
+        dc_dt = self.rhs_ode(c_rhs, specific_rates, u_flow, modeled_feed_rates)
 
-        modeled_cin = _evaluate_cin(
-            t_arr,
-            self.modeled_feed_cin_xp,
-            self.modeled_feed_cin_fp,
-        )
-        modeled_term = _transport_term(
-            reaction_outputs.modeled_feed_rates,
-            modeled_cin,
-            c_species,
-            v_real,
-        )
+        # dc_dt from RhsOde has dV/dt as last element (sum of all flows).
+        # We return this as dV_cont/dt — the container volume derivative.
+        return dc_dt
 
-        dc_species = reaction_outputs.reaction_terms + controlled_term + modeled_term
-        d_v_cont = jnp.sum(controlled_rates) + jnp.sum(
-            reaction_outputs.modeled_feed_rates
+
+def validate_rhs_ode_compatibility(
+    reference_name: str,
+    reference_rhs: RhsOde,
+    candidate_name: str,
+    candidate_rhs: RhsOde,
+) -> None:
+    """Validate that two RhsOde instances have compatible structure."""
+    if reference_rhs.species_names != candidate_rhs.species_names:
+        raise ValueError(
+            f"RhsOde species_names differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs.species_names} vs "
+            f"{candidate_rhs.species_names}"
         )
-        return jnp.concatenate([dc_species, jnp.asarray([d_v_cont], dtype=y.dtype)])
+    if reference_rhs.flow_names != candidate_rhs.flow_names:
+        raise ValueError(
+            f"RhsOde flow_names differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs.flow_names} vs "
+            f"{candidate_rhs.flow_names}"
+        )
+    if reference_rhs.modeled_flow_names != candidate_rhs.modeled_flow_names:
+        raise ValueError(
+            f"RhsOde modeled_flow_names differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs.modeled_flow_names} vs "
+            f"{candidate_rhs.modeled_flow_names}"
+        )
+    if reference_rhs.Cin.shape != candidate_rhs.Cin.shape:
+        raise ValueError(
+            f"RhsOde Cin shapes differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs.Cin.shape} vs "
+            f"{candidate_rhs.Cin.shape}"
+        )
+    if reference_rhs.Cin_modeled.shape != candidate_rhs.Cin_modeled.shape:
+        raise ValueError(
+            f"RhsOde Cin_modeled shapes differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs.Cin_modeled.shape} vs "
+            f"{candidate_rhs.Cin_modeled.shape}"
+        )

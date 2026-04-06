@@ -311,8 +311,8 @@ def test_training_data_store_builds_padded_measurement_arrays(tmp_path):
     assert np.asarray(store.t_meas[0]).tolist() == pytest.approx([0.0, 2.0, 4.0])
     p2_t = np.asarray(store.t_meas[1])
     assert p2_t[:2].tolist() == pytest.approx([0.0, 1.0])
-    assert np.isnan(p2_t[2])
-    assert np.isnan(np.asarray(store.y_meas[1, 2, 0]))
+    assert p2_t[2] == pytest.approx(0.0)
+    assert np.asarray(store.y_meas[1, 2, 0]) == pytest.approx(0.0)
     assert np.asarray(store.meas_mask[0]).tolist() == [True, True, True]
     assert np.asarray(store.meas_mask[1]).tolist() == [True, True, False]
 

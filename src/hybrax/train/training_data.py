@@ -428,8 +428,8 @@ class TrainingDataStore(eqx.Module):
 
         n_processes = len(process_order)
         n_targets = len(target_names)
-        t_meas = np.full((n_processes, max_n_meas), np.nan, dtype=np.float32)
-        y_meas = np.full((n_processes, max_n_meas, n_targets), np.nan, dtype=np.float32)
+        t_meas = np.zeros((n_processes, max_n_meas), dtype=np.float32)
+        y_meas = np.zeros((n_processes, max_n_meas, n_targets), dtype=np.float32)
         meas_mask = np.zeros((n_processes, max_n_meas), dtype=bool)
 
         for index, (ts, ys) in enumerate(

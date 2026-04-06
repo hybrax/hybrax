@@ -87,6 +87,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
         captured["custom_py"] = custom_py
         captured["runtime_config"] = runtime_config
         return TrainHarnessResult(
+            trained_wrapper=None,
             mean_loss_by_step=(1.0, 0.5),
             sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
             batch_process_names_by_step=(("p1",), ("p1",)),

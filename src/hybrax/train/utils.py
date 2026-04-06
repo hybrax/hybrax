@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
@@ -19,6 +20,7 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
         raise ImportError(f"Could not load custom module from {path}")
 
     module = module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

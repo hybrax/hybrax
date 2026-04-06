@@ -72,9 +72,9 @@ class DefaultReactionModule(UserReactionModule):
         controls_vector: jax.Array,
     ) -> ReactionOutputs:
         del t, controls_vector
-        reaction_terms = jnp.asarray(self.model(c_species), dtype=c_species.dtype)
+        specific_rates = jnp.asarray(self.model(c_species), dtype=c_species.dtype)
         return ReactionOutputs(
-            reaction_terms=reaction_terms,
+            specific_rates=specific_rates,
             modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
         )
 

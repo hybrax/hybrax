@@ -23,7 +23,7 @@ class _DefaultPartitionModule(UserReactionModule):
     def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
         del t, c_species, controls_vector
         return ReactionOutputs(
-            reaction_terms=jnp.asarray([0.0], dtype=jnp.float32),
+            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
             modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
@@ -37,7 +37,7 @@ class _MissingModelModule(UserReactionModule):
     def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
         del t, c_species, controls_vector
         return ReactionOutputs(
-            reaction_terms=jnp.asarray([0.0], dtype=jnp.float32),
+            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
             modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
@@ -53,7 +53,7 @@ class _CustomPartitionModule(UserReactionModule):
     def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
         del t, c_species, controls_vector
         return ReactionOutputs(
-            reaction_terms=jnp.asarray([0.0], dtype=jnp.float32),
+            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
             modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 

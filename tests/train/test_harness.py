@@ -13,8 +13,8 @@ from bpbench.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
-    ProcessVariable,
     ReactorMedium,
+    ReactorMediumComponent,
     SampleVolumeChange,
     StaticVariable,
     TimeAxis,
@@ -43,9 +43,9 @@ class _LinearReactionModule(UserReactionModule):
 
     def __call__(self, t, c_species, controls_vector):
         del t, controls_vector
-        reaction = self.model(c_species)[0] + self.non_model_bias[0]
+        rate = self.model(c_species)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            reaction_terms=jnp.asarray([reaction], dtype=c_species.dtype),
+            specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
             modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
         )
 
@@ -70,18 +70,23 @@ def _make_collection() -> BioProcessCollection:
                 )
             },
         ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "X": ProcessVariable(
-                name="X",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 1.0, 2.0]),
-                    values=jnp.asarray([1.0, 0.8, 0.64]),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0, 2.0]),
+                        values=jnp.asarray([1.0, 0.8, 0.64]),
+                    ),
+                    is_intracellular=False,
                 ),
-            )
-        },
+            },
+        ),
+        process_variables={},
     )
     p2 = BioProcess(
         metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
@@ -102,33 +107,40 @@ def _make_collection() -> BioProcessCollection:
                 )
             },
         ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "X": ProcessVariable(
-                name="X",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 1.0, 2.0]),
-                    values=jnp.asarray([0.9, 0.72, 0.58]),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0, 2.0]),
+                        values=jnp.asarray([0.9, 0.72, 0.58]),
+                    ),
+                    is_intracellular=False,
                 ),
-            )
-        },
+            },
+        ),
+        process_variables={},
     )
     return BioProcessCollection(processes={"p1": p1, "p2": p2}, metadata={})
 
 
 def _make_feed_mismatch_collection() -> BioProcessCollection:
-    def _make_process(name: str, feed_x_concentration: float) -> BioProcess:
+    """Two processes with different feed compositions (Cin values differ)."""
+
+    def _make_process(name: str, feed_biomass_concentration: float) -> BioProcess:
         feed_medium = FeedMedium(
             name="feed",
             density=1.0,
             density_unit="kg/L",
             components={
-                "X": FeedMediumComponent(
-                    name="X",
+                "biomass": FeedMediumComponent(
+                    name="biomass",
                     unit="g/L",
-                    concentration=StaticVariable(feed_x_concentration),
+                    concentration=StaticVariable(feed_biomass_concentration),
                     is_controlled=False,
                 )
             },
@@ -168,18 +180,23 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                     ),
                 },
             ),
-            reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-            process_variables={
-                "X": ProcessVariable(
-                    name="X",
-                    unit="g/L",
-                    is_controlled=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([0.0, 2.0]),
-                        values=jnp.asarray([1.0, 1.0]),
+            reactor_medium=ReactorMedium(
+                name="rm",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 2.0]),
+                            values=jnp.asarray([1.0, 1.0]),
+                        ),
+                        is_intracellular=False,
                     ),
-                )
-            },
+                },
+            ),
+            process_variables={},
         )
 
     return BioProcessCollection(
@@ -192,12 +209,14 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
 
 
 def test_train_collection_single_process_loss_decreases():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(), target_variable_order=["X"]
+        collection, target_variable_order=["biomass"], target_source="reactor_components"
     )
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(),
+        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
             steps=8,
@@ -225,12 +244,14 @@ def test_train_collection_single_process_loss_decreases():
 
 
 def test_train_collection_multi_process_tracks_per_process_histories():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(), target_variable_order=["X"]
+        collection, target_variable_order=["biomass"], target_source="reactor_components"
     )
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(),
+        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             steps=5,
@@ -253,27 +274,55 @@ def test_train_collection_multi_process_tracks_per_process_histories():
     assert result.train_step_rebuild_count == 0
 
 
-def test_train_collection_rejects_unknown_process_selection():
+def test_train_collection_with_different_cin_per_process():
+    """Processes with different feed compositions should train without error."""
+    collection = _make_feed_mismatch_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(), target_variable_order=["X"]
+        collection, target_variable_order=["biomass"], target_source="reactor_components"
+    )
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(),
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=("p1", "p2"),
+            steps=4,
+            batch_size=2,
+            optimizer_name="adam",
+            learning_rate=2e-2,
+            log_every=2,
+        ),
+    )
+
+    assert len(result.mean_loss_by_step) == 4
+    assert all(jnp.isfinite(jnp.asarray(result.mean_loss_by_step)))
+
+
+def test_train_collection_rejects_unknown_process_selection():
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection, target_variable_order=["biomass"], target_source="reactor_components"
     )
     with pytest.raises(ValueError, match="unknown process names"):
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
+            collection=collection,
             config=TrainHarnessConfig(process_names=("unknown",), steps=2),
         )
 
 
 def test_train_collection_rejects_nonpositive_solver_max_steps():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="solver_max_steps must be positive"):
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
+            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 steps=2,
@@ -283,14 +332,16 @@ def test_train_collection_rejects_nonpositive_solver_max_steps():
 
 
 def test_train_collection_rejects_nonpositive_solver_tolerances():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="solver_rtol must be positive"):
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
+            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 steps=2,
@@ -301,6 +352,7 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
+            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 steps=2,
@@ -310,14 +362,16 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
 
 
 def test_train_collection_rejects_unsupported_optimizer_name():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="optimizer_name"):
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
+            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 steps=2,
@@ -326,30 +380,11 @@ def test_train_collection_rejects_unsupported_optimizer_name():
         )
 
 
-def test_train_collection_rejects_mismatched_feed_semantics_across_selected_processes():
-    store = TrainingDataStore.from_collection(
-        _make_feed_mismatch_collection(),
-        target_variable_order=["X"],
-    )
-    with pytest.raises(ValueError, match="incompatible wrapper feed semantics"):
-        train_collection(
-            store,
-            reaction_module=_LinearReactionModule(),
-            config=TrainHarnessConfig(
-                process_names=("p1", "p2"),
-                steps=2,
-                batch_size=2,
-                optimizer_name="adam",
-                learning_rate=2e-2,
-                log_every=1,
-            ),
-        )
-
-
 def test_harness_process_name_validation_rejects_duplicates_and_empty():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="duplicate entries in process_names"):
         _ensure_process_names(store, ("p1", "p1"))
@@ -445,12 +480,14 @@ def test_harness_config_has_no_drop_last_batch_field():
 
 
 def test_train_collection_signature_is_stable_and_no_rebuilds():
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(), target_variable_order=["X"]
+        collection, target_variable_order=["biomass"], target_source="reactor_components"
     )
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(),
+        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             steps=4,
@@ -467,13 +504,15 @@ def test_train_collection_signature_is_stable_and_no_rebuilds():
 
 
 def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
+    collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        _make_collection(), target_variable_order=["X"]
+        collection, target_variable_order=["biomass"], target_source="reactor_components"
     )
     caplog.set_level(logging.INFO, logger="bp_train.harness")
     train_collection(
         store,
         reaction_module=_LinearReactionModule(),
+        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             steps=4,
@@ -487,10 +526,17 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     step_logs = [
         record.message
         for record in caplog.records
-        if record.message.startswith("step ")
+        if record.message.startswith("step ") and "mean_loss=" in record.message
     ]
-    assert len(step_logs) == 2
-    assert step_logs[0].startswith("step 2/4 ")
-    assert step_logs[1].startswith("step 4/4 ")
-    assert all("sampled=" in msg for msg in step_logs)
-    assert all("mean_loss=" not in msg for msg in step_logs)
+    # Every step is logged with mean_loss
+    assert len(step_logs) == 4
+    assert all("mean_loss=" in msg for msg in step_logs)
+    # Per-process sampled losses only at log_every cadence
+    sampled_logs = [
+        record.message
+        for record in caplog.records
+        if record.message.startswith("step ") and "per-process" in record.message
+    ]
+    assert len(sampled_logs) == 2
+    assert sampled_logs[0].startswith("step 2/4 ")
+    assert sampled_logs[1].startswith("step 4/4 ")

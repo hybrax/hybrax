@@ -9,8 +9,8 @@ from bpbench.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
-    ProcessVariable,
     ReactorMedium,
+    ReactorMediumComponent,
     SampleVolumeChange,
     TimeAxis,
     TimeSeries,
@@ -27,7 +27,7 @@ from bp_train.trainer import (
     summarize_train_step_input_signature,
 )
 from bp_train.training_data import TrainingDataStore
-from bp_train.wrapper import LibraryRhsWrapper
+from bp_train.wrapper import HybridOdeWrapper
 
 
 class _LinearReactionModule(UserReactionModule):
@@ -40,9 +40,9 @@ class _LinearReactionModule(UserReactionModule):
 
     def __call__(self, t, c_species, controls_vector):
         del t, controls_vector
-        reaction = self.model(c_species)[0] + self.non_model_bias[0]
+        rate = self.model(c_species)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            reaction_terms=jnp.asarray([reaction], dtype=c_species.dtype),
+            specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
             modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
         )
 
@@ -77,18 +77,23 @@ def _make_two_process_collection() -> BioProcessCollection:
                 )
             },
         ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "X": ProcessVariable(
-                name="X",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 1.0, 2.0]),
-                    values=jnp.asarray([1.0, 0.8, 0.64]),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0, 2.0]),
+                        values=jnp.asarray([1.0, 0.8, 0.64]),
+                    ),
+                    is_intracellular=False,
                 ),
-            )
-        },
+            },
+        ),
+        process_variables={},
     )
     p2 = BioProcess(
         metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
@@ -109,60 +114,68 @@ def _make_two_process_collection() -> BioProcessCollection:
                 )
             },
         ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "X": ProcessVariable(
-                name="X",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 1.0]),
-                    values=jnp.asarray([0.9, 0.72]),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]),
+                        values=jnp.asarray([0.9, 0.72]),
+                    ),
+                    is_intracellular=False,
                 ),
-            )
-        },
+            },
+        ),
+        process_variables={},
     )
     return BioProcessCollection(processes={"p1": p1, "p2": p2}, metadata={})
 
 
 def _build_wrapper_and_process():
+    collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
-        _make_two_process_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     process_data = store.get_process("p2")
-    wrapper = LibraryRhsWrapper.from_process_controls(
+    wrapper = HybridOdeWrapper.from_process(
         reaction_module=_LinearReactionModule(),
+        process=collection.processes["p2"],
         controls=process_data.controls,
-        species_names=process_data.target_names,
     )
     return wrapper, process_data
 
 
 def _build_store_and_wrapper():
+    collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
-        _make_two_process_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     p1_data = store.get_process("p1")
-    wrapper = LibraryRhsWrapper.from_process_controls(
+    wrapper = HybridOdeWrapper.from_process(
         reaction_module=_LinearReactionModule(),
+        process=collection.processes["p1"],
         controls=p1_data.controls,
-        species_names=p1_data.target_names,
     )
     return store, wrapper
 
 
 def _build_wrapper_and_process_with_custom_partition():
+    collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
-        _make_two_process_collection(),
-        target_variable_order=["X"],
+        collection,
+        target_variable_order=["biomass"], target_source="reactor_components",
     )
     process_data = store.get_process("p2")
-    wrapper = LibraryRhsWrapper.from_process_controls(
+    wrapper = HybridOdeWrapper.from_process(
         reaction_module=_CustomPartitionReactionModule(),
+        process=collection.processes["p2"],
         controls=process_data.controls,
-        species_names=process_data.target_names,
     )
     return wrapper, process_data
 

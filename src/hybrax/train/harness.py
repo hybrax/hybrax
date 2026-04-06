@@ -11,11 +11,12 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+from bpbench.dataclasses import BioProcessCollection
+from bpbench.mechanistic import get_rhs_ode
 from bpbench.serialization import load_process_collection_json
 
 from .defaults import (
     DefaultReactionModule,
-    default_build_modeled_feeds,
     default_build_reaction_module,
 )
 from .model_api import UserReactionModule, partition_trainable
@@ -34,70 +35,18 @@ from .training_data import (
     TrainingDataStore,
 )
 from .utils import get_hook, load_custom_module, resolve_config
-from .wrapper import LibraryRhsWrapper, ModeledFeedSpec
+from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 
 
 logger = logging.getLogger(__name__)
 
 
-def _wrapper_feed_signature(
-    wrapper: LibraryRhsWrapper,
-) -> dict[str, object]:
-    return {
-        "controlled_feed_names": tuple(wrapper.controlled_feed_names),
-        "controlled_feed_control_indices": np.asarray(
-            wrapper.controlled_feed_control_indices, dtype=np.int32
-        ),
-        "controlled_feed_cin_xp": np.asarray(
-            wrapper.controlled_feed_cin_xp, dtype=np.float32
-        ),
-        "controlled_feed_cin_fp": np.asarray(
-            wrapper.controlled_feed_cin_fp, dtype=np.float32
-        ),
-        "modeled_feed_names": tuple(wrapper.modeled_feed_names),
-        "modeled_feed_cin_xp": np.asarray(
-            wrapper.modeled_feed_cin_xp, dtype=np.float32
-        ),
-        "modeled_feed_cin_fp": np.asarray(
-            wrapper.modeled_feed_cin_fp, dtype=np.float32
-        ),
-        "sample_acc_control_index": int(wrapper.sample_acc_control_index),
-    }
-
-
-def _validate_wrapper_feed_compatibility(
-    *,
-    reference_name: str,
-    reference_wrapper: LibraryRhsWrapper,
-    candidate_name: str,
-    candidate_wrapper: LibraryRhsWrapper,
-) -> None:
-    reference_signature = _wrapper_feed_signature(reference_wrapper)
-    candidate_signature = _wrapper_feed_signature(candidate_wrapper)
-
-    for field_name, reference_value in reference_signature.items():
-        candidate_value = candidate_signature[field_name]
-        if isinstance(reference_value, tuple):
-            if reference_value != candidate_value:
-                raise ValueError(
-                    "selected processes have incompatible wrapper feed semantics: "
-                    f"{field_name} differs between {reference_name!r} and "
-                    f"{candidate_name!r}"
-                )
-            continue
-
-        if not np.array_equal(reference_value, candidate_value):
-            raise ValueError(
-                "selected processes have incompatible wrapper feed semantics: "
-                f"{field_name} differs between {reference_name!r} and "
-                f"{candidate_name!r}"
-            )
-
-
 def _batched_measurement_loss_from_batch(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     batch: BatchTrainingData,
     batch_controls: BatchControls,
+    batched_Cin: jax.Array,
+    batched_Cin_modeled: jax.Array,
     jump_ts_rows: jax.Array | None,
     *,
     max_solver_steps: int,
@@ -113,6 +62,8 @@ def _batched_measurement_loss_from_batch(
         meas_mask: jax.Array,
         n_meas: jax.Array,
         y0: jax.Array,
+        cin: jax.Array,
+        cin_modeled: jax.Array,
         jump_ts: jax.Array | None,
     ) -> jax.Array:
         controls = _BatchIndexedControls(
@@ -120,7 +71,9 @@ def _batched_measurement_loss_from_batch(
             process_idx=process_idx,
         )
         sample_wrapper = eqx.tree_at(
-            lambda current: current.controls, wrapper, controls
+            lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+            wrapper,
+            (controls, cin, cin_modeled),
         )
         return _measurement_loss_from_arrays(
             sample_wrapper,
@@ -137,14 +90,8 @@ def _batched_measurement_loss_from_batch(
 
     if jump_ts_rows is None:
         per_sample = jax.vmap(
-            lambda process_idx, t_meas, y_meas, meas_mask, n_meas, y0: _sample_loss(
-                process_idx,
-                t_meas,
-                y_meas,
-                meas_mask,
-                n_meas,
-                y0,
-                None,
+            lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
+                pi, tm, ym, mm, nm, y0, ci, cm, None,
             )
         )(
             batch.process_indices,
@@ -153,6 +100,8 @@ def _batched_measurement_loss_from_batch(
             batch.meas_mask,
             batch.n_meas,
             batch.y0,
+            batched_Cin[batch.process_indices],
+            batched_Cin_modeled[batch.process_indices],
         )
     else:
         per_sample = jax.vmap(_sample_loss)(
@@ -162,6 +111,8 @@ def _batched_measurement_loss_from_batch(
             batch.meas_mask,
             batch.n_meas,
             batch.y0,
+            batched_Cin[batch.process_indices],
+            batched_Cin_modeled[batch.process_indices],
             jump_ts_rows,
         )
     return jnp.mean(per_sample)
@@ -182,7 +133,7 @@ class TrainHarnessConfig:
     learning_rate: float = 1e-3
     seed: int = 0
     log_every: int = 10
-    solver_max_steps: int = 100_000
+    solver_max_steps: int = 2048
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
     solver_use_jump_ts: bool = True
@@ -192,6 +143,7 @@ class TrainHarnessConfig:
 class TrainHarnessResult:
     """Summary object returned by the training harness."""
 
+    trained_wrapper: Any
     mean_loss_by_step: tuple[float, ...]
     sampled_loss_by_process_at_log_steps: dict[int, tuple[tuple[str, float], ...]]
     batch_process_names_by_step: tuple[tuple[str, ...], ...]
@@ -294,28 +246,6 @@ def _build_batch_index_stream(
     return jnp.asarray(flattened.reshape((int(steps), int(batch_size))))
 
 
-def _as_modeled_feed_specs(payload: Any) -> tuple[ModeledFeedSpec, ...]:
-    if payload is None:
-        return ()
-    specs: list[ModeledFeedSpec] = []
-    for entry in payload:
-        if isinstance(entry, ModeledFeedSpec):
-            specs.append(entry)
-            continue
-        if not isinstance(entry, dict):
-            raise TypeError("modeled feed entries must be ModeledFeedSpec or dict")
-        specs.append(
-            ModeledFeedSpec(
-                name=str(entry["name"]),
-                component_concentrations={
-                    str(key): float(value)
-                    for key, value in dict(entry["component_concentrations"]).items()
-                },
-            )
-        )
-    return tuple(specs)
-
-
 def _build_reaction_module(
     *,
     store: TrainingDataStore,
@@ -341,28 +271,16 @@ def _build_reaction_module(
     return module
 
 
-def _build_modeled_feeds(
-    *,
-    custom_module,
-    custom_config: dict[str, Any],
-    target_names: tuple[str, ...],
-) -> tuple[ModeledFeedSpec, ...]:
-    hook = get_hook(custom_module, "build_modeled_feeds", default_build_modeled_feeds)
-    payload = hook(target_names=list(target_names), config=custom_config)
-    return _as_modeled_feed_specs(payload)
-
-
 def train_collection(
     store: TrainingDataStore,
     *,
     reaction_module: UserReactionModule,
+    collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
-    modeled_feeds: tuple[ModeledFeedSpec, ...] | list[ModeledFeedSpec] | None = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store."""
     cfg = config or TrainHarnessConfig()
     selected_processes = _ensure_process_names(store, cfg.process_names)
-    modeled_feed_specs = tuple(modeled_feeds or ())
 
     effective_batch_size = _validate_batching_config(
         cfg,
@@ -389,25 +307,43 @@ def train_collection(
 
     batch_controls = store.controls_store.as_batch_controls()
     warmup_batch = store.gather_batch(batch_index_stream[0])
-    wrapper: LibraryRhsWrapper | None = None
+
+    # Build per-process RhsOde and validate structural compatibility
+    per_process_rhs = {}
+    reference_rhs = None
     reference_process_name = selected_processes[0]
-    for process_name in selected_processes:
-        process_wrapper = LibraryRhsWrapper.from_process_controls(
-            reaction_module=reaction_module,
-            controls=store.get_process(process_name).controls,
-            species_names=store.target_names,
-            modeled_feeds=list(modeled_feed_specs),
+    for process_name in store.process_order:
+        process = collection.processes[process_name]
+        rhs = get_rhs_ode(process)
+        per_process_rhs[process_name] = rhs
+        if process_name == reference_process_name:
+            reference_rhs = rhs
+
+    assert reference_rhs is not None
+    for process_name in selected_processes[1:]:
+        validate_rhs_ode_compatibility(
+            reference_process_name,
+            reference_rhs,
+            process_name,
+            per_process_rhs[process_name],
         )
-        if wrapper is None:
-            wrapper = process_wrapper
-            continue
-        _validate_wrapper_feed_compatibility(
-            reference_name=reference_process_name,
-            reference_wrapper=wrapper,
-            candidate_name=process_name,
-            candidate_wrapper=process_wrapper,
-        )
-    assert wrapper is not None
+
+    # Build wrapper from reference process
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=reaction_module,
+        process=collection.processes[reference_process_name],
+        controls=store.get_process(reference_process_name).controls,
+    )
+
+    # Stack per-process Cin arrays: [n_store_processes, n_feeds, n_species]
+    all_Cin = []
+    all_Cin_modeled = []
+    for process_name in store.process_order:
+        rhs = per_process_rhs[process_name]
+        all_Cin.append(rhs.Cin)
+        all_Cin_modeled.append(rhs.Cin_modeled)
+    batched_Cin = jnp.stack(all_Cin)
+    batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
     trainable_params, trainable_static = partition_trainable(reaction_module)
     optimizer = _build_optimizer(cfg.optimizer_name, float(cfg.learning_rate))
@@ -421,7 +357,7 @@ def train_collection(
 
     def _make_batched_step():
         def _step_fn(
-            current_wrapper: LibraryRhsWrapper,
+            current_wrapper: HybridOdeWrapper,
             current_trainable_params: Any,
             current_optimizer_state: Any,
             current_batch,
@@ -447,6 +383,8 @@ def train_collection(
                     candidate_wrapper,
                     current_batch,
                     batch_controls,
+                    batched_Cin,
+                    batched_Cin_modeled,
                     jump_ts_rows,
                     max_solver_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
@@ -476,23 +414,6 @@ def train_collection(
     step_fn = _make_batched_step()
     rebuild_count = 0
 
-    warmup_t0 = time.perf_counter()
-    # Warmup intentionally executes once with step-0 batch shape/signature so
-    # the timed training loop excludes first-call compilation latency.
-    _warmup_wrapper, _warmup_trainable, warmup_loss, _warmup_opt_state = step_fn(
-        wrapper,
-        trainable_params,
-        optimizer_state,
-        warmup_batch,
-    )
-    jax.block_until_ready(warmup_loss)
-    warmup_compile_seconds = time.perf_counter() - warmup_t0
-
-    mean_loss_by_step: list[float] = []
-    step_time_seconds: list[float] = []
-    batch_process_names_by_step: list[tuple[str, ...]] = []
-    sampled_loss_by_process_at_log_steps: dict[int, tuple[tuple[str, float], ...]] = {}
-
     logger.info(
         "train harness setup: processes=%s, targets=%s source=%s steps=%d "
         "batch_size=%d optimizer=%s lr=%g",
@@ -504,6 +425,29 @@ def train_collection(
         cfg.optimizer_name,
         cfg.learning_rate,
     )
+
+    logger.info("JIT compiling train step (warmup)...")
+    warmup_t0 = time.perf_counter()
+    _warmup_wrapper, _warmup_trainable, warmup_loss, _warmup_opt_state = step_fn(
+        wrapper,
+        trainable_params,
+        optimizer_state,
+        warmup_batch,
+    )
+    jax.block_until_ready(warmup_loss)
+    warmup_compile_seconds = time.perf_counter() - warmup_t0
+    logger.info(
+        "JIT compilation done in %.1fs, warmup loss=%.6g",
+        warmup_compile_seconds,
+        float(warmup_loss),
+    )
+
+    mean_loss_by_step: list[float] = []
+    step_time_seconds: list[float] = []
+    batch_process_names_by_step: list[tuple[str, ...]] = []
+    sampled_loss_by_process_at_log_steps: dict[int, tuple[tuple[str, float], ...]] = {}
+
+    logger.info("starting training loop...")
     for step_index in range(cfg.steps):
         batch_indices = batch_index_stream[step_index]
         batch = store.gather_batch(batch_indices)
@@ -541,17 +485,31 @@ def train_collection(
         batch_names = tuple(store.process_order[idx] for idx in batch_indices_tuple)
         batch_process_names_by_step.append(batch_names)
 
-        should_log = (step_index + 1) % cfg.log_every == 0
-        if should_log:
-            # Telemetry path: sampled per-process losses for current batch members.
-            # This intentionally uses the single-process helper at log cadence.
+        # Log mean loss every step
+        logger.info(
+            "step %d/%d  mean_loss=%.6g  dt=%.3fs",
+            step_index + 1,
+            cfg.steps,
+            mean_loss,
+            step_dt,
+        )
+
+        # Detailed per-process telemetry at log_every cadence
+        should_sample = (step_index + 1) % cfg.log_every == 0
+        if should_sample:
             sampled_losses: list[tuple[str, float]] = []
             for process_idx in batch_indices_tuple:
                 process_data = store.get_process(process_idx)
+                process_name = process_data.process_name
+                # Inject per-process controls and Cin for telemetry
                 process_wrapper = eqx.tree_at(
-                    lambda current: current.controls,
+                    lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
                     wrapper,
-                    process_data.controls,
+                    (
+                        process_data.controls,
+                        per_process_rhs[process_name].Cin,
+                        per_process_rhs[process_name].Cin_modeled,
+                    ),
                 )
                 sample_loss = single_process_measurement_loss(
                     process_wrapper,
@@ -561,17 +519,18 @@ def train_collection(
                     solver_atol=float(cfg.solver_atol),
                     solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
                 )
-                sampled_losses.append((process_data.process_name, float(sample_loss)))
+                sampled_losses.append((process_name, float(sample_loss)))
 
             sampled_loss_by_process_at_log_steps[step_index + 1] = tuple(sampled_losses)
             logger.info(
-                "step %d/%d sampled=%s",
+                "step %d/%d  per-process sampled=%s",
                 step_index + 1,
                 cfg.steps,
                 sampled_loss_by_process_at_log_steps[step_index + 1],
             )
 
     return TrainHarnessResult(
+        trained_wrapper=wrapper,
         mean_loss_by_step=tuple(mean_loss_by_step),
         sampled_loss_by_process_at_log_steps=sampled_loss_by_process_at_log_steps,
         batch_process_names_by_step=tuple(batch_process_names_by_step),
@@ -624,14 +583,9 @@ def train_from_prepared_json(
         custom_module=custom_module,
         custom_config=custom_cfg,
     )
-    modeled_feeds = _build_modeled_feeds(
-        custom_module=custom_module,
-        custom_config=custom_cfg,
-        target_names=tuple(store.target_names),
-    )
     return train_collection(
         store,
         reaction_module=reaction_module,
+        collection=collection,
         config=effective_cfg,
-        modeled_feeds=modeled_feeds,
     )

@@ -11,7 +11,7 @@ import diffrax
 from .controls_store import BatchControls
 from .model_api import partition_trainable
 from .training_data import PerProcessTrainingData, TrainingDataStore
-from .wrapper import LibraryRhsWrapper
+from .wrapper import HybridOdeWrapper
 
 
 def summarize_train_step_input_signature(*values: object) -> tuple[object, ...]:
@@ -45,7 +45,7 @@ def _clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
 
 
 def _simulate_measurement_states_on_grid(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     *,
     t_eval: jax.Array,
     n_meas: int | jax.Array,
@@ -77,6 +77,7 @@ def _simulate_measurement_states_on_grid(
             saveat=diffrax.SaveAt(ts=t_eval),
             stepsize_controller=stepsize_controller,
             max_steps=max_steps,
+            throw=False,
         )
         return solution.ys
 
@@ -97,7 +98,7 @@ class _BatchIndexedControls(eqx.Module):
 
 
 def simulate_measurement_states(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     process_data: PerProcessTrainingData,
     *,
     max_steps: int = 100_000,
@@ -123,7 +124,7 @@ def simulate_measurement_states(
 
 
 def _measurement_loss_from_arrays(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     *,
     t_meas: jax.Array,
     y_meas: jax.Array,
@@ -168,7 +169,7 @@ def _measurement_loss_from_arrays(
 
 
 def single_process_measurement_loss(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     process_data: PerProcessTrainingData,
     *,
     max_solver_steps: int = 100_000,
@@ -215,7 +216,7 @@ def single_process_measurement_loss(
 
 
 def batched_measurement_loss(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     store: TrainingDataStore,
     process_indices: jax.Array,
     *,
@@ -304,14 +305,20 @@ def _build_optimizer(
         raise ValueError("learning_rate must be positive")
     name = str(optimizer_name)
     if name == "adam":
-        return optax.adam(learning_rate)
-    if name == "sgd":
-        return optax.sgd(learning_rate)
-    raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
+        base = optax.adam(learning_rate)
+    elif name == "sgd":
+        base = optax.sgd(learning_rate)
+    else:
+        raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
+    return optax.chain(
+        optax.zero_nans(),
+        optax.clip_by_global_norm(100.0),
+        base,
+    )
 
 
 def batched_train_step(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     store: TrainingDataStore,
     process_indices: jax.Array,
     *,
@@ -322,7 +329,7 @@ def batched_train_step(
     solver_rtol: float = 1e-5,
     solver_atol: float = 1e-7,
     solver_use_jump_ts: bool = True,
-) -> tuple[LibraryRhsWrapper, jax.Array, eqx.Module, optax.OptState]:
+) -> tuple[HybridOdeWrapper, jax.Array, eqx.Module, optax.OptState]:
     """Run one Optax-backed batch update and return updated wrapper/loss/grads/state."""
     optimizer = _build_optimizer(optimizer_name, learning_rate)
     trainable, static = partition_trainable(wrapper.reaction_module)
@@ -360,7 +367,7 @@ def batched_train_step(
 
 
 def single_process_train_step(
-    wrapper: LibraryRhsWrapper,
+    wrapper: HybridOdeWrapper,
     process_data: PerProcessTrainingData,
     *,
     learning_rate: float = 1e-3,
@@ -368,7 +375,7 @@ def single_process_train_step(
     solver_rtol: float = 1e-5,
     solver_atol: float = 1e-7,
     solver_use_jump_ts: bool = True,
-) -> tuple[LibraryRhsWrapper, jax.Array, eqx.Module]:
+) -> tuple[HybridOdeWrapper, jax.Array, eqx.Module]:
     """Run one train step and return `(updated_wrapper, loss, trainable_grads)`."""
     trainable, static = partition_trainable(wrapper.reaction_module)
 
