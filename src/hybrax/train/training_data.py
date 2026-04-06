@@ -174,8 +174,8 @@ def _measurement_targets(
         ]
         if missing:
             raise ValueError(
-                f"{process.metadata.name}: configured target variables missing from process "
-                f"variables: {missing}"
+                f"{process.metadata.name}: configured target variables missing "
+                f"from process variables: {missing}"
             )
         controlled = [
             name
@@ -184,8 +184,9 @@ def _measurement_targets(
         ]
         if controlled:
             raise ValueError(
-                f"{process.metadata.name}: configured target variables must be measured "
-                f"(is_controlled=False), got controlled targets: {controlled}"
+                f"{process.metadata.name}: configured target variables must be "
+                f"measured (is_controlled=False), got controlled targets: "
+                f"{controlled}"
             )
         return list(configured_order)
 
@@ -326,7 +327,8 @@ class TrainingDataStore(eqx.Module):
     meas_mask: jax.Array
     # Active measurement counts per process.
     n_meas: jax.Array
-    # Initial state matrix `[n_processes, n_targets + 1]` where last entry is `V_cont(0)`.
+    # Initial state matrix `[n_processes, n_targets + 1]` where last entry
+    # is `V_cont(0)`.
     y0: jax.Array
 
     @classmethod

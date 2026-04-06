@@ -254,7 +254,8 @@ def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
                 "        process.process_variables['T'].is_controlled = True",
                 "    return collection",
                 "",
-                "def build_sample_acc_series(process, process_name, collection_metadata, config):",
+                "def build_sample_acc_series("
+                "process, process_name, collection_metadata, config):",
                 "    t0 = float(process.time_axis.start)",
                 "    t1 = float(process.time_axis.end)",
                 "    times = np.asarray([t0, t1], dtype=float)",
@@ -264,8 +265,11 @@ def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
                 "        kind='derived_control',",
                 "        times=times,",
                 "        values=values,",
-                "        evaluator=lambda ts: np.interp(np.asarray(ts, dtype=float), times, values, left=values[0], right=values[-1]),",
-                "        derivative=lambda ts: np.full_like(np.asarray(ts, dtype=float), 0.2, dtype=float),",
+                "        evaluator=lambda ts: np.interp("
+                "np.asarray(ts, dtype=float), times, values, "
+                "left=values[0], right=values[-1]),",
+                "        derivative=lambda ts: np.full_like("
+                "np.asarray(ts, dtype=float), 0.2, dtype=float),",
                 "        step_ts=[t0, t1],",
                 "        metadata={'source': 'custom_test'},",
                 "    )",

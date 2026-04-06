@@ -249,7 +249,10 @@ def _build_wrapper(process, controls, reaction_module):
 
 
 def test_wrapper_produces_finite_state_derivative():
-    process = _make_single_species_process(feed_rate=0.2, feed_biomass_concentration=0.0)
+    process = _make_single_species_process(
+        feed_rate=0.2,
+        feed_biomass_concentration=0.0,
+    )
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     reaction_module = ConstantReactionModule(
@@ -509,7 +512,9 @@ def test_wrapper_augmented_controls_names_includes_cin():
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     assert "cin:feed_A:biomass" in wrapper.augmented_controls_names
-    assert len(wrapper.augmented_controls_units) == len(wrapper.augmented_controls_names)
+    assert len(wrapper.augmented_controls_units) == len(
+        wrapper.augmented_controls_names
+    )
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():

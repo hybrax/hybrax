@@ -92,9 +92,11 @@ class PerProcessControls(eqx.Module):
     global_control_name_to_index: dict[str, int]
     # Padded dense time grid for this process, shape `[max_grid_length]`.
     dense_grid: jax.Array
-    # Padded control values in shared control order, shape `[max_grid_length, max_controls]`.
+    # Padded control values in shared control order, shape
+    # `[max_grid_length, max_controls]`.
     control_values: jax.Array
-    # Padded control derivatives in shared control order, same shape as `control_values`.
+    # Padded control derivatives in shared control order, same shape as
+    # `control_values`.
     control_derivatives: jax.Array
     # Padded step-boundary times used to guide the ODE solver.
     step_ts: jax.Array
@@ -199,7 +201,8 @@ class ControlsStore(eqx.Module):
     shape_metadata: dict[str, Any]
     # Stacked padded dense grids, shape `[n_processes, max_grid_length]`.
     dense_grid: jax.Array
-    # Stacked padded control values, shape `[n_processes, max_grid_length, max_controls]`.
+    # Stacked padded control values, shape
+    # `[n_processes, max_grid_length, max_controls]`.
     control_values: jax.Array
     # Stacked padded control derivatives, same shape as `control_values`.
     control_derivatives: jax.Array

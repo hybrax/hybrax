@@ -211,7 +211,9 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
 def test_train_collection_single_process_loss_decreases():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        collection, target_variable_order=["biomass"], target_source="reactor_components"
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     result = train_collection(
         store,
@@ -246,7 +248,9 @@ def test_train_collection_single_process_loss_decreases():
 def test_train_collection_multi_process_tracks_per_process_histories():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        collection, target_variable_order=["biomass"], target_source="reactor_components"
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     result = train_collection(
         store,
@@ -278,7 +282,9 @@ def test_train_collection_with_different_cin_per_process():
     """Processes with different feed compositions should train without error."""
     collection = _make_feed_mismatch_collection()
     store = TrainingDataStore.from_collection(
-        collection, target_variable_order=["biomass"], target_source="reactor_components"
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     result = train_collection(
         store,
@@ -301,7 +307,9 @@ def test_train_collection_with_different_cin_per_process():
 def test_train_collection_rejects_unknown_process_selection():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        collection, target_variable_order=["biomass"], target_source="reactor_components"
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="unknown process names"):
         train_collection(
@@ -316,7 +324,8 @@ def test_train_collection_rejects_nonpositive_solver_max_steps():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="solver_max_steps must be positive"):
         train_collection(
@@ -335,7 +344,8 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="solver_rtol must be positive"):
         train_collection(
@@ -365,7 +375,8 @@ def test_train_collection_rejects_unsupported_optimizer_name():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="optimizer_name"):
         train_collection(
@@ -384,7 +395,8 @@ def test_harness_process_name_validation_rejects_duplicates_and_empty():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     with pytest.raises(ValueError, match="duplicate entries in process_names"):
         _ensure_process_names(store, ("p1", "p1"))
@@ -482,7 +494,9 @@ def test_harness_config_has_no_drop_last_batch_field():
 def test_train_collection_signature_is_stable_and_no_rebuilds():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        collection, target_variable_order=["biomass"], target_source="reactor_components"
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     result = train_collection(
         store,
@@ -506,7 +520,9 @@ def test_train_collection_signature_is_stable_and_no_rebuilds():
 def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
-        collection, target_variable_order=["biomass"], target_source="reactor_components"
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     caplog.set_level(logging.INFO, logger="bp_train.harness")
     train_collection(

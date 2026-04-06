@@ -88,7 +88,15 @@ def _batched_measurement_loss_from_batch(
     if jump_ts_rows is None:
         per_sample = jax.vmap(
             lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
-                pi, tm, ym, mm, nm, y0, ci, cm, None,
+                pi,
+                tm,
+                ym,
+                mm,
+                nm,
+                y0,
+                ci,
+                cm,
+                None,
             )
         )(
             batch.process_indices,

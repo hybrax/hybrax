@@ -178,10 +178,12 @@ class HybridOdeWrapper(eqx.Module):
         u_flow = controls_vector[self.flow_control_indices]
 
         # Flatten Cin/Cin_modeled and append to controls for MLP input
-        cin_flat = jnp.concatenate([
-            self.rhs_ode.Cin.reshape(-1),
-            self.rhs_ode.Cin_modeled.reshape(-1),
-        ])
+        cin_flat = jnp.concatenate(
+            [
+                self.rhs_ode.Cin.reshape(-1),
+                self.rhs_ode.Cin_modeled.reshape(-1),
+            ]
+        )
         augmented_controls = jnp.concatenate([controls_vector, cin_flat])
 
         # User's MLP: specific rates + modeled feed rates

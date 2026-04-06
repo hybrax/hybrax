@@ -137,7 +137,8 @@ def _build_wrapper_and_process():
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     process_data = store.get_process("p2")
     wrapper = HybridOdeWrapper.from_process(
@@ -152,7 +153,8 @@ def _build_store_and_wrapper():
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     p1_data = store.get_process("p1")
     wrapper = HybridOdeWrapper.from_process(
@@ -167,7 +169,8 @@ def _build_wrapper_and_process_with_custom_partition():
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=["biomass"], target_source="reactor_components",
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
     )
     process_data = store.get_process("p2")
     wrapper = HybridOdeWrapper.from_process(
@@ -310,5 +313,3 @@ def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
     sig_a = summarize_train_step_input_signature("adam", 1e-3, 42)
     sig_b = summarize_train_step_input_signature("adam", 2e-3, 42)
     assert sig_a != sig_b
-
-

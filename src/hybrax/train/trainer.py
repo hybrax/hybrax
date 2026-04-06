@@ -215,7 +215,6 @@ def single_process_measurement_loss(
     return jnp.sum(masked_sq_err) / denom
 
 
-
 def _build_optimizer(
     optimizer_name: str, learning_rate: float
 ) -> optax.GradientTransformation:
@@ -233,7 +232,6 @@ def _build_optimizer(
         optax.clip_by_global_norm(100.0),
         base,
     )
-
 
 
 def single_process_train_step(
