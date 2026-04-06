@@ -85,6 +85,8 @@ def _batched_measurement_loss_from_batch(
             solver_atol=solver_atol,
         )
 
+    # `vmap` cannot map over `None`; use a separate branch that passes `jump_ts`
+    # as a constant `None` when jump times are disabled.
     if jump_ts_rows is None:
         per_sample = jax.vmap(
             lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(

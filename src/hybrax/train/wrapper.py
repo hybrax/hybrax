@@ -9,6 +9,7 @@ from bpbench.dataclasses import BioProcess, FeedVolumeChange
 from bpbench.mechanistic import RhsOde, get_rhs_ode
 
 from .controls_store import PerProcessControls
+from .model_api import UserReactionModule
 
 
 def _build_augmented_controls_names(
@@ -92,7 +93,7 @@ class HybridOdeWrapper(eqx.Module):
     """
 
     rhs_ode: RhsOde
-    reaction_module: Any
+    reaction_module: UserReactionModule
     controls: PerProcessControls
 
     flow_control_indices: jax.Array
@@ -107,7 +108,7 @@ class HybridOdeWrapper(eqx.Module):
     def from_process(
         cls,
         *,
-        reaction_module: Any,
+        reaction_module: UserReactionModule,
         process: BioProcess,
         controls: PerProcessControls,
         min_real_volume: float = 1e-8,
@@ -155,7 +156,7 @@ class HybridOdeWrapper(eqx.Module):
     def __call__(self, t: float | jax.Array, y: jax.Array) -> jax.Array:
         """Compute full state derivative ``[dc_species/dt..., dV/dt]``."""
         if y.ndim != 1:
-            raise ValueError("state vector y must be rank-1")
+            raise ValueError("state vector y ndim must be 1")
         expected_state_size = len(self.species_names) + 1
         if y.shape[0] != expected_state_size:
             raise ValueError(
@@ -165,7 +166,7 @@ class HybridOdeWrapper(eqx.Module):
 
         t_arr = jnp.asarray(t, dtype=y.dtype)
         c_species = jnp.clip(y[:-1], 0.0)
-        v_cont = jnp.maximum(y[-1], jnp.asarray(self.min_real_volume))
+        v_cont = jnp.maximum(y[-1], jnp.asarray(0.0, dtype=y.dtype))
 
         # Evaluate controls at time t
         controls_vector = self.controls.eval(t_arr)
