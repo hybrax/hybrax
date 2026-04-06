@@ -15,10 +15,7 @@ from bpbench.dataclasses import BioProcessCollection
 from bpbench.mechanistic import get_rhs_ode
 from bpbench.serialization import load_process_collection_json
 
-from .defaults import (
-    DefaultReactionModule,
-    default_build_reaction_module,
-)
+from .defaults import default_build_reaction_module
 from .model_api import UserReactionModule, partition_trainable
 from .trainer import (
     _build_optimizer,
