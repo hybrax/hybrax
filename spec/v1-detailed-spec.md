@@ -437,9 +437,8 @@ the prepared artifact.
 For each experiment:
 
 - start from `bpbench` `Interpolator` objects,
-- reimplement the runtime controls path inside `bp-train` rather than reusing
-  `bpbench.mechanistic`, because V1 optimizes for runtime and compile-time
-  behavior rather than reference correctness,
+- build the runtime controls path inside `bp-train` (`ControlsStore`) from
+  those interpolators using globally padded arrays,
 - reuse `bpbench.mechanistic` conventions where useful, especially deterministic
   control ordering and feed classification,
 - convert non-continuous controlled feed additions into short bolus-feed ramps,
@@ -558,10 +557,12 @@ To avoid ambiguity, V1 freezes a structured return contract for
 
 The call must return a `ReactionOutputs`-like structure with:
 
-- `reaction_terms`: reaction or source terms in concentration space, excluding
-  dilution and feed transport,
-- `modeled_feed_rates`: a vector aligned with config-declared modeled feed
-  streams. If there are no modeled feeds, this is `jnp.zeros((0,))`.
+- `specific_rates`: specific rates `q_i` aligned with the species state order.
+  Mechanistic biomass scaling and transport/dilution are applied by the
+  mechanistic ODE runtime,
+- `modeled_feed_rates`: a vector aligned with the modeled-flow ordering from
+  `RhsOde.modeled_flow_names`. If there are no modeled feeds, this is
+  `jnp.zeros((0,))`.
 
 The exact container type may be a small dataclass, namedtuple, or equivalent,
 but the two fields above are semantically required.
@@ -589,15 +590,16 @@ Default behavior:
 
 The user reaction module does not implement dilution in V1.
 
-It is responsible only for reaction or source terms in concentration space.
+It is responsible for specific-rate prediction and modeled-feed-rate
+prediction (`jnp.zeros((0,))` when there are no modeled feeds).
 The wrapper handles:
 
-- continuous-volume-state mechanics,
+- state clamping and continuous-volume-state mechanics,
 - reconstruction of physical volume from sampling history,
-- feed transport,
-- dilution terms,
-- combining reaction and transport contributions into the final state
-  derivative.
+- augmented-controls assembly (base controls plus flattened `Cin` inputs),
+- delegation to `bpbench.mechanistic.RhsOde` for biomass scaling,
+  feed transport, and dilution,
+- returning the final state derivative.
 
 ### 12.5 Observations
 
@@ -660,7 +662,8 @@ At runtime the wrapper receives:
 - current continuous volume state `V_cont`,
 - control values at time `t`,
 - reaction-module outputs,
-- feed metadata.
+- a mechanistic RHS object (`bpbench.mechanistic.RhsOde`) built from process
+  metadata.
 
 ### 14.2 Responsibilities
 
@@ -670,8 +673,11 @@ The wrapper must:
 - maintain `V_cont` as part of the integrated state,
 - read `V_sample_acc(t)` from the controls object,
 - reconstruct `V_real = V_cont - V_sample_acc`,
-- compute dilution and feed transport contributions,
-- combine those contributions with model reaction terms,
+- build an augmented controls vector by appending flattened
+  `RhsOde.Cin`/`RhsOde.Cin_modeled` to base controls,
+- request `specific_rates` and `modeled_feed_rates` from the user module,
+- delegate derivative assembly to `RhsOde` (`q * X_active`, transport, and
+  dilution),
 - produce the final derivative for the ODE solver.
 
 ### 14.3 Modeled Feeds
@@ -680,7 +686,8 @@ V1 should support multiple feed streams explicitly, but it should keep the
 runtime contract strict:
 
 - every feed stream must be declared explicitly,
-- the wrapper must know its source kind, aligned index, and inlet composition,
+- flow/species ordering is taken from `RhsOde.flow_names`,
+  `RhsOde.modeled_flow_names`, and `RhsOde.species_names`,
 - controlled feeds come from the prepared control vector,
 - modeled feeds come from `ReactionOutputs.modeled_feed_rates`,
 - `ReactionOutputs.modeled_feed_rates` must follow the same positional
@@ -692,16 +699,19 @@ wrapper and others are manually implemented in user code.
 
 ### 14.4 Relationship to `bpbench.mechanistic`
 
-V1 does not reuse `bpbench.mechanistic` as its runtime implementation.
+V1 uses `bpbench.mechanistic` directly for mechanistic RHS evaluation.
 
-Instead `bp-train` reimplements the controls and wrapper path with stronger
-focus on JIT stability, padded shapes, and compile-time behavior. Existing
-`bpbench.mechanistic` patterns remain valuable references for:
+Current runtime split:
 
-- deterministic control ordering,
-- feed classification,
-- positional modeled-feed conventions,
-- wrapper math used as a correctness baseline in tests.
+- `bp-train` owns controls preparation/evaluation (`ControlsStore`), batching,
+  loss evaluation, and training-loop behavior.
+- `bpbench.mechanistic.RhsOde` owns mechanistic derivative assembly
+  (`q * X_active`, transport, dilution, and `dV/dt`).
+- `bp-train`'s wrapper remains a thin adapter that maps controls/model outputs
+  to the `RhsOde` call signature.
+
+This keeps mechanistic math aligned with bpbench while preserving padded,
+JIT-stable training infrastructure in `bp-train`.
 
 ## 15. Training Data Object
 
@@ -1033,3 +1043,13 @@ These are explicitly deferred beyond V1:
 - more sophisticated treatment of bolus events,
 - adaptive knot placement beyond the simple dense-grid refinement strategy,
 - automatic jump detection inside `bp-train`.
+
+## 22. Known Limitations
+
+Current limitations:
+
+- `Cin` is currently constant at runtime; processes requiring time-varying feed
+  composition are not supported in this implementation.
+- `bp-train` currently delegates mechanistic RHS evaluation to
+  `bpbench.mechanistic.RhsOde`, so training/batching-specific performance
+  optimizations in that mechanistic inner loop must be implemented in bpbench.

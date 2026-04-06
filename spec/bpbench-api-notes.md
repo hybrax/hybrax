@@ -52,16 +52,24 @@ control evaluation and ODE wrapper logic.
 
 ### Impact on `bp-train`
 
-V1 of `bp-train` should not depend on it as the runtime implementation, because
-the training package needs a path optimized for JIT stability, padded shapes,
-and compile-time behavior. Its conventions remain worth mirroring.
+V1 now depends on it directly for runtime mechanistic RHS evaluation:
+
+- `bp_train.wrapper.HybridOdeWrapper` holds and calls `RhsOde`,
+- `bp_train.harness` uses `get_rhs_ode(process)` and validates structural
+  compatibility across selected processes in the training run,
+- per-process `Cin` / `Cin_modeled` are injected per sample during batched
+  loss evaluation.
+
+`bp-train` still owns the controls-store representation, batching, and training
+infrastructure.
 
 ### Requested Direction
 
-- keep `bpbench.mechanistic` as a correctness-oriented baseline,
-- let `bp-train` reimplement the runtime path for performance reasons,
-- preserve useful conventions such as control ordering and modeled-feed
-  positional alignment where practical.
+- keep `RhsOde` and `get_rhs_ode` stable and documented as supported runtime
+  dependencies for training packages,
+- preserve deterministic ordering contracts (`species_names`, `flow_names`,
+  `modeled_flow_names`) and shape contracts for `Cin`/`Cin_modeled`,
+- continue exposing conventions such as modeled-feed positional alignment.
 
 ## 4. Stronger Metadata for Control Semantics
 
