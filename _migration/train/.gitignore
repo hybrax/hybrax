@@ -230,3 +230,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Testing Notebooks
+test_*.ipynb

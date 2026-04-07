@@ -137,7 +137,7 @@ class TrainHarnessConfig:
     shuffle_batches: bool = True
     batch_seed: int | None = None
     optimizer_name: str = "adam"
-    learning_rate: float = 1e-3
+    learning_rate: Any = 1e-3
     seed: int = 0
     log_every: int = 10
     solver_max_steps: int = 2048
@@ -284,6 +284,10 @@ def train_collection(
     reaction_module: UserReactionModule,
     collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
+    state_scale: jax.Array | None = None,
+    controls_scale: jax.Array | None = None,
+    q_scale: jax.Array | None = None,
+    f_scale: jax.Array | None = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store."""
     cfg = config or TrainHarnessConfig()
@@ -340,6 +344,10 @@ def train_collection(
         reaction_module=reaction_module,
         process=collection.processes[reference_process_name],
         controls=store.get_process(reference_process_name).controls,
+        state_scale=state_scale,
+        controls_scale=controls_scale,
+        q_scale=q_scale,
+        f_scale=f_scale,
     )
 
     # Stack per-process Cin arrays: [n_store_processes, n_feeds, n_species]
@@ -590,9 +598,24 @@ def train_from_prepared_json(
         custom_module=custom_module,
         custom_config=custom_cfg,
     )
+    # Call optional estimate_all_scales hook for state/controls/q/f scaling
+    estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
+    scale_kwargs: dict[str, Any] = {}
+    if estimate_scales_hook is not None:
+        state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
+            collection, list(store.target_names), custom_cfg,
+        )
+        scale_kwargs = {
+            "state_scale": state_scale,
+            "controls_scale": controls_scale,
+            "q_scale": q_scale,
+            "f_scale": f_scale,
+        }
+
     return train_collection(
         store,
         reaction_module=reaction_module,
         collection=collection,
         config=effective_cfg,
+        **scale_kwargs,
     )

@@ -55,9 +55,17 @@ def _simulate_measurement_states_on_grid(
     atol: float,
     jump_ts: jax.Array | None,
 ) -> jax.Array:
-    """Simulate state trajectories at possibly padded measurement timestamps."""
+    """Simulate state trajectories at possibly padded measurement timestamps.
+
+    ``y0`` and the returned states are in **physical** space.  The wrapper
+    integrates internally in scaled space and the results are un-scaled before
+    returning.
+    """
     n_meas_arr = jnp.asarray(n_meas, dtype=jnp.int32)
     t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
+
+    # Scale the initial state for the solver
+    y0_scaled = wrapper.scale_state(y0)
 
     def _solve_trajectory(_) -> jax.Array:
         term = diffrax.ODETerm(lambda t, y, args: wrapper(t, y))
@@ -73,13 +81,14 @@ def _simulate_measurement_states_on_grid(
             t0=t_eval[0],
             t1=t1,
             dt0=None,
-            y0=y0,
+            y0=y0_scaled,
             saveat=diffrax.SaveAt(ts=t_eval),
             stepsize_controller=stepsize_controller,
             max_steps=max_steps,
             throw=False,
         )
-        return solution.ys
+        # Un-scale back to physical space
+        return jax.vmap(wrapper.unscale_state)(solution.ys)
 
     def _single_point(_) -> jax.Array:
         return jnp.repeat(y0[None, :], repeats=t_eval.shape[0], axis=0)
@@ -216,10 +225,12 @@ def single_process_measurement_loss(
 
 
 def _build_optimizer(
-    optimizer_name: str, learning_rate: float
+    optimizer_name: str, learning_rate
 ) -> optax.GradientTransformation:
-    if float(learning_rate) <= 0.0:
-        raise ValueError("learning_rate must be positive")
+    # learning_rate can be a float or an optax Schedule
+    if isinstance(learning_rate, (int, float)):
+        if float(learning_rate) <= 0.0:
+            raise ValueError("learning_rate must be positive")
     name = str(optimizer_name)
     if name == "adam":
         base = optax.adam(learning_rate)

@@ -40,10 +40,8 @@ def _build_augmented_controls_units(
     """Build unit strings for each element of the augmented controls vector."""
     units: list[str] = []
 
-    # Units for base controls
     for name in control_names:
         md = control_metadata.get(name, {})
-        # Try to get unit from metadata, then from volume change or process variable
         unit = md.get("unit", "")
         if not unit:
             if name in process.volume.volume_changes:
@@ -52,7 +50,6 @@ def _build_augmented_controls_units(
                 unit = process.process_variables[name].unit
         units.append(str(unit))
 
-    # Units for controlled feed Cin entries
     for flow_name in controlled_flow_names:
         vc = process.volume.volume_changes.get(flow_name)
         for species_name in species_names:
@@ -66,7 +63,6 @@ def _build_augmented_controls_units(
             else:
                 units.append("")
 
-    # Units for modeled feed Cin entries
     for flow_name in modeled_flow_names:
         vc = process.volume.volume_changes.get(flow_name)
         for species_name in species_names:
@@ -84,16 +80,26 @@ def _build_augmented_controls_units(
 
 
 class HybridOdeWrapper(eqx.Module):
-    """ODE wrapper that delegates mechanistic transport to bpbench's RhsOde.
+    """ODE wrapper integrating in **scaled state space**.
 
-    The user's reaction module receives the species state plus an augmented
-    controls vector (base controls + flattened Cin) and returns specific rates
-    ``q`` and modeled feed rates.  The mechanistic ODE then computes the full
-    state derivative including ``q * X_active``, transport, and dilution.
+    The ODE state vector ``y`` is normalised:  ``y = Y / state_scale`` where
+    ``Y`` is the physical state ``[c_species..., V_cont]``.  Inside each
+    RHS evaluation the wrapper:
+
+    1. Un-scales ``y`` → ``Y`` (physical concentrations + volume).
+    2. Evaluates controls and builds an augmented controls vector.
+    3. Scales the augmented vector (``u = U / controls_scale``).
+    4. Calls the reaction module with **scaled** inputs only:
+       ``reaction_module(t, c_scaled, u_scaled) → (q_scaled, f_scaled)``.
+    5. Un-scales the MLP outputs using ``q_scale`` / ``f_scale``.
+    6. Delegates to ``RhsOde`` (physical space) for the mechanistic RHS.
+    7. Re-scales the derivative: ``dy/dt = dY/dt / state_scale``.
+
+    All ``*_scale`` arrays are **frozen** (not trainable).
     """
 
     rhs_ode: RhsOde
-    reaction_module: UserReactionModule
+    reaction_module: Any
     controls: PerProcessControls
 
     flow_control_indices: jax.Array
@@ -104,19 +110,28 @@ class HybridOdeWrapper(eqx.Module):
     augmented_controls_names: tuple[str, ...] = eqx.field(static=True)
     augmented_controls_units: tuple[str, ...] = eqx.field(static=True)
 
+    # --- Scaling vectors (frozen, not trainable) ---
+    state_scale: jax.Array          # [n_species + 1]
+    controls_scale: jax.Array       # [len(augmented_controls)]
+    q_scale: jax.Array              # [n_species]
+    f_scale: jax.Array              # [n_modeled_feeds]
+
     @classmethod
     def from_process(
         cls,
         *,
-        reaction_module: UserReactionModule,
+        reaction_module: Any,
         process: BioProcess,
         controls: PerProcessControls,
+        state_scale: jax.Array | None = None,
+        controls_scale: jax.Array | None = None,
+        q_scale: jax.Array | None = None,
+        f_scale: jax.Array | None = None,
         min_real_volume: float = 1e-8,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
         rhs_ode = get_rhs_ode(process)
 
-        # Map RhsOde controlled flow names → controls vector indices
         flow_control_indices: list[int] = []
         for flow_name in rhs_ode.flow_names:
             if flow_name not in controls.control_name_to_index:
@@ -141,6 +156,32 @@ class HybridOdeWrapper(eqx.Module):
             species_names=rhs_ode.species_names,
         )
 
+        n_species = len(rhs_ode.species_names)
+        n_aug = len(aug_names)
+        n_modeled = rhs_ode.f_modeled_size
+
+        # Default scales: ones (no scaling)
+        _state_scale = (
+            jnp.asarray(state_scale, dtype=jnp.float32)
+            if state_scale is not None
+            else jnp.ones(n_species + 1, dtype=jnp.float32)
+        )
+        _controls_scale = (
+            jnp.asarray(controls_scale, dtype=jnp.float32)
+            if controls_scale is not None
+            else jnp.ones(n_aug, dtype=jnp.float32)
+        )
+        _q_scale = (
+            jnp.asarray(q_scale, dtype=jnp.float32)
+            if q_scale is not None
+            else jnp.ones(n_species, dtype=jnp.float32)
+        )
+        _f_scale = (
+            jnp.asarray(f_scale, dtype=jnp.float32)
+            if f_scale is not None
+            else jnp.ones(n_modeled, dtype=jnp.float32)
+        )
+
         return cls(
             rhs_ode=rhs_ode,
             reaction_module=reaction_module,
@@ -151,10 +192,36 @@ class HybridOdeWrapper(eqx.Module):
             species_names=rhs_ode.species_names,
             augmented_controls_names=aug_names,
             augmented_controls_units=aug_units,
+            state_scale=_state_scale,
+            controls_scale=_controls_scale,
+            q_scale=_q_scale,
+            f_scale=_f_scale,
         )
 
+    # ------ helpers exposed to callers (e.g. plotting, harness) ------
+
+    def scale_state(self, Y: jax.Array) -> jax.Array:
+        """Physical state → scaled state."""
+        return Y / self.state_scale
+
+    def unscale_state(self, y: jax.Array) -> jax.Array:
+        """Scaled state → physical state."""
+        return y * self.state_scale
+
+    # ------ ODE RHS ------
+
     def __call__(self, t: float | jax.Array, y: jax.Array) -> jax.Array:
-        """Compute full state derivative ``[dc_species/dt..., dV/dt]``."""
+        """Compute ``dy/dt`` in **scaled** state space.
+
+        Parameters
+        ----------
+        t : scalar time
+        y : scaled state vector ``[c_species / state_scale, V / V_scale]``
+
+        Returns
+        -------
+        dy/dt in scaled space.
+        """
         if y.ndim != 1:
             raise ValueError("state vector y ndim must be 1")
         expected_state_size = len(self.species_names) + 1
@@ -165,30 +232,37 @@ class HybridOdeWrapper(eqx.Module):
             )
 
         t_arr = jnp.asarray(t, dtype=y.dtype)
-        c_species = jnp.clip(y[:-1], 0.0)
-        v_cont = jnp.maximum(y[-1], jnp.asarray(0.0, dtype=y.dtype))
 
-        # Evaluate controls at time t
+        # ---- 1. Un-scale state to physical space ----
+        Y = self.unscale_state(y)
+        C_species = jnp.clip(Y[:-1], 0.0)
+        V_cont = jnp.maximum(Y[-1], jnp.asarray(0.0, dtype=y.dtype))
+
+        # ---- 2. Evaluate controls (physical) ----
         controls_vector = self.controls.eval(t_arr)
 
-        # Real volume = container volume - sampled volume
-        v_sample_acc = controls_vector[self.sample_acc_control_index]
-        v_real = jnp.maximum(v_cont - v_sample_acc, jnp.asarray(self.min_real_volume))
+        V_sample_acc = controls_vector[self.sample_acc_control_index]
+        V_real = jnp.maximum(
+            V_cont - V_sample_acc, jnp.asarray(self.min_real_volume)
+        )
 
-        # Controlled flow rates from controls vector
-        u_flow = controls_vector[self.flow_control_indices]
+        U_flow = controls_vector[self.flow_control_indices]
 
-        # Flatten Cin/Cin_modeled and append to controls for MLP input
+        # Build augmented controls (physical)
         cin_flat = jnp.concatenate(
             [
                 self.rhs_ode.Cin.reshape(-1),
                 self.rhs_ode.Cin_modeled.reshape(-1),
             ]
         )
-        augmented_controls = jnp.concatenate([controls_vector, cin_flat])
+        U_augmented = jnp.concatenate([controls_vector, cin_flat])
 
-        # User's MLP: specific rates + modeled feed rates
-        outputs = self.reaction_module(t_arr, c_species, augmented_controls)
+        # ---- 3. Scale inputs for MLP ----
+        c_scaled = y[:-1]  # already scaled (part of y)
+        u_scaled = U_augmented / self.controls_scale
+
+        # ---- 4. MLP predicts in scaled space ----
+        outputs = self.reaction_module(t_arr, c_scaled, u_scaled)
         if not hasattr(outputs, "specific_rates") or not hasattr(
             outputs, "modeled_feed_rates"
         ):
@@ -196,30 +270,33 @@ class HybridOdeWrapper(eqx.Module):
                 "reaction_module output must expose `specific_rates` and "
                 "`modeled_feed_rates`"
             )
-        specific_rates = jnp.asarray(outputs.specific_rates, dtype=y.dtype)
-        modeled_feed_rates = jnp.asarray(outputs.modeled_feed_rates, dtype=y.dtype)
+        q_scaled = jnp.asarray(outputs.specific_rates, dtype=y.dtype)
+        f_scaled = jnp.asarray(outputs.modeled_feed_rates, dtype=y.dtype)
 
-        if specific_rates.shape != c_species.shape:
+        if q_scaled.shape != C_species.shape:
             raise ValueError(
-                f"specific_rates must match species shape {tuple(c_species.shape)}, "
-                f"got {tuple(specific_rates.shape)}"
+                f"specific_rates must match species shape {tuple(C_species.shape)}, "
+                f"got {tuple(q_scaled.shape)}"
             )
         expected_modeled_shape = (self.rhs_ode.f_modeled_size,)
-        if modeled_feed_rates.shape != expected_modeled_shape:
+        if f_scaled.shape != expected_modeled_shape:
             raise ValueError(
                 f"modeled_feed_rates must have shape {expected_modeled_shape}, "
-                f"got {tuple(modeled_feed_rates.shape)}"
+                f"got {tuple(f_scaled.shape)}"
             )
 
-        # Build RhsOde state vector [c_species..., V_real]
-        c_rhs = jnp.concatenate([c_species, jnp.asarray([v_real], dtype=y.dtype)])
+        # ---- 5. Un-scale MLP outputs to physical rates ----
+        Q = q_scaled * self.q_scale
+        F_modeled = f_scaled * self.f_scale
 
-        # RhsOde: dc/dt = q * X_active + transport(Cin, u_flow, f_modeled)
-        dc_dt = self.rhs_ode(c_rhs, specific_rates, u_flow, modeled_feed_rates)
+        # ---- 6. Mechanistic RHS in physical space ----
+        C_rhs = jnp.concatenate([C_species, jnp.asarray([V_real], dtype=y.dtype)])
+        dY_dt = self.rhs_ode(C_rhs, Q, U_flow, F_modeled)
 
-        # dc_dt from RhsOde has dV/dt as last element (sum of all flows).
-        # We return this as dV_cont/dt — the container volume derivative.
-        return dc_dt
+        # ---- 7. Re-scale derivative ----
+        dy_dt = dY_dt / self.state_scale
+
+        return dy_dt
 
 
 def validate_rhs_ode_compatibility(
