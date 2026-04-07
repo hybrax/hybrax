@@ -361,7 +361,7 @@ def train_collection(
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
     trainable_params, trainable_static = partition_trainable(reaction_module)
-    optimizer = _build_optimizer(cfg.optimizer_name, float(cfg.learning_rate))
+    optimizer = _build_optimizer(cfg.optimizer_name, cfg.learning_rate)
     optimizer_state = optimizer.init(trainable_params)
     train_step_input_signature = summarize_train_step_input_signature(
         wrapper,
@@ -431,7 +431,7 @@ def train_collection(
 
     logger.info(
         "train harness setup: processes=%s, targets=%s source=%s steps=%d "
-        "batch_size=%d optimizer=%s lr=%g",
+        "batch_size=%d optimizer=%s lr=%s",
         list(selected_processes),
         list(store.target_names),
         store.target_source,
