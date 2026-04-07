@@ -542,11 +542,12 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     step_logs = [
         record.message
         for record in caplog.records
-        if record.message.startswith("step ") and "mean_loss=" in record.message
+        if record.message.startswith("step ") and "loss=" in record.message
+           and "per-process" not in record.message
     ]
-    # Every step is logged with mean_loss
+    # Every step is logged with loss + per-target breakdown
     assert len(step_logs) == 4
-    assert all("mean_loss=" in msg for msg in step_logs)
+    assert all("loss=" in msg for msg in step_logs)
     # Per-process sampled losses only at log_every cadence
     sampled_logs = [
         record.message

@@ -72,7 +72,7 @@ def _batched_measurement_loss_from_batch(
             wrapper,
             (controls, cin, cin_modeled),
         )
-        return _measurement_loss_from_arrays(
+        total_loss, per_target = _measurement_loss_from_arrays(
             sample_wrapper,
             t_meas=t_meas,
             y_meas=y_meas,
@@ -84,21 +84,12 @@ def _batched_measurement_loss_from_batch(
             solver_rtol=solver_rtol,
             solver_atol=solver_atol,
         )
+        return total_loss, per_target
 
-    # `vmap` cannot map over `None`; use a separate branch that passes `jump_ts`
-    # as a constant `None` when jump times are disabled.
     if jump_ts_rows is None:
-        per_sample = jax.vmap(
+        per_sample_total, per_sample_per_target = jax.vmap(
             lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
-                pi,
-                tm,
-                ym,
-                mm,
-                nm,
-                y0,
-                ci,
-                cm,
-                None,
+                pi, tm, ym, mm, nm, y0, ci, cm, None,
             )
         )(
             batch.process_indices,
@@ -111,7 +102,7 @@ def _batched_measurement_loss_from_batch(
             batched_Cin_modeled[batch.process_indices],
         )
     else:
-        per_sample = jax.vmap(_sample_loss)(
+        per_sample_total, per_sample_per_target = jax.vmap(_sample_loss)(
             batch.process_indices,
             batch_t_meas,
             batch.y_meas,
@@ -122,7 +113,9 @@ def _batched_measurement_loss_from_batch(
             batched_Cin_modeled[batch.process_indices],
             jump_ts_rows,
         )
-    return jnp.mean(per_sample)
+    # per_sample_per_target: [batch_size, n_targets+1]
+    mean_per_target = jnp.mean(per_sample_per_target, axis=0)
+    return jnp.mean(per_sample_total), mean_per_target
 
 
 @dataclass(frozen=True)
@@ -339,24 +332,28 @@ def train_collection(
             per_process_rhs[process_name],
         )
 
-    # Compute per-species target variance for loss normalization.
-    # For each species, pool all active measurements across all processes.
+    # Compute per-target variance for loss normalization.
+    # y_meas columns are [species..., V_cont_true].
     # If variance is 0 (all measurements identical/zero), use 1.0.
-    n_targets = len(store.target_names)
-    _per_species_values: list[list[float]] = [[] for _ in range(n_targets)]
+    n_y_cols = int(store.y_meas.shape[2])  # n_species + 1 (volume)
+    _per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
     for pname in store.process_order:
         pd = store.get_process(pname)
-        y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_targets]
-        for col in range(n_targets):
-            _per_species_values[col].extend(y_active[:, col].tolist())
+        y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_y_cols]
+        for col in range(n_y_cols):
+            _per_col_values[col].extend(y_active[:, col].tolist())
     target_variance = jnp.asarray(
         [
             max(float(np.var(vals)), 1.0) if vals else 1.0
-            for vals in _per_species_values
+            for vals in _per_col_values
         ],
         dtype=jnp.float32,
     )
-    logger.info("target_variance (per species): %s", target_variance.tolist())
+    _target_labels = list(store.target_names) + ["V_cont"]
+    logger.info(
+        "target_variance: %s",
+        {name: f"{v:.2f}" for name, v in zip(_target_labels, target_variance.tolist())},
+    )
 
     # Build wrapper from reference process
     wrapper = HybridOdeWrapper.from_process(
@@ -414,7 +411,7 @@ def train_collection(
                     current_wrapper,
                     reaction_module_updated,
                 )
-                return _batched_measurement_loss_from_batch(
+                total_loss, per_target = _batched_measurement_loss_from_batch(
                     candidate_wrapper,
                     current_batch,
                     batch_controls,
@@ -425,8 +422,11 @@ def train_collection(
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
                 )
+                return total_loss, per_target
 
-            loss, grads = eqx.filter_value_and_grad(_loss_fn)(current_trainable_params)
+            (loss, per_target_loss), grads = eqx.filter_value_and_grad(
+                _loss_fn, has_aux=True,
+            )(current_trainable_params)
             updates, next_optimizer_state = optimizer.update(
                 grads,
                 current_optimizer_state,
@@ -442,7 +442,7 @@ def train_collection(
                 current_wrapper,
                 reaction_module_updated,
             )
-            return wrapper_updated, trainable_updated, loss, next_optimizer_state
+            return wrapper_updated, trainable_updated, loss, per_target_loss, next_optimizer_state
 
         return eqx.filter_jit(_step_fn)
 
@@ -463,7 +463,7 @@ def train_collection(
 
     logger.info("JIT compiling train step (warmup)...")
     warmup_t0 = time.perf_counter()
-    _warmup_wrapper, _warmup_trainable, warmup_loss, _warmup_opt_state = step_fn(
+    _warmup_wrapper, _warmup_trainable, warmup_loss, _warmup_pt, _warmup_opt_state = step_fn(
         wrapper,
         trainable_params,
         optimizer_state,
@@ -501,7 +501,7 @@ def train_collection(
             )
 
         t0 = time.perf_counter()
-        wrapper, trainable_params, loss, optimizer_state = step_fn(
+        wrapper, trainable_params, loss, per_target_loss, optimizer_state = step_fn(
             wrapper,
             trainable_params,
             optimizer_state,
@@ -520,12 +520,18 @@ def train_collection(
         batch_names = tuple(store.process_order[idx] for idx in batch_indices_tuple)
         batch_process_names_by_step.append(batch_names)
 
-        # Log mean loss every step
+        # Log mean loss + per-target breakdown every step
+        _target_labels = list(store.target_names) + ["V_cont"]
+        pt_str = "  ".join(
+            f"{name}={float(v):.4g}"
+            for name, v in zip(_target_labels, per_target_loss.tolist())
+        )
         logger.info(
-            "step %d/%d  mean_loss=%.6g  dt=%.3fs",
+            "step %d/%d  loss=%.6g  [%s]  dt=%.3fs",
             step_index + 1,
             cfg.steps,
             mean_loss,
+            pt_str,
             step_dt,
         )
 

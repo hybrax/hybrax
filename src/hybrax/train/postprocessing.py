@@ -181,6 +181,20 @@ def plot_training_results(
 
         ax_v = axes[n_species, 0]
         ax_v.plot(t_dense_np, v_real, "-", lw=1.5, color="C0", label="integrated")
+        # True volume from measured feed rates
+        v_cont_true_at_meas = np.asarray(process_data.active_y_meas[:, -1])
+        t_meas_active = np.asarray(process_data.active_t_meas)
+        # V_real_true = V_cont_true - V_sample_acc
+        v_sample_at_meas = np.array([
+            float(process_wrapper.controls.eval(
+                jnp.asarray(float(t_))
+            )[process_wrapper.sample_acc_control_index])
+            for t_ in t_meas_active
+        ])
+        v_real_true = v_cont_true_at_meas - v_sample_at_meas
+        ax_v.scatter(
+            t_meas_active, v_real_true, s=16, zorder=5, color="black", label="measured"
+        )
         ax_v.set_title(f"Volume [{process.volume.unit}]")
         ax_v.set_xlabel(f"time [{time_unit}]")
         ax_v.set_xlim(t_start, t_end)

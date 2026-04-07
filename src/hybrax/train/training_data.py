@@ -413,13 +413,31 @@ class TrainingDataStore(eqx.Module):
             if shared_ts is None:
                 raise ValueError(f"{process_name}: no measurement data for targets")
 
-            y_matrix = np.stack(target_columns, axis=1)
+            # Compute true V_cont at measurement times from measured feed volumes
+            from bpbench.dataclasses import FeedVolumeChange as _FVC
+
+            v0 = float(process.volume.initial_volume)
+            v_cont_true = np.full(shared_ts.shape, v0, dtype=np.float32)
+            for _vc in process.volume.volume_changes.values():
+                if not isinstance(_vc, _FVC):
+                    continue
+                vc_t = np.asarray(_vc.values.times, dtype=float)
+                vc_v = np.asarray(_vc.values.values, dtype=float)
+                v_cont_true += np.interp(
+                    shared_ts.astype(float), vc_t, vc_v,
+                    left=float(vc_v[0]), right=float(vc_v[-1]),
+                ).astype(np.float32)
+
+            y_matrix = np.concatenate(
+                [np.stack(target_columns, axis=1), v_cont_true[:, None]],
+                axis=1,
+            )
             n_meas = int(shared_ts.size)
             max_n_meas = max(max_n_meas, n_meas)
 
-            y0_targets = y_matrix[0]
+            y0_targets = y_matrix[0, :-1]  # species only
             y0 = np.concatenate(
-                [y0_targets, np.asarray([float(process.volume.initial_volume)])],
+                [y0_targets, np.asarray([v0])],
                 axis=0,
             )
 
@@ -430,8 +448,10 @@ class TrainingDataStore(eqx.Module):
 
         n_processes = len(process_order)
         n_targets = len(target_names)
+        # y_meas has n_targets + 1 columns: species targets + V_cont_true
+        n_y_cols = n_targets + 1
         t_meas = np.zeros((n_processes, max_n_meas), dtype=np.float32)
-        y_meas = np.zeros((n_processes, max_n_meas, n_targets), dtype=np.float32)
+        y_meas = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=np.float32)
         meas_mask = np.zeros((n_processes, max_n_meas), dtype=bool)
 
         for index, (ts, ys) in enumerate(

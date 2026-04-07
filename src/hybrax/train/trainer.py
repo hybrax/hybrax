@@ -156,26 +156,25 @@ def _measurement_loss_from_arrays(
         jump_ts=jump_ts,
     )
     state_species = states[:, :-1]
-    y_pred = jnp.asarray(
+    v_cont_pred = states[:, -1:]  # [n_meas, 1]
+    y_pred_species = jnp.asarray(
         wrapper.reaction_module.observe(state_species),
         dtype=state_species.dtype,
     )
-    if y_pred.ndim == 1:
-        y_pred = y_pred[:, None]
-    if y_pred.ndim != 2:
-        raise ValueError("observe(...) output must be rank-2 `[n_meas, n_targets]`")
-    if y_pred.shape[0] != state_species.shape[0]:
-        raise ValueError("observe(...) output must preserve measurement-time axis")
-    if y_pred.shape[1] != y_meas.shape[1]:
-        raise ValueError(
-            "observe(...) output target dimension must match process y_meas columns"
-        )
+    if y_pred_species.ndim == 1:
+        y_pred_species = y_pred_species[:, None]
+    # Append predicted V_cont to form full prediction [species..., V_cont]
+    y_pred = jnp.concatenate([y_pred_species, v_cont_pred], axis=1)
 
-    # Normalize per-species MSE by variance (all-zero species get variance=1)
+    # Normalize per-target MSE by variance (all-zero targets get variance=1)
     sq_err = jnp.square(y_pred - y_meas) / wrapper.target_variance[None, :]
     masked_sq_err = jnp.where(meas_mask[:, None], sq_err, 0.0)
-    denom = jnp.maximum(jnp.sum(meas_mask) * y_meas.shape[1], 1)
-    return jnp.sum(masked_sq_err) / denom
+    n_active = jnp.maximum(jnp.sum(meas_mask), 1)
+    # Per-target mean: [n_targets+1]
+    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
+    # Total: mean over all targets
+    total_loss = jnp.mean(per_target_loss)
+    return total_loss, per_target_loss
 
 
 def single_process_measurement_loss(
@@ -189,7 +188,7 @@ def single_process_measurement_loss(
 ) -> jax.Array:
     """Compute masked MSE over padded measurement arrays for one process."""
     n_meas = int(process_data.n_meas)
-    y_pred_padded = jnp.full_like(process_data.y_meas, jnp.nan)
+    y_pred_padded = jnp.zeros_like(process_data.y_meas)
     states_active = simulate_measurement_states(
         wrapper,
         process_data,
@@ -199,20 +198,14 @@ def single_process_measurement_loss(
         use_jump_ts=solver_use_jump_ts,
     )
     state_species_active = states_active[:, :-1]
-    y_pred_active = jnp.asarray(
+    v_cont_active = states_active[:, -1:]
+    y_pred_species_active = jnp.asarray(
         wrapper.reaction_module.observe(state_species_active),
         dtype=state_species_active.dtype,
     )
-    if y_pred_active.ndim == 1:
-        y_pred_active = y_pred_active[:, None]
-    if y_pred_active.ndim != 2:
-        raise ValueError("observe(...) output must be rank-2 `[n_meas, n_targets]`")
-    if y_pred_active.shape[0] != state_species_active.shape[0]:
-        raise ValueError("observe(...) output must preserve measurement-time axis")
-    if y_pred_active.shape[1] != process_data.y_meas.shape[1]:
-        raise ValueError(
-            "observe(...) output target dimension must match process y_meas columns"
-        )
+    if y_pred_species_active.ndim == 1:
+        y_pred_species_active = y_pred_species_active[:, None]
+    y_pred_active = jnp.concatenate([y_pred_species_active, v_cont_active], axis=1)
 
     y_pred_padded = y_pred_padded.at[:n_meas, :].set(y_pred_active)
 
@@ -220,9 +213,9 @@ def single_process_measurement_loss(
     mask = process_data.meas_mask[:, None]
     masked_sq_err = jnp.where(mask, sq_err, 0.0)
 
-    n_targets = process_data.y_meas.shape[1]
-    denom = jnp.maximum(jnp.sum(process_data.meas_mask) * n_targets, 1)
-    return jnp.sum(masked_sq_err) / denom
+    n_active = jnp.maximum(jnp.sum(process_data.meas_mask), 1)
+    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
+    return jnp.mean(per_target_loss)
 
 
 def _build_optimizer(
