@@ -201,7 +201,7 @@ def _validate_batching_config(
 ) -> int:
     if config.steps <= 0:
         raise ValueError("steps must be positive")
-    if config.learning_rate <= 0.0:
+    if isinstance(config.learning_rate, (int, float)) and config.learning_rate <= 0.0:
         raise ValueError("learning_rate must be positive")
     if config.log_every <= 0:
         raise ValueError("log_every must be positive")
