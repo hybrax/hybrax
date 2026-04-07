@@ -21,6 +21,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bp-train")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # ---- prepare ----
     prepare_parser = subparsers.add_parser(
         "prepare",
         help="Transform a raw bpbench process collection into a prepared artifact.",
@@ -35,8 +36,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         help="Optional JSON file with additional prepare config.",
     )
+    prepare_parser.add_argument(
+        "--case-study",
+        help=(
+            "Case study name to extract from a BenchmarkDataset. "
+            "Defaults to the first case study."
+        ),
+    )
     prepare_parser.set_defaults(handler=_handle_prepare)
 
+    # ---- train ----
     train_parser = subparsers.add_parser(
         "train",
         help="Run minimal one/multi-process training from a prepared artifact.",
@@ -121,7 +130,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--learning-rate",
         type=float,
         default=1e-3,
-        help="Learning rate.",
+        help="Learning rate (overridden by build_learning_rate hook in custom.py).",
     )
     train_parser.add_argument(
         "--seed",
@@ -138,7 +147,7 @@ def _build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--solver-max-steps",
         type=int,
-        default=100_000,
+        default=2048,
         help="Maximum diffrax solver steps per simulation call.",
     )
     train_parser.add_argument(
@@ -159,6 +168,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable passing control step boundaries as jump_ts to the solver.",
     )
     train_parser.add_argument(
+        "--output-dir",
+        default="output",
+        help="Directory for trained model and plots (default: ./output).",
+    )
+    plot_group = train_parser.add_mutually_exclusive_group()
+    plot_group.add_argument(
+        "--plot",
+        dest="plot",
+        action="store_true",
+        help="Generate per-process result plots (default).",
+    )
+    plot_group.add_argument(
+        "--no-plot",
+        dest="plot",
+        action="store_false",
+        help="Skip plot generation.",
+    )
+    train_parser.set_defaults(plot=True)
+    train_parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -175,6 +203,7 @@ def _handle_prepare(args: argparse.Namespace) -> int:
         output_json=args.output,
         custom_py=args.custom,
         config=_load_config(args.config),
+        case_study=getattr(args, "case_study", None),
     )
     return 0
 
@@ -219,12 +248,45 @@ def _handle_train(args: argparse.Namespace) -> int:
     first = result.mean_loss_by_step[0]
     last = result.mean_loss_by_step[-1]
     delta = last - first
-    logging.getLogger(__name__).info(
+    log = logging.getLogger(__name__)
+    log.info(
         "training complete: first_mean_loss=%.6g last_mean_loss=%.6g delta=%.6g",
         first,
         last,
         delta,
     )
+
+    # Post-training outputs
+    import equinox as eqx
+
+    from .postprocessing import plot_training_results, save_model
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    save_model(result.trained_wrapper, output_dir / "trained_wrapper.eqx")
+
+    if args.plot:
+        from bpbench.serialization import load_process_collection_json
+
+        from .training_data import TrainingDataStore
+
+        collection = load_process_collection_json(Path(args.input))
+        store = TrainingDataStore.from_collection(
+            collection,
+            target_variable_order=config.target_variable_order,
+            target_source=config.target_source,
+        )
+        plot_training_results(
+            result,
+            collection,
+            store,
+            output_dir,
+            solver_max_steps=config.solver_max_steps,
+            solver_rtol=config.solver_rtol,
+            solver_atol=config.solver_atol,
+        )
+
     return 0
 
 

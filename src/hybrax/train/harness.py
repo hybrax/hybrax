@@ -339,6 +339,25 @@ def train_collection(
             per_process_rhs[process_name],
         )
 
+    # Compute per-species target variance for loss normalization.
+    # For each species, pool all active measurements across all processes.
+    # If variance is 0 (all measurements identical/zero), use 1.0.
+    n_targets = len(store.target_names)
+    _per_species_values: list[list[float]] = [[] for _ in range(n_targets)]
+    for pname in store.process_order:
+        pd = store.get_process(pname)
+        y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_targets]
+        for col in range(n_targets):
+            _per_species_values[col].extend(y_active[:, col].tolist())
+    target_variance = jnp.asarray(
+        [
+            max(float(np.var(vals)), 1.0) if vals else 1.0
+            for vals in _per_species_values
+        ],
+        dtype=jnp.float32,
+    )
+    logger.info("target_variance (per species): %s", target_variance.tolist())
+
     # Build wrapper from reference process
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=reaction_module,
@@ -348,6 +367,7 @@ def train_collection(
         controls_scale=controls_scale,
         q_scale=q_scale,
         f_scale=f_scale,
+        target_variance=target_variance,
     )
 
     # Stack per-process Cin arrays: [n_store_processes, n_feeds, n_species]
@@ -598,6 +618,28 @@ def train_from_prepared_json(
         custom_module=custom_module,
         custom_config=custom_cfg,
     )
+    # Call optional build_learning_rate hook (overrides CLI --learning-rate)
+    lr_hook = get_hook(custom_module, "build_learning_rate", None)
+    if lr_hook is not None:
+        lr = lr_hook(custom_cfg)
+        effective_cfg = TrainHarnessConfig(
+            process_names=effective_cfg.process_names,
+            target_variable_order=effective_cfg.target_variable_order,
+            target_source=effective_cfg.target_source,
+            steps=effective_cfg.steps,
+            batch_size=effective_cfg.batch_size,
+            shuffle_batches=effective_cfg.shuffle_batches,
+            batch_seed=effective_cfg.batch_seed,
+            optimizer_name=effective_cfg.optimizer_name,
+            learning_rate=lr,
+            seed=effective_cfg.seed,
+            log_every=effective_cfg.log_every,
+            solver_max_steps=effective_cfg.solver_max_steps,
+            solver_rtol=effective_cfg.solver_rtol,
+            solver_atol=effective_cfg.solver_atol,
+            solver_use_jump_ts=effective_cfg.solver_use_jump_ts,
+        )
+
     # Call optional estimate_all_scales hook for state/controls/q/f scaling
     estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
     scale_kwargs: dict[str, Any] = {}

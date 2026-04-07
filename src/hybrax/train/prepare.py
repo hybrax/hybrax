@@ -58,10 +58,41 @@ def _utc_now_iso() -> str:
 
 def load_raw_collection(
     input_json: str | Path | BioProcessCollection,
+    *,
+    case_study: str | None = None,
 ) -> BioProcessCollection:
+    """Load a BioProcessCollection from a file, object, or BenchmarkDataset.
+
+    If the input is a BenchmarkDataset (contains ``case_studies``), the named
+    case study is extracted.  When *case_study* is ``None`` the first case
+    study is used.
+    """
     if isinstance(input_json, BioProcessCollection):
         return input_json
-    return load_process_collection_json(Path(input_json))
+
+    path = Path(input_json)
+    collection = load_process_collection_json(path)
+    if collection.processes:
+        return collection
+
+    # Try as BenchmarkDataset
+    from bpbench.serialization import load_dataset
+
+    dataset = load_dataset(path)
+    if not dataset.case_studies:
+        raise ValueError(f"No processes or case studies found in {path}")
+
+    name = case_study or next(iter(dataset.case_studies))
+    if name not in dataset.case_studies:
+        available = list(dataset.case_studies.keys())
+        raise ValueError(
+            f"Case study {name!r} not found; available: {available}"
+        )
+    cs = dataset.case_studies[name]
+    return BioProcessCollection(
+        processes=cs.processes,
+        metadata=dataset.metadata,
+    )
 
 
 def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) -> None:
@@ -193,6 +224,7 @@ def prepare_artifact(
     *,
     custom_py: str | Path | None = None,
     config: dict[str, Any] | None = None,
+    case_study: str | None = None,
 ) -> BioProcessCollection:
     input_path = (
         None if isinstance(input_json, BioProcessCollection) else Path(input_json)
@@ -206,7 +238,7 @@ def prepare_artifact(
     defaults.update(user_config)
     resolved_config = defaults
 
-    raw_collection = load_raw_collection(input_json)
+    raw_collection = load_raw_collection(input_json, case_study=case_study)
     validation_report = validate_raw_collection(
         raw_collection,
         strict=bool(resolved_config.get("strict_bpbench_validation", False)),

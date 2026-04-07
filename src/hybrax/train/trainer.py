@@ -171,7 +171,8 @@ def _measurement_loss_from_arrays(
             "observe(...) output target dimension must match process y_meas columns"
         )
 
-    sq_err = jnp.square(y_pred - y_meas)
+    # Normalize per-species MSE by variance (all-zero species get variance=1)
+    sq_err = jnp.square(y_pred - y_meas) / wrapper.target_variance[None, :]
     masked_sq_err = jnp.where(meas_mask[:, None], sq_err, 0.0)
     denom = jnp.maximum(jnp.sum(meas_mask) * y_meas.shape[1], 1)
     return jnp.sum(masked_sq_err) / denom
@@ -215,7 +216,7 @@ def single_process_measurement_loss(
 
     y_pred_padded = y_pred_padded.at[:n_meas, :].set(y_pred_active)
 
-    sq_err = jnp.square(y_pred_padded - process_data.y_meas)
+    sq_err = jnp.square(y_pred_padded - process_data.y_meas) / wrapper.target_variance[None, :]
     mask = process_data.meas_mask[:, None]
     masked_sq_err = jnp.where(mask, sq_err, 0.0)
 
@@ -240,7 +241,6 @@ def _build_optimizer(
         raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
     return optax.chain(
         optax.zero_nans(),
-        optax.clip_by_global_norm(100.0),
         base,
     )
 

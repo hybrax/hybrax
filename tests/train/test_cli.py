@@ -10,7 +10,7 @@ from bp_train.harness import TrainHarnessResult
 def test_prepare_cli_dispatches_to_prepare_artifact(monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_prepare_artifact(*, input_json, output_json, custom_py, config):
+    def fake_prepare_artifact(*, input_json, output_json, custom_py, config, case_study=None):
         captured["input_json"] = input_json
         captured["output_json"] = output_json
         captured["custom_py"] = custom_py
@@ -47,7 +47,7 @@ def test_prepare_cli_loads_config_json(monkeypatch, tmp_path: Path):
         encoding="utf-8",
     )
 
-    def fake_prepare_artifact(*, input_json, output_json, custom_py, config):
+    def fake_prepare_artifact(*, input_json, output_json, custom_py, config, case_study=None):
         captured["input_json"] = input_json
         captured["output_json"] = output_json
         captured["custom_py"] = custom_py
@@ -99,6 +99,10 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
 
     monkeypatch.setattr(cli, "train_from_prepared_json", fake_train_from_prepared_json)
 
+    # Stub out model saving (trained_wrapper is None in this test)
+    from bp_train import postprocessing
+    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+
     exit_code = cli.main(
         [
             "train",
@@ -138,6 +142,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
             "--solver-atol",
             "1e-6",
             "--no-jump-ts",
+            "--no-plot",
         ]
     )
 

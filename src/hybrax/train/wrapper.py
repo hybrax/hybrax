@@ -115,6 +115,7 @@ class HybridOdeWrapper(eqx.Module):
     controls_scale: jax.Array       # [len(augmented_controls)]
     q_scale: jax.Array              # [n_species]
     f_scale: jax.Array              # [n_modeled_feeds]
+    target_variance: jax.Array      # [n_species] — per-species loss normalization
 
     @classmethod
     def from_process(
@@ -127,6 +128,7 @@ class HybridOdeWrapper(eqx.Module):
         controls_scale: jax.Array | None = None,
         q_scale: jax.Array | None = None,
         f_scale: jax.Array | None = None,
+        target_variance: jax.Array | None = None,
         min_real_volume: float = 1e-8,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
@@ -181,6 +183,11 @@ class HybridOdeWrapper(eqx.Module):
             if f_scale is not None
             else jnp.ones(n_modeled, dtype=jnp.float32)
         )
+        _target_variance = (
+            jnp.asarray(target_variance, dtype=jnp.float32)
+            if target_variance is not None
+            else jnp.ones(n_species, dtype=jnp.float32)
+        )
 
         return cls(
             rhs_ode=rhs_ode,
@@ -196,6 +203,7 @@ class HybridOdeWrapper(eqx.Module):
             controls_scale=_controls_scale,
             q_scale=_q_scale,
             f_scale=_f_scale,
+            target_variance=_target_variance,
         )
 
     # ------ helpers exposed to callers (e.g. plotting, harness) ------
