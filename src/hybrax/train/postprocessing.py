@@ -28,6 +28,38 @@ def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
     logger.info("trained model saved to %s", path)
 
 
+def _mse_and_r2(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> tuple[float, float]:
+    """Compute MSE and R² for two 1D arrays of equal length."""
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    mse = float(np.mean((y_pred - y_true) ** 2))
+    ss_res = float(np.sum((y_pred - y_true) ** 2))
+    var = float(np.var(y_true))
+    if var <= 0.0:
+        # Constant target: R² is undefined; report 1.0 if predictions also
+        # constant-equal, NaN otherwise.
+        r2 = float("nan") if ss_res > 0 else 1.0
+    else:
+        ss_tot = float(np.sum((y_true - np.mean(y_true)) ** 2))
+        r2 = 1.0 - ss_res / ss_tot
+    return mse, r2
+
+
+def _annotate_fit(ax, mse: float, r2: float) -> None:
+    """Add a text box with MSE and R² in the upper-left corner of an axis."""
+    text = f"MSE={mse:.4g}\nR²={r2:.4f}"
+    ax.text(
+        0.02, 0.98, text,
+        transform=ax.transAxes,
+        verticalalignment="top",
+        horizontalalignment="left",
+        fontsize=8,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85),
+    )
+
+
 def plot_training_results(
     result: Any,
     collection: BioProcessCollection,
@@ -196,6 +228,10 @@ def plot_training_results(
                 color="C0",
                 label="integrated",
             )
+            # Fit metrics: interpolate dense prediction at measurement times.
+            v_pred_at_meas = np.interp(t_meas, t_dense_np, c_dense[:, i])
+            mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
+            _annotate_fit(ax_c, mse, r2)
             ax_c.set_title(f"{sp_name} [{comp.unit}]")
             ax_c.set_xlabel(f"time [{time_unit}]")
             ax_c.set_xlim(t_start, t_end)
@@ -220,6 +256,8 @@ def plot_training_results(
             t_dense_np, v_real_pred, "-",
             lw=1.5, color="C0", label="integrated",
         )
+        v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
+        _annotate_fit(ax_v, v_mse, v_r2)
         ax_v.set_title(f"V_real [{process.volume.unit}]")
         ax_v.set_xlabel(f"time [{time_unit}]")
         ax_v.set_xlim(t_start, t_end)
@@ -239,6 +277,10 @@ def plot_training_results(
                 t_dense_np, b_modeled_pred[:, k], "-",
                 lw=1.5, color="C0", label="integrated",
             )
+            b_mse, b_r2 = _mse_and_r2(
+                b_modeled_true_dense[:, k], b_modeled_pred[:, k]
+            )
+            _annotate_fit(ax_b, b_mse, b_r2)
             unit = process.volume.volume_changes[fn].unit
             ax_b.set_title(f"cumulative {fn} [{unit}]")
             ax_b.set_xlabel(f"time [{time_unit}]")

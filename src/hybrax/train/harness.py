@@ -334,7 +334,12 @@ def train_collection(
 
     # Compute per-target variance for loss normalization.
     # y_meas columns are [species..., B_modeled_cum_per_modeled_feed...].
-    # If variance is 0 (all measurements identical/zero), use 1.0.
+    # Rule:
+    #   - if any nonzero variance is observed → use that variance
+    #   - if all measurements are identical (variance == 0) → fall back to 1.0
+    # The previous version used max(var, 1.0) which clamped small but nonzero
+    # variances (e.g. cumulative base feed in kg² ~ 5e-3) to 1.0, making the
+    # loss insensitive by ~200x.
     n_y_cols = int(store.y_meas.shape[2])  # n_species + n_modeled_feeds
     _per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
     for pname in store.process_order:
@@ -342,9 +347,11 @@ def train_collection(
         y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_y_cols]
         for col in range(n_y_cols):
             _per_col_values[col].extend(y_active[:, col].tolist())
+    _variance_eps = 1e-12
     target_variance = jnp.asarray(
         [
-            max(float(np.var(vals)), 1.0) if vals else 1.0
+            float(np.var(vals)) if vals and float(np.var(vals)) > _variance_eps
+            else 1.0
             for vals in _per_col_values
         ],
         dtype=jnp.float32,
