@@ -333,9 +333,9 @@ def train_collection(
         )
 
     # Compute per-target variance for loss normalization.
-    # y_meas columns are [species..., V_cont_true].
+    # y_meas columns are [species..., B_modeled_cum_per_modeled_feed...].
     # If variance is 0 (all measurements identical/zero), use 1.0.
-    n_y_cols = int(store.y_meas.shape[2])  # n_species + 1 (volume)
+    n_y_cols = int(store.y_meas.shape[2])  # n_species + n_modeled_feeds
     _per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
     for pname in store.process_order:
         pd = store.get_process(pname)
@@ -349,10 +349,23 @@ def train_collection(
         ],
         dtype=jnp.float32,
     )
-    _target_labels = list(store.target_names) + ["V_cont"]
+    _target_labels = list(store.target_names) + [
+        f"B_{name}_cum" for name in store.modeled_flow_names
+    ]
     logger.info(
         "target_variance: %s",
         {name: f"{v:.2f}" for name, v in zip(_target_labels, target_variance.tolist())},
+    )
+
+    # Build target_state_indices: species columns + cumulative-modeled-feed
+    # columns. State layout is [species..., V_cont, B_modeled_cum_0, ...] so
+    # V_cont (at index n_species) is in the state but NOT a loss target.
+    n_species = len(store.target_names)
+    n_modeled_feeds = len(store.modeled_flow_names)
+    target_state_indices = jnp.asarray(
+        list(range(n_species))
+        + list(range(n_species + 1, n_species + 1 + n_modeled_feeds)),
+        dtype=jnp.int32,
     )
 
     # Build wrapper from reference process
@@ -365,6 +378,7 @@ def train_collection(
         q_scale=q_scale,
         f_scale=f_scale,
         target_variance=target_variance,
+        target_state_indices=target_state_indices,
     )
 
     # Stack per-process Cin arrays: [n_store_processes, n_feeds, n_species]
@@ -521,7 +535,6 @@ def train_collection(
         batch_process_names_by_step.append(batch_names)
 
         # Log mean loss + per-target breakdown every step
-        _target_labels = list(store.target_names) + ["V_cont"]
         pt_str = "  ".join(
             f"{name}={float(v):.4g}"
             for name, v in zip(_target_labels, per_target_loss.tolist())

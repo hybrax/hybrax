@@ -304,8 +304,11 @@ def test_training_data_store_builds_padded_measurement_arrays(tmp_path):
     assert store.process_order == ["p1", "p2"]
     assert store.target_names == ["X"]
     assert tuple(store.t_meas.shape) == (2, 3)
+    # y_meas has n_targets + n_modeled_feeds columns. The fixture has no
+    # FeedVolumeChange so n_modeled_feeds == 0 and y_meas has just 1 column.
     assert tuple(store.y_meas.shape) == (2, 3, 1)
     assert tuple(store.meas_mask.shape) == (2, 3)
+    # y0 has n_species + 1 + n_modeled_feeds = 2 elements
     assert tuple(store.y0.shape) == (2, 2)
 
     assert np.asarray(store.t_meas[0]).tolist() == pytest.approx([0.0, 2.0, 4.0])
@@ -405,7 +408,10 @@ def test_training_data_store_supports_reactor_component_targets():
 
     assert store.target_source == "reactor_components"
     assert store.target_names == ["biomass", "product"]
+    # y_meas has n_targets + n_modeled_feeds columns. The fixture has no
+    # FeedVolumeChange so n_modeled_feeds == 0.
     assert tuple(store.y_meas.shape) == (2, 3, 2)
+    # y0 = [biomass(0), product(0), V_cont(0)]
     assert np.asarray(store.y0[0]).tolist() == pytest.approx([0.2, 0.0, 1.0])
     assert np.asarray(store.y0[1]).tolist() == pytest.approx([0.25, 0.02, 1.2])
 
@@ -455,6 +461,7 @@ def test_training_data_store_gather_batch_by_process_indices(tmp_path):
 
     assert np.asarray(batch.process_indices).tolist() == [1, 0, 1]
     assert tuple(batch.t_meas.shape) == (3, 3)
+    # y_meas has n_targets + n_modeled_feeds = 1 columns (no FeedVolumeChange)
     assert tuple(batch.y_meas.shape) == (3, 3, 1)
     assert tuple(batch.meas_mask.shape) == (3, 3)
     assert np.asarray(batch.n_meas).tolist() == [2, 3, 2]

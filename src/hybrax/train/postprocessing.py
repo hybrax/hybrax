@@ -11,7 +11,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bpbench.dataclasses import BioProcessCollection
+from bpbench.dataclasses import BioProcessCollection, FeedVolumeChange
 from bpbench.mechanistic import get_rhs_ode
 
 from .training_data import TrainingDataStore
@@ -47,7 +47,9 @@ def plot_training_results(
 
     trained_wrapper = result.trained_wrapper
     species_names = trained_wrapper.species_names
+    modeled_flow_names = trained_wrapper.modeled_flow_names
     n_species = len(species_names)
+    n_modeled = len(modeled_flow_names)
     per_process_rhs = {
         name: get_rhs_ode(collection.processes[name])
         for name in store.process_order
@@ -104,12 +106,29 @@ def plot_training_results(
             throw=False,
         )
         states_physical = jax.vmap(process_wrapper.unscale_state)(sol.ys)
-        c_dense = np.asarray(states_physical[:, :-1])
-        v_cont = np.asarray(states_physical[:, -1])
+        # State layout: [c_species..., V_cont, B_modeled_cum_0, ...]
+        c_dense = np.asarray(states_physical[:, :n_species])
+        v_cont_pred = np.asarray(states_physical[:, n_species])
+        b_modeled_pred = np.asarray(
+            states_physical[:, n_species + 1 : n_species + 1 + n_modeled]
+        )
         t_dense_np = np.asarray(t_dense)
 
-        # Real volume = container volume - accumulated sample volume
-        v_sample_acc = np.array(
+        # ---- Dense ground-truth time series for plotting ----
+        # V_real_true(t) on the dense grid: V0 + sum(cumulative inflows) - V_sample_acc
+        v0 = float(process.volume.initial_volume)
+        v_cont_true_dense = np.full(t_dense_np.shape, v0, dtype=float)
+        for vc in process.volume.volume_changes.values():
+            if not isinstance(vc, FeedVolumeChange):
+                continue
+            vc_t = np.asarray(vc.values.times, dtype=float)
+            vc_v = np.asarray(vc.values.values, dtype=float)
+            v_cont_true_dense += np.interp(
+                t_dense_np, vc_t, vc_v,
+                left=float(vc_v[0]), right=float(vc_v[-1]),
+            )
+
+        v_sample_acc_dense = np.array(
             [
                 float(
                     process_wrapper.controls.eval(jnp.asarray(float(t_)))[
@@ -119,14 +138,26 @@ def plot_training_results(
                 for t_ in t_dense_np
             ]
         )
-        v_real = v_cont - v_sample_acc
+        v_real_pred = v_cont_pred - v_sample_acc_dense
+        v_real_true_dense = v_cont_true_dense - v_sample_acc_dense
 
-        # Specific rates q(t) along the trajectory
+        # Cumulative measured B_modeled per modeled flow on the dense grid
+        b_modeled_true_dense = np.zeros((len(t_dense_np), n_modeled), dtype=float)
+        for k, fn in enumerate(modeled_flow_names):
+            vc = process.volume.volume_changes[fn]
+            vc_t = np.asarray(vc.values.times, dtype=float)
+            vc_v = np.asarray(vc.values.values, dtype=float)
+            b_modeled_true_dense[:, k] = np.interp(
+                t_dense_np, vc_t, vc_v,
+                left=float(vc_v[0]), right=float(vc_v[-1]),
+            )
+
+        # ---- Specific rates q(t) along the trajectory ----
         q_dense = []
         for i_t in range(len(t_dense_np)):
             t_val = jnp.asarray(t_dense_np[i_t])
             y_scaled = sol.ys[i_t]
-            c_scaled = jnp.clip(y_scaled[:-1], 0.0)
+            c_scaled = jnp.clip(y_scaled[:n_species], 0.0)
             controls_vec = process_wrapper.controls.eval(t_val)
             cin_flat = jnp.concatenate(
                 [
@@ -143,8 +174,8 @@ def plot_training_results(
             q_dense.append(Q)
         q_dense = np.stack(q_dense, axis=0)
 
-        # --- 2-column layout: left=state, right=rate, + volume row ---
-        n_rows = n_species + 1
+        # --- Layout: species rows + volume row + 1 row per modeled feed ---
+        n_rows = n_species + 1 + n_modeled
         fig, axes = plt.subplots(
             n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows)
         )
@@ -179,29 +210,42 @@ def plot_training_results(
             ax_q.set_xlim(t_start, t_end)
             ax_q.grid(True, alpha=0.3)
 
+        # ---- Volume panel: dense true V_real curve + integrated curve ----
         ax_v = axes[n_species, 0]
-        ax_v.plot(t_dense_np, v_real, "-", lw=1.5, color="C0", label="integrated")
-        # True volume from measured feed rates
-        v_cont_true_at_meas = np.asarray(process_data.active_y_meas[:, -1])
-        t_meas_active = np.asarray(process_data.active_t_meas)
-        # V_real_true = V_cont_true - V_sample_acc
-        v_sample_at_meas = np.array([
-            float(process_wrapper.controls.eval(
-                jnp.asarray(float(t_))
-            )[process_wrapper.sample_acc_control_index])
-            for t_ in t_meas_active
-        ])
-        v_real_true = v_cont_true_at_meas - v_sample_at_meas
-        ax_v.scatter(
-            t_meas_active, v_real_true, s=16, zorder=5, color="black", label="measured"
+        ax_v.plot(
+            t_dense_np, v_real_true_dense, "-",
+            lw=1.5, color="black", label="measured",
         )
-        ax_v.set_title(f"Volume [{process.volume.unit}]")
+        ax_v.plot(
+            t_dense_np, v_real_pred, "-",
+            lw=1.5, color="C0", label="integrated",
+        )
+        ax_v.set_title(f"V_real [{process.volume.unit}]")
         ax_v.set_xlabel(f"time [{time_unit}]")
         ax_v.set_xlim(t_start, t_end)
         ax_v.legend(fontsize="small")
         ax_v.grid(True, alpha=0.3)
-
         axes[n_species, 1].set_visible(False)
+
+        # ---- Cumulative modeled feed panels (one row per modeled flow) ----
+        for k, fn in enumerate(modeled_flow_names):
+            row = n_species + 1 + k
+            ax_b = axes[row, 0]
+            ax_b.plot(
+                t_dense_np, b_modeled_true_dense[:, k], "-",
+                lw=1.5, color="black", label="measured",
+            )
+            ax_b.plot(
+                t_dense_np, b_modeled_pred[:, k], "-",
+                lw=1.5, color="C0", label="integrated",
+            )
+            unit = process.volume.volume_changes[fn].unit
+            ax_b.set_title(f"cumulative {fn} [{unit}]")
+            ax_b.set_xlabel(f"time [{time_unit}]")
+            ax_b.set_xlim(t_start, t_end)
+            ax_b.legend(fontsize="small")
+            ax_b.grid(True, alpha=0.3)
+            axes[row, 1].set_visible(False)
 
         fig.suptitle(f"{process_name}", fontsize=12)
         fig.tight_layout()

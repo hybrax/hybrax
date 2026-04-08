@@ -307,12 +307,23 @@ class BatchTrainingData(eqx.Module):
 
 
 class TrainingDataStore(eqx.Module):
-    """Collection-level training-data store built from a prepared collection."""
+    """Collection-level training-data store built from a prepared collection.
+
+    The y_meas columns are ``[species..., B_modeled_cum_per_modeled_feed...]``
+    (NOT V_cont — V_cont is in the ODE *state* but not in the *loss targets*).
+
+    The y0 vector has layout
+    ``[species_0..., V_cont(0), B_modeled_cum_0(0), ...]`` matching the ODE
+    state shape that the wrapper expects.
+    """
 
     # Stable process order across all stacked arrays.
     process_order: list[str]
     # Ordered measured target names (shared across processes).
     target_names: list[str]
+    # Ordered modeled-flow names (shared across processes).  Each contributes
+    # one cumulative-volume column to y_meas.
+    modeled_flow_names: tuple[str, ...]
     # Source family of targets (`process_variables` or `reactor_components`).
     target_source: str
     # Mapping from target name to column index in y-measurement arrays.
@@ -321,14 +332,16 @@ class TrainingDataStore(eqx.Module):
     controls_store: ControlsStore
     # Padded measurement times `[n_processes, max_n_meas]`.
     t_meas: jax.Array
-    # Padded measurement values `[n_processes, max_n_meas, n_targets]`.
+    # Padded measurement values
+    # `[n_processes, max_n_meas, n_species + n_modeled_feeds]`.
     y_meas: jax.Array
     # Padded measurement mask `[n_processes, max_n_meas]`.
     meas_mask: jax.Array
     # Active measurement counts per process.
     n_meas: jax.Array
-    # Initial state matrix `[n_processes, n_targets + 1]` where last entry
-    # is `V_cont(0)`.
+    # Initial state matrix
+    # `[n_processes, n_species + 1 + n_modeled_feeds]`
+    # where layout is `[species_0..., V_cont(0), B_modeled_cum_0(0), ...]`.
     y0: jax.Array
 
     @classmethod
@@ -383,6 +396,22 @@ class TrainingDataStore(eqx.Module):
         target_names = list(reference_targets)
         target_name_to_index = {name: idx for idx, name in enumerate(target_names)}
 
+        # Determine the modeled-flow names from the reference process via
+        # bpbench's get_rhs_ode and validate consistency across processes.
+        from bpbench.mechanistic import get_rhs_ode as _get_rhs_ode
+
+        ref_process = collection.processes[process_order[0]]
+        modeled_flow_names = tuple(_get_rhs_ode(ref_process).modeled_flow_names)
+        for _pn in process_order[1:]:
+            other = tuple(_get_rhs_ode(collection.processes[_pn]).modeled_flow_names)
+            if other != modeled_flow_names:
+                raise ValueError(
+                    f"modeled flow names differ across processes: "
+                    f"{process_order[0]!r} has {modeled_flow_names!r} but "
+                    f"{_pn!r} has {other!r}"
+                )
+        n_modeled = len(modeled_flow_names)
+
         per_process_times: list[np.ndarray] = []
         per_process_values: list[np.ndarray] = []
         per_process_y0: list[np.ndarray] = []
@@ -413,31 +442,41 @@ class TrainingDataStore(eqx.Module):
             if shared_ts is None:
                 raise ValueError(f"{process_name}: no measurement data for targets")
 
-            # Compute true V_cont at measurement times from measured feed volumes
-            from bpbench.dataclasses import FeedVolumeChange as _FVC
-
+            # Cumulative measurement of each modeled feed at the species
+            # measurement times — interpolated from the raw FeedVolumeChange
+            # time series.  This is the new training target that *directly*
+            # constrains the MLP's modeled feed prediction.
             v0 = float(process.volume.initial_volume)
-            v_cont_true = np.full(shared_ts.shape, v0, dtype=np.float32)
-            for _vc in process.volume.volume_changes.values():
-                if not isinstance(_vc, _FVC):
-                    continue
-                vc_t = np.asarray(_vc.values.times, dtype=float)
-                vc_v = np.asarray(_vc.values.values, dtype=float)
-                v_cont_true += np.interp(
+            b_modeled_cum_columns: list[np.ndarray] = []
+            for fn in modeled_flow_names:
+                vc = process.volume.volume_changes[fn]
+                vc_t = np.asarray(vc.values.times, dtype=float)
+                vc_v = np.asarray(vc.values.values, dtype=float)
+                b_col = np.interp(
                     shared_ts.astype(float), vc_t, vc_v,
                     left=float(vc_v[0]), right=float(vc_v[-1]),
                 ).astype(np.float32)
+                b_modeled_cum_columns.append(b_col)
 
-            y_matrix = np.concatenate(
-                [np.stack(target_columns, axis=1), v_cont_true[:, None]],
-                axis=1,
-            )
+            # y_meas columns = [species..., B_modeled_cum...]   (no V_cont)
+            y_matrix_parts = [np.stack(target_columns, axis=1)]
+            if b_modeled_cum_columns:
+                y_matrix_parts.append(
+                    np.stack(b_modeled_cum_columns, axis=1)
+                )
+            y_matrix = np.concatenate(y_matrix_parts, axis=1)
             n_meas = int(shared_ts.size)
             max_n_meas = max(max_n_meas, n_meas)
 
-            y0_targets = y_matrix[0, :-1]  # species only
+            # y0 = [species(0)..., V_cont(0)=v0, B_modeled_cum_k(0)=0...]
+            n_species = len(target_columns)
+            y0_species = y_matrix[0, :n_species]
             y0 = np.concatenate(
-                [y0_targets, np.asarray([v0])],
+                [
+                    y0_species,
+                    np.asarray([v0], dtype=np.float32),
+                    np.zeros(n_modeled, dtype=np.float32),
+                ],
                 axis=0,
             )
 
@@ -448,8 +487,9 @@ class TrainingDataStore(eqx.Module):
 
         n_processes = len(process_order)
         n_targets = len(target_names)
-        # y_meas has n_targets + 1 columns: species targets + V_cont_true
-        n_y_cols = n_targets + 1
+        # y_meas has n_targets + n_modeled columns:
+        # species targets + cumulative modeled-feed targets.
+        n_y_cols = n_targets + n_modeled
         t_meas = np.zeros((n_processes, max_n_meas), dtype=np.float32)
         y_meas = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=np.float32)
         meas_mask = np.zeros((n_processes, max_n_meas), dtype=bool)
@@ -465,6 +505,7 @@ class TrainingDataStore(eqx.Module):
         return cls(
             process_order=process_order,
             target_names=target_names,
+            modeled_flow_names=modeled_flow_names,
             target_source=resolved_target_source,
             target_name_to_index=target_name_to_index,
             controls_store=controls_store,

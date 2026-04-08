@@ -167,6 +167,8 @@ class BatchControls(eqx.Module):
     dense_grid: jax.Array
     # Padded control values `[n_processes, max_grid_length, max_controls]`.
     control_values: jax.Array
+    # Padded control derivatives, same shape as control_values.
+    control_derivatives: jax.Array
 
     def eval(self, process_idx: int, t: jax.Array) -> jax.Array:
         """Evaluate controls for one process index at one or more times."""
@@ -183,6 +185,19 @@ class BatchControls(eqx.Module):
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
         out = _interp_columns(query_1d, grid, values)
+        if scalar_input:
+            return out[0]
+        return out
+
+    def eval_derivative(self, process_idx: int, t: jax.Array) -> jax.Array:
+        """Evaluate control derivatives for one process index at one or more times."""
+        grid = self.dense_grid[process_idx]
+        derivatives = self.control_derivatives[process_idx]
+
+        query = jnp.asarray(t, dtype=grid.dtype)
+        scalar_input = query.ndim == 0
+        query_1d = jnp.atleast_1d(query)
+        out = _interp_columns(query_1d, grid, derivatives)
         if scalar_input:
             return out[0]
         return out
@@ -563,13 +578,25 @@ class ControlsStore(eqx.Module):
             last_index,
             :,
         ]
+        # Clamp derivatives in the padded tail to the last active value as well.
+        last_derivatives = self.control_derivatives[
+            jnp.arange(self.control_derivatives.shape[0], dtype=jnp.int32),
+            last_index,
+            :,
+        ]
         grid_clamped = jnp.where(tail_mask, last_grid[:, None], self.dense_grid)
         values_clamped = jnp.where(
             tail_mask[:, :, None],
             last_values[:, None, :],
             self.control_values,
         )
+        derivatives_clamped = jnp.where(
+            tail_mask[:, :, None],
+            last_derivatives[:, None, :],
+            self.control_derivatives,
+        )
         return BatchControls(
             dense_grid=grid_clamped,
             control_values=values_clamped,
+            control_derivatives=derivatives_clamped,
         )

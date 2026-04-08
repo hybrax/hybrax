@@ -105,6 +105,9 @@ class _BatchIndexedControls(eqx.Module):
     def eval(self, ts: float | jax.Array) -> jax.Array:
         return self.batch_controls.eval(self.process_idx, ts)
 
+    def eval_derivative(self, ts: float | jax.Array) -> jax.Array:
+        return self.batch_controls.eval_derivative(self.process_idx, ts)
+
 
 def simulate_measurement_states(
     wrapper: HybridOdeWrapper,
@@ -155,16 +158,11 @@ def _measurement_loss_from_arrays(
         atol=solver_atol,
         jump_ts=jump_ts,
     )
-    state_species = states[:, :-1]
-    v_cont_pred = states[:, -1:]  # [n_meas, 1]
-    y_pred_species = jnp.asarray(
-        wrapper.reaction_module.observe(state_species),
-        dtype=state_species.dtype,
-    )
-    if y_pred_species.ndim == 1:
-        y_pred_species = y_pred_species[:, None]
-    # Append predicted V_cont to form full prediction [species..., V_cont]
-    y_pred = jnp.concatenate([y_pred_species, v_cont_pred], axis=1)
+    # Gather predicted target columns from the integrated state.
+    # State layout: [c_species..., V_cont, B_modeled_cum_0, ...]
+    # target_state_indices selects the species + cumulative-modeled-feed columns
+    # (V_cont is in the state but not a loss target).
+    y_pred = states[:, wrapper.target_state_indices]
 
     # Normalize per-target MSE by variance (all-zero targets get variance=1)
     sq_err = jnp.square(y_pred - y_meas) / wrapper.target_variance[None, :]
@@ -197,16 +195,8 @@ def single_process_measurement_loss(
         atol=solver_atol,
         use_jump_ts=solver_use_jump_ts,
     )
-    state_species_active = states_active[:, :-1]
-    v_cont_active = states_active[:, -1:]
-    y_pred_species_active = jnp.asarray(
-        wrapper.reaction_module.observe(state_species_active),
-        dtype=state_species_active.dtype,
-    )
-    if y_pred_species_active.ndim == 1:
-        y_pred_species_active = y_pred_species_active[:, None]
-    y_pred_active = jnp.concatenate([y_pred_species_active, v_cont_active], axis=1)
-
+    # Gather predicted target columns from the integrated state.
+    y_pred_active = states_active[:, wrapper.target_state_indices]
     y_pred_padded = y_pred_padded.at[:n_meas, :].set(y_pred_active)
 
     sq_err = jnp.square(y_pred_padded - process_data.y_meas) / wrapper.target_variance[None, :]
@@ -232,8 +222,13 @@ def _build_optimizer(
         base = optax.sgd(learning_rate)
     else:
         raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
+    # zero_nans handles ODE-solver failures (rare); clip_by_global_norm is the
+    # safety net against blowups in the early epochs of neural-ODE training.
+    # Bound 1000 is generous enough to leave normal updates untouched but
+    # bounds catastrophic gradient explosions.
     return optax.chain(
         optax.zero_nans(),
+        optax.clip_by_global_norm(1000.0),
         base,
     )
 

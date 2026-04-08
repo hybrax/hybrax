@@ -363,10 +363,11 @@ def test_wrapper_with_modeled_feed_produces_finite_derivative():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    y = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    # State layout: [biomass, V_cont, B_base_feed_cum]
+    y = jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
     dy = wrapper(0.0, y)
 
-    assert dy.shape == (2,)
+    assert dy.shape == (3,)
     assert jnp.all(jnp.isfinite(dy))
 
 
@@ -484,7 +485,8 @@ def test_wrapper_rejects_modeled_rate_shape_mismatch():
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     with pytest.raises(ValueError, match="modeled_feed_rates must have shape"):
-        wrapper(0.0, jnp.asarray([1.0, 1.0], dtype=jnp.float32))
+        # State layout: [biomass, V_cont, B_base_feed_cum]
+        wrapper(0.0, jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32))
 
 
 def test_wrapper_rejects_invalid_state_vector_shape():
@@ -527,3 +529,110 @@ def test_validate_rhs_ode_compatibility_rejects_different_species():
 
     with pytest.raises(ValueError, match="species_names differ"):
         validate_rhs_ode_compatibility("a", rhs_a, "b", rhs_b)
+
+
+def test_wrapper_constant_feed_rate_integrates_volume_correctly():
+    """Regression test for the U_flow units bug.
+
+    Build a single-process collection with one species (biomass), one
+    controlled feed `feed_A` with cumulative values [0.0, 1.0] at times
+    [0.0, 10.0] (i.e. constant flow rate of 0.1 kg/h), V0=1.0, no sampling,
+    no modeled feeds, and a zero reaction module.  Integrate from t=0 to
+    t=10 and assert the final V_cont ~= 2.0 (V0 + 1.0 of feed).
+
+    Before the fix this would integrate ~6.0 (because the wrapper was
+    treating the cumulative value as a flow rate).
+    """
+    import diffrax
+    import jax
+
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_A": FeedVolumeChange(
+                    name="feed_A",
+                    unit="L/h",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 10.0]),
+                        values=jnp.asarray([0.0, 1.0]),  # cumulative kg
+                    ),
+                    feed_medium=feed_medium,
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 10.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={},
+    )
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+
+    reaction_module = ConstantReactionModule(
+        specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=reaction_module,
+        process=process,
+        controls=controls,
+    )
+
+    # State layout: [biomass, V_cont] (no modeled feeds → state size = 2)
+    y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    y0_scaled = wrapper.scale_state(y0_physical)
+
+    sol = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        diffrax.Tsit5(),
+        t0=0.0,
+        t1=10.0,
+        dt0=None,
+        y0=y0_scaled,
+        saveat=diffrax.SaveAt(ts=jnp.asarray([10.0])),
+        stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-8),
+        max_steps=4096,
+        throw=False,
+    )
+    final_physical = wrapper.unscale_state(sol.ys[0])
+    final_v_cont = float(final_physical[-1])
+
+    # V_cont(10) = V0 + cumulative_feed(10) = 1.0 + 1.0 = 2.0
+    assert final_v_cont == pytest.approx(2.0, rel=1e-3, abs=1e-3), (
+        f"final V_cont = {final_v_cont}, expected ~2.0. "
+        "If this is ~6.0 the U_flow units bug regressed: the wrapper is "
+        "passing controls.eval (cumulative volume) instead of "
+        "controls.eval_derivative (flow rate) to RhsOde."
+    )

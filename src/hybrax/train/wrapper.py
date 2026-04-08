@@ -83,19 +83,43 @@ class HybridOdeWrapper(eqx.Module):
     """ODE wrapper integrating in **scaled state space**.
 
     The ODE state vector ``y`` is normalised:  ``y = Y / state_scale`` where
-    ``Y`` is the physical state ``[c_species..., V_cont]``.  Inside each
-    RHS evaluation the wrapper:
+    ``Y`` is the physical state vector
 
-    1. Un-scales ``y`` → ``Y`` (physical concentrations + volume).
-    2. Evaluates controls and builds an augmented controls vector.
-    3. Scales the augmented vector (``u = U / controls_scale``).
+        Y = [c_species_0, ..., c_species_{n_sp-1}, V_cont, B_modeled_cum_0, ...]
+
+    layout:
+      - indices ``0..n_species-1``       → species concentrations
+      - index   ``n_species``            → V_cont (cumulative inflow volume)
+      - indices ``n_species+1..end``     → cumulative modeled feed amounts
+                                           (one per modeled flow, in
+                                           ``rhs_ode.modeled_flow_names`` order)
+
+    V_cont is in the state because the wrapper needs to compute
+    ``V_real = V_cont - V_sample_acc(t)`` for the dilution denominator inside
+    the RhsOde.  ``B_modeled_cum_k`` is also in the state so it can be matched
+    against the measured cumulative for that feed (a much more direct training
+    signal than V_cont itself, which is mostly determined by *known* controlled
+    feeds).
+
+    Inside each RHS evaluation the wrapper:
+
+    1. Un-scales ``y`` → ``Y``.
+    2. Evaluates controls (values + derivatives) at time ``t``.
+    3. Builds the augmented controls vector for the MLP and scales it.
     4. Calls the reaction module with **scaled** inputs only:
        ``reaction_module(t, c_scaled, u_scaled) → (q_scaled, f_scaled)``.
     5. Un-scales the MLP outputs using ``q_scale`` / ``f_scale``.
-    6. Delegates to ``RhsOde`` (physical space) for the mechanistic RHS.
-    7. Re-scales the derivative: ``dy/dt = dY/dt / state_scale``.
+    6. Delegates to ``RhsOde`` (physical space) for ``[dc/dt, dV_cont/dt]``.
+    7. Appends ``dB_k/dt = F_modeled_k`` for the cumulative-modeled-feed states.
+    8. Re-scales the full derivative: ``dy/dt = dY/dt / state_scale``.
 
-    All ``*_scale`` arrays are **frozen** (not trainable).
+    Note that the controlled feed rates passed into ``RhsOde`` come from
+    ``controls.eval_derivative(t)``, **not** ``controls.eval(t)``.  The control
+    values for feed channels are *cumulative volumes*, not flow rates; the
+    derivative gives the actual flow rate that ``RhsOde`` expects.
+
+    All ``*_scale`` arrays and ``target_state_indices`` are **frozen**
+    (not trainable).
     """
 
     rhs_ode: RhsOde
@@ -107,15 +131,17 @@ class HybridOdeWrapper(eqx.Module):
     min_real_volume: float = eqx.field(static=True)
 
     species_names: tuple[str, ...] = eqx.field(static=True)
+    modeled_flow_names: tuple[str, ...] = eqx.field(static=True)
     augmented_controls_names: tuple[str, ...] = eqx.field(static=True)
     augmented_controls_units: tuple[str, ...] = eqx.field(static=True)
 
     # --- Scaling vectors (frozen, not trainable) ---
-    state_scale: jax.Array          # [n_species + 1]
+    state_scale: jax.Array          # [n_species + 1 + n_modeled]
     controls_scale: jax.Array       # [len(augmented_controls)]
     q_scale: jax.Array              # [n_species]
     f_scale: jax.Array              # [n_modeled_feeds]
-    target_variance: jax.Array      # [n_species] — per-species loss normalization
+    target_variance: jax.Array      # [len(target_state_indices)]
+    target_state_indices: jax.Array  # which state columns are loss targets
 
     @classmethod
     def from_process(
@@ -129,6 +155,7 @@ class HybridOdeWrapper(eqx.Module):
         q_scale: jax.Array | None = None,
         f_scale: jax.Array | None = None,
         target_variance: jax.Array | None = None,
+        target_state_indices: jax.Array | None = None,
         min_real_volume: float = 1e-8,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
@@ -161,12 +188,13 @@ class HybridOdeWrapper(eqx.Module):
         n_species = len(rhs_ode.species_names)
         n_aug = len(aug_names)
         n_modeled = rhs_ode.f_modeled_size
+        full_state_size = n_species + 1 + n_modeled
 
         # Default scales: ones (no scaling)
         _state_scale = (
             jnp.asarray(state_scale, dtype=jnp.float32)
             if state_scale is not None
-            else jnp.ones(n_species + 1, dtype=jnp.float32)
+            else jnp.ones(full_state_size, dtype=jnp.float32)
         )
         _controls_scale = (
             jnp.asarray(controls_scale, dtype=jnp.float32)
@@ -183,10 +211,20 @@ class HybridOdeWrapper(eqx.Module):
             if f_scale is not None
             else jnp.ones(n_modeled, dtype=jnp.float32)
         )
+        # Default target_state_indices: species columns + modeled-cumulative columns
+        # (V_cont at index n_species is in the state but not a loss target).
+        if target_state_indices is None:
+            default_indices = list(range(n_species)) + list(
+                range(n_species + 1, n_species + 1 + n_modeled)
+            )
+            _target_state_indices = jnp.asarray(default_indices, dtype=jnp.int32)
+        else:
+            _target_state_indices = jnp.asarray(target_state_indices, dtype=jnp.int32)
+        n_targets = int(_target_state_indices.shape[0])
         _target_variance = (
             jnp.asarray(target_variance, dtype=jnp.float32)
             if target_variance is not None
-            else jnp.ones(n_species, dtype=jnp.float32)
+            else jnp.ones(n_targets, dtype=jnp.float32)
         )
 
         return cls(
@@ -197,6 +235,7 @@ class HybridOdeWrapper(eqx.Module):
             sample_acc_control_index=int(controls.sample_acc_global_index),
             min_real_volume=float(min_real_volume),
             species_names=rhs_ode.species_names,
+            modeled_flow_names=rhs_ode.modeled_flow_names,
             augmented_controls_names=aug_names,
             augmented_controls_units=aug_units,
             state_scale=_state_scale,
@@ -204,6 +243,7 @@ class HybridOdeWrapper(eqx.Module):
             q_scale=_q_scale,
             f_scale=_f_scale,
             target_variance=_target_variance,
+            target_state_indices=_target_state_indices,
         )
 
     # ------ helpers exposed to callers (e.g. plotting, harness) ------
@@ -224,15 +264,18 @@ class HybridOdeWrapper(eqx.Module):
         Parameters
         ----------
         t : scalar time
-        y : scaled state vector ``[c_species / state_scale, V / V_scale]``
+        y : scaled state vector with layout
+            ``[c_species, V_cont, B_modeled_cum_0, ...] / state_scale``
 
         Returns
         -------
-        dy/dt in scaled space.
+        dy/dt in scaled space, same layout as ``y``.
         """
         if y.ndim != 1:
             raise ValueError("state vector y ndim must be 1")
-        expected_state_size = len(self.species_names) + 1
+        n_species = len(self.species_names)
+        n_modeled = len(self.modeled_flow_names)
+        expected_state_size = n_species + 1 + n_modeled
         if y.shape[0] != expected_state_size:
             raise ValueError(
                 f"state vector y must have shape ({expected_state_size},), "
@@ -243,20 +286,29 @@ class HybridOdeWrapper(eqx.Module):
 
         # ---- 1. Un-scale state to physical space ----
         Y = self.unscale_state(y)
-        C_species = jnp.clip(Y[:-1], 0.0)
-        V_cont = jnp.maximum(Y[-1], jnp.asarray(0.0, dtype=y.dtype))
+        C_species = jnp.clip(Y[:n_species], 0.0)
+        V_cont = jnp.maximum(Y[n_species], jnp.asarray(0.0, dtype=y.dtype))
+        # B_modeled_cum (Y[n_species+1:]) is not used in the RHS — its derivative
+        # is just F_modeled, no feedback into the rest of the system.
 
-        # ---- 2. Evaluate controls (physical) ----
+        # ---- 2. Evaluate controls (values + derivatives) ----
+        # Values are interpolated from the dense grid: feed channels store the
+        # CUMULATIVE volume, process variables store the actual signal value.
         controls_vector = self.controls.eval(t_arr)
+        # Derivatives at the same time: feed channels become flow rates (kg/h),
+        # which is what RhsOde expects for `u_flow`.
+        controls_derivatives = self.controls.eval_derivative(t_arr)
 
         V_sample_acc = controls_vector[self.sample_acc_control_index]
         V_real = jnp.maximum(
             V_cont - V_sample_acc, jnp.asarray(self.min_real_volume)
         )
 
-        U_flow = controls_vector[self.flow_control_indices]
+        U_flow = controls_derivatives[self.flow_control_indices]
 
-        # Build augmented controls (physical)
+        # Build augmented controls for the MLP. Use the *values* (cumulative for
+        # feeds) — these are perfectly fine MLP features and match the existing
+        # `augmented_controls_names` semantics.
         cin_flat = jnp.concatenate(
             [
                 self.rhs_ode.Cin.reshape(-1),
@@ -266,7 +318,7 @@ class HybridOdeWrapper(eqx.Module):
         U_augmented = jnp.concatenate([controls_vector, cin_flat])
 
         # ---- 3. Scale inputs for MLP ----
-        c_scaled = y[:-1]  # already scaled (part of y)
+        c_scaled = y[:n_species]  # already scaled (slice of y)
         u_scaled = U_augmented / self.controls_scale
 
         # ---- 4. MLP predicts in scaled space ----
@@ -298,11 +350,19 @@ class HybridOdeWrapper(eqx.Module):
         F_modeled = f_scaled * self.f_scale
 
         # ---- 6. Mechanistic RHS in physical space ----
+        # RhsOde returns [dc_species/dt, dV/dt] where dV/dt = sum(U_flow) +
+        # sum(F_modeled).  By construction this equals dV_cont/dt because
+        # V_cont = V0 + ∫(inflows) (sampling lives in V_sample_acc, not in V_cont).
         C_rhs = jnp.concatenate([C_species, jnp.asarray([V_real], dtype=y.dtype)])
-        dY_dt = self.rhs_ode(C_rhs, Q, U_flow, F_modeled)
+        dY_rhs = self.rhs_ode(C_rhs, Q, U_flow, F_modeled)
+        # dY_rhs has length n_species + 1 (species + V_cont).
 
-        # ---- 7. Re-scale derivative ----
-        dy_dt = dY_dt / self.state_scale
+        # ---- 7. Append cumulative-modeled-feed derivatives ----
+        # dB_k/dt = F_modeled_k by definition.
+        dY_full = jnp.concatenate([dY_rhs, F_modeled])
+
+        # ---- 8. Re-scale derivative ----
+        dy_dt = dY_full / self.state_scale
 
         return dy_dt
 
