@@ -26,6 +26,7 @@ from .trainer import (
     summarize_train_step_input_signature,
 )
 from .controls_store import BatchControls
+from .logging import RunLogger, StepRecord
 from .training_data import (
     BatchTrainingData,
     TARGET_SOURCE_AUTO,
@@ -113,9 +114,13 @@ def _batched_measurement_loss_from_batch(
             batched_Cin_modeled[batch.process_indices],
             jump_ts_rows,
         )
-    # per_sample_per_target: [batch_size, n_targets+1]
+    # per_sample_per_target: [batch_size, n_targets]
+    # per_sample_total: [batch_size]
     mean_per_target = jnp.mean(per_sample_per_target, axis=0)
-    return jnp.mean(per_sample_total), mean_per_target
+    mean_total = jnp.mean(per_sample_total)
+    # Return the unreduced per-sample vector too — the harness wants it for
+    # per-process logging, and it costs nothing extra inside the JIT graph.
+    return mean_total, mean_per_target, per_sample_total
 
 
 @dataclass(frozen=True)
@@ -137,6 +142,12 @@ class TrainHarnessConfig:
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
     solver_use_jump_ts: bool = True
+    # Logging / telemetry options (additive; all optional).
+    log_process_losses: bool = False
+    metrics_csv: str | None = None
+    metrics_jsonl: str | None = None
+    log_decimals: int = 4
+    log_header_every: int = 30
 
 
 @dataclass(frozen=True)
@@ -147,6 +158,7 @@ class TrainHarnessResult:
     mean_loss_by_step: tuple[float, ...]
     sampled_loss_by_process_at_log_steps: dict[int, tuple[tuple[str, float], ...]]
     batch_process_names_by_step: tuple[tuple[str, ...], ...]
+    per_process_loss_by_step: tuple[tuple[float, ...], ...]
     compile_warmup_seconds: float
     step_time_seconds: tuple[float, ...]
     train_step_input_signature: tuple[object, ...]
@@ -432,7 +444,7 @@ def train_collection(
                     current_wrapper,
                     reaction_module_updated,
                 )
-                total_loss, per_target = _batched_measurement_loss_from_batch(
+                total_loss, per_target, per_sample = _batched_measurement_loss_from_batch(
                     candidate_wrapper,
                     current_batch,
                     batch_controls,
@@ -443,9 +455,9 @@ def train_collection(
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
                 )
-                return total_loss, per_target
+                return total_loss, (per_target, per_sample)
 
-            (loss, per_target_loss), grads = eqx.filter_value_and_grad(
+            (loss, (per_target_loss, per_sample_loss)), grads = eqx.filter_value_and_grad(
                 _loss_fn, has_aux=True,
             )(current_trainable_params)
             updates, next_optimizer_state = optimizer.update(
@@ -463,7 +475,14 @@ def train_collection(
                 current_wrapper,
                 reaction_module_updated,
             )
-            return wrapper_updated, trainable_updated, loss, per_target_loss, next_optimizer_state
+            return (
+                wrapper_updated,
+                trainable_updated,
+                loss,
+                per_target_loss,
+                per_sample_loss,
+                next_optimizer_state,
+            )
 
         return eqx.filter_jit(_step_fn)
 
@@ -484,7 +503,14 @@ def train_collection(
 
     logger.info("JIT compiling train step (warmup)...")
     warmup_t0 = time.perf_counter()
-    _warmup_wrapper, _warmup_trainable, warmup_loss, _warmup_pt, _warmup_opt_state = step_fn(
+    (
+        _warmup_wrapper,
+        _warmup_trainable,
+        warmup_loss,
+        _warmup_pt,
+        _warmup_ps,
+        _warmup_opt_state,
+    ) = step_fn(
         wrapper,
         trainable_params,
         optimizer_state,
@@ -498,107 +524,81 @@ def train_collection(
         float(warmup_loss),
     )
 
-    mean_loss_by_step: list[float] = []
-    step_time_seconds: list[float] = []
-    batch_process_names_by_step: list[tuple[str, ...]] = []
-    sampled_loss_by_process_at_log_steps: dict[int, tuple[tuple[str, float], ...]] = {}
-
-    logger.info("starting training loop...")
-    for step_index in range(cfg.steps):
-        batch_indices = batch_index_stream[step_index]
-        batch = store.gather_batch(batch_indices)
-        current_signature = summarize_train_step_input_signature(
-            wrapper,
-            trainable_params,
-            optimizer_state,
-            batch,
+    with RunLogger(
+        log_every=int(cfg.log_every),
+        log_process_losses=bool(cfg.log_process_losses),
+        metrics_csv=cfg.metrics_csv,
+        metrics_jsonl=cfg.metrics_jsonl,
+        log_decimals=int(cfg.log_decimals),
+        log_header_every=int(cfg.log_header_every),
+    ) as run_log:
+        run_log.start(
+            target_names=_target_labels,
+            process_names=selected_processes,
+            total_steps=int(cfg.steps),
+            compile_warmup_seconds=float(warmup_compile_seconds),
         )
-        if current_signature != train_step_input_signature:
-            step_fn = _make_batched_step()
-            rebuild_count += 1
-            logger.warning(
-                "rebuilt train-step at step=%d due signature drift",
-                step_index + 1,
+
+        for step_index in range(cfg.steps):
+            batch_indices = batch_index_stream[step_index]
+            batch = store.gather_batch(batch_indices)
+            current_signature = summarize_train_step_input_signature(
+                wrapper,
+                trainable_params,
+                optimizer_state,
+                batch,
             )
+            if current_signature != train_step_input_signature:
+                step_fn = _make_batched_step()
+                rebuild_count += 1
+                run_log.record_rebuild(step_index + 1)
 
-        t0 = time.perf_counter()
-        wrapper, trainable_params, loss, per_target_loss, optimizer_state = step_fn(
-            wrapper,
-            trainable_params,
-            optimizer_state,
-            batch,
-        )
-        jax.block_until_ready(loss)
-        step_dt = time.perf_counter() - t0
+            t0 = time.perf_counter()
+            (
+                wrapper,
+                trainable_params,
+                loss,
+                per_target_loss,
+                per_sample_loss,
+                optimizer_state,
+            ) = step_fn(
+                wrapper,
+                trainable_params,
+                optimizer_state,
+                batch,
+            )
+            jax.block_until_ready(loss)
+            step_dt = time.perf_counter() - t0
 
-        mean_loss = float(loss)
-        mean_loss_by_step.append(mean_loss)
-        step_time_seconds.append(step_dt)
-
-        batch_indices_tuple = tuple(
-            int(v) for v in np.asarray(batch.process_indices).tolist()
-        )
-        batch_names = tuple(store.process_order[idx] for idx in batch_indices_tuple)
-        batch_process_names_by_step.append(batch_names)
-
-        # Log mean loss + per-target breakdown every step
-        pt_str = "  ".join(
-            f"{name}={float(v):.4g}"
-            for name, v in zip(_target_labels, per_target_loss.tolist())
-        )
-        logger.info(
-            "step %d/%d  loss=%.6g  [%s]  dt=%.3fs",
-            step_index + 1,
-            cfg.steps,
-            mean_loss,
-            pt_str,
-            step_dt,
-        )
-
-        # Detailed per-process telemetry at log_every cadence
-        should_sample = (step_index + 1) % cfg.log_every == 0
-        if should_sample:
-            sampled_losses: list[tuple[str, float]] = []
-            for process_idx in batch_indices_tuple:
-                process_data = store.get_process(process_idx)
-                process_name = process_data.process_name
-                # Inject per-process controls and Cin for telemetry
-                process_wrapper = eqx.tree_at(
-                    lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
-                    wrapper,
-                    (
-                        process_data.controls,
-                        per_process_rhs[process_name].Cin,
-                        per_process_rhs[process_name].Cin_modeled,
+            batch_names = tuple(
+                store.process_order[int(i)]
+                for i in np.asarray(batch.process_indices).tolist()
+            )
+            run_log.record_step(
+                StepRecord(
+                    step=step_index + 1,
+                    total_steps=int(cfg.steps),
+                    mean_loss=float(loss),
+                    per_target_loss=tuple(
+                        float(v) for v in np.asarray(per_target_loss).tolist()
                     ),
+                    per_process_loss=tuple(
+                        float(v) for v in np.asarray(per_sample_loss).tolist()
+                    ),
+                    target_names=tuple(_target_labels),
+                    process_names=batch_names,
+                    step_dt=float(step_dt),
+                    rebuild_count=int(rebuild_count),
                 )
-                sample_loss = single_process_measurement_loss(
-                    process_wrapper,
-                    process_data,
-                    max_solver_steps=int(cfg.solver_max_steps),
-                    solver_rtol=float(cfg.solver_rtol),
-                    solver_atol=float(cfg.solver_atol),
-                    solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-                )
-                sampled_losses.append((process_name, float(sample_loss)))
-
-            sampled_loss_by_process_at_log_steps[step_index + 1] = tuple(sampled_losses)
-            logger.info(
-                "step %d/%d  per-process sampled=%s",
-                step_index + 1,
-                cfg.steps,
-                sampled_loss_by_process_at_log_steps[step_index + 1],
             )
+
+        history = run_log.finalize()
 
     return TrainHarnessResult(
         trained_wrapper=wrapper,
-        mean_loss_by_step=tuple(mean_loss_by_step),
-        sampled_loss_by_process_at_log_steps=sampled_loss_by_process_at_log_steps,
-        batch_process_names_by_step=tuple(batch_process_names_by_step),
         compile_warmup_seconds=float(warmup_compile_seconds),
-        step_time_seconds=tuple(step_time_seconds),
         train_step_input_signature=train_step_input_signature,
-        train_step_rebuild_count=int(rebuild_count),
+        **history,
     )
 
 

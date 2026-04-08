@@ -91,6 +91,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
             mean_loss_by_step=(1.0, 0.5),
             sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
             batch_process_names_by_step=(("p1",), ("p1",)),
+            per_process_loss_by_step=((1.0,), (0.5,)),
             compile_warmup_seconds=0.1,
             step_time_seconds=(0.01, 0.01),
             train_step_input_signature=(("array", (1,), "int32"),),

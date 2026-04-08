@@ -187,6 +187,33 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     train_parser.set_defaults(plot=True)
     train_parser.add_argument(
+        "--log-process-losses",
+        action="store_true",
+        help="Emit per-process losses on every step (otherwise only at log steps).",
+    )
+    train_parser.add_argument(
+        "--metrics-csv",
+        default=None,
+        help="If set, write per-step metrics to this CSV file.",
+    )
+    train_parser.add_argument(
+        "--metrics-jsonl",
+        default=None,
+        help="If set, write per-step metrics to this JSONL file.",
+    )
+    train_parser.add_argument(
+        "--log-decimals",
+        type=int,
+        default=4,
+        help="Decimal places for numeric columns in the per-step console table.",
+    )
+    train_parser.add_argument(
+        "--log-header-every",
+        type=int,
+        default=30,
+        help="Re-emit the table header every N rows (0 disables re-emission).",
+    )
+    train_parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -238,6 +265,11 @@ def _handle_train(args: argparse.Namespace) -> int:
         solver_rtol=float(args.solver_rtol),
         solver_atol=float(args.solver_atol),
         solver_use_jump_ts=not bool(args.no_jump_ts),
+        log_process_losses=bool(args.log_process_losses),
+        metrics_csv=args.metrics_csv,
+        metrics_jsonl=args.metrics_jsonl,
+        log_decimals=int(args.log_decimals),
+        log_header_every=int(args.log_header_every),
     )
     result = train_from_prepared_json(
         prepared_json=args.input,
