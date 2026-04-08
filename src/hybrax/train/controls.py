@@ -152,7 +152,17 @@ def _make_source_from_xy(
         derivative=lambda ts: _piecewise_linear_derivative(
             _as_numpy(ts), times, values
         ),
-        step_ts=_dedupe_sorted(times.tolist()),
+        # `step_ts` is a hint for the ODE solver about points where the signal
+        # has a true discontinuity (e.g. start/end of a sampling or bolus
+        # ramp).  Generic xy time series are smooth signals (linearly
+        # interpolated) and therefore contribute NO jump times.  Builders that
+        # need ramp boundaries (build_sample_acc_source_default,
+        # build_bolus_sources) post-merge their explicit ramp times into
+        # `source.step_ts` after construction.  Populating step_ts with the
+        # full input grid here used to force the diffrax solver to take a step
+        # at every input timestamp (~1500 forced steps for the Kittler dataset)
+        # — see plan/cheerful-inventing-lightning.md for the speedup analysis.
+        step_ts=[],
         metadata=dict(metadata or {}),
     )
 
@@ -174,7 +184,9 @@ def _make_source_from_process_variable(
             values=_eval_ppoly(x, coefficients, breaks),
             evaluator=lambda ts: _eval_ppoly(x, coefficients, _as_numpy(ts), order=0),
             derivative=lambda ts: _eval_ppoly(x, coefficients, _as_numpy(ts), order=1),
-            step_ts=_dedupe_sorted(breaks.tolist()),
+            # PPoly-backed process variables are smooth (continuous): no real
+            # jump times.  See the comment in `_make_source_from_xy`.
+            step_ts=[],
             metadata={"source": "ppoly"},
         )
 
