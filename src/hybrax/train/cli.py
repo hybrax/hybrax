@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .harness import TrainHarnessConfig, train_from_prepared_json
+from .harness import TrainHarnessConfig, train_from_collection, train_from_prepared_json
 from .prepare import prepare_artifact
 from .training_data import TARGET_SOURCES
 
@@ -247,6 +247,11 @@ def _handle_train(args: argparse.Namespace) -> int:
         level=getattr(logging, str(args.log_level)),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    from bpbench.serialization import load_process_collection_json
+
+    from .training_data import TrainingDataStore
+
+    collection = load_process_collection_json(Path(args.input))
     selected_processes = _split_multi_values(args.process)
     selected_targets = _split_multi_values(args.target)
     config = TrainHarnessConfig(
@@ -271,8 +276,8 @@ def _handle_train(args: argparse.Namespace) -> int:
         log_decimals=int(args.log_decimals),
         log_header_every=int(args.log_header_every),
     )
-    result = train_from_prepared_json(
-        prepared_json=args.input,
+    result = train_from_collection(
+        collection,
         config=config,
         custom_py=args.custom,
         runtime_config=_load_config(args.config),
@@ -289,8 +294,6 @@ def _handle_train(args: argparse.Namespace) -> int:
     )
 
     # Post-training outputs
-    import equinox as eqx
-
     from .postprocessing import plot_training_results, save_model
 
     output_dir = Path(args.output_dir)
@@ -299,11 +302,6 @@ def _handle_train(args: argparse.Namespace) -> int:
     save_model(result.trained_wrapper, output_dir / "trained_wrapper.eqx")
 
     if args.plot:
-        from bpbench.serialization import load_process_collection_json
-
-        from .training_data import TrainingDataStore
-
-        collection = load_process_collection_json(Path(args.input))
         store = TrainingDataStore.from_collection(
             collection,
             target_variable_order=config.target_variable_order,

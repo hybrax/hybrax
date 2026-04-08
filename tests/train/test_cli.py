@@ -79,10 +79,16 @@ def test_prepare_cli_loads_config_json(monkeypatch, tmp_path: Path):
 def test_train_cli_dispatches_to_train_harness(monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_train_from_prepared_json(
-        *, prepared_json, config, custom_py, runtime_config
+    sentinel_collection = object()
+
+    def fake_load(json_path):
+        captured["loaded_path"] = json_path
+        return sentinel_collection
+
+    def fake_train_from_collection(
+        collection, *, config, custom_py, runtime_config
     ):
-        captured["prepared_json"] = prepared_json
+        captured["collection"] = collection
         captured["config"] = config
         captured["custom_py"] = custom_py
         captured["runtime_config"] = runtime_config
@@ -98,7 +104,11 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
             train_step_rebuild_count=1,
         )
 
-    monkeypatch.setattr(cli, "train_from_prepared_json", fake_train_from_prepared_json)
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    import bpbench.serialization as bpbench_serialization
+    monkeypatch.setattr(
+        bpbench_serialization, "load_process_collection_json", fake_load
+    )
 
     # Stub out model saving (trained_wrapper is None in this test)
     from bp_train import postprocessing
@@ -164,5 +174,6 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
     assert cfg.solver_rtol == 1e-4
     assert cfg.solver_atol == 1e-6
     assert cfg.solver_use_jump_ts is False
-    assert captured["prepared_json"] == "prepared.json"
+    assert captured["collection"] is sentinel_collection
+    assert str(captured["loaded_path"]) == "prepared.json"
     assert captured["custom_py"] == "custom.py"

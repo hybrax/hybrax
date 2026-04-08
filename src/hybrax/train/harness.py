@@ -264,6 +264,7 @@ def _build_reaction_module(
     config: TrainHarnessConfig,
     custom_module,
     custom_config: dict[str, Any],
+    collection: BioProcessCollection,
 ) -> UserReactionModule:
     hook = get_hook(
         custom_module,
@@ -275,6 +276,7 @@ def _build_reaction_module(
         process_names=list(store.process_order),
         config=custom_config,
         seed=int(config.seed),
+        collection=collection,
     )
     if not isinstance(module, UserReactionModule):
         raise TypeError(
@@ -602,18 +604,24 @@ def train_collection(
     )
 
 
-def train_from_prepared_json(
-    prepared_json: str | Path,
+def train_from_collection(
+    collection: BioProcessCollection,
     *,
     config: TrainHarnessConfig | None = None,
     custom_py: str | Path | None = None,
     runtime_config: dict[str, Any] | None = None,
 ) -> TrainHarnessResult:
-    """Train from prepared JSON with optional custom model hooks."""
+    """Train from an already-loaded process collection with optional custom hooks.
+
+    Use this entry point when the caller has already deserialized the
+    prepared JSON (e.g. the CLI, which also needs the collection for
+    post-training plotting). For path-based callers,
+    :func:`train_from_prepared_json` is a thin wrapper that loads the
+    collection and delegates here.
+    """
     cfg = config or TrainHarnessConfig()
     custom_module = load_custom_module(custom_py)
     custom_cfg = resolve_config(custom_module, runtime_config)
-    collection = load_process_collection_json(Path(prepared_json))
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=cfg.target_variable_order,
@@ -643,6 +651,7 @@ def train_from_prepared_json(
         config=effective_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
+        collection=collection,
     )
     # Call optional build_learning_rate hook (overrides CLI --learning-rate)
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
@@ -686,4 +695,28 @@ def train_from_prepared_json(
         collection=collection,
         config=effective_cfg,
         **scale_kwargs,
+    )
+
+
+def train_from_prepared_json(
+    prepared_json: str | Path,
+    *,
+    config: TrainHarnessConfig | None = None,
+    custom_py: str | Path | None = None,
+    runtime_config: dict[str, Any] | None = None,
+) -> TrainHarnessResult:
+    """Load a prepared JSON and train from it.
+
+    Thin wrapper around :func:`train_from_collection` for callers that
+    only have a path. Callers that already hold a deserialized collection
+    (e.g. the CLI, which reuses it for post-training plotting) should
+    invoke ``train_from_collection`` directly to avoid loading the
+    prepared JSON twice.
+    """
+    collection = load_process_collection_json(Path(prepared_json))
+    return train_from_collection(
+        collection,
+        config=config,
+        custom_py=custom_py,
+        runtime_config=runtime_config,
     )

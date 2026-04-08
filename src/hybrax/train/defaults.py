@@ -85,9 +85,10 @@ def default_build_reaction_module(
     process_names: list[str],
     config: dict[str, Any],
     seed: int,
+    collection: Any,
 ) -> UserReactionModule:
     """Default train hook for reaction-module construction."""
-    del process_names, config
+    del process_names, config, collection
     return DefaultReactionModule(
         n_species=len(target_names),
         key=jax.random.key(int(seed)),
