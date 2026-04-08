@@ -16,7 +16,7 @@ get_control_splines(process) -> ControlSplines
     **flow rates** (derivative of the cumulative-volume spline).
 
 get_rhs_ode(process) -> RhsOde
-    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
+    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled, r)``
     computes the ODE RHS ``dc/dt`` (including ``dV/dt``).
     Uncontrolled continuous volume changes (modeled feeds) are supported via
     the optional ``f_modeled`` argument.
@@ -44,9 +44,10 @@ to compile them::
     mb   = get_rhs_ode(process)
 
     u      = eqx.filter_jit(ctrl)(t)
-    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow)
+    r      = jnp.zeros(mb.r_size)
+    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, jnp.zeros(0), r)
     # With modeled flows (e.g. base feed):
-    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
+    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, f_modeled, r)
 """
 
 from __future__ import annotations
@@ -176,40 +177,43 @@ class RhsOde(eqx.Module):
 
     Created by :func:`get_rhs_ode`; do not instantiate directly.
 
-    The state vector is ``c = [c_species..., V]`` where the last element is
-    the reactor volume.  Biomass is always at index 0.
+    The state vector is ``c = [reactor_components..., pv_states..., V]`` where
+    the last element is reactor volume. Biomass is always index 0 in the
+    reactor-component block.
 
     Attributes
     ----------
     c_size : int
-        ``n_species + 1`` (species concentrations + volume).
+        ``n_non_volume_states + 1``.
     q_size : int
-        ``n_species`` — number of specific rates (aligned with
-        :attr:`species_names`).
+        ``n_reactor_states`` — number of specific rates (reactor block only).
     u_flow_size : int
         Number of continuous controlled flow streams.
     f_modeled_size : int
         Number of continuous uncontrolled (modeled) flow streams.
     output_size : int
         Same as :attr:`c_size`.
-    species_names : tuple[str, ...]
-        Ordering of species in *c* and *q*.  Biomass is always first.
+    reactor_component_state_names : tuple[str, ...]
+        Ordering of reactor-component states in *c* and *q*. Biomass is
+        always first.
+    process_variable_state_names : tuple[str, ...]
+        Ordering of process-variable states in *c*.
     flow_names : tuple[str, ...]
         Ordering of continuous controlled flow streams in *u_flow*.
     modeled_flow_names : tuple[str, ...]
         Ordering of continuous uncontrolled (modeled) flow streams in
         *f_modeled*.
     biomass_idx : int
-        Index of ``"biomass"`` in :attr:`species_names` (always 0).
+        Index of ``"biomass"`` in reactor-component ordering (always 0).
     intracellular_indices : tuple[int, ...]
-        Indices of intracellular species in :attr:`species_names`.
+        Indices of intracellular states in reactor-component ordering.
         Intracellular components (e.g., intracellular product) accumulate
         inside the cells.  Active biomass is therefore:
         ``X_active = c[biomass_idx] - sum(c[i] for i in intracellular_indices)``.
-    Cin : jnp.ndarray, shape (n_flows, n_species)
+    Cin : jnp.ndarray, shape (n_flows, n_reactor_states)
         Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
         concentration of species *i* in controlled feed stream *k*.
-    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_species)
+    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_reactor_states)
         Feed composition matrix for modeled (uncontrolled) flows.
 
     Notes
@@ -218,17 +222,26 @@ class RhsOde(eqx.Module):
 
         import equinox as eqx
         mb    = get_rhs_ode(process)
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow)
+        r     = jnp.zeros(mb.r_size)
+        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, jnp.zeros(0), r)
         # With modeled flows:
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
+        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled, r)
     """
 
     c_size: int = eqx.field(static=True)
     q_size: int = eqx.field(static=True)
+    r_size: int = eqx.field(static=True)
     u_flow_size: int = eqx.field(static=True)
     f_modeled_size: int = eqx.field(static=True)
     output_size: int = eqx.field(static=True)
-    species_names: tuple = eqx.field(static=True)
+    n_reactor_states: int = eqx.field(static=True)
+    n_pv_states: int = eqx.field(static=True)
+    reactor_indices: tuple = eqx.field(static=True)
+    pv_indices: tuple = eqx.field(static=True)
+    volume_idx: int = eqx.field(static=True)
+    reactor_component_state_names: tuple = eqx.field(static=True)
+    process_variable_state_names: tuple = eqx.field(static=True)
+    static_pv_indices: tuple = eqx.field(static=True)
     flow_names: tuple = eqx.field(static=True)
     modeled_flow_names: tuple = eqx.field(static=True)
     biomass_idx: int = eqx.field(static=True)
@@ -242,17 +255,19 @@ class RhsOde(eqx.Module):
         q: jnp.ndarray,
         u_flow: jnp.ndarray,
         f_modeled: jnp.ndarray,
+        r: jnp.ndarray,
     ) -> jnp.ndarray:
         """Compute the ODE RHS ``dc/dt``.
 
         Parameters
         ----------
         c:
-            State vector ``[c_species..., V]``, shape ``(c_size,)``.
+            State vector ``[reactor_components..., pv_states..., V]``,
+            shape ``(c_size,)``.
             Biomass (measured) is at index 0; intracellular components follow
             in the positions given by :attr:`intracellular_indices`.
         q:
-            Specific rates aligned with :attr:`species_names`, shape
+            Specific rates aligned with reactor-component ordering, shape
             ``(q_size,)``.
         u_flow:
             Volumetric flow rates for each continuous controlled feed stream
@@ -285,14 +300,26 @@ class RhsOde(eqx.Module):
         (measured biomass minus intracellular component concentrations),
         and the sums over *k* include both controlled and modeled flows.
         """
-        c_species = c[: self.q_size]
-        V = c[self.q_size]
+        n_reactor = self.n_reactor_states
+        n_non_volume = self.r_size
+        c_reactor = c[:n_reactor]
+        V = c[self.volume_idx]
+        if self.n_pv_states > 0:
+            c_pv = c[n_reactor:n_non_volume]
+        else:
+            c_pv = jnp.zeros(0)
+        r_non_volume = r
+        r_reactor = r_non_volume[:n_reactor]
+        r_pv = r_non_volume[n_reactor:]
+        if self.n_pv_states > 0 and len(self.static_pv_indices) > 0:
+            static_idx = jnp.array(self.static_pv_indices, dtype=int)
+            r_pv = r_pv.at[static_idx].set(0.0)
 
         # Active biomass: measured biomass minus intracellular components
         X_measured = c[self.biomass_idx]
         if len(self.intracellular_indices) > 0:
             intracellular_sum = jnp.sum(
-                c_species[jnp.array(self.intracellular_indices)]
+                c_reactor[jnp.array(self.intracellular_indices)]
             )
         else:
             intracellular_sum = jnp.zeros(())
@@ -301,23 +328,26 @@ class RhsOde(eqx.Module):
         # Reaction contribution: q_i * X_active
         reaction = q * X_active
 
-        # Controlled feed / dilution contribution (zero when u_flow_size == 0)
-        # u_flow: (n_flows,),  Cin: (n_flows, n_species)
-        feed_contrib = u_flow[:, None] * (self.Cin - c_species[None, :])
-        feed_term = jnp.sum(feed_contrib, axis=0) / V
-        dV = jnp.sum(u_flow)
+        # Controlled feed / dilution contribution on reactor states only.
+        feed_term = jnp.zeros(n_reactor)
+        dV = jnp.zeros(())
+        if self.u_flow_size > 0:
+            feed_contrib = u_flow[:, None] * (self.Cin - c_reactor[None, :])
+            feed_term = feed_term + jnp.sum(feed_contrib, axis=0) / V
+            dV = dV + jnp.sum(u_flow)
 
         # Modeled (uncontrolled) feed contribution
         if self.f_modeled_size > 0:
             modeled_contrib = f_modeled[:, None] * (
-                self.Cin_modeled - c_species[None, :]
+                self.Cin_modeled - c_reactor[None, :]
             )
             feed_term = feed_term + jnp.sum(modeled_contrib, axis=0) / V
             dV = dV + jnp.sum(f_modeled)
 
-        dc_species = reaction + feed_term
+        dc_reactor = reaction + r_reactor + feed_term
+        dc_pv = c_pv * 0.0 + r_pv
 
-        return jnp.append(dc_species, dV)
+        return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +462,7 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
     Returns
     -------
     RhsOde
-        An ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled)``
+        An ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled, r)``
         computes the ODE RHS ``dc/dt``.
 
     Raises
@@ -440,7 +470,7 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
     ValueError
         If no ``"biomass"`` component is found in the reactor medium.
     """
-    # --- Species ordering: biomass always at index 0 ---
+    # --- Reactor component ordering: biomass always at index 0 ---
     all_component_names = list(process.reactor_medium.components.keys())
     biomass_name: str = ""
     for name in all_component_names:
@@ -453,27 +483,71 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
             f"Available components: {all_component_names}"
         )
     other_names = [n for n in all_component_names if n != biomass_name]
-    species_names: Tuple[str, ...] = (biomass_name,) + tuple(other_names)
-    n_species = len(species_names)
+    reactor_component_state_names: Tuple[str, ...] = (biomass_name,) + tuple(
+        other_names
+    )
+    n_reactor = len(reactor_component_state_names)
     biomass_idx: int = 0  # always 0 by construction
 
     # --- Intracellular indices ---
     intracellular_indices: List[int] = []
-    for i, name in enumerate(species_names):
+    for i, name in enumerate(reactor_component_state_names):
         comp = process.reactor_medium.components[name]
         if comp.is_intracellular:
             intracellular_indices.append(i)
 
+    process_variable_state_names: Tuple[str, ...] = tuple(
+        pv_name
+        for pv_name, pv in process.process_variables.items()
+        if not pv.is_controlled
+    )
+    static_pv_indices: List[int] = []
+    for i, pv_name in enumerate(process_variable_state_names):
+        if isinstance(process.process_variables[pv_name].values, StaticVariable):
+            static_pv_indices.append(i)
+    n_pv = len(process_variable_state_names)
+    n_non_volume = n_reactor + n_pv
+    reactor_name_to_idx = {
+        name: i for i, name in enumerate(reactor_component_state_names)
+    }
+
+    # Strict check: feed components must be known reactor components.
+    for vc_name, vc in process.volume.volume_changes.items():
+        if not isinstance(vc, FeedVolumeChange):
+            continue
+        if vc.feed_medium is None:
+            raise ValueError(
+                "FeedVolumeChange must define feed_medium in get_rhs_ode strict "
+                f"validation. Missing for volume change '{vc_name}'."
+            )
+        unknown = [
+            name
+            for name in vc.feed_medium.components.keys()
+            if name not in reactor_name_to_idx
+        ]
+        if unknown:
+            raise ValueError(
+                "Unknown feed component(s) in volume change "
+                f"'{vc_name}': {unknown}. "
+                "All feed components must exist in "
+                "process.reactor_medium.components."
+            )
+
     # --- Helper to build a Cin matrix for a list of volume-change names ---
     def _build_cin(vc_names):
         n = len(vc_names)
-        Cin = jnp.zeros((n, n_species), dtype=float)
+        Cin = jnp.zeros((n, n_reactor), dtype=float)
         for k, vc_name in enumerate(vc_names):
             vc = process.volume.volume_changes[vc_name]
             if not isinstance(vc, FeedVolumeChange):
                 continue  # SampleVolumeChange has no feed medium
+            if vc.feed_medium is None:
+                raise ValueError(
+                    "FeedVolumeChange must define feed_medium for Cin construction. "
+                    f"Missing for volume change '{vc_name}'."
+                )
             feed = vc.feed_medium
-            for j, sp_name in enumerate(species_names):
+            for j, sp_name in enumerate(reactor_component_state_names):
                 if sp_name not in feed.components:
                     continue
                 conc = feed.components[sp_name].concentration
@@ -502,12 +576,20 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
     Cin_modeled = _build_cin(modeled_flow_names)
 
     return RhsOde(
-        c_size=n_species + 1,
-        q_size=n_species,
+        c_size=n_non_volume + 1,
+        q_size=n_reactor,
+        r_size=n_non_volume,
         u_flow_size=len(flow_names),
         f_modeled_size=len(modeled_flow_names),
-        output_size=n_species + 1,
-        species_names=tuple(species_names),
+        output_size=n_non_volume + 1,
+        n_reactor_states=n_reactor,
+        n_pv_states=n_pv,
+        reactor_indices=tuple(range(n_reactor)),
+        pv_indices=tuple(range(n_reactor, n_non_volume)),
+        volume_idx=n_non_volume,
+        reactor_component_state_names=tuple(reactor_component_state_names),
+        process_variable_state_names=tuple(process_variable_state_names),
+        static_pv_indices=tuple(static_pv_indices),
         flow_names=tuple(flow_names),
         modeled_flow_names=tuple(modeled_flow_names),
         biomass_idx=biomass_idx,
@@ -543,11 +625,11 @@ def extract_discrete_events(
         - ``kind`` (str): ``'sample'`` or ``'bolus_feed'``
         - ``dV`` (float): signed volume change (positive = add, negative = remove)
         - ``Cin`` (jnp.ndarray | None): feed composition aligned with
-          ``mb.species_names`` (None for sampling)
+          ``mb.reactor_component_state_names`` (None for sampling)
         - ``source`` (str): name of the originating VolumeChange
     """
     events: List[Dict[str, Any]] = []
-    n_sp = len(mb.species_names)
+    n_reactor = mb.n_reactor_states
 
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.is_continuous:
@@ -561,9 +643,9 @@ def extract_discrete_events(
                 continue
 
             if dV_event > 0 and isinstance(vc, FeedVolumeChange):
-                Cin_event = jnp.zeros(n_sp)
+                Cin_event = jnp.zeros(n_reactor)
                 if vc.feed_medium is not None:
-                    for j, sp_name in enumerate(mb.species_names):
+                    for j, sp_name in enumerate(mb.reactor_component_state_names):
                         if sp_name in vc.feed_medium.components:
                             conc = vc.feed_medium.components[sp_name].concentration
                             if isinstance(conc, StaticVariable):
@@ -621,7 +703,7 @@ def build_conc_splines(
     """
     conc_splines: Dict[str, Any] = {}
 
-    for sp_name in mb.species_names:
+    for sp_name in mb.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
         if (
             comp.interpolator is not None
@@ -640,6 +722,24 @@ def build_conc_splines(
                 jnp.asarray(ts.values, dtype=float),
             )
 
+    for pv_name in mb.process_variable_state_names:
+        pv = process.process_variables[pv_name]
+        if pv.interpolator is not None:
+            conc_splines[pv_name] = build_interpax_spline(pv.interpolator)[0][0]
+        elif isinstance(pv.values, TimeSeries):
+            conc_splines[pv_name] = make_interpax_spline(
+                jnp.asarray(pv.values.times, dtype=float),
+                jnp.asarray(pv.values.values, dtype=float),
+            )
+        else:
+            t_start = float(process.time_axis.start)
+            t_end = float(process.time_axis.end)
+            v = float(pv.values.value)
+            conc_splines[pv_name] = make_interpax_spline(
+                jnp.array([t_start, t_end], dtype=float),
+                jnp.array([v, v], dtype=float),
+            )
+
     return conc_splines
 
 
@@ -653,6 +753,10 @@ def build_q_func(
     ctrl: ControlSplines,
     mb: RhsOde,
     conc_splines: Dict[str, Any],
+    *,
+    q_state_indices: Optional[List[int]] = None,
+    r_state_indices: Optional[List[int]] = None,
+    r_func: Optional[Callable] = None,
 ) -> Callable:
     """Build an analytical, JIT-compilable ``q(t)`` callable.
 
@@ -682,9 +786,9 @@ def build_q_func(
     Returns
     -------
     Callable
-        ``q_func(t) -> jnp.ndarray`` of shape ``(n_species,)``.
+        ``q_func(t) -> jnp.ndarray`` of shape ``(n_reactor_states,)``.
     """
-    n_sp = mb.q_size
+    n_reactor = mb.n_reactor_states
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
 
@@ -735,11 +839,50 @@ def build_q_func(
     Cin = jnp.array(mb.Cin)
     Cin_mod = jnp.array(mb.Cin_modeled)
 
+    q_state_indices = list(q_state_indices or [])
+    r_state_indices = list(r_state_indices or [])
+
+    if len(q_state_indices) == 0 and len(r_state_indices) == 0:
+        q_idx = list(range(n_reactor))
+        r_idx = []
+    else:
+        if len(q_state_indices) == 0 or len(r_state_indices) == 0:
+            raise ValueError(
+                "q_state_indices and r_state_indices must both be provided "
+                "when using runtime q/r partitioning."
+            )
+        q_idx = sorted(set(int(i) for i in q_state_indices))
+        r_idx = sorted(set(int(i) for i in r_state_indices))
+        if any(i < 0 or i >= n_reactor for i in q_idx + r_idx):
+            raise ValueError(
+                f"q/r indices must be in [0, {n_reactor - 1}] for reactor states."
+            )
+        overlap = set(q_idx).intersection(r_idx)
+        if overlap and r_func is None:
+            raise ValueError(
+                "Overlapping q/r state indices require r_func(t) so r can be "
+                "subtracted during q inversion."
+            )
+        if not overlap and set(q_idx).union(r_idx) != set(range(n_reactor)):
+            raise ValueError(
+                "For non-overlapping q/r partitioning, q_state_indices and "
+                "r_state_indices must together cover all reactor states."
+            )
+
+    q_mask = jnp.zeros(n_reactor, dtype=bool).at[jnp.array(q_idx, dtype=int)].set(True)
+    overlap_mask = jnp.zeros(n_reactor, dtype=bool)
+    if len(r_idx) > 0:
+        overlap_idx = sorted(set(q_idx).intersection(r_idx))
+        if overlap_idx:
+            overlap_mask = overlap_mask.at[jnp.array(overlap_idx, dtype=int)].set(True)
+
     # -- Per-species concentration spline evaluators --
     # Uses original BacktransformSpline evaluations (exact piecewise-linear fc)
     # to avoid Gibbs oscillation from cubic resampling of step-like fc data.
-    conc_evals = [conc_splines[s] for s in mb.species_names]
-    deriv_evals = [conc_splines[s].derivative() for s in mb.species_names]
+    conc_evals = [conc_splines[s] for s in mb.reactor_component_state_names]
+    deriv_evals = [
+        conc_splines[s].derivative() for s in mb.reactor_component_state_names
+    ]
 
     biomass_idx = mb.biomass_idx
     intra_idx = mb.intracellular_indices
@@ -748,11 +891,11 @@ def build_q_func(
 
     def q_func(t):
         # Concentrations — per-species spline evaluation
-        c_t = jnp.stack([conc_evals[i](t) for i in range(n_sp)])
+        c_t = jnp.stack([conc_evals[i](t) for i in range(n_reactor)])
         c_t = jnp.maximum(c_t, 0.0)
 
         # Concentration derivatives (analytical) — per-species
-        dc_dt = jnp.stack([deriv_evals[i](t) for i in range(n_sp)])
+        dc_dt = jnp.stack([deriv_evals[i](t) for i in range(n_reactor)])
 
         # Volume: V0 + continuous flows + discrete events
         V_t = V0
@@ -773,7 +916,7 @@ def build_q_func(
             f_mod = jnp.zeros(0)
 
         # Feed term: sum_k (f_k / V) * (C_in_k - c)
-        feed_term = jnp.zeros(n_sp)
+        feed_term = jnp.zeros(n_reactor)
         if u_flow_size > 0:
             feed_term = feed_term + jnp.sum(
                 (u_flow[:, None] / V_t) * (Cin - c_t[None, :]), axis=0
@@ -789,7 +932,13 @@ def build_q_func(
             X_active = X_active - jnp.sum(c_t[jnp.array(intra_idx)])
         X_active = jnp.maximum(X_active, jnp.array(1e-6))
 
-        return (dc_dt - feed_term) / X_active
+        r_reactor = jnp.zeros(n_reactor)
+        if r_func is not None:
+            r_full = jnp.asarray(r_func(t), dtype=float)
+            r_reactor = r_full[:n_reactor]
+
+        q_all = (dc_dt - feed_term - jnp.where(overlap_mask, r_reactor, 0.0)) / X_active
+        return jnp.where(q_mask, q_all, 0.0)
 
     return q_func
 
@@ -800,6 +949,10 @@ def estimate_specific_rates(
     mb: RhsOde,
     conc_splines: Dict[str, Any],
     t_eval: jnp.ndarray,
+    *,
+    q_state_indices: Optional[List[int]] = None,
+    r_state_indices: Optional[List[int]] = None,
+    r_func: Optional[Callable] = None,
 ) -> jnp.ndarray:
     """Estimate specific rates q(t) via ODE RHS inversion.
 
@@ -822,11 +975,19 @@ def estimate_specific_rates(
 
     Returns
     -------
-    jnp.ndarray, shape (len(t_eval), n_species)
+    jnp.ndarray, shape (len(t_eval), n_reactor_states)
         Estimated specific rates at each time point.
     """
     t_eval = jnp.asarray(t_eval, dtype=float)
-    q_func = build_q_func(process, ctrl, mb, conc_splines)
+    q_func = build_q_func(
+        process,
+        ctrl,
+        mb,
+        conc_splines,
+        q_state_indices=q_state_indices,
+        r_state_indices=r_state_indices,
+        r_func=r_func,
+    )
     q_func_jit = eqx.filter_jit(q_func)
     return jax.vmap(q_func_jit)(t_eval)
 
@@ -836,7 +997,14 @@ def estimate_specific_rates(
 # ---------------------------------------------------------------------------
 
 
-def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
+def _build_segment_rhs(
+    mb,
+    ctrl,
+    q_func,
+    batched_mod,
+    conc_eval_list=None,
+    r_func: Optional[Callable] = None,
+):
     """Build the ODE right-hand side function for a segment.
 
     Parameters
@@ -861,6 +1029,11 @@ def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
         q = q_func(t)
+        r = (
+            jnp.asarray(r_func(t), dtype=float)
+            if r_func is not None
+            else jnp.zeros(mb.r_size)
+        )
 
         # Modeled flow rates via batched PPoly derivative
         if batched_mod is not None:
@@ -875,46 +1048,63 @@ def _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list=None):
                 X_active = X_active - jnp.sum(all_conc[intra_idx])
             X_active = jnp.maximum(X_active, 1e-6)
 
-            c_species = state[: mb.q_size]
-            V = state[mb.q_size]
+            n_reactor = mb.n_reactor_states
+            n_non_volume = mb.r_size
+            c_reactor = state[:n_reactor]
+            c_pv = (
+                state[n_reactor:n_non_volume]
+                if mb.n_pv_states > 0
+                else jnp.zeros(0, dtype=state.dtype)
+            )
+            V = state[mb.volume_idx]
 
             reaction = q * X_active
 
-            feed_term = jnp.zeros(mb.q_size)
+            feed_term = jnp.zeros(n_reactor)
             dV = jnp.zeros(())
             if mb.u_flow_size > 0:
-                feed_contrib = u_flow[:, None] * (mb.Cin - c_species[None, :])
+                feed_contrib = u_flow[:, None] * (mb.Cin - c_reactor[None, :])
                 feed_term = feed_term + jnp.sum(feed_contrib, axis=0) / V
                 dV = dV + jnp.sum(u_flow)
             if mb.f_modeled_size > 0:
-                mod_contrib = f_mod[:, None] * (mb.Cin_modeled - c_species[None, :])
+                mod_contrib = f_mod[:, None] * (mb.Cin_modeled - c_reactor[None, :])
                 feed_term = feed_term + jnp.sum(mod_contrib, axis=0) / V
                 dV = dV + jnp.sum(f_mod)
 
-            dc_species = reaction + feed_term
-            return jnp.append(dc_species, dV)
+            r_reactor = r[:n_reactor]
+            r_pv = r[n_reactor:]
+            if mb.n_pv_states > 0 and len(mb.static_pv_indices) > 0:
+                static_idx = jnp.array(mb.static_pv_indices, dtype=int)
+                r_pv = r_pv.at[static_idx].set(0.0)
+            dc_reactor = reaction + feed_term + r_reactor
+            dc_pv = c_pv * 0.0 + r_pv
+            return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
         else:
-            return mb(state, q, u_flow, f_mod)
+            return mb(state, q, u_flow, f_mod, r)
 
     return rhs
 
 
 def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> jnp.ndarray:
-    """Compute per-species scale factors for numerical conditioning.
-
-    Returns an array of shape (n_species,) where each entry is the
-    max absolute concentration for that species (clamped to >= 1.0 so
-    species with small values are not artificially inflated).
-    """
-    scales = jnp.ones(mb.q_size)
-    for i, sp_name in enumerate(mb.species_names):
+    """Compute non-volume state scale factors for numerical conditioning."""
+    scales = jnp.ones(mb.r_size)
+    for i, sp_name in enumerate(mb.reactor_component_state_names):
         vals = jnp.asarray(
-            process.reactor_medium.components[sp_name].concentration.values,
-            dtype=float,
+            process.reactor_medium.components[sp_name].concentration.values, dtype=float
         )
         s = float(jnp.max(jnp.abs(vals)))
         if s > 1.0:
             scales = scales.at[i].set(s)
+    offset = mb.n_reactor_states
+    for j, pv_name in enumerate(mb.process_variable_state_names):
+        pv = process.process_variables[pv_name]
+        if isinstance(pv.values, TimeSeries):
+            vals = jnp.asarray(pv.values.values, dtype=float)
+            s = float(jnp.max(jnp.abs(vals)))
+        else:
+            s = abs(float(pv.values.value))
+        if s > 1.0:
+            scales = scales.at[offset + j].set(s)
     return scales
 
 
@@ -964,8 +1154,10 @@ def _build_pseudobatch_transforms(
       c  = (c* + fc(t)) / adf(t)
       dc*/dt = adf * dc/dt + d(adf)/dt * c - d(fc)/dt
     """
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
     transforms: List[Dict[str, Any]] = []
-    for sp_name in mb.species_names:
+    for sp_name in mb.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
         rep = comp.interpolator
         tr = (
@@ -974,7 +1166,16 @@ def _build_pseudobatch_transforms(
             else None
         )
         if tr is None:
-            transforms.append({"kind": "identity"})
+            transforms.append(
+                {
+                    "kind": "identity",
+                    "adf_t": jnp.asarray([t_start, t_end], dtype=float),
+                    "adf_v": jnp.asarray([1.0, 1.0], dtype=float),
+                    "fc_t": jnp.asarray([t_start, t_end], dtype=float),
+                    "fc_v": jnp.asarray([0.0, 0.0], dtype=float),
+                    "fc_interp": "linear",
+                }
+            )
             continue
 
         adf_t = jnp.asarray(tr["adf_times"], dtype=float)
@@ -1008,6 +1209,18 @@ def _build_pseudobatch_transforms(
                 fc_slopes = jnp.where(fc_dt < 0.1 * median_dt, 0.0, fc_slopes)
                 transforms[-1]["fc_slopes"] = fc_slopes
 
+    for _ in mb.process_variable_state_names:
+        transforms.append(
+            {
+                "kind": "identity",
+                "adf_t": jnp.asarray([t_start, t_end], dtype=float),
+                "adf_v": jnp.asarray([1.0, 1.0], dtype=float),
+                "fc_t": jnp.asarray([t_start, t_end], dtype=float),
+                "fc_v": jnp.asarray([0.0, 0.0], dtype=float),
+                "fc_interp": "linear",
+            }
+        )
+
     return transforms
 
 
@@ -1019,6 +1232,7 @@ def integrate_process_pseudospace(
     t_eval: jnp.ndarray,
     *,
     conc_splines: Optional[Dict[str, Any]] = None,
+    r_func: Optional[Callable] = None,
     rtol: float = 1e-6,
     atol: float = 1e-8,
     use_jump_ts: bool = True,
@@ -1028,23 +1242,14 @@ def integrate_process_pseudospace(
     t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
-    n_sp = mb.q_size
+    n_reactor = mb.n_reactor_states
+    n_non_volume = mb.r_size
 
     transforms = _build_pseudobatch_transforms(process, mb)
 
-    # Shared ADF is process-level and identical across species in pseudobatch.
-    adf_t = None
-    adf_v = None
-    for tr in transforms:
-        if tr["kind"] == "pb":
-            adf_t = tr["adf_t"]
-            adf_v = tr["adf_v"]
-            break
-    if adf_t is None:
-        adf_t = jnp.asarray([t_start, t_end], dtype=float)
-        adf_v = jnp.asarray([1.0, 1.0], dtype=float)
-
-    # Per-species feed-correction representations.
+    # Per-state adf/feed-correction representations.
+    adf_t_list: List[jnp.ndarray] = []
+    adf_v_list: List[jnp.ndarray] = []
     fc_is_cubic: List[bool] = []
     fc_cubic: List[Optional[interpax.CubicSpline]] = []
     fc_cubic_deriv: List[Optional[interpax.PPoly]] = []
@@ -1052,28 +1257,35 @@ def integrate_process_pseudospace(
     fc_v_list: List[jnp.ndarray] = []
     for tr in transforms:
         if tr["kind"] == "pb" and tr.get("fc_interp") == "cubic":
+            adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
+            adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
             fc_is_cubic.append(True)
             fc_cubic.append(tr["fc_spline"])
             fc_cubic_deriv.append(tr["fc_spline"].derivative())
             fc_t_list.append(jnp.asarray([t_start, t_end], dtype=float))
             fc_v_list.append(jnp.asarray([0.0, 0.0], dtype=float))
         elif tr["kind"] == "pb":
+            adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
+            adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
             fc_is_cubic.append(False)
             fc_cubic.append(None)
             fc_cubic_deriv.append(None)
             fc_t_list.append(jnp.asarray(tr["fc_t"], dtype=float))
             fc_v_list.append(jnp.asarray(tr["fc_v"], dtype=float))
         else:
+            adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
+            adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
             fc_is_cubic.append(False)
             fc_cubic.append(None)
             fc_cubic_deriv.append(None)
-            fc_t_list.append(jnp.asarray([t_start, t_end], dtype=float))
-            fc_v_list.append(jnp.asarray([0.0, 0.0], dtype=float))
+            fc_t_list.append(jnp.asarray(tr["fc_t"], dtype=float))
+            fc_v_list.append(jnp.asarray(tr["fc_v"], dtype=float))
 
     if conc_splines is not None:
-        bio_spline = conc_splines[mb.species_names[mb.biomass_idx]]
+        bio_spline = conc_splines[mb.reactor_component_state_names[mb.biomass_idx]]
         intra_splines = [
-            conc_splines[mb.species_names[i]] for i in mb.intracellular_indices
+            conc_splines[mb.reactor_component_state_names[i]]
+            for i in mb.intracellular_indices
         ]
     else:
         bio_spline = None
@@ -1119,26 +1331,43 @@ def integrate_process_pseudospace(
     V0 = jnp.array(float(process.volume.initial_volume))
 
     # Initial state: [c*_0, V_cont_0], where c*_0 == c_0.
-    c0 = jnp.array(
+    c0_reactor = jnp.array(
         [
             float(
                 jnp.asarray(
                     process.reactor_medium.components[s].concentration.values[0]
                 )
             )
-            for s in mb.species_names
+            for s in mb.reactor_component_state_names
         ]
     )
-    c0 = jnp.maximum(c0, 0.0)
+    c0_pv = jnp.array(
+        [
+            float(jnp.asarray(pv.values.values[0]))
+            if isinstance(pv.values, TimeSeries)
+            else float(pv.values.value)
+            for pv_name, pv in process.process_variables.items()
+            if pv_name in mb.process_variable_state_names
+        ],
+        dtype=float,
+    )
+    c0 = jnp.concatenate([c0_reactor, c0_pv])
+    c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
     y0 = jnp.append(c0, jnp.array(0.0))
 
     scales = _compute_scale_factors(process, mb)
     state_scale = jnp.append(jnp.array(scales), 1.0)
 
+    def _eval_adf(t):
+        adf_vals = []
+        for i in range(n_non_volume):
+            adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
+        return jnp.stack(adf_vals)
+
     def _eval_fc_and_dfc(t):
         fc_vals = []
         dfc_vals = []
-        for i in range(n_sp):
+        for i in range(n_non_volume):
             if fc_is_cubic[i]:
                 fc_i = fc_cubic[i](t)
                 dfc_i = fc_cubic_deriv[i](t)
@@ -1158,14 +1387,17 @@ def integrate_process_pseudospace(
         return jnp.stack(fc_vals), jnp.stack(dfc_vals)
 
     def rhs_cstar(t, state, args):
-        c_star = state[:n_sp]
-        V_cont = state[n_sp]
+        c_star = state[:n_non_volume]
+        V_cont = state[n_non_volume]
 
-        adf = jnp.interp(t, adf_t, adf_v)
-        adf = jnp.maximum(adf, 1e-12)
+        adf = jnp.maximum(_eval_adf(t), 1e-12)
         fc, dfc = _eval_fc_and_dfc(t)
         c = (c_star + fc) / adf
-        c = jnp.maximum(c, 0.0)
+        c_reactor = jnp.maximum(c[:n_reactor], 0.0)
+        if mb.n_pv_states > 0:
+            c_pv = c[n_reactor:]
+        else:
+            c_pv = jnp.zeros(0, dtype=c.dtype)
 
         V_disc = jnp.zeros(())
         if ev_times is not None:
@@ -1176,23 +1408,28 @@ def integrate_process_pseudospace(
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
         q = q_func(t)
+        r = (
+            jnp.asarray(r_func(t), dtype=float)
+            if r_func is not None
+            else jnp.zeros(mb.r_size)
+        )
 
         if bio_spline is not None:
             X_active = bio_spline(t)
             for spl in intra_splines:
                 X_active = X_active - spl(t)
         else:
-            X_active = c[mb.biomass_idx]
+            X_active = c_reactor[mb.biomass_idx]
             for i in mb.intracellular_indices:
-                X_active = X_active - c[i]
+                X_active = X_active - c_reactor[i]
         X_active = jnp.maximum(X_active, 1e-6)
 
         reaction = q * X_active
-        feed_term = jnp.zeros(n_sp)
+        feed_term = jnp.zeros(n_reactor)
         dV_cont = jnp.zeros(())
         if mb.u_flow_size > 0:
             feed_term = feed_term + jnp.sum(
-                (u_flow[:, None] / V) * (Cin - c[None, :]), axis=0
+                (u_flow[:, None] / V) * (Cin - c_reactor[None, :]), axis=0
             )
             dV_cont = dV_cont + jnp.sum(u_flow)
         if mb.f_modeled_size > 0:
@@ -1202,11 +1439,18 @@ def integrate_process_pseudospace(
                 else jnp.zeros(mb.f_modeled_size)
             )
             feed_term = feed_term + jnp.sum(
-                (f_mod[:, None] / V) * (Cin_mod - c[None, :]), axis=0
+                (f_mod[:, None] / V) * (Cin_mod - c_reactor[None, :]), axis=0
             )
             dV_cont = dV_cont + jnp.sum(f_mod)
 
-        dc = reaction + feed_term
+        r_reactor = r[:n_reactor]
+        r_pv = r[n_reactor:]
+        if mb.n_pv_states > 0 and len(mb.static_pv_indices) > 0:
+            static_idx = jnp.array(mb.static_pv_indices, dtype=int)
+            r_pv = r_pv.at[static_idx].set(0.0)
+        dc_reactor = reaction + feed_term + r_reactor
+        dc_pv = c_pv * 0.0 + r_pv
+        dc = jnp.concatenate([dc_reactor, dc_pv])
         dc_star = adf * dc - dfc
         return jnp.append(dc_star, dV_cont)
 
@@ -1236,13 +1480,13 @@ def integrate_process_pseudospace(
 
     sol = _solve(t_eval)
     ys = sol.ys * state_scale[None, :]
-    c_star_out = ys[:, :n_sp]
-    V_cont_out = ys[:, n_sp]
+    c_star_out = ys[:, :n_non_volume]
+    V_cont_out = ys[:, n_non_volume]
 
-    adf_out = jnp.interp(t_eval, adf_t, adf_v)
+    adf_out = jax.vmap(_eval_adf)(t_eval)
     fc_out, _ = jax.vmap(_eval_fc_and_dfc)(t_eval)
-    c_out = (c_star_out + fc_out) / jnp.maximum(adf_out[:, None], 1e-12)
-    c_out = jnp.maximum(c_out, 0.0)
+    c_out = (c_star_out + fc_out) / jnp.maximum(adf_out, 1e-12)
+    c_out = c_out.at[:, :n_reactor].set(jnp.maximum(c_out[:, :n_reactor], 0.0))
 
     if ev_times is not None:
         idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="right"))(t_eval)
@@ -1268,6 +1512,7 @@ def integrate_process(
     t_eval: jnp.ndarray,
     *,
     conc_splines: Optional[Dict[str, Any]] = None,
+    r_func: Optional[Callable] = None,
     rtol: float = 1e-4,
     atol: float = 1e-6,
     max_steps: int = 16384,
@@ -1295,11 +1540,11 @@ def integrate_process(
         :class:`RhsOde` module.
     q_func:
         Callable ``q_func(t) -> jnp.ndarray`` returning specific rates
-        aligned with ``mb.species_names``.
+        aligned with ``mb.reactor_component_state_names``.
     t_eval:
         1-D array of time points at which to record the solution.
     conc_splines:
-        Optional dict mapping species name → callable spline.  When
+        Optional dict mapping reactor-component name → callable spline.  When
         provided, the ODE RHS uses the spline-evaluated biomass (and
         intracellular) concentrations for computing ``X_active`` instead
         of the ODE state.  This prevents exponential error amplification
@@ -1313,19 +1558,20 @@ def integrate_process(
     -------
     dict
         ``{'t': jnp.ndarray, 'c': jnp.ndarray, 'V': jnp.ndarray}``
-        where ``c`` has shape ``(len(t_eval), n_species)`` and ``V`` has
-        shape ``(len(t_eval),)``.
+        where ``c`` has shape ``(len(t_eval), n_non_volume_states)`` and
+        ``V`` has shape ``(len(t_eval),)``.
     """
     t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
-    n_sp = mb.q_size
+    n_reactor = mb.n_reactor_states
+    n_non_volume = mb.r_size
 
-    # Per-species scale factors for numerical conditioning
+    # Per-state scale factors for numerical conditioning
     scales = _compute_scale_factors(process, mb)
-    scale_vec = jnp.array(scales)  # (n_sp,)
+    scale_vec = jnp.array(scales)  # (n_non_volume,)
     state_scale = jnp.append(scale_vec, 1.0)  # [scales..., 1.0]
-    state_dim = n_sp + 1
+    state_dim = n_non_volume + 1
 
     # Build modeled flow splines (batched)
     cum_splines_mod_list = []
@@ -1358,28 +1604,46 @@ def integrate_process(
         event_lookup.setdefault(ev["t"], []).append(ev)
 
     # Initial state (in original coordinates)
-    c0 = jnp.array(
+    c0_reactor = jnp.array(
         [
             float(
                 jnp.asarray(
                     process.reactor_medium.components[s].concentration.values[0]
                 )
             )
-            for s in mb.species_names
+            for s in mb.reactor_component_state_names
         ]
     )
-    c0 = jnp.maximum(c0, 0.0)
+    c0_pv = jnp.array(
+        [
+            float(jnp.asarray(pv.values.values[0]))
+            if isinstance(pv.values, TimeSeries)
+            else float(pv.values.value)
+            for pv_name, pv in process.process_variables.items()
+            if pv_name in mb.process_variable_state_names
+        ],
+        dtype=float,
+    )
+    c0 = jnp.concatenate([c0_reactor, c0_pv])
+    c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
     V0 = float(process.volume.initial_volume)
 
     # Build per-species concentration spline evaluators for X_active
     # (avoids cubic resampling of piecewise-linear fc in batched approach)
     if conc_splines is not None:
-        conc_eval_list = [conc_splines[s] for s in mb.species_names]
+        conc_eval_list = [conc_splines[s] for s in mb.reactor_component_state_names]
     else:
         conc_eval_list = None
 
     # Build RHS in original coordinates, then wrap for normalized state
-    rhs_original = _build_segment_rhs(mb, ctrl, q_func, batched_mod, conc_eval_list)
+    rhs_original = _build_segment_rhs(
+        mb,
+        ctrl,
+        q_func,
+        batched_mod,
+        conc_eval_list,
+        r_func=r_func,
+    )
 
     def rhs_normalized(t, state_norm, args):
         state_orig = state_norm * state_scale
@@ -1442,7 +1706,7 @@ def integrate_process(
     ev_n_arr = jnp.zeros(n_seg, dtype=jnp.int32)
     ev_dV_arr = jnp.zeros((n_seg, max_ev))
     ev_is_bolus_arr = jnp.zeros((n_seg, max_ev), dtype=bool)
-    ev_Cin_arr = jnp.zeros((n_seg, max_ev, n_sp))
+    ev_Cin_arr = jnp.zeros((n_seg, max_ev, n_reactor))
 
     for i in range(n_seg - 1):
         evs = event_lookup.get(boundaries[i + 1], [])
@@ -1495,14 +1759,22 @@ def integrate_process(
                 dV = e_dV[j]
                 is_bolus = e_bolus[j]
                 Cin = e_Cin[j]
-                c = state[:n_sp]
-                V = state[n_sp]
+                c_reactor = state[:n_reactor]
+                c_pv = (
+                    state[n_reactor:n_non_volume]
+                    if mb.n_pv_states > 0
+                    else jnp.zeros(0, dtype=state.dtype)
+                )
+                V = state[mb.volume_idx]
                 V_new = V + dV
-                c_bolus = (c * V + Cin * dV) / jnp.maximum(V_new, 1e-10)
-                c_new = jnp.where(is_bolus, c_bolus, c)
+                c_reactor_bolus = (c_reactor * V + Cin * dV) / jnp.maximum(V_new, 1e-10)
+                c_reactor_new = jnp.where(is_bolus, c_reactor_bolus, c_reactor)
                 V_new = jnp.maximum(V_new, 1e-10)
-                c_new = jnp.maximum(c_new, 0.0)
-                new_state = jnp.append(c_new, V_new)
+                c_reactor_new = jnp.maximum(c_reactor_new, 0.0)
+                new_state = jnp.append(
+                    jnp.append(c_reactor_new, c_pv),
+                    V_new,
+                )
                 active = j < n_ev
                 return jnp.where(active, new_state, state)
 
@@ -1545,8 +1817,9 @@ def integrate_process(
         n_valid = seg_t_valid_len[seg_idx]
         ys_seg = all_ys_orig[seg_idx, :n_valid, :]
 
-        c_seg = jnp.maximum(ys_seg[:, :n_sp], 0.0)
-        V_seg = jnp.maximum(ys_seg[:, n_sp], 1e-10)
+        c_seg = ys_seg[:, :n_non_volume]
+        c_seg = c_seg.at[:, :n_reactor].set(jnp.maximum(c_seg[:, :n_reactor], 0.0))
+        V_seg = jnp.maximum(ys_seg[:, mb.volume_idx], 1e-10)
         t_seg = seg_t_arrays[seg_idx]
 
         # Skip last point of non-final segments to avoid duplication
