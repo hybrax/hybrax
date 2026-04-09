@@ -133,6 +133,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Learning rate (overridden by build_learning_rate hook in custom.py).",
     )
     train_parser.add_argument(
+        "--grad-clip-norm",
+        type=float,
+        default=1000.0,
+        help="Global gradient-norm clipping threshold; 0 disables clipping.",
+    )
+    train_parser.add_argument(
         "--seed",
         type=int,
         default=0,
@@ -264,6 +270,7 @@ def _handle_train(args: argparse.Namespace) -> int:
         batch_seed=None if args.batch_seed is None else int(args.batch_seed),
         optimizer_name=str(args.optimizer),
         learning_rate=float(args.learning_rate),
+        grad_clip_norm=float(args.grad_clip_norm),
         seed=int(args.seed),
         log_every=int(args.log_every),
         solver_max_steps=int(args.solver_max_steps),

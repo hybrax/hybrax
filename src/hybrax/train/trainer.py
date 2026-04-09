@@ -212,12 +212,17 @@ def single_process_measurement_loss(
 
 
 def _build_optimizer(
-    optimizer_name: str, learning_rate
+    optimizer_name: str,
+    learning_rate,
+    *,
+    grad_clip_norm: float = 1000.0,
 ) -> optax.GradientTransformation:
     # learning_rate can be a float or an optax Schedule
     if isinstance(learning_rate, (int, float)):
         if float(learning_rate) <= 0.0:
             raise ValueError("learning_rate must be positive")
+    if float(grad_clip_norm) < 0.0:
+        raise ValueError("grad_clip_norm must be non-negative")
     name = str(optimizer_name)
     if name == "adam":
         base = optax.adam(learning_rate)
@@ -225,15 +230,14 @@ def _build_optimizer(
         base = optax.sgd(learning_rate)
     else:
         raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
-    # zero_nans handles ODE-solver failures (rare); clip_by_global_norm is the
-    # safety net against blowups in the early epochs of neural-ODE training.
-    # Bound 1000 is generous enough to leave normal updates untouched but
-    # bounds catastrophic gradient explosions.
-    return optax.chain(
-        optax.zero_nans(),
-        optax.clip_by_global_norm(1000.0),
-        base,
-    )
+    # zero_nans handles ODE-solver failures (rare); optional
+    # clip_by_global_norm is the safety net against blowups in the early epochs
+    # of neural-ODE training.
+    transforms = [optax.zero_nans()]
+    if float(grad_clip_norm) > 0.0:
+        transforms.append(optax.clip_by_global_norm(float(grad_clip_norm)))
+    transforms.append(base)
+    return optax.chain(*transforms)
 
 
 def single_process_train_step(

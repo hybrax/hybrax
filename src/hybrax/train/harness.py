@@ -144,6 +144,7 @@ class TrainHarnessConfig:
     batch_seed: int | None = None
     optimizer_name: str = "adam"
     learning_rate: Any = 1e-3
+    grad_clip_norm: float = 1000.0
     seed: int = 0
     log_every: int = 10
     solver_max_steps: int = 2048
@@ -216,6 +217,8 @@ def _validate_batching_config(
         raise ValueError("steps must be positive")
     if isinstance(config.learning_rate, (int, float)) and config.learning_rate <= 0.0:
         raise ValueError("learning_rate must be positive")
+    if config.grad_clip_norm < 0.0:
+        raise ValueError("grad_clip_norm must be non-negative")
     if config.log_every <= 0:
         raise ValueError("log_every must be positive")
     if str(config.optimizer_name) not in {"adam", "sgd"}:
@@ -420,7 +423,11 @@ def train_collection(
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
     trainable_params, trainable_static = partition_trainable(reaction_module)
-    optimizer = _build_optimizer(cfg.optimizer_name, cfg.learning_rate)
+    optimizer = _build_optimizer(
+        cfg.optimizer_name,
+        cfg.learning_rate,
+        grad_clip_norm=float(cfg.grad_clip_norm),
+    )
     optimizer_state = optimizer.init(trainable_params)
     train_step_input_signature = summarize_train_step_input_signature(
         wrapper,
@@ -505,7 +512,7 @@ def train_collection(
 
     logger.info(
         "train harness setup: processes=%s, targets=%s source=%s steps=%d "
-        "batch_size=%d optimizer=%s lr=%s",
+        "batch_size=%d optimizer=%s lr=%s grad_clip=%s",
         list(selected_processes),
         list(store.target_names),
         store.target_source,
@@ -513,6 +520,7 @@ def train_collection(
         effective_batch_size,
         cfg.optimizer_name,
         cfg.learning_rate,
+        cfg.grad_clip_norm,
     )
 
     logger.info("JIT compiling train step (warmup)...")
@@ -651,6 +659,7 @@ def train_from_collection(
         batch_seed=cfg.batch_seed,
         optimizer_name=cfg.optimizer_name,
         learning_rate=cfg.learning_rate,
+        grad_clip_norm=cfg.grad_clip_norm,
         seed=cfg.seed,
         log_every=cfg.log_every,
         solver_max_steps=cfg.solver_max_steps,
@@ -679,6 +688,7 @@ def train_from_collection(
             batch_seed=effective_cfg.batch_seed,
             optimizer_name=effective_cfg.optimizer_name,
             learning_rate=lr,
+            grad_clip_norm=effective_cfg.grad_clip_norm,
             seed=effective_cfg.seed,
             log_every=effective_cfg.log_every,
             solver_max_steps=effective_cfg.solver_max_steps,
