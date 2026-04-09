@@ -52,6 +52,7 @@ to compile them::
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import diffrax
@@ -943,6 +944,39 @@ def build_q_func(
     return q_func
 
 
+def build_rates_func(
+    process: BioProcess,
+    ctrl: ControlSplines,
+    mb: RhsOde,
+    conc_splines: Dict[str, Any],
+    *,
+    q_state_indices: Optional[List[int]] = None,
+    r_state_indices: Optional[List[int]] = None,
+    r_func: Optional[Callable] = None,
+) -> Callable:
+    """Build a ``rates_func(t, state, controls) -> (q, r)`` from splines."""
+    q_only = build_q_func(
+        process,
+        ctrl,
+        mb,
+        conc_splines,
+        q_state_indices=q_state_indices,
+        r_state_indices=r_state_indices,
+        r_func=r_func,
+    )
+
+    def rates_func(t, state, controls):
+        del state, controls
+        q = q_only(t)
+        if r_func is None:
+            r = jnp.zeros(mb.r_size, dtype=float)
+        else:
+            r = jnp.asarray(r_func(t), dtype=float)
+        return q, r
+
+    return rates_func
+
+
 def estimate_specific_rates(
     process: BioProcess,
     ctrl: ControlSplines,
@@ -997,13 +1031,65 @@ def estimate_specific_rates(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_rates_func(
+    mb: "RhsOde",
+    *,
+    rates_func: Optional[Callable],
+    q_func: Optional[Callable],
+    r_func: Optional[Callable],
+) -> Callable:
+    """Resolve the active rates callable.
+
+    Preferred API:
+        ``rates_func(t, state, controls) -> (q, r)``
+    where ``q`` has shape ``(mb.q_size,)`` and ``r`` has shape ``(mb.r_size,)``.
+
+    Legacy API remains supported for compatibility:
+        ``q_func(t) -> q`` with optional ``r_func(t) -> r``.
+    """
+    if rates_func is not None and (q_func is not None or r_func is not None):
+        raise ValueError(
+            "Use either rates_func or q_func/r_func, not both at the same time."
+        )
+    if rates_func is not None:
+        return rates_func
+    if q_func is not None:
+        try:
+            sig = inspect.signature(q_func)
+            n_positional = sum(
+                1
+                for p in sig.parameters.values()
+                if p.kind
+                in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)
+            )
+            if n_positional >= 3:
+                return q_func
+        except (ValueError, TypeError):
+            pass
+    if q_func is None:
+        raise ValueError(
+            "No rates function provided. Pass rates_func(t, state, controls), "
+            "or legacy q_func(t)."
+        )
+
+    def _rates_func_from_legacy(t, state, controls):
+        del state, controls
+        q = jnp.asarray(q_func(t), dtype=float)
+        if r_func is None:
+            r = jnp.zeros(mb.r_size, dtype=float)
+        else:
+            r = jnp.asarray(r_func(t), dtype=float)
+        return q, r
+
+    return _rates_func_from_legacy
+
+
 def _build_segment_rhs(
     mb,
     ctrl,
-    q_func,
+    rates_func,
     batched_mod,
     conc_eval_list=None,
-    r_func: Optional[Callable] = None,
 ):
     """Build the ODE right-hand side function for a segment.
 
@@ -1028,12 +1114,7 @@ def _build_segment_rhs(
     def rhs(t, state, args):
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
-        q = q_func(t)
-        r = (
-            jnp.asarray(r_func(t), dtype=float)
-            if r_func is not None
-            else jnp.zeros(mb.r_size)
-        )
+        q, r = rates_func(t, state, u)
 
         # Modeled flow rates via batched PPoly derivative
         if batched_mod is not None:
@@ -1083,6 +1164,28 @@ def _build_segment_rhs(
             return mb(state, q, u_flow, f_mod, r)
 
     return rhs
+
+
+def _validate_rates_output_shapes(
+    mb: "RhsOde",
+    rates_func: Callable,
+    *,
+    t: float,
+    state: jnp.ndarray,
+    controls: jnp.ndarray,
+) -> None:
+    """Validate ``rates_func`` output shapes before JIT solve."""
+    q_probe, r_probe = rates_func(float(t), state, controls)
+    q_probe = jnp.asarray(q_probe, dtype=float)
+    r_probe = jnp.asarray(r_probe, dtype=float)
+    if q_probe.shape != (mb.q_size,):
+        raise ValueError(
+            f"rates_func must return q with shape ({mb.q_size},), got {q_probe.shape}."
+        )
+    if r_probe.shape != (mb.r_size,):
+        raise ValueError(
+            f"rates_func must return r with shape ({mb.r_size},), got {r_probe.shape}."
+        )
 
 
 def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> jnp.ndarray:
@@ -1228,9 +1331,10 @@ def integrate_process_pseudospace(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    q_func: Callable,
+    q_func: Optional[Callable],
     t_eval: jnp.ndarray,
     *,
+    rates_func: Optional[Callable] = None,
     conc_splines: Optional[Dict[str, Any]] = None,
     r_func: Optional[Callable] = None,
     rtol: float = 1e-6,
@@ -1244,6 +1348,12 @@ def integrate_process_pseudospace(
     t_end = float(process.time_axis.end)
     n_reactor = mb.n_reactor_states
     n_non_volume = mb.r_size
+    rates_func_resolved = _resolve_rates_func(
+        mb,
+        rates_func=rates_func,
+        q_func=q_func,
+        r_func=r_func,
+    )
 
     transforms = _build_pseudobatch_transforms(process, mb)
 
@@ -1354,6 +1464,15 @@ def integrate_process_pseudospace(
     c0 = jnp.concatenate([c0_reactor, c0_pv])
     c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
     y0 = jnp.append(c0, jnp.array(0.0))
+    state0_probe = jnp.append(c0, V0)
+    controls0_probe = ctrl(jnp.array(t_start))
+    _validate_rates_output_shapes(
+        mb,
+        rates_func_resolved,
+        t=t_start,
+        state=state0_probe,
+        controls=controls0_probe,
+    )
 
     scales = _compute_scale_factors(process, mb)
     state_scale = jnp.append(jnp.array(scales), 1.0)
@@ -1407,12 +1526,8 @@ def integrate_process_pseudospace(
 
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
-        q = q_func(t)
-        r = (
-            jnp.asarray(r_func(t), dtype=float)
-            if r_func is not None
-            else jnp.zeros(mb.r_size)
-        )
+        state_rates = jnp.append(c, V)
+        q, r = rates_func_resolved(t, state_rates, u)
 
         if bio_spline is not None:
             X_active = bio_spline(t)
@@ -1508,9 +1623,10 @@ def integrate_process(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    q_func: Callable,
+    q_func: Optional[Callable],
     t_eval: jnp.ndarray,
     *,
+    rates_func: Optional[Callable] = None,
     conc_splines: Optional[Dict[str, Any]] = None,
     r_func: Optional[Callable] = None,
     rtol: float = 1e-4,
@@ -1539,8 +1655,13 @@ def integrate_process(
     mb:
         :class:`RhsOde` module.
     q_func:
-        Callable ``q_func(t) -> jnp.ndarray`` returning specific rates
+        Legacy callable ``q_func(t) -> jnp.ndarray`` returning specific rates
         aligned with ``mb.reactor_component_state_names``.
+    rates_func:
+        Preferred callable
+        ``rates_func(t, state, controls) -> tuple[q, r]`` where
+        ``q`` are biomass-specific rates for reactor-component states and
+        ``r`` are physical rates for all non-volume states.
     t_eval:
         1-D array of time points at which to record the solution.
     conc_splines:
@@ -1566,6 +1687,12 @@ def integrate_process(
     t_end = float(process.time_axis.end)
     n_reactor = mb.n_reactor_states
     n_non_volume = mb.r_size
+    rates_func_resolved = _resolve_rates_func(
+        mb,
+        rates_func=rates_func,
+        q_func=q_func,
+        r_func=r_func,
+    )
 
     # Per-state scale factors for numerical conditioning
     scales = _compute_scale_factors(process, mb)
@@ -1627,6 +1754,15 @@ def integrate_process(
     c0 = jnp.concatenate([c0_reactor, c0_pv])
     c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
     V0 = float(process.volume.initial_volume)
+    state0_probe = jnp.append(c0, V0)
+    controls0_probe = ctrl(jnp.array(t_start))
+    _validate_rates_output_shapes(
+        mb,
+        rates_func_resolved,
+        t=t_start,
+        state=state0_probe,
+        controls=controls0_probe,
+    )
 
     # Build per-species concentration spline evaluators for X_active
     # (avoids cubic resampling of piecewise-linear fc in batched approach)
@@ -1639,10 +1775,9 @@ def integrate_process(
     rhs_original = _build_segment_rhs(
         mb,
         ctrl,
-        q_func,
+        rates_func_resolved,
         batched_mod,
         conc_eval_list,
-        r_func=r_func,
     )
 
     def rhs_normalized(t, state_norm, args):

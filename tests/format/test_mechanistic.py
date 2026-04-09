@@ -1533,6 +1533,57 @@ class TestIntegrateProcess:
         assert rmse_X < 1e-3, f"Biomass RMSE = {rmse_X}"
         assert rmse_S < 1e-3, f"Glucose RMSE = {rmse_S}"
 
+    def test_rates_func_can_use_state_argument(self):
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        t_eval = np.linspace(0, 4, 40)
+
+        def rates_func(_t, state, controls):
+            del controls
+            q = jnp.array([0.2 * state[0], 0.0])
+            r = jnp.zeros(mb.r_size)
+            return q, r
+
+        result = integrate_process(process, ctrl, mb, rates_func, t_eval)
+        assert float(result["c"][-1, 0]) > float(result["c"][0, 0])
+
+    def test_rates_func_can_use_controls_argument(self):
+        process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        t_eval = np.linspace(0, 10, 60)
+
+        def rates_from_controls(_t, _state, controls):
+            q = jnp.array([jnp.maximum(controls[0], 0.0), 0.0])
+            r = jnp.zeros(mb.r_size)
+            return q, r
+
+        def zero_rates(_t):
+            return jnp.zeros(mb.q_size)
+
+        out_controls = integrate_process(process, ctrl, mb, rates_from_controls, t_eval)
+        out_zero = integrate_process(process, ctrl, mb, zero_rates, t_eval)
+
+        assert float(out_controls["c"][-1, 0]) > float(out_zero["c"][-1, 0])
+
+    def test_rates_func_conflicts_with_legacy_qr_kwargs(self):
+        process, ctrl, mb, _, _, _ = self._setup_batch_integration()
+        t_eval = np.linspace(0, 2, 5)
+
+        def rates_func(_t, _state, _controls):
+            return jnp.zeros(mb.q_size), jnp.zeros(mb.r_size)
+
+        with pytest.raises(ValueError, match="Use either rates_func or q_func/r_func"):
+            integrate_process(
+                process,
+                ctrl,
+                mb,
+                lambda _t: jnp.zeros(mb.q_size),
+                t_eval,
+                rates_func=rates_func,
+            )
+
     def test_volume_constant_in_batch(self):
         """Volume should stay constant in batch mode."""
         process, ctrl, mb, q_func, _, _ = self._setup_batch_integration()
@@ -1830,6 +1881,28 @@ class TestIntegrateProcess:
         V_ref = jnp.interp(t_eval_coarse, ref["t"], ref["V"])
         max_V_ref_diff = float(jnp.max(jnp.abs(out_coarse["V"] - V_ref)))
         assert max_V_ref_diff < 1e-4
+
+    def test_pseudospace_accepts_rates_func_signature(self):
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        t_eval = jnp.linspace(0.0, 3.0, 21)
+
+        def rates_func(_t, state, controls):
+            del controls
+            q = jnp.array([0.1 + 0.01 * state[0], 0.0])
+            r = jnp.zeros(mb.r_size)
+            return q, r
+
+        out = integrate_process_pseudospace(
+            process=process,
+            ctrl=ctrl,
+            mb=mb,
+            q_func=rates_func,
+            t_eval=t_eval,
+        )
+        assert out["c"].shape[0] == t_eval.shape[0]
+        assert float(out["c"][-1, 0]) > float(out["c"][0, 0])
 
 
 if __name__ == "__main__":
