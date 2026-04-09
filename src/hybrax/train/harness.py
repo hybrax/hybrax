@@ -364,7 +364,7 @@ def train_collection(
     # loss insensitive by ~200x.
     n_y_cols = int(store.y_meas.shape[2])  # n_species + n_modeled_feeds
     _per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
-    for pname in store.process_order:
+    for pname in selected_processes:
         pd = store.get_process(pname)
         y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_y_cols]
         for col in range(n_y_cols):
