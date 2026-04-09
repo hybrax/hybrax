@@ -345,7 +345,10 @@ class HybridOdeWrapper(eqx.Module):
 
         # ---- 5. Un-scale MLP outputs to physical rates ----
         Q = q_scaled * self.q_scale
-        F_modeled = f_scaled * self.f_scale
+        # Modeled feed rates are physical inflows and should not go negative.
+        # Enforce that centrally in bp_train so every custom.py gets the same
+        # constraint automatically.
+        F_modeled = jax.nn.softplus(f_scaled) * self.f_scale
 
         # ---- 6. Mechanistic RHS in physical space ----
         # RhsOde returns [dc_species/dt, dV/dt] where dV/dt = sum(U_flow) +
