@@ -4,13 +4,13 @@ Source: `bpbench/serialization.py`
 
 ## Purpose
 
-Provides JSON-based save/load for the full BPbench data hierarchy. Handles bidirectional conversion between Python dataclass objects and JSON-serializable dicts, including special handling for JAX arrays, `NaN`/`Inf` values, `Interpolator` objects, and `TimeSeries` with optional spline state.
+Provides JSON-based save/load for the full BPbench data hierarchy. Handles bidirectional conversion between Python dataclass objects and JSON-serializable dicts, including special handling for JAX arrays, `NaN`/`Inf` values, `Interpolator` objects, and `TimeSeries` with optional spline state. Supports both plain `.json` and gzipped `.json.gz` files.
 
 ## Design Rationale
 
 - **Why JSON?** Human-readable, language-agnostic, git-diffable, and requires no binary format lock-in. An earlier YAML + HDF5 approach was abandoned in favor of single-file JSON for simplicity and portability.
 - **Why separate dataset and collection APIs?** `BenchmarkDataset` includes the full `CaseStudy` hierarchy with metadata (organism, citation). `BioProcessCollection` is a simpler wrapper for intermediate work (e.g., loading a single case study's processes before assembling into a dataset).
-- **Smart path resolution:** Functions accept either a `.json` file path or a directory path. When given a directory, they read/write `data.json` inside it.
+- **Smart path resolution:** Functions accept either a `.json`/`.json.gz` file path or a directory path. When given a directory, they write `data.json` inside it and load `data.json` or `data.json.gz`.
 
 ## Public API
 
@@ -27,10 +27,10 @@ Provides JSON-based save/load for the full BPbench data hierarchy. Handles bidir
 
 | Function | Description |
 |----------|-------------|
-| `save_dataset_json(dataset, json_path)` | Save directly to a specific `.json` file path. |
-| `load_dataset_json(json_path) -> BenchmarkDataset` | Load directly from a specific `.json` file path. |
-| `save_process_collection_json(collection, json_path)` | Save collection to a specific `.json` file. |
-| `load_process_collection_json(json_path) -> BioProcessCollection` | Load collection from a specific `.json` file. |
+| `save_dataset_json(dataset, json_path)` | Save directly to a specific `.json` or `.json.gz` file path. |
+| `load_dataset_json(json_path) -> BenchmarkDataset` | Load directly from a specific `.json` or `.json.gz` file path. |
+| `save_process_collection_json(collection, json_path)` | Save collection to a specific `.json` or `.json.gz` file. |
+| `load_process_collection_json(json_path) -> BioProcessCollection` | Load collection from a specific `.json` or `.json.gz` file. |
 
 ### Path Resolution
 
@@ -39,6 +39,7 @@ Provides JSON-based save/load for the full BPbench data hierarchy. Handles bidir
 bp.serialization.save_dataset(dataset, Path("output/"))          # writes output/data.json
 bp.serialization.save_dataset(dataset, Path("output/data.json")) # writes output/data.json
 bp.serialization.save_dataset(dataset, Path("output/custom.json"))  # writes output/custom.json
+bp.serialization.save_dataset(dataset, Path("output/data.json.gz")) # writes gzipped JSON
 ```
 
 ### JSON Structure Overview

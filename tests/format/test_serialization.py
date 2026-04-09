@@ -1,5 +1,6 @@
 """Tests for bpbench.serialization functionality."""
 
+import gzip
 import pytest
 import jax.numpy as jnp
 from pathlib import Path
@@ -38,58 +39,69 @@ from bpbench.serialization import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_process():
     """Build a minimal but realistic BioProcess for serialization tests."""
     biomass_ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     glucose_ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([20.0, 15.0, 8.0, 2.0, 0.5]),
     )
     biomass_rc = ReactorMediumComponent(
-        name="biomass", unit="g/L",
+        name="biomass",
+        unit="g/L",
         concentration=biomass_ts,
         is_intracellular=False,
     )
     glucose_rc = ReactorMediumComponent(
-        name="glucose", unit="g/L",
+        name="glucose",
+        unit="g/L",
         concentration=glucose_ts,
         is_intracellular=False,
     )
     reactor_medium = ReactorMedium(
-        name="medium", density=1.0, density_unit="kg/L",
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
         components={"biomass": biomass_rc, "glucose": glucose_rc},
     )
 
     feed_comp = FeedMediumComponent(
-        name="glucose", unit="g/L",
+        name="glucose",
+        unit="g/L",
         concentration=StaticVariable(value=500.0),
         is_controlled=True,
     )
     feed_medium = FeedMedium(
-        name="glucose_feed", density=1.1, density_unit="kg/L",
+        name="glucose_feed",
+        density=1.1,
+        density_unit="kg/L",
         components={"glucose": feed_comp},
     )
     feed_ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
     volume_change = FeedVolumeChange(
-        name="glucose_feed", unit="L",
-        is_controlled=True, is_continuous=True,
+        name="glucose_feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
         feed_medium=feed_medium,
         values=feed_ts,
     )
     volume = Volume(
-        initial_volume=1.0, unit="L",
+        initial_volume=1.0,
+        unit="L",
         volume_changes={"glucose_feed": volume_change},
     )
 
     temp_ts = TimeSeries(
-        times=jnp.array([0., 12., 24.]),
+        times=jnp.array([0.0, 12.0, 24.0]),
         values=jnp.array([37.0, 37.0, 37.0]),
     )
     pv_temp = ProcessVariable(
@@ -101,7 +113,9 @@ def sample_process():
 
     return BioProcess(
         metadata=BioProcessMetadata(name="fed_batch_001", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=48.0, time_reference="inoculation"
+        ),
         volume=volume,
         reactor_medium=reactor_medium,
         process_variables={"temperature": pv_temp, "pH": pv_ph},
@@ -137,8 +151,11 @@ def sample_dataset(sample_process):
     )
 
     return BenchmarkDataset(
-        metadata={"name": "Test Dataset", "version": "0.1.0",
-                  "description": "Test dataset for serialization"},
+        metadata={
+            "name": "Test Dataset",
+            "version": "0.1.0",
+            "description": "Test dataset for serialization",
+        },
         case_studies={"ecoli": case_study},
     )
 
@@ -146,6 +163,7 @@ def sample_dataset(sample_process):
 # ---------------------------------------------------------------------------
 # Default JSON serialization
 # ---------------------------------------------------------------------------
+
 
 def test_save_process_collection_creates_data_json_in_directory(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -165,13 +183,29 @@ def test_save_load_process_collection_roundtrip(sample_collection):
         assert loaded.processes["fed_batch_001"].metadata.name == "fed_batch_001"
 
 
-def test_save_load_process_collection_metadata_roundtrip(sample_collection_with_metadata):
+def test_default_api_accepts_explicit_process_collection_json_gz_paths(
+    sample_collection,
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection.json.gz"
+        save_process_collection(sample_collection, save_path)
+        loaded = load_process_collection(save_path)
+
+        assert save_path.exists()
+        assert save_path.is_file()
+        assert "fed_batch_001" in loaded.processes
+
+
+def test_save_load_process_collection_metadata_roundtrip(
+    sample_collection_with_metadata,
+):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_collection"
         save_process_collection(sample_collection_with_metadata, save_path)
         loaded = load_process_collection(save_path)
 
         assert loaded.metadata == {"source": "raw_lab_export", "instrument": "ambr250"}
+
 
 def test_save_creates_data_json_in_directory(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -267,12 +301,15 @@ def test_save_load_roundtrip_feed_medium(sample_dataset):
         assert vc.feed_medium is not None
         assert vc.feed_medium.name == "glucose_feed"
         assert "glucose" in vc.feed_medium.components
-        assert vc.feed_medium.components["glucose"].concentration.value == pytest.approx(500.0)
+        assert vc.feed_medium.components[
+            "glucose"
+        ].concentration.value == pytest.approx(500.0)
 
 
 # ---------------------------------------------------------------------------
 # Explicit JSON path serialization
 # ---------------------------------------------------------------------------
+
 
 def test_json_save_process_collection_creates_file(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -307,6 +344,7 @@ def test_json_process_with_optional_metadata_roundtrip(sample_process):
         loaded = load_process_collection_json(save_path)
 
         assert loaded.processes["fed_batch_001"].metadata is None
+
 
 def test_json_save_creates_file(sample_dataset):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -351,12 +389,69 @@ def test_default_api_accepts_explicit_json_paths(sample_dataset):
         assert loaded.metadata["name"] == "Test Dataset"
 
 
+def test_default_api_accepts_explicit_json_gz_paths(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset.json.gz"
+        save_dataset(sample_dataset, save_path)
+        loaded = load_dataset(save_path)
+
+        assert save_path.exists()
+        assert save_path.is_file()
+        assert loaded.metadata["name"] == "Test Dataset"
+
+
+def test_json_gz_roundtrip_dataset(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset.json.gz"
+        save_dataset_json(sample_dataset, save_path)
+        loaded = load_dataset_json(save_path)
+
+        assert loaded.metadata["name"] == "Test Dataset"
+        with gzip.open(save_path, "rt", encoding="utf-8") as f:
+            assert '"case_studies"' in f.read()
+
+
+def test_json_gz_roundtrip_process_collection(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection.json.gz"
+        save_process_collection_json(sample_collection, save_path)
+        loaded = load_process_collection_json(save_path)
+
+        assert save_path.is_file()
+        assert "fed_batch_001" in loaded.processes
+        assert loaded.processes["fed_batch_001"].metadata.process_type == "fed_batch"
+
+
+def test_default_load_from_directory_accepts_data_json_gz(sample_dataset):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_dataset"
+        save_dataset_json(sample_dataset, save_path / "data.json.gz")
+
+        loaded = load_dataset(save_path)
+
+        assert loaded.metadata["name"] == "Test Dataset"
+
+
+def test_default_load_process_collection_from_directory_accepts_data_json_gz(
+    sample_collection,
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "test_collection"
+        save_process_collection_json(sample_collection, save_path / "data.json.gz")
+
+        loaded = load_process_collection(save_path)
+
+        assert "fed_batch_001" in loaded.processes
+
+
 def test_default_load_rejects_non_json_file_path():
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "dataset.yaml"
         save_path.write_text("metadata: {}\n")
 
-        with pytest.raises(FileNotFoundError, match="Only JSON serialization is supported"):
+        with pytest.raises(
+            FileNotFoundError, match="Only JSON serialization is supported"
+        ):
             load_dataset(save_path)
 
 

@@ -1,5 +1,6 @@
 """Serialization utilities for bioprocess benchmarking dataset."""
 
+import gzip
 import json
 import jax.numpy as jnp
 import numpy as np
@@ -28,12 +29,24 @@ from .dataclasses import (
 )
 
 DEFAULT_JSON_FILENAME = "data.json"
+DEFAULT_JSON_GZ_FILENAME = "data.json.gz"
+
+
+def _is_json_gz_path(path: Path) -> bool:
+    """Return whether the path ends in `.json.gz`."""
+    return Path(path).suffixes[-2:] == [".json", ".gz"]
+
+
+def _is_supported_json_file_path(path: Path) -> bool:
+    """Return whether the path is an explicit supported JSON file path."""
+    path = Path(path)
+    return path.suffix == ".json" or _is_json_gz_path(path)
 
 
 def _resolve_json_path(path: Path) -> Path:
-    """Return the JSON path used by the current JSON-only serializer."""
+    """Return the JSON path used by the serializer."""
     path = Path(path)
-    if path.suffix == ".json":
+    if _is_supported_json_file_path(path):
         return path
     return path / DEFAULT_JSON_FILENAME
 
@@ -41,16 +54,36 @@ def _resolve_json_path(path: Path) -> Path:
 def _resolve_existing_json_path(path: Path) -> Path:
     """Resolve a load path and enforce JSON-only inputs."""
     path = Path(path)
-    json_path = _resolve_json_path(path)
-    if json_path.exists():
-        return json_path
+    if _is_supported_json_file_path(path):
+        if path.exists():
+            return path
+    else:
+        json_path = path / DEFAULT_JSON_FILENAME
+        if json_path.exists():
+            return json_path
 
-    if path.suffix and path.suffix != ".json":
+        json_gz_path = path / DEFAULT_JSON_GZ_FILENAME
+        if json_gz_path.exists():
+            return json_gz_path
+
+    if path.suffix:
         raise FileNotFoundError(
-            f"Only JSON serialization is supported. Expected a '.json' file, got '{path}'."
+            "Only JSON serialization is supported. "
+            f"Expected a '.json' or '.json.gz' file, got '{path}'."
         )
 
-    raise FileNotFoundError(f"Expected JSON dataset at '{json_path}'.")
+    raise FileNotFoundError(
+        f"Expected JSON dataset at '{path / DEFAULT_JSON_FILENAME}' "
+        f"or '{path / DEFAULT_JSON_GZ_FILENAME}'."
+    )
+
+
+def _open_json_file(path: Path, mode: str):
+    """Open a JSON or JSON.GZ file in text mode."""
+    path = Path(path)
+    if _is_json_gz_path(path):
+        return gzip.open(path, mode, encoding="utf-8")
+    return open(path, mode, encoding="utf-8")
 
 
 def save_dataset(dataset: BenchmarkDataset, path: Path) -> None:
@@ -100,7 +133,7 @@ def save_dataset_json(dataset: BenchmarkDataset, json_path: Path) -> None:
 
     data_dict = _dataset_to_dict(dataset)
 
-    with open(json_path, "w") as f:
+    with _open_json_file(json_path, "wt") as f:
         json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
 
     print(f"✓ Dataset saved to {json_path}")
@@ -121,7 +154,7 @@ def save_process_collection_json(
 
     data_dict = _process_collection_to_dict(collection)
 
-    with open(json_path, "w") as f:
+    with _open_json_file(json_path, "wt") as f:
         json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
 
     print(f"✓ Process collection saved to {json_path}")
@@ -139,7 +172,7 @@ def load_dataset_json(json_path: Path) -> BenchmarkDataset:
     """
     json_path = Path(json_path)
 
-    with open(json_path, "r") as f:
+    with _open_json_file(json_path, "rt") as f:
         data_dict = json.load(f)
 
     # Restore arrays
@@ -171,7 +204,7 @@ def load_process_collection_json(json_path: Path) -> BioProcessCollection:
     """
     json_path = Path(json_path)
 
-    with open(json_path, "r") as f:
+    with _open_json_file(json_path, "rt") as f:
         data_dict = json.load(f)
 
     def restore_arrays(obj):
