@@ -92,12 +92,22 @@ Return shape: `(mb.output_size,) == (mb.c_size,)`.
 
 ### Integration
 
-Both integration paths support additive physical rates via `r_func`:
+Both integration paths now require a mixed-state `rates_func`:
 
-- `integrate_process(..., q_func, t_eval, r_func=None, ...)`
-- `integrate_process_pseudospace(..., q_func, t_eval, r_func=None, ...)`
+- `integrate_process(..., rates_func, t_eval, ...)`
+- `integrate_process_pseudospace(..., rates_func, t_eval, ...)`
 
-For this phase, `q_func` and `r_func` are time-only callables (`f(t)`).
+```python
+rates_func(t, state, controls) -> (q, r)
+```
+
+Where:
+
+- `q` has shape `(mb.q_size,)` and covers reactor-component specific rates.
+- `r` has shape `(mb.r_size,)` and covers additive physical rates on all
+  non-volume states.
+
+The older public `q_func` / `r_func` integration inputs have been removed.
 
 ### Inversion (`build_q_func`)
 
@@ -118,18 +128,18 @@ process = ...
 ctrl = bp.mechanistic.get_control_splines(process)
 mb = bp.mechanistic.get_rhs_ode(process)
 
-def q_func(t):
-    return jnp.zeros(mb.q_size)
-
-def r_func(t):
-    # reactor + pv additive rates
-    return jnp.zeros(mb.r_size)
+def rates_func(t, state, controls):
+    del t, state, controls
+    q = jnp.zeros(mb.q_size)
+    r = jnp.zeros(mb.r_size)
+    return q, r
 
 state = jnp.zeros(mb.c_size)
 u = ctrl(10.0)
 u_flow = u[jnp.array(ctrl.flow_indices)]
 f_modeled = jnp.zeros(mb.f_modeled_size)
-dc_dt = mb(state, q_func(10.0), u_flow, f_modeled, r_func(10.0))
+q, r = rates_func(10.0, state, u)
+dc_dt = mb(state, q, u_flow, f_modeled, r)
 ```
 
 ## See Also

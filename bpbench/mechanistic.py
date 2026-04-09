@@ -24,14 +24,20 @@ get_rhs_ode(process) -> RhsOde
 extract_discrete_events(process, mb) -> list[dict]
     Extract discrete events (sampling, bolus feeds) from a BioProcess.
 
-build_q_func(process, ctrl, mb, conc_splines) -> Callable
-    Build an analytical, JIT-compilable q(t) callable from splines.
+build_state_splines(process, mb) -> dict
+    Build spline callables for all non-volume states.
 
-estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval) -> jnp.ndarray
+build_q_func(process, ctrl, mb, state_splines) -> Callable
+    Build an analytical, JIT-compilable q(t) callable from state splines.
+
+build_rates_func(process, ctrl, mb, state_splines) -> Callable
+    Build a ``rates_func(t, state, controls) -> (q, r)`` from state splines.
+
+estimate_specific_rates(process, ctrl, mb, state_splines, t_eval) -> jnp.ndarray
     Estimate specific rates q(t) via ODE RHS inversion (convenience wrapper).
 
-integrate_process(process, ctrl, mb, q_func, t_eval) -> dict
-integrate_process_pseudospace(process, ctrl, mb, q_func, t_eval) -> dict
+integrate_process(process, ctrl, mb, rates_func, t_eval) -> dict
+integrate_process_pseudospace(process, ctrl, mb, rates_func, t_eval) -> dict
     Full hybrid ODE integration with discrete event handling.
 
 Usage with JIT
@@ -52,7 +58,6 @@ to compile them::
 
 from __future__ import annotations
 
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import diffrax
@@ -675,11 +680,11 @@ def extract_discrete_events(
     return events
 
 
-def build_conc_splines(
+def build_state_splines(
     process: BioProcess,
     mb: "RhsOde",
 ) -> Dict[str, Any]:
-    """Build concentration splines from stored backtransform splines or raw data.
+    """Build state splines from stored interpolators or raw data.
 
     Uses the pre-fitted ``comp.interpolator`` (backtransform spline built during
     the pseudobatch step) when available.  The backtransform spline maps
@@ -687,8 +692,9 @@ def build_conc_splines(
     correctly handling bolus feeds and sampling events without requiring
     per-segment splines.
 
-    Falls back to fitting a raw ``interpax.CubicSpline`` from the
-    concentration time series when no stored spline is available.
+    Falls back to fitting a raw ``interpax.CubicSpline`` from the underlying
+    reactor concentration or process-variable time series when no stored
+    spline is available.
 
     Parameters
     ----------
@@ -700,9 +706,9 @@ def build_conc_splines(
     Returns
     -------
     dict
-        Mapping species name → callable spline.
+        Mapping non-volume state name -> callable spline.
     """
-    conc_splines: Dict[str, Any] = {}
+    state_splines: Dict[str, Any] = {}
 
     for sp_name in mb.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
@@ -713,12 +719,12 @@ def build_conc_splines(
         ):
             # Backtransform spline: continuous in pseudobatch domain,
             # correctly accounts for bolus feeds / sampling.
-            conc_splines[sp_name] = build_backtransform_spline(comp.interpolator)
+            state_splines[sp_name] = build_backtransform_spline(comp.interpolator)
         elif comp.interpolator is not None:
-            conc_splines[sp_name] = build_interpax_spline(comp.interpolator)[0][0]
+            state_splines[sp_name] = build_interpax_spline(comp.interpolator)[0][0]
         else:
             ts = comp.concentration
-            conc_splines[sp_name] = make_interpax_spline(
+            state_splines[sp_name] = make_interpax_spline(
                 jnp.asarray(ts.times, dtype=float),
                 jnp.asarray(ts.values, dtype=float),
             )
@@ -726,9 +732,9 @@ def build_conc_splines(
     for pv_name in mb.process_variable_state_names:
         pv = process.process_variables[pv_name]
         if pv.interpolator is not None:
-            conc_splines[pv_name] = build_interpax_spline(pv.interpolator)[0][0]
+            state_splines[pv_name] = build_interpax_spline(pv.interpolator)[0][0]
         elif isinstance(pv.values, TimeSeries):
-            conc_splines[pv_name] = make_interpax_spline(
+            state_splines[pv_name] = make_interpax_spline(
                 jnp.asarray(pv.values.times, dtype=float),
                 jnp.asarray(pv.values.values, dtype=float),
             )
@@ -736,11 +742,32 @@ def build_conc_splines(
             t_start = float(process.time_axis.start)
             t_end = float(process.time_axis.end)
             v = float(pv.values.value)
-            conc_splines[pv_name] = make_interpax_spline(
+            state_splines[pv_name] = make_interpax_spline(
                 jnp.array([t_start, t_end], dtype=float),
                 jnp.array([v, v], dtype=float),
             )
 
+    return state_splines
+
+
+def build_conc_splines(
+    process: BioProcess,
+    mb: "RhsOde",
+) -> Dict[str, Any]:
+    """Compatibility alias for :func:`build_state_splines`."""
+    return build_state_splines(process, mb)
+
+
+def _resolve_state_splines(
+    *,
+    state_splines: Optional[Dict[str, Any]],
+    conc_splines: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Resolve state spline arguments while supporting the legacy name."""
+    if state_splines is not None and conc_splines is not None:
+        raise ValueError("Use either state_splines or conc_splines, not both.")
+    if state_splines is not None:
+        return state_splines
     return conc_splines
 
 
@@ -753,8 +780,9 @@ def build_q_func(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    conc_splines: Dict[str, Any],
+    state_splines: Optional[Dict[str, Any]] = None,
     *,
+    conc_splines: Optional[Dict[str, Any]] = None,
     q_state_indices: Optional[List[int]] = None,
     r_state_indices: Optional[List[int]] = None,
     r_func: Optional[Callable] = None,
@@ -780,8 +808,8 @@ def build_q_func(
         :class:`ControlSplines` module for evaluating control signals.
     mb:
         :class:`RhsOde` module (provides species ordering, Cin, etc.).
-    conc_splines:
-        Dict mapping species name → callable spline that supports
+    state_splines:
+        Dict mapping non-volume state name -> callable spline that supports
         ``spline(t)`` and ``spline.derivative()(t)``.
 
     Returns
@@ -789,6 +817,12 @@ def build_q_func(
     Callable
         ``q_func(t) -> jnp.ndarray`` of shape ``(n_reactor_states,)``.
     """
+    state_splines = _resolve_state_splines(
+        state_splines=state_splines,
+        conc_splines=conc_splines,
+    )
+    if state_splines is None:
+        raise ValueError("state_splines is required.")
     n_reactor = mb.n_reactor_states
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
@@ -880,9 +914,9 @@ def build_q_func(
     # -- Per-species concentration spline evaluators --
     # Uses original BacktransformSpline evaluations (exact piecewise-linear fc)
     # to avoid Gibbs oscillation from cubic resampling of step-like fc data.
-    conc_evals = [conc_splines[s] for s in mb.reactor_component_state_names]
+    conc_evals = [state_splines[s] for s in mb.reactor_component_state_names]
     deriv_evals = [
-        conc_splines[s].derivative() for s in mb.reactor_component_state_names
+        state_splines[s].derivative() for s in mb.reactor_component_state_names
     ]
 
     biomass_idx = mb.biomass_idx
@@ -948,8 +982,9 @@ def build_rates_func(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    conc_splines: Dict[str, Any],
+    state_splines: Optional[Dict[str, Any]] = None,
     *,
+    conc_splines: Optional[Dict[str, Any]] = None,
     q_state_indices: Optional[List[int]] = None,
     r_state_indices: Optional[List[int]] = None,
     r_func: Optional[Callable] = None,
@@ -959,7 +994,8 @@ def build_rates_func(
         process,
         ctrl,
         mb,
-        conc_splines,
+        state_splines,
+        conc_splines=conc_splines,
         q_state_indices=q_state_indices,
         r_state_indices=r_state_indices,
         r_func=r_func,
@@ -981,9 +1017,10 @@ def estimate_specific_rates(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    conc_splines: Dict[str, Any],
-    t_eval: jnp.ndarray,
+    state_splines: Optional[Dict[str, Any]] = None,
+    t_eval: Optional[jnp.ndarray] = None,
     *,
+    conc_splines: Optional[Dict[str, Any]] = None,
     q_state_indices: Optional[List[int]] = None,
     r_state_indices: Optional[List[int]] = None,
     r_func: Optional[Callable] = None,
@@ -1001,8 +1038,8 @@ def estimate_specific_rates(
         :class:`ControlSplines` module for evaluating control signals.
     mb:
         :class:`RhsOde` module (provides species ordering, Cin, etc.).
-    conc_splines:
-        Dict mapping species name → callable spline that supports
+    state_splines:
+        Dict mapping non-volume state name -> callable spline that supports
         ``spline(t)`` and ``spline.derivative()(t)``.
     t_eval:
         1-D array of time points at which to estimate q.
@@ -1012,12 +1049,15 @@ def estimate_specific_rates(
     jnp.ndarray, shape (len(t_eval), n_reactor_states)
         Estimated specific rates at each time point.
     """
+    if t_eval is None:
+        raise ValueError("t_eval is required.")
     t_eval = jnp.asarray(t_eval, dtype=float)
     q_func = build_q_func(
         process,
         ctrl,
         mb,
-        conc_splines,
+        state_splines,
+        conc_splines=conc_splines,
         q_state_indices=q_state_indices,
         r_state_indices=r_state_indices,
         r_func=r_func,
@@ -1031,57 +1071,14 @@ def estimate_specific_rates(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_rates_func(
-    mb: "RhsOde",
-    *,
-    rates_func: Optional[Callable],
-    q_func: Optional[Callable],
-    r_func: Optional[Callable],
-) -> Callable:
-    """Resolve the active rates callable.
-
-    Preferred API:
-        ``rates_func(t, state, controls) -> (q, r)``
-    where ``q`` has shape ``(mb.q_size,)`` and ``r`` has shape ``(mb.r_size,)``.
-
-    Legacy API remains supported for compatibility:
-        ``q_func(t) -> q`` with optional ``r_func(t) -> r``.
-    """
-    if rates_func is not None and (q_func is not None or r_func is not None):
+def _require_rates_func(rates_func: Optional[Callable]) -> Callable:
+    """Require the mixed-state runtime rates callback."""
+    if rates_func is None:
         raise ValueError(
-            "Use either rates_func or q_func/r_func, not both at the same time."
+            "rates_func is required and must have signature "
+            "rates_func(t, state, controls) -> (q, r)."
         )
-    if rates_func is not None:
-        return rates_func
-    if q_func is not None:
-        try:
-            sig = inspect.signature(q_func)
-            n_positional = sum(
-                1
-                for p in sig.parameters.values()
-                if p.kind
-                in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)
-            )
-            if n_positional >= 3:
-                return q_func
-        except (ValueError, TypeError):
-            pass
-    if q_func is None:
-        raise ValueError(
-            "No rates function provided. Pass rates_func(t, state, controls), "
-            "or legacy q_func(t)."
-        )
-
-    def _rates_func_from_legacy(t, state, controls):
-        del state, controls
-        q = jnp.asarray(q_func(t), dtype=float)
-        if r_func is None:
-            r = jnp.zeros(mb.r_size, dtype=float)
-        else:
-            r = jnp.asarray(r_func(t), dtype=float)
-        return q, r
-
-    return _rates_func_from_legacy
+    return rates_func
 
 
 def _build_segment_rhs(
@@ -1331,29 +1328,27 @@ def integrate_process_pseudospace(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    q_func: Optional[Callable],
+    rates_func: Callable,
     t_eval: jnp.ndarray,
     *,
-    rates_func: Optional[Callable] = None,
+    state_splines: Optional[Dict[str, Any]] = None,
     conc_splines: Optional[Dict[str, Any]] = None,
-    r_func: Optional[Callable] = None,
     rtol: float = 1e-6,
     atol: float = 1e-8,
     use_jump_ts: bool = True,
     max_steps: int = 16384,
 ) -> Dict[str, Any]:
     """Integrate in c* (pseudo-batch) space with a single ``diffeqsolve``."""
+    state_splines = _resolve_state_splines(
+        state_splines=state_splines,
+        conc_splines=conc_splines,
+    )
     t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
     n_reactor = mb.n_reactor_states
     n_non_volume = mb.r_size
-    rates_func_resolved = _resolve_rates_func(
-        mb,
-        rates_func=rates_func,
-        q_func=q_func,
-        r_func=r_func,
-    )
+    rates_func = _require_rates_func(rates_func)
 
     transforms = _build_pseudobatch_transforms(process, mb)
 
@@ -1391,10 +1386,10 @@ def integrate_process_pseudospace(
             fc_t_list.append(jnp.asarray(tr["fc_t"], dtype=float))
             fc_v_list.append(jnp.asarray(tr["fc_v"], dtype=float))
 
-    if conc_splines is not None:
-        bio_spline = conc_splines[mb.reactor_component_state_names[mb.biomass_idx]]
+    if state_splines is not None:
+        bio_spline = state_splines[mb.reactor_component_state_names[mb.biomass_idx]]
         intra_splines = [
-            conc_splines[mb.reactor_component_state_names[i]]
+            state_splines[mb.reactor_component_state_names[i]]
             for i in mb.intracellular_indices
         ]
     else:
@@ -1468,7 +1463,7 @@ def integrate_process_pseudospace(
     controls0_probe = ctrl(jnp.array(t_start))
     _validate_rates_output_shapes(
         mb,
-        rates_func_resolved,
+        rates_func,
         t=t_start,
         state=state0_probe,
         controls=controls0_probe,
@@ -1527,7 +1522,7 @@ def integrate_process_pseudospace(
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
         state_rates = jnp.append(c, V)
-        q, r = rates_func_resolved(t, state_rates, u)
+        q, r = rates_func(t, state_rates, u)
 
         if bio_spline is not None:
             X_active = bio_spline(t)
@@ -1623,12 +1618,11 @@ def integrate_process(
     process: BioProcess,
     ctrl: ControlSplines,
     mb: RhsOde,
-    q_func: Optional[Callable],
+    rates_func: Callable,
     t_eval: jnp.ndarray,
     *,
-    rates_func: Optional[Callable] = None,
+    state_splines: Optional[Dict[str, Any]] = None,
     conc_splines: Optional[Dict[str, Any]] = None,
-    r_func: Optional[Callable] = None,
     rtol: float = 1e-4,
     atol: float = 1e-6,
     max_steps: int = 16384,
@@ -1654,22 +1648,19 @@ def integrate_process(
         :class:`ControlSplines` module.
     mb:
         :class:`RhsOde` module.
-    q_func:
-        Legacy callable ``q_func(t) -> jnp.ndarray`` returning specific rates
-        aligned with ``mb.reactor_component_state_names``.
     rates_func:
-        Preferred callable
+        Callable
         ``rates_func(t, state, controls) -> tuple[q, r]`` where
         ``q`` are biomass-specific rates for reactor-component states and
         ``r`` are physical rates for all non-volume states.
     t_eval:
         1-D array of time points at which to record the solution.
-    conc_splines:
-        Optional dict mapping reactor-component name → callable spline.  When
-        provided, the ODE RHS uses the spline-evaluated biomass (and
-        intracellular) concentrations for computing ``X_active`` instead
-        of the ODE state.  This prevents exponential error amplification
-        when biomass spans many orders of magnitude.
+    state_splines:
+        Optional dict mapping non-volume state name -> callable spline. When
+        provided, the ODE RHS uses the reactor-component splines for biomass
+        (and intracellular) concentrations when computing ``X_active`` instead
+        of the ODE state. This prevents exponential error amplification when
+        biomass spans many orders of magnitude.
     rtol, atol:
         Relative and absolute tolerances for the ODE solver.
     max_steps:
@@ -1682,17 +1673,16 @@ def integrate_process(
         where ``c`` has shape ``(len(t_eval), n_non_volume_states)`` and
         ``V`` has shape ``(len(t_eval),)``.
     """
+    state_splines = _resolve_state_splines(
+        state_splines=state_splines,
+        conc_splines=conc_splines,
+    )
     t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
     n_reactor = mb.n_reactor_states
     n_non_volume = mb.r_size
-    rates_func_resolved = _resolve_rates_func(
-        mb,
-        rates_func=rates_func,
-        q_func=q_func,
-        r_func=r_func,
-    )
+    rates_func = _require_rates_func(rates_func)
 
     # Per-state scale factors for numerical conditioning
     scales = _compute_scale_factors(process, mb)
@@ -1758,7 +1748,7 @@ def integrate_process(
     controls0_probe = ctrl(jnp.array(t_start))
     _validate_rates_output_shapes(
         mb,
-        rates_func_resolved,
+        rates_func,
         t=t_start,
         state=state0_probe,
         controls=controls0_probe,
@@ -1766,8 +1756,8 @@ def integrate_process(
 
     # Build per-species concentration spline evaluators for X_active
     # (avoids cubic resampling of piecewise-linear fc in batched approach)
-    if conc_splines is not None:
-        conc_eval_list = [conc_splines[s] for s in mb.reactor_component_state_names]
+    if state_splines is not None:
+        conc_eval_list = [state_splines[s] for s in mb.reactor_component_state_names]
     else:
         conc_eval_list = None
 
@@ -1775,7 +1765,7 @@ def integrate_process(
     rhs_original = _build_segment_rhs(
         mb,
         ctrl,
-        rates_func_resolved,
+        rates_func,
         batched_mod,
         conc_eval_list,
     )

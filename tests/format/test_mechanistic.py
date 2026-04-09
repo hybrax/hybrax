@@ -37,7 +37,7 @@ from bpbench.mechanistic import (
     estimate_specific_rates,
     integrate_process,
     integrate_process_pseudospace,
-    build_conc_splines,
+    build_state_splines,
     build_q_func,
 )
 from bpbench.splines import (
@@ -206,6 +206,16 @@ def _interp_on_grid(
     for i in range(sim_y.shape[1]):
         out = out.at[:, i].set(jnp.interp(t_obs, sim_t, sim_y[:, i]))
     return out
+
+
+def _wrap_q_as_rates(mb: RhsOde, q_func):
+    def rates_func(t, state, controls):
+        del state, controls
+        q = jnp.asarray(q_func(t), dtype=float)
+        r = jnp.zeros(mb.r_size, dtype=float)
+        return q, r
+
+    return rates_func
 
 
 # ---------------------------------------------------------------------------
@@ -1394,13 +1404,13 @@ class TestEstimateSpecificRates:
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
 
-        conc_splines = {
+        state_splines = {
             "biomass": make_interpax_spline(t, X),
             "glucose": make_interpax_spline(t, S),
         }
 
         t_eval = np.linspace(0.5, 9.5, 20)
-        q_est = estimate_specific_rates(process, ctrl, mb, conc_splines, t_eval)
+        q_est = estimate_specific_rates(process, ctrl, mb, state_splines, t_eval)
 
         # q_X should be ~0.3, q_S should be ~-0.1
         assert q_est.shape == (20, 2)
@@ -1418,7 +1428,7 @@ class TestEstimateSpecificRates:
         process = _make_batch_process()
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        conc_splines = {
+        state_splines = {
             "biomass": make_interpax_spline(t, x),
             "glucose": make_interpax_spline(t, s),
         }
@@ -1427,7 +1437,7 @@ class TestEstimateSpecificRates:
             process,
             ctrl,
             mb,
-            conc_splines,
+            state_splines,
             q_state_indices=[0],
             r_state_indices=[1],
         )
@@ -1439,7 +1449,7 @@ class TestEstimateSpecificRates:
         process = _make_batch_process()
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        conc_splines = build_conc_splines(process, mb)
+        state_splines = build_state_splines(process, mb)
 
         with pytest.raises(
             ValueError, match="Overlapping q/r state indices require r_func"
@@ -1448,7 +1458,7 @@ class TestEstimateSpecificRates:
                 process,
                 ctrl,
                 mb,
-                conc_splines,
+                state_splines,
                 q_state_indices=[0, 1],
                 r_state_indices=[1],
             )
@@ -1465,7 +1475,7 @@ class TestEstimateSpecificRates:
         process = _make_batch_process()
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        conc_splines = {
+        state_splines = {
             "biomass": make_interpax_spline(t, x),
             "glucose": make_interpax_spline(t, s),
         }
@@ -1477,7 +1487,7 @@ class TestEstimateSpecificRates:
             process,
             ctrl,
             mb,
-            conc_splines,
+            state_splines,
             q_state_indices=[0, 1],
             r_state_indices=[1],
             r_func=r_func,
@@ -1485,6 +1495,30 @@ class TestEstimateSpecificRates:
         q_t = q_func(5.0)
         assert float(q_t[0]) == pytest.approx(q_x_true, rel=0.05)
         assert float(q_t[1]) == pytest.approx(q_s_true, rel=0.1)
+
+    def test_legacy_conc_splines_keyword_still_supported(self):
+        t = np.linspace(0.0, 10.0, 101)
+        x = np.exp(0.3 * t)
+        s = 10.0 - t
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        conc_splines = {
+            "biomass": make_interpax_spline(t, x),
+            "glucose": make_interpax_spline(t, s),
+        }
+
+        q_func = build_q_func(process, ctrl, mb, conc_splines=conc_splines)
+        q_est = estimate_specific_rates(
+            process,
+            ctrl,
+            mb,
+            conc_splines=conc_splines,
+            t_eval=t,
+        )
+
+        assert q_func(5.0).shape == (mb.q_size,)
+        assert q_est.shape == (len(t), mb.q_size)
 
 
 # ---------------------------------------------------------------------------
@@ -1511,14 +1545,15 @@ class TestIntegrateProcess:
         def q_func(t):
             return q_arr
 
-        return process, ctrl, mb, q_func, q_X, q_S
+        rates_func = _wrap_q_as_rates(mb, q_func)
+        return process, ctrl, mb, rates_func, q_X, q_S
 
     def test_batch_accuracy(self):
         """Forward integration with known q recovers analytical solution."""
-        process, ctrl, mb, q_func, q_X, q_S = self._setup_batch_integration()
+        process, ctrl, mb, rates_func, q_X, q_S = self._setup_batch_integration()
         t_eval = np.linspace(0, 10, 50)
 
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, rates_func, t_eval)
 
         # Analytical solution
         X0 = 0.5  # from _make_batch_process
@@ -1559,36 +1594,26 @@ class TestIntegrateProcess:
             r = jnp.zeros(mb.r_size)
             return q, r
 
-        def zero_rates(_t):
-            return jnp.zeros(mb.q_size)
+        def zero_rates(_t, _state, _controls):
+            return jnp.zeros(mb.q_size), jnp.zeros(mb.r_size)
 
         out_controls = integrate_process(process, ctrl, mb, rates_from_controls, t_eval)
         out_zero = integrate_process(process, ctrl, mb, zero_rates, t_eval)
 
         assert float(out_controls["c"][-1, 0]) > float(out_zero["c"][-1, 0])
 
-    def test_rates_func_conflicts_with_legacy_qr_kwargs(self):
+    def test_integrate_process_requires_rates_func(self):
         process, ctrl, mb, _, _, _ = self._setup_batch_integration()
         t_eval = np.linspace(0, 2, 5)
 
-        def rates_func(_t, _state, _controls):
-            return jnp.zeros(mb.q_size), jnp.zeros(mb.r_size)
-
-        with pytest.raises(ValueError, match="Use either rates_func or q_func/r_func"):
-            integrate_process(
-                process,
-                ctrl,
-                mb,
-                lambda _t: jnp.zeros(mb.q_size),
-                t_eval,
-                rates_func=rates_func,
-            )
+        with pytest.raises(ValueError, match="rates_func is required"):
+            integrate_process(process, ctrl, mb, None, t_eval)
 
     def test_volume_constant_in_batch(self):
         """Volume should stay constant in batch mode."""
-        process, ctrl, mb, q_func, _, _ = self._setup_batch_integration()
+        process, ctrl, mb, rates_func, _, _ = self._setup_batch_integration()
         t_eval = np.linspace(0, 10, 20)
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, rates_func, t_eval)
         np.testing.assert_allclose(result["V"], 1.0, atol=1e-6)
 
     def test_with_sampling_events(self):
@@ -1599,10 +1624,10 @@ class TestIntegrateProcess:
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
 
-        q_func = lambda t: jnp.zeros(mb.q_size)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
         t_eval = np.linspace(0, 20, 100)
 
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
         assert "t" in result
         assert "c" in result
         assert "V" in result
@@ -1614,9 +1639,9 @@ class TestIntegrateProcess:
 
     def test_output_format(self):
         """Check returned dict has expected keys and shapes."""
-        process, ctrl, mb, q_func, _, _ = self._setup_batch_integration()
+        process, ctrl, mb, rates_func, _, _ = self._setup_batch_integration()
         t_eval = np.linspace(0, 10, 30)
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, rates_func, t_eval)
         assert {"t", "c", "V", "stats"} == set(result.keys())
         assert result["c"].shape[1] == mb.q_size
         assert result["V"].shape[0] == result["c"].shape[0]
@@ -1627,10 +1652,10 @@ class TestIntegrateProcess:
 
         Default tolerances are rtol=1e-4, atol=1e-6 (float32-friendly).
         """
-        process, ctrl, mb, q_func, q_X, q_S = self._setup_batch_integration()
+        process, ctrl, mb, rates_func, q_X, q_S = self._setup_batch_integration()
         t_eval = np.linspace(0, 10, 100)
 
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, rates_func, t_eval)
 
         X0 = 0.5
         S0 = 10.0
@@ -1650,9 +1675,9 @@ class TestIntegrateProcess:
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
 
-        q_func = lambda t: jnp.zeros(mb.q_size)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
         t_eval = np.linspace(0, 20, 50)
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
 
         # Volume should increase over time due to feed
         assert result["V"][-1] > result["V"][0]
@@ -1670,9 +1695,9 @@ class TestIntegrateProcess:
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        q_func = lambda t: jnp.zeros(mb.q_size)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
         t_eval = jnp.array([0.0, 4.9, 5.0, 5.1])
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
 
         V_new = 1.1
         X_new = (0.5 * 1.0 + 0.0 * 0.1) / V_new
@@ -1697,9 +1722,9 @@ class TestIntegrateProcess:
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        q_func = lambda t: jnp.zeros(mb.q_size)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
         t_eval = jnp.array([0.0, 4.9, 5.0, 5.1])
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
 
         assert float(result["c"][1, 0]) == pytest.approx(0.5, rel=1e-6)
         assert float(result["c"][1, 1]) == pytest.approx(10.0, rel=1e-6)
@@ -1727,9 +1752,9 @@ class TestIntegrateProcess:
         mb = get_rhs_ode(process)
         assert mb.process_variable_state_names == ("dissolved_O2",)
 
-        q_func = lambda t: jnp.zeros(mb.q_size)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
         t_eval = jnp.array([4.9, 5.0, 5.1])
-        result = integrate_process(process, ctrl, mb, q_func, t_eval)
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
 
         pv_idx = mb.pv_indices[0]
         assert float(result["c"][0, pv_idx]) == pytest.approx(100.0, rel=1e-6)
@@ -1770,25 +1795,26 @@ class TestIntegrateProcess:
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        conc_splines = build_conc_splines(process, mb)
-        q_func = build_q_func(process, ctrl, mb, conc_splines)
+        state_splines = build_state_splines(process, mb)
+        q_func = build_q_func(process, ctrl, mb, state_splines)
+        rates_func = _wrap_q_as_rates(mb, q_func)
 
         t_eval = jnp.linspace(0.0, 20.0, 181)
         ref = integrate_process(
             process,
             ctrl,
             mb,
-            q_func,
+            rates_func,
             t_eval,
-            conc_splines=conc_splines,
+            state_splines=state_splines,
         )
         pseudo = integrate_process_pseudospace(
             process,
             ctrl,
             mb,
-            q_func,
+            rates_func,
             t_eval,
-            conc_splines=conc_splines,
+            state_splines=state_splines,
         )
 
         c_ref = _sample_on_observation_grid(ref["t"], ref["c"], t_eval)
@@ -1831,27 +1857,27 @@ class TestIntegrateProcess:
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
-        q_func = lambda t: jnp.array([0.1, -0.2])
+        rates_func = _wrap_q_as_rates(mb, lambda t: jnp.array([0.1, -0.2]))
         t_eval_coarse = jnp.linspace(0.0, 20.0, 41)
         out_coarse = integrate_process_pseudospace(
             process=process,
             ctrl=ctrl,
             mb=mb,
-            q_func=q_func,
+            rates_func=rates_func,
             t_eval=t_eval_coarse,
         )
         out_dense = integrate_process_pseudospace(
             process=process,
             ctrl=ctrl,
             mb=mb,
-            q_func=q_func,
+            rates_func=rates_func,
             t_eval=t_obs,
         )
         ref = integrate_process(
             process=process,
             ctrl=ctrl,
             mb=mb,
-            q_func=q_func,
+            rates_func=rates_func,
             t_eval=t_eval_coarse,
         )
 
@@ -1882,7 +1908,7 @@ class TestIntegrateProcess:
         max_V_ref_diff = float(jnp.max(jnp.abs(out_coarse["V"] - V_ref)))
         assert max_V_ref_diff < 1e-4
 
-    def test_pseudospace_accepts_rates_func_signature(self):
+    def test_pseudospace_uses_rates_func_signature(self):
         process = _make_batch_process()
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -1898,7 +1924,7 @@ class TestIntegrateProcess:
             process=process,
             ctrl=ctrl,
             mb=mb,
-            q_func=rates_func,
+            rates_func=rates_func,
             t_eval=t_eval,
         )
         assert out["c"].shape[0] == t_eval.shape[0]
