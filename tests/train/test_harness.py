@@ -545,6 +545,7 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     # `header_every` steps. Filter to data rows by matching the leading
     # whitespace + clock pattern.
     import re
+
     row_re = re.compile(r"^\s\d{2}:\d{2}:\d{2}\s\|")
     step_rows = [
         record.message for record in caplog.records if row_re.match(record.message)
@@ -552,9 +553,7 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     assert len(step_rows) == 4
     # Per-process indented line is emitted only at log_every cadence.
     sampled_logs = [
-        record.message
-        for record in caplog.records
-        if "per-process:" in record.message
+        record.message for record in caplog.records if "per-process:" in record.message
     ]
     assert len(sampled_logs) == 2
     # Sampled-loss history dict still tracks the same log-step keys.

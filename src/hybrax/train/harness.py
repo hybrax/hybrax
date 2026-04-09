@@ -90,7 +90,15 @@ def _batched_measurement_loss_from_batch(
     if jump_ts_rows is None:
         per_sample_total, per_sample_per_target = jax.vmap(
             lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
-                pi, tm, ym, mm, nm, y0, ci, cm, None,
+                pi,
+                tm,
+                ym,
+                mm,
+                nm,
+                y0,
+                ci,
+                cm,
+                None,
             )
         )(
             batch.process_indices,
@@ -364,8 +372,7 @@ def train_collection(
     _variance_eps = 1e-12
     target_variance = jnp.asarray(
         [
-            float(np.var(vals)) if vals and float(np.var(vals)) > _variance_eps
-            else 1.0
+            float(np.var(vals)) if vals and float(np.var(vals)) > _variance_eps else 1.0
             for vals in _per_col_values
         ],
         dtype=jnp.float32,
@@ -446,22 +453,27 @@ def train_collection(
                     current_wrapper,
                     reaction_module_updated,
                 )
-                total_loss, per_target, per_sample = _batched_measurement_loss_from_batch(
-                    candidate_wrapper,
-                    current_batch,
-                    batch_controls,
-                    batched_Cin,
-                    batched_Cin_modeled,
-                    jump_ts_rows,
-                    max_solver_steps=int(cfg.solver_max_steps),
-                    solver_rtol=float(cfg.solver_rtol),
-                    solver_atol=float(cfg.solver_atol),
+                total_loss, per_target, per_sample = (
+                    _batched_measurement_loss_from_batch(
+                        candidate_wrapper,
+                        current_batch,
+                        batch_controls,
+                        batched_Cin,
+                        batched_Cin_modeled,
+                        jump_ts_rows,
+                        max_solver_steps=int(cfg.solver_max_steps),
+                        solver_rtol=float(cfg.solver_rtol),
+                        solver_atol=float(cfg.solver_atol),
+                    )
                 )
                 return total_loss, (per_target, per_sample)
 
-            (loss, (per_target_loss, per_sample_loss)), grads = eqx.filter_value_and_grad(
-                _loss_fn, has_aux=True,
-            )(current_trainable_params)
+            (loss, (per_target_loss, per_sample_loss)), grads = (
+                eqx.filter_value_and_grad(
+                    _loss_fn,
+                    has_aux=True,
+                )(current_trainable_params)
+            )
             updates, next_optimizer_state = optimizer.update(
                 grads,
                 current_optimizer_state,
@@ -680,7 +692,9 @@ def train_from_collection(
     scale_kwargs: dict[str, Any] = {}
     if estimate_scales_hook is not None:
         state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
-            collection, list(store.target_names), custom_cfg,
+            collection,
+            list(store.target_names),
+            custom_cfg,
         )
         scale_kwargs = {
             "state_scale": state_scale,

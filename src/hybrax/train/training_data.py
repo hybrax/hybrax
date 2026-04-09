@@ -453,17 +453,18 @@ class TrainingDataStore(eqx.Module):
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
                 b_col = np.interp(
-                    shared_ts.astype(float), vc_t, vc_v,
-                    left=float(vc_v[0]), right=float(vc_v[-1]),
+                    shared_ts.astype(float),
+                    vc_t,
+                    vc_v,
+                    left=float(vc_v[0]),
+                    right=float(vc_v[-1]),
                 ).astype(np.float32)
                 b_modeled_cum_columns.append(b_col)
 
             # y_meas columns = [species..., B_modeled_cum...]   (no V_cont)
             y_matrix_parts = [np.stack(target_columns, axis=1)]
             if b_modeled_cum_columns:
-                y_matrix_parts.append(
-                    np.stack(b_modeled_cum_columns, axis=1)
-                )
+                y_matrix_parts.append(np.stack(b_modeled_cum_columns, axis=1))
             y_matrix = np.concatenate(y_matrix_parts, axis=1)
             n_meas = int(shared_ts.size)
             max_n_meas = max(max_n_meas, n_meas)

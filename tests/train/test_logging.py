@@ -74,12 +74,18 @@ def test_formatter_handles_inf_and_nan_without_breaking_alignment():
         decimals=4,
     )
     row_normal = fmt.format_row(
-        clock="00:00:00", step=1, mean_loss=1.0,
-        per_target_loss=(1.0,), step_dt=0.1,
+        clock="00:00:00",
+        step=1,
+        mean_loss=1.0,
+        per_target_loss=(1.0,),
+        step_dt=0.1,
     )
     row_inf = fmt.format_row(
-        clock="00:00:00", step=2, mean_loss=float("inf"),
-        per_target_loss=(float("nan"),), step_dt=0.1,
+        clock="00:00:00",
+        step=2,
+        mean_loss=float("inf"),
+        per_target_loss=(float("nan"),),
+        step_dt=0.1,
     )
     pipes_a = [i for i, c in enumerate(row_normal) if c == "|"]
     pipes_b = [i for i, c in enumerate(row_inf) if c == "|"]
@@ -88,11 +94,14 @@ def test_formatter_handles_inf_and_nan_without_breaking_alignment():
 
 def test_formatter_rejects_per_target_length_mismatch():
     fmt = _ConsoleTableFormatter(
-        target_names=("a", "b"), total_steps=10,
+        target_names=("a", "b"),
+        total_steps=10,
     )
     with pytest.raises(ValueError):
         fmt.format_row(
-            clock="00:00:00", step=1, mean_loss=0.0,
+            clock="00:00:00",
+            step=1,
+            mean_loss=0.0,
             per_target_loss=(1.0,),  # only one value, expects two
             step_dt=0.1,
         )
@@ -132,10 +141,14 @@ def test_runlogger_console_emits_one_row_per_step_plus_indented_log_step(caplog)
             compile_warmup_seconds=0.0,
         )
         for i in range(1, 4):
-            run.record_step(_make_record(
-                i, total_steps=3, target_names=("biomass",),
-                per_target=(0.5,),
-            ))
+            run.record_step(
+                _make_record(
+                    i,
+                    total_steps=3,
+                    target_names=("biomass",),
+                    per_target=(0.5,),
+                )
+            )
         run.finalize()
     row_re = re.compile(r"^\s\d{2}:\d{2}:\d{2}\s\|")
     rows = [r.message for r in caplog.records if row_re.match(r.message)]
@@ -154,13 +167,23 @@ def test_runlogger_header_reemitted_every_n_rows(caplog):
             compile_warmup_seconds=0.0,
         )
         for i in range(1, 6):
-            run.record_step(_make_record(
-                i, total_steps=5, target_names=("biomass",),
-                process_names=("p1",), per_target=(0.5,), per_process=(0.5,),
-            ))
+            run.record_step(
+                _make_record(
+                    i,
+                    total_steps=5,
+                    target_names=("biomass",),
+                    process_names=("p1",),
+                    per_target=(0.5,),
+                    per_process=(0.5,),
+                )
+            )
         run.finalize()
     # Header has the literal column name "biomass" embedded.
-    headers = [r.message for r in caplog.records if "biomass" in r.message and "|" in r.message and "↳" not in r.message]
+    headers = [
+        r.message
+        for r in caplog.records
+        if "biomass" in r.message and "|" in r.message and "↳" not in r.message
+    ]
     # Filter out the data rows: data rows have the clock prefix.
     header_only = [m for m in headers if not re.match(r"^\s\d{2}:", m)]
     # 5 rows with header_every=2 → emitted before rows 1, 3, 5 → 3 headers.
@@ -171,21 +194,35 @@ def test_runlogger_record_rebuild_logs_warning_and_increments(caplog):
     caplog.set_level(logging.WARNING, logger="bp_train.harness")
     with RunLogger(log_every=10, log_header_every=0) as run:
         run.start(
-            target_names=("biomass",), process_names=("p1",),
-            total_steps=2, compile_warmup_seconds=0.0,
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_steps=2,
+            compile_warmup_seconds=0.0,
         )
         run.record_rebuild(1)
         run.record_rebuild(2)
-        run.record_step(_make_record(
-            1, total_steps=2, target_names=("biomass",),
-            process_names=("p1",), per_target=(0.5,), per_process=(0.5,),
-            rebuild_count=2,
-        ))
-        run.record_step(_make_record(
-            2, total_steps=2, target_names=("biomass",),
-            process_names=("p1",), per_target=(0.5,), per_process=(0.5,),
-            rebuild_count=2,
-        ))
+        run.record_step(
+            _make_record(
+                1,
+                total_steps=2,
+                target_names=("biomass",),
+                process_names=("p1",),
+                per_target=(0.5,),
+                per_process=(0.5,),
+                rebuild_count=2,
+            )
+        )
+        run.record_step(
+            _make_record(
+                2,
+                total_steps=2,
+                target_names=("biomass",),
+                process_names=("p1",),
+                per_target=(0.5,),
+                per_process=(0.5,),
+                rebuild_count=2,
+            )
+        )
         history = run.finalize()
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2
@@ -205,19 +242,27 @@ def test_runlogger_csv_sink_has_header_and_one_row_per_step(tmp_path):
     csv_path = tmp_path / "metrics.csv"
     with RunLogger(log_every=2, metrics_csv=csv_path, log_header_every=0) as run:
         run.start(
-            target_names=("biomass",), process_names=("p1", "p2"),
-            total_steps=3, compile_warmup_seconds=0.0,
+            target_names=("biomass",),
+            process_names=("p1", "p2"),
+            total_steps=3,
+            compile_warmup_seconds=0.0,
         )
         for i in range(1, 4):
-            run.record_step(_make_record(
-                i, total_steps=3, target_names=("biomass",),
-                per_target=(0.5,),
-            ))
+            run.record_step(
+                _make_record(
+                    i,
+                    total_steps=3,
+                    target_names=("biomass",),
+                    per_target=(0.5,),
+                )
+            )
         run.finalize()
     with csv_path.open() as fh:
         rows = list(csv.DictReader(fh))
     assert len(rows) == 3
-    assert {"step", "mean_loss", "per_target_loss", "per_process_loss"} <= set(rows[0].keys())
+    assert {"step", "mean_loss", "per_target_loss", "per_process_loss"} <= set(
+        rows[0].keys()
+    )
     # Vector fields are semicolon-joined.
     assert ";" in rows[0]["per_process_loss"]
 
@@ -226,11 +271,17 @@ def test_runlogger_jsonl_sink_round_trips_records(tmp_path):
     jsonl_path = tmp_path / "metrics.jsonl"
     with RunLogger(log_every=2, metrics_jsonl=jsonl_path, log_header_every=0) as run:
         run.start(
-            target_names=("biomass",), process_names=("p1", "p2"),
-            total_steps=2, compile_warmup_seconds=0.0,
+            target_names=("biomass",),
+            process_names=("p1", "p2"),
+            total_steps=2,
+            compile_warmup_seconds=0.0,
         )
-        run.record_step(_make_record(1, total_steps=2, target_names=("biomass",), per_target=(0.5,)))
-        run.record_step(_make_record(2, total_steps=2, target_names=("biomass",), per_target=(0.4,)))
+        run.record_step(
+            _make_record(1, total_steps=2, target_names=("biomass",), per_target=(0.5,))
+        )
+        run.record_step(
+            _make_record(2, total_steps=2, target_names=("biomass",), per_target=(0.4,))
+        )
         run.finalize()
     lines = jsonl_path.read_text().strip().splitlines()
     assert len(lines) == 2
@@ -245,11 +296,21 @@ def test_runlogger_close_is_idempotent(tmp_path):
     csv_path = tmp_path / "metrics.csv"
     run = RunLogger(log_every=1, metrics_csv=csv_path)
     run.start(
-        target_names=("biomass",), process_names=("p1",),
-        total_steps=1, compile_warmup_seconds=0.0,
+        target_names=("biomass",),
+        process_names=("p1",),
+        total_steps=1,
+        compile_warmup_seconds=0.0,
     )
-    run.record_step(_make_record(1, total_steps=1, target_names=("biomass",),
-                                 process_names=("p1",), per_target=(0.5,), per_process=(0.5,)))
+    run.record_step(
+        _make_record(
+            1,
+            total_steps=1,
+            target_names=("biomass",),
+            process_names=("p1",),
+            per_target=(0.5,),
+            per_process=(0.5,),
+        )
+    )
     run.finalize()
     run.close()
     run.close()  # second close must not raise

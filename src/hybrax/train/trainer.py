@@ -199,7 +199,10 @@ def single_process_measurement_loss(
     y_pred_active = states_active[:, wrapper.target_state_indices]
     y_pred_padded = y_pred_padded.at[:n_meas, :].set(y_pred_active)
 
-    sq_err = jnp.square(y_pred_padded - process_data.y_meas) / wrapper.target_variance[None, :]
+    sq_err = (
+        jnp.square(y_pred_padded - process_data.y_meas)
+        / wrapper.target_variance[None, :]
+    )
     mask = process_data.meas_mask[:, None]
     masked_sq_err = jnp.where(mask, sq_err, 0.0)
 

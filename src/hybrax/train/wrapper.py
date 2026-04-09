@@ -136,11 +136,11 @@ class HybridOdeWrapper(eqx.Module):
     augmented_controls_units: tuple[str, ...] = eqx.field(static=True)
 
     # --- Scaling vectors (frozen, not trainable) ---
-    state_scale: jax.Array          # [n_species + 1 + n_modeled]
-    controls_scale: jax.Array       # [len(augmented_controls)]
-    q_scale: jax.Array              # [n_species]
-    f_scale: jax.Array              # [n_modeled_feeds]
-    target_variance: jax.Array      # [len(target_state_indices)]
+    state_scale: jax.Array  # [n_species + 1 + n_modeled]
+    controls_scale: jax.Array  # [len(augmented_controls)]
+    q_scale: jax.Array  # [n_species]
+    f_scale: jax.Array  # [n_modeled_feeds]
+    target_variance: jax.Array  # [len(target_state_indices)]
     target_state_indices: jax.Array  # which state columns are loss targets
 
     @classmethod
@@ -300,9 +300,7 @@ class HybridOdeWrapper(eqx.Module):
         controls_derivatives = self.controls.eval_derivative(t_arr)
 
         V_sample_acc = controls_vector[self.sample_acc_control_index]
-        V_real = jnp.maximum(
-            V_cont - V_sample_acc, jnp.asarray(self.min_real_volume)
-        )
+        V_real = jnp.maximum(V_cont - V_sample_acc, jnp.asarray(self.min_real_volume))
 
         U_flow = controls_derivatives[self.flow_control_indices]
 

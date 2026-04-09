@@ -40,15 +40,15 @@ class StepRecord:
     harness converts them out of JAX arrays before constructing the record).
     """
 
-    step: int                                  # 1-indexed
+    step: int  # 1-indexed
     total_steps: int
     mean_loss: float
-    per_target_loss: tuple[float, ...]         # length == n_targets
-    per_process_loss: tuple[float, ...]        # length == batch_size
+    per_target_loss: tuple[float, ...]  # length == n_targets
+    per_process_loss: tuple[float, ...]  # length == batch_size
     target_names: tuple[str, ...]
-    process_names: tuple[str, ...]             # batch composition for this step
-    step_dt: float                             # wall time (seconds)
-    rebuild_count: int                         # cumulative
+    process_names: tuple[str, ...]  # batch composition for this step
+    step_dt: float  # wall time (seconds)
+    rebuild_count: int  # cumulative
 
 
 class _ConsoleTableFormatter:
@@ -77,8 +77,8 @@ class _ConsoleTableFormatter:
         self._header_every = int(header_every)
         self._row_count = 0
 
-        time_width = 8       # HH:MM:SS
-        dt_width = 6         # 9999.99 max
+        time_width = 8  # HH:MM:SS
+        dt_width = 6  # 9999.99 max
         step_width = max(len(str(int(total_steps))), 4)
         loss_width = max(len("loss"), self._MIN_NUMERIC_WIDTH)
         target_widths = [
@@ -123,9 +123,7 @@ class _ConsoleTableFormatter:
         cells: list[str] = []
         cells.append(f" {clock:>{self._columns[0][1]}} ")
         cells.append(f" {step:>{self._columns[1][1]}d} ")
-        cells.append(
-            f" {mean_loss:>{self._columns[2][1]}.{self._decimals}f} "
-        )
+        cells.append(f" {mean_loss:>{self._columns[2][1]}.{self._decimals}f} ")
         for (_, w), v in zip(self._columns[3:-1], per_target_loss):
             cells.append(f" {float(v):>{w}.{self._decimals}f} ")
         cells.append(f" {float(step_dt):>{self._columns[-1][1]}.2f} ")
@@ -219,9 +217,7 @@ class RunLogger:
     ) -> None:
         self._log_every = max(int(log_every), 1)
         self._log_process_losses = bool(log_process_losses)
-        self._metrics_csv_path = (
-            Path(metrics_csv) if metrics_csv is not None else None
-        )
+        self._metrics_csv_path = Path(metrics_csv) if metrics_csv is not None else None
         self._metrics_jsonl_path = (
             Path(metrics_jsonl) if metrics_jsonl is not None else None
         )
@@ -303,9 +299,7 @@ class RunLogger:
 
     def record_step(self, record: StepRecord) -> None:
         if self._formatter is None:
-            raise RuntimeError(
-                "RunLogger.start() must be called before record_step()"
-            )
+            raise RuntimeError("RunLogger.start() must be called before record_step()")
 
         # In-memory history
         self._mean_loss_by_step.append(float(record.mean_loss))
@@ -329,15 +323,11 @@ class RunLogger:
         if is_log_step:
             self._sampled_loss_by_process_at_log_steps[record.step] = tuple(
                 (name, float(val))
-                for name, val in zip(
-                    record.process_names, record.per_process_loss
-                )
+                for name, val in zip(record.process_names, record.per_process_loss)
             )
             # Always show the indented per-process line at log steps;
             # `--log-process-losses` is reserved for "show every step".
-            self._logger.info(
-                _log_step_indent_line(record, self._log_decimals)
-            )
+            self._logger.info(_log_step_indent_line(record, self._log_decimals))
         elif self._log_process_losses:
             # If the user opted in to per-step per-process losses, also emit
             # the indented line on non-log-steps.

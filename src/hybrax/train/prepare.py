@@ -85,9 +85,7 @@ def load_raw_collection(
     name = case_study or next(iter(dataset.case_studies))
     if name not in dataset.case_studies:
         available = list(dataset.case_studies.keys())
-        raise ValueError(
-            f"Case study {name!r} not found; available: {available}"
-        )
+        raise ValueError(f"Case study {name!r} not found; available: {available}")
     cs = dataset.case_studies[name]
     return BioProcessCollection(
         processes=cs.processes,

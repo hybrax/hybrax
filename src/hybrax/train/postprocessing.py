@@ -28,9 +28,7 @@ def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
     logger.info("trained model saved to %s", path)
 
 
-def _mse_and_r2(
-    y_true: np.ndarray, y_pred: np.ndarray
-) -> tuple[float, float]:
+def _mse_and_r2(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, float]:
     """Compute MSE and R² for two 1D arrays of equal length."""
     y_true = np.asarray(y_true, dtype=float)
     y_pred = np.asarray(y_pred, dtype=float)
@@ -51,7 +49,9 @@ def _annotate_fit(ax, mse: float, r2: float) -> None:
     """Add a text box with MSE and R² in the upper-left corner of an axis."""
     text = f"MSE={mse:.4g}\nR²={r2:.4f}"
     ax.text(
-        0.02, 0.98, text,
+        0.02,
+        0.98,
+        text,
         transform=ax.transAxes,
         verticalalignment="top",
         horizontalalignment="left",
@@ -83,15 +83,12 @@ def plot_training_results(
     n_species = len(species_names)
     n_modeled = len(modeled_flow_names)
     per_process_rhs = {
-        name: get_rhs_ode(collection.processes[name])
-        for name in store.process_order
+        name: get_rhs_ode(collection.processes[name]) for name in store.process_order
     }
 
     # --- Loss curve ---
     fig_loss, ax_loss = plt.subplots(figsize=(6, 4))
-    ax_loss.plot(
-        range(1, len(result.mean_loss_by_step) + 1), result.mean_loss_by_step
-    )
+    ax_loss.plot(range(1, len(result.mean_loss_by_step) + 1), result.mean_loss_by_step)
     ax_loss.set_xlabel("Step")
     ax_loss.set_ylabel("Mean loss (MSE)")
     ax_loss.set_title("Training loss")
@@ -156,8 +153,11 @@ def plot_training_results(
             vc_t = np.asarray(vc.values.times, dtype=float)
             vc_v = np.asarray(vc.values.values, dtype=float)
             v_cont_true_dense += np.interp(
-                t_dense_np, vc_t, vc_v,
-                left=float(vc_v[0]), right=float(vc_v[-1]),
+                t_dense_np,
+                vc_t,
+                vc_v,
+                left=float(vc_v[0]),
+                right=float(vc_v[-1]),
             )
 
         v_sample_acc_dense = np.array(
@@ -180,8 +180,11 @@ def plot_training_results(
             vc_t = np.asarray(vc.values.times, dtype=float)
             vc_v = np.asarray(vc.values.values, dtype=float)
             b_modeled_true_dense[:, k] = np.interp(
-                t_dense_np, vc_t, vc_v,
-                left=float(vc_v[0]), right=float(vc_v[-1]),
+                t_dense_np,
+                vc_t,
+                vc_v,
+                left=float(vc_v[0]),
+                right=float(vc_v[-1]),
             )
 
         # ---- Specific rates q(t) along the trajectory ----
@@ -200,17 +203,13 @@ def plot_training_results(
             U_aug = jnp.concatenate([controls_vec, cin_flat])
             u_scaled = U_aug / process_wrapper.controls_scale
             outputs = process_wrapper.reaction_module(t_val, c_scaled, u_scaled)
-            Q = np.asarray(outputs.specific_rates) * np.asarray(
-                process_wrapper.q_scale
-            )
+            Q = np.asarray(outputs.specific_rates) * np.asarray(process_wrapper.q_scale)
             q_dense.append(Q)
         q_dense = np.stack(q_dense, axis=0)
 
         # --- Layout: species rows + volume row + 1 row per modeled feed ---
         n_rows = n_species + 1 + n_modeled
-        fig, axes = plt.subplots(
-            n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows)
-        )
+        fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
 
         for i, sp_name in enumerate(species_names):
             ax_c = axes[i, 0]
@@ -249,12 +248,20 @@ def plot_training_results(
         # ---- Volume panel: dense true V_real curve + integrated curve ----
         ax_v = axes[n_species, 0]
         ax_v.plot(
-            t_dense_np, v_real_true_dense, "-",
-            lw=1.5, color="black", label="measured",
+            t_dense_np,
+            v_real_true_dense,
+            "-",
+            lw=1.5,
+            color="black",
+            label="measured",
         )
         ax_v.plot(
-            t_dense_np, v_real_pred, "-",
-            lw=1.5, color="C0", label="integrated",
+            t_dense_np,
+            v_real_pred,
+            "-",
+            lw=1.5,
+            color="C0",
+            label="integrated",
         )
         v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
         _annotate_fit(ax_v, v_mse, v_r2)
@@ -270,16 +277,22 @@ def plot_training_results(
             row = n_species + 1 + k
             ax_b = axes[row, 0]
             ax_b.plot(
-                t_dense_np, b_modeled_true_dense[:, k], "-",
-                lw=1.5, color="black", label="measured",
+                t_dense_np,
+                b_modeled_true_dense[:, k],
+                "-",
+                lw=1.5,
+                color="black",
+                label="measured",
             )
             ax_b.plot(
-                t_dense_np, b_modeled_pred[:, k], "-",
-                lw=1.5, color="C0", label="integrated",
+                t_dense_np,
+                b_modeled_pred[:, k],
+                "-",
+                lw=1.5,
+                color="C0",
+                label="integrated",
             )
-            b_mse, b_r2 = _mse_and_r2(
-                b_modeled_true_dense[:, k], b_modeled_pred[:, k]
-            )
+            b_mse, b_r2 = _mse_and_r2(b_modeled_true_dense[:, k], b_modeled_pred[:, k])
             _annotate_fit(ax_b, b_mse, b_r2)
             unit = process.volume.volume_changes[fn].unit
             ax_b.set_title(f"cumulative {fn} [{unit}]")
@@ -291,9 +304,7 @@ def plot_training_results(
 
         fig.suptitle(f"{process_name}", fontsize=12)
         fig.tight_layout()
-        fig.savefig(
-            output_dir / f"{process_name}.png", dpi=150, bbox_inches="tight"
-        )
+        fig.savefig(output_dir / f"{process_name}.png", dpi=150, bbox_inches="tight")
         plt.close(fig)
 
     logger.info("plots saved to %s", output_dir)

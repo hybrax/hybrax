@@ -10,7 +10,9 @@ from bp_train.harness import TrainHarnessResult
 def test_prepare_cli_dispatches_to_prepare_artifact(monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_prepare_artifact(*, input_json, output_json, custom_py, config, case_study=None):
+    def fake_prepare_artifact(
+        *, input_json, output_json, custom_py, config, case_study=None
+    ):
         captured["input_json"] = input_json
         captured["output_json"] = output_json
         captured["custom_py"] = custom_py
@@ -47,7 +49,9 @@ def test_prepare_cli_loads_config_json(monkeypatch, tmp_path: Path):
         encoding="utf-8",
     )
 
-    def fake_prepare_artifact(*, input_json, output_json, custom_py, config, case_study=None):
+    def fake_prepare_artifact(
+        *, input_json, output_json, custom_py, config, case_study=None
+    ):
         captured["input_json"] = input_json
         captured["output_json"] = output_json
         captured["custom_py"] = custom_py
@@ -85,9 +89,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
         captured["loaded_path"] = json_path
         return sentinel_collection
 
-    def fake_train_from_collection(
-        collection, *, config, custom_py, runtime_config
-    ):
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
         captured["collection"] = collection
         captured["config"] = config
         captured["custom_py"] = custom_py
@@ -106,12 +108,14 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     import bpbench.serialization as bpbench_serialization
+
     monkeypatch.setattr(
         bpbench_serialization, "load_process_collection_json", fake_load
     )
 
     # Stub out model saving (trained_wrapper is None in this test)
     from bp_train import postprocessing
+
     monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
 
     exit_code = cli.main(
