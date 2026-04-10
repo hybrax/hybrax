@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from bp_train import cli
-from bp_train.harness import TrainHarnessResult
+from bp_train.harness import TrainHarnessConfig, TrainHarnessResult
 
 
 def test_prepare_cli_dispatches_to_prepare_artifact(monkeypatch):
@@ -107,11 +107,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
         )
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    import bpbench.serialization as bpbench_serialization
-
-    monkeypatch.setattr(
-        bpbench_serialization, "load_process_collection_json", fake_load
-    )
+    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
 
     # Stub out model saving (trained_wrapper is None in this test)
     from bp_train import postprocessing
@@ -207,11 +203,7 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
         )
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    import bpbench.serialization as bpbench_serialization
-
-    monkeypatch.setattr(
-        bpbench_serialization, "load_process_collection_json", fake_load
-    )
+    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
 
     from bp_train import postprocessing
     from bp_train import training_data as td
@@ -249,9 +241,7 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
         del solver_max_steps, solver_rtol, solver_atol
         captured["plot_process_names"] = process_names
 
-    monkeypatch.setattr(
-        postprocessing, "plot_training_results", fake_plot_training_results
-    )
+    monkeypatch.setattr(cli, "plot_training_results", fake_plot_training_results)
 
     exit_code = cli.main(
         [
@@ -272,3 +262,54 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
 
     assert exit_code == 0
     assert captured["plot_process_names"] == ("p1", "p3")
+
+
+def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
+    """CLI defaults with no flags set must match `TrainHarnessConfig()` defaults."""
+    captured: dict[str, object] = {}
+
+    def fake_load(json_path):
+        return object()
+
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+        captured["config"] = config
+        return TrainHarnessResult(
+            trained_wrapper=None,
+            mean_loss_by_step=(1.0, 0.5),
+            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+            batch_process_names_by_step=(("p1",), ("p1",)),
+            per_process_loss_by_step=((1.0,), (0.5,)),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01, 0.01),
+            train_step_input_signature=(("array", (1,), "int32"),),
+            train_step_rebuild_count=1,
+        )
+
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
+    from bp_train import postprocessing
+
+    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+
+    cli.main(["train", "--input", "prepared.json", "--no-plot"])
+
+    cfg = captured["config"]
+    d = TrainHarnessConfig()
+    assert cfg.steps == d.steps
+    assert cfg.batch_size == d.batch_size
+    assert cfg.batch_seed == d.batch_seed
+    assert cfg.optimizer_name == d.optimizer_name
+    assert cfg.shuffle_batches == d.shuffle_batches
+    assert cfg.learning_rate == d.learning_rate
+    assert cfg.grad_clip_norm == d.grad_clip_norm
+    assert cfg.seed == d.seed
+    assert cfg.log_every == d.log_every
+    assert cfg.solver_max_steps == d.solver_max_steps
+    assert cfg.solver_rtol == d.solver_rtol
+    assert cfg.solver_atol == d.solver_atol
+    assert cfg.solver_use_jump_ts == d.solver_use_jump_ts
+    assert cfg.log_process_losses == d.log_process_losses
+    assert cfg.metrics_csv == d.metrics_csv
+    assert cfg.metrics_jsonl == d.metrics_jsonl
+    assert cfg.log_decimals == d.log_decimals
+    assert cfg.log_header_every == d.log_header_every

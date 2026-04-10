@@ -6,9 +6,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .harness import TrainHarnessConfig, train_from_collection, train_from_prepared_json
+from bpbench.serialization import load_process_collection_json
+
+from .harness import TrainHarnessConfig, train_from_collection
+from .postprocessing import plot_training_results, save_model
 from .prepare import prepare_artifact
-from .training_data import TARGET_SOURCES
+from .training_data import TARGET_SOURCES, TrainingDataStore
 
 
 def _load_config(config_path: str | None) -> dict[str, Any] | None:
@@ -18,6 +21,7 @@ def _load_config(config_path: str | None) -> dict[str, Any] | None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    train_cfg_defaults = TrainHarnessConfig()
     parser = argparse.ArgumentParser(prog="bp-train")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -83,7 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument(
         "--target-source",
-        default="auto",
+        default=train_cfg_defaults.target_source,
         choices=sorted(TARGET_SOURCES),
         help=(
             "Source family for training targets: process_variables, "
@@ -93,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--steps",
         type=int,
-        default=50,
+        default=train_cfg_defaults.steps,
         help="Number of training steps.",
     )
     train_parser.add_argument(
@@ -108,7 +112,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument(
         "--optimizer",
-        default="adam",
+        default=train_cfg_defaults.optimizer_name,
         choices=["adam", "sgd"],
         help="Optimizer to use for batched updates.",
     )
@@ -125,47 +129,47 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Keep batch construction deterministic and round-robin.",
     )
-    train_parser.set_defaults(shuffle_batches=True)
+    train_parser.set_defaults(shuffle_batches=train_cfg_defaults.shuffle_batches)
     train_parser.add_argument(
         "--learning-rate",
         type=float,
-        default=1e-3,
+        default=train_cfg_defaults.learning_rate,
         help="Learning rate (overridden by build_learning_rate hook in custom.py).",
     )
     train_parser.add_argument(
         "--grad-clip-norm",
         type=float,
-        default=1000.0,
+        default=train_cfg_defaults.grad_clip_norm,
         help="Global gradient-norm clipping threshold; 0 disables clipping.",
     )
     train_parser.add_argument(
         "--seed",
         type=int,
-        default=0,
+        default=train_cfg_defaults.seed,
         help="Random seed for default model initialization.",
     )
     train_parser.add_argument(
         "--log-every",
         type=int,
-        default=10,
+        default=train_cfg_defaults.log_every,
         help="Emit progress log every N steps.",
     )
     train_parser.add_argument(
         "--solver-max-steps",
         type=int,
-        default=2048,
+        default=train_cfg_defaults.solver_max_steps,
         help="Maximum diffrax solver steps per simulation call.",
     )
     train_parser.add_argument(
         "--solver-rtol",
         type=float,
-        default=1e-5,
+        default=train_cfg_defaults.solver_rtol,
         help="Diffrax relative tolerance.",
     )
     train_parser.add_argument(
         "--solver-atol",
         type=float,
-        default=1e-7,
+        default=train_cfg_defaults.solver_atol,
         help="Diffrax absolute tolerance.",
     )
     train_parser.add_argument(
@@ -195,28 +199,29 @@ def _build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--log-process-losses",
         action="store_true",
+        default=train_cfg_defaults.log_process_losses,
         help="Emit per-process losses on every step (otherwise only at log steps).",
     )
     train_parser.add_argument(
         "--metrics-csv",
-        default=None,
+        default=train_cfg_defaults.metrics_csv,
         help="If set, write per-step metrics to this CSV file.",
     )
     train_parser.add_argument(
         "--metrics-jsonl",
-        default=None,
+        default=train_cfg_defaults.metrics_jsonl,
         help="If set, write per-step metrics to this JSONL file.",
     )
     train_parser.add_argument(
         "--log-decimals",
         type=int,
-        default=4,
+        default=train_cfg_defaults.log_decimals,
         help="Decimal places for numeric columns in the per-step console table.",
     )
     train_parser.add_argument(
         "--log-header-every",
         type=int,
-        default=30,
+        default=train_cfg_defaults.log_header_every,
         help="Re-emit the table header every N rows (0 disables re-emission).",
     )
     train_parser.add_argument(
@@ -250,12 +255,10 @@ def _split_multi_values(raw_values: list[str]) -> tuple[str, ...]:
 
 def _handle_train(args: argparse.Namespace) -> int:
     logging.basicConfig(
-        level=getattr(logging, str(args.log_level)),
+        level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    from bpbench.serialization import load_process_collection_json
 
-    from .training_data import TrainingDataStore
 
     collection = load_process_collection_json(Path(args.input))
     selected_processes = _split_multi_values(args.process)
@@ -263,25 +266,25 @@ def _handle_train(args: argparse.Namespace) -> int:
     config = TrainHarnessConfig(
         process_names=selected_processes if selected_processes else None,
         target_variable_order=selected_targets if selected_targets else None,
-        target_source=str(args.target_source),
-        steps=int(args.steps),
-        batch_size=None if args.batch_size is None else int(args.batch_size),
-        shuffle_batches=bool(args.shuffle_batches),
-        batch_seed=None if args.batch_seed is None else int(args.batch_seed),
-        optimizer_name=str(args.optimizer),
-        learning_rate=float(args.learning_rate),
-        grad_clip_norm=float(args.grad_clip_norm),
-        seed=int(args.seed),
-        log_every=int(args.log_every),
-        solver_max_steps=int(args.solver_max_steps),
-        solver_rtol=float(args.solver_rtol),
-        solver_atol=float(args.solver_atol),
-        solver_use_jump_ts=not bool(args.no_jump_ts),
-        log_process_losses=bool(args.log_process_losses),
+        target_source=args.target_source,
+        steps=args.steps,
+        batch_size=args.batch_size,
+        shuffle_batches=args.shuffle_batches,
+        batch_seed=args.batch_seed,
+        optimizer_name=args.optimizer,
+        learning_rate=args.learning_rate,
+        grad_clip_norm=args.grad_clip_norm,
+        seed=args.seed,
+        log_every=args.log_every,
+        solver_max_steps=args.solver_max_steps,
+        solver_rtol=args.solver_rtol,
+        solver_atol=args.solver_atol,
+        solver_use_jump_ts=not args.no_jump_ts,
+        log_process_losses=args.log_process_losses,
         metrics_csv=args.metrics_csv,
         metrics_jsonl=args.metrics_jsonl,
-        log_decimals=int(args.log_decimals),
-        log_header_every=int(args.log_header_every),
+        log_decimals=args.log_decimals,
+        log_header_every=args.log_header_every,
     )
     result = train_from_collection(
         collection,
@@ -301,7 +304,6 @@ def _handle_train(args: argparse.Namespace) -> int:
     )
 
     # Post-training outputs
-    from .postprocessing import plot_training_results, save_model
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
