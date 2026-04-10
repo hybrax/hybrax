@@ -9,7 +9,6 @@ from bpbench.dataclasses import BioProcess, FeedVolumeChange
 from bpbench.mechanistic import RhsOde, get_rhs_ode
 
 from .controls_store import PerProcessControls
-from .model_api import UserReactionModule
 
 
 def _build_augmented_controls_names(
@@ -161,6 +160,13 @@ class HybridOdeWrapper(eqx.Module):
         """Build a wrapper from a BioProcess and per-process controls."""
         rhs_ode = get_rhs_ode(process)
 
+        if rhs_ode.process_variable_state_names:
+            raise NotImplementedError(
+                "HybridOdeWrapper does not yet support processes with PV states "
+                f"({rhs_ode.process_variable_state_names}). "
+                "Extend C_rhs construction in __call__ first."
+            )
+
         flow_control_indices: list[int] = []
         for flow_name in rhs_ode.flow_names:
             if flow_name not in controls.control_name_to_index:
@@ -174,7 +180,7 @@ class HybridOdeWrapper(eqx.Module):
             control_names=controls.control_names,
             controlled_flow_names=rhs_ode.flow_names,
             modeled_flow_names=rhs_ode.modeled_flow_names,
-            species_names=rhs_ode.species_names,
+            species_names=rhs_ode.reactor_component_state_names,
         )
         aug_units = _build_augmented_controls_units(
             control_metadata=controls.control_metadata,
@@ -182,10 +188,10 @@ class HybridOdeWrapper(eqx.Module):
             process=process,
             controlled_flow_names=rhs_ode.flow_names,
             modeled_flow_names=rhs_ode.modeled_flow_names,
-            species_names=rhs_ode.species_names,
+            species_names=rhs_ode.reactor_component_state_names,
         )
 
-        n_species = len(rhs_ode.species_names)
+        n_species = len(rhs_ode.reactor_component_state_names)
         n_aug = len(aug_names)
         n_modeled = rhs_ode.f_modeled_size
         full_state_size = n_species + 1 + n_modeled
@@ -234,7 +240,7 @@ class HybridOdeWrapper(eqx.Module):
             flow_control_indices=jnp.asarray(flow_control_indices, dtype=jnp.int32),
             sample_acc_control_index=int(controls.sample_acc_global_index),
             min_real_volume=float(min_real_volume),
-            species_names=rhs_ode.species_names,
+            species_names=rhs_ode.reactor_component_state_names,
             modeled_flow_names=rhs_ode.modeled_flow_names,
             augmented_controls_names=aug_names,
             augmented_controls_units=aug_units,
@@ -355,7 +361,8 @@ class HybridOdeWrapper(eqx.Module):
         # sum(F_modeled).  By construction this equals dV_cont/dt because
         # V_cont = V0 + ∫(inflows) (sampling lives in V_sample_acc, not in V_cont).
         C_rhs = jnp.concatenate([C_species, jnp.asarray([V_real], dtype=y.dtype)])
-        dY_rhs = self.rhs_ode(C_rhs, Q, U_flow, F_modeled)
+        r = jnp.zeros(self.rhs_ode.r_size, dtype=y.dtype)
+        dY_rhs = self.rhs_ode(C_rhs, Q, U_flow, F_modeled, r)
         # dY_rhs has length n_species + 1 (species + V_cont).
 
         # ---- 7. Append cumulative-modeled-feed derivatives ----
@@ -375,11 +382,15 @@ def validate_rhs_ode_compatibility(
     candidate_rhs: RhsOde,
 ) -> None:
     """Validate that two RhsOde instances have compatible structure."""
-    if reference_rhs.species_names != candidate_rhs.species_names:
+    if (
+        reference_rhs.reactor_component_state_names
+        != candidate_rhs.reactor_component_state_names
+    ):
         raise ValueError(
-            f"RhsOde species_names differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs.species_names} vs "
-            f"{candidate_rhs.species_names}"
+            f"RhsOde reactor_component_state_names differ between "
+            f"{reference_name!r} and {candidate_name!r}: "
+            f"{reference_rhs.reactor_component_state_names} vs "
+            f"{candidate_rhs.reactor_component_state_names}"
         )
     if reference_rhs.flow_names != candidate_rhs.flow_names:
         raise ValueError(

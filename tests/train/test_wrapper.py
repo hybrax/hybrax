@@ -527,7 +527,7 @@ def test_validate_rhs_ode_compatibility_rejects_different_species():
     rhs_a = get_rhs_ode(process_a)
     rhs_b = get_rhs_ode(process_b)
 
-    with pytest.raises(ValueError, match="species_names differ"):
+    with pytest.raises(ValueError, match="reactor_component_state_names differ"):
         validate_rhs_ode_compatibility("a", rhs_a, "b", rhs_b)
 
 
@@ -544,7 +544,6 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
     treating the cumulative value as a flow rate).
     """
     import diffrax
-    import jax
 
     feed_medium = FeedMedium(
         name="feed",
