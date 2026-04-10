@@ -676,7 +676,39 @@ def extract_discrete_events(
                     )
                 )
 
-    events.sort(key=lambda e: e["t"])
+    events.sort(
+        key=lambda e: (
+            e["t"],
+            0 if e["kind"] == "sample" else 1,
+        )
+    )
+
+    # At a single timestamp we only allow:
+    # - one sampling event, and/or
+    # - one bolus feed event.
+    # If both are present, sampling must be applied first (sorting above).
+    per_time_counts: Dict[float, Dict[str, int]] = {}
+    for ev in events:
+        t = float(ev["t"])
+        kind = str(ev["kind"])
+        if t not in per_time_counts:
+            per_time_counts[t] = {"sample": 0, "bolus_feed": 0}
+        per_time_counts[t][kind] = per_time_counts[t][kind] + 1
+
+    duplicate_kinds = []
+    for t, counts in per_time_counts.items():
+        if counts["sample"] > 1:
+            duplicate_kinds.append((t, "sample", counts["sample"]))
+        if counts["bolus_feed"] > 1:
+            duplicate_kinds.append((t, "bolus_feed", counts["bolus_feed"]))
+    if duplicate_kinds:
+        details = ", ".join(
+            [f"t={t}: {kind} x{count}" for t, kind, count in duplicate_kinds]
+        )
+        raise ValueError(
+            "At most one discrete event per kind is allowed at a given time "
+            f"(allowed: one sample and one bolus). Found duplicates: {details}."
+        )
     return events
 
 
@@ -1744,6 +1776,19 @@ def integrate_process(
     c0 = jnp.concatenate([c0_reactor, c0_pv])
     c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
     V0 = float(process.volume.initial_volume)
+
+    # Apply events at t_start directly to the initial state so outputs at
+    # the first timestamp follow the same right-continuous event semantics.
+    for ev in event_lookup.get(t_start, []):
+        dV = float(ev["dV"])
+        V_new = max(V0 + dV, 1e-10)
+        if ev["kind"] == "bolus_feed" and ev["Cin"] is not None:
+            Cin = jnp.asarray(ev["Cin"], dtype=float)
+            c0_reactor = (c0[:n_reactor] * V0 + Cin * dV) / V_new
+            c0_reactor = jnp.maximum(c0_reactor, 0.0)
+            c0 = c0.at[:n_reactor].set(c0_reactor)
+        V0 = V_new
+
     state0_probe = jnp.append(c0, V0)
     controls0_probe = ctrl(jnp.array(t_start))
     _validate_rates_output_shapes(
@@ -1833,7 +1878,7 @@ def integrate_process(
     ev_is_bolus_arr = jnp.zeros((n_seg, max_ev), dtype=bool)
     ev_Cin_arr = jnp.zeros((n_seg, max_ev, n_reactor))
 
-    for i in range(n_seg - 1):
+    for i in range(n_seg):
         evs = event_lookup.get(boundaries[i + 1], [])
         ev_n_arr = ev_n_arr.at[i].set(len(evs))
         for j, ev in enumerate(evs):
@@ -1907,6 +1952,16 @@ def integrate_process(
                 0, max_ev, lambda j, s: _apply_event(s, j), state_orig
             )
             state_n_next = state_orig / state_scale
+
+            # If this segment saves a point exactly at t_hi, store the
+            # post-event state at that boundary.
+            has_boundary_point = (n_val > 0) & jnp.isclose(ts[n_val - 1], t_hi)
+            ys_norm = jax.lax.cond(
+                has_boundary_point,
+                lambda y: y.at[n_val - 1].set(state_n_next),
+                lambda y: y,
+                ys_norm,
+            )
 
             n_steps = sol.stats["num_steps"]
             return state_n_next, (ys_norm, n_steps)

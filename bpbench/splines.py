@@ -406,8 +406,7 @@ def _build_dense_time_grid(
                 t_pre = float(t) - _EPS
                 if t_pre > 0:
                     extra_times.add(t_pre)
-                if isinstance(vc, SampleVolumeChange):
-                    extra_times.add(float(t) + _EPS)
+                extra_times.add(float(t) + _EPS)
 
     all_times = jnp.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
 
@@ -669,17 +668,20 @@ def build_splines(
                 fc_comp = vc.feed_medium.components[species_name]
                 if isinstance(fc_comp.concentration, StaticVariable):
                     c_feed = float(fc_comp.concentration.value)
-            for t_b in jnp.asarray(vc.values.times, dtype=float):
+            ev_times = jnp.asarray(vc.values.times, dtype=float)
+            ev_vals = jnp.asarray(vc.values.values, dtype=float)
+            for t_b, v_b in zip(ev_times, ev_vals):
                 if not jnp.any(jnp.abs(meas_t - t_b) < _EPS * 2):
-                    bolus_events.append((float(t_b), c_feed))
+                    bolus_events.append((float(t_b), c_feed, float(v_b)))
 
         bolus_events.sort(key=lambda x: x[0])
 
         dense_t = inputs["dense_times"]
         dense_adf = inputs["adf_dense"]
-
-        for t_b, c_feed in bolus_events:
+        dense_v = inputs["reactor_volume_dense"]
+        for t_b, c_feed, v_bolus in bolus_events:
             t_pre = t_b - _EPS
+            t_post = t_b + _EPS
 
             order = jnp.argsort(interp_times)
             interp_times = interp_times[order]
@@ -687,24 +689,25 @@ def build_splines(
             interp_fc = interp_fc[order]
 
             adf_pre = float(jnp.interp(t_pre, dense_t, dense_adf))
-            adf_post = float(jnp.interp(t_b, dense_t, dense_adf))
+            adf_post = float(jnp.interp(t_post, dense_t, dense_adf))
 
             mask = interp_times <= t_pre
             fc_pre = float(interp_fc[mask][-1]) if jnp.any(mask) else 0.0
 
-            cs_val = float(spline_cstar(jnp.array(t_b)))
+            cs_val_pre = float(spline_cstar(jnp.array(t_pre)))
+            c_pre = (cs_val_pre + fc_pre) / max(adf_pre, 1e-12)
 
-            c_pre = (cs_val + fc_pre) / max(adf_pre, 1e-12)
+            # Sample-first, then bolus:
+            # V_post is reactor volume right after all events at t_b.
+            # So pre-bolus volume is V_post - V_bolus.
+            v_post = float(jnp.interp(t_post, dense_t, dense_v))
+            v_before_bolus = max(v_post - v_bolus, 1e-12)
+            c_post = (c_pre * v_before_bolus + c_feed * v_bolus) / max(v_post, 1e-12)
 
-            v_pre = float(jnp.interp(t_pre, dense_t, inputs["reactor_volume_dense"]))
-            v_post = float(jnp.interp(t_b, dense_t, inputs["reactor_volume_dense"]))
-            v_feed = v_post - v_pre
+            cs_val_post = float(spline_cstar(jnp.array(t_post)))
+            fc_post = c_post * adf_post - cs_val_post
 
-            c_post = (c_pre * v_pre + c_feed * v_feed) / v_post
-
-            fc_post = c_post * adf_post - cs_val
-
-            interp_times = jnp.append(interp_times, jnp.array([t_pre, t_b]))
+            interp_times = jnp.append(interp_times, jnp.array([t_pre, t_post]))
             interp_adf = jnp.append(interp_adf, jnp.array([adf_pre, adf_post]))
             interp_fc = jnp.append(interp_fc, jnp.array([fc_pre, fc_post]))
 

@@ -1382,6 +1382,76 @@ class TestExtractDiscreteEvents:
         events = extract_discrete_events(process, mb)
         assert len(events[0]["Cin"]) == len(mb.reactor_component_state_names)
 
+    def test_same_timestamp_orders_sample_before_bolus(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.1]),
+        )
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=300.0, biomass_conc=0.0),
+            values=_ts([5.0], [0.05]),
+        )
+        mb = get_rhs_ode(process)
+
+        events = extract_discrete_events(process, mb)
+        assert len(events) == 2
+        assert events[0]["kind"] == "sample"
+        assert events[1]["kind"] == "bolus_feed"
+
+    def test_duplicate_sampling_at_same_timestamp_raises(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling_a"] = SampleVolumeChange(
+            name="sampling_a",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.05]),
+        )
+        process.volume.volume_changes["sampling_b"] = SampleVolumeChange(
+            name="sampling_b",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.03]),
+        )
+        mb = get_rhs_ode(process)
+
+        with pytest.raises(ValueError, match="At most one discrete event per kind"):
+            extract_discrete_events(process, mb)
+
+    def test_duplicate_bolus_at_same_timestamp_raises(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["bolus_a"] = FeedVolumeChange(
+            name="bolus_a",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_a_feed", glucose_conc=50.0, biomass_conc=0.0),
+            values=_ts([5.0], [0.02]),
+        )
+        process.volume.volume_changes["bolus_b"] = FeedVolumeChange(
+            name="bolus_b",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed(
+                "bolus_b_feed", glucose_conc=100.0, biomass_conc=0.0
+            ),
+            values=_ts([5.0], [0.03]),
+        )
+        mb = get_rhs_ode(process)
+
+        with pytest.raises(ValueError, match="At most one discrete event per kind"):
+            extract_discrete_events(process, mb)
+
 
 # ---------------------------------------------------------------------------
 # estimate_specific_rates tests
@@ -1761,6 +1831,66 @@ class TestIntegrateProcess:
         assert float(result["c"][1, pv_idx]) == pytest.approx(100.0, rel=1e-6)
         assert float(result["c"][2, pv_idx]) == pytest.approx(100.0, rel=1e-6)
 
+    def test_same_timestamp_sampling_then_bolus_mixing(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.2]),
+        )
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=300.0, biomass_conc=0.0),
+            values=_ts([5.0], [0.1]),
+        )
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
+        t_eval = jnp.array([0.0, 4.9, 5.0, 5.1])
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
+
+        # sample first (1.0 -> 0.8), then bolus (+0.1 with mixing, final V=0.9)
+        V_expected = 0.9
+        X_expected = (0.5 * 0.8 + 0.0 * 0.1) / V_expected
+        G_expected = (10.0 * 0.8 + 300.0 * 0.1) / V_expected
+
+        assert float(result["V"][2]) == pytest.approx(V_expected, rel=1e-6)
+        assert float(result["c"][2, 0]) == pytest.approx(X_expected, rel=1e-6)
+        assert float(result["c"][2, 1]) == pytest.approx(G_expected, rel=1e-6)
+
+    def test_event_at_t_end_is_applied_at_endpoint(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.time_axis = TimeAxis(
+            unit="hours",
+            start=0.0,
+            end=20.0,
+            time_reference="inoculation",
+        )
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([20.0], [-0.2]),
+        )
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
+        t_eval = jnp.array([19.9, 20.0])
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
+
+        i_pre = int(jnp.argmin(jnp.abs(result["t"] - 19.9)))
+        i_end = int(jnp.argmin(jnp.abs(result["t"] - 20.0)))
+        assert float(result["V"][i_pre]) == pytest.approx(1.0, rel=1e-6)
+        assert float(result["V"][i_end]) == pytest.approx(0.8, rel=1e-6)
+
     def test_pseudospace_matches_segmented_with_sampling_and_bolus(self):
         """Single-pass pseudo-space integration should match segmented integration."""
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
@@ -1837,6 +1967,74 @@ class TestIntegrateProcess:
             i_post = int(jnp.argmin(jnp.abs(t_eval - t_post)))
             assert float(jnp.max(jnp.abs(c_ref[i_pre] - c_pseudo[i_pre]))) < 20.0
             assert float(jnp.max(jnp.abs(c_ref[i_post] - c_pseudo[i_post]))) < 20.0
+
+    def test_pseudospace_matches_segmented_with_same_time_sampling_and_bolus(self):
+        process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
+
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([6.0, 12.0], [-0.1, -0.2]),
+        )
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=25.0, biomass_conc=0.0),
+            values=_ts([6.0, 12.0], [0.2, 0.1]),
+        )
+
+        t_obs = jnp.linspace(0.0, 20.0, 121)
+        biomass = 0.4 * jnp.exp(0.08 * t_obs)
+        glucose = jnp.maximum(40.0 - 1.4 * t_obs - 0.03 * (t_obs**2), 0.5)
+        process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
+        process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
+
+        for sp_name in ("biomass", "glucose"):
+            inputs = build_pseudobatch_inputs(process, sp_name)
+            spl = build_splines(inputs, process=process, species_name=sp_name)
+            rep = to_interpolator(inputs, spl, sp_name)
+            process.reactor_medium.components[sp_name].interpolator = rep
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        state_splines = build_state_splines(process, mb)
+        q_func = build_q_func(process, ctrl, mb, state_splines)
+        rates_func = _wrap_q_as_rates(mb, q_func)
+
+        t_eval = jnp.linspace(0.0, 20.0, 181)
+        ref = integrate_process(
+            process,
+            ctrl,
+            mb,
+            rates_func,
+            t_eval,
+            state_splines=state_splines,
+        )
+        pseudo = integrate_process_pseudospace(
+            process,
+            ctrl,
+            mb,
+            rates_func,
+            t_eval,
+            state_splines=state_splines,
+        )
+
+        c_ref = _sample_on_observation_grid(ref["t"], ref["c"], t_eval)
+        V_ref = _sample_on_observation_grid(ref["t"], ref["V"][:, None], t_eval)[:, 0]
+        c_pseudo = _sample_on_observation_grid(pseudo["t"], pseudo["c"], t_eval)
+        V_pseudo = _sample_on_observation_grid(
+            pseudo["t"], pseudo["V"][:, None], t_eval
+        )[:, 0]
+
+        max_c_diff = float(jnp.max(jnp.abs(c_ref - c_pseudo)))
+        max_v_diff = float(jnp.max(jnp.abs(V_ref - V_pseudo)))
+
+        assert max_c_diff < 6.5
+        assert max_v_diff < 1e-4
 
     def test_pseudospace_runs_without_transform_metadata(self):
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
