@@ -55,7 +55,9 @@ Default assumptions:
 
 - All reactor-component states are treated as biologically driven and therefore
   represented in biomass-specific ``q``.
-- ``r`` defaults to zero unless an ``r_func(t)`` is supplied.
+- ``r`` defaults depend on state block when ``r_func`` is not supplied:
+  reactor-component entries are zero, process-variable entries come from PV
+  spline derivatives.
 - Reactor-component states are represented in both vectors: ``q`` has one entry
   per reactor-component state, and the first ``n_reactor_states`` entries of
   ``r`` align to those same reactor-component states.
@@ -74,10 +76,12 @@ Supported Runtime Scenarios
 1. Data-driven default (no explicit physical rates):
 
    - Build spline-backed rates with ``build_rates_func(..., r_func=None)``.
-   - Internally this uses :func:`build_q_func` for all reactor-component states
-     and sets ``r = 0``.
+   - Internally this uses :func:`build_q_func` for all reactor-component states.
+   - Default ``r`` behavior is:
+     - reactor-component block: zeros,
+     - process-variable block: inferred from PV spline derivatives.
    - Integration then applies reaction + feed/dilution for reactor states, and
-     zero additive terms unless provided elsewhere.
+     additive PV rates from inferred derivatives.
 
 2. Data-driven + explicit physical rates:
 
@@ -1112,8 +1116,9 @@ def build_rates_func(
     - ``r`` is an additive physical-rate vector over all non-volume states.
       Its first ``n_reactor_states`` entries align to the same reactor-component
       states covered by ``q``; any remaining entries correspond to
-      process-variable states. If ``r_func`` is not supplied, ``r`` defaults
-      to zeros.
+      process-variable states. If ``r_func`` is not supplied, reactor-component
+      ``r`` entries default to zero and process-variable entries are inferred
+      from state-spline derivatives.
     - ``state`` and ``controls`` are accepted to satisfy integration callback
       signature, but this spline-derived wrapper currently depends on ``t``
       only.
@@ -1134,23 +1139,38 @@ def build_rates_func(
         ``rates_func(t, state, controls) -> tuple[q, r]`` with shapes
         ``q.shape == (mb.q_size,)`` and ``r.shape == (mb.r_size,)``.
     """
+    state_splines = _resolve_state_splines(
+        state_splines=state_splines,
+        conc_splines=conc_splines,
+    )
     q_only = build_q_func(
         process,
         ctrl,
         mb,
         state_splines,
-        conc_splines=conc_splines,
+        conc_splines=None,
         q_state_indices=q_state_indices,
         r_state_indices=r_state_indices,
         r_func=r_func,
     )
+    pv_derivs: List[Callable] = []
+    if r_func is None and mb.n_pv_states > 0:
+        pv_derivs = [
+            state_splines[pv_name].derivative()
+            for pv_name in mb.process_variable_state_names
+        ]
 
     def rates_func(t, _state, _controls):
         # default rates_func only uses inverted splines: we can ignore state and
         # controls
         q = q_only(t)
         if r_func is None:
-            r = jnp.zeros(mb.r_size, dtype=float)
+            if mb.n_pv_states == 0:
+                r = jnp.zeros(mb.r_size, dtype=float)
+            else:
+                r_reactor = jnp.zeros(mb.n_reactor_states, dtype=float)
+                r_pv = jnp.stack([pv_derivs[i](t) for i in range(mb.n_pv_states)])
+                r = jnp.concatenate([r_reactor, r_pv])
         else:
             r = jnp.asarray(r_func(t), dtype=float)
         return q, r

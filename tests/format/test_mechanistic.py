@@ -39,6 +39,7 @@ from bpbench.mechanistic import (
     integrate_process_pseudospace,
     build_state_splines,
     build_q_func,
+    build_rates_func,
 )
 from bpbench.splines import (
     make_interpax_spline,
@@ -1609,6 +1610,66 @@ class TestEstimateSpecificRates:
 
         assert q_func(5.0).shape == (mb.q_size,)
         assert q_est.shape == (len(t), mb.q_size)
+
+    def test_build_rates_func_default_infers_pv_r_from_state_splines(self):
+        process = _make_process(
+            with_controlled_flow=False,
+            with_controlled_pv=False,
+            with_uncontrolled_pv=True,
+        )
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        state_splines = build_state_splines(process, mb)
+
+        rates_func = build_rates_func(process, ctrl, mb, state_splines)
+        t_eval = 5.0
+        q, r = rates_func(t_eval, jnp.zeros(mb.c_size), ctrl(t_eval))
+
+        pv_name = mb.process_variable_state_names[0]
+        expected_pv_r = state_splines[pv_name].derivative()(t_eval)
+
+        assert q.shape == (mb.q_size,)
+        assert r.shape == (mb.r_size,)
+        np.testing.assert_allclose(r[: mb.n_reactor_states], 0.0, atol=1e-10)
+        assert float(r[mb.n_reactor_states]) == pytest.approx(
+            float(expected_pv_r), rel=1e-6
+        )
+
+    def test_build_rates_func_default_without_pv_keeps_r_zero(self):
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        state_splines = build_state_splines(process, mb)
+
+        rates_func = build_rates_func(process, ctrl, mb, state_splines)
+        q, r = rates_func(2.0, jnp.zeros(mb.c_size), ctrl(2.0))
+
+        assert q.shape == (mb.q_size,)
+        np.testing.assert_allclose(r, 0.0, atol=1e-10)
+
+    def test_build_rates_func_legacy_conc_splines_keyword_still_supported(self):
+        process = _make_process(
+            with_controlled_flow=False,
+            with_controlled_pv=False,
+            with_uncontrolled_pv=True,
+        )
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        conc_splines = build_state_splines(process, mb)
+
+        rates_func = build_rates_func(process, ctrl, mb, conc_splines=conc_splines)
+        t_eval = 5.0
+        q, r = rates_func(t_eval, jnp.zeros(mb.c_size), ctrl(t_eval))
+
+        pv_name = mb.process_variable_state_names[0]
+        expected_pv_r = conc_splines[pv_name].derivative()(t_eval)
+
+        assert q.shape == (mb.q_size,)
+        assert r.shape == (mb.r_size,)
+        np.testing.assert_allclose(r[: mb.n_reactor_states], 0.0, atol=1e-10)
+        assert float(r[mb.n_reactor_states]) == pytest.approx(
+            float(expected_pv_r), rel=1e-6
+        )
 
 
 # ---------------------------------------------------------------------------

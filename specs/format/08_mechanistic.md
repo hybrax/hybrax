@@ -106,6 +106,9 @@ Where:
 - `q` has shape `(mb.q_size,)` and covers reactor-component specific rates.
 - `r` has shape `(mb.r_size,)` and covers additive physical rates on all
   non-volume states.
+- In `build_rates_func(..., r_func=None)` default mode, reactor-component `r`
+  entries are zero and process-variable `r` entries are inferred from
+  process-variable spline derivatives.
 
 The older public `q_func` / `r_func` integration inputs have been removed.
 
