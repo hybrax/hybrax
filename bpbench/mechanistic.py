@@ -341,6 +341,11 @@ class RhsOde(eqx.Module):
             Volumetric flow rates for each continuous uncontrolled (modeled)
             feed stream, shape ``(f_modeled_size,)``.  Pass
             ``jnp.zeros(0)`` when there are no modeled flows.
+        r:
+            Additive physical-rate vector for all non-volume states, shape
+            ``(r_size,)``. The first ``n_reactor_states`` entries align to
+            reactor-component states and the remaining entries align to
+            process-variable states.
 
         Returns
         -------
@@ -355,8 +360,10 @@ class RhsOde(eqx.Module):
 
             X_{active} = c_{biomass} - \\sum_{i \\in intracellular} c_i
 
-            \\frac{dc_i}{dt} = q_i \\cdot X_{active}
+            \\frac{dc_i}{dt} = q_i \\cdot X_{active} + r_i
                 + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,i} - c_i)
+
+            \\frac{dc_{pv,j}}{dt} = r_{pv,j}
 
             \\frac{dV}{dt} = \\sum_k f_k
 
