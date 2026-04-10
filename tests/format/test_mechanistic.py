@@ -1533,6 +1533,26 @@ class TestEstimateSpecificRates:
                 r_state_indices=[1],
             )
 
+    def test_build_q_func_r_func_requires_explicit_indices(self):
+        process = _make_batch_process()
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        state_splines = build_state_splines(process, mb)
+
+        def r_func(_t):
+            return jnp.zeros(mb.r_size)
+
+        with pytest.raises(
+            ValueError, match="r_func requires explicit q_state_indices"
+        ):
+            build_q_func(
+                process,
+                ctrl,
+                mb,
+                state_splines,
+                r_func=r_func,
+            )
+
     def test_build_q_func_overlap_with_r_func(self):
         q_x_true = 0.25
         q_s_true = -0.1

@@ -116,6 +116,7 @@ states:
 
 - default: all reactor states treated as q-states,
 - explicit partition via `q_state_indices` and `r_state_indices`,
+- when supplying `r_func`, explicit partition indices are required,
 - overlapping q/r indices require `r_func` so overlap `r` can be subtracted.
 
 ## Example

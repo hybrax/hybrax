@@ -40,6 +40,60 @@ integrate_process(process, ctrl, mb, rates_func, t_eval) -> dict
 integrate_process_pseudospace(process, ctrl, mb, rates_func, t_eval) -> dict
     Full hybrid ODE integration with discrete event handling.
 
+Rates Pipeline
+--------------
+The intended workflow is:
+
+1. Build ``state_splines = build_state_splines(process, mb)``.
+2. Build inversion-side rates with ``q_func = build_q_func(...)``.
+3. Build integration-side callback with
+   ``rates_func = build_rates_func(..., r_func=...)`` or provide your own
+   callable with signature ``rates_func(t, state, controls) -> (q, r)``.
+4. Integrate via ``integrate_process*``.
+
+Default assumptions:
+
+- All reactor-component states are treated as biologically driven and therefore
+  represented in biomass-specific ``q``.
+- ``r`` defaults to zero unless an ``r_func(t)`` is supplied.
+- Reactor-component states are represented in both vectors: ``q`` has one entry
+  per reactor-component state, and the first ``n_reactor_states`` entries of
+  ``r`` align to those same reactor-component states.
+- Process-variable states are represented only in ``r`` (tail entries after the
+  reactor-component block).
+- Process-variable states are additive-only in the ODE path:
+  ``dc_pv/dt = r_pv`` (no dilution/feed term). Reactor-component states receive
+  reaction + feed + ``r_reactor`` terms.
+
+``q_state_indices`` and ``r_state_indices`` let callers split reactor-component
+state dynamics between ``q`` and ``r`` during inversion. They are optional; if
+omitted, all reactor-component states are ``q``-states.
+
+Supported Runtime Scenarios
+---------------------------
+1. Data-driven default (no explicit physical rates):
+
+   - Build spline-backed rates with ``build_rates_func(..., r_func=None)``.
+   - Internally this uses :func:`build_q_func` for all reactor-component states
+     and sets ``r = 0``.
+   - Integration then applies reaction + feed/dilution for reactor states, and
+     zero additive terms unless provided elsewhere.
+
+2. Data-driven + explicit physical rates:
+
+   - Build spline-backed rates with ``build_rates_func(..., r_func=...)``.
+   - In this mode, callers must pass both ``q_state_indices`` and
+     ``r_state_indices`` explicitly, so inversion knows where physical terms
+     should be treated as ``r`` (including overlap subtraction when needed).
+
+3. Fully custom runtime rates callback:
+
+   - Provide your own ``rates_func(t, state, controls) -> (q, r)`` directly to
+     ``integrate_process*``.
+   - The integrator still handles feed/dilution, volume dynamics, and discrete
+     events. Callers provide only the biological ``q`` and additive physical
+     ``r`` terms.
+
 Usage with JIT
 --------------
 Both modules are equinox Modules (JAX pytrees).  Use ``eqx.filter_jit``
@@ -843,6 +897,25 @@ def build_q_func(
     state_splines:
         Dict mapping non-volume state name -> callable spline that supports
         ``spline(t)`` and ``spline.derivative()(t)``.
+    q_state_indices, r_state_indices:
+        Optional reactor-component index partition for inversion:
+        ``dc/dt = q*X_active + r + feed``.
+
+        - If both are omitted and ``r_func`` is not provided, all
+          reactor-component states are treated as
+          ``q``-states (default biological assumption).
+        - If ``r_func`` is provided, both ``q_state_indices`` and
+          ``r_state_indices`` must be provided explicitly.
+        - If either is supplied, both must be supplied.
+        - The union of ``q_state_indices`` and ``r_state_indices`` must cover
+          all reactor-component states.
+        - Overlap (indicating that biological and physical both affect some of the state
+          variables) is allowed only when ``r_func`` is provided, so overlap ``r`` can
+          be subtracted before solving for ``q``.
+    r_func:
+        Optional ``r_func(t) -> r`` used during inversion partitioning.
+        ``r`` is interpreted as additive physical rates over all non-volume
+        states; only reactor-component entries are used by ``build_q_func``.
 
     Returns
     -------
@@ -906,20 +979,26 @@ def build_q_func(
     Cin = jnp.array(mb.Cin)
     Cin_mod = jnp.array(mb.Cin_modeled)
 
-    q_state_indices = list(q_state_indices or [])
-    r_state_indices = list(r_state_indices or [])
+    q_idx_arg = None if q_state_indices is None else list(q_state_indices)
+    r_idx_arg = None if r_state_indices is None else list(r_state_indices)
 
-    if len(q_state_indices) == 0 and len(r_state_indices) == 0:
+    if r_func is not None and (q_idx_arg is None or r_idx_arg is None):
+        raise ValueError(
+            "r_func requires explicit q_state_indices and r_state_indices "
+            "so q/r inversion partitioning is unambiguous."
+        )
+
+    if q_idx_arg is None and r_idx_arg is None:
         q_idx = list(range(n_reactor))
         r_idx = []
     else:
-        if len(q_state_indices) == 0 or len(r_state_indices) == 0:
+        if q_idx_arg is None or r_idx_arg is None:
             raise ValueError(
                 "q_state_indices and r_state_indices must both be provided "
                 "when using runtime q/r partitioning."
             )
-        q_idx = sorted(set(int(i) for i in q_state_indices))
-        r_idx = sorted(set(int(i) for i in r_state_indices))
+        q_idx = sorted(set(int(i) for i in q_idx_arg))
+        r_idx = sorted(set(int(i) for i in r_idx_arg))
         if any(i < 0 or i >= n_reactor for i in q_idx + r_idx):
             raise ValueError(
                 f"q/r indices must be in [0, {n_reactor - 1}] for reactor states."
@@ -930,10 +1009,10 @@ def build_q_func(
                 "Overlapping q/r state indices require r_func(t) so r can be "
                 "subtracted during q inversion."
             )
-        if not overlap and set(q_idx).union(r_idx) != set(range(n_reactor)):
+        if set(q_idx).union(r_idx) != set(range(n_reactor)):
             raise ValueError(
-                "For non-overlapping q/r partitioning, q_state_indices and "
-                "r_state_indices must together cover all reactor states."
+                "q_state_indices and r_state_indices must together cover all "
+                "reactor states."
             )
 
     q_mask = jnp.zeros(n_reactor, dtype=bool).at[jnp.array(q_idx, dtype=int)].set(True)
@@ -1021,7 +1100,40 @@ def build_rates_func(
     r_state_indices: Optional[List[int]] = None,
     r_func: Optional[Callable] = None,
 ) -> Callable:
-    """Build a ``rates_func(t, state, controls) -> (q, r)`` from splines."""
+    """Build integration callback ``rates_func(t, state, controls) -> (q, r)``.
+
+    This is the bridge between inversion-side spline reconstruction and
+    runtime integration APIs.
+
+    Pipeline semantics:
+
+    - ``q`` is obtained from :func:`build_q_func` and has one biomass-specific
+      rate per reactor-component state.
+    - ``r`` is an additive physical-rate vector over all non-volume states.
+      Its first ``n_reactor_states`` entries align to the same reactor-component
+      states covered by ``q``; any remaining entries correspond to
+      process-variable states. If ``r_func`` is not supplied, ``r`` defaults
+      to zeros.
+    - ``state`` and ``controls`` are accepted to satisfy integration callback
+      signature, but this spline-derived wrapper currently depends on ``t``
+      only.
+
+    Parameters
+    ----------
+    process, ctrl, mb, state_splines, conc_splines:
+        Same meaning as :func:`build_q_func`.
+    q_state_indices, r_state_indices:
+        Forwarded to :func:`build_q_func`; see its docstring for partitioning
+        rules.
+    r_func:
+        Optional ``r_func(t) -> r`` used to populate additive physical rates.
+
+    Returns
+    -------
+    Callable
+        ``rates_func(t, state, controls) -> tuple[q, r]`` with shapes
+        ``q.shape == (mb.q_size,)`` and ``r.shape == (mb.r_size,)``.
+    """
     q_only = build_q_func(
         process,
         ctrl,
@@ -1033,8 +1145,9 @@ def build_rates_func(
         r_func=r_func,
     )
 
-    def rates_func(t, state, controls):
-        del state, controls
+    def rates_func(t, _state, _controls):
+        # default rates_func only uses inverted splines: we can ignore state and
+        # controls
         q = q_only(t)
         if r_func is None:
             r = jnp.zeros(mb.r_size, dtype=float)
@@ -1062,6 +1175,11 @@ def estimate_specific_rates(
     Convenience wrapper around :func:`build_q_func` that evaluates the
     analytical rate function at the given time points.
 
+    This helper is inversion-only and returns ``q`` values. Integration APIs
+    consume ``rates_func(t, state, controls) -> (q, r)``; use
+    :func:`build_rates_func` to assemble that callback from spline-derived
+    ``q`` and optional ``r_func``.
+
     Parameters
     ----------
     process:
@@ -1075,6 +1193,12 @@ def estimate_specific_rates(
         ``spline(t)`` and ``spline.derivative()(t)``.
     t_eval:
         1-D array of time points at which to estimate q.
+    q_state_indices, r_state_indices:
+        Forwarded to :func:`build_q_func`; see its docstring for partitioning
+        rules.
+    r_func:
+        Optional ``r_func(t)`` forwarded to :func:`build_q_func` for overlap
+        handling in q/r partitioning.
 
     Returns
     -------
@@ -1370,7 +1494,20 @@ def integrate_process_pseudospace(
     use_jump_ts: bool = True,
     max_steps: int = 16384,
 ) -> Dict[str, Any]:
-    """Integrate in c* (pseudo-batch) space with a single ``diffeqsolve``."""
+    """Integrate in c* (pseudo-batch) space with a single ``diffeqsolve``.
+
+    Parameters
+    ----------
+    rates_func:
+        Callable ``rates_func(t, state, controls) -> tuple[q, r]``.
+        ``q`` covers reactor-component biomass-specific rates and ``r`` covers
+        additive physical rates over all non-volume states.
+
+    Notes
+    -----
+    Process-variable states are integrated as additive-only:
+    ``dc_pv/dt = r_pv``. They do not receive dilution/feed terms.
+    """
     state_splines = _resolve_state_splines(
         state_splines=state_splines,
         conc_splines=conc_splines,
@@ -1683,8 +1820,11 @@ def integrate_process(
     rates_func:
         Callable
         ``rates_func(t, state, controls) -> tuple[q, r]`` where
-        ``q`` are biomass-specific rates for reactor-component states and
-        ``r`` are physical rates for all non-volume states.
+        ``q`` has one biomass-specific rate per reactor-component state and
+        ``r`` has one additive physical rate per non-volume state. The first
+        ``n_reactor_states`` entries of ``r`` align to the same
+        reactor-component states as ``q``; tail entries cover process-variable
+        states.
     t_eval:
         1-D array of time points at which to record the solution.
     state_splines:
@@ -1697,6 +1837,12 @@ def integrate_process(
         Relative and absolute tolerances for the ODE solver.
     max_steps:
         Maximum number of ODE solver steps per segment.
+
+    Notes
+    -----
+    Process-variable states are treated as additive-only in this integration
+    path: ``dc_pv/dt = r_pv`` (with configured static PV indices clamped to
+    zero). They are not subjected to reactor feed/dilution terms.
 
     Returns
     -------
