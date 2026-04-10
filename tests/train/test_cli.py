@@ -181,3 +181,94 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
     assert captured["collection"] is sentinel_collection
     assert str(captured["loaded_path"]) == "prepared.json"
     assert captured["custom_py"] == "custom.py"
+
+
+def test_train_cli_plots_only_selected_processes(monkeypatch):
+    captured: dict[str, object] = {}
+
+    sentinel_collection = object()
+
+    def fake_load(json_path):
+        captured["loaded_path"] = json_path
+        return sentinel_collection
+
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+        captured["config"] = config
+        return TrainHarnessResult(
+            trained_wrapper=None,
+            mean_loss_by_step=(1.0, 0.5),
+            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+            batch_process_names_by_step=(("p1",), ("p1",)),
+            per_process_loss_by_step=((1.0,), (0.5,)),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01, 0.01),
+            train_step_input_signature=(("array", (1,), "int32"),),
+            train_step_rebuild_count=1,
+        )
+
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    import bpbench.serialization as bpbench_serialization
+
+    monkeypatch.setattr(
+        bpbench_serialization, "load_process_collection_json", fake_load
+    )
+
+    from bp_train import postprocessing
+    from bp_train import training_data as td
+
+    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+
+    class _DummyStore:
+        process_order = ("p1", "p2", "p3")
+
+    def fake_store_from_collection(
+        collection,
+        *,
+        target_variable_order=None,
+        target_source="auto",
+    ):
+        del collection, target_variable_order, target_source
+        return _DummyStore()
+
+    monkeypatch.setattr(
+        td.TrainingDataStore, "from_collection", fake_store_from_collection
+    )
+
+    def fake_plot_training_results(
+        result,
+        collection,
+        store,
+        output_dir,
+        process_names=None,
+        *,
+        solver_max_steps=4096,
+        solver_rtol=1e-3,
+        solver_atol=1e-5,
+    ):
+        del result, collection, store, output_dir
+        del solver_max_steps, solver_rtol, solver_atol
+        captured["plot_process_names"] = process_names
+
+    monkeypatch.setattr(
+        postprocessing, "plot_training_results", fake_plot_training_results
+    )
+
+    exit_code = cli.main(
+        [
+            "train",
+            "--input",
+            "prepared.json",
+            "--process",
+            "p1",
+            "--process",
+            "p3",
+            "--steps",
+            "2",
+            "--output-dir",
+            "out",
+            "--plot",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["plot_process_names"] == ("p1", "p3")

@@ -319,6 +319,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             collection,
             store,
             output_dir,
+            process_names=config.process_names,
             solver_max_steps=config.solver_max_steps,
             solver_rtol=config.solver_rtol,
             solver_atol=config.solver_atol,

@@ -65,6 +65,7 @@ def plot_training_results(
     collection: BioProcessCollection,
     store: TrainingDataStore,
     output_dir: str | Path,
+    process_names: tuple[str, ...] | None = None,
     *,
     solver_max_steps: int = 4096,
     solver_rtol: float = 1e-3,
@@ -82,8 +83,19 @@ def plot_training_results(
     modeled_flow_names = trained_wrapper.modeled_flow_names
     n_species = len(species_names)
     n_modeled = len(modeled_flow_names)
+    if process_names is None:
+        selected_processes = tuple(store.process_order)
+    else:
+        missing = [name for name in process_names if name not in store.process_order]
+        if missing:
+            raise ValueError(
+                "plot_training_results received unknown process names: "
+                f"{missing}; available={store.process_order}"
+            )
+        selected_processes = tuple(process_names)
+
     per_process_rhs = {
-        name: get_rhs_ode(collection.processes[name]) for name in store.process_order
+        name: get_rhs_ode(collection.processes[name]) for name in selected_processes
     }
 
     # --- Loss curve ---
@@ -100,7 +112,7 @@ def plot_training_results(
     logger.info("loss curve saved to %s", output_dir / "loss_curve.png")
 
     # --- Per-process plots ---
-    for process_name in store.process_order:
+    for process_name in selected_processes:
         process = collection.processes[process_name]
         process_data = store.get_process(process_name)
         rhs = per_process_rhs[process_name]
