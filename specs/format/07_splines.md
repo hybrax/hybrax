@@ -88,7 +88,7 @@ For discrete bolus events at time `t_event`, the module inserts pre-event points
 | Function | Description |
 |----------|-------------|
 | `build_pseudobatch_inputs(process, species_name)` | Extract the inputs needed for pseudobatch transformation (biomass, substrate, feed rate, etc.) for a given species. Returns a dict. |
-| `build_splines(process, species_names, ...)` | Full pipeline: compute pseudobatch transform, fit splines to c*, ADF, and feed correction for all species. Returns dict of `Interpolator` objects. |
+| `build_splines(process, reactor_component_state_names, ...)` | Full pipeline: compute pseudobatch transform, fit splines to c*, ADF, and feed correction for all reactor-component states. Returns dict of `Interpolator` objects. |
 | `evaluate_real_concentration(rep, t)` | Evaluate the backtransformed real concentration at time `t` from a stored `Interpolator`. |
 | `to_interpolator(...)` | Convert scipy/interpax spline output to a padded `Interpolator` with metadata. |
 
@@ -145,9 +145,9 @@ import bpbench as bp
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["kittler_2022"].processes["fed_batch_001"]
 
-# Build splines for all reactor medium species
-species_names = list(process.reactor_medium.components.keys())
-interpolators = bp.splines.build_splines(process, species_names)
+# Build splines for all reactor-component states
+reactor_component_state_names = list(process.reactor_medium.components.keys())
+interpolators = bp.splines.build_splines(process, reactor_component_state_names)
 
 # interpolators is a dict: {"biomass": Interpolator, "glucose": Interpolator, ...}
 ```

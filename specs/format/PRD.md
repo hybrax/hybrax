@@ -120,40 +120,43 @@ class RhsOde(eqx.Module):
 
     Created by :func:`get_rhs_ode`; do not instantiate directly.
 
-    The state vector is ``c = [c_species..., V]`` where the last element is
-    the reactor volume.  Biomass is always at index 0.
+    The state vector is ``c = [reactor_components..., pv_states..., V]`` where
+    the last element is reactor volume. Biomass is always index 0 in the
+    reactor-component block.
 
     Attributes
     ----------
     c_size : int
-        ``n_species + 1`` (species concentrations + volume).
+        ``n_non_volume_states + 1``.
     q_size : int
-        ``n_species`` — number of specific rates (aligned with
-        :attr:`species_names`).
+        ``n_reactor_states`` — number of specific rates (reactor block only).
     u_flow_size : int
         Number of continuous controlled flow streams.
     f_modeled_size : int
         Number of continuous uncontrolled (modeled) flow streams.
     output_size : int
         Same as :attr:`c_size`.
-    species_names : tuple[str, ...]
-        Ordering of species in *c* and *q*.  Biomass is always first.
+    reactor_component_state_names : tuple[str, ...]
+        Ordering of reactor-component states in *c* and *q*. Biomass is
+        always first.
+    process_variable_state_names : tuple[str, ...]
+        Ordering of process-variable states in *c*.
     flow_names : tuple[str, ...]
         Ordering of continuous controlled flow streams in *u_flow*.
     modeled_flow_names : tuple[str, ...]
         Ordering of continuous uncontrolled (modeled) flow streams in
         *f_modeled*.
     biomass_idx : int
-        Index of ``"biomass"`` in :attr:`species_names` (always 0).
+        Index of ``"biomass"`` in reactor-component ordering (always 0).
     intracellular_indices : tuple[int, ...]
-        Indices of intracellular species in :attr:`species_names`.
+        Indices of intracellular states in reactor-component ordering.
         Intracellular components (e.g., intracellular product) accumulate
         inside the cells.  Active biomass is therefore:
         ``X_active = c[biomass_idx] - sum(c[i] for i in intracellular_indices)``.
-    Cin : jnp.ndarray, shape (n_flows, n_species)
+    Cin : jnp.ndarray, shape (n_flows, n_reactor_states)
         Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
         concentration of species *i* in controlled feed stream *k*.
-    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_species)
+    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_reactor_states)
         Feed composition matrix for modeled (uncontrolled) flows.
 
     Notes
