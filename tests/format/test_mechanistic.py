@@ -1793,12 +1793,17 @@ class TestIntegrateProcess:
         X_new = (0.5 * 1.0 + 0.0 * 0.1) / V_new
         S_new = (10.0 * 1.0 + 300.0 * 0.1) / V_new
 
+        # pre-event at t_b: state is unchanged
         assert float(result["c"][1, 0]) == pytest.approx(0.5, rel=1e-6)
         assert float(result["c"][1, 1]) == pytest.approx(10.0, rel=1e-6)
         assert float(result["V"][1]) == pytest.approx(1.0, rel=1e-6)
-        assert float(result["c"][2, 0]) == pytest.approx(X_new, rel=1e-6)
-        assert float(result["c"][2, 1]) == pytest.approx(S_new, rel=1e-6)
-        assert float(result["V"][2]) == pytest.approx(V_new, rel=1e-6)
+        assert float(result["c"][2, 0]) == pytest.approx(0.5, rel=1e-6)
+        assert float(result["c"][2, 1]) == pytest.approx(10.0, rel=1e-6)
+        assert float(result["V"][2]) == pytest.approx(1.0, rel=1e-6)
+        # post-event at t_b + eps: mixed state
+        assert float(result["c"][3, 0]) == pytest.approx(X_new, rel=1e-3)
+        assert float(result["c"][3, 1]) == pytest.approx(S_new, rel=1e-3)
+        assert float(result["V"][3]) == pytest.approx(V_new, rel=1e-3)
 
     def test_discrete_sampling_event_preserves_concentrations(self):
         process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
@@ -1816,12 +1821,17 @@ class TestIntegrateProcess:
         t_eval = jnp.array([0.0, 4.9, 5.0, 5.1])
         result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
 
+        # pre-event at t_b: volume and concentrations unchanged
         assert float(result["c"][1, 0]) == pytest.approx(0.5, rel=1e-6)
         assert float(result["c"][1, 1]) == pytest.approx(10.0, rel=1e-6)
         assert float(result["V"][1]) == pytest.approx(1.0, rel=1e-6)
         assert float(result["c"][2, 0]) == pytest.approx(0.5, rel=1e-6)
         assert float(result["c"][2, 1]) == pytest.approx(10.0, rel=1e-6)
-        assert float(result["V"][2]) == pytest.approx(0.9, rel=1e-6)
+        assert float(result["V"][2]) == pytest.approx(1.0, rel=1e-6)
+        # post-event at t_b + eps: volume reduced, concentrations preserved
+        assert float(result["c"][3, 0]) == pytest.approx(0.5, rel=1e-3)
+        assert float(result["c"][3, 1]) == pytest.approx(10.0, rel=1e-3)
+        assert float(result["V"][3]) == pytest.approx(0.9, rel=1e-3)
 
     def test_discrete_events_affect_only_reactor_block_with_pv_state(self):
         process = _make_process(
@@ -1880,11 +1890,16 @@ class TestIntegrateProcess:
         X_expected = (0.5 * 0.8 + 0.0 * 0.1) / V_expected
         G_expected = (10.0 * 0.8 + 300.0 * 0.1) / V_expected
 
-        assert float(result["V"][2]) == pytest.approx(V_expected, rel=1e-6)
-        assert float(result["c"][2, 0]) == pytest.approx(X_expected, rel=1e-6)
-        assert float(result["c"][2, 1]) == pytest.approx(G_expected, rel=1e-6)
+        # pre-event at t_b: state unchanged
+        assert float(result["V"][2]) == pytest.approx(1.0, rel=1e-6)
+        assert float(result["c"][2, 0]) == pytest.approx(0.5, rel=1e-6)
+        assert float(result["c"][2, 1]) == pytest.approx(10.0, rel=1e-6)
+        # post-event at t_b + eps: sample-then-bolus mass balance applied
+        assert float(result["V"][3]) == pytest.approx(V_expected, rel=1e-3)
+        assert float(result["c"][3, 0]) == pytest.approx(X_expected, rel=1e-3)
+        assert float(result["c"][3, 1]) == pytest.approx(G_expected, rel=1e-3)
 
-    def test_event_at_t_end_is_applied_at_endpoint(self):
+    def test_event_at_t_end_output_is_pre_event(self):
         process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
         process.time_axis = TimeAxis(
             unit="hours",
@@ -1908,8 +1923,40 @@ class TestIntegrateProcess:
 
         i_pre = int(jnp.argmin(jnp.abs(result["t"] - 19.9)))
         i_end = int(jnp.argmin(jnp.abs(result["t"] - 20.0)))
+        # Left-continuous: exact event timestamp is pre-event.
         assert float(result["V"][i_pre]) == pytest.approx(1.0, rel=1e-6)
-        assert float(result["V"][i_end]) == pytest.approx(0.8, rel=1e-6)
+        assert float(result["V"][i_end]) == pytest.approx(1.0, rel=1e-6)
+
+    def test_event_at_t_start_output_is_pre_event(self):
+        """Left-continuous: bolus at t_start gives pre-event state at t_start."""
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=300.0, biomass_conc=0.0),
+            values=_ts([0.0], [0.1]),
+        )
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        zero_rates = _wrap_q_as_rates(mb, lambda t: jnp.zeros(mb.q_size))
+        t_eval = jnp.array([0.0, 0.1, 1.0])
+        result = integrate_process(process, ctrl, mb, zero_rates, t_eval)
+
+        V_post = 1.1
+        X_post = (0.5 * 1.0 + 0.0 * 0.1) / V_post
+        S_post = (10.0 * 1.0 + 300.0 * 0.1) / V_post
+
+        # pre-event at t_start: output must be the initial state
+        assert float(result["V"][0]) == pytest.approx(1.0, rel=1e-6)
+        assert float(result["c"][0, 0]) == pytest.approx(0.5, rel=1e-6)
+        assert float(result["c"][0, 1]) == pytest.approx(10.0, rel=1e-6)
+        # post-event visible from next point onward
+        assert float(result["V"][1]) == pytest.approx(V_post, rel=1e-3)
+        assert float(result["c"][1, 0]) == pytest.approx(X_post, rel=1e-3)
+        assert float(result["c"][1, 1]) == pytest.approx(S_post, rel=1e-3)
 
     def test_pseudospace_matches_segmented_with_sampling_and_bolus(self):
         """Single-pass pseudo-space integration should match segmented integration."""
@@ -2055,6 +2102,99 @@ class TestIntegrateProcess:
 
         assert max_c_diff < 6.5
         assert max_v_diff < 1e-4
+
+    def test_pseudospace_volume_same_time_bolus_matches_segmented_at_tb(self):
+        """Left-continuous: exact event timestamp is pre-event; pseudo-space matches."""
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.2]),
+        )
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=25.0, biomass_conc=0.0),
+            values=_ts([5.0], [0.1]),
+        )
+
+        t_obs = jnp.linspace(0.0, 20.0, 121)
+        biomass = 0.4 * jnp.exp(0.08 * t_obs)
+        glucose = jnp.maximum(40.0 - 1.4 * t_obs - 0.03 * (t_obs**2), 0.5)
+        process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
+        process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
+
+        for sp_name in ("biomass", "glucose"):
+            inputs = build_pseudobatch_inputs(process, sp_name)
+            spl = build_splines(inputs, process=process, species_name=sp_name)
+            rep = to_interpolator(inputs, spl, sp_name)
+            process.reactor_medium.components[sp_name].interpolator = rep
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        state_splines = build_state_splines(process, mb)
+        q_func = build_q_func(process, ctrl, mb, state_splines)
+        rates_func = _wrap_q_as_rates(mb, q_func)
+
+        t_b = 5.0
+        # eps < _EPS (1e-3): keeps t_b ± eps inside the pre/post-event knot windows
+        eps = 5e-4
+        t_eval = jnp.array([0.0, t_b - eps, t_b, t_b + eps, 10.0, 20.0])
+
+        ref = integrate_process(
+            process,
+            ctrl,
+            mb,
+            rates_func,
+            t_eval,
+            state_splines=state_splines,
+        )
+        pseudo = integrate_process_pseudospace(
+            process,
+            ctrl,
+            mb,
+            rates_func,
+            t_eval,
+            state_splines=state_splines,
+        )
+
+        v_ref = _sample_on_observation_grid(ref["t"], ref["V"][:, None], t_eval)[:, 0]
+        v_pseudo = _sample_on_observation_grid(
+            pseudo["t"], pseudo["V"][:, None], t_eval
+        )[:, 0]
+        c_ref = _sample_on_observation_grid(ref["t"], ref["c"], t_eval)
+        c_pseudo = _sample_on_observation_grid(pseudo["t"], pseudo["c"], t_eval)
+
+        v_expected = 1.0 - 0.2 + 0.1  # initial - sample + bolus
+        # Left-continuous contract: exact event timestamp is pre-event.
+        assert float(v_ref[1]) == pytest.approx(1.0, rel=1e-6)    # t_b - eps
+        assert float(v_ref[2]) == pytest.approx(1.0, rel=1e-6)    # t_b: pre-event
+        assert float(v_ref[3]) == pytest.approx(v_expected, rel=1e-6)  # t_b + eps
+
+        # Pseudo-space must match the same semantics.
+        assert float(v_pseudo[1]) == pytest.approx(float(v_ref[1]), abs=1e-6)
+        assert float(v_pseudo[2]) == pytest.approx(float(v_ref[2]), abs=1e-6)
+        assert float(v_pseudo[3]) == pytest.approx(float(v_ref[3]), abs=1e-6)
+
+        # Use pre-event values (index 2, t_b pre-event) for mass balance.
+        x_pre = float(c_ref[2, 0])
+        s_pre = float(c_ref[2, 1])
+        x_post_expected = (x_pre * 0.8 + 0.0 * 0.1) / v_expected
+        s_post_expected = (s_pre * 0.8 + 25.0 * 0.1) / v_expected
+
+        # Post-event jump appears at index 3 (t_b + eps).
+        assert float(c_ref[3, 0]) == pytest.approx(x_post_expected, rel=1e-3, abs=1e-3)
+        assert float(c_ref[3, 1]) == pytest.approx(s_post_expected, rel=1e-3, abs=1e-3)
+
+        # Pseudo-space concentration agreement checked away from the discontinuity.
+        assert float(c_pseudo[1, 0]) == pytest.approx(float(c_ref[1, 0]), abs=2e-3)
+        assert float(c_pseudo[3, 0]) == pytest.approx(float(c_ref[3, 0]), abs=2e-3)
+        assert float(c_pseudo[1, 1]) == pytest.approx(float(c_ref[1, 1]), abs=2e-3)
+        assert float(c_pseudo[3, 1]) == pytest.approx(float(c_ref[3, 1]), abs=2e-3)
 
     def test_pseudospace_runs_without_transform_metadata(self):
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)

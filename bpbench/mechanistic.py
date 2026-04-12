@@ -123,7 +123,6 @@ import jax.numpy as jnp
 from .dataclasses import (
     BioProcess,
     FeedVolumeChange,
-    SampleVolumeChange,
     StaticVariable,
     TimeSeries,
 )
@@ -1048,7 +1047,7 @@ def build_q_func(
         if batched_vol is not None:
             V_t = V_t + jnp.sum(batched_vol(t))  # single batched eval
         if ev_times is not None:
-            idx = jnp.searchsorted(ev_times, t, side="right")
+            idx = jnp.searchsorted(ev_times, t, side="left")
             V_t = V_t + jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
         V_t = jnp.maximum(V_t, jnp.array(1e-10))
 
@@ -1684,7 +1683,7 @@ def integrate_process_pseudospace(
 
         V_disc = jnp.zeros(())
         if ev_times is not None:
-            idx = jnp.searchsorted(ev_times, t, side="right")
+            idx = jnp.searchsorted(ev_times, t, side="left")
             V_disc = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
         V = jnp.maximum(V0 + V_cont + V_disc, 1e-10)
 
@@ -1768,7 +1767,7 @@ def integrate_process_pseudospace(
     c_out = c_out.at[:, :n_reactor].set(jnp.maximum(c_out[:, :n_reactor], 0.0))
 
     if ev_times is not None:
-        idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="right"))(t_eval)
+        idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="left"))(t_eval)
         V_disc_out = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
     else:
         V_disc_out = jnp.zeros_like(t_eval)
@@ -1843,6 +1842,9 @@ def integrate_process(
     Process-variable states are treated as additive-only in this integration
     path: ``dc_pv/dt = r_pv`` (with configured static PV indices clamped to
     zero). They are not subjected to reactor feed/dilution terms.
+    For discrete events, this segmented API is left-continuous at explicit
+    boundary samples (a sample exactly at an event time is reported pre-event).
+    The post-event state is visible from the next output point after `t_b`.
 
     Returns
     -------
@@ -1923,8 +1925,12 @@ def integrate_process(
     c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
     V0 = float(process.volume.initial_volume)
 
-    # Apply events at t_start directly to the initial state so outputs at
-    # the first timestamp follow the same right-continuous event semantics.
+    # Save pre-event initial state for left-continuous output at t_start.
+    c0_pre_event = c0
+    V0_pre_event = V0
+
+    # Apply events at t_start directly to the initial state so the first
+    # segment begins from the correct post-event initial condition.
     for ev in event_lookup.get(t_start, []):
         dV = float(ev["dV"])
         V_new = max(V0 + dV, 1e-10)
@@ -2099,16 +2105,6 @@ def integrate_process(
             )
             state_n_next = state_orig / state_scale
 
-            # If this segment saves a point exactly at t_hi, store the
-            # post-event state at that boundary.
-            has_boundary_point = (n_val > 0) & jnp.isclose(ts[n_val - 1], t_hi)
-            ys_norm = jax.lax.cond(
-                has_boundary_point,
-                lambda y: y.at[n_val - 1].set(state_n_next),
-                lambda y: y,
-                ys_norm,
-            )
-
             n_steps = sol.stats["num_steps"]
             return state_n_next, (ys_norm, n_steps)
 
@@ -2135,6 +2131,13 @@ def integrate_process(
         all_ys_norm * state_scale[None, None, :]
     )  # (n_seg, max_ts_len, state_dim)
 
+    # Left-continuous: segment 0's first point is at t_start, solved from
+    # the post-event IC. If events existed at t_start, override it with the
+    # pre-event state so the output at t_start is pre-event.
+    if event_lookup.get(t_start, []):
+        pre_event_state = jnp.append(c0_pre_event, jnp.array(V0_pre_event))
+        all_ys_orig = all_ys_orig.at[0, 0, :].set(pre_event_state)
+
     t_segments = []
     c_segments = []
     V_segments = []
@@ -2148,11 +2151,14 @@ def integrate_process(
         V_seg = jnp.maximum(ys_seg[:, mb.volume_idx], 1e-10)
         t_seg = seg_t_arrays[seg_idx]
 
-        # Skip last point of non-final segments to avoid duplication
-        if seg_idx < n_seg - 1:
-            t_segments.append(t_seg[:-1])
-            c_segments.append(c_seg[:-1])
-            V_segments.append(V_seg[:-1])
+        # Each segment starts at the previous boundary t_b. For non-first
+        # segments, that first point carries the post-event initial condition
+        # and duplicates the pre-event t_b already kept by the previous
+        # segment, so drop it. Segment 0 keeps all its points.
+        if seg_idx > 0:
+            t_segments.append(t_seg[1:])
+            c_segments.append(c_seg[1:])
+            V_segments.append(V_seg[1:])
         else:
             t_segments.append(t_seg)
             c_segments.append(c_seg)

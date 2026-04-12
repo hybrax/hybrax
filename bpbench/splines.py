@@ -398,15 +398,20 @@ def _build_dense_time_grid(
     """
     extra_times = set()
 
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
+
     for vc_name, vc in process.volume.volume_changes.items():
         ev_t = _series_reference_times(vc.values)
         for t in ev_t:
             extra_times.add(float(t))
             if not vc.is_continuous:
                 t_pre = float(t) - _EPS
-                if t_pre > 0:
+                if t_pre >= t_start:
                     extra_times.add(t_pre)
-                extra_times.add(float(t) + _EPS)
+                t_post = float(t) + _EPS
+                if t_post <= t_end:
+                    extra_times.add(t_post)
 
     all_times = jnp.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
 
@@ -447,7 +452,8 @@ def _compute_dense_volumes(
                 ev_vals = jnp.asarray(vc.values.values, dtype=float)
                 cum_feed = jnp.zeros(n)
                 for et, ev in zip(ev_times, ev_vals):
-                    cum_feed = cum_feed + jnp.where(dense_times >= et, float(ev), 0.0)
+                    # Exact event timestamp remains pre-event; jump appears after.
+                    cum_feed = cum_feed + jnp.where(dense_times > et, float(ev), 0.0)
 
             reactor_volume = reactor_volume + cum_feed
             feed_streams.append((cum_feed, c_feed))
@@ -525,6 +531,8 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     -----
     ADF and feed_correction are computed only at measurement times
     (this avoids treating continuous feeds as discrete dilutions).
+    Discrete bolus events are treated as left-continuous in this transform:
+    at exactly ``t_b`` values are pre-event, and the jump appears for ``t > t_b``.
     """
     import numpy as _np  # pseudobatch interop
 
@@ -567,7 +575,7 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
             ev_vals = jnp.asarray(vc.values.values, dtype=float)
             for et, ev in zip(ev_times, ev_vals):
                 bolus_vol_dense = bolus_vol_dense + jnp.where(
-                    dense_times >= et, float(ev), 0.0
+                    dense_times > et, float(ev), 0.0
                 )
 
     no_sample_dense = jnp.zeros(n_dense)
@@ -657,7 +665,8 @@ def build_splines(
     interp_fc = jnp.array(inputs["feed_corr_at_meas"])
 
     if process is not None and species_name is not None:
-        meas_t = inputs["meas_times"]
+        t_start = float(process.time_axis.start)
+        t_end = float(process.time_axis.end)
 
         bolus_events = []
         for _vc_name, vc in process.volume.volume_changes.items():
@@ -671,8 +680,7 @@ def build_splines(
             ev_times = jnp.asarray(vc.values.times, dtype=float)
             ev_vals = jnp.asarray(vc.values.values, dtype=float)
             for t_b, v_b in zip(ev_times, ev_vals):
-                if not jnp.any(jnp.abs(meas_t - t_b) < _EPS * 2):
-                    bolus_events.append((float(t_b), c_feed, float(v_b)))
+                bolus_events.append((float(t_b), c_feed, float(v_b)))
 
         bolus_events.sort(key=lambda x: x[0])
 
@@ -680,8 +688,15 @@ def build_splines(
         dense_adf = inputs["adf_dense"]
         dense_v = inputs["reactor_volume_dense"]
         for t_b, c_feed, v_bolus in bolus_events:
-            t_pre = t_b - _EPS
-            t_post = t_b + _EPS
+            # For t_b == t_start we can still form an in-domain pre/post pair
+            # via clamping (t_pre=t_start, t_post=t_start+EPS). For t_b == t_end
+            # there is no right-side interval in-domain, so skip augmentation.
+            if t_b >= t_end:
+                continue
+            t_pre = max(t_b - _EPS, t_start)
+            t_post = min(t_b + _EPS, t_end)
+            if t_post <= t_pre:
+                continue
 
             order = jnp.argsort(interp_times)
             interp_times = interp_times[order]
@@ -691,8 +706,7 @@ def build_splines(
             adf_pre = float(jnp.interp(t_pre, dense_t, dense_adf))
             adf_post = float(jnp.interp(t_post, dense_t, dense_adf))
 
-            mask = interp_times <= t_pre
-            fc_pre = float(interp_fc[mask][-1]) if jnp.any(mask) else 0.0
+            fc_pre = float(jnp.interp(t_pre, interp_times, interp_fc))
 
             cs_val_pre = float(spline_cstar(jnp.array(t_pre)))
             c_pre = (cs_val_pre + fc_pre) / max(adf_pre, 1e-12)
