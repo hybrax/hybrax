@@ -1,5 +1,7 @@
 # repo-specific stuff:
 reference/
+*.log
+*.log.*
 
 # no local dev stuff
 *-local/
