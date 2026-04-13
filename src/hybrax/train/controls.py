@@ -392,8 +392,8 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
             delta_v = float(delta_v)
             ramp_end = min(event_time + ramp_duration, t_end)
             rate = 0.0 if ramp_end <= event_time else delta_v / (ramp_end - event_time)
-            times.extend([event_time, event_time, ramp_end])
-            values.extend([0.0, rate, 0.0])
+            times.extend([event_time, event_time, ramp_end, ramp_end])
+            values.extend([0.0, rate, rate, 0.0])
             step_ts.extend([event_time, ramp_end])
 
         if times[-1] < t_end:
