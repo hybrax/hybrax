@@ -635,3 +635,174 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
         "passing controls.eval (cumulative volume) instead of "
         "controls.eval_derivative (flow rate) to RhsOde."
     )
+
+
+def test_wrapper_bolus_feed_integrates_v_cont():
+    """Regression: non-continuous controlled bolus contributes to dV_cont/dt."""
+    bolus_medium = FeedMedium(
+        name="bolus",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([2.0]),
+                        values=jnp.asarray([2.0]),  # 2 L bolus amount
+                    ),
+                    feed_medium=bolus_medium,
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 4.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={},
+    )
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    reaction_module = ConstantReactionModule(
+        specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, reaction_module)
+
+    y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    y_scaled = wrapper.scale_state(y0_physical)
+
+    bolus_idx = controls.control_name_to_index["bolus_feed"]
+    ts = jnp.arange(0.0, 4.0 + 1e-8, 1e-3, dtype=jnp.float32)
+    bolus_rate = jnp.asarray([controls.eval(float(t))[bolus_idx] for t in ts])
+    expected_added_volume = float(jnp.trapezoid(bolus_rate, ts))
+
+    dt = 1e-3
+    n_steps = int((4.0 - 0.0) / dt)
+    t = 0.0
+    for _ in range(n_steps):
+        y_scaled = y_scaled + wrapper(t, y_scaled) * dt
+        t += dt
+
+    final_physical = wrapper.unscale_state(y_scaled)
+    final_v_cont = float(final_physical[-1])
+
+    # V_cont tracks the integrated runtime bolus rate (regression target).
+    assert final_v_cont == pytest.approx(
+        1.0 + expected_added_volume,
+        rel=1e-3,
+        abs=5e-3,
+    )
+
+
+def test_wrapper_bolus_transport_only_for_present_species():
+    """Regression: bolus Cin for missing species is zero in extra-feed path."""
+    bolus_medium = FeedMedium(
+        name="bolus",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(10.0),
+                is_controlled=False,
+            ),
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([2.0]),
+                        values=jnp.asarray([2.0]),
+                    ),
+                    feed_medium=bolus_medium,
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 10.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+                "product": ReactorMediumComponent(
+                    name="product",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 10.0]),
+                        values=jnp.asarray([0.0, 0.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={},
+    )
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    reaction_module = ConstantReactionModule(
+        specific_rates=jnp.asarray([0.0, 0.0], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, reaction_module)
+
+    # Evaluate inside the synthetic bolus ramp [2.0, 2.1].
+    y_physical = jnp.asarray([1.0, 0.0, 1.0], dtype=jnp.float32)
+    y_scaled = wrapper.scale_state(y_physical)
+    dy_scaled = wrapper(2.05, y_scaled)
+    dy_physical = dy_scaled * wrapper.state_scale
+
+    # biomass present in feed medium -> non-zero bolus transport contribution.
+    assert float(dy_physical[0]) != pytest.approx(0.0, abs=1e-9)
+    # product absent in feed medium and C_product==0 -> zero bolus contribution.
+    assert float(dy_physical[1]) == pytest.approx(0.0, abs=1e-9)
+    # dV_cont/dt receives bolus rate during the ramp.
+    assert float(dy_physical[2]) > 0.0

@@ -670,9 +670,14 @@ At runtime the wrapper receives:
 The wrapper must:
 
 - read all feed-rate controls,
+  continuous controlled feeds are recovered as derivatives of cumulative
+  controls, while bolus ramps are consumed directly as feed-rate controls,
 - maintain `V_cont` as part of the integrated state,
 - read `V_sample_acc(t)` from the controls object,
 - reconstruct `V_real = V_cont - V_sample_acc`,
+- include transport and volume contributions from controlled non-continuous
+  feed additions (bolus ramps) using their ramp derivatives and inlet feed
+  composition metadata,
 - build an augmented controls vector by appending flattened
   `RhsOde.Cin`/`RhsOde.Cin_modeled` to base controls,
 - request `specific_rates` and `modeled_feed_rates` from the user module,
@@ -686,9 +691,12 @@ V1 should support multiple feed streams explicitly, but it should keep the
 runtime contract strict:
 
 - every feed stream must be declared explicitly,
-- flow/species ordering is taken from `RhsOde.flow_names`,
-  `RhsOde.modeled_flow_names`, and `RhsOde.species_names`,
-- controlled feeds come from the prepared control vector,
+- species ordering is taken from `RhsOde.species_names`,
+- continuous controlled feeds are ordered by `RhsOde.flow_names`,
+- modeled feeds are ordered by `RhsOde.modeled_flow_names`,
+- controlled non-continuous feed additions (bolus ramps) come from the
+  prepared control vector and process volume-change metadata and are applied by
+  the wrapper as extra transport/volume terms,
 - modeled feeds come from `ReactionOutputs.modeled_feed_rates`,
 - `ReactionOutputs.modeled_feed_rates` must follow the same positional
   convention used by `bpbench.mechanistic.RhsOde`, aligned to the ordered list
@@ -706,8 +714,12 @@ Current runtime split:
 - `bp-train` owns controls preparation/evaluation (`ControlsStore`), batching,
   loss evaluation, and training-loop behavior.
 - `bpbench.mechanistic.RhsOde` owns mechanistic derivative assembly
-  (`q * X_active`, transport, dilution, and `dV/dt`).
+  for species kinetics plus continuous/modeled feed transport (`q * X_active`,
+  transport, dilution, and `dV/dt` for those streams).
 - `bp-train`'s wrapper remains a thin adapter that maps controls/model outputs
+- `bp-train`'s wrapper additionally applies transport and `dV/dt` contributions
+  for controlled non-continuous feed ramps so total integrated `V_cont`
+  includes both continuous and bolus-feed additions.
   to the `RhsOde` call signature.
 
 This keeps mechanistic math aligned with bpbench while preserving padded,
@@ -767,6 +779,8 @@ last timestamp) and keep whichever is faster/stabler.
 - no pseudo-batch dynamics,
 - dynamic volume represented by an integrated continuous state `V_cont`,
 - `V_cont` is always the last entry in the state vector,
+- integrated `V_cont` must include contributions from all controlled feeds
+  (continuous and non-continuous bolus ramps) and modeled feeds,
 - realized reactor volume reconstructed in the wrapper as
   `V_real = V_cont - V_sample_acc`.
 

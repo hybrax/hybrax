@@ -5,7 +5,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bpbench.dataclasses import BioProcess, FeedVolumeChange
+from bpbench.dataclasses import BioProcess, FeedVolumeChange, StaticVariable
 from bpbench.mechanistic import RhsOde, get_rhs_ode
 
 from .controls_store import PerProcessControls
@@ -126,6 +126,8 @@ class HybridOdeWrapper(eqx.Module):
     controls: PerProcessControls
 
     flow_control_indices: jax.Array
+    extra_flow_control_indices: jax.Array
+    extra_flow_cin: jax.Array
     sample_acc_control_index: int = eqx.field(static=True)
     min_real_volume: float = eqx.field(static=True)
 
@@ -176,6 +178,44 @@ class HybridOdeWrapper(eqx.Module):
                 )
             flow_control_indices.append(controls.control_name_to_index[flow_name])
 
+        n_species = len(rhs_ode.reactor_component_state_names)
+        extra_flow_control_indices: list[int] = []
+        extra_flow_cin_rows: list[list[float]] = []
+        for flow_name, volume_change in process.volume.volume_changes.items():
+            if not isinstance(volume_change, FeedVolumeChange):
+                continue
+            if not volume_change.is_controlled or volume_change.is_continuous:
+                continue
+            if flow_name not in controls.control_name_to_index:
+                raise ValueError(
+                    f"non-continuous feed '{flow_name}' not found in controls; "
+                    f"available: {list(controls.control_name_to_index.keys())}"
+                )
+            if volume_change.feed_medium is None:
+                raise ValueError(
+                    "FeedVolumeChange must define feed_medium for wrapper feed "
+                    f"transport. Missing for volume change '{flow_name}'."
+                )
+            cin_row: list[float] = []
+            for species_name in rhs_ode.reactor_component_state_names:
+                if species_name not in volume_change.feed_medium.components:
+                    cin_row.append(0.0)
+                    continue
+                concentration = volume_change.feed_medium.components[
+                    species_name
+                ].concentration
+                if isinstance(concentration, StaticVariable):
+                    cin_row.append(float(concentration.value))
+                else:
+                    raise NotImplementedError(
+                        "TimeSeries feed concentrations are not supported in "
+                        "HybridOdeWrapper for non-continuous feeds. "
+                        f"Found TimeSeries for species '{species_name}' in "
+                        f"feed '{flow_name}'."
+                    )
+            extra_flow_control_indices.append(controls.control_name_to_index[flow_name])
+            extra_flow_cin_rows.append(cin_row)
+
         aug_names = _build_augmented_controls_names(
             control_names=controls.control_names,
             controlled_flow_names=rhs_ode.flow_names,
@@ -191,7 +231,6 @@ class HybridOdeWrapper(eqx.Module):
             species_names=rhs_ode.reactor_component_state_names,
         )
 
-        n_species = len(rhs_ode.reactor_component_state_names)
         n_aug = len(aug_names)
         n_modeled = rhs_ode.f_modeled_size
         full_state_size = n_species + 1 + n_modeled
@@ -232,12 +271,20 @@ class HybridOdeWrapper(eqx.Module):
             if target_variance is not None
             else jnp.ones(n_targets, dtype=jnp.float32)
         )
+        if extra_flow_cin_rows:
+            _extra_flow_cin = jnp.asarray(extra_flow_cin_rows, dtype=jnp.float32)
+        else:
+            _extra_flow_cin = jnp.zeros((0, n_species), dtype=jnp.float32)
 
         return cls(
             rhs_ode=rhs_ode,
             reaction_module=reaction_module,
             controls=controls,
             flow_control_indices=jnp.asarray(flow_control_indices, dtype=jnp.int32),
+            extra_flow_control_indices=jnp.asarray(
+                extra_flow_control_indices, dtype=jnp.int32
+            ),
+            extra_flow_cin=_extra_flow_cin,
             sample_acc_control_index=int(controls.sample_acc_global_index),
             min_real_volume=float(min_real_volume),
             species_names=rhs_ode.reactor_component_state_names,
@@ -309,6 +356,9 @@ class HybridOdeWrapper(eqx.Module):
         V_real = jnp.maximum(V_cont - V_sample_acc, jnp.asarray(self.min_real_volume))
 
         U_flow = controls_derivatives[self.flow_control_indices]
+        # Non-continuous controlled feeds are represented in prep as short
+        # rate ramps (not cumulative traces), so use control values directly.
+        U_flow_extra = controls_vector[self.extra_flow_control_indices]
 
         # Build augmented controls for the MLP. Use the *values* (cumulative for
         # feeds) — these are perfectly fine MLP features and match the existing
@@ -363,6 +413,12 @@ class HybridOdeWrapper(eqx.Module):
         C_rhs = jnp.concatenate([C_species, jnp.asarray([V_real], dtype=y.dtype)])
         r = jnp.zeros(self.rhs_ode.r_size, dtype=y.dtype)
         dY_rhs = self.rhs_ode(C_rhs, Q, U_flow, F_modeled, r)
+        if self.extra_flow_cin.shape[0] > 0:
+            extra_contrib = U_flow_extra[:, None] * (
+                self.extra_flow_cin.astype(y.dtype) - C_species[None, :]
+            )
+            dY_rhs = dY_rhs.at[:n_species].add(jnp.sum(extra_contrib, axis=0) / V_real)
+            dY_rhs = dY_rhs.at[n_species].add(jnp.sum(U_flow_extra))
         # dY_rhs has length n_species + 1 (species + V_cont).
 
         # ---- 7. Append cumulative-modeled-feed derivatives ----
