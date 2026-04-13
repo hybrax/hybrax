@@ -16,6 +16,8 @@ def _build_augmented_controls_names(
     controlled_flow_names: tuple[str, ...],
     modeled_flow_names: tuple[str, ...],
     species_names: tuple[str, ...],
+    *,
+    include_v_real_feature: bool = False,
 ) -> tuple[str, ...]:
     """Build descriptive names for each element of the augmented controls vector."""
     names: list[str] = list(control_names)
@@ -25,6 +27,8 @@ def _build_augmented_controls_names(
     for flow_name in modeled_flow_names:
         for species_name in species_names:
             names.append(f"cin:{flow_name}:{species_name}")
+    if include_v_real_feature:
+        names.append("v_real")
     return tuple(names)
 
 
@@ -35,6 +39,8 @@ def _build_augmented_controls_units(
     controlled_flow_names: tuple[str, ...],
     modeled_flow_names: tuple[str, ...],
     species_names: tuple[str, ...],
+    *,
+    include_v_real_feature: bool = False,
 ) -> tuple[str, ...]:
     """Build unit strings for each element of the augmented controls vector."""
     units: list[str] = []
@@ -74,6 +80,8 @@ def _build_augmented_controls_units(
                 units.append(str(vc.feed_medium.components[species_name].unit))
             else:
                 units.append("")
+    if include_v_real_feature:
+        units.append(str(process.volume.unit))
 
     return tuple(units)
 
@@ -135,6 +143,7 @@ class HybridOdeWrapper(eqx.Module):
     modeled_flow_names: tuple[str, ...] = eqx.field(static=True)
     augmented_controls_names: tuple[str, ...] = eqx.field(static=True)
     augmented_controls_units: tuple[str, ...] = eqx.field(static=True)
+    include_v_real_feature: bool = eqx.field(static=True)
 
     # --- Scaling vectors (frozen, not trainable) ---
     state_scale: jax.Array  # [n_species + 1 + n_modeled]
@@ -161,6 +170,9 @@ class HybridOdeWrapper(eqx.Module):
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
         rhs_ode = get_rhs_ode(process)
+        include_v_real_feature = bool(
+            getattr(reaction_module, "expects_v_real_feature", False)
+        )
 
         if rhs_ode.process_variable_state_names:
             raise NotImplementedError(
@@ -221,6 +233,7 @@ class HybridOdeWrapper(eqx.Module):
             controlled_flow_names=rhs_ode.flow_names,
             modeled_flow_names=rhs_ode.modeled_flow_names,
             species_names=rhs_ode.reactor_component_state_names,
+            include_v_real_feature=include_v_real_feature,
         )
         aug_units = _build_augmented_controls_units(
             control_metadata=controls.control_metadata,
@@ -229,6 +242,7 @@ class HybridOdeWrapper(eqx.Module):
             controlled_flow_names=rhs_ode.flow_names,
             modeled_flow_names=rhs_ode.modeled_flow_names,
             species_names=rhs_ode.reactor_component_state_names,
+            include_v_real_feature=include_v_real_feature,
         )
 
         n_aug = len(aug_names)
@@ -291,6 +305,7 @@ class HybridOdeWrapper(eqx.Module):
             modeled_flow_names=rhs_ode.modeled_flow_names,
             augmented_controls_names=aug_names,
             augmented_controls_units=aug_units,
+            include_v_real_feature=include_v_real_feature,
             state_scale=_state_scale,
             controls_scale=_controls_scale,
             q_scale=_q_scale,
@@ -370,6 +385,10 @@ class HybridOdeWrapper(eqx.Module):
             ]
         )
         U_augmented = jnp.concatenate([controls_vector, cin_flat])
+        if self.include_v_real_feature:
+            U_augmented = jnp.concatenate(
+                [U_augmented, jnp.asarray([V_real], dtype=y.dtype)]
+            )
 
         # ---- 3. Scale inputs for MLP ----
         c_scaled = y[:n_species]  # already scaled (slice of y)

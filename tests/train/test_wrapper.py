@@ -55,6 +55,33 @@ class InvalidReactionShapeModule(UserReactionModule):
         )
 
 
+class VolumeFeatureEchoReactionModule(UserReactionModule):
+    """Reaction module that echoes the last ANN control feature into q."""
+
+    n_species: int
+    n_modeled: int
+    expects_v_real_feature: bool
+
+    def __init__(
+        self,
+        *,
+        n_species: int,
+        n_modeled: int = 0,
+        expects_v_real_feature: bool = False,
+    ):
+        self.n_species = n_species
+        self.n_modeled = n_modeled
+        self.expects_v_real_feature = expects_v_real_feature
+
+    def __call__(self, t, c_species, controls_vector):
+        del t, c_species
+        v_feature = jnp.asarray(controls_vector[-1], dtype=jnp.float32)
+        return ReactionOutputs(
+            specific_rates=jnp.full((self.n_species,), v_feature, dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((self.n_modeled,), dtype=jnp.float32),
+        )
+
+
 def _make_single_species_process(
     *,
     feed_rate: float = 0.2,
@@ -517,6 +544,27 @@ def test_wrapper_augmented_controls_names_includes_cin():
     assert len(wrapper.augmented_controls_units) == len(
         wrapper.augmented_controls_names
     )
+
+
+def test_wrapper_optional_ann_volume_feature_uses_v_real():
+    process = _make_single_species_process()
+    collection = _make_single_species_collection()
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    reaction_module = VolumeFeatureEchoReactionModule(
+        n_species=1,
+        expects_v_real_feature=True,
+    )
+    wrapper = _build_wrapper(process, controls, reaction_module)
+
+    assert wrapper.include_v_real_feature is True
+    assert wrapper.augmented_controls_names[-1] == "v_real"
+
+    # t=2.0 is after the sample event at t=1.0; V_sample_acc ~= 0.1 L.
+    y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
+    y_scaled = wrapper.scale_state(y_physical)
+    dy_scaled = wrapper(2.0, y_scaled)
+    dy_physical = dy_scaled * wrapper.state_scale
+    assert float(dy_physical[0]) == pytest.approx(1.1, rel=1e-6, abs=1e-6)
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():

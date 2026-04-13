@@ -213,6 +213,17 @@ def plot_training_results(
                 ]
             )
             U_aug = jnp.concatenate([controls_vec, cin_flat])
+            if process_wrapper.include_v_real_feature:
+                v_real_unclipped = states_physical[i_t, n_species] - jnp.asarray(
+                    v_sample_acc_dense[i_t], dtype=U_aug.dtype
+                )
+                v_real_val = jnp.maximum(
+                    v_real_unclipped,
+                    jnp.asarray(process_wrapper.min_real_volume, dtype=U_aug.dtype),
+                )
+                U_aug = jnp.concatenate(
+                    [U_aug, jnp.asarray([v_real_val], dtype=U_aug.dtype)]
+                )
             u_scaled = U_aug / process_wrapper.controls_scale
             outputs = process_wrapper.reaction_module(t_val, c_scaled, u_scaled)
             Q = np.asarray(outputs.specific_rates) * np.asarray(process_wrapper.q_scale)
