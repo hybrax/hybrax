@@ -677,7 +677,7 @@ def train_from_collection(
     # Call optional build_learning_rate hook (overrides CLI --learning-rate)
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
     if lr_hook is not None:
-        lr = lr_hook(custom_cfg)
+        lr = lr_hook(custom_cfg, effective_cfg)
         effective_cfg = TrainHarnessConfig(
             process_names=effective_cfg.process_names,
             target_variable_order=effective_cfg.target_variable_order,
