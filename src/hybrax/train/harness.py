@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from collections import Counter
 import dataclasses
 from dataclasses import dataclass
@@ -642,14 +643,34 @@ def train_from_collection(
     cfg = config or TrainHarnessConfig()
     custom_module = load_custom_module(custom_py)
     custom_cfg = resolve_config(custom_module, runtime_config)
+    config_targets = custom_cfg.get("target_variable_order")
+    if cfg.target_variable_order is not None:
+        effective_target_order = cfg.target_variable_order
+    elif config_targets:
+        effective_target_order = tuple(config_targets)
+    else:
+        effective_target_order = None
     store = TrainingDataStore.from_collection(
         collection,
-        target_variable_order=cfg.target_variable_order,
+        target_variable_order=effective_target_order,
         target_source=cfg.target_source,
     )
+    if effective_target_order is None:
+        warnings.warn(
+            "No target_variable_order specified in custom.py CONFIG or --target "
+            f"flag. Defaulting to target_source={store.target_source!r} measured "
+            f"targets: {tuple(store.target_names)}. Specify "
+            "CONFIG['target_variable_order'] in custom.py to silence this warning.",
+            stacklevel=2,
+        )
+    logger.info("Training targets: %s", tuple(store.target_names))
 
     selected_processes = _ensure_process_names(store, cfg.process_names)
-    train_cfg = dataclasses.replace(cfg, process_names=selected_processes)
+    train_cfg = dataclasses.replace(
+        cfg,
+        process_names=selected_processes,
+        target_variable_order=effective_target_order,
+    )
     reaction_module = _build_reaction_module(
         store=store,
         config=train_cfg,

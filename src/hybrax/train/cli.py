@@ -12,6 +12,7 @@ from .harness import TrainHarnessConfig, train_from_collection
 from .postprocessing import plot_training_results, save_model
 from .prepare import prepare_artifact
 from .training_data import TARGET_SOURCES, TrainingDataStore
+from .utils import load_custom_module, resolve_config
 
 
 def _load_config(config_path: str | None) -> dict[str, Any] | None:
@@ -259,13 +260,22 @@ def _handle_train(args: argparse.Namespace) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-
     collection = load_process_collection_json(Path(args.input))
+    runtime_config = _load_config(args.config)
+    custom_module = load_custom_module(args.custom)
     selected_processes = _split_multi_values(args.process)
     selected_targets = _split_multi_values(args.target)
+    user_config = resolve_config(custom_module, None)
+    config_targets = user_config.get("target_variable_order")
+    if selected_targets:
+        effective_targets = selected_targets
+    elif config_targets:
+        effective_targets = tuple(config_targets)
+    else:
+        effective_targets = None
     config = TrainHarnessConfig(
         process_names=selected_processes if selected_processes else None,
-        target_variable_order=selected_targets if selected_targets else None,
+        target_variable_order=effective_targets,
         target_source=args.target_source,
         steps=args.steps,
         batch_size=args.batch_size,
@@ -290,7 +300,7 @@ def _handle_train(args: argparse.Namespace) -> int:
         collection,
         config=config,
         custom_py=args.custom,
-        runtime_config=_load_config(args.config),
+        runtime_config=runtime_config,
     )
     first = result.mean_loss_by_step[0]
     last = result.mean_loss_by_step[-1]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 
 import equinox as eqx
 import jax
@@ -27,6 +28,7 @@ from bp_train.harness import (
     _build_batch_index_stream,
     _ensure_process_names,
     _validate_batching_config,
+    train_from_collection,
     train_collection,
 )
 from bp_train.model_api import ReactionOutputs, UserReactionModule
@@ -558,3 +560,97 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     assert len(sampled_logs) == 2
     # Sampled-loss history dict still tracks the same log-step keys.
     # (Verified above by the previous test; here we only re-check the count.)
+
+
+def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, caplog):
+    collection = _make_collection()
+
+    class _DummyStore:
+        target_names = ("biomass",)
+        target_source = "reactor_components"
+        process_order = ("p1", "p2")
+
+    def fake_from_collection(collection, *, target_variable_order, target_source):
+        del collection, target_variable_order, target_source
+        return _DummyStore()
+
+    monkeypatch.setattr(
+        "bp_train.harness.TrainingDataStore.from_collection",
+        fake_from_collection,
+    )
+    monkeypatch.setattr("bp_train.harness.load_custom_module", lambda _p: object())
+    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.train_collection",
+        lambda *args, **kwargs: "train-result",
+    )
+
+    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    with pytest.warns(UserWarning, match="No target_variable_order specified"):
+        result = train_from_collection(
+            collection,
+            config=TrainHarnessConfig(target_variable_order=None, steps=1),
+            custom_py=None,
+            runtime_config=None,
+        )
+
+    assert result == "train-result"
+    assert "Training targets: ('biomass',)" in caplog.text
+
+
+def test_train_from_collection_uses_custom_config_targets_without_warning(
+    monkeypatch, caplog
+):
+    collection = _make_collection()
+    captured: dict[str, object] = {}
+
+    class _DummyStore:
+        target_names = ("cfg_biomass",)
+        target_source = "reactor_components"
+        process_order = ("p1", "p2")
+
+    def fake_from_collection(collection, *, target_variable_order, target_source):
+        del collection, target_source
+        captured["target_variable_order"] = target_variable_order
+        return _DummyStore()
+
+    monkeypatch.setattr(
+        "bp_train.harness.TrainingDataStore.from_collection",
+        fake_from_collection,
+    )
+    monkeypatch.setattr("bp_train.harness.load_custom_module", lambda _p: object())
+    monkeypatch.setattr(
+        "bp_train.harness.resolve_config",
+        lambda _m, _r: {"target_variable_order": ["cfg_biomass"]},
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.train_collection",
+        lambda *args, **kwargs: "train-result",
+    )
+
+    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    with warnings.catch_warnings(record=True) as warns:
+        warnings.simplefilter("always")
+        result = train_from_collection(
+            collection,
+            config=TrainHarnessConfig(target_variable_order=None, steps=1),
+            custom_py="custom.py",
+            runtime_config=None,
+        )
+
+    assert result == "train-result"
+    assert len(warns) == 0
+    assert captured["target_variable_order"] == ("cfg_biomass",)
+    assert "Training targets: ('cfg_biomass',)" in caplog.text

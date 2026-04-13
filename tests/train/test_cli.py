@@ -108,6 +108,8 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
+    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
+    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
 
     # Stub out model saving (trained_wrapper is None in this test)
     from bp_train import postprocessing
@@ -313,3 +315,152 @@ def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
     assert cfg.metrics_jsonl == d.metrics_jsonl
     assert cfg.log_decimals == d.log_decimals
     assert cfg.log_header_every == d.log_header_every
+
+
+def test_train_cli_uses_config_targets_when_target_flag_missing(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(
+        cli,
+        "load_custom_module",
+        lambda path: {"custom_path": path},
+    )
+    monkeypatch.setattr(
+        cli,
+        "resolve_config",
+        lambda _module, _config: {"target_variable_order": ["X", "P", "G"]},
+    )
+
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+        del collection, custom_py, runtime_config
+        captured["config"] = config
+        return TrainHarnessResult(
+            trained_wrapper=None,
+            mean_loss_by_step=(1.0, 0.5),
+            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+            batch_process_names_by_step=(("p1",), ("p1",)),
+            per_process_loss_by_step=((1.0,), (0.5,)),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01, 0.01),
+            train_step_input_signature=(("array", (1,), "int32"),),
+            train_step_rebuild_count=1,
+        )
+
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    from bp_train import postprocessing
+
+    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+
+    exit_code = cli.main(
+        [
+            "train",
+            "--input",
+            "prepared.json",
+            "--custom",
+            "custom.py",
+            "--no-plot",
+        ]
+    )
+
+    assert exit_code == 0
+    cfg = captured["config"]
+    assert cfg.target_variable_order == ("X", "P", "G")
+
+
+def test_train_cli_uses_none_targets_when_cli_and_config_missing(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(
+        cli,
+        "load_custom_module",
+        lambda _path: object(),
+    )
+    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
+
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+        del collection, custom_py, runtime_config
+        captured["config"] = config
+        return TrainHarnessResult(
+            trained_wrapper=None,
+            mean_loss_by_step=(1.0, 0.5),
+            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+            batch_process_names_by_step=(("p1",), ("p1",)),
+            per_process_loss_by_step=((1.0,), (0.5,)),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01, 0.01),
+            train_step_input_signature=(("array", (1,), "int32"),),
+            train_step_rebuild_count=1,
+        )
+
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    from bp_train import postprocessing
+
+    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+
+    exit_code = cli.main(
+        [
+            "train",
+            "--input",
+            "prepared.json",
+            "--custom",
+            "custom.py",
+            "--no-plot",
+        ]
+    )
+
+    assert exit_code == 0
+    cfg = captured["config"]
+    assert cfg.target_variable_order is None
+
+
+def test_train_cli_target_flag_overrides_config_targets(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
+    monkeypatch.setattr(
+        cli,
+        "resolve_config",
+        lambda _module, _config: {"target_variable_order": ["X", "P", "G"]},
+    )
+
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+        del collection, custom_py, runtime_config
+        captured["config"] = config
+        return TrainHarnessResult(
+            trained_wrapper=None,
+            mean_loss_by_step=(1.0, 0.5),
+            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+            batch_process_names_by_step=(("p1",), ("p1",)),
+            per_process_loss_by_step=((1.0,), (0.5,)),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01, 0.01),
+            train_step_input_signature=(("array", (1,), "int32"),),
+            train_step_rebuild_count=1,
+        )
+
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    from bp_train import postprocessing
+
+    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+
+    exit_code = cli.main(
+        [
+            "train",
+            "--input",
+            "prepared.json",
+            "--custom",
+            "custom.py",
+            "--target",
+            "A,B",
+            "--target",
+            "C",
+            "--no-plot",
+        ]
+    )
+
+    assert exit_code == 0
+    cfg = captured["config"]
+    assert cfg.target_variable_order == ("A", "B", "C")

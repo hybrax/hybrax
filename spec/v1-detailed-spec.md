@@ -744,7 +744,11 @@ interpolator payload.
 ### 15.1 `y_meas`
 
 - contains only measured target variables,
-- uses config-defined column order by variable name,
+- uses explicit target order with precedence:
+  CLI `--target` > `custom.py` `CONFIG["target_variable_order"]` >
+  default auto-selected measured reactor components,
+- if neither CLI nor config specifies targets, training must emit a loud warning
+  and log resolved default target list at startup,
 - may be a subset of all dynamic states,
 - does not include `V_cont`,
 - is padded across experiments for batching.
