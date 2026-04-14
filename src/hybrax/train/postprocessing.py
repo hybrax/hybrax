@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,29 @@ def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     eqx.tree_serialise_leaves(path, wrapper)
     logger.info("trained model saved to %s", path)
+
+
+def load_trained_wrapper(
+    path: str | Path, *, template: HybridOdeWrapper
+) -> HybridOdeWrapper:
+    """Deserialize a trained wrapper from disk using ``template`` as the pytree shape."""
+    return eqx.tree_deserialise_leaves(Path(path), like=template)
+
+
+def save_model_metadata(path: str | Path, meta: dict[str, Any]) -> None:
+    """Write a small JSON sidecar next to a saved model."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    logger.info("model metadata saved to %s", path)
+
+
+def load_model_metadata(path: str | Path) -> dict[str, Any]:
+    """Read a model metadata sidecar; returns {} if the file does not exist."""
+    path = Path(path)
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _mse_and_r2(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, float]:
@@ -72,31 +97,10 @@ def plot_training_results(
     solver_atol: float = 1e-5,
 ) -> None:
     """Generate loss curve and per-process concentration / rate / volume plots."""
-    import diffrax
     import matplotlib.pyplot as plt
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    trained_wrapper = result.trained_wrapper
-    species_names = trained_wrapper.species_names
-    modeled_flow_names = trained_wrapper.modeled_flow_names
-    n_species = len(species_names)
-    n_modeled = len(modeled_flow_names)
-    if process_names is None:
-        selected_processes = tuple(store.process_order)
-    else:
-        missing = [name for name in process_names if name not in store.process_order]
-        if missing:
-            raise ValueError(
-                "plot_training_results received unknown process names: "
-                f"{missing}; available={store.process_order}"
-            )
-        selected_processes = tuple(process_names)
-
-    per_process_rhs = {
-        name: get_rhs_ode(collection.processes[name]) for name in selected_processes
-    }
 
     # --- Loss curve ---
     fig_loss, ax_loss = plt.subplots(figsize=(6, 4))
@@ -110,6 +114,84 @@ def plot_training_results(
     fig_loss.savefig(output_dir / "loss_curve.png", dpi=150)
     plt.close(fig_loss)
     logger.info("loss curve saved to %s", output_dir / "loss_curve.png")
+
+    plot_process_simulations(
+        result.trained_wrapper,
+        collection,
+        store,
+        output_dir,
+        process_names=process_names,
+        solver_max_steps=solver_max_steps,
+        solver_rtol=solver_rtol,
+        solver_atol=solver_atol,
+    )
+
+
+def plot_process_simulations(
+    trained_wrapper: HybridOdeWrapper,
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    output_dir: str | Path,
+    process_names: tuple[str, ...] | None = None,
+    *,
+    solver_max_steps: int = 4096,
+    solver_rtol: float = 1e-3,
+    solver_atol: float = 1e-5,
+    training_process_names: tuple[str, ...] | None = None,
+    timeseries_csv_path: str | Path | None = None,
+    filename_suffix: str = "",
+) -> None:
+    """Simulate each selected process on a dense grid and render result plots.
+
+    Optionally appends all dense trajectories into a single merged CSV at
+    ``timeseries_csv_path`` with a leading ``process`` column.
+    """
+    import diffrax
+    import matplotlib.pyplot as plt
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    species_names = trained_wrapper.species_names
+    modeled_flow_names = trained_wrapper.modeled_flow_names
+    n_species = len(species_names)
+    n_modeled = len(modeled_flow_names)
+    if process_names is None:
+        selected_processes = tuple(store.process_order)
+    else:
+        missing = [name for name in process_names if name not in store.process_order]
+        if missing:
+            raise ValueError(
+                "plot_process_simulations received unknown process names: "
+                f"{missing}; available={store.process_order}"
+            )
+        selected_processes = tuple(process_names)
+
+    per_process_rhs = {
+        name: get_rhs_ode(collection.processes[name]) for name in selected_processes
+    }
+
+    training_set = (
+        set(training_process_names) if training_process_names is not None else None
+    )
+
+    # Prepare merged timeseries CSV writer (one file, all processes).
+    ts_file = None
+    ts_writer = None
+    ts_header: list[str] | None = None
+    if timeseries_csv_path is not None:
+        ts_path = Path(timeseries_csv_path)
+        ts_path.parent.mkdir(parents=True, exist_ok=True)
+        ts_file = ts_path.open("w", newline="", encoding="utf-8")
+        ts_writer = csv.writer(ts_file)
+        ts_header = (
+            ["process", "t"]
+            + [f"c_{name}" for name in species_names]
+            + ["V_cont", "V_real"]
+            + [f"B_{name}_cum" for name in modeled_flow_names]
+            + [f"q_{name}" for name in species_names]
+        )
+        ts_writer.writerow(ts_header)
 
     # --- Per-process plots ---
     for process_name in selected_processes:
@@ -293,7 +375,20 @@ def plot_training_results(
         ax_v.set_xlim(t_start, t_end)
         ax_v.legend(fontsize="small")
         ax_v.grid(True, alpha=0.3)
-        axes[n_species, 1].set_visible(False)
+
+        # ---- Right panel: raw volume_changes overlaid ----
+        ax_vc = axes[n_species, 1]
+        for vc_name, vc in process.volume.volume_changes.items():
+            vc_t = np.asarray(vc.values.times, dtype=float)
+            vc_v = np.asarray(vc.values.values, dtype=float)
+            kind = "feed" if isinstance(vc, FeedVolumeChange) else "sample"
+            ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=f"{vc_name} ({kind})")
+        ax_vc.set_title(f"volume_changes [{process.volume.unit}]")
+        ax_vc.set_xlabel(f"time [{time_unit}]")
+        ax_vc.set_xlim(t_start, t_end)
+        ax_vc.grid(True, alpha=0.3)
+        if process.volume.volume_changes:
+            ax_vc.legend(fontsize="small")
 
         # ---- Cumulative modeled feed panels (one row per modeled flow) ----
         for k, fn in enumerate(modeled_flow_names):
@@ -325,9 +420,32 @@ def plot_training_results(
             ax_b.grid(True, alpha=0.3)
             axes[row, 1].set_visible(False)
 
-        fig.suptitle(f"{process_name}", fontsize=12)
+        if training_set is None:
+            split_tag = ""
+        else:
+            split_tag = " [train]" if process_name in training_set else " [holdout]"
+        fig.suptitle(f"{process_name}{split_tag}", fontsize=12)
         fig.tight_layout()
-        fig.savefig(output_dir / f"{process_name}.png", dpi=150, bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"{process_name}{filename_suffix}.png",
+            dpi=150,
+            bbox_inches="tight",
+        )
         plt.close(fig)
+
+        if ts_writer is not None:
+            for i_t in range(len(t_dense_np)):
+                row = (
+                    [process_name, float(t_dense_np[i_t])]
+                    + [float(c_dense[i_t, j]) for j in range(n_species)]
+                    + [float(v_cont_pred[i_t]), float(v_real_pred[i_t])]
+                    + [float(b_modeled_pred[i_t, k]) for k in range(n_modeled)]
+                    + [float(q_dense[i_t, j]) for j in range(n_species)]
+                )
+                ts_writer.writerow(row)
+
+    if ts_file is not None:
+        ts_file.close()
+        logger.info("timeseries csv saved to %s", timeseries_csv_path)
 
     logger.info("plots saved to %s", output_dir)

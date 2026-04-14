@@ -297,6 +297,254 @@ def _build_reaction_module(
     return module
 
 
+def _build_template_wrapper(
+    store: TrainingDataStore,
+    *,
+    reaction_module: UserReactionModule,
+    collection: BioProcessCollection,
+    selected_processes: tuple[str, ...],
+    state_scale: jax.Array | None = None,
+    controls_scale: jax.Array | None = None,
+    q_scale: jax.Array | None = None,
+    f_scale: jax.Array | None = None,
+) -> tuple[HybridOdeWrapper, dict[str, Any]]:
+    """Build a HybridOdeWrapper with the same structure train_collection produces.
+
+    Returns the wrapper plus a dict with the per-process RhsOde map under
+    ``per_process_rhs`` so callers can reuse it for evaluation.
+    """
+    if len(selected_processes) == 0:
+        raise ValueError("selected_processes must be non-empty")
+
+    per_process_rhs: dict[str, Any] = {}
+    reference_rhs = None
+    reference_process_name = selected_processes[0]
+    for process_name in store.process_order:
+        process = collection.processes[process_name]
+        rhs = get_rhs_ode(process)
+        per_process_rhs[process_name] = rhs
+        if process_name == reference_process_name:
+            reference_rhs = rhs
+    assert reference_rhs is not None
+    for process_name in selected_processes[1:]:
+        validate_rhs_ode_compatibility(
+            reference_process_name,
+            reference_rhs,
+            process_name,
+            per_process_rhs[process_name],
+        )
+
+    n_y_cols = int(store.y_meas.shape[2])
+    per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
+    for pname in selected_processes:
+        pd = store.get_process(pname)
+        y_active = np.asarray(pd.active_y_meas)
+        for col in range(n_y_cols):
+            per_col_values[col].extend(y_active[:, col].tolist())
+    variance_eps = 1e-12
+    target_variance = jnp.asarray(
+        [
+            float(np.var(vals)) if vals and float(np.var(vals)) > variance_eps else 1.0
+            for vals in per_col_values
+        ],
+        dtype=jnp.float32,
+    )
+
+    n_species = len(store.target_names)
+    n_modeled_feeds = len(store.modeled_flow_names)
+    target_state_indices = jnp.asarray(
+        list(range(n_species))
+        + list(range(n_species + 1, n_species + 1 + n_modeled_feeds)),
+        dtype=jnp.int32,
+    )
+
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=reaction_module,
+        process=collection.processes[reference_process_name],
+        controls=store.get_process(reference_process_name).controls,
+        state_scale=state_scale,
+        controls_scale=controls_scale,
+        q_scale=q_scale,
+        f_scale=f_scale,
+        target_variance=target_variance,
+        target_state_indices=target_state_indices,
+    )
+    return wrapper, {"per_process_rhs": per_process_rhs}
+
+
+@dataclass(frozen=True)
+class ForwardConfig:
+    """Configuration for a forward evaluation run (no optimizer)."""
+
+    process_names: tuple[str, ...] | None = None
+    target_variable_order: tuple[str, ...] | None = None
+    target_source: str = TARGET_SOURCE_AUTO
+    solver_max_steps: int = 4096
+    solver_rtol: float = 1e-5
+    solver_atol: float = 1e-7
+    solver_use_jump_ts: bool = True
+
+
+@dataclass
+class ForwardResult:
+    """Outputs of :func:`forward_from_collection`."""
+
+    trained_wrapper: HybridOdeWrapper
+    store: TrainingDataStore
+    process_names: tuple[str, ...]
+    target_names: tuple[str, ...]
+    modeled_flow_names: tuple[str, ...]
+    training_process_names: tuple[str, ...]
+    per_process_total_loss: dict[str, float]
+    per_process_per_target_loss: dict[str, tuple[float, ...]]
+
+
+def forward_from_collection(
+    collection: BioProcessCollection,
+    *,
+    model_path: str | Path,
+    config: ForwardConfig | None = None,
+    custom_py: str | Path | None = None,
+    runtime_config: dict[str, Any] | None = None,
+    training_process_names: tuple[str, ...] | None = None,
+) -> ForwardResult:
+    """Load a trained wrapper and run one forward pass per selected process.
+
+    Mirrors the setup portion of :func:`train_from_collection` — builds the
+    TrainingDataStore, reaction module, and scaling exactly as training did —
+    so that ``eqx.tree_deserialise_leaves`` has a structurally identical
+    template to deserialise into.
+    """
+    from .postprocessing import load_trained_wrapper
+    from .trainer import _measurement_loss_from_arrays
+
+    cfg = config or ForwardConfig()
+    custom_module = load_custom_module(custom_py)
+    custom_cfg = resolve_config(custom_module, runtime_config)
+    config_targets = custom_cfg.get("target_variable_order")
+    if cfg.target_variable_order is not None:
+        effective_target_order = cfg.target_variable_order
+    elif config_targets:
+        effective_target_order = tuple(config_targets)
+    else:
+        effective_target_order = None
+
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=effective_target_order,
+        target_source=cfg.target_source,
+    )
+
+    # Use ALL processes in the store for template construction so the pytree
+    # matches training even if the caller selects a holdout subset below.
+    template_processes = tuple(store.process_order)
+
+    # Build a throwaway TrainHarnessConfig for hook-reuse only (build_reaction_module
+    # needs a config object with .seed).
+    train_like_cfg = TrainHarnessConfig(
+        process_names=template_processes,
+        target_variable_order=effective_target_order,
+        target_source=cfg.target_source,
+    )
+    reaction_module = _build_reaction_module(
+        store=store,
+        config=train_like_cfg,
+        custom_module=custom_module,
+        custom_config=custom_cfg,
+        collection=collection,
+    )
+
+    estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
+    scale_kwargs: dict[str, Any] = {}
+    if estimate_scales_hook is not None:
+        state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
+            collection,
+            list(store.target_names),
+            custom_cfg,
+        )
+        scale_kwargs = {
+            "state_scale": state_scale,
+            "controls_scale": controls_scale,
+            "q_scale": q_scale,
+            "f_scale": f_scale,
+        }
+
+    template_wrapper, extras = _build_template_wrapper(
+        store,
+        reaction_module=reaction_module,
+        collection=collection,
+        selected_processes=template_processes,
+        **scale_kwargs,
+    )
+    per_process_rhs = extras["per_process_rhs"]
+
+    trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
+
+    # Resolve which processes to evaluate
+    if cfg.process_names is not None:
+        missing = [n for n in cfg.process_names if n not in store.process_order]
+        if missing:
+            raise ValueError(
+                f"forward: unknown process names {missing}; "
+                f"available={tuple(store.process_order)}"
+            )
+        eval_processes = tuple(cfg.process_names)
+    else:
+        eval_processes = tuple(store.process_order)
+
+    if cfg.solver_max_steps <= 0:
+        raise ValueError("solver_max_steps must be positive")
+    if cfg.solver_rtol <= 0.0:
+        raise ValueError("solver_rtol must be positive")
+    if cfg.solver_atol <= 0.0:
+        raise ValueError("solver_atol must be positive")
+
+    per_process_total: dict[str, float] = {}
+    per_process_per_target: dict[str, tuple[float, ...]] = {}
+    for process_name in eval_processes:
+        process_data = store.get_process(process_name)
+        rhs = per_process_rhs[process_name]
+        process_wrapper = eqx.tree_at(
+            lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+            trained_wrapper,
+            (process_data.controls, rhs.Cin, rhs.Cin_modeled),
+        )
+        jump_ts = (
+            process_data.controls.active_step_ts if cfg.solver_use_jump_ts else None
+        )
+        total, per_target = _measurement_loss_from_arrays(
+            process_wrapper,
+            t_meas=process_data.active_t_meas,
+            y_meas=process_data.active_y_meas,
+            meas_mask=process_data.active_meas_mask,
+            n_meas=int(process_data.n_meas),
+            y0=process_data.y0,
+            jump_ts=jump_ts,
+            max_solver_steps=int(cfg.solver_max_steps),
+            solver_rtol=float(cfg.solver_rtol),
+            solver_atol=float(cfg.solver_atol),
+        )
+        per_process_total[process_name] = float(total)
+        per_process_per_target[process_name] = tuple(float(v) for v in per_target)
+
+    target_column_labels = tuple(store.target_names) + tuple(
+        f"B_{name}_cum" for name in store.modeled_flow_names
+    )
+
+    return ForwardResult(
+        trained_wrapper=trained_wrapper,
+        store=store,
+        process_names=eval_processes,
+        target_names=target_column_labels,
+        modeled_flow_names=tuple(store.modeled_flow_names),
+        training_process_names=tuple(training_process_names)
+        if training_process_names is not None
+        else (),
+        per_process_total_loss=per_process_total,
+        per_process_per_target_loss=per_process_per_target,
+    )
+
+
 def train_collection(
     store: TrainingDataStore,
     *,
