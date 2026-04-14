@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,6 @@ from .trainer import (
     _BatchIndexedControls,
     _clamp_padded_time_rows,
     _measurement_loss_from_arrays,
-    single_process_measurement_loss,
     summarize_train_step_input_signature,
 )
 from .controls_store import BatchControls
@@ -649,27 +649,10 @@ def train_from_collection(
     )
 
     selected_processes = _ensure_process_names(store, cfg.process_names)
-    effective_cfg = TrainHarnessConfig(
-        process_names=selected_processes,
-        target_variable_order=cfg.target_variable_order,
-        target_source=cfg.target_source,
-        steps=cfg.steps,
-        batch_size=cfg.batch_size,
-        shuffle_batches=cfg.shuffle_batches,
-        batch_seed=cfg.batch_seed,
-        optimizer_name=cfg.optimizer_name,
-        learning_rate=cfg.learning_rate,
-        grad_clip_norm=cfg.grad_clip_norm,
-        seed=cfg.seed,
-        log_every=cfg.log_every,
-        solver_max_steps=cfg.solver_max_steps,
-        solver_rtol=cfg.solver_rtol,
-        solver_atol=cfg.solver_atol,
-        solver_use_jump_ts=cfg.solver_use_jump_ts,
-    )
+    train_cfg = dataclasses.replace(cfg, process_names=selected_processes)
     reaction_module = _build_reaction_module(
         store=store,
-        config=effective_cfg,
+        config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
         collection=collection,
@@ -677,25 +660,8 @@ def train_from_collection(
     # Call optional build_learning_rate hook (overrides CLI --learning-rate)
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
     if lr_hook is not None:
-        lr = lr_hook(custom_cfg, effective_cfg)
-        effective_cfg = TrainHarnessConfig(
-            process_names=effective_cfg.process_names,
-            target_variable_order=effective_cfg.target_variable_order,
-            target_source=effective_cfg.target_source,
-            steps=effective_cfg.steps,
-            batch_size=effective_cfg.batch_size,
-            shuffle_batches=effective_cfg.shuffle_batches,
-            batch_seed=effective_cfg.batch_seed,
-            optimizer_name=effective_cfg.optimizer_name,
-            learning_rate=lr,
-            grad_clip_norm=effective_cfg.grad_clip_norm,
-            seed=effective_cfg.seed,
-            log_every=effective_cfg.log_every,
-            solver_max_steps=effective_cfg.solver_max_steps,
-            solver_rtol=effective_cfg.solver_rtol,
-            solver_atol=effective_cfg.solver_atol,
-            solver_use_jump_ts=effective_cfg.solver_use_jump_ts,
-        )
+        lr = lr_hook(custom_cfg, train_cfg)
+        train_cfg = dataclasses.replace(train_cfg, learning_rate=lr)
 
     # Call optional estimate_all_scales hook for state/controls/q/f scaling
     estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
@@ -717,7 +683,7 @@ def train_from_collection(
         store,
         reaction_module=reaction_module,
         collection=collection,
-        config=effective_cfg,
+        config=train_cfg,
         **scale_kwargs,
     )
 
