@@ -40,7 +40,9 @@ from bpbench.splines import (
     evaluate_real_concentration,
     to_interpolator,
     build_backtransform_spline,
+    build_batched_conc_splines,
     BacktransformSpline,
+    evaluate_left_continuous_step,
 )
 from bpbench.serialization import (
     save_dataset,
@@ -600,7 +602,9 @@ def test_interpolator_roundtrip_bolus():
     assert rep.interpolator_metadata is not None
     assert rep.interpolator_metadata["transform"]["name"] == "pseudo_batch"
     assert rep.interpolator_metadata["transform"]["species"] == "glucose"
-    assert rep.interpolator_metadata["transform"]["feed_corr_interp"] == "linear"
+    assert rep.interpolator_metadata["transform"]["feed_corr_interp"] == (
+        "linear_plus_step"
+    )
 
     bt = build_backtransform_spline(rep)
     assert isinstance(bt, BacktransformSpline)
@@ -660,16 +664,78 @@ def test_backtransform_has_jump_at_bolus():
 
     bt = build_backtransform_spline(rep)
 
-    # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
-    eps = 5e-4
-    val_before = float(bt(jnp.array(50.0 - eps)))
-    val_after = float(bt(jnp.array(50.0 + eps)))
+    t_b = 50.0
+    post_probe = 5e-4
+    pre_probe = 5e-4  # safely away from event edge
+    val_before = float(bt(jnp.array(t_b - pre_probe)))
+    val_at = float(bt(jnp.array(t_b)))
+    val_after = float(bt(jnp.array(t_b + post_probe)))
+
+    assert val_at == pytest.approx(val_before, abs=2e-2)
 
     jump = abs(val_after - val_before)
     assert jump > 0.1, (
-        f"Expected a jump at t_feed=50.0, got val_before={val_before}, "
+        f"Expected a jump right after t_feed=50.0, got val_at={val_at}, "
         f"val_after={val_after}, jump={jump}"
     )
+
+
+def test_batched_backtransform_preserves_bolus_jump():
+    """Batched backtransform must preserve discrete feed jumps."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0,
+        feed_times=[50.0],
+        feed_vols=[0.2],
+        glucose_feed_conc=500.0,
+        glucose_times=[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 100.0],
+        glucose_values=[10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 7.0, 6.0, 5.0, 4.0],
+    )
+    inputs = build_pseudobatch_inputs(proc, "glucose")
+    splines = build_splines(inputs, proc, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
+    bt = build_backtransform_spline(rep)
+    batched = build_batched_conc_splines(
+        conc_splines={"glucose": bt},
+        species_names=["glucose"],
+        t_start=0.0,
+        t_end=100.0,
+    )
+
+    t_b = 50.0
+    delta = 5e-5
+    val_at = float(batched(jnp.array(t_b))[0])
+    val_post = float(batched(jnp.array(t_b + delta))[0])
+    ref_at = float(bt(jnp.array(t_b)))
+    ref_post = float(bt(jnp.array(t_b + delta)))
+
+    assert abs(val_at - ref_at) < 2.0
+    assert abs(val_post - ref_post) < 2.0
+    assert abs(val_post - val_at) > 0.1
+
+
+def test_backtransform_rejects_legacy_linear_feed_corr():
+    """Legacy linear feed_corr metadata is intentionally unsupported."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0,
+        feed_times=[50.0],
+        feed_vols=[0.2],
+        glucose_feed_conc=500.0,
+        glucose_times=[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 100.0],
+        glucose_values=[10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 7.0, 6.0, 5.0, 4.0],
+    )
+    inputs = build_pseudobatch_inputs(proc, "glucose")
+    splines = build_splines(inputs, proc, "glucose")
+    rep = to_interpolator(inputs, splines, "glucose")
+
+    tr = rep.interpolator_metadata["transform"]
+    tr["feed_corr_interp"] = "linear"
+    tr.pop("feed_corr_base_times", None)
+    tr.pop("feed_corr_base_values", None)
+    tr.pop("feed_corr_jump_times", None)
+    tr.pop("feed_corr_jump_values", None)
+
+    with pytest.raises(ValueError, match="feed_corr_interp='linear'"):
+        _ = build_backtransform_spline(rep)
 
 
 def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
@@ -734,10 +800,11 @@ def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
     bt = build_backtransform_spline(rep)
 
     t_b = 10.0
-    eps = 5e-4
-    val_pre = float(bt(jnp.array(t_b - eps)))
+    post_probe = 5e-4
+    pre_probe = 5e-4
+    val_pre = float(bt(jnp.array(t_b - pre_probe)))
     val_at = float(bt(jnp.array(t_b)))
-    val_post = float(bt(jnp.array(t_b + eps)))
+    val_post = float(bt(jnp.array(t_b + post_probe)))
 
     # sample first: V=1.0->0.8, then bolus +0.1 with C_feed=300 at same timestamp
     # expected post-event concentration if t_b is treated as pre-event:
@@ -745,7 +812,7 @@ def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
     expected_post = (7.0 * 0.8 + 300.0 * 0.1) / 0.9
 
     # Characterization contract at exact timestamp.
-    assert abs(val_at - val_pre) < 2e-2
+    assert val_at == pytest.approx(val_pre, abs=2e-2)
     # Directional jump: feed is much richer than broth, so jump should be upward.
     assert val_post > val_at
     # Post-event value should follow sample-then-bolus mass balance.
@@ -868,6 +935,39 @@ def test_pseudobatch_spline_json_roundtrip():
         assert abs(orig - loaded_val) < 1e-4, (
             f"Roundtrip mismatch at t={t_val}: {orig} vs {loaded_val}"
         )
+
+    # ADF step behavior should survive serialization too.
+    # > float32 resolution near t=50, but still << _EPS (1e-4)
+    tiny_delta = 1e-5
+    tr_orig = rep.interpolator_metadata["transform"]
+    tr_loaded = loaded_comp.interpolator.interpolator_metadata["transform"]
+    orig_adf_t = jnp.asarray(tr_orig["adf_times"], dtype=float)
+    orig_adf_v = jnp.asarray(tr_orig["adf_values"], dtype=float)
+    loaded_adf_t = jnp.asarray(tr_loaded["adf_times"], dtype=float)
+    loaded_adf_v = jnp.asarray(tr_loaded["adf_values"], dtype=float)
+    assert orig_adf_t.size > 0
+    t_b = float(orig_adf_t[0])
+
+    orig_at = float(
+        evaluate_left_continuous_step(jnp.array(t_b), orig_adf_t, orig_adf_v)
+    )
+    orig_post = float(
+        evaluate_left_continuous_step(
+            jnp.array(t_b + tiny_delta), orig_adf_t, orig_adf_v
+        )
+    )
+    loaded_at = float(
+        evaluate_left_continuous_step(jnp.array(t_b), loaded_adf_t, loaded_adf_v)
+    )
+    loaded_post = float(
+        evaluate_left_continuous_step(
+            jnp.array(t_b + tiny_delta), loaded_adf_t, loaded_adf_v
+        )
+    )
+    assert orig_post > orig_at
+    assert loaded_post > loaded_at
+    assert loaded_at == pytest.approx(orig_at, abs=1e-12)
+    assert loaded_post == pytest.approx(orig_post, abs=1e-12)
 
 
 def test_pseudobatch_metadata_json_serializable():
@@ -1278,9 +1378,18 @@ def test_backtransform_spline_jit_bolus():
     bt = build_backtransform_spline(rep)
 
     jit_fn = eqx.filter_jit(bt)
-    val = jit_fn(jnp.array(25.0))
-    assert np.isfinite(float(val))
-    assert float(val) > 0
+    val_mid = jit_fn(jnp.array(25.0))
+    assert np.isfinite(float(val_mid))
+    assert float(val_mid) > 0
+
+    t_b = 50.0
+    post_probe = 5e-4
+    pre_probe = 5e-4
+    val_pre = float(jit_fn(jnp.array(t_b - pre_probe)))
+    val_at = float(jit_fn(jnp.array(t_b)))
+    val_post = float(jit_fn(jnp.array(t_b + post_probe)))
+    assert val_at == pytest.approx(val_pre, abs=2e-2)
+    assert val_post - val_at > 0.01
 
 
 def test_backtransform_spline_jit_continuous():

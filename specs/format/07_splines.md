@@ -37,13 +37,21 @@ Even after pseudobatch transformation, bolus feed events create discontinuities 
 3. **Per-segment fitting** fits an independent spline to each segment.
 4. **Padded storage** pads segments to fixed array shapes for JAX compatibility.
 
-### Why Step Interpolation for ADF/Feed-Term?
+### Why Step-Aware ADF and `linear_plus_step` Feed Correction?
 
-ADF and feed correction are piecewise-constant quantities that jump instantaneously at discrete events. Using linear interpolation would create incorrect ramps between pre-event and post-event values. Step (nearest-neighbor) interpolation preserves the correct discontinuous behavior.
+For discrete bolus events:
+- `ADF` is represented as a left-continuous step function.
+- `feed_correction` is represented as `linear_base + instantaneous_jumps`
+  (`linear_plus_step` mode).
+
+Plain linear interpolation across event anchors creates non-physical ramps.
+Step-aware evaluation preserves event discontinuities.
 
 ### The Epsilon Convention
 
-For discrete bolus events at time `t_event`, the module inserts pre-event points at `t_event - _EPS` (where `_EPS = 1e-4`). This creates a narrow interval that captures the discontinuity while keeping the grid compatible with spline fitting routines.
+For discrete bolus events at `t_event`, helper grids still use `t_event ± _EPS`
+(`_EPS = 1e-4`) for robust event bookkeeping. Runtime backtransform semantics do
+not rely on linear ramps across that interval.
 
 ### Constants
 
@@ -88,8 +96,8 @@ For discrete bolus events at time `t_event`, the module inserts pre-event points
 | Function | Description |
 |----------|-------------|
 | `build_pseudobatch_inputs(process, species_name)` | Extract the inputs needed for pseudobatch transformation (biomass, substrate, feed rate, etc.) for a given species. Returns a dict. |
-| `build_splines(process, reactor_component_state_names, ...)` | Full pipeline: compute pseudobatch transform, fit splines to c*, ADF, and feed correction for all reactor-component states. Returns dict of `Interpolator` objects. |
-| `evaluate_real_concentration(rep, t)` | Evaluate the backtransformed real concentration at time `t` from a stored `Interpolator`. |
+| `build_splines(inputs, process=None, species_name=None)` | Build per-species runtime spline payload from `build_pseudobatch_inputs` output. |
+| `evaluate_real_concentration(rep, t)` | Evaluate backtransformed real concentration using step-aware ADF and feed correction metadata. |
 | `to_interpolator(...)` | Convert scipy/interpax spline output to a padded `Interpolator` with metadata. |
 
 ### JAX-Compatible Backtransform Classes
@@ -105,7 +113,8 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 Fields:
 - `c_star_spline` -- interpax CubicSpline for c*
 - `adf_times`, `adf_values` -- step function data for ADF
-- `fc_spline`, `fc_times`, `fc_values` -- feed correction (cubic or piecewise-linear)
+- `fc_spline`, `fc_times`, `fc_values` -- feed correction baseline
+- `fc_jump_times`, `fc_jump_values` -- discrete feed-correction jumps (linear_plus_step mode)
 - `is_constant` -- bypass flag for constant-concentration species
 - `constant_value` -- returned directly when `is_constant=True`
 
@@ -119,7 +128,7 @@ Build with `build_backtransform_spline(rep)` from a stored `Interpolator`.
 
 Stacks multiple `BacktransformSpline` objects for vectorized evaluation across species. Used inside JIT-compiled ODE solvers.
 
-Build with `build_batched_conc_splines(process, interpolators)`.
+Build with `build_batched_conc_splines(conc_splines, species_names, t_start, t_end)`.
 
 ## Examples
 
@@ -145,11 +154,10 @@ import bpbench as bp
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["kittler_2022"].processes["fed_batch_001"]
 
-# Build splines for all reactor-component states
-reactor_component_state_names = list(process.reactor_medium.components.keys())
-interpolators = bp.splines.build_splines(process, reactor_component_state_names)
-
-# interpolators is a dict: {"biomass": Interpolator, "glucose": Interpolator, ...}
+# Build pseudobatch inputs + runtime spline payload for one species
+inputs = bp.splines.build_pseudobatch_inputs(process, "glucose")
+splines = bp.splines.build_splines(inputs, process, "glucose")
+interpolator = bp.splines.to_interpolator(inputs, splines, "glucose")
 ```
 
 ### Evaluating Backtransformed Concentrations
@@ -159,7 +167,7 @@ import jax.numpy as jnp
 from bpbench.splines import build_backtransform_spline
 
 # Build a JIT-compatible backtransform module
-bt = build_backtransform_spline(interpolators["glucose"])
+bt = build_backtransform_spline(interpolator)
 
 # Evaluate at a single time (works inside jax.jit)
 c_glucose = bt(5.0)

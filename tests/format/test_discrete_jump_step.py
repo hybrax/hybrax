@@ -26,12 +26,14 @@ from bpbench.splines import (
     build_splines,
     to_interpolator,
     build_backtransform_spline,
+    evaluate_left_continuous_step,
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _ts(t, v):
     return TimeSeries(
@@ -43,20 +45,26 @@ def _ts(t, v):
 def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
     """Minimal process with a single bolus feed event."""
     feed_medium = FeedMedium(
-        name="feed", density=1.0, density_unit="kg/L",
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
         components={
             "glucose": FeedMediumComponent(
-                name="glucose", unit="g/L",
+                name="glucose",
+                unit="g/L",
                 concentration=StaticVariable(value=c_feed),
                 is_controlled=True,
             ),
         },
     )
     rm = ReactorMedium(
-        name="medium", density=1.0, density_unit="kg/L",
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
         components={
             "glucose": ReactorMediumComponent(
-                name="glucose", unit="g/L",
+                name="glucose",
+                unit="g/L",
                 concentration=_ts(
                     [0.0, 5.0, 10.0, 15.0, 20.0],
                     [10.0, 8.0, 6.0, 5.0, 4.0],
@@ -66,11 +74,14 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
         },
     )
     vol = Volume(
-        initial_volume=1.0, unit="L",
+        initial_volume=1.0,
+        unit="L",
         volume_changes={
             "bolus": FeedVolumeChange(
-                name="bolus", unit="L",
-                is_controlled=True, is_continuous=False,
+                name="bolus",
+                unit="L",
+                is_controlled=True,
+                is_continuous=False,
                 feed_medium=feed_medium,
                 values=_ts([feed_time], [delta_v]),
             ),
@@ -88,8 +99,9 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_step_jump_at_bolus():
-    """Backtransformed concentration should have a jump at the bolus feed time."""
+    """Backtransform has a jump around bolus feed time."""
     proc = _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
@@ -97,44 +109,56 @@ def test_step_jump_at_bolus():
 
     bt = build_backtransform_spline(rep)
 
-    # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
-    eps = 5e-4
-    val_before = float(bt(jnp.array(10.0 - eps)))
-    val_after = float(bt(jnp.array(10.0 + eps)))
+    t_b = 10.0
+    post_probe = 5e-4
+    pre_probe = 5e-4
 
-    jump = abs(val_after - val_before)
+    val_before = float(bt(jnp.array(t_b - pre_probe)))
+    val_at = float(bt(jnp.array(t_b)))
+    val_after = float(bt(jnp.array(t_b + post_probe)))
+
+    assert val_at == pytest.approx(val_before, abs=2e-2)
+
+    jump = abs(val_after - val_at)
     assert jump > 0.1, f"Expected discontinuity at bolus time, got jump={jump}"
 
 
-def test_step_consistent_at_different_distances():
-    """Value at t_event + small_eps and t_event + larger_eps should be similar
-    (step function, not linear ramp)."""
+def test_adf_is_instantaneous_at_bolus():
+    """ADF should jump immediately after event (left-continuous at t_b)."""
     proc = _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
     rep = to_interpolator(inputs, splines, "glucose")
 
-    bt = build_backtransform_spline(rep)
-    val_close = float(bt(jnp.array(10.0 + 5e-4)))
-    val_far = float(bt(jnp.array(10.0 + 0.1)))
+    t_b = 10.0
+    # > float32 resolution near t=10, but still << _EPS (1e-4)
+    tiny_delta = 1e-5
+    tr = rep.interpolator_metadata["transform"]
+    adf_t = jnp.asarray(tr["adf_times"], dtype=float)
+    adf_v = jnp.asarray(tr["adf_values"], dtype=float)
 
-    # Both should be similar (within spline interpolation tolerance).
-    # Note: with linear ADF interpolation on the dense grid, the sharp ramp
-    # spans ~1e-4 time units, so values at 5e-4 and 0.1 may differ due to
-    # spline curvature, but should be in the same ballpark.
-    assert abs(val_close - val_far) < 2.0, (
-        f"Step function should give roughly consistent values after event: "
-        f"close={val_close}, far={val_far}"
+    adf_at = float(evaluate_left_continuous_step(jnp.array(t_b), adf_t, adf_v))
+    adf_after_tiny = float(
+        evaluate_left_continuous_step(jnp.array(t_b + tiny_delta), adf_t, adf_v)
     )
+    adf_after_far = float(
+        evaluate_left_continuous_step(jnp.array(t_b + 5e-5), adf_t, adf_v)
+    )
+
+    assert adf_after_tiny > adf_at
+    assert adf_after_tiny == pytest.approx(adf_after_far, abs=1e-10)
 
 
 def test_no_jump_for_sampling():
     """Sampling events should NOT produce concentration jumps."""
     rm = ReactorMedium(
-        name="medium", density=1.0, density_unit="kg/L",
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
         components={
             "glucose": ReactorMediumComponent(
-                name="glucose", unit="g/L",
+                name="glucose",
+                unit="g/L",
                 concentration=_ts(
                     [0.0, 5.0, 10.0, 15.0, 20.0],
                     [10.0, 8.0, 6.0, 5.0, 4.0],
@@ -144,11 +168,14 @@ def test_no_jump_for_sampling():
         },
     )
     vol = Volume(
-        initial_volume=1.0, unit="L",
+        initial_volume=1.0,
+        unit="L",
         volume_changes={
             "sample": SampleVolumeChange(
-                name="sample", unit="L",
-                is_controlled=True, is_continuous=False,
+                name="sample",
+                unit="L",
+                is_controlled=True,
+                is_continuous=False,
                 values=_ts([10.0], [-0.05]),
             ),
         },
@@ -166,11 +193,14 @@ def test_no_jump_for_sampling():
 
     bt = build_backtransform_spline(rep)
 
-    eps = 1e-6
-    val_before = float(bt(jnp.array(10.0 - eps)))
-    val_after = float(bt(jnp.array(10.0 + eps)))
+    t_s = 10.0
+    tiny_delta = 1e-6
+    pre_probe = 5e-4  # safely away from event edge
+    val_before = float(bt(jnp.array(t_s - pre_probe)))
+    val_at = float(bt(jnp.array(t_s)))
+    val_after = float(bt(jnp.array(t_s + tiny_delta)))
 
-    # Should be smooth across sampling (no jump)
-    assert abs(val_after - val_before) < 0.5, (
-        f"Sampling should not cause a jump: before={val_before}, after={val_after}"
+    assert val_at == pytest.approx(val_before, abs=2e-2)
+    assert abs(val_after - val_at) < 2e-2, (
+        f"Sampling should be continuous: at={val_at}, after={val_after}"
     )

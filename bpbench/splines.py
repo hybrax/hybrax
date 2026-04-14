@@ -8,17 +8,14 @@ This module provides:
 - Core spline infrastructure (fitting, evaluation, segmentation)
 
 Design goals:
-- Always compute the pseudobatch transform (c*) and the ADF / feed-correction
-  at measurement times only.
-- Avoid computing ADF by doing a dense-grid cumprod: that incorrectly treats
-  continuous cumulative feed as many small discrete dilutions.
+- Always compute pseudobatch transform (c*) and correction terms from physical
+  event semantics.
+- Avoid dense-grid pseudo-events from interpolation artifacts.
 - Interpolate:
-    - c* : Cubic spline (smooth pseudobatch space)
-    - ADF and feed_correction: piecewise-linear interpolation between
-      measurement times (no cubic overshoot, no fake steps)
-- Keep a dense time grid (measurement times + feed event times with t-eps for
-  discrete events) for plotting reactor volumes, but do NOT compute ADF on
-  that dense grid.
+    - c*: cubic/PCHIP (smooth pseudobatch space)
+    - ADF: left-continuous step function
+    - feed_correction (discrete mode): linear baseline + instantaneous jumps
+- Keep dense grid for robust event bookkeeping and plotting only.
 """
 
 from __future__ import annotations
@@ -29,6 +26,7 @@ import equinox as eqx
 import interpax
 import jax
 import jax.numpy as jnp
+import numpy as np
 from scipy import interpolate
 import pseudobatch
 import pseudobatch.data_correction
@@ -52,6 +50,8 @@ from .dataclasses import (
 # Must be large enough to survive float32 quantization but tiny relative to true
 # sampling intervals.
 _EPS = 1e-4
+_JUMP_DT_EPS_FACTOR = 20.0
+_JUMP_DT_MEDIAN_FRACTION = 0.1
 
 DEFAULT_MAX_SEGMENTS = 16
 DEFAULT_MAX_CTRL_POINTS = 128
@@ -100,6 +100,118 @@ def _evaluate_timeseries_on_grid(ts: TimeSeries, grid: jnp.ndarray) -> jnp.ndarr
     raise ValueError(
         "TimeSeries cannot be evaluated without spline or discrete samples"
     )
+
+
+def evaluate_left_continuous_step(
+    t: jnp.ndarray,
+    step_times: jnp.ndarray,
+    step_values: jnp.ndarray,
+) -> jnp.ndarray:
+    """Evaluate left-continuous piecewise-constant value at time(s) *t*.
+
+    Supported encodings:
+    - Canonical interval encoding: ``len(values) == len(times) + 1``.
+    - Legacy knot encoding: ``len(values) == len(times)``.
+    """
+    t = jnp.asarray(t, dtype=float)
+    step_times = jnp.asarray(step_times, dtype=float)
+    step_values = jnp.asarray(step_values, dtype=float)
+    n_times = int(step_times.shape[0])
+    n_values = int(step_values.shape[0])
+
+    if n_values == 0:
+        raise ValueError("step_values must contain at least one element")
+
+    if n_values == n_times + 1:
+        idx = jnp.searchsorted(step_times, t, side="left")
+        idx = jnp.clip(idx, 0, n_values - 1)
+        return step_values[idx]
+
+    if n_values == n_times:
+        idx = jnp.searchsorted(step_times, t, side="left") - 1
+        idx = jnp.clip(idx, 0, n_values - 1)
+        return step_values[idx]
+
+    raise ValueError(
+        "Invalid step metadata shape: expected len(values)==len(times) "
+        "or len(values)==len(times)+1."
+    )
+
+
+def _canonicalize_left_continuous_step_metadata(
+    step_times: jnp.ndarray, step_values: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Return canonical left-continuous step metadata.
+
+    Canonical form stores interval values, so ``len(values) == len(times) + 1``.
+    Legacy same-length metadata is compacted by change-point detection so that
+    transitions happen at the original knot time, not one knot later.
+    """
+    step_times = jnp.asarray(step_times, dtype=float)
+    step_values = jnp.asarray(step_values, dtype=float)
+    n_times = int(step_times.shape[0])
+    n_values = int(step_values.shape[0])
+
+    if n_values == n_times + 1:
+        return step_times, step_values
+
+    if n_values == n_times:
+        return _canonicalize_adf_step_table(step_times, step_values)
+
+    raise ValueError(
+        "Invalid step metadata shape: expected len(values)==len(times) "
+        "or len(values)==len(times)+1."
+    )
+
+
+def _canonicalize_adf_step_table(
+    dense_times: jnp.ndarray, dense_adf: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Build canonical ADF step metadata from dense ADF samples."""
+    dense_times = jnp.asarray(dense_times, dtype=float)
+    dense_adf = jnp.asarray(dense_adf, dtype=float)
+    n_dense = int(dense_adf.shape[0])
+    if n_dense == 0:
+        raise ValueError("dense_adf must contain at least one sample")
+    if n_dense == 1:
+        return jnp.zeros(0, dtype=float), dense_adf
+
+    change_idx = [
+        i
+        for i in range(n_dense - 1)
+        if abs(float(dense_adf[i + 1] - dense_adf[i])) > 1e-12
+    ]
+    if not change_idx:
+        return jnp.zeros(0, dtype=float), dense_adf[:1]
+
+    idx = jnp.asarray(change_idx, dtype=int)
+    step_times = dense_times[idx]
+    post_values = dense_adf[idx + 1]
+    step_values = jnp.concatenate([dense_adf[:1], post_values])
+    return step_times, step_values
+
+
+def _jump_increments_to_step_values(jump_values: jnp.ndarray) -> jnp.ndarray:
+    """Convert jump increments to canonical left-continuous step values."""
+    jump_values = jnp.asarray(jump_values, dtype=float)
+    if jump_values.size == 0:
+        return jnp.asarray([0.0], dtype=float)
+    return jnp.concatenate([jnp.asarray([0.0], dtype=float), jnp.cumsum(jump_values)])
+
+
+def evaluate_linear_plus_step(
+    t: jnp.ndarray,
+    base_times: jnp.ndarray,
+    base_values: jnp.ndarray,
+    jump_times: jnp.ndarray,
+    jump_values: jnp.ndarray,
+) -> jnp.ndarray:
+    """Evaluate linear baseline plus instantaneous left-continuous jumps."""
+    t = jnp.asarray(t, dtype=float)
+    base = jnp.interp(t, base_times, base_values)
+    jump_step_values = _jump_increments_to_step_values(jump_values)
+    jump = evaluate_left_continuous_step(t, jump_times, jump_step_values)
+    return base + jump
 
 
 def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
@@ -200,13 +312,12 @@ def _fit_smoothing_segment(
     n_ctrl: int,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points."""
-    import numpy as _np  # scipy interop
 
     if len(x) < 4:
         return x, y
-    tck = interpolate.splrep(_np.asarray(x), _np.asarray(y), s=s, k=3)
+    tck = interpolate.splrep(np.asarray(x), np.asarray(y), s=s, k=3)
     x_ctrl = jnp.linspace(float(x[0]), float(x[-1]), n_ctrl)
-    y_ctrl = jnp.asarray(interpolate.splev(_np.asarray(x_ctrl), tck))
+    y_ctrl = jnp.asarray(interpolate.splev(np.asarray(x_ctrl), tck))
     return x_ctrl, y_ctrl
 
 
@@ -534,8 +645,6 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     Discrete bolus events are treated as left-continuous in this transform:
     at exactly ``t_b`` values are pre-event, and the jump appears for ``t > t_b``.
     """
-    import numpy as _np  # pseudobatch interop
-
     # --- measurements
     comp = process.reactor_medium.components[species_name]
     ts = comp.concentration
@@ -582,7 +691,7 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     # pseudobatch requires numpy arrays
     adf_dense = jnp.asarray(
         pseudobatch.data_correction.accumulated_dilution_factor(
-            _np.asarray(bolus_vol_dense), _np.asarray(no_sample_dense)
+            np.asarray(bolus_vol_dense), np.asarray(no_sample_dense)
         )
     )
     adf_at_meas = adf_dense[mi]
@@ -720,7 +829,6 @@ def build_splines(
 
             cs_val_post = float(spline_cstar(jnp.array(t_post)))
             fc_post = c_post * adf_post - cs_val_post
-
             interp_times = jnp.append(interp_times, jnp.array([t_pre, t_post]))
             interp_adf = jnp.append(interp_adf, jnp.array([adf_pre, adf_post]))
             interp_fc = jnp.append(interp_fc, jnp.array([fc_pre, fc_post]))
@@ -736,12 +844,72 @@ def build_splines(
             inputs["meas_times"], inputs["feed_corr_at_meas"]
         )
 
+    fc_base_times = interp_times
+    fc_base_values = interp_fc
+    fc_jump_times = jnp.zeros(0, dtype=float)
+    fc_jump_values = jnp.zeros(0, dtype=float)
+    if inputs.get("has_discrete_feed", False):
+        times_np = np.asarray(interp_times, dtype=float)
+        values_np = np.asarray(interp_fc, dtype=float)
+        if times_np.size > 1:
+            # Keep last duplicate so augmented post-event anchor wins.
+            _, rev_idx = np.unique(times_np[::-1], return_index=True)
+            keep_unique = np.sort(times_np.size - 1 - rev_idx)
+            times_np = times_np[keep_unique]
+            values_np = values_np[keep_unique]
+        dt = np.diff(times_np)
+        if np.any(dt <= 0.0):
+            raise ValueError(
+                "feed_corr interpolation times must be strictly increasing"
+            )
+        median_dt = float(np.median(dt)) if dt.size else 0.0
+        small_dt_threshold = (
+            min(
+                _JUMP_DT_EPS_FACTOR * _EPS,
+                _JUMP_DT_MEDIAN_FRACTION * median_dt,
+            )
+            if dt.size
+            else 0.0
+        )
+        adjusted = values_np.copy()
+        jump_right_indices: list[int] = []
+        jump_times_list: list[float] = []
+        jump_values_list: list[float] = []
+        for i, dti in enumerate(dt):
+            if dti > small_dt_threshold:
+                continue
+            delta = float(adjusted[i + 1] - adjusted[i])
+            if abs(delta) <= 1e-12:
+                continue
+            jump_right_indices.append(i + 1)
+            jump_times_list.append(0.5 * float(times_np[i] + times_np[i + 1]))
+            jump_values_list.append(delta)
+            adjusted[i + 1 :] -= delta
+
+        keep = np.ones(times_np.shape[0], dtype=bool)
+        if jump_right_indices:
+            keep[jump_right_indices] = False
+        fc_base_times = jnp.asarray(times_np[keep], dtype=float)
+        fc_base_values = jnp.asarray(adjusted[keep], dtype=float)
+        fc_jump_times = jnp.asarray(jump_times_list, dtype=float)
+        fc_jump_values = jnp.asarray(jump_values_list, dtype=float)
+
+    adf_step_times, adf_step_values = _canonicalize_adf_step_table(
+        inputs["dense_times"], inputs["adf_dense"]
+    )
+
     return {
         "spline_cstar": spline_cstar,
         "spline_feed_corr": spline_feed_corr,
         "meas_times": interp_times,
         "adf_at_meas": interp_adf,
         "feed_corr_at_meas": interp_fc,
+        "feed_corr_base_times": fc_base_times,
+        "feed_corr_base_values": fc_base_values,
+        "feed_corr_jump_times": fc_jump_times,
+        "feed_corr_jump_values": fc_jump_values,
+        "adf_times": adf_step_times,
+        "adf_values": adf_step_values,
         "dense_times": inputs["dense_times"],
         "adf_dense": inputs["adf_dense"],
     }
@@ -764,11 +932,30 @@ def evaluate_real_concentration(
     t_eval = jnp.asarray(t_eval, dtype=float)
     cs = jnp.asarray(splines["spline_cstar"](jnp.asarray(t_eval)))
 
-    adf = jnp.interp(t_eval, splines["dense_times"], splines["adf_dense"])
+    adf_times = splines.get("adf_times", splines["dense_times"])
+    adf_values = splines.get("adf_values", splines["adf_dense"])
+    adf_times, adf_values = _canonicalize_left_continuous_step_metadata(
+        adf_times, adf_values
+    )
+    adf = evaluate_left_continuous_step(t_eval, adf_times, adf_values)
     if splines.get("spline_feed_corr") is not None:
         fc = jnp.asarray(splines["spline_feed_corr"](jnp.asarray(t_eval)))
+    elif (
+        splines.get("feed_corr_jump_times") is not None
+        and splines.get("feed_corr_jump_values") is not None
+    ):
+        fc = evaluate_linear_plus_step(
+            t_eval,
+            splines.get("feed_corr_base_times", splines["meas_times"]),
+            splines.get("feed_corr_base_values", splines["feed_corr_at_meas"]),
+            splines["feed_corr_jump_times"],
+            splines["feed_corr_jump_values"],
+        )
     else:
-        fc = jnp.interp(t_eval, splines["meas_times"], splines["feed_corr_at_meas"])
+        raise ValueError(
+            "Discrete pseudobatch backtransform requires feed_corr jump metadata "
+            "(linear_plus_step)."
+        )
 
     adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
 
@@ -830,27 +1017,12 @@ def to_interpolator(
 
     # Determine feed_corr interpolation mode
     has_discrete = inputs.get("has_discrete_feed", False)
-    feed_corr_interp = "linear" if has_discrete else "cubic"
+    feed_corr_interp = "linear_plus_step" if has_discrete else "cubic"
 
-    # Compress dense ADF grid: keep only points where ADF value changes
-    # (ADF is a step function that only changes at bolus feed events).
-    # This reduces storage from thousands of points to ~2*N_bolus + 2.
-    dense_t = inputs["dense_times"]
-    dense_adf = inputs["adf_dense"]
-    n_dense = len(dense_adf)
-    if n_dense > 2:
-        # Vectorized: mark points before and after each change
-        changes = jnp.abs(jnp.diff(dense_adf)) > 1e-12
-        keep_before = jnp.concatenate([changes, jnp.array([False])])
-        keep_after = jnp.concatenate([jnp.array([False]), changes])
-        keep = keep_before | keep_after
-        keep = keep.at[0].set(True)
-        keep = keep.at[-1].set(True)
-        adf_compact_t = dense_t[keep]
-        adf_compact_v = dense_adf[keep]
-    else:
-        adf_compact_t = dense_t
-        adf_compact_v = dense_adf
+    # Canonical ADF step storage: change points and interval values.
+    adf_step_times, adf_step_values = _canonicalize_adf_step_table(
+        inputs["dense_times"], inputs["adf_dense"]
+    )
 
     # Store backtransform metadata (all JSON-serializable via lists)
     if rep.interpolator_metadata is None:
@@ -862,12 +1034,25 @@ def to_interpolator(
         "cstar_interp": inputs.get("cstar_interp", "cubic"),
         "is_constant": is_constant,
         "constant_value": float(jnp.mean(meas_conc)) if is_constant else None,
-        # ADF: compact grid with only step transition points
-        "adf_times": adf_compact_t.tolist(),
-        "adf_values": adf_compact_v.tolist(),
+        # ADF: canonical left-continuous step metadata
+        "adf_times": adf_step_times.tolist(),
+        "adf_values": adf_step_values.tolist(),
         # Feed correction: augmented measurement grid from build_splines
         "feed_corr_times": splines["meas_times"].tolist(),
         "feed_corr_values": splines["feed_corr_at_meas"].tolist(),
+        # Feed correction linear+step (discrete mode); ignored for cubic mode.
+        "feed_corr_base_times": splines.get(
+            "feed_corr_base_times", splines["meas_times"]
+        ).tolist(),
+        "feed_corr_base_values": splines.get(
+            "feed_corr_base_values", splines["feed_corr_at_meas"]
+        ).tolist(),
+        "feed_corr_jump_times": splines.get(
+            "feed_corr_jump_times", jnp.zeros(0, dtype=float)
+        ).tolist(),
+        "feed_corr_jump_values": splines.get(
+            "feed_corr_jump_values", jnp.zeros(0, dtype=float)
+        ).tolist(),
     }
 
     return rep
@@ -897,6 +1082,8 @@ class BacktransformSpline(eqx.Module):
     fc_spline: interpax.CubicSpline
     fc_times: jnp.ndarray
     fc_values: jnp.ndarray
+    fc_jump_times: jnp.ndarray
+    fc_jump_values: jnp.ndarray
     use_cubic_fc: bool = eqx.field(static=True)
     is_constant: bool = eqx.field(static=True)
     constant_value: jnp.ndarray
@@ -906,11 +1093,17 @@ class BacktransformSpline(eqx.Module):
         if self.is_constant:
             return self.constant_value + t * 0.0  # keep JAX tracing happy
         cs = self.c_star_spline(t)
-        adf = jnp.interp(t, self.adf_times, self.adf_values)
+        adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
         if self.use_cubic_fc:
             fc = self.fc_spline(t)
         else:
-            fc = jnp.interp(t, self.fc_times, self.fc_values)
+            fc = evaluate_linear_plus_step(
+                t,
+                self.fc_times,
+                self.fc_values,
+                self.fc_jump_times,
+                self.fc_jump_values,
+            )
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         return (cs + fc) / adf
 
@@ -936,21 +1129,17 @@ class BacktransformSpline(eqx.Module):
             dfc_cubic = self.fc_spline.derivative()
         else:
             # Precompute slopes of piecewise-linear fc interpolation.
-            # Step-transition intervals (very narrow dt) produce extreme
-            # slopes that are numerical artifacts — zero them out.
             dfc_cubic = None
             _fc_dt = jnp.diff(self.fc_times)
             _fc_slopes = jnp.diff(self.fc_values) / jnp.maximum(
                 _fc_dt, jnp.array(1e-12)
             )
-            median_dt = jnp.median(_fc_dt)
-            _fc_slopes = jnp.where(_fc_dt < 0.1 * median_dt, 0.0, _fc_slopes)
             _fc_times = self.fc_times
 
         def _deriv(t):
             if self.is_constant:
                 return t * 0.0
-            adf = jnp.interp(t, self.adf_times, self.adf_values)
+            adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
             adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
             dc_star_dt = dc_star(t)
             if dfc_cubic is not None:
@@ -999,13 +1188,33 @@ def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
         c_star_spline = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
 
     # ADF grid
-    adf_times = jnp.array(tr["adf_times"], dtype=float)
-    adf_values = jnp.array(tr["adf_values"], dtype=float)
+    adf_times, adf_values = _canonicalize_left_continuous_step_metadata(
+        tr["adf_times"], tr["adf_values"]
+    )
 
     # Feed correction
     fc_times = jnp.array(tr["feed_corr_times"], dtype=float)
     fc_values = jnp.array(tr["feed_corr_values"], dtype=float)
-    use_cubic_fc = tr.get("feed_corr_interp") == "cubic"
+    fc_interp = tr.get("feed_corr_interp", "linear")
+    if fc_interp == "linear_plus_step":
+        fc_times = jnp.asarray(tr.get("feed_corr_base_times", tr["feed_corr_times"]))
+        fc_values = jnp.asarray(tr.get("feed_corr_base_values", tr["feed_corr_values"]))
+        fc_jump_times = jnp.asarray(tr.get("feed_corr_jump_times", []), dtype=float)
+        fc_jump_values = jnp.asarray(tr.get("feed_corr_jump_values", []), dtype=float)
+    elif fc_interp == "cubic":
+        fc_jump_times = jnp.zeros(0, dtype=float)
+        fc_jump_values = jnp.zeros(0, dtype=float)
+    elif fc_interp == "linear":
+        raise ValueError(
+            "Legacy feed_corr_interp='linear' unsupported for discrete "
+            "pseudobatch backtransform; regenerate interpolators."
+        )
+    else:
+        raise ValueError(
+            f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic' or "
+            "'linear_plus_step'."
+        )
+    use_cubic_fc = fc_interp == "cubic"
 
     # Build feed_corr spline (used when use_cubic_fc=True; dummy otherwise,
     # but must be a valid CubicSpline to keep the pytree structure fixed)
@@ -1018,6 +1227,8 @@ def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
         fc_spline=fc_spline,
         fc_times=fc_times,
         fc_values=fc_values,
+        fc_jump_times=fc_jump_times,
+        fc_jump_values=fc_jump_values,
         use_cubic_fc=use_cubic_fc,
         is_constant=is_constant,
         constant_value=constant_value,
@@ -1045,6 +1256,9 @@ class BatchedBacktransformSpline(eqx.Module):
 
     c_star_ppoly: interpax.PPoly  # coeff shape (4, m, n_sp)
     fc_ppoly: interpax.PPoly  # coeff shape (4, m, n_sp)
+    fc_jump_times: jnp.ndarray  # (n_jump,)
+    fc_jump_cumsum: jnp.ndarray  # (n_jump + 1, n_sp)
+    fc_step_mask: jnp.ndarray  # (n_sp,) bool
     adf_times: jnp.ndarray  # (n_adf,)
     adf_values: jnp.ndarray  # (n_adf,)
     constant_mask: jnp.ndarray  # (n_sp,) bool
@@ -1061,7 +1275,11 @@ class BatchedBacktransformSpline(eqx.Module):
         """
         cs = self.c_star_ppoly(t)  # (n_sp,)
         fc = self.fc_ppoly(t)  # (n_sp,)
-        adf = jnp.interp(t, self.adf_times, self.adf_values)
+        if int(self.fc_jump_times.shape[0]) > 0:
+            jump_idx = jnp.searchsorted(self.fc_jump_times, t, side="left")
+            jump = self.fc_jump_cumsum[jump_idx]
+            fc = fc + jnp.where(self.fc_step_mask, jump, 0.0)
+        adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         result = (cs + fc) / adf
         return jnp.where(self.constant_mask, self.constant_values, result)
@@ -1078,7 +1296,7 @@ class BatchedBacktransformSpline(eqx.Module):
         """
         dc_star = self.c_star_ppoly(t, nu=1)  # (n_sp,)
         dfc = self.fc_ppoly(t, nu=1)  # (n_sp,)
-        adf = jnp.interp(t, self.adf_times, self.adf_values)
+        adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         result = (dc_star + dfc) / adf
         return jnp.where(self.constant_mask, 0.0, result)
@@ -1119,6 +1337,9 @@ def build_batched_conc_splines(
 
     c_star_resampled = []
     fc_resampled = []
+    fc_step_mask_list = []
+    fc_jump_times_list = []
+    fc_jump_values_list = []
     constant_mask_list = []
     constant_values_list = []
     adf_times = None
@@ -1131,6 +1352,15 @@ def build_batched_conc_splines(
             if adf_times is None:
                 adf_times = sp.adf_times
                 adf_values = sp.adf_values
+            else:
+                if not (
+                    jnp.array_equal(adf_times, sp.adf_times)
+                    and jnp.allclose(adf_values, sp.adf_values, atol=1e-12)
+                ):
+                    raise ValueError(
+                        "All BacktransformSpline instances in batched build must "
+                        "share identical ADF metadata."
+                    )
 
             constant_mask_list.append(sp.is_constant)
             constant_values_list.append(float(sp.constant_value))
@@ -1139,19 +1369,32 @@ def build_batched_conc_splines(
                 # Dummy splines for constant species (masked out in eval)
                 c_star_resampled.append(jnp.zeros(n_knots))
                 fc_resampled.append(jnp.zeros(n_knots))
+                fc_step_mask_list.append(False)
+                fc_jump_times_list.append(jnp.zeros(0, dtype=float))
+                fc_jump_values_list.append(jnp.zeros(0, dtype=float))
             else:
                 c_star_resampled.append(sp.c_star_spline(x_common))
                 if sp.use_cubic_fc:
                     fc_resampled.append(sp.fc_spline(x_common))
+                    fc_step_mask_list.append(False)
+                    fc_jump_times_list.append(jnp.zeros(0, dtype=float))
+                    fc_jump_values_list.append(jnp.zeros(0, dtype=float))
                 else:
-                    # Piecewise-linear fc → resample via jnp.interp
+                    # Piecewise-linear base fc + explicit step jump term.
                     fc_resampled.append(jnp.interp(x_common, sp.fc_times, sp.fc_values))
+                    has_jump = int(sp.fc_jump_times.shape[0]) > 0
+                    fc_step_mask_list.append(has_jump)
+                    fc_jump_times_list.append(sp.fc_jump_times)
+                    fc_jump_values_list.append(sp.fc_jump_values)
         else:
             # Plain CubicSpline or other callable: treat as c*=spline, fc=0, ADF=1
             constant_mask_list.append(False)
             constant_values_list.append(0.0)
             c_star_resampled.append(sp(x_common))
             fc_resampled.append(jnp.zeros(n_knots))
+            fc_step_mask_list.append(False)
+            fc_jump_times_list.append(jnp.zeros(0, dtype=float))
+            fc_jump_values_list.append(jnp.zeros(0, dtype=float))
 
     # If no BacktransformSpline was found, use trivial ADF
     if adf_times is None:
@@ -1166,17 +1409,50 @@ def build_batched_conc_splines(
     c_star_c = jnp.stack([s.c for s in c_star_cubic], axis=-1)  # (4, m, n_sp)
     c_star_ppoly = interpax.PPoly.construct_fast(c_star_c, x_common, extrapolate=True)
 
-    # Build batched PPoly for fc splines
-    fc_cubic = [
-        interpax.CubicSpline(x_common, y, bc_type="natural", check=False)
-        for y in fc_resampled
-    ]
-    fc_c = jnp.stack([s.c for s in fc_cubic], axis=-1)  # (4, m, n_sp)
+    # Build batched piecewise-linear PPoly for fc baseline.
+    # Using linear (not cubic refit) preserves discrete-feed jump semantics.
+    fc_mat = jnp.stack(fc_resampled, axis=1)  # (n_knots, n_sp)
+    dx = jnp.diff(x_common)  # (m,)
+    fc_slope = (fc_mat[1:, :] - fc_mat[:-1, :]) / jnp.maximum(dx[:, None], 1e-12)
+    m = int(x_common.shape[0]) - 1
+    fc_c = jnp.zeros((4, m, n_sp), dtype=float)
+    fc_c = fc_c.at[2, :, :].set(fc_slope)
+    fc_c = fc_c.at[3, :, :].set(fc_mat[:-1, :])
     fc_ppoly = interpax.PPoly.construct_fast(fc_c, x_common, extrapolate=True)
+
+    all_jump_times = [
+        np.asarray(jt, dtype=float)
+        for jt in fc_jump_times_list
+        if int(np.asarray(jt).shape[0]) > 0
+    ]
+    if all_jump_times:
+        shared_jump_times = np.unique(np.concatenate(all_jump_times))
+        jump_matrix = np.zeros((n_sp, shared_jump_times.shape[0]), dtype=float)
+        for i, (jt, jv) in enumerate(zip(fc_jump_times_list, fc_jump_values_list)):
+            jt_np = np.asarray(jt, dtype=float)
+            jv_np = np.asarray(jv, dtype=float)
+            if jt_np.size == 0:
+                continue
+            idx = np.searchsorted(shared_jump_times, jt_np)
+            valid = idx < shared_jump_times.shape[0]
+            valid &= np.isclose(shared_jump_times[idx], jt_np, atol=1e-12)
+            jump_matrix[i, idx[valid]] = jv_np[valid]
+        jump_cumsum = np.concatenate(
+            [np.zeros((n_sp, 1), dtype=float), np.cumsum(jump_matrix, axis=1)],
+            axis=1,
+        )
+        fc_jump_times = jnp.asarray(shared_jump_times, dtype=float)
+        fc_jump_cumsum = jnp.asarray(jump_cumsum.T, dtype=float)
+    else:
+        fc_jump_times = jnp.zeros(0, dtype=float)
+        fc_jump_cumsum = jnp.zeros((1, n_sp), dtype=float)
 
     return BatchedBacktransformSpline(
         c_star_ppoly=c_star_ppoly,
         fc_ppoly=fc_ppoly,
+        fc_jump_times=fc_jump_times,
+        fc_jump_cumsum=fc_jump_cumsum,
+        fc_step_mask=jnp.asarray(fc_step_mask_list, dtype=bool),
         adf_times=adf_times,
         adf_values=adf_values,
         constant_mask=jnp.array(constant_mask_list, dtype=bool),

@@ -134,6 +134,9 @@ from .splines import (
     make_interpax_spline,
     build_interpax_spline,
     build_backtransform_spline,
+    evaluate_left_continuous_step,
+    evaluate_linear_plus_step,
+    _canonicalize_left_continuous_step_metadata,
 )
 
 
@@ -1460,11 +1463,30 @@ def _build_pseudobatch_transforms(
             )
             continue
 
-        adf_t = jnp.asarray(tr["adf_times"], dtype=float)
-        adf_v = jnp.asarray(tr["adf_values"], dtype=float)
+        adf_t_raw = jnp.asarray(tr["adf_times"], dtype=float)
+        adf_v_raw = jnp.asarray(tr["adf_values"], dtype=float)
+        adf_t, adf_v = _canonicalize_left_continuous_step_metadata(adf_t_raw, adf_v_raw)
         fc_t = jnp.asarray(tr["feed_corr_times"], dtype=float)
         fc_v = jnp.asarray(tr["feed_corr_values"], dtype=float)
         fc_interp = str(tr.get("feed_corr_interp", "linear"))
+        fc_base_t = fc_t
+        fc_base_v = fc_v
+        fc_jump_t = jnp.zeros(0, dtype=float)
+        fc_jump_v = jnp.zeros(0, dtype=float)
+        if fc_interp == "linear_plus_step":
+            fc_base_t = jnp.asarray(
+                tr.get("feed_corr_base_times", tr["feed_corr_times"]), dtype=float
+            )
+            fc_base_v = jnp.asarray(
+                tr.get("feed_corr_base_values", tr["feed_corr_values"]), dtype=float
+            )
+            fc_jump_t = jnp.asarray(tr.get("feed_corr_jump_times", []), dtype=float)
+            fc_jump_v = jnp.asarray(tr.get("feed_corr_jump_values", []), dtype=float)
+        elif fc_interp == "linear":
+            raise ValueError(
+                "Legacy feed_corr_interp='linear' unsupported for discrete "
+                "pseudobatch mechanistic path; regenerate interpolators."
+            )
 
         fc_spline = None
         if fc_interp == "cubic":
@@ -1479,17 +1501,24 @@ def _build_pseudobatch_transforms(
                 "fc_v": fc_v,
                 "fc_interp": fc_interp,
                 "fc_spline": fc_spline,
+                "fc_base_t": fc_base_t,
+                "fc_base_v": fc_base_v,
+                "fc_jump_t": fc_jump_t,
+                "fc_jump_v": fc_jump_v,
             }
         )
-        if fc_interp != "cubic":
-            if len(fc_t) < 2:
+        if fc_interp == "linear_plus_step":
+            if len(fc_base_t) < 2:
                 transforms[-1]["fc_slopes"] = jnp.array([0.0], dtype=float)
             else:
-                fc_dt = jnp.diff(fc_t)
-                fc_slopes = jnp.diff(fc_v) / jnp.maximum(fc_dt, 1e-12)
-                median_dt = jnp.median(fc_dt)
-                fc_slopes = jnp.where(fc_dt < 0.1 * median_dt, 0.0, fc_slopes)
+                fc_dt = jnp.diff(fc_base_t)
+                fc_slopes = jnp.diff(fc_base_v) / jnp.maximum(fc_dt, 1e-12)
                 transforms[-1]["fc_slopes"] = fc_slopes
+        elif fc_interp != "cubic":
+            raise ValueError(
+                f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic' or "
+                "'linear_plus_step'."
+            )
 
     for _ in mb.process_variable_state_names:
         transforms.append(
@@ -1670,7 +1699,9 @@ def integrate_process_pseudospace(
     def _eval_adf(t):
         adf_vals = []
         for i in range(n_non_volume):
-            adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
+            adf_vals.append(
+                evaluate_left_continuous_step(t, adf_t_list[i], adf_v_list[i])
+            )
         return jnp.stack(adf_vals)
 
     def _eval_fc_and_dfc(t):
@@ -1683,13 +1714,26 @@ def integrate_process_pseudospace(
             else:
                 ft = fc_t_list[i]
                 fv = fc_v_list[i]
-                fc_i = jnp.interp(t, ft, fv)
                 tr = transforms[i]
-                if tr["kind"] == "pb" and "fc_slopes" in tr:
+                if tr["kind"] == "pb" and tr.get("fc_interp") == "linear_plus_step":
+                    bt = tr["fc_base_t"]
+                    bv = tr["fc_base_v"]
+                    jt = tr["fc_jump_t"]
+                    jv = tr["fc_jump_v"]
+                    fc_i = evaluate_linear_plus_step(t, bt, bv, jt, jv)
+                    if "fc_slopes" in tr:
+                        sl = tr["fc_slopes"]
+                        idx = jnp.clip(jnp.searchsorted(bt, t) - 1, 0, sl.shape[0] - 1)
+                        dfc_i = sl[idx]
+                    else:
+                        _, dfc_i = _piecewise_linear_value_and_slope(t, bt, bv)
+                elif tr["kind"] == "pb" and "fc_slopes" in tr:
+                    fc_i = jnp.interp(t, ft, fv)
                     sl = tr["fc_slopes"]
                     idx = jnp.clip(jnp.searchsorted(ft, t) - 1, 0, sl.shape[0] - 1)
                     dfc_i = sl[idx]
                 else:
+                    fc_i = jnp.interp(t, ft, fv)
                     _, dfc_i = _piecewise_linear_value_and_slope(t, ft, fv)
             fc_vals.append(fc_i)
             dfc_vals.append(dfc_i)

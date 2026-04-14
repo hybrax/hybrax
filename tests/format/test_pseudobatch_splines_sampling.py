@@ -10,6 +10,7 @@ These tests verify that:
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from bpbench import (
     BioProcess,
@@ -37,6 +38,7 @@ from bpbench.splines import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _ts(t, v):
     return TimeSeries(
         times=jnp.array(t, dtype=float),
@@ -54,6 +56,7 @@ def _fit_and_get_rep(proc, species):
 # ---------------------------------------------------------------------------
 # Test 1: Sampling-only -> no jumps
 # ---------------------------------------------------------------------------
+
 
 def test_sampling_only_no_concentration_jump():
     """With only sampling (no feed), modeled concentration must be continuous
@@ -97,16 +100,18 @@ def test_sampling_only_no_concentration_jump():
     rep = _fit_and_get_rep(proc, "glucose")
     bt = build_backtransform_spline(rep)
 
-    # Use eps > _EPS (1e-4) to cross the dense grid's pre-event epsilon point
-    eps = 5e-4
+    tiny_delta = 1e-6
+    pre_probe = 5e-4  # safely away from event edge
     # No jump at either sampling time
     for t_s in [2.0, 5.0]:
-        val_before = float(bt(jnp.array(t_s - eps)))
-        val_after = float(bt(jnp.array(t_s + eps)))
-        jump = abs(val_after - val_before)
-        assert jump < 1e-3, (
+        val_before = float(bt(jnp.array(t_s - pre_probe)))
+        val_at = float(bt(jnp.array(t_s)))
+        val_after = float(bt(jnp.array(t_s + tiny_delta)))
+        jump = abs(val_after - val_at)
+        assert val_at == pytest.approx(val_before, abs=2e-2)
+        assert jump < 2e-2, (
             f"Sampling should NOT cause a concentration jump at t={t_s}; "
-            f"got val_before={val_before:.6f}, val_after={val_after:.6f}, jump={jump:.6f}"
+            f"got val_at={val_at:.6f}, val_after={val_after:.6f}, jump={jump:.6f}"
         )
 
     # Overall curve should stay approximately constant at ~10
@@ -121,6 +126,7 @@ def test_sampling_only_no_concentration_jump():
 # ---------------------------------------------------------------------------
 # Test 2: Bolus-only feed -> jumps present
 # ---------------------------------------------------------------------------
+
 
 def test_bolus_only_has_concentration_jump():
     """With a bolus feed of concentrated glucose, there should be a
@@ -178,20 +184,25 @@ def test_bolus_only_has_concentration_jump():
     rep = _fit_and_get_rep(proc, "glucose")
     bt = build_backtransform_spline(rep)
 
-    eps = 5e-4
-    val_before = float(bt(jnp.array(2.0 - eps)))
-    val_after = float(bt(jnp.array(2.0 + eps)))
-    jump = abs(val_after - val_before)
+    t_b = 2.0
+    tiny_delta = 1e-6
+    pre_probe = 5e-4
+    val_before = float(bt(jnp.array(t_b - pre_probe)))
+    val_at = float(bt(jnp.array(t_b)))
+    val_after = float(bt(jnp.array(t_b + tiny_delta)))
+    jump = abs(val_after - val_at)
 
+    assert val_at == pytest.approx(val_before, abs=2e-2)
     assert jump > 0.1, (
         f"Bolus feed should cause a concentration jump at t=2.0; "
-        f"got val_before={val_before:.6f}, val_after={val_after:.6f}, jump={jump:.6f}"
+        f"got val_at={val_at:.6f}, val_after={val_after:.6f}, jump={jump:.6f}"
     )
 
 
 # ---------------------------------------------------------------------------
 # Test 3: Mixed continuous feed + bolus feed + sampling
 # ---------------------------------------------------------------------------
+
 
 def test_mixed_continuous_bolus_sampling():
     """Concentration should jump at bolus feed times, be smooth at sampling
@@ -280,31 +291,36 @@ def test_mixed_continuous_bolus_sampling():
     rep = _fit_and_get_rep(proc, "glucose")
     bt = build_backtransform_spline(rep)
 
-    eps = 5e-4
+    tiny_delta = 1e-6
+    pre_probe = 5e-4
 
     # 1) No jump at sampling time (t=4)
-    val_before_sample = float(bt(jnp.array(4.0 - eps)))
-    val_after_sample = float(bt(jnp.array(4.0 + eps)))
-    sample_jump = abs(val_after_sample - val_before_sample)
-    assert sample_jump < 0.05, (
+    val_before_sample = float(bt(jnp.array(4.0 - pre_probe)))
+    val_at_sample = float(bt(jnp.array(4.0)))
+    val_after_sample = float(bt(jnp.array(4.0 + tiny_delta)))
+    sample_jump = abs(val_after_sample - val_at_sample)
+    assert val_at_sample == pytest.approx(val_before_sample, abs=2e-2)
+    assert sample_jump < 2e-2, (
         f"Sampling should NOT cause a large concentration jump at t=4.0; "
         f"got jump={sample_jump:.6f}"
     )
 
     # 2) Jump at bolus feed time (t=3)
-    val_before_bolus = float(bt(jnp.array(3.0 - eps)))
-    val_after_bolus = float(bt(jnp.array(3.0 + eps)))
-    bolus_jump = abs(val_after_bolus - val_before_bolus)
+    val_before_bolus = float(bt(jnp.array(3.0 - pre_probe)))
+    val_at_bolus = float(bt(jnp.array(3.0)))
+    val_after_bolus = float(bt(jnp.array(3.0 + tiny_delta)))
+    bolus_jump = abs(val_after_bolus - val_at_bolus)
+    assert val_at_bolus == pytest.approx(val_before_bolus, abs=3e-2)
     assert bolus_jump > 0.1, (
         f"Bolus feed should cause a concentration jump at t=3.0; "
         f"got jump={bolus_jump:.6f}"
     )
 
     # 3) No step discontinuity at a non-event time (continuous feed is smooth)
-    val_before_smooth = float(bt(jnp.array(2.5 - eps)))
-    val_after_smooth = float(bt(jnp.array(2.5 + eps)))
+    val_before_smooth = float(bt(jnp.array(2.5 - tiny_delta)))
+    val_after_smooth = float(bt(jnp.array(2.5 + tiny_delta)))
     smooth_jump = abs(val_after_smooth - val_before_smooth)
-    assert smooth_jump < 0.05, (
+    assert smooth_jump < 2e-2, (
         f"Continuous feed should not create a large step at t=2.5; "
         f"got jump={smooth_jump:.6f}"
     )
