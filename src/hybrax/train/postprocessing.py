@@ -363,7 +363,7 @@ def plot_process_simulations(
         ax_v.plot(
             t_dense_np,
             v_real_pred,
-            "-",
+            "--",
             lw=1.5,
             color="C0",
             label="integrated",
