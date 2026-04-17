@@ -556,7 +556,75 @@ def _collect_process_panels(process: BioProcess):
                     }
                 )
 
+    total_volume_panel = _build_total_volume_panel(
+        process, t_start=t_start, t_end=t_end
+    )
+    if total_volume_panel is not None:
+        panels.append(total_volume_panel)
+
     return panels
+
+
+def _build_total_volume_panel(process: BioProcess, t_start: float, t_end: float):
+    """Construct total-volume trajectory panel from initial volume and all changes."""
+    volume = getattr(process, "volume", None)
+    if volume is None:
+        return None
+
+    time_grid = [t_start, t_end]
+    continuous_changes = []
+    discrete_events = []
+
+    volume_changes = getattr(volume, "volume_changes", None) or {}
+    for vc in volume_changes.values():
+        if vc.values is None:
+            continue
+
+        if _is_dynamic_series(vc.values):
+            x = np.asarray(vc.values.times, dtype=float)
+            y = np.asarray(vc.values.values, dtype=float)
+        elif _is_spline_only_series(vc.values):
+            x = np.asarray(vc.values.breaks, dtype=float)
+            y = np.asarray(vc.values.evaluate_many(vc.values.breaks), dtype=float)
+        else:
+            continue
+
+        mask = np.isfinite(x) & np.isfinite(y)
+        x = x[mask]
+        y = y[mask]
+        if x.size == 0:
+            continue
+
+        order = np.argsort(x)
+        x = x[order]
+        y = y[order]
+        time_grid.extend(x.tolist())
+
+        if getattr(vc, "is_continuous", True):
+            continuous_changes.append((x, y))
+        else:
+            discrete_events.extend(zip(x.tolist(), y.tolist()))
+
+    t_plot = np.unique(np.asarray(time_grid, dtype=float))
+    total_volume = np.full_like(t_plot, float(volume.initial_volume), dtype=float)
+
+    for x, y in continuous_changes:
+        y0 = float(y[0])
+        y_interp = np.interp(t_plot, x, y, left=y0, right=float(y[-1]))
+        total_volume += y_interp - y0
+
+    for event_time, delta_v in discrete_events:
+        total_volume += np.where(t_plot >= event_time, float(delta_v), 0.0)
+
+    unit_label = f" [{volume.unit}]" if volume.unit else ""
+    return {
+        "title": f"total volume{unit_label}",
+        "category": "Volume",
+        "type": "dynamic",
+        "x": t_plot,
+        "y": total_volume,
+        "render": "line",
+    }
 
 
 def _pad_constant_ylim(ax, values):
@@ -665,7 +733,6 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
             label=label,
             **plot_kwargs,
         )
-
 
 
 def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=None):

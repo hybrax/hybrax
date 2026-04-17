@@ -4,6 +4,7 @@ Tests for bpbench.inspect utility functions.
 
 import pytest
 import jax.numpy as jnp
+import numpy as np
 
 from bpbench import (
     BioProcess,
@@ -17,6 +18,7 @@ from bpbench import (
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
+    SampleVolumeChange,
     Volume,
     CaseStudy,
     BenchmarkDataset,
@@ -31,17 +33,24 @@ from bpbench import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def simple_process():
     ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
-    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
-    rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc})
+    rc = ReactorMediumComponent(
+        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc}
+    )
     return BioProcess(
         metadata=BioProcessMetadata(name="test_001", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=48.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
@@ -50,11 +59,11 @@ def simple_process():
 @pytest.fixture
 def complex_process():
     biomass_ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     glucose_ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([20.0, 15.0, 8.0, 2.0, 0.5]),
     )
     biomass_rc = ReactorMediumComponent(
@@ -64,14 +73,18 @@ def complex_process():
         name="glucose", unit="g/L", concentration=glucose_ts, is_intracellular=False
     )
     rm = ReactorMedium(
-        name="medium", density=1.0, density_unit="kg/L",
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
         components={"biomass": biomass_rc, "glucose": glucose_rc},
     )
 
     temp_pv = ProcessVariable(
-        name="temperature", unit="°C", is_controlled=True,
+        name="temperature",
+        unit="°C",
+        is_controlled=True,
         values=TimeSeries(
-            times=jnp.array([0., 12., 24.]),
+            times=jnp.array([0.0, 12.0, 24.0]),
             values=jnp.array([37.0, 37.0, 37.0]),
         ),
     )
@@ -80,29 +93,39 @@ def complex_process():
     )
 
     fm = FeedMedium(
-        name="glucose_feed", density=1.1, density_unit="kg/L",
+        name="glucose_feed",
+        density=1.1,
+        density_unit="kg/L",
         components={
             "glucose": FeedMediumComponent(
-                name="glucose", unit="g/L",
-                concentration=StaticVariable(value=500.0), is_controlled=True
+                name="glucose",
+                unit="g/L",
+                concentration=StaticVariable(value=500.0),
+                is_controlled=True,
             )
         },
     )
     feed_ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
     vc = FeedVolumeChange(
-        name="glucose_feed", unit="L",
-        is_controlled=True, is_continuous=True,
-        feed_medium=fm, values=feed_ts,
+        name="glucose_feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=feed_ts,
     )
     vol = Volume(initial_volume=1.0, unit="L", volume_changes={"glucose_feed": vc})
 
     return BioProcess(
-        metadata=BioProcessMetadata(name="test_fed_batch_001", process_type="fed_batch",
-                                    notes="Replicate 1"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation"),
+        metadata=BioProcessMetadata(
+            name="test_fed_batch_001", process_type="fed_batch", notes="Replicate 1"
+        ),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=48.0, time_reference="inoculation"
+        ),
         volume=vol,
         reactor_medium=rm,
         process_variables={"temperature": temp_pv, "pH": ph_pv},
@@ -112,6 +135,7 @@ def complex_process():
 # ---------------------------------------------------------------------------
 # print_process_structure tests (verbosity=3 – full, default)
 # ---------------------------------------------------------------------------
+
 
 def test_print_process_structure_simple(simple_process, capsys):
     print_process_structure(simple_process)
@@ -177,7 +201,9 @@ def test_print_process_structure_complex_shows_variables(complex_process, capsys
 def test_print_process_structure_no_crash_minimal():
     process = BioProcess(
         metadata=BioProcessMetadata(name="minimal", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
@@ -190,7 +216,9 @@ def test_print_process_structure_no_crash_minimal():
 def test_print_process_structure_no_metadata_uses_fallbacks(capsys):
     process = BioProcess(
         metadata=None,
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
@@ -202,13 +230,19 @@ def test_print_process_structure_no_metadata_uses_fallbacks(capsys):
 
 def test_print_process_structure_static_concentration(capsys):
     rc = ReactorMediumComponent(
-        name="biomass", unit="g/L",
-        concentration=StaticVariable(value=2.0), is_intracellular=False
+        name="biomass",
+        unit="g/L",
+        concentration=StaticVariable(value=2.0),
+        is_intracellular=False,
     )
-    rm = ReactorMedium(name="m", density=1.0, density_unit="kg/L", components={"biomass": rc})
+    rm = ReactorMedium(
+        name="m", density=1.0, density_unit="kg/L", components={"biomass": rc}
+    )
     process = BioProcess(
         metadata=BioProcessMetadata(name="static_test", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=5.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=5.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
@@ -220,6 +254,7 @@ def test_print_process_structure_static_concentration(capsys):
 # ---------------------------------------------------------------------------
 # Verbosity level 2 tests
 # ---------------------------------------------------------------------------
+
 
 def test_print_process_structure_verbosity2_shows_names(complex_process, capsys):
     print_process_structure(complex_process, verbosity=2)
@@ -241,7 +276,9 @@ def test_print_process_structure_verbosity2_no_units(complex_process, capsys):
 def test_print_process_structure_verbosity2_no_metadata_uses_fallbacks(capsys):
     process = BioProcess(
         metadata=None,
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
@@ -254,6 +291,7 @@ def test_print_process_structure_verbosity2_no_metadata_uses_fallbacks(capsys):
 # ---------------------------------------------------------------------------
 # Verbosity level 1 tests
 # ---------------------------------------------------------------------------
+
 
 def test_print_process_structure_verbosity1_lists_variables(complex_process, capsys):
     print_process_structure(complex_process, verbosity=1)
@@ -274,7 +312,9 @@ def test_print_process_structure_verbosity1_minimal_output(complex_process, caps
 def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
     process = BioProcess(
         metadata=None,
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
@@ -287,13 +327,20 @@ def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
 # print_dataset_structure tests
 # ---------------------------------------------------------------------------
 
+
 def _make_minimal_process(name):
-    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
-    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
-    rm = ReactorMedium(name="m", density=1.0, density_unit="kg/L", components={"biomass": rc})
+    ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.1, 0.5]))
+    rc = ReactorMediumComponent(
+        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+    )
+    rm = ReactorMedium(
+        name="m", density=1.0, density_unit="kg/L", components={"biomass": rc}
+    )
     return BioProcess(
         metadata=BioProcessMetadata(name=name, process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
@@ -304,7 +351,9 @@ def sample_dataset():
     p1 = _make_minimal_process("p1")
     p2 = _make_minimal_process("p2")
     cs = CaseStudy(
-        case_id="ecoli_study", organism="Escherichia coli", citation="Doe 2024",
+        case_id="ecoli_study",
+        organism="Escherichia coli",
+        citation="Doe 2024",
         processes={"p1": p1, "p2": p2},
     )
     return BenchmarkDataset(
@@ -372,7 +421,9 @@ def test_print_dataset_structure_verbosity2(sample_dataset, capsys):
 def test_print_dataset_structure_handles_process_without_metadata(capsys):
     process = BioProcess(
         metadata=None,
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
@@ -411,10 +462,12 @@ def test_print_dataset_structure_empty_verbosity1(capsys):
 # plot_process smoke tests
 # ---------------------------------------------------------------------------
 
+
 def test_plot_process_returns_figure(complex_process):
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     fig = plot_process(complex_process)
     assert fig is not None
     plt.close(fig)
@@ -424,6 +477,7 @@ def test_plot_process_simple(simple_process):
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     fig = plot_process(simple_process)
     assert fig is not None
     plt.close(fig)
@@ -434,9 +488,12 @@ def test_plot_process_empty():
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     process = BioProcess(
         metadata=BioProcessMetadata(name="empty", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
@@ -449,9 +506,12 @@ def test_plot_process_no_metadata_uses_fallback_title():
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     process = BioProcess(
         metadata=None,
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
         process_variables={
@@ -459,7 +519,9 @@ def test_plot_process_no_metadata_uses_fallback_title():
                 name="temperature",
                 unit="C",
                 is_controlled=True,
-                values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([37.0, 37.0])),
+                values=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([37.0, 37.0])
+                ),
             )
         },
     )
@@ -469,14 +531,123 @@ def test_plot_process_no_metadata_uses_fallback_title():
     plt.close(fig)
 
 
+def test_plot_process_contains_total_volume_panel(simple_process):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig = plot_process(simple_process)
+    axes = [ax for ax in fig.axes if ax.get_visible()]
+    titles = [ax.get_title() for ax in axes]
+    assert "total volume [L] (Volume)" in titles
+
+    total_ax = next(ax for ax in axes if ax.get_title() == "total volume [L] (Volume)")
+    line = total_ax.get_lines()[0]
+    np.testing.assert_allclose(line.get_ydata(), np.array([1.0, 1.0]), atol=1e-12)
+    plt.close(fig)
+
+
+def test_plot_process_total_volume_integrates_continuous_and_discrete_changes():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L")
+    fm = FeedMedium(name="feed", density=1.0, density_unit="kg/L", components={})
+
+    feed = FeedVolumeChange(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=TimeSeries(
+            times=jnp.array([0.0, 5.0, 10.0]),
+            values=jnp.array([0.0, 0.2, 0.5]),
+        ),
+    )
+    sample = SampleVolumeChange(
+        name="sample",
+        unit="L",
+        is_controlled=False,
+        is_continuous=False,
+        values=TimeSeries(times=jnp.array([3.0, 7.0]), values=jnp.array([-0.1, -0.2])),
+    )
+
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="mix", process_type="fed_batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={"feed": feed, "sample": sample},
+        ),
+        reactor_medium=rm,
+    )
+
+    fig = plot_process(process)
+    axes = [ax for ax in fig.axes if ax.get_visible()]
+    total_ax = next(ax for ax in axes if ax.get_title() == "total volume [L] (Volume)")
+    line = total_ax.get_lines()[0]
+
+    np.testing.assert_allclose(line.get_xdata(), np.array([0.0, 3.0, 5.0, 7.0, 10.0]))
+    np.testing.assert_allclose(line.get_ydata(), np.array([1.0, 1.02, 1.1, 1.02, 1.2]))
+    plt.close(fig)
+
+
+def test_plot_process_total_volume_supports_spline_only_volume_change():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L")
+    fm = FeedMedium(name="feed", density=1.0, density_unit="kg/L", components={})
+
+    spline_cumulative = TimeSeries(
+        breaks=jnp.array([0.0, 10.0]),
+        coeffs=jnp.array([[0.0, 0.05, 0.0, 0.0]]),
+        segment_start_piece_idx=jnp.array([0]),
+    )
+    feed = FeedVolumeChange(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=spline_cumulative,
+    )
+
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="spline", process_type="fed_batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": feed}),
+        reactor_medium=rm,
+    )
+
+    fig = plot_process(process)
+    axes = [ax for ax in fig.axes if ax.get_visible()]
+    total_ax = next(ax for ax in axes if ax.get_title() == "total volume [L] (Volume)")
+    line = total_ax.get_lines()[0]
+
+    np.testing.assert_allclose(line.get_xdata(), np.array([0.0, 10.0]))
+    np.testing.assert_allclose(line.get_ydata(), np.array([1.0, 1.5]))
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # plot_case_study smoke tests
 # ---------------------------------------------------------------------------
+
 
 def test_plot_case_study_returns_figure(sample_dataset):
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     cs = list(sample_dataset.case_studies.values())[0]
     fig = plot_case_study(cs)
     assert fig is not None
@@ -488,10 +659,12 @@ def test_plot_case_study_empty():
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     cs = CaseStudy(case_id="empty", organism="None", citation="None")
     fig = plot_case_study(cs)
     assert fig is not None
     plt.close(fig)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
