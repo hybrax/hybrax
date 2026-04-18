@@ -223,7 +223,9 @@ def plot_process_simulations(
             y0=y0_scaled,
             saveat=diffrax.SaveAt(ts=t_dense),
             stepsize_controller=diffrax.PIDController(
-                rtol=solver_rtol, atol=solver_atol
+                rtol=solver_rtol,
+                atol=solver_atol,
+                jump_ts=process_data.controls.active_step_ts,
             ),
             max_steps=solver_max_steps,
             throw=False,
@@ -246,13 +248,21 @@ def plot_process_simulations(
                 continue
             vc_t = np.asarray(vc.values.times, dtype=float)
             vc_v = np.asarray(vc.values.values, dtype=float)
-            v_cont_true_dense += np.interp(
-                t_dense_np,
-                vc_t,
-                vc_v,
-                left=float(vc_v[0]),
-                right=float(vc_v[-1]),
-            )
+            if bool(vc.is_continuous):
+                v_cont_true_dense += np.interp(
+                    t_dense_np,
+                    vc_t,
+                    vc_v,
+                    left=float(vc_v[0]),
+                    right=float(vc_v[-1]),
+                )
+            else:
+                cumulative = np.cumsum(vc_v, dtype=float)
+                idx = np.searchsorted(vc_t, t_dense_np, side="right") - 1
+                contribution = np.zeros_like(t_dense_np, dtype=float)
+                valid = idx >= 0
+                contribution[valid] = cumulative[idx[valid]]
+                v_cont_true_dense += contribution
 
         v_sample_acc_dense = np.array(
             [

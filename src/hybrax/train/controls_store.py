@@ -7,15 +7,20 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bpbench.dataclasses import BioProcessCollection
+from bpbench.dataclasses import (
+    BioProcessCollection,
+)
 from bpbench.serialization import load_process_collection_json
 
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
+    EVENT_RUN_MIN_DT_CONFIG_KEY,
     SignalSource,
     build_dense_payload,
     build_sample_acc_source_default,
     compute_signal_spreads,
+    get_collection_event_min_dt_if_needed,
+    run_min_dt_from_config,
     select_control_sources,
 )
 
@@ -377,6 +382,16 @@ class ControlsStore(eqx.Module):
         process_order = cls._process_order(collection, metadata, metadata_namespace)
         bp_train = dict(metadata.get(metadata_namespace, {}))
         prepared_process_md = dict(bp_train.get("processes", {}))
+        needs_default_sample_sources = any(
+            "sample_acc_source" not in dict(prepared_process_md.get(process_name) or {})
+            for process_name in process_order
+        )
+        run_min_dt = get_collection_event_min_dt_if_needed(
+            collection,
+            include_samples=needs_default_sample_sources,
+        )
+        if run_min_dt is not None:
+            cfg[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
         process_sources: dict[str, list[Any]] = {}
         process_sample_sources: dict[str, Any] = {}
@@ -402,7 +417,10 @@ class ControlsStore(eqx.Module):
                 process_md=prepared_md,
             )
             if sample_source is None:
-                sample_source = build_sample_acc_source_default(process)
+                sample_source = build_sample_acc_source_default(
+                    process,
+                    run_min_dt=run_min_dt_from_config(cfg),
+                )
             if sample_source.name != BP_TRAIN_SAMPLE_ACC_NAME:
                 raise ValueError(
                     f"{process_name}: sample control must be named "

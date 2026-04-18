@@ -6,6 +6,7 @@ from typing import Any, Callable
 import numpy as np
 from bpbench.dataclasses import (
     BioProcess,
+    BioProcessCollection,
     FeedVolumeChange,
     FeedMedium,
     FeedMediumComponent,
@@ -17,6 +18,7 @@ from bpbench.dataclasses import (
 
 
 BP_TRAIN_SAMPLE_ACC_NAME = "V_sample_acc"
+EVENT_RUN_MIN_DT_CONFIG_KEY = "bolus_run_min_dt"
 
 
 @dataclass
@@ -31,7 +33,7 @@ class SignalSource:
     metadata: dict[str, Any]
 
 
-BOLUS_DUPLICATE_THRESHOLD_REL = 1e-4
+BOLUS_MIN_DT_DURATION_DENOMINATOR = 1000.0
 
 
 def _as_numpy(values: Any) -> np.ndarray:
@@ -42,7 +44,7 @@ def _dedupe_sorted(values: list[float] | np.ndarray) -> list[float]:
     if len(values) == 0:
         return []
     arr = np.asarray(values, dtype=float)
-    arr = np.unique(np.round(arr, decimals=12))
+    arr = np.unique(arr)
     return arr.tolist()
 
 
@@ -287,24 +289,81 @@ def _collect_online_time_points(process: BioProcess) -> np.ndarray:
     return np.asarray(sorted(set(times)), dtype=float)
 
 
-def get_shortest_time_diff(process: BioProcess) -> float:
+def _minimum_positive_delta(points: np.ndarray) -> float | None:
+    finite = points[np.isfinite(points)]
+    unique = np.unique(finite)
+    if unique.size <= 1:
+        return None
+    diffs = np.diff(unique)
+    positive_diffs = diffs[diffs > 0.0]
+    if positive_diffs.size == 0:
+        return None
+    return float(np.min(positive_diffs))
+
+
+def get_collection_bolus_min_dt(collection: BioProcessCollection) -> float:
+    run_points: list[float] = []
+    for process in collection.processes.values():
+        run_points.extend(_collect_online_time_points(process).tolist())
+    run_min_dt = _minimum_positive_delta(np.asarray(run_points, dtype=float))
+    if run_min_dt is None:
+        raise ValueError(
+            "Bolus controls require at least one strictly positive online "
+            "timestamp delta across processes to compute run-level min_dt."
+        )
+    return run_min_dt
+
+
+def get_collection_event_min_dt_if_needed(
+    collection: BioProcessCollection,
+    *,
+    include_samples: bool = True,
+) -> float | None:
+    for process in collection.processes.values():
+        for volume_change in process.volume.volume_changes.values():
+            times = np.asarray(volume_change.values.times, dtype=float)
+            values = np.asarray(volume_change.values.values, dtype=float)
+            if times.size == 0 or values.size == 0:
+                continue
+            if isinstance(volume_change, FeedVolumeChange):
+                if not bool(volume_change.is_controlled) or bool(
+                    volume_change.is_continuous
+                ):
+                    continue
+                return get_collection_bolus_min_dt(collection)
+            if include_samples and isinstance(volume_change, SampleVolumeChange):
+                return get_collection_bolus_min_dt(collection)
+    return None
+
+
+def get_bolus_min_dt(process: BioProcess, run_min_dt: float | None = None) -> float:
+    duration = float(process.time_axis.end) - float(process.time_axis.start)
+    if duration <= 0.0:
+        raise ValueError(
+            "Bolus controls require process duration > 0 to compute min_dt cap."
+        )
+    duration_cap = duration / BOLUS_MIN_DT_DURATION_DENOMINATOR
+
+    if run_min_dt is not None:
+        if not np.isfinite(run_min_dt) or run_min_dt <= 0.0:
+            raise ValueError(
+                f"Invalid run-level bolus min_dt: {run_min_dt}. Must be finite > 0."
+            )
+        return float(min(run_min_dt, duration_cap))
+
     points = _collect_online_time_points(process)
-    total_duration = max(
-        float(process.time_axis.end) - float(process.time_axis.start), 1.0
-    )
-    if points.size <= 1:
-        return total_duration / 100.0
-
-    points = np.unique(np.round(points, decimals=9))
-    diffs = np.diff(points)
-    meaningful_floor = max(total_duration * 1e-6, 1e-9)
-    diffs = diffs[diffs > meaningful_floor]
-    if diffs.size == 0:
-        return total_duration / 100.0
-    return float(np.min(diffs))
+    process_min_dt = _minimum_positive_delta(points)
+    if process_min_dt is None:
+        raise ValueError(
+            "Bolus controls require at least one strictly positive online "
+            "timestamp delta to compute min_dt."
+        )
+    return float(min(process_min_dt, duration_cap))
 
 
-def build_sample_acc_source_default(process: BioProcess) -> SignalSource:
+def build_sample_acc_source_default(
+    process: BioProcess, run_min_dt: float | None = None
+) -> SignalSource:
     sample_changes: list[tuple[float, float]] = []
     for volume_change in process.volume.volume_changes.values():
         if not isinstance(volume_change, SampleVolumeChange):
@@ -315,13 +374,16 @@ def build_sample_acc_source_default(process: BioProcess) -> SignalSource:
             sample_changes.append((float(t), abs(float(delta))))
 
     sample_changes.sort(key=lambda item: item[0])
-    ramp_duration = get_shortest_time_diff(process)
     t_end = float(process.time_axis.end)
 
     times = [float(process.time_axis.start)]
     values = [0.0]
     cumulative = 0.0
     step_ts: list[float] = []
+
+    ramp_duration = 0.0
+    if sample_changes:
+        ramp_duration = get_bolus_min_dt(process, run_min_dt=run_min_dt)
 
     for event_time, sample_amount in sample_changes:
         ramp_end = min(event_time + ramp_duration, t_end)
@@ -350,8 +412,10 @@ def build_sample_acc_source_default(process: BioProcess) -> SignalSource:
     return source
 
 
-def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
-    ramp_duration = get_shortest_time_diff(process)
+def build_bolus_sources(
+    process: BioProcess, run_min_dt: float | None = None
+) -> list[SignalSource]:
+    t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
     sources: list[SignalSource] = []
 
@@ -363,9 +427,8 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
         if not volume_change.is_controlled:
             continue
 
-        times = [float(process.time_axis.start)]
-        values = [0.0]
         step_ts: list[float] = []
+        triangles: list[tuple[float, float, float, float]] = []
 
         event_pairs = list(
             zip(
@@ -374,43 +437,84 @@ def build_bolus_sources(process: BioProcess) -> list[SignalSource]:
                 strict=False,
             )
         )
-
-        threshold = BOLUS_DUPLICATE_THRESHOLD_REL * (
-            t_end - float(process.time_axis.start)
-        )
-        event_times = sorted(float(et) for et, _ in event_pairs)
-        for i in range(len(event_times) - 1):
-            if event_times[i + 1] - event_times[i] < threshold:
-                raise ValueError(
-                    f"Feed '{name}' has duplicate bolus timestamps:"
-                    f" {event_times[i]} and {event_times[i + 1]} are within"
-                    f" the deduplication threshold ({threshold:.3g})."
-                )
+        validated_events: list[tuple[float, float]] = []
 
         for event_time, delta_v in event_pairs:
             event_time = float(event_time)
             delta_v = float(delta_v)
-            ramp_end = min(event_time + ramp_duration, t_end)
-            rate = 0.0 if ramp_end <= event_time else delta_v / (ramp_end - event_time)
-            times.extend([event_time, event_time, ramp_end, ramp_end])
-            values.extend([0.0, rate, rate, 0.0])
-            step_ts.extend([event_time, ramp_end])
+            if not np.isfinite(event_time) or not np.isfinite(delta_v):
+                raise ValueError(
+                    f"Feed '{name}' has non-finite bolus event values: "
+                    f"time={event_time}, delta_v={delta_v}."
+                )
+            if event_time < t_start:
+                raise ValueError(
+                    f"Feed '{name}' has bolus timestamp before process start "
+                    f"({event_time} < {t_start}); this is not supported."
+                )
+            if event_time >= t_end:
+                raise ValueError(
+                    f"Feed '{name}' has bolus timestamp at/after process end "
+                    f"({event_time} >= {t_end}); this is not supported."
+                )
+            if delta_v <= 0.0:
+                raise ValueError(
+                    f"Feed '{name}' has non-positive bolus delta_v at t={event_time}: "
+                    f"{delta_v}. Bolus deltas must be strictly positive."
+                )
+            validated_events.append((event_time, delta_v))
 
-        if times[-1] < t_end:
-            times.append(t_end)
-            values.append(0.0)
+        min_dt: float | None = None
+        triangle_width = 0.0
+        if validated_events:
+            min_dt = get_bolus_min_dt(process, run_min_dt=run_min_dt)
+            triangle_width = 2.0 * min_dt
+
+            for event_time, delta_v in validated_events:
+                peak_time = event_time + min_dt
+                end_time = event_time + triangle_width
+                if end_time > t_end:
+                    raise ValueError(
+                        f"Feed '{name}' has bolus event at t={event_time} that cannot "
+                        f"fit triangle width 2*min_dt={triangle_width} before process "
+                        f"end t_end={t_end}."
+                    )
+
+                peak_rate = delta_v / min_dt
+                triangles.append((event_time, peak_time, end_time, peak_rate))
+                step_ts.extend([event_time, peak_time, end_time])
+
+        breakpoints = [t_start, t_end]
+        for event_start, event_peak, event_end, _ in triangles:
+            breakpoints.extend([event_start, event_peak, event_end])
+
+        times = np.asarray(_dedupe_sorted(breakpoints), dtype=float)
+        values = np.zeros(times.size, dtype=float)
+        for idx, t in enumerate(times.tolist()):
+            total_rate = 0.0
+            for event_start, event_peak, event_end, peak_rate in triangles:
+                if t <= event_start or t >= event_end:
+                    continue
+                if t <= event_peak:
+                    total_rate += (
+                        peak_rate * (t - event_start) / (event_peak - event_start)
+                    )
+                else:
+                    total_rate += peak_rate * (event_end - t) / (event_end - event_peak)
+            values[idx] = total_rate
 
         source = _make_source_from_xy(
             name=name,
             kind="volume_change",
-            times=np.asarray(times, dtype=float),
-            values=np.asarray(values, dtype=float),
+            times=times,
+            values=values,
             metadata={
-                "source": "bolus_ramp",
+                "source": "bolus_triangle",
+                "triangle_min_dt": min_dt,
+                "triangle_width": triangle_width,
                 "source_kind": "control",
                 "signal_family": "feed",
                 "feed_name": name,
-                "ramp_duration": ramp_duration,
                 "inlet_feed_medium": (
                     _serialize_feed_medium(volume_change.feed_medium)
                     if volume_change.feed_medium is not None
@@ -441,7 +545,8 @@ def select_control_sources(
             continue
         volume_sources[name] = _make_source_from_volume_change(name, volume_change)
 
-    for source in build_bolus_sources(process):
+    run_min_dt = run_min_dt_from_config(config)
+    for source in build_bolus_sources(process, run_min_dt=run_min_dt):
         if source.name in volume_sources:
             raise ValueError(
                 f"{process_name}: duplicate control source name {source.name}"
@@ -488,6 +593,11 @@ def select_control_sources(
         else:
             sources.append(process_var_sources[name])
     return sources
+
+
+def run_min_dt_from_config(config: dict[str, Any]) -> float | None:
+    run_min_dt_cfg = config.get(EVENT_RUN_MIN_DT_CONFIG_KEY)
+    return None if run_min_dt_cfg is None else float(run_min_dt_cfg)
 
 
 def compute_signal_spreads(

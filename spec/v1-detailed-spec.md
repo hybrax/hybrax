@@ -390,8 +390,17 @@ Default behavior:
 - read `SampleVolumeChange` events,
 - accumulate their magnitudes into a monotone cumulative control
   `V_sample_acc(t)`,
-- approximate each increment as a short ramp rather than an instantaneous jump,
+- approximate each increment with a finite-duration interpolation rather than an
+  instantaneous jump,
+- use the same effective `min_dt` basis as bolus controls:
+  `min(run_min_dt, (t_end - t_start) / 1000)`,
+- represent each sampling increment over one `min_dt` interval
+  `[t0, t0 + min_dt]` (sampling width = `1 * min_dt`),
 - write the resulting derived control and its metadata into `prepared.json`.
+
+Sampling still differs from bolus in geometry:
+- sampling uses one `min_dt` ramp segment per event,
+- bolus uses a triangular rate segment with total width `2 * min_dt`.
 
 This default must be overrideable in `custom.py`.
 
@@ -441,8 +450,10 @@ For each experiment:
   those interpolators using globally padded arrays,
 - reuse `bpbench.mechanistic` conventions where useful, especially deterministic
   control ordering and feed classification,
-- convert non-continuous controlled feed additions into short bolus-feed ramps,
-- convert sample-volume removals into short `V_sample_acc` ramps,
+- convert non-continuous controlled feed additions into bolus-feed triangles as
+  specified in Section 11.3,
+- convert sample-volume removals into `V_sample_acc` controls using the sampling
+  rule from Section 10.6,
 - evaluate each control and its first derivative on dense grids,
 - start from a fixed initial grid density and then double the number of points
   until the control-wise interpolation error is below the configured threshold
@@ -467,24 +478,47 @@ The controls payload keeps:
 - step boundary times for the step size controller.
 
 Step boundary times (`step_ts`) must include the start and end times of
-approximated bolus ramps, approximated `V_sample_acc` ramps, and any other
-control boundaries introduced during preparation.
+sampling interpolation segments, the start/peak/end times of bolus-feed
+triangles, and any other control boundaries introduced during preparation.
+For bolus boundaries, `step_ts` must be stored as one strictly increasing
+sequence of unique timestamps after sorting and de-duplication.
 
 ### 11.3 Bolus Approximation in V1
 
-Bolus and sampling use the same V1 approximation pattern.
+This section is normative for non-continuous controlled feed additions
+(boluses). Sampling semantics remain separate (Section 10.6).
 
-- non-continuous controlled feed additions are interpreted as bolus-feed
-  additions,
-- `SampleVolumeChange` removals are interpreted as sampling removals,
-- each event is converted during prep into a short ramp whose duration is the
-  shortest time difference in the original online data,
-- bolus ramps contribute to feed-rate controls,
-- sampling ramps contribute to the cumulative dummy control `V_sample_acc(t)`,
-- `V_sample_acc` is stored in `prepared.json` as a derived control trace with an
-  `Interpolator` and provenance metadata,
-- `step_ts` includes the boundaries of these ramps,
-- the wrapper reconstructs `V_real = V_cont - V_sample_acc` at each RHS call.
+- non-continuous controlled feed additions are interpreted as bolus events,
+- define the run-level online-data timestamp basis as the sorted unique
+  timestamp vector formed from all finite timestamps available to
+  control/event preparation across all processes in the run, with exact
+  duplicates removed before differencing,
+- define `run_min_dt` as the minimum strictly positive difference between
+  consecutive timestamps in that deduplicated run-level basis,
+- if no strictly positive run-level difference exists and at least one real
+  bolus event must be constructed, preparation must fail fast with an explicit
+  error (cannot construct bolus triangles),
+- define per-process bolus `min_dt` as
+  `min(run_min_dt, (t_end - t_start) / BOLUS_MIN_DT_DURATION_DENOMINATOR)`,
+  with `BOLUS_MIN_DT_DURATION_DENOMINATOR = 1000` in V1,
+- for each bolus event, let `delta_v` be the bolus delta volume; `delta_v` must
+  be strictly positive and non-positive values must fail fast,
+- for each bolus event on feed `f` at event time `t0`, construct one triangular
+  feed-rate contribution with support points at
+  `(t0, t0 + min_dt, t0 + 2 * min_dt)`,
+- triangle geometry is piecewise linear with zero rate at `t0` and
+  `t0 + 2 * min_dt`, and one peak at `t0 + min_dt`,
+- triangle area must equal `delta_v` for that event, with
+  `peak_rate = delta_v / min_dt`,
+- if `t0 + 2 * min_dt > t_end` for the process time horizon, preparation must
+  fail fast with an explicit error,
+- per-feed bolus control is the piecewise-linear sum of all event triangles for
+  that feed, evaluated over the sorted union of all triangle breakpoints,
+- `step_ts` must include all three points for each bolus event (start, peak,
+  end) as a sorted de-duplicated timestamp list,
+- `V_sample_acc` remains a derived sampling control stored in `prepared.json`
+  with `Interpolator` and provenance metadata, and the wrapper reconstructs
+  `V_real = V_cont - V_sample_acc` at each RHS call.
 
 Tests must verify that integrated bolus additions and integrated sampled-volume
 removals match their intended amounts.
@@ -671,13 +705,13 @@ The wrapper must:
 
 - read all feed-rate controls,
   continuous controlled feeds are recovered as derivatives of cumulative
-  controls, while bolus ramps are consumed directly as feed-rate controls,
+  controls, while bolus triangles are consumed directly as feed-rate controls,
 - maintain `V_cont` as part of the integrated state,
 - read `V_sample_acc(t)` from the controls object,
 - reconstruct `V_real = V_cont - V_sample_acc`,
 - include transport and volume contributions from controlled non-continuous
-  feed additions (bolus ramps) using their ramp derivatives and inlet feed
-  composition metadata,
+  feed additions (bolus triangles) using their feed-rate contributions and inlet
+  feed composition metadata,
 - build an augmented controls vector by appending flattened
   `RhsOde.Cin`/`RhsOde.Cin_modeled` to base controls,
 - request `specific_rates` and `modeled_feed_rates` from the user module,
@@ -694,7 +728,7 @@ runtime contract strict:
 - species ordering is taken from `RhsOde.species_names`,
 - continuous controlled feeds are ordered by `RhsOde.flow_names`,
 - modeled feeds are ordered by `RhsOde.modeled_flow_names`,
-- controlled non-continuous feed additions (bolus ramps) come from the
+- controlled non-continuous feed additions (bolus triangles) come from the
   prepared control vector and process volume-change metadata and are applied by
   the wrapper as extra transport/volume terms,
 - modeled feeds come from `ReactionOutputs.modeled_feed_rates`,
@@ -717,10 +751,10 @@ Current runtime split:
   for species kinetics plus continuous/modeled feed transport (`q * X_active`,
   transport, dilution, and `dV/dt` for those streams).
 - `bp-train`'s wrapper remains a thin adapter that maps controls/model outputs
-- `bp-train`'s wrapper additionally applies transport and `dV/dt` contributions
-  for controlled non-continuous feed ramps so total integrated `V_cont`
-  includes both continuous and bolus-feed additions.
   to the `RhsOde` call signature.
+- `bp-train`'s wrapper additionally applies transport and `dV/dt` contributions
+  for controlled non-continuous feed bolus triangles so total integrated
+  `V_cont` includes both continuous and bolus-feed additions.
 
 This keeps mechanistic math aligned with bpbench while preserving padded,
 JIT-stable training infrastructure in `bp-train`.
@@ -784,7 +818,7 @@ last timestamp) and keep whichever is faster/stabler.
 - dynamic volume represented by an integrated continuous state `V_cont`,
 - `V_cont` is always the last entry in the state vector,
 - integrated `V_cont` must include contributions from all controlled feeds
-  (continuous and non-continuous bolus ramps) and modeled feeds,
+  (continuous and non-continuous bolus triangles) and modeled feeds,
 - realized reactor volume reconstructed in the wrapper as
   `V_real = V_cont - V_sample_acc`.
 
@@ -794,8 +828,8 @@ The step size controller should receive boundary times derived during control
 preparation. This reduces solver pathologies around steep ramp regions without
 exposing a segmented public API.
 
-These boundary times must include the start and end times of both bolus ramps
-and `V_sample_acc` ramps.
+These boundary times must include bolus-event start/peak/end times and
+`V_sample_acc` interpolation segment boundaries.
 
 ### 16.3 Expected Runtime Objects
 
@@ -996,6 +1030,14 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 ### 19.2 Event Approximation Tests
 
 - bolus approximation adds exactly the intended amount,
+- run-level `run_min_dt` is computed across all processes in the run and
+  process-local bolus `min_dt` applies the configured duration cap,
+- bolus triangle construction uses points
+  `(t0, t0 + min_dt, t0 + 2 * min_dt)` and satisfies the event area/peak-rate
+  constraint,
+- prep fails fast when a bolus event would violate `t0 + 2 * min_dt <= t_end`,
+- overlapping same-feed bolus events superpose additively in the feed-rate
+  control,
 - boundary times are passed through correctly,
 - reconstructed `V_real` matches the measured volume trace at measurement times
   within tolerance,

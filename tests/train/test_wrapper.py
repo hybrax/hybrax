@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import diffrax
 import jax.numpy as jnp
 import pytest
 from bpbench.dataclasses import (
@@ -591,8 +592,6 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
     Before the fix this would integrate ~6.0 (because the wrapper was
     treating the cumulative value as a flow rate).
     """
-    import diffrax
-
     feed_medium = FeedMedium(
         name="feed",
         density=1.0,
@@ -718,6 +717,16 @@ def test_wrapper_bolus_feed_integrates_v_cont():
                     ),
                     feed_medium=bolus_medium,
                 ),
+                "sample_dummy": SampleVolumeChange(
+                    name="sample_dummy",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0, 2.0, 3.0, 4.0]),
+                        values=jnp.asarray([0.0, 0.0, 0.0, 0.0, 0.0]),
+                    ),
+                ),
             },
         ),
         reactor_medium=ReactorMedium(
@@ -747,22 +756,30 @@ def test_wrapper_bolus_feed_integrates_v_cont():
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y_scaled = wrapper.scale_state(y0_physical)
-
-    dt = 1e-3
-    n_steps = int((4.0 - 0.0) / dt)
-    t = 0.0
-    for _ in range(n_steps):
-        y_scaled = y_scaled + wrapper(t, y_scaled) * dt
-        t += dt
-
-    final_physical = wrapper.unscale_state(y_scaled)
+    y0_scaled = wrapper.scale_state(y0_physical)
+    solution = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        solver=diffrax.Tsit5(),
+        t0=0.0,
+        t1=4.0,
+        dt0=None,
+        y0=y0_scaled,
+        saveat=diffrax.SaveAt(ts=jnp.asarray([4.0], dtype=jnp.float32)),
+        stepsize_controller=diffrax.PIDController(
+            rtol=1e-6,
+            atol=1e-8,
+            jump_ts=controls.active_step_ts,
+        ),
+        max_steps=4096,
+        throw=False,
+    )
+    assert solution.result == diffrax.RESULTS.successful
+    final_physical = wrapper.unscale_state(solution.ys[0])
     final_v_cont = float(final_physical[-1])
 
     # V_cont must increase by the specified bolus volume (2.0 L).
     # (initial V_cont = 1.0, bolus = 2.0 => final ~= 3.0)
-    # Euler dt=1e-3 gives ~0.017 overshoot; abs=3e-2 covers it.
-    assert final_v_cont == pytest.approx(1.0 + 2.0, abs=3e-2)
+    assert final_v_cont == pytest.approx(1.0 + 2.0, abs=2e-3)
 
 
 def test_wrapper_bolus_transport_only_for_present_species():
@@ -797,6 +814,16 @@ def test_wrapper_bolus_transport_only_for_present_species():
                         values=jnp.asarray([2.0]),
                     ),
                     feed_medium=bolus_medium,
+                ),
+                "sample_dummy": SampleVolumeChange(
+                    name="sample_dummy",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0, 2.0, 3.0, 10.0]),
+                        values=jnp.asarray([0.0, 0.0, 0.0, 0.0, 0.0]),
+                    ),
                 ),
             },
         ),
@@ -835,10 +862,13 @@ def test_wrapper_bolus_transport_only_for_present_species():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    # Evaluate inside the synthetic bolus ramp [2.0, 2.1].
+    triangle_width = float(controls.control_metadata["bolus_feed"]["triangle_width"])
+    t_in_ramp = 2.0 + 0.5 * triangle_width
+
+    # Evaluate inside the synthetic bolus ramp.
     y_physical = jnp.asarray([1.0, 0.0, 1.0], dtype=jnp.float32)
     y_scaled = wrapper.scale_state(y_physical)
-    dy_scaled = wrapper(2.05, y_scaled)
+    dy_scaled = wrapper(t_in_ramp, y_scaled)
     dy_physical = dy_scaled * wrapper.state_scale
 
     # biomass present in feed medium -> non-zero bolus transport contribution.
@@ -847,3 +877,106 @@ def test_wrapper_bolus_transport_only_for_present_species():
     assert float(dy_physical[1]) == pytest.approx(0.0, abs=1e-9)
     # dV_cont/dt receives bolus rate during the ramp.
     assert float(dy_physical[2]) > 0.0
+
+
+def test_wrapper_multi_bolus_final_v_cont_invariant():
+    bolus_medium = FeedMedium(
+        name="bolus",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    bolus_deltas = jnp.asarray([0.2, 0.15, 0.3], dtype=jnp.float32)
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=8.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0, 3.0, 5.0], dtype=jnp.float32),
+                        values=bolus_deltas,
+                    ),
+                    feed_medium=bolus_medium,
+                ),
+                "sample_dummy": SampleVolumeChange(
+                    name="sample_dummy",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray(
+                            [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+                        ),
+                        values=jnp.asarray(
+                            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                        ),
+                    ),
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 8.0], dtype=jnp.float32),
+                        values=jnp.asarray([1.0, 1.0], dtype=jnp.float32),
+                    ),
+                    is_intracellular=False,
+                )
+            },
+        ),
+        process_variables={},
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    wrapper = _build_wrapper(
+        process,
+        controls,
+        ConstantReactionModule(
+            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+        ),
+    )
+
+    y0_scaled = wrapper.scale_state(jnp.asarray([1.0, 1.0], dtype=jnp.float32))
+    solution = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        solver=diffrax.Tsit5(),
+        t0=0.0,
+        t1=8.0,
+        dt0=None,
+        y0=y0_scaled,
+        saveat=diffrax.SaveAt(ts=jnp.asarray([8.0], dtype=jnp.float32)),
+        stepsize_controller=diffrax.PIDController(
+            rtol=1e-6,
+            atol=1e-8,
+            jump_ts=controls.active_step_ts,
+        ),
+        max_steps=4096,
+        throw=False,
+    )
+    assert solution.result == diffrax.RESULTS.successful
+    final_state = wrapper.unscale_state(solution.ys[0])
+    final_v_cont = float(final_state[-1])
+    expected_final_v = 1.0 + float(jnp.sum(bolus_deltas))
+    assert final_v_cont == pytest.approx(expected_final_v, abs=2e-3)

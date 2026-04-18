@@ -9,6 +9,9 @@ from bpbench.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    FeedMedium,
+    FeedMediumComponent,
+    FeedVolumeChange,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
@@ -286,6 +289,56 @@ def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
     assert end_value == pytest.approx(0.2)
 
 
+def test_controls_store_skips_run_min_dt_when_prepared_sample_exists():
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([5.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={},
+    )
+    collection = BioProcessCollection(
+        processes={"p1": process},
+        metadata={
+            "bp_train": {
+                "process_order": ["p1"],
+                "processes": {
+                    "p1": {
+                        "local_control_names": ["V_sample_acc"],
+                        "sample_acc_source": {
+                            "times": [0.0, 10.0],
+                            "values": [0.0, 0.1],
+                            "step_ts": [5.0],
+                            "metadata": {"source": "prepared_test"},
+                        },
+                    }
+                },
+            }
+        },
+    )
+
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    assert controls.control_names == ["V_sample_acc"]
+    assert float(controls.eval(10.0)[controls.sample_acc_global_index]) == (
+        pytest.approx(0.1)
+    )
+
+
 def test_controls_store_rejects_not_consistent_controls_at_init(tmp_path):
     prepared_json = _prepare_two_process_inconsistent_controls(tmp_path)
     with pytest.raises(
@@ -320,3 +373,120 @@ def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_pa
         batch_controls.eval(2, jnp.asarray(0.25))
     with pytest.raises(IndexError, match="out of range"):
         batch_controls.eval(999, jnp.asarray(0.25))
+
+
+def test_controls_store_uses_global_run_level_bolus_min_dt_across_processes():
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "X": FeedMediumComponent(
+                name="X",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+
+    p1 = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0]),
+                        values=jnp.asarray([1.0]),
+                    ),
+                    feed_medium=feed_medium,
+                ),
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([5.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={
+            "X": ProcessVariable(
+                name="X",
+                unit="g/L",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 10.0]),
+                    values=jnp.asarray([1.0, 1.0]),
+                ),
+            )
+        },
+    )
+
+    p2 = BioProcess(
+        metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([], dtype=jnp.float32),
+                        values=jnp.asarray([], dtype=jnp.float32),
+                    ),
+                    feed_medium=feed_medium,
+                ),
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([5.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={
+            "X": ProcessVariable(
+                name="X",
+                unit="g/L",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.004, 10.0]),
+                    values=jnp.asarray([1.0, 1.0]),
+                ),
+            )
+        },
+    )
+
+    collection = BioProcessCollection(
+        metadata={"case_study": {"case_id": "run-min-dt"}},
+        processes={"p1": p1, "p2": p2},
+    )
+    store = ControlsStore.from_collection(collection)
+    p1_controls = store.get_controls("p1")
+    assert float(p1_controls.control_metadata["bolus_feed"]["triangle_min_dt"]) == (
+        pytest.approx(0.004)
+    )
+    assert float(p1_controls.control_metadata["V_sample_acc"]["ramp_duration"]) == (
+        pytest.approx(0.004)
+    )

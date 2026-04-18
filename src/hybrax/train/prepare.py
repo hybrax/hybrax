@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 import warnings
 
-from bpbench.dataclasses import BioProcessCollection
+from bpbench.dataclasses import (
+    BioProcessCollection,
+)
 from bpbench.serialization import (
     load_process_collection_json,
     save_process_collection_json,
@@ -16,6 +18,8 @@ from bpbench.serialization import (
 
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
+    EVENT_RUN_MIN_DT_CONFIG_KEY,
+    get_collection_event_min_dt_if_needed,
     select_control_sources,
 )
 from .defaults import (
@@ -292,6 +296,13 @@ def prepare_artifact(
         required_control_names_by_process = {
             name: list(required_control_names) for name in collection.processes
         }
+
+    run_min_dt = get_collection_event_min_dt_if_needed(
+        collection,
+        include_samples=build_sample_acc is default_build_sample_acc_series,
+    )
+    if run_min_dt is not None:
+        resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
     for process_name, process in collection.processes.items():
         control_sources = select_control_sources(

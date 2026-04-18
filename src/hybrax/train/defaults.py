@@ -6,7 +6,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from .controls import build_sample_acc_source_default
+from .controls import build_sample_acc_source_default, run_min_dt_from_config
 from .model_api import ReactionOutputs, UserReactionModule
 
 
@@ -43,8 +43,11 @@ def default_build_sample_acc_series(
     config,
 ):
     """Default prep hook for sampled-volume control construction."""
-    del process_name, collection_metadata, config
-    return build_sample_acc_source_default(process)
+    del process_name, collection_metadata
+    return build_sample_acc_source_default(
+        process,
+        run_min_dt=run_min_dt_from_config(config),
+    )
 
 
 class DefaultReactionModule(UserReactionModule):
