@@ -519,8 +519,17 @@ This section is normative for non-continuous controlled feed additions
   fail fast with an explicit error,
 - per-feed bolus control is the piecewise-linear sum of all event triangles for
   that feed, evaluated over the sorted union of all triangle breakpoints,
+- sampling-ramp and bolus-triangle supports may overlap in time; in overlap
+  regions, both controls remain active and are combined through the runtime
+  equations without any special collision rule,
 - `step_ts` must include all three points for each bolus event (start, peak,
   end) as a sorted de-duplicated timestamp list,
+- process-level `step_ts` passed to the solver must be the sorted
+  de-duplicated union of all source boundaries (including sampling ramp start
+  and end boundaries, and bolus start/peak/end boundaries),
+- loss/target extraction remains defined at measurement timestamps only; a
+  measurement with `t_sample < t_bolus` must not include effects from that
+  later bolus event,
 - `V_sample_acc` remains a derived sampling control stored in `prepared.json`
   with `Interpolator` and provenance metadata, and the wrapper reconstructs
   `V_real = V_cont - V_sample_acc` at each RHS call.
