@@ -375,7 +375,7 @@ def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_pa
         batch_controls.eval(999, jnp.asarray(0.25))
 
 
-def test_controls_store_uses_global_run_level_bolus_min_dt_across_processes():
+def test_controls_store_uses_min_of_per_process_min_dt_across_processes():
     feed_medium = FeedMedium(
         name="feed",
         density=1.0,
@@ -484,9 +484,72 @@ def test_controls_store_uses_global_run_level_bolus_min_dt_across_processes():
     )
     store = ControlsStore.from_collection(collection)
     p1_controls = store.get_controls("p1")
+    # p1 has within-process min_dt=1.0h (times 0,1,5,10). p2 contributes a
+    # near timestamp at 0.004h, which creates a 0.004h *cross-process* gap
+    # versus p1's 0.0h, but that must not define run_min_dt.
+    # With run_min_dt=1.0h and duration cap 10/1000=0.01h, effective min_dt is
+    # 0.01h for both bolus triangles and sampling ramps.
     assert float(p1_controls.control_metadata["bolus_feed"]["triangle_min_dt"]) == (
-        pytest.approx(0.004)
+        pytest.approx(0.01)
     )
     assert float(p1_controls.control_metadata["V_sample_acc"]["ramp_duration"]) == (
-        pytest.approx(0.004)
+        pytest.approx(0.01)
+    )
+
+
+def test_controls_store_falls_back_to_duration_cap_when_no_positive_online_delta():
+    p1 = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={},
+    )
+    p2 = BioProcess(
+        metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
+        process_variables={},
+    )
+    collection = BioProcessCollection(
+        metadata={"case_study": {"case_id": "run-min-dt-fallback"}},
+        processes={"p1": p1, "p2": p2},
+    )
+    store = ControlsStore.from_collection(collection)
+    p1_controls = store.get_controls("p1")
+    # No positive within-process online delta exists in this fixture, so
+    # run_min_dt falls back to duration/1000 = 2.0/1000 = 0.002 h.
+    assert float(p1_controls.control_metadata["V_sample_acc"]["ramp_duration"]) == (
+        pytest.approx(0.002)
     )

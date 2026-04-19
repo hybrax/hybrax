@@ -302,16 +302,30 @@ def _minimum_positive_delta(points: np.ndarray) -> float | None:
 
 
 def get_collection_bolus_min_dt(collection: BioProcessCollection) -> float:
-    run_points: list[float] = []
+    per_process_min_dts: list[float] = []
+    fallback_duration_caps: list[float] = []
     for process in collection.processes.values():
-        run_points.extend(_collect_online_time_points(process).tolist())
-    run_min_dt = _minimum_positive_delta(np.asarray(run_points, dtype=float))
-    if run_min_dt is None:
-        raise ValueError(
-            "Bolus controls require at least one strictly positive online "
-            "timestamp delta across processes to compute run-level min_dt."
-        )
-    return run_min_dt
+        duration = float(process.time_axis.end) - float(process.time_axis.start)
+        if np.isfinite(duration) and duration > 0.0:
+            fallback_duration_caps.append(
+                float(duration / BOLUS_MIN_DT_DURATION_DENOMINATOR)
+            )
+        points = _collect_online_time_points(process)
+        min_dt = _minimum_positive_delta(points)
+        if min_dt is not None:
+            per_process_min_dts.append(min_dt)
+
+    if per_process_min_dts:
+        return float(min(per_process_min_dts))
+
+    if fallback_duration_caps:
+        return float(min(fallback_duration_caps))
+
+    raise ValueError(
+        "Bolus controls require either a strictly positive online timestamp "
+        "delta within a process or a positive process duration to compute "
+        "run-level min_dt."
+    )
 
 
 def get_collection_event_min_dt_if_needed(
