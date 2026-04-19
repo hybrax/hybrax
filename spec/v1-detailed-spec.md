@@ -400,7 +400,7 @@ Default behavior:
 
 Sampling still differs from bolus in geometry:
 - sampling uses one `min_dt` ramp segment per event,
-- bolus uses a triangular rate segment with total width `2 * min_dt`.
+- bolus uses a triangular rate segment with total width `1 * min_dt`.
 
 This default must be overrideable in `custom.py`.
 
@@ -505,12 +505,12 @@ This section is normative for non-continuous controlled feed additions
   be strictly positive and non-positive values must fail fast,
 - for each bolus event on feed `f` at event time `t0`, construct one triangular
   feed-rate contribution with support points at
-  `(t0, t0 + min_dt, t0 + 2 * min_dt)`,
+  `(t0, t0 + 0.5 * min_dt, t0 + min_dt)`,
 - triangle geometry is piecewise linear with zero rate at `t0` and
-  `t0 + 2 * min_dt`, and one peak at `t0 + min_dt`,
+  `t0 + min_dt`, and one peak at `t0 + 0.5 * min_dt`,
 - triangle area must equal `delta_v` for that event, with
-  `peak_rate = delta_v / min_dt`,
-- if `t0 + 2 * min_dt > t_end` for the process time horizon, preparation must
+  `peak_rate = 2 * delta_v / min_dt`,
+- if `t0 + min_dt > t_end` for the process time horizon, preparation must
   fail fast with an explicit error,
 - per-feed bolus control is the piecewise-linear sum of all event triangles for
   that feed, evaluated over the sorted union of all triangle breakpoints,
@@ -1033,9 +1033,9 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 - run-level `run_min_dt` is computed across all processes in the run and
   process-local bolus `min_dt` applies the configured duration cap,
 - bolus triangle construction uses points
-  `(t0, t0 + min_dt, t0 + 2 * min_dt)` and satisfies the event area/peak-rate
+  `(t0, t0 + 0.5 * min_dt, t0 + min_dt)` and satisfies the event area/peak-rate
   constraint,
-- prep fails fast when a bolus event would violate `t0 + 2 * min_dt <= t_end`,
+- prep fails fast when a bolus event would violate `t0 + min_dt <= t_end`,
 - overlapping same-feed bolus events superpose additively in the feed-rate
   control,
 - boundary times are passed through correctly,

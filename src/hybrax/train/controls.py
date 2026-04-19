@@ -468,19 +468,19 @@ def build_bolus_sources(
         triangle_width = 0.0
         if validated_events:
             min_dt = get_bolus_min_dt(process, run_min_dt=run_min_dt)
-            triangle_width = 2.0 * min_dt
+            triangle_width = min_dt
 
             for event_time, delta_v in validated_events:
-                peak_time = event_time + min_dt
+                peak_time = event_time + 0.5 * min_dt
                 end_time = event_time + triangle_width
                 if end_time > t_end:
                     raise ValueError(
                         f"Feed '{name}' has bolus event at t={event_time} that cannot "
-                        f"fit triangle width 2*min_dt={triangle_width} before process "
+                        f"fit triangle width min_dt={triangle_width} before process "
                         f"end t_end={t_end}."
                     )
 
-                peak_rate = delta_v / min_dt
+                peak_rate = 2.0 * delta_v / min_dt
                 triangles.append((event_time, peak_time, end_time, peak_rate))
                 step_ts.extend([event_time, peak_time, end_time])
 

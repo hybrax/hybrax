@@ -684,22 +684,23 @@ def test_build_bolus_sources_triangle_geometry_and_step_ts():
     process = collection.processes["bolus"]
     source = build_bolus_sources(process)[0]
     min_dt = (10.0 - 0.0) / BOLUS_MIN_DT_DURATION_DENOMINATOR
-    triangle_end = 5.0 + 2.0 * min_dt
+    triangle_peak = 5.0 + 0.5 * min_dt
+    triangle_end = 5.0 + min_dt
 
     assert source.evaluator(jnp.asarray([2.5]))[0] == pytest.approx(0.0)
     assert float(source.metadata["triangle_min_dt"]) == pytest.approx(min_dt)
-    assert float(source.metadata["triangle_width"]) == pytest.approx(2.0 * min_dt)
-    assert source.step_ts == pytest.approx([5.0, 5.0 + min_dt, triangle_end])
+    assert float(source.metadata["triangle_width"]) == pytest.approx(min_dt)
+    assert source.step_ts == pytest.approx([5.0, triangle_peak, triangle_end])
     assert source.evaluator(jnp.asarray([5.0]))[0] == pytest.approx(0.0)
-    assert source.evaluator(jnp.asarray([5.0 + min_dt]))[0] == pytest.approx(
-        1.0 / min_dt,
+    assert source.evaluator(jnp.asarray([triangle_peak]))[0] == pytest.approx(
+        2.0 / min_dt,
         rel=1e-3,
     )
     assert source.evaluator(jnp.asarray([triangle_end]))[0] == pytest.approx(
         0.0, abs=1e-3
     )
 
-    t_grid = np.asarray([5.0, 5.0 + min_dt, triangle_end], dtype=float)
+    t_grid = np.asarray([5.0, triangle_peak, triangle_end], dtype=float)
     rates = source.evaluator(t_grid)
     assert float(np.trapezoid(rates, t_grid)) == pytest.approx(1.0, abs=1e-9)
 
@@ -775,10 +776,10 @@ def _make_bolus_collection_with_events(
 
 
 def test_build_bolus_sources_raises_when_triangle_cannot_fit_before_end():
-    collection = _make_bolus_collection_with_events([9.99], [0.5])
+    collection = _make_bolus_collection_with_events([9.995], [0.5])
     process = collection.processes["bolus"]
     with pytest.raises(ValueError, match="cannot fit triangle width"):
-        build_bolus_sources(process)
+        build_bolus_sources(process, run_min_dt=0.01)
 
 
 def test_build_bolus_sources_superposes_overlapping_events():
@@ -789,12 +790,13 @@ def test_build_bolus_sources_superposes_overlapping_events():
     assert float(source.metadata["triangle_min_dt"]) == pytest.approx(min_dt)
     step_ts = np.asarray(source.step_ts, dtype=float)
     assert np.any(np.isclose(step_ts, 5.0, atol=1e-6))
+    assert np.any(np.isclose(step_ts, 5.005, atol=1e-4))
     assert np.any(np.isclose(step_ts, 5.01, atol=1e-4))
+    assert np.any(np.isclose(step_ts, 5.015, atol=1e-4))
     assert np.any(np.isclose(step_ts, 5.02, atol=1e-4))
-    assert np.any(np.isclose(step_ts, 5.03, atol=1e-4))
-    assert source.evaluator(jnp.asarray([5.015]))[0] == pytest.approx(100.0, rel=1e-3)
+    assert source.evaluator(jnp.asarray([5.015]))[0] == pytest.approx(200.0, rel=1e-3)
 
-    t_grid = np.asarray([5.0, 5.01, 5.015, 5.02, 5.03], dtype=float)
+    t_grid = np.asarray([5.0, 5.005, 5.01, 5.015, 5.02], dtype=float)
     rates = source.evaluator(t_grid)
     assert float(np.trapezoid(rates, t_grid)) == pytest.approx(2.0, abs=1e-4)
 
