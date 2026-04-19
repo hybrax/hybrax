@@ -489,15 +489,20 @@ This section is normative for non-continuous controlled feed additions
 (boluses). Sampling semantics remain separate (Section 10.6).
 
 - non-continuous controlled feed additions are interpreted as bolus events,
-- define the run-level online-data timestamp basis as the sorted unique
-  timestamp vector formed from all finite timestamps available to
-  control/event preparation across all processes in the run, with exact
-  duplicates removed before differencing,
-- define `run_min_dt` as the minimum strictly positive difference between
-  consecutive timestamps in that deduplicated run-level basis,
-- if no strictly positive run-level difference exists and at least one real
-  bolus event must be constructed, preparation must fail fast with an explicit
-  error (cannot construct bolus triangles),
+- for each process, define its online-data timestamp basis as the sorted unique
+  finite timestamp vector available to control/event preparation for that
+  process; define process-local candidate `min_dt` as the minimum strictly
+  positive difference between consecutive timestamps in that process-local
+  basis,
+- define run-level `run_min_dt` as the minimum of all available process-local
+  candidate `min_dt` values,
+- if no process has a strictly positive process-local candidate `min_dt`, fall
+  back to the minimum positive process duration cap
+  `(t_end - t_start) / BOLUS_MIN_DT_DURATION_DENOMINATOR` across processes,
+- if neither a strictly positive process-local candidate `min_dt` nor a
+  positive process duration cap exists and at least one real event
+  approximation segment must be constructed (bolus triangle and/or default
+  sampling ramp), preparation must fail fast with an explicit error,
 - define per-process bolus `min_dt` as
   `min(run_min_dt, (t_end - t_start) / BOLUS_MIN_DT_DURATION_DENOMINATOR)`,
   with `BOLUS_MIN_DT_DURATION_DENOMINATOR = 1000` in V1,
@@ -1030,8 +1035,10 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 ### 19.2 Event Approximation Tests
 
 - bolus approximation adds exactly the intended amount,
-- run-level `run_min_dt` is computed across all processes in the run and
-  process-local bolus `min_dt` applies the configured duration cap,
+- run-level `run_min_dt` is computed as the minimum of process-local positive
+  timestamp deltas (with duration-cap fallback when no process-local positive
+  delta exists), and process-local bolus `min_dt` applies the configured
+  duration cap,
 - bolus triangle construction uses points
   `(t0, t0 + 0.5 * min_dt, t0 + min_dt)` and satisfies the event area/peak-rate
   constraint,
