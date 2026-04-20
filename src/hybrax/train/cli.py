@@ -507,6 +507,12 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
     data_rows: list[list[str]] = []
     total_sum = 0.0
     per_target_sum = [0.0] * len(result.target_names)
+    train_total_sum = 0.0
+    train_per_target_sum = [0.0] * len(result.target_names)
+    n_train = 0
+    holdout_total_sum = 0.0
+    holdout_per_target_sum = [0.0] * len(result.target_names)
+    n_holdout = 0
     for name in result.process_names:
         total = result.per_process_total_loss[name]
         per_target = result.per_process_per_target_loss[name]
@@ -524,6 +530,16 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
         total_sum += total
         for i, v in enumerate(per_target):
             per_target_sum[i] += v
+        if split == "train":
+            train_total_sum += total
+            n_train += 1
+            for i, v in enumerate(per_target):
+                train_per_target_sum[i] += v
+        else:
+            holdout_total_sum += total
+            n_holdout += 1
+            for i, v in enumerate(per_target):
+                holdout_per_target_sum[i] += v
 
     n = max(len(result.process_names), 1)
     mean_row = (
@@ -534,6 +550,24 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
     data_rows.append(mean_row)
     csv_rows.append(mean_row)
 
+    if n_train:
+        train_mean_row = (
+            ["train (mean)", f"{train_total_sum / n_train:.6g}"]
+            + [f"{v / n_train:.6g}" for v in train_per_target_sum]
+            + ["train"]
+        )
+        data_rows.append(train_mean_row)
+        csv_rows.append(train_mean_row)
+
+    if n_holdout:
+        holdout_mean_row = (
+            ["holdout (mean)", f"{holdout_total_sum / n_holdout:.6g}"]
+            + [f"{v / n_holdout:.6g}" for v in holdout_per_target_sum]
+            + ["holdout"]
+        )
+        data_rows.append(holdout_mean_row)
+        csv_rows.append(holdout_mean_row)
+
     col_widths = [len(h) for h in headers]
     for row in data_rows:
         for i, cell in enumerate(row):
@@ -542,12 +576,17 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
     def _fmt_row(row: list[str]) -> str:
         return " | ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
 
+    # Number of summary rows: total (mean) + optional train (mean) + optional holdout (mean)
+    n_summary = 1 + (1 if n_train else 0) + (1 if n_holdout else 0)
+    n_data = len(data_rows) - n_summary
+
     sep = "-+-".join("-" * w for w in col_widths)
     lines = ["LOSSES (forward evaluation)", _fmt_row(headers), sep]
-    for row in data_rows[:-1]:
+    for row in data_rows[:n_data]:
         lines.append(_fmt_row(row))
     lines.append(sep)
-    lines.append(_fmt_row(data_rows[-1]))
+    for row in data_rows[n_data:]:
+        lines.append(_fmt_row(row))
     return "\n".join(lines), csv_rows
 
 
