@@ -799,13 +799,22 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
     fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
+    # Stable label->color mapping so the same process always gets the same color
+    # across all subplots, regardless of which variables each process has.
+    seen_labels: dict[str, int] = {}
+    for panel_meta in panels:
+        for data in panel_meta["data"]:
+            lab = data["label"]
+            seen_labels.setdefault(lab, len(seen_labels))
+    label_colors = {lab: colors[i % len(colors)] for lab, i in seen_labels.items()}
+
     # Collect legend entries once (process key -> (handle, label))
     legend_handles_by_label = {}
 
     for i, panel_meta in enumerate(panels):
         ax = axes_flat[i]
-        for j, data in enumerate(panel_meta["data"]):
-            color = colors[j % len(colors)]
+        for data in panel_meta["data"]:
+            color = label_colors[data["label"]]
             _draw_panel(
                 ax,
                 data,
@@ -849,7 +858,7 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
 
     if legend_handles_by_label:
         labels = list(legend_handles_by_label.keys())
-        handles = [legend_handles_by_label[l] for l in labels]
+        handles = [legend_handles_by_label[lab] for lab in labels]
         # Put one shared legend at bottom
         fig.legend(
             handles,
