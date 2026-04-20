@@ -58,9 +58,12 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
         process: BioProcess object to inspect
         verbosity: Detail level (1=minimal, 2=medium, 3=full)
 
-            - Level 3 (most verbose): full details including units, value ranges, spline info
-            - Level 2 (mid verbose): variable names and data type/size, no units or value ranges
-            - Level 1 (least verbose): just which variables are saved, no other details
+            - Level 3 (most verbose): full details including units, value
+              ranges, spline info
+            - Level 2 (mid verbose): variable names and data type/size,
+              no units or value ranges
+            - Level 1 (least verbose): just which variables are saved,
+              no other details
 
     Example:
         >>> print_process_structure(process, verbosity=1)
@@ -79,7 +82,8 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
         print(f"Process: {process_name} ({process_type})")
         if process.reactor_medium and process.reactor_medium.components:
             print(
-                f"Reactor Medium Components: {list(process.reactor_medium.components.keys())}"
+                "Reactor Medium Components: "
+                f"{list(process.reactor_medium.components.keys())}"
             )
         if process.process_variables:
             print(f"Process Variables: {list(process.process_variables.keys())}")
@@ -117,16 +121,19 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                 if _is_dynamic_series(pv.values):
                     n = len(pv.values.times)
                     print(
-                        f"  - {pv.name}: TimeSeries ({n} points), controlled={pv.is_controlled}"
+                        f"  - {pv.name}: TimeSeries ({n} points),"
+                        f" controlled={pv.is_controlled}"
                     )
                 elif _is_spline_only_series(pv.values):
                     n = len(pv.values.breaks)
                     print(
-                        f"  - {pv.name}: Spline-only ({n} breakpoints), controlled={pv.is_controlled}"
+                        f"  - {pv.name}: Spline-only ({n} breakpoints),"
+                        f" controlled={pv.is_controlled}"
                     )
                 else:
                     print(
-                        f"  - {pv.name}: Static ({pv.values.value}), controlled={pv.is_controlled}"
+                        f"  - {pv.name}: Static ({pv.values.value}),"
+                        f" controlled={pv.is_controlled}"
                     )
 
         if process.volume is not None:
@@ -143,7 +150,9 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                     else:
                         n = 0
                     print(
-                        f"    - {vc.name}: {'Continuous' if vc.is_continuous else 'Discrete'} ({n} points)"
+                        f"    - {vc.name}:"
+                        f" {'Continuous' if vc.is_continuous else 'Discrete'}"
+                        f" ({n} points)"
                     )
 
     else:
@@ -154,17 +163,19 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
             print(f"Notes: {process_notes}")
 
         if process.time_axis is not None:
-            print(f"\nTime:")
+            print("\nTime:")
             print(
-                f"  Range: {process.time_axis.start:.2f} to {process.time_axis.end:.2f} {process.time_axis.unit}"
+                f"  Range: {process.time_axis.start:.2f} to"
+                f" {process.time_axis.end:.2f} {process.time_axis.unit}"
             )
             print(f"  Reference: {process.time_axis.time_reference}")
 
         if process.reactor_medium:
-            print(f"\nReactor Medium:")
+            print("\nReactor Medium:")
             print(f"  Name: {process.reactor_medium.name}")
             print(
-                f"  Density: {process.reactor_medium.density} {process.reactor_medium.density_unit}"
+                f"  Density: {process.reactor_medium.density}"
+                f" {process.reactor_medium.density_unit}"
             )
             if process.reactor_medium.components:
                 print(f"  Components: ({len(process.reactor_medium.components)} total)")
@@ -177,7 +188,7 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                 _print_process_variable_info(pv, "  ")
 
         if process.volume is not None:
-            print(f"\nVolume:")
+            print("\nVolume:")
             print(f"  Initial: {process.volume.initial_volume} {process.volume.unit}")
             if process.volume.volume_changes:
                 print(f"  Volume Changes: ({len(process.volume.volume_changes)} total)")
@@ -270,7 +281,8 @@ def _print_volume_change_info(change, prefix: str) -> None:
                 float(jnp.max(change.values.values)),
             )
             print(
-                f"{prefix}    Value range: {v_range[0]:.4f} to {v_range[1]:.4f} {change.unit}"
+                f"{prefix}    Value range: {v_range[0]:.4f} to"
+                f" {v_range[1]:.4f} {change.unit}"
             )
             if change.is_continuous:
                 total_change = float(change.values.values[-1] - change.values.values[0])
@@ -288,7 +300,8 @@ def _print_volume_change_info(change, prefix: str) -> None:
         ):
             integral = float(change.values.integrate(domain_start, domain_end))
             print(
-                f"{prefix}    Series integral over span: {integral:.4f} {change.unit}*time"
+                f"{prefix}    Series integral over span:"
+                f" {integral:.4f} {change.unit}*time"
             )
 
 
@@ -313,12 +326,13 @@ def _count_datapoints_in_value(value) -> int:
 
 def _count_datapoints_in_process(process: BioProcess) -> int:
     """
-    Count all datapoints (time series lengths + static entries) contained in a BioProcess.
-    This includes:
+    Count all datapoints (time series lengths + static entries) contained
+    in a BioProcess. This includes:
       - process_variables (TimeSeries / StaticVariable)
       - reactor_medium component concentrations (TimeSeries / StaticVariable)
       - volume changes (their TimeSeries)
-      - feed medium components referenced in volume changes (TimeSeries / StaticVariable)
+      - feed medium components referenced in volume changes
+        (TimeSeries / StaticVariable)
     """
     total = 0
 
@@ -354,10 +368,10 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
         dataset: BenchmarkDataset object to inspect
         verbosity: Detail level (1=minimal, 2=medium, 3=full)
 
-            - Level 3 (most verbose): metadata, all case-study details (organism, citation),
-              per-process datapoint counts, and total datapoints
-            - Level 2 (mid verbose): metadata, case-study names with organism and process
-              names listed (no citations, no datapoint counts)
+            - Level 3 (most verbose): metadata, all case-study details
+              (organism, citation), per-process datapoint counts, and total datapoints
+            - Level 2 (mid verbose): metadata, case-study names with
+              organism and process names listed (no citations, no datapoint counts)
             - Level 1 (least verbose): metadata, case-study names and process count only
     """
     print("=" * 80)
@@ -686,7 +700,8 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
         n = len(x)
 
         if n == 0:
-            # Nothing to plot (e.g. empty volume change); add invisible artist for legend
+            # Nothing to plot (e.g. empty volume change); add invisible
+            # artist for legend
             ax.plot([], [], label=label, **plot_kwargs)
         elif render == "bar":
             # Bar plot for discrete (non-continuous) volume changes
@@ -722,7 +737,8 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
                 import warnings
 
                 warnings.warn(
-                    f"Could not evaluate interpolator for {panel.get('title', '?')}: {e}"
+                    f"Could not evaluate interpolator for"
+                    f" {panel.get('title', '?')}: {e}"
                 )
     else:
         ax.hlines(
