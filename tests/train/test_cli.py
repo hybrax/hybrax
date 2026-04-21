@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from bp_train import cli
 from bp_train.harness import ForwardResult, TrainHarnessConfig, TrainHarnessResult
 
@@ -26,6 +28,11 @@ def _stub_forward_result() -> ForwardResult:
         per_process_total_loss={"p1": 0.1},
         per_process_per_target_loss={"p1": (0.1,)},
     )
+
+
+@pytest.fixture(autouse=True)
+def _run_each_test_in_tmp_cwd(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
 
 
 def test_prepare_cli_dispatches_to_prepare_artifact(monkeypatch):
