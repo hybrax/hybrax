@@ -13,8 +13,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bpbench.dataclasses import BioProcessCollection, FeedVolumeChange
-from bpbench.mechanistic import get_rhs_ode
+from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
+from bp_format.mechanistic import get_rhs_ode
 
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper

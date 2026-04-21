@@ -6,8 +6,8 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bpbench.dataclasses import BioProcessCollection
-from bpbench.serialization import load_process_collection_json
+from bp_format.dataclasses import BioProcessCollection
+from bp_format.serialization import load_process_collection_json
 
 from .controls_store import ControlsStore, PerProcessControls
 
@@ -397,8 +397,8 @@ class TrainingDataStore(eqx.Module):
         target_name_to_index = {name: idx for idx, name in enumerate(target_names)}
 
         # Determine the modeled-flow names from the reference process via
-        # bpbench's get_rhs_ode and validate consistency across processes.
-        from bpbench.mechanistic import get_rhs_ode as _get_rhs_ode
+        # bp_format's get_rhs_ode and validate consistency across processes.
+        from bp_format.mechanistic import get_rhs_ode as _get_rhs_ode
 
         ref_process = collection.processes[process_order[0]]
         modeled_flow_names = tuple(_get_rhs_ode(ref_process).modeled_flow_names)

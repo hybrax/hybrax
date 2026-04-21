@@ -2,7 +2,7 @@
 
 ## Background
 
-bpbench's `RhsOde` now distinguishes two kinds of non-volume states:
+bp_format's `RhsOde` now distinguishes two kinds of non-volume states:
 
 - **Reactor-component states** (`reactor_component_state_names`): biomass,
   substrates, products. These participate in the reaction term `q * X_active`
@@ -76,7 +76,7 @@ hooks) need to know where each block lives. Two options:
 - Keep `species_names` for reactor components and add `pv_state_names`
   alongside it. Low churn in existing callers.
 - Rename `species_names` → `reactor_component_state_names` everywhere for
-  consistency with bpbench. More churn but cleaner long-term.
+  consistency with bp_format. More churn but cleaner long-term.
 
 Keeping `species_names` + adding `pv_state_names` is the lower-risk path for
 now.
@@ -140,7 +140,7 @@ where y0 is assembled.
 
 The harness reads `n_species` from the reference RhsOde and uses it to build
 Cin stacks. With PV states, `n_reactor` (not `n_species`) is the right count
-for Cin, but `Cin` is already shaped `(n_flows, n_reactor_states)` by bpbench,
+for Cin, but `Cin` is already shaped `(n_flows, n_reactor_states)` by bp_format,
 so this is likely already correct. Review the y0 assembly and any direct
 indexing into the state vector.
 

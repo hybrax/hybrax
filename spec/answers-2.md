@@ -40,7 +40,7 @@ Question:
 For continuous feeds or other continuous volume changes, should the store represent cumulative quantity or instantaneous rate?
 
 Recommended answer:
-Instantaneous rate. `bpbench` may store cumulative quantities, but the solver should consume a normalized, unambiguous rate representation.
+Instantaneous rate. `bp_format` may store cumulative quantities, but the solver should consume a normalized, unambiguous rate representation.
 
 Why this matters:
 This determines the semantics of the control vector and avoids duplicated conversion logic downstream.
@@ -55,7 +55,7 @@ Question:
 Should temperature and other controlled process variables be treated identically to feed rates in the store interface?
 
 Recommended answer:
-Yes. Internally they may originate from different `bpbench` fields, but the exported control vector should be a deterministic ordered list of controls.
+Yes. Internally they may originate from different `bp_format` fields, but the exported control vector should be a deterministic ordered list of controls.
 
 Why this matters:
 This decides whether downstream code sees one generic control vector or multiple special cases.
@@ -73,7 +73,7 @@ Config-defined order first. If absent, use a deterministic fallback:
 1. continuous controlled volume changes
 2. controlled process variables
 
-This matches the existing `bpbench.mechanistic.get_control_splines` intent.
+This matches the existing `bp_format.mechanistic.get_control_splines` intent.
 
 Why this matters:
 The order affects model inputs, serialization, reproducibility, and tests.
@@ -98,7 +98,7 @@ Your answer: Yes, we always wanna fail fast if something doesn't check out.
 ## 7. Dataset says controlled, config omits it
 
 Question:
-What should happen if the config omits a variable but `bpbench` marks it `is_controlled=True`?
+What should happen if the config omits a variable but `bp_format` marks it `is_controlled=True`?
 
 Recommended answer:
 Warn and ignore in v1 unless `strict_config=true`. Config remains authoritative.
@@ -176,15 +176,15 @@ This determines the training sample contract and failure modes.
 Your answer: Go with recommended answer.
 
 
-## 12. `bpbench` API change log
+## 12. `bp_format` API change log
 
 Question:
-Do you want the spec to include the concrete `bpbench` change-log file and proposed entries, or only mention that such a file should exist?
+Do you want the spec to include the concrete `bp_format` change-log file and proposed entries, or only mention that such a file should exist?
 
 Recommended answer:
-Include it concretely. The spec should contain a `bpbench-api-notes.md` section or companion file listing required adapters and upstream changes, including the `Interpolator` / `interpolator` compatibility seam already found.
+Include it concretely. The spec should contain a `bp_format-api-notes.md` section or companion file listing required adapters and upstream changes, including the `Interpolator` / `interpolator` compatibility seam already found.
 
 Why this matters:
 This turns vague upstream dependencies into an actionable interface contract.
 
-Your answer: Yes, we definitely want to be concrete about what needs changing in bpbench and have a file that we keep updating as we discover more things (or things are changed in bpbench).
+Your answer: Yes, we definitely want to be concrete about what needs changing in bp_format and have a file that we keep updating as we discover more things (or things are changed in bp_format).

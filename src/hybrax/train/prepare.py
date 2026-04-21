@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Any
 import warnings
 
-from bpbench.dataclasses import (
+from bp_format.dataclasses import (
     BioProcessCollection,
 )
-from bpbench.serialization import (
+from bp_format.serialization import (
     load_process_collection_json,
     save_process_collection_json,
 )
@@ -80,7 +80,7 @@ def load_raw_collection(
         return collection
 
     # Try as BenchmarkDataset
-    from bpbench.serialization import load_dataset
+    from bp_format.serialization import load_dataset
 
     dataset = load_dataset(path)
     if not dataset.case_studies:
@@ -101,8 +101,8 @@ def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) 
     failed = [name for name, entry in validation_report.items() if not entry["ok"]]
     if failed:
         warnings.warn(
-            f"bpbench validation reported non-OK status for {len(failed)} process(es); "
-            "see metadata['bp_train']['bpbench_validation_raw'] for details",
+            f"bp_format validation reported non-OK status for {len(failed)} process(es); "
+            "see metadata['bp_train']['bp_format_validation_raw'] for details",
             stacklevel=2,
         )
 
@@ -243,9 +243,9 @@ def prepare_artifact(
     raw_collection = load_raw_collection(input_json, case_study=case_study)
     validation_report = validate_raw_collection(
         raw_collection,
-        strict=bool(resolved_config.get("strict_bpbench_validation", False)),
+        strict=bool(resolved_config.get("strict_bp_format_validation", False)),
     )
-    if not bool(resolved_config.get("strict_bpbench_validation", False)):
+    if not bool(resolved_config.get("strict_bp_format_validation", False)):
         _warn_on_validation_report(validation_report)
 
     collection = deepcopy(raw_collection)
@@ -356,9 +356,9 @@ def prepare_artifact(
             ),
         },
         "dynamic_volume": True,
-        "bpbench_validation": prepared_validation_report,
-        "bpbench_validation_raw": validation_report,
-        "bpbench_validation_prepared": prepared_validation_report,
+        "bp_format_validation": prepared_validation_report,
+        "bp_format_validation_raw": validation_report,
+        "bp_format_validation_prepared": prepared_validation_report,
         "prepared_semantics_validation": semantics_validation_report,
         "semantics_provenance": {
             "processes": semantics_provenance,

@@ -7,7 +7,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
-from bpbench.dataclasses import (
+from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,

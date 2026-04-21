@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from bpbench.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection_json
 
 from .harness import (
     ForwardConfig,
@@ -42,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ---- prepare ----
     prepare_parser = subparsers.add_parser(
         "prepare",
-        help="Transform a raw bpbench process collection into a prepared artifact.",
+        help="Transform a raw bp_format process collection into a prepared artifact.",
     )
     prepare_parser.add_argument("--input", required=True, help="Path to input JSON.")
     prepare_parser.add_argument("--output", required=True, help="Path to output JSON.")

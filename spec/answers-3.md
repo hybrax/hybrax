@@ -27,7 +27,7 @@ Question:
 After these custom transforms run, what should be the main persisted artifact for v1?
 
 Recommended answer:
-A new JSON file in `bpbench` structure, derived from the original JSON, with updated `Interpolator` fields and metadata flags recording which transforms were applied. Training code should consume this transformed JSON, not re-run the custom transform path on every call.
+A new JSON file in `bp_format` structure, derived from the original JSON, with updated `Interpolator` fields and metadata flags recording which transforms were applied. Training code should consume this transformed JSON, not re-run the custom transform path on every call.
 
 Why this matters:
 This decides whether preprocessing is part of runtime or an explicit build/prep stage.

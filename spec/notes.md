@@ -65,7 +65,7 @@ flowchart LR
     B -->|bp-fmt JSON| D
 ```
 
-## Further bpbench QoL changes
+## Further bp_format QoL changes
 
 - When defining a medium omitting a component should be treated as zero concentration for that component.
 - We might want to rename the `FeedMedium` dataclass as it contains feed and base and potentially other medium types and the current name could confuse people. Maybe use something like "AddedMedium" or similar.

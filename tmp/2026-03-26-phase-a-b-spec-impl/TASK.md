@@ -2,24 +2,24 @@
 
 Implement phases A and B of the V1 spec:
 
-- Phase A: raw artifact loading through `bpbench` deserialization
+- Phase A: raw artifact loading through `bp_format` deserialization
 - Phase B: preparation pipeline that produces `prepared.json`
 
 ## Strategy
 
 Start by verifying the mandated runtime environment in `AGENTS.md` because
-phase A depends directly on `bpbench`.
+phase A depends directly on `bp_format`.
 
 ## Status
 
-Environment issue was resolved by the user. `bpbench`, `equinox`, and `jax`
+Environment issue was resolved by the user. `bp_format`, `equinox`, and `jax`
 now import successfully inside `micromamba run -n jax2 python`.
 
 ## Plan
 
-1. Implement phase A raw loading against `bpbench.serialization.load_process_collection_json`.
+1. Implement phase A raw loading against `bp_format.serialization.load_process_collection_json`.
 2. Implement phase B preparation with:
-   - first-pass `bpbench.validate_process(...)`,
+   - first-pass `bp_format.validate_process(...)`,
    - optional `custom.py` hooks,
    - default `V_sample_acc` construction,
    - deterministic control ordering,

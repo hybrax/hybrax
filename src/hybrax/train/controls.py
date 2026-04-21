@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import numpy as np
-from bpbench.dataclasses import (
+from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     FeedVolumeChange,

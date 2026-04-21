@@ -13,9 +13,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bpbench.dataclasses import BioProcessCollection
-from bpbench.mechanistic import get_rhs_ode
-from bpbench.serialization import load_process_collection_json
+from bp_format.dataclasses import BioProcessCollection
+from bp_format.mechanistic import get_rhs_ode
+from bp_format.serialization import load_process_collection_json
 
 from .defaults import default_build_reaction_module
 from .model_api import UserReactionModule, partition_trainable

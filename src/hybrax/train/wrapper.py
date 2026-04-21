@@ -5,8 +5,8 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bpbench.dataclasses import BioProcess, FeedVolumeChange, StaticVariable
-from bpbench.mechanistic import RhsOde, get_rhs_ode
+from bp_format.dataclasses import BioProcess, FeedVolumeChange, StaticVariable
+from bp_format.mechanistic import RhsOde, get_rhs_ode
 
 from .controls_store import PerProcessControls
 

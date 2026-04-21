@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Iterable
 
 import numpy as np
-from bpbench import validate_process
-from bpbench.dataclasses import (
+from bp_format import validate_process
+from bp_format.dataclasses import (
     BioProcessCollection,
     FeedMediumComponent,
     FeedVolumeChange,
@@ -35,7 +35,7 @@ def validate_collection(
             if not entry["ok"]
         ]
         if errors:
-            raise ValueError("bpbench validation failed:\n" + "\n".join(errors))
+            raise ValueError("bp_format validation failed:\n" + "\n".join(errors))
 
     return report
 

@@ -1,6 +1,6 @@
-# BPbench API Notes for BP-Train
+# bp-format API Notes for BP-Train
 
-This file tracks `bpbench` API seams, required adapters, and suggested upstream
+This file tracks `bp_format` API seams, required adapters, and suggested upstream
 changes discovered while designing `bp-train`.
 
 It is intentionally concrete. Some items are blockers, others are cleanup or
@@ -10,7 +10,7 @@ ergonomic improvements.
 
 ### Current State
 
-- `bpbench` should expose `Interpolator` as the field type and
+- `bp_format` should expose `Interpolator` as the field type and
   `interpolator` as the serialized field name.
 - `bp-train` should target the renamed `interpolator` API.
 - deserialization fallback for older serialized artifacts remains useful.
@@ -40,14 +40,14 @@ with `hybrax-prep` outputs and reduces avoidable complexity.
 
 - keep `load_process_collection(...)` and `save_process_collection(...)` as
   first-class APIs,
-- document them clearly in `bpbench`,
+- document them clearly in `bp_format`,
 - ensure example workflows demonstrate this path.
 
-## 3. Relationship to `bpbench.mechanistic`
+## 3. Relationship to `bp_format.mechanistic`
 
 ### Current State
 
-`bpbench.mechanistic` already provides a correct reference implementation for
+`bp_format.mechanistic` already provides a correct reference implementation for
 control evaluation and ODE wrapper logic.
 
 ### Impact on `bp-train`
@@ -88,7 +88,7 @@ This forces `bp-train` to rely on code-level preprocessing hooks in V1.
 
 ### Requested Direction
 
-Long-term, `bpbench` should support richer metadata for control semantics, for
+Long-term, `bp_format` should support richer metadata for control semantics, for
 example:
 
 - semantic role,
@@ -108,7 +108,7 @@ transformed JSON artifact.
 
 ### Requested Direction
 
-Define or at least document a stable metadata namespace in `bpbench` for
+Define or at least document a stable metadata namespace in `bp_format` for
 downstream tooling to record:
 
 - source dataset id or path,
@@ -134,7 +134,7 @@ standardized.
 
 ### Requested Direction
 
-`bpbench` would benefit from lightweight helpers for:
+`bp_format` would benefit from lightweight helpers for:
 
 - copying processes,
 - replacing process variables,
@@ -148,7 +148,7 @@ This is not a hard blocker, but it would simplify downstream prep code.
 ### Current State
 
 The sample `input.json` used here has empty `reactor_medium.components`, while
-`bpbench.mechanistic` expects richer reactor/feed semantics.
+`bp_format.mechanistic` expects richer reactor/feed semantics.
 
 ### Impact on `bp-train`
 
@@ -157,7 +157,7 @@ training can use the wrapper-managed dilution path.
 
 ### Requested Direction
 
-- add `bpbench` examples that explicitly populate reactor/feed semantics for
+- add `bp_format` examples that explicitly populate reactor/feed semantics for
   mechanistic or hybrid training use,
 - document the minimal fields required for downstream ODE usage.
 
@@ -165,8 +165,8 @@ training can use the wrapper-managed dilution path.
 
 ### Current State
 
-The added `bpbench` example notebooks suggest a useful code-first workflow:
-constructing or modifying `bpbench` dataclass objects directly in Python.
+The added `bp_format` example notebooks suggest a useful code-first workflow:
+constructing or modifying `bp_format` dataclass objects directly in Python.
 
 ### Requested Direction
 
@@ -180,7 +180,7 @@ That aligns well with the hybrid configuration approach `bp-train` wants:
 
 ### Requested Direction
 
-For the near term, `bpbench` should preserve read compatibility for older
+For the near term, `bp_format` should preserve read compatibility for older
 serialized artifacts where possible, especially around:
 
 - `spline` vs `interpolator`,

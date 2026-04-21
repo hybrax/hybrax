@@ -3,7 +3,7 @@
 ## 1. Purpose
 
 `bp-train` is the hybrid-model training package of the BP ecosystem. It consumes
-`bpbench`-compatible serialized bioprocess data, prepares a training-ready
+`bp_format`-compatible serialized bioprocess data, prepares a training-ready
 artifact, exposes a small researcher-facing model API, and trains hybrid models
 with standardized handling of controls, feeds, volume, and dilution.
 
@@ -13,7 +13,7 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 
 ## 2. V1 Goals
 
-- Load `bpbench` `BioProcessCollection` JSON artifacts using `bpbench`
+- Load `bp_format` `BioProcessCollection` JSON artifacts using `bp_format`
   deserialization.
 - Standardize controls and measured states into a training-ready prepared
   artifact.
@@ -32,7 +32,7 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 - Support only stateless user models in V1.
 - Train only against real measurement timestamps in V1.
 - Provide strong validation and fail-fast behavior.
-- Keep a concrete running note of `bpbench` API changes or adapters required by
+- Keep a concrete running note of `bp_format` API changes or adapters required by
   this package.
 
 ## 3. Explicit Non-Goals for V1
@@ -49,7 +49,7 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 
 ## 4. Design Principles
 
-- `bpbench` remains the semantic source of truth for process data structures.
+- `bp_format` remains the semantic source of truth for process data structures.
 - The prepared artifact is explicit and persisted; training should not re-run
   bespoke preprocessing code on every invocation.
 - Configuration is split by responsibility:
@@ -69,17 +69,17 @@ V1 is split into three phases.
 
 ### 5.1 Phase A: Raw Data Load
 
-- Input artifact is a `bpbench` JSON file, usually emitted by `hybrax-prep` or a
-  `bpbench` example workflow.
-- The loader uses `bpbench.serialization.load_process_collection_json(...)`
+- Input artifact is a `bp_format` JSON file, usually emitted by `hybrax-prep` or a
+  `bp_format` example workflow.
+- The loader uses `bp_format.serialization.load_process_collection_json(...)`
   when given a JSON file path and otherwise follows the
-  process-collection-first `bpbench` loading path.
+  process-collection-first `bp_format` loading path.
 - The loaded object is treated as a `BioProcessCollection` plus metadata.
 
 ### 5.2 Phase B: Preparation
 
 - `bp-train` applies config-driven and code-driven transforms to build a new
-  prepared `bpbench` JSON artifact.
+  prepared `bp_format` JSON artifact.
 - This phase is the only place where custom case-study preprocessing is
   expected.
 - Output is `prepared.json`, which contains all original fields plus updated
@@ -102,8 +102,8 @@ V1 is split into three phases.
 
 ### 6.1 Raw Artifact
 
-The raw artifact is a `bpbench` JSON file such as `input.json`. It is assumed to
-be valid `bpbench` data, but it is not assumed to already be training-ready.
+The raw artifact is a `bp_format` JSON file such as `input.json`. It is assumed to
+be valid `bp_format` data, but it is not assumed to already be training-ready.
 
 Important implications:
 
@@ -114,7 +114,7 @@ Important implications:
 
 ### 6.2 Prepared Artifact
 
-The prepared artifact is a full `bpbench` JSON file derived from the raw one.
+The prepared artifact is a full `bp_format` JSON file derived from the raw one.
 It must preserve all fields from the input and may modify or add:
 
 - `is_controlled` flags to align with the training config,
@@ -128,7 +128,7 @@ It must preserve all fields from the input and may modify or add:
 
 The prepared artifact is the canonical input to V1 training.
 
-`TimeSeries` data in prepared artifacts should use canonical `bpbench`
+`TimeSeries` data in prepared artifacts should use canonical `bp_format`
 `times`/`values` fields. Beyond carrying sampled traces, `TimeSeries` also
 supports higher-level operations that V1 code may rely on where useful,
 including:
@@ -161,8 +161,8 @@ V1 uses a hybrid configuration model rather than a JSON-only system.
 
 ### 7.1 What Lives in Persisted JSON
 
-- raw `bpbench` process data,
-- prepared `bpbench` process data,
+- raw `bp_format` process data,
+- prepared `bp_format` process data,
 - prep provenance,
 - training metadata derived during preparation,
 - scaling statistics derived during preparation when needed,
@@ -184,14 +184,14 @@ Code-level configuration lives in `custom.py` and is the place for:
 This is intentionally similar in spirit to `hybrax-train`, but with a clearer
 division between persisted artifacts and runtime customization.
 
-Code-level configuration may directly construct, mutate, or enrich `bpbench`
+Code-level configuration may directly construct, mutate, or enrich `bp_format`
 dataclass objects before serialization. This code-first workflow is explicitly
-supported in V1 and mirrors the style already used in `bpbench` examples and
+supported in V1 and mirrors the style already used in `bp_format` examples and
 notebooks.
 
 ### 7.3 Why V1 Uses This Split
 
-- `bpbench` dataclasses already carry the true semantics of the domain.
+- `bp_format` dataclasses already carry the true semantics of the domain.
 - feed and volume semantics are too structural to encode comfortably in ad hoc
   JSON fields alone,
 - model partitioning and scaling are better expressed as code,
@@ -207,7 +207,7 @@ V1 uses a `custom.py` module for all non-default researcher code.
 - process-collection preprocessing hook,
 - optional observation model,
 - optional explicit config objects defined as Python code,
-- optional code that constructs or enriches `bpbench` dataclass objects before
+- optional code that constructs or enriches `bp_format` dataclass objects before
   writing `prepared.json`.
 
 ### 8.2 Default Hook Signatures
@@ -257,19 +257,19 @@ be added later, but V1 does not require them.
 
 ## 9. Preparation Pipeline
 
-The preparation step converts raw `bpbench` data into `prepared.json`.
+The preparation step converts raw `bp_format` data into `prepared.json`.
 
 ### 9.1 Inputs
 
-- raw `bpbench` JSON,
+- raw `bp_format` JSON,
 - code-level config from `custom.py`,
 - optional lightweight run config.
 
 ### 9.2 Processing Steps
 
 1. Load the raw `BioProcessCollection`.
-2. Run first-pass `bpbench` validation on the raw collection, at minimum by
-   calling `bpbench.validate_process(...)` for each process before custom
+2. Run first-pass `bp_format` validation on the raw collection, at minimum by
+   calling `bp_format.validate_process(...)` for each process before custom
    transforms.
 3. Resolve case-study-specific config in code.
 4. Apply `transform_process_collection(collection, config)` once for
@@ -280,7 +280,7 @@ The preparation step converts raw `bpbench` data into `prepared.json`.
    were not already provided by user code.
 7. Validate control roles, state roles, feed semantics, reactor/feed component
    completeness, and required interpolators.
-8. Run strict post-transform `bpbench` validation on the prepared processes
+8. Run strict post-transform `bp_format` validation on the prepared processes
    before writing `prepared.json`.
 9. Persist structural runtime-control metadata needed to rebuild controls at
    training-load time.
@@ -305,10 +305,10 @@ Prep must fail fast if:
 - a variable is required both as a measured state and a control without a
   clearly declared role.
 
-This validation layer should reuse existing `bpbench` checks where possible
+This validation layer should reuse existing `bp_format` checks where possible
 rather than reimplementing them from scratch.
 
-The intended V1 contract is that strict post-transform `bpbench` validation runs
+The intended V1 contract is that strict post-transform `bp_format` validation runs
 before `prepared.json` is written. If the raw input is incomplete, the
 expectation is that `custom.py` enriches the required medium/species semantics
 during prep rather than downstream code working around them later.
@@ -330,7 +330,7 @@ Control ordering is:
    - controlled process variables.
 
 This matches the ordering convention already used by
-`bpbench.mechanistic.ControlSplines` and must be written into the prepared
+`bp_format.mechanistic.ControlSplines` and must be written into the prepared
 artifact metadata.
 
 ### 10.3 Rates vs Cumulative Traces
@@ -416,7 +416,7 @@ V1 no longer exposes a segmented public controls API. Instead it uses a dense,
 single-interpolator representation built by `ControlsStore` at runtime from the
 prepared process collection.
 
-The runtime implementation is JAX-first. `bpbench` and `bp-train` both live in a
+The runtime implementation is JAX-first. `bp_format` and `bp-train` both live in a
 JAX-based stack, so the controls store should load the prepared payload into a
 small number of padded JAX arrays, not a Python list of variable-shape arrays.
 The canonical runtime representation is therefore one collection-level array per
@@ -445,10 +445,10 @@ the prepared artifact.
 
 For each experiment:
 
-- start from `bpbench` `Interpolator` objects,
+- start from `bp_format` `Interpolator` objects,
 - build the runtime controls path inside `bp-train` (`ControlsStore`) from
   those interpolators using globally padded arrays,
-- reuse `bpbench.mechanistic` conventions where useful, especially deterministic
+- reuse `bp_format.mechanistic` conventions where useful, especially deterministic
   control ordering and feed classification,
 - convert non-continuous controlled feed additions into bolus-feed triangles as
   specified in Section 11.3,
@@ -645,7 +645,7 @@ The wrapper handles:
 - state clamping and continuous-volume-state mechanics,
 - reconstruction of physical volume from sampling history,
 - augmented-controls assembly (base controls plus flattened `Cin` inputs),
-- delegation to `bpbench.mechanistic.RhsOde` for biomass scaling,
+- delegation to `bp_format.mechanistic.RhsOde` for biomass scaling,
   feed transport, and dilution,
 - returning the final state derivative.
 
@@ -710,7 +710,7 @@ At runtime the wrapper receives:
 - current continuous volume state `V_cont`,
 - control values at time `t`,
 - reaction-module outputs,
-- a mechanistic RHS object (`bpbench.mechanistic.RhsOde`) built from process
+- a mechanistic RHS object (`bp_format.mechanistic.RhsOde`) built from process
   metadata.
 
 ### 14.2 Responsibilities
@@ -747,21 +747,21 @@ runtime contract strict:
   the wrapper as extra transport/volume terms,
 - modeled feeds come from `ReactionOutputs.modeled_feed_rates`,
 - `ReactionOutputs.modeled_feed_rates` must follow the same positional
-  convention used by `bpbench.mechanistic.RhsOde`, aligned to the ordered list
+  convention used by `bp_format.mechanistic.RhsOde`, aligned to the ordered list
   of explicit modeled feed streams declared in the process metadata.
 
 There is no partially automatic mode in which some dilution terms come from the
 wrapper and others are manually implemented in user code.
 
-### 14.4 Relationship to `bpbench.mechanistic`
+### 14.4 Relationship to `bp_format.mechanistic`
 
-V1 uses `bpbench.mechanistic` directly for mechanistic RHS evaluation.
+V1 uses `bp_format.mechanistic` directly for mechanistic RHS evaluation.
 
 Current runtime split:
 
 - `bp-train` owns controls preparation/evaluation (`ControlsStore`), batching,
   loss evaluation, and training-loop behavior.
-- `bpbench.mechanistic.RhsOde` owns mechanistic derivative assembly
+- `bp_format.mechanistic.RhsOde` owns mechanistic derivative assembly
   for species kinetics plus continuous/modeled feed transport (`q * X_active`,
   transport, dilution, and `dV/dt` for those streams).
 - `bp-train`'s wrapper remains a thin adapter that maps controls/model outputs
@@ -770,7 +770,7 @@ Current runtime split:
   for controlled non-continuous feed bolus triangles so total integrated
   `V_cont` includes both continuous and bolus-feed additions.
 
-This keeps mechanistic math aligned with bpbench while preserving padded,
+This keeps mechanistic math aligned with bp_format while preserving padded,
 JIT-stable training infrastructure in `bp-train`.
 
 ## 15. Training Data Object
@@ -783,7 +783,7 @@ The minimum V1 training data object per experiment is:
 - `y0`,
 - `controls`.
 
-In V1, state interpolators are preserved in the transformed `bpbench`
+In V1, state interpolators are preserved in the transformed `bp_format`
 collection itself via the canonical `interpolator` field on state-bearing
 objects. They do not need to be duplicated into a separate `bp_train` metadata
 store unless a later augmentation pipeline requires a runtime-optimized state
@@ -970,7 +970,7 @@ At minimum, the prepared artifact metadata should include:
   to rebuild padded runtime controls in `ControlsStore`.
 
 V1 should store this under an explicit package-specific namespace such as
-`metadata["bp_train"]` to avoid collisions with upstream `bpbench` metadata.
+`metadata["bp_train"]` to avoid collisions with upstream `bp_format` metadata.
 
 Long-term provenance can become more sophisticated, but V1 should still be
 explicit enough to support debugging and reproducibility.
@@ -1087,7 +1087,7 @@ V1 should prioritize tests that de-risk the chosen simplifications.
 
 Recommended implementation order (historical planning baseline):
 
-1. preparation pipeline that loads raw `bpbench` JSON and writes `prepared.json`,
+1. preparation pipeline that loads raw `bp_format` JSON and writes `prepared.json`,
 2. validation layer and prep metadata,
 3. a concrete `custom.py` for the first real dataset, developed early enough to
    stress the API before it hardens,
@@ -1127,8 +1127,8 @@ Current limitations:
 - `Cin` is currently constant at runtime; processes requiring time-varying feed
   composition are not supported in this implementation.
 - `bp-train` currently delegates mechanistic RHS evaluation to
-  `bpbench.mechanistic.RhsOde`, so training/batching-specific performance
-  optimizations in that mechanistic inner loop must be implemented in bpbench.
+  `bp_format.mechanistic.RhsOde`, so training/batching-specific performance
+  optimizations in that mechanistic inner loop must be implemented in bp_format.
 - The current reaction-module contract is `specific_rates q` plus
   `modeled_feed_rates`, and the mechanistic RHS applies `q * X_active` before
   adding transport/dilution terms. This means arbitrary non-transport,

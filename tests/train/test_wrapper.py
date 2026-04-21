@@ -3,7 +3,7 @@ from __future__ import annotations
 import diffrax
 import jax.numpy as jnp
 import pytest
-from bpbench.dataclasses import (
+from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -569,7 +569,7 @@ def test_wrapper_optional_ann_volume_feature_uses_v_real():
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():
-    from bpbench.mechanistic import get_rhs_ode
+    from bp_format.mechanistic import get_rhs_ode
 
     process_a = _make_single_species_process()
     process_b = _make_two_species_two_feed_process()

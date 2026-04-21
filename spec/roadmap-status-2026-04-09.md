@@ -27,7 +27,7 @@ Below the per-section walk, two appendices collect:
 
 > **Generality reminder.** `bp-train` is meant to be a *general* bioprocess
 > simulation/training package for any dataset that can be expressed in the
-> bpbench data format. Anything that hard-codes case-study-specific names,
+> bp_format data format. Anything that hard-codes case-study-specific names,
 > shapes, or biology is a bug for V1, not a feature.
 
 ---
@@ -36,10 +36,10 @@ Below the per-section walk, two appendices collect:
 
 | Spec | Status | Notes |
 |---|---|---|
-| Consume bpbench-compatible serialized bioprocess data | ✅ | `prepare.load_raw_collection` accepts a JSON path, an in-memory `BioProcessCollection`, or a `BenchmarkDataset` and pulls a named case study out of the latter. |
+| Consume bp_format-compatible serialized bioprocess data | ✅ | `prepare.load_raw_collection` accepts a JSON path, an in-memory `BioProcessCollection`, or a `BenchmarkDataset` and pulls a named case study out of the latter. |
 | Prepare a training-ready artifact | ✅ | `prepare.prepare_artifact(...)` is the canonical entry point and is exported from `bp_train/__init__.py`. |
 | Researcher-facing model API | ✅ | `bp_train/model_api.py` exposes `UserReactionModule`, `ReactionOutputs`, `partition_trainable`. |
-| Train hybrid models with standardized controls/feeds/volume/dilution | ✅ | `bp_train/wrapper.py::HybridOdeWrapper` owns this; it delegates the mechanistic step to `bpbench.mechanistic.RhsOde`. |
+| Train hybrid models with standardized controls/feeds/volume/dilution | ✅ | `bp_train/wrapper.py::HybridOdeWrapper` owns this; it delegates the mechanistic step to `bp_format.mechanistic.RhsOde`. |
 
 ---
 
@@ -47,7 +47,7 @@ Below the per-section walk, two appendices collect:
 
 | Goal | Status | Where |
 |---|---|---|
-| Load bpbench `BioProcessCollection` JSON via bpbench deserialization | ✅ | `prepare.load_raw_collection`, `controls_store.ControlsStore.from_json`, `training_data.TrainingDataStore.from_json`. |
+| Load bp_format `BioProcessCollection` JSON via bp_format deserialization | ✅ | `prepare.load_raw_collection`, `controls_store.ControlsStore.from_json`, `training_data.TrainingDataStore.from_json`. |
 | Standardize controls/measured states into a prepared artifact | ✅ | `prepare.prepare_artifact` |
 | Hybrid config (JSON artifacts + `custom.py` + optional run JSON) | ✅ | `utils.load_custom_module`, `utils.resolve_config`, prepare/train CLIs both accept `--custom` and `--config`. |
 | Globally padded controls representation that avoids recompilation | ✅ | `controls_store.ControlsStore` stacks all processes into `[n_processes, max_grid_length, max_controls]`. |
@@ -57,7 +57,7 @@ Below the per-section walk, two appendices collect:
 | Stateless user models only | ✅ | `model_api.UserReactionModule.__call__` is purely `(t, c, u) → ReactionOutputs`; nothing in the package threads recurrent state. |
 | Train against real measurement timestamps only | ✅ | `training_data._timeseries_numpy` reads measured times directly; the harness drives the solver against those times. |
 | Strong validation, fail-fast | 🟡 partial | Harness/prepare validation is good; one concrete generality bug is documented in §9 / Appendix A: the prepared-semantics validator hard-codes a "biomass" component. |
-| Maintain a running note on bpbench API changes/adapters | ✅ | `spec/bpbench-api-notes.md` exists. |
+| Maintain a running note on bp_format API changes/adapters | ✅ | `spec/bp_format-api-notes.md` exists. |
 
 ---
 
@@ -73,10 +73,10 @@ data augmentation, no segmented runtime controls API. ✅
 
 | Principle | Status |
 |---|---|
-| `bpbench` is the semantic source of truth | ✅ — `bp_train` never re-defines bpbench dataclasses; it imports them. |
+| `bp_format` is the semantic source of truth | ✅ — `bp_train` never re-defines bp_format dataclasses; it imports them. |
 | Prepared artifact is explicit and persisted | ✅ — `prepare.py` writes `prepared.json` with `metadata["bp_train"]` provenance. |
 | Strict prep, fail at prep time | ✅ for control/feed metadata; 🟡 for the hard-coded biomass requirement (Appendix A.1). |
-| Library owns generic mechanics | ✅ — wrapper + bpbench split. |
+| Library owns generic mechanics | ✅ — wrapper + bp_format split. |
 | User code owns case-study-specific semantics | ✅ — `custom.py` with `transform_process_collection`, `build_sample_acc_series`, `build_reaction_module`, `build_learning_rate`, `estimate_all_scales`. |
 
 ---
@@ -157,7 +157,7 @@ mis-spells one, the harness silently falls back. Worth a unit test.
 ## 9. Preparation Pipeline (spec §9)
 
 ### 9.1 Inputs
-✅ Raw bpbench JSON, `custom.py`, optional JSON config — all wired through
+✅ Raw bp_format JSON, `custom.py`, optional JSON config — all wired through
 `prepare.prepare_artifact`.
 
 ### 9.2 Processing steps 1–12
@@ -165,13 +165,13 @@ mis-spells one, the harness silently falls back. Worth a unit test.
 | Step | Status |
 |---|---|
 | 1. Load raw collection | ✅ |
-| 2. First-pass `validate_process` | ✅ — `validation.validate_raw_collection` calls `bpbench.validate_process` for each process, with a strict mode. |
+| 2. First-pass `validate_process` | ✅ — `validation.validate_raw_collection` calls `bp_format.validate_process` for each process, with a strict mode. |
 | 3. Resolve case-study config in code | ✅ — `utils.resolve_config`. |
 | 4. Apply `transform_process_collection` | ✅ |
 | 5. Reactor/feed enrichment in code | ✅ — happens inside the user hook. |
 | 6. Build default derived controls (`V_sample_acc`, bolus ramps) | ✅ — `controls.build_sample_acc_source_default`, `controls.build_bolus_sources`. |
 | 7. Validate control roles, feed semantics, completeness | ✅ — `validation.ensure_prepared_training_semantics`, `_validate_prepared_control_contract`, `validation.ensure_required_controls`. |
-| 8. Strict post-transform `bpbench` validation | ✅ — `validate_collection(collection, strict=True)` runs after the transform hook. |
+| 8. Strict post-transform `bp_format` validation | ✅ — `validate_collection(collection, strict=True)` runs after the transform hook. |
 | 9. Persist structural runtime-control metadata | ✅ — `metadata["bp_train"]["processes"][name]` carries `local_control_names`, `control_metadata`, `sample_acc_source` (times/values/step_ts/metadata). |
 | 10. Compute scaling stats | 🟡 — happens in user code via `estimate_all_scales`, but is **not persisted** in `prepared.json`. The spec section 13 explicitly says the prep phase may compute and persist these stats. Today they are recomputed at every training run from the in-memory collection. (See Appendix A.3.) |
 | 11. Update prep metadata | ✅ |
@@ -186,7 +186,7 @@ mis-spells one, the harness silently falls back. Worth a unit test.
 | Feed stream metadata underspecified | ✅ | `validation.ensure_prepared_training_semantics` requires `feed_medium` and component metadata for every feed change. |
 | Feed-media coverage invalid for a positive feed stream | ✅ | Same. |
 | Reactor/feed component metadata missing | ✅ | Same. |
-| **Biomass or other required dynamic species missing** | ❌ generality bug | `validation.py:104, 167-169` literally checks `name.strip().lower() == "biomass"` and raises if no component named "biomass" exists. This is a hard-coded case-study assumption — the bpbench schema does not require the biomass-like component to be called "biomass". A general bioprocess package should let the user *declare* which reactor component plays the biomass role (or relax the requirement). See Appendix A.1. |
+| **Biomass or other required dynamic species missing** | ❌ generality bug | `validation.py:104, 167-169` literally checks `name.strip().lower() == "biomass"` and raises if no component named "biomass" exists. This is a hard-coded case-study assumption — the bp_format schema does not require the biomass-like component to be called "biomass". A general bioprocess package should let the user *declare* which reactor component plays the biomass role (or relax the requirement). See Appendix A.1. |
 | Initial condition cannot be constructed | 🟡 | Implicit — `training_data` raises if a target has no measurements, but does not have a dedicated "missing initial state" error. |
 | Control ordering inconsistent | ✅ | `prepare._validate_prepared_control_contract` and `controls_store.ControlsStore.from_collection` both fail fast. |
 | Shapes/units irreconcilable | ✅ | `wrapper.validate_rhs_ode_compatibility`. |
@@ -209,7 +209,7 @@ and re-read by `controls_store._ordered_control_sources`.
 
 ### 10.3 Rates vs cumulative
 ✅ The store keeps the **cumulative** value as the dense control (matching the
-bpbench `FeedVolumeChange` traces); the wrapper consumes
+bp_format `FeedVolumeChange` traces); the wrapper consumes
 `controls.eval_derivative(...)` for feed channels to get the actual flow
 rates. Documented in `wrapper.HybridOdeWrapper.__call__` lines 296–308.
 
@@ -369,8 +369,8 @@ which would make runs more reproducible.
 `RhsOde.modeled_flow_names`. The wrapper raises `ValueError` if
 `modeled_feed_rates.shape != (f_modeled_size,)`.
 
-### 14.4 Relationship to bpbench.mechanistic
-✅ `bp-train` owns controls/batching/loss/training-loop; `bpbench.mechanistic.RhsOde`
+### 14.4 Relationship to bp_format.mechanistic
+✅ `bp-train` owns controls/batching/loss/training-loop; `bp_format.mechanistic.RhsOde`
 owns mechanistic derivative assembly. The wrapper is a thin adapter.
 
 ---
@@ -614,7 +614,7 @@ All explicitly deferred. ✅
 | Limitation | Still true? |
 |---|---|
 | `Cin` constant at runtime | ✅ true — `wrapper.py:312-317` builds `cin_flat` from `rhs_ode.Cin` and `Cin_modeled`, both fixed at wrapper-construction time. |
-| `bp-train` delegates mechanistic RHS to `bpbench.mechanistic.RhsOde` | ✅ true |
+| `bp-train` delegates mechanistic RHS to `bp_format.mechanistic.RhsOde` | ✅ true |
 | Reaction-module contract is `q + modeled_feed_rates`, can't bypass `q * X_active` | ✅ true |
 
 ---
@@ -633,7 +633,7 @@ and then [`validation.py:167-169`](../bp_train/validation.py#L167) raises if
 `has_biomass` is `False`. This is the most concrete generality violation in
 the package: a dataset whose biomass-like reactor component is named `X`,
 `cells`, `cell_mass`, `Pichia_pastoris`, `WCW`, `DCW`, `cdw`, … will fail
-prep even though everything else about it is well-formed. The bpbench schema
+prep even though everything else about it is well-formed. The bp_format schema
 does not require the biomass component to be called "biomass".
 
 **Suggested fix**: replace the hard-coded check with one of:
@@ -643,13 +643,13 @@ does not require the biomass component to be called "biomass".
    `metadata["bp_train"]["biomass_component"]`.
 2. A heuristic *plus* override: try to discover a biomass-like component
    (heuristic search for the reactor component referenced as `X_active` by
-   `bpbench.mechanistic.RhsOde`, since bpbench already needs to know which
+   `bp_format.mechanistic.RhsOde`, since bp_format already needs to know which
    component is biomass to build the mechanistic RHS) and let the user
    override it via `custom.CONFIG`.
-3. Drop the requirement entirely from `bp-train` and rely on bpbench's
+3. Drop the requirement entirely from `bp-train` and rely on bp_format's
    `validate_process` to fail if the mechanistic ODE cannot be built.
 
-Option 2 or 3 is preferred — bpbench is already the source of truth.
+Option 2 or 3 is preferred — bp_format is already the source of truth.
 
 ## A.2 — Undocumented hooks (`build_learning_rate`, `estimate_all_scales`, `build_reaction_module(collection=...)`)
 
@@ -704,7 +704,7 @@ submodule. One-line fix.
 [`bp_train/cli.py:250-252`](../bp_train/cli.py#L250) does
 
 ```python
-from bpbench.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection_json
 from .training_data import TrainingDataStore
 ```
 

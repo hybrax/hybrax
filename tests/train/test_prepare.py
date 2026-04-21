@@ -5,7 +5,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bpbench.dataclasses import (
+from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -21,7 +21,7 @@ from bpbench.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bpbench.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection_json
 
 from bp_train.controls import (
     BOLUS_MIN_DT_DURATION_DENOMINATOR,
@@ -93,7 +93,7 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bpbench.dataclasses import ReactorMediumComponent, TimeSeries",
+                "from bp_format.dataclasses import ReactorMediumComponent, TimeSeries",
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
@@ -119,7 +119,7 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bpbench.dataclasses import ("
+                "from bp_format.dataclasses import ("
                 "FeedMediumComponent, ReactorMediumComponent, "
                 "StaticVariable, TimeSeries)",
                 "import jax.numpy as jnp",
@@ -161,7 +161,7 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bpbench.dataclasses import ("
+                "from bp_format.dataclasses import ("
                 "FeedMediumComponent, ReactorMediumComponent, "
                 "StaticVariable, TimeSeries)",
                 "import jax.numpy as jnp",
@@ -374,7 +374,7 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     output = tmp_path / "prepared.json"
     custom_py = tmp_path / "custom.py"
     _write_sample_semantics_custom_py(custom_py)
-    with pytest.warns(UserWarning, match="bpbench validation reported non-OK status"):
+    with pytest.warns(UserWarning, match="bp_format validation reported non-OK status"):
         prepare_artifact(_make_invalid_collection(), output, custom_py=custom_py)
 
     prepared = load_process_collection_json(output)
@@ -388,10 +388,10 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     assert process_md["sample_acc_name"] == "V_sample_acc"
     assert process_md["local_control_names"][-1] == "V_sample_acc"
     assert process_md["control_metadata"]["V_sample_acc"]["event_count"] >= 1
-    assert any(not entry["ok"] for entry in metadata["bpbench_validation_raw"].values())
-    assert all(entry["ok"] for entry in metadata["bpbench_validation"].values())
+    assert any(not entry["ok"] for entry in metadata["bp_format_validation_raw"].values())
+    assert all(entry["ok"] for entry in metadata["bp_format_validation"].values())
     assert all(
-        entry["ok"] for entry in metadata["bpbench_validation_prepared"].values()
+        entry["ok"] for entry in metadata["bp_format_validation_prepared"].values()
     )
     assert metadata["prepared_semantics_validation"][first_name]["ok"] is True
     semantics = metadata["semantics_provenance"]["processes"][first_name]
@@ -605,7 +605,7 @@ def test_prepare_artifact_fails_without_required_medium_enrichment(tmp_path):
         )
 
 
-def test_prepare_artifact_fails_strict_post_transform_bpbench_validation(tmp_path):
+def test_prepare_artifact_fails_strict_post_transform_bp_format_validation(tmp_path):
     custom_py = tmp_path / "custom-incomplete-feed.py"
     _write_feed_semantics_incomplete_custom_py(custom_py)
 
@@ -613,7 +613,7 @@ def test_prepare_artifact_fails_strict_post_transform_bpbench_validation(tmp_pat
         pytest.warns(UserWarning),
         pytest.raises(
             ValueError,
-            match="bpbench validation failed",
+            match="bp_format validation failed",
         ),
     ):
         prepare_artifact(

@@ -7,10 +7,10 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bpbench.dataclasses import (
+from bp_format.dataclasses import (
     BioProcessCollection,
 )
-from bpbench.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection_json
 
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
