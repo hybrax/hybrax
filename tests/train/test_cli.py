@@ -4,7 +4,28 @@ import json
 from pathlib import Path
 
 from bp_train import cli
-from bp_train.harness import TrainHarnessConfig, TrainHarnessResult
+from bp_train.harness import ForwardResult, TrainHarnessConfig, TrainHarnessResult
+
+
+class _DummyCollection:
+    processes = {"p1": object(), "p2": object(), "p3": object()}
+
+
+class _DummyStore:
+    process_order = ("p1", "p2", "p3")
+
+
+def _stub_forward_result() -> ForwardResult:
+    return ForwardResult(
+        trained_wrapper=None,
+        store=_DummyStore(),
+        process_names=("p1",),
+        target_names=("X",),
+        modeled_flow_names=(),
+        training_process_names=("p1",),
+        per_process_total_loss={"p1": 0.1},
+        per_process_per_target_loss={"p1": (0.1,)},
+    )
 
 
 def test_prepare_cli_dispatches_to_prepare_artifact(monkeypatch):
@@ -83,7 +104,7 @@ def test_prepare_cli_loads_config_json(monkeypatch, tmp_path: Path):
 def test_train_cli_dispatches_to_train_harness(monkeypatch):
     captured: dict[str, object] = {}
 
-    sentinel_collection = object()
+    sentinel_collection = _DummyCollection()
 
     def fake_load(json_path):
         captured["loaded_path"] = json_path
@@ -110,6 +131,10 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
     monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
     monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     # Stub out model saving (trained_wrapper is None in this test)
     from bp_train import postprocessing
@@ -184,7 +209,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
 def test_train_cli_plots_only_selected_processes(monkeypatch):
     captured: dict[str, object] = {}
 
-    sentinel_collection = object()
+    sentinel_collection = _DummyCollection()
 
     def fake_load(json_path):
         captured["loaded_path"] = json_path
@@ -208,24 +233,10 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
 
     from bp_train import postprocessing
-    from bp_train import training_data as td
 
     monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
-
-    class _DummyStore:
-        process_order = ("p1", "p2", "p3")
-
-    def fake_store_from_collection(
-        collection,
-        *,
-        target_variable_order=None,
-        target_source="auto",
-    ):
-        del collection, target_variable_order, target_source
-        return _DummyStore()
-
     monkeypatch.setattr(
-        td.TrainingDataStore, "from_collection", fake_store_from_collection
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
 
     def fake_plot_training_results(
@@ -238,10 +249,14 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
         solver_max_steps=4096,
         solver_rtol=1e-3,
         solver_atol=1e-5,
+        solver_use_jump_ts=True,
+        timeseries_csv_path=None,
     ):
         del result, collection, store, output_dir
         del solver_max_steps, solver_rtol, solver_atol
         captured["plot_process_names"] = process_names
+        captured["predictions_csv"] = timeseries_csv_path
+        captured["solver_use_jump_ts"] = solver_use_jump_ts
 
     monkeypatch.setattr(cli, "plot_training_results", fake_plot_training_results)
 
@@ -256,6 +271,7 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
             "p3",
             "--steps",
             "2",
+            "--no-jump-ts",
             "--output-dir",
             "out",
             "--plot",
@@ -264,6 +280,70 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
 
     assert exit_code == 0
     assert captured["plot_process_names"] == ("p1", "p3")
+    assert str(captured["predictions_csv"]).endswith("out/predictions.csv")
+    assert captured["solver_use_jump_ts"] is False
+
+
+def test_train_cli_writes_losses_and_predictions_even_with_no_plot(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "load_process_collection_json",
+        lambda _p: _DummyCollection(),
+    )
+    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
+    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
+
+    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+        del collection, config, custom_py, runtime_config
+        return TrainHarnessResult(
+            trained_wrapper=None,
+            mean_loss_by_step=(1.0, 0.5),
+            sampled_loss_by_process_at_log_steps={},
+            batch_process_names_by_step=(("p1",),),
+            per_process_loss_by_step=((0.5,),),
+            compile_warmup_seconds=0.1,
+            step_time_seconds=(0.01,),
+            train_step_input_signature=(),
+            train_step_rebuild_count=0,
+        )
+
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+
+    def fake_write_loss_csv(rows, path):
+        captured["loss_path"] = path
+        captured["loss_rows"] = rows
+
+    def fake_plot_process_simulations(*args, **kwargs):
+        captured["render_plots"] = kwargs.get("render_plots")
+        captured["timeseries_csv_path"] = kwargs.get("timeseries_csv_path")
+        captured["solver_use_jump_ts"] = kwargs.get("solver_use_jump_ts")
+
+    monkeypatch.setattr(cli, "_write_loss_csv", fake_write_loss_csv)
+    monkeypatch.setattr(cli, "plot_process_simulations", fake_plot_process_simulations)
+
+    exit_code = cli.main(
+        [
+            "train",
+            "--input",
+            "prepared.json",
+            "--output-dir",
+            "out",
+            "--no-jump-ts",
+            "--no-plot",
+        ]
+    )
+
+    assert exit_code == 0
+    assert str(captured["loss_path"]).endswith("out/losses.csv")
+    assert captured["loss_rows"][0][0] == "process"
+    assert captured["render_plots"] is False
+    assert str(captured["timeseries_csv_path"]).endswith("out/predictions.csv")
+    assert captured["solver_use_jump_ts"] is False
 
 
 def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
@@ -271,7 +351,7 @@ def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
     captured: dict[str, object] = {}
 
     def fake_load(json_path):
-        return object()
+        return _DummyCollection()
 
     def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
         captured["config"] = config
@@ -289,6 +369,10 @@ def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     from bp_train import postprocessing
 
     monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
@@ -320,7 +404,9 @@ def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
 def test_train_cli_uses_config_targets_when_target_flag_missing(monkeypatch):
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(
+        cli, "load_process_collection_json", lambda _p: _DummyCollection()
+    )
     monkeypatch.setattr(
         cli,
         "load_custom_module",
@@ -348,6 +434,10 @@ def test_train_cli_uses_config_targets_when_target_flag_missing(monkeypatch):
         )
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     from bp_train import postprocessing
 
     monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
@@ -371,7 +461,9 @@ def test_train_cli_uses_config_targets_when_target_flag_missing(monkeypatch):
 def test_train_cli_uses_none_targets_when_cli_and_config_missing(monkeypatch):
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(
+        cli, "load_process_collection_json", lambda _p: _DummyCollection()
+    )
     monkeypatch.setattr(
         cli,
         "load_custom_module",
@@ -395,6 +487,10 @@ def test_train_cli_uses_none_targets_when_cli_and_config_missing(monkeypatch):
         )
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     from bp_train import postprocessing
 
     monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
@@ -418,7 +514,9 @@ def test_train_cli_uses_none_targets_when_cli_and_config_missing(monkeypatch):
 def test_train_cli_target_flag_overrides_config_targets(monkeypatch):
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(
+        cli, "load_process_collection_json", lambda _p: _DummyCollection()
+    )
     monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
     monkeypatch.setattr(
         cli,
@@ -442,6 +540,10 @@ def test_train_cli_target_flag_overrides_config_targets(monkeypatch):
         )
 
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     from bp_train import postprocessing
 
     monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)

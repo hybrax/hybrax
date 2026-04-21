@@ -124,7 +124,7 @@ def test_train_cli_writes_sidecar_with_solver_and_training_context(
     monkeypatch, tmp_path: Path
 ):
     """After training, a .meta.json sidecar must sit next to the .eqx file."""
-    sentinel_collection = object()
+    sentinel_collection = _make_fake_collection()
 
     def fake_load(_path):
         return sentinel_collection
@@ -145,6 +145,10 @@ def test_train_cli_writes_sidecar_with_solver_and_training_context(
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
     monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     output_dir = tmp_path / "out"
     exit_code = cli.main(
@@ -189,7 +193,7 @@ def test_train_cli_sidecar_defaults_to_none_training_processes_when_not_set(
     """When --process is omitted, training_processes must be None, not missing."""
 
     def fake_load(_path):
-        return object()
+        return _make_fake_collection()
 
     def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
         return TrainHarnessResult(
@@ -207,6 +211,10 @@ def test_train_cli_sidecar_defaults_to_none_training_processes_when_not_set(
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
     monkeypatch.setattr(cli, "save_model", lambda w, p: None)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     output_dir = tmp_path / "out"
     cli.main(
@@ -312,11 +320,13 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
         solver_max_steps,
         solver_rtol,
         solver_atol,
+        solver_use_jump_ts=True,
         training_process_names=None,
         timeseries_csv_path=None,
         filename_suffix="",
     ):
         plot_calls["solver_rtol"] = solver_rtol
+        plot_calls["solver_use_jump_ts"] = solver_use_jump_ts
         plot_calls["training_process_names"] = training_process_names
         plot_calls["process_names"] = process_names
         plot_calls["output_dir"] = Path(output_dir)
@@ -561,6 +571,8 @@ def test_plot_process_simulations_is_exported_with_new_kwargs():
     assert "training_process_names" in sig.parameters
     assert "timeseries_csv_path" in sig.parameters
     assert "filename_suffix" in sig.parameters
+    assert "render_plots" in sig.parameters
+    assert "solver_use_jump_ts" in sig.parameters
 
 
 def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection(

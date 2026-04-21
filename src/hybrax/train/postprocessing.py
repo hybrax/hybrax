@@ -95,6 +95,8 @@ def plot_training_results(
     solver_max_steps: int = 4096,
     solver_rtol: float = 1e-3,
     solver_atol: float = 1e-5,
+    solver_use_jump_ts: bool = True,
+    timeseries_csv_path: str | Path | None = None,
 ) -> None:
     """Generate loss curve and per-process concentration / rate / volume plots."""
     import matplotlib.pyplot as plt
@@ -124,6 +126,8 @@ def plot_training_results(
         solver_max_steps=solver_max_steps,
         solver_rtol=solver_rtol,
         solver_atol=solver_atol,
+        solver_use_jump_ts=solver_use_jump_ts,
+        timeseries_csv_path=timeseries_csv_path,
     )
 
 
@@ -137,9 +141,11 @@ def plot_process_simulations(
     solver_max_steps: int = 4096,
     solver_rtol: float = 1e-3,
     solver_atol: float = 1e-5,
+    solver_use_jump_ts: bool = True,
     training_process_names: tuple[str, ...] | None = None,
     timeseries_csv_path: str | Path | None = None,
     filename_suffix: str = "",
+    render_plots: bool = True,
 ) -> None:
     """Simulate each selected process on a dense grid and render result plots.
 
@@ -192,7 +198,7 @@ def plot_process_simulations(
         pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
         ts_header_written = True
 
-    # --- Per-process plots ---
+    # --- Per-process simulation/exports ---
     for process_name in selected_processes:
         process = collection.processes[process_name]
         process_data = store.get_process(process_name)
@@ -213,6 +219,7 @@ def plot_process_simulations(
 
         y0_scaled = process_wrapper.scale_state(process_data.y0)
         term = diffrax.ODETerm(lambda t, y, args: process_wrapper(t, y))
+        jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
         sol = diffrax.diffeqsolve(
             term,
             diffrax.Tsit5(),
@@ -224,7 +231,7 @@ def plot_process_simulations(
             stepsize_controller=diffrax.PIDController(
                 rtol=solver_rtol,
                 atol=solver_atol,
-                jump_ts=process_data.controls.active_step_ts,
+                jump_ts=jump_ts,
             ),
             max_steps=solver_max_steps,
             throw=False,
@@ -321,130 +328,140 @@ def plot_process_simulations(
             q_dense.append(Q)
         q_dense = np.stack(q_dense, axis=0)
 
-        # --- Layout: species rows + volume row + 1 row per modeled feed ---
-        n_rows = n_species + 1 + n_modeled
-        fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
+        if render_plots:
+            # --- Layout: species rows + volume row + modeled-feed rows ---
+            n_rows = n_species + 1 + n_modeled
+            fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
 
-        for i, sp_name in enumerate(species_names):
-            ax_c = axes[i, 0]
-            comp = process.reactor_medium.components[sp_name]
-            t_meas = np.asarray(comp.concentration.times, dtype=float)
-            v_meas = np.asarray(comp.concentration.values, dtype=float)
-            ax_c.scatter(
-                t_meas, v_meas, s=16, zorder=5, color="black", label="measured"
-            )
-            ax_c.plot(
+            for i, sp_name in enumerate(species_names):
+                ax_c = axes[i, 0]
+                comp = process.reactor_medium.components[sp_name]
+                t_meas = np.asarray(comp.concentration.times, dtype=float)
+                v_meas = np.asarray(comp.concentration.values, dtype=float)
+                ax_c.scatter(
+                    t_meas, v_meas, s=16, zorder=5, color="black", label="measured"
+                )
+                ax_c.plot(
+                    t_dense_np,
+                    c_dense[:, i],
+                    "-",
+                    lw=1.5,
+                    color="C0",
+                    label="integrated",
+                )
+                # Interpolate dense prediction at measurement times for fit metrics.
+                v_pred_at_meas = np.interp(t_meas, t_dense_np, c_dense[:, i])
+                mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
+                _annotate_fit(ax_c, mse, r2)
+                ax_c.set_title(f"{sp_name} [{comp.unit}]")
+                ax_c.set_xlabel(f"time [{time_unit}]")
+                ax_c.set_xlim(t_start, t_end)
+                ax_c.legend(fontsize="small")
+                ax_c.grid(True, alpha=0.3)
+
+                ax_q = axes[i, 1]
+                ax_q.plot(t_dense_np, q_dense[:, i], "-", lw=1.5, color="black")
+                ax_q.axhline(0, color="gray", lw=0.5, ls="--")
+                ax_q.set_title(f"q_{sp_name}")
+                ax_q.set_xlabel(f"time [{time_unit}]")
+                ax_q.set_xlim(t_start, t_end)
+                ax_q.grid(True, alpha=0.3)
+
+            # ---- Volume panel: dense true V_real + integrated curve ----
+            ax_v = axes[n_species, 0]
+            ax_v.plot(
                 t_dense_np,
-                c_dense[:, i],
-                "-",
-                lw=1.5,
-                color="C0",
-                label="integrated",
-            )
-            # Fit metrics: interpolate dense prediction at measurement times.
-            v_pred_at_meas = np.interp(t_meas, t_dense_np, c_dense[:, i])
-            mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
-            _annotate_fit(ax_c, mse, r2)
-            ax_c.set_title(f"{sp_name} [{comp.unit}]")
-            ax_c.set_xlabel(f"time [{time_unit}]")
-            ax_c.set_xlim(t_start, t_end)
-            ax_c.legend(fontsize="small")
-            ax_c.grid(True, alpha=0.3)
-
-            ax_q = axes[i, 1]
-            ax_q.plot(t_dense_np, q_dense[:, i], "-", lw=1.5, color="black")
-            ax_q.axhline(0, color="gray", lw=0.5, ls="--")
-            ax_q.set_title(f"q_{sp_name}")
-            ax_q.set_xlabel(f"time [{time_unit}]")
-            ax_q.set_xlim(t_start, t_end)
-            ax_q.grid(True, alpha=0.3)
-
-        # ---- Volume panel: dense true V_real curve + integrated curve ----
-        ax_v = axes[n_species, 0]
-        ax_v.plot(
-            t_dense_np,
-            v_real_true_dense,
-            "-",
-            lw=1.5,
-            color="black",
-            label="measured",
-        )
-        ax_v.plot(
-            t_dense_np,
-            v_real_pred,
-            "--",
-            lw=1.5,
-            color="C0",
-            label="integrated",
-        )
-        v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
-        _annotate_fit(ax_v, v_mse, v_r2)
-        ax_v.set_title(f"V_real [{process.volume.unit}]")
-        ax_v.set_xlabel(f"time [{time_unit}]")
-        ax_v.set_xlim(t_start, t_end)
-        ax_v.legend(fontsize="small")
-        ax_v.grid(True, alpha=0.3)
-
-        # ---- Right panel: raw volume_changes overlaid ----
-        ax_vc = axes[n_species, 1]
-        bar_width = (t_end - t_start) * 0.02  # 2% of time range
-        for vc_name, vc in process.volume.volume_changes.items():
-            vc_t = np.asarray(vc.values.times, dtype=float)
-            vc_v = np.asarray(vc.values.values, dtype=float)
-            kind = "feed" if isinstance(vc, FeedVolumeChange) else "sample"
-            if vc.is_continuous:
-                ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=f"{vc_name} ({kind})")
-            else:
-                ax_vc.bar(vc_t, vc_v, width=bar_width, label=f"{vc_name} ({kind})", edgecolor="k")
-        ax_vc.set_title(f"volume_changes [{process.volume.unit}]")
-        ax_vc.set_xlabel(f"time [{time_unit}]")
-        ax_vc.set_xlim(t_start, t_end)
-        ax_vc.grid(True, alpha=0.3)
-        if process.volume.volume_changes:
-            ax_vc.legend(fontsize="small")
-
-        # ---- Cumulative modeled feed panels (one row per modeled flow) ----
-        for k, fn in enumerate(modeled_flow_names):
-            row = n_species + 1 + k
-            ax_b = axes[row, 0]
-            ax_b.plot(
-                t_dense_np,
-                b_modeled_true_dense[:, k],
+                v_real_true_dense,
                 "-",
                 lw=1.5,
                 color="black",
                 label="measured",
             )
-            ax_b.plot(
+            ax_v.plot(
                 t_dense_np,
-                b_modeled_pred[:, k],
-                "-",
+                v_real_pred,
+                "--",
                 lw=1.5,
                 color="C0",
                 label="integrated",
             )
-            b_mse, b_r2 = _mse_and_r2(b_modeled_true_dense[:, k], b_modeled_pred[:, k])
-            _annotate_fit(ax_b, b_mse, b_r2)
-            unit = process.volume.volume_changes[fn].unit
-            ax_b.set_title(f"cumulative {fn} [{unit}]")
-            ax_b.set_xlabel(f"time [{time_unit}]")
-            ax_b.set_xlim(t_start, t_end)
-            ax_b.legend(fontsize="small")
-            ax_b.grid(True, alpha=0.3)
-            axes[row, 1].set_visible(False)
+            v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
+            _annotate_fit(ax_v, v_mse, v_r2)
+            ax_v.set_title(f"V_real [{process.volume.unit}]")
+            ax_v.set_xlabel(f"time [{time_unit}]")
+            ax_v.set_xlim(t_start, t_end)
+            ax_v.legend(fontsize="small")
+            ax_v.grid(True, alpha=0.3)
 
-        if training_set is None:
-            split_tag = ""
-        else:
-            split_tag = " [train]" if process_name in training_set else " [holdout]"
-        fig.suptitle(f"{process_name}{split_tag}", fontsize=12)
-        fig.tight_layout()
-        fig.savefig(
-            output_dir / f"{process_name}{filename_suffix}.png",
-            dpi=150,
-            bbox_inches="tight",
-        )
-        plt.close(fig)
+            # ---- Right panel: raw volume_changes overlaid ----
+            ax_vc = axes[n_species, 1]
+            bar_width = (t_end - t_start) * 0.02  # 2% of time range
+            for vc_name, vc in process.volume.volume_changes.items():
+                vc_t = np.asarray(vc.values.times, dtype=float)
+                vc_v = np.asarray(vc.values.values, dtype=float)
+                kind = "feed" if isinstance(vc, FeedVolumeChange) else "sample"
+                if vc.is_continuous:
+                    ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=f"{vc_name} ({kind})")
+                else:
+                    ax_vc.bar(
+                        vc_t,
+                        vc_v,
+                        width=bar_width,
+                        label=f"{vc_name} ({kind})",
+                        edgecolor="k",
+                    )
+            ax_vc.set_title(f"volume_changes [{process.volume.unit}]")
+            ax_vc.set_xlabel(f"time [{time_unit}]")
+            ax_vc.set_xlim(t_start, t_end)
+            ax_vc.grid(True, alpha=0.3)
+            if process.volume.volume_changes:
+                ax_vc.legend(fontsize="small")
+
+            # ---- Cumulative modeled feed panels ----
+            for k, fn in enumerate(modeled_flow_names):
+                row = n_species + 1 + k
+                ax_b = axes[row, 0]
+                ax_b.plot(
+                    t_dense_np,
+                    b_modeled_true_dense[:, k],
+                    "-",
+                    lw=1.5,
+                    color="black",
+                    label="measured",
+                )
+                ax_b.plot(
+                    t_dense_np,
+                    b_modeled_pred[:, k],
+                    "-",
+                    lw=1.5,
+                    color="C0",
+                    label="integrated",
+                )
+                b_mse, b_r2 = _mse_and_r2(
+                    b_modeled_true_dense[:, k], b_modeled_pred[:, k]
+                )
+                _annotate_fit(ax_b, b_mse, b_r2)
+                unit = process.volume.volume_changes[fn].unit
+                ax_b.set_title(f"cumulative {fn} [{unit}]")
+                ax_b.set_xlabel(f"time [{time_unit}]")
+                ax_b.set_xlim(t_start, t_end)
+                ax_b.legend(fontsize="small")
+                ax_b.grid(True, alpha=0.3)
+                axes[row, 1].set_visible(False)
+
+            if training_set is None:
+                split_tag = ""
+            else:
+                is_train = process_name in training_set
+                split_tag = " [train]" if is_train else " [holdout]"
+            fig.suptitle(f"{process_name}{split_tag}", fontsize=12)
+            fig.tight_layout()
+            fig.savefig(
+                output_dir / f"{process_name}{filename_suffix}.png",
+                dpi=150,
+                bbox_inches="tight",
+            )
+            plt.close(fig)
 
         if ts_header is not None:
             assert ts_path is not None
@@ -469,4 +486,5 @@ def plot_process_simulations(
     if ts_header is not None and timeseries_csv_path is not None:
         logger.info("timeseries csv saved to %s", timeseries_csv_path)
 
-    logger.info("plots saved to %s", output_dir)
+    if render_plots:
+        logger.info("plots saved to %s", output_dir)

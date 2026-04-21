@@ -1020,8 +1020,17 @@ V1 should also expose a package CLI entrypoint:
 bp-train prepare --input input.json --output prepared.json --custom examples/01_kittler_2022/custom.py
 ```
 
-`prepare` is the first subcommand. Additional subcommands such as `train` can be
-added later without changing the overall entrypoint shape.
+V1 exposes `prepare`, `train`, and `forward` subcommands under the same
+entrypoint shape.
+
+Current `train` output contract (implemented behavior) is:
+
+- always write `trained_wrapper.eqx` and `trained_wrapper.meta.json`,
+- always write `losses.csv` (forward-evaluation per-process/per-target losses),
+- always write `predictions.csv` (dense simulated trajectories),
+- use the same solver jump-ts setting for both loss and prediction exports
+  (`solver_use_jump_ts` consistency),
+- write plot PNGs only when plotting is enabled (`--plot`; default on).
 
 This is illustrative only; exact filenames may change.
 

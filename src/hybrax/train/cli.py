@@ -25,7 +25,7 @@ from .postprocessing import (
     save_model_metadata,
 )
 from .prepare import prepare_artifact
-from .training_data import TARGET_SOURCES, TrainingDataStore
+from .training_data import TARGET_SOURCES
 from .utils import load_custom_module, resolve_config
 
 
@@ -383,6 +383,75 @@ def _split_multi_values(raw_values: list[str]) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _write_train_results(
+    *,
+    output_dir: Path,
+    collection: Any,
+    trained_wrapper: Any,
+    train_result: Any,
+    config: TrainHarnessConfig,
+    runtime_config: dict[str, Any] | None,
+    custom_py: str | None,
+    training_process_names: tuple[str, ...],
+    render_plots: bool,
+) -> None:
+    log = logging.getLogger(__name__)
+
+    fwd_cfg = ForwardConfig(
+        process_names=training_process_names,
+        target_variable_order=config.target_variable_order,
+        target_source=config.target_source,
+        solver_max_steps=config.solver_max_steps,
+        solver_rtol=config.solver_rtol,
+        solver_atol=config.solver_atol,
+        solver_use_jump_ts=config.solver_use_jump_ts,
+    )
+    fwd_result = forward_from_collection(
+        collection,
+        model_path=output_dir / "trained_wrapper.eqx",
+        config=fwd_cfg,
+        custom_py=custom_py,
+        runtime_config=runtime_config,
+        training_process_names=training_process_names,
+    )
+
+    _table, csv_rows = _format_loss_table(fwd_result)
+    loss_csv_path = output_dir / "losses.csv"
+    _write_loss_csv(csv_rows, loss_csv_path)
+    log.info("loss table saved to %s", loss_csv_path)
+
+    predictions_csv_path = output_dir / "predictions.csv"
+    if render_plots:
+        plot_training_results(
+            train_result,
+            collection,
+            fwd_result.store,
+            output_dir,
+            process_names=config.process_names,
+            solver_max_steps=config.solver_max_steps,
+            solver_rtol=config.solver_rtol,
+            solver_atol=config.solver_atol,
+            solver_use_jump_ts=config.solver_use_jump_ts,
+            timeseries_csv_path=predictions_csv_path,
+        )
+        return
+
+    plot_process_simulations(
+        trained_wrapper,
+        collection,
+        fwd_result.store,
+        output_dir,
+        process_names=training_process_names,
+        solver_max_steps=config.solver_max_steps,
+        solver_rtol=config.solver_rtol,
+        solver_atol=config.solver_atol,
+        solver_use_jump_ts=config.solver_use_jump_ts,
+        training_process_names=training_process_names,
+        timeseries_csv_path=predictions_csv_path,
+        render_plots=False,
+    )
+
+
 def _handle_train(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -478,22 +547,22 @@ def _handle_train(args: argparse.Namespace) -> int:
     }
     save_model_metadata(output_dir / "trained_wrapper.meta.json", meta)
 
-    if args.plot:
-        store = TrainingDataStore.from_collection(
-            collection,
-            target_variable_order=config.target_variable_order,
-            target_source=config.target_source,
-        )
-        plot_training_results(
-            result,
-            collection,
-            store,
-            output_dir,
-            process_names=config.process_names,
-            solver_max_steps=config.solver_max_steps,
-            solver_rtol=config.solver_rtol,
-            solver_atol=config.solver_atol,
-        )
+    training_process_names = (
+        config.process_names
+        if config.process_names is not None
+        else tuple(collection.processes.keys())
+    )
+    _write_train_results(
+        output_dir=output_dir,
+        collection=collection,
+        trained_wrapper=result.trained_wrapper,
+        train_result=result,
+        config=config,
+        runtime_config=runtime_config,
+        custom_py=args.custom,
+        training_process_names=training_process_names,
+        render_plots=args.plot,
+    )
 
     return 0
 
@@ -721,6 +790,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             solver_max_steps=solver_max_steps,
             solver_rtol=solver_rtol,
             solver_atol=solver_atol,
+            solver_use_jump_ts=solver_use_jump_ts,
             training_process_names=training_processes,
             timeseries_csv_path=args.timeseries_csv,
         )

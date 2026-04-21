@@ -5,7 +5,7 @@
     "atol": 1e-07,
     "max_steps": 2048,
     "rtol": 1e-05,
-    "use_jump_ts": true
+    "use_jump_ts": false
   },
   "target_source": "auto",
   "targets": null,
@@ -13,10 +13,7 @@
     "batch_size": null,
     "final_mean_loss": 0.5,
     "seed": 0,
-    "steps": 2
+    "steps": 50
   },
-  "training_processes": [
-    "p1",
-    "p3"
-  ]
+  "training_processes": null
 }
