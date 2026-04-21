@@ -19,13 +19,14 @@ No JAX dependency: all values arriving in a ``StepRecord`` are plain Python
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+
+import pandas as pd
 
 
 __all__ = ["StepRecord", "RunLogger"]
@@ -226,8 +227,7 @@ class RunLogger:
         self._logger = logging.getLogger(logger_name)
 
         self._formatter: _ConsoleTableFormatter | None = None
-        self._csv_file = None
-        self._csv_writer: csv.DictWriter | None = None
+        self._csv_header_written = False
         self._jsonl_file = None
 
         self._mean_loss_by_step: list[float] = []
@@ -273,10 +273,9 @@ class RunLogger:
 
         if self._metrics_csv_path is not None:
             self._metrics_csv_path.parent.mkdir(parents=True, exist_ok=True)
-            self._csv_file = self._metrics_csv_path.open("w", newline="")
             fieldnames = list(_csv_row_dict(_DUMMY_RECORD).keys())
-            self._csv_writer = csv.DictWriter(self._csv_file, fieldnames=fieldnames)
-            self._csv_writer.writeheader()
+            pd.DataFrame(columns=fieldnames).to_csv(self._metrics_csv_path, index=False)
+            self._csv_header_written = True
 
         if self._metrics_jsonl_path is not None:
             self._metrics_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
@@ -334,15 +333,19 @@ class RunLogger:
             self._logger.info(_log_step_indent_line(record, self._log_decimals))
 
         # File sinks
-        if self._csv_writer is not None:
-            self._csv_writer.writerow(_csv_row_dict(record))
+        if self._metrics_csv_path is not None:
+            pd.DataFrame([_csv_row_dict(record)]).to_csv(
+                self._metrics_csv_path,
+                mode="a",
+                header=not self._csv_header_written,
+                index=False,
+            )
+            self._csv_header_written = True
         if self._jsonl_file is not None:
             self._jsonl_file.write(json.dumps(_jsonl_row_dict(record)) + "\n")
 
     def finalize(self) -> dict[str, Any]:
         """Flush file sinks and return the history dict for TrainHarnessResult."""
-        if self._csv_file is not None:
-            self._csv_file.flush()
         if self._jsonl_file is not None:
             self._jsonl_file.flush()
         return {
@@ -359,19 +362,13 @@ class RunLogger:
     def close(self) -> None:
         if self._closed:
             return
-        if self._csv_file is not None:
-            try:
-                self._csv_file.close()
-            except Exception:
-                pass
-            self._csv_file = None
-            self._csv_writer = None
         if self._jsonl_file is not None:
             try:
                 self._jsonl_file.close()
             except Exception:
                 pass
             self._jsonl_file = None
+        self._csv_header_written = False
         self._closed = True
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bp_format.serialization import load_process_collection_json
+import pandas as pd
 
 from .harness import (
     ForwardConfig,
@@ -589,13 +590,10 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
 
 
 def _write_loss_csv(rows: list[list[str]], path: Path) -> None:
-    import csv as _csv
-
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = _csv.writer(fh)
-        for row in rows:
-            writer.writerow(row)
+    headers = rows[0]
+    data = rows[1:]
+    pd.DataFrame(data, columns=headers).to_csv(path, index=False)
 
 
 def _handle_forward(args: argparse.Namespace) -> int:

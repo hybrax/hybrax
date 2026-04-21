@@ -17,10 +17,10 @@ available. It is marked ``integration`` so it can be skipped in fast suites.
 
 from __future__ import annotations
 
-import csv
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from bp_train import cli, postprocessing
@@ -352,9 +352,9 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     # Loss CSV written to the default location.
     losses_csv = output_dir / "losses.csv"
     assert losses_csv.exists()
-    rows = list(csv.reader(losses_csv.open()))
-    assert rows[0] == ["process", "total", "X", "S", "split"]
-    assert any(row[0] == "p1" and row[-1] == "train" for row in rows[1:])
+    rows = pd.read_csv(losses_csv)
+    assert rows.columns.tolist() == ["process", "total", "X", "S", "split"]
+    assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
 
     # Plotting invoked with sidecar-derived solver settings.
     assert plot_calls["solver_rtol"] == 1e-5
@@ -538,12 +538,14 @@ def test_forward_end_to_end_on_kittler(tmp_path: Path):
     assert exit_code == 0
     losses_csv = fwd_dir / "losses.csv"
     assert losses_csv.exists()
-    rows = list(csv.reader(losses_csv.open()))
-    # header + 1 data row + mean row
-    assert len(rows) == 3
-    assert rows[0][0] == "process"
-    assert rows[1][0] == "DoE1_R1"
-    assert rows[1][-1] == "train"  # default training covers all kittler processes
+    rows = pd.read_csv(losses_csv)
+    # 1 data row + mean row
+    assert len(rows) == 2
+    assert rows.columns[0] == "process"
+    assert rows.iloc[0]["process"] == "DoE1_R1"
+    assert (
+        rows.iloc[0]["split"] == "train"
+    )  # default training covers all kittler processes
 
 
 # ---------------------------------------------------------------------------
@@ -559,3 +561,43 @@ def test_plot_process_simulations_is_exported_with_new_kwargs():
     assert "training_process_names" in sig.parameters
     assert "timeseries_csv_path" in sig.parameters
     assert "filename_suffix" in sig.parameters
+
+
+def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection(
+    tmp_path: Path,
+):
+    class _Wrapper:
+        species_names = ("X", "S")
+        modeled_flow_names = ("F",)
+
+    class _Store:
+        process_order = ("p1",)
+
+    class _Collection:
+        processes: dict[str, object] = {}
+
+    ts_path = tmp_path / "timeseries.csv"
+    postprocessing.plot_process_simulations(
+        trained_wrapper=_Wrapper(),
+        collection=_Collection(),
+        store=_Store(),
+        output_dir=tmp_path / "plots",
+        process_names=(),
+        solver_max_steps=128,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        timeseries_csv_path=ts_path,
+    )
+    rows = pd.read_csv(ts_path)
+    assert rows.columns.tolist() == [
+        "process",
+        "t",
+        "c_X",
+        "c_S",
+        "V_cont",
+        "V_real",
+        "B_F_cum",
+        "q_X",
+        "q_S",
+    ]
+    assert rows.empty

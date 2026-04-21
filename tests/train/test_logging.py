@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import re
 
+import pandas as pd
 import pytest
 
 from bp_train.logging import (
@@ -257,14 +257,64 @@ def test_runlogger_csv_sink_has_header_and_one_row_per_step(tmp_path):
                 )
             )
         run.finalize()
-    with csv_path.open() as fh:
-        rows = list(csv.DictReader(fh))
+    rows = pd.read_csv(csv_path).to_dict(orient="records")
     assert len(rows) == 3
     assert {"step", "mean_loss", "per_target_loss", "per_process_loss"} <= set(
         rows[0].keys()
     )
     # Vector fields are semicolon-joined.
     assert ";" in rows[0]["per_process_loss"]
+
+
+def test_runlogger_csv_sink_truncates_existing_file_on_start(tmp_path):
+    csv_path = tmp_path / "metrics.csv"
+    csv_path.write_text("legacy,data\nx,y\n")
+    with RunLogger(log_every=1, metrics_csv=csv_path, log_header_every=0) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_steps=1,
+            compile_warmup_seconds=0.0,
+        )
+        run.record_step(
+            _make_record(
+                1,
+                total_steps=1,
+                target_names=("biomass",),
+                process_names=("p1",),
+                per_target=(0.5,),
+                per_process=(0.5,),
+            )
+        )
+        run.finalize()
+    rows = pd.read_csv(csv_path)
+    assert len(rows) == 1
+    assert rows.columns.tolist()[0] == "step"
+
+
+def test_runlogger_csv_sink_writes_header_for_zero_step_run(tmp_path):
+    csv_path = tmp_path / "metrics.csv"
+    with RunLogger(log_every=1, metrics_csv=csv_path, log_header_every=0) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_steps=1,
+            compile_warmup_seconds=0.0,
+        )
+        run.finalize()
+    rows = pd.read_csv(csv_path)
+    assert rows.columns.tolist() == [
+        "step",
+        "total_steps",
+        "mean_loss",
+        "per_target_loss",
+        "per_process_loss",
+        "target_names",
+        "process_names",
+        "step_dt",
+        "rebuild_count",
+    ]
+    assert rows.empty
 
 
 def test_runlogger_jsonl_sink_round_trips_records(tmp_path):
