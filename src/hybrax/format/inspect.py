@@ -707,7 +707,9 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
             # Bar plot for discrete (non-continuous) volume changes
             delta = float(x[-1] - x[0])
             width = max(delta / 30, 0.1)
-            ax.bar(x, y, label=label, width=width, edgecolor="k", **plot_kwargs)
+            tmp_plot_kwargs = plot_kwargs.copy()
+            tmp_plot_kwargs["color"] = "white"
+            ax.bar(x, y, label=label, width=width, edgecolor="k", **tmp_plot_kwargs)
         elif has_interpolator and n <= 50:
             # Scatter for raw data when an interpolator is available and few points
             ax.scatter(x, y, s=16, zorder=5, label=label, **plot_kwargs)
