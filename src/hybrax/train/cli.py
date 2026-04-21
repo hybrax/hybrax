@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 from bpbench.serialization import load_process_collection_json
 
 from .harness import (
@@ -19,9 +18,9 @@ from .harness import (
 from .postprocessing import (
     load_model_metadata,
     plot_process_simulations,
+    plot_training_results,
     save_model,
     save_model_metadata,
-    write_training_results,
 )
 from .prepare import prepare_artifact
 from .training_data import TARGET_SOURCES, TrainingDataStore
@@ -340,34 +339,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip plot generation.",
     )
     forward_parser.set_defaults(plot=True)
-    fwd_loss_csv_group = forward_parser.add_mutually_exclusive_group()
-    fwd_loss_csv_group.add_argument(
+    forward_parser.add_argument(
         "--loss-csv",
-        dest="loss_csv",
-        action="store_true",
-        help="Write loss table CSV to <output-dir>/loss.csv (default).",
+        default=None,
+        help="Write the loss table to this CSV. Default: <output-dir>/losses.csv.",
     )
-    fwd_loss_csv_group.add_argument(
-        "--no-loss-csv",
-        dest="loss_csv",
-        action="store_false",
-        help="Disable loss CSV output.",
-    )
-    forward_parser.set_defaults(loss_csv=True)
-    fwd_timeseries_csv_group = forward_parser.add_mutually_exclusive_group()
-    fwd_timeseries_csv_group.add_argument(
+    forward_parser.add_argument(
         "--timeseries-csv",
-        dest="timeseries_csv",
-        action="store_true",
-        help=("Write predictions CSV to <output-dir>/predictions.csv (default)."),
+        default=None,
+        help=(
+            "Write a single merged CSV of dense simulated trajectories with a "
+            "`process` column."
+        ),
     )
-    fwd_timeseries_csv_group.add_argument(
-        "--no-timeseries-csv",
-        dest="timeseries_csv",
-        action="store_false",
-        help="Disable predictions CSV output.",
-    )
-    forward_parser.set_defaults(timeseries_csv=True)
     forward_parser.add_argument(
         "--log-level",
         default="INFO",
@@ -497,7 +481,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             target_variable_order=config.target_variable_order,
             target_source=config.target_source,
         )
-        write_training_results(
+        plot_training_results(
             result,
             collection,
             store,
@@ -506,7 +490,6 @@ def _handle_train(args: argparse.Namespace) -> int:
             solver_max_steps=config.solver_max_steps,
             solver_rtol=config.solver_rtol,
             solver_atol=config.solver_atol,
-            timeseries_csv_path=output_dir / "predictions.csv",
         )
 
     return 0
@@ -529,10 +512,14 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
         per_target = result.per_process_per_target_loss[name]
         split = "train" if name in training_set else "holdout"
         data_rows.append(
-            [name, f"{total:.6g}"] + [f"{v:.6g}" for v in per_target] + [split]
+            [name, f"{total:.6g}"]
+            + [f"{v:.6g}" for v in per_target]
+            + [split]
         )
         csv_rows.append(
-            [name, f"{total:.6g}"] + [f"{v:.6g}" for v in per_target] + [split]
+            [name, f"{total:.6g}"]
+            + [f"{v:.6g}" for v in per_target]
+            + [split]
         )
         total_sum += total
         for i, v in enumerate(per_target):
@@ -565,10 +552,13 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
 
 
 def _write_loss_csv(rows: list[list[str]], path: Path) -> None:
+    import csv as _csv
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    headers = rows[0]
-    data = rows[1:]
-    pd.DataFrame(data, columns=headers).to_csv(path, index=False)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = _csv.writer(fh)
+        for row in rows:
+            writer.writerow(row)
 
 
 def _handle_forward(args: argparse.Namespace) -> int:
@@ -676,15 +666,11 @@ def _handle_forward(args: argparse.Namespace) -> int:
         output_dir = model_path.parent / "forward"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.loss_csv:
-        loss_csv_path = output_dir / "loss.csv"
-        _write_loss_csv(csv_rows, loss_csv_path)
-        log.info("loss table saved to %s", loss_csv_path)
+    loss_csv_path = Path(args.loss_csv) if args.loss_csv else output_dir / "losses.csv"
+    _write_loss_csv(csv_rows, loss_csv_path)
+    log.info("loss table saved to %s", loss_csv_path)
 
     if args.plot:
-        predictions_csv_path = (
-            output_dir / "predictions.csv" if args.timeseries_csv else None
-        )
         plot_process_simulations(
             result.trained_wrapper,
             collection,
@@ -695,7 +681,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             solver_rtol=solver_rtol,
             solver_atol=solver_atol,
             training_process_names=training_processes,
-            timeseries_csv_path=predictions_csv_path,
+            timeseries_csv_path=args.timeseries_csv,
         )
 
     return 0

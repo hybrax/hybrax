@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 from pathlib import Path
@@ -11,7 +12,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pandas as pd
 
 from bpbench.dataclasses import BioProcessCollection, FeedVolumeChange
 from bpbench.mechanistic import get_rhs_ode
@@ -85,7 +85,7 @@ def _annotate_fit(ax, mse: float, r2: float) -> None:
     )
 
 
-def write_training_results(
+def plot_training_results(
     result: Any,
     collection: BioProcessCollection,
     store: TrainingDataStore,
@@ -95,9 +95,8 @@ def write_training_results(
     solver_max_steps: int = 4096,
     solver_rtol: float = 1e-3,
     solver_atol: float = 1e-5,
-    timeseries_csv_path: str | Path | None = None,
 ) -> None:
-    """Write training outputs: loss curve, plots, and optional predictions CSV."""
+    """Generate loss curve and per-process concentration / rate / volume plots."""
     import matplotlib.pyplot as plt
 
     output_dir = Path(output_dir)
@@ -125,7 +124,6 @@ def write_training_results(
         solver_max_steps=solver_max_steps,
         solver_rtol=solver_rtol,
         solver_atol=solver_atol,
-        timeseries_csv_path=timeseries_csv_path,
     )
 
 
@@ -177,12 +175,15 @@ def plot_process_simulations(
         set(training_process_names) if training_process_names is not None else None
     )
 
-    # Prepare merged timeseries rows (one file, all processes).
+    # Prepare merged timeseries CSV writer (one file, all processes).
+    ts_file = None
+    ts_writer = None
     ts_header: list[str] | None = None
-    ts_rows: list[list[float | str]] = []
     if timeseries_csv_path is not None:
         ts_path = Path(timeseries_csv_path)
         ts_path.parent.mkdir(parents=True, exist_ok=True)
+        ts_file = ts_path.open("w", newline="", encoding="utf-8")
+        ts_writer = csv.writer(ts_file)
         ts_header = (
             ["process", "t"]
             + [f"c_{name}" for name in species_names]
@@ -190,6 +191,7 @@ def plot_process_simulations(
             + [f"B_{name}_cum" for name in modeled_flow_names]
             + [f"q_{name}" for name in species_names]
         )
+        ts_writer.writerow(ts_header)
 
     # --- Per-process plots ---
     for process_name in selected_processes:
@@ -441,7 +443,7 @@ def plot_process_simulations(
         )
         plt.close(fig)
 
-        if ts_header is not None:
+        if ts_writer is not None:
             for i_t in range(len(t_dense_np)):
                 row = (
                     [process_name, float(t_dense_np[i_t])]
@@ -450,12 +452,10 @@ def plot_process_simulations(
                     + [float(b_modeled_pred[i_t, k]) for k in range(n_modeled)]
                     + [float(q_dense[i_t, j]) for j in range(n_species)]
                 )
-                ts_rows.append(row)
+                ts_writer.writerow(row)
 
-    if ts_header is not None and timeseries_csv_path is not None:
-        pd.DataFrame(ts_rows, columns=ts_header).to_csv(
-            Path(timeseries_csv_path), index=False
-        )
+    if ts_file is not None:
+        ts_file.close()
         logger.info("timeseries csv saved to %s", timeseries_csv_path)
 
     logger.info("plots saved to %s", output_dir)

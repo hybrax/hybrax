@@ -228,7 +228,7 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
         td.TrainingDataStore, "from_collection", fake_store_from_collection
     )
 
-    def fake_write_training_results(
+    def fake_plot_training_results(
         result,
         collection,
         store,
@@ -238,14 +238,12 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
         solver_max_steps=4096,
         solver_rtol=1e-3,
         solver_atol=1e-5,
-        timeseries_csv_path=None,
     ):
         del result, collection, store, output_dir
         del solver_max_steps, solver_rtol, solver_atol
         captured["plot_process_names"] = process_names
-        captured["timeseries_csv_path"] = timeseries_csv_path
 
-    monkeypatch.setattr(cli, "write_training_results", fake_write_training_results)
+    monkeypatch.setattr(cli, "plot_training_results", fake_plot_training_results)
 
     exit_code = cli.main(
         [
@@ -266,7 +264,6 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
 
     assert exit_code == 0
     assert captured["plot_process_names"] == ("p1", "p3")
-    assert Path(captured["timeseries_csv_path"]) == Path("out/predictions.csv")
 
 
 def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
