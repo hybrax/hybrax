@@ -674,7 +674,9 @@ def _evaluate_interpolator_curve(
     return t_plot, y_plot
 
 
-def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
+def _draw_panel(
+    ax, panel, label=None, color=None, t_start=None, t_end=None, bar_transparent=False
+):
     """Draw a single panel (dynamic or static) onto *ax*.
 
     If the panel has an ``'interpolator'`` key, the interpolator curve is drawn and raw
@@ -705,11 +707,30 @@ def _draw_panel(ax, panel, label=None, color=None, t_start=None, t_end=None):
             ax.plot([], [], label=label, **plot_kwargs)
         elif render == "bar":
             # Bar plot for discrete (non-continuous) volume changes
-            delta = float(x[-1] - x[0])
-            width = max(delta / 30, 0.1)
-            tmp_plot_kwargs = plot_kwargs.copy()
-            tmp_plot_kwargs["color"] = "white"
-            ax.bar(x, y, label=label, width=width, edgecolor="k", **tmp_plot_kwargs)
+            if t_start is not None and t_end is not None:
+                plot_span = float(t_end) - float(t_start)
+            else:
+                plot_span = float(x[-1] - x[0])
+            width = plot_span / 100
+            bar_color = plot_kwargs["color"]
+            if bar_transparent:
+                ax.bar(
+                    x,
+                    y,
+                    label=label,
+                    width=width,
+                    edgecolor=bar_color,
+                    facecolor="none",
+                )
+            else:
+                ax.bar(
+                    x,
+                    y,
+                    label=label,
+                    width=width,
+                    edgecolor="k",
+                    color=bar_color,
+                )
         elif has_interpolator and n <= 50:
             # Scatter for raw data when an interpolator is available and few points
             ax.scatter(x, y, s=16, zorder=5, label=label, **plot_kwargs)
@@ -955,7 +976,7 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
 
     for i, panel in enumerate(panels):
         ax = axes_flat[i]
-        _draw_panel(ax, panel, t_start=t_start, t_end=t_end)
+        _draw_panel(ax, panel, t_start=t_start, t_end=t_end, bar_transparent=True)
         # Pad y-axis for constant-valued panels (skip bar-rendered discrete events)
         if panel.get("render") != "bar":
             if panel["type"] == "dynamic":
