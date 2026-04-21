@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -454,9 +455,10 @@ def _handle_train(args: argparse.Namespace) -> int:
     training_processes_list = (
         list(config.process_names) if config.process_names else None
     )
+    sidecar_dir = output_dir.resolve()
     meta = {
-        "prepared_input": str(Path(args.input).resolve()),
-        "custom_py": str(Path(args.custom).resolve()) if args.custom else None,
+        "prepared_input": os.path.relpath(Path(args.input).resolve(), sidecar_dir),
+        "custom_py": os.path.relpath(Path(args.custom).resolve(), sidecar_dir) if args.custom else None,
         "training_processes": training_processes_list,
         "targets": list(effective_targets) if effective_targets is not None else None,
         "target_source": config.target_source,
@@ -618,12 +620,18 @@ def _handle_forward(args: argparse.Namespace) -> int:
             model_path.with_suffix(".meta.json"),
         )
 
-    prepared = args.input or meta.get("prepared_input")
+    sidecar_dir = model_path.with_suffix(".meta.json").resolve().parent
+
+    prepared = args.input
+    if prepared is None and meta.get("prepared_input"):
+        prepared = str(sidecar_dir / meta["prepared_input"])
     if prepared is None:
         raise SystemExit(
             "no --input provided and no sidecar to read `prepared_input` from"
         )
-    custom_py = args.custom or meta.get("custom_py")
+    custom_py = args.custom
+    if custom_py is None and meta.get("custom_py"):
+        custom_py = str(sidecar_dir / meta["custom_py"])
 
     meta_solver = meta.get("solver", {})
     solver_max_steps = (
@@ -666,8 +674,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
 
     # training_processes in the sidecar:
     #   * list  → the explicit subset trained on
-    #   * None  → default (trained on every process in the input file)
-    #   * missing → unknown (pre-sidecar model); treat everything as holdout
+    #   * None or missing → default (trained on every process in the input file)
     if "training_processes" in meta:
         tp_value = meta["training_processes"]
         if tp_value is None:
@@ -675,7 +682,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
         else:
             training_processes = tuple(tp_value)
     else:
-        training_processes = ()
+        training_processes = tuple(collection.processes.keys())
 
     fwd_cfg = ForwardConfig(
         process_names=eval_processes,
