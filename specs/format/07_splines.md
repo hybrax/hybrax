@@ -1,6 +1,6 @@
 # Splines and Pseudobatch Transform
 
-Source: `bpbench/splines.py`
+Source: `bp_format/splines.py`
 
 ## Purpose
 
@@ -135,7 +135,7 @@ Build with `build_batched_conc_splines(conc_splines, species_names, t_start, t_e
 ### Detecting Discrete Events
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["kittler_2022"].processes["batch_001"]
@@ -148,7 +148,7 @@ print(events.labels)  # optional labels
 ### Fitting Splines to a Process
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 # Load a process
 dataset = bp.serialization.load_dataset("data.json")
@@ -164,7 +164,7 @@ interpolator = bp.splines.to_interpolator(inputs, splines, "glucose")
 
 ```python
 import jax.numpy as jnp
-from bpbench.splines import build_backtransform_spline
+from bp_format.splines import build_backtransform_spline
 
 # Build a JIT-compatible backtransform module
 bt = build_backtransform_spline(interpolator)

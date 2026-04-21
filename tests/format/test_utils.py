@@ -1,12 +1,12 @@
 """
-Tests for bpbench.inspect utility functions.
+Tests for bp_format.inspect utility functions.
 """
 
 import pytest
 import jax.numpy as jnp
 import numpy as np
 
-from bpbench import (
+from bp_format import (
     BioProcess,
     BioProcessMetadata,
     TimeAxis,

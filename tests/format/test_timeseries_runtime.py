@@ -7,7 +7,7 @@ from pathlib import Path
 
 import jax.numpy as jnp
 
-from bpbench import (
+from bp_format import (
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
@@ -21,9 +21,9 @@ from bpbench import (
     TimeSeries,
     Volume,
 )
-from bpbench.inspect import print_process_structure
-from bpbench.mechanistic import get_control_splines
-from bpbench.splines import build_pseudobatch_inputs
+from bp_format.inspect import print_process_structure
+from bp_format.mechanistic import get_control_splines
+from bp_format.splines import build_pseudobatch_inputs
 
 
 def _legacy_timepoints_usages(path: Path) -> list[str]:
@@ -74,10 +74,10 @@ def _legacy_timepoints_usages(path: Path) -> list[str]:
 def test_runtime_modules_use_canonical_times_api() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     runtime_files = [
-        repo_root / "bpbench" / "validate.py",
-        repo_root / "bpbench" / "splines.py",
-        repo_root / "bpbench" / "mechanistic.py",
-        repo_root / "bpbench" / "inspect.py",
+        repo_root / "bp_format" / "validate.py",
+        repo_root / "bp_format" / "splines.py",
+        repo_root / "bp_format" / "mechanistic.py",
+        repo_root / "bp_format" / "inspect.py",
     ]
 
     for path in runtime_files:

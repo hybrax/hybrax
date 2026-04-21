@@ -20,7 +20,7 @@ Legacy compatibility has been removed:
 ## Pseudobatch spline-only fallback
 
 - In pseudobatch workflows, when a `TimeSeries` is spline-only (no discrete
-  samples), bpbench uses spline `breaks` as the fallback measurement grid.
+  samples), bp_format uses spline `breaks` as the fallback measurement grid.
 - This keeps workflows numerically coherent but may differ from true
   experimental sampling times.
 - If sampling-time semantics matter, provide explicit discrete samples.

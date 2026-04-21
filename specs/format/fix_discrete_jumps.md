@@ -2,7 +2,7 @@
 
 ## Problem Summary
 
-In `bpbench/splines.py`, the function `evaluate_timeseries_spline_at()` uses `np.interp()` (linear interpolation) to look up ADF and feed-term values between grid points during the pseudo-batch backtransform. This is incorrect. ADF and feed-term are **piecewise-constant** (step) functions that must jump discretely at bolus feed event times. Linear interpolation creates a gradual ramp between pre-event and post-event values instead of an instantaneous jump, which is visible as diagonal lines in the spline plot where there should be vertical discontinuities.
+In `bp_format/splines.py`, the function `evaluate_timeseries_spline_at()` uses `np.interp()` (linear interpolation) to look up ADF and feed-term values between grid points during the pseudo-batch backtransform. This is incorrect. ADF and feed-term are **piecewise-constant** (step) functions that must jump discretely at bolus feed event times. Linear interpolation creates a gradual ramp between pre-event and post-event values instead of an instantaneous jump, which is visible as diagonal lines in the spline plot where there should be vertical discontinuities.
 
 The backtransform formula is: `ĉ(t) = (ĉ*(t) + feed_term(t)) / ADF(t)`
 
@@ -23,7 +23,7 @@ The existing `_step_eval()` function in the same file already implements the cor
 
 ## Files to Change
 
-### 1. `bpbench/splines.py` — `evaluate_timeseries_spline_at()` function
+### 1. `bp_format/splines.py` — `evaluate_timeseries_spline_at()` function
 
 **What to change:** Replace `np.interp()` calls with `_step_eval()` calls for both ADF and feed-term lookup.
 
@@ -65,7 +65,7 @@ if "adf_times" in tr:
 
 This makes both the primary path (with `"adf_times"` key) and the legacy fallback path use `_step_eval()`.
 
-### 2. `bpbench/splines.py` — metadata tag (optional cleanup)
+### 2. `bp_format/splines.py` — metadata tag (optional cleanup)
 
 In `fit_state_timeseries_spline_pseudobatch()`, around line 790, change the metadata interpolation tag from `"linear"` to `"step"` to accurately describe what the code does:
 
@@ -106,12 +106,12 @@ def test_bolus_feed_discrete_jump_is_step_not_ramp():
     """
     import numpy as np
     import jax.numpy as jnp
-    from bpbench import (
+    from bp_format import (
         BioProcess, BioProcessMetadata, FeedMedium, FeedMediumComponent,
         FeedVolumeChange, ReactorMedium, ReactorMediumComponent,
         StaticVariable, TimeAxis, TimeSeries, Volume,
     )
-    from bpbench.splines import (
+    from bp_format.splines import (
         evaluate_timeseries_spline_at,
         fit_state_timeseries_spline_pseudobatch,
     )
@@ -211,11 +211,11 @@ def test_sampling_no_jump_still_works():
     """Sampling events should NOT cause any concentration discontinuity."""
     import numpy as np
     import jax.numpy as jnp
-    from bpbench import (
+    from bp_format import (
         BioProcess, BioProcessMetadata, ReactorMedium, ReactorMediumComponent,
         SampleVolumeChange, StaticVariable, TimeAxis, TimeSeries, Volume,
     )
-    from bpbench.splines import (
+    from bp_format.splines import (
         evaluate_timeseries_spline_at,
         fit_state_timeseries_spline_pseudobatch,
     )
@@ -299,6 +299,6 @@ def test_metadata_interp_tag_is_step():
 
 | File | Change | Reason |
 |------|--------|--------|
-| `bpbench/splines.py` L823-837 | Replace `np.interp()` with `_step_eval()` | ADF and feed-term are step functions, not linear |
-| `bpbench/splines.py` L790 | `"interp": "linear"` → `"interp": "step"` | Metadata should reflect actual behavior |
+| `bp_format/splines.py` L823-837 | Replace `np.interp()` with `_step_eval()` | ADF and feed-term are step functions, not linear |
+| `bp_format/splines.py` L790 | `"interp": "linear"` → `"interp": "step"` | Metadata should reflect actual behavior |
 | `tests/test_discrete_jump_step.py` (new) | Add tests for step behavior | Verify jumps are instantaneous, not ramped |

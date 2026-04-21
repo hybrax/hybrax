@@ -1,5 +1,5 @@
 """
-Tests for bpbench.splines: spline fitting, serialization, evaluation,
+Tests for bp_format.splines: spline fitting, serialization, evaluation,
 and pseudobatch transform pipeline.
 """
 
@@ -10,7 +10,7 @@ import numpy as np
 import tempfile
 from pathlib import Path
 
-from bpbench import (
+from bp_format import (
     BioProcess,
     BioProcessMetadata,
     TimeAxis,
@@ -27,7 +27,7 @@ from bpbench import (
     Interpolator,
     DiscreteEvents,
 )
-from bpbench.splines import (
+from bp_format.splines import (
     detect_discrete_state_events,
     make_segment_boundaries,
     split_timeseries,
@@ -44,13 +44,13 @@ from bpbench.splines import (
     BacktransformSpline,
     evaluate_left_continuous_step,
 )
-from bpbench.serialization import (
+from bp_format.serialization import (
     save_dataset,
     save_dataset_json,
     load_dataset,
     load_dataset_json,
 )
-from bpbench import BenchmarkDataset, CaseStudy
+from bp_format import BenchmarkDataset, CaseStudy
 
 
 # ---------------------------------------------------------------------------

@@ -3,14 +3,14 @@ requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bpbench"
+name = "bp-format"
 version = "0.1.0"
 description = "Bioprocess Benchmarking Dataset Structure - JAX-compatible framework for standardized bioprocess data"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "BPbench Contributors"}
+    {name = "bp-format Contributors"}
 ]
 keywords = ["bioprocess", "benchmarking", "jax", "machine-learning", "data-structure"]
 classifiers = [
@@ -57,15 +57,15 @@ plotting = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Gotsmy/BPbench"
-Repository = "https://github.com/Gotsmy/BPbench"
-Documentation = "https://github.com/Gotsmy/BPbench/blob/main/README.md"
+Homepage = "https://github.com/Gotsmy/bp-format"
+Repository = "https://github.com/Gotsmy/bp-format"
+Documentation = "https://github.com/Gotsmy/bp-format/blob/main/README.md"
 
 [tool.setuptools]
-packages = ["bpbench"]
+packages = ["bp_format"]
 
 [tool.setuptools.package-data]
-bpbench = ["py.typed"]
+bp_format = ["py.typed"]
 
 [tool.black]
 line-length = 100

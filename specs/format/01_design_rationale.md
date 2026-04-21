@@ -1,10 +1,10 @@
 # Design Rationale
 
-This document explains the cross-cutting design decisions behind BPbench. Individual module docs reference these sections for context.
+This document explains the cross-cutting design decisions behind bp-format. Individual module docs reference these sections for context.
 
 ## 1. JAX-First Architecture
 
-BPbench is built on [JAX](https://github.com/google/jax) and [Equinox](https://github.com/patrick-kidger/equinox) to support:
+bp-format is built on [JAX](https://github.com/google/jax) and [Equinox](https://github.com/patrick-kidger/equinox) to support:
 
 - **Automatic differentiation (AD):** Gradient-based optimization of hybrid bioprocess models requires differentiating through ODE integration, spline evaluation, and loss computation. JAX's `jax.grad` / `jax.value_and_grad` enable this end-to-end.
 - **JIT compilation:** `jax.jit` (or `eqx.filter_jit`) compiles Python functions to optimized XLA code, which is critical for the repeated forward solves in training loops.
@@ -60,7 +60,7 @@ The `TimeSeries` class (an `eqx.Module`) stores measured data as `times` and `va
 
 - The raw `times`/`values` are the ground truth from experiments. They are needed for loss computation and data validation.
 - Spline coefficients enable continuous-time evaluation during ODE integration. Instead of interpolating at each solver step, the solver can evaluate the spline directly.
-- Spline fitting (in `bpbench.splines`) populates the spline fields from discrete samples when appropriate (i.e., for continuous quantities like concentrations or continuous feed profiles).
+- Spline fitting (in `bp_format.splines`) populates the spline fields from discrete samples when appropriate (i.e., for continuous quantities like concentrations or continuous feed profiles).
 - A `TimeSeries` can be spline-only (no discrete samples) in pseudobatch workflows where the original samples are no longer meaningful.
 
 **Why power-basis storage (not B-spline basis)?** Power-basis polynomials `c[0]*h^3 + c[1]*h^2 + c[2]*h + c[3]` (where `h = t - t_break`) can be evaluated with Horner's method in a few multiply-adds. This is simple, fast, and maps cleanly to JAX operations. B-spline basis evaluation requires recursive knot-vector lookups that are harder to vectorize.
@@ -79,7 +79,7 @@ where:
 - `ADF(t)` is the accumulative dilution factor (ratio of current to initial volume)
 - `feed_correction(t)` accounts for mass added by feed streams
 
-**Why is this central to BPbench?**
+**Why is this central to bp-format?**
 
 - **Smoother curves:** Pseudo-concentrations remove dilution artifacts, producing smoother time courses that are better approximated by cubic splines.
 - **Fair comparison:** Models trained on pseudobatch data can be compared across batch and fed-batch processes.
@@ -96,21 +96,21 @@ Bioprocess data comes from diverse sources (different labs, instruments, convent
 - Feed media that do not define all reactor species
 - Measurement times coinciding with sampling events (corrupted by volume change)
 
-BPbench validates data early and explicitly. All validation functions return `(bool, str)` tuples, making them composable and easy to aggregate. `validate_process()` runs all checks on a single process; `validate_case_study()` adds cross-process consistency checks (e.g., all processes in a case study should have the same reactor medium components).
+bp-format validates data early and explicitly. All validation functions return `(bool, str)` tuples, making them composable and easy to aggregate. `validate_process()` runs all checks on a single process; `validate_case_study()` adds cross-process consistency checks (e.g., all processes in a case study should have the same reactor medium components).
 
 **Why not raise exceptions?** Returning `(bool, str)` allows callers to collect all issues in one pass and present a comprehensive report, rather than failing on the first error.
 
 ## 7. Ecosystem Vision
 
-BPbench is currently a single package, but it is designed as the data foundation for a planned ecosystem of 6 packages:
+bp-format is currently a single package, but it is designed as the data foundation for a planned ecosystem of 6 packages:
 
 | Package | Purpose |
 |---------|---------|
-| **bp-form** (current BPbench) | Data classes, I/O, validation, basic simulation |
+| **bp-form** (current bp-format) | Data classes, I/O, validation, basic simulation |
 | **bp-bench** | Pre-processed case study database |
 | **bp-prep** | Web app for preprocessing raw experimental data |
 | **bp-train** | Training utilities (LOO-CV, augmentation, checkpointing) |
 | **bp-sim** | Data generation with design-of-experiments support |
 | **bp-opt** | Post-training model optimization |
 
-Currently, BPbench combines the functionality of both bp-form and bp-bench. The split will happen as the ecosystem matures. All downstream packages will depend on bp-form for data structures and I/O.
+Currently, bp-format combines the functionality of both bp-form and bp-bench. The split will happen as the ecosystem matures. All downstream packages will depend on bp-form for data structures and I/O.

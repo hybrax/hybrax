@@ -1,6 +1,6 @@
 # Mechanistic ODE Module
 
-Source: `bpbench/mechanistic.py`
+Source: `bp_format/mechanistic.py`
 
 ## Purpose
 
@@ -126,7 +126,7 @@ states:
 
 ```python
 import jax.numpy as jnp
-import bpbench as bp
+import bp_format as bp
 
 process = ...
 ctrl = bp.mechanistic.get_control_splines(process)

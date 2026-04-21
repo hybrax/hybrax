@@ -1,10 +1,10 @@
 # TimeSeries
 
-Source: `bpbench/time_series/`
+Source: `bp_format/time_series/`
 
 ## Purpose
 
-The `TimeSeries` class is the fundamental measurement container in BPbench. It is an `eqx.Module` (JAX pytree) that stores measured data (`times`/`values` arrays) and optionally carries fitted spline coefficients (`breaks`/`coeffs`/`segment_start_piece_idx`) for continuous-time evaluation.
+The `TimeSeries` class is the fundamental measurement container in bp-format. It is an `eqx.Module` (JAX pytree) that stores measured data (`times`/`values` arrays) and optionally carries fitted spline coefficients (`breaks`/`coeffs`/`segment_start_piece_idx`) for continuous-time evaluation.
 
 `TimeSeries` itself does not decide whether the data is continuous or discontinuous -- that semantic comes from the parent object. For example, a `VolumeChange` with `is_continuous=True` holds a TimeSeries representing a continuous flow, while `is_continuous=False` means discrete events (bolus feeds, sampling). Spline fitting is only meaningful for continuous data.
 
@@ -126,7 +126,7 @@ Numerical tolerance defaults:
 
 ```python
 import jax.numpy as jnp
-from bpbench import TimeSeries
+from bp_format import TimeSeries
 
 # Discrete-only (no spline)
 ts = TimeSeries(
@@ -141,7 +141,7 @@ print(ts.values)  # [1.  2.5 5.1 4.2 3. ]
 ### Evaluating a Spline-Backed TimeSeries
 
 ```python
-# After spline fitting (e.g., via bpbench.splines.fit_timeseries_spline),
+# After spline fitting (e.g., via bp_format.splines.fit_timeseries_spline),
 # the TimeSeries will have breaks, coeffs, and segment_start_piece_idx populated.
 
 # Evaluate at a single time

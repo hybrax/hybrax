@@ -1,6 +1,6 @@
 # Inspection and Visualization
 
-Source: `bpbench/inspect.py`
+Source: `bp_format/inspect.py`
 
 ## Purpose
 
@@ -51,7 +51,7 @@ Returns the matplotlib figure object.
 ### Printing Process Structure
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["kittler_2022"].processes["batch_001"]
@@ -75,12 +75,12 @@ bp.print_process_structure(process, verbosity=3)
 ### Printing Dataset Structure
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 bp.print_dataset_structure(dataset, verbosity=1)
 # Output:
-#   BPbench Dataset: 3 case studies
+#   bp-format Dataset: 3 case studies
 #     kittler_2022 (Escherichia coli): 4 processes
 #     gotsmy_2023 (Escherichia coli): 3 processes
 #     bayer_2020_a (Escherichia coli HMS174(DE3)): 5 processes
@@ -89,7 +89,7 @@ bp.print_dataset_structure(dataset, verbosity=1)
 ### Plotting a Single Process
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["kittler_2022"].processes["batch_001"]
@@ -101,7 +101,7 @@ fig.savefig("batch_001.png", dpi=150, bbox_inches="tight")
 ### Plotting a Case Study for Comparison
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 case_study = dataset.case_studies["kittler_2022"]

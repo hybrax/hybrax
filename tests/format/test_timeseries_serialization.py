@@ -9,7 +9,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import pytest
 
-from bpbench import (
+from bp_format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -21,7 +21,7 @@ from bpbench import (
     TimeSeries,
     Volume,
 )
-from bpbench.serialization import (
+from bp_format.serialization import (
     _timeseries_to_dict_payload,
     load_process_collection,
     save_process_collection,

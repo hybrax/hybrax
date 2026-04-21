@@ -14,7 +14,7 @@
         * and then in theory everything with "full data" and afterwards with "sparse data"
     * Reimplement Splines:
         * Check if everything works as intended.
-        * the `bpbench.plot_process` function should plot the splines if they are filled in the process field. Also they should again return the figure object.
+        * the `bp_format.plot_process` function should plot the splines if they are filled in the process field. Also they should again return the figure object.
         * after splines are re-implemented, re-combine the dataset and make the integration again 
             * also here, maybe integrating them in the examples is better than in combined.
         * also: the splines have to be fitted on the pseudo-concentrations from hesselberg, so that we have continuous rates (this should be only done in the backend.)
@@ -49,7 +49,7 @@
             * BUT: I should include it, because it has bolus feeds
     
 
-* **Validation functions for `/bpbench/validate.py`**
+* **Validation functions for `/bp_format/validate.py`**
     * ...
     
 * **Possible future compatabilities:**
@@ -145,7 +145,7 @@ TimeSeries:
 * ✅ add correct density to the `01_kittler` data
 * ✅ new notebook per case study where all processes are loaded & saved
         * this should check if there are any problems in the code when going from 1 to several
-* **Validation functions for `/bpbench/validate.py`**
+* **Validation functions for `/bp_format/validate.py`**
     * ✅ Verify that a volume change is purely positive or purely negative: 
     * ✅ If positive, verify that all dynamic state variables (i.e., concentrations) that are part of the reactor are also defined here.
     * ✅ `TimeSeries` check if shapes are correct and if time points are ordered.

@@ -1,5 +1,5 @@
 """
-Test JAX compatibility with BPbench dataclasses.
+Test JAX compatibility with bp-format dataclasses.
 
 Regular Python dataclasses are NOT registered as JAX PyTrees by default.
 These tests verify that JAX arrays embedded in our dataclasses work correctly
@@ -10,7 +10,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 
-from bpbench import (
+from bp_format import (
     TimeAxis,
     TimeSeries,
     StaticVariable,

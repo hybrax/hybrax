@@ -1,8 +1,8 @@
 """
-Mechanistic API for BPbench.
+Mechanistic API for bp-format.
 
 Provides JAX/Equinox-compatible modules for building continuous-time control
-functions and ODE right-hand sides directly from a :class:`~bpbench.BioProcess`.
+functions and ODE right-hand sides directly from a :class:`~bp_format.BioProcess`.
 
 All modules are fully JAX-jittable via ``equinox.filter_jit``.  Spline
 evaluation uses ``interpax.CubicSpline``, which is itself an
@@ -217,7 +217,7 @@ class ControlSplines(eqx.Module):
         Parameters
         ----------
         t:
-            Scalar time (same unit as the underlying :class:`~bpbench.TimeSeries`).
+            Scalar time (same unit as the underlying :class:`~bp_format.TimeSeries`).
 
         Returns
         -------
@@ -443,7 +443,7 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.
+        A :class:`~bp_format.BioProcess` instance.
 
     Returns
     -------
@@ -529,7 +529,7 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.  The reactor medium must
+        A :class:`~bp_format.BioProcess` instance.  The reactor medium must
         contain a component named ``"biomass"`` (case-insensitive).
 
     Returns
@@ -686,7 +686,7 @@ def extract_discrete_events(
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.
+        A :class:`~bp_format.BioProcess` instance.
     mb:
         A :class:`RhsOde` module (used to align ``Cin`` with species ordering).
 
@@ -798,7 +798,7 @@ def build_state_splines(
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.
+        A :class:`~bp_format.BioProcess` instance.
     mb:
         A :class:`RhsOde` module (provides species ordering).
 
@@ -902,7 +902,7 @@ def build_q_func(
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.
+        A :class:`~bp_format.BioProcess` instance.
     ctrl:
         :class:`ControlSplines` module for evaluating control signals.
     mb:
@@ -1212,7 +1212,7 @@ def estimate_specific_rates(
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.
+        A :class:`~bp_format.BioProcess` instance.
     ctrl:
         :class:`ControlSplines` module for evaluating control signals.
     mb:
@@ -1882,7 +1882,7 @@ def integrate_process(
     Parameters
     ----------
     process:
-        A :class:`~bpbench.BioProcess` instance.
+        A :class:`~bp_format.BioProcess` instance.
     ctrl:
         :class:`ControlSplines` module.
     mb:

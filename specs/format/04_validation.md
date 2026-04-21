@@ -1,6 +1,6 @@
 # Validation
 
-Source: `bpbench/validate.py`
+Source: `bp_format/validate.py`
 
 ## Purpose
 
@@ -61,7 +61,7 @@ Returns a dict mapping process IDs to their error message lists.
 ### Validating a Single Process
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["kittler_2022"].processes["batch_001"]
@@ -78,7 +78,7 @@ else:
 ### Validating an Entire Case Study
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 case_study = dataset.case_studies["kittler_2022"]
@@ -95,7 +95,7 @@ if not is_valid:
 ### Validating All Processes in a Dataset
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 

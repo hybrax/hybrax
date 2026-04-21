@@ -1,8 +1,8 @@
-# BPbench Documentation
+# bp-format Documentation
 
 ## Getting Started
 
-**New to BPbench?** Read in this order:
+**New to bp-format?** Read in this order:
 1. [Design Rationale](01_design_rationale.md) -- understand the "why" behind the framework
 2. [Data Model](02_data_model.md) -- learn the hierarchical data structures
 3. [Serialization](03_serialization.md) -- load and save datasets
@@ -19,14 +19,14 @@
 
 | Module | Source | Documentation | Description |
 |--------|--------|---------------|-------------|
-| Data Model | `bpbench/dataclasses.py` | [02_data_model.md](02_data_model.md) | 19 hierarchical dataclasses for bioprocess data |
-| TimeSeries | `bpbench/time_series/` | [06_time_series.md](06_time_series.md) | Time-series container with optional fitted spline coefficients (eqx.Module) |
-| Splines | `bpbench/splines.py` | [07_splines.md](07_splines.md) | Pseudobatch transformation and segmented spline fitting |
-| Mechanistic | `bpbench/mechanistic.py` | [08_mechanistic.md](08_mechanistic.md) | JAX/Equinox ODE RHS generation and integration |
-| Serialization | `bpbench/serialization.py` | [03_serialization.md](03_serialization.md) | JSON save/load for the full data hierarchy |
-| Validation | `bpbench/validate.py` | [04_validation.md](04_validation.md) | Data integrity checks (9 validators) |
-| Inspection | `bpbench/inspect.py` | [05_inspection.md](05_inspection.md) | Text printing and matplotlib visualization |
-| Utilities | `bpbench/utils.py` | [09_utilities.md](09_utilities.md) | Cross-validation helpers (LOO-CV) |
+| Data Model | `bp_format/dataclasses.py` | [02_data_model.md](02_data_model.md) | 19 hierarchical dataclasses for bioprocess data |
+| TimeSeries | `bp_format/time_series/` | [06_time_series.md](06_time_series.md) | Time-series container with optional fitted spline coefficients (eqx.Module) |
+| Splines | `bp_format/splines.py` | [07_splines.md](07_splines.md) | Pseudobatch transformation and segmented spline fitting |
+| Mechanistic | `bp_format/mechanistic.py` | [08_mechanistic.md](08_mechanistic.md) | JAX/Equinox ODE RHS generation and integration |
+| Serialization | `bp_format/serialization.py` | [03_serialization.md](03_serialization.md) | JSON save/load for the full data hierarchy |
+| Validation | `bp_format/validate.py` | [04_validation.md](04_validation.md) | Data integrity checks (9 validators) |
+| Inspection | `bp_format/inspect.py` | [05_inspection.md](05_inspection.md) | Text printing and matplotlib visualization |
+| Utilities | `bp_format/utils.py` | [09_utilities.md](09_utilities.md) | Cross-validation helpers (LOO-CV) |
 
 ## Cross-Cutting Design
 
@@ -121,8 +121,8 @@ Each case study follows the same structure:
 <case_study>/
   00_original_data/          # raw CSV files + README
   00_data_preprocessing/     # Jupyter notebooks for data cleaning
-  01_bpbench_data_single/    # single process in BPbench format (data.json)
-  02_bpbench_data_all/       # all processes aggregated (data.json)
+  01_bp_format_data_single/    # single process in bp-format format (data.json)
+  02_bp_format_data_all/       # all processes aggregated (data.json)
 ```
 
 The `00_combined/` directory contains cross-study workflows:

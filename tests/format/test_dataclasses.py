@@ -1,11 +1,11 @@
 """
-Tests for BPbench data structures (current architecture).
+Tests for bp-format data structures (current architecture).
 """
 
 import pytest
 import jax.numpy as jnp
 
-from bpbench import (
+from bp_format import (
     TimeAxis,
     TimeSeries,
     StaticVariable,

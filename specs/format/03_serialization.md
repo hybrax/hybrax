@@ -1,10 +1,10 @@
 # Serialization
 
-Source: `bpbench/serialization.py`
+Source: `bp_format/serialization.py`
 
 ## Purpose
 
-Provides JSON-based save/load for the full BPbench data hierarchy. Handles bidirectional conversion between Python dataclass objects and JSON-serializable dicts, including special handling for JAX arrays, `NaN`/`Inf` values, `Interpolator` objects, and `TimeSeries` with optional spline state. Supports both plain `.json` and gzipped `.json.gz` files.
+Provides JSON-based save/load for the full bp-format data hierarchy. Handles bidirectional conversion between Python dataclass objects and JSON-serializable dicts, including special handling for JAX arrays, `NaN`/`Inf` values, `Interpolator` objects, and `TimeSeries` with optional spline state. Supports both plain `.json` and gzipped `.json.gz` files.
 
 ## Design Rationale
 
@@ -48,7 +48,7 @@ The JSON file follows the dataclass hierarchy directly:
 
 ```json
 {
-  "metadata": {"name": "BPbench v1", "version": "1.0"},
+  "metadata": {"name": "bp-format v1", "version": "1.0"},
   "case_studies": {
     "kittler_2022": {
       "case_id": "kittler_2022",
@@ -99,7 +99,7 @@ The JSON file follows the dataclass hierarchy directly:
 ### Saving and Loading a Dataset
 
 ```python
-import bpbench as bp
+import bp_format as bp
 from pathlib import Path
 
 # Save
@@ -116,7 +116,7 @@ for case_id, cs in dataset.case_studies.items():
 ### Saving and Loading a Process Collection
 
 ```python
-import bpbench as bp
+import bp_format as bp
 from pathlib import Path
 
 # Useful for intermediate work before assembling a full dataset
@@ -132,7 +132,7 @@ restored = bp.serialization.load_process_collection(Path("intermediate/"))
 ### Round-Trip Verification
 
 ```python
-import bpbench as bp
+import bp_format as bp
 from pathlib import Path
 import tempfile
 

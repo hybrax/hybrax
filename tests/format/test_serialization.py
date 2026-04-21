@@ -1,4 +1,4 @@
-"""Tests for bpbench.serialization functionality."""
+"""Tests for bp_format.serialization functionality."""
 
 import gzip
 import pytest
@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from pathlib import Path
 import tempfile
 
-from bpbench import (
+from bp_format import (
     BenchmarkDataset,
     BioProcessCollection,
     CaseStudy,
@@ -23,7 +23,7 @@ from bpbench import (
     FeedVolumeChange,
     Volume,
 )
-from bpbench.serialization import (
+from bp_format.serialization import (
     save_dataset,
     save_process_collection,
     load_dataset,

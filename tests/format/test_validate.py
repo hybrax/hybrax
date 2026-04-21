@@ -1,11 +1,11 @@
 """
-Tests for bpbench.validate validation functions
+Tests for bp_format.validate validation functions
 """
 
 import pytest
 import jax.numpy as jnp
 
-from bpbench import (
+from bp_format import (
     TimeSeries,
     StaticVariable,
     BioProcessMetadata,

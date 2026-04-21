@@ -1,6 +1,6 @@
 # Utilities
 
-Source: `bpbench/utils.py`
+Source: `bp_format/utils.py`
 
 ## Purpose
 
@@ -29,7 +29,7 @@ Iterates through every case study and every process within each case study.
 ### LOO-CV Within a Single Case Study
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 case_study = dataset.case_studies["kittler_2022"]
@@ -45,7 +45,7 @@ for train_ids, test_id in bp.utils.leave_one_process_out(case_study):
 ### Full Dataset LOO-CV
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 dataset = bp.serialization.load_dataset("data.json")
 

@@ -1,6 +1,6 @@
 # Data Model
 
-Source: `bpbench/dataclasses.py`
+Source: `bp_format/dataclasses.py`
 
 ## Purpose
 
@@ -207,7 +207,7 @@ class BioProcessMetadata:
 ```
 
 #### `BioProcess`
-A single experimental bioprocess run. This is the central object in BPbench.
+A single experimental bioprocess run. This is the central object in bp-format.
 
 ```python
 @dataclass
@@ -259,7 +259,7 @@ class BenchmarkDataset:
 ### Constructing a Minimal Batch Process
 
 ```python
-import bpbench as bp
+import bp_format as bp
 import jax.numpy as jnp
 
 # Time axis
@@ -305,7 +305,7 @@ process = bp.BioProcess(
 ### Constructing a Fed-Batch Process with a Bolus Feed
 
 ```python
-import bpbench as bp
+import bp_format as bp
 import jax.numpy as jnp
 
 time_axis = bp.TimeAxis(unit="h", start=0.0, end=48.0, time_reference="inoculation")

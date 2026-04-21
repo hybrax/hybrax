@@ -4,7 +4,7 @@ A JAX-compatible framework for standardized bioprocess data management and bench
 
 ## Motivation
 
-Bioprocess modeling research lacks standardized data formats, making it difficult to compare modeling approaches across labs and publications. BPbench provides a common hierarchical data structure with built-in validation, serialization, and mechanistic modeling support. Built on JAX and Equinox, it enables automatic differentiation through ODE integration for gradient-based hybrid model training.
+Bioprocess modeling research lacks standardized data formats, making it difficult to compare modeling approaches across labs and publications. bp-format provides a common hierarchical data structure with built-in validation, serialization, and mechanistic modeling support. Built on JAX and Equinox, it enables automatic differentiation through ODE integration for gradient-based hybrid model training.
 
 ## Installation
 
@@ -20,7 +20,7 @@ pip install -e ".[dev]"
 ## Quick Start
 
 ```python
-import bpbench as bp
+import bp_format as bp
 
 # Load a benchmark dataset from JSON
 dataset = bp.serialization.load_dataset("examples/00_combined/01_combined_dataset/data.json")
@@ -128,11 +128,11 @@ FeedMedium
 
 ## Ecosystem Context
 
-BPbench is the data foundation for a planned ecosystem of bioprocess modeling packages:
+bp-format is the data foundation for a planned ecosystem of bioprocess modeling packages:
 
 | Package | Purpose | Status |
 |---------|---------|--------|
-| **bp-form** (current BPbench) | Data classes, I/O, validation, basic simulation | Active development |
+| **bp-form** (current bp-format) | Data classes, I/O, validation, basic simulation | Active development |
 | **bp-bench** | Pre-processed case study database | Planned |
 | **bp-prep** | Web app for preprocessing raw data | Planned |
 | **bp-train** | Training utilities (LOO-CV, augmentation) | Planned |

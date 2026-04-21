@@ -1,5 +1,5 @@
 """
-Tests for bpbench.mechanistic: get_control_splines and get_rhs_ode.
+Tests for bp_format.mechanistic: get_control_splines and get_rhs_ode.
 
 All JAX-jit tests use eqx.filter_jit (the equinox-idiomatic way to JIT
 modules that contain JAX-array fields).
@@ -11,8 +11,8 @@ import jax.numpy as jnp
 import equinox as eqx
 import numpy as np
 
-import bpbench
-from bpbench import (
+import bp_format
+from bp_format import (
     BioProcess,
     BioProcessMetadata,
     TimeAxis,
@@ -28,7 +28,7 @@ from bpbench import (
     ProcessVariable,
     Interpolator,
 )
-from bpbench.mechanistic import (
+from bp_format.mechanistic import (
     ControlSplines,
     RhsOde,
     get_control_splines,
@@ -41,7 +41,7 @@ from bpbench.mechanistic import (
     build_q_func,
     build_rates_func,
 )
-from bpbench.splines import (
+from bp_format.splines import (
     make_interpax_spline,
     build_pseudobatch_inputs,
     build_splines,
@@ -1253,7 +1253,7 @@ class TestIntegration:
 
 class TestModuleExport:
     def test_functions_accessible(self):
-        import bpbench.mechanistic as mech
+        import bp_format.mechanistic as mech
 
         assert hasattr(mech, "get_control_splines")
         assert hasattr(mech, "get_rhs_ode")
@@ -1261,17 +1261,17 @@ class TestModuleExport:
         assert hasattr(mech, "RhsOde")
 
     def test_new_functions_accessible(self):
-        import bpbench.mechanistic as mech
+        import bp_format.mechanistic as mech
 
         assert hasattr(mech, "extract_discrete_events")
         assert hasattr(mech, "estimate_specific_rates")
         assert hasattr(mech, "integrate_process")
 
-    def test_mechanistic_in_bpbench_namespace(self):
-        assert hasattr(bpbench, "mechanistic")
+    def test_mechanistic_in_bp_format_namespace(self):
+        assert hasattr(bp_format, "mechanistic")
 
     def test_mechanistic_in_all(self):
-        assert "mechanistic" in bpbench.__all__
+        assert "mechanistic" in bp_format.__all__
 
 
 # ---------------------------------------------------------------------------

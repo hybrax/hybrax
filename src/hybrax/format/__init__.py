@@ -1,5 +1,5 @@
 """
-BPbench: Bioprocess Benchmarking Dataset Structure
+bp-format: Bioprocess Benchmarking Dataset Structure
 
 A JAX-compatible framework for standardized bioprocess data management
 and benchmarking across multiple case studies.

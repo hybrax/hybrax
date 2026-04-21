@@ -12,7 +12,7 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from bpbench import (
+from bp_format import (
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
@@ -26,7 +26,7 @@ from bpbench import (
     TimeSeries,
     Volume,
 )
-from bpbench.splines import (
+from bp_format.splines import (
     build_pseudobatch_inputs,
     build_splines,
     to_interpolator,
