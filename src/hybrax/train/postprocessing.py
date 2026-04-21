@@ -33,7 +33,7 @@ def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
 def load_trained_wrapper(
     path: str | Path, *, template: HybridOdeWrapper
 ) -> HybridOdeWrapper:
-    """Deserialize a trained wrapper from disk using ``template`` as the pytree shape."""
+    """Deserialize a trained wrapper from disk using ``template`` as pytree shape."""
     return eqx.tree_deserialise_leaves(Path(path), like=template)
 
 

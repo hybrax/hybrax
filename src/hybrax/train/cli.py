@@ -520,14 +520,10 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
         per_target = result.per_process_per_target_loss[name]
         split = "train" if name in training_set else "holdout"
         data_rows.append(
-            [name, f"{total:.6g}"]
-            + [f"{v:.6g}" for v in per_target]
-            + [split]
+            [name, f"{total:.6g}"] + [f"{v:.6g}" for v in per_target] + [split]
         )
         csv_rows.append(
-            [name, f"{total:.6g}"]
-            + [f"{v:.6g}" for v in per_target]
-            + [split]
+            [name, f"{total:.6g}"] + [f"{v:.6g}" for v in per_target] + [split]
         )
         total_sum += total
         for i, v in enumerate(per_target):
@@ -616,7 +612,8 @@ def _handle_forward(args: argparse.Namespace) -> int:
     meta = load_model_metadata(model_path.with_suffix(".meta.json"))
     if not meta:
         log.warning(
-            "no sidecar found at %s; --input and solver flags fall back to CLI/defaults",
+            "no sidecar found at %s; --input and solver flags "
+            "fall back to CLI/defaults",
             model_path.with_suffix(".meta.json"),
         )
 

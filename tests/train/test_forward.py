@@ -282,7 +282,13 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(cli, "load_process_collection_json", lambda p: fake_collection)
 
     def fake_forward(
-        collection, *, model_path, config, custom_py, runtime_config, training_process_names
+        collection,
+        *,
+        model_path,
+        config,
+        custom_py,
+        runtime_config,
+        training_process_names,
     ):
         captured["collection"] = collection
         captured["model_path"] = Path(model_path)
@@ -362,12 +368,19 @@ def test_forward_cli_overrides_beat_sidecar(monkeypatch, tmp_path: Path):
         json.dumps(
             {
                 "prepared_input": str(tmp_path / "prepared.json"),
-                "solver": {"max_steps": 10, "rtol": 1e-5, "atol": 1e-7, "use_jump_ts": True},
+                "solver": {
+                    "max_steps": 10,
+                    "rtol": 1e-5,
+                    "atol": 1e-7,
+                    "use_jump_ts": True,
+                },
             }
         )
     )
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda p: _make_fake_collection())
+    monkeypatch.setattr(
+        cli, "load_process_collection_json", lambda p: _make_fake_collection()
+    )
 
     captured_cfg: dict[str, ForwardConfig] = {}
 
@@ -463,10 +476,7 @@ KITTLER_PREPARED = (
     / "prepared.json"
 )
 KITTLER_CUSTOM = (
-    Path(__file__).resolve().parents[1]
-    / "examples"
-    / "01_kittler_2022"
-    / "custom.py"
+    Path(__file__).resolve().parents[1] / "examples" / "01_kittler_2022" / "custom.py"
 )
 
 
