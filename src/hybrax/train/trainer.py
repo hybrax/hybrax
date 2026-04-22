@@ -209,43 +209,22 @@ def build_batched_loss_fn_from_sample_loss(
             )
             return total_loss, per_target
 
-        # Keep a dedicated vmap path when jump timestamps are absent so the
-        # sample-loss callback receives `None` exactly in that case.
-        if jump_ts_rows is None:
-            per_sample_total, per_sample_per_target = jax.vmap(
-                lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
-                    pi,
-                    tm,
-                    ym,
-                    mm,
-                    nm,
-                    y0,
-                    ci,
-                    cm,
-                    None,
-                )
-            )(
-                batch.process_indices,
-                batch_t_meas,
-                batch.y_meas,
-                batch.meas_mask,
-                batch.n_meas,
-                batch.y0,
-                batched_Cin[batch.process_indices],
-                batched_Cin_modeled[batch.process_indices],
-            )
-        else:
-            per_sample_total, per_sample_per_target = jax.vmap(_sample_loss)(
-                batch.process_indices,
-                batch_t_meas,
-                batch.y_meas,
-                batch.meas_mask,
-                batch.n_meas,
-                batch.y0,
-                batched_Cin[batch.process_indices],
-                batched_Cin_modeled[batch.process_indices],
-                jump_ts_rows,
-            )
+        per_sample_total, per_sample_per_target = jax.vmap(
+            _sample_loss,
+            # when `jump_ts_rows` is `None` we also have to pass `None` to vmap so that
+            # it's not iterated over
+            in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None if jump_ts_rows is None else 0),
+        )(
+            batch.process_indices,
+            batch_t_meas,
+            batch.y_meas,
+            batch.meas_mask,
+            batch.n_meas,
+            batch.y0,
+            batched_Cin[batch.process_indices],
+            batched_Cin_modeled[batch.process_indices],
+            jump_ts_rows,
+        )
         mean_per_target = jnp.mean(per_sample_per_target, axis=0)
         mean_total = jnp.mean(per_sample_total)
         return mean_total, mean_per_target, per_sample_total
