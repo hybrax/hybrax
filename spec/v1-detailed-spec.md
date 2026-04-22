@@ -217,6 +217,30 @@ V1 standardizes the following default hook signatures:
 ```python
 def transform_process_collection(collection, config):
     return collection
+
+
+def build_reaction_module(
+    *, target_names, process_names, config, seed, collection
+):
+    ...
+
+
+def build_learning_rate(config, train_cfg):
+    ...
+
+
+def estimate_all_scales(collection, target_names, config):
+    ...
+
+
+def build_sample_loss_fn(
+    *, default_sample_loss_fn, store, collection, train_cfg, config
+):
+    return default_sample_loss_fn
+
+
+def build_batched_loss_fn(*, default_loss_fn, store, collection, train_cfg, config):
+    return default_loss_fn
 ```
 
 Data augmentation hooks are intentionally deferred.
@@ -224,6 +248,18 @@ Data augmentation hooks are intentionally deferred.
 `transform_process_collection(...)` is called once and receives the raw
 `BioProcessCollection`; it returns the updated collection used for the rest of
 prep.
+
+`build_sample_loss_fn(...)` is the preferred optional loss hook. It returns a
+per-sample loss callable (same signature/contract as the default sample loss),
+and the harness applies batching internally.
+
+`build_batched_loss_fn(...)` remains an advanced optional hook for directly returning a
+batched loss callable during training.
+
+Hooks are mutually exclusive: defining both loss hooks is an error.
+Forward per-process loss evaluation supports default loss and
+`build_sample_loss_fn(...)`; `build_batched_loss_fn(...)` is rejected there because
+arbitrary batched objectives are not guaranteed to decompose per process.
 
 ### 8.3 Allowed Hook Responsibilities
 
@@ -896,6 +932,13 @@ Optimization and loss behavior:
 - default optimizer is `adam`,
 - `learning_rate` must be strictly positive,
 - batch loss is mean of per-sample process losses in the current batch.
+- users may override training loss via
+  `custom.py::build_sample_loss_fn(...)` (preferred) or
+  `custom.py::build_batched_loss_fn(...)` (advanced),
+- if no custom loss hook is provided, runtime falls back to default measurement
+  loss,
+- forward loss reporting uses default/sample-loss objective contract and rejects
+  advanced batched hooks that are not guaranteed to decompose per process.
 
 Compile/shape stability behavior:
 

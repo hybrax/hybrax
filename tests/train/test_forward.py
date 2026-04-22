@@ -92,18 +92,18 @@ def test_format_loss_table_has_expected_rows_columns():
     assert "p2" in table_str
     assert "train" in table_str
     assert "holdout" in table_str
-    # header + 2 data rows + mean row
-    assert len(csv_rows) == 1 + 2 + 1
+    # header + 2 data rows + total/train/holdout mean rows
+    assert len(csv_rows) == 1 + 2 + 3
     header = csv_rows[0]
     assert header == ["process", "total", "X", "S", "split"]
     # mean row: total=(0.25+0.75)/2 = 0.5
-    mean_row = csv_rows[-1]
+    mean_row = next(row for row in csv_rows[1:] if row[0] == "total (mean)")
     assert mean_row[0] == "total (mean)"
     assert float(mean_row[1]) == pytest.approx(0.5)
     assert float(mean_row[2]) == pytest.approx(0.2)
     assert float(mean_row[3]) == pytest.approx(0.8)
     # train/holdout classification
-    data_rows = {row[0]: row for row in csv_rows[1:-1]}
+    data_rows = {row[0]: row for row in csv_rows[1:] if "(mean)" not in row[0]}
     assert data_rows["p1"][-1] == "train"
     assert data_rows["p2"][-1] == "holdout"
 
@@ -111,7 +111,9 @@ def test_format_loss_table_has_expected_rows_columns():
 def test_format_loss_table_all_holdout_when_training_empty():
     result = _make_forward_result(training_process_names=())
     _, csv_rows = cli._format_loss_table(result)
-    for row in csv_rows[1:-1]:
+    for row in csv_rows[1:]:
+        if "(mean)" in row[0]:
+            continue
         assert row[-1] == "holdout"
 
 
@@ -440,7 +442,7 @@ def test_forward_cli_missing_model_errors(tmp_path: Path):
 def test_forward_cli_unknown_sidecar_marks_everything_holdout(
     monkeypatch, tmp_path: Path
 ):
-    """Pre-sidecar models: treat every eval process as holdout."""
+    """Pre-sidecar models default training_processes to all input processes."""
     model_path = tmp_path / "m.eqx"
     model_path.write_bytes(b"")
     # Sidecar with no training_processes key at all.
@@ -471,7 +473,7 @@ def test_forward_cli_unknown_sidecar_marks_everything_holdout(
             "--no-plot",
         ]
     )
-    assert captured_tpn["tpn"] == ()
+    assert captured_tpn["tpn"] == ("p1", "p2", "p3")
 
 
 # ---------------------------------------------------------------------------
@@ -549,8 +551,8 @@ def test_forward_end_to_end_on_kittler(tmp_path: Path):
     losses_csv = fwd_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
-    # 1 data row + mean row
-    assert len(rows) == 2
+    # 1 data row + total/train mean rows
+    assert len(rows) == 3
     assert rows.columns[0] == "process"
     assert rows.iloc[0]["process"] == "DoE1_R1"
     assert (

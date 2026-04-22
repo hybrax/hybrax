@@ -20,116 +20,25 @@ from bp_format.serialization import load_process_collection_json
 from .defaults import default_build_reaction_module
 from .model_api import UserReactionModule, partition_trainable
 from .trainer import (
+    batched_measurement_loss_from_arrays,
+    _build_batched_loss_fn_from_sample_loss,
     _build_optimizer,
-    _BatchIndexedControls,
     _clamp_padded_time_rows,
     _measurement_loss_from_arrays,
     summarize_train_step_input_signature,
+    BatchedLossFn,
 )
-from .controls_store import BatchControls
 from .logging import RunLogger, StepRecord
 from .training_data import (
-    BatchTrainingData,
     TARGET_SOURCE_AUTO,
     TrainingDataStore,
 )
 from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 
+_DEFAULT_BATCHED_MEASUREMENT_LOSS = batched_measurement_loss_from_arrays
 
 logger = logging.getLogger(__name__)
-
-
-def _batched_measurement_loss_from_batch(
-    wrapper: HybridOdeWrapper,
-    batch: BatchTrainingData,
-    batch_controls: BatchControls,
-    batched_Cin: jax.Array,
-    batched_Cin_modeled: jax.Array,
-    jump_ts_rows: jax.Array | None,
-    *,
-    max_solver_steps: int,
-    solver_rtol: float,
-    solver_atol: float,
-) -> jax.Array:
-    batch_t_meas = _clamp_padded_time_rows(batch.t_meas, batch.n_meas)
-
-    def _sample_loss(
-        process_idx: jax.Array,
-        t_meas: jax.Array,
-        y_meas: jax.Array,
-        meas_mask: jax.Array,
-        n_meas: jax.Array,
-        y0: jax.Array,
-        cin: jax.Array,
-        cin_modeled: jax.Array,
-        jump_ts: jax.Array | None,
-    ) -> jax.Array:
-        controls = _BatchIndexedControls(
-            batch_controls=batch_controls,
-            process_idx=process_idx,
-        )
-        sample_wrapper = eqx.tree_at(
-            lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
-            wrapper,
-            (controls, cin, cin_modeled),
-        )
-        total_loss, per_target = _measurement_loss_from_arrays(
-            sample_wrapper,
-            t_meas=t_meas,
-            y_meas=y_meas,
-            meas_mask=meas_mask,
-            n_meas=n_meas,
-            y0=y0,
-            jump_ts=jump_ts,
-            max_solver_steps=max_solver_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-        )
-        return total_loss, per_target
-
-    if jump_ts_rows is None:
-        per_sample_total, per_sample_per_target = jax.vmap(
-            lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
-                pi,
-                tm,
-                ym,
-                mm,
-                nm,
-                y0,
-                ci,
-                cm,
-                None,
-            )
-        )(
-            batch.process_indices,
-            batch_t_meas,
-            batch.y_meas,
-            batch.meas_mask,
-            batch.n_meas,
-            batch.y0,
-            batched_Cin[batch.process_indices],
-            batched_Cin_modeled[batch.process_indices],
-        )
-    else:
-        per_sample_total, per_sample_per_target = jax.vmap(_sample_loss)(
-            batch.process_indices,
-            batch_t_meas,
-            batch.y_meas,
-            batch.meas_mask,
-            batch.n_meas,
-            batch.y0,
-            batched_Cin[batch.process_indices],
-            batched_Cin_modeled[batch.process_indices],
-            jump_ts_rows,
-        )
-    # per_sample_per_target: [batch_size, n_targets]
-    # per_sample_total: [batch_size]
-    mean_per_target = jnp.mean(per_sample_per_target, axis=0)
-    mean_total = jnp.mean(per_sample_total)
-    # Return the unreduced per-sample vector too — the harness wants it for
-    # per-process logging, and it costs nothing extra inside the JIT graph.
-    return mean_total, mean_per_target, per_sample_total
 
 
 @dataclass(frozen=True)
@@ -297,6 +206,88 @@ def _build_reaction_module(
     return module
 
 
+def _resolve_batched_loss_fn(
+    *,
+    custom_module,
+    custom_cfg: dict[str, Any],
+    store: TrainingDataStore,
+    collection: BioProcessCollection,
+    train_cfg: TrainHarnessConfig,
+    allow_batched_loss_hook: bool = True,
+) -> BatchedLossFn:
+    sample_loss_hook = get_hook(custom_module, "build_sample_loss_fn", None)
+    batched_loss_hook = get_hook(custom_module, "build_batched_loss_fn", None)
+
+    if sample_loss_hook is not None and batched_loss_hook is not None:
+        raise ValueError(
+            "Define either build_sample_loss_fn(...) or "
+            "build_batched_loss_fn(...), not both"
+        )
+
+    if sample_loss_hook is not None:
+        sample_loss_fn = sample_loss_hook(
+            default_sample_loss_fn=_measurement_loss_from_arrays,
+            store=store,
+            collection=collection,
+            train_cfg=train_cfg,
+            config=custom_cfg,
+        )
+        if not callable(sample_loss_fn):
+            raise TypeError("build_sample_loss_fn(...) must return a callable")
+        return _build_batched_loss_fn_from_sample_loss(sample_loss_fn)
+
+    if batched_loss_hook is not None:
+        if not allow_batched_loss_hook:
+            raise ValueError(
+                "forward loss evaluation supports default loss or "
+                "build_sample_loss_fn(...); "
+                "build_batched_loss_fn(...) is not supported"
+            )
+        batched_loss_fn = batched_loss_hook(
+            default_loss_fn=_DEFAULT_BATCHED_MEASUREMENT_LOSS,
+            store=store,
+            collection=collection,
+            train_cfg=train_cfg,
+            config=custom_cfg,
+        )
+        if not callable(batched_loss_fn):
+            raise TypeError("build_batched_loss_fn(...) must return a callable")
+        return batched_loss_fn
+
+    return _DEFAULT_BATCHED_MEASUREMENT_LOSS
+
+
+def _validate_batched_loss_outputs(
+    total_loss,
+    per_target_loss,
+    per_sample_loss,
+    *,
+    n_targets: int,
+    batch_size: int,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    total_arr = jnp.asarray(total_loss)
+    per_target_arr = jnp.asarray(per_target_loss)
+    per_sample_arr = jnp.asarray(per_sample_loss)
+
+    if total_arr.ndim != 0:
+        raise ValueError(
+            "batched loss must return scalar total_loss; "
+            f"got shape {tuple(total_arr.shape)}"
+        )
+    if per_target_arr.ndim != 1 or per_target_arr.shape[0] != n_targets:
+        raise ValueError(
+            "batched loss must return per_target_loss with shape "
+            f"({n_targets},); got {tuple(per_target_arr.shape)}"
+        )
+    if per_sample_arr.ndim != 1 or per_sample_arr.shape[0] != batch_size:
+        raise ValueError(
+            "batched loss must return per_sample_loss with shape "
+            f"({batch_size},); got {tuple(per_sample_arr.shape)}"
+        )
+
+    return total_arr, per_target_arr, per_sample_arr
+
+
 def _build_template_wrapper(
     store: TrainingDataStore,
     *,
@@ -416,7 +407,6 @@ def forward_from_collection(
     template to deserialise into.
     """
     from .postprocessing import load_trained_wrapper
-    from .trainer import _measurement_loss_from_arrays
 
     cfg = config or ForwardConfig()
     custom_module = load_custom_module(custom_py)
@@ -441,8 +431,13 @@ def forward_from_collection(
 
     # Build a throwaway TrainHarnessConfig for hook-reuse only (build_reaction_module
     # needs a config object with .seed).
+    hook_process_names = (
+        tuple(training_process_names)
+        if training_process_names is not None
+        else template_processes
+    )
     train_like_cfg = TrainHarnessConfig(
-        process_names=template_processes,
+        process_names=hook_process_names,
         target_variable_order=effective_target_order,
         target_source=cfg.target_source,
     )
@@ -477,6 +472,14 @@ def forward_from_collection(
         **scale_kwargs,
     )
     per_process_rhs = extras["per_process_rhs"]
+    batched_loss_fn = _resolve_batched_loss_fn(
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
+        store=store,
+        collection=collection,
+        train_cfg=train_like_cfg,
+        allow_batched_loss_hook=False,
+    )
 
     trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
 
@@ -499,30 +502,44 @@ def forward_from_collection(
     if cfg.solver_atol <= 0.0:
         raise ValueError("solver_atol must be positive")
 
+    batch_controls = store.controls_store.as_batch_controls()
+    all_Cin = []
+    all_Cin_modeled = []
+    for process_name in store.process_order:
+        rhs = per_process_rhs[process_name]
+        all_Cin.append(rhs.Cin)
+        all_Cin_modeled.append(rhs.Cin_modeled)
+    batched_Cin = jnp.stack(all_Cin)
+    batched_Cin_modeled = jnp.stack(all_Cin_modeled)
+
     per_process_total: dict[str, float] = {}
     per_process_per_target: dict[str, tuple[float, ...]] = {}
     for process_name in eval_processes:
-        process_data = store.get_process(process_name)
-        rhs = per_process_rhs[process_name]
-        process_wrapper = eqx.tree_at(
-            lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+        process_idx = store.process_order.index(process_name)
+        batch = store.gather_batch(jnp.asarray([process_idx], dtype=jnp.int32))
+        jump_ts_rows = None
+        if cfg.solver_use_jump_ts:
+            jump_ts_rows = _clamp_padded_time_rows(
+                store.controls_store.step_ts[batch.process_indices],
+                store.controls_store.step_ts_lengths[batch.process_indices],
+            )
+        total, per_target, _per_sample = batched_loss_fn(
             trained_wrapper,
-            (process_data.controls, rhs.Cin, rhs.Cin_modeled),
-        )
-        jump_ts = (
-            process_data.controls.active_step_ts if cfg.solver_use_jump_ts else None
-        )
-        total, per_target = _measurement_loss_from_arrays(
-            process_wrapper,
-            t_meas=process_data.active_t_meas,
-            y_meas=process_data.active_y_meas,
-            meas_mask=process_data.active_meas_mask,
-            n_meas=int(process_data.n_meas),
-            y0=process_data.y0,
-            jump_ts=jump_ts,
+            batch,
+            batch_controls,
+            batched_Cin,
+            batched_Cin_modeled,
+            jump_ts_rows,
             max_solver_steps=int(cfg.solver_max_steps),
             solver_rtol=float(cfg.solver_rtol),
             solver_atol=float(cfg.solver_atol),
+        )
+        total, per_target, _per_sample = _validate_batched_loss_outputs(
+            total,
+            per_target,
+            _per_sample,
+            n_targets=int(batch.y_meas.shape[2]),
+            batch_size=int(batch.process_indices.shape[0]),
         )
         per_process_total[process_name] = float(total)
         per_process_per_target[process_name] = tuple(float(v) for v in per_target)
@@ -555,9 +572,15 @@ def train_collection(
     controls_scale: jax.Array | None = None,
     q_scale: jax.Array | None = None,
     f_scale: jax.Array | None = None,
+    batched_loss_fn: BatchedLossFn | None = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store."""
     cfg = config or TrainHarnessConfig()
+    effective_batched_loss_fn = (
+        _DEFAULT_BATCHED_MEASUREMENT_LOSS
+        if batched_loss_fn is None
+        else batched_loss_fn
+    )
     selected_processes = _ensure_process_names(store, cfg.process_names)
 
     effective_batch_size = _validate_batching_config(
@@ -709,18 +732,23 @@ def train_collection(
                     current_wrapper,
                     reaction_module_updated,
                 )
-                total_loss, per_target, per_sample = (
-                    _batched_measurement_loss_from_batch(
-                        candidate_wrapper,
-                        current_batch,
-                        batch_controls,
-                        batched_Cin,
-                        batched_Cin_modeled,
-                        jump_ts_rows,
-                        max_solver_steps=int(cfg.solver_max_steps),
-                        solver_rtol=float(cfg.solver_rtol),
-                        solver_atol=float(cfg.solver_atol),
-                    )
+                total_loss, per_target, per_sample = effective_batched_loss_fn(
+                    candidate_wrapper,
+                    current_batch,
+                    batch_controls,
+                    batched_Cin,
+                    batched_Cin_modeled,
+                    jump_ts_rows,
+                    max_solver_steps=int(cfg.solver_max_steps),
+                    solver_rtol=float(cfg.solver_rtol),
+                    solver_atol=float(cfg.solver_atol),
+                )
+                total_loss, per_target, per_sample = _validate_batched_loss_outputs(
+                    total_loss,
+                    per_target,
+                    per_sample,
+                    n_targets=int(current_batch.y_meas.shape[2]),
+                    batch_size=int(current_batch.process_indices.shape[0]),
                 )
                 return total_loss, (per_target, per_sample)
 
@@ -932,6 +960,14 @@ def train_from_collection(
         lr = lr_hook(custom_cfg, train_cfg)
         train_cfg = dataclasses.replace(train_cfg, learning_rate=lr)
 
+    batched_loss_fn = _resolve_batched_loss_fn(
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
+        store=store,
+        collection=collection,
+        train_cfg=train_cfg,
+    )
+
     # Call optional estimate_all_scales hook for state/controls/q/f scaling
     estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
     scale_kwargs: dict[str, Any] = {}
@@ -953,6 +989,7 @@ def train_from_collection(
         reaction_module=reaction_module,
         collection=collection,
         config=train_cfg,
+        batched_loss_fn=batched_loss_fn,
         **scale_kwargs,
     )
 

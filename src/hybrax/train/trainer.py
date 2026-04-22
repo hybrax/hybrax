@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Callable
 
 import equinox as eqx
 import jax
@@ -10,8 +11,12 @@ import diffrax
 
 from .controls_store import BatchControls
 from .model_api import partition_trainable
-from .training_data import PerProcessTrainingData
+from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper
+
+
+SampleLossFn = Callable[..., tuple[jax.Array, jax.Array]]
+BatchedLossFn = Callable[..., tuple[jax.Array, jax.Array, jax.Array]]
 
 
 def summarize_train_step_input_signature(*values: object) -> tuple[object, ...]:
@@ -174,6 +179,106 @@ def _measurement_loss_from_arrays(
     total_loss = jnp.mean(per_target_loss)
     return total_loss, per_target_loss
 
+
+def _build_batched_loss_fn_from_sample_loss(
+    sample_loss_fn: SampleLossFn,
+) -> BatchedLossFn:
+    """Lift a per-sample loss fn to batched harness contract."""
+
+    def _batched_loss_fn(
+        wrapper: HybridOdeWrapper,
+        batch: BatchTrainingData,
+        batch_controls: BatchControls,
+        batched_Cin: jax.Array,
+        batched_Cin_modeled: jax.Array,
+        jump_ts_rows: jax.Array | None,
+        *,
+        max_solver_steps: int,
+        solver_rtol: float,
+        solver_atol: float,
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
+        batch_t_meas = _clamp_padded_time_rows(batch.t_meas, batch.n_meas)
+
+        def _sample_loss(
+            process_idx: jax.Array,
+            t_meas: jax.Array,
+            y_meas: jax.Array,
+            meas_mask: jax.Array,
+            n_meas: jax.Array,
+            y0: jax.Array,
+            cin: jax.Array,
+            cin_modeled: jax.Array,
+            jump_ts: jax.Array | None,
+        ) -> tuple[jax.Array, jax.Array]:
+            controls = _BatchIndexedControls(
+                batch_controls=batch_controls,
+                process_idx=process_idx,
+            )
+            sample_wrapper = eqx.tree_at(
+                lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+                wrapper,
+                (controls, cin, cin_modeled),
+            )
+            total_loss, per_target = sample_loss_fn(
+                sample_wrapper,
+                t_meas=t_meas,
+                y_meas=y_meas,
+                meas_mask=meas_mask,
+                n_meas=n_meas,
+                y0=y0,
+                jump_ts=jump_ts,
+                max_solver_steps=max_solver_steps,
+                solver_rtol=solver_rtol,
+                solver_atol=solver_atol,
+            )
+            return total_loss, per_target
+
+        # TODO: this check for None and lambda construction is really annoying; we
+        # should make _sample_loss check for empty array instead
+        if jump_ts_rows is None:
+            per_sample_total, per_sample_per_target = jax.vmap(
+                lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
+                    pi,
+                    tm,
+                    ym,
+                    mm,
+                    nm,
+                    y0,
+                    ci,
+                    cm,
+                    None,
+                )
+            )(
+                batch.process_indices,
+                batch_t_meas,
+                batch.y_meas,
+                batch.meas_mask,
+                batch.n_meas,
+                batch.y0,
+                batched_Cin[batch.process_indices],
+                batched_Cin_modeled[batch.process_indices],
+            )
+        else:
+            per_sample_total, per_sample_per_target = jax.vmap(_sample_loss)(
+                batch.process_indices,
+                batch_t_meas,
+                batch.y_meas,
+                batch.meas_mask,
+                batch.n_meas,
+                batch.y0,
+                batched_Cin[batch.process_indices],
+                batched_Cin_modeled[batch.process_indices],
+                jump_ts_rows,
+            )
+        mean_per_target = jnp.mean(per_sample_per_target, axis=0)
+        mean_total = jnp.mean(per_sample_total)
+        return mean_total, mean_per_target, per_sample_total
+
+    return _batched_loss_fn
+
+batched_measurement_loss_from_arrays = _build_batched_loss_fn_from_sample_loss(
+    _measurement_loss_from_arrays
+)
 
 def single_process_measurement_loss(
     wrapper: HybridOdeWrapper,
