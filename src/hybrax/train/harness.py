@@ -23,9 +23,9 @@ from .defaults import default_build_reaction_module
 from .model_api import UserReactionModule, partition_trainable
 from .trainer import (
     batched_measurement_loss_from_arrays,
-    _build_batched_loss_fn_from_sample_loss,
-    _clamp_padded_time_rows,
-    _measurement_loss_from_arrays,
+    build_batched_loss_fn_from_sample_loss,
+    clamp_padded_time_rows,
+    measurement_loss_from_arrays,
     BatchedLossFn,
 )
 from .logging import RunLogger, StepRecord
@@ -276,7 +276,7 @@ def _resolve_batched_loss_fn(
 
     if sample_loss_hook is not None:
         sample_loss_fn = sample_loss_hook(
-            default_sample_loss_fn=_measurement_loss_from_arrays,
+            default_sample_loss_fn=measurement_loss_from_arrays,
             store=store,
             collection=collection,
             train_cfg=train_cfg,
@@ -284,7 +284,7 @@ def _resolve_batched_loss_fn(
         )
         if not callable(sample_loss_fn):
             raise TypeError("build_sample_loss_fn(...) must return a callable")
-        return _build_batched_loss_fn_from_sample_loss(sample_loss_fn)
+        return build_batched_loss_fn_from_sample_loss(sample_loss_fn)
 
     if batched_loss_hook is not None:
         if not allow_batched_loss_hook:
@@ -569,7 +569,7 @@ def forward_from_collection(
         batch = store.gather_batch(jnp.asarray([process_idx], dtype=jnp.int32))
         jump_ts_rows = None
         if cfg.solver_use_jump_ts:
-            jump_ts_rows = _clamp_padded_time_rows(
+            jump_ts_rows = clamp_padded_time_rows(
                 store.controls_store.step_ts[batch.process_indices],
                 store.controls_store.step_ts_lengths[batch.process_indices],
             )
@@ -767,7 +767,7 @@ def train_collection(
         ):
             jump_ts_rows = None
             if cfg.solver_use_jump_ts:
-                jump_ts_rows = _clamp_padded_time_rows(
+                jump_ts_rows = clamp_padded_time_rows(
                     store.controls_store.step_ts[current_batch.process_indices],
                     store.controls_store.step_ts_lengths[current_batch.process_indices],
                 )

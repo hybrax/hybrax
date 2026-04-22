@@ -16,7 +16,7 @@ SampleLossFn = Callable[..., tuple[jax.Array, jax.Array]]
 BatchedLossFn = Callable[..., tuple[jax.Array, jax.Array, jax.Array]]
 
 
-def _clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
+def clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
     """Right-clamp padded rows to avoid NaNs in padded tails."""
     max_length = times.shape[1]
     last_index = jnp.clip(lengths - 1, 0, max_length - 1)
@@ -116,7 +116,7 @@ def simulate_measurement_states(
     )
 
 
-def _measurement_loss_from_arrays(
+def measurement_loss_from_arrays(
     wrapper: HybridOdeWrapper,
     *,
     t_meas: jax.Array,
@@ -156,7 +156,7 @@ def _measurement_loss_from_arrays(
     return total_loss, per_target_loss
 
 
-def _build_batched_loss_fn_from_sample_loss(
+def build_batched_loss_fn_from_sample_loss(
     sample_loss_fn: SampleLossFn,
 ) -> BatchedLossFn:
     """Lift a per-sample loss fn to batched harness contract."""
@@ -173,7 +173,7 @@ def _build_batched_loss_fn_from_sample_loss(
         solver_rtol: float,
         solver_atol: float,
     ) -> tuple[jax.Array, jax.Array, jax.Array]:
-        batch_t_meas = _clamp_padded_time_rows(batch.t_meas, batch.n_meas)
+        batch_t_meas = clamp_padded_time_rows(batch.t_meas, batch.n_meas)
 
         def _sample_loss(
             process_idx: jax.Array,
@@ -253,6 +253,6 @@ def _build_batched_loss_fn_from_sample_loss(
     return _batched_loss_fn
 
 
-batched_measurement_loss_from_arrays = _build_batched_loss_fn_from_sample_loss(
-    _measurement_loss_from_arrays
+batched_measurement_loss_from_arrays = build_batched_loss_fn_from_sample_loss(
+    measurement_loss_from_arrays
 )

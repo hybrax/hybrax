@@ -21,9 +21,9 @@ import bp_train.trainer as trainer_module
 from bp_train.model_api import ReactionOutputs, UserReactionModule
 from bp_train.harness import summarize_train_step_input_signature
 from bp_train.trainer import (
-    _build_batched_loss_fn_from_sample_loss,
-    _clamp_padded_time_rows,
-    _measurement_loss_from_arrays,
+    build_batched_loss_fn_from_sample_loss,
+    clamp_padded_time_rows,
+    measurement_loss_from_arrays,
 )
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper
@@ -161,7 +161,7 @@ def test_clamp_padded_time_rows_repeats_last_active_timestamp():
     )
     lengths = jnp.asarray([3, 1], dtype=jnp.int32)
 
-    clamped = _clamp_padded_time_rows(times, lengths)
+    clamped = clamp_padded_time_rows(times, lengths)
 
     assert jnp.allclose(clamped[0], jnp.asarray([0.0, 1.0, 2.0, 2.0]))
     assert jnp.allclose(clamped[1], jnp.asarray([0.0, 0.0, 0.0, 0.0]))
@@ -171,12 +171,12 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
     wrapper, process_data = _build_wrapper_and_process()
     assert process_data.n_meas == 2
     assert bool(process_data.meas_mask[2]) is False
-    t_meas = _clamp_padded_time_rows(
+    t_meas = clamp_padded_time_rows(
         process_data.t_meas[None, :],
         jnp.asarray([process_data.n_meas], dtype=jnp.int32),
     )[0]
 
-    base_total, _ = _measurement_loss_from_arrays(
+    base_total, _ = measurement_loss_from_arrays(
         wrapper,
         t_meas=t_meas,
         y_meas=process_data.y_meas,
@@ -190,7 +190,7 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
     )
 
     poisoned_y = process_data.y_meas.at[2, 0].set(1e6)
-    poisoned_total, _ = _measurement_loss_from_arrays(
+    poisoned_total, _ = measurement_loss_from_arrays(
         wrapper,
         t_meas=t_meas,
         y_meas=poisoned_y,
@@ -238,7 +238,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         _fake_simulate_measurement_states_on_grid,
     )
 
-    total_loss, _ = _measurement_loss_from_arrays(
+    total_loss, _ = measurement_loss_from_arrays(
         wrapper,
         t_meas=process_data.t_meas,
         y_meas=process_data.y_meas,
@@ -308,7 +308,7 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
         score = 1.0 if jump_ts is None else 2.0
         return jnp.asarray(score), jnp.asarray([score], dtype=jnp.float32)
 
-    batched_loss_fn = _build_batched_loss_fn_from_sample_loss(_sample_loss_fn)
+    batched_loss_fn = build_batched_loss_fn_from_sample_loss(_sample_loss_fn)
     mean_total_none, _, _ = batched_loss_fn(
         wrapper,
         batch,
