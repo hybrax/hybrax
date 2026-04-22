@@ -144,9 +144,7 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     # Stub out model saving (trained_wrapper is None in this test)
-    from bp_train import postprocessing
-
-    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
 
     exit_code = cli.main(
         [
@@ -239,9 +237,7 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
     monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
 
-    from bp_train import postprocessing
-
-    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
     monkeypatch.setattr(
         cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
@@ -380,9 +376,7 @@ def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
         cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    from bp_train import postprocessing
-
-    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
 
     cli.main(["train", "--input", "prepared.json", "--no-plot"])
 
@@ -445,9 +439,7 @@ def test_train_cli_uses_config_targets_when_target_flag_missing(monkeypatch):
         cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    from bp_train import postprocessing
-
-    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
 
     exit_code = cli.main(
         [
@@ -498,9 +490,7 @@ def test_train_cli_uses_none_targets_when_cli_and_config_missing(monkeypatch):
         cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    from bp_train import postprocessing
-
-    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
 
     exit_code = cli.main(
         [
@@ -551,9 +541,7 @@ def test_train_cli_target_flag_overrides_config_targets(monkeypatch):
         cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    from bp_train import postprocessing
-
-    monkeypatch.setattr(postprocessing, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
 
     exit_code = cli.main(
         [

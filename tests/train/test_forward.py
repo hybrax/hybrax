@@ -17,6 +17,7 @@ available. It is marked ``integration`` so it can be skipped in fast suites.
 
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 
@@ -567,8 +568,6 @@ def test_forward_end_to_end_on_kittler(tmp_path: Path):
 
 def test_plot_process_simulations_is_exported_with_new_kwargs():
     """Guard against accidental signature regressions."""
-    import inspect
-
     sig = inspect.signature(postprocessing.plot_process_simulations)
     assert "training_process_names" in sig.parameters
     assert "timeseries_csv_path" in sig.parameters

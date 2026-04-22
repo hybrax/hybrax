@@ -3,7 +3,6 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import numpy as np
 import pytest
 from bp_format.dataclasses import (
     BioProcess,
@@ -16,13 +15,15 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
+from bp_format.mechanistic import get_rhs_ode
 
-from bp_train.model_api import ReactionOutputs, UserReactionModule
 import bp_train.trainer as trainer_module
+from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.harness import summarize_train_step_input_signature
 from bp_train.trainer import (
-    single_process_measurement_loss,
-    single_process_train_step,
-    summarize_train_step_input_signature,
+    _build_batched_loss_fn_from_sample_loss,
+    _clamp_padded_time_rows,
+    _measurement_loss_from_arrays,
 )
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper
@@ -43,16 +44,6 @@ class _LinearReactionModule(UserReactionModule):
             specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
             modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
         )
-
-
-class _CustomPartitionReactionModule(_LinearReactionModule):
-    def partition_trainable(self):
-        filter_spec = eqx.tree_at(
-            lambda module: module.non_model_bias,
-            jax.tree_util.tree_map(lambda _leaf: False, self),
-            True,
-        )
-        return eqx.partition(self, filter_spec)
 
 
 def _make_two_process_collection() -> BioProcessCollection:
@@ -149,23 +140,126 @@ def _build_wrapper_and_process():
     return wrapper, process_data
 
 
-def _build_store_and_wrapper():
-    collection = _make_two_process_collection()
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=["biomass"],
-        target_source="reactor_components",
-    )
-    p1_data = store.get_process("p1")
-    wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_LinearReactionModule(),
-        process=collection.processes["p1"],
-        controls=p1_data.controls,
-    )
-    return store, wrapper
+def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
+    sig_a = summarize_train_step_input_signature("adam", 1e-3, 42)
+    sig_b = summarize_train_step_input_signature("adam", 2e-3, 42)
+    assert sig_a != sig_b
 
 
-def _build_wrapper_and_process_with_custom_partition():
+def test_train_step_input_signature_summary_handles_none():
+    sig = summarize_train_step_input_signature(None)
+    assert sig == (("none",),)
+
+
+def test_clamp_padded_time_rows_repeats_last_active_timestamp():
+    times = jnp.asarray(
+        [
+            [0.0, 1.0, 2.0, 999.0],
+            [0.0, 5.0, 6.0, 7.0],
+        ],
+        dtype=jnp.float32,
+    )
+    lengths = jnp.asarray([3, 1], dtype=jnp.int32)
+
+    clamped = _clamp_padded_time_rows(times, lengths)
+
+    assert jnp.allclose(clamped[0], jnp.asarray([0.0, 1.0, 2.0, 2.0]))
+    assert jnp.allclose(clamped[1], jnp.asarray([0.0, 0.0, 0.0, 0.0]))
+
+
+def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
+    wrapper, process_data = _build_wrapper_and_process()
+    assert process_data.n_meas == 2
+    assert bool(process_data.meas_mask[2]) is False
+    t_meas = _clamp_padded_time_rows(
+        process_data.t_meas[None, :],
+        jnp.asarray([process_data.n_meas], dtype=jnp.int32),
+    )[0]
+
+    base_total, _ = _measurement_loss_from_arrays(
+        wrapper,
+        t_meas=t_meas,
+        y_meas=process_data.y_meas,
+        meas_mask=process_data.meas_mask,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        jump_ts=process_data.controls.active_step_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+
+    poisoned_y = process_data.y_meas.at[2, 0].set(1e6)
+    poisoned_total, _ = _measurement_loss_from_arrays(
+        wrapper,
+        t_meas=t_meas,
+        y_meas=poisoned_y,
+        meas_mask=process_data.meas_mask,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        jump_ts=process_data.controls.active_step_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+
+    assert poisoned_total == pytest.approx(base_total, rel=1e-6, abs=1e-6)
+
+
+def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeypatch):
+    wrapper, process_data = _build_wrapper_and_process()
+    captured: dict[str, object] = {}
+
+    def _fake_simulate_measurement_states_on_grid(
+        wrapper_arg,
+        *,
+        t_eval,
+        n_meas,
+        y0,
+        max_steps,
+        rtol,
+        atol,
+        jump_ts,
+    ):
+        captured["wrapper"] = wrapper_arg
+        captured["t_eval"] = t_eval
+        captured["n_meas"] = n_meas
+        captured["y0"] = y0
+        captured["max_steps"] = max_steps
+        captured["rtol"] = rtol
+        captured["atol"] = atol
+        captured["jump_ts"] = jump_ts
+        n_rows = t_eval.shape[0]
+        return jnp.repeat(y0[None, :], repeats=n_rows, axis=0)
+
+    monkeypatch.setattr(
+        trainer_module,
+        "_simulate_measurement_states_on_grid",
+        _fake_simulate_measurement_states_on_grid,
+    )
+
+    total_loss, _ = _measurement_loss_from_arrays(
+        wrapper,
+        t_meas=process_data.t_meas,
+        y_meas=process_data.y_meas,
+        meas_mask=process_data.meas_mask,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        jump_ts=None,
+        max_solver_steps=321_000,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+    )
+
+    assert jnp.isfinite(total_loss)
+    assert captured["wrapper"] is wrapper
+    assert captured["max_steps"] == 321_000
+    assert captured["rtol"] == pytest.approx(1e-4)
+    assert captured["atol"] == pytest.approx(1e-6)
+    assert captured["jump_ts"] is None
+
+
+def test_batched_loss_builder_preserves_none_jump_ts_branch():
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
@@ -174,142 +268,70 @@ def _build_wrapper_and_process_with_custom_partition():
     )
     process_data = store.get_process("p2")
     wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_CustomPartitionReactionModule(),
+        reaction_module=_LinearReactionModule(),
         process=collection.processes["p2"],
         controls=process_data.controls,
     )
-    return wrapper, process_data
 
+    batch = store.gather_batch(jnp.asarray([1], dtype=jnp.int32))
+    batch_controls = store.controls_store.as_batch_controls()
 
-def test_single_process_train_step_produces_gradients_and_keeps_frozen_params_static():
-    wrapper, process_data = _build_wrapper_and_process()
+    rhs_by_process = [
+        get_rhs_ode(collection.processes[name]) for name in store.process_order
+    ]
+    batched_cin = jnp.stack([rhs.Cin for rhs in rhs_by_process], axis=0)
+    batched_cin_modeled = jnp.stack([rhs.Cin_modeled for rhs in rhs_by_process], axis=0)
 
-    weight_before = np.asarray(wrapper.reaction_module.model.weight)
-    frozen_before = np.asarray(wrapper.reaction_module.non_model_bias)
-
-    wrapper_updated, loss, grads = single_process_train_step(
-        wrapper,
-        process_data,
-        learning_rate=5e-2,
-    )
-
-    assert jnp.isfinite(loss)
-    assert grads.model.weight is not None
-    assert jnp.any(jnp.abs(grads.model.weight) > 0.0)
-    assert grads.non_model_bias is None
-
-    weight_after = np.asarray(wrapper_updated.reaction_module.model.weight)
-    frozen_after = np.asarray(wrapper_updated.reaction_module.non_model_bias)
-    assert not np.allclose(weight_before, weight_after)
-    assert np.allclose(frozen_before, frozen_after)
-
-
-def test_single_process_train_step_respects_custom_partition_trainable_override():
-    wrapper, process_data = _build_wrapper_and_process_with_custom_partition()
-
-    weight_before = np.asarray(wrapper.reaction_module.model.weight)
-    bias_before = np.asarray(wrapper.reaction_module.non_model_bias)
-
-    wrapper_updated, loss, grads = single_process_train_step(
-        wrapper,
-        process_data,
-        learning_rate=5e-2,
-    )
-
-    assert jnp.isfinite(loss)
-    assert grads.model.weight is None
-    assert grads.non_model_bias is not None
-    assert jnp.any(jnp.abs(grads.non_model_bias) > 0.0)
-
-    weight_after = np.asarray(wrapper_updated.reaction_module.model.weight)
-    bias_after = np.asarray(wrapper_updated.reaction_module.non_model_bias)
-    assert np.allclose(weight_before, weight_after)
-    assert not np.allclose(bias_before, bias_after)
-
-
-def test_measurement_loss_ignores_padded_rows_via_mask():
-    wrapper, process_data = _build_wrapper_and_process()
-    # p2 has two active measurements but one padded row because p1 has three.
-    assert process_data.n_meas == 2
-    assert bool(process_data.meas_mask[2]) is False
-
-    base_loss = single_process_measurement_loss(wrapper, process_data)
-
-    poisoned_y = process_data.y_meas.at[2, 0].set(1e6)
-    process_poisoned = eqx.tree_at(
-        lambda pdata: pdata.y_meas,
-        process_data,
-        poisoned_y,
-    )
-    poisoned_loss = single_process_measurement_loss(wrapper, process_poisoned)
-    assert poisoned_loss == pytest.approx(base_loss, rel=1e-6, abs=1e-6)
-
-
-def test_single_process_train_step_accepts_nondefault_solver_settings():
-    wrapper, process_data = _build_wrapper_and_process()
-
-    wrapper_updated, loss, grads = single_process_train_step(
-        wrapper,
-        process_data,
-        learning_rate=1e-2,
-        max_solver_steps=500_000,
-        solver_rtol=1e-4,
-        solver_atol=1e-6,
-        solver_use_jump_ts=False,
-    )
-
-    assert jnp.isfinite(loss)
-    assert grads.model.weight is not None
-    assert wrapper_updated.reaction_module.model.weight.shape == (1, 1)
-
-
-def test_measurement_loss_forwards_nondefault_solver_options(monkeypatch):
-    wrapper, process_data = _build_wrapper_and_process()
-    captured: dict[str, object] = {}
-
-    def _fake_simulate_measurement_states(
-        wrapper_arg,
-        process_data_arg,
+    def _sample_loss_fn(
+        _wrapper,
         *,
-        max_steps,
-        rtol,
-        atol,
-        use_jump_ts,
+        t_meas,
+        y_meas,
+        meas_mask,
+        n_meas,
+        y0,
+        jump_ts,
+        max_solver_steps,
+        solver_rtol,
+        solver_atol,
     ):
-        captured["wrapper"] = wrapper_arg
-        captured["process_data"] = process_data_arg
-        captured["max_steps"] = max_steps
-        captured["rtol"] = rtol
-        captured["atol"] = atol
-        captured["use_jump_ts"] = use_jump_ts
-        n_meas = int(process_data_arg.n_meas)
-        return jnp.stack([process_data_arg.y0] * n_meas, axis=0)
+        del (
+            t_meas,
+            y_meas,
+            meas_mask,
+            n_meas,
+            y0,
+            max_solver_steps,
+            solver_rtol,
+            solver_atol,
+        )
+        score = 1.0 if jump_ts is None else 2.0
+        return jnp.asarray(score), jnp.asarray([score], dtype=jnp.float32)
 
-    monkeypatch.setattr(
-        trainer_module,
-        "simulate_measurement_states",
-        _fake_simulate_measurement_states,
-    )
-
-    loss = single_process_measurement_loss(
+    batched_loss_fn = _build_batched_loss_fn_from_sample_loss(_sample_loss_fn)
+    mean_total_none, _, _ = batched_loss_fn(
         wrapper,
-        process_data,
-        max_solver_steps=321_000,
-        solver_rtol=1e-4,
-        solver_atol=1e-6,
-        solver_use_jump_ts=False,
+        batch,
+        batch_controls,
+        batched_cin,
+        batched_cin_modeled,
+        None,
+        max_solver_steps=10,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+    jump_ts_rows = jnp.zeros((1, 1), dtype=jnp.float32)
+    mean_total_present, _, _ = batched_loss_fn(
+        wrapper,
+        batch,
+        batch_controls,
+        batched_cin,
+        batched_cin_modeled,
+        jump_ts_rows,
+        max_solver_steps=10,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
     )
 
-    assert jnp.isfinite(loss)
-    assert captured["wrapper"] is wrapper
-    assert captured["process_data"] is process_data
-    assert captured["max_steps"] == 321_000
-    assert captured["rtol"] == pytest.approx(1e-4)
-    assert captured["atol"] == pytest.approx(1e-6)
-    assert captured["use_jump_ts"] is False
-
-
-def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
-    sig_a = summarize_train_step_input_signature("adam", 1e-3, 42)
-    sig_b = summarize_train_step_input_signature("adam", 2e-3, 42)
-    assert sig_a != sig_b
+    assert float(mean_total_none) == pytest.approx(1.0)
+    assert float(mean_total_present) == pytest.approx(2.0)

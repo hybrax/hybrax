@@ -12,6 +12,7 @@ from bp_format.dataclasses import (
     BioProcessCollection,
 )
 from bp_format.serialization import (
+    load_dataset,
     load_process_collection_json,
     save_process_collection_json,
 )
@@ -80,8 +81,6 @@ def load_raw_collection(
         return collection
 
     # Try as BenchmarkDataset
-    from bp_format.serialization import load_dataset
-
     dataset = load_dataset(path)
     if not dataset.case_studies:
         raise ValueError(f"No processes or case studies found in {path}")

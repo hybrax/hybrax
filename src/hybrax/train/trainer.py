@@ -4,40 +4,16 @@ from typing import Callable
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.tree_util as jtu
-import optax
 
 import diffrax
 
 from .controls_store import BatchControls
-from .model_api import partition_trainable
 from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper
 
 
 SampleLossFn = Callable[..., tuple[jax.Array, jax.Array]]
 BatchedLossFn = Callable[..., tuple[jax.Array, jax.Array, jax.Array]]
-
-
-def summarize_train_step_input_signature(*values: object) -> tuple[object, ...]:
-    """Return a stable pytree leaf-shape/type summary for train-step inputs."""
-    leaves = jtu.tree_leaves(values, is_leaf=lambda value: value is None)
-    signature: list[object] = []
-    for leaf in leaves:
-        if leaf is None:
-            signature.append(("none",))
-            continue
-        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
-            signature.append(("array", tuple(leaf.shape), str(leaf.dtype)))
-            continue
-        try:
-            hash(leaf)
-        except TypeError:
-            signature.append(("object", type(leaf).__name__))
-            continue
-        signature.append(("scalar", type(leaf).__name__, repr(leaf)))
-        continue
-    return tuple(signature)
 
 
 def _clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
@@ -233,8 +209,8 @@ def _build_batched_loss_fn_from_sample_loss(
             )
             return total_loss, per_target
 
-        # TODO: this check for None and lambda construction is really annoying; we
-        # should make _sample_loss check for empty array instead
+        # Keep a dedicated vmap path when jump timestamps are absent so the
+        # sample-loss callback receives `None` exactly in that case.
         if jump_ts_rows is None:
             per_sample_total, per_sample_per_target = jax.vmap(
                 lambda pi, tm, ym, mm, nm, y0, ci, cm: _sample_loss(
@@ -276,114 +252,7 @@ def _build_batched_loss_fn_from_sample_loss(
 
     return _batched_loss_fn
 
+
 batched_measurement_loss_from_arrays = _build_batched_loss_fn_from_sample_loss(
     _measurement_loss_from_arrays
 )
-
-def single_process_measurement_loss(
-    wrapper: HybridOdeWrapper,
-    process_data: PerProcessTrainingData,
-    *,
-    max_solver_steps: int = 100_000,
-    solver_rtol: float = 1e-5,
-    solver_atol: float = 1e-7,
-    solver_use_jump_ts: bool = True,
-) -> jax.Array:
-    """Compute masked MSE over padded measurement arrays for one process."""
-    n_meas = int(process_data.n_meas)
-    y_pred_padded = jnp.zeros_like(process_data.y_meas)
-    states_active = simulate_measurement_states(
-        wrapper,
-        process_data,
-        max_steps=max_solver_steps,
-        rtol=solver_rtol,
-        atol=solver_atol,
-        use_jump_ts=solver_use_jump_ts,
-    )
-    # Gather predicted target columns from the integrated state.
-    y_pred_active = states_active[:, wrapper.target_state_indices]
-    y_pred_padded = y_pred_padded.at[:n_meas, :].set(y_pred_active)
-
-    sq_err = (
-        jnp.square(y_pred_padded - process_data.y_meas)
-        / wrapper.target_variance[None, :]
-    )
-    mask = process_data.meas_mask[:, None]
-    masked_sq_err = jnp.where(mask, sq_err, 0.0)
-
-    n_active = jnp.maximum(jnp.sum(process_data.meas_mask), 1)
-    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
-    return jnp.mean(per_target_loss)
-
-
-def _build_optimizer(
-    optimizer_name: str,
-    learning_rate,
-    *,
-    grad_clip_norm: float = 1000.0,
-) -> optax.GradientTransformation:
-    # learning_rate can be a float or an optax Schedule
-    if isinstance(learning_rate, (int, float)):
-        if float(learning_rate) <= 0.0:
-            raise ValueError("learning_rate must be positive")
-    if float(grad_clip_norm) < 0.0:
-        raise ValueError("grad_clip_norm must be non-negative")
-    name = str(optimizer_name)
-    if name == "adam":
-        base = optax.adam(learning_rate)
-    elif name == "sgd":
-        base = optax.sgd(learning_rate)
-    else:
-        raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
-    # zero_nans handles ODE-solver failures (rare); optional
-    # clip_by_global_norm is the safety net against blowups in the early epochs
-    # of neural-ODE training.
-    transforms = [optax.zero_nans()]
-    if float(grad_clip_norm) > 0.0:
-        transforms.append(optax.clip_by_global_norm(float(grad_clip_norm)))
-    transforms.append(base)
-    return optax.chain(*transforms)
-
-
-def single_process_train_step(
-    wrapper: HybridOdeWrapper,
-    process_data: PerProcessTrainingData,
-    *,
-    learning_rate: float = 1e-3,
-    max_solver_steps: int = 100_000,
-    solver_rtol: float = 1e-5,
-    solver_atol: float = 1e-7,
-    solver_use_jump_ts: bool = True,
-) -> tuple[HybridOdeWrapper, jax.Array, eqx.Module]:
-    """Run one train step and return `(updated_wrapper, loss, trainable_grads)`."""
-    trainable, static = partition_trainable(wrapper.reaction_module)
-
-    def _loss_fn(trainable_params):
-        reaction_module = eqx.combine(trainable_params, static)
-        candidate_wrapper = eqx.tree_at(
-            lambda current: current.reaction_module,
-            wrapper,
-            reaction_module,
-        )
-        return single_process_measurement_loss(
-            candidate_wrapper,
-            process_data,
-            max_solver_steps=max_solver_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-            solver_use_jump_ts=solver_use_jump_ts,
-        )
-
-    loss, grads = eqx.filter_value_and_grad(_loss_fn)(trainable)
-    updates = jtu.tree_map(
-        lambda grad: None if grad is None else -float(learning_rate) * grad,
-        grads,
-    )
-    trainable_updated = eqx.apply_updates(trainable, updates)
-    reaction_module_updated = eqx.combine(trainable_updated, static)
-    wrapper_updated = eqx.tree_at(
-        lambda current: current.reaction_module,
-        wrapper,
-        reaction_module_updated,
-    )
-    return wrapper_updated, loss, grads

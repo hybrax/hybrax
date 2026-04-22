@@ -18,6 +18,7 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
+from bp_format.mechanistic import get_rhs_ode
 
 from bp_train.controls_store import ControlsStore
 from bp_train.model_api import ReactionOutputs, UserReactionModule
@@ -569,8 +570,6 @@ def test_wrapper_optional_ann_volume_feature_uses_v_real():
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():
-    from bp_format.mechanistic import get_rhs_ode
-
     process_a = _make_single_species_process()
     process_b = _make_two_species_two_feed_process()
     rhs_a = get_rhs_ode(process_a)

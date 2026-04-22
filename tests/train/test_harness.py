@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import warnings
 
 import equinox as eqx
@@ -52,6 +53,16 @@ class _LinearReactionModule(UserReactionModule):
             specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
             modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
         )
+
+
+class _CustomPartitionReactionModule(_LinearReactionModule):
+    def partition_trainable(self):
+        filter_spec = eqx.tree_at(
+            lambda module: module.non_model_bias,
+            jax.tree_util.tree_map(lambda _leaf: False, self),
+            True,
+        )
+        return eqx.partition(self, filter_spec)
 
 
 def _make_collection() -> BioProcessCollection:
@@ -247,6 +258,35 @@ def test_train_collection_single_process_loss_decreases():
     )
     assert result.train_step_rebuild_count == 0
     assert len(result.train_step_input_signature) > 0
+
+
+def test_train_collection_respects_custom_partition_trainable_override():
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    reaction_module = _CustomPartitionReactionModule()
+    weight_before = reaction_module.model.weight
+    bias_before = reaction_module.non_model_bias
+
+    result = train_collection(
+        store,
+        reaction_module=reaction_module,
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=("p1", "p2"),
+            steps=3,
+            batch_size=2,
+            optimizer_name="sgd",
+            learning_rate=5e-2,
+        ),
+    )
+
+    trained = result.trained_wrapper.reaction_module
+    assert jnp.allclose(trained.model.weight, weight_before)
+    assert not jnp.allclose(trained.non_model_bias, bias_before)
 
 
 def test_train_collection_multi_process_tracks_per_process_histories():
@@ -659,8 +699,6 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     # initial header (column-name row + separator row) that re-prints every
     # `header_every` steps. Filter to data rows by matching the leading
     # whitespace + clock pattern.
-    import re
-
     row_re = re.compile(r"^\s\d{2}:\d{2}:\d{2}\s\|")
     step_rows = [
         record.message for record in caplog.records if row_re.match(record.message)
@@ -819,7 +857,7 @@ def test_train_from_collection_wires_build_batched_loss_fn_hook(monkeypatch):
 
     result = train_from_collection(
         collection,
-        config=TrainHarnessConfig(target_variable_order=None, steps=1),
+        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
         custom_py="custom.py",
         runtime_config=None,
     )
@@ -926,7 +964,7 @@ def test_train_from_collection_wires_build_sample_loss_fn_hook(monkeypatch):
 
     result = train_from_collection(
         collection,
-        config=TrainHarnessConfig(target_variable_order=None, steps=1),
+        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
         custom_py="custom.py",
         runtime_config=None,
     )

@@ -12,7 +12,9 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import numpy as np
+import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import get_rhs_ode
 from bp_format.serialization import load_process_collection_json
@@ -22,10 +24,8 @@ from .model_api import UserReactionModule, partition_trainable
 from .trainer import (
     batched_measurement_loss_from_arrays,
     _build_batched_loss_fn_from_sample_loss,
-    _build_optimizer,
     _clamp_padded_time_rows,
     _measurement_loss_from_arrays,
-    summarize_train_step_input_signature,
     BatchedLossFn,
 )
 from .logging import RunLogger, StepRecord
@@ -108,6 +108,56 @@ def _ensure_process_names(
         raise ValueError(f"unknown process names in process_names: {missing}")
 
     return selected
+
+
+def summarize_train_step_input_signature(*values: object) -> tuple[object, ...]:
+    """Return a stable pytree leaf-shape/type summary for train-step inputs."""
+    leaves = jtu.tree_leaves(values, is_leaf=lambda value: value is None)
+    signature: list[object] = []
+    for leaf in leaves:
+        if leaf is None:
+            signature.append(("none",))
+            continue
+        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
+            signature.append(("array", tuple(leaf.shape), str(leaf.dtype)))
+            continue
+        try:
+            hash(leaf)
+        except TypeError:
+            signature.append(("object", type(leaf).__name__))
+            continue
+        signature.append(("scalar", type(leaf).__name__, repr(leaf)))
+        continue
+    return tuple(signature)
+
+
+def _build_optimizer(
+    optimizer_name: str,
+    learning_rate,
+    *,
+    grad_clip_norm: float = 1000.0,
+) -> optax.GradientTransformation:
+    # learning_rate can be a float or an optax Schedule
+    if isinstance(learning_rate, (int, float)):
+        if float(learning_rate) <= 0.0:
+            raise ValueError("learning_rate must be positive")
+    if float(grad_clip_norm) < 0.0:
+        raise ValueError("grad_clip_norm must be non-negative")
+    name = str(optimizer_name)
+    if name == "adam":
+        base = optax.adam(learning_rate)
+    elif name == "sgd":
+        base = optax.sgd(learning_rate)
+    else:
+        raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
+    # zero_nans handles ODE-solver failures (rare); optional
+    # clip_by_global_norm is the safety net against blowups in early neural-ODE
+    # training.
+    transforms = [optax.zero_nans()]
+    if float(grad_clip_norm) > 0.0:
+        transforms.append(optax.clip_by_global_norm(float(grad_clip_norm)))
+    transforms.append(base)
+    return optax.chain(*transforms)
 
 
 def _resolve_effective_batch_size(

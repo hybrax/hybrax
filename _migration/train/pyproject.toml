@@ -23,3 +23,8 @@ dev = [
 
 [tool.setuptools]
 packages = ["bp_train"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests",
+]
