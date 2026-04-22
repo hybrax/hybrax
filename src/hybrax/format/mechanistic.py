@@ -1463,9 +1463,10 @@ def _build_pseudobatch_transforms(
             )
             continue
 
-        adf_t_raw = jnp.asarray(tr["adf_times"], dtype=float)
-        adf_v_raw = jnp.asarray(tr["adf_values"], dtype=float)
-        adf_t, adf_v = _canonicalize_left_continuous_step_metadata(adf_t_raw, adf_v_raw)
+        # ADF is stored as dense grid for piecewise-linear evaluation (smooth
+        # continuous-feed growth + near-step transitions at bolus ε-pairs).
+        adf_t = jnp.asarray(tr["adf_times"], dtype=float)
+        adf_v = jnp.asarray(tr["adf_values"], dtype=float)
         fc_t = jnp.asarray(tr["feed_corr_times"], dtype=float)
         fc_v = jnp.asarray(tr["feed_corr_values"], dtype=float)
         fc_interp = str(tr.get("feed_corr_interp", "linear"))
@@ -1699,9 +1700,7 @@ def integrate_process_pseudospace(
     def _eval_adf(t):
         adf_vals = []
         for i in range(n_non_volume):
-            adf_vals.append(
-                evaluate_left_continuous_step(t, adf_t_list[i], adf_v_list[i])
-            )
+            adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
         return jnp.stack(adf_vals)
 
     def _eval_fc_and_dfc(t):

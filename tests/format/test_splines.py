@@ -936,37 +936,30 @@ def test_pseudobatch_spline_json_roundtrip():
             f"Roundtrip mismatch at t={t_val}: {orig} vs {loaded_val}"
         )
 
-    # ADF step behavior should survive serialization too.
-    # > float32 resolution near t=50, but still << _EPS (1e-4)
-    tiny_delta = 1e-5
+    # ADF step behaviour should survive serialization. ADF is stored as the
+    # dense grid and evaluated via jnp.interp; the transition across an
+    # event occupies the ε-pair window [t_b - _EPS, t_b + _EPS] so we probe
+    # strictly outside that window.
+    post_delta = 2e-4  # > _EPS = 1e-4
     tr_orig = rep.interpolator_metadata["transform"]
     tr_loaded = loaded_comp.interpolator.interpolator_metadata["transform"]
     orig_adf_t = jnp.asarray(tr_orig["adf_times"], dtype=float)
     orig_adf_v = jnp.asarray(tr_orig["adf_values"], dtype=float)
     loaded_adf_t = jnp.asarray(tr_loaded["adf_times"], dtype=float)
     loaded_adf_v = jnp.asarray(tr_loaded["adf_values"], dtype=float)
-    assert orig_adf_t.size > 0
-    t_b = float(orig_adf_t[0])
+    assert orig_adf_t.size > 1
+    # First bolus event time: the first dense knot where ADF changes.
+    adf_diff = jnp.diff(orig_adf_v)
+    jump_idx = int(jnp.argmax(jnp.abs(adf_diff))) + 1
+    t_b = float(orig_adf_t[jump_idx])
 
-    orig_at = float(
-        evaluate_left_continuous_step(jnp.array(t_b), orig_adf_t, orig_adf_v)
-    )
-    orig_post = float(
-        evaluate_left_continuous_step(
-            jnp.array(t_b + tiny_delta), orig_adf_t, orig_adf_v
-        )
-    )
-    loaded_at = float(
-        evaluate_left_continuous_step(jnp.array(t_b), loaded_adf_t, loaded_adf_v)
-    )
-    loaded_post = float(
-        evaluate_left_continuous_step(
-            jnp.array(t_b + tiny_delta), loaded_adf_t, loaded_adf_v
-        )
-    )
-    assert orig_post > orig_at
-    assert loaded_post > loaded_at
-    assert loaded_at == pytest.approx(orig_at, abs=1e-12)
+    orig_pre = float(jnp.interp(jnp.array(t_b - post_delta), orig_adf_t, orig_adf_v))
+    orig_post = float(jnp.interp(jnp.array(t_b + post_delta), orig_adf_t, orig_adf_v))
+    loaded_pre = float(jnp.interp(jnp.array(t_b - post_delta), loaded_adf_t, loaded_adf_v))
+    loaded_post = float(jnp.interp(jnp.array(t_b + post_delta), loaded_adf_t, loaded_adf_v))
+    assert orig_post > orig_pre
+    assert loaded_post > loaded_pre
+    assert loaded_pre == pytest.approx(orig_pre, abs=1e-12)
     assert loaded_post == pytest.approx(orig_post, abs=1e-12)
 
 

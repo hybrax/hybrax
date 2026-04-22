@@ -131,22 +131,24 @@ def test_adf_is_instantaneous_at_bolus():
     rep = to_interpolator(inputs, splines, "glucose")
 
     t_b = 10.0
-    # > float32 resolution near t=10, but still << _EPS (1e-4)
-    tiny_delta = 1e-5
+    # Under the dense-grid ADF storage (with t_b ± _EPS knots and
+    # piecewise-linear evaluation), the transition occupies the ε-pair
+    # window [t_b - _EPS, t_b + _EPS]. Query just past t_b + _EPS to assert
+    # the post-event value is reached.
+    post_delta = 2e-4  # > _EPS = 1e-4
     tr = rep.interpolator_metadata["transform"]
     adf_t = jnp.asarray(tr["adf_times"], dtype=float)
     adf_v = jnp.asarray(tr["adf_values"], dtype=float)
 
-    adf_at = float(evaluate_left_continuous_step(jnp.array(t_b), adf_t, adf_v))
-    adf_after_tiny = float(
-        evaluate_left_continuous_step(jnp.array(t_b + tiny_delta), adf_t, adf_v)
-    )
-    adf_after_far = float(
-        evaluate_left_continuous_step(jnp.array(t_b + 5e-5), adf_t, adf_v)
-    )
+    adf_at = float(jnp.interp(jnp.array(t_b - post_delta), adf_t, adf_v))
+    adf_after = float(jnp.interp(jnp.array(t_b + post_delta), adf_t, adf_v))
+    adf_after_far = float(jnp.interp(jnp.array(t_b + 5e-4), adf_t, adf_v))
 
-    assert adf_after_tiny > adf_at
-    assert adf_after_tiny == pytest.approx(adf_after_far, abs=1e-10)
+    assert adf_after > adf_at
+    # Between two sparse dense knots ADF is linear; a later probe that is
+    # still in the same inter-event interval should match (within the
+    # linear-interp approximation of any continuous-feed growth).
+    assert adf_after == pytest.approx(adf_after_far, rel=1e-3)
 
 
 def test_no_jump_for_sampling():

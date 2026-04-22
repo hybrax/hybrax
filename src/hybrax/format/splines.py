@@ -501,11 +501,17 @@ def _build_dense_time_grid(
     process: BioProcess, meas_times: jnp.ndarray
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """
-    Build dense time grid = sorted(unique(measurement times + event times)).
-    For discrete (bolus) events we insert t - EPS so we have a point on both
-    sides of the step (sharp step representation).
-    Returns:
-        dense_times, meas_indices_into_dense
+    Build dense time grid covering all measurement times, all volume-change
+    reference / event times, ± ``_EPS`` knots around discrete events, plus a
+    background linspace to guarantee the gap between consecutive knots is
+    small enough that piecewise-linear interpolation of ``reactor_volume``
+    and ``ADF`` tracks continuous-feed growth faithfully.
+
+    Without the background linspace, processes with sparse continuous-feed
+    reference times (e.g. 10 points across 320 h) leave multi-hour gaps in
+    the dense grid. Linear interpolation of ``adf_dense`` across such gaps
+    would render the smooth continuous-feed growth as a big apparent jump
+    right after each event's post-knot.
     """
     extra_times = set()
 
@@ -523,6 +529,14 @@ def _build_dense_time_grid(
                 t_post = float(t) + _EPS
                 if t_post <= t_end:
                     extra_times.add(t_post)
+
+    # Background densification: at least ~500 evenly-spaced knots across
+    # [t_start, t_end]. Cheap (only hundreds of extra floats) and keeps
+    # ADF interpolation faithful regardless of how sparse the user's
+    # volume-change reference times are.
+    n_background = max(500, 5 * int(len(meas_times)))
+    bg = np.linspace(t_start, t_end, n_background, dtype=float)
+    extra_times.update(bg.tolist())
 
     all_times = jnp.array(sorted(set(meas_times.tolist()) | extra_times), dtype=float)
 
@@ -674,26 +688,53 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     else:
         af_at_meas = af[mi, :]
 
-    # --- ADF from BOLUS FEEDS ONLY (dense grid, then sliced)
+    # --- ADF via sample-compensation factor.
+    # Physically: a sample removes liquid but does NOT change concentration,
+    # so ADF must be held at sample events. Yet the reference volume for
+    # subsequent bolus ratios must reflect the sample reduction so that
+    # bolus dilution ratios at simultaneous sample+bolus events come out
+    # physically correct.
+    #
+    # Define:
+    #     S(t)     = product over samples at time ≤ t of V_before / V_after
+    #     V_eff(t) = V_reactor_actual(t) · S(t)
+    #     ADF(t)   = V_eff(t) / V_init
+    #
+    # Behaviour at each event type:
+    #   - continuous feed : V_reactor grows, S unchanged → ADF grows by
+    #                        V_post/V_pre (pseudobatch smoothness invariant)
+    #   - sample only     : V_reactor drops by V_s, S multiplies by
+    #                        V_pre/(V_pre−V_s) → V_eff and ADF unchanged
+    #   - bolus only      : V_reactor grows by V_b, S unchanged → ADF ratio
+    #                        = (V_pre+V_b)/V_pre (correct)
+    #   - sample + bolus simultaneous (sample first): V_reactor net
+    #                        V_b−V_s, S compensates the sample → ADF ratio
+    #                        = (V_pre−V_s+V_b)/(V_pre−V_s) (correct)
     n_dense = len(dense_times)
-    bolus_vol_dense = jnp.full(n_dense, float(process.volume.initial_volume))
-
-    for _vc_name, vc in process.volume.volume_changes.items():
-        if isinstance(vc, FeedVolumeChange) and not vc.is_continuous:
-            ev_times = jnp.asarray(vc.values.times, dtype=float)
-            ev_vals = jnp.asarray(vc.values.values, dtype=float)
-            for et, ev in zip(ev_times, ev_vals):
-                bolus_vol_dense = bolus_vol_dense + jnp.where(
-                    dense_times > et, float(ev), 0.0
-                )
-
-    no_sample_dense = jnp.zeros(n_dense)
-    # pseudobatch requires numpy arrays
-    adf_dense = jnp.asarray(
-        pseudobatch.data_correction.accumulated_dilution_factor(
-            np.asarray(bolus_vol_dense), np.asarray(no_sample_dense)
-        )
-    )
+    actual_V = np.asarray(reactor_volume_dense, dtype=float)
+    dense_t_np = np.asarray(dense_times, dtype=float)
+    V_init = float(process.volume.initial_volume)
+    S = np.ones_like(actual_V)
+    for _name, vc in process.volume.volume_changes.items():
+        if not isinstance(vc, SampleVolumeChange) or vc.is_continuous:
+            continue
+        ev_times = np.asarray(vc.values.times, dtype=float)
+        ev_vals = np.asarray(vc.values.values, dtype=float)
+        for t_s, v_s in zip(ev_times, ev_vals):
+            # Dense grid contains t_s ± _EPS knots. idx_post lands at
+            # t_s + _EPS. V_before is the reactor volume just before the
+            # sample (idx_post - 1). Compute V_after_sample EXPLICITLY from
+            # the sample amount so that bolus additions coincident with
+            # this sample do NOT collapse the compensation ratio.
+            idx_post = int(np.searchsorted(dense_t_np, float(t_s) + _EPS / 2.0))
+            if idx_post <= 0 or idx_post >= actual_V.size:
+                continue
+            V_before = float(actual_V[idx_post - 1])
+            V_after_sample = V_before + float(v_s)  # v_s is negative
+            if V_before <= 0.0 or V_after_sample <= 0.0:
+                continue
+            S[idx_post:] *= V_before / V_after_sample
+    adf_dense = jnp.asarray(actual_V * S / V_init, dtype=float)
     adf_at_meas = adf_dense[mi]
 
     # --- pseudobatch transform using bolus-only ADF
@@ -715,6 +756,28 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
 
     feed_corr_at_meas = meas_conc * adf_at_meas - c_star
 
+    # --- dense feed-correction trajectory
+    # Same cumulative-sum form as feed_corr_at_meas, but evaluated at every
+    # dense grid point. This captures both continuous-feed growth AND
+    # instantaneous bolus jumps faithfully, so build_splines can look up
+    # fc_pre at a bolus event's t_pre with physics-level accuracy — critical
+    # for dual-fed species (continuous + bolus sharing the species).
+    def _fed_species_term_dense(accum_feed_dense, conc_in_feed):
+        feed_in_interval = jnp.diff(accum_feed_dense, prepend=accum_feed_dense[0])
+        return adf_dense * feed_in_interval * conc_in_feed / reactor_volume_dense
+
+    if af.ndim == 1:
+        feed_corr_dense = jnp.cumsum(
+            _fed_species_term_dense(af, concentration_in_feed)
+        )
+    else:
+        fed_sum_dense = jnp.zeros(n_dense)
+        for i in range(af.shape[1]):
+            fed_sum_dense = fed_sum_dense + _fed_species_term_dense(
+                af[:, i], concentration_in_feed[i]
+            )
+        feed_corr_dense = jnp.cumsum(fed_sum_dense)
+
     has_discrete_feed = any(
         not vc.is_continuous for vc in process.volume.volume_changes.values()
     )
@@ -732,8 +795,124 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
         "adf_dense": jnp.asarray(adf_dense),
         "adf_at_meas": jnp.asarray(adf_at_meas),
         "feed_corr_at_meas": jnp.asarray(feed_corr_at_meas),
+        "feed_corr_dense": jnp.asarray(feed_corr_dense),
+        "sample_compensation_dense": jnp.asarray(S),
         "has_discrete_feed": has_discrete_feed,
     }
+
+
+def _locate_bolus_epsilon_pairs(
+    dense_t: np.ndarray, bolus_times: list
+) -> list:
+    """For each bolus event within the domain, locate its ``t_b ± _EPS`` knot
+    indices on the dense grid and return ``(t_b, i_pre, i_post)`` tuples
+    sorted by time. Events at or past ``dense_t[-1]`` are dropped.
+    """
+    out: list[tuple[float, int, int]] = []
+    n = dense_t.size
+    t_end = float(dense_t[-1])
+    half_eps = _EPS / 2.0
+    for t_b in sorted(float(t) for t in bolus_times):
+        if t_b >= t_end:
+            continue
+        i_b = int(np.argmin(np.abs(dense_t - t_b)))
+        i_pre = i_b
+        while i_pre > 0 and dense_t[i_pre] > t_b - half_eps:
+            i_pre -= 1
+        i_post = i_b
+        while i_post < n - 1 and dense_t[i_post] < t_b + half_eps:
+            i_post += 1
+        if i_post <= i_pre:
+            continue
+        out.append((t_b, i_pre, i_post))
+    return out
+
+
+def _split_dense_into_smooth_and_jumps(
+    dense_t: np.ndarray,
+    fc_dense_raw: np.ndarray,
+    bolus_epsilon_pairs: list,
+) -> tuple:
+    """Decompose the raw dense feed-correction trajectory into a continuous
+    smooth baseline plus instantaneous bolus jumps.
+
+    Each bolus event contributes a jump of magnitude ``fc_dense_raw[i_post] -
+    fc_dense_raw[i_pre]`` — this is the physics-correct jump set by the
+    pseudobatch cumsum at the ε-pair knots. Subtracting the cumulative jumps
+    from ``fc_dense_raw`` yields a trajectory that is continuous across every
+    bolus event (no steps) while preserving all continuous-feed curvature.
+
+    Returns ``(fc_dense_smooth, cumjump_at_dense, jump_times, jump_values)``.
+    ``cumjump_at_dense[k]`` is the pre-event cumulative jump at ``dense_t[k]``
+    (left-continuous: the jump at an event time is NOT included at t = t_b).
+    """
+    fc_smooth = fc_dense_raw.astype(float).copy()
+    cumjump = np.zeros_like(fc_smooth)
+    jump_times: list[float] = []
+    jump_values: list[float] = []
+    for t_b, i_pre, i_post in bolus_epsilon_pairs:
+        delta = float(fc_dense_raw[i_post] - fc_dense_raw[i_pre]) - float(
+            cumjump[i_post] - cumjump[i_pre]
+        )
+        # ``delta`` is the raw jump; subsequent boluses are already accounted
+        # for by cumjump, so the physics jump of THIS event is the residual.
+        if abs(delta) <= 1e-12:
+            continue
+        fc_smooth[i_post:] -= delta
+        cumjump[i_post:] += delta
+        jump_times.append(0.5 * (float(dense_t[i_pre]) + float(dense_t[i_post])))
+        jump_values.append(delta)
+    return fc_smooth, cumjump, jump_times, jump_values
+
+
+def _calibrate_smooth_to_meas_anchors(
+    dense_t: np.ndarray,
+    fc_dense_smooth: np.ndarray,
+    meas_idx: np.ndarray,
+    fc_at_meas_smooth: np.ndarray,
+) -> np.ndarray:
+    """Rescale a jump-free dense trajectory so it anchors exactly at the
+    provided smooth meas-level values at every measurement index.
+
+    Within each inter-meas interval ``[meas_idx[i], meas_idx[i+1]]``:
+        d_a, d_b = fc_dense_smooth[a], fc_dense_smooth[b]
+        v_a, v_b = fc_at_meas_smooth[i], fc_at_meas_smooth[i+1]
+        fc_calib[k] = v_a + (fc_dense_smooth[k] - d_a) * (v_b - v_a) / (d_b - d_a)
+
+    Because ``fc_dense_smooth`` is continuous (no step discontinuities), the
+    linear rescale preserves its curvature without distorting any bolus jump
+    — there are none to distort. If ``|d_b - d_a|`` is at noise level, fall
+    back to linear time-based interpolation between the two anchors.
+    """
+    fc_calib = np.zeros_like(fc_dense_smooth, dtype=float)
+    n_meas = meas_idx.size
+    if n_meas < 2:
+        return fc_calib
+    for i in range(n_meas - 1):
+        a = int(meas_idx[i])
+        b = int(meas_idx[i + 1])
+        t_a, t_b = float(dense_t[a]), float(dense_t[b])
+        v_a = float(fc_at_meas_smooth[i])
+        v_b = float(fc_at_meas_smooth[i + 1])
+        d_a = float(fc_dense_smooth[a])
+        d_b = float(fc_dense_smooth[b])
+        seg_slice = slice(a, b + 1)
+        if abs(d_b - d_a) > 1e-12:
+            scale = (v_b - v_a) / (d_b - d_a)
+            fc_calib[seg_slice] = v_a + (
+                fc_dense_smooth[seg_slice] - d_a
+            ) * scale
+        else:
+            denom_t = t_b - t_a if t_b > t_a else 1.0
+            frac = (dense_t[seg_slice] - t_a) / denom_t
+            fc_calib[seg_slice] = v_a + frac * (v_b - v_a)
+    first = int(meas_idx[0])
+    last = int(meas_idx[-1])
+    if first > 0:
+        fc_calib[:first] = float(fc_at_meas_smooth[0])
+    if last < fc_calib.size - 1:
+        fc_calib[last + 1 :] = float(fc_at_meas_smooth[-1])
+    return fc_calib
 
 
 def build_splines(
@@ -742,168 +921,116 @@ def build_splines(
     species_name: "str | None" = None,
 ) -> Dict[str, Any]:
     """
-    Build interpolators from the result of build_pseudobatch_inputs.
+    Build interpolators from the result of ``build_pseudobatch_inputs``.
 
-    When *process* and *species_name* are supplied the interpolation grid for
-    ADF and feed_correction is augmented with points just before / after every
-    discrete (bolus) feed event so that the backtransform reproduces the sharp
-    concentration drops caused by dilution.
+    The feed-correction trajectory is represented on the dense time grid and
+    calibrated so it anchors exactly at ``feed_corr_at_meas`` at every
+    measurement. Between measurements the curve follows the physical dense
+    cumulative-sum shape, eliminating the piecewise-linear zig-zag artefact
+    that sparse meas-level representations produced for dual-fed species.
+    Bolus jumps are extracted deterministically from the known event list.
 
-    Returns dict:
-      - spline_cstar : interpax.CubicSpline built from (meas_times, c_star)
-      - interp_times, adf_interp, feed_corr_interp  (arrays for jnp.interp)
+    Returns a dict with the same schema as before so downstream consumers
+    (``evaluate_real_concentration``, ``BacktransformSpline``, ``mechanistic``)
+    need no changes.
     """
     spline_cstar = make_interpax_spline(inputs["meas_times"], inputs["c_star"])
 
-    # If c* values are all non-negative but the cubic spline goes negative,
-    # switch to PCHIP to prevent overshoot that causes negative concentrations.
+    # Switch to PCHIP (monotonicity-preserving) if the cubic spline goes
+    # negative OR overshoots the measured c* range significantly. The latter
+    # catches near-stepwise c* trajectories that arise when discrete events
+    # dominate (e.g. bolus-only processes with no continuous feed) — there,
+    # c_star = meas × ADF is essentially piecewise-constant and a natural
+    # cubic spline exhibits Gibbs-style oscillation between knots.
     c_star_vals = jnp.asarray(inputs["c_star"], dtype=float)
-    if float(jnp.min(c_star_vals)) >= 0.0 and len(c_star_vals) >= 2:
+    if len(c_star_vals) >= 2:
         t_dense = jnp.linspace(
             float(inputs["meas_times"][0]),
             float(inputs["meas_times"][-1]),
             max(200, 10 * len(inputs["meas_times"])),
         )
         c_dense = jax.vmap(spline_cstar)(t_dense)
-        if float(jnp.min(c_dense)) < -1e-8:
+        data_min = float(jnp.min(c_star_vals))
+        data_max = float(jnp.max(c_star_vals))
+        data_range = max(data_max - data_min, 1.0)
+        overshoot_tol = 0.05 * data_range
+        dense_min = float(jnp.min(c_dense))
+        dense_max = float(jnp.max(c_dense))
+        negative_overshoot = data_min >= 0.0 and dense_min < -1e-8
+        range_overshoot = (
+            (dense_min < data_min - overshoot_tol)
+            or (dense_max > data_max + overshoot_tol)
+        )
+        if negative_overshoot or range_overshoot:
             spline_cstar = make_pchip_spline(inputs["meas_times"], inputs["c_star"])
             inputs["cstar_interp"] = "pchip"
 
-    interp_times = jnp.array(inputs["meas_times"])
-    interp_adf = jnp.array(inputs["adf_at_meas"])
-    interp_fc = jnp.array(inputs["feed_corr_at_meas"])
+    meas_times = jnp.array(inputs["meas_times"])
+    adf_at_meas = jnp.array(inputs["adf_at_meas"])
+    fc_at_meas = jnp.array(inputs["feed_corr_at_meas"])
 
-    if process is not None and species_name is not None:
-        t_start = float(process.time_axis.start)
-        t_end = float(process.time_axis.end)
-
-        bolus_events = []
-        for _vc_name, vc in process.volume.volume_changes.items():
-            if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
-                continue
-            c_feed = 0.0
-            if vc.feed_medium is not None and species_name in vc.feed_medium.components:
-                fc_comp = vc.feed_medium.components[species_name]
-                if isinstance(fc_comp.concentration, StaticVariable):
-                    c_feed = float(fc_comp.concentration.value)
-            ev_times = jnp.asarray(vc.values.times, dtype=float)
-            ev_vals = jnp.asarray(vc.values.values, dtype=float)
-            for t_b, v_b in zip(ev_times, ev_vals):
-                bolus_events.append((float(t_b), c_feed, float(v_b)))
-
-        bolus_events.sort(key=lambda x: x[0])
-
-        dense_t = inputs["dense_times"]
-        dense_adf = inputs["adf_dense"]
-        dense_v = inputs["reactor_volume_dense"]
-        for t_b, c_feed, v_bolus in bolus_events:
-            # For t_b == t_start we can still form an in-domain pre/post pair
-            # via clamping (t_pre=t_start, t_post=t_start+EPS). For t_b == t_end
-            # there is no right-side interval in-domain, so skip augmentation.
-            if t_b >= t_end:
-                continue
-            t_pre = max(t_b - _EPS, t_start)
-            t_post = min(t_b + _EPS, t_end)
-            if t_post <= t_pre:
-                continue
-
-            order = jnp.argsort(interp_times)
-            interp_times = interp_times[order]
-            interp_adf = interp_adf[order]
-            interp_fc = interp_fc[order]
-
-            adf_pre = float(jnp.interp(t_pre, dense_t, dense_adf))
-            adf_post = float(jnp.interp(t_post, dense_t, dense_adf))
-
-            fc_pre = float(jnp.interp(t_pre, interp_times, interp_fc))
-
-            cs_val_pre = float(spline_cstar(jnp.array(t_pre)))
-            c_pre = (cs_val_pre + fc_pre) / max(adf_pre, 1e-12)
-
-            # Sample-first, then bolus:
-            # V_post is reactor volume right after all events at t_b.
-            # So pre-bolus volume is V_post - V_bolus.
-            v_post = float(jnp.interp(t_post, dense_t, dense_v))
-            v_before_bolus = max(v_post - v_bolus, 1e-12)
-            c_post = (c_pre * v_before_bolus + c_feed * v_bolus) / max(v_post, 1e-12)
-
-            cs_val_post = float(spline_cstar(jnp.array(t_post)))
-            fc_post = c_post * adf_post - cs_val_post
-            interp_times = jnp.append(interp_times, jnp.array([t_pre, t_post]))
-            interp_adf = jnp.append(interp_adf, jnp.array([adf_pre, adf_post]))
-            interp_fc = jnp.append(interp_fc, jnp.array([fc_pre, fc_post]))
-
-        order = jnp.argsort(interp_times)
-        interp_times = interp_times[order]
-        interp_adf = interp_adf[order]
-        interp_fc = interp_fc[order]
-
+    has_discrete_feed = bool(inputs.get("has_discrete_feed", False))
     spline_feed_corr = None
-    if not inputs.get("has_discrete_feed", False):
+    if not has_discrete_feed:
         spline_feed_corr = make_interpax_spline(
             inputs["meas_times"], inputs["feed_corr_at_meas"]
         )
 
-    fc_base_times = interp_times
-    fc_base_values = interp_fc
-    fc_jump_times = jnp.zeros(0, dtype=float)
-    fc_jump_values = jnp.zeros(0, dtype=float)
-    if inputs.get("has_discrete_feed", False):
-        times_np = np.asarray(interp_times, dtype=float)
-        values_np = np.asarray(interp_fc, dtype=float)
-        if times_np.size > 1:
-            # Keep last duplicate so augmented post-event anchor wins.
-            _, rev_idx = np.unique(times_np[::-1], return_index=True)
-            keep_unique = np.sort(times_np.size - 1 - rev_idx)
-            times_np = times_np[keep_unique]
-            values_np = values_np[keep_unique]
-        dt = np.diff(times_np)
-        if np.any(dt <= 0.0):
-            raise ValueError(
-                "feed_corr interpolation times must be strictly increasing"
-            )
-        median_dt = float(np.median(dt)) if dt.size else 0.0
-        small_dt_threshold = (
-            min(
-                _JUMP_DT_EPS_FACTOR * _EPS,
-                _JUMP_DT_MEDIAN_FRACTION * median_dt,
-            )
-            if dt.size
-            else 0.0
-        )
-        adjusted = values_np.copy()
-        jump_right_indices: list[int] = []
-        jump_times_list: list[float] = []
-        jump_values_list: list[float] = []
-        for i, dti in enumerate(dt):
-            if dti > small_dt_threshold:
-                continue
-            delta = float(adjusted[i + 1] - adjusted[i])
-            if abs(delta) <= 1e-12:
-                continue
-            jump_right_indices.append(i + 1)
-            jump_times_list.append(0.5 * float(times_np[i] + times_np[i + 1]))
-            jump_values_list.append(delta)
-            adjusted[i + 1 :] -= delta
+    dense_t_np = np.asarray(inputs["dense_times"], dtype=float)
+    fc_dense_np = np.asarray(inputs["feed_corr_dense"], dtype=float)
+    meas_idx_np = np.asarray(inputs["meas_indices"], dtype=int)
+    fc_at_meas_np = np.asarray(inputs["feed_corr_at_meas"], dtype=float)
+    meas_t_np = np.asarray(inputs["meas_times"], dtype=float)
 
-        keep = np.ones(times_np.shape[0], dtype=bool)
-        if jump_right_indices:
-            keep[jump_right_indices] = False
-        fc_base_times = jnp.asarray(times_np[keep], dtype=float)
-        fc_base_values = jnp.asarray(adjusted[keep], dtype=float)
-        fc_jump_times = jnp.asarray(jump_times_list, dtype=float)
-        fc_jump_values = jnp.asarray(jump_values_list, dtype=float)
+    # Known bolus event times. ADF no longer steps at sample events (ADF uses
+    # a sample-free volume trajectory) so we only extract jumps at boluses.
+    bolus_times: list[float] = []
+    if process is not None:
+        for _, vc in process.volume.volume_changes.items():
+            if not isinstance(vc, FeedVolumeChange) or vc.is_continuous:
+                continue
+            bolus_times.extend(float(t) for t in np.asarray(vc.values.times))
 
-    adf_step_times, adf_step_values = _canonicalize_adf_step_table(
-        inputs["dense_times"], inputs["adf_dense"]
+    # Locate bolus ε-pairs; decompose fc_dense into smooth baseline + physics-
+    # correct fc jumps (from the dense cumsum).
+    bolus_pairs = _locate_bolus_epsilon_pairs(dense_t_np, bolus_times)
+    fc_dense_smooth, cumjump_dense, jump_t_list, jump_v_list = (
+        _split_dense_into_smooth_and_jumps(dense_t_np, fc_dense_np, bolus_pairs)
     )
+
+    # Step 2: compute the smooth (jump-removed) meas anchors. Under left-
+    # continuous semantics, a meas at exactly t_b sees only jumps at t < t_b.
+    # cumjump_dense[idx_of_t_meas] gives exactly that pre-event cumulative
+    # because we subtracted deltas starting at i_post, leaving the value at
+    # the meas knot itself untouched when meas coincides with bolus time.
+    fc_at_meas_smooth_np = fc_at_meas_np - cumjump_dense[meas_idx_np]
+
+    # Step 3: calibrate the smooth baseline so it anchors exactly at
+    # fc_at_meas_smooth at every measurement index. Because the trajectory
+    # being calibrated has no step discontinuities, the rescaling preserves
+    # curvature without distorting jumps (there are none).
+    fc_base_np = _calibrate_smooth_to_meas_anchors(
+        dense_t_np, fc_dense_smooth, meas_idx_np, fc_at_meas_smooth_np
+    )
+
+    fc_base_times = jnp.asarray(dense_t_np, dtype=float)
+    fc_base_values = jnp.asarray(fc_base_np, dtype=float)
+    fc_jump_times = jnp.asarray(jump_t_list, dtype=float)
+    fc_jump_values = jnp.asarray(jump_v_list, dtype=float)
+
+    # Step 3: ADF is stored directly on the dense grid (not as a
+    # step-canonical table) so evaluation can use piecewise-linear interp.
+    # This correctly renders both continuous-feed smooth growth and the
+    # near-step transitions at bolus ε-pairs.
+    adf_step_times = jnp.asarray(inputs["dense_times"], dtype=float)
+    adf_step_values = jnp.asarray(inputs["adf_dense"], dtype=float)
 
     return {
         "spline_cstar": spline_cstar,
         "spline_feed_corr": spline_feed_corr,
-        "meas_times": interp_times,
-        "adf_at_meas": interp_adf,
-        "feed_corr_at_meas": interp_fc,
+        "meas_times": meas_times,
+        "adf_at_meas": adf_at_meas,
+        "feed_corr_at_meas": fc_at_meas,
         "feed_corr_base_times": fc_base_times,
         "feed_corr_base_values": fc_base_values,
         "feed_corr_jump_times": fc_jump_times,
@@ -932,12 +1059,16 @@ def evaluate_real_concentration(
     t_eval = jnp.asarray(t_eval, dtype=float)
     cs = jnp.asarray(splines["spline_cstar"](jnp.asarray(t_eval)))
 
-    adf_times = splines.get("adf_times", splines["dense_times"])
-    adf_values = splines.get("adf_values", splines["adf_dense"])
-    adf_times, adf_values = _canonicalize_left_continuous_step_metadata(
-        adf_times, adf_values
+    # ADF is piecewise-linear on the dense grid: smooth where continuous
+    # feed grows V, near-step at bolus ε-pairs (because dense knots straddle
+    # each bolus at ±_EPS), flat at sample ε-pairs (sample-compensation
+    # keeps ADF unchanged). jnp.interp naturally handles all three without a
+    # separate step-table abstraction.
+    adf = jnp.interp(
+        t_eval,
+        jnp.asarray(splines["dense_times"], dtype=float),
+        jnp.asarray(splines["adf_dense"], dtype=float),
     )
-    adf = evaluate_left_continuous_step(t_eval, adf_times, adf_values)
     if splines.get("spline_feed_corr") is not None:
         fc = jnp.asarray(splines["spline_feed_corr"](jnp.asarray(t_eval)))
     elif (
@@ -1019,10 +1150,9 @@ def to_interpolator(
     has_discrete = inputs.get("has_discrete_feed", False)
     feed_corr_interp = "linear_plus_step" if has_discrete else "cubic"
 
-    # Canonical ADF step storage: change points and interval values.
-    adf_step_times, adf_step_values = _canonicalize_adf_step_table(
-        inputs["dense_times"], inputs["adf_dense"]
-    )
+    # ADF stored directly on the dense grid (for piecewise-linear interp).
+    adf_step_times = jnp.asarray(inputs["dense_times"], dtype=float)
+    adf_step_values = jnp.asarray(inputs["adf_dense"], dtype=float)
 
     # Store backtransform metadata (all JSON-serializable via lists)
     if rep.interpolator_metadata is None:
@@ -1093,7 +1223,7 @@ class BacktransformSpline(eqx.Module):
         if self.is_constant:
             return self.constant_value + t * 0.0  # keep JAX tracing happy
         cs = self.c_star_spline(t)
-        adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
+        adf = jnp.interp(t, self.adf_times, self.adf_values)
         if self.use_cubic_fc:
             fc = self.fc_spline(t)
         else:
@@ -1139,7 +1269,7 @@ class BacktransformSpline(eqx.Module):
         def _deriv(t):
             if self.is_constant:
                 return t * 0.0
-            adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
+            adf = jnp.interp(t, self.adf_times, self.adf_values)
             adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
             dc_star_dt = dc_star(t)
             if dfc_cubic is not None:
@@ -1187,10 +1317,9 @@ def build_backtransform_spline(rep: Interpolator) -> BacktransformSpline:
     else:
         c_star_spline = interpax.CubicSpline(xi, yi, bc_type=rep.bc_type, check=False)
 
-    # ADF grid
-    adf_times, adf_values = _canonicalize_left_continuous_step_metadata(
-        tr["adf_times"], tr["adf_values"]
-    )
+    # ADF stored as dense grid; evaluate via jnp.interp.
+    adf_times = jnp.asarray(tr["adf_times"], dtype=float)
+    adf_values = jnp.asarray(tr["adf_values"], dtype=float)
 
     # Feed correction
     fc_times = jnp.array(tr["feed_corr_times"], dtype=float)
@@ -1279,7 +1408,7 @@ class BatchedBacktransformSpline(eqx.Module):
             jump_idx = jnp.searchsorted(self.fc_jump_times, t, side="left")
             jump = self.fc_jump_cumsum[jump_idx]
             fc = fc + jnp.where(self.fc_step_mask, jump, 0.0)
-        adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
+        adf = jnp.interp(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         result = (cs + fc) / adf
         return jnp.where(self.constant_mask, self.constant_values, result)
@@ -1296,7 +1425,7 @@ class BatchedBacktransformSpline(eqx.Module):
         """
         dc_star = self.c_star_ppoly(t, nu=1)  # (n_sp,)
         dfc = self.fc_ppoly(t, nu=1)  # (n_sp,)
-        adf = evaluate_left_continuous_step(t, self.adf_times, self.adf_values)
+        adf = jnp.interp(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
         result = (dc_star + dfc) / adf
         return jnp.where(self.constant_mask, 0.0, result)
