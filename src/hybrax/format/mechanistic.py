@@ -1697,11 +1697,31 @@ def integrate_process_pseudospace(
     scales = _compute_scale_factors(process, mb)
     state_scale = jnp.append(jnp.array(scales), 1.0)
 
+    # Pre-compute per-interval slopes for the piecewise-linear ADF derivative.
+    adf_slopes_list = []
+    for i in range(len(adf_t_list)):
+        if adf_t_list[i].shape[0] >= 2:
+            at = adf_t_list[i]
+            av = adf_v_list[i]
+            sl = jnp.diff(av) / jnp.maximum(jnp.diff(at), 1e-12)
+            adf_slopes_list.append(sl)
+        else:
+            adf_slopes_list.append(jnp.zeros(1, dtype=float))
+
     def _eval_adf(t):
         adf_vals = []
         for i in range(n_non_volume):
             adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
         return jnp.stack(adf_vals)
+
+    def _eval_dadf(t):
+        dadf_vals = []
+        for i in range(n_non_volume):
+            at = adf_t_list[i]
+            sl = adf_slopes_list[i]
+            idx = jnp.clip(jnp.searchsorted(at, t) - 1, 0, sl.shape[0] - 1)
+            dadf_vals.append(sl[idx])
+        return jnp.stack(dadf_vals)
 
     def _eval_fc_and_dfc(t):
         fc_vals = []
@@ -1799,7 +1819,13 @@ def integrate_process_pseudospace(
         dc_reactor = reaction + feed_term + r_reactor
         dc_pv = c_pv * 0.0 + r_pv
         dc = jnp.concatenate([dc_reactor, dc_pv])
-        dc_star = adf * dc - dfc
+        # c_star = c * adf - fc, so
+        #   dc_star/dt = adf * dc/dt + c * d(adf)/dt - dfc/dt
+        # The c · d(adf)/dt term matters whenever ADF varies smoothly between
+        # events (continuous feed / sample-compensation factor); without it
+        # the pseudospace integrator drifts off reference.
+        dadf = _eval_dadf(t)
+        dc_star = adf * dc + c * dadf - dfc
         return jnp.append(dc_star, dV_cont)
 
     def rhs_normalized(t, state_n, args):

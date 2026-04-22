@@ -1240,19 +1240,25 @@ class BacktransformSpline(eqx.Module):
     def derivative(self):
         """Return a callable evaluating dc/dt at time *t*.
 
-        Between discrete events ADF is piecewise constant, so:
+        With ``c(t) = (c*(t) + fc(t)) / ADF(t)``, the quotient rule gives
 
         .. math::
-            \\frac{dc}{dt} = \\frac{dc^*/dt + dfc/dt}{\\text{ADF}}
+            \\frac{dc}{dt} =
+                \\frac{dc^*/dt + dfc/dt}{\\text{ADF}}
+                \\;-\\; \\frac{(c^* + fc)}{\\text{ADF}^2}\\,\\frac{d\\text{ADF}}{dt}
+              = \\frac{dc^*/dt + dfc/dt - c\\cdot d\\text{ADF}/dt}{\\text{ADF}}
 
-        ``dc^*/dt`` uses the analytical cubic spline derivative.
-        ``dfc/dt`` uses:
+        The ``-c · dADF/dt / ADF`` term is non-zero whenever continuous feed
+        (or the sample-compensation factor) makes ADF vary smoothly between
+        events, so it MUST be included to avoid a systematic dc/dt bias in
+        the mechanistic q-inversion.
 
-        * The cubic spline derivative when ``use_cubic_fc`` is True
-          (continuous feeds — smooth feed correction).
-        * The exact piecewise-constant derivative of the linear
-          interpolation when ``use_cubic_fc`` is False (bolus feeds —
-          step-like feed correction).
+        ``dc^*/dt`` uses the analytical cubic/PCHIP spline derivative.
+        ``dfc/dt`` uses the spline derivative (cubic mode) or the exact
+        piecewise-constant derivative of ``jnp.interp`` (linear_plus_step
+        mode, with per-interval slopes pre-computed for the smooth base).
+        ``d(ADF)/dt`` uses the exact piecewise-constant derivative of the
+        dense linear ADF interpolation.
         """
         dc_star = self.c_star_spline.derivative()
         if self.use_cubic_fc:
@@ -1265,6 +1271,13 @@ class BacktransformSpline(eqx.Module):
                 _fc_dt, jnp.array(1e-12)
             )
             _fc_times = self.fc_times
+
+        # Pre-compute piecewise-constant slopes of the ADF linear interp.
+        _adf_dt = jnp.diff(self.adf_times)
+        _adf_slopes = jnp.diff(self.adf_values) / jnp.maximum(
+            _adf_dt, jnp.array(1e-12)
+        )
+        _adf_times = self.adf_times
 
         def _deriv(t):
             if self.is_constant:
@@ -1279,7 +1292,23 @@ class BacktransformSpline(eqx.Module):
                 idx = jnp.searchsorted(_fc_times, t) - 1
                 idx = jnp.clip(idx, 0, len(_fc_slopes) - 1)
                 dfc_dt = _fc_slopes[idx]
-            return (dc_star_dt + dfc_dt) / adf
+            adf_idx = jnp.searchsorted(_adf_times, t) - 1
+            adf_idx = jnp.clip(adf_idx, 0, len(_adf_slopes) - 1)
+            dadf_dt = _adf_slopes[adf_idx]
+            # c(t) = (cs + fc) / adf; derive dc/dt from the evaluated c(t)
+            if self.use_cubic_fc:
+                fc = self.fc_spline(t)
+            else:
+                fc = evaluate_linear_plus_step(
+                    t,
+                    self.fc_times,
+                    self.fc_values,
+                    self.fc_jump_times,
+                    self.fc_jump_values,
+                )
+            cs = self.c_star_spline(t)
+            c_val = (cs + fc) / adf
+            return (dc_star_dt + dfc_dt - c_val * dadf_dt) / adf
 
         return _deriv
 
@@ -1416,18 +1445,39 @@ class BatchedBacktransformSpline(eqx.Module):
     def eval_derivative(self, t: jnp.ndarray) -> jnp.ndarray:
         """Evaluate dc/dt for all species at scalar time *t*.
 
-        Uses ``PPoly(t, nu=1)`` for analytical cubic-spline derivatives.
+        Applies the full quotient rule for ``c(t) = (c* + fc) / ADF(t)``:
+
+        .. math::
+            \\frac{dc}{dt} =
+                \\frac{dc^*/dt + dfc/dt - c\\cdot d\\text{ADF}/dt}{\\text{ADF}}
+
+        The ``c · dADF/dt / ADF`` term matters whenever continuous feed (or
+        the sample-compensation factor) makes ADF vary smoothly between
+        events — omitting it produces a systematic dc/dt bias.
 
         Returns
         -------
         jnp.ndarray
             Shape ``(n_sp,)``.
         """
+        cs = self.c_star_ppoly(t)  # (n_sp,)
+        fc = self.fc_ppoly(t)  # (n_sp,)
+        if int(self.fc_jump_times.shape[0]) > 0:
+            jump_idx = jnp.searchsorted(self.fc_jump_times, t, side="left")
+            jump = self.fc_jump_cumsum[jump_idx]
+            fc = fc + jnp.where(self.fc_step_mask, jump, 0.0)
         dc_star = self.c_star_ppoly(t, nu=1)  # (n_sp,)
         dfc = self.fc_ppoly(t, nu=1)  # (n_sp,)
         adf = jnp.interp(t, self.adf_times, self.adf_values)
         adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
-        result = (dc_star + dfc) / adf
+        # Piecewise-constant derivative of the dense ADF linear interp.
+        adf_dt = jnp.diff(self.adf_times)
+        adf_slopes = jnp.diff(self.adf_values) / jnp.maximum(adf_dt, 1e-12)
+        idx = jnp.searchsorted(self.adf_times, t) - 1
+        idx = jnp.clip(idx, 0, adf_slopes.shape[0] - 1)
+        dadf_dt = adf_slopes[idx]
+        c_val = (cs + fc) / adf
+        result = (dc_star + dfc - c_val * dadf_dt) / adf
         return jnp.where(self.constant_mask, 0.0, result)
 
 
