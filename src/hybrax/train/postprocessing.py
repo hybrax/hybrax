@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import equinox as eqx
 import jax
@@ -85,6 +85,32 @@ def _annotate_fit(ax, mse: float, r2: float) -> None:
     )
 
 
+def plot_loss_curve(
+    losses: Sequence[float],
+    output_path: str | Path,
+    *,
+    title: str = "Training loss",
+) -> None:
+    """Draw a loss-vs-step curve on a log-y axis and save as PNG."""
+    import matplotlib.pyplot as plt
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    if len(losses) > 0:
+        ax.plot(range(1, len(losses) + 1), list(losses))
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Mean loss (MSE)")
+    ax.set_title(title)
+    ax.set_yscale("log")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    logger.info("loss curve saved to %s", output_path)
+
+
 def plot_training_results(
     result: Any,
     collection: BioProcessCollection,
@@ -99,23 +125,10 @@ def plot_training_results(
     timeseries_csv_path: str | Path | None = None,
 ) -> None:
     """Generate loss curve and per-process concentration / rate / volume plots."""
-    import matplotlib.pyplot as plt
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Loss curve ---
-    fig_loss, ax_loss = plt.subplots(figsize=(6, 4))
-    ax_loss.plot(range(1, len(result.mean_loss_by_step) + 1), result.mean_loss_by_step)
-    ax_loss.set_xlabel("Step")
-    ax_loss.set_ylabel("Mean loss (MSE)")
-    ax_loss.set_title("Training loss")
-    ax_loss.set_yscale("log")
-    ax_loss.grid(True, alpha=0.3)
-    fig_loss.tight_layout()
-    fig_loss.savefig(output_dir / "loss_curve.png", dpi=150)
-    plt.close(fig_loss)
-    logger.info("loss curve saved to %s", output_dir / "loss_curve.png")
+    plot_loss_curve(result.mean_loss_by_step, output_dir / "loss_curve.png")
 
     plot_process_simulations(
         result.trained_wrapper,
@@ -400,16 +413,13 @@ def plot_process_simulations(
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
                 kind = "feed" if isinstance(vc, FeedVolumeChange) else "sample"
-                if vc.is_continuous:
-                    ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=f"{vc_name} ({kind})")
-                else:
-                    ax_vc.bar(
-                        vc_t,
-                        vc_v,
-                        width=bar_width,
-                        label=f"{vc_name} ({kind})",
-                        edgecolor="k",
-                    )
+                ax_vc.bar(
+                    vc_t,
+                    vc_v,
+                    width=bar_width,
+                    label=f"{vc_name} ({kind})",
+                    edgecolor="k",
+                )
             ax_vc.set_title(f"volume_changes [{process.volume.unit}]")
             ax_vc.set_xlabel(f"time [{time_unit}]")
             ax_vc.set_xlim(t_start, t_end)
