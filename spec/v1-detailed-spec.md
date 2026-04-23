@@ -39,7 +39,7 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 
 - Pseudo-batch integration.
 - Stateful models such as RNNs or LSTMs.
-- Checkpointing and resumption.
+- Full resumption (optimizer state + RNG) and warmstart from a prior run. Periodic parameter snapshots during training are supported: every `--log-every` steps, `bp-train train` writes `<output-dir>/checkpoints/step_NNNNN/{trained_wrapper.eqx, trained_wrapper.meta.json, loss_curve.png}` plus a `latest` symlink. Loading a checkpoint as a warmstart init, and restoring optimizer state, are deferred.
 - LOO-CV orchestration.
 - Data augmentation.
 - A fully general segmented runtime controls API.

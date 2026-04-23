@@ -197,6 +197,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default="output",
         help="Directory for trained model and plots (default: ./output).",
     )
+    train_parser.add_argument(
+        "--checkpoint-dir",
+        default=None,
+        help=(
+            "Directory for periodic training checkpoints (wrapper snapshot, "
+            "sidecar, loss curve). Defaults to <output-dir>/checkpoints. "
+            "Pass an empty string to disable. Cadence follows --log-every."
+        ),
+    )
     plot_group = train_parser.add_mutually_exclusive_group()
     plot_group.add_argument(
         "--plot",
@@ -471,6 +480,13 @@ def _handle_train(args: argparse.Namespace) -> int:
         effective_targets = tuple(config_targets)
     else:
         effective_targets = None
+    output_dir = Path(args.output_dir)
+    if args.checkpoint_dir is None:
+        checkpoint_dir: Path | None = output_dir / "checkpoints"
+    elif str(args.checkpoint_dir) == "":
+        checkpoint_dir = None
+    else:
+        checkpoint_dir = Path(args.checkpoint_dir)
     config = TrainHarnessConfig(
         process_names=selected_processes if selected_processes else None,
         target_variable_order=effective_targets,
@@ -493,6 +509,7 @@ def _handle_train(args: argparse.Namespace) -> int:
         metrics_jsonl=args.metrics_jsonl,
         log_decimals=args.log_decimals,
         log_header_every=args.log_header_every,
+        checkpoint_dir=checkpoint_dir,
     )
     result = train_from_collection(
         collection,
@@ -513,7 +530,6 @@ def _handle_train(args: argparse.Namespace) -> int:
 
     # Post-training outputs
 
-    output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     model_path = output_dir / "trained_wrapper.eqx"

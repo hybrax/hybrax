@@ -19,6 +19,7 @@ from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import get_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
+from .checkpointing import CheckpointConfig, CheckpointWriter
 from .defaults import default_build_reaction_module
 from .model_api import UserReactionModule, partition_trainable
 from .trainer import (
@@ -67,6 +68,9 @@ class TrainHarnessConfig:
     metrics_jsonl: str | None = None
     log_decimals: int = 4
     log_header_every: int = 30
+    # Checkpointing (periodic wrapper snapshot + loss curve).
+    # When set, cadence ties to log_every; pass None to disable.
+    checkpoint_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -873,6 +877,14 @@ def train_collection(
         float(warmup_loss),
     )
 
+    checkpoint_writer = CheckpointWriter(
+        CheckpointConfig(
+            output_dir=Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
+            every=int(cfg.log_every) if cfg.checkpoint_dir is not None else 0,
+        )
+    )
+    loss_so_far: list[float] = []
+
     with RunLogger(
         log_every=int(cfg.log_every),
         log_process_losses=bool(cfg.log_process_losses),
@@ -939,6 +951,13 @@ def train_collection(
                     step_dt=float(step_dt),
                     rebuild_count=int(rebuild_count),
                 )
+            )
+
+            loss_so_far.append(float(loss))
+            checkpoint_writer.maybe_write(
+                step=step_index + 1,
+                wrapper=wrapper,
+                mean_loss_by_step=loss_so_far,
             )
 
         history = run_log.finalize()
