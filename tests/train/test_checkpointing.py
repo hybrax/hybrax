@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from bp_format.dataclasses import (
 )
 
 from bp_train.checkpointing import CheckpointConfig, CheckpointWriter
+import bp_train.harness as harness_module
 from bp_train.harness import TrainHarnessConfig, train_collection
 from bp_train.model_api import ReactionOutputs, UserReactionModule
 from bp_train.postprocessing import plot_loss_curve
@@ -74,7 +76,13 @@ def test_checkpoint_writer_writes_only_at_cadence(tmp_path: Path):
     writer = CheckpointWriter(CheckpointConfig(output_dir=out_dir, every=3))
     module = _tiny_module()
     for step in range(1, 11):
-        writer.maybe_write(step=step, wrapper=module, mean_loss_by_step=[float(step)])
+        step_dir = writer.maybe_write(
+            step=step,
+            wrapper=module,
+            mean_loss_by_step=[float(step)],
+        )
+        if step_dir is not None:
+            writer.publish_latest(step_dir)
     expected_step_dirs = {"step_00003", "step_00006", "step_00009"}
     actual_step_dirs = {
         p.name for p in out_dir.iterdir() if p.is_dir() and not p.is_symlink()
@@ -90,9 +98,13 @@ def test_checkpoint_writer_contents_roundtrip(tmp_path: Path):
     out_dir = tmp_path / "ckpt"
     writer = CheckpointWriter(CheckpointConfig(output_dir=out_dir, every=1))
     module = _tiny_module()
-    writer.maybe_write(step=7, wrapper=module, mean_loss_by_step=[0.9, 0.5, 0.12345])
+    step_dir = writer.maybe_write(
+        step=7,
+        wrapper=module,
+        mean_loss_by_step=[0.9, 0.5, 0.12345],
+    )
 
-    step_dir = out_dir / "step_00007"
+    assert step_dir == out_dir / "step_00007"
     assert (step_dir / "trained_wrapper.eqx").is_file()
     assert (step_dir / "trained_wrapper.meta.json").is_file()
     assert (step_dir / "loss_curve.png").is_file()
@@ -102,19 +114,37 @@ def test_checkpoint_writer_contents_roundtrip(tmp_path: Path):
     assert meta["mean_loss"] == pytest.approx(0.12345)
     assert "timestamp" in meta
 
-    reloaded = eqx.tree_deserialise_leaves(step_dir / "trained_wrapper.eqx", like=module)
+    reloaded = eqx.tree_deserialise_leaves(
+        step_dir / "trained_wrapper.eqx", like=module
+    )
     # Same weights as the source module (since no training happened in-between).
     assert jnp.allclose(reloaded.weight, module.weight)
     assert jnp.allclose(reloaded.bias, module.bias)
+
+
+def test_checkpoint_writer_does_not_publish_latest_before_finalize(tmp_path: Path):
+    out_dir = tmp_path / "ckpt"
+    writer = CheckpointWriter(CheckpointConfig(output_dir=out_dir, every=1))
+    step_dir = writer.maybe_write(
+        step=1,
+        wrapper=_tiny_module(),
+        mean_loss_by_step=[1.0],
+    )
+    assert step_dir == out_dir / "step_00001"
+    assert not (out_dir / "latest").exists()
 
 
 def test_checkpoint_writer_latest_updates_across_writes(tmp_path: Path):
     out_dir = tmp_path / "ckpt"
     writer = CheckpointWriter(CheckpointConfig(output_dir=out_dir, every=2))
     module = _tiny_module()
-    writer.maybe_write(step=2, wrapper=module, mean_loss_by_step=[1.0])
+    step_dir = writer.maybe_write(step=2, wrapper=module, mean_loss_by_step=[1.0])
+    assert step_dir is not None
+    writer.publish_latest(step_dir)
     assert (out_dir / "latest").resolve().name == "step_00002"
-    writer.maybe_write(step=4, wrapper=module, mean_loss_by_step=[1.0, 0.5])
+    step_dir = writer.maybe_write(step=4, wrapper=module, mean_loss_by_step=[1.0, 0.5])
+    assert step_dir is not None
+    writer.publish_latest(step_dir)
     assert (out_dir / "latest").resolve().name == "step_00004"
 
 
@@ -228,11 +258,20 @@ def test_train_collection_writes_checkpoints_at_log_every(tmp_path: Path):
 
     for step in (2, 4, 6):
         d = ckpt_dir / f"step_{step:05d}"
-        assert (d / "trained_wrapper.eqx").is_file()
-        assert (d / "trained_wrapper.meta.json").is_file()
-        assert (d / "loss_curve.png").is_file()
+        assert sorted(path.name for path in d.iterdir()) == [
+            "loss_curve.png",
+            "predictions.csv",
+            "trained_wrapper.eqx",
+            "trained_wrapper.meta.json",
+        ]
         meta = json.loads((d / "trained_wrapper.meta.json").read_text())
         assert meta["step"] == step
+        with (d / "predictions.csv").open(encoding="utf-8", newline="") as handle:
+            reader = csv.reader(handle)
+            header = next(reader)
+            first_row = next(reader)
+        assert header == ["process", "t", "c_biomass", "V_cont", "V_real", "q_biomass"]
+        assert first_row[0] == "p1"
 
     assert (ckpt_dir / "latest").is_symlink()
     assert (ckpt_dir / "latest").resolve().name == "step_00006"
@@ -257,3 +296,25 @@ def test_train_collection_checkpoint_eqx_reloads_into_final_wrapper(tmp_path: Pa
     for a, b in zip(trained_leaves, reloaded_leaves):
         assert a.shape == b.shape
         assert a.dtype == b.dtype
+
+
+def test_train_collection_does_not_publish_latest_when_export_fails(
+    monkeypatch, tmp_path: Path
+):
+    ckpt_dir = tmp_path / "checkpoints"
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("export failed")
+
+    monkeypatch.setattr(harness_module, "export_predictions_csv", _boom)
+
+    with pytest.raises(RuntimeError, match="export failed"):
+        _run_train(checkpoint_dir=ckpt_dir, log_every=2, steps=2)
+
+    step_dir = ckpt_dir / "step_00002"
+    assert step_dir.is_dir()
+    assert (step_dir / "trained_wrapper.eqx").is_file()
+    assert (step_dir / "trained_wrapper.meta.json").is_file()
+    assert (step_dir / "loss_curve.png").is_file()
+    assert not (step_dir / "predictions.csv").exists()
+    assert not (ckpt_dir / "latest").exists()

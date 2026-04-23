@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
 from typing import Any, Sequence
 
+import diffrax
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -20,6 +21,170 @@ from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper
 
 logger = logging.getLogger(__name__)
+
+# Bolus bar width in `plot_process_simulations`, expressed as a fraction of the
+# process time span.
+BAR_WIDTH_FRACTION = 0.02
+
+
+@dataclass(frozen=True)
+class DenseProcessExport:
+    """Dense, human-facing per-process export arrays in physical units."""
+
+    t: np.ndarray
+    c_species: np.ndarray
+    v_cont: np.ndarray
+    v_real: np.ndarray
+    b_modeled_cum: np.ndarray
+    q_species: np.ndarray
+
+
+def _predictions_csv_header(
+    species_names: tuple[str, ...],
+    modeled_flow_names: tuple[str, ...],
+) -> list[str]:
+    """Build stable predictions.csv column order."""
+    return (
+        ["process", "t"]
+        + [f"c_{name}" for name in species_names]
+        + ["V_cont", "V_real"]
+        + [f"B_{name}_cum" for name in modeled_flow_names]
+        + [f"q_{name}" for name in species_names]
+    )
+
+
+def _compute_dense_process_export(
+    trained_wrapper: HybridOdeWrapper,
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    process_name: str,
+    *,
+    solver_max_steps: int,
+    solver_rtol: float,
+    solver_atol: float,
+    solver_use_jump_ts: bool,
+    n_dense: int = 200,
+) -> DenseProcessExport:
+    """Solve one process on dense grid and return export-ready arrays."""
+    process = collection.processes[process_name]
+    process_data = store.get_process(process_name)
+    rhs = get_rhs_ode(process)
+
+    process_wrapper = eqx.tree_at(
+        lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+        trained_wrapper,
+        (process_data.controls, rhs.Cin, rhs.Cin_modeled),
+    )
+
+    t_dense = jnp.linspace(
+        float(process.time_axis.start),
+        float(process.time_axis.end),
+        n_dense,
+    )
+    y0_scaled = process_wrapper.scale_state(process_data.y0)
+    term = diffrax.ODETerm(lambda t, y, args: process_wrapper(t, y))
+    jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
+    sol = diffrax.diffeqsolve(
+        term,
+        diffrax.Tsit5(),
+        t0=t_dense[0],
+        t1=t_dense[-1],
+        dt0=None,
+        y0=y0_scaled,
+        saveat=diffrax.SaveAt(ts=t_dense, fn=process_wrapper.save_outputs),
+        stepsize_controller=diffrax.PIDController(
+            rtol=solver_rtol,
+            atol=solver_atol,
+            jump_ts=jump_ts,
+        ),
+        max_steps=solver_max_steps,
+        throw=False,
+    )
+    if sol.result != diffrax.RESULTS.successful:
+        raise RuntimeError(
+            "dense export solve failed for process "
+            f"{process_name!r}: result={sol.result}"
+        )
+
+    states_physical = np.asarray(sol.ys.states_physical)
+    n_species = len(process_wrapper.species_names)
+    n_modeled = len(process_wrapper.modeled_flow_names)
+    return DenseProcessExport(
+        t=np.asarray(t_dense),
+        c_species=states_physical[:, :n_species],
+        v_cont=states_physical[:, n_species],
+        v_real=np.asarray(sol.ys.v_real_export),
+        b_modeled_cum=states_physical[:, n_species + 1 : n_species + 1 + n_modeled],
+        q_species=np.asarray(sol.ys.specific_rates_physical),
+    )
+
+
+def _write_predictions_csv(
+    trained_wrapper: HybridOdeWrapper,
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    output_path: str | Path,
+    process_names: tuple[str, ...] | None = None,
+    *,
+    solver_max_steps: int,
+    solver_rtol: float,
+    solver_atol: float,
+    solver_use_jump_ts: bool,
+) -> None:
+    """Write dense predictions.csv without any plotting-only work."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    species_names = trained_wrapper.species_names
+    modeled_flow_names = trained_wrapper.modeled_flow_names
+    n_species = len(species_names)
+    n_modeled = len(modeled_flow_names)
+    if process_names is None:
+        selected_processes = tuple(store.process_order)
+    else:
+        missing = [name for name in process_names if name not in store.process_order]
+        if missing:
+            raise ValueError(
+                "export_predictions_csv received unknown process names: "
+                f"{missing}; available={store.process_order}"
+            )
+        selected_processes = tuple(process_names)
+
+    header = _predictions_csv_header(
+        species_names=species_names,
+        modeled_flow_names=modeled_flow_names,
+    )
+    pd.DataFrame(columns=header).to_csv(output_path, index=False)
+
+    for process_name in selected_processes:
+        dense_export = _compute_dense_process_export(
+            trained_wrapper,
+            collection,
+            store,
+            process_name,
+            solver_max_steps=solver_max_steps,
+            solver_rtol=solver_rtol,
+            solver_atol=solver_atol,
+            solver_use_jump_ts=solver_use_jump_ts,
+        )
+        ts_rows: list[list[float | str]] = []
+        for i_t in range(len(dense_export.t)):
+            row = (
+                [process_name, float(dense_export.t[i_t])]
+                + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
+                + [float(dense_export.v_cont[i_t]), float(dense_export.v_real[i_t])]
+                + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
+                + [float(dense_export.q_species[i_t, j]) for j in range(n_species)]
+            )
+            ts_rows.append(row)
+        pd.DataFrame(ts_rows, columns=header).to_csv(
+            output_path,
+            mode="a",
+            header=False,
+            index=False,
+        )
+
+    logger.info("timeseries csv saved to %s", output_path)
 
 
 def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
@@ -144,6 +309,32 @@ def plot_training_results(
     )
 
 
+def export_predictions_csv(
+    trained_wrapper: HybridOdeWrapper,
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    output_path: str | Path,
+    process_names: tuple[str, ...] | None = None,
+    *,
+    solver_max_steps: int = 4096,
+    solver_rtol: float = 1e-3,
+    solver_atol: float = 1e-5,
+    solver_use_jump_ts: bool = True,
+) -> None:
+    """Write dense predictions.csv without rendering per-process plots."""
+    _write_predictions_csv(
+        trained_wrapper,
+        collection,
+        store,
+        output_path=output_path,
+        process_names=process_names,
+        solver_max_steps=solver_max_steps,
+        solver_rtol=solver_rtol,
+        solver_atol=solver_atol,
+        solver_use_jump_ts=solver_use_jump_ts,
+    )
+
+
 def plot_process_simulations(
     trained_wrapper: HybridOdeWrapper,
     collection: BioProcessCollection,
@@ -165,9 +356,6 @@ def plot_process_simulations(
     Optionally appends all dense trajectories into a single merged CSV at
     ``timeseries_csv_path`` with a leading ``process`` column.
     """
-    import diffrax
-    import matplotlib.pyplot as plt
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -186,10 +374,6 @@ def plot_process_simulations(
             )
         selected_processes = tuple(process_names)
 
-    per_process_rhs = {
-        name: get_rhs_ode(collection.processes[name]) for name in selected_processes
-    }
-
     training_set = (
         set(training_process_names) if training_process_names is not None else None
     )
@@ -197,151 +381,89 @@ def plot_process_simulations(
     # Prepare merged timeseries rows (one file, all processes).
     ts_header: list[str] | None = None
     ts_path: Path | None = None
-    ts_header_written = False
     if timeseries_csv_path is not None:
         ts_path = Path(timeseries_csv_path)
         ts_path.parent.mkdir(parents=True, exist_ok=True)
-        ts_header = (
-            ["process", "t"]
-            + [f"c_{name}" for name in species_names]
-            + ["V_cont", "V_real"]
-            + [f"B_{name}_cum" for name in modeled_flow_names]
-            + [f"q_{name}" for name in species_names]
+        ts_header = _predictions_csv_header(
+            species_names=species_names,
+            modeled_flow_names=modeled_flow_names,
         )
         pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
-        ts_header_written = True
 
     # --- Per-process simulation/exports ---
     for process_name in selected_processes:
         process = collection.processes[process_name]
         process_data = store.get_process(process_name)
-        rhs = per_process_rhs[process_name]
         time_unit = process.time_axis.unit
 
-        # Inject per-process controls and Cin
-        process_wrapper = eqx.tree_at(
-            lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+        dense_export = _compute_dense_process_export(
             trained_wrapper,
-            (process_data.controls, rhs.Cin, rhs.Cin_modeled),
+            collection,
+            store,
+            process_name,
+            solver_max_steps=solver_max_steps,
+            solver_rtol=solver_rtol,
+            solver_atol=solver_atol,
+            solver_use_jump_ts=solver_use_jump_ts,
         )
-
-        # Simulate on a dense time grid
         t_start = float(process.time_axis.start)
         t_end = float(process.time_axis.end)
-        t_dense = jnp.linspace(t_start, t_end, 200)
+        t_dense_np = dense_export.t
+        c_dense = dense_export.c_species
+        v_cont_pred = dense_export.v_cont
+        v_real_pred = dense_export.v_real
+        b_modeled_pred = dense_export.b_modeled_cum
+        q_dense = dense_export.q_species
 
-        y0_scaled = process_wrapper.scale_state(process_data.y0)
-        term = diffrax.ODETerm(lambda t, y, args: process_wrapper(t, y))
-        jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
-        sol = diffrax.diffeqsolve(
-            term,
-            diffrax.Tsit5(),
-            t0=t_dense[0],
-            t1=t_dense[-1],
-            dt0=None,
-            y0=y0_scaled,
-            saveat=diffrax.SaveAt(ts=t_dense),
-            stepsize_controller=diffrax.PIDController(
-                rtol=solver_rtol,
-                atol=solver_atol,
-                jump_ts=jump_ts,
-            ),
-            max_steps=solver_max_steps,
-            throw=False,
-        )
-        states_physical = jax.vmap(process_wrapper.unscale_state)(sol.ys)
-        # State layout: [c_species..., V_cont, B_modeled_cum_0, ...]
-        c_dense = np.asarray(states_physical[:, :n_species])
-        v_cont_pred = np.asarray(states_physical[:, n_species])
-        b_modeled_pred = np.asarray(
-            states_physical[:, n_species + 1 : n_species + 1 + n_modeled]
-        )
-        t_dense_np = np.asarray(t_dense)
+        if render_plots:
+            import matplotlib.pyplot as plt
 
-        # ---- Dense ground-truth time series for plotting ----
-        # V_real_true(t) on the dense grid: V0 + sum(cumulative inflows) - V_sample_acc
-        v0 = float(process.volume.initial_volume)
-        v_cont_true_dense = np.full(t_dense_np.shape, v0, dtype=float)
-        for vc in process.volume.volume_changes.values():
-            if not isinstance(vc, FeedVolumeChange):
-                continue
-            vc_t = np.asarray(vc.values.times, dtype=float)
-            vc_v = np.asarray(vc.values.values, dtype=float)
-            if bool(vc.is_continuous):
-                v_cont_true_dense += np.interp(
+            # ---- Dense ground-truth time series for plotting ----
+            # V_real_true(t) on the dense grid: V0 + cumulative inflows
+            # - V_sample_acc.
+            v0 = float(process.volume.initial_volume)
+            v_cont_true_dense = np.full(t_dense_np.shape, v0, dtype=float)
+            for vc in process.volume.volume_changes.values():
+                if not isinstance(vc, FeedVolumeChange):
+                    continue
+                vc_t = np.asarray(vc.values.times, dtype=float)
+                vc_v = np.asarray(vc.values.values, dtype=float)
+                if bool(vc.is_continuous):
+                    v_cont_true_dense += np.interp(
+                        t_dense_np,
+                        vc_t,
+                        vc_v,
+                        left=float(vc_v[0]),
+                        right=float(vc_v[-1]),
+                    )
+                else:
+                    cumulative = np.cumsum(vc_v, dtype=float)
+                    idx = np.searchsorted(vc_t, t_dense_np, side="right") - 1
+                    contribution = np.zeros_like(t_dense_np, dtype=float)
+                    valid = idx >= 0
+                    contribution[valid] = cumulative[idx[valid]]
+                    v_cont_true_dense += contribution
+
+            sample_acc_index = trained_wrapper.sample_acc_control_index
+            v_sample_acc_dense = np.asarray(
+                process_data.controls.eval(jnp.asarray(t_dense_np))[:, sample_acc_index]
+            )
+            v_real_true_dense = v_cont_true_dense - v_sample_acc_dense
+
+            # Cumulative measured B_modeled per modeled flow on the dense grid.
+            b_modeled_true_dense = np.zeros((len(t_dense_np), n_modeled), dtype=float)
+            for k, fn in enumerate(modeled_flow_names):
+                vc = process.volume.volume_changes[fn]
+                vc_t = np.asarray(vc.values.times, dtype=float)
+                vc_v = np.asarray(vc.values.values, dtype=float)
+                b_modeled_true_dense[:, k] = np.interp(
                     t_dense_np,
                     vc_t,
                     vc_v,
                     left=float(vc_v[0]),
                     right=float(vc_v[-1]),
                 )
-            else:
-                cumulative = np.cumsum(vc_v, dtype=float)
-                idx = np.searchsorted(vc_t, t_dense_np, side="right") - 1
-                contribution = np.zeros_like(t_dense_np, dtype=float)
-                valid = idx >= 0
-                contribution[valid] = cumulative[idx[valid]]
-                v_cont_true_dense += contribution
 
-        v_sample_acc_dense = np.array(
-            [
-                float(
-                    process_wrapper.controls.eval(jnp.asarray(float(t_)))[
-                        process_wrapper.sample_acc_control_index
-                    ]
-                )
-                for t_ in t_dense_np
-            ]
-        )
-        v_real_pred = v_cont_pred - v_sample_acc_dense
-        v_real_true_dense = v_cont_true_dense - v_sample_acc_dense
-
-        # Cumulative measured B_modeled per modeled flow on the dense grid
-        b_modeled_true_dense = np.zeros((len(t_dense_np), n_modeled), dtype=float)
-        for k, fn in enumerate(modeled_flow_names):
-            vc = process.volume.volume_changes[fn]
-            vc_t = np.asarray(vc.values.times, dtype=float)
-            vc_v = np.asarray(vc.values.values, dtype=float)
-            b_modeled_true_dense[:, k] = np.interp(
-                t_dense_np,
-                vc_t,
-                vc_v,
-                left=float(vc_v[0]),
-                right=float(vc_v[-1]),
-            )
-
-        # ---- Specific rates q(t) along the trajectory ----
-        q_dense = []
-        for i_t in range(len(t_dense_np)):
-            t_val = jnp.asarray(t_dense_np[i_t])
-            y_scaled = sol.ys[i_t]
-            c_scaled = jnp.clip(y_scaled[:n_species], 0.0)
-            controls_vec = process_wrapper.controls.eval(t_val)
-            cin_flat = jnp.concatenate(
-                [
-                    process_wrapper.rhs_ode.Cin.reshape(-1),
-                    process_wrapper.rhs_ode.Cin_modeled.reshape(-1),
-                ]
-            )
-            U_aug = jnp.concatenate([controls_vec, cin_flat])
-            if process_wrapper.include_v_real_feature:
-                v_real_unclipped = states_physical[i_t, n_species] - jnp.asarray(
-                    v_sample_acc_dense[i_t], dtype=U_aug.dtype
-                )
-                v_real_val = jnp.maximum(
-                    v_real_unclipped,
-                    jnp.asarray(process_wrapper.min_real_volume, dtype=U_aug.dtype),
-                )
-                U_aug = jnp.concatenate(
-                    [U_aug, jnp.asarray([v_real_val], dtype=U_aug.dtype)]
-                )
-            u_scaled = U_aug / process_wrapper.controls_scale
-            outputs = process_wrapper.reaction_module(t_val, c_scaled, u_scaled)
-            Q = np.asarray(outputs.specific_rates) * np.asarray(process_wrapper.q_scale)
-            q_dense.append(Q)
-        q_dense = np.stack(q_dense, axis=0)
-
-        if render_plots:
             # --- Layout: species rows + volume row + modeled-feed rows ---
             n_rows = n_species + 1 + n_modeled
             fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
@@ -408,7 +530,7 @@ def plot_process_simulations(
 
             # ---- Right panel: raw volume_changes overlaid ----
             ax_vc = axes[n_species, 1]
-            bar_width = (t_end - t_start) * 0.02  # 2% of time range
+            bar_width = (t_end - t_start) * BAR_WIDTH_FRACTION
             for vc_name, vc in process.volume.volume_changes.items():
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
@@ -491,10 +613,9 @@ def plot_process_simulations(
             pd.DataFrame(ts_rows, columns=ts_header).to_csv(
                 ts_path,
                 mode="a",
-                header=not ts_header_written,
+                header=False,
                 index=False,
             )
-            ts_header_written = True
 
     if ts_header is not None and timeseries_csv_path is not None:
         logger.info("timeseries csv saved to %s", timeseries_csv_path)

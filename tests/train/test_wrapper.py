@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import diffrax
+import jax
 import jax.numpy as jnp
 import pytest
 from bp_format.dataclasses import (
@@ -567,6 +568,212 @@ def test_wrapper_optional_ann_volume_feature_uses_v_real():
     dy_scaled = wrapper(2.0, y_scaled)
     dy_physical = dy_scaled * wrapper.state_scale
     assert float(dy_physical[0]) == pytest.approx(1.1, rel=1e-6, abs=1e-6)
+
+
+def test_wrapper_save_outputs_splits_export_and_runtime_v_real():
+    process = _make_single_species_process(feed_rate=0.0)
+    collection = _make_single_species_collection(feed_rate=0.0)
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    reaction_module = VolumeFeatureEchoReactionModule(
+        n_species=1,
+        expects_v_real_feature=True,
+    )
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=reaction_module,
+        process=process,
+        controls=controls,
+        min_real_volume=0.02,
+    )
+
+    # At t=2.0 the accumulated sample volume is 0.1 L.
+    y_physical = jnp.asarray([1.0, 0.05], dtype=jnp.float32)
+    saved = wrapper.save_outputs(2.0, wrapper.scale_state(y_physical))
+
+    assert jnp.allclose(saved.states_physical, y_physical)
+    assert float(saved.v_real_export) == pytest.approx(-0.05, abs=1e-6)
+    assert float(saved.v_real_runtime) == pytest.approx(0.02, abs=1e-6)
+    # The optional ANN feature must use runtime semantics, not export semantics.
+    assert float(saved.specific_rates_physical[0]) == pytest.approx(0.02, abs=1e-6)
+    assert saved.modeled_feed_rates_physical.shape == (0,)
+
+
+def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates():
+    """Save payload should expose unscaled physical q and modeled feed rates."""
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    base_feed_medium = FeedMedium(
+        name="base_feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(2.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_A": FeedVolumeChange(
+                    name="feed_A",
+                    unit="L/h",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([0.1, 0.1]),
+                    ),
+                    feed_medium=feed_medium,
+                ),
+                "base_feed": FeedVolumeChange(
+                    name="base_feed",
+                    unit="L/h",
+                    is_controlled=False,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([0.3, 0.3]),
+                    ),
+                    feed_medium=base_feed_medium,
+                ),
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={},
+    )
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=ConstantReactionModule(
+            specific_rates=jnp.asarray([0.25], dtype=jnp.float32),
+            modeled_feed_rates=jnp.asarray([0.3], dtype=jnp.float32),
+        ),
+        process=process,
+        controls=controls,
+        q_scale=jnp.asarray([4.0], dtype=jnp.float32),
+        f_scale=jnp.asarray([2.5], dtype=jnp.float32),
+    )
+
+    y_physical = jnp.asarray([1.0, 1.0, 0.7], dtype=jnp.float32)
+    saved = wrapper.save_outputs(0.0, wrapper.scale_state(y_physical))
+
+    assert jnp.allclose(saved.states_physical, y_physical)
+    assert jnp.allclose(
+        saved.specific_rates_physical,
+        jnp.asarray([1.0], dtype=jnp.float32),
+    )
+    assert jnp.allclose(
+        saved.modeled_feed_rates_physical,
+        jnp.asarray([jax.nn.softplus(0.3) * 2.5], dtype=jnp.float32),
+    )
+
+
+def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
+    process = _make_single_species_process(feed_rate=0.0)
+    collection = _make_single_species_collection(feed_rate=0.0)
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    wrapper = _build_wrapper(
+        process,
+        controls,
+        ConstantReactionModule(
+            specific_rates=jnp.asarray([0.4], dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+        ),
+    )
+
+    y0_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
+    y0_scaled = wrapper.scale_state(y0_physical)
+    save_ts = jnp.asarray([2.0], dtype=jnp.float32)
+    solve_kwargs = dict(
+        solver=diffrax.Tsit5(),
+        t0=0.0,
+        t1=2.0,
+        dt0=None,
+        y0=y0_scaled,
+        stepsize_controller=diffrax.PIDController(
+            rtol=1e-6,
+            atol=1e-8,
+            jump_ts=controls.active_step_ts,
+        ),
+        max_steps=4096,
+        throw=False,
+    )
+
+    state_sol = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        saveat=diffrax.SaveAt(ts=save_ts),
+        **solve_kwargs,
+    )
+    save_sol = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        saveat=diffrax.SaveAt(ts=save_ts, fn=wrapper.save_outputs),
+        **solve_kwargs,
+    )
+
+    assert state_sol.result == diffrax.RESULTS.successful
+    assert save_sol.result == diffrax.RESULTS.successful
+
+    expected = wrapper.save_outputs(2.0, state_sol.ys[0])
+    assert jnp.allclose(save_sol.ys.states_physical[0], expected.states_physical)
+    assert float(save_sol.ys.v_real_export[0]) == pytest.approx(
+        float(expected.v_real_export),
+        abs=1e-6,
+    )
+    assert float(save_sol.ys.v_real_runtime[0]) == pytest.approx(
+        float(expected.v_real_runtime),
+        abs=1e-6,
+    )
+    assert jnp.allclose(
+        save_sol.ys.specific_rates_physical[0],
+        expected.specific_rates_physical,
+    )
+    assert jnp.allclose(
+        save_sol.ys.modeled_feed_rates_physical[0],
+        expected.modeled_feed_rates_physical,
+    )
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():

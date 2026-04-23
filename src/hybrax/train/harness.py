@@ -36,10 +36,15 @@ from .training_data import (
 )
 from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
+from .postprocessing import export_predictions_csv
 
 _DEFAULT_BATCHED_MEASUREMENT_LOSS = batched_measurement_loss_from_arrays
 
 logger = logging.getLogger(__name__)
+
+# Floor below which `np.var` is treated as "all measurements identical" when
+# computing per-target variance for loss normalization.
+VARIANCE_EPS = 1e-12
 
 
 @dataclass(frozen=True)
@@ -386,10 +391,9 @@ def _build_template_wrapper(
         y_active = np.asarray(pd.active_y_meas)
         for col in range(n_y_cols):
             per_col_values[col].extend(y_active[:, col].tolist())
-    variance_eps = 1e-12
     target_variance = jnp.asarray(
         [
-            float(np.var(vals)) if vals and float(np.var(vals)) > variance_eps else 1.0
+            float(np.var(vals)) if vals and float(np.var(vals)) > VARIANCE_EPS else 1.0
             for vals in per_col_values
         ],
         dtype=jnp.float32,
@@ -698,10 +702,9 @@ def train_collection(
         y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_y_cols]
         for col in range(n_y_cols):
             _per_col_values[col].extend(y_active[:, col].tolist())
-    _variance_eps = 1e-12
     target_variance = jnp.asarray(
         [
-            float(np.var(vals)) if vals and float(np.var(vals)) > _variance_eps else 1.0
+            float(np.var(vals)) if vals and float(np.var(vals)) > VARIANCE_EPS else 1.0
             for vals in _per_col_values
         ],
         dtype=jnp.float32,
@@ -879,7 +882,9 @@ def train_collection(
 
     checkpoint_writer = CheckpointWriter(
         CheckpointConfig(
-            output_dir=Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
+            output_dir=Path(cfg.checkpoint_dir)
+            if cfg.checkpoint_dir is not None
+            else Path("."),
             every=int(cfg.log_every) if cfg.checkpoint_dir is not None else 0,
         )
     )
@@ -954,11 +959,24 @@ def train_collection(
             )
 
             loss_so_far.append(float(loss))
-            checkpoint_writer.maybe_write(
+            checkpoint_step_dir = checkpoint_writer.maybe_write(
                 step=step_index + 1,
                 wrapper=wrapper,
                 mean_loss_by_step=loss_so_far,
             )
+            if checkpoint_step_dir is not None:
+                export_predictions_csv(
+                    wrapper,
+                    collection,
+                    store,
+                    checkpoint_step_dir / "predictions.csv",
+                    process_names=selected_processes,
+                    solver_max_steps=int(cfg.solver_max_steps),
+                    solver_rtol=float(cfg.solver_rtol),
+                    solver_atol=float(cfg.solver_atol),
+                    solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
+                )
+                checkpoint_writer.publish_latest(checkpoint_step_dir)
 
         history = run_log.finalize()
 

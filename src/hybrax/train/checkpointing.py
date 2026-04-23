@@ -48,13 +48,24 @@ class CheckpointWriter:
         step: int,
         wrapper: Any,
         mean_loss_by_step: Sequence[float],
-    ) -> None:
+    ) -> Path | None:
         """Write a checkpoint if ``step`` is a multiple of ``every``."""
         if not self._enabled:
-            return
+            return None
         if step <= 0 or step % int(self._cfg.every) != 0:
-            return
-        self._write(step=step, wrapper=wrapper, mean_loss_by_step=mean_loss_by_step)
+            return None
+        return self._write(
+            step=step,
+            wrapper=wrapper,
+            mean_loss_by_step=mean_loss_by_step,
+        )
+
+    def publish_latest(self, step_dir: Path) -> None:
+        """Publish ``step_dir`` as the latest complete checkpoint.
+
+        Call this only after all per-step artifacts have been written.
+        """
+        self._update_latest_symlink(step_dir)
 
     def _write(
         self,
@@ -62,13 +73,15 @@ class CheckpointWriter:
         step: int,
         wrapper: Any,
         mean_loss_by_step: Sequence[float],
-    ) -> None:
+    ) -> Path:
         step_dir = self._cfg.output_dir / f"step_{step:05d}"
         step_dir.mkdir(parents=True, exist_ok=True)
 
         save_model(wrapper, step_dir / "trained_wrapper.eqx")
 
-        latest_loss = float(mean_loss_by_step[-1]) if len(mean_loss_by_step) else float("nan")
+        latest_loss = (
+            float(mean_loss_by_step[-1]) if len(mean_loss_by_step) else float("nan")
+        )
         save_model_metadata(
             step_dir / "trained_wrapper.meta.json",
             {
@@ -84,7 +97,7 @@ class CheckpointWriter:
             title=f"Training loss (through step {step})",
         )
 
-        self._update_latest_symlink(step_dir)
+        return step_dir
 
     def _update_latest_symlink(self, step_dir: Path) -> None:
         latest = self._cfg.output_dir / "latest"

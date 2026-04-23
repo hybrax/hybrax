@@ -21,15 +21,32 @@ import inspect
 import json
 from pathlib import Path
 
+import jax.numpy as jnp
+import numpy as np
 import pandas as pd
 import pytest
+from bp_format.dataclasses import (
+    BioProcess,
+    BioProcessCollection,
+    BioProcessMetadata,
+    ReactorMedium,
+    ReactorMediumComponent,
+    SampleVolumeChange,
+    TimeAxis,
+    TimeSeries,
+    Volume,
+)
 
 from bp_train import cli, postprocessing
+from bp_train.controls_store import ControlsStore
 from bp_train.harness import (
     ForwardConfig,
     ForwardResult,
     TrainHarnessResult,
 )
+from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.training_data import TrainingDataStore
+from bp_train.wrapper import HybridOdeWrapper
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +280,97 @@ def _stub_forward_result(**kwargs) -> ForwardResult:
     )
     defaults.update(kwargs)
     return ForwardResult(**defaults)
+
+
+class _ConstantReactionModule(UserReactionModule):
+    specific_rates: jnp.ndarray
+    modeled_feed_rates: jnp.ndarray
+
+    def __init__(self, specific_rates: jnp.ndarray, modeled_feed_rates: jnp.ndarray):
+        self.specific_rates = specific_rates
+        self.modeled_feed_rates = modeled_feed_rates
+
+    def __call__(self, t, c_species, controls_vector):
+        del t, c_species, controls_vector
+        return ReactionOutputs(
+            specific_rates=self.specific_rates,
+            modeled_feed_rates=self.modeled_feed_rates,
+        )
+
+
+def _make_one_species_process(
+    *,
+    initial_volume: float = 1.0,
+    sample_delta: float = -0.1,
+) -> BioProcess:
+    return BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=initial_volume,
+            unit="L",
+            volume_changes={
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0]),
+                        values=jnp.asarray([sample_delta]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={},
+    )
+
+
+def _build_single_process_runtime(
+    *,
+    initial_volume: float = 1.0,
+    sample_delta: float = -0.1,
+    q_scaled: float = 0.0,
+    q_scale: float = 1.0,
+):
+    process = _make_one_species_process(
+        initial_volume=initial_volume,
+        sample_delta=sample_delta,
+    )
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=_ConstantReactionModule(
+            specific_rates=jnp.asarray([q_scaled], dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+        ),
+        process=process,
+        controls=controls,
+        q_scale=jnp.asarray([q_scale], dtype=jnp.float32),
+        min_real_volume=0.02,
+    )
+    return collection, store, wrapper
 
 
 def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Path):
@@ -614,3 +722,89 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
         "q_S",
     ]
     assert rows.empty
+
+
+def test_compute_dense_process_export_uses_export_v_real_semantics():
+    collection, store, wrapper = _build_single_process_runtime(
+        initial_volume=0.05,
+        sample_delta=-0.1,
+    )
+
+    export = postprocessing._compute_dense_process_export(
+        wrapper,
+        collection,
+        store,
+        "p1",
+        solver_max_steps=256,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        solver_use_jump_ts=True,
+        n_dense=11,
+    )
+
+    assert export.v_real.shape == (11,)
+    assert float(export.v_cont[-1]) == pytest.approx(0.05, abs=1e-6)
+    # Human-facing export should reflect the sampled volume directly, not the
+    # runtime clamp used inside the RHS denominator.
+    assert float(export.v_real[-1]) == pytest.approx(-0.05, abs=5e-4)
+
+
+def test_compute_dense_process_export_returns_physical_q_values():
+    collection, store, wrapper = _build_single_process_runtime(
+        q_scaled=1.5,
+        q_scale=2.0,
+    )
+
+    export = postprocessing._compute_dense_process_export(
+        wrapper,
+        collection,
+        store,
+        "p1",
+        solver_max_steps=256,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        solver_use_jump_ts=True,
+        n_dense=9,
+    )
+
+    assert export.q_species.shape == (9, 1)
+    assert np.allclose(export.q_species[:, 0], 3.0)
+
+
+def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(
+    monkeypatch, tmp_path: Path
+):
+    collection, store, wrapper = _build_single_process_runtime(
+        q_scaled=1.5,
+        q_scale=2.0,
+    )
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("plot_process_simulations should not be called")
+
+    monkeypatch.setattr(postprocessing, "plot_process_simulations", _boom)
+
+    out_path = tmp_path / "predictions.csv"
+    postprocessing.export_predictions_csv(
+        wrapper,
+        collection,
+        store,
+        out_path,
+        process_names=("p1",),
+        solver_max_steps=256,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        solver_use_jump_ts=True,
+    )
+
+    rows = pd.read_csv(out_path)
+    assert rows.columns.tolist() == [
+        "process",
+        "t",
+        "c_biomass",
+        "V_cont",
+        "V_real",
+        "q_biomass",
+    ]
+    assert not rows.empty
+    assert set(rows["process"]) == {"p1"}

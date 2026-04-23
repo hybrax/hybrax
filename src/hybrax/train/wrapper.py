@@ -86,6 +86,29 @@ def _build_augmented_controls_units(
     return tuple(units)
 
 
+class WrapperEvaluation(eqx.Module):
+    """Shared wrapper evaluation results for RHS and save-time exports."""
+
+    states_physical: jax.Array
+    c_species_runtime: jax.Array
+    v_real_export: jax.Array
+    v_real_runtime: jax.Array
+    u_flow: jax.Array
+    u_flow_extra: jax.Array
+    specific_rates_physical: jax.Array
+    modeled_feed_rates_physical: jax.Array
+
+
+class SaveOutputs(eqx.Module):
+    """Diffrax-saveable wrapper outputs in physical units."""
+
+    states_physical: jax.Array
+    v_real_export: jax.Array
+    v_real_runtime: jax.Array
+    specific_rates_physical: jax.Array
+    modeled_feed_rates_physical: jax.Array
+
+
 class HybridOdeWrapper(eqx.Module):
     """ODE wrapper integrating in **scaled state space**.
 
@@ -324,21 +347,8 @@ class HybridOdeWrapper(eqx.Module):
         """Scaled state → physical state."""
         return y * self.state_scale
 
-    # ------ ODE RHS ------
-
-    def __call__(self, t: float | jax.Array, y: jax.Array) -> jax.Array:
-        """Compute ``dy/dt`` in **scaled** state space.
-
-        Parameters
-        ----------
-        t : scalar time
-        y : scaled state vector with layout
-            ``[c_species, V_cont, B_modeled_cum_0, ...] / state_scale``
-
-        Returns
-        -------
-        dy/dt in scaled space, same layout as ``y``.
-        """
+    def _validate_state_vector(self, y: jax.Array) -> None:
+        """Validate scaled wrapper state layout."""
         if y.ndim != 1:
             raise ValueError("state vector y ndim must be 1")
         n_species = len(self.species_names)
@@ -350,16 +360,23 @@ class HybridOdeWrapper(eqx.Module):
                 f"got {tuple(y.shape)}"
             )
 
+    def _evaluate_wrapper_terms(
+        self,
+        t: float | jax.Array,
+        y: jax.Array,
+    ) -> WrapperEvaluation:
+        """Evaluate shared wrapper quantities used by RHS and save path."""
+        self._validate_state_vector(y)
+
+        n_species = len(self.species_names)
         t_arr = jnp.asarray(t, dtype=y.dtype)
 
-        # ---- 1. Un-scale state to physical space ----
+        # Keep raw physical state for export; runtime math still clamps the
+        # quantities that must remain non-negative inside the mechanistic ODE.
         Y = self.unscale_state(y)
-        C_species = jnp.clip(Y[:n_species], 0.0)
-        V_cont = jnp.maximum(Y[n_species], jnp.asarray(0.0, dtype=y.dtype))
-        # B_modeled_cum (Y[n_species+1:]) is not used in the RHS — its derivative
-        # is just F_modeled, no feedback into the rest of the system.
+        C_species_runtime = jnp.clip(Y[:n_species], 0.0)
+        V_cont_runtime = jnp.maximum(Y[n_species], jnp.asarray(0.0, dtype=y.dtype))
 
-        # ---- 2. Evaluate controls (values + derivatives) ----
         # Values are interpolated from the dense grid: feed channels store the
         # CUMULATIVE volume, process variables store the actual signal value.
         controls_vector = self.controls.eval(t_arr)
@@ -368,7 +385,11 @@ class HybridOdeWrapper(eqx.Module):
         controls_derivatives = self.controls.eval_derivative(t_arr)
 
         V_sample_acc = controls_vector[self.sample_acc_control_index]
-        V_real = jnp.maximum(V_cont - V_sample_acc, jnp.asarray(self.min_real_volume))
+        V_real_export = Y[n_species] - V_sample_acc
+        V_real_runtime = jnp.maximum(
+            V_cont_runtime - V_sample_acc,
+            jnp.asarray(self.min_real_volume, dtype=y.dtype),
+        )
 
         U_flow = controls_derivatives[self.flow_control_indices]
         # Non-continuous controlled feeds are represented in prep as short
@@ -387,14 +408,12 @@ class HybridOdeWrapper(eqx.Module):
         U_augmented = jnp.concatenate([controls_vector, cin_flat])
         if self.include_v_real_feature:
             U_augmented = jnp.concatenate(
-                [U_augmented, jnp.asarray([V_real], dtype=y.dtype)]
+                [U_augmented, jnp.asarray([V_real_runtime], dtype=y.dtype)]
             )
 
-        # ---- 3. Scale inputs for MLP ----
-        c_scaled = y[:n_species]  # already scaled (slice of y)
+        # Reaction module still sees scaled inputs only.
+        c_scaled = y[:n_species]
         u_scaled = U_augmented / self.controls_scale
-
-        # ---- 4. MLP predicts in scaled space ----
         outputs = self.reaction_module(t_arr, c_scaled, u_scaled)
         if not hasattr(outputs, "specific_rates") or not hasattr(
             outputs, "modeled_feed_rates"
@@ -406,10 +425,10 @@ class HybridOdeWrapper(eqx.Module):
         q_scaled = jnp.asarray(outputs.specific_rates, dtype=y.dtype)
         f_scaled = jnp.asarray(outputs.modeled_feed_rates, dtype=y.dtype)
 
-        if q_scaled.shape != C_species.shape:
+        if q_scaled.shape != C_species_runtime.shape:
             raise ValueError(
-                f"specific_rates must match species shape {tuple(C_species.shape)}, "
-                f"got {tuple(q_scaled.shape)}"
+                f"specific_rates must match species shape "
+                f"{tuple(C_species_runtime.shape)}, got {tuple(q_scaled.shape)}"
             )
         expected_modeled_shape = (self.rhs_ode.f_modeled_size,)
         if f_scaled.shape != expected_modeled_shape:
@@ -418,36 +437,86 @@ class HybridOdeWrapper(eqx.Module):
                 f"got {tuple(f_scaled.shape)}"
             )
 
-        # ---- 5. Un-scale MLP outputs to physical rates ----
-        Q = q_scaled * self.q_scale
-        # Modeled feed rates are physical inflows and should not go negative.
-        # Enforce that centrally in bp_train so every custom.py gets the same
-        # constraint automatically.
-        F_modeled = jax.nn.softplus(f_scaled) * self.f_scale
+        return WrapperEvaluation(
+            states_physical=Y,
+            c_species_runtime=C_species_runtime,
+            v_real_export=V_real_export,
+            v_real_runtime=V_real_runtime,
+            u_flow=U_flow,
+            u_flow_extra=U_flow_extra,
+            specific_rates_physical=q_scaled * self.q_scale,
+            modeled_feed_rates_physical=jax.nn.softplus(f_scaled) * self.f_scale,
+        )
+
+    # ------ ODE RHS ------
+
+    def __call__(self, t: float | jax.Array, y: jax.Array) -> jax.Array:
+        """Compute ``dy/dt`` in **scaled** state space.
+
+        Parameters
+        ----------
+        t : scalar time
+        y : scaled state vector with layout
+            ``[c_species, V_cont, B_modeled_cum_0, ...] / state_scale``
+
+        Returns
+        -------
+        dy/dt in scaled space, same layout as ``y``.
+        """
+        n_species = len(self.species_names)
+        eval_terms = self._evaluate_wrapper_terms(t, y)
 
         # ---- 6. Mechanistic RHS in physical space ----
         # RhsOde returns [dc_species/dt, dV/dt] where dV/dt = sum(U_flow) +
         # sum(F_modeled).  By construction this equals dV_cont/dt because
         # V_cont = V0 + ∫(inflows) (sampling lives in V_sample_acc, not in V_cont).
-        C_rhs = jnp.concatenate([C_species, jnp.asarray([V_real], dtype=y.dtype)])
+        C_rhs = jnp.concatenate(
+            [eval_terms.c_species_runtime, eval_terms.v_real_runtime[None]]
+        )
         r = jnp.zeros(self.rhs_ode.r_size, dtype=y.dtype)
-        dY_rhs = self.rhs_ode(C_rhs, Q, U_flow, F_modeled, r)
+        dY_rhs = self.rhs_ode(
+            C_rhs,
+            eval_terms.specific_rates_physical,
+            eval_terms.u_flow,
+            eval_terms.modeled_feed_rates_physical,
+            r,
+        )
         if self.extra_flow_cin.shape[0] > 0:
-            extra_contrib = U_flow_extra[:, None] * (
-                self.extra_flow_cin.astype(y.dtype) - C_species[None, :]
+            extra_contrib = eval_terms.u_flow_extra[:, None] * (
+                self.extra_flow_cin.astype(y.dtype)
+                - eval_terms.c_species_runtime[None, :]
             )
-            dY_rhs = dY_rhs.at[:n_species].add(jnp.sum(extra_contrib, axis=0) / V_real)
-            dY_rhs = dY_rhs.at[n_species].add(jnp.sum(U_flow_extra))
+            dY_rhs = dY_rhs.at[:n_species].add(
+                jnp.sum(extra_contrib, axis=0) / eval_terms.v_real_runtime
+            )
+            dY_rhs = dY_rhs.at[n_species].add(jnp.sum(eval_terms.u_flow_extra))
         # dY_rhs has length n_species + 1 (species + V_cont).
 
         # ---- 7. Append cumulative-modeled-feed derivatives ----
         # dB_k/dt = F_modeled_k by definition.
-        dY_full = jnp.concatenate([dY_rhs, F_modeled])
+        dY_full = jnp.concatenate([dY_rhs, eval_terms.modeled_feed_rates_physical])
 
         # ---- 8. Re-scale derivative ----
         dy_dt = dY_full / self.state_scale
 
         return dy_dt
+
+    def save_outputs(
+        self,
+        t: float | jax.Array,
+        y: jax.Array,
+        args: Any = None,
+    ) -> SaveOutputs:
+        """Return physical solver-time outputs for Diffrax ``SaveAt(fn=...)``."""
+        del args
+        eval_terms = self._evaluate_wrapper_terms(t, y)
+        return SaveOutputs(
+            states_physical=eval_terms.states_physical,
+            v_real_export=eval_terms.v_real_export,
+            v_real_runtime=eval_terms.v_real_runtime,
+            specific_rates_physical=eval_terms.specific_rates_physical,
+            modeled_feed_rates_physical=eval_terms.modeled_feed_rates_physical,
+        )
 
 
 def validate_rhs_ode_compatibility(
