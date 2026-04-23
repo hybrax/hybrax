@@ -413,13 +413,16 @@ def plot_process_simulations(
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
                 kind = "feed" if isinstance(vc, FeedVolumeChange) else "sample"
-                ax_vc.bar(
-                    vc_t,
-                    vc_v,
-                    width=bar_width,
-                    label=f"{vc_name} ({kind})",
-                    edgecolor="k",
-                )
+                if vc.is_continuous:
+                    ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=f"{vc_name} ({kind})")
+                else:
+                    ax_vc.bar(
+                        vc_t,
+                        vc_v,
+                        width=bar_width,
+                        label=f"{vc_name} ({kind})",
+                        edgecolor="k",
+                    )
             ax_vc.set_title(f"volume_changes [{process.volume.unit}]")
             ax_vc.set_xlabel(f"time [{time_unit}]")
             ax_vc.set_xlim(t_start, t_end)
