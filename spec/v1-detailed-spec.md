@@ -646,10 +646,13 @@ The call must return a `ReactionOutputs`-like structure with:
   mechanistic ODE runtime,
 - `modeled_feed_rates`: a vector aligned with the modeled-flow ordering from
   `RhsOde.modeled_flow_names`. If there are no modeled feeds, this is
-  `jnp.zeros((0,))`.
+  `jnp.zeros((0,))`,
+- optional `auxiliary`: model-defined observables that may be saved alongside
+  the solver trajectory. Conservative V1 contract: `None` or
+  `dict[str, array]` with stable keys and scalar or 1D-array leaves.
 
-The exact container type may be a small dataclass, namedtuple, or equivalent,
-but the two fields above are semantically required.
+The exact container type may be a small dataclass, namedtuple, or equivalent.
+The first two fields above are semantically required; `auxiliary` is optional.
 
 ### 12.3 Trainable Partitioning Contract
 
@@ -1071,6 +1074,9 @@ Current `train` output contract (implemented behavior) is:
 - always write `trained_wrapper.eqx` and `trained_wrapper.meta.json`,
 - always write `losses.csv` (forward-evaluation per-process/per-target losses),
 - always write `predictions.csv` (dense simulated trajectories),
+- `predictions.csv` always includes state and standard wrapper-derived columns;
+  it may additionally include `aux_*` columns when the reaction module returns
+  solver-time auxiliary observables,
 - use the same solver jump-ts setting for both loss and prediction exports
   (`solver_use_jump_ts` consistency),
 - write plot PNGs only when plotting is enabled (`--plot`; default on).

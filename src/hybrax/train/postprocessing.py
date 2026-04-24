@@ -37,11 +37,13 @@ class DenseProcessExport:
     v_real: np.ndarray
     b_modeled_cum: np.ndarray
     q_species: np.ndarray
+    auxiliary: dict[str, np.ndarray] | None = None
 
 
 def _predictions_csv_header(
     species_names: tuple[str, ...],
     modeled_flow_names: tuple[str, ...],
+    auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
     """Build stable predictions.csv column order."""
     return (
@@ -50,7 +52,51 @@ def _predictions_csv_header(
         + ["V_cont", "V_real"]
         + [f"B_{name}_cum" for name in modeled_flow_names]
         + [f"q_{name}" for name in species_names]
+        + list(auxiliary_columns)
     )
+
+
+def _auxiliary_csv_columns(auxiliary: dict[str, np.ndarray] | None) -> list[str]:
+    """Build stable CSV columns for dense stacked auxiliary outputs."""
+    if auxiliary is None:
+        return []
+
+    columns: list[str] = []
+    for key in sorted(auxiliary):
+        values = np.asarray(auxiliary[key])
+        if values.ndim == 1:
+            columns.append(f"aux_{key}")
+        elif values.ndim == 2:
+            columns.extend(f"aux_{key}_{i}" for i in range(values.shape[1]))
+        else:
+            raise ValueError(
+                "dense auxiliary exports must stack to rank 1 or 2 arrays, "
+                f"got key {key!r} with shape {values.shape}"
+            )
+    return columns
+
+
+def _auxiliary_row_values(
+    auxiliary: dict[str, np.ndarray] | None,
+    row_index: int,
+) -> list[Any]:
+    """Flatten one dense auxiliary row in stable key order."""
+    if auxiliary is None:
+        return []
+
+    row_values: list[Any] = []
+    for key in sorted(auxiliary):
+        values = np.asarray(auxiliary[key])
+        if values.ndim == 1:
+            row_values.append(values[row_index].item())
+        elif values.ndim == 2:
+            row_values.extend(np.asarray(values[row_index]).tolist())
+        else:
+            raise ValueError(
+                "dense auxiliary exports must stack to rank 1 or 2 arrays, "
+                f"got key {key!r} with shape {values.shape}"
+            )
+    return row_values
 
 
 def _compute_dense_process_export(
@@ -116,6 +162,11 @@ def _compute_dense_process_export(
         v_real=np.asarray(sol.ys.v_real_export),
         b_modeled_cum=states_physical[:, n_species + 1 : n_species + 1 + n_modeled],
         q_species=np.asarray(sol.ys.specific_rates_physical),
+        auxiliary=(
+            None
+            if sol.ys.auxiliary is None
+            else {key: np.asarray(values) for key, values in sol.ys.auxiliary.items()}
+        ),
     )
 
 
@@ -150,13 +201,65 @@ def _write_predictions_csv(
             )
         selected_processes = tuple(process_names)
 
+    if not selected_processes:
+        header = _predictions_csv_header(
+            species_names=species_names,
+            modeled_flow_names=modeled_flow_names,
+        )
+        pd.DataFrame(columns=header).to_csv(output_path, index=False)
+        logger.info("timeseries csv saved to %s", output_path)
+        return
+
+    first_process = selected_processes[0]
+    first_export = _compute_dense_process_export(
+        trained_wrapper,
+        collection,
+        store,
+        first_process,
+        solver_max_steps=solver_max_steps,
+        solver_rtol=solver_rtol,
+        solver_atol=solver_atol,
+        solver_use_jump_ts=solver_use_jump_ts,
+    )
+    auxiliary_columns = _auxiliary_csv_columns(first_export.auxiliary)
     header = _predictions_csv_header(
         species_names=species_names,
         modeled_flow_names=modeled_flow_names,
+        auxiliary_columns=auxiliary_columns,
     )
     pd.DataFrame(columns=header).to_csv(output_path, index=False)
 
-    for process_name in selected_processes:
+    def _append_process_rows(
+        process_name: str,
+        dense_export: DenseProcessExport,
+    ) -> None:
+        if _auxiliary_csv_columns(dense_export.auxiliary) != auxiliary_columns:
+            raise ValueError(
+                "predictions.csv auxiliary columns differ across processes; "
+                f"expected {auxiliary_columns}, got "
+                f"{_auxiliary_csv_columns(dense_export.auxiliary)} "
+                f"for process {process_name!r}"
+            )
+        ts_rows: list[list[float | str]] = []
+        for i_t in range(len(dense_export.t)):
+            row = (
+                [process_name, float(dense_export.t[i_t])]
+                + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
+                + [float(dense_export.v_cont[i_t]), float(dense_export.v_real[i_t])]
+                + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
+                + [float(dense_export.q_species[i_t, j]) for j in range(n_species)]
+                + _auxiliary_row_values(dense_export.auxiliary, i_t)
+            )
+            ts_rows.append(row)
+        pd.DataFrame(ts_rows, columns=header).to_csv(
+            output_path,
+            mode="a",
+            header=False,
+            index=False,
+        )
+
+    _append_process_rows(first_process, first_export)
+    for process_name in selected_processes[1:]:
         dense_export = _compute_dense_process_export(
             trained_wrapper,
             collection,
@@ -167,22 +270,7 @@ def _write_predictions_csv(
             solver_atol=solver_atol,
             solver_use_jump_ts=solver_use_jump_ts,
         )
-        ts_rows: list[list[float | str]] = []
-        for i_t in range(len(dense_export.t)):
-            row = (
-                [process_name, float(dense_export.t[i_t])]
-                + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
-                + [float(dense_export.v_cont[i_t]), float(dense_export.v_real[i_t])]
-                + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
-                + [float(dense_export.q_species[i_t, j]) for j in range(n_species)]
-            )
-            ts_rows.append(row)
-        pd.DataFrame(ts_rows, columns=header).to_csv(
-            output_path,
-            mode="a",
-            header=False,
-            index=False,
-        )
+        _append_process_rows(process_name, dense_export)
 
     logger.info("timeseries csv saved to %s", output_path)
 
@@ -380,15 +468,17 @@ def plot_process_simulations(
 
     # Prepare merged timeseries rows (one file, all processes).
     ts_header: list[str] | None = None
+    ts_auxiliary_columns: list[str] | None = None
     ts_path: Path | None = None
     if timeseries_csv_path is not None:
         ts_path = Path(timeseries_csv_path)
         ts_path.parent.mkdir(parents=True, exist_ok=True)
-        ts_header = _predictions_csv_header(
-            species_names=species_names,
-            modeled_flow_names=modeled_flow_names,
-        )
-        pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
+        if not selected_processes:
+            ts_header = _predictions_csv_header(
+                species_names=species_names,
+                modeled_flow_names=modeled_flow_names,
+            )
+            pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
 
     # --- Per-process simulation/exports ---
     for process_name in selected_processes:
@@ -414,6 +504,27 @@ def plot_process_simulations(
         v_real_pred = dense_export.v_real
         b_modeled_pred = dense_export.b_modeled_cum
         q_dense = dense_export.q_species
+        auxiliary_dense = dense_export.auxiliary
+
+        if ts_path is not None and ts_header is None:
+            ts_auxiliary_columns = _auxiliary_csv_columns(auxiliary_dense)
+            ts_header = _predictions_csv_header(
+                species_names=species_names,
+                modeled_flow_names=modeled_flow_names,
+                auxiliary_columns=ts_auxiliary_columns,
+            )
+            pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
+        elif (
+            ts_path is not None
+            and ts_auxiliary_columns is not None
+            and _auxiliary_csv_columns(auxiliary_dense) != ts_auxiliary_columns
+        ):
+            raise ValueError(
+                "timeseries auxiliary columns differ across processes; "
+                f"expected {ts_auxiliary_columns}, got "
+                f"{_auxiliary_csv_columns(auxiliary_dense)} "
+                f"for process {process_name!r}"
+            )
 
         if render_plots:
             import matplotlib.pyplot as plt
@@ -608,6 +719,7 @@ def plot_process_simulations(
                     + [float(v_cont_pred[i_t]), float(v_real_pred[i_t])]
                     + [float(b_modeled_pred[i_t, k]) for k in range(n_modeled)]
                     + [float(q_dense[i_t, j]) for j in range(n_species)]
+                    + _auxiliary_row_values(auxiliary_dense, i_t)
                 )
                 ts_rows.append(row)
             pd.DataFrame(ts_rows, columns=ts_header).to_csv(

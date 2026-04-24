@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import diffrax
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
@@ -34,16 +35,24 @@ class ConstantReactionModule(UserReactionModule):
 
     specific_rates: jnp.ndarray
     modeled_feed_rates: jnp.ndarray
+    auxiliary: dict[str, jnp.ndarray] | None
 
-    def __init__(self, specific_rates: jnp.ndarray, modeled_feed_rates: jnp.ndarray):
+    def __init__(
+        self,
+        specific_rates: jnp.ndarray,
+        modeled_feed_rates: jnp.ndarray,
+        auxiliary: dict[str, jnp.ndarray] | None = None,
+    ):
         self.specific_rates = specific_rates
         self.modeled_feed_rates = modeled_feed_rates
+        self.auxiliary = auxiliary
 
     def __call__(self, t, c_species, controls_vector):
         del t, c_species, controls_vector
         return ReactionOutputs(
             specific_rates=self.specific_rates,
             modeled_feed_rates=self.modeled_feed_rates,
+            auxiliary=self.auxiliary,
         )
 
 
@@ -711,6 +720,34 @@ def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates()
     )
 
 
+def test_wrapper_save_outputs_returns_auxiliary_observables():
+    process = _make_single_species_process(feed_rate=0.0)
+    collection = _make_single_species_collection(feed_rate=0.0)
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    wrapper = _build_wrapper(
+        process,
+        controls,
+        ConstantReactionModule(
+            specific_rates=jnp.asarray([0.4], dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            auxiliary={
+                "mu_raw": jnp.asarray(-1.25, dtype=jnp.float32),
+                "latent_pair": jnp.asarray([2.0, 3.0], dtype=jnp.float32),
+            },
+        ),
+    )
+
+    y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
+    saved = wrapper.save_outputs(2.0, wrapper.scale_state(y_physical))
+
+    assert saved.auxiliary is not None
+    assert float(saved.auxiliary["mu_raw"]) == pytest.approx(-1.25, abs=1e-6)
+    assert jnp.allclose(
+        saved.auxiliary["latent_pair"],
+        jnp.asarray([2.0, 3.0], dtype=jnp.float32),
+    )
+
+
 def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
     process = _make_single_species_process(feed_rate=0.0)
     collection = _make_single_species_collection(feed_rate=0.0)
@@ -774,6 +811,32 @@ def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
         save_sol.ys.modeled_feed_rates_physical[0],
         expected.modeled_feed_rates_physical,
     )
+
+
+def test_wrapper_save_outputs_rejects_non_mapping_auxiliary():
+    process = _make_single_species_process(feed_rate=0.0)
+    collection = _make_single_species_collection(feed_rate=0.0)
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    wrapper = _build_wrapper(
+        process,
+        controls,
+        ConstantReactionModule(
+            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            auxiliary=None,
+        ),
+    )
+    wrapper = eqx.tree_at(
+        lambda w: w.reaction_module.auxiliary,
+        wrapper,
+        jnp.asarray([1.0], dtype=jnp.float32),
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="ReactionOutputs.auxiliary must be None or dict\\[str, array\\]",
+    ):
+        wrapper.save_outputs(0.0, wrapper.scale_state(jnp.asarray([1.0, 1.0])))
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():

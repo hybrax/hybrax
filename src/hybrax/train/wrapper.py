@@ -97,6 +97,7 @@ class WrapperEvaluation(eqx.Module):
     u_flow_extra: jax.Array
     specific_rates_physical: jax.Array
     modeled_feed_rates_physical: jax.Array
+    auxiliary: dict[str, jax.Array] | None = None
 
 
 class SaveOutputs(eqx.Module):
@@ -107,6 +108,36 @@ class SaveOutputs(eqx.Module):
     v_real_runtime: jax.Array
     specific_rates_physical: jax.Array
     modeled_feed_rates_physical: jax.Array
+    auxiliary: dict[str, jax.Array] | None = None
+
+
+def _normalize_auxiliary_outputs(
+    auxiliary: Any,
+) -> dict[str, jax.Array] | None:
+    """Validate and normalize reaction auxiliary outputs.
+
+    Conservative contract for now:
+
+    - ``None`` or ``dict[str, array]``
+    - values must be scalar or 1D arrays at a single save time
+    """
+    if auxiliary is None:
+        return None
+    if not isinstance(auxiliary, dict):
+        raise TypeError("ReactionOutputs.auxiliary must be None or dict[str, array]")
+
+    normalized: dict[str, jax.Array] = {}
+    for key, value in auxiliary.items():
+        if not isinstance(key, str):
+            raise TypeError("ReactionOutputs.auxiliary keys must be strings")
+        arr = jnp.asarray(value)
+        if arr.ndim not in (0, 1):
+            raise ValueError(
+                "ReactionOutputs.auxiliary values must be scalars or 1D arrays, "
+                f"got key {key!r} with shape {tuple(arr.shape)}"
+            )
+        normalized[key] = arr
+    return normalized
 
 
 class HybridOdeWrapper(eqx.Module):
@@ -446,6 +477,7 @@ class HybridOdeWrapper(eqx.Module):
             u_flow_extra=U_flow_extra,
             specific_rates_physical=q_scaled * self.q_scale,
             modeled_feed_rates_physical=jax.nn.softplus(f_scaled) * self.f_scale,
+            auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
         )
 
     # ------ ODE RHS ------
@@ -516,6 +548,7 @@ class HybridOdeWrapper(eqx.Module):
             v_real_runtime=eval_terms.v_real_runtime,
             specific_rates_physical=eval_terms.specific_rates_physical,
             modeled_feed_rates_physical=eval_terms.modeled_feed_rates_physical,
+            auxiliary=eval_terms.auxiliary,
         )
 
 

@@ -107,10 +107,15 @@ class ReactionOutputs(eqx.Module):
         Volumetric flow rates for uncontrolled (modeled) feed streams, aligned
         with the modeled-flow ordering from the mechanistic ODE module.
         Use a zero-length array when there are no modeled flows.
+    auxiliary:
+        Optional model-defined observables that should follow the solver-time
+        save path. Conservative V1 contract: ``None`` or ``dict[str, array]``
+        with scalar or 1D-array leaves and stable keys across calls.
     """
 
     specific_rates: jax.Array
     modeled_feed_rates: jax.Array
+    auxiliary: dict[str, jax.Array] | None = None
 
 
 class UserReactionModule(eqx.Module):
