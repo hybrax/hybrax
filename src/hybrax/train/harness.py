@@ -23,7 +23,6 @@ from .checkpointing import CheckpointConfig, CheckpointWriter
 from .defaults import default_build_reaction_module
 from .model_api import UserReactionModule, partition_trainable
 from .trainer import (
-    batched_measurement_loss_from_arrays,
     build_batched_loss_fn_from_sample_loss,
     clamp_padded_time_rows,
     measurement_loss_from_arrays,
@@ -38,7 +37,9 @@ from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import export_predictions_csv
 
-_DEFAULT_BATCHED_MEASUREMENT_LOSS = batched_measurement_loss_from_arrays
+_DEFAULT_BATCHED_MEASUREMENT_LOSS = build_batched_loss_fn_from_sample_loss(
+    measurement_loss_from_arrays
+)
 
 logger = logging.getLogger(__name__)
 

@@ -253,6 +253,12 @@ prep.
 per-sample loss callable (same signature/contract as the default sample loss),
 and the harness applies batching internally.
 
+For custom per-sample losses that need default measurement loss plus solver-time
+observables in one solve, the trainer exposes
+`evaluate_sample_from_arrays(...) -> SingleSampleResult`. This returns the default
+measurement loss together with measurement-grid `save_outputs(...)`, including
+stacked `ReactionOutputs.auxiliary` values.
+
 `build_batched_loss_fn(...)` remains an advanced optional hook for directly returning a
 batched loss callable during training.
 

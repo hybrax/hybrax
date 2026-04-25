@@ -23,10 +23,11 @@ from bp_train.harness import summarize_train_step_input_signature
 from bp_train.trainer import (
     build_batched_loss_fn_from_sample_loss,
     clamp_padded_time_rows,
+    evaluate_sample_from_arrays,
     measurement_loss_from_arrays,
 )
 from bp_train.training_data import TrainingDataStore
-from bp_train.wrapper import HybridOdeWrapper
+from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
 
 
 class _LinearReactionModule(UserReactionModule):
@@ -43,6 +44,20 @@ class _LinearReactionModule(UserReactionModule):
         return ReactionOutputs(
             specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
             modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
+        )
+
+
+class _AuxReactionModule(UserReactionModule):
+    def __call__(self, t, c_species, controls_vector):
+        del controls_vector
+        rate = jnp.asarray([0.0], dtype=c_species.dtype)
+        return ReactionOutputs(
+            specific_rates=rate,
+            modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
+            auxiliary={
+                "mu_raw": t,
+                "latent_pair": jnp.asarray([t, c_species[0]], dtype=c_species.dtype),
+            },
         )
 
 
@@ -140,6 +155,22 @@ def _build_wrapper_and_process():
     return wrapper, process_data
 
 
+def _build_aux_wrapper_and_process():
+    collection = _make_two_process_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    process_data = store.get_process("p2")
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=_AuxReactionModule(),
+        process=collection.processes["p2"],
+        controls=process_data.controls,
+    )
+    return wrapper, process_data
+
+
 def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
     sig_a = summarize_train_step_input_signature("adam", 1e-3, 42)
     sig_b = summarize_train_step_input_signature("adam", 2e-3, 42)
@@ -210,7 +241,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
     wrapper, process_data = _build_wrapper_and_process()
     captured: dict[str, object] = {}
 
-    def _fake_simulate_measurement_states_on_grid(
+    def _fake_solve_measurement_save_outputs_on_grid(
         wrapper_arg,
         *,
         t_eval,
@@ -230,12 +261,26 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         captured["atol"] = atol
         captured["jump_ts"] = jump_ts
         n_rows = t_eval.shape[0]
-        return jnp.repeat(y0[None, :], repeats=n_rows, axis=0)
+        states = jnp.repeat(y0[None, :], repeats=n_rows, axis=0)
+        return SaveOutputs(
+            states_physical=states,
+            v_real_export=states[:, len(wrapper_arg.species_names)],
+            v_real_runtime=states[:, len(wrapper_arg.species_names)],
+            specific_rates_physical=jnp.zeros(
+                (n_rows, len(wrapper_arg.species_names)),
+                dtype=states.dtype,
+            ),
+            modeled_feed_rates_physical=jnp.zeros(
+                (n_rows, len(wrapper_arg.modeled_flow_names)),
+                dtype=states.dtype,
+            ),
+            auxiliary=None,
+        )
 
     monkeypatch.setattr(
         trainer_module,
-        "_simulate_measurement_states_on_grid",
-        _fake_simulate_measurement_states_on_grid,
+        "_solve_measurement_save_outputs_on_grid",
+        _fake_solve_measurement_save_outputs_on_grid,
     )
 
     total_loss, _ = measurement_loss_from_arrays(
@@ -257,6 +302,115 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
     assert captured["rtol"] == pytest.approx(1e-4)
     assert captured["atol"] == pytest.approx(1e-6)
     assert captured["jump_ts"] is None
+
+
+def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
+    wrapper, process_data = _build_wrapper_and_process()
+
+    result = evaluate_sample_from_arrays(
+        wrapper,
+        t_meas=process_data.t_meas,
+        y_meas=process_data.y_meas,
+        meas_mask=process_data.meas_mask,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        jump_ts=process_data.controls.active_step_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+    states = trainer_module._simulate_measurement_states_on_grid(
+        wrapper,
+        t_eval=process_data.t_meas,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        max_steps=100_000,
+        rtol=1e-5,
+        atol=1e-7,
+        jump_ts=process_data.controls.active_step_ts,
+    )
+    y_pred = states[:, wrapper.target_state_indices]
+    sq_err = jnp.square(y_pred - process_data.y_meas) / wrapper.target_variance[None, :]
+    masked_sq_err = jnp.where(process_data.meas_mask[:, None], sq_err, 0.0)
+    n_active = jnp.maximum(jnp.sum(process_data.meas_mask), 1)
+    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
+    total_loss = jnp.mean(per_target_loss)
+
+    assert jnp.isclose(result.total_loss, total_loss)
+    assert jnp.allclose(result.per_target_loss, per_target_loss)
+    assert jnp.allclose(result.states, states)
+    assert jnp.allclose(result.states, result.save_outputs.states_physical)
+
+
+def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
+    wrapper, process_data = _build_wrapper_and_process()
+    t_meas = process_data.t_meas.at[2].set(-123.0)
+
+    result = evaluate_sample_from_arrays(
+        wrapper,
+        t_meas=t_meas,
+        y_meas=process_data.y_meas,
+        meas_mask=process_data.meas_mask,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        jump_ts=process_data.controls.active_step_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+    clamped = clamp_padded_time_rows(
+        t_meas[None, :],
+        jnp.asarray([process_data.n_meas], dtype=jnp.int32),
+    )[0]
+    expected_states = trainer_module._simulate_measurement_states_on_grid(
+        wrapper,
+        t_eval=clamped,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        max_steps=100_000,
+        rtol=1e-5,
+        atol=1e-7,
+        jump_ts=process_data.controls.active_step_ts,
+    )
+
+    assert jnp.allclose(result.states, expected_states)
+
+
+def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
+    wrapper, process_data = _build_aux_wrapper_and_process()
+    t_meas = process_data.t_meas.at[1:].set(jnp.asarray([999.0, -999.0]))
+    y_meas = process_data.y_meas.at[1:, :].set(0.0)
+    meas_mask = process_data.meas_mask.at[1:].set(False)
+
+    result = evaluate_sample_from_arrays(
+        wrapper,
+        t_meas=t_meas,
+        y_meas=y_meas,
+        meas_mask=meas_mask,
+        n_meas=1,
+        y0=process_data.y0,
+        jump_ts=process_data.controls.active_step_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+
+    assert result.save_outputs.auxiliary is not None
+    assert set(result.save_outputs.auxiliary) == {"latent_pair", "mu_raw"}
+    assert result.states.shape[0] == t_meas.shape[0]
+    assert jnp.allclose(
+        result.states,
+        jnp.repeat(process_data.y0[None, :], repeats=t_meas.shape[0], axis=0),
+    )
+    assert jnp.allclose(result.save_outputs.auxiliary["mu_raw"], 0.0)
+    assert result.save_outputs.auxiliary["latent_pair"].shape == (
+        t_meas.shape[0],
+        2,
+    )
+    assert jnp.allclose(
+        result.save_outputs.auxiliary["latent_pair"][:, 0],
+        jnp.zeros((t_meas.shape[0],), dtype=process_data.y0.dtype),
+    )
 
 
 def test_batched_loss_builder_preserves_none_jump_ts_branch():
