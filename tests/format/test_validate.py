@@ -19,6 +19,8 @@ from bp_format import (
     SampleVolumeChange,
     Volume,
     BioProcess,
+    AugmentedBioProcess,
+    BioProcessCollection,
     CaseStudy,
     validate_timeseries_shape,
     validate_volume_change_sign,
@@ -29,6 +31,7 @@ from bp_format import (
     validate_process,
     validate_volume_consistency,
     validate_case_study,
+    validate_augmented_parent_refs,
 )
 
 
@@ -824,6 +827,99 @@ class TestValidateIntracellularUnits:
         ok, msg = validate_intracellular_units(process)
         assert ok is True
         assert "skipped" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# validate_augmented_parent_refs
+# ---------------------------------------------------------------------------
+
+class TestValidateAugmentedParentRefs:
+    def _aug_child(self, *, parent_process: str, name: str = "aug"):
+        return AugmentedBioProcess(
+            metadata=BioProcessMetadata(name=name, process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=10.0,
+                time_reference="inoculation",
+            ),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=ReactorMedium(
+                name="medium", density=1.0, density_unit="kg/L",
+            ),
+            parent_process=parent_process,
+        )
+
+    def _case_study(self, processes):
+        return CaseStudy(
+            case_id="cs1",
+            organism="E. coli",
+            citation="Test et al.",
+            processes=processes,
+        )
+
+    def test_ok_when_parent_exists(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        parent = _make_biomass_process(ts)
+        child = self._aug_child(parent_process="parent")
+        cs = self._case_study({"parent": parent, "child": child})
+        ok, messages = validate_augmented_parent_refs(cs)
+        assert ok is True
+        assert any("OK" in m for m in messages)
+
+    def test_unknown_parent_fails(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        parent = _make_biomass_process(ts)
+        child = self._aug_child(parent_process="ghost")
+        cs = self._case_study({"parent": parent, "child": child})
+        ok, messages = validate_augmented_parent_refs(cs)
+        assert ok is False
+        assert any("unknown parent_process" in m for m in messages)
+
+    def test_rejects_augmented_of_augmented(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        parent = _make_biomass_process(ts)
+        first_aug = self._aug_child(parent_process="parent", name="first_aug")
+        chained = self._aug_child(parent_process="first_aug", name="chained")
+        cs = self._case_study({
+            "parent": parent,
+            "first_aug": first_aug,
+            "chained": chained,
+        })
+        ok, messages = validate_augmented_parent_refs(cs)
+        assert ok is False
+        assert any("itself augmented" in m for m in messages)
+
+    def test_no_augmented_processes_ok(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        cs = self._case_study({"p1": _make_biomass_process(ts)})
+        ok, messages = validate_augmented_parent_refs(cs)
+        assert ok is True
+        assert any("OK" in m for m in messages)
+
+    def test_works_on_bioprocess_collection(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        parent = _make_biomass_process(ts)
+        child = self._aug_child(parent_process="parent")
+        collection = BioProcessCollection(
+            processes={"parent": parent, "child": child}
+        )
+        ok, _ = validate_augmented_parent_refs(collection)
+        assert ok is True
+
+    def test_wrong_type_raises(self):
+        with pytest.raises(TypeError):
+            validate_augmented_parent_refs("not a collection")
+
+    def test_validate_case_study_runs_augmented_parent_refs(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        parent = _make_biomass_process(ts)
+        child = self._aug_child(parent_process="ghost")
+        cs = self._case_study({"parent": parent, "child": child})
+        all_valid, report = validate_case_study(cs)
+        assert all_valid is False
+        assert "__augmented__" in report
+        assert any(
+            "unknown parent_process" in m for m in report["__augmented__"]
+        )
 
 
 if __name__ == "__main__":

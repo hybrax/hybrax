@@ -5,7 +5,9 @@ Validation utilities for bioprocess data
 import jax.numpy as jnp
 from typing import Dict, List, Optional, Tuple
 from .dataclasses import (
+    AugmentedBioProcess,
     BioProcess,
+    BioProcessCollection,
     CaseStudy,
     TimeSeries,
     FeedVolumeChange,
@@ -606,4 +608,62 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
     else:
         report["__consistency__"] = ["Cross-process structure is consistent — OK"]
 
+    # --- Augmented parent-reference validation ---
+    aug_ok, aug_messages = validate_augmented_parent_refs(case_study)
+    report["__augmented__"] = aug_messages
+    all_valid = all_valid and aug_ok
+
     return all_valid, report
+
+
+def validate_augmented_parent_refs(
+    container: "CaseStudy | BioProcessCollection",
+) -> Tuple[bool, List[str]]:
+    """Verify ``AugmentedBioProcess.parent_process`` references in a container.
+
+    For every :class:`AugmentedBioProcess` in ``container.processes``, the
+    referenced ``parent_process`` must be a key in the same ``processes``
+    dict and must point to a non-augmented :class:`BioProcess` (chained
+    augmentation is not supported in v1).
+
+    Args:
+        container: A :class:`CaseStudy` or :class:`BioProcessCollection`.
+
+    Returns:
+        ``(all_valid, messages)``. ``messages`` always contains at least one
+        line summarising the result; on failure each problem is reported
+        individually.
+    """
+    if not isinstance(container, (CaseStudy, BioProcessCollection)):
+        raise TypeError(
+            "validate_augmented_parent_refs() expects a CaseStudy or "
+            f"BioProcessCollection instance, got {type(container).__name__!r}"
+        )
+
+    processes = container.processes
+    messages: List[str] = []
+    all_valid = True
+
+    for child_name, child in processes.items():
+        if not isinstance(child, AugmentedBioProcess):
+            continue
+        parent_name = child.parent_process
+        if parent_name not in processes:
+            all_valid = False
+            messages.append(
+                f"AugmentedBioProcess '{child_name}' references unknown "
+                f"parent_process '{parent_name}'"
+            )
+            continue
+        parent = processes[parent_name]
+        if isinstance(parent, AugmentedBioProcess):
+            all_valid = False
+            messages.append(
+                f"AugmentedBioProcess '{child_name}' references parent "
+                f"'{parent_name}', which is itself augmented; "
+                "chained augmentation is not supported"
+            )
+
+    if all_valid and not messages:
+        messages.append("Augmented parent references are consistent — OK")
+    return all_valid, messages

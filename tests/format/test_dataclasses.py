@@ -19,8 +19,14 @@ from bp_format import (
     FeedVolumeChange,
     Volume,
     BioProcess,
+    AugmentedBioProcess,
+    BioProcessCollection,
     CaseStudy,
     BenchmarkDataset,
+)
+from bp_format.serialization import (
+    save_process_collection_json,
+    load_process_collection_json,
 )
 
 
@@ -287,6 +293,74 @@ def test_benchmark_dataset_empty():
     dataset = BenchmarkDataset()
     assert dataset.metadata == {}
     assert dataset.case_studies == {}
+
+
+# ---------------------------------------------------------------------------
+# AugmentedBioProcess
+# ---------------------------------------------------------------------------
+
+def _make_minimal_process(name="p1"):
+    return BioProcess(
+        metadata=BioProcessMetadata(name=name, process_type="batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(
+            name="medium", density=1.0, density_unit="kg/L"
+        ),
+    )
+
+
+def test_augmented_bioprocess_inherits_bioprocess_fields():
+    parent = _make_minimal_process("P0")
+    child = AugmentedBioProcess(
+        metadata=parent.metadata,
+        time_axis=parent.time_axis,
+        volume=parent.volume,
+        reactor_medium=parent.reactor_medium,
+        parent_process="P0",
+    )
+    assert isinstance(child, BioProcess)
+    assert isinstance(child, AugmentedBioProcess)
+    assert child.parent_process == "P0"
+    assert child.time_axis is parent.time_axis
+    assert child.process_variables == {}
+
+
+def test_augmented_bioprocess_parent_process_required():
+    with pytest.raises(TypeError):
+        AugmentedBioProcess(  # type: ignore[call-arg]
+            metadata=BioProcessMetadata(name="c", process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=24.0,
+                time_reference="inoculation",
+            ),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=ReactorMedium(
+                name="medium", density=1.0, density_unit="kg/L"
+            ),
+        )
+
+
+def test_augmented_bioprocess_serialization_roundtrip(tmp_path):
+    parent = _make_minimal_process("P0")
+    child = AugmentedBioProcess(
+        metadata=BioProcessMetadata(name="P0_aug", process_type="batch"),
+        time_axis=parent.time_axis,
+        volume=parent.volume,
+        reactor_medium=parent.reactor_medium,
+        parent_process="P0",
+    )
+    collection = BioProcessCollection(processes={"P0": parent, "P0_aug": child})
+    out = tmp_path / "data.json"
+    save_process_collection_json(collection, out)
+    loaded = load_process_collection_json(out)
+
+    assert isinstance(loaded.processes["P0"], BioProcess)
+    assert not isinstance(loaded.processes["P0"], AugmentedBioProcess)
+    assert isinstance(loaded.processes["P0_aug"], AugmentedBioProcess)
+    assert loaded.processes["P0_aug"].parent_process == "P0"
 
 
 if __name__ == "__main__":

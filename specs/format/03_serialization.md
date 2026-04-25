@@ -94,6 +94,8 @@ The JSON file follows the dataclass hierarchy directly:
 
 **Interpolator objects** are serialized with all their fields (kind, x, y, coefficients, metadata, etc.), with JAX arrays converted to plain lists.
 
+**AugmentedBioProcess payloads** carry every field a `BioProcess` does, plus `"__type__": "AugmentedBioProcess"` and a `"parent_process": "<parent-key>"` entry. Loaders inspect `__type__` to reconstruct the correct subclass; entries without that tag are loaded as plain `BioProcess`.
+
 ## Examples
 
 ### Saving and Loading a Dataset

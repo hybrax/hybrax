@@ -236,6 +236,26 @@ class BioProcess:
     discrete_events: Optional[DiscreteEvents] = None
 
 
+@dataclass(kw_only=True)
+class AugmentedBioProcess(BioProcess):
+    """A synthetic variant of an existing :class:`BioProcess`.
+
+    Same fields as :class:`BioProcess` plus a mandatory ``parent_process``
+    string referencing the parent's key in the enclosing
+    :class:`BioProcessCollection` / :class:`CaseStudy`. Augmented children
+    inherit the parent's structural identity (control/state schema,
+    medium semantics) and must be grouped with the parent for any
+    train/eval split so synthetic siblings cannot leak into a fold whose
+    parent is held out.
+
+    This is a placeholder in v1: no augmentation logic produces these
+    objects yet, but the data shape is fixed so downstream packages
+    (e.g. ``bp-train``'s LOO orchestrator) can rely on it.
+    """
+
+    parent_process: str
+
+
 # ============================================================
 # Case Study Level
 # ============================================================

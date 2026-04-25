@@ -53,8 +53,21 @@ Runs all individual validators on a single process. Returns a list of all error 
 Runs `validate_process()` on each process in the case study, plus cross-process consistency checks:
 - All processes should define the same set of reactor medium components.
 - All processes should define the same set of process variables.
+- Every `AugmentedBioProcess` in the case study must reference an existing,
+  non-augmented parent (delegated to `validate_augmented_parent_refs`).
+  Results are reported under the `"__augmented__"` key in the report dict.
 
 Returns a dict mapping process IDs to their error message lists.
+
+#### `validate_augmented_parent_refs(container) -> (bool, List[str])`
+Verifies the `parent_process` field of every `AugmentedBioProcess` inside
+a `CaseStudy` or `BioProcessCollection`. Each augmented child must point
+to a key that exists in the same `processes` dict and that resolves to a
+non-augmented `BioProcess`; chained augmentation is rejected in v1.
+Returns `(all_valid, messages)` where `messages` always contains at least
+one summary line. This is invoked automatically from
+`validate_case_study` but can also be called directly on a
+`BioProcessCollection`.
 
 ## Examples
 

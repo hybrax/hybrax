@@ -220,6 +220,52 @@ class BioProcess:
     discrete_events: Optional[DiscreteEvents]
 ```
 
+#### `AugmentedBioProcess`
+A synthetic variant of a real `BioProcess` that lives next to its parent in
+the same `BioProcessCollection` / `CaseStudy`. Same fields as `BioProcess`,
+plus a mandatory `parent_process` string referencing the parent's key.
+
+```python
+@dataclass(kw_only=True)
+class AugmentedBioProcess(BioProcess):
+    parent_process: str        # key of the real BioProcess this was derived from
+```
+
+**What it represents (current and future).** Augmented processes are
+intended to capture *data augmentation* outputs — for example pseudo-batch
+transformations, noise-injected replicates, spline-resampled variants, or
+counterfactual reconstructions of an experiment. Today the class is a
+placeholder: bp-format only defines the data shape and validates parent
+references, while the actual augmentation pipelines live in downstream
+packages (`bp-train prepare` is the planned producer).
+
+The structural contract is intentionally narrow:
+
+- Augmented children must share the parent's structural identity (same
+  control/state schema, medium semantics, units). Validation reuses the
+  cross-process consistency checks that already apply to real processes
+  in a `CaseStudy`.
+- `parent_process` must resolve to a non-augmented `BioProcess` in the
+  same container. Chained augmentation (augmented-of-augmented) is
+  rejected in v1; if a future use case demands it, lift the restriction
+  in `validate_augmented_parent_refs`.
+- Because `AugmentedBioProcess` is a `BioProcess` subclass, every existing
+  `Dict[str, BioProcess]` container, the mechanistic RHS path, and any
+  validation/serialization hook that already accepts `BioProcess`
+  transparently accepts the augmented variant.
+
+**Why grouping matters.** Downstream consumers must treat the parent and
+its augmented children as one indivisible unit when constructing
+train/eval splits, holdout sets, or cross-validation folds. An augmented
+sibling that ends up on the train side while its parent is held out
+constitutes data leakage. `validate_augmented_parent_refs` lets those
+consumers discover the parent → children grouping deterministically.
+
+**Serialization.** Augmented processes are tagged in JSON with
+`"__type__": "AugmentedBioProcess"` plus the `parent_process` field;
+loaders reconstruct them via `load_process_collection_json` /
+`load_dataset_json`. Plain `BioProcess` payloads are unchanged.
+
 ### Collection Level
 
 #### `BioProcessCollection`

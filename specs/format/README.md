@@ -19,7 +19,7 @@
 
 | Module | Source | Documentation | Description |
 |--------|--------|---------------|-------------|
-| Data Model | `bp_format/dataclasses.py` | [02_data_model.md](02_data_model.md) | 19 hierarchical dataclasses for bioprocess data |
+| Data Model | `bp_format/dataclasses.py` | [02_data_model.md](02_data_model.md) | 20 hierarchical dataclasses for bioprocess data (incl. `AugmentedBioProcess` placeholder) |
 | TimeSeries | `bp_format/time_series/` | [06_time_series.md](06_time_series.md) | Time-series container with optional fitted spline coefficients (eqx.Module) |
 | Splines | `bp_format/splines.py` | [07_splines.md](07_splines.md) | Pseudobatch transformation and segmented spline fitting |
 | Mechanistic | `bp_format/mechanistic.py` | [08_mechanistic.md](08_mechanistic.md) | JAX/Equinox ODE RHS generation and integration |
@@ -45,7 +45,7 @@ CaseStudy
  ├─ case_id: str
  ├─ organism: str
  ├─ citation: str
- └─ processes: Dict[str, BioProcess]
+ └─ processes: Dict[str, BioProcess]   # may include AugmentedBioProcess subclasses
 
 BioProcess
  ├─ metadata: BioProcessMetadata
@@ -82,6 +82,9 @@ BioProcess
            ├─ is_continuous: bool
            ├─ feed_medium: FeedMedium
            └─ values: TimeSeries
+
+AugmentedBioProcess(BioProcess)        # placeholder for synthetic variants
+ └─ parent_process: str                # key of the real BioProcess in the same container
 
 TimeSeries
  ├─ times: jnp.ndarray

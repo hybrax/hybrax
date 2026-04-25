@@ -7,6 +7,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Optional, Union
 from .dataclasses import (
+    AugmentedBioProcess,
     BenchmarkDataset,
     BioProcessCollection,
     CaseStudy,
@@ -291,6 +292,10 @@ def _process_to_dict(process: BioProcess) -> Dict:
     if process.discrete_events is not None:
         result["discrete_events"] = _discrete_events_to_dict(process.discrete_events)
 
+    if isinstance(process, AugmentedBioProcess):
+        result["__type__"] = "AugmentedBioProcess"
+        result["parent_process"] = process.parent_process
+
     return result
 
 
@@ -527,6 +532,23 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     discrete_events = None
     if p_data.get("discrete_events"):
         discrete_events = _dict_to_discrete_events(p_data["discrete_events"])
+
+    if p_data.get("__type__") == "AugmentedBioProcess":
+        parent = p_data.get("parent_process")
+        if not isinstance(parent, str) or not parent:
+            raise ValueError(
+                "AugmentedBioProcess payload missing required "
+                "'parent_process' string"
+            )
+        return AugmentedBioProcess(
+            metadata=metadata,
+            time_axis=time_axis,
+            volume=volume,
+            reactor_medium=reactor_medium,
+            process_variables=process_variables,
+            discrete_events=discrete_events,
+            parent_process=parent,
+        )
 
     return BioProcess(
         metadata=metadata,

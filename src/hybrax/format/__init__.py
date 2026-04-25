@@ -29,6 +29,7 @@ from .dataclasses import (
     ReactorMedium,
     # Higher-level structures
     BioProcess,
+    AugmentedBioProcess,
     BioProcessCollection,
     CaseStudy,
     BenchmarkDataset,
@@ -58,6 +59,7 @@ from .validate import (
     validate_process,
     validate_volume_consistency,
     validate_case_study,
+    validate_augmented_parent_refs,
 )
 
 __all__ = [
@@ -80,6 +82,7 @@ __all__ = [
     "SampleVolumeChange",
     "Volume",
     "BioProcess",
+    "AugmentedBioProcess",
     "BioProcessCollection",
     "CaseStudy",
     "BenchmarkDataset",
@@ -98,6 +101,7 @@ __all__ = [
     "validate_process",
     "validate_volume_consistency",
     "validate_case_study",
+    "validate_augmented_parent_refs",
     # Modules
     "serialization",
     "validate",
