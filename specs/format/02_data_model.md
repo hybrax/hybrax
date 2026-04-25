@@ -43,25 +43,26 @@ class StaticVariable:
 
 Used for constant feed concentrations, fixed parameters, etc.
 
-#### `Interpolator`
-Serializable representation of a fitted spline or interpolator.
+#### `TimeSeries`
+The canonical carrier for both sampled trajectories and optional spline state.
 
 ```python
-@dataclass
-class Interpolator:
-    kind: str                                    # "interpax_cubic", "interpax_linear", "interpax_ppoly"
-    x: jnp.ndarray                               # knot positions or breakpoints
-    y: Optional[jnp.ndarray]                      # knot values (for cubic/linear)
-    n: Optional[jnp.ndarray]                      # number of valid points per segment
-    n_segments: Optional[int]                     # number of active segments
-    segment_boundaries: Optional[jnp.ndarray]     # segment boundary times
-    bc_type: Optional[str]                        # boundary condition type
-    coefficients: Optional[jnp.ndarray]           # polynomial coefficients (for ppoly)
-    extrapolate: Optional[bool]                   # whether to extrapolate beyond domain
-    interpolator_metadata: Optional[dict]         # additional metadata (e.g., pseudobatch transform info)
+class TimeSeries(eqx.Module):
+    times: jnp.ndarray
+    values: jnp.ndarray
+    jump_times: jnp.ndarray
+    continuity_side: str
+    breaks: Optional[jnp.ndarray]
+    coeffs: Optional[jnp.ndarray]
+    segment_start_piece_idx: Optional[jnp.ndarray]
+    metadata: Optional[dict]
 ```
 
-Per-segment control points are padded to fixed shapes so all interpolators in a dataset share common array dimensions, keeping the representation JAX-friendly.
+`TimeSeries` is the only continuous-value carrier in the active model. Raw
+measurements live in `times` / `values`, while fitted spline state lives
+directly on the same object via `breaks`, `coeffs`, and
+`segment_start_piece_idx`. Pseudobatch transforms are also stored on
+`TimeSeries.metadata`.
 
 #### `DiscreteEvents`
 Stores discrete event times (bolus feeds, sampling, volume jumps).
@@ -86,7 +87,6 @@ class ReactorMediumComponent:
     unit: str                                    # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable   # measured concentration over time
     is_intracellular: bool                       # True for intracellular products (e.g., inclusion bodies)
-    interpolator: Optional[Interpolator]         # optional fitted spline representation
     bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
 ```
 
@@ -142,7 +142,6 @@ class ProcessVariable:
     unit: str                                    # e.g. "°C", "%", "L/h"
     is_controlled: bool                          # True for controls (pH, DO), False for states (off-gas)
     values: TimeSeries | StaticVariable
-    interpolator: Optional[Interpolator]
     bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
 ```
 
@@ -177,7 +176,6 @@ Inflow with associated feed medium composition. All delta values must be >= 0.
 @dataclass
 class FeedVolumeChange(VolumeChange):
     feed_medium: FeedMedium
-    interpolator: Optional[Interpolator]
 ```
 
 #### `SampleVolumeChange(VolumeChange)`
@@ -186,7 +184,7 @@ Outflow from sampling. All delta values must be <= 0.
 ```python
 @dataclass
 class SampleVolumeChange(VolumeChange):
-    interpolator: Optional[Interpolator]
+    pass
 ```
 
 Sampling removes reactor contents at current concentrations, so no separate medium definition is needed.

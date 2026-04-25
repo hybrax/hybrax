@@ -26,7 +26,6 @@ from bp_format import (
     SampleVolumeChange,
     Volume,
     ProcessVariable,
-    Interpolator,
 )
 from bp_format.mechanistic import (
     ControlSplines,
@@ -45,7 +44,7 @@ from bp_format.splines import (
     make_interpax_spline,
     build_pseudobatch_inputs,
     build_splines,
-    to_interpolator,
+    to_timeseries,
 )
 
 
@@ -420,20 +419,39 @@ class TestGetControlSplines:
         g = eqx.filter_jit(jax.grad(lambda t: cs(t)[0]))(jnp.array(10.0))
         assert g.shape == ()  # scalar gradient (second deriv of cumulative vol)
 
-    def test_rejects_non_cubic_control_interpolator(self):
+    def test_static_control_variable_supported_without_interpolator_field(self):
         process = _make_process(with_controlled_flow=False)
-        process.process_variables["pH"].interpolator = Interpolator(
-            kind="interpax_linear",
-            x=jnp.array([[0.0, 10.0, 20.0]]),
-            y=jnp.array([[7.0, 7.0, 7.0]]),
-            n=jnp.array([3]),
-            n_segments=1,
-            segment_boundaries=jnp.array([0.0, 20.0]),
-            bc_type=None,
+        cs = get_control_splines(process)
+        assert float(cs(jnp.array(10.0))[0]) == pytest.approx(7.0, rel=1e-6)
+
+    def test_prefers_timeseries_spline_state_over_raw_samples(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        pv_series = TimeSeries(
+            times=jnp.array([0.0, 10.0, 20.0], dtype=float),
+            values=jnp.array([0.0, 1.0, 0.0], dtype=float),
+            breaks=jnp.array([0.0, 10.0, 20.0], dtype=float),
+            coeffs=jnp.array(
+                [
+                    [0.0, 0.1, 0.0, 0.0],
+                    [1.0, -0.1, 0.0, 0.0],
+                ],
+                dtype=float,
+            ),
+            segment_start_piece_idx=jnp.array([0], dtype=jnp.int32),
+        )
+        process.process_variables["smooth_ctrl"] = ProcessVariable(
+            name="smooth_ctrl",
+            unit="-",
+            is_controlled=True,
+            values=pv_series,
         )
 
-        with pytest.raises(NotImplementedError, match="interpax_cubic"):
-            get_control_splines(process)
+        cs = get_control_splines(process)
+        idx = cs.control_names.index("smooth_ctrl")
+
+        assert float(cs(jnp.array(5.0))[idx]) == pytest.approx(0.5, abs=2e-2)
+        assert float(cs(jnp.array(10.0))[idx]) == pytest.approx(1.0, abs=2e-2)
+        assert float(cs(jnp.array(15.0))[idx]) == pytest.approx(0.5, abs=2e-2)
 
 
 # ---------------------------------------------------------------------------
@@ -1066,9 +1084,9 @@ class TestIntracellularRoundTrip:
         np.testing.assert_allclose(q_est[:, 2], self.qS, rtol=0.02)
 
         apparent = self.qXa + self.qP
-        assert not np.allclose(
-            q_est[:, 0], apparent, rtol=0.02
-        ), "q[biomass] must NOT equal apparent rate (qXa + qP) after Phase 1 fix"
+        assert not np.allclose(q_est[:, 0], apparent, rtol=0.02), (
+            "q[biomass] must NOT equal apparent rate (qXa + qP) after Phase 1 fix"
+        )
 
     def test_forward_with_known_active_rates_matches_analytic(self):
         process = _make_batch_process_with_intracellular()
@@ -1149,7 +1167,9 @@ class TestUserDefinedRhsOde:
         c = jnp.array([2.0, 0.5, 5.0, 1.0])
         rates = jnp.array([0.4, 0.1, -0.2])
         dc_user = mb_user(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))
-        dc_auto = mb_auto(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(mb_auto.r_size))
+        dc_auto = mb_auto(
+            c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(mb_auto.r_size)
+        )
         np.testing.assert_allclose(np.asarray(dc_user), np.asarray(dc_auto), atol=1e-6)
 
     def test_derived_func_returns_x_active(self):
@@ -2259,7 +2279,6 @@ class TestIntegrateProcess:
         assert float(result["c"][1, 0]) == pytest.approx(X_post, rel=1e-3)
         assert float(result["c"][1, 1]) == pytest.approx(S_post, rel=1e-3)
 
-
     def test_pseudospace_matches_segmented_with_sampling_and_bolus(self):
         """Single-pass pseudo-space integration should match segmented integration."""
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
@@ -2289,8 +2308,9 @@ class TestIntegrateProcess:
         for sp_name in ("biomass", "glucose"):
             inputs = build_pseudobatch_inputs(process, sp_name)
             spl = build_splines(inputs, process=process, species_name=sp_name)
-            rep = to_interpolator(inputs, spl, sp_name)
-            process.reactor_medium.components[sp_name].interpolator = rep
+            process.reactor_medium.components[sp_name].concentration = to_timeseries(
+                inputs, spl, sp_name
+            )
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -2364,8 +2384,9 @@ class TestIntegrateProcess:
         for sp_name in ("biomass", "glucose"):
             inputs = build_pseudobatch_inputs(process, sp_name)
             spl = build_splines(inputs, process=process, species_name=sp_name)
-            rep = to_interpolator(inputs, spl, sp_name)
-            process.reactor_medium.components[sp_name].interpolator = rep
+            process.reactor_medium.components[sp_name].concentration = to_timeseries(
+                inputs, spl, sp_name
+            )
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -2435,8 +2456,9 @@ class TestIntegrateProcess:
         for sp_name in ("biomass", "glucose"):
             inputs = build_pseudobatch_inputs(process, sp_name)
             spl = build_splines(inputs, process=process, species_name=sp_name)
-            rep = to_interpolator(inputs, spl, sp_name)
-            process.reactor_medium.components[sp_name].interpolator = rep
+            process.reactor_medium.components[sp_name].concentration = to_timeseries(
+                inputs, spl, sp_name
+            )
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -2502,6 +2524,84 @@ class TestIntegrateProcess:
         # diverge by ~1–2% on each species. Switched to a relative bound
         # to cover both species (biomass ~0.6 g/L and glucose ~30 g/L)
         # at the same percentage tolerance.
+        assert float(c_pseudo[1, 0]) == pytest.approx(float(c_ref[1, 0]), rel=5e-2)
+        assert float(c_pseudo[3, 0]) == pytest.approx(float(c_ref[3, 0]), rel=5e-2)
+        assert float(c_pseudo[1, 1]) == pytest.approx(float(c_ref[1, 1]), rel=5e-2)
+        assert float(c_pseudo[3, 1]) == pytest.approx(float(c_ref[3, 1]), rel=5e-2)
+
+    def test_pseudospace_same_time_sampling_and_bolus_from_transformed_timeseries(self):
+        """Mechanistic code reads transform from TimeSeries concentration state."""
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-0.2]),
+        )
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed", glucose_conc=25.0, biomass_conc=0.0),
+            values=_ts([5.0], [0.1]),
+        )
+
+        t_obs = jnp.linspace(0.0, 20.0, 121)
+        biomass = 0.4 * jnp.exp(0.08 * t_obs)
+        glucose = jnp.maximum(40.0 - 1.4 * t_obs - 0.03 * (t_obs**2), 0.5)
+        process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
+        process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
+
+        for sp_name in ("biomass", "glucose"):
+            inputs = build_pseudobatch_inputs(process, sp_name)
+            spl = build_splines(inputs, process=process, species_name=sp_name)
+            process.reactor_medium.components[sp_name].concentration = to_timeseries(
+                inputs, spl, sp_name
+            )
+
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+        state_splines = build_state_splines(process, mb)
+        q_func = build_q_func(process, ctrl, mb, state_splines)
+        rates_func = _wrap_q_as_rates(mb, q_func)
+
+        t_b = 5.0
+        eps = 5e-4
+        t_eval = jnp.array([0.0, t_b - eps, t_b, t_b + eps, 10.0, 20.0])
+
+        ref = integrate_process(
+            process,
+            ctrl,
+            mb,
+            rates_func,
+            t_eval,
+            state_splines=state_splines,
+        )
+        pseudo = integrate_process_pseudospace(
+            process,
+            ctrl,
+            mb,
+            rates_func,
+            t_eval,
+            state_splines=state_splines,
+        )
+
+        v_ref = _sample_on_observation_grid(ref["t"], ref["V"][:, None], t_eval)[:, 0]
+        v_pseudo = _sample_on_observation_grid(
+            pseudo["t"], pseudo["V"][:, None], t_eval
+        )[:, 0]
+        c_ref = _sample_on_observation_grid(ref["t"], ref["c"], t_eval)
+        c_pseudo = _sample_on_observation_grid(pseudo["t"], pseudo["c"], t_eval)
+
+        # Use relative concentration tolerance for the same reason as the
+        # previous test: honest c-space and pseudo-space integration solve
+        # different state coordinates once the old spline-X_active shortcut is
+        # gone.
+        assert float(v_pseudo[1]) == pytest.approx(float(v_ref[1]), abs=1e-6)
+        assert float(v_pseudo[2]) == pytest.approx(float(v_ref[2]), abs=1e-6)
+        assert float(v_pseudo[3]) == pytest.approx(float(v_ref[3]), abs=1e-6)
         assert float(c_pseudo[1, 0]) == pytest.approx(float(c_ref[1, 0]), rel=5e-2)
         assert float(c_pseudo[3, 0]) == pytest.approx(float(c_ref[3, 0]), rel=5e-2)
         assert float(c_pseudo[1, 1]) == pytest.approx(float(c_ref[1, 1]), rel=5e-2)

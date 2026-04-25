@@ -139,7 +139,6 @@ from .dataclasses import (
 )
 from .splines import (
     make_interpax_spline,
-    build_interpax_spline,
     build_backtransform_spline,
     evaluate_left_continuous_step,
     evaluate_linear_plus_step,
@@ -172,6 +171,47 @@ def _batch_splines(
     ]
     c_stacked = jnp.stack([s.c for s in resampled], axis=-1)  # (4, m, n)
     return interpax.PPoly.construct_fast(c_stacked, x_common, extrapolate=True)
+
+
+def _timeseries_to_interpax_spline(series: TimeSeries) -> interpax.PPoly:
+    """Build an interpax spline from a TimeSeries carrier.
+
+    Prefer stored spline state when available so mechanistic consumers use the
+    same canonical representation that was fit/serialized. Fall back to a
+    cubic refit only for sample-only series without spline coefficients.
+    """
+    if (
+        getattr(series, "breaks", None) is not None
+        and getattr(series, "coeffs", None) is not None
+    ):
+        coeffs = jnp.asarray(series.coeffs, dtype=float).T[::-1]
+        breaks = jnp.asarray(series.breaks, dtype=float)
+        return interpax.PPoly.construct_fast(coeffs, breaks, extrapolate=True)
+    if (
+        getattr(series, "times", None) is not None
+        and getattr(series, "values", None) is not None
+    ):
+        return make_interpax_spline(
+            jnp.asarray(series.times, dtype=float),
+            jnp.asarray(series.values, dtype=float),
+        )
+    raise ValueError("TimeSeries must provide spline state or discrete samples.")
+
+
+def _value_to_interpax_spline(
+    value: TimeSeries | StaticVariable,
+    *,
+    t_start: float,
+    t_end: float,
+) -> interpax.CubicSpline:
+    """Build an interpax spline from a dynamic or static state carrier."""
+    if isinstance(value, TimeSeries):
+        return _timeseries_to_interpax_spline(value)
+    v = float(value.value)
+    return make_interpax_spline(
+        jnp.array([t_start, t_end], dtype=float),
+        jnp.array([v, v], dtype=float),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -858,13 +898,7 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     for vc_name, vc in process.volume.volume_changes.items():
         if not (vc.is_controlled and vc.is_continuous):
             continue
-        if vc.interpolator is not None:
-            sp = build_interpax_spline(vc.interpolator)[0][0]
-        else:
-            sp = make_interpax_spline(
-                jnp.asarray(vc.values.times),
-                jnp.asarray(vc.values.values),
-            )
+        sp = _timeseries_to_interpax_spline(vc.values)
         control_names.append(vc_name)
         flow_indices.append(idx)
         splines.append(sp)
@@ -872,24 +906,12 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
         idx += 1
 
     # 2) Controlled process variables → direct spline value
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
     for pv_name, pv in process.process_variables.items():
         if not pv.is_controlled:
             continue
-        if pv.interpolator is not None:
-            sp = build_interpax_spline(pv.interpolator)[0][0]
-        elif isinstance(pv.values, TimeSeries):
-            sp = make_interpax_spline(
-                jnp.asarray(pv.values.times),
-                jnp.asarray(pv.values.values),
-            )
-        else:
-            # StaticVariable: constant spline over the full process time span
-            t_start = float(process.time_axis.start)
-            t_end = float(process.time_axis.end)
-            sp = make_interpax_spline(
-                jnp.array([t_start, t_end]),
-                jnp.array([float(pv.values.value), float(pv.values.value)]),
-            )
+        sp = _value_to_interpax_spline(pv.values, t_start=t_start, t_end=t_end)
         control_names.append(pv_name)
         ctrl_indices.append(idx)
         splines.append(sp)
@@ -897,8 +919,6 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
         idx += 1
 
     # Batch all splines into a single PPoly for vectorized evaluation
-    t_start = float(process.time_axis.start)
-    t_end = float(process.time_axis.end)
     if splines:
         batched = _batch_splines(splines, t_start, t_end)
     else:
@@ -1201,17 +1221,12 @@ def build_state_splines(
     process: BioProcess,
     mb: "RhsOde",
 ) -> Dict[str, Any]:
-    """Build state splines from stored interpolators or raw data.
+    """Build state splines from stored TimeSeries spline state.
 
-    Uses the pre-fitted ``comp.interpolator`` (backtransform spline built during
-    the pseudobatch step) when available.  The backtransform spline maps
-    from the continuous pseudobatch domain back to reactor concentrations,
-    correctly handling bolus feeds and sampling events without requiring
-    per-segment splines.
-
-    Falls back to fitting a raw ``interpax.CubicSpline`` from the underlying
-    reactor concentration or process-variable time series when no stored
-    spline is available.
+    Pseudobatch-transformed reactor components carry transform metadata on
+    their concentration TimeSeries and are converted into a backtransform
+    spline. Other reactor-component and process-variable states are converted
+    directly from their TimeSeries or StaticVariable carrier.
 
     Parameters
     ----------
@@ -1229,40 +1244,28 @@ def build_state_splines(
 
     for sp_name in mb.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
-        if (
-            comp.interpolator is not None
-            and comp.interpolator.interpolator_metadata
-            and "transform" in comp.interpolator.interpolator_metadata
-        ):
-            # Backtransform spline: continuous in pseudobatch domain,
-            # correctly accounts for bolus feeds / sampling.
-            state_splines[sp_name] = build_backtransform_spline(comp.interpolator)
-        elif comp.interpolator is not None:
-            state_splines[sp_name] = build_interpax_spline(comp.interpolator)[0][0]
+        concentration = comp.concentration
+        concentration_has_transform = (
+            isinstance(concentration, TimeSeries)
+            and isinstance(concentration.metadata, dict)
+            and "transform" in concentration.metadata
+        )
+        if concentration_has_transform:
+            state_splines[sp_name] = build_backtransform_spline(concentration)
         else:
-            ts = comp.concentration
-            state_splines[sp_name] = make_interpax_spline(
-                jnp.asarray(ts.times, dtype=float),
-                jnp.asarray(ts.values, dtype=float),
+            state_splines[sp_name] = _value_to_interpax_spline(
+                concentration,
+                t_start=float(process.time_axis.start),
+                t_end=float(process.time_axis.end),
             )
 
     for pv_name in mb.process_variable_state_names:
         pv = process.process_variables[pv_name]
-        if pv.interpolator is not None:
-            state_splines[pv_name] = build_interpax_spline(pv.interpolator)[0][0]
-        elif isinstance(pv.values, TimeSeries):
-            state_splines[pv_name] = make_interpax_spline(
-                jnp.asarray(pv.values.times, dtype=float),
-                jnp.asarray(pv.values.values, dtype=float),
-            )
-        else:
-            t_start = float(process.time_axis.start)
-            t_end = float(process.time_axis.end)
-            v = float(pv.values.value)
-            state_splines[pv_name] = make_interpax_spline(
-                jnp.array([t_start, t_end], dtype=float),
-                jnp.array([v, v], dtype=float),
-            )
+        state_splines[pv_name] = _value_to_interpax_spline(
+            pv.values,
+            t_start=float(process.time_axis.start),
+            t_end=float(process.time_axis.end),
+        )
 
     return state_splines
 
@@ -1378,25 +1381,13 @@ def build_q_func(
     cum_splines_ctrl = []
     for fn in mb.flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.interpolator is not None:
-            sp = build_interpax_spline(vc.interpolator)[0][0]
-        else:
-            sp = make_interpax_spline(
-                jnp.asarray(vc.values.times),
-                jnp.asarray(vc.values.values),
-            )
+        sp = _timeseries_to_interpax_spline(vc.values)
         cum_splines_ctrl.append(sp)
 
     cum_splines_mod = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.interpolator is not None:
-            sp = build_interpax_spline(vc.interpolator)[0][0]
-        else:
-            sp = make_interpax_spline(
-                jnp.asarray(vc.values.times),
-                jnp.asarray(vc.values.values),
-            )
+        sp = _timeseries_to_interpax_spline(vc.values)
         cum_splines_mod.append(sp)
 
     # -- Batch all volume splines into a single PPoly --
@@ -1823,6 +1814,26 @@ def _piecewise_linear_value_and_slope(
     return val, slope
 
 
+def _get_component_transform_payload(comp) -> Optional[Dict[str, Any]]:
+    """Return pseudobatch transform metadata from new schema first."""
+    concentration = getattr(comp, "concentration", None)
+    if isinstance(concentration, TimeSeries):
+        metadata = concentration.metadata
+        if isinstance(metadata, dict) and "transform" in metadata:
+            return metadata["transform"]
+    return None
+
+
+def _transform_series_payload(tr: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
+    """Return nested canonical TimeSeries payload for a transform series."""
+    series = tr.get("series")
+    if isinstance(series, dict):
+        payload = series.get(key)
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
 def _build_pseudobatch_transforms(
     process: BioProcess,
     mb: "RhsOde",
@@ -1839,18 +1850,16 @@ def _build_pseudobatch_transforms(
     transforms: List[Dict[str, Any]] = []
     for sp_name in mb.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
-        rep = comp.interpolator
-        tr = (
-            rep.interpolator_metadata.get("transform")
-            if rep is not None and rep.interpolator_metadata is not None
-            else None
-        )
+        tr = _get_component_transform_payload(comp)
         if tr is None:
             transforms.append(
                 {
                     "kind": "identity",
                     "adf_t": jnp.asarray([t_start, t_end], dtype=float),
                     "adf_v": jnp.asarray([1.0, 1.0], dtype=float),
+                    "adf_interp": "linear",
+                    "adf_jump_t": jnp.zeros(0, dtype=float),
+                    "adf_jump_v": jnp.zeros(0, dtype=float),
                     "fc_t": jnp.asarray([t_start, t_end], dtype=float),
                     "fc_v": jnp.asarray([0.0, 0.0], dtype=float),
                     "fc_interp": "linear",
@@ -1858,30 +1867,54 @@ def _build_pseudobatch_transforms(
             )
             continue
 
-        # ADF is stored as dense grid for piecewise-linear evaluation (smooth
-        # continuous-feed growth + near-step transitions at bolus ε-pairs).
-        adf_t = jnp.asarray(tr["adf_times"], dtype=float)
-        adf_v = jnp.asarray(tr["adf_values"], dtype=float)
-        fc_t = jnp.asarray(tr["feed_corr_times"], dtype=float)
-        fc_v = jnp.asarray(tr["feed_corr_values"], dtype=float)
-        fc_interp = str(tr.get("feed_corr_interp", "linear"))
+        adf_payload = _transform_series_payload(tr, "adf_ts")
+        fc_payload = _transform_series_payload(tr, "feed_corr_ts")
+        has_series_payload = adf_payload is not None or fc_payload is not None
+        if has_series_payload and (adf_payload is None or fc_payload is None):
+            raise ValueError(
+                "Pseudobatch transform metadata must provide both "
+                "'series.adf_ts' and 'series.feed_corr_ts' when using the "
+                "nested TimeSeries schema."
+            )
+
+        if adf_payload is None or fc_payload is None:
+            raise ValueError(
+                "Pseudobatch transform metadata must use nested "
+                "'series.adf_ts'/'series.feed_corr_ts' payloads."
+            )
+
+        adf_t = jnp.asarray(adf_payload["times"], dtype=float)
+        adf_v = jnp.asarray(adf_payload["values"], dtype=float)
+        adf_interp = str(adf_payload.get("metadata", {}).get("interp", "linear"))
+        adf_jump_t = jnp.asarray(adf_payload.get("jump_times", []), dtype=float)
+        adf_jump_v = jnp.asarray(
+            adf_payload.get("metadata", {}).get("jump_values", []), dtype=float
+        )
+
+        fc_t = jnp.asarray(fc_payload["times"], dtype=float)
+        fc_v = jnp.asarray(fc_payload["values"], dtype=float)
+        fc_interp = str(
+            fc_payload.get("metadata", {}).get(
+                "interp", tr.get("feed_corr_interp", "linear")
+            )
+        )
         fc_base_t = fc_t
         fc_base_v = fc_v
         fc_jump_t = jnp.zeros(0, dtype=float)
         fc_jump_v = jnp.zeros(0, dtype=float)
         if fc_interp == "linear_plus_step":
-            fc_base_t = jnp.asarray(
-                tr.get("feed_corr_base_times", tr["feed_corr_times"]), dtype=float
+            fc_base_t = jnp.asarray(fc_payload["times"], dtype=float)
+            fc_base_v = jnp.asarray(fc_payload["values"], dtype=float)
+            fc_jump_t = jnp.asarray(fc_payload.get("jump_times", []), dtype=float)
+            fc_jump_v = jnp.asarray(
+                fc_payload.get("metadata", {}).get("jump_values", []),
+                dtype=float,
             )
-            fc_base_v = jnp.asarray(
-                tr.get("feed_corr_base_values", tr["feed_corr_values"]), dtype=float
-            )
-            fc_jump_t = jnp.asarray(tr.get("feed_corr_jump_times", []), dtype=float)
-            fc_jump_v = jnp.asarray(tr.get("feed_corr_jump_values", []), dtype=float)
         elif fc_interp == "linear":
             raise ValueError(
                 "Legacy feed_corr_interp='linear' unsupported for discrete "
-                "pseudobatch mechanistic path; regenerate interpolators."
+                "pseudobatch mechanistic path; regenerate transformed "
+                "TimeSeries payloads."
             )
 
         fc_spline = None
@@ -1893,6 +1926,9 @@ def _build_pseudobatch_transforms(
                 "kind": "pb",
                 "adf_t": adf_t,
                 "adf_v": adf_v,
+                "adf_interp": adf_interp,
+                "adf_jump_t": adf_jump_t,
+                "adf_jump_v": adf_jump_v,
                 "fc_t": fc_t,
                 "fc_v": fc_v,
                 "fc_interp": fc_interp,
@@ -1922,6 +1958,9 @@ def _build_pseudobatch_transforms(
                 "kind": "identity",
                 "adf_t": jnp.asarray([t_start, t_end], dtype=float),
                 "adf_v": jnp.asarray([1.0, 1.0], dtype=float),
+                "adf_interp": "linear",
+                "adf_jump_t": jnp.zeros(0, dtype=float),
+                "adf_jump_v": jnp.zeros(0, dtype=float),
                 "fc_t": jnp.asarray([t_start, t_end], dtype=float),
                 "fc_v": jnp.asarray([0.0, 0.0], dtype=float),
                 "fc_interp": "linear",
@@ -1975,6 +2014,9 @@ def integrate_process_pseudospace(
     # Per-state adf/feed-correction representations.
     adf_t_list: List[jnp.ndarray] = []
     adf_v_list: List[jnp.ndarray] = []
+    adf_interp_list: List[str] = []
+    adf_jump_t_list: List[jnp.ndarray] = []
+    adf_jump_v_list: List[jnp.ndarray] = []
     fc_is_cubic: List[bool] = []
     fc_cubic: List[Optional[interpax.CubicSpline]] = []
     fc_cubic_deriv: List[Optional[interpax.PPoly]] = []
@@ -1984,6 +2026,9 @@ def integrate_process_pseudospace(
         if tr["kind"] == "pb" and tr.get("fc_interp") == "cubic":
             adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
             adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
+            adf_interp_list.append(str(tr.get("adf_interp", "linear")))
+            adf_jump_t_list.append(jnp.asarray(tr.get("adf_jump_t", []), dtype=float))
+            adf_jump_v_list.append(jnp.asarray(tr.get("adf_jump_v", []), dtype=float))
             fc_is_cubic.append(True)
             fc_cubic.append(tr["fc_spline"])
             fc_cubic_deriv.append(tr["fc_spline"].derivative())
@@ -1992,6 +2037,9 @@ def integrate_process_pseudospace(
         elif tr["kind"] == "pb":
             adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
             adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
+            adf_interp_list.append(str(tr.get("adf_interp", "linear")))
+            adf_jump_t_list.append(jnp.asarray(tr.get("adf_jump_t", []), dtype=float))
+            adf_jump_v_list.append(jnp.asarray(tr.get("adf_jump_v", []), dtype=float))
             fc_is_cubic.append(False)
             fc_cubic.append(None)
             fc_cubic_deriv.append(None)
@@ -2000,6 +2048,9 @@ def integrate_process_pseudospace(
         else:
             adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
             adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
+            adf_interp_list.append(str(tr.get("adf_interp", "linear")))
+            adf_jump_t_list.append(jnp.asarray(tr.get("adf_jump_t", []), dtype=float))
+            adf_jump_v_list.append(jnp.asarray(tr.get("adf_jump_v", []), dtype=float))
             fc_is_cubic.append(False)
             fc_cubic.append(None)
             fc_cubic_deriv.append(None)
@@ -2020,13 +2071,7 @@ def integrate_process_pseudospace(
     cum_splines_mod: List[interpax.CubicSpline] = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.interpolator is not None:
-            sp = build_interpax_spline(vc.interpolator)[0][0]
-        else:
-            sp = make_interpax_spline(
-                jnp.asarray(vc.values.times),
-                jnp.asarray(vc.values.values),
-            )
+        sp = _timeseries_to_interpax_spline(vc.values)
         cum_splines_mod.append(sp)
     batched_mod = (
         _batch_splines(cum_splines_mod, t_start, t_end)
@@ -2106,7 +2151,18 @@ def integrate_process_pseudospace(
     def _eval_adf(t):
         adf_vals = []
         for i in range(n_non_volume):
-            adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
+            if adf_interp_list[i] == "linear_plus_step":
+                adf_vals.append(
+                    evaluate_linear_plus_step(
+                        t,
+                        adf_t_list[i],
+                        adf_v_list[i],
+                        adf_jump_t_list[i],
+                        adf_jump_v_list[i],
+                    )
+                )
+            else:
+                adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
         return jnp.stack(adf_vals)
 
     def _eval_dadf(t):
@@ -2356,13 +2412,7 @@ def integrate_process(
     cum_splines_mod_list = []
     for fn in mb.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
-        if vc.interpolator is not None:
-            sp = build_interpax_spline(vc.interpolator)[0][0]
-        else:
-            sp = make_interpax_spline(
-                jnp.asarray(vc.values.times),
-                jnp.asarray(vc.values.values),
-            )
+        sp = _timeseries_to_interpax_spline(vc.values)
         cum_splines_mod_list.append(sp)
     batched_mod = (
         _batch_splines(cum_splines_mod_list, t_start, t_end)

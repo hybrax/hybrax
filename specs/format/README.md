@@ -72,8 +72,7 @@ BioProcess
  │    ├─ name: str
  │    ├─ unit: str
  │    ├─ is_controlled: bool  # True for controls, False for states
- │    ├─ values: TimeSeries | StaticVariable
- │    └─ interpolator: Optional[Interpolator]
+ │    └─ values: TimeSeries | StaticVariable
  └─ volume: Volume
       ├─ initial_volume: float
       ├─ unit: str
@@ -92,6 +91,7 @@ TimeSeries
  ├─ times: jnp.ndarray
  ├─ values: jnp.ndarray
  ├─ breaks / coeffs / segment_start_piece_idx (optional fitted spline state)
+ ├─ metadata (optional transform / fit metadata)
  └─ canonical API only (legacy `timepoints` removed)
 
 StaticVariable

@@ -4,7 +4,11 @@ Source: `bp_format/serialization.py`
 
 ## Purpose
 
-Provides JSON-based save/load for the full bp-format data hierarchy. Handles bidirectional conversion between Python dataclass objects and JSON-serializable dicts, including special handling for JAX arrays, `NaN`/`Inf` values, `Interpolator` objects, and `TimeSeries` with optional spline state. Supports both plain `.json` and gzipped `.json.gz` files.
+Provides JSON-based save/load for the full bp-format data hierarchy. Handles
+bidirectional conversion between Python dataclass objects and
+JSON-serializable dicts, including special handling for JAX arrays,
+`NaN`/`Inf` values, and `TimeSeries` with optional spline state. Supports
+both plain `.json` and gzipped `.json.gz` files.
 
 ## Design Rationale
 
@@ -92,7 +96,9 @@ The JSON file follows the dataclass hierarchy directly:
 
 **StaticVariable payloads** are represented as `{"type": "StaticVariable", "value": 500.0}`.
 
-**Interpolator objects** are serialized with all their fields (kind, x, y, coefficients, metadata, etc.), with JAX arrays converted to plain lists.
+Legacy sibling `"interpolator"` payloads are no longer part of the active
+schema. The loader rejects non-null legacy payloads loudly instead of silently
+supporting two spline representations.
 
 **AugmentedBioProcess payloads** carry every field a `BioProcess` does, plus `"__type__": "AugmentedBioProcess"` and a `"parent_process": "<parent-key>"` entry. Loaders inspect `__type__` to reconstruct the correct subclass; entries without that tag are loaded as plain `BioProcess`.
 

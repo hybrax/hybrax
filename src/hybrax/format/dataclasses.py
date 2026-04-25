@@ -20,37 +20,6 @@ _NO_BOUNDS: Bounds = (None, None)
 # TODO for later: standardize unit spelling so it might be used for unit checks
 
 
-# ============================================================
-# Modelling Structures - CURRENTLY PLACEHOLDERS
-# ============================================================
-
-
-@dataclass
-class Interpolator:
-    """
-    Serializable interpax interpolator representation.
-
-    Supported kinds currently include:
-    - ``interpax_cubic`` and ``interpax_linear`` as segmented knot/value data
-    - ``interpax_ppoly`` as breakpoint/coefficient data
-
-    For segmented interpolators, per-segment control points are padded to fixed
-    shapes so that all interpolators in a dataset share common array dimensions.
-    This keeps the stored representation JAX-friendly.
-    """
-
-    kind: str  # e.g. "interpax_cubic", "interpax_linear", "interpax_ppoly"
-    x: jnp.ndarray
-    y: Optional[jnp.ndarray] = None
-    n: Optional[jnp.ndarray] = None
-    n_segments: Optional[int] = None
-    segment_boundaries: Optional[jnp.ndarray] = None
-    bc_type: Optional[str] = "natural"
-    coefficients: Optional[jnp.ndarray] = None
-    extrapolate: Optional[bool] = True
-    interpolator_metadata: Optional[dict] = None
-
-
 @dataclass
 class DiscreteEvents:
     """
@@ -102,7 +71,6 @@ class ProcessVariable:
         bool  # True if this variable is a control input, False if it's a state variable
     )
     values: TimeSeries | StaticVariable
-    interpolator: Optional[Interpolator] = None
     bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 
@@ -128,7 +96,6 @@ class ReactorMediumComponent:
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
     is_intracellular: bool  # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in ODE RHS calculations
-    interpolator: Optional[Interpolator] = None
     bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 
@@ -191,7 +158,6 @@ class FeedVolumeChange(VolumeChange):
     """
 
     feed_medium: FeedMedium
-    interpolator: Optional[Interpolator] = None
 
 
 @dataclass
@@ -201,8 +167,6 @@ class SampleVolumeChange(VolumeChange):
 
     All delta values should be <= 0.
     """
-
-    interpolator: Optional[Interpolator] = None
 
 
 # Union type alias for convenience

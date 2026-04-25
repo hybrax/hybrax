@@ -15,7 +15,6 @@ def test_imports():
     """Test that all main exports are available"""
     # Dataclasses
     assert hasattr(bp_format, 'TimeAxis')
-    assert hasattr(bp_format, 'Interpolator')
     assert hasattr(bp_format, 'DiscreteEvents')
     assert hasattr(bp_format, 'TimeSeries')
     assert hasattr(bp_format, 'StaticVariable')

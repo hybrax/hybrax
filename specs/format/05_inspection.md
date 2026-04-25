@@ -32,7 +32,8 @@ Creates a matplotlib figure with one subplot per variable:
 - Reactor medium components (concentrations over time)
 - Volume profile (initial + cumulative changes)
 - Process variables (pH, temperature, etc.)
-- Spline fits (if interpolators are present, plotted alongside discrete data)
+- Spline fits (if spline-backed `TimeSeries` state is present, plotted
+  alongside discrete data)
 
 Returns the matplotlib figure object.
 

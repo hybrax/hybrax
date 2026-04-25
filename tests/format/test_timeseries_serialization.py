@@ -35,6 +35,37 @@ def _ts(times, values):
     )
 
 
+def _nested_transform_metadata() -> dict:
+    adf_ts = TimeSeries(
+        times=jnp.array([0.0, 5.0, 10.0]),
+        values=jnp.array([1.0, 1.05, 1.1]),
+        jump_times=jnp.array([6.0]),
+        continuity_side="left",
+        metadata={"interp": "linear_plus_step", "jump_values": [0.2]},
+    )
+    feed_corr_ts = TimeSeries(
+        times=jnp.array([0.0, 5.0, 10.0]),
+        values=jnp.array([0.0, 0.4, 0.8]),
+        jump_times=jnp.array([6.0]),
+        continuity_side="left",
+        metadata={"interp": "linear_plus_step", "jump_values": [1.5]},
+    )
+    return {
+        "transform": {
+            "name": "pseudo_batch",
+            "species": "biomass",
+            "feed_corr_interp": "linear_plus_step",
+            "cstar_interp": "cubic",
+            "is_constant": False,
+            "constant_value": None,
+            "series": {
+                "adf_ts": adf_ts.to_dict(),
+                "feed_corr_ts": feed_corr_ts.to_dict(),
+            },
+        }
+    }
+
+
 def _build_process() -> BioProcess:
     return BioProcess(
         metadata=BioProcessMetadata(name="ts-ser", process_type="fed_batch"),
@@ -66,6 +97,7 @@ def _build_process() -> BioProcess:
                         breaks=jnp.array([0.0, 10.0]),
                         coeffs=jnp.array([[0.2, 0.19, 0.0, 0.0]]),
                         segment_start_piece_idx=jnp.array([0]),
+                        metadata=_nested_transform_metadata(),
                     ),
                     is_intracellular=False,
                 ),
@@ -144,3 +176,35 @@ def test_timeseries_payload_uses_times_only() -> None:
     payload = _timeseries_to_dict_payload(_ts([0.0, 1.0], [1.0, 2.0]))
     assert "times" in payload
     assert "timepoints" not in payload
+
+
+def test_nested_transform_metadata_roundtrips_as_canonical_dicts() -> None:
+    process = _build_process()
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        loaded = load_process_collection(out_dir)
+
+    stored_ts = payload["processes"]["p"]["reactor_medium"]["components"]["biomass"][
+        "concentration"
+    ]
+    transform = stored_ts["metadata"]["transform"]
+    assert isinstance(transform["series"]["adf_ts"], dict)
+    assert isinstance(transform["series"]["feed_corr_ts"], dict)
+    assert transform["series"]["adf_ts"]["continuity_side"] == "left"
+    assert transform["series"]["adf_ts"]["metadata"]["interp"] == "linear_plus_step"
+    assert transform["series"]["feed_corr_ts"]["metadata"]["jump_values"] == [1.5]
+
+    loaded_transform = (
+        loaded.processes["p"]
+        .reactor_medium.components["biomass"]
+        .concentration.metadata["transform"]
+    )
+    assert loaded_transform["series"]["adf_ts"] == transform["series"]["adf_ts"]
+    assert (
+        loaded_transform["series"]["feed_corr_ts"]
+        == transform["series"]["feed_corr_ts"]
+    )

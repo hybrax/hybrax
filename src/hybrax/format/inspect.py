@@ -247,7 +247,7 @@ def _print_process_variable_info(pv, prefix: str) -> None:
     elif hasattr(pv.values, "value"):  # StaticVariable
         print(f"{prefix}  Static Value: {pv.values.value}")
 
-    if pv.interpolator is not None:
+    if _has_spline_state(pv.values):
         print(f"{prefix}  Spline: available")
 
 
@@ -473,8 +473,8 @@ def _collect_process_panels(process: BioProcess):
       - for dynamic: 'x' (times array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
-      - optional: 'interpolator': Interpolator (if available)
-      - optional: 'interpolator_type': 'backtransform' | 'direct'
+      - optional: 'series': TimeSeries spline carrier (if available)
+      - optional: 'series_type': 'backtransform' | 'direct'
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0
     t_end = float(process.time_axis.end) if process.time_axis else 1.0
@@ -494,13 +494,21 @@ def _collect_process_panels(process: BioProcess):
                     "y": comp.concentration.values,
                     "render": "line",
                 }
-                if comp.interpolator is not None:
-                    panel["interpolator"] = comp.interpolator
-                    panel["interpolator_type"] = "backtransform"
+                if _has_spline_state(comp.concentration):
+                    panel["series"] = comp.concentration
+                    metadata = getattr(comp.concentration, "metadata", None)
+                    has_transform = (
+                        isinstance(metadata, dict) and "transform" in metadata
+                    )
+                    panel["series_type"] = (
+                        "backtransform" if has_transform else "direct"
+                    )
                 panels.append(panel)
             elif _is_spline_only_series(comp.concentration):
                 x = jnp.asarray(comp.concentration.breaks)
                 y = comp.concentration.evaluate_many(x)
+                metadata = getattr(comp.concentration, "metadata", None)
+                has_transform = isinstance(metadata, dict) and "transform" in metadata
                 panels.append(
                     {
                         "title": f"{comp.name}{unit_label}",
@@ -509,6 +517,8 @@ def _collect_process_panels(process: BioProcess):
                         "x": x,
                         "y": y,
                         "render": "line",
+                        "series": comp.concentration,
+                        "series_type": "backtransform" if has_transform else "direct",
                     }
                 )
             elif hasattr(comp.concentration, "value"):
@@ -536,9 +546,9 @@ def _collect_process_panels(process: BioProcess):
                     "y": pv.values.values,
                     "render": "line",
                 }
-                if pv.interpolator is not None:
-                    panel["interpolator"] = pv.interpolator
-                    panel["interpolator_type"] = "direct"
+                if _has_spline_state(pv.values):
+                    panel["series"] = pv.values
+                    panel["series_type"] = "direct"
                 panels.append(panel)
             elif _is_spline_only_series(pv.values):
                 x = jnp.asarray(pv.values.breaks)
@@ -551,6 +561,8 @@ def _collect_process_panels(process: BioProcess):
                         "x": x,
                         "y": y,
                         "render": "line",
+                        "series": pv.values,
+                        "series_type": "direct",
                     }
                 )
             elif hasattr(pv.values, "value"):
@@ -580,9 +592,9 @@ def _collect_process_panels(process: BioProcess):
                     "y": vc.values.values,
                     "render": render,
                 }
-                if getattr(vc, "interpolator", None) is not None:
-                    panel["interpolator"] = vc.interpolator
-                    panel["interpolator_type"] = "direct"
+                if _has_spline_state(vc.values):
+                    panel["series"] = vc.values
+                    panel["series_type"] = "direct"
                 panels.append(panel)
             elif vc.values is not None and _is_spline_only_series(vc.values):
                 x = jnp.asarray(vc.values.breaks)
@@ -595,6 +607,8 @@ def _collect_process_panels(process: BioProcess):
                         "x": x,
                         "y": y,
                         "render": "line",
+                        "series": vc.values,
+                        "series_type": "direct",
                     }
                 )
 
@@ -687,18 +701,16 @@ def _pad_constant_ylim(ax, values):
         ax.set_ylim(min(cur_lo, new_lo), max(cur_hi, new_hi))
 
 
-def _evaluate_interpolator_curve(
-    interpolator, interpolator_type, t_start, t_end, n_points=500
-):
-    """Evaluate an interpolator over [t_start, t_end] and return (t_plot, y_plot)."""
+def _evaluate_series_curve(series, series_type, t_start, t_end, n_points=500):
+    """Evaluate a spline-backed TimeSeries over [t_start, t_end]."""
     from .splines import build_backtransform_spline, evaluate_spline_at
 
     t_plot = np.linspace(t_start, t_end, n_points)
-    if interpolator_type == "backtransform":
-        bt = build_backtransform_spline(interpolator)
+    if series_type == "backtransform":
+        bt = build_backtransform_spline(series)
         y_plot = np.array([float(bt(jnp.array(t))) for t in t_plot])
     else:
-        y_plot = np.array([evaluate_spline_at(interpolator, t) for t in t_plot])
+        y_plot = np.array([evaluate_spline_at(series, t) for t in t_plot])
     return t_plot, y_plot
 
 
@@ -707,8 +719,8 @@ def _draw_panel(
 ):
     """Draw a single panel (dynamic or static) onto *ax*.
 
-    If the panel has an ``'interpolator'`` key, the interpolator curve is drawn and raw
-    data is shown as scatter points (no connecting lines).  Otherwise raw
+    If the panel has a ``'series'`` key, the spline/backtransform curve is drawn and raw
+    data is shown as scatter points (no connecting lines). Otherwise raw
     data is drawn with ``'o-'`` markers.
     """
     plot_kwargs = {}
@@ -720,7 +732,7 @@ def _draw_panel(
     if label is None:
         label = "data"
 
-    has_interpolator = "interpolator" in panel and panel["interpolator"] is not None
+    has_series = "series" in panel and panel["series"] is not None
 
     if panel["type"] == "dynamic":
         x = panel["x"]
@@ -759,19 +771,19 @@ def _draw_panel(
                     edgecolor="k",
                     color=bar_color,
                 )
-        elif has_interpolator and n <= 50:
-            # Scatter for raw data when an interpolator is available and few points
+        elif has_series and n <= 50:
+            # Scatter raw observations when a spline-backed series is available.
             ax.scatter(x, y, s=16, zorder=5, label=label, **plot_kwargs)
         else:
             fmt = "o-" if n <= 50 else "-"
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
 
-        # Draw interpolator curve
-        if has_interpolator and t_start is not None and t_end is not None:
+        # Draw spline/backtransform curve
+        if has_series and t_start is not None and t_end is not None:
             try:
-                t_plot, y_plot = _evaluate_interpolator_curve(
-                    panel["interpolator"],
-                    panel.get("interpolator_type", "direct"),
+                t_plot, y_plot = _evaluate_series_curve(
+                    panel["series"],
+                    panel.get("series_type", "direct"),
                     t_start,
                     t_end,
                 )
@@ -782,14 +794,13 @@ def _draw_panel(
                     color="red",
                     lw=1.5,
                     alpha=0.8,
-                    label="interpolator",
+                    label="spline",
                 )
             except Exception as e:
                 import warnings
 
                 warnings.warn(
-                    f"Could not evaluate interpolator for"
-                    f" {panel.get('title', '?')}: {e}"
+                    f"Could not evaluate spline for {panel.get('title', '?')}: {e}"
                 )
     else:
         ax.hlines(

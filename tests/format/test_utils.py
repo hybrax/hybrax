@@ -638,6 +638,61 @@ def test_plot_process_total_volume_supports_spline_only_volume_change():
     plt.close(fig)
 
 
+def test_plot_process_draws_curve_for_spline_only_series():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    spline_only = TimeSeries(
+        breaks=jnp.array([0.0, 1.0, 2.0]),
+        coeffs=jnp.array(
+            [
+                [0.0, 0.0, 1.0, 0.0],
+                [1.0, 2.0, 1.0, 0.0],
+            ]
+        ),
+        segment_start_piece_idx=jnp.array([0]),
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="curve", process_type="batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=2.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(
+            name="medium",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "curve": ReactorMediumComponent(
+                    name="curve",
+                    unit="g/L",
+                    concentration=spline_only,
+                    is_intracellular=False,
+                )
+            },
+        ),
+    )
+
+    fig = plot_process(process)
+    axes = [ax for ax in fig.axes if ax.get_visible()]
+    curve_ax = next(
+        ax for ax in axes if ax.get_title() == "curve [g/L] (ReactorMedium)"
+    )
+    lines = curve_ax.get_lines()
+
+    assert len(lines) == 1
+    assert len(lines[0].get_xdata()) == 500
+
+    x_dense = lines[0].get_xdata()
+    y_dense = lines[0].get_ydata()
+    idx_mid = int(np.argmin(np.abs(x_dense - 0.5)))
+    idx_right = int(np.argmin(np.abs(x_dense - 1.5)))
+    assert y_dense[idx_mid] == pytest.approx(0.25, abs=5e-3)
+    assert y_dense[idx_right] == pytest.approx(2.25, abs=5e-3)
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # plot_case_study smoke tests
 # ---------------------------------------------------------------------------

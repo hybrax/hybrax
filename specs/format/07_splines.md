@@ -30,7 +30,12 @@ c*(t) = c(t) · ADF(t) − fc(t)
 
 where
 
-- **`ADF(t)` — Accumulated Dilution Factor.** A multiplicative factor that re-normalises species concentrations to a common reference volume so that physical dilution of the broth is cancelled out. Formally it is the cumulative product of volume-ratio steps at each event that changes the "effective" reactor volume.
+- **`ADF(t)` — Accumulated Dilution Factor.** A multiplicative factor that
+  re-normalises species concentrations to a common reference volume so that
+  physical dilution of the broth is cancelled out. In the active
+  implementation it is represented as a `TimeSeries` with a piecewise-linear
+  baseline plus instantaneous bolus jumps: continuous feed changes ADF
+  smoothly, bolus feed adds true jumps, and pure sampling leaves ADF flat.
 - **`fc(t)` — feed correction.** The cumulative mass of the species that has been added by all feeds (continuous + bolus) up to time `t`, discounted by the ADF at each addition and normalised by the reactor volume:
   ```
   fc(t) = cumsum_streams( ADF · Δaccumulated_feed · c_in_feed / V_reactor )
@@ -82,8 +87,9 @@ The background densification is required because linear interpolation of ADF bet
 ## Implementation pipeline
 
 1. **`build_pseudobatch_inputs(process, species_name)`** — builds the dense grid, computes `reactor_volume_dense`, `accumulated_feed_dense`, `sample_volume_dense`, `concentration_in_feed`, then derives `adf_dense` via the sample-compensation formula, `adf_at_meas`, `feed_corr_at_meas`, `feed_corr_dense`, and `c_star = meas_conc · adf − cumsum(feed_term)` at the measurement times. Returns a dict.
-2. **`build_splines(inputs, process, species_name)`** — fits a cubic spline (or PCHIP, see below) through `(meas_times, c_star)`; calibrates the dense feed-correction trajectory to anchor exactly at `feed_corr_at_meas` at every measurement index; extracts deterministic bolus jumps at each event's ε-pair. Returns a runtime payload dict with `spline_cstar`, `adf_dense`, `feed_corr_base_*`, `feed_corr_jump_*`.
-3. **`evaluate_real_concentration(t_eval, splines)`** — evaluates `c(t) = (cs(t) + fc(t)) / ADF(t)` with ADF by `jnp.interp` on the dense grid, `fc` by `evaluate_linear_plus_step` (linear base + instantaneous jumps).
+2. **`build_splines(inputs, process, species_name)`** — fits a cubic spline (or PCHIP, see below) through `(meas_times, c_star)`; calibrates the dense feed-correction trajectory to anchor exactly at `feed_corr_at_meas` at every measurement index; extracts deterministic bolus jumps at each event's ε-pair; and splits both feed correction and ADF into a smooth baseline plus explicit jump metadata. Returns a runtime payload dict with `spline_cstar`, `adf_base_*`, `adf_jump_*`, `feed_corr_base_*`, `feed_corr_jump_*`.
+3. **`to_timeseries(inputs, splines, species_name)`** — converts the runtime pseudobatch payload into the canonical transformed `TimeSeries` carrier with nested `metadata["transform"]["series"]` payloads for `adf_ts` and `feed_corr_ts`.
+4. **`evaluate_real_concentration(t_eval, splines)`** — evaluates `c(t) = (cs(t) + fc(t)) / ADF(t)` with both ADF and discrete feed correction in `linear_plus_step` form (piecewise-linear base + instantaneous jumps).
 
 ### Cubic vs PCHIP fallback
 
@@ -125,7 +131,7 @@ For every discrete event at `t_event`, the dense grid contains `t_event ± _EPS`
 
 | Function | Description |
 |----------|-------------|
-| `fit_timeseries_spline(ts, boundaries, max_segments, max_ctrl_points)` | Fit a segmented cubic spline to a `TimeSeries`. Returns an `Interpolator`. |
+| `fit_timeseries_spline(ts, boundaries, max_segments, max_ctrl_points)` | Fit segmented spline state onto a `TimeSeries`. Returns a spline-backed `TimeSeries`. |
 | `choose_spline_kind(n_points)` | Returns `"smoothing_bspline"` (> `SMOOTHING_THRESHOLD` pts) or `"cubic_interp"` otherwise. |
 | `make_interpax_spline(t, y, bc_type)` | Create an `interpax.CubicSpline` from arrays. |
 | `make_pchip_spline(t, y)` | Create a monotonicity-preserving PCHIP spline from arrays. |
@@ -135,8 +141,8 @@ For every discrete event at `t_event`, the dense grid contains `t_event ± _EPS`
 
 | Function | Description |
 |----------|-------------|
-| `build_interpax_spline(rep)` | Reconstruct an `interpax.CubicSpline` from an `Interpolator`. |
-| `evaluate_spline_at(rep, t)` | Evaluate an `Interpolator` at a single time point. |
+| `build_interpax_spline(rep)` | Reconstruct per-segment `interpax.CubicSpline` objects from a spline-backed `TimeSeries`. |
+| `evaluate_spline_at(rep, t)` | Evaluate a spline-backed `TimeSeries` at a single time point. |
 | `evaluate_left_continuous_step(t, step_times, step_values)` | Left-continuous step function lookup. |
 | `evaluate_linear_plus_step(t, base_times, base_values, jump_times, jump_values)` | Piecewise-linear base plus left-continuous instantaneous jumps. |
 
@@ -153,9 +159,9 @@ For every discrete event at `t_event`, the dense grid contains `t_event ± _EPS`
 | Function | Description |
 |----------|-------------|
 | `build_pseudobatch_inputs(process, species_name)` | Build the dense grid, volumes, ADF (via the sample-compensation factor), feed-correction and `c_star` needed for pseudobatch normalisation. Returns a dict including `dense_times`, `adf_dense`, `sample_compensation_dense`, `c_star`, `feed_corr_at_meas`, `feed_corr_dense`. |
-| `build_splines(inputs, process=None, species_name=None)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: cubic/PCHIP `spline_cstar`, dense `feed_corr_base_*` + `feed_corr_jump_*` split, dense `adf_dense`. |
-| `evaluate_real_concentration(t_eval, splines)` | Evaluate the backtransformed real concentration using piecewise-linear ADF on the dense grid and linear-plus-step feed correction. |
-| `to_interpolator(inputs, splines, species_name)` | Convert the in-memory spline payload to a padded `Interpolator` with stored metadata (for serialisation). |
+| `build_splines(inputs, process=None, species_name=None)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: cubic/PCHIP `spline_cstar`, `feed_corr_base_*` + `feed_corr_jump_*`, and `adf_base_*` + `adf_jump_*`. |
+| `to_timeseries(inputs, splines, species_name)` | Convert the in-memory pseudobatch payload to the canonical transformed `TimeSeries` carrier used for serialization and runtime backtransform. |
+| `evaluate_real_concentration(t_eval, splines)` | Evaluate the backtransformed real concentration using linear-plus-step ADF and feed-correction semantics. |
 
 ### JAX-compatible backtransform classes
 
@@ -169,7 +175,8 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 
 Fields:
 - `c_star_spline` — interpax `CubicSpline` or `PchipInterpolator` for `c*`
-- `adf_times`, `adf_values` — step function data for ADF
+- `adf_times`, `adf_values` — ADF baseline knots/values
+- `adf_jump_times`, `adf_jump_values` — instantaneous ADF bolus jumps
 - `fc_spline`, `fc_times`, `fc_values` — feed correction baseline
 - `fc_jump_times`, `fc_jump_values` — discrete feed-correction jumps (linear_plus_step mode)
 - `is_constant` — bypass flag for constant-concentration species
@@ -179,7 +186,7 @@ Methods:
 - `__call__(t)` — evaluate backtransformed concentration
 - `derivative()` — return a callable for `dc/dt`
 
-Build with `build_backtransform_spline(rep)` from a stored `Interpolator`.
+Build with `build_backtransform_spline(rep)` from a transformed `TimeSeries`.
 
 #### `BatchedBacktransformSpline`
 
@@ -213,7 +220,7 @@ process = dataset.case_studies["martens_2025_f"].processes["run_1"]
 # Build pseudobatch inputs + runtime spline payload for one species
 inputs = bp.splines.build_pseudobatch_inputs(process, "glucose")
 splines = bp.splines.build_splines(inputs, process, "glucose")
-interpolator = bp.splines.to_interpolator(inputs, splines, "glucose")
+series = bp.splines.to_timeseries(inputs, splines, "glucose")
 ```
 
 ### Inspecting ADF and `S(t)`
@@ -238,7 +245,7 @@ import jax
 import jax.numpy as jnp
 from bp_format.splines import build_backtransform_spline
 
-bt = build_backtransform_spline(interpolator)
+bt = build_backtransform_spline(series)
 
 # Evaluate at a single time (works inside jax.jit)
 c_glucose = bt(5.0)
@@ -275,6 +282,6 @@ Outliers beyond this range (e.g. `10_martens_2025_f` glucose at its sharpest pea
 
 - [TimeSeries](06_time_series.md) — the underlying data container
 - [Mechanistic](08_mechanistic.md) — consumes splines for ODE integration
-- [Data Model](02_data_model.md) — `Interpolator` and `DiscreteEvents` dataclasses
+- [Data Model](02_data_model.md) — `TimeSeries`, `VolumeChange`, and `DiscreteEvents`
 - [Design Rationale](01_design_rationale.md#5-pseudobatch-normalization) — mathematical background
 - [`pseudobatch`](https://github.com/viktorht/pseudobatch) — upstream library (`accumulated_dilution_factor`, `pseudobatch_transform`)

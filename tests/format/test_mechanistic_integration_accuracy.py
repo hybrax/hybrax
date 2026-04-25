@@ -4,8 +4,9 @@ These tests guard against silent regressions in the mechanistic q-inversion
 and forward-integration pipeline. Each test:
 
 1. Loads a frozen single-process dataset JSON from ``tests/fixtures/``.
-2. Builds pseudobatch ReactorMediumComponent interpolators (these are what
-   ``build_state_splines`` consumes for the backtransform spline).
+2. Builds pseudobatch ReactorMediumComponent ``TimeSeries`` carriers with
+   transform metadata (these are what ``build_state_splines`` consumes for the
+   backtransform spline).
 3. Builds the RHS ODE + estimates ``q(t)`` on a dense event-scaled grid.
 4. Fits a cubic q-spline and forward-integrates via ``integrate_process``.
 5. Asserts the per-species nRMSE vs the original measurements is below the
@@ -36,7 +37,7 @@ from bp_format.splines import (
     build_pseudobatch_inputs,
     build_splines,
     make_interpax_spline,
-    to_interpolator,
+    to_timeseries,
 )
 
 
@@ -51,17 +52,14 @@ def _wrap_q_as_rates(mb, q_func):
     return rates_func
 
 
-def _attach_interpolators(process):
-    """Fit pseudobatch interpolators for every reactor-medium component whose
-    concentration is a TimeSeries, and attach them in-place. Mirrors step 2a
-    of ``examples/00_combined/04_spline_serialization/01_serialize_splines.py``.
-    """
+def _attach_pseudobatch_series(process):
+    """Fit pseudobatch TimeSeries carriers for each measured reactor component."""
     for comp_name, comp in process.reactor_medium.components.items():
         if not hasattr(comp.concentration, "times"):
             continue
         inputs = build_pseudobatch_inputs(process, comp_name)
         spl = build_splines(inputs, process, comp_name)
-        comp.interpolator = to_interpolator(inputs, spl, comp_name)
+        comp.concentration = to_timeseries(inputs, spl, comp_name)
 
 
 def _run_mechanistic_pipeline(fixture_dir: Path, *, mutator=None) -> dict:
@@ -72,16 +70,23 @@ def _run_mechanistic_pipeline(fixture_dir: Path, *, mutator=None) -> dict:
     the combined ``rms`` summary.
 
     ``mutator`` is an optional callable invoked on the loaded ``BioProcess``
-    before interpolators are attached, used by intracellular-variant tests.
+    before pseudobatch TimeSeries carriers are attached, used by
+    intracellular-variant tests.
     """
-    dataset = bp_format.serialization.load_dataset_json(
-        str(fixture_dir / "data.json")
-    )
+    dataset = bp_format.serialization.load_dataset_json(str(fixture_dir / "data.json"))
     case_study = next(iter(dataset.case_studies.values()))
     process = next(iter(case_study.processes.values()))
     if mutator is not None:
         mutator(process)
-    _attach_interpolators(process)
+    observations = {
+        sp_name: (
+            np.asarray(comp.concentration.times, dtype=float).copy(),
+            np.asarray(comp.concentration.values, dtype=float).copy(),
+        )
+        for sp_name, comp in process.reactor_medium.components.items()
+        if hasattr(comp.concentration, "times")
+    }
+    _attach_pseudobatch_series(process)
 
     ctrl = bpm.get_control_splines(process)
     mb = bpm.get_rhs_ode(process)
@@ -103,16 +108,12 @@ def _run_mechanistic_pipeline(fixture_dir: Path, *, mutator=None) -> dict:
     rates_func = _wrap_q_as_rates(mb, q_func)
 
     t_eval_int = np.linspace(t_start, t_end, 200)
-    result = bpm.integrate_process(
-        process, ctrl, mb, rates_func, t_eval_int
-    )
+    result = bpm.integrate_process(process, ctrl, mb, rates_func, t_eval_int)
 
     metrics: dict = {"species": {}}
     rms_acc = []
     for i, sp_name in enumerate(mb.reactor_component_state_names):
-        ts = process.reactor_medium.components[sp_name].concentration
-        t_m = np.asarray(ts.times, dtype=float)
-        v_m = np.asarray(ts.values, dtype=float)
+        t_m, v_m = observations[sp_name]
         v_p = np.interp(t_m, np.asarray(result["t"]), np.asarray(result["c"][:, i]))
         rmse = float(np.sqrt(np.mean((v_p - v_m) ** 2)))
         rng = float(v_m.max() - v_m.min())
@@ -302,21 +303,31 @@ def _assert_dual_path_dcdt_equivalence(process, *, n_samples: int = 5, seed: int
             c[mb_auto.biomass_idx] = float(intra_sum + rng.uniform(0.5, 2.0))
         rates_auto = rng.uniform(-0.3, 0.3, size=mb_auto.q_size).astype(np.float64)
         u_flow = rng.uniform(0.0, 0.05, size=mb_auto.u_flow_size).astype(np.float64)
-        f_modeled = rng.uniform(0.0, 0.05, size=mb_auto.f_modeled_size).astype(np.float64)
+        f_modeled = rng.uniform(0.0, 0.05, size=mb_auto.f_modeled_size).astype(
+            np.float64
+        )
         r = jnp.zeros(mb_auto.r_size)
         ctrl_pv_values = jnp.zeros(mb_user.n_controlled_pv)
 
         dc_auto = mb_auto(
-            jnp.asarray(c), jnp.asarray(rates_auto),
-            jnp.asarray(u_flow), jnp.asarray(f_modeled), r,
+            jnp.asarray(c),
+            jnp.asarray(rates_auto),
+            jnp.asarray(u_flow),
+            jnp.asarray(f_modeled),
+            r,
         )
         dc_user = mb_user(
-            jnp.asarray(c), jnp.asarray(rates_auto),
-            jnp.asarray(u_flow), jnp.asarray(f_modeled), ctrl_pv_values,
+            jnp.asarray(c),
+            jnp.asarray(rates_auto),
+            jnp.asarray(u_flow),
+            jnp.asarray(f_modeled),
+            ctrl_pv_values,
         )
         np.testing.assert_allclose(
-            np.asarray(dc_user), np.asarray(dc_auto),
-            rtol=1e-5, atol=1e-7,
+            np.asarray(dc_user),
+            np.asarray(dc_auto),
+            rtol=1e-5,
+            atol=1e-7,
             err_msg=f"dual-path dc/dt mismatch on sample c={c}, rates={rates_auto}",
         )
 

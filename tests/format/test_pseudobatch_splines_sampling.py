@@ -29,7 +29,7 @@ from bp_format import (
 from bp_format.splines import (
     build_pseudobatch_inputs,
     build_splines,
-    to_interpolator,
+    to_timeseries,
     build_backtransform_spline,
 )
 
@@ -47,10 +47,10 @@ def _ts(t, v):
 
 
 def _fit_and_get_rep(proc, species):
-    """Run full pipeline: inputs -> splines -> Interpolator."""
+    """Run full pipeline: inputs -> splines -> TimeSeries carrier."""
     inputs = build_pseudobatch_inputs(proc, species)
     splines = build_splines(inputs, proc, species)
-    return to_interpolator(inputs, splines, species)
+    return to_timeseries(inputs, splines, species)
 
 
 # ---------------------------------------------------------------------------

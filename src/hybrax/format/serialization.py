@@ -16,7 +16,6 @@ from .dataclasses import (
     Bounds,
     TimeSeries,
     TimeAxis,
-    Interpolator,
     DiscreteEvents,
     FeedMedium,
     FeedMediumComponent,
@@ -68,6 +67,7 @@ def _dict_to_biological_ode(data: Dict) -> BiologicalOde:
         },
         derivatives=dict(data.get("derivatives", {})),
     )
+
 
 DEFAULT_JSON_FILENAME = "data.json"
 DEFAULT_JSON_GZ_FILENAME = "data.json.gz"
@@ -373,9 +373,6 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "unit": comp.unit,
         "is_intracellular": comp.is_intracellular,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
-        "interpolator": _interpolator_to_dict(comp.interpolator)
-        if comp.interpolator is not None
-        else None,
     }
     bounds_dict = _bounds_to_dict(comp.bounds)
     if bounds_dict is not None:
@@ -390,9 +387,6 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
         "unit": pv.unit,
         "is_controlled": pv.is_controlled,
         "values": _timeseries_or_static_to_dict(pv.values),
-        "interpolator": _interpolator_to_dict(pv.interpolator)
-        if pv.interpolator is not None
-        else None,
     }
     bounds_dict = _bounds_to_dict(pv.bounds)
     if bounds_dict is not None:
@@ -479,11 +473,6 @@ def _volume_change_to_dict(vc) -> Dict:
     else:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
 
-    result["interpolator"] = (
-        _interpolator_to_dict(vc.interpolator)
-        if getattr(vc, "interpolator", None) is not None
-        else None
-    )
     return result
 
 
@@ -596,8 +585,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
         parent = p_data.get("parent_process")
         if not isinstance(parent, str) or not parent:
             raise ValueError(
-                "AugmentedBioProcess payload missing required "
-                "'parent_process' string"
+                "AugmentedBioProcess payload missing required 'parent_process' string"
             )
         return AugmentedBioProcess(
             metadata=metadata,
@@ -638,32 +626,26 @@ def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
 
 def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     """Reconstruct ReactorMediumComponent from dictionary"""
-    interpolator = None
-    interpolator_data = comp_data.get("interpolator")
-    if interpolator_data is not None:
-        interpolator = _dict_to_interpolator(interpolator_data)
+    _reject_legacy_interpolator_payload(
+        comp_data.get("interpolator"), "ReactorMediumComponent"
+    )
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
         is_intracellular=comp_data["is_intracellular"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
-        interpolator=interpolator,
         bounds=_dict_to_bounds(comp_data.get("bounds")),
     )
 
 
 def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
     """Reconstruct ProcessVariable from dictionary"""
-    interpolator = None
-    interpolator_data = pv_data.get("interpolator")
-    if interpolator_data is not None:
-        interpolator = _dict_to_interpolator(interpolator_data)
+    _reject_legacy_interpolator_payload(pv_data.get("interpolator"), "ProcessVariable")
     return ProcessVariable(
         name=pv_data["name"],
         unit=pv_data["unit"],
         is_controlled=pv_data["is_controlled"],
         values=_dict_to_timeseries_or_static(pv_data["values"]),
-        interpolator=interpolator,
         bounds=_dict_to_bounds(pv_data.get("bounds")),
     )
 
@@ -749,22 +731,26 @@ def _dict_to_volume_change(vc_data: Dict):
         values=values,
     )
 
-    interpolator = None
-    interpolator_data = vc_data.get("interpolator")
-    if interpolator_data is not None:
-        interpolator = _dict_to_interpolator(interpolator_data)
+    _reject_legacy_interpolator_payload(vc_data.get("interpolator"), "VolumeChange")
 
     if vc_type == "FeedVolumeChange":
         feed_medium = None
         if vc_data.get("feed_medium"):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-        return FeedVolumeChange(
-            **common, feed_medium=feed_medium, interpolator=interpolator
-        )
+        return FeedVolumeChange(**common, feed_medium=feed_medium)
     elif vc_type == "SampleVolumeChange":
-        return SampleVolumeChange(**common, interpolator=interpolator)
+        return SampleVolumeChange(**common)
     else:
         raise ValueError(f"Unknown volume change type: {vc_type}")
+
+
+def _reject_legacy_interpolator_payload(interpolator_data: Dict | None, owner: str):
+    """Reject legacy sibling ``interpolator`` payloads loudly."""
+    if interpolator_data is not None:
+        raise ValueError(
+            "Legacy sibling 'interpolator' payloads are no longer supported for "
+            f"{owner}. Regenerate datasets with TimeSeries-only spline storage."
+        )
 
 
 def _dict_to_feed_medium(feed_data: Dict) -> FeedMedium:
@@ -793,125 +779,8 @@ def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
 
 
 # ============================================================
-# Interpolator and DiscreteEvents serialization helpers
+# DiscreteEvents serialization helpers
 # ============================================================
-
-_SEGMENTED_INTERPOLATOR_KINDS = {
-    "interpax_cubic",
-    "interpax_linear",
-}
-
-
-def _interpolator_to_dict(interpolator: Interpolator) -> Dict:
-    """Convert Interpolator to dictionary (compact JSON form)."""
-    result = {"kind": interpolator.kind}
-
-    if interpolator.kind in _SEGMENTED_INTERPOLATOR_KINDS:
-        n_seg = int(interpolator.n_segments or 0)
-        n_per_seg = [int(interpolator.n[i]) for i in range(n_seg)]
-        result.update(
-            {
-                "x": [
-                    np.asarray(interpolator.x[i, : n_per_seg[i]]).tolist()
-                    for i in range(n_seg)
-                ],
-                "y": [
-                    np.asarray(interpolator.y[i, : n_per_seg[i]]).tolist()
-                    for i in range(n_seg)
-                ],
-                "n": n_per_seg,
-                "n_segments": n_seg,
-                "segment_boundaries": np.asarray(
-                    interpolator.segment_boundaries[: n_seg + 1]
-                ).tolist(),
-                "bc_type": interpolator.bc_type,
-            }
-        )
-    elif interpolator.kind == "interpax_ppoly":
-        result.update(
-            {
-                "x": np.asarray(interpolator.x).tolist(),
-                "coefficients": np.asarray(interpolator.coefficients).tolist(),
-                "extrapolate": interpolator.extrapolate,
-            }
-        )
-    else:
-        raise ValueError(
-            f"Unsupported interpolator kind for serialization: {interpolator.kind}"
-        )
-
-    result["interpolator_metadata"] = interpolator.interpolator_metadata
-    return result
-
-
-def _dict_to_interpolator(data: Dict) -> Interpolator:
-    """Reconstruct Interpolator from compact dictionary formats."""
-    kind = data["kind"]
-    metadata = data.get("interpolator_metadata")
-
-    if kind == "interpax_ppoly":
-        x_raw = data["x"]
-        coeff_raw = data["coefficients"]
-        x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
-        coefficients = (
-            coeff_raw if isinstance(coeff_raw, jnp.ndarray) else jnp.array(coeff_raw)
-        )
-        return Interpolator(
-            kind=kind,
-            x=x,
-            coefficients=coefficients,
-            extrapolate=data.get("extrapolate", True),
-            interpolator_metadata=metadata,
-        )
-
-    n_segments = data["n_segments"]
-    x_raw = data["x"]
-    y_raw = data["y"]
-    n_raw = data["n"]
-    seg_b_raw = data["segment_boundaries"]
-
-    is_unpadded = (
-        isinstance(x_raw, list) and len(x_raw) > 0 and isinstance(x_raw[0], list)
-    )
-
-    if is_unpadded:
-        n_per_seg = [int(v) for v in n_raw]
-        max_ctrl = max(len(row) for row in x_raw)
-
-        x = np.zeros((n_segments, max_ctrl))
-        y = np.zeros((n_segments, max_ctrl))
-        for i in range(n_segments):
-            ni = len(x_raw[i])
-            x[i, :ni] = x_raw[i]
-            y[i, :ni] = y_raw[i]
-
-        n_arr = np.array(n_per_seg, dtype=int)
-        seg_b = np.zeros(n_segments + 1)
-        for i, v in enumerate(seg_b_raw):
-            seg_b[i] = v
-
-        x = jnp.array(x)
-        y = jnp.array(y)
-        n_arr = jnp.array(n_arr)
-        seg_b = jnp.array(seg_b)
-    else:
-        x = x_raw if isinstance(x_raw, jnp.ndarray) else jnp.array(x_raw)
-        y = y_raw if isinstance(y_raw, jnp.ndarray) else jnp.array(y_raw)
-        n_arr = n_raw if isinstance(n_raw, jnp.ndarray) else jnp.array(n_raw)
-        seg_b = (
-            seg_b_raw if isinstance(seg_b_raw, jnp.ndarray) else jnp.array(seg_b_raw)
-        )
-
-    return Interpolator(
-        kind=kind,
-        x=x,
-        y=y,
-        n=n_arr,
-        n_segments=n_segments,
-        segment_boundaries=seg_b,
-        bc_type=data.get("bc_type", "natural"),
-        interpolator_metadata=metadata,
-    )
 
 
 def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
