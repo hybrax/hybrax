@@ -313,6 +313,8 @@ def test_runlogger_csv_sink_writes_header_for_zero_step_run(tmp_path):
         "process_names",
         "step_dt",
         "rebuild_count",
+        "monitor_loss",
+        "monitor_label",
     ]
     assert rows.empty
 

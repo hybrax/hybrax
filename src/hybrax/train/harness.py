@@ -77,6 +77,11 @@ class TrainHarnessConfig:
     # Checkpointing (periodic wrapper snapshot + loss curve).
     # When set, cadence ties to log_every; pass None to disable.
     checkpoint_dir: Path | None = None
+    # Optional monitor / validation set: a tuple of process names whose loss
+    # is evaluated every `log_every` steps with the current wrapper. Diagnostic
+    # only — never drives optimizer updates. None disables the monitor.
+    monitor_processes: tuple[str, ...] | None = None
+    monitor_label: str = "validation"
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,10 @@ class TrainHarnessResult:
     step_time_seconds: tuple[float, ...]
     train_step_input_signature: tuple[object, ...]
     train_step_rebuild_count: int
+    # Optional monitor (validation) loss series, populated only when
+    # `TrainHarnessConfig.monitor_processes` is set. Maps step -> loss.
+    monitor_loss_by_log_step: dict[int, float] = dataclasses.field(default_factory=dict)
+    monitor_label: str | None = None
 
 
 def _ensure_process_names(
@@ -891,6 +900,31 @@ def train_collection(
     )
     loss_so_far: list[float] = []
 
+    # Optional monitor (validation) batch — diagnostic only, recomputed at
+    # log-step cadence with the current wrapper. JIT compiles once on first
+    # use because the batch shape is stable across log steps.
+    monitor_batch = None
+    monitor_jump_ts_rows = None
+    if cfg.monitor_processes:
+        monitor_unknown = [
+            n for n in cfg.monitor_processes if n not in store.process_order
+        ]
+        if monitor_unknown:
+            raise ValueError(
+                f"monitor_processes contains unknown names: {monitor_unknown}; "
+                f"available={tuple(store.process_order)}"
+            )
+        monitor_indices = jnp.asarray(
+            [store.process_order.index(name) for name in cfg.monitor_processes],
+            dtype=jnp.int32,
+        )
+        monitor_batch = store.gather_batch(monitor_indices)
+        if cfg.solver_use_jump_ts:
+            monitor_jump_ts_rows = clamp_padded_time_rows(
+                store.controls_store.step_ts[monitor_batch.process_indices],
+                store.controls_store.step_ts_lengths[monitor_batch.process_indices],
+            )
+
     with RunLogger(
         log_every=int(cfg.log_every),
         log_process_losses=bool(cfg.log_process_losses),
@@ -941,6 +975,25 @@ def train_collection(
                 store.process_order[int(i)]
                 for i in np.asarray(batch.process_indices).tolist()
             )
+
+            # Monitor / validation loss at log-step cadence (cheap: one
+            # forward pass per `log_every` training steps).
+            monitor_loss_value: float | None = None
+            if monitor_batch is not None and (step_index + 1) % int(cfg.log_every) == 0:
+                m_total, _m_per_target, _m_per_sample = effective_batched_loss_fn(
+                    wrapper,
+                    monitor_batch,
+                    batch_controls,
+                    batched_Cin,
+                    batched_Cin_modeled,
+                    monitor_jump_ts_rows,
+                    max_solver_steps=int(cfg.solver_max_steps),
+                    solver_rtol=float(cfg.solver_rtol),
+                    solver_atol=float(cfg.solver_atol),
+                )
+                jax.block_until_ready(m_total)
+                monitor_loss_value = float(m_total)
+
             run_log.record_step(
                 StepRecord(
                     step=step_index + 1,
@@ -956,6 +1009,8 @@ def train_collection(
                     process_names=batch_names,
                     step_dt=float(step_dt),
                     rebuild_count=int(rebuild_count),
+                    monitor_loss=monitor_loss_value,
+                    monitor_label=cfg.monitor_label if monitor_loss_value is not None else None,
                 )
             )
 

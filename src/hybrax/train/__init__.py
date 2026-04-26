@@ -10,10 +10,22 @@ from .trainer import (
     simulate_measurement_states,
 )
 from .harness import (
+    ForwardConfig,
+    ForwardResult,
     TrainHarnessConfig,
     TrainHarnessResult,
+    forward_from_collection,
     train_collection,
+    train_from_collection,
     train_from_prepared_json,
+)
+from .loo import (
+    FoldResult,
+    LOOConfig,
+    LOOResult,
+    run_loo_cv,
+    run_loo_fold,
+    run_loo_from_prepared_json,
 )
 
 __all__ = [
@@ -31,10 +43,20 @@ __all__ = [
     "SingleSampleResult",
     "evaluate_sample_from_arrays",
     "DefaultReactionModule",
+    "ForwardConfig",
+    "ForwardResult",
     "TrainHarnessConfig",
     "TrainHarnessResult",
+    "forward_from_collection",
     "train_collection",
+    "train_from_collection",
     "train_from_prepared_json",
+    "FoldResult",
+    "LOOConfig",
+    "LOOResult",
+    "run_loo_cv",
+    "run_loo_fold",
+    "run_loo_from_prepared_json",
     "load_raw_collection",
     "prepare_artifact",
 ]

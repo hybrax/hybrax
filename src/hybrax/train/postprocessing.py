@@ -343,8 +343,15 @@ def plot_loss_curve(
     output_path: str | Path,
     *,
     title: str = "Training loss",
+    monitor_loss_by_step: dict[int, float] | None = None,
+    monitor_label: str | None = None,
 ) -> None:
-    """Draw a loss-vs-step curve on a log-y axis and save as PNG."""
+    """Draw a loss-vs-step curve on a log-y axis and save as PNG.
+
+    If ``monitor_loss_by_step`` is provided, plots a second curve at the
+    log-step samples it contains (e.g. validation/holdout loss from the
+    harness monitor).
+    """
     import matplotlib.pyplot as plt
 
     output_path = Path(output_path)
@@ -352,7 +359,27 @@ def plot_loss_curve(
 
     fig, ax = plt.subplots(figsize=(6, 4))
     if len(losses) > 0:
-        ax.plot(range(1, len(losses) + 1), list(losses))
+        ax.plot(
+            range(1, len(losses) + 1),
+            list(losses),
+            label="train",
+            color="C0",
+        )
+    if monitor_loss_by_step:
+        steps = sorted(monitor_loss_by_step.keys())
+        values = [monitor_loss_by_step[s] for s in steps]
+        ax.plot(
+            steps,
+            values,
+            marker="o",
+            linestyle="--",
+            color="C1",
+            label=monitor_label or "validation",
+        )
+        ax.legend(loc="best")
+    elif len(losses) > 0:
+        # No monitor curve: don't bother with a single-entry legend.
+        pass
     ax.set_xlabel("Step")
     ax.set_ylabel("Mean loss (MSE)")
     ax.set_title(title)
@@ -381,7 +408,12 @@ def plot_training_results(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    plot_loss_curve(result.mean_loss_by_step, output_dir / "loss_curve.png")
+    plot_loss_curve(
+        result.mean_loss_by_step,
+        output_dir / "loss_curve.png",
+        monitor_loss_by_step=getattr(result, "monitor_loss_by_log_step", None) or None,
+        monitor_label=getattr(result, "monitor_label", None),
+    )
 
     plot_process_simulations(
         result.trained_wrapper,

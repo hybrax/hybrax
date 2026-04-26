@@ -17,6 +17,8 @@ from .harness import (
     forward_from_collection,
     train_from_collection,
 )
+from .loo import LOOConfig, run_loo_cv
+from .loo_metrics import compute_loo_metrics
 from .postprocessing import (
     load_model_metadata,
     plot_process_simulations,
@@ -371,6 +373,185 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     forward_parser.set_defaults(handler=_handle_forward)
 
+    # ---- loo ----
+    loo_parser = subparsers.add_parser(
+        "loo",
+        help=(
+            "Run leave-one-process-out cross-validation: train one fold per "
+            "parent process group, evaluate each fold's holdout, and "
+            "aggregate results."
+        ),
+    )
+    loo_parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to prepared JSON.",
+    )
+    loo_parser.add_argument(
+        "--custom",
+        help="Optional custom.py path exposing build_reaction_module hooks.",
+    )
+    loo_parser.add_argument(
+        "--config",
+        help="Optional JSON runtime config.",
+    )
+    loo_parser.add_argument(
+        "--holdouts",
+        action="append",
+        default=[],
+        help=(
+            "Parent process names to use as holdouts. Repeatable or "
+            "comma-separated. Defaults to all parents. Pass exactly one "
+            "name to run a single fold (cluster-friendly)."
+        ),
+    )
+    loo_parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        help=(
+            "Target variable name to train against. Repeatable or "
+            "comma-separated."
+        ),
+    )
+    loo_parser.add_argument(
+        "--target-source",
+        default=train_cfg_defaults.target_source,
+        choices=sorted(TARGET_SOURCES),
+        help="Source family for training targets.",
+    )
+    loo_parser.add_argument(
+        "--steps",
+        type=int,
+        default=train_cfg_defaults.steps,
+        help="Number of training steps per fold.",
+    )
+    loo_parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="Batch size. Defaults to the number of training processes per fold.",
+    )
+    loo_parser.add_argument(
+        "--batch-seed",
+        type=int,
+        help="Seed used for batch index generation (per fold).",
+    )
+    loo_parser.add_argument(
+        "--optimizer",
+        default=train_cfg_defaults.optimizer_name,
+        choices=["adam", "sgd"],
+        help="Optimizer to use for batched updates.",
+    )
+    loo_shuffle_group = loo_parser.add_mutually_exclusive_group()
+    loo_shuffle_group.add_argument(
+        "--shuffle-batches",
+        dest="shuffle_batches",
+        action="store_true",
+        help="Shuffle selected processes when building batches.",
+    )
+    loo_shuffle_group.add_argument(
+        "--no-shuffle-batches",
+        dest="shuffle_batches",
+        action="store_false",
+        help="Keep batch construction deterministic and round-robin.",
+    )
+    loo_parser.set_defaults(shuffle_batches=train_cfg_defaults.shuffle_batches)
+    loo_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=train_cfg_defaults.learning_rate,
+        help="Learning rate (overridden by build_learning_rate hook).",
+    )
+    loo_parser.add_argument(
+        "--grad-clip-norm",
+        type=float,
+        default=train_cfg_defaults.grad_clip_norm,
+        help="Global gradient-norm clipping threshold; 0 disables clipping.",
+    )
+    loo_parser.add_argument(
+        "--seed",
+        type=int,
+        default=train_cfg_defaults.seed,
+        help=(
+            "Base seed. Each fold uses seed = base + fold_idx so different "
+            "folds get distinct, deterministic initializations."
+        ),
+    )
+    loo_parser.add_argument(
+        "--log-every",
+        type=int,
+        default=train_cfg_defaults.log_every,
+        help="Emit progress log every N steps.",
+    )
+    loo_parser.add_argument(
+        "--solver-max-steps",
+        type=int,
+        default=train_cfg_defaults.solver_max_steps,
+    )
+    loo_parser.add_argument(
+        "--solver-rtol",
+        type=float,
+        default=train_cfg_defaults.solver_rtol,
+    )
+    loo_parser.add_argument(
+        "--solver-atol",
+        type=float,
+        default=train_cfg_defaults.solver_atol,
+    )
+    loo_parser.add_argument(
+        "--no-jump-ts",
+        action="store_true",
+        help="Disable passing control step boundaries as jump_ts to the solver.",
+    )
+    loo_parser.add_argument(
+        "--output-dir",
+        default="output/loo",
+        help="Directory for fold artifacts (default: ./output/loo).",
+    )
+    loo_parser.add_argument(
+        "--checkpoint-dir",
+        default=None,
+        help=(
+            "Per-fold checkpoint directory under each fold's output. "
+            "Defaults to <fold_dir>/checkpoints. Empty string disables."
+        ),
+    )
+    loo_plot_group = loo_parser.add_mutually_exclusive_group()
+    loo_plot_group.add_argument(
+        "--plot",
+        dest="plot",
+        action="store_true",
+        help="Generate per-fold result plots (default).",
+    )
+    loo_plot_group.add_argument(
+        "--no-plot",
+        dest="plot",
+        action="store_false",
+        help="Skip plot generation.",
+    )
+    loo_parser.set_defaults(plot=True)
+    loo_parser.add_argument(
+        "--log-process-losses",
+        action="store_true",
+        default=train_cfg_defaults.log_process_losses,
+    )
+    loo_parser.add_argument(
+        "--log-decimals",
+        type=int,
+        default=train_cfg_defaults.log_decimals,
+    )
+    loo_parser.add_argument(
+        "--log-header-every",
+        type=int,
+        default=train_cfg_defaults.log_header_every,
+    )
+    loo_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+    loo_parser.set_defaults(handler=_handle_loo)
+
     return parser
 
 
@@ -403,11 +584,25 @@ def _write_train_results(
     custom_py: str | None,
     training_process_names: tuple[str, ...],
     render_plots: bool,
-) -> None:
+    eval_process_names: tuple[str, ...] | None = None,
+) -> ForwardResult:
+    """Write per-run forward artifacts (losses.csv, predictions.csv, plots).
+
+    By default forward runs on ``training_process_names``. Pass
+    ``eval_process_names`` (e.g. for LOO, where holdout processes also need
+    losses) to evaluate a different set; the train/holdout split label in
+    ``losses.csv`` is always derived from ``training_process_names``.
+
+    Returns the :class:`ForwardResult` so callers can reuse per-process
+    losses without rerunning the forward pass.
+    """
     log = logging.getLogger(__name__)
+    eval_processes = (
+        eval_process_names if eval_process_names is not None else training_process_names
+    )
 
     fwd_cfg = ForwardConfig(
-        process_names=training_process_names,
+        process_names=eval_processes,
         target_variable_order=config.target_variable_order,
         target_source=config.target_source,
         solver_max_steps=config.solver_max_steps,
@@ -443,14 +638,14 @@ def _write_train_results(
             solver_use_jump_ts=config.solver_use_jump_ts,
             timeseries_csv_path=predictions_csv_path,
         )
-        return
+        return fwd_result
 
     plot_process_simulations(
         trained_wrapper,
         collection,
         fwd_result.store,
         output_dir,
-        process_names=training_process_names,
+        process_names=eval_processes,
         solver_max_steps=config.solver_max_steps,
         solver_rtol=config.solver_rtol,
         solver_atol=config.solver_atol,
@@ -459,6 +654,7 @@ def _write_train_results(
         timeseries_csv_path=predictions_csv_path,
         render_plots=False,
     )
+    return fwd_result
 
 
 def _handle_train(args: argparse.Namespace) -> int:
@@ -811,6 +1007,81 @@ def _handle_forward(args: argparse.Namespace) -> int:
             timeseries_csv_path=args.timeseries_csv,
         )
 
+    return 0
+
+
+def _handle_loo(args: argparse.Namespace) -> int:
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    log = logging.getLogger(__name__)
+
+    collection = load_process_collection_json(Path(args.input))
+    runtime_config = _load_config(args.config)
+    custom_module = load_custom_module(args.custom)
+    selected_holdouts_raw = _split_multi_values(args.holdouts)
+    selected_targets = _split_multi_values(args.target)
+    user_config = resolve_config(custom_module, None)
+    config_targets = user_config.get("target_variable_order")
+    if selected_targets:
+        effective_targets = selected_targets
+    elif config_targets:
+        effective_targets = tuple(config_targets)
+    else:
+        effective_targets = None
+
+    output_dir = Path(args.output_dir)
+    if args.checkpoint_dir is None:
+        # default: per-fold <fold_dir>/checkpoints (resolved inside loo.py)
+        base_checkpoint_dir: Path | None = output_dir
+    elif str(args.checkpoint_dir) == "":
+        base_checkpoint_dir = None
+    else:
+        base_checkpoint_dir = Path(args.checkpoint_dir)
+
+    base_train_config = TrainHarnessConfig(
+        process_names=None,  # set per-fold inside loo.py
+        target_variable_order=effective_targets,
+        target_source=args.target_source,
+        steps=args.steps,
+        batch_size=args.batch_size,
+        shuffle_batches=args.shuffle_batches,
+        batch_seed=args.batch_seed,
+        optimizer_name=args.optimizer,
+        learning_rate=args.learning_rate,
+        grad_clip_norm=args.grad_clip_norm,
+        seed=args.seed,
+        log_every=args.log_every,
+        solver_max_steps=args.solver_max_steps,
+        solver_rtol=args.solver_rtol,
+        solver_atol=args.solver_atol,
+        solver_use_jump_ts=not args.no_jump_ts,
+        log_process_losses=args.log_process_losses,
+        log_decimals=args.log_decimals,
+        log_header_every=args.log_header_every,
+        # Sentinel: loo.py overrides per fold (uses None to mean "disabled").
+        checkpoint_dir=base_checkpoint_dir,
+    )
+    loo_cfg = LOOConfig(
+        base_train_config=base_train_config,
+        output_dir=output_dir,
+        selected_holdouts=selected_holdouts_raw if selected_holdouts_raw else None,
+        render_plots=args.plot,
+    )
+
+    result = run_loo_cv(
+        collection,
+        config=loo_cfg,
+        custom_py=args.custom,
+        runtime_config=runtime_config,
+    )
+
+    log.info(
+        "LOO complete: %d folds; aggregate=%s",
+        len(result.folds),
+        result.aggregate,
+    )
     return 0
 
 

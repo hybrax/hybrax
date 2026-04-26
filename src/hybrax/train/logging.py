@@ -50,6 +50,10 @@ class StepRecord:
     process_names: tuple[str, ...]  # batch composition for this step
     step_dt: float  # wall time (seconds)
     rebuild_count: int  # cumulative
+    # Optional monitor / validation-loss column (see TrainHarnessConfig.monitor_processes).
+    # Populated only at log-step cadence; None on intermediate steps.
+    monitor_loss: float | None = None
+    monitor_label: str | None = None
 
 
 class _ConsoleTableFormatter:
@@ -167,6 +171,10 @@ def _csv_row_dict(record: StepRecord) -> dict[str, Any]:
         "process_names": ";".join(record.process_names),
         "step_dt": f"{record.step_dt:.6f}",
         "rebuild_count": record.rebuild_count,
+        "monitor_loss": (
+            f"{record.monitor_loss:.10g}" if record.monitor_loss is not None else ""
+        ),
+        "monitor_label": record.monitor_label or "",
     }
 
 
@@ -182,6 +190,8 @@ def _jsonl_row_dict(record: StepRecord) -> dict[str, Any]:
         "process_names": list(record.process_names),
         "step_dt": record.step_dt,
         "rebuild_count": record.rebuild_count,
+        "monitor_loss": record.monitor_loss,
+        "monitor_label": record.monitor_label,
     }
 
 
@@ -237,6 +247,8 @@ class RunLogger:
         self._sampled_loss_by_process_at_log_steps: dict[
             int, tuple[tuple[str, float], ...]
         ] = {}
+        self._monitor_loss_by_log_step: dict[int, float] = {}
+        self._monitor_label: str | None = None
         self._rebuild_count: int = 0
 
         self._target_names: tuple[str, ...] = ()
@@ -317,6 +329,12 @@ class RunLogger:
         )
         self._formatter.emit(self._logger, row=row)
 
+        # Monitor (validation) loss column — populated only on log steps.
+        if record.monitor_loss is not None:
+            self._monitor_loss_by_log_step[record.step] = float(record.monitor_loss)
+            if record.monitor_label is not None:
+                self._monitor_label = record.monitor_label
+
         # Per-process indented line at log-step cadence
         is_log_step = record.step % self._log_every == 0
         if is_log_step:
@@ -327,6 +345,13 @@ class RunLogger:
             # Always show the indented per-process line at log steps;
             # `--log-process-losses` is reserved for "show every step".
             self._logger.info(_log_step_indent_line(record, self._log_decimals))
+            if record.monitor_loss is not None:
+                self._logger.info(
+                    "            \u21b3 monitor (%s): %.*f",
+                    record.monitor_label or "validation",
+                    self._log_decimals,
+                    float(record.monitor_loss),
+                )
         elif self._log_process_losses:
             # If the user opted in to per-step per-process losses, also emit
             # the indented line on non-log-steps.
@@ -356,6 +381,8 @@ class RunLogger:
             "sampled_loss_by_process_at_log_steps": dict(
                 self._sampled_loss_by_process_at_log_steps
             ),
+            "monitor_loss_by_log_step": dict(self._monitor_loss_by_log_step),
+            "monitor_label": self._monitor_label,
             "train_step_rebuild_count": int(self._rebuild_count),
         }
 
