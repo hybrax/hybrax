@@ -48,6 +48,8 @@ class CheckpointWriter:
         step: int,
         wrapper: Any,
         mean_loss_by_step: Sequence[float],
+        monitor_loss_by_step: dict[int, float] | None = None,
+        monitor_label: str | None = None,
     ) -> Path | None:
         """Write a checkpoint if ``step`` is a multiple of ``every``."""
         if not self._enabled:
@@ -58,6 +60,8 @@ class CheckpointWriter:
             step=step,
             wrapper=wrapper,
             mean_loss_by_step=mean_loss_by_step,
+            monitor_loss_by_step=monitor_loss_by_step,
+            monitor_label=monitor_label,
         )
 
     def publish_latest(self, step_dir: Path) -> None:
@@ -73,6 +77,8 @@ class CheckpointWriter:
         step: int,
         wrapper: Any,
         mean_loss_by_step: Sequence[float],
+        monitor_loss_by_step: dict[int, float] | None = None,
+        monitor_label: str | None = None,
     ) -> Path:
         step_dir = self._cfg.output_dir / f"step_{step:05d}"
         step_dir.mkdir(parents=True, exist_ok=True)
@@ -95,6 +101,8 @@ class CheckpointWriter:
             list(mean_loss_by_step),
             step_dir / "loss_curve.png",
             title=f"Training loss (through step {step})",
+            monitor_loss_by_step=dict(monitor_loss_by_step) if monitor_loss_by_step else None,
+            monitor_label=monitor_label,
         )
 
         return step_dir

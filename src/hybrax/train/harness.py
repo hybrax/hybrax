@@ -899,6 +899,9 @@ def train_collection(
         )
     )
     loss_so_far: list[float] = []
+    # Cumulative monitor-loss history mirroring `loss_so_far`, threaded to
+    # CheckpointWriter so every per-step loss_curve.png can plot it.
+    monitor_loss_so_far: dict[int, float] = {}
 
     # Optional monitor (validation) batch — diagnostic only, recomputed at
     # log-step cadence with the current wrapper. JIT compiles once on first
@@ -1015,10 +1018,14 @@ def train_collection(
             )
 
             loss_so_far.append(float(loss))
+            if monitor_loss_value is not None:
+                monitor_loss_so_far[step_index + 1] = monitor_loss_value
             checkpoint_step_dir = checkpoint_writer.maybe_write(
                 step=step_index + 1,
                 wrapper=wrapper,
                 mean_loss_by_step=loss_so_far,
+                monitor_loss_by_step=monitor_loss_so_far if monitor_loss_so_far else None,
+                monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
             )
             if checkpoint_step_dir is not None:
                 export_predictions_csv(
