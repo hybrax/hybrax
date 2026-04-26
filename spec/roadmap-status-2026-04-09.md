@@ -596,7 +596,8 @@ The historical 1–8 list is implemented. The new items beyond what the
 Remaining items (the spec is V1 so these are out of scope, but worth listing
 for the next planning round):
 
-- LOO-CV orchestration (still deferred)
+- ~~LOO-CV orchestration~~ — landed as `bp_train.loo` + `bp-train loo`
+  CLI; design and acceptance criteria live in `spec/loo.md`.
 - Persisted scaling metadata (Appendix A.3)
 - A general "biomass role" declaration to remove the hard-coded name
   (Appendix A.1)
@@ -693,11 +694,12 @@ The half-implemented hook is the worst of both worlds.
 
 ## A.5 — `train_from_collection` is not in `__init__.py`
 
-We added `train_from_collection` to `harness.py` (it is the canonical entry
-point used by the CLI now), but `bp_train/__init__.py` only exports
-`train_from_prepared_json` and `train_collection`. Library users who want to
-re-use the CLI's "load-once-then-train" pattern have to reach into the
-submodule. One-line fix.
+~~We added `train_from_collection` to `harness.py` (it is the canonical
+entry point used by the CLI now), but `bp_train/__init__.py` only
+exports `train_from_prepared_json` and `train_collection`.~~ Fixed
+together with the LOO landing: `bp_train/__init__.py` now also exports
+`forward_from_collection`, `train_from_collection`, and the new
+`run_loo_cv` / `run_loo_fold` / `run_loo_from_prepared_json` entrypoints.
 
 ## A.6 — `cli._handle_train` re-imports inside the function
 

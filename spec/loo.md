@@ -15,15 +15,20 @@ all in place.
 
 The infrastructure already supports the hard parts:
 
-- [harness.py:451 `forward_from_collection`](../bp_train/harness.py#L451-L620)
+- [harness.py:452 `forward_from_collection`](../bp_train/harness.py#L452-L620)
   accepts `training_process_names` and labels each evaluated process as
   `train` vs. `holdout`.
 - [cli.py:586 `_format_loss_table`](../bp_train/cli.py#L586-L674)
   aggregates `train (mean)` and `holdout (mean)` rows from that label.
 - The trained-wrapper sidecar already records the trained subset
-  ([cli.py:539-548](../bp_train/cli.py#L539-L548)).
+  ([cli.py:541-548](../bp_train/cli.py#L541-L548)).
 - `TrainHarnessConfig.process_names` already filters which processes the
-  trainer sees ([harness.py:54](../bp_train/harness.py#L54)).
+  trainer sees ([harness.py:55](../bp_train/harness.py#L55)).
+- The shared post-train artifact writer
+  [`_write_train_results`](../bp_train/cli.py#L395-L461) already
+  encapsulates the per-run forward + losses.csv + predictions.csv +
+  plots flow, so LOO can call it once per fold without further
+  refactoring.
 
 What is missing is the orchestration layer: build N folds (one per process
 group), train each on N-1 groups with a fresh model, evaluate forward on the
@@ -258,10 +263,12 @@ Internally `run_loo_fold` is a thin wrapper that:
 5. Calls `forward_from_collection(...)` over the full collection with
    `training_process_names = train_processes`.
 6. Writes `losses.csv`, `predictions.csv`, optional plots — re-using
-   `_write_train_results` from
-   [cli.py:395-461](../bp_train/cli.py#L395-L461). Will refactor
-   that helper into a small reusable function so both `_handle_train`
-   and `_handle_loo` call it.
+   the existing
+   [`_write_train_results`](../bp_train/cli.py#L395-L461) helper
+   (already factored out in commit `1af27eb` and used by
+   `_handle_train`); LOO calls it once per fold with the per-fold
+   `output_dir` and `training_process_names` set to the N-1
+   train-side processes.
 
 `run_loo_cv` loops folds sequentially, then aggregates:
 
@@ -348,7 +355,7 @@ output/loo/
 | **`bp-format/tests/test_dataclasses.py`** | edit | 3 tests (instantiation, required field, serialization roundtrip). |
 | **`bp-format/tests/test_validate.py`** | edit | 4 tests (parent refs ok, unknown parent, augmented-of-augmented, integration with `validate_case_study`). |
 | **`bp-train/bp_train/loo.py`** | **new** | `LOOConfig`, `FoldResult`, `LOOResult`, `run_loo_cv`, `run_loo_fold`, `_build_fold_groups`, summary aggregation. |
-| **`bp-train/bp_train/cli.py`** | edit | Add `loo` subparser + `_handle_loo`. Refactor the post-train output block from `_handle_train` ([cli.py:533-581](../bp_train/cli.py#L533-L581)) into a shared helper. |
+| **`bp-train/bp_train/cli.py`** | edit | Add `loo` subparser + `_handle_loo`. Per-fold artifacts are produced by the existing [`_write_train_results`](../bp_train/cli.py#L395-L461) helper (already shared with `_handle_train`); the post-train block at [cli.py:533-581](../bp_train/cli.py#L533-L581) is the structural template for `_handle_loo`. |
 | **`bp-train/bp_train/__init__.py`** | edit | Export `LOOConfig`, `FoldResult`, `LOOResult`, `run_loo_cv`, `run_loo_fold`. Also export the existing `train_from_collection` (currently missing — flagged in [roadmap-status-2026-04-09.md Appendix A.5](roadmap-status-2026-04-09.md#L694-L700)). |
 | **`bp-train/spec/v1-detailed-spec.md`** | edit | Move LOO out of §3/§21 deferred lists; add a short LOO section describing the CLI + artifact contract and the augmented-group rule. |
 | **`bp-train/spec/roadmap-status-2026-04-09.md`** | edit | Strike LOO from "remaining items". |
@@ -362,10 +369,18 @@ output/loo/
   full fold training; nothing to re-implement.
 - `harness.forward_from_collection` — fold evaluation against full
   collection.
-- `cli._format_loss_table`, `cli._write_loss_csv` — per-fold loss table.
+- `harness._resolve_batched_loss_fn` — already routes
+  `build_sample_loss_fn` / `build_batched_loss_fn` custom hooks; per-fold
+  custom losses work transparently.
+- `cli._write_train_results`, `cli._format_loss_table`,
+  `cli._write_loss_csv` — per-fold loss table and forward artifacts.
 - `postprocessing.save_model`, `save_model_metadata`,
   `plot_training_results`, `plot_process_simulations`,
   `export_predictions_csv` — per-fold artifacts.
+- `checkpointing.CheckpointConfig` / `CheckpointWriter` — per-fold
+  `<fold_dir>/checkpoints/` is wired by setting `checkpoint_dir` on the
+  per-fold `TrainHarnessConfig`; the harness already owns checkpoint
+  writing (commit `c276aa1`).
 
 ### Validation / fail-fast rules
 

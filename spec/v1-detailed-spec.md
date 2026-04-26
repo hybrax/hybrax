@@ -40,8 +40,7 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 - Pseudo-batch integration.
 - Stateful models such as RNNs or LSTMs.
 - Full resumption (optimizer state + RNG) and warmstart from a prior run. Periodic parameter snapshots during training are supported: every `--log-every` steps, `bp-train train` writes `<output-dir>/checkpoints/step_NNNNN/{trained_wrapper.eqx, trained_wrapper.meta.json, loss_curve.png, predictions.csv}` plus a `latest` symlink. Checkpoint directories do not include per-process prediction plot PNGs. Loading a checkpoint as a warmstart init, and restoring optimizer state, are deferred.
-- LOO-CV orchestration.
-- Data augmentation.
+- Data augmentation. (Note: a structural placeholder for augmented bioprocesses lives in `bp_format.AugmentedBioProcess`; LOO-CV groups augmented children with their parent so train/holdout splits cannot leak. See `spec/loo.md`.)
 - A fully general segmented runtime controls API.
 - Wrapper modes where the user partially handles dilution and the library
   handles the rest.
@@ -1174,15 +1173,18 @@ Status as of March 28, 2026:
 
 These are explicitly deferred beyond V1:
 
-- data augmentation,
-- checkpointing,
-- LOO-CV,
+- data augmentation (the `bp_format.AugmentedBioProcess` placeholder is in
+  place but no augmentation hook in `bp-train prepare` produces these
+  records yet — see `spec/loo.md`),
 - stateful models,
 - pseudo-batch dynamics,
 - alternative runtime contracts where the user manually handles dilution,
 - more sophisticated treatment of bolus events,
 - adaptive knot placement beyond the simple dense-grid refinement strategy,
 - automatic jump detection inside `bp-train`.
+
+LOO-CV orchestration shipped as `bp-train loo` / `bp_train.loo`; the
+contract and CLI/artifact details live in `spec/loo.md`.
 
 ## 22. Known Limitations
 
