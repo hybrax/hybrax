@@ -241,6 +241,7 @@ class RunLogger:
         self._jsonl_file = None
 
         self._mean_loss_by_step: list[float] = []
+        self._per_target_loss_by_step: list[tuple[float, ...]] = []
         self._step_time_seconds: list[float] = []
         self._batch_process_names_by_step: list[tuple[str, ...]] = []
         self._per_process_loss_by_step: list[tuple[float, ...]] = []
@@ -314,6 +315,9 @@ class RunLogger:
 
         # In-memory history
         self._mean_loss_by_step.append(float(record.mean_loss))
+        self._per_target_loss_by_step.append(
+            tuple(float(v) for v in record.per_target_loss)
+        )
         self._step_time_seconds.append(float(record.step_dt))
         self._batch_process_names_by_step.append(tuple(record.process_names))
         self._per_process_loss_by_step.append(tuple(record.per_process_loss))
@@ -375,6 +379,8 @@ class RunLogger:
             self._jsonl_file.flush()
         return {
             "mean_loss_by_step": tuple(self._mean_loss_by_step),
+            "per_target_loss_by_step": tuple(self._per_target_loss_by_step),
+            "target_names": tuple(self._target_names),
             "step_time_seconds": tuple(self._step_time_seconds),
             "batch_process_names_by_step": tuple(self._batch_process_names_by_step),
             "per_process_loss_by_step": tuple(self._per_process_loss_by_step),

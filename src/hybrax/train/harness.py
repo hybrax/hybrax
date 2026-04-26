@@ -97,6 +97,9 @@ class TrainHarnessResult:
     step_time_seconds: tuple[float, ...]
     train_step_input_signature: tuple[object, ...]
     train_step_rebuild_count: int
+    # Per-target training-loss breakdown: tuple of length n_targets per step.
+    per_target_loss_by_step: tuple[tuple[float, ...], ...] = ()
+    target_names: tuple[str, ...] = ()
     # Optional monitor (validation) loss series, populated only when
     # `TrainHarnessConfig.monitor_processes` is set. Maps step -> loss.
     monitor_loss_by_log_step: dict[int, float] = dataclasses.field(default_factory=dict)
@@ -899,6 +902,7 @@ def train_collection(
         )
     )
     loss_so_far: list[float] = []
+    per_target_loss_so_far: list[tuple[float, ...]] = []
     # Cumulative monitor-loss history mirroring `loss_so_far`, threaded to
     # CheckpointWriter so every per-step loss_curve.png can plot it.
     monitor_loss_so_far: dict[int, float] = {}
@@ -1018,12 +1022,17 @@ def train_collection(
             )
 
             loss_so_far.append(float(loss))
+            per_target_loss_so_far.append(
+                tuple(float(v) for v in np.asarray(per_target_loss).tolist())
+            )
             if monitor_loss_value is not None:
                 monitor_loss_so_far[step_index + 1] = monitor_loss_value
             checkpoint_step_dir = checkpoint_writer.maybe_write(
                 step=step_index + 1,
                 wrapper=wrapper,
                 mean_loss_by_step=loss_so_far,
+                per_target_loss_by_step=per_target_loss_so_far,
+                target_names=tuple(_target_labels),
                 monitor_loss_by_step=monitor_loss_so_far if monitor_loss_so_far else None,
                 monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
             )

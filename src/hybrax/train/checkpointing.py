@@ -48,6 +48,8 @@ class CheckpointWriter:
         step: int,
         wrapper: Any,
         mean_loss_by_step: Sequence[float],
+        per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
+        target_names: Sequence[str] | None = None,
         monitor_loss_by_step: dict[int, float] | None = None,
         monitor_label: str | None = None,
     ) -> Path | None:
@@ -60,6 +62,8 @@ class CheckpointWriter:
             step=step,
             wrapper=wrapper,
             mean_loss_by_step=mean_loss_by_step,
+            per_target_loss_by_step=per_target_loss_by_step,
+            target_names=target_names,
             monitor_loss_by_step=monitor_loss_by_step,
             monitor_label=monitor_label,
         )
@@ -77,6 +81,8 @@ class CheckpointWriter:
         step: int,
         wrapper: Any,
         mean_loss_by_step: Sequence[float],
+        per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
+        target_names: Sequence[str] | None = None,
         monitor_loss_by_step: dict[int, float] | None = None,
         monitor_label: str | None = None,
     ) -> Path:
@@ -101,6 +107,10 @@ class CheckpointWriter:
             list(mean_loss_by_step),
             step_dir / "loss_curve.png",
             title=f"Training loss (through step {step})",
+            per_target_loss_by_step=(
+                list(per_target_loss_by_step) if per_target_loss_by_step else None
+            ),
+            target_names=tuple(target_names) if target_names else None,
             monitor_loss_by_step=dict(monitor_loss_by_step) if monitor_loss_by_step else None,
             monitor_label=monitor_label,
         )

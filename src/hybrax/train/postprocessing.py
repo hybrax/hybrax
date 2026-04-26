@@ -343,48 +343,82 @@ def plot_loss_curve(
     output_path: str | Path,
     *,
     title: str = "Training loss",
+    per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
+    target_names: Sequence[str] | None = None,
     monitor_loss_by_step: dict[int, float] | None = None,
     monitor_label: str | None = None,
 ) -> None:
-    """Draw a loss-vs-step curve on a log-y axis and save as PNG.
+    """Draw loss-vs-step curves on a log-y axis and save as PNG.
 
-    If ``monitor_loss_by_step`` is provided, plots a second curve at the
-    log-step samples it contains (e.g. validation/holdout loss from the
-    harness monitor).
+    Layout: one subplot per loss. The first panel ("total") shows the
+    ``losses`` series and, if provided, the ``monitor_loss_by_step``
+    series overlaid as a dashed line. If ``per_target_loss_by_step`` is
+    provided, one additional panel is added per target. All panels share
+    the same y-axis (log scale) so curves are directly comparable.
     """
     import matplotlib.pyplot as plt
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fig, ax = plt.subplots(figsize=(6, 4))
-    if len(losses) > 0:
-        ax.plot(
-            range(1, len(losses) + 1),
-            list(losses),
-            label="train",
-            color="C0",
-        )
-    if monitor_loss_by_step:
-        steps = sorted(monitor_loss_by_step.keys())
-        values = [monitor_loss_by_step[s] for s in steps]
-        ax.plot(
-            steps,
-            values,
-            marker="o",
-            linestyle="--",
-            color="C1",
-            label=monitor_label or "validation",
-        )
-        ax.legend(loc="best")
-    elif len(losses) > 0:
-        # No monitor curve: don't bother with a single-entry legend.
-        pass
-    ax.set_xlabel("Step")
-    ax.set_ylabel("Mean loss (MSE)")
-    ax.set_title(title)
-    ax.set_yscale("log")
-    ax.grid(True, alpha=0.3)
+    train_steps = list(range(1, len(losses) + 1))
+    monitor_steps = sorted(monitor_loss_by_step.keys()) if monitor_loss_by_step else []
+    monitor_values = (
+        [monitor_loss_by_step[s] for s in monitor_steps] if monitor_loss_by_step else []
+    )
+
+    panels: list[tuple[str, list[float]]] = [("total", list(losses))]
+    if per_target_loss_by_step:
+        n_targets = max(len(row) for row in per_target_loss_by_step)
+        names = list(target_names) if target_names else [f"t{i}" for i in range(n_targets)]
+        names = (names + [f"t{i}" for i in range(n_targets)])[:n_targets]
+        for i, name in enumerate(names):
+            series = [
+                row[i] if i < len(row) else float("nan")
+                for row in per_target_loss_by_step
+            ]
+            panels.append((name, series))
+
+    n_panels = len(panels)
+    ncols = min(n_panels, 3)
+    nrows = (n_panels + ncols - 1) // ncols
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(max(5.0, 4.0 * ncols), 3.0 * nrows),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+    axes_flat = list(axes.flat)
+
+    for ax, (panel_label, series) in zip(axes_flat, panels):
+        if series:
+            ax.plot(train_steps, series, color="C0", linewidth=1.2, label="train")
+        if panel_label == "total" and monitor_values:
+            ax.plot(
+                monitor_steps,
+                monitor_values,
+                marker="o",
+                linestyle="--",
+                color="C3",
+                label=monitor_label or "validation",
+            )
+            ax.legend(loc="best", fontsize="small")
+        ax.set_title(panel_label, fontsize="small")
+        ax.set_yscale("log")
+        ax.grid(True, alpha=0.3)
+
+    for ax in axes_flat[n_panels:]:
+        ax.set_visible(False)
+
+    for ax in axes_flat[:n_panels]:
+        if ax.get_subplotspec().is_last_row():
+            ax.set_xlabel("Step")
+        if ax.get_subplotspec().is_first_col():
+            ax.set_ylabel("Mean loss")
+
+    fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
@@ -411,6 +445,8 @@ def plot_training_results(
     plot_loss_curve(
         result.mean_loss_by_step,
         output_dir / "loss_curve.png",
+        per_target_loss_by_step=getattr(result, "per_target_loss_by_step", None) or None,
+        target_names=getattr(result, "target_names", None) or None,
         monitor_loss_by_step=getattr(result, "monitor_loss_by_log_step", None) or None,
         monitor_label=getattr(result, "monitor_label", None),
     )
