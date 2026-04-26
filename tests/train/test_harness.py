@@ -1247,3 +1247,216 @@ def test_train_collection_rejects_invalid_custom_loss_shapes():
             ),
             batched_loss_fn=_bad_loss_fn,
         )
+
+
+# ---------------------------------------------------------------------------
+# Custom loss extra-names contract: hooks may return (callable, names_tuple)
+# to declare extra per-target loss components (e.g. regularization terms).
+# ---------------------------------------------------------------------------
+
+
+def test_train_from_collection_wires_extra_loss_names_from_sample_hook(monkeypatch):
+    collection = _make_collection()
+    captured: dict[str, object] = {}
+
+    class _DummyStore:
+        target_names = ("biomass",)
+        target_source = "reactor_components"
+        process_order = ("p1", "p2")
+
+    def fake_from_collection(collection, *, target_variable_order, target_source):
+        del collection, target_variable_order, target_source
+        return _DummyStore()
+
+    class _CustomModule:
+        @staticmethod
+        def build_sample_loss_fn(
+            *, default_sample_loss_fn, store, collection, train_cfg, config
+        ):
+            del default_sample_loss_fn, store, collection, train_cfg, config
+
+            def _sample_loss(*args, **kwargs):
+                del args, kwargs
+                return jnp.asarray(0.0), jnp.asarray([0.0, 0.0])
+
+            return _sample_loss, ("nonneg/biomass",)
+
+    monkeypatch.setattr(
+        "bp_train.harness.TrainingDataStore.from_collection",
+        fake_from_collection,
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.load_custom_module",
+        lambda _p: _CustomModule(),
+    )
+    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+    )
+
+    def fake_train_collection(*args, **kwargs):
+        del args
+        captured["batched_loss_fn"] = kwargs.get("batched_loss_fn")
+        captured["extra_loss_names"] = kwargs.get("extra_loss_names")
+        return "train-result"
+
+    monkeypatch.setattr("bp_train.harness.train_collection", fake_train_collection)
+
+    result = train_from_collection(
+        collection,
+        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+        custom_py="custom.py",
+        runtime_config=None,
+    )
+
+    assert result == "train-result"
+    assert callable(captured["batched_loss_fn"])
+    assert captured["extra_loss_names"] == ("nonneg/biomass",)
+
+
+def test_train_from_collection_wires_extra_loss_names_from_batched_hook(monkeypatch):
+    collection = _make_collection()
+    captured: dict[str, object] = {}
+
+    class _DummyStore:
+        target_names = ("biomass",)
+        target_source = "reactor_components"
+        process_order = ("p1", "p2")
+
+    def fake_from_collection(collection, *, target_variable_order, target_source):
+        del collection, target_variable_order, target_source
+        return _DummyStore()
+
+    class _CustomModule:
+        @staticmethod
+        def build_batched_loss_fn(
+            *, default_loss_fn, store, collection, train_cfg, config
+        ):
+            del default_loss_fn, store, collection, train_cfg, config
+
+            def _batched_loss(*args, **kwargs):
+                del args, kwargs
+                return jnp.asarray(0.0), jnp.asarray([0.0, 0.0]), jnp.asarray([0.0])
+
+            return _batched_loss, ["pen_a"]
+
+    monkeypatch.setattr(
+        "bp_train.harness.TrainingDataStore.from_collection",
+        fake_from_collection,
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.load_custom_module",
+        lambda _p: _CustomModule(),
+    )
+    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+    )
+
+    def fake_train_collection(*args, **kwargs):
+        del args
+        captured["extra_loss_names"] = kwargs.get("extra_loss_names")
+        return "train-result"
+
+    monkeypatch.setattr("bp_train.harness.train_collection", fake_train_collection)
+
+    result = train_from_collection(
+        collection,
+        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+        custom_py="custom.py",
+        runtime_config=None,
+    )
+
+    assert result == "train-result"
+    assert captured["extra_loss_names"] == ("pen_a",)
+
+
+def test_train_collection_extends_per_target_labels_with_extra_loss_names():
+    """End-to-end: extra_loss_names lengthens per_target_loss & target_names."""
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    def _loss_with_one_extra(*args, **kwargs):
+        # n_targets becomes 2 (biomass + nonneg/biomass).
+        return (
+            jnp.asarray(0.0),
+            jnp.asarray([0.0, 0.5]),
+            jnp.asarray([0.0]),
+        )
+
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(),
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=("p1",),
+            steps=2,
+            batch_size=1,
+            optimizer_name="adam",
+            learning_rate=1e-2,
+            log_every=1,
+        ),
+        batched_loss_fn=_loss_with_one_extra,
+        extra_loss_names=("nonneg/biomass",),
+    )
+
+    # target_names captured by RunLogger should include the extra label.
+    assert result.target_names == ("biomass", "nonneg/biomass")
+    # per_target_loss vectors record both columns at every step.
+    assert all(len(row) == 2 for row in result.per_target_loss_by_step)
+
+
+def test_resolve_loss_hook_rejects_invalid_tuple_shape(monkeypatch):
+    collection = _make_collection()
+
+    class _DummyStore:
+        target_names = ("biomass",)
+        target_source = "reactor_components"
+        process_order = ("p1",)
+
+    def fake_from_collection(collection, *, target_variable_order, target_source):
+        del collection, target_variable_order, target_source
+        return _DummyStore()
+
+    class _CustomModule:
+        @staticmethod
+        def build_sample_loss_fn(
+            *, default_sample_loss_fn, store, collection, train_cfg, config
+        ):
+            del default_sample_loss_fn, store, collection, train_cfg, config
+            # Tuple but second element isn't a sequence of strings.
+            return (lambda *_a, **_k: (0.0, 0.0)), 42
+
+    monkeypatch.setattr(
+        "bp_train.harness.TrainingDataStore.from_collection",
+        fake_from_collection,
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.load_custom_module",
+        lambda _p: _CustomModule(),
+    )
+    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+    )
+
+    with pytest.raises(TypeError, match="must return a callable or"):
+        train_from_collection(
+            collection,
+            config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+            custom_py="custom.py",
+            runtime_config=None,
+        )

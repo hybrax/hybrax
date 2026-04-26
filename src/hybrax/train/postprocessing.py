@@ -380,19 +380,37 @@ def plot_loss_curve(
             panels.append((name, series))
 
     n_panels = len(panels)
-    ncols = min(n_panels, 3)
+    ncols = min(n_panels, 2)
     nrows = (n_panels + ncols - 1) // ncols
     fig, axes = plt.subplots(
         nrows,
         ncols,
         figsize=(max(5.0, 4.0 * ncols), 3.0 * nrows),
         sharex=True,
-        sharey=True,
+        sharey=False,
         squeeze=False,
     )
     axes_flat = list(axes.flat)
 
+    total_series = panels[0][1] if panels and panels[0][0] == "total" else None
+
     for ax, (panel_label, series) in zip(axes_flat, panels):
+        # On per-target panels, plot the total loss as a faint reference line
+        # so the per-target curve can be read against the overall trajectory
+        # despite the per-panel y-scale.
+        if (
+            panel_label != "total"
+            and total_series is not None
+            and len(total_series) > 0
+        ):
+            ax.plot(
+                train_steps,
+                total_series,
+                color="grey",
+                linewidth=0.8,
+                alpha=0.5,
+                label="total",
+            )
         if series:
             ax.plot(train_steps, series, color="C0", linewidth=1.2, label="train")
         if panel_label == "total" and monitor_values:
@@ -404,6 +422,7 @@ def plot_loss_curve(
                 color="C3",
                 label=monitor_label or "validation",
             )
+        if ax.get_legend_handles_labels()[1]:
             ax.legend(loc="best", fontsize="small")
         ax.set_title(panel_label, fontsize="small")
         ax.set_yscale("log")

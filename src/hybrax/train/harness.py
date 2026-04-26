@@ -278,6 +278,27 @@ def _build_reaction_module(
     return module
 
 
+def _normalize_loss_hook_result(
+    result: Any, *, hook_name: str
+) -> tuple[Any, tuple[str, ...]]:
+    """Accept either a bare callable or ``(callable, extra_names)`` tuple."""
+    if callable(result):
+        return result, ()
+    if (
+        isinstance(result, tuple)
+        and len(result) == 2
+        and callable(result[0])
+        and isinstance(result[1], (list, tuple))
+        and all(isinstance(n, str) for n in result[1])
+    ):
+        return result[0], tuple(result[1])
+    raise TypeError(
+        f"{hook_name}(...) must return a callable or a "
+        "(callable, extra_loss_names) tuple where extra_loss_names is a "
+        "sequence of strings"
+    )
+
+
 def _resolve_batched_loss_fn(
     *,
     custom_module,
@@ -286,7 +307,14 @@ def _resolve_batched_loss_fn(
     collection: BioProcessCollection,
     train_cfg: TrainHarnessConfig,
     allow_batched_loss_hook: bool = True,
-) -> BatchedLossFn:
+) -> tuple[BatchedLossFn, tuple[str, ...]]:
+    """Return ``(batched_loss_fn, extra_loss_names)``.
+
+    ``extra_loss_names`` are appended to the per-target loss vector so the
+    harness can label the additional columns/panels (CSV, JSONL, console
+    table, ``loss_curve.png``). Empty when no hook (or when the hook does
+    not declare extras).
+    """
     sample_loss_hook = get_hook(custom_module, "build_sample_loss_fn", None)
     batched_loss_hook = get_hook(custom_module, "build_batched_loss_fn", None)
 
@@ -297,16 +325,17 @@ def _resolve_batched_loss_fn(
         )
 
     if sample_loss_hook is not None:
-        sample_loss_fn = sample_loss_hook(
+        raw = sample_loss_hook(
             default_sample_loss_fn=measurement_loss_from_arrays,
             store=store,
             collection=collection,
             train_cfg=train_cfg,
             config=custom_cfg,
         )
-        if not callable(sample_loss_fn):
-            raise TypeError("build_sample_loss_fn(...) must return a callable")
-        return build_batched_loss_fn_from_sample_loss(sample_loss_fn)
+        sample_loss_fn, extra_names = _normalize_loss_hook_result(
+            raw, hook_name="build_sample_loss_fn"
+        )
+        return build_batched_loss_fn_from_sample_loss(sample_loss_fn), extra_names
 
     if batched_loss_hook is not None:
         if not allow_batched_loss_hook:
@@ -315,18 +344,19 @@ def _resolve_batched_loss_fn(
                 "build_sample_loss_fn(...); "
                 "build_batched_loss_fn(...) is not supported"
             )
-        batched_loss_fn = batched_loss_hook(
+        raw = batched_loss_hook(
             default_loss_fn=_DEFAULT_BATCHED_MEASUREMENT_LOSS,
             store=store,
             collection=collection,
             train_cfg=train_cfg,
             config=custom_cfg,
         )
-        if not callable(batched_loss_fn):
-            raise TypeError("build_batched_loss_fn(...) must return a callable")
-        return batched_loss_fn
+        batched_loss_fn, extra_names = _normalize_loss_hook_result(
+            raw, hook_name="build_batched_loss_fn"
+        )
+        return batched_loss_fn, extra_names
 
-    return _DEFAULT_BATCHED_MEASUREMENT_LOSS
+    return _DEFAULT_BATCHED_MEASUREMENT_LOSS, ()
 
 
 def _validate_batched_loss_outputs(
@@ -543,7 +573,7 @@ def forward_from_collection(
         **scale_kwargs,
     )
     per_process_rhs = extras["per_process_rhs"]
-    batched_loss_fn = _resolve_batched_loss_fn(
+    batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
         custom_module=custom_module,
         custom_cfg=custom_cfg,
         store=store,
@@ -609,14 +639,16 @@ def forward_from_collection(
             total,
             per_target,
             _per_sample,
-            n_targets=int(batch.y_meas.shape[2]),
+            n_targets=int(batch.y_meas.shape[2]) + len(extra_loss_names),
             batch_size=int(batch.process_indices.shape[0]),
         )
         per_process_total[process_name] = float(total)
         per_process_per_target[process_name] = tuple(float(v) for v in per_target)
 
-    target_column_labels = tuple(store.target_names) + tuple(
-        f"B_{name}_cum" for name in store.modeled_flow_names
+    target_column_labels = (
+        tuple(store.target_names)
+        + tuple(f"B_{name}_cum" for name in store.modeled_flow_names)
+        + tuple(extra_loss_names)
     )
 
     return ForwardResult(
@@ -644,6 +676,7 @@ def train_collection(
     q_scale: jax.Array | None = None,
     f_scale: jax.Array | None = None,
     batched_loss_fn: BatchedLossFn | None = None,
+    extra_loss_names: tuple[str, ...] = (),
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store."""
     cfg = config or TrainHarnessConfig()
@@ -725,9 +758,18 @@ def train_collection(
     _target_labels = list(store.target_names) + [
         f"B_{name}_cum" for name in store.modeled_flow_names
     ]
+    # Custom loss hooks may declare extra per-target loss components (e.g.
+    # regularization terms). They get their own labels and appear as new
+    # columns in the per-target log table, CSV, JSONL, and loss_curve.png
+    # subpanels.
+    if extra_loss_names:
+        _target_labels = _target_labels + list(extra_loss_names)
     logger.info(
         "target_variance: %s",
-        {name: f"{v:.2f}" for name, v in zip(_target_labels, target_variance.tolist())},
+        {
+            name: f"{v:.2f}"
+            for name, v in zip(_target_labels[: target_variance.shape[0]], target_variance.tolist())
+        },
     )
 
     # Build target_state_indices: species columns + cumulative-modeled-feed
@@ -817,7 +859,7 @@ def train_collection(
                     total_loss,
                     per_target,
                     per_sample,
-                    n_targets=int(current_batch.y_meas.shape[2]),
+                    n_targets=int(current_batch.y_meas.shape[2]) + len(extra_loss_names),
                     batch_size=int(current_batch.process_indices.shape[0]),
                 )
                 return total_loss, (per_target, per_sample)
@@ -1119,7 +1161,7 @@ def train_from_collection(
         lr = lr_hook(custom_cfg, train_cfg)
         train_cfg = dataclasses.replace(train_cfg, learning_rate=lr)
 
-    batched_loss_fn = _resolve_batched_loss_fn(
+    batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
         custom_module=custom_module,
         custom_cfg=custom_cfg,
         store=store,
@@ -1149,6 +1191,7 @@ def train_from_collection(
         collection=collection,
         config=train_cfg,
         batched_loss_fn=batched_loss_fn,
+        extra_loss_names=extra_loss_names,
         **scale_kwargs,
     )
 
