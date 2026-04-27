@@ -18,13 +18,27 @@ from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
 from bp_format.mechanistic import get_rhs_ode
 
 from .training_data import TrainingDataStore
-from .wrapper import HybridOdeWrapper
+from .wrapper import HybridOdeWrapper, SaveOutputs
 
 logger = logging.getLogger(__name__)
 
 # Bolus bar width in `plot_process_simulations`, expressed as a fraction of the
 # process time span.
 BAR_WIDTH_FRACTION = 0.02
+
+
+def _wrapper_vector_field(
+    t: Any, y: jnp.ndarray, wrapper: HybridOdeWrapper
+) -> jnp.ndarray:
+    """Stable Diffrax vector field; wrapper params stay dynamic via ``args``."""
+    return wrapper(t, y)
+
+
+def _wrapper_save_outputs(
+    t: Any, y: jnp.ndarray, wrapper: HybridOdeWrapper
+) -> SaveOutputs:
+    """Stable Diffrax save function; wrapper params stay dynamic via ``args``."""
+    return wrapper.save_outputs(t, y)
 
 
 @dataclass(frozen=True)
@@ -128,7 +142,7 @@ def _compute_dense_process_export(
         n_dense,
     )
     y0_scaled = process_wrapper.scale_state(process_data.y0)
-    term = diffrax.ODETerm(lambda t, y, args: process_wrapper(t, y))
+    term = diffrax.ODETerm(_wrapper_vector_field)
     jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
     sol = diffrax.diffeqsolve(
         term,
@@ -137,7 +151,8 @@ def _compute_dense_process_export(
         t1=t_dense[-1],
         dt0=None,
         y0=y0_scaled,
-        saveat=diffrax.SaveAt(ts=t_dense, fn=process_wrapper.save_outputs),
+        args=process_wrapper,
+        saveat=diffrax.SaveAt(ts=t_dense, fn=_wrapper_save_outputs),
         stepsize_controller=diffrax.PIDController(
             rtol=solver_rtol,
             atol=solver_atol,
