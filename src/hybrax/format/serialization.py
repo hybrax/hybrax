@@ -23,7 +23,6 @@ from .dataclasses import (
     StaticVariable,
     BioProcessMetadata,
     Volume,
-    VolumeChange,
     FeedVolumeChange,
     SampleVolumeChange,
     ReactorMedium,
@@ -421,6 +420,8 @@ def _timeseries_to_dict_payload(
         payload["continuity_side"] = value.continuity_side
     if getattr(value, "metadata", None) is not None:
         payload["metadata"] = value.metadata
+    if getattr(value, "dtype", None) is not None:
+        payload["dtype"] = str(np.dtype(value.dtype))
     return payload
 
 
@@ -677,6 +678,8 @@ def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
         kwargs["continuity_side"] = value_data["continuity_side"]
     if "metadata" in value_data:
         kwargs["metadata"] = value_data["metadata"]
+    if "dtype" in value_data:
+        kwargs["dtype"] = value_data["dtype"]
 
     return TimeSeries(**kwargs)
 

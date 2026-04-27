@@ -28,8 +28,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy import interpolate
-import pseudobatch
-import pseudobatch.data_correction
 
 from .dataclasses import (
     BioProcess,
@@ -47,8 +45,9 @@ from .time_series import spline_ops
 # ---------------------------------------------------------------------------
 
 # Small epsilon used when inserting pre-event points for discrete bolus events.
-# Must be large enough to survive float32 quantization but tiny relative to true
-# sampling intervals.
+# Sets the minimum spacing between a bolus event and the pre-event sample that
+# anchors the pre-jump value; must be tiny relative to true sampling intervals
+# so it never collides with a real measurement.
 _EPS = 1e-4
 _JUMP_DT_EPS_FACTOR = 20.0
 _JUMP_DT_MEDIAN_FRACTION = 0.1
@@ -277,8 +276,8 @@ def _fit_spline_timeseries(
     return TimeSeries(
         times=t,
         values=y,
-        breaks=jnp.asarray(breaks, dtype=jnp.float32),
-        coeffs=jnp.asarray(coeffs, dtype=jnp.float32),
+        breaks=breaks,
+        coeffs=coeffs,
         segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
         continuity_side=continuity_side,
         metadata=metadata,
@@ -923,7 +922,6 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     # --- slice at measurement indices
     mi = meas_indices
     rv_at_meas = reactor_volume_dense[mi]
-    sv_at_meas = sample_volume_dense[mi]
 
     af = accumulated_feed_dense
     if af.ndim == 1:
@@ -1217,7 +1215,7 @@ def build_splines(
     fc_dense_np = np.asarray(inputs["feed_corr_dense"], dtype=float)
     meas_idx_np = np.asarray(inputs["meas_indices"], dtype=int)
     fc_at_meas_np = np.asarray(inputs["feed_corr_at_meas"], dtype=float)
-    meas_t_np = np.asarray(inputs["meas_times"], dtype=float)
+
 
     # Known bolus event times. ADF no longer steps at sample events (ADF uses
     # a sample-free volume trajectory) so we only extract jumps at boluses.

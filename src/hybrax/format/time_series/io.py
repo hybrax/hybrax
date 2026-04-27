@@ -28,13 +28,25 @@ def timeseries_to_dict(series: Any) -> dict[str, Any]:
         "coeffs": _array_to_list(series.coeffs),
         "segment_start_piece_idx": _array_to_list(series.segment_start_piece_idx),
         "continuity_side": series.continuity_side,
+        "dtype": str(np.dtype(series.dtype)),
         "metadata": series.metadata,
     }
 
 
-def timeseries_from_dict(cls: Any, data: Mapping[str, Any]) -> Any:
-    """Construct a TimeSeries from canonical dict form."""
-    return cls(
+def timeseries_from_dict(cls: Any, data: Mapping[str, Any], *, dtype=None) -> Any:
+    """Construct a TimeSeries from canonical dict form.
+
+    Resolution order for `dtype`:
+    1. Explicit `dtype` arg — use it.
+    2. `data["dtype"]` field — forward raw value to TimeSeries constructor.
+    3. Neither present — let TimeSeries default kick in (float64).
+
+    The TimeSeries constructor is the single canonicalizer (calls `jnp.dtype`
+    internally), so no pre-conversion is needed here.
+    """
+    resolved_dtype = dtype if dtype is not None else data.get("dtype")
+
+    kwargs = dict(
         times=data.get("times"),
         values=data.get("values"),
         derived=bool(data.get("derived", False)),
@@ -45,6 +57,9 @@ def timeseries_from_dict(cls: Any, data: Mapping[str, Any]) -> Any:
         continuity_side=data.get("continuity_side", "right"),
         metadata=data.get("metadata"),
     )
+    if resolved_dtype is not None:
+        kwargs["dtype"] = resolved_dtype
+    return cls(**kwargs)
 
 
 def _convert_bspline_segments(
@@ -81,12 +96,12 @@ def _convert_bspline_segments(
     if not all_coeffs:
         raise ValueError("No valid spline pieces found in segments")
 
-    flat_breaks = np.concatenate(all_breaks, axis=0).astype(np.float32)
-    flat_coeffs = np.concatenate(all_coeffs, axis=0).astype(np.float32)
+    flat_breaks = np.concatenate(all_breaks, axis=0).astype(np.float64)
+    flat_coeffs = np.concatenate(all_coeffs, axis=0).astype(np.float64)
     start_idx = np.asarray(segment_starts, dtype=np.int32)
     return (
-        jnp.asarray(flat_breaks, dtype=jnp.float32),
-        jnp.asarray(flat_coeffs, dtype=jnp.float32),
+        jnp.asarray(flat_breaks, dtype=jnp.float64),
+        jnp.asarray(flat_coeffs, dtype=jnp.float64),
         jnp.asarray(start_idx, dtype=jnp.int32),
     )
 

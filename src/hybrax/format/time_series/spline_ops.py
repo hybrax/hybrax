@@ -64,7 +64,7 @@ def rebase_piece(coeff_row: np.ndarray, shift: float) -> np.ndarray:
             c + 3.0 * d * s,
             d,
         ],
-        dtype=np.float32,
+        dtype=np.float64,
     )
 
 
@@ -74,33 +74,33 @@ def rebase_to_breaks(
     target_breaks: jnp.ndarray,
 ) -> jnp.ndarray:
     """Express spline coeffs on a refined breakpoint grid."""
-    src_b = np.asarray(breaks, dtype=np.float32)
-    src_c = np.asarray(coeffs, dtype=np.float32)
-    tgt_b = np.asarray(target_breaks, dtype=np.float32)
+    src_b = np.asarray(breaks, dtype=np.float64)
+    src_c = np.asarray(coeffs, dtype=np.float64)
+    tgt_b = np.asarray(target_breaks, dtype=np.float64)
     n_out = tgt_b.shape[0] - 1
-    out = np.zeros((n_out, 4), dtype=np.float32)
+    out = np.zeros((n_out, 4), dtype=np.float64)
     for i in range(n_out):
         u = float(tgt_b[i])
         src_idx = int(np.searchsorted(src_b, u, side="right") - 1)
         src_idx = int(np.clip(src_idx, 0, src_c.shape[0] - 1))
         shift = u - float(src_b[src_idx])
         out[i] = rebase_piece(src_c[src_idx], shift)
-    return jnp.asarray(out, dtype=jnp.float32)
+    return jnp.asarray(out, dtype=jnp.float64)
 
 
 def merge_breaks(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
     merged = np.unique(np.concatenate([np.asarray(a), np.asarray(b)]))
-    return jnp.asarray(merged, dtype=jnp.float32)
+    return jnp.asarray(merged, dtype=jnp.float64)
 
 
 def ppoly_to_power_basis(ppoly: PPoly) -> tuple[np.ndarray, np.ndarray]:
     """Convert SciPy PPoly to cubic power-basis arrays (breaks, coeffs)."""
-    x = np.asarray(ppoly.x, dtype=np.float32)
-    c = np.asarray(ppoly.c, dtype=np.float32)
+    x = np.asarray(ppoly.x, dtype=np.float64)
+    c = np.asarray(ppoly.c, dtype=np.float64)
     if c.shape[0] < 1 or c.shape[0] > 4:
         raise ValueError("unsupported polynomial degree")
     if c.shape[0] < 4:
-        full = np.zeros((4, c.shape[1]), dtype=np.float32)
+        full = np.zeros((4, c.shape[1]), dtype=np.float64)
         full[4 - c.shape[0] :, :] = c
         c = full
 
@@ -158,14 +158,14 @@ def has_near_zero_piece_value(
 def derivative_coeffs(coeffs: jnp.ndarray, order: int = 1) -> jnp.ndarray:
     if order < 0:
         raise ValueError("order must be >= 0")
-    out = np.asarray(coeffs, dtype=np.float32)
+    out = np.asarray(coeffs, dtype=np.float64)
     for _ in range(order):
         a = out[:, 0]
         b = out[:, 1]
         c = out[:, 2]
         d = out[:, 3]
         out = np.stack([b, 2.0 * c, 3.0 * d, np.zeros_like(a)], axis=1)
-    return jnp.asarray(out, dtype=jnp.float32)
+    return jnp.asarray(out, dtype=jnp.float64)
 
 
 def integrate_definite(

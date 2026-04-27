@@ -20,10 +20,16 @@ from .constants import APPROX_S_REDUCTION_FACTOR
 from .constants import DIVISION_NEAR_ZERO_THRESHOLD
 
 
-def _as_float_1d(name: str, value: Any) -> jnp.ndarray:
-    arr = jnp.asarray(value, dtype=jnp.float32)
-    if arr.ndim != 1:
-        raise ValueError(f"{name} must be a 1D array")
+def _as_float_array(name: str, value: Any, dtype: Any, *, ndim: int) -> jnp.ndarray:
+    arr_in = jnp.asarray(value)
+    if jnp.issubdtype(arr_in.dtype, jnp.floating) and arr_in.dtype != dtype:
+        warnings.warn(
+            f"TimeSeries: casting {name} from {arr_in.dtype} to {dtype}",
+            stacklevel=3,
+        )
+    arr = jnp.asarray(value, dtype=dtype)
+    if arr.ndim != ndim:
+        raise ValueError(f"{name} must be a {ndim}D array")
     return arr
 
 
@@ -59,7 +65,16 @@ def _is_strictly_increasing(arr: jnp.ndarray) -> bool:
 
 
 class TimeSeries(eqx.Module):
-    """Scalar-valued time series with optional samples and/or spline state."""
+    """Scalar-valued time series with optional samples and/or spline state.
+
+    The `dtype` field governs all floating-point array fields (`times`,
+    `values`, `jump_times`, `breaks`, `coeffs`). It defaults to
+    `jnp.float64`.
+
+    Note: if `jax_enable_x64` is off, `jnp.float64` will silently be
+    downgraded by JAX to float32; setting x64 mode is the user's
+    responsibility.
+    """
 
     times: jnp.ndarray | None = None
     values: jnp.ndarray | None = None
@@ -70,6 +85,7 @@ class TimeSeries(eqx.Module):
     derived: bool = eqx.field(static=True, default=False)
     continuity_side: str = eqx.field(static=True, default="right")
     metadata: Any = eqx.field(static=True, default=None)
+    dtype: Any = eqx.field(static=True, default=jnp.dtype(jnp.float64))
 
     def __init__(
         self,
@@ -83,7 +99,14 @@ class TimeSeries(eqx.Module):
         segment_start_piece_idx: Any | None = None,
         continuity_side: str = "right",
         metadata: Any | None = None,
+        dtype: Any | None = None,
     ) -> None:
+        # Resolve dtype first so all field setup can use it.
+        dtype_resolved = (
+            jnp.dtype(dtype) if dtype is not None else jnp.dtype(jnp.float64)
+        )
+        object.__setattr__(self, "dtype", dtype_resolved)
+
         has_discrete = times is not None or values is not None
         has_spline = (
             breaks is not None
@@ -115,17 +138,21 @@ class TimeSeries(eqx.Module):
         object.__setattr__(self, "metadata", metadata)
 
         if jump_times is None:
-            object.__setattr__(self, "jump_times", jnp.asarray([], dtype=jnp.float32))
+            object.__setattr__(
+                self, "jump_times", jnp.asarray([], dtype=dtype_resolved)
+            )
         else:
             object.__setattr__(
                 self,
                 "jump_times",
-                _as_float_1d("jump_times", jump_times),
+                _as_float_array("jump_times", jump_times, dtype_resolved, ndim=1),
             )
 
         if has_discrete:
-            normalized_times = _as_float_1d("times", times)
-            normalized_values = _as_float_1d("values", values)
+            normalized_times = _as_float_array("times", times, dtype_resolved, ndim=1)
+            normalized_values = _as_float_array(
+                "values", values, dtype_resolved, ndim=1
+            )
             object.__setattr__(self, "times", normalized_times)
             object.__setattr__(self, "values", normalized_values)
             if self.times.shape[0] != self.values.shape[0]:
@@ -137,8 +164,16 @@ class TimeSeries(eqx.Module):
             object.__setattr__(self, "values", None)
 
         if has_spline:
-            object.__setattr__(self, "breaks", _as_float_1d("breaks", breaks))
-            object.__setattr__(self, "coeffs", jnp.asarray(coeffs, dtype=jnp.float32))
+            object.__setattr__(
+                self,
+                "breaks",
+                _as_float_array("breaks", breaks, dtype_resolved, ndim=1),
+            )
+            object.__setattr__(
+                self,
+                "coeffs",
+                _as_float_array("coeffs", coeffs, dtype_resolved, ndim=2),
+            )
             object.__setattr__(
                 self,
                 "segment_start_piece_idx",
@@ -181,10 +216,10 @@ class TimeSeries(eqx.Module):
             object.__setattr__(self, "segment_start_piece_idx", None)
 
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data, *, dtype=None):
         from .io import timeseries_from_dict
 
-        return timeseries_from_dict(cls, data)
+        return timeseries_from_dict(cls, data, dtype=dtype)
 
     @classmethod
     def from_process_state(cls, process_state, variable):
@@ -228,6 +263,7 @@ class TimeSeries(eqx.Module):
             segment_start_piece_idx=self.segment_start_piece_idx,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
+            dtype=self.dtype,
         )
 
     def integrate(self, a, b):
@@ -274,6 +310,7 @@ class TimeSeries(eqx.Module):
                 segment_start_piece_idx=self.segment_start_piece_idx,
                 continuity_side=self.continuity_side,
                 metadata=self.metadata,
+                dtype=self.dtype,
             )
         if self.times is None or self.values is None:
             raise ValueError(
@@ -286,6 +323,7 @@ class TimeSeries(eqx.Module):
             jump_times=self.jump_times,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
+            dtype=self.dtype,
         )
 
     def __truediv__(self, other):
@@ -309,6 +347,7 @@ class TimeSeries(eqx.Module):
                 segment_start_piece_idx=self.segment_start_piece_idx,
                 continuity_side=self.continuity_side,
                 metadata=self.metadata,
+                dtype=self.dtype,
             )
         if self.times is None or self.values is None:
             raise ValueError(
@@ -321,9 +360,14 @@ class TimeSeries(eqx.Module):
             jump_times=self.jump_times,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
+            dtype=self.dtype,
         )
 
     def _binary_discrete(self, other: "TimeSeries", op: str) -> "TimeSeries":
+        if self.dtype != other.dtype:
+            raise TypeError(
+                f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}"
+            )
         if not self._has_discrete() or not other._has_discrete():
             raise ValueError(
                 "binary operation without spline requires both operands to "
@@ -359,8 +403,8 @@ class TimeSeries(eqx.Module):
         out_jumps = np.unique(
             np.concatenate(
                 [
-                    np.asarray(self.jump_times, dtype=np.float32),
-                    np.asarray(other.jump_times, dtype=np.float32),
+                    np.asarray(self.jump_times, dtype=np.dtype(self.dtype)),
+                    np.asarray(other.jump_times, dtype=np.dtype(self.dtype)),
                 ]
             )
         )
@@ -368,12 +412,17 @@ class TimeSeries(eqx.Module):
             times=out_times,
             values=out_values,
             derived=True,
-            jump_times=jnp.asarray(out_jumps, dtype=jnp.float32),
+            jump_times=jnp.asarray(out_jumps, dtype=self.dtype),
             continuity_side=self.continuity_side,
             metadata={"source": "discrete_binary_op", "op": op},
+            dtype=self.dtype,
         )
 
     def _binary_exact(self, other: "TimeSeries", op: str) -> "TimeSeries":
+        if self.dtype != other.dtype:
+            raise TypeError(
+                f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}"
+            )
         if self.breaks is None or self.coeffs is None:
             raise ValueError("left operand missing spline representation")
         if other.breaks is None or other.coeffs is None:
@@ -407,8 +456,8 @@ class TimeSeries(eqx.Module):
         out_jumps = np.unique(
             np.concatenate(
                 [
-                    np.asarray(self.jump_times, dtype=np.float32),
-                    np.asarray(other.jump_times, dtype=np.float32),
+                    np.asarray(self.jump_times, dtype=np.dtype(self.dtype)),
+                    np.asarray(other.jump_times, dtype=np.dtype(self.dtype)),
                 ]
             )
         )
@@ -423,15 +472,20 @@ class TimeSeries(eqx.Module):
             times=out_times,
             values=out_values,
             derived=True,
-            jump_times=jnp.asarray(out_jumps, dtype=jnp.float32),
+            jump_times=jnp.asarray(out_jumps, dtype=self.dtype),
             breaks=merged_breaks,
             coeffs=out_coeffs,
             segment_start_piece_idx=out_starts,
             continuity_side=self.continuity_side,
             metadata={"source": "exact_binary_op", "op": op},
+            dtype=self.dtype,
         )
 
     def _binary_approx(self, other: "TimeSeries", op: str) -> "TimeSeries":
+        if self.dtype != other.dtype:
+            raise TypeError(
+                f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}"
+            )
         if self.breaks is None or self.coeffs is None:
             raise ValueError("left operand missing spline representation")
         if other.breaks is None or other.coeffs is None:
@@ -496,8 +550,8 @@ class TimeSeries(eqx.Module):
         out_jumps = np.unique(
             np.concatenate(
                 [
-                    np.asarray(self.jump_times, dtype=np.float32),
-                    np.asarray(other.jump_times, dtype=np.float32),
+                    np.asarray(self.jump_times, dtype=np.dtype(self.dtype)),
+                    np.asarray(other.jump_times, dtype=np.dtype(self.dtype)),
                 ]
             )
         )
@@ -505,12 +559,13 @@ class TimeSeries(eqx.Module):
             times=out_times,
             values=out_values,
             derived=True,
-            jump_times=jnp.asarray(out_jumps, dtype=jnp.float32),
-            breaks=jnp.asarray(breaks, dtype=jnp.float32),
-            coeffs=jnp.asarray(coeffs, dtype=jnp.float32),
+            jump_times=jnp.asarray(out_jumps, dtype=self.dtype),
+            breaks=jnp.asarray(breaks, dtype=self.dtype),
+            coeffs=jnp.asarray(coeffs, dtype=self.dtype),
             segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
             continuity_side=self.continuity_side,
             metadata={"source": "approx_binary_op", "op": op},
+            dtype=self.dtype,
         )
 
     def _fit_cubic_power_basis(
@@ -518,16 +573,16 @@ class TimeSeries(eqx.Module):
         x: np.ndarray,
         y_true: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        x32 = np.asarray(x, dtype=np.float32)
-        y32 = np.asarray(y_true, dtype=np.float32)
-        if x32.shape[0] < 2:
+        x_arr = np.asarray(x, dtype=np.dtype(self.dtype))
+        y_arr = np.asarray(y_true, dtype=np.dtype(self.dtype))
+        if x_arr.shape[0] < 2:
             raise ValueError("need at least two grid points for approximate refit")
-        scale = max(float(np.ptp(y32)), APPROX_ABS_FLOOR)
+        scale = max(float(np.ptp(y_arr)), APPROX_ABS_FLOOR)
         s_val = APPROX_INITIAL_S
-        degree = min(3, int(x32.shape[0] - 1))
+        degree = min(3, int(x_arr.shape[0] - 1))
 
         for _ in range(APPROX_MAX_REFIT_ATTEMPTS):
-            tck = splrep(x32, y32, k=degree, s=s_val)
+            tck = splrep(x_arr, y_arr, k=degree, s=s_val)
             bspline = BSpline(*tck)
             ppoly = PPoly.from_spline(bspline)
             breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
@@ -536,12 +591,13 @@ class TimeSeries(eqx.Module):
                 coeffs=coeffs,
                 segment_start_piece_idx=[0],
                 continuity_side=self.continuity_side,
+                dtype=self.dtype,
             )
-            y_fit = np.asarray(probe.evaluate_many(x32), dtype=np.float32)
-            rel_err = float(np.mean(np.abs(y_fit - y32)) / scale)
+            y_fit = np.asarray(probe.evaluate_many(x_arr), dtype=np.dtype(self.dtype))
+            rel_err = float(np.mean(np.abs(y_fit - y_arr)) / scale)
             if rel_err <= APPROX_REL_ERR_TARGET:
-                return np.asarray(breaks, dtype=np.float32), np.asarray(
-                    coeffs, dtype=np.float32
+                return np.asarray(breaks, dtype=np.dtype(self.dtype)), np.asarray(
+                    coeffs, dtype=np.dtype(self.dtype)
                 )
             s_val *= APPROX_S_REDUCTION_FACTOR
 

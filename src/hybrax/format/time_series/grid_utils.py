@@ -18,11 +18,11 @@ def merge_times_with_tolerance(
     rtol: float = TIME_DEDUP_RTOL,
 ) -> jnp.ndarray:
     """Merge two sorted time arrays with tolerance-based deduplication."""
-    a = np.asarray(times_a, dtype=np.float32)
-    b = np.asarray(times_b, dtype=np.float32)
+    a = np.asarray(times_a, dtype=np.float64)
+    b = np.asarray(times_b, dtype=np.float64)
     candidate = np.sort(np.concatenate([a, b], axis=0))
     if candidate.size == 0:
-        return jnp.asarray([], dtype=jnp.float32)
+        return jnp.asarray([], dtype=jnp.float64)
 
     scale = float(candidate[-1] - candidate[0]) if candidate.size > 1 else 1.0
     if scale <= 0.0:
@@ -33,7 +33,7 @@ def merge_times_with_tolerance(
     for t in candidate[1:]:
         if float(t - merged[-1]) > tol:
             merged.append(float(t))
-    return jnp.asarray(np.asarray(merged, dtype=np.float32), dtype=jnp.float32)
+    return jnp.asarray(np.asarray(merged, dtype=np.float64), dtype=jnp.float64)
 
 
 def linear_interpolate_samples(
@@ -42,10 +42,10 @@ def linear_interpolate_samples(
     target_times: jnp.ndarray,
 ) -> jnp.ndarray:
     """Linearly interpolate source samples onto a target time grid."""
-    x = np.asarray(source_times, dtype=np.float32)
-    y = np.asarray(source_values, dtype=np.float32)
-    t = np.asarray(target_times, dtype=np.float32)
-    return jnp.asarray(np.interp(t, x, y).astype(np.float32), dtype=jnp.float32)
+    x = np.asarray(source_times, dtype=np.float64)
+    y = np.asarray(source_values, dtype=np.float64)
+    t = np.asarray(target_times, dtype=np.float64)
+    return jnp.asarray(np.interp(t, x, y).astype(np.float64), dtype=jnp.float64)
 
 
 def synthesize_binary_samples(
