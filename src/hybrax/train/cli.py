@@ -631,7 +631,10 @@ def _write_train_results(
             collection,
             fwd_result.store,
             output_dir,
-            process_names=config.process_names,
+            # Use eval_processes (full set including holdouts in LOO) so the
+            # predictions.csv has rows for every evaluated process. Per-process
+            # plots are rendered for the same set.
+            process_names=eval_processes,
             solver_max_steps=config.solver_max_steps,
             solver_rtol=config.solver_rtol,
             solver_atol=config.solver_atol,

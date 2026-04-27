@@ -27,6 +27,11 @@ from .loo import (
     run_loo_fold,
     run_loo_from_prepared_json,
 )
+from .loo_metrics import (
+    DEFAULT_METRICS,
+    compute_aggregated_metrics,
+    compute_per_process_metrics,
+)
 
 __all__ = [
     "ControlsStore",
@@ -57,6 +62,9 @@ __all__ = [
     "run_loo_cv",
     "run_loo_fold",
     "run_loo_from_prepared_json",
+    "DEFAULT_METRICS",
+    "compute_aggregated_metrics",
+    "compute_per_process_metrics",
     "load_raw_collection",
     "prepare_artifact",
 ]
