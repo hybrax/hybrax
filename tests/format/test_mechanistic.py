@@ -977,7 +977,7 @@ class TestIntracellular:
         assert dc.shape == (4,)
 
     def test_no_intracellular_backward_compat(self):
-        """Without intracellular components, behaviour is unchanged (X_active == X_measured)."""
+        """Without intracellular components, X_active remains X_measured."""
         mb = get_rhs_ode(_make_batch_process())
         X = 2.0
         dc = mb(
@@ -1348,7 +1348,7 @@ class TestModeledFlow:
         assert mb.f_modeled_size == 0
 
     def test_uncontrolled_flow_is_modeled_not_controlled(self):
-        """Uncontrolled continuous flow appears in modeled_flow_names, not flow_names."""
+        """Uncontrolled continuous flow appears in modeled_flow_names."""
         mb = get_rhs_ode(_make_process_with_modeled_flow())
         assert "base_feed" not in mb.flow_names
         assert "base_feed" in mb.modeled_flow_names
@@ -1948,10 +1948,6 @@ class TestIntegrateProcess:
         mb = get_rhs_ode(process)
 
         q_arr = jnp.array([q_X, q_S])
-        q_spline = make_interpax_spline(
-            np.array([0.0, 10.0]),
-            np.array([[q_X, q_S], [q_X, q_S]]),
-        )
 
         def q_func(t):
             return q_arr
@@ -1969,7 +1965,6 @@ class TestIntegrateProcess:
         # Analytical solution
         X0 = 0.5  # from _make_batch_process
         S0 = 10.0
-        V0 = 1.0
         X_true = X0 * np.exp(q_X * result["t"])
         S_true = S0 + (q_S / q_X) * X0 * (np.exp(q_X * result["t"]) - 1)
 
@@ -2467,7 +2462,7 @@ class TestIntegrateProcess:
         rates_func = _wrap_q_as_rates(mb, q_func)
 
         t_b = 5.0
-        # eps < _EPS (1e-3): keeps t_b ± eps inside the pre/post-event knot windows
+        # Tiny probes check left/right event sides without relying on spline knots.
         eps = 5e-4
         t_eval = jnp.array([0.0, t_b - eps, t_b, t_b + eps, 10.0, 20.0])
 

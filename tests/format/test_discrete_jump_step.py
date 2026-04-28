@@ -3,7 +3,6 @@ Tests verifying that ADF and feed-term produce correct step behaviour
 during the pseudo-batch backtransform via transformed TimeSeries carriers.
 """
 
-import numpy as np
 import jax.numpy as jnp
 import pytest
 
@@ -26,8 +25,6 @@ from bp_format.splines import (
     build_splines,
     to_timeseries,
     build_backtransform_spline,
-    evaluate_linear_plus_step,
-    evaluate_left_continuous_step,
 )
 
 
@@ -134,38 +131,14 @@ def test_adf_is_instantaneous_at_bolus():
     t_b = 10.0
     post_delta = 1e-6
     tr = rep.metadata["transform"]
-    adf_payload = tr["series"]["adf_ts"]
+    adf_ts = TimeSeries.from_dict(tr["series"]["adf_ts"])
 
-    adf_at = float(
-        evaluate_linear_plus_step(
-            jnp.array(t_b),
-            jnp.asarray(adf_payload["times"], dtype=float),
-            jnp.asarray(adf_payload["values"], dtype=float),
-            jnp.asarray(adf_payload["jump_times"], dtype=float),
-            jnp.asarray(adf_payload["metadata"]["jump_values"], dtype=float),
-        )
-    )
-    adf_after = float(
-        evaluate_linear_plus_step(
-            jnp.array(t_b + post_delta),
-            jnp.asarray(adf_payload["times"], dtype=float),
-            jnp.asarray(adf_payload["values"], dtype=float),
-            jnp.asarray(adf_payload["jump_times"], dtype=float),
-            jnp.asarray(adf_payload["metadata"]["jump_values"], dtype=float),
-        )
-    )
-    adf_after_far = float(
-        evaluate_linear_plus_step(
-            jnp.array(t_b + 5e-4),
-            jnp.asarray(adf_payload["times"], dtype=float),
-            jnp.asarray(adf_payload["values"], dtype=float),
-            jnp.asarray(adf_payload["jump_times"], dtype=float),
-            jnp.asarray(adf_payload["metadata"]["jump_values"], dtype=float),
-        )
-    )
+    adf_at = float(adf_ts.evaluate(jnp.array(t_b), side="left"))
+    adf_after = float(adf_ts.evaluate(jnp.array(t_b + post_delta), side="left"))
+    adf_after_far = float(adf_ts.evaluate(jnp.array(t_b + 5e-4), side="left"))
 
     assert adf_after > adf_at
-    assert adf_payload["continuity_side"] == "left"
+    assert adf_ts.continuity_side == "left"
     assert adf_after == pytest.approx(adf_after_far, rel=1e-3)
 
 

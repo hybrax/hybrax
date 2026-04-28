@@ -11,7 +11,7 @@ Pseudobatch metadata lives under:
 ts.metadata["transform"] = {
     "name": "pseudo_batch",
     "species": "...",
-    "feed_corr_interp": "linear_plus_step" | "cubic",
+    "feed_corr_interp": "piecewise_polynomial",
     "series": {
         "adf_ts": ...,
         "feed_corr_ts": ...,
@@ -37,23 +37,19 @@ The implementation preserves these invariants:
 ADF is now a `TimeSeries` with:
 
 - `continuity_side="left"`
-- a piecewise-linear baseline stored in `times` / `values`
-- instantaneous bolus jumps stored via `jump_times` and
-  `metadata["jump_values"]`
+- exact local polynomial pieces stored in `breaks` / `coeffs`
+- left-continuous jump times stored in `jump_times` for inspection
 
 This is intentionally not a pure global step function. A pure step ADF would
 be physically wrong for continuous-feed growth.
 
 ## Feed-correction representation
 
-For discrete-fed species, feed correction also uses the `linear_plus_step`
-representation:
+Feed correction is also a canonical `TimeSeries`:
 
-- smooth baseline in `times` / `values`
-- jump locations in `jump_times`
-- jump increments in `metadata["jump_values"]`
-
-For purely continuous-feed cases, feed correction may stay cubic.
+- smooth continuous-feed pieces in `breaks` / `coeffs`
+- exact bolus jumps via adjacent pieces and `continuity_side="left"`
+- optional `metadata["jump_values"]` as derived inspection data
 
 ## Runtime consumers
 
@@ -63,8 +59,7 @@ The nested `TimeSeries` schema is the primary path used by:
 - `bp_format.mechanistic._build_pseudobatch_transforms`
 
 Older flat metadata keys such as `adf_times`, `adf_values`,
-`feed_corr_times`, and `feed_corr_values` remain only as compatibility
-fallbacks for legacy payloads.
+`feed_corr_times`, and `feed_corr_values` are no longer runtime carriers.
 
 ## Validation targets
 

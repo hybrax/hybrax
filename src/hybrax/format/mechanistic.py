@@ -140,9 +140,8 @@ from .dataclasses import (
 from .splines import (
     make_interpax_spline,
     build_backtransform_spline,
-    evaluate_left_continuous_step,
-    evaluate_linear_plus_step,
-    _canonicalize_left_continuous_step_metadata,
+    _constant_timeseries,
+    _evaluate_with_boundary_start,
 )
 
 
@@ -1066,8 +1065,10 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
                     Cin = Cin.at[k, j].set(float(conc.value))
                 else:
                     raise NotImplementedError(
-                        "TimeSeries feed concentrations are not yet supported in get_rhs_ode. "
-                        f"Found TimeSeries for species '{sp_name}' in feed '{feed.name}' of volume change '{vc_name}'."
+                        "TimeSeries feed concentrations are not yet supported "
+                        "in get_rhs_ode. Found TimeSeries for species "
+                        f"{sp_name!r} in feed {feed.name!r} of volume change "
+                        f"{vc_name!r}."
                     )
         return Cin
 
@@ -1814,6 +1815,23 @@ def _piecewise_linear_value_and_slope(
     return val, slope
 
 
+def _snap_times_to_discrete_events(
+    times: jnp.ndarray,
+    event_times: jnp.ndarray | None,
+) -> jnp.ndarray:
+    """Snap near-exact event-grid values back to exact event timestamps."""
+    times = jnp.asarray(times, dtype=float)
+    if event_times is None or int(event_times.shape[0]) == 0:
+        return times
+    events = jnp.asarray(event_times, dtype=float)
+    dist = jnp.abs(times[:, None] - events[None, :])
+    idx = jnp.argmin(dist, axis=1)
+    nearest = events[idx]
+    scale = jnp.maximum(1.0, jnp.maximum(jnp.abs(times), jnp.abs(nearest)))
+    tol = 16.0 * jnp.finfo(times.dtype).eps * scale
+    return jnp.where(dist[jnp.arange(times.shape[0]), idx] <= tol, nearest, times)
+
+
 def _get_component_transform_payload(comp) -> Optional[Dict[str, Any]]:
     """Return pseudobatch transform metadata from new schema first."""
     concentration = getattr(comp, "concentration", None)
@@ -1852,17 +1870,15 @@ def _build_pseudobatch_transforms(
         comp = process.reactor_medium.components[sp_name]
         tr = _get_component_transform_payload(comp)
         if tr is None:
+            adf_ts = _constant_timeseries(1.0, t_start, t_end)
+            fc_ts = _constant_timeseries(0.0, t_start, t_end)
             transforms.append(
                 {
                     "kind": "identity",
-                    "adf_t": jnp.asarray([t_start, t_end], dtype=float),
-                    "adf_v": jnp.asarray([1.0, 1.0], dtype=float),
-                    "adf_interp": "linear",
-                    "adf_jump_t": jnp.zeros(0, dtype=float),
-                    "adf_jump_v": jnp.zeros(0, dtype=float),
-                    "fc_t": jnp.asarray([t_start, t_end], dtype=float),
-                    "fc_v": jnp.asarray([0.0, 0.0], dtype=float),
-                    "fc_interp": "linear",
+                    "adf_ts": adf_ts,
+                    "dadf_ts": adf_ts.deriv(),
+                    "feed_corr_ts": fc_ts,
+                    "dfc_ts": fc_ts.deriv(),
                 }
             )
             continue
@@ -1883,87 +1899,56 @@ def _build_pseudobatch_transforms(
                 "'series.adf_ts'/'series.feed_corr_ts' payloads."
             )
 
-        adf_t = jnp.asarray(adf_payload["times"], dtype=float)
-        adf_v = jnp.asarray(adf_payload["values"], dtype=float)
-        adf_interp = str(adf_payload.get("metadata", {}).get("interp", "linear"))
-        adf_jump_t = jnp.asarray(adf_payload.get("jump_times", []), dtype=float)
-        adf_jump_v = jnp.asarray(
-            adf_payload.get("metadata", {}).get("jump_values", []), dtype=float
-        )
-
-        fc_t = jnp.asarray(fc_payload["times"], dtype=float)
-        fc_v = jnp.asarray(fc_payload["values"], dtype=float)
+        adf_ts = TimeSeries.from_dict(adf_payload)
+        feed_corr_ts = TimeSeries.from_dict(fc_payload)
         fc_interp = str(
             fc_payload.get("metadata", {}).get(
                 "interp", tr.get("feed_corr_interp", "linear")
             )
         )
-        fc_base_t = fc_t
-        fc_base_v = fc_v
-        fc_jump_t = jnp.zeros(0, dtype=float)
-        fc_jump_v = jnp.zeros(0, dtype=float)
-        if fc_interp == "linear_plus_step":
-            fc_base_t = jnp.asarray(fc_payload["times"], dtype=float)
-            fc_base_v = jnp.asarray(fc_payload["values"], dtype=float)
-            fc_jump_t = jnp.asarray(fc_payload.get("jump_times", []), dtype=float)
-            fc_jump_v = jnp.asarray(
-                fc_payload.get("metadata", {}).get("jump_values", []),
-                dtype=float,
-            )
-        elif fc_interp == "linear":
+        if fc_interp in {"linear", "linear_plus_step"}:
             raise ValueError(
-                "Legacy feed_corr_interp='linear' unsupported for discrete "
+                f"Legacy feed_corr_interp={fc_interp!r} unsupported for "
                 "pseudobatch mechanistic path; regenerate transformed "
                 "TimeSeries payloads."
             )
-
-        fc_spline = None
-        if fc_interp == "cubic":
-            fc_spline = make_interpax_spline(fc_t, fc_v)
+        if adf_ts.breaks is None or adf_ts.coeffs is None:
+            raise ValueError("ADF transform TimeSeries must provide spline state.")
+        if feed_corr_ts.breaks is None or feed_corr_ts.coeffs is None:
+            raise ValueError(
+                "Feed-correction transform TimeSeries must provide spline state."
+            )
 
         transforms.append(
             {
                 "kind": "pb",
-                "adf_t": adf_t,
-                "adf_v": adf_v,
-                "adf_interp": adf_interp,
-                "adf_jump_t": adf_jump_t,
-                "adf_jump_v": adf_jump_v,
-                "fc_t": fc_t,
-                "fc_v": fc_v,
+                "adf_ts": adf_ts,
+                "dadf_ts": adf_ts.deriv(),
+                "feed_corr_ts": feed_corr_ts,
+                "dfc_ts": feed_corr_ts.deriv(),
                 "fc_interp": fc_interp,
-                "fc_spline": fc_spline,
-                "fc_base_t": fc_base_t,
-                "fc_base_v": fc_base_v,
-                "fc_jump_t": fc_jump_t,
-                "fc_jump_v": fc_jump_v,
             }
         )
-        if fc_interp == "linear_plus_step":
-            if len(fc_base_t) < 2:
-                transforms[-1]["fc_slopes"] = jnp.array([0.0], dtype=float)
-            else:
-                fc_dt = jnp.diff(fc_base_t)
-                fc_slopes = jnp.diff(fc_base_v) / jnp.maximum(fc_dt, 1e-12)
-                transforms[-1]["fc_slopes"] = fc_slopes
-        elif fc_interp != "cubic":
+        if fc_interp not in {
+            "cubic",
+            "piecewise_polynomial",
+            "piecewise_constant",
+        }:
             raise ValueError(
-                f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic' or "
-                "'linear_plus_step'."
+                f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic', "
+                "'piecewise_polynomial', or 'piecewise_constant'."
             )
 
     for _ in mb.process_variable_state_names:
+        adf_ts = _constant_timeseries(1.0, t_start, t_end)
+        fc_ts = _constant_timeseries(0.0, t_start, t_end)
         transforms.append(
             {
                 "kind": "identity",
-                "adf_t": jnp.asarray([t_start, t_end], dtype=float),
-                "adf_v": jnp.asarray([1.0, 1.0], dtype=float),
-                "adf_interp": "linear",
-                "adf_jump_t": jnp.zeros(0, dtype=float),
-                "adf_jump_v": jnp.zeros(0, dtype=float),
-                "fc_t": jnp.asarray([t_start, t_end], dtype=float),
-                "fc_v": jnp.asarray([0.0, 0.0], dtype=float),
-                "fc_interp": "linear",
+                "adf_ts": adf_ts,
+                "dadf_ts": adf_ts.deriv(),
+                "feed_corr_ts": fc_ts,
+                "dfc_ts": fc_ts.deriv(),
             }
         )
 
@@ -2011,51 +1996,17 @@ def integrate_process_pseudospace(
 
     transforms = _build_pseudobatch_transforms(process, mb)
 
-    # Per-state adf/feed-correction representations.
-    adf_t_list: List[jnp.ndarray] = []
-    adf_v_list: List[jnp.ndarray] = []
-    adf_interp_list: List[str] = []
-    adf_jump_t_list: List[jnp.ndarray] = []
-    adf_jump_v_list: List[jnp.ndarray] = []
-    fc_is_cubic: List[bool] = []
-    fc_cubic: List[Optional[interpax.CubicSpline]] = []
-    fc_cubic_deriv: List[Optional[interpax.PPoly]] = []
-    fc_t_list: List[jnp.ndarray] = []
-    fc_v_list: List[jnp.ndarray] = []
+    # Per-state pseudobatch transforms. ADF/feed-correction are canonical
+    # TimeSeries objects; derivatives ignore instantaneous jump impulses.
+    adf_ts_list: List[TimeSeries] = []
+    dadf_ts_list: List[TimeSeries] = []
+    fc_ts_list: List[TimeSeries] = []
+    dfc_ts_list: List[TimeSeries] = []
     for tr in transforms:
-        if tr["kind"] == "pb" and tr.get("fc_interp") == "cubic":
-            adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
-            adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
-            adf_interp_list.append(str(tr.get("adf_interp", "linear")))
-            adf_jump_t_list.append(jnp.asarray(tr.get("adf_jump_t", []), dtype=float))
-            adf_jump_v_list.append(jnp.asarray(tr.get("adf_jump_v", []), dtype=float))
-            fc_is_cubic.append(True)
-            fc_cubic.append(tr["fc_spline"])
-            fc_cubic_deriv.append(tr["fc_spline"].derivative())
-            fc_t_list.append(jnp.asarray([t_start, t_end], dtype=float))
-            fc_v_list.append(jnp.asarray([0.0, 0.0], dtype=float))
-        elif tr["kind"] == "pb":
-            adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
-            adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
-            adf_interp_list.append(str(tr.get("adf_interp", "linear")))
-            adf_jump_t_list.append(jnp.asarray(tr.get("adf_jump_t", []), dtype=float))
-            adf_jump_v_list.append(jnp.asarray(tr.get("adf_jump_v", []), dtype=float))
-            fc_is_cubic.append(False)
-            fc_cubic.append(None)
-            fc_cubic_deriv.append(None)
-            fc_t_list.append(jnp.asarray(tr["fc_t"], dtype=float))
-            fc_v_list.append(jnp.asarray(tr["fc_v"], dtype=float))
-        else:
-            adf_t_list.append(jnp.asarray(tr["adf_t"], dtype=float))
-            adf_v_list.append(jnp.asarray(tr["adf_v"], dtype=float))
-            adf_interp_list.append(str(tr.get("adf_interp", "linear")))
-            adf_jump_t_list.append(jnp.asarray(tr.get("adf_jump_t", []), dtype=float))
-            adf_jump_v_list.append(jnp.asarray(tr.get("adf_jump_v", []), dtype=float))
-            fc_is_cubic.append(False)
-            fc_cubic.append(None)
-            fc_cubic_deriv.append(None)
-            fc_t_list.append(jnp.asarray(tr["fc_t"], dtype=float))
-            fc_v_list.append(jnp.asarray(tr["fc_v"], dtype=float))
+        adf_ts_list.append(tr["adf_ts"])
+        dadf_ts_list.append(tr["dadf_ts"])
+        fc_ts_list.append(tr["feed_corr_ts"])
+        dfc_ts_list.append(tr["dfc_ts"])
 
     if state_splines is not None:
         bio_spline = state_splines[mb.reactor_component_state_names[mb.biomass_idx]]
@@ -2137,74 +2088,26 @@ def integrate_process_pseudospace(
     scales = _compute_scale_factors(process, mb)
     state_scale = jnp.append(jnp.array(scales), 1.0)
 
-    # Pre-compute per-interval slopes for the piecewise-linear ADF derivative.
-    adf_slopes_list = []
-    for i in range(len(adf_t_list)):
-        if adf_t_list[i].shape[0] >= 2:
-            at = adf_t_list[i]
-            av = adf_v_list[i]
-            sl = jnp.diff(av) / jnp.maximum(jnp.diff(at), 1e-12)
-            adf_slopes_list.append(sl)
-        else:
-            adf_slopes_list.append(jnp.zeros(1, dtype=float))
-
     def _eval_adf(t):
         adf_vals = []
         for i in range(n_non_volume):
-            if adf_interp_list[i] == "linear_plus_step":
-                adf_vals.append(
-                    evaluate_linear_plus_step(
-                        t,
-                        adf_t_list[i],
-                        adf_v_list[i],
-                        adf_jump_t_list[i],
-                        adf_jump_v_list[i],
-                    )
-                )
-            else:
-                adf_vals.append(jnp.interp(t, adf_t_list[i], adf_v_list[i]))
+            adf_vals.append(
+                _evaluate_with_boundary_start(adf_ts_list[i], t, side="left")
+            )
         return jnp.stack(adf_vals)
 
     def _eval_dadf(t):
         dadf_vals = []
         for i in range(n_non_volume):
-            at = adf_t_list[i]
-            sl = adf_slopes_list[i]
-            idx = jnp.clip(jnp.searchsorted(at, t) - 1, 0, sl.shape[0] - 1)
-            dadf_vals.append(sl[idx])
+            dadf_vals.append(dadf_ts_list[i].evaluate(t, side="left"))
         return jnp.stack(dadf_vals)
 
     def _eval_fc_and_dfc(t):
         fc_vals = []
         dfc_vals = []
         for i in range(n_non_volume):
-            if fc_is_cubic[i]:
-                fc_i = fc_cubic[i](t)
-                dfc_i = fc_cubic_deriv[i](t)
-            else:
-                ft = fc_t_list[i]
-                fv = fc_v_list[i]
-                tr = transforms[i]
-                if tr["kind"] == "pb" and tr.get("fc_interp") == "linear_plus_step":
-                    bt = tr["fc_base_t"]
-                    bv = tr["fc_base_v"]
-                    jt = tr["fc_jump_t"]
-                    jv = tr["fc_jump_v"]
-                    fc_i = evaluate_linear_plus_step(t, bt, bv, jt, jv)
-                    if "fc_slopes" in tr:
-                        sl = tr["fc_slopes"]
-                        idx = jnp.clip(jnp.searchsorted(bt, t) - 1, 0, sl.shape[0] - 1)
-                        dfc_i = sl[idx]
-                    else:
-                        _, dfc_i = _piecewise_linear_value_and_slope(t, bt, bv)
-                elif tr["kind"] == "pb" and "fc_slopes" in tr:
-                    fc_i = jnp.interp(t, ft, fv)
-                    sl = tr["fc_slopes"]
-                    idx = jnp.clip(jnp.searchsorted(ft, t) - 1, 0, sl.shape[0] - 1)
-                    dfc_i = sl[idx]
-                else:
-                    fc_i = jnp.interp(t, ft, fv)
-                    _, dfc_i = _piecewise_linear_value_and_slope(t, ft, fv)
+            fc_i = _evaluate_with_boundary_start(fc_ts_list[i], t, side="left")
+            dfc_i = dfc_ts_list[i].evaluate(t, side="left")
             fc_vals.append(fc_i)
             dfc_vals.append(dfc_i)
         return jnp.stack(fc_vals), jnp.stack(dfc_vals)
@@ -2310,14 +2213,15 @@ def integrate_process_pseudospace(
     ys = sol.ys * state_scale[None, :]
     c_star_out = ys[:, :n_non_volume]
     V_cont_out = ys[:, n_non_volume]
+    t_output = _snap_times_to_discrete_events(t_eval, ev_times)
 
-    adf_out = jax.vmap(_eval_adf)(t_eval)
-    fc_out, _ = jax.vmap(_eval_fc_and_dfc)(t_eval)
+    adf_out = jax.vmap(_eval_adf)(t_output)
+    fc_out, _ = jax.vmap(_eval_fc_and_dfc)(t_output)
     c_out = (c_star_out + fc_out) / jnp.maximum(adf_out, 1e-12)
     c_out = c_out.at[:, :n_reactor].set(jnp.maximum(c_out[:, :n_reactor], 0.0))
 
     if ev_times is not None:
-        idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="left"))(t_eval)
+        idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="left"))(t_output)
         V_disc_out = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
     else:
         V_disc_out = jnp.zeros_like(t_eval)
@@ -2406,7 +2310,6 @@ def integrate_process(
     scales = _compute_scale_factors(process, mb)
     scale_vec = jnp.array(scales)  # (n_non_volume,)
     state_scale = jnp.append(scale_vec, 1.0)  # [scales..., 1.0]
-    state_dim = n_non_volume + 1
 
     # Build modeled flow splines (batched)
     cum_splines_mod_list = []

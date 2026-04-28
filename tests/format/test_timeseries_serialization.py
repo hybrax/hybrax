@@ -41,20 +41,20 @@ def _nested_transform_metadata() -> dict:
         values=jnp.array([1.0, 1.05, 1.1]),
         jump_times=jnp.array([6.0]),
         continuity_side="left",
-        metadata={"interp": "linear_plus_step", "jump_values": [0.2]},
+        metadata={"interp": "piecewise_polynomial", "jump_values": [0.2]},
     )
     feed_corr_ts = TimeSeries(
         times=jnp.array([0.0, 5.0, 10.0]),
         values=jnp.array([0.0, 0.4, 0.8]),
         jump_times=jnp.array([6.0]),
         continuity_side="left",
-        metadata={"interp": "linear_plus_step", "jump_values": [1.5]},
+        metadata={"interp": "piecewise_polynomial", "jump_values": [1.5]},
     )
     return {
         "transform": {
             "name": "pseudo_batch",
             "species": "biomass",
-            "feed_corr_interp": "linear_plus_step",
+            "feed_corr_interp": "piecewise_polynomial",
             "cstar_interp": "cubic",
             "is_constant": False,
             "constant_value": None,
@@ -195,7 +195,9 @@ def test_nested_transform_metadata_roundtrips_as_canonical_dicts() -> None:
     assert isinstance(transform["series"]["adf_ts"], dict)
     assert isinstance(transform["series"]["feed_corr_ts"], dict)
     assert transform["series"]["adf_ts"]["continuity_side"] == "left"
-    assert transform["series"]["adf_ts"]["metadata"]["interp"] == "linear_plus_step"
+    assert transform["series"]["adf_ts"]["metadata"]["interp"] == (
+        "piecewise_polynomial"
+    )
     assert transform["series"]["feed_corr_ts"]["metadata"]["jump_values"] == [1.5]
 
     loaded_transform = (

@@ -72,24 +72,35 @@ Event-by-event behaviour:
 | bolus only | grows by `V_b` | unchanged | grows | `(V_pre+V_b)/V_pre` |
 | simultaneous sample + bolus (sample first, then bolus) | net `V_b−V_s` | multiplied by `V_pre/(V_pre−V_s)` | steps by `(V_pre−V_s+V_b)/(V_pre−V_s)` | correct physics |
 
-`S(t)` is exposed as `inputs["sample_compensation_dense"]` from `build_pseudobatch_inputs` and is also plotted alongside ADF in the `examples/00_combined/03_pseudobatch_splines/` scripts.
+`S(t)` is exposed as a canonical `sample_compensation_ts` `TimeSeries` from
+`build_pseudobatch_inputs`. Compatibility plotting arrays may be present, but
+runtime evaluation uses `TimeSeries.evaluate`.
 
-### Dense time grid
+### Exact TimeSeries break grid
 
-Volume, feeds, ADF and `fc` are evaluated on a **dense time grid** that includes:
+Volume, feeds, ADF, and `fc` are represented on an exact `TimeSeries` break grid
+that includes:
+
 - every measurement time,
-- every event time plus `t_event ± _EPS` knots (for sharp event representation),
+- every event time,
 - every reference time of every `TimeSeries` in `volume_changes`,
-- a background `linspace` of at least 500 evenly-spaced knots across `[t_start, t_end]`.
 
-The background densification is required because linear interpolation of ADF between sparse knots would otherwise render smooth continuous-feed growth as a huge apparent jump right after each event.
+There are no `t_event ± eps` knots. Discontinuities are represented by local
+polynomial pieces plus `continuity_side="left"` semantics.
 
 ## Implementation pipeline
 
-1. **`build_pseudobatch_inputs(process, species_name)`** — builds the dense grid, computes `reactor_volume_dense`, `accumulated_feed_dense`, `sample_volume_dense`, `concentration_in_feed`, then derives `adf_dense` via the sample-compensation formula, `adf_at_meas`, `feed_corr_at_meas`, `feed_corr_dense`, and `c_star = meas_conc · adf − cumsum(feed_term)` at the measurement times. Returns a dict.
-2. **`build_splines(inputs, process, species_name)`** — fits a cubic spline (or PCHIP, see below) through `(meas_times, c_star)`; calibrates the dense feed-correction trajectory to anchor exactly at `feed_corr_at_meas` at every measurement index; extracts deterministic bolus jumps at each event's ε-pair; and splits both feed correction and ADF into a smooth baseline plus explicit jump metadata. Returns a runtime payload dict with `spline_cstar`, `adf_base_*`, `adf_jump_*`, `feed_corr_base_*`, `feed_corr_jump_*`.
+1. **`build_pseudobatch_inputs(process, species_name)`** — builds canonical
+   `TimeSeries` objects for reactor volume, accumulated feed, sample
+   compensation, ADF, and feed correction. It computes `c_star = meas_conc ·
+   adf − feed_corr` at measurement times.
+2. **`build_splines(inputs, process, species_name)`** — fits a cubic spline (or
+   PCHIP, see below) through `(meas_times, c_star)` and passes through the
+   canonical `adf_ts` and `feed_corr_ts`.
 3. **`to_timeseries(inputs, splines, species_name)`** — converts the runtime pseudobatch payload into the canonical transformed `TimeSeries` carrier with nested `metadata["transform"]["series"]` payloads for `adf_ts` and `feed_corr_ts`.
-4. **`evaluate_real_concentration(t_eval, splines)`** — evaluates `c(t) = (cs(t) + fc(t)) / ADF(t)` with both ADF and discrete feed correction in `linear_plus_step` form (piecewise-linear base + instantaneous jumps).
+4. **`evaluate_real_concentration(t_eval, splines)`** — evaluates `c(t) =
+   (cs(t) + fc(t)) / ADF(t)` with ADF and feed correction evaluated via
+   `TimeSeries.evaluate`.
 
 ### Cubic vs PCHIP fallback
 
@@ -104,25 +115,31 @@ The overshoot check catches processes with stepwise `c_star` (e.g. bolus-only pr
 
 ### Why separate `c*` and `fc` in the spline representation?
 
-The key insight of pseudobatch is that `c*(t)` is smooth while `c(t)` is not. By splining `c*` (smooth) and reconstructing `c = (c* + fc) / ADF` with `fc` and `ADF` computed analytically on the dense grid, we avoid ever fitting a spline to data that contains discontinuities. Bolus jumps and sample-time "batch equivalence" shifts are carried exactly in the `fc_jump_*` and `ADF` components; the spline only has to cover the smooth pseudobatch dynamics.
+The key insight of pseudobatch is that `c*(t)` is smooth while `c(t)` is not.
+By splining `c*` and reconstructing `c = (c* + fc) / ADF` with canonical
+`TimeSeries` ADF/feed-correction objects, we avoid fitting the concentration
+spline through discontinuities. Bolus jumps and sample-time batch-equivalence
+shifts are encoded in the `TimeSeries` pieces; the `c*` spline covers only the
+smooth pseudobatch dynamics.
 
-### Why anchor `fc` to meas values?
+### Feed correction invariant
 
-The pseudobatch invariant `c(t_meas) = meas_conc` requires that `c_star_spline(t_meas) + fc(t_meas) = meas_conc · ADF(t_meas)` exactly. The module enforces this by rescaling the dense `fc` trajectory within each inter-meas interval so that its endpoints match `feed_corr_at_meas` at the anchor times. Between anchors the calibrated trajectory inherits the curvature of the physical cumsum — which captures continuous-feed growth accurately, even for dual-fed species (same species in both continuous and bolus feed streams).
+Feed correction is built from the simplified physical invariant:
 
-### The epsilon convention
+```python
+dFC = S(t) * dF * C_feed / V_init
+```
 
-For every discrete event at `t_event`, the dense grid contains `t_event ± _EPS` knots (`_EPS = 1e-4`). Bolus jumps are extracted as `fc_dense[i_post] − fc_dense[i_pre]`. On the dense grid, ADF and `fc` transition across the `2·_EPS`-wide interval in a single step that `jnp.interp` renders indistinguishable from a true discontinuity at the plotting resolution.
+For continuous feeds this is integrated piecewise. For boluses, the exact jump
+uses the sample-first value of `S(t)` at the event timestamp.
 
 ### Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `_EPS` | `1e-4` | Pre/post-event offset for discrete event ε-pair knots |
 | `DEFAULT_MAX_SEGMENTS` | `16` | Maximum number of segments in padded storage |
 | `DEFAULT_MAX_CTRL_POINTS` | `128` | Maximum control points per segment |
 | `SMOOTHING_THRESHOLD` | `100` | Switch from interpolation to smoothing spline above this many points |
-| Background densification | ≥ 500 pts | Minimum number of linspace knots added to the dense grid |
 | PCHIP overshoot threshold | 5 % of data range | Cubic→PCHIP switchover for near-stepwise `c_star` |
 
 ## Public API
@@ -143,8 +160,6 @@ For every discrete event at `t_event`, the dense grid contains `t_event ± _EPS`
 |----------|-------------|
 | `build_interpax_spline(rep)` | Reconstruct per-segment `interpax.CubicSpline` objects from a spline-backed `TimeSeries`. |
 | `evaluate_spline_at(rep, t)` | Evaluate a spline-backed `TimeSeries` at a single time point. |
-| `evaluate_left_continuous_step(t, step_times, step_values)` | Left-continuous step function lookup. |
-| `evaluate_linear_plus_step(t, base_times, base_values, jump_times, jump_values)` | Piecewise-linear base plus left-continuous instantaneous jumps. |
 
 ### Segmentation
 
@@ -158,10 +173,10 @@ For every discrete event at `t_event`, the dense grid contains `t_event ± _EPS`
 
 | Function | Description |
 |----------|-------------|
-| `build_pseudobatch_inputs(process, species_name)` | Build the dense grid, volumes, ADF (via the sample-compensation factor), feed-correction and `c_star` needed for pseudobatch normalisation. Returns a dict including `dense_times`, `adf_dense`, `sample_compensation_dense`, `c_star`, `feed_corr_at_meas`, `feed_corr_dense`. |
-| `build_splines(inputs, process=None, species_name=None)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: cubic/PCHIP `spline_cstar`, `feed_corr_base_*` + `feed_corr_jump_*`, and `adf_base_*` + `adf_jump_*`. |
+| `build_pseudobatch_inputs(process, species_name)` | Build canonical pseudobatch `TimeSeries` objects and measurement-level `c_star`, `adf_at_meas`, and `feed_corr_at_meas`. |
+| `build_splines(inputs, process=None, species_name=None)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: cubic/PCHIP `spline_cstar`, plus canonical `adf_ts` and `feed_corr_ts`. |
 | `to_timeseries(inputs, splines, species_name)` | Convert the in-memory pseudobatch payload to the canonical transformed `TimeSeries` carrier used for serialization and runtime backtransform. |
-| `evaluate_real_concentration(t_eval, splines)` | Evaluate the backtransformed real concentration using linear-plus-step ADF and feed-correction semantics. |
+| `evaluate_real_concentration(t_eval, splines)` | Evaluate the backtransformed real concentration using `TimeSeries.evaluate` for ADF and feed correction. |
 
 ### JAX-compatible backtransform classes
 
@@ -175,10 +190,8 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 
 Fields:
 - `c_star_spline` — interpax `CubicSpline` or `PchipInterpolator` for `c*`
-- `adf_times`, `adf_values` — ADF baseline knots/values
-- `adf_jump_times`, `adf_jump_values` — instantaneous ADF bolus jumps
-- `fc_spline`, `fc_times`, `fc_values` — feed correction baseline
-- `fc_jump_times`, `fc_jump_values` — discrete feed-correction jumps (linear_plus_step mode)
+- `adf_ts`, `feed_corr_ts` — canonical transform `TimeSeries`
+- `dadf_ts`, `dfc_ts` — derivative `TimeSeries` for smooth RHS terms
 - `is_constant` — bypass flag for constant-concentration species
 - `constant_value` — returned directly when `is_constant = True`
 
