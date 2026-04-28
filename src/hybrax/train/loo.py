@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import jax
 import pandas as pd
 from bp_format.dataclasses import (
     AugmentedBioProcess,
@@ -387,6 +388,12 @@ def run_loo_cv(
             runtime_config=runtime_config,
         )
         folds.append(fold)
+        # Vent the JIT cache: each fold builds a fresh `_step_fn` closure
+        # (harness.py:_make_batched_step), so XLA caches a new ~600 MiB of
+        # compiled programs every fold even though the (name, shapes)
+        # signature is identical across folds. Without this, RSS grows
+        # linearly with fold count (~620 MiB/fold on Kittler).
+        jax.clear_caches()
 
     # Only write summary/aggregate for full sweeps. Subset/single-fold runs
     # leave aggregation to a later --aggregate-only invocation.
