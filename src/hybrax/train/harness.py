@@ -768,7 +768,9 @@ def train_collection(
         "target_variance: %s",
         {
             name: f"{v:.2f}"
-            for name, v in zip(_target_labels[: target_variance.shape[0]], target_variance.tolist())
+            for name, v in zip(
+                _target_labels[: target_variance.shape[0]], target_variance.tolist()
+            )
         },
     )
 
@@ -818,6 +820,7 @@ def train_collection(
         trainable_params,
         optimizer_state,
         warmup_batch,
+        jnp.asarray(0, dtype=jnp.int32),
     )
 
     def _make_batched_step():
@@ -826,6 +829,7 @@ def train_collection(
             current_trainable_params: Any,
             current_optimizer_state: Any,
             current_batch,
+            step: jax.Array,
         ):
             jump_ts_rows = None
             if cfg.solver_use_jump_ts:
@@ -854,12 +858,14 @@ def train_collection(
                     max_solver_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
+                    step=step,
                 )
                 total_loss, per_target, per_sample = _validate_batched_loss_outputs(
                     total_loss,
                     per_target,
                     per_sample,
-                    n_targets=int(current_batch.y_meas.shape[2]) + len(extra_loss_names),
+                    n_targets=int(current_batch.y_meas.shape[2])
+                    + len(extra_loss_names),
                     batch_size=int(current_batch.process_indices.shape[0]),
                 )
                 return total_loss, (per_target, per_sample)
@@ -926,6 +932,7 @@ def train_collection(
         trainable_params,
         optimizer_state,
         warmup_batch,
+        jnp.asarray(0, dtype=jnp.int32),
     )
     jax.block_until_ready(warmup_loss)
     warmup_compile_seconds = time.perf_counter() - warmup_t0
@@ -997,6 +1004,7 @@ def train_collection(
                 trainable_params,
                 optimizer_state,
                 batch,
+                jnp.asarray(step_index + 1, dtype=jnp.int32),
             )
             if current_signature != train_step_input_signature:
                 step_fn = _make_batched_step()
@@ -1016,6 +1024,7 @@ def train_collection(
                 trainable_params,
                 optimizer_state,
                 batch,
+                jnp.asarray(step_index + 1, dtype=jnp.int32),
             )
             jax.block_until_ready(loss)
             step_dt = time.perf_counter() - t0
@@ -1039,6 +1048,7 @@ def train_collection(
                     max_solver_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
+                    step=jnp.asarray(step_index + 1, dtype=jnp.int32),
                 )
                 jax.block_until_ready(m_total)
                 monitor_loss_value = float(m_total)
@@ -1059,7 +1069,9 @@ def train_collection(
                     step_dt=float(step_dt),
                     rebuild_count=int(rebuild_count),
                     monitor_loss=monitor_loss_value,
-                    monitor_label=cfg.monitor_label if monitor_loss_value is not None else None,
+                    monitor_label=cfg.monitor_label
+                    if monitor_loss_value is not None
+                    else None,
                 )
             )
 
@@ -1075,7 +1087,9 @@ def train_collection(
                 mean_loss_by_step=loss_so_far,
                 per_target_loss_by_step=per_target_loss_so_far,
                 target_names=tuple(_target_labels),
-                monitor_loss_by_step=monitor_loss_so_far if monitor_loss_so_far else None,
+                monitor_loss_by_step=monitor_loss_so_far
+                if monitor_loss_so_far
+                else None,
                 monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
             )
             if checkpoint_step_dir is not None:

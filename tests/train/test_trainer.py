@@ -413,6 +413,90 @@ def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
     )
 
 
+def test_evaluate_sample_from_arrays_forwards_step_to_result():
+    wrapper, process_data = _build_wrapper_and_process()
+    result = evaluate_sample_from_arrays(
+        wrapper,
+        t_meas=process_data.t_meas,
+        y_meas=process_data.y_meas,
+        meas_mask=process_data.meas_mask,
+        n_meas=process_data.n_meas,
+        y0=process_data.y0,
+        jump_ts=process_data.controls.active_step_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+        step=42,
+    )
+
+    assert int(result.step) == 42
+    assert jnp.issubdtype(result.step.dtype, jnp.integer)
+
+
+def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
+    collection = _make_two_process_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    process_data = store.get_process("p2")
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=_LinearReactionModule(),
+        process=collection.processes["p2"],
+        controls=process_data.controls,
+    )
+
+    batch = store.gather_batch(jnp.asarray([1], dtype=jnp.int32))
+    batch_controls = store.controls_store.as_batch_controls()
+
+    rhs_by_process = [
+        get_rhs_ode(collection.processes[name]) for name in store.process_order
+    ]
+    batched_cin = jnp.stack([rhs.Cin for rhs in rhs_by_process], axis=0)
+    batched_cin_modeled = jnp.stack([rhs.Cin_modeled for rhs in rhs_by_process], axis=0)
+
+    received_steps: list[int | None] = []
+
+    def _sample_loss_fn(
+        _wrapper,
+        *,
+        t_meas,
+        y_meas,
+        meas_mask,
+        n_meas,
+        y0,
+        jump_ts,
+        max_solver_steps,
+        solver_rtol,
+        solver_atol,
+        step=None,
+    ):
+        received_steps.append(step)
+        del t_meas, y_meas, meas_mask, n_meas, y0, jump_ts
+        del max_solver_steps, solver_rtol, solver_atol
+        score = float(step) if step is not None else -1.0
+        return jnp.asarray(score), jnp.asarray([score], dtype=jnp.float32)
+
+    batched_loss_fn = build_batched_loss_fn_from_sample_loss(_sample_loss_fn)
+    mean_total, _, _ = batched_loss_fn(
+        wrapper,
+        batch,
+        batch_controls,
+        batched_cin,
+        batched_cin_modeled,
+        None,
+        max_solver_steps=10,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+        step=7,
+    )
+
+    assert len(received_steps) == 1
+    assert received_steps[0] == 7
+    assert float(mean_total) == pytest.approx(7.0)
+
+
 def test_batched_loss_builder_preserves_none_jump_ts_branch():
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
@@ -448,6 +532,7 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
         max_solver_steps,
         solver_rtol,
         solver_atol,
+        step=None,
     ):
         del (
             t_meas,
@@ -458,6 +543,7 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
             max_solver_steps,
             solver_rtol,
             solver_atol,
+            step,
         )
         score = 1.0 if jump_ts is None else 2.0
         return jnp.asarray(score), jnp.asarray([score], dtype=jnp.float32)

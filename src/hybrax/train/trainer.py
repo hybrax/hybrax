@@ -24,6 +24,10 @@ class SingleSampleResult(eqx.Module):
     per_target_loss: jax.Array
     states: jax.Array
     save_outputs: SaveOutputs
+    # -1 means no training step was supplied, e.g. forward evaluation.
+    step: jax.Array = eqx.field(
+        default_factory=lambda: jnp.asarray(-1, dtype=jnp.int32)
+    )
 
 
 def clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
@@ -189,6 +193,7 @@ def evaluate_sample_from_arrays(
     max_solver_steps: int,
     solver_rtol: float,
     solver_atol: float,
+    step: int | jax.Array | None = None,
 ) -> SingleSampleResult:
     save_outputs = _solve_measurement_save_outputs_on_grid(
         wrapper,
@@ -215,11 +220,13 @@ def evaluate_sample_from_arrays(
     per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
     # Total: mean over all targets
     total_loss = jnp.mean(per_target_loss)
+    step_arr = jnp.asarray(step if step is not None else -1, dtype=jnp.int32)
     return SingleSampleResult(
         total_loss=total_loss,
         per_target_loss=per_target_loss,
         states=states,
         save_outputs=save_outputs,
+        step=step_arr,
     )
 
 
@@ -235,6 +242,7 @@ def measurement_loss_from_arrays(
     max_solver_steps: int,
     solver_rtol: float,
     solver_atol: float,
+    step: int | jax.Array | None = None,
 ) -> tuple[jax.Array, jax.Array]:
     result = evaluate_sample_from_arrays(
         wrapper,
@@ -247,6 +255,7 @@ def measurement_loss_from_arrays(
         max_solver_steps=max_solver_steps,
         solver_rtol=solver_rtol,
         solver_atol=solver_atol,
+        step=step,
     )
     return result.total_loss, result.per_target_loss
 
@@ -267,6 +276,7 @@ def build_batched_loss_fn_from_sample_loss(
         max_solver_steps: int,
         solver_rtol: float,
         solver_atol: float,
+        step: int | jax.Array | None = None,
     ) -> tuple[jax.Array, jax.Array, jax.Array]:
         batch_t_meas = clamp_padded_time_rows(batch.t_meas, batch.n_meas)
 
@@ -301,6 +311,7 @@ def build_batched_loss_fn_from_sample_loss(
                 max_solver_steps=max_solver_steps,
                 solver_rtol=solver_rtol,
                 solver_atol=solver_atol,
+                step=step,
             )
             return total_loss, per_target
 

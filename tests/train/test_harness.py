@@ -367,6 +367,7 @@ def test_train_collection_uses_custom_batched_loss_fn():
         max_solver_steps,
         solver_rtol,
         solver_atol,
+        step=None,
     ):
         del (
             wrapper,
@@ -377,6 +378,7 @@ def test_train_collection_uses_custom_batched_loss_fn():
             max_solver_steps,
             solver_rtol,
             solver_atol,
+            step,
         )
         total = jnp.asarray(0.0, dtype=jnp.float32)
         per_target = jnp.zeros((batch.y_meas.shape[2],), dtype=jnp.float32)
@@ -425,6 +427,7 @@ def test_train_collection_uses_falsy_custom_batched_loss_fn():
             max_solver_steps,
             solver_rtol,
             solver_atol,
+            step=None,
         ):
             del (
                 wrapper,
@@ -435,6 +438,7 @@ def test_train_collection_uses_falsy_custom_batched_loss_fn():
                 max_solver_steps,
                 solver_rtol,
                 solver_atol,
+                step,
             )
             total = jnp.asarray(0.0, dtype=jnp.float32)
             per_target = jnp.zeros((batch.y_meas.shape[2],), dtype=jnp.float32)
@@ -1069,7 +1073,9 @@ def test_train_from_collection_rejects_both_loss_hooks(monkeypatch):
 
     with pytest.raises(
         ValueError,
-        match="Define either build_sample_loss_fn\\(\\.\\.\\.\\) or build_batched_loss_fn",
+        match=(
+            "Define either build_sample_loss_fn\\(\\.\\.\\.\\) or build_batched_loss_fn"
+        ),
     ):
         train_from_collection(
             collection,
@@ -1101,6 +1107,7 @@ def test_forward_from_collection_uses_build_sample_loss_fn(monkeypatch):
                 max_solver_steps,
                 solver_rtol,
                 solver_atol,
+                step=None,
             ):
                 del (
                     wrapper,
@@ -1112,6 +1119,7 @@ def test_forward_from_collection_uses_build_sample_loss_fn(monkeypatch):
                     max_solver_steps,
                     solver_rtol,
                     solver_atol,
+                    step,
                 )
                 n_targets = y_meas.shape[1]
                 return jnp.asarray(7.0), jnp.full((n_targets,), 7.0)
@@ -1214,6 +1222,7 @@ def test_train_collection_rejects_invalid_custom_loss_shapes():
         max_solver_steps,
         solver_rtol,
         solver_atol,
+        step=None,
     ):
         del (
             wrapper,
@@ -1225,6 +1234,7 @@ def test_train_collection_rejects_invalid_custom_loss_shapes():
             max_solver_steps,
             solver_rtol,
             solver_atol,
+            step,
         )
         return (
             jnp.asarray(0.0),
