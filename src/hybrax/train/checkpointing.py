@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from .postprocessing import plot_loss_curve, save_model, save_model_metadata
+from .postprocessing import (
+    plot_grad_norm_curve,
+    plot_loss_curve,
+    save_model,
+    save_model_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,7 @@ class CheckpointWriter:
         target_names: Sequence[str] | None = None,
         monitor_loss_by_step: dict[int, float] | None = None,
         monitor_label: str | None = None,
+        grad_norm_by_step: Sequence[float] | None = None,
     ) -> Path | None:
         """Write a checkpoint if ``step`` is a multiple of ``every``."""
         if not self._enabled:
@@ -66,6 +72,7 @@ class CheckpointWriter:
             target_names=target_names,
             monitor_loss_by_step=monitor_loss_by_step,
             monitor_label=monitor_label,
+            grad_norm_by_step=grad_norm_by_step,
         )
 
     def publish_latest(self, step_dir: Path) -> None:
@@ -85,6 +92,7 @@ class CheckpointWriter:
         target_names: Sequence[str] | None = None,
         monitor_loss_by_step: dict[int, float] | None = None,
         monitor_label: str | None = None,
+        grad_norm_by_step: Sequence[float] | None = None,
     ) -> Path:
         step_dir = self._cfg.output_dir / f"step_{step:05d}"
         step_dir.mkdir(parents=True, exist_ok=True)
@@ -114,6 +122,13 @@ class CheckpointWriter:
             monitor_loss_by_step=dict(monitor_loss_by_step) if monitor_loss_by_step else None,
             monitor_label=monitor_label,
         )
+
+        if grad_norm_by_step:
+            plot_grad_norm_curve(
+                list(grad_norm_by_step),
+                step_dir / "grad_norm_curve.png",
+                title=f"Gradient norm (through step {step})",
+            )
 
         return step_dir
 

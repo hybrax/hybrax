@@ -104,6 +104,7 @@ class TrainHarnessResult:
     # `TrainHarnessConfig.monitor_processes` is set. Maps step -> loss.
     monitor_loss_by_log_step: dict[int, float] = dataclasses.field(default_factory=dict)
     monitor_label: str | None = None
+    grad_norm_by_step: tuple[float, ...] = ()
 
 
 def _ensure_process_names(
@@ -876,6 +877,7 @@ def train_collection(
                     has_aux=True,
                 )(current_trainable_params)
             )
+            grad_norm = optax.tree.norm(grads)
             updates, next_optimizer_state = optimizer.update(
                 grads,
                 current_optimizer_state,
@@ -898,6 +900,7 @@ def train_collection(
                 per_target_loss,
                 per_sample_loss,
                 next_optimizer_state,
+                grad_norm,
             )
 
         return eqx.filter_jit(_step_fn)
@@ -927,6 +930,7 @@ def train_collection(
         _warmup_pt,
         _warmup_ps,
         _warmup_opt_state,
+        _warmup_grad_norm,
     ) = step_fn(
         wrapper,
         trainable_params,
@@ -952,6 +956,7 @@ def train_collection(
     )
     loss_so_far: list[float] = []
     per_target_loss_so_far: list[tuple[float, ...]] = []
+    grad_norm_so_far: list[float] = []
     # Cumulative monitor-loss history mirroring `loss_so_far`, threaded to
     # CheckpointWriter so every per-step loss_curve.png can plot it.
     monitor_loss_so_far: dict[int, float] = {}
@@ -1019,6 +1024,7 @@ def train_collection(
                 per_target_loss,
                 per_sample_loss,
                 optimizer_state,
+                grad_norm,
             ) = step_fn(
                 wrapper,
                 trainable_params,
@@ -1072,6 +1078,7 @@ def train_collection(
                     monitor_label=cfg.monitor_label
                     if monitor_loss_value is not None
                     else None,
+                    grad_norm=float(grad_norm),
                 )
             )
 
@@ -1079,6 +1086,7 @@ def train_collection(
             per_target_loss_so_far.append(
                 tuple(float(v) for v in np.asarray(per_target_loss).tolist())
             )
+            grad_norm_so_far.append(float(grad_norm))
             if monitor_loss_value is not None:
                 monitor_loss_so_far[step_index + 1] = monitor_loss_value
             checkpoint_step_dir = checkpoint_writer.maybe_write(
@@ -1091,6 +1099,7 @@ def train_collection(
                 if monitor_loss_so_far
                 else None,
                 monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
+                grad_norm_by_step=grad_norm_so_far,
             )
             if checkpoint_step_dir is not None:
                 export_predictions_csv(

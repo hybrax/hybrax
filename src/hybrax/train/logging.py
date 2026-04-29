@@ -54,6 +54,8 @@ class StepRecord:
     # Populated only at log-step cadence; None on intermediate steps.
     monitor_loss: float | None = None
     monitor_label: str | None = None
+    # Global L2 norm of the gradient pytree at this step (pre-clipping).
+    grad_norm: float | None = None
 
 
 class _ConsoleTableFormatter:
@@ -175,6 +177,9 @@ def _csv_row_dict(record: StepRecord) -> dict[str, Any]:
             f"{record.monitor_loss:.10g}" if record.monitor_loss is not None else ""
         ),
         "monitor_label": record.monitor_label or "",
+        "grad_norm": (
+            f"{record.grad_norm:.10g}" if record.grad_norm is not None else ""
+        ),
     }
 
 
@@ -192,6 +197,7 @@ def _jsonl_row_dict(record: StepRecord) -> dict[str, Any]:
         "rebuild_count": record.rebuild_count,
         "monitor_loss": record.monitor_loss,
         "monitor_label": record.monitor_label,
+        "grad_norm": record.grad_norm,
     }
 
 
@@ -251,6 +257,7 @@ class RunLogger:
         self._monitor_loss_by_log_step: dict[int, float] = {}
         self._monitor_label: str | None = None
         self._rebuild_count: int = 0
+        self._grad_norm_by_step: list[float] = []
 
         self._target_names: tuple[str, ...] = ()
         self._total_steps: int = 0
@@ -318,6 +325,8 @@ class RunLogger:
         self._per_target_loss_by_step.append(
             tuple(float(v) for v in record.per_target_loss)
         )
+        if record.grad_norm is not None:
+            self._grad_norm_by_step.append(float(record.grad_norm))
         self._step_time_seconds.append(float(record.step_dt))
         self._batch_process_names_by_step.append(tuple(record.process_names))
         self._per_process_loss_by_step.append(tuple(record.per_process_loss))
@@ -390,6 +399,7 @@ class RunLogger:
             "monitor_loss_by_log_step": dict(self._monitor_loss_by_log_step),
             "monitor_label": self._monitor_label,
             "train_step_rebuild_count": int(self._rebuild_count),
+            "grad_norm_by_step": tuple(self._grad_norm_by_step),
         }
 
     def close(self) -> None:

@@ -259,6 +259,7 @@ def test_train_collection_writes_checkpoints_at_log_every(tmp_path: Path):
     for step in (2, 4, 6):
         d = ckpt_dir / f"step_{step:05d}"
         assert sorted(path.name for path in d.iterdir()) == [
+            "grad_norm_curve.png",
             "loss_curve.png",
             "predictions.csv",
             "trained_wrapper.eqx",

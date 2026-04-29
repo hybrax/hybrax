@@ -459,6 +459,35 @@ def plot_loss_curve(
     logger.info("loss curve saved to %s", output_path)
 
 
+def plot_grad_norm_curve(
+    grad_norms: Sequence[float],
+    output_path: str | Path,
+    *,
+    title: str = "Gradient norm",
+) -> None:
+    """Draw global L2 gradient-norm vs step on a log-y axis and save as PNG."""
+    import matplotlib.pyplot as plt
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    steps = list(range(1, len(grad_norms) + 1))
+    fig, ax = plt.subplots(figsize=(6.0, 3.5))
+    if grad_norms:
+        ax.plot(steps, list(grad_norms), color="C2", linewidth=1.2, label="grad norm")
+    ax.set_yscale("log")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("||grad||₂")
+    ax.grid(True, alpha=0.3)
+    if grad_norms:
+        ax.legend(loc="best", fontsize="small")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    logger.info("grad-norm curve saved to %s", output_path)
+
+
 def plot_training_results(
     result: Any,
     collection: BioProcessCollection,
@@ -484,6 +513,13 @@ def plot_training_results(
         monitor_loss_by_step=getattr(result, "monitor_loss_by_log_step", None) or None,
         monitor_label=getattr(result, "monitor_label", None),
     )
+
+    grad_norm_by_step = getattr(result, "grad_norm_by_step", None) or None
+    if grad_norm_by_step:
+        plot_grad_norm_curve(
+            grad_norm_by_step,
+            output_dir / "grad_norm_curve.png",
+        )
 
     plot_process_simulations(
         result.trained_wrapper,
