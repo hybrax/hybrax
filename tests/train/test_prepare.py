@@ -25,6 +25,7 @@ from bp_format.serialization import load_process_collection_json
 
 from bp_train.controls import (
     BOLUS_MIN_DT_DURATION_DENOMINATOR,
+    EVENT_RUN_MIN_DT_CONFIG_KEY,
     build_bolus_sources,
     select_control_sources,
 )
@@ -973,3 +974,114 @@ def test_build_bolus_sources_handles_null_feed_medium():
     assert len(sources) == 1
     assert sources[0].name == "feed_bolus"
     assert sources[0].metadata["inlet_feed_medium"] is None
+
+
+def _write_bolus_biomass_custom_py(path: Path) -> None:
+    """Add a biomass component (reactor + feed) to the single-process bolus
+    fixture so it passes prepare's bp_format and semantics validations."""
+    path.write_text(
+        "\n".join(
+            [
+                "from bp_format.dataclasses import (",
+                "    FeedMediumComponent,",
+                "    ReactorMediumComponent,",
+                "    StaticVariable,",
+                "    TimeSeries,",
+                ")",
+                "import jax.numpy as jnp",
+                "",
+                "def transform_process_collection(collection, config):",
+                "    process = next(iter(collection.processes.values()))",
+                "    process.reactor_medium.components['biomass'] = "
+                "ReactorMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=TimeSeries(",
+                "            times=jnp.asarray([0.0, 5.0, 10.0]),",
+                "            values=jnp.asarray([0.1, 0.5, 1.0]),",
+                "        ),",
+                "        is_intracellular=False,",
+                "    )",
+                "    feed = process.volume.volume_changes['feed_bolus'].feed_medium",
+                "    feed.components['biomass'] = FeedMediumComponent(",
+                "        name='biomass',",
+                "        unit='g/L',",
+                "        concentration=StaticVariable(0.0),",
+                "        is_controlled=False,",
+                "    )",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_prepare_artifact_honors_user_bolus_run_min_dt(tmp_path):
+    """User-supplied ``bolus_run_min_dt`` must not be overwritten by auto-detection.
+
+    Regression for a bug where prepare unconditionally overwrote user config
+    with the collection-wide minimum online-timestamp delta, making the
+    documented override knob a no-op.
+    """
+    output = tmp_path / "prepared_bolus_min_dt.json"
+    custom_py = tmp_path / "custom_bolus.py"
+    _write_bolus_biomass_custom_py(custom_py)
+    # Pick user_value strictly below the duration cap (10 / 1000 = 0.01) so
+    # ``get_bolus_min_dt`` does not silently clamp it; otherwise we'd be
+    # asserting against the cap rather than the user setting.
+    user_value = 0.005
+    auto_value = 10.0 / BOLUS_MIN_DT_DURATION_DENOMINATOR
+    assert user_value != auto_value
+
+    prepared = prepare_artifact(
+        _make_bolus_collection(),
+        output,
+        custom_py=custom_py,
+        config={EVENT_RUN_MIN_DT_CONFIG_KEY: user_value},
+    )
+
+    rcc = prepared.metadata["bp_train"]["runtime_controls_config"]
+    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
+
+    on_disk = load_process_collection_json(output)
+    on_disk_rcc = on_disk.metadata["bp_train"]["runtime_controls_config"]
+    assert on_disk_rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
+
+
+def test_prepare_artifact_auto_detects_bolus_run_min_dt_when_unset(tmp_path):
+    """Auto-detection still fires when the user did not supply a value."""
+    from bp_train.controls import get_collection_bolus_min_dt
+
+    output = tmp_path / "prepared_bolus_min_dt_auto.json"
+    custom_py = tmp_path / "custom_bolus.py"
+    _write_bolus_biomass_custom_py(custom_py)
+    raw = _make_bolus_collection()
+    expected = get_collection_bolus_min_dt(raw)
+    prepared = prepare_artifact(raw, output, custom_py=custom_py)
+
+    rcc = prepared.metadata["bp_train"]["runtime_controls_config"]
+    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(expected)
+    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] > 0
+
+
+def test_controls_store_honors_prepared_bolus_run_min_dt(tmp_path):
+    """ControlsStore must reuse the prepared ``bolus_run_min_dt`` instead of
+    recomputing it from the collection at training time.
+
+    Regression for a second overwrite site in ``ControlsStore.from_collection``.
+    """
+    output = tmp_path / "prepared_bolus_for_store.json"
+    custom_py = tmp_path / "custom_bolus.py"
+    _write_bolus_biomass_custom_py(custom_py)
+    user_value = 0.005
+    prepare_artifact(
+        _make_bolus_collection(),
+        output,
+        custom_py=custom_py,
+        config={EVENT_RUN_MIN_DT_CONFIG_KEY: user_value},
+    )
+
+    prepared = load_process_collection_json(output)
+    store = ControlsStore.from_collection(prepared)
+    triangle_md = store.get_controls("bolus").control_metadata["feed_bolus"]
+    assert float(triangle_md["triangle_min_dt"]) == pytest.approx(user_value)

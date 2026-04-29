@@ -386,12 +386,13 @@ class ControlsStore(eqx.Module):
             "sample_acc_source" not in dict(prepared_process_md.get(process_name) or {})
             for process_name in process_order
         )
-        run_min_dt = get_collection_event_min_dt_if_needed(
-            collection,
-            include_samples=needs_default_sample_sources,
-        )
-        if run_min_dt is not None:
-            cfg[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
+        if EVENT_RUN_MIN_DT_CONFIG_KEY not in cfg:
+            run_min_dt = get_collection_event_min_dt_if_needed(
+                collection,
+                include_samples=needs_default_sample_sources,
+            )
+            if run_min_dt is not None:
+                cfg[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
         process_sources: dict[str, list[Any]] = {}
         process_sample_sources: dict[str, Any] = {}

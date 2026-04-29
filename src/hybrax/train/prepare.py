@@ -296,12 +296,13 @@ def prepare_artifact(
             name: list(required_control_names) for name in collection.processes
         }
 
-    run_min_dt = get_collection_event_min_dt_if_needed(
-        collection,
-        include_samples=build_sample_acc is default_build_sample_acc_series,
-    )
-    if run_min_dt is not None:
-        resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
+    if EVENT_RUN_MIN_DT_CONFIG_KEY not in resolved_config:
+        run_min_dt = get_collection_event_min_dt_if_needed(
+            collection,
+            include_samples=build_sample_acc is default_build_sample_acc_series,
+        )
+        if run_min_dt is not None:
+            resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
     for process_name, process in collection.processes.items():
         control_sources = select_control_sources(
@@ -369,6 +370,11 @@ def prepare_artifact(
             "max_refinement_rounds": int(resolved_config["max_refinement_rounds"]),
             "require_consistent_controls": bool(
                 resolved_config.get("require_consistent_controls", True)
+            ),
+            **(
+                {EVENT_RUN_MIN_DT_CONFIG_KEY: float(resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY])}
+                if EVENT_RUN_MIN_DT_CONFIG_KEY in resolved_config
+                else {}
             ),
         },
         "processes": {},
