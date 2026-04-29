@@ -25,6 +25,10 @@ dev = [
 packages = ["bp_train"]
 
 [tool.pytest.ini_options]
+testpaths = [
+    "tests",
+    "examples",
+]
 markers = [
     "integration: marks tests as integration tests",
 ]
