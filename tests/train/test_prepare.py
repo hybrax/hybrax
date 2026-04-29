@@ -1033,6 +1033,19 @@ def _write_bolus_biomass_custom_py(path: Path) -> None:
     )
 
 
+def _write_bolus_run_min_dt_custom_py(path: Path, value: float) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "CONFIG = {",
+                f"    'bolus_run_min_dt': {value!r},",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_prepare_artifact_honors_user_bolus_run_min_dt(tmp_path):
     """User-supplied ``bolus_run_min_dt`` must not be overwritten by auto-detection.
 
@@ -1063,6 +1076,45 @@ def test_prepare_artifact_honors_user_bolus_run_min_dt(tmp_path):
     on_disk = load_process_collection_json(output)
     on_disk_rcc = on_disk.metadata["bp_train"]["runtime_controls_config"]
     assert on_disk_rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
+
+
+def test_prepare_artifact_honors_custom_py_bolus_run_min_dt(tmp_path):
+    """custom.py CONFIG must override auto-detected collection min_dt."""
+    from bp_train.controls import get_collection_bolus_min_dt
+
+    output = tmp_path / "prepared_custom_bolus_min_dt.json"
+    custom_py = tmp_path / "custom.py"
+    user_value = 0.005
+    _write_bolus_run_min_dt_custom_py(custom_py, user_value)
+
+    raw = _make_bolus_collection()
+    raw.processes["bolus"].volume.volume_changes["sample_1"] = SampleVolumeChange(
+        name="sample_1",
+        unit="L",
+        is_controlled=False,
+        is_continuous=False,
+        values=TimeSeries(
+            times=jnp.asarray([6.0]),
+            values=jnp.asarray([-0.1]),
+        ),
+    )
+    auto_value = get_collection_bolus_min_dt(raw)
+    assert auto_value == pytest.approx(1.0)
+
+    prepared = prepare_artifact(raw, output, custom_py=custom_py)
+    rcc = prepared.metadata["bp_train"]["runtime_controls_config"]
+    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
+
+    prepared_md = prepared.metadata["bp_train"]["processes"]["bolus"]
+    feed_md = prepared_md["control_metadata"]["feed_bolus"]
+    sample_md = prepared_md["control_metadata"]["V_sample_acc"]
+    assert float(feed_md["triangle_min_dt"]) == pytest.approx(user_value)
+    assert float(sample_md["ramp_duration"]) == pytest.approx(user_value)
+
+    on_disk = load_process_collection_json(output)
+    store = ControlsStore.from_collection(on_disk)
+    triangle_md = store.get_controls("bolus").control_metadata["feed_bolus"]
+    assert float(triangle_md["triangle_min_dt"]) == pytest.approx(user_value)
 
 
 def test_prepare_artifact_auto_detects_bolus_run_min_dt_when_unset(tmp_path):

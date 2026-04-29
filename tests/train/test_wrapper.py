@@ -22,6 +22,7 @@ from bp_format.dataclasses import (
 )
 from bp_format.mechanistic import get_rhs_ode
 
+from bp_train.controls import EVENT_RUN_MIN_DT_CONFIG_KEY
 from bp_train.controls_store import ControlsStore
 from bp_train.model_api import ReactionOutputs, UserReactionModule
 from bp_train.wrapper import (
@@ -1049,6 +1050,152 @@ def test_wrapper_bolus_feed_integrates_v_cont():
     # V_cont must increase by the specified bolus volume (2.0 L).
     # (initial V_cont = 1.0, bolus = 2.0 => final ~= 3.0)
     assert final_v_cont == pytest.approx(1.0 + 2.0, abs=2e-3)
+
+
+def _make_bolus_ramp_process(*, bolus_time: float = 10.0) -> BioProcess:
+    bolus_medium = FeedMedium(
+        name="bolus",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=100.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([bolus_time]),
+                        values=jnp.asarray([2.0]),
+                    ),
+                    feed_medium=bolus_medium,
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        # Data-derived min_dt is 0.01 h, so the 0.05 h
+                        # config value proves runtime config wins.
+                        times=jnp.asarray([0.0, 0.01, 100.0]),
+                        values=jnp.asarray([1.0, 1.0, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
+            },
+        ),
+        process_variables={},
+    )
+    return process
+
+
+def _integrate_bolus_ramp_volume_trace(
+    *,
+    configured_min_dt: float,
+    expected_ramp_duration: float,
+) -> jax.Array:
+    bolus_time = 10.0
+    process = _make_bolus_ramp_process(bolus_time=bolus_time)
+    collection = BioProcessCollection(
+        processes={"p1": process},
+        metadata={
+            "bp_train": {
+                "runtime_controls_config": {
+                    EVENT_RUN_MIN_DT_CONFIG_KEY: configured_min_dt,
+                },
+            },
+        },
+    )
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    bolus_md = controls.control_metadata["bolus_feed"]
+    assert float(bolus_md["triangle_min_dt"]) == pytest.approx(expected_ramp_duration)
+
+    reaction_module = ConstantReactionModule(
+        specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, reaction_module)
+
+    y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    y0_scaled = wrapper.scale_state(y0_physical)
+    peak_time = bolus_time + 0.5 * expected_ramp_duration
+    end_time = bolus_time + expected_ramp_duration
+    save_ts = jnp.asarray(
+        [
+            bolus_time - 0.01,
+            bolus_time,
+            peak_time,
+            end_time,
+            end_time + 0.01,
+        ],
+        dtype=jnp.float32,
+    )
+    solution = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        solver=diffrax.Tsit5(),
+        t0=0.0,
+        t1=11.0,
+        dt0=None,
+        y0=y0_scaled,
+        saveat=diffrax.SaveAt(ts=save_ts),
+        stepsize_controller=diffrax.PIDController(
+            rtol=1e-7,
+            atol=1e-9,
+            jump_ts=controls.active_step_ts,
+        ),
+        max_steps=4096,
+        throw=False,
+    )
+    assert solution.result == diffrax.RESULTS.successful
+
+    physical_trace = jax.vmap(wrapper.unscale_state)(solution.ys)
+    return physical_trace[:, 1]
+
+
+def test_wrapper_configured_bolus_run_min_dt_sets_volume_ramp_duration():
+    """Configured bolus_run_min_dt must set the integrated volume ramp width."""
+    volume_trace = _integrate_bolus_ramp_volume_trace(
+        configured_min_dt=0.05,
+        expected_ramp_duration=0.05,
+    )
+    assert float(volume_trace[0]) == pytest.approx(1.0, abs=2e-4)
+    assert float(volume_trace[1]) == pytest.approx(1.0, abs=2e-4)
+    assert float(volume_trace[2]) == pytest.approx(2.0, abs=2e-3)
+    assert float(volume_trace[3]) == pytest.approx(3.0, abs=2e-3)
+    assert float(volume_trace[4]) == pytest.approx(3.0, abs=2e-3)
+
+
+def test_wrapper_configured_bolus_run_min_dt_clamps_to_duration_cap():
+    """Configured bolus_run_min_dt above duration cap must clamp ramp width."""
+    volume_trace = _integrate_bolus_ramp_volume_trace(
+        configured_min_dt=0.2,
+        expected_ramp_duration=0.1,
+    )
+    assert float(volume_trace[0]) == pytest.approx(1.0, abs=2e-4)
+    assert float(volume_trace[1]) == pytest.approx(1.0, abs=2e-4)
+    assert float(volume_trace[2]) == pytest.approx(2.0, abs=2e-3)
+    assert float(volume_trace[3]) == pytest.approx(3.0, abs=2e-3)
+    assert float(volume_trace[4]) == pytest.approx(3.0, abs=2e-3)
 
 
 def test_wrapper_bolus_transport_only_for_present_species():
