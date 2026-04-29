@@ -742,28 +742,41 @@ def plot_process_simulations(
             ax_v.grid(True, alpha=0.3)
 
             # ---- Right panel: raw volume_changes overlaid ----
+            from matplotlib.patches import Patch
+
             ax_vc = axes[n_species, 1]
             bar_width = (t_end - t_start) * BAR_WIDTH_FRACTION
-            for vc_name, vc in process.volume.volume_changes.items():
+            cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+            extra_handles: list[Any] = []
+            for idx, (vc_name, vc) in enumerate(process.volume.volume_changes.items()):
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
                 kind = "feed" if isinstance(vc, FeedVolumeChange) else "sample"
+                label = f"{vc_name} ({kind})"
+                color = cycle_colors[idx % len(cycle_colors)]
                 if vc.is_continuous:
-                    ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=f"{vc_name} ({kind})")
+                    ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=label, color=color)
+                elif vc_t.size == 0:
+                    # Empty discrete series: proxy patch keeps legend swatch consistent
+                    extra_handles.append(
+                        Patch(facecolor=color, edgecolor="k", label=label)
+                    )
                 else:
                     ax_vc.bar(
                         vc_t,
                         vc_v,
                         width=bar_width,
-                        label=f"{vc_name} ({kind})",
+                        label=label,
                         edgecolor="k",
+                        color=color,
                     )
             ax_vc.set_title(f"volume_changes [{process.volume.unit}]")
             ax_vc.set_xlabel(f"time [{time_unit}]")
             ax_vc.set_xlim(t_start, t_end)
             ax_vc.grid(True, alpha=0.3)
             if process.volume.volume_changes:
-                ax_vc.legend(fontsize="small")
+                handles, _ = ax_vc.get_legend_handles_labels()
+                ax_vc.legend(handles=handles + extra_handles, fontsize="small")
 
             # ---- Cumulative modeled feed panels ----
             for k, fn in enumerate(modeled_flow_names):
