@@ -27,9 +27,7 @@ from bp_format import (
     Volume,
 )
 from bp_format.splines import (
-    build_pseudobatch_inputs,
-    build_splines,
-    to_timeseries,
+    build_pseudobatch_transform,
     build_backtransform_spline,
 )
 
@@ -46,11 +44,10 @@ def _ts(t, v):
     )
 
 
-def _fit_and_get_rep(proc, species):
-    """Run full pipeline: inputs -> splines -> TimeSeries carrier."""
-    inputs = build_pseudobatch_inputs(proc, species)
-    splines = build_splines(inputs, proc, species)
-    return to_timeseries(inputs, splines, species)
+def _build_backtransform(proc, species):
+    """Build real-space backtransform from the process-level bundle."""
+    transform = build_pseudobatch_transform(proc, [species])
+    return build_backtransform_spline(transform, species)
 
 
 # ---------------------------------------------------------------------------
@@ -97,8 +94,7 @@ def test_sampling_only_no_concentration_jump():
         reactor_medium=rm,
     )
 
-    rep = _fit_and_get_rep(proc, "glucose")
-    bt = build_backtransform_spline(rep)
+    bt = _build_backtransform(proc, "glucose")
 
     tiny_delta = 1e-6
     pre_probe = 5e-4  # safely away from event edge
@@ -181,8 +177,7 @@ def test_bolus_only_has_concentration_jump():
         reactor_medium=rm,
     )
 
-    rep = _fit_and_get_rep(proc, "glucose")
-    bt = build_backtransform_spline(rep)
+    bt = _build_backtransform(proc, "glucose")
 
     t_b = 2.0
     tiny_delta = 1e-6
@@ -288,8 +283,7 @@ def test_mixed_continuous_bolus_sampling():
         reactor_medium=rm,
     )
 
-    rep = _fit_and_get_rep(proc, "glucose")
-    bt = build_backtransform_spline(rep)
+    bt = _build_backtransform(proc, "glucose")
 
     tiny_delta = 1e-6
     pre_probe = 5e-4

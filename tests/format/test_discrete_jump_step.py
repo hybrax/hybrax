@@ -21,9 +21,7 @@ from bp_format import (
     Volume,
 )
 from bp_format.splines import (
-    build_pseudobatch_inputs,
-    build_splines,
-    to_timeseries,
+    build_pseudobatch_transform,
     build_backtransform_spline,
 )
 
@@ -55,6 +53,7 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
             ),
         },
     )
+
     rm = ReactorMedium(
         name="medium",
         density=1.0,
@@ -93,6 +92,11 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
     )
 
 
+def _build_backtransform(proc, species="glucose"):
+    transform = build_pseudobatch_transform(proc, [species])
+    return build_backtransform_spline(transform, species)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -101,11 +105,7 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
 def test_step_jump_at_bolus():
     """Backtransform has a jump around bolus feed time."""
     proc = _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0)
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-
-    bt = build_backtransform_spline(rep)
+    bt = _build_backtransform(proc)
 
     t_b = 10.0
     post_probe = 5e-4
@@ -124,14 +124,11 @@ def test_step_jump_at_bolus():
 def test_adf_is_instantaneous_at_bolus():
     """ADF should jump immediately after event (left-continuous at t_b)."""
     proc = _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0)
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
+    transform = build_pseudobatch_transform(proc, ["glucose"])
 
     t_b = 10.0
     post_delta = 1e-6
-    tr = rep.metadata["transform"]
-    adf_ts = TimeSeries.from_dict(tr["series"]["adf_ts"])
+    adf_ts = transform.adf_ts
 
     adf_at = float(adf_ts.evaluate(jnp.array(t_b), side="left"))
     adf_after = float(adf_ts.evaluate(jnp.array(t_b + post_delta), side="left"))
@@ -180,11 +177,7 @@ def test_no_jump_for_sampling():
         reactor_medium=rm,
     )
 
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-
-    bt = build_backtransform_spline(rep)
+    bt = _build_backtransform(proc)
 
     t_s = 10.0
     tiny_delta = 1e-6
@@ -197,3 +190,83 @@ def test_no_jump_for_sampling():
     assert abs(val_after - val_at) < 2e-2, (
         f"Sampling should be continuous: at={val_at}, after={val_after}"
     )
+
+
+def test_start_boundary_same_time_sample_bolus_physical_invariants():
+    """Sample applies before bolus in ADF/feed-correction event physics."""
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose",
+                unit="g/L",
+                concentration=StaticVariable(value=300.0),
+                is_controlled=True,
+            ),
+        },
+    )
+    rm = ReactorMedium(
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose",
+                unit="g/L",
+                concentration=_ts([0.0, 5.0, 10.0], [10.0, 8.0, 6.0]),
+                is_intracellular=False,
+            ),
+        },
+    )
+    vol = Volume(
+        initial_volume=1.0,
+        unit="L",
+        volume_changes={
+            "sample": SampleVolumeChange(
+                name="sample",
+                unit="L",
+                is_controlled=True,
+                is_continuous=False,
+                values=_ts([0.0], [-0.2]),
+            ),
+            "bolus": FeedVolumeChange(
+                name="bolus",
+                unit="L",
+                is_controlled=True,
+                is_continuous=False,
+                feed_medium=feed_medium,
+                values=_ts([0.0], [0.1]),
+            ),
+        },
+    )
+    proc = BioProcess(
+        metadata=BioProcessMetadata(name="start_same_time", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="inoculation"),
+        volume=vol,
+        reactor_medium=rm,
+    )
+
+    transform = build_pseudobatch_transform(proc, ["glucose"])
+    t_post = jnp.array(1e-6)
+
+    assert transform.adf_ts.metadata["boundary_start_value"] == pytest.approx(1.0)
+    assert transform.species["glucose"].feed_corr_ts.metadata[
+        "boundary_start_value"
+    ] == pytest.approx(0.0)
+
+    sample_comp = float(transform.sample_compensation_ts.evaluate(t_post))
+    reactor_volume = float(transform.reactor_volume_ts.evaluate(t_post))
+    adf = float(transform.adf_ts.evaluate(t_post))
+    feed_corr = float(transform.species["glucose"].feed_corr_ts.evaluate(t_post))
+
+    expected_sample_comp = 1.0 / 0.8
+    expected_volume = 0.9
+    expected_adf = expected_volume * expected_sample_comp / 1.0
+    expected_feed_corr = expected_sample_comp * 0.1 * 300.0 / 1.0
+
+    assert sample_comp == pytest.approx(expected_sample_comp)
+    assert reactor_volume == pytest.approx(expected_volume)
+    assert adf == pytest.approx(expected_adf)
+    assert feed_corr == pytest.approx(expected_feed_corr)

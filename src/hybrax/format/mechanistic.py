@@ -130,6 +130,7 @@ import equinox as eqx
 import interpax
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from .dataclasses import (
     BioProcess,
@@ -1224,10 +1225,11 @@ def build_state_splines(
 ) -> Dict[str, Any]:
     """Build state splines from stored TimeSeries spline state.
 
-    Pseudobatch-transformed reactor components carry transform metadata on
-    their concentration TimeSeries and are converted into a backtransform
-    spline. Other reactor-component and process-variable states are converted
-    directly from their TimeSeries or StaticVariable carrier.
+    Pseudobatch-transformed reactor components are identified through the
+    process-level ``pseudobatch_transform`` bundle and converted into a
+    real-space backtransform spline. Other reactor-component and
+    process-variable states are converted directly from their TimeSeries or
+    StaticVariable carrier.
 
     Parameters
     ----------
@@ -1242,18 +1244,21 @@ def build_state_splines(
         Mapping non-volume state name -> callable spline.
     """
     state_splines: Dict[str, Any] = {}
+    pseudobatch_transform = _validate_process_pseudobatch_transform(process, mb)
 
     for sp_name in mb.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
         concentration = comp.concentration
-        concentration_has_transform = (
-            isinstance(concentration, TimeSeries)
-            and isinstance(concentration.metadata, dict)
-            and "transform" in concentration.metadata
-        )
-        if concentration_has_transform:
-            state_splines[sp_name] = build_backtransform_spline(concentration)
+        if (
+            pseudobatch_transform is not None
+            and sp_name in pseudobatch_transform.species
+        ):
+            state_splines[sp_name] = build_backtransform_spline(
+                pseudobatch_transform,
+                sp_name,
+            )
         else:
+            _reject_orphan_pseudobatch_metadata(concentration, sp_name)
             state_splines[sp_name] = _value_to_interpax_spline(
                 concentration,
                 t_start=float(process.time_axis.start),
@@ -1832,24 +1837,80 @@ def _snap_times_to_discrete_events(
     return jnp.where(dist[jnp.arange(times.shape[0]), idx] <= tol, nearest, times)
 
 
-def _get_component_transform_payload(comp) -> Optional[Dict[str, Any]]:
-    """Return pseudobatch transform metadata from new schema first."""
-    concentration = getattr(comp, "concentration", None)
-    if isinstance(concentration, TimeSeries):
-        metadata = concentration.metadata
-        if isinstance(metadata, dict) and "transform" in metadata:
-            return metadata["transform"]
-    return None
+def _is_pseudobatch_carrier(value: Any) -> bool:
+    """Return whether a TimeSeries carries lightweight pseudobatch metadata."""
+    if not isinstance(value, TimeSeries) or not isinstance(value.metadata, dict):
+        return False
+    transform = value.metadata.get("transform")
+    return isinstance(transform, dict) and transform.get("name") == "pseudo_batch"
 
 
-def _transform_series_payload(tr: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
-    """Return nested canonical TimeSeries payload for a transform series."""
-    series = tr.get("series")
-    if isinstance(series, dict):
-        payload = series.get(key)
-        if isinstance(payload, dict):
-            return payload
-    return None
+def _reject_orphan_pseudobatch_metadata(value: Any, species_name: str) -> None:
+    """Fail when c* metadata exists without process-level transform bundle."""
+    if _is_pseudobatch_carrier(value):
+        raise ValueError(
+            f"Species {species_name!r} carries pseudobatch c* metadata but is not "
+            "present in process.pseudobatch_transform."
+        )
+
+
+def _timeseries_samples_match(left: TimeSeries, right: TimeSeries) -> bool:
+    """Compare TimeSeries sample anchors used by mechanistic initial states."""
+    if left.times is None or left.values is None:
+        return False
+    if right.times is None or right.values is None:
+        return False
+    left_times = np.asarray(left.times, dtype=float)
+    right_times = np.asarray(right.times, dtype=float)
+    left_values = np.asarray(left.values, dtype=float)
+    right_values = np.asarray(right.values, dtype=float)
+    return (
+        left_times.shape == right_times.shape
+        and left_values.shape == right_values.shape
+        and np.allclose(left_times, right_times, rtol=0.0, atol=1e-12)
+        and np.allclose(left_values, right_values, rtol=1e-10, atol=1e-12)
+    )
+
+
+def _validate_process_pseudobatch_transform(
+    process: BioProcess,
+    mb: "RhsOde",
+):
+    """Validate process-level pseudobatch bundle before runtime use."""
+    transform = getattr(process, "pseudobatch_transform", None)
+    if transform is None:
+        for sp_name in mb.reactor_component_state_names:
+            comp = process.reactor_medium.components[sp_name]
+            _reject_orphan_pseudobatch_metadata(comp.concentration, sp_name)
+        return None
+
+    for species_key, species_transform in transform.species.items():
+        if species_transform.species != species_key:
+            raise ValueError(
+                f"Pseudobatch species key {species_key!r} does not match stored "
+                f"species {species_transform.species!r}."
+            )
+        if species_key not in process.reactor_medium.components:
+            raise ValueError(
+                f"Pseudobatch species {species_key!r} is not a reactor component."
+            )
+        concentration = process.reactor_medium.components[species_key].concentration
+        if not isinstance(concentration, TimeSeries):
+            raise TypeError(
+                f"Pseudobatch species {species_key!r} concentration must be a "
+                "TimeSeries c* carrier."
+            )
+        if not _timeseries_samples_match(
+            concentration,
+            species_transform.c_star_ts,
+        ):
+            raise ValueError(
+                f"Pseudobatch species {species_key!r} reactor concentration does "
+                "not match transform c_star_ts. Assign the bundle c_star_ts to "
+                "the reactor component before mechanistic runtime use."
+            )
+
+    return transform
 
 
 def _build_pseudobatch_transforms(
@@ -1865,11 +1926,13 @@ def _build_pseudobatch_transforms(
     """
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
+    pseudobatch_transform = _validate_process_pseudobatch_transform(process, mb)
     transforms: List[Dict[str, Any]] = []
     for sp_name in mb.reactor_component_state_names:
-        comp = process.reactor_medium.components[sp_name]
-        tr = _get_component_transform_payload(comp)
-        if tr is None:
+        if (
+            pseudobatch_transform is None
+            or sp_name not in pseudobatch_transform.species
+        ):
             adf_ts = _constant_timeseries(1.0, t_start, t_end)
             fc_ts = _constant_timeseries(0.0, t_start, t_end)
             transforms.append(
@@ -1883,29 +1946,13 @@ def _build_pseudobatch_transforms(
             )
             continue
 
-        adf_payload = _transform_series_payload(tr, "adf_ts")
-        fc_payload = _transform_series_payload(tr, "feed_corr_ts")
-        has_series_payload = adf_payload is not None or fc_payload is not None
-        if has_series_payload and (adf_payload is None or fc_payload is None):
-            raise ValueError(
-                "Pseudobatch transform metadata must provide both "
-                "'series.adf_ts' and 'series.feed_corr_ts' when using the "
-                "nested TimeSeries schema."
-            )
-
-        if adf_payload is None or fc_payload is None:
-            raise ValueError(
-                "Pseudobatch transform metadata must use nested "
-                "'series.adf_ts'/'series.feed_corr_ts' payloads."
-            )
-
-        adf_ts = TimeSeries.from_dict(adf_payload)
-        feed_corr_ts = TimeSeries.from_dict(fc_payload)
-        fc_interp = str(
-            fc_payload.get("metadata", {}).get(
-                "interp", tr.get("feed_corr_interp", "linear")
-            )
+        species_transform = pseudobatch_transform.species[sp_name]
+        adf_ts = pseudobatch_transform.adf_ts
+        feed_corr_ts = species_transform.feed_corr_ts
+        fc_metadata = (
+            feed_corr_ts.metadata if isinstance(feed_corr_ts.metadata, dict) else {}
         )
+        fc_interp = str(fc_metadata.get("interp", "piecewise_polynomial"))
         if fc_interp in {"linear", "linear_plus_step"}:
             raise ValueError(
                 f"Legacy feed_corr_interp={fc_interp!r} unsupported for "

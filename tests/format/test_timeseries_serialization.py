@@ -14,6 +14,8 @@ from bp_format import (
     BioProcessCollection,
     BioProcessMetadata,
     ProcessVariable,
+    PseudobatchSpeciesTransform,
+    PseudobatchTransform,
     ReactorMedium,
     ReactorMediumComponent,
     SampleVolumeChange,
@@ -35,33 +37,14 @@ def _ts(times, values):
     )
 
 
-def _nested_transform_metadata() -> dict:
-    adf_ts = TimeSeries(
-        times=jnp.array([0.0, 5.0, 10.0]),
-        values=jnp.array([1.0, 1.05, 1.1]),
-        jump_times=jnp.array([6.0]),
-        continuity_side="left",
-        metadata={"interp": "piecewise_polynomial", "jump_values": [0.2]},
-    )
-    feed_corr_ts = TimeSeries(
-        times=jnp.array([0.0, 5.0, 10.0]),
-        values=jnp.array([0.0, 0.4, 0.8]),
-        jump_times=jnp.array([6.0]),
-        continuity_side="left",
-        metadata={"interp": "piecewise_polynomial", "jump_values": [1.5]},
-    )
+def _lightweight_transform_metadata() -> dict:
     return {
         "transform": {
             "name": "pseudo_batch",
             "species": "biomass",
-            "feed_corr_interp": "piecewise_polynomial",
             "cstar_interp": "cubic",
             "is_constant": False,
             "constant_value": None,
-            "series": {
-                "adf_ts": adf_ts.to_dict(),
-                "feed_corr_ts": feed_corr_ts.to_dict(),
-            },
         }
     }
 
@@ -97,7 +80,7 @@ def _build_process() -> BioProcess:
                         breaks=jnp.array([0.0, 10.0]),
                         coeffs=jnp.array([[0.2, 0.19, 0.0, 0.0]]),
                         segment_start_piece_idx=jnp.array([0]),
-                        metadata=_nested_transform_metadata(),
+                        metadata=_lightweight_transform_metadata(),
                     ),
                     is_intracellular=False,
                 ),
@@ -140,6 +123,8 @@ def test_roundtrip_uses_canonical_timeseries_shape() -> None:
     sample = loaded.processes["p"].volume.volume_changes["sample"]
     assert biomass.concentration.times.shape == (3,)
     assert sample.values.times.shape == (2,)
+    assert loaded.processes["p"].pseudobatch_transform is None
+    assert "pseudobatch_transform" not in payload["processes"]["p"]
 
 
 def test_load_rejects_legacy_only_timeseries_keys() -> None:
@@ -178,8 +163,47 @@ def test_timeseries_payload_uses_times_only() -> None:
     assert "timepoints" not in payload
 
 
-def test_nested_transform_metadata_roundtrips_as_canonical_dicts() -> None:
+def test_load_rejects_nested_executable_pseudobatch_metadata() -> None:
     process = _build_process()
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        concentration = payload["processes"]["p"]["reactor_medium"]["components"][
+            "biomass"
+        ]["concentration"]
+        concentration["metadata"]["transform"]["series"] = {
+            "adf_ts": _ts([0.0, 1.0], [1.0, 1.1]).to_dict(),
+            "feed_corr_ts": _ts([0.0, 1.0], [0.0, 0.1]).to_dict(),
+        }
+
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(ValueError, match="nested executable pseudobatch"):
+            load_process_collection(out_dir)
+
+
+def test_pseudobatch_transform_roundtrips_process_level_bundle() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 5.0, 10.0], [1.0, 1.1, 1.2]),
+        reactor_volume_ts=_ts([0.0, 5.0, 10.0], [1.0, 1.05, 1.1]),
+        sample_compensation_ts=_ts([0.0, 5.0, 10.0], [1.0, 1.02, 1.04]),
+        accumulated_feed_ts={"feed": _ts([0.0, 10.0], [0.0, 0.3])},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 5.0, 10.0], [0.2, 1.2, 2.5]),
+                feed_corr_ts=_ts([0.0, 5.0, 10.0], [0.0, 0.1, 0.2]),
+                is_constant=False,
+                constant_value=None,
+                cstar_interp="pchip",
+            )
+        },
+    )
     collection = BioProcessCollection(metadata=None, processes={"p": process})
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -188,25 +212,163 @@ def test_nested_transform_metadata_roundtrips_as_canonical_dicts() -> None:
         payload = _read_payload(out_dir / "data.json")
         loaded = load_process_collection(out_dir)
 
-    stored_ts = payload["processes"]["p"]["reactor_medium"]["components"]["biomass"][
-        "concentration"
-    ]
-    transform = stored_ts["metadata"]["transform"]
-    assert isinstance(transform["series"]["adf_ts"], dict)
-    assert isinstance(transform["series"]["feed_corr_ts"], dict)
-    assert transform["series"]["adf_ts"]["continuity_side"] == "left"
-    assert transform["series"]["adf_ts"]["metadata"]["interp"] == (
-        "piecewise_polynomial"
-    )
-    assert transform["series"]["feed_corr_ts"]["metadata"]["jump_values"] == [1.5]
+    stored = payload["processes"]["p"]["pseudobatch_transform"]
+    assert "times" in stored["adf_ts"]
+    assert "values" in stored["accumulated_feed_ts"]["feed"]
+    assert stored["species"]["biomass"]["cstar_interp"] == "pchip"
 
-    loaded_transform = (
-        loaded.processes["p"]
-        .reactor_medium.components["biomass"]
-        .concentration.metadata["transform"]
+    transform = loaded.processes["p"].pseudobatch_transform
+    assert transform is not None
+    assert transform.adf_ts.values.shape == (3,)
+    assert transform.accumulated_feed_ts["feed"].values.shape == (2,)
+    assert transform.species["biomass"].c_star_ts.values.shape == (3,)
+    assert transform.species["biomass"].feed_corr_ts.values.shape == (3,)
+
+
+def test_pseudobatch_transform_roundtrips_empty_species_dict() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 1.0], [1.0, 1.1]),
+        reactor_volume_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        sample_compensation_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={},
     )
-    assert loaded_transform["series"]["adf_ts"] == transform["series"]["adf_ts"]
-    assert (
-        loaded_transform["series"]["feed_corr_ts"]
-        == transform["series"]["feed_corr_ts"]
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        loaded = load_process_collection(out_dir)
+
+    assert payload["processes"]["p"]["pseudobatch_transform"]["species"] == {}
+    assert loaded.processes["p"].pseudobatch_transform.species == {}
+
+
+def test_pseudobatch_transform_loader_rejects_missing_required_keys() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 1.0], [1.0, 1.1]),
+        reactor_volume_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        sample_compensation_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
+                feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+            )
+        },
     )
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        del payload["processes"]["p"]["pseudobatch_transform"]["adf_ts"]
+
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(ValueError, match="missing required key\\(s\\): adf_ts"):
+            load_process_collection(out_dir)
+
+
+def test_pseudobatch_transform_loader_rejects_malformed_species_entries() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 1.0], [1.0, 1.1]),
+        reactor_volume_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        sample_compensation_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
+                feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+            )
+        },
+    )
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        del payload["processes"]["p"]["pseudobatch_transform"]["species"]["biomass"][
+            "feed_corr_ts"
+        ]
+
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(
+            ValueError, match="missing required key\\(s\\): feed_corr_ts"
+        ):
+            load_process_collection(out_dir)
+
+
+def test_pseudobatch_transform_loader_rejects_species_key_mismatch() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 1.0], [1.0, 1.1]),
+        reactor_volume_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        sample_compensation_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
+                feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+            )
+        },
+    )
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        payload["processes"]["p"]["pseudobatch_transform"]["species"]["biomass"][
+            "species"
+        ] = "glucose"
+
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(ValueError, match="species key must match"):
+            load_process_collection(out_dir)
+
+
+def test_pseudobatch_transform_loader_rejects_invalid_is_constant_type() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 1.0], [1.0, 1.1]),
+        reactor_volume_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        sample_compensation_ts=_ts([0.0, 1.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
+                feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+            )
+        },
+    )
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        payload["processes"]["p"]["pseudobatch_transform"]["species"]["biomass"][
+            "is_constant"
+        ] = "False"
+
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(ValueError, match="is_constant must be bool"):
+            load_process_collection(out_dir)

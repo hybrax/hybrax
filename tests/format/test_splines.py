@@ -35,6 +35,7 @@ from bp_format.splines import (
     build_interpax_spline,
     evaluate_spline_at,
     build_pseudobatch_inputs,
+    build_pseudobatch_transform,
     build_splines,
     evaluate_real_concentration,
     to_timeseries,
@@ -56,6 +57,15 @@ from bp_format import BenchmarkDataset, CaseStudy
 
 def _ts(t, v):
     return TimeSeries(times=jnp.array(t, dtype=float), values=jnp.array(v, dtype=float))
+
+
+def _build_single_species_transform(process, species_name="glucose"):
+    return build_pseudobatch_transform(process, [species_name])
+
+
+def _build_single_species_backtransform(process, species_name="glucose"):
+    transform = _build_single_species_transform(process, species_name)
+    return build_backtransform_spline(transform, species_name)
 
 
 def _make_feed(name="feed"):
@@ -604,12 +614,10 @@ def test_interpolator_roundtrip_bolus():
     tr = rep.metadata["transform"]
     assert tr["name"] == "pseudo_batch"
     assert tr["species"] == "glucose"
-    assert tr["feed_corr_interp"] == "piecewise_polynomial"
-    assert isinstance(tr["series"]["adf_ts"], dict)
-    assert isinstance(tr["series"]["feed_corr_ts"], dict)
-    assert tr["series"]["adf_ts"]["continuity_side"] == "left"
+    assert tr["cstar_interp"] in {"cubic", "pchip"}
+    assert "series" not in tr
 
-    bt = build_backtransform_spline(rep)
+    bt = _build_single_species_backtransform(proc, "glucose")
     assert isinstance(bt, BacktransformSpline)
 
     t_eval = np.linspace(0.0, 100.0, 50)
@@ -627,9 +635,9 @@ def test_interpolator_roundtrip_continuous():
     splines = build_splines(inputs, proc, "glucose")
 
     rep = to_timeseries(inputs, splines, "glucose")
-    assert rep.metadata["transform"]["feed_corr_interp"] == "piecewise_polynomial"
+    assert "series" not in rep.metadata["transform"]
 
-    bt = build_backtransform_spline(rep)
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     t_eval = np.linspace(0.0, 20.0, 30)
     direct = evaluate_real_concentration(t_eval, splines)
@@ -643,9 +651,9 @@ def test_interpolator_scalar():
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
+    to_timeseries(inputs, splines, "glucose")
 
-    bt = build_backtransform_spline(rep)
+    bt = _build_single_species_backtransform(proc, "glucose")
     val = float(bt(jnp.array(25.0)))
     assert np.isfinite(val)
     assert val > 0
@@ -665,7 +673,7 @@ def test_near_constant_nonzero_species_uses_constant_shortcut():
     assert tr["is_constant"] is True
     assert tr["constant_value"] == pytest.approx(2.0, abs=1e-8)
 
-    bt = build_backtransform_spline(rep)
+    bt = _build_single_species_backtransform(proc, "glucose")
     vals = np.array([float(bt(jnp.array(t))) for t in np.linspace(0.0, 20.0, 7)])
     np.testing.assert_allclose(vals, np.full_like(vals, 2.0), atol=1e-8)
 
@@ -682,9 +690,9 @@ def test_backtransform_has_jump_at_bolus():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
+    to_timeseries(inputs, splines, "glucose")
 
-    bt = build_backtransform_spline(rep)
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     t_b = 50.0
     post_probe = 5e-4
@@ -714,10 +722,11 @@ def test_batched_backtransform_preserves_bolus_jump():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
+    bt = build_backtransform_spline(transform, "glucose")
     batched = build_batched_conc_splines(
-        conc_splines={"glucose": bt},
+        transform,
         species_names=["glucose"],
         t_start=0.0,
         t_end=100.0,
@@ -739,10 +748,11 @@ def test_batched_backtransform_matches_scalar_continuous_feed():
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
+    bt = build_backtransform_spline(transform, "glucose")
     batched = build_batched_conc_splines(
-        conc_splines={"glucose": bt},
+        transform,
         species_names=["glucose"],
         t_start=0.0,
         t_end=20.0,
@@ -758,10 +768,11 @@ def test_batched_backtransform_derivative_matches_scalar_continuous_feed():
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
+    bt = build_backtransform_spline(transform, "glucose")
     batched = build_batched_conc_splines(
-        conc_splines={"glucose": bt},
+        transform,
         species_names=["glucose"],
         t_start=0.0,
         t_end=20.0,
@@ -784,10 +795,11 @@ def test_batched_backtransform_preserves_start_boundary_bolus():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
+    bt = build_backtransform_spline(transform, "glucose")
     batched = build_batched_conc_splines(
-        conc_splines={"glucose": bt},
+        transform,
         species_names=["glucose"],
         t_start=0.0,
         t_end=15.0,
@@ -856,10 +868,11 @@ def test_batched_backtransform_sums_same_time_bolus_jumps():
     }
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
+    bt = build_backtransform_spline(transform, "glucose")
     batched = build_batched_conc_splines(
-        conc_splines={"glucose": bt},
+        transform,
         species_names=["glucose"],
         t_start=0.0,
         t_end=10.0,
@@ -894,35 +907,19 @@ def test_backtransform_rejects_legacy_linear_feed_corr():
         glucose_times=[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 100.0],
         glucose_values=[10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 7.0, 6.0, 5.0, 4.0],
     )
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-
-    tr = rep.metadata["transform"]
-    tr["feed_corr_interp"] = "linear"
-    tr["series"]["feed_corr_ts"]["metadata"]["interp"] = "linear"
-    tr.pop("feed_corr_base_times", None)
-    tr.pop("feed_corr_base_values", None)
-    tr.pop("feed_corr_jump_times", None)
-    tr.pop("feed_corr_jump_values", None)
+    transform = _build_single_species_transform(proc, "glucose")
+    transform.species["glucose"].feed_corr_ts.metadata["interp"] = "linear"
 
     with pytest.raises(ValueError, match="feed_corr_interp='linear'"):
-        _ = build_backtransform_spline(rep)
+        _ = build_backtransform_spline(transform, "glucose")
 
 
-def test_backtransform_rejects_flat_transform_schema():
+def test_backtransform_requires_species_in_bundle():
     proc = _make_process_with_bolus_feed()
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
 
-    tr = rep.metadata["transform"]
-    tr.pop("series")
-
-    with pytest.raises(
-        ValueError, match="nested 'series.adf_ts'/'series.feed_corr_ts'"
-    ):
-        _ = build_backtransform_spline(rep)
+    with pytest.raises(KeyError):
+        _ = build_backtransform_spline(transform, "biomass")
 
 
 def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
@@ -983,8 +980,8 @@ def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
 
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     t_b = 10.0
     post_probe = 5e-4
@@ -1022,8 +1019,8 @@ def test_backtransform_bolus_at_t_start_no_crash():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     vals = [float(bt(jnp.array(t))) for t in [0.0, 5e-4, 1.0]]
     assert np.all(np.isfinite(vals))
@@ -1056,8 +1053,8 @@ def test_backtransform_bolus_at_t_end_no_crash():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     vals = [float(bt(jnp.array(t))) for t in [14.999, 15.0]]
     assert np.all(np.isfinite(vals))
@@ -1072,13 +1069,29 @@ def test_continuous_backtransform_no_nan():
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
+    to_timeseries(inputs, splines, "glucose")
 
-    bt = build_backtransform_spline(rep)
+    bt = _build_single_species_backtransform(proc, "glucose")
     for t in [0.0, 5.0, 10.0, 15.0, 20.0]:
         val = float(bt(jnp.array(t)))
         assert np.isfinite(val), f"Non-finite value at t={t}: {val}"
         assert val >= 0, f"Negative concentration at t={t}: {val}"
+
+
+def test_build_pseudobatch_transform_rejects_already_transformed_carrier():
+    """Builder must not treat a c* carrier as raw measured concentration."""
+    proc = _make_process_with_bolus_feed()
+    transform = _build_single_species_transform(proc, "glucose")
+    proc.pseudobatch_transform = transform
+    proc.reactor_medium.components["glucose"].concentration = transform.species[
+        "glucose"
+    ].c_star_ts
+
+    with pytest.raises(ValueError, match="already carries pseudobatch"):
+        build_pseudobatch_transform(proc, ["glucose"])
+
+    with pytest.raises(ValueError, match="already carries pseudobatch"):
+        build_pseudobatch_transform(proc)
 
 
 # ---------------------------------------------------------------------------
@@ -1087,11 +1100,11 @@ def test_continuous_backtransform_no_nan():
 
 
 def test_pseudobatch_spline_json_roundtrip():
-    """Transformed TimeSeries preserves nested pseudobatch metadata."""
+    """Pseudobatch bundle and lightweight c* metadata round-trip through JSON."""
     proc = _make_process_with_bolus_feed()
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
+    transform = _build_single_species_transform(proc, "glucose")
+    rep = transform.species["glucose"].c_star_ts
+    proc.pseudobatch_transform = transform
     proc.reactor_medium.components["glucose"].concentration = rep
 
     cs = CaseStudy(case_id="cs", organism="CHO", citation="test", processes={"p": proc})
@@ -1107,13 +1120,14 @@ def test_pseudobatch_spline_json_roundtrip():
     loaded_comp = (
         loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"]
     )
+    loaded_transform = loaded.case_studies["cs"].processes["p"].pseudobatch_transform
     loaded_tr = loaded_comp.concentration.metadata["transform"]
     assert loaded_tr["name"] == "pseudo_batch"
-    assert isinstance(loaded_tr["series"]["adf_ts"], dict)
-    assert isinstance(loaded_tr["series"]["feed_corr_ts"], dict)
+    assert "series" not in loaded_tr
+    assert loaded_transform is not None
 
-    bt_orig = build_backtransform_spline(rep)
-    bt_loaded = build_backtransform_spline(loaded_comp.concentration)
+    bt_orig = build_backtransform_spline(transform, "glucose")
+    bt_loaded = build_backtransform_spline(loaded_transform, "glucose")
     for t_val in [0.0, 25.0, 75.0]:
         orig = float(bt_orig(jnp.array(t_val)))
         loaded_val = float(bt_loaded(jnp.array(t_val)))
@@ -1122,10 +1136,8 @@ def test_pseudobatch_spline_json_roundtrip():
         )
 
     post_delta = 5e-4
-    tr_orig = rep.metadata["transform"]
-    tr_loaded = loaded_comp.concentration.metadata["transform"]
-    orig_adf = TimeSeries.from_dict(tr_orig["series"]["adf_ts"])
-    loaded_adf = TimeSeries.from_dict(tr_loaded["series"]["adf_ts"])
+    orig_adf = transform.adf_ts
+    loaded_adf = loaded_transform.adf_ts
     t_b = float(orig_adf.jump_times[0])
 
     orig_pre = float(orig_adf.evaluate(jnp.array(t_b), side="left"))
@@ -1139,7 +1151,7 @@ def test_pseudobatch_spline_json_roundtrip():
 
 
 def test_pseudobatch_metadata_json_serializable():
-    """Transform metadata is pure JSON-serializable nested dict payload."""
+    """Transform metadata is JSON-serializable lightweight provenance."""
     import json
 
     proc = _make_process_with_bolus_feed()
@@ -1151,23 +1163,18 @@ def test_pseudobatch_metadata_json_serializable():
     tr = rep.metadata["transform"]
     assert tr["name"] == "pseudo_batch"
     assert tr["species"] == "glucose"
-    assert isinstance(tr["series"]["adf_ts"], dict)
-    assert isinstance(tr["series"]["feed_corr_ts"], dict)
-    assert tr["series"]["adf_ts"]["breaks"] is not None
-    assert tr["series"]["adf_ts"]["metadata"]["interp"] == "piecewise_polynomial"
+    assert "series" not in tr
+    assert tr["cstar_interp"] in {"cubic", "pchip"}
 
     meta_json = json.dumps(rep.metadata)
     meta_loaded = json.loads(meta_json)
     assert meta_loaded["transform"]["name"] == "pseudo_batch"
 
 
-def test_nested_adf_timeseries_evaluates_canonical_spline_state():
+def test_bundle_adf_timeseries_evaluates_canonical_spline_state():
     proc = _make_process_with_bolus_feed()
-    inputs = build_pseudobatch_inputs(proc, "glucose")
-    splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-
-    adf_ts = TimeSeries.from_dict(rep.metadata["transform"]["series"]["adf_ts"])
+    transform = _build_single_species_transform(proc, "glucose")
+    adf_ts = transform.adf_ts
     t_eval = jnp.linspace(
         float(adf_ts.breaks[0]),
         float(adf_ts.breaks[-1]),
@@ -1375,8 +1382,8 @@ def test_pseudobatch_with_sample_volume_change():
 
     # Full pipeline should work
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
     t_eval = np.linspace(0.0, 20.0, 20)
     vals = np.array([float(bt(jnp.array(t))) for t in t_eval])
     assert np.all(np.isfinite(vals))
@@ -1463,8 +1470,8 @@ def test_pseudobatch_multiple_feed_streams():
 
     # Full pipeline
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
     t_eval = np.linspace(0.0, 20.0, 20)
     vals = np.array([float(bt(jnp.array(t))) for t in t_eval])
     assert np.all(np.isfinite(vals))
@@ -1489,8 +1496,8 @@ def test_backtransform_spline_jit_bolus():
     )
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     jit_fn = eqx.filter_jit(bt)
     val_mid = jit_fn(jnp.array(25.0))
@@ -1514,8 +1521,8 @@ def test_backtransform_spline_jit_continuous():
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     inputs = build_pseudobatch_inputs(proc, "glucose")
     splines = build_splines(inputs, proc, "glucose")
-    rep = to_timeseries(inputs, splines, "glucose")
-    bt = build_backtransform_spline(rep)
+    to_timeseries(inputs, splines, "glucose")
+    bt = _build_single_species_backtransform(proc, "glucose")
 
     jit_fn = eqx.filter_jit(bt)
     val = jit_fn(jnp.array(10.0))
@@ -1611,7 +1618,7 @@ class TestPchipFallback:
 
         assert rep.metadata["transform"]["cstar_interp"] == "pchip"
 
-        bt = build_backtransform_spline(rep)
+        bt = _build_single_species_backtransform(proc, "acetate")
         # Evaluate at measurement times
         meas_t = jnp.array(inputs["meas_times"])
         meas_c = jnp.array(inputs["meas_conc"])
@@ -1627,8 +1634,8 @@ class TestPchipFallback:
         proc = _make_process_sharp_profile()
         inputs = build_pseudobatch_inputs(proc, "acetate")
         splines = build_splines(inputs, proc, "acetate")
-        rep = to_timeseries(inputs, splines, "acetate")
-        bt = build_backtransform_spline(rep)
+        to_timeseries(inputs, splines, "acetate")
+        bt = _build_single_species_backtransform(proc, "acetate")
 
         t_dense = jnp.linspace(0.0, 10.0, 500)
         c_dense = jnp.array([float(bt(t)) for t in t_dense])

@@ -483,8 +483,13 @@ def _collect_process_panels(process: BioProcess):
 
     # Reactor medium components
     if process.reactor_medium and process.reactor_medium.components:
+        pseudobatch_transform = getattr(process, "pseudobatch_transform", None)
         for comp in process.reactor_medium.components.values():
             unit_label = f" [{comp.unit}]" if comp.unit else ""
+            has_transform = (
+                pseudobatch_transform is not None
+                and comp.name in pseudobatch_transform.species
+            )
             if _is_dynamic_series(comp.concentration):
                 panel = {
                     "title": f"{comp.name}{unit_label}",
@@ -496,31 +501,30 @@ def _collect_process_panels(process: BioProcess):
                 }
                 if _has_spline_state(comp.concentration):
                     panel["series"] = comp.concentration
-                    metadata = getattr(comp.concentration, "metadata", None)
-                    has_transform = (
-                        isinstance(metadata, dict) and "transform" in metadata
-                    )
                     panel["series_type"] = (
                         "backtransform" if has_transform else "direct"
                     )
+                    if has_transform:
+                        panel["pseudobatch_transform"] = pseudobatch_transform
+                        panel["species_name"] = comp.name
                 panels.append(panel)
             elif _is_spline_only_series(comp.concentration):
                 x = jnp.asarray(comp.concentration.breaks)
                 y = comp.concentration.evaluate_many(x)
-                metadata = getattr(comp.concentration, "metadata", None)
-                has_transform = isinstance(metadata, dict) and "transform" in metadata
-                panels.append(
-                    {
-                        "title": f"{comp.name}{unit_label}",
-                        "category": "ReactorMedium",
-                        "type": "dynamic",
-                        "x": x,
-                        "y": y,
-                        "render": "line",
-                        "series": comp.concentration,
-                        "series_type": "backtransform" if has_transform else "direct",
-                    }
-                )
+                panel = {
+                    "title": f"{comp.name}{unit_label}",
+                    "category": "ReactorMedium",
+                    "type": "dynamic",
+                    "x": x,
+                    "y": y,
+                    "render": "line",
+                    "series": comp.concentration,
+                    "series_type": "backtransform" if has_transform else "direct",
+                }
+                if has_transform:
+                    panel["pseudobatch_transform"] = pseudobatch_transform
+                    panel["species_name"] = comp.name
+                panels.append(panel)
             elif hasattr(comp.concentration, "value"):
                 panels.append(
                     {
@@ -701,13 +705,27 @@ def _pad_constant_ylim(ax, values):
         ax.set_ylim(min(cur_lo, new_lo), max(cur_hi, new_hi))
 
 
-def _evaluate_series_curve(series, series_type, t_start, t_end, n_points=500):
+def _evaluate_series_curve(
+    series,
+    series_type,
+    t_start,
+    t_end,
+    n_points=500,
+    *,
+    pseudobatch_transform=None,
+    species_name=None,
+):
     """Evaluate a spline-backed TimeSeries over [t_start, t_end]."""
     from .splines import build_backtransform_spline, evaluate_spline_at
 
     t_plot = np.linspace(t_start, t_end, n_points)
     if series_type == "backtransform":
-        bt = build_backtransform_spline(series)
+        if pseudobatch_transform is None or species_name is None:
+            raise ValueError(
+                "Backtransform plotting requires a process-level "
+                "pseudobatch_transform and species_name."
+            )
+        bt = build_backtransform_spline(pseudobatch_transform, species_name)
         y_plot = np.array([float(bt(jnp.array(t))) for t in t_plot])
     else:
         y_plot = np.array([evaluate_spline_at(series, t) for t in t_plot])
@@ -786,6 +804,8 @@ def _draw_panel(
                     panel.get("series_type", "direct"),
                     t_start,
                     t_end,
+                    pseudobatch_transform=panel.get("pseudobatch_transform"),
+                    species_name=panel.get("species_name"),
                 )
                 ax.plot(
                     t_plot,

@@ -4,9 +4,8 @@ These tests guard against silent regressions in the mechanistic q-inversion
 and forward-integration pipeline. Each test:
 
 1. Loads a frozen single-process dataset JSON from ``tests/fixtures/``.
-2. Builds pseudobatch ReactorMediumComponent ``TimeSeries`` carriers with
-   transform metadata (these are what ``build_state_splines`` consumes for the
-   backtransform spline).
+2. Builds process-level pseudobatch bundles and assigns c* ``TimeSeries``
+   carriers to reactor components.
 3. Builds the RHS ODE + estimates ``q(t)`` on a dense event-scaled grid.
 4. Fits a cubic q-spline and forward-integrates via ``integrate_process``.
 5. Asserts the per-species nRMSE vs the original measurements is below the
@@ -34,10 +33,8 @@ import pytest
 import bp_format
 import bp_format.mechanistic as bpm
 from bp_format.splines import (
-    build_pseudobatch_inputs,
-    build_splines,
+    build_pseudobatch_transform,
     make_interpax_spline,
-    to_timeseries,
 )
 
 
@@ -54,12 +51,17 @@ def _wrap_q_as_rates(mb, q_func):
 
 def _attach_pseudobatch_series(process):
     """Fit pseudobatch TimeSeries carriers for each measured reactor component."""
-    for comp_name, comp in process.reactor_medium.components.items():
-        if not hasattr(comp.concentration, "times"):
-            continue
-        inputs = build_pseudobatch_inputs(process, comp_name)
-        spl = build_splines(inputs, process, comp_name)
-        comp.concentration = to_timeseries(inputs, spl, comp_name)
+    species_names = [
+        comp_name
+        for comp_name, comp in process.reactor_medium.components.items()
+        if hasattr(comp.concentration, "times")
+    ]
+    transform = build_pseudobatch_transform(process, species_names)
+    process.pseudobatch_transform = transform
+    for comp_name in species_names:
+        process.reactor_medium.components[comp_name].concentration = transform.species[
+            comp_name
+        ].c_star_ts
 
 
 def _run_mechanistic_pipeline(fixture_dir: Path, *, mutator=None) -> dict:

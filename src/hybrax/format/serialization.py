@@ -25,6 +25,8 @@ from .dataclasses import (
     Volume,
     FeedVolumeChange,
     SampleVolumeChange,
+    PseudobatchSpeciesTransform,
+    PseudobatchTransform,
     ReactorMedium,
     ReactorMediumComponent,
     ProcessVariable,
@@ -334,6 +336,11 @@ def _process_to_dict(process: BioProcess) -> Dict:
     if process.biological_ode is not None:
         result["biological_ode"] = _biological_ode_to_dict(process.biological_ode)
 
+    if process.pseudobatch_transform is not None:
+        result["pseudobatch_transform"] = _pseudobatch_transform_to_dict(
+            process.pseudobatch_transform
+        )
+
     if isinstance(process, AugmentedBioProcess):
         result["__type__"] = "AugmentedBioProcess"
         result["parent_process"] = process.parent_process
@@ -391,6 +398,46 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
     if bounds_dict is not None:
         result["bounds"] = bounds_dict
     return result
+
+
+def _pseudobatch_transform_to_dict(transform: PseudobatchTransform) -> Dict:
+    """Convert PseudobatchTransform to dictionary."""
+    return {
+        "adf_ts": _timeseries_to_dict_payload(transform.adf_ts, include_type=False),
+        "reactor_volume_ts": _timeseries_to_dict_payload(
+            transform.reactor_volume_ts,
+            include_type=False,
+        ),
+        "sample_compensation_ts": _timeseries_to_dict_payload(
+            transform.sample_compensation_ts,
+            include_type=False,
+        ),
+        "accumulated_feed_ts": {
+            name: _timeseries_to_dict_payload(ts, include_type=False)
+            for name, ts in transform.accumulated_feed_ts.items()
+        },
+        "species": {
+            name: _pseudobatch_species_transform_to_dict(entry)
+            for name, entry in transform.species.items()
+        },
+    }
+
+
+def _pseudobatch_species_transform_to_dict(
+    entry: PseudobatchSpeciesTransform,
+) -> Dict:
+    """Convert PseudobatchSpeciesTransform to dictionary."""
+    return {
+        "species": entry.species,
+        "c_star_ts": _timeseries_to_dict_payload(entry.c_star_ts, include_type=False),
+        "feed_corr_ts": _timeseries_to_dict_payload(
+            entry.feed_corr_ts,
+            include_type=False,
+        ),
+        "is_constant": entry.is_constant,
+        "constant_value": entry.constant_value,
+        "cstar_interp": entry.cstar_interp,
+    }
 
 
 def _timeseries_to_dict_payload(
@@ -582,6 +629,14 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     if p_data.get("biological_ode") is not None:
         biological_ode = _dict_to_biological_ode(p_data["biological_ode"])
 
+    # Absent key means no pseudobatch transform. Present malformed entries fail
+    # fast so old or partial bundle payloads do not silently load.
+    pseudobatch_transform = None
+    if "pseudobatch_transform" in p_data:
+        transform_data = p_data["pseudobatch_transform"]
+        if transform_data is not None:
+            pseudobatch_transform = _dict_to_pseudobatch_transform(transform_data)
+
     if p_data.get("__type__") == "AugmentedBioProcess":
         parent = p_data.get("parent_process")
         if not isinstance(parent, str) or not parent:
@@ -596,6 +651,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
             process_variables=process_variables,
             discrete_events=discrete_events,
             biological_ode=biological_ode,
+            pseudobatch_transform=pseudobatch_transform,
             parent_process=parent,
         )
 
@@ -607,6 +663,126 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
         process_variables=process_variables,
         discrete_events=discrete_events,
         biological_ode=biological_ode,
+        pseudobatch_transform=pseudobatch_transform,
+    )
+
+
+def _require_mapping(value, context: str) -> Dict:
+    """Return a dict-like payload or raise a clear loader error."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{context} must be a dictionary.")
+    return value
+
+
+def _require_keys(data: Dict, required: tuple[str, ...], context: str) -> None:
+    """Validate required keys for a strict serialized payload."""
+    missing = [key for key in required if key not in data]
+    if missing:
+        missing_keys = ", ".join(missing)
+        raise ValueError(f"{context} missing required key(s): {missing_keys}.")
+
+
+def _dict_to_pseudobatch_transform(data: Dict) -> PseudobatchTransform:
+    """Reconstruct PseudobatchTransform from dictionary."""
+    data = _require_mapping(data, "pseudobatch_transform")
+    _require_keys(
+        data,
+        (
+            "adf_ts",
+            "reactor_volume_ts",
+            "sample_compensation_ts",
+            "accumulated_feed_ts",
+            "species",
+        ),
+        "pseudobatch_transform",
+    )
+
+    accumulated_feed_data = _require_mapping(
+        data["accumulated_feed_ts"],
+        "pseudobatch_transform.accumulated_feed_ts",
+    )
+    species_data = _require_mapping(
+        data["species"],
+        "pseudobatch_transform.species",
+    )
+
+    return PseudobatchTransform(
+        adf_ts=_dict_to_pseudobatch_timeseries(
+            data["adf_ts"], "pseudobatch_transform.adf_ts"
+        ),
+        reactor_volume_ts=_dict_to_pseudobatch_timeseries(
+            data["reactor_volume_ts"], "pseudobatch_transform.reactor_volume_ts"
+        ),
+        sample_compensation_ts=_dict_to_pseudobatch_timeseries(
+            data["sample_compensation_ts"],
+            "pseudobatch_transform.sample_compensation_ts",
+        ),
+        accumulated_feed_ts={
+            name: _dict_to_pseudobatch_timeseries(
+                ts_data,
+                f"pseudobatch_transform.accumulated_feed_ts.{name}",
+            )
+            for name, ts_data in accumulated_feed_data.items()
+        },
+        species={
+            name: _dict_to_pseudobatch_species_transform(name, entry_data)
+            for name, entry_data in species_data.items()
+        },
+    )
+
+
+def _dict_to_pseudobatch_timeseries(data: Dict, context: str) -> TimeSeries:
+    """Reconstruct one strict TimeSeries payload in a pseudobatch bundle."""
+    data = _require_mapping(data, context)
+    return _timeseries_from_dict_payload(data)
+
+
+def _dict_to_pseudobatch_species_transform(
+    species_key: str,
+    data: Dict,
+) -> PseudobatchSpeciesTransform:
+    """Reconstruct PseudobatchSpeciesTransform from dictionary."""
+    data = _require_mapping(data, "pseudobatch_transform.species entry")
+    _require_keys(
+        data,
+        (
+            "species",
+            "c_star_ts",
+            "feed_corr_ts",
+            "is_constant",
+            "constant_value",
+            "cstar_interp",
+        ),
+        "pseudobatch_transform.species entry",
+    )
+    if data["species"] != species_key:
+        raise ValueError(
+            "pseudobatch_transform species key must match entry species "
+            f"({species_key!r} != {data['species']!r})."
+        )
+    if not isinstance(data["is_constant"], bool):
+        raise ValueError("pseudobatch_transform species is_constant must be bool.")
+    constant_value = data["constant_value"]
+    if constant_value is not None and not isinstance(constant_value, (int, float)):
+        raise ValueError(
+            "pseudobatch_transform species constant_value must be numeric or None."
+        )
+    cstar_interp = data["cstar_interp"]
+    if not isinstance(cstar_interp, str):
+        raise ValueError("pseudobatch_transform species cstar_interp must be str.")
+    return PseudobatchSpeciesTransform(
+        species=data["species"],
+        c_star_ts=_dict_to_pseudobatch_timeseries(
+            data["c_star_ts"],
+            "pseudobatch_transform.species entry.c_star_ts",
+        ),
+        feed_corr_ts=_dict_to_pseudobatch_timeseries(
+            data["feed_corr_ts"],
+            "pseudobatch_transform.species entry.feed_corr_ts",
+        ),
+        is_constant=data["is_constant"],
+        constant_value=constant_value,
+        cstar_interp=cstar_interp,
     )
 
 
@@ -655,6 +831,8 @@ def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
     """Reconstruct TimeSeries from a typed or untyped serialized payload."""
     times = value_data.get("times")
     values = value_data.get("values")
+    metadata = value_data.get("metadata")
+    _reject_nested_pseudobatch_metadata(metadata)
 
     kwargs: Dict = {"values": values}
     if values is not None:
@@ -677,7 +855,7 @@ def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
     if "continuity_side" in value_data:
         kwargs["continuity_side"] = value_data["continuity_side"]
     if "metadata" in value_data:
-        kwargs["metadata"] = value_data["metadata"]
+        kwargs["metadata"] = metadata
     if "dtype" in value_data:
         kwargs["dtype"] = value_data["dtype"]
 
@@ -753,6 +931,20 @@ def _reject_legacy_interpolator_payload(interpolator_data: Dict | None, owner: s
         raise ValueError(
             "Legacy sibling 'interpolator' payloads are no longer supported for "
             f"{owner}. Regenerate datasets with TimeSeries-only spline storage."
+        )
+
+
+def _reject_nested_pseudobatch_metadata(metadata) -> None:
+    """Reject executable pseudobatch transform payloads embedded in metadata."""
+    if not isinstance(metadata, dict):
+        return
+    transform = metadata.get("transform")
+    if not isinstance(transform, dict):
+        return
+    if "series" in transform:
+        raise ValueError(
+            "TimeSeries metadata contains nested executable pseudobatch transform "
+            "series. Store pseudobatch state in process.pseudobatch_transform."
         )
 
 

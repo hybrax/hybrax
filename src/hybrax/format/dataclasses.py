@@ -95,7 +95,9 @@ class ReactorMediumComponent:
     name: str  # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
-    is_intracellular: bool  # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in ODE RHS calculations
+    # If True, this component is intracellular (e.g.,
+    # X_measured = X_active + P) and needs different ODE RHS handling.
+    is_intracellular: bool
     bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 
@@ -106,7 +108,8 @@ class FeedMedium:
     """
 
     name: str
-    density: float  # often assumed as 1 kg/L for aqueous solutions, but can be specified if known
+    # Often assumed as 1 kg/L for aqueous solutions, but can be specified.
+    density: float
     density_unit: str  # typically "kg/L"
     components: Dict[str, FeedMediumComponent] = field(default_factory=dict)
 
@@ -143,7 +146,8 @@ class VolumeChange:
     """
 
     name: str
-    unit: str  # e.g. "L", "m3", "kg", not allowed is "L/h" or "kg/h" as they are usually derived values
+    # e.g. "L", "m3", "kg"; not "L/h" or "kg/h" derived units.
+    unit: str
     is_controlled: bool  # True if controlled, False if modeled
     is_continuous: bool  # True if continuous, False if discrete
     values: TimeSeries  # For continuous changes (cumulative or rate)
@@ -242,6 +246,42 @@ class BiologicalOde:
 
 
 @dataclass
+class PseudobatchSpeciesTransform:
+    """
+    Pseudobatch transform data for one reactor-medium species.
+
+    `c_star_ts` stores the transformed concentration carrier used by the reactor
+    component. `feed_corr_ts` stores the species-specific feed correction needed
+    to map between transformed and real concentration.
+    """
+
+    species: str
+    c_star_ts: TimeSeries
+    feed_corr_ts: TimeSeries
+    is_constant: bool = False
+    constant_value: Optional[float] = None
+    cstar_interp: str = "cubic"
+
+
+@dataclass
+class PseudobatchTransform:
+    """
+    Process-level pseudobatch transform bundle.
+
+    `adf_ts`, `reactor_volume_ts`, and `sample_compensation_ts` are shared
+    process-level TimeSeries carriers. `accumulated_feed_ts` stores feed-volume
+    contributions by feed/volume-change name. `species` stores per-species
+    transformed concentrations and feed corrections.
+    """
+
+    adf_ts: TimeSeries
+    reactor_volume_ts: TimeSeries
+    sample_compensation_ts: TimeSeries
+    accumulated_feed_ts: Dict[str, TimeSeries]
+    species: Dict[str, PseudobatchSpeciesTransform]
+
+
+@dataclass
 class BioProcess:
     """
     Single experimental bioprocess run.
@@ -256,6 +296,7 @@ class BioProcess:
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     discrete_events: Optional[DiscreteEvents] = None
     biological_ode: Optional[BiologicalOde] = None
+    pseudobatch_transform: Optional[PseudobatchTransform] = None
 
 
 @dataclass(kw_only=True)

@@ -32,6 +32,8 @@ from .dataclasses import (
     BioProcess,
     DiscreteEvents,
     FeedVolumeChange,
+    PseudobatchSpeciesTransform,
+    PseudobatchTransform,
     SampleVolumeChange,
     StaticVariable,
     TimeSeries,
@@ -1316,6 +1318,250 @@ def build_splines(
     )
 
 
+def _cstar_metadata(
+    species_name: str,
+    *,
+    cstar_method: str,
+    is_constant: bool,
+    constant_value: float | None,
+) -> dict:
+    """Build lightweight pseudobatch provenance metadata for c* carriers."""
+    return {
+        "transform": {
+            "name": "pseudo_batch",
+            "species": species_name,
+            "cstar_interp": cstar_method,
+            "is_constant": bool(is_constant),
+            "constant_value": constant_value,
+        }
+    }
+
+
+def _build_cstar_timeseries(
+    meas_times: jnp.ndarray,
+    c_star: jnp.ndarray,
+    *,
+    species_name: str,
+    cstar_method: str,
+    is_constant: bool,
+    constant_value: float | None,
+) -> TimeSeries:
+    """Fit the transformed concentration carrier using the selected policy."""
+    return _fit_spline_timeseries(
+        meas_times,
+        c_star,
+        method="pchip" if cstar_method == "pchip" else "cubic",
+        continuity_side="right",
+        metadata=_cstar_metadata(
+            species_name,
+            cstar_method=cstar_method,
+            is_constant=is_constant,
+            constant_value=constant_value,
+        ),
+    )
+
+
+def _assert_same_timeseries(
+    left: TimeSeries,
+    right: TimeSeries,
+    *,
+    name: str,
+    species_name: str,
+) -> None:
+    """Fail if two shared process-level TimeSeries differ materially."""
+    for attr in ("breaks", "coeffs", "jump_times"):
+        left_arr = getattr(left, attr, None)
+        right_arr = getattr(right, attr, None)
+        if left_arr is None and right_arr is None:
+            continue
+        if left_arr is None or right_arr is None:
+            raise ValueError(
+                f"Shared {name} TimeSeries mismatch for species {species_name!r}."
+            )
+        if not np.allclose(
+            np.asarray(left_arr, dtype=float),
+            np.asarray(right_arr, dtype=float),
+            rtol=1e-12,
+            atol=1e-12,
+        ):
+            raise ValueError(
+                f"Shared {name} TimeSeries mismatch for species {species_name!r}."
+            )
+
+    left_meta = left.metadata if isinstance(left.metadata, dict) else {}
+    right_meta = right.metadata if isinstance(right.metadata, dict) else {}
+    left_jumps = np.asarray(left_meta.get("jump_values", []), dtype=float)
+    right_jumps = np.asarray(right_meta.get("jump_values", []), dtype=float)
+    if left_jumps.shape != right_jumps.shape or not np.allclose(
+        left_jumps, right_jumps, rtol=1e-12, atol=1e-12
+    ):
+        raise ValueError(
+            f"Shared {name} jump metadata mismatch for species {species_name!r}."
+        )
+
+
+def _assert_same_shared_series(
+    reference: Dict[str, Any],
+    current: Dict[str, Any],
+    *,
+    species_name: str,
+) -> None:
+    """Verify species-independent pseudobatch series stayed shared."""
+    for key in ("adf_ts", "reactor_volume_ts", "sample_compensation_ts"):
+        _assert_same_timeseries(
+            reference[key],
+            current[key],
+            name=key,
+            species_name=species_name,
+        )
+
+    ref_feed = reference["accumulated_feed_ts"]
+    cur_feed = current["accumulated_feed_ts"]
+    if set(ref_feed) != set(cur_feed):
+        raise ValueError(
+            f"Shared accumulated feed streams mismatch for species {species_name!r}."
+        )
+    for feed_name in ref_feed:
+        _assert_same_timeseries(
+            ref_feed[feed_name],
+            cur_feed[feed_name],
+            name=f"accumulated_feed_ts[{feed_name!r}]",
+            species_name=species_name,
+        )
+
+
+def _selected_pseudobatch_species(
+    process: BioProcess,
+    species_names: Optional[List[str]],
+) -> list[str]:
+    """Return reactor-medium species with TimeSeries concentrations."""
+
+    def _assert_raw_concentration(name: str, ts: TimeSeries) -> None:
+        metadata = ts.metadata if isinstance(ts.metadata, dict) else {}
+        transform = metadata.get("transform")
+        if isinstance(transform, dict) and transform.get("name") == "pseudo_batch":
+            raise ValueError(
+                f"Species {name!r} concentration already carries pseudobatch "
+                "c* metadata. build_pseudobatch_transform expects real measured "
+                "concentrations; use the existing process.pseudobatch_transform "
+                "or restore raw concentrations before rebuilding."
+            )
+
+    if species_names is None:
+        selected = []
+        for name, component in process.reactor_medium.components.items():
+            if isinstance(component.concentration, TimeSeries):
+                _assert_raw_concentration(name, component.concentration)
+                selected.append(name)
+        return selected
+
+    selected = list(species_names)
+    for name in selected:
+        if name not in process.reactor_medium.components:
+            raise KeyError(name)
+        concentration = process.reactor_medium.components[name].concentration
+        if not isinstance(concentration, TimeSeries):
+            raise TypeError(f"{name} must have a TimeSeries concentration")
+        _assert_raw_concentration(name, concentration)
+    return selected
+
+
+def build_pseudobatch_transform(
+    process: BioProcess,
+    species_names: Optional[List[str]] = None,
+) -> PseudobatchTransform:
+    """Build a shared process-level pseudobatch transform bundle."""
+    selected_species = _selected_pseudobatch_species(process, species_names)
+    if not selected_species:
+        raise ValueError("No TimeSeries reactor-medium species selected.")
+
+    species_times: dict[str, jnp.ndarray] = {}
+    shared_times: list[float] = []
+    for name in selected_species:
+        ts = process.reactor_medium.components[name].concentration
+        if not isinstance(ts, TimeSeries):
+            raise TypeError(f"{name} must have a TimeSeries concentration")
+        meas_times = _series_reference_times(ts)
+        species_times[name] = meas_times
+        shared_times.extend(float(t) for t in np.asarray(meas_times, dtype=float))
+    shared_meas_times = jnp.asarray(sorted(set(shared_times)), dtype=float)
+
+    reference_inputs = None
+    species_transforms: dict[str, PseudobatchSpeciesTransform] = {}
+    for name in selected_species:
+        component = process.reactor_medium.components[name]
+        ts = component.concentration
+        if not isinstance(ts, TimeSeries):
+            raise TypeError(f"{name} must have a TimeSeries concentration")
+
+        meas_times = species_times[name]
+        meas_conc = _evaluate_timeseries_on_grid(ts, meas_times)
+        series_inputs = _build_direct_pseudobatch_series(
+            process,
+            name,
+            shared_meas_times,
+        )
+        if reference_inputs is None:
+            reference_inputs = series_inputs
+        else:
+            _assert_same_shared_series(
+                reference_inputs,
+                series_inputs,
+                species_name=name,
+            )
+
+        adf_at_meas = _evaluate_many_with_boundary_start(
+            series_inputs["adf_ts"], meas_times
+        )
+        feed_corr_at_meas = _evaluate_many_with_boundary_start(
+            series_inputs["feed_corr_ts"], meas_times
+        )
+        c_star = meas_conc * adf_at_meas - feed_corr_at_meas
+        inputs = {
+            "meas_times": meas_times,
+            "meas_conc": meas_conc,
+            "c_star": jnp.asarray(c_star),
+            "adf_at_meas": jnp.asarray(adf_at_meas),
+            "feed_corr_at_meas": jnp.asarray(feed_corr_at_meas),
+            "adf_ts": series_inputs["adf_ts"],
+            "feed_corr_ts": series_inputs["feed_corr_ts"],
+            "dense_times": series_inputs["dense_times"],
+            "adf_dense": series_inputs["adf_dense"],
+            "has_discrete_feed": series_inputs["has_discrete_feed"],
+        }
+        splines = build_splines(inputs, process, name)
+        cstar_method = inputs.get("cstar_interp", "cubic")
+        is_constant = _is_near_constant(meas_conc) and not bool(
+            inputs.get("has_discrete_feed", False)
+        )
+        constant_value = float(jnp.mean(meas_conc)) if is_constant else None
+        c_star_ts = _build_cstar_timeseries(
+            inputs["meas_times"],
+            inputs["c_star"],
+            species_name=name,
+            cstar_method=cstar_method,
+            is_constant=is_constant,
+            constant_value=constant_value,
+        )
+        species_transforms[name] = PseudobatchSpeciesTransform(
+            species=name,
+            c_star_ts=c_star_ts,
+            feed_corr_ts=splines["feed_corr_ts"],
+            is_constant=is_constant,
+            constant_value=constant_value,
+            cstar_interp=cstar_method,
+        )
+
+    assert reference_inputs is not None
+    return PseudobatchTransform(
+        adf_ts=reference_inputs["adf_ts"],
+        reactor_volume_ts=reference_inputs["reactor_volume_ts"],
+        sample_compensation_ts=reference_inputs["sample_compensation_ts"],
+        accumulated_feed_ts=reference_inputs["accumulated_feed_ts"],
+        species=species_transforms,
+    )
+
+
 def evaluate_real_concentration(
     t_eval: jnp.ndarray, splines: Dict[str, Any]
 ) -> jnp.ndarray:
@@ -1372,38 +1618,14 @@ def to_timeseries(
     is_constant = _is_near_constant(meas_conc) and not has_discrete
     cstar_method = inputs.get("cstar_interp", "cubic")
 
-    if "adf_ts" not in splines or "feed_corr_ts" not in splines:
-        raise ValueError(
-            "to_timeseries requires canonical TimeSeries transform entries "
-            "'adf_ts' and 'feed_corr_ts'."
-        )
-    adf_ts = splines["adf_ts"]
-
-    feed_corr_ts = splines["feed_corr_ts"]
-    metadata = feed_corr_ts.metadata if isinstance(feed_corr_ts.metadata, dict) else {}
-    feed_corr_interp = str(metadata.get("interp", "piecewise_polynomial"))
-
-    transform = {
-        "name": "pseudo_batch",
-        "species": species_name,
-        "feed_corr_interp": feed_corr_interp,
-        "cstar_interp": cstar_method,
-        "is_constant": is_constant,
-        "constant_value": float(jnp.mean(meas_conc)) if is_constant else None,
-        "series": {
-            "adf_ts": _timeseries_to_canonical_payload(adf_ts),
-            "feed_corr_ts": _timeseries_to_canonical_payload(feed_corr_ts),
-        },
-    }
-
-    series = _fit_spline_timeseries(
+    return _build_cstar_timeseries(
         inputs["meas_times"],
         inputs["c_star"],
-        method="pchip" if cstar_method == "pchip" else "cubic",
-        continuity_side="right",
-        metadata={"transform": transform},
+        species_name=species_name,
+        cstar_method=cstar_method,
+        is_constant=is_constant,
+        constant_value=float(jnp.mean(meas_conc)) if is_constant else None,
     )
-    return series
 
 
 class BacktransformSpline(eqx.Module):
@@ -1489,46 +1711,52 @@ class BacktransformSpline(eqx.Module):
         return _deriv
 
 
-def build_backtransform_spline(rep: TimeSeries) -> BacktransformSpline:
-    """Build a JIT-compatible :class:`BacktransformSpline` from a stored
-    pseudobatch carrier.
+def build_backtransform_spline(
+    transform: PseudobatchTransform,
+    species_name: str,
+) -> BacktransformSpline:
+    """Build a JIT-compatible backtransform from a pseudobatch bundle.
 
     This is meant to be called **once** (outside JIT).  The returned module
     can then be passed into ``eqx.filter_jit``-compiled functions.
 
     Parameters
     ----------
-    rep:
-        A pseudobatch TimeSeries with ``metadata["transform"]``.
+    transform:
+        Process-level pseudobatch transform bundle.
+    species_name:
+        Reactor-medium species name stored in ``transform.species``.
 
     Returns
     -------
     BacktransformSpline
     """
+    if species_name not in transform.species:
+        raise KeyError(species_name)
+    species_transform = transform.species[species_name]
+    if species_transform.species != species_name:
+        raise ValueError(
+            f"Pseudobatch species key {species_name!r} does not match stored "
+            f"species {species_transform.species!r}."
+        )
+
+    rep = species_transform.c_star_ts
     metadata = rep.metadata if isinstance(rep.metadata, dict) else {}
-    if "transform" not in metadata:
-        raise ValueError("Pseudobatch TimeSeries must provide metadata['transform'].")
-    tr = metadata["transform"]
     xi = jnp.asarray(rep.times, dtype=float)
     yi = jnp.asarray(rep.values, dtype=float)
 
-    is_constant = tr.get("is_constant", False)
-    constant_value = jnp.array(tr.get("constant_value") or 0.0)
+    is_constant = bool(species_transform.is_constant)
+    constant_value = jnp.array(species_transform.constant_value or 0.0)
 
-    cstar_method = tr.get("cstar_interp", "cubic")
+    cstar_method = species_transform.cstar_interp
     if cstar_method == "pchip":
         c_star_spline = interpax.PchipInterpolator(xi, yi, check=False)
     else:
         bc_type = metadata.get("bc_type", "natural")
         c_star_spline = interpax.CubicSpline(xi, yi, bc_type=bc_type, check=False)
 
-    if "series" not in tr:
-        raise ValueError(
-            "Pseudobatch transform metadata must use nested "
-            "'series.adf_ts'/'series.feed_corr_ts' payloads."
-        )
-    adf_ts = _timeseries_from_canonical_payload(tr["series"]["adf_ts"])
-    feed_corr_ts = _timeseries_from_canonical_payload(tr["series"]["feed_corr_ts"])
+    adf_ts = transform.adf_ts
+    feed_corr_ts = species_transform.feed_corr_ts
 
     adf_times = jnp.asarray(adf_ts.times, dtype=float)
     adf_values = _timeseries_base_values_without_jumps(adf_ts)
@@ -1537,7 +1765,8 @@ def build_backtransform_spline(rep: TimeSeries) -> BacktransformSpline:
     adf_jump_times, adf_jump_values = _series_jump_times_and_values(adf_ts)
 
     fc_interp = _timeseries_interp_mode(
-        feed_corr_ts, tr.get("feed_corr_interp", "cubic")
+        feed_corr_ts,
+        "piecewise_polynomial",
     )
     fc_times = jnp.asarray(feed_corr_ts.times, dtype=float)
     fc_values = _timeseries_base_values_without_jumps(feed_corr_ts)
@@ -1681,27 +1910,24 @@ class BatchedBacktransformSpline(eqx.Module):
 
 
 def build_batched_conc_splines(
-    conc_splines,
-    species_names,
-    t_start: float,
-    t_end: float,
+    transform: PseudobatchTransform,
+    species_names: Optional[List[str]] = None,
+    t_start: float | None = None,
+    t_end: float | None = None,
     n_knots: int = _DEFAULT_BATCH_KNOTS,
 ):
-    """Build a :class:`BatchedBacktransformSpline` from individual splines.
+    """Build a :class:`BatchedBacktransformSpline` from a transform bundle.
 
-    Handles mixed spline types: ``BacktransformSpline`` objects are
-    decomposed into their ``c*`` and ``fc`` components; plain
-    ``interpax.CubicSpline`` objects are treated as ``c* = spline``,
-    ``fc = 0``, ``ADF = 1``.
+    The bundle supplies one shared ADF TimeSeries and one c*/feed-correction
+    pair per species.
 
     Parameters
     ----------
-    conc_splines : dict
-        Mapping species name → callable spline (BacktransformSpline or
-        CubicSpline).
-    species_names : list[str]
+    transform : PseudobatchTransform
+        Process-level pseudobatch transform bundle.
+    species_names : list[str] | None
         Ordered species names (determines column order in batched arrays).
-    t_start, t_end : float
+    t_start, t_end : float | None
         Time range for resampling.
     n_knots : int
         Number of uniformly-spaced knots for resampling (default 128).
@@ -1710,6 +1936,18 @@ def build_batched_conc_splines(
     -------
     BatchedBacktransformSpline
     """
+    if species_names is None:
+        species_names = list(transform.species)
+    else:
+        species_names = list(species_names)
+    conc_splines = {
+        name: build_backtransform_spline(transform, name) for name in species_names
+    }
+    if t_start is None:
+        t_start = float(transform.adf_ts.breaks[0])
+    if t_end is None:
+        t_end = float(transform.adf_ts.breaks[-1])
+
     common_points = [float(t) for t in np.linspace(t_start, t_end, n_knots)]
     for sp_name in species_names:
         sp = conc_splines[sp_name]

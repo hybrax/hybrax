@@ -42,9 +42,7 @@ from bp_format.mechanistic import (
 )
 from bp_format.splines import (
     make_interpax_spline,
-    build_pseudobatch_inputs,
-    build_splines,
-    to_timeseries,
+    build_pseudobatch_transform,
 )
 
 
@@ -55,6 +53,16 @@ from bp_format.splines import (
 
 def _ts(t, v):
     return TimeSeries(times=jnp.array(t, dtype=float), values=jnp.array(v, dtype=float))
+
+
+def _apply_pseudobatch_transform(process, species_names=("biomass", "glucose")):
+    transform = build_pseudobatch_transform(process, list(species_names))
+    process.pseudobatch_transform = transform
+    for sp_name in species_names:
+        process.reactor_medium.components[sp_name].concentration = transform.species[
+            sp_name
+        ].c_star_ts
+    return transform
 
 
 def _make_feed(name, glucose_conc=500.0, biomass_conc=0.0):
@@ -2300,12 +2308,7 @@ class TestIntegrateProcess:
         process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
         process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
 
-        for sp_name in ("biomass", "glucose"):
-            inputs = build_pseudobatch_inputs(process, sp_name)
-            spl = build_splines(inputs, process=process, species_name=sp_name)
-            process.reactor_medium.components[sp_name].concentration = to_timeseries(
-                inputs, spl, sp_name
-            )
+        _apply_pseudobatch_transform(process)
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -2376,12 +2379,7 @@ class TestIntegrateProcess:
         process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
         process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
 
-        for sp_name in ("biomass", "glucose"):
-            inputs = build_pseudobatch_inputs(process, sp_name)
-            spl = build_splines(inputs, process=process, species_name=sp_name)
-            process.reactor_medium.components[sp_name].concentration = to_timeseries(
-                inputs, spl, sp_name
-            )
+        _apply_pseudobatch_transform(process)
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -2448,12 +2446,7 @@ class TestIntegrateProcess:
         process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
         process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
 
-        for sp_name in ("biomass", "glucose"):
-            inputs = build_pseudobatch_inputs(process, sp_name)
-            spl = build_splines(inputs, process=process, species_name=sp_name)
-            process.reactor_medium.components[sp_name].concentration = to_timeseries(
-                inputs, spl, sp_name
-            )
+        _apply_pseudobatch_transform(process)
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
@@ -2525,7 +2518,7 @@ class TestIntegrateProcess:
         assert float(c_pseudo[3, 1]) == pytest.approx(float(c_ref[3, 1]), rel=5e-2)
 
     def test_pseudospace_same_time_sampling_and_bolus_from_transformed_timeseries(self):
-        """Mechanistic code reads transform from TimeSeries concentration state."""
+        """Mechanistic code reads transform from the process-level bundle."""
         process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
         process.volume.volume_changes["sampling"] = SampleVolumeChange(
             name="sampling",
@@ -2549,12 +2542,7 @@ class TestIntegrateProcess:
         process.reactor_medium.components["biomass"].concentration = _ts(t_obs, biomass)
         process.reactor_medium.components["glucose"].concentration = _ts(t_obs, glucose)
 
-        for sp_name in ("biomass", "glucose"):
-            inputs = build_pseudobatch_inputs(process, sp_name)
-            spl = build_splines(inputs, process=process, species_name=sp_name)
-            process.reactor_medium.components[sp_name].concentration = to_timeseries(
-                inputs, spl, sp_name
-            )
+        _apply_pseudobatch_transform(process)
 
         ctrl = get_control_splines(process)
         mb = get_rhs_ode(process)
