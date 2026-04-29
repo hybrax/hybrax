@@ -312,7 +312,13 @@ def _make_bolus_collection() -> BioProcessCollection:
                 unit="g/L",
                 concentration=StaticVariable(0.0),
                 is_controlled=False,
-            )
+            ),
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            ),
         },
     )
     process = BioProcess(
@@ -345,7 +351,16 @@ def _make_bolus_collection() -> BioProcessCollection:
                     unit="g/L",
                     concentration=StaticVariable(0.0),
                     is_intracellular=False,
-                )
+                ),
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 5.0, 10.0]),
+                        values=jnp.asarray([0.1, 0.5, 1.0]),
+                    ),
+                    is_intracellular=False,
+                ),
             },
         ),
         process_variables={
@@ -389,7 +404,9 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     assert process_md["sample_acc_name"] == "V_sample_acc"
     assert process_md["local_control_names"][-1] == "V_sample_acc"
     assert process_md["control_metadata"]["V_sample_acc"]["event_count"] >= 1
-    assert any(not entry["ok"] for entry in metadata["bp_format_validation_raw"].values())
+    assert any(
+        not entry["ok"] for entry in metadata["bp_format_validation_raw"].values()
+    )
     assert all(entry["ok"] for entry in metadata["bp_format_validation"].values())
     assert all(
         entry["ok"] for entry in metadata["bp_format_validation_prepared"].values()
