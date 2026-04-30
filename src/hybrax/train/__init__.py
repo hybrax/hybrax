@@ -1,7 +1,15 @@
 from .prepare import PrepareConfig, load_raw_collection, prepare_artifact
 from .controls_store import ControlsStore, PerProcessControls
 from .training_data import PerProcessTrainingData, TrainingDataStore
-from .model_api import ReactionOutputs, UserReactionModule, partition_trainable
+from .model_api import (
+    ReactionOutputs,
+    UserReactionModule,
+    format_trainable_structure,
+    frozen_field,
+    partition_trainable,
+    print_trainable_structure,
+    trainable_field,
+)
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .defaults import DefaultReactionModule
 from .trainer import (
@@ -42,6 +50,10 @@ __all__ = [
     "ReactionOutputs",
     "UserReactionModule",
     "partition_trainable",
+    "trainable_field",
+    "frozen_field",
+    "format_trainable_structure",
+    "print_trainable_structure",
     "HybridOdeWrapper",
     "validate_rhs_ode_compatibility",
     "simulate_measurement_states",
