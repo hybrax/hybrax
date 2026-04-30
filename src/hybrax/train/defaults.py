@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 
 from .controls import build_sample_acc_source_default, run_min_dt_from_config
-from .model_api import ReactionOutputs, UserReactionModule
+from .model_api import ReactionOutputs, UserReactionModule, trainable_field
 
 
 def default_transform_process_collection(collection, config: dict[str, Any]):
@@ -57,7 +57,7 @@ class DefaultReactionModule(UserReactionModule):
     It ignores controls and emits no modeled feed rates.
     """
 
-    model: eqx.nn.MLP
+    model: eqx.nn.MLP = trainable_field()
 
     def __init__(self, *, n_species: int, key: jax.Array):
         self.model = eqx.nn.MLP(

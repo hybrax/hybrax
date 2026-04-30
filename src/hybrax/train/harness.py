@@ -21,7 +21,11 @@ from bp_format.serialization import load_process_collection_json
 
 from .checkpointing import CheckpointConfig, CheckpointWriter
 from .defaults import default_build_reaction_module
-from .model_api import UserReactionModule, partition_trainable
+from .model_api import (
+    UserReactionModule,
+    partition_trainable,
+    print_trainable_structure,
+)
 from .trainer import (
     build_batched_loss_fn_from_sample_loss,
     clamp_padded_time_rows,
@@ -810,6 +814,7 @@ def train_collection(
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
     trainable_params, trainable_static = partition_trainable(reaction_module)
+    print_trainable_structure(reaction_module)
     optimizer = _build_optimizer(
         cfg.optimizer_name,
         cfg.learning_rate,

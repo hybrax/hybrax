@@ -34,13 +34,18 @@ from bp_train.harness import (
     train_from_collection,
     train_collection,
 )
-from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.model_api import (
+    ReactionOutputs,
+    UserReactionModule,
+    frozen_field,
+    trainable_field,
+)
 from bp_train.training_data import TrainingDataStore
 
 
 class _LinearReactionModule(UserReactionModule):
-    model: eqx.nn.Linear
-    non_model_bias: jax.Array
+    model: eqx.nn.Linear = trainable_field()
+    non_model_bias: jax.Array = frozen_field()
 
     def __init__(self):
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(42))

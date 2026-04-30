@@ -23,7 +23,12 @@ from bp_format.dataclasses import (
 from bp_train.checkpointing import CheckpointConfig, CheckpointWriter
 import bp_train.harness as harness_module
 from bp_train.harness import TrainHarnessConfig, train_collection
-from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.model_api import (
+    ReactionOutputs,
+    UserReactionModule,
+    frozen_field,
+    trainable_field,
+)
 from bp_train.postprocessing import plot_loss_curve
 from bp_train.training_data import TrainingDataStore
 
@@ -154,8 +159,8 @@ def test_checkpoint_writer_latest_updates_across_writes(tmp_path: Path):
 
 
 class _LinearReactionModule(UserReactionModule):
-    model: eqx.nn.Linear
-    non_model_bias: jax.Array
+    model: eqx.nn.Linear = trainable_field()
+    non_model_bias: jax.Array = frozen_field()
 
     def __init__(self):
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(42))

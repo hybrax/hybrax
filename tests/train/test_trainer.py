@@ -18,7 +18,12 @@ from bp_format.dataclasses import (
 from bp_format.mechanistic import get_rhs_ode
 
 import bp_train.trainer as trainer_module
-from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.model_api import (
+    ReactionOutputs,
+    UserReactionModule,
+    frozen_field,
+    trainable_field,
+)
 from bp_train.harness import summarize_train_step_input_signature
 from bp_train.trainer import (
     build_batched_loss_fn_from_sample_loss,
@@ -31,8 +36,8 @@ from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
 
 
 class _LinearReactionModule(UserReactionModule):
-    model: eqx.nn.Linear
-    non_model_bias: jax.Array
+    model: eqx.nn.Linear = trainable_field()
+    non_model_bias: jax.Array = frozen_field()
 
     def __init__(self):
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(123))
