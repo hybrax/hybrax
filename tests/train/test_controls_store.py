@@ -348,6 +348,44 @@ def test_controls_store_rejects_not_consistent_controls_at_init(tmp_path):
         ControlsStore.from_json(prepared_json)
 
 
+def test_per_process_controls_roundtrip_across_processes(tmp_path):
+    """Cross-process eqx serialise/deserialise must round-trip.
+
+    LOO-CV saves the trained wrapper after training on N-1 processes (its
+    ``controls`` field carries the first *training* process's metadata),
+    then evaluates the holdout fold by deserialising into a template
+    built from the full collection (whose first process — and therefore
+    the template's controls — is typically the held-out process). If
+    ``PerProcessControls`` exposes per-process metadata as dynamic pytree
+    leaves, the leaf order shifts with each process and
+    ``eqx.tree_deserialise_leaves`` reads the wrong bytes into the wrong
+    slots — the failure surfaces as ``TreePathError`` at
+    ``controls.sample_acc_global_index``.
+    """
+    import equinox as eqx
+
+    prepared_json = _prepare_two_process(tmp_path)
+    store = ControlsStore.from_json(prepared_json)
+    saved = store.get_controls("p1")
+    template = store.get_controls("p2")
+
+    saved_path = tmp_path / "controls.eqx"
+    eqx.tree_serialise_leaves(saved_path, saved)
+    loaded = eqx.tree_deserialise_leaves(saved_path, like=template)
+
+    # Static metadata follows the template (controls are swapped per-process
+    # at evaluation time via eqx.tree_at, so the loaded wrapper's stored
+    # static fields are placeholders).
+    assert loaded.process_name == template.process_name
+    assert loaded.process_index == template.process_index
+    assert loaded.sample_acc_global_index == template.sample_acc_global_index
+    # Dynamic arrays carry the saved process's values.
+    assert np.array_equal(np.asarray(loaded.dense_grid), np.asarray(saved.dense_grid))
+    assert np.array_equal(
+        np.asarray(loaded.control_values), np.asarray(saved.control_values)
+    )
+
+
 def test_controls_store_batch_controls_eval_by_index(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
     store = ControlsStore.from_json(prepared_json)

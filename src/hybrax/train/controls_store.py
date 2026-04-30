@@ -81,20 +81,32 @@ def _piecewise_linear_derivative(
 
 
 class PerProcessControls(eqx.Module):
-    """Per-process runtime view over padded, global-axis dense-grid controls."""
+    """Per-process runtime view over padded, global-axis dense-grid controls.
+
+    All non-array fields are ``eqx.field(static=True)`` so they live in the
+    pytree treedef rather than as dynamic leaves. This keeps the leaf
+    ordering identical across processes (only the four padded ``jax.Array``
+    fields are leaves), which is what
+    ``eqx.tree_deserialise_leaves(..., like=template)`` relies on when a
+    trained wrapper saved with one process's controls is loaded into a
+    template built from a different process — e.g. during LOO-CV, where
+    the holdout fold's forward pass uses the holdout process as template
+    reference but the saved wrapper carries a training process's
+    metadata.
+    """
 
     # Canonical prepared process identifier used by the collection metadata.
-    process_name: str
+    process_name: str = eqx.field(static=True)
     # Integer row index into the collection-level padded tensors.
-    process_index: int
+    process_index: int = eqx.field(static=True)
     # Shared control names/order for this prepared artifact.
-    control_names: list[str]
+    control_names: list[str] = eqx.field(static=True)
     # Mapping from control name to shared control column index.
-    control_name_to_index: dict[str, int]
+    control_name_to_index: dict[str, int] = eqx.field(static=True)
     # Shared control names/order across the entire collection.
-    global_control_names: list[str]
+    global_control_names: list[str] = eqx.field(static=True)
     # Mapping from global control name to global control column index.
-    global_control_name_to_index: dict[str, int]
+    global_control_name_to_index: dict[str, int] = eqx.field(static=True)
     # Padded dense time grid for this process, shape `[max_grid_length]`.
     dense_grid: jax.Array
     # Padded control values in shared control order, shape
@@ -106,15 +118,15 @@ class PerProcessControls(eqx.Module):
     # Padded step-boundary times used to guide the ODE solver.
     step_ts: jax.Array
     # Number of active dense-grid points for this process.
-    grid_length: int
+    grid_length: int = eqx.field(static=True)
     # Number of active step-boundary entries for this process.
-    step_ts_length: int
+    step_ts_length: int = eqx.field(static=True)
     # Per-control metadata persisted during preparation.
-    control_metadata: dict[str, dict[str, Any]]
+    control_metadata: dict[str, dict[str, Any]] = eqx.field(static=True)
     # Reserved name of the cumulative sampled-volume control.
-    sample_acc_name: str
+    sample_acc_name: str = eqx.field(static=True)
     # Global control index of `sample_acc_name`.
-    sample_acc_global_index: int
+    sample_acc_global_index: int = eqx.field(static=True)
 
     @property
     def active_dense_grid(self) -> jax.Array:
