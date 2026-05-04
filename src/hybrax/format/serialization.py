@@ -9,15 +9,18 @@ from typing import Dict, Optional, Union
 from .dataclasses import (
     AugmentedBioProcess,
     BenchmarkDataset,
+    BiologicalOde,
     BioProcessCollection,
     CaseStudy,
     BioProcess,
+    Bounds,
     TimeSeries,
     TimeAxis,
     Interpolator,
     DiscreteEvents,
     FeedMedium,
     FeedMediumComponent,
+    RateDecl,
     StaticVariable,
     BioProcessMetadata,
     Volume,
@@ -28,6 +31,43 @@ from .dataclasses import (
     ReactorMediumComponent,
     ProcessVariable,
 )
+
+
+def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
+    """Serialize bounds; return ``None`` when both sides are unbounded so the
+    JSON stays clean for the common default."""
+    if bounds is None or (bounds[0] is None and bounds[1] is None):
+        return None
+    return {"lower": bounds[0], "upper": bounds[1]}
+
+
+def _dict_to_bounds(data: Optional[Dict]) -> Bounds:
+    """Deserialize bounds; missing or null → ``(None, None)``."""
+    if not data:
+        return (None, None)
+    return (data.get("lower"), data.get("upper"))
+
+
+def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
+    return {
+        "derived": dict(ode.derived),
+        "rates": {
+            name: {"bounds": _bounds_to_dict(rd.bounds)}
+            for name, rd in ode.rates.items()
+        },
+        "derivatives": dict(ode.derivatives),
+    }
+
+
+def _dict_to_biological_ode(data: Dict) -> BiologicalOde:
+    return BiologicalOde(
+        derived=dict(data.get("derived", {})),
+        rates={
+            name: RateDecl(bounds=_dict_to_bounds((rd or {}).get("bounds")))
+            for name, rd in data.get("rates", {}).items()
+        },
+        derivatives=dict(data.get("derivatives", {})),
+    )
 
 DEFAULT_JSON_FILENAME = "data.json"
 DEFAULT_JSON_GZ_FILENAME = "data.json.gz"
@@ -292,6 +332,9 @@ def _process_to_dict(process: BioProcess) -> Dict:
     if process.discrete_events is not None:
         result["discrete_events"] = _discrete_events_to_dict(process.discrete_events)
 
+    if process.biological_ode is not None:
+        result["biological_ode"] = _biological_ode_to_dict(process.biological_ode)
+
     if isinstance(process, AugmentedBioProcess):
         result["__type__"] = "AugmentedBioProcess"
         result["parent_process"] = process.parent_process
@@ -325,7 +368,7 @@ def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> Dict:
 
 def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
     """Convert ReactorMediumComponent to dictionary"""
-    return {
+    result = {
         "name": comp.name,
         "unit": comp.unit,
         "is_intracellular": comp.is_intracellular,
@@ -334,11 +377,15 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         if comp.interpolator is not None
         else None,
     }
+    bounds_dict = _bounds_to_dict(comp.bounds)
+    if bounds_dict is not None:
+        result["bounds"] = bounds_dict
+    return result
 
 
 def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
     """Convert ProcessVariable to dictionary"""
-    return {
+    result = {
         "name": pv.name,
         "unit": pv.unit,
         "is_controlled": pv.is_controlled,
@@ -347,6 +394,10 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
         if pv.interpolator is not None
         else None,
     }
+    bounds_dict = _bounds_to_dict(pv.bounds)
+    if bounds_dict is not None:
+        result["bounds"] = bounds_dict
+    return result
 
 
 def _timeseries_to_dict_payload(
@@ -391,7 +442,7 @@ def _timeseries_or_static_to_dict(value: Union[TimeSeries, StaticVariable]) -> D
 
 def _volume_to_dict(volume: Volume) -> Dict:
     """Convert Volume to dictionary"""
-    return {
+    result = {
         "initial_volume": volume.initial_volume,
         "unit": volume.unit,
         "volume_changes": {
@@ -399,6 +450,10 @@ def _volume_to_dict(volume: Volume) -> Dict:
             for name, vc in volume.volume_changes.items()
         },
     }
+    bounds_dict = _bounds_to_dict(volume.bounds)
+    if bounds_dict is not None:
+        result["bounds"] = bounds_dict
+    return result
 
 
 def _volume_change_to_dict(vc) -> Dict:
@@ -533,6 +588,10 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     if p_data.get("discrete_events"):
         discrete_events = _dict_to_discrete_events(p_data["discrete_events"])
 
+    biological_ode = None
+    if p_data.get("biological_ode") is not None:
+        biological_ode = _dict_to_biological_ode(p_data["biological_ode"])
+
     if p_data.get("__type__") == "AugmentedBioProcess":
         parent = p_data.get("parent_process")
         if not isinstance(parent, str) or not parent:
@@ -547,6 +606,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
             reactor_medium=reactor_medium,
             process_variables=process_variables,
             discrete_events=discrete_events,
+            biological_ode=biological_ode,
             parent_process=parent,
         )
 
@@ -557,6 +617,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
         reactor_medium=reactor_medium,
         process_variables=process_variables,
         discrete_events=discrete_events,
+        biological_ode=biological_ode,
     )
 
 
@@ -587,6 +648,7 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
         is_intracellular=comp_data["is_intracellular"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
         interpolator=interpolator,
+        bounds=_dict_to_bounds(comp_data.get("bounds")),
     )
 
 
@@ -602,6 +664,7 @@ def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
         is_controlled=pv_data["is_controlled"],
         values=_dict_to_timeseries_or_static(pv_data["values"]),
         interpolator=interpolator,
+        bounds=_dict_to_bounds(pv_data.get("bounds")),
     )
 
 
@@ -659,6 +722,7 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
         initial_volume=vol_data["initial_volume"],
         unit=vol_data["unit"],
         volume_changes=volume_changes,
+        bounds=_dict_to_bounds(vol_data.get("bounds")),
     )
 
 

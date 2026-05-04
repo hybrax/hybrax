@@ -96,6 +96,31 @@ The JSON file follows the dataclass hierarchy directly:
 
 **AugmentedBioProcess payloads** carry every field a `BioProcess` does, plus `"__type__": "AugmentedBioProcess"` and a `"parent_process": "<parent-key>"` entry. Loaders inspect `__type__` to reconstruct the correct subclass; entries without that tag are loaded as plain `BioProcess`.
 
+**Bounds** are serialized as a small object `{"lower": <number-or-null>, "upper": <number-or-null>}` on `ReactorMediumComponent`, `ProcessVariable`, `Volume`, and per-rate inside a `BiologicalOde.rates` entry. The default `(None, None)` (unbounded on both sides) is **omitted** from JSON to keep payloads clean; loaders treat a missing `bounds` key as unbounded.
+
+**`biological_ode` payload** appears at the process level when the user has defined the optional block:
+
+```json
+"biological_ode": {
+  "derived": {
+    "X_active": "biomass - product"
+  },
+  "rates": {
+    "q_X_active": {"bounds": {"lower": 0.0, "upper": null}},
+    "q_P":        {"bounds": null},
+    "q_S":        {"bounds": {"lower": null, "upper": 0.0}}
+  },
+  "derivatives": {
+    "biomass": "q_X_active * X_active + q_P * X_active",
+    "product": "q_P * X_active",
+    "glucose": "q_S * X_active",
+    "pH":      "0"
+  }
+}
+```
+
+`derivatives` keys are dynamic-state names (reactor components or uncontrolled process variables); a value of `"0"` is the canonical way to declare *no biological dynamics for this state*. Omitting an entry for any dynamic state is rejected by `validate_biological_ode` so every choice is deliberate.
+
 ## Examples
 
 ### Saving and Loading a Dataset

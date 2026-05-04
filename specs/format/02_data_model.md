@@ -87,9 +87,12 @@ class ReactorMediumComponent:
     concentration: TimeSeries | StaticVariable   # measured concentration over time
     is_intracellular: bool                       # True for intracellular products (e.g., inclusion bodies)
     interpolator: Optional[Interpolator]         # optional fitted spline representation
+    bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
 ```
 
-The `is_intracellular` flag is used by the mechanistic module to compute active biomass: `X_active = X_total - sum(intracellular species)`.
+The `is_intracellular` flag is used by the auto-generated mechanistic module to compute active biomass: `X_active = X_total - sum(intracellular species)`. Under a user-defined `BiologicalOde`, the flag is ignored by the evaluator — `X_active` (or any other derived quantity) is declared explicitly in `BiologicalOde.derived`.
+
+The `bounds` field is **metadata only**: never plumbed into `RhsOde` / `UserDefinedRhsOde` / integrator. Downstream consumers (e.g. `bp-train`'s loss generator) read it off the process to build soft-constraint penalties such as "concentrations cannot be negative".
 
 #### `FeedMediumComponent`
 A single species in a feed stream.
@@ -140,9 +143,15 @@ class ProcessVariable:
     is_controlled: bool                          # True for controls (pH, DO), False for states (off-gas)
     values: TimeSeries | StaticVariable
     interpolator: Optional[Interpolator]
+    bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
 ```
 
-The `is_controlled` flag determines whether this variable is treated as a known input (control) or an observed output (state) in the mechanistic module.
+The `is_controlled` flag determines whether this variable is treated as a known input (control) or an observed output (state) in the mechanistic module. Under a user-defined `BiologicalOde`:
+
+- Uncontrolled PVs are *dynamic states* — they may appear as keys in `BiologicalOde.derivatives` (with a user-written derivative).
+- Controlled PVs are *time-varying inputs* — they may appear as symbols inside expressions but never as keys.
+
+`bounds` is metadata only (see `ReactorMediumComponent`).
 
 ### Volume Operations
 
@@ -191,6 +200,7 @@ class Volume:
     initial_volume: float
     unit: str                                      # "L", "m3", "kg"
     volume_changes: Dict[str, VolumeChange]        # keyed by operation name
+    bounds: Bounds = (None, None)                  # optional metadata on V (e.g. (0, V_max_reactor))
 ```
 
 ### Process Level
@@ -218,7 +228,39 @@ class BioProcess:
     reactor_medium: ReactorMedium
     process_variables: Dict[str, ProcessVariable]
     discrete_events: Optional[DiscreteEvents]
+    biological_ode: Optional[BiologicalOde] = None  # user-defined per-state biological RHS
 ```
+
+When `biological_ode` is `None` (default), the mechanistic module auto-generates the RHS as `q_i * X_active + r_i + feed_dilution` per reactor state, with a mass-balance correction on the biomass entry for intracellular components. When set, the user-defined block takes precedence — see `BiologicalOde` below and the [Mechanistic Module](08_mechanistic.md) page for full semantics.
+
+#### `BiologicalOde`
+User-defined per-state biological RHS expressions. Describes only the *biological* part of `dc/dt`; physical contributions (feed, dilution, sample, dV) continue to be added by bp-format from the existing `VolumeChange` machinery.
+
+```python
+@dataclass
+class BiologicalOde:
+    derived: Dict[str, str]            # name -> algebraic expression string
+    rates: Dict[str, RateDecl]         # rate-symbol name -> per-rate metadata
+    derivatives: Dict[str, str]        # state name -> dc/dt expression (biological part)
+```
+
+Validation (see `validate_biological_ode`) requires:
+
+- Every dynamic state (reactor component or uncontrolled PV) appears as a key in `derivatives`. Use `"0"` to declare *no biological dynamics for this state* — the entry must be present, even when zero, so every choice is deliberate.
+- Every free symbol in any expression resolves to one of: a state name, a controlled-PV name (input), a `derived` name, or a `rates` name.
+- Derived-variable dependencies are acyclic (topo-sorted at build time).
+- Rate names are disjoint from state, derived, and controlled-PV names.
+
+#### `RateDecl`
+Per-rate metadata under `BiologicalOde.rates`.
+
+```python
+@dataclass
+class RateDecl:
+    bounds: Bounds = (None, None)      # metadata only
+```
+
+Rates are abstract placeholders: their values are supplied at call time by the runtime — today by spline-fitting from concentrations, later by a neural network in `bp-train`. `len(BiologicalOde.rates)` is the rate-vector dimension (and therefore `bp-train`'s NN output dimension when training).
 
 #### `AugmentedBioProcess`
 A synthetic variant of a real `BioProcess` that lives next to its parent in

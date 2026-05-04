@@ -8,11 +8,181 @@ from .dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
+    Bounds,
     CaseStudy,
     TimeSeries,
     FeedVolumeChange,
     SampleVolumeChange,
 )
+
+
+def _check_bounds_tuple(bounds: Bounds, label: str) -> Tuple[bool, str]:
+    """Sanity-check a bounds tuple: lo <= hi when both are set."""
+    if bounds is None:
+        return True, f"Bounds {label} ok (unset)"
+    lo, hi = bounds
+    if lo is not None and hi is not None and lo > hi:
+        return (
+            False,
+            f"Bounds {label} invalid: lower {lo} > upper {hi}",
+        )
+    return True, f"Bounds {label} ok"
+
+
+def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
+    """Validate ``process.biological_ode`` if present.
+
+    Checks (no-op when ``biological_ode is None``):
+
+    - Every reactor-medium component and uncontrolled process variable
+      (the dynamic states) must have an entry in ``derivatives``.
+    - Every key in ``derivatives`` must correspond to a dynamic state.
+    - All expressions parse successfully via ``sympy.sympify``.
+    - Every free symbol in any expression resolves to a dynamic state, a
+      controlled process variable (input), a derived name, or a declared
+      rate name.
+    - Derived-variable dependencies are acyclic.
+    - Rate names do not collide with state, derived, or controlled-PV names.
+    - All bounds tuples are sane (``lo <= hi`` when both set).
+    """
+    bo = process.biological_ode
+    if bo is None:
+        return True, "biological_ode: not set"
+
+    import sympy
+
+    state_names = set()
+    if process.reactor_medium:
+        state_names.update(process.reactor_medium.components.keys())
+    state_names.update(
+        name for name, pv in process.process_variables.items() if not pv.is_controlled
+    )
+    controlled_pv_names = {
+        name for name, pv in process.process_variables.items() if pv.is_controlled
+    }
+    derived_names = set(bo.derived.keys())
+    rate_names = set(bo.rates.keys())
+
+    errors: List[str] = []
+
+    # Name-collision checks
+    overlap_rate_state = rate_names & state_names
+    if overlap_rate_state:
+        errors.append(f"rate names collide with state names: {sorted(overlap_rate_state)}")
+    overlap_rate_derived = rate_names & derived_names
+    if overlap_rate_derived:
+        errors.append(
+            f"rate names collide with derived names: {sorted(overlap_rate_derived)}"
+        )
+    overlap_rate_ctrl = rate_names & controlled_pv_names
+    if overlap_rate_ctrl:
+        errors.append(
+            f"rate names collide with controlled PV names: {sorted(overlap_rate_ctrl)}"
+        )
+    overlap_derived_state = derived_names & state_names
+    if overlap_derived_state:
+        errors.append(
+            f"derived names collide with state names: {sorted(overlap_derived_state)}"
+        )
+    overlap_derived_ctrl = derived_names & controlled_pv_names
+    if overlap_derived_ctrl:
+        errors.append(
+            f"derived names collide with controlled PV names: {sorted(overlap_derived_ctrl)}"
+        )
+
+    # Coverage of derivatives
+    deriv_keys = set(bo.derivatives.keys())
+    missing = state_names - deriv_keys
+    if missing:
+        errors.append(
+            f"derivatives missing entries for dynamic state(s): {sorted(missing)}. "
+            "Use \"0\" to declare no biological dynamics."
+        )
+    extra = deriv_keys - state_names
+    if extra:
+        errors.append(
+            f"derivatives keys must be dynamic states; extras: {sorted(extra)}"
+        )
+
+    # Expression parsing + symbol resolution
+    allowed = state_names | controlled_pv_names | derived_names | rate_names
+    symbol_table = {n: sympy.Symbol(n) for n in allowed}
+
+    def _parse(name: str, expr_str: str, kind: str):
+        try:
+            expr = sympy.sympify(expr_str, locals=symbol_table)
+        except (sympy.SympifyError, SyntaxError, TypeError) as exc:
+            errors.append(f"{kind} {name!r} expression failed to parse: {exc}")
+            return None
+        unknown = {str(s) for s in expr.free_symbols} - allowed
+        if unknown:
+            errors.append(
+                f"{kind} {name!r} expression references undeclared symbol(s): "
+                f"{sorted(unknown)}"
+            )
+        return expr
+
+    derived_exprs = {n: _parse(n, e, "derived") for n, e in bo.derived.items()}
+    for n, e in bo.derivatives.items():
+        _parse(n, e, "derivatives")
+
+    # Cycle detection on derived-variable graph
+    deps = {
+        n: {str(s) for s in (expr.free_symbols if expr is not None else set())} & derived_names
+        for n, expr in derived_exprs.items()
+    }
+    visiting: set = set()
+    visited: set = set()
+
+    def _dfs(node: str, stack: List[str]) -> bool:
+        if node in visiting:
+            cycle = stack[stack.index(node):] + [node]
+            errors.append(f"derived dependency cycle: {' -> '.join(cycle)}")
+            return False
+        if node in visited:
+            return True
+        visiting.add(node)
+        for dep in deps.get(node, ()):
+            _dfs(dep, stack + [node])
+        visiting.discard(node)
+        visited.add(node)
+        return True
+
+    for n in derived_exprs:
+        _dfs(n, [])
+
+    # Bounds sanity on rates
+    for rname, rdecl in bo.rates.items():
+        ok, msg = _check_bounds_tuple(rdecl.bounds, f"rate {rname!r}")
+        if not ok:
+            errors.append(msg)
+
+    if errors:
+        bullets = "\n  - ".join(errors)
+        return False, f"biological_ode invalid:\n  - {bullets}"
+    return True, "biological_ode ok"
+
+
+def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
+    """Sanity-check all bounds tuples on the process (states, PVs, volume)."""
+    errors: List[str] = []
+    if process.reactor_medium:
+        for cname, comp in process.reactor_medium.components.items():
+            ok, msg = _check_bounds_tuple(comp.bounds, f"reactor component {cname!r}")
+            if not ok:
+                errors.append(msg)
+    for pname, pv in process.process_variables.items():
+        ok, msg = _check_bounds_tuple(pv.bounds, f"process variable {pname!r}")
+        if not ok:
+            errors.append(msg)
+    if process.volume is not None:
+        ok, msg = _check_bounds_tuple(process.volume.bounds, "volume")
+        if not ok:
+            errors.append(msg)
+    if errors:
+        bullets = "\n  - ".join(errors)
+        return False, f"bounds invalid:\n  - {bullets}"
+    return True, "bounds ok"
 
 
 def _is_dynamic_series(value: object) -> bool:
@@ -301,6 +471,16 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
 
     # --- Intracellular unit consistency check ---
     ok, msg = validate_intracellular_units(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    # --- Bounds sanity ---
+    ok, msg = validate_bounds(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    # --- User-defined biological ODE ---
+    ok, msg = validate_biological_ode(process)
     messages.append(msg)
     all_valid = all_valid and ok
 

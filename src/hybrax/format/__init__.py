@@ -27,6 +27,10 @@ from .dataclasses import (
     Volume,
     FeedMedium,
     ReactorMedium,
+    # User-defined biological ODE
+    Bounds,
+    RateDecl,
+    BiologicalOde,
     # Higher-level structures
     BioProcess,
     AugmentedBioProcess,
@@ -60,6 +64,8 @@ from .validate import (
     validate_volume_consistency,
     validate_case_study,
     validate_augmented_parent_refs,
+    validate_biological_ode,
+    validate_bounds,
 )
 
 __all__ = [
@@ -86,6 +92,9 @@ __all__ = [
     "BioProcessCollection",
     "CaseStudy",
     "BenchmarkDataset",
+    "Bounds",
+    "RateDecl",
+    "BiologicalOde",
     # Utils
     "print_process_structure",
     "print_dataset_structure",
@@ -102,6 +111,8 @@ __all__ = [
     "validate_volume_consistency",
     "validate_case_study",
     "validate_augmented_parent_refs",
+    "validate_biological_ode",
+    "validate_bounds",
     # Modules
     "serialization",
     "validate",

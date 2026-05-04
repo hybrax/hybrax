@@ -64,18 +64,23 @@ def _attach_interpolators(process):
         comp.interpolator = to_interpolator(inputs, spl, comp_name)
 
 
-def _run_mechanistic_pipeline(fixture_dir: Path) -> dict:
+def _run_mechanistic_pipeline(fixture_dir: Path, *, mutator=None) -> dict:
     """Load fixture, build splines + q-spline, forward-integrate, compute
     per-species nRMSE against the stored measurements.
 
     Returns a metrics dict keyed by species name with per-species nRMSE plus
     the combined ``rms`` summary.
+
+    ``mutator`` is an optional callable invoked on the loaded ``BioProcess``
+    before interpolators are attached, used by intracellular-variant tests.
     """
     dataset = bp_format.serialization.load_dataset_json(
         str(fixture_dir / "data.json")
     )
     case_study = next(iter(dataset.case_studies.values()))
     process = next(iter(case_study.processes.values()))
+    if mutator is not None:
+        mutator(process)
     _attach_interpolators(process)
 
     ctrl = bpm.get_control_splines(process)
@@ -178,3 +183,169 @@ def test_mechanistic_rms_summary(fixture_dir, tol_rms):
         f"{fixture_dir}: combined RMS nRMSE {metrics['rms']:.6f} exceeds "
         f"{tol_rms:.6f}. Full metrics: {metrics}"
     )
+
+
+# --------------------------------------------------------------------------
+# Intracellular variants: re-run the same fixtures after marking the
+# `product` component as intracellular. After the Phase 1 fix to the
+# auto-generated RHS, the inversion + forward-integration self-consistency
+# must still hold (the pipeline infers q from the measurements with the
+# corrected formula, then re-integrates with the corrected forward, so the
+# round-trip remains exact regardless of whether q[biomass] is active or
+# apparent).
+# --------------------------------------------------------------------------
+
+
+def _mark_product_intracellular(process):
+    process.reactor_medium.components["product"].is_intracellular = True
+
+
+@pytest.mark.parametrize(
+    "fixture_dir",
+    ["martens_2025_f_single", "martens_expanded_single"],
+)
+def test_mechanistic_integration_with_intracellular_product(fixture_dir):
+    metrics = _run_mechanistic_pipeline(
+        FIXTURES / fixture_dir, mutator=_mark_product_intracellular
+    )
+    _assert_per_species(metrics, tol=0.01)
+
+
+@pytest.mark.parametrize(
+    "fixture_dir,tol_rms",
+    [
+        ("martens_2025_f_single", 5e-3),
+        ("martens_expanded_single", 5e-3),
+    ],
+)
+def test_mechanistic_rms_summary_with_intracellular_product(fixture_dir, tol_rms):
+    metrics = _run_mechanistic_pipeline(
+        FIXTURES / fixture_dir, mutator=_mark_product_intracellular
+    )
+    assert metrics["rms"] < tol_rms, (
+        f"{fixture_dir} (intracellular product): combined RMS nRMSE "
+        f"{metrics['rms']:.6f} exceeds {tol_rms:.6f}. Full metrics: {metrics}"
+    )
+
+
+# --------------------------------------------------------------------------
+# Dual-path equivalence: build an auto RhsOde and a hand-crafted equivalent
+# UserDefinedRhsOde from the same fixture, then assert their dc/dt match
+# numerically at randomly sampled (c, rates) inputs. Proves the user-defined
+# path is a strict generalization of the auto path on real fixtures.
+# --------------------------------------------------------------------------
+
+
+from bp_format import BiologicalOde, RateDecl
+from bp_format.mechanistic import _build_auto_rhs_ode
+
+
+def _make_equivalent_biological_ode(mb) -> BiologicalOde:
+    """Build a `BiologicalOde` block that, layered on top of the same process
+    structure, produces dc/dt identical to the auto RhsOde *mb*.
+
+    Convention used:
+    - One rate per reactor-component state, named ``q_<state_name>``.
+    - ``X_active`` is declared as a derived variable (``biomass - sum(intra)``)
+      when intracellular components exist, otherwise it equals biomass directly
+      and we inline that.
+    - Per-state biological RHS is ``q_i * X_active`` for non-biomass states;
+      for biomass it additionally absorbs the intracellular accumulation rates
+      to mirror the Phase-1 mass-balance correction inside RhsOde.
+    - Process-variable states get ``"0"`` (auto path adds only the additive
+      r-vector to PV states; with r=0 in this test that matches).
+    """
+    state_names = list(mb.reactor_component_state_names)
+    biomass_idx = mb.biomass_idx
+    intra_idxs = list(mb.intracellular_indices)
+    intra_names = [state_names[i] for i in intra_idxs]
+    biomass_name = state_names[biomass_idx]
+
+    rates = {f"q_{n}": RateDecl() for n in state_names}
+
+    if intra_names:
+        derived = {"X_active": " - ".join([biomass_name] + intra_names)}
+        x_active = "X_active"
+    else:
+        derived = {}
+        x_active = biomass_name
+
+    derivatives: dict = {}
+    for i, name in enumerate(state_names):
+        if i == biomass_idx and intra_names:
+            terms = [f"q_{biomass_name} * {x_active}"]
+            terms.extend(f"q_{nm} * {x_active}" for nm in intra_names)
+            derivatives[name] = " + ".join(terms)
+        else:
+            derivatives[name] = f"q_{name} * {x_active}"
+
+    for pv_name in mb.process_variable_state_names:
+        derivatives[pv_name] = "0"
+
+    return BiologicalOde(derived=derived, rates=rates, derivatives=derivatives)
+
+
+def _assert_dual_path_dcdt_equivalence(process, *, n_samples: int = 5, seed: int = 7):
+    """Build both RHS modules and assert they produce identical dc/dt at
+    randomly sampled (c, rates, u_flow, f_modeled) inputs."""
+    mb_auto = _build_auto_rhs_ode(process)
+    process.biological_ode = _make_equivalent_biological_ode(mb_auto)
+    mb_user = bp_format.mechanistic.get_rhs_ode(process)
+
+    rng = np.random.default_rng(seed)
+    for _ in range(n_samples):
+        c = rng.uniform(0.1, 5.0, size=mb_auto.c_size).astype(np.float64)
+        c[mb_auto.volume_idx] = float(rng.uniform(0.5, 2.0))  # ensure V > 0
+        # Keep biomass > sum(intracellular) so X_active > 0
+        if mb_auto.intracellular_indices:
+            intra_sum = sum(c[i] for i in mb_auto.intracellular_indices)
+            c[mb_auto.biomass_idx] = float(intra_sum + rng.uniform(0.5, 2.0))
+        rates_auto = rng.uniform(-0.3, 0.3, size=mb_auto.q_size).astype(np.float64)
+        u_flow = rng.uniform(0.0, 0.05, size=mb_auto.u_flow_size).astype(np.float64)
+        f_modeled = rng.uniform(0.0, 0.05, size=mb_auto.f_modeled_size).astype(np.float64)
+        r = jnp.zeros(mb_auto.r_size)
+        ctrl_pv_values = jnp.zeros(mb_user.n_controlled_pv)
+
+        dc_auto = mb_auto(
+            jnp.asarray(c), jnp.asarray(rates_auto),
+            jnp.asarray(u_flow), jnp.asarray(f_modeled), r,
+        )
+        dc_user = mb_user(
+            jnp.asarray(c), jnp.asarray(rates_auto),
+            jnp.asarray(u_flow), jnp.asarray(f_modeled), ctrl_pv_values,
+        )
+        np.testing.assert_allclose(
+            np.asarray(dc_user), np.asarray(dc_auto),
+            rtol=1e-5, atol=1e-7,
+            err_msg=f"dual-path dc/dt mismatch on sample c={c}, rates={rates_auto}",
+        )
+
+
+@pytest.mark.parametrize(
+    "fixture_dir",
+    ["martens_2025_f_single", "martens_expanded_single"],
+)
+def test_dual_path_dcdt_equivalence(fixture_dir):
+    """Auto RhsOde and an equivalent hand-written biological_ode produce the
+    same dc/dt on the no-intracellular fixtures."""
+    dataset = bp_format.serialization.load_dataset_json(
+        str(FIXTURES / fixture_dir / "data.json")
+    )
+    process = next(iter(next(iter(dataset.case_studies.values())).processes.values()))
+    _assert_dual_path_dcdt_equivalence(process)
+
+
+@pytest.mark.parametrize(
+    "fixture_dir",
+    ["martens_2025_f_single", "martens_expanded_single"],
+)
+def test_dual_path_dcdt_equivalence_with_intracellular_product(fixture_dir):
+    """Same equivalence check after marking ``product`` as intracellular.
+    Exercises the intracellular mass-balance term on the biomass derivative
+    in both paths."""
+    dataset = bp_format.serialization.load_dataset_json(
+        str(FIXTURES / fixture_dir / "data.json")
+    )
+    process = next(iter(next(iter(dataset.case_studies.values())).processes.values()))
+    _mark_product_intracellular(process)
+    _assert_dual_path_dcdt_equivalence(process)

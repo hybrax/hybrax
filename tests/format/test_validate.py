@@ -922,5 +922,177 @@ class TestValidateAugmentedParentRefs:
         )
 
 
+# ---------------------------------------------------------------------------
+# validate_biological_ode + validate_bounds
+# ---------------------------------------------------------------------------
+
+from bp_format import (
+    BiologicalOde,
+    RateDecl,
+    validate_biological_ode,
+    validate_bounds,
+)
+
+
+def _make_intra_process():
+    """Process with biomass + intracellular product + glucose. No volume changes."""
+    return _make_process(
+        reactor_components={
+            "biomass": ReactorMediumComponent(
+                "biomass", "g/L", StaticVariable(1.0), is_intracellular=False
+            ),
+            "product": ReactorMediumComponent(
+                "product", "g/L", StaticVariable(0.0), is_intracellular=True
+            ),
+            "glucose": ReactorMediumComponent(
+                "glucose", "g/L", StaticVariable(10.0), is_intracellular=False
+            ),
+        }
+    )
+
+
+class TestValidateBiologicalOde:
+    def test_no_block_is_ok(self):
+        p = _make_intra_process()
+        ok, msg = validate_biological_ode(p)
+        assert ok is True
+        assert "not set" in msg
+
+    def test_well_formed_block_passes(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={"X_active": "biomass - product"},
+            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            derivatives={
+                "biomass": "q_X * X_active + q_P * X_active",
+                "product": "q_P * X_active",
+                "glucose": "q_S * X_active",
+            },
+        )
+        ok, _ = validate_biological_ode(p)
+        assert ok is True
+
+    def test_unknown_symbol_in_expression_is_rejected(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={},
+            rates={"q_X": RateDecl()},
+            derivatives={"biomass": "q_X * biomass + zzz", "product": "0", "glucose": "0"},
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "zzz" in msg
+
+    def test_missing_derivative_for_state_is_rejected(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={},
+            rates={"q_X": RateDecl()},
+            derivatives={"biomass": "q_X * biomass"},
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "missing entries" in msg
+        assert "product" in msg
+        assert "glucose" in msg
+
+    def test_extra_derivative_for_non_state_is_rejected(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={},
+            rates={"q_X": RateDecl()},
+            derivatives={
+                "biomass": "0", "product": "0", "glucose": "0",
+                "ghost": "q_X",
+            },
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "ghost" in msg
+
+    def test_derived_dependency_cycle_is_rejected(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={"a": "b + 1", "b": "a * 2"},
+            rates={"q_X": RateDecl()},
+            derivatives={"biomass": "0", "product": "0", "glucose": "0"},
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "cycle" in msg.lower()
+
+    def test_rate_name_collides_with_state_is_rejected(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={},
+            rates={"biomass": RateDecl()},
+            derivatives={"biomass": "biomass", "product": "0", "glucose": "0"},
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "collide" in msg.lower()
+        assert "biomass" in msg
+
+    def test_rate_name_collides_with_controlled_pv_is_rejected(self):
+        p = _make_intra_process()
+        p.process_variables = {
+            "feed_rate": ProcessVariable(
+                "feed_rate", "L/h", is_controlled=True, values=StaticVariable(0.1)
+            )
+        }
+        p.biological_ode = BiologicalOde(
+            derived={},
+            rates={"feed_rate": RateDecl()},
+            derivatives={"biomass": "0", "product": "0", "glucose": "0"},
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "feed_rate" in msg
+
+    def test_invalid_rate_bounds_lo_greater_than_hi_is_rejected(self):
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            derived={},
+            rates={"q_X": RateDecl(bounds=(2.0, 1.0))},
+            derivatives={"biomass": "q_X * biomass", "product": "0", "glucose": "0"},
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "invalid" in msg.lower()
+
+
+class TestValidateBounds:
+    def test_unbounded_default_passes(self):
+        p = _make_intra_process()
+        ok, _ = validate_bounds(p)
+        assert ok is True
+
+    def test_invalid_reactor_component_bounds_rejected(self):
+        p = _make_intra_process()
+        p.reactor_medium.components["biomass"].bounds = (5.0, 1.0)
+        ok, msg = validate_bounds(p)
+        assert ok is False
+        assert "biomass" in msg
+
+    def test_invalid_volume_bounds_rejected(self):
+        p = _make_intra_process()
+        p.volume.bounds = (10.0, 1.0)
+        ok, msg = validate_bounds(p)
+        assert ok is False
+        assert "volume" in msg.lower()
+
+    def test_invalid_pv_bounds_rejected(self):
+        p = _make_intra_process()
+        p.process_variables = {
+            "pH": ProcessVariable(
+                "pH", "", is_controlled=False, values=StaticVariable(7.0),
+                bounds=(14.0, 0.0),
+            )
+        }
+        ok, msg = validate_bounds(p)
+        assert ok is False
+        assert "pH" in msg
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -168,6 +168,84 @@ def _batch_splines(
 
 
 # ---------------------------------------------------------------------------
+# Intracellular mass-balance helpers
+# ---------------------------------------------------------------------------
+
+
+def _add_intracellular_to_biomass(
+    reaction: jnp.ndarray,
+    q: jnp.ndarray,
+    X_active: jnp.ndarray,
+    biomass_idx: int,
+    intracellular_indices: tuple,
+) -> jnp.ndarray:
+    """Add intracellular q contributions to the measured-biomass derivative.
+
+    ``X_measured = X_active + Σ P_intracellular``, so
+    ``dX_meas/dt = dX_active/dt + Σ dP_intra/dt``. The per-state reaction term
+    ``q[i] * X_active`` is the intracellular accumulation rate for index *i*;
+    summing over intracellular indices and adding to the biomass entry keeps
+    the measured-biomass equation consistent.
+    """
+    if not intracellular_indices:
+        return reaction
+    intra_arr = jnp.array(intracellular_indices, dtype=int)
+    return reaction.at[biomass_idx].add(jnp.sum(q[intra_arr]) * X_active)
+
+
+def _subtract_intracellular_from_biomass_q(
+    q_all: jnp.ndarray,
+    biomass_idx: int,
+    intracellular_indices: tuple,
+) -> jnp.ndarray:
+    """Inverse of :func:`_add_intracellular_to_biomass` for q inversion.
+
+    Inversion yields ``q_all[i] = (dc_i/dt - feed_i) / X_active``. For
+    ``i == biomass_idx`` this is the *apparent* specific growth rate of
+    measured biomass; subtracting the intracellular q values recovers the
+    specific growth rate of active biomass.
+    """
+    if not intracellular_indices:
+        return q_all
+    intra_arr = jnp.array(intracellular_indices, dtype=int)
+    return q_all.at[biomass_idx].add(-jnp.sum(q_all[intra_arr]))
+
+
+def _apply_feed_dilution(
+    c_reactor: jnp.ndarray,
+    V: jnp.ndarray,
+    u_flow: jnp.ndarray,
+    f_modeled: jnp.ndarray,
+    Cin: jnp.ndarray,
+    Cin_modeled: jnp.ndarray,
+    u_flow_size: int,
+    f_modeled_size: int,
+    n_reactor: int,
+) -> tuple:
+    """Compute the feed/dilution contribution on reactor-component states and
+    the volume derivative from controlled and modeled flows.
+
+    Returns ``(feed_term, dV)`` where ``feed_term`` has shape ``(n_reactor,)``
+    and ``dV`` is a scalar. Used by both the auto-generated :class:`RhsOde`
+    and the user-defined RHS so the physical-contributions code stays in one
+    place.
+    """
+    feed_term = jnp.zeros(n_reactor)
+    dV = jnp.zeros(())
+    if u_flow_size > 0:
+        feed_term = feed_term + jnp.sum(
+            u_flow[:, None] * (Cin - c_reactor[None, :]), axis=0
+        ) / V
+        dV = dV + jnp.sum(u_flow)
+    if f_modeled_size > 0:
+        feed_term = feed_term + jnp.sum(
+            f_modeled[:, None] * (Cin_modeled - c_reactor[None, :]), axis=0
+        ) / V
+        dV = dV + jnp.sum(f_modeled)
+    return feed_term, dV
+
+
+# ---------------------------------------------------------------------------
 # ControlSplines module
 # ---------------------------------------------------------------------------
 
@@ -364,6 +442,12 @@ class RhsOde(eqx.Module):
 
             \\frac{dc_i}{dt} = q_i \\cdot X_{active} + r_i
                 + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,i} - c_i)
+                \\quad (i \\notin \\{biomass\\})
+
+            \\frac{dc_{biomass}}{dt} = \\Big(q_{biomass}
+                + \\sum_{j \\in intracellular} q_j\\Big) \\cdot X_{active}
+                + r_{biomass}
+                + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,biomass} - c_{biomass})
 
             \\frac{dc_{pv,j}}{dt} = r_{pv,j}
 
@@ -372,6 +456,13 @@ class RhsOde(eqx.Module):
         where :math:`X_{active}` is the active biomass concentration
         (measured biomass minus intracellular component concentrations),
         and the sums over *k* include both controlled and modeled flows.
+        The extra :math:`\\sum_{j} q_j` term in the biomass derivative
+        comes from :math:`X_{measured} = X_{active} + \\sum_j P_j` so that
+        :math:`dX_{measured}/dt = dX_{active}/dt + \\sum_j dP_j/dt`. With
+        no intracellular components the sum is empty and
+        :math:`dc_{biomass}/dt` collapses to the same form as the other
+        states. ``q_{biomass}`` is therefore the specific growth rate of
+        *active* biomass, not of measured biomass.
         """
         n_reactor = self.n_reactor_states
         n_non_volume = self.r_size
@@ -398,29 +489,326 @@ class RhsOde(eqx.Module):
             intracellular_sum = jnp.zeros(())
         X_active = X_measured - intracellular_sum
 
-        # Reaction contribution: q_i * X_active
+        # Reaction contribution: q_i * X_active, plus intracellular accumulation
+        # added back into the measured-biomass entry for mass balance.
         reaction = q * X_active
+        reaction = _add_intracellular_to_biomass(
+            reaction, q, X_active, self.biomass_idx, self.intracellular_indices
+        )
 
-        # Controlled feed / dilution contribution on reactor states only.
-        feed_term = jnp.zeros(n_reactor)
-        dV = jnp.zeros(())
-        if self.u_flow_size > 0:
-            feed_contrib = u_flow[:, None] * (self.Cin - c_reactor[None, :])
-            feed_term = feed_term + jnp.sum(feed_contrib, axis=0) / V
-            dV = dV + jnp.sum(u_flow)
-
-        # Modeled (uncontrolled) feed contribution
-        if self.f_modeled_size > 0:
-            modeled_contrib = f_modeled[:, None] * (
-                self.Cin_modeled - c_reactor[None, :]
-            )
-            feed_term = feed_term + jnp.sum(modeled_contrib, axis=0) / V
-            dV = dV + jnp.sum(f_modeled)
+        feed_term, dV = _apply_feed_dilution(
+            c_reactor, V, u_flow, f_modeled,
+            self.Cin, self.Cin_modeled,
+            self.u_flow_size, self.f_modeled_size, n_reactor,
+        )
 
         dc_reactor = reaction + r_reactor + feed_term
         dc_pv = c_pv * 0.0 + r_pv
 
         return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
+
+
+# ---------------------------------------------------------------------------
+# User-defined biological ODE (RhsOde alternative when
+# ``process.biological_ode`` is set)
+# ---------------------------------------------------------------------------
+
+
+def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
+    """Return ``f(args)`` that evaluates *expr* with the symbol values supplied
+    as a flat 1-D array indexed by *ordered_names*.
+
+    Uses a small Python wrapper around :func:`sympy.lambdify` so each call site
+    passes a single array (whose contents we build by concatenation) rather
+    than unpacking it positionally — `*array` does not work under ``jax.jit``
+    when the array is traced.
+    """
+    import sympy
+
+    syms = [sympy.Symbol(n) for n in ordered_names]
+    fn_raw = sympy.lambdify(syms, expr, modules="jax")
+    n = len(ordered_names)
+
+    def fn(args):
+        return fn_raw(*[args[i] for i in range(n)])
+
+    return fn
+
+
+def _topo_sort_derived(derived_exprs: Dict[str, Any]) -> List[str]:
+    """Topologically sort derived names by mutual dependencies. Assumes the
+    expressions have already been parsed and validated as acyclic."""
+    derived_names = set(derived_exprs.keys())
+    deps = {
+        name: {str(s) for s in expr.free_symbols} & derived_names
+        for name, expr in derived_exprs.items()
+    }
+    order: List[str] = []
+    remaining = set(derived_names)
+    while remaining:
+        ready = sorted(n for n in remaining if not (deps[n] & remaining))
+        if not ready:
+            raise ValueError(
+                "Cyclic derived dependencies detected during topo-sort: "
+                f"{sorted(remaining)}"
+            )
+        order.extend(ready)
+        remaining -= set(ready)
+    return order
+
+
+class UserDefinedRhsOde(eqx.Module):
+    """JAX/Equinox module that evaluates a user-defined biological RHS.
+
+    Created by :func:`build_user_defined_rhs_ode` when
+    ``process.biological_ode is not None``. The biological ``dc/dt`` per
+    state is given by user-written expression strings; bp-format adds the
+    physical contributions (feed, dilution, dV) on top.
+
+    Call signature::
+
+        dc_dt = mb(c, rates, u_flow, f_modeled, ctrl_pv_values)
+
+    where:
+
+    - ``c`` is the state vector ``[reactor..., pv..., V]``.
+    - ``rates`` is the user-declared rate vector, shape ``(rate_size,)``,
+      aligned with :attr:`rate_names`.
+    - ``u_flow``, ``f_modeled`` are continuous flow rates (same as
+      :class:`RhsOde`).
+    - ``ctrl_pv_values`` is an array of controlled-PV values at the current
+      time, aligned with :attr:`controlled_pv_names`. Pass
+      ``jnp.zeros(0)`` when there are no controlled PVs.
+    """
+
+    # --- Sizes / indices (mirror RhsOde so downstream introspection works) ---
+    c_size: int = eqx.field(static=True)
+    rate_size: int = eqx.field(static=True)
+    # Alias for `rate_size` so code paths that currently expect ``mb.q_size``
+    # (e.g. _validate_rates_output_shapes, _build_segment_rhs dispatch) keep
+    # working when given a UserDefinedRhsOde. With the user-defined path,
+    # ``q_size == rate_size`` and may differ from ``n_reactor_states``.
+    q_size: int = eqx.field(static=True)
+    r_size: int = eqx.field(static=True)
+    u_flow_size: int = eqx.field(static=True)
+    f_modeled_size: int = eqx.field(static=True)
+    output_size: int = eqx.field(static=True)
+    n_reactor_states: int = eqx.field(static=True)
+    n_pv_states: int = eqx.field(static=True)
+    n_controlled_pv: int = eqx.field(static=True)
+    n_derived: int = eqx.field(static=True)
+    reactor_indices: tuple = eqx.field(static=True)
+    pv_indices: tuple = eqx.field(static=True)
+    volume_idx: int = eqx.field(static=True)
+    biomass_idx: int = eqx.field(static=True)
+    intracellular_indices: tuple = eqx.field(static=True)
+    static_pv_indices: tuple = eqx.field(static=True)
+
+    # --- Names (deterministic ordering) ---
+    reactor_component_state_names: tuple = eqx.field(static=True)
+    process_variable_state_names: tuple = eqx.field(static=True)
+    controlled_pv_names: tuple = eqx.field(static=True)
+    flow_names: tuple = eqx.field(static=True)
+    modeled_flow_names: tuple = eqx.field(static=True)
+    derived_names: tuple = eqx.field(static=True)
+    rate_names: tuple = eqx.field(static=True)
+
+    # --- Compiled callables ---
+    # Each takes a flat args array (state | ctrl_pv | derived | rates) and
+    # returns a scalar. Stored as static so equinox treats them as Python
+    # config rather than pytree leaves.
+    derived_funcs: tuple = eqx.field(static=True)
+    derivative_funcs: tuple = eqx.field(static=True)
+
+    # --- Feed-dilution data ---
+    Cin: jnp.ndarray
+    Cin_modeled: jnp.ndarray
+
+    def __call__(
+        self,
+        c: jnp.ndarray,
+        rates: jnp.ndarray,
+        u_flow: jnp.ndarray,
+        f_modeled: jnp.ndarray,
+        ctrl_pv_values: jnp.ndarray,
+    ) -> jnp.ndarray:
+        n_non_volume = self.c_size - 1
+        n_reactor = self.n_reactor_states
+        state_values = c[:n_non_volume]
+        c_reactor = c[:n_reactor]
+        V = c[self.volume_idx]
+
+        # 1. Compute derived variables in topo order (already sorted at build).
+        derived_arr = jnp.zeros(self.n_derived) if self.n_derived > 0 else jnp.zeros(0)
+        for i, fn in enumerate(self.derived_funcs):
+            args = jnp.concatenate([state_values, ctrl_pv_values, derived_arr, rates])
+            derived_arr = derived_arr.at[i].set(fn(args))
+
+        # 2. Compute biological derivatives per dynamic state.
+        full_args = jnp.concatenate([state_values, ctrl_pv_values, derived_arr, rates])
+        biol_dc_list = [fn(full_args) for fn in self.derivative_funcs]
+        biol_dc = jnp.stack(biol_dc_list) if biol_dc_list else jnp.zeros(0)
+
+        # 3. Reactor states get feed/dilution on top; PV states are
+        # biological-only (PV physical dynamics are out of scope here).
+        feed_term, dV = _apply_feed_dilution(
+            c_reactor, V, u_flow, f_modeled,
+            self.Cin, self.Cin_modeled,
+            self.u_flow_size, self.f_modeled_size, n_reactor,
+        )
+
+        dc_reactor = biol_dc[:n_reactor] + feed_term
+        if self.n_pv_states > 0:
+            dc_pv = biol_dc[n_reactor:n_non_volume]
+        else:
+            dc_pv = jnp.zeros(0)
+
+        return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
+
+
+def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
+    """Build a :class:`UserDefinedRhsOde` from a process whose
+    ``biological_ode`` block is set. Raises :class:`ValueError` if the block
+    is missing or fails validation.
+    """
+    import sympy
+
+    bo = process.biological_ode
+    if bo is None:
+        raise ValueError(
+            "build_user_defined_rhs_ode requires process.biological_ode to be set."
+        )
+
+    # Reuse the auto path's symbol/index discovery so biomass-at-0 and
+    # intracellular ordering match exactly. We construct a transient RhsOde
+    # for its metadata and discard the rest.
+    auto = _build_auto_rhs_ode(process)
+
+    reactor_state_names = auto.reactor_component_state_names
+    pv_state_names = auto.process_variable_state_names
+    controlled_pv_names = tuple(
+        name for name, pv in process.process_variables.items() if pv.is_controlled
+    )
+
+    state_derivative_names = tuple(reactor_state_names) + tuple(pv_state_names)
+    derived_names_set = set(bo.derived.keys())
+    rate_names_tuple = tuple(bo.rates.keys())
+    allowed_names = (
+        set(state_derivative_names)
+        | set(controlled_pv_names)
+        | derived_names_set
+        | set(rate_names_tuple)
+    )
+    symbol_table = {n: sympy.Symbol(n) for n in allowed_names}
+
+    # Parse all expressions; surface any error from validation for clarity.
+    derived_exprs: Dict[str, Any] = {}
+    for name, expr_str in bo.derived.items():
+        try:
+            derived_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
+        except Exception as exc:
+            raise ValueError(
+                f"biological_ode.derived[{name!r}] failed to parse: {exc}"
+            ) from exc
+
+    derivative_exprs: Dict[str, Any] = {}
+    for name, expr_str in bo.derivatives.items():
+        try:
+            derivative_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
+        except Exception as exc:
+            raise ValueError(
+                f"biological_ode.derivatives[{name!r}] failed to parse: {exc}"
+            ) from exc
+
+    # Topo-sort derived; build ordered tuple of names.
+    derived_order = _topo_sort_derived(derived_exprs)
+    derived_names_ordered = tuple(derived_order)
+
+    # Build the canonical args ordering used by every lambdified expression.
+    # Concatenation order: state_derivative_names | controlled_pv_names
+    #                      | derived_names_ordered | rate_names_tuple.
+    args_order = (
+        tuple(state_derivative_names)
+        + tuple(controlled_pv_names)
+        + derived_names_ordered
+        + rate_names_tuple
+    )
+
+    derived_funcs = tuple(
+        _lambdify_with_array_arg(derived_exprs[n], args_order)
+        for n in derived_names_ordered
+    )
+
+    # Build per-state derivative callables in state order; missing state
+    # entries should have been caught by validate_biological_ode but we
+    # default to zero defensively.
+    zero_expr = sympy.Integer(0)
+    derivative_funcs = tuple(
+        _lambdify_with_array_arg(derivative_exprs.get(n, zero_expr), args_order)
+        for n in state_derivative_names
+    )
+
+    return UserDefinedRhsOde(
+        c_size=auto.c_size,
+        rate_size=len(rate_names_tuple),
+        q_size=len(rate_names_tuple),
+        r_size=auto.r_size,
+        u_flow_size=auto.u_flow_size,
+        f_modeled_size=auto.f_modeled_size,
+        output_size=auto.output_size,
+        n_reactor_states=auto.n_reactor_states,
+        n_pv_states=auto.n_pv_states,
+        n_controlled_pv=len(controlled_pv_names),
+        n_derived=len(derived_names_ordered),
+        reactor_indices=auto.reactor_indices,
+        pv_indices=auto.pv_indices,
+        volume_idx=auto.volume_idx,
+        biomass_idx=auto.biomass_idx,
+        intracellular_indices=auto.intracellular_indices,
+        static_pv_indices=auto.static_pv_indices,
+        reactor_component_state_names=auto.reactor_component_state_names,
+        process_variable_state_names=auto.process_variable_state_names,
+        controlled_pv_names=controlled_pv_names,
+        flow_names=auto.flow_names,
+        modeled_flow_names=auto.modeled_flow_names,
+        derived_names=derived_names_ordered,
+        rate_names=rate_names_tuple,
+        derived_funcs=derived_funcs,
+        derivative_funcs=derivative_funcs,
+        Cin=auto.Cin,
+        Cin_modeled=auto.Cin_modeled,
+    )
+
+
+def build_derived_func(
+    process: BioProcess,
+) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], Dict[str, jnp.ndarray]]:
+    """Build a callable that evaluates the ``biological_ode.derived`` variables
+    given concrete state, controlled-PV, and rate arrays.
+
+    Returns ``f(state_values, ctrl_pv_values, rates) -> {name: scalar}``.
+    Useful to expose derived quantities like ``X_active`` as observables for
+    plotting or loss computation. Raises ``ValueError`` if the process has no
+    ``biological_ode`` block.
+    """
+    bo = process.biological_ode
+    if bo is None:
+        raise ValueError(
+            "build_derived_func requires process.biological_ode to be set."
+        )
+    mb = build_user_defined_rhs_ode(process)
+    n_derived = mb.n_derived
+    derived_names = mb.derived_names
+    derived_funcs = mb.derived_funcs
+
+    def derived_func(state_values, ctrl_pv_values, rates):
+        derived_arr = jnp.zeros(n_derived) if n_derived > 0 else jnp.zeros(0)
+        for i, fn in enumerate(derived_funcs):
+            args = jnp.concatenate([state_values, ctrl_pv_values, derived_arr, rates])
+            derived_arr = derived_arr.at[i].set(fn(args))
+        return {name: derived_arr[i] for i, name in enumerate(derived_names)}
+
+    return derived_func
 
 
 # ---------------------------------------------------------------------------
@@ -523,8 +911,18 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     )
 
 
-def get_rhs_ode(process: BioProcess) -> RhsOde:
-    """Build a :class:`RhsOde` module from a :class:`BioProcess`.
+def get_rhs_ode(process: BioProcess):
+    """Build the appropriate RHS ODE module for *process*.
+
+    Dispatches based on the presence of ``process.biological_ode``:
+
+    - When set: returns :class:`UserDefinedRhsOde` built from the
+      user-declared per-state biological expressions, derived variables,
+      and abstract rate symbols.
+    - When ``None`` (default / backward compatible): returns the
+      auto-generated :class:`RhsOde` whose biological term is
+      ``q_i * X_active`` per reactor component (with the intracellular
+      mass-balance correction applied to the biomass entry).
 
     Parameters
     ----------
@@ -534,14 +932,27 @@ def get_rhs_ode(process: BioProcess) -> RhsOde:
 
     Returns
     -------
-    RhsOde
-        An ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled, r)``
-        computes the ODE RHS ``dc/dt``.
+    RhsOde or UserDefinedRhsOde
+        See above.
 
     Raises
     ------
     ValueError
-        If no ``"biomass"`` component is found in the reactor medium.
+        If no ``"biomass"`` component is found in the reactor medium, or if
+        ``biological_ode`` is set but malformed (see
+        :func:`bp_format.validate.validate_biological_ode` for the rules).
+    """
+    if process.biological_ode is not None:
+        return build_user_defined_rhs_ode(process)
+    return _build_auto_rhs_ode(process)
+
+
+def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
+    """Build the auto-generated :class:`RhsOde` (the pre-Phase-2 behavior).
+
+    Used by :func:`get_rhs_ode` as the fallback when no
+    ``biological_ode`` block is present, and by
+    :func:`build_user_defined_rhs_ode` for shared metadata discovery.
     """
     # --- Reactor component ordering: biomass always at index 0 ---
     all_component_names = list(process.reactor_medium.components.keys())
@@ -893,6 +1304,17 @@ def build_q_func(
 
     .. math::
         q_i(t) = \\frac{dc_i/dt - \\text{feed\\_term}_i}{X_{active}}
+        \\quad (i \\notin \\{biomass\\})
+
+        q_{biomass}(t) = \\frac{dc_{biomass}/dt
+            - \\sum_{j \\in intracellular} dc_j/dt
+            - \\text{feed\\_term}_{biomass}}{X_{active}}
+
+    The biomass-specific case subtracts the intracellular concentration
+    derivatives so the returned ``q[biomass]`` is the specific growth rate
+    of *active* biomass (the inverse of the forward RHS in :class:`RhsOde`).
+    Without intracellular components the sum is empty and the formula
+    collapses to the same form as the other states.
 
     All components (concentration derivatives, volume, flow rates, active
     biomass) are evaluated analytically from splines and discrete-event
@@ -1097,6 +1519,10 @@ def build_q_func(
             r_reactor = r_full[:n_reactor]
 
         q_all = (dc_dt - feed_term - jnp.where(overlap_mask, r_reactor, 0.0)) / X_active
+        # Intracellular correction: q[biomass] from this division is the
+        # *apparent* specific rate of measured biomass; subtract the
+        # intracellular q values to recover the active-biomass specific rate.
+        q_all = _subtract_intracellular_from_biomass_q(q_all, biomass_idx, intra_idx)
         return jnp.where(q_mask, q_all, 0.0)
 
     return q_func
@@ -1286,6 +1712,8 @@ def _build_segment_rhs(
         active-biomass term (``X_active``) instead of the ODE state.
     """
     flow_idx = jnp.array(list(ctrl.flow_indices))
+    ctrl_idx = jnp.array(list(ctrl.ctrl_indices))
+    is_user_defined = isinstance(mb, UserDefinedRhsOde)
 
     if conc_eval_list is not None:
         biomass_idx = mb.biomass_idx
@@ -1303,6 +1731,12 @@ def _build_segment_rhs(
             f_mod = batched_mod(t, nu=1)  # (n_modeled_flows,)
         else:
             f_mod = jnp.zeros(mb.f_modeled_size)
+
+        if is_user_defined:
+            ctrl_pv_values = (
+                u[ctrl_idx] if len(ctrl_idx) > 0 else jnp.zeros(0)
+            )
+            return mb(state, q, u_flow, f_mod, ctrl_pv_values)
 
         if conc_eval_list is not None:
             all_conc = jnp.stack([sp(t) for sp in conc_eval_list])
@@ -1322,6 +1756,9 @@ def _build_segment_rhs(
             V = state[mb.volume_idx]
 
             reaction = q * X_active
+            reaction = _add_intracellular_to_biomass(
+                reaction, q, X_active, mb.biomass_idx, mb.intracellular_indices
+            )
 
             feed_term = jnp.zeros(n_reactor)
             dV = jnp.zeros(())
@@ -1793,6 +2230,9 @@ def integrate_process_pseudospace(
         X_active = jnp.maximum(X_active, 1e-6)
 
         reaction = q * X_active
+        reaction = _add_intracellular_to_biomass(
+            reaction, q, X_active, mb.biomass_idx, mb.intracellular_indices
+        )
         feed_term = jnp.zeros(n_reactor)
         dV_cont = jnp.zeros(())
         if mb.u_flow_size > 0:

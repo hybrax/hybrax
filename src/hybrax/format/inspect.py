@@ -190,12 +190,38 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
         if process.volume is not None:
             print("\nVolume:")
             print(f"  Initial: {process.volume.initial_volume} {process.volume.unit}")
+            print(f"  Bounds: {_format_bounds(process.volume.bounds)}")
             if process.volume.volume_changes:
                 print(f"  Volume Changes: ({len(process.volume.volume_changes)} total)")
                 for change in process.volume.volume_changes.values():
                     _print_volume_change_info(change, "    ")
 
+        if process.biological_ode is not None:
+            bo = process.biological_ode
+            print("\nBiological ODE (user-defined):")
+            if bo.derived:
+                print(f"  Derived ({len(bo.derived)}):")
+                for name, expr in bo.derived.items():
+                    print(f"    {name} = {expr}")
+            if bo.rates:
+                print(f"  Rates ({len(bo.rates)}):")
+                for name, rd in bo.rates.items():
+                    print(f"    {name}: bounds={_format_bounds(rd.bounds)}")
+            if bo.derivatives:
+                print(f"  Derivatives ({len(bo.derivatives)}):")
+                for name, expr in bo.derivatives.items():
+                    print(f"    d({name})/dt|biological = {expr}")
+
     print("=" * 80)
+
+
+def _format_bounds(bounds) -> str:
+    """Format a bounds tuple for inspect output, hiding the unbounded default."""
+    if bounds is None or (bounds[0] is None and bounds[1] is None):
+        return "unbounded"
+    lo = "-inf" if bounds[0] is None else f"{bounds[0]:g}"
+    hi = "+inf" if bounds[1] is None else f"{bounds[1]:g}"
+    return f"[{lo}, {hi}]"
 
 
 def _print_process_variable_info(pv, prefix: str) -> None:
@@ -203,6 +229,7 @@ def _print_process_variable_info(pv, prefix: str) -> None:
     print(f"{prefix}{pv.name}")
     print(f"{prefix}  Unit: {pv.unit}")
     print(f"{prefix}  Controlled: {pv.is_controlled}")
+    print(f"{prefix}  Bounds: {_format_bounds(pv.bounds)}")
 
     if _is_dynamic_series(pv.values):  # TimeSeries
         ts = pv.values
@@ -229,6 +256,7 @@ def _print_reactor_component_info(comp, prefix: str) -> None:
     print(f"{prefix}{comp.name}")
     print(f"{prefix}  Unit: {comp.unit}")
     print(f"{prefix}  Intracellular: {comp.is_intracellular}")
+    print(f"{prefix}  Bounds: {_format_bounds(comp.bounds)}")
 
     if _is_dynamic_series(comp.concentration):  # TimeSeries
         ts = comp.concentration

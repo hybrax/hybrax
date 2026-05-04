@@ -4,10 +4,18 @@ JAX-compatible dataclasses for standardized bioprocess data
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 import jax.numpy as jnp
 
 from .time_series import TimeSeries
+
+# Bounds metadata: ``(lower, upper)`` with ``None`` on either side meaning
+# unbounded. Default ``(None, None)`` is unbounded on both sides. Bounds are
+# pure metadata — not enforced inside RhsOde / UserDefinedRhsOde / build_q_func
+# / integrator. Downstream consumers (e.g. bp-train's loss generator) read
+# them off the process to build soft-constraint penalties.
+Bounds = Tuple[Optional[float], Optional[float]]
+_NO_BOUNDS: Bounds = (None, None)
 
 # TODO for later: standardize unit spelling so it might be used for unit checks
 
@@ -95,6 +103,7 @@ class ProcessVariable:
     )
     values: TimeSeries | StaticVariable
     interpolator: Optional[Interpolator] = None
+    bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 
 @dataclass
@@ -120,6 +129,7 @@ class ReactorMediumComponent:
     concentration: TimeSeries | StaticVariable
     is_intracellular: bool  # if True, this component is intracellular (e.g., X_measured = X_active + P) and should be treated differently in ODE RHS calculations
     interpolator: Optional[Interpolator] = None
+    bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 
 @dataclass
@@ -213,6 +223,53 @@ class Volume:
     initial_volume: float
     unit: str  # e.g. "L", "m3", "kg"
     volume_changes: Dict[str, VolumeChange] = field(default_factory=dict)
+    bounds: Bounds = _NO_BOUNDS  # (lo, hi) on V; None on either side = unbounded
+
+
+# ============================================================
+# User-defined biological ODE
+# ============================================================
+
+
+@dataclass
+class RateDecl:
+    """Declaration of one abstract specific-rate symbol used in a
+    :class:`BiologicalOde` block.
+
+    Rates are abstract placeholders: their values are supplied at call time
+    by the runtime (today: spline-fitted from concentrations; later: NN output
+    from bp-train). Bounds are pure metadata for downstream loss generators.
+    """
+
+    bounds: Bounds = _NO_BOUNDS
+
+
+@dataclass
+class BiologicalOde:
+    """User-defined per-state biological RHS expressions.
+
+    Describes only the *biological* part of ``dc/dt``. Physical contributions
+    (feed inflow, dilution, sample outflow, volume dynamics) continue to be
+    added by bp-format from the existing :class:`VolumeChange` machinery and
+    are not part of this block.
+
+    Attributes
+    ----------
+    derived:
+        Mapping ``name -> expression string``. Algebraic (no time derivative);
+        recomputed every RHS call. Must be acyclic.
+    rates:
+        Mapping ``name -> RateDecl``. Names of abstract specific rates that
+        the runtime supplies; ``len(rates)`` is the rate-vector dimension.
+    derivatives:
+        Mapping ``state_name -> expression string`` giving the biological
+        contribution to ``d(state)/dt``. Every dynamic state must have an
+        entry; use ``"0"`` to declare "no biological dynamics".
+    """
+
+    derived: Dict[str, str] = field(default_factory=dict)
+    rates: Dict[str, RateDecl] = field(default_factory=dict)
+    derivatives: Dict[str, str] = field(default_factory=dict)
 
 
 # ============================================================
@@ -234,6 +291,7 @@ class BioProcess:
     reactor_medium: ReactorMedium
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     discrete_events: Optional[DiscreteEvents] = None
+    biological_ode: Optional[BiologicalOde] = None
 
 
 @dataclass(kw_only=True)

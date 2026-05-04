@@ -455,5 +455,118 @@ def test_default_load_rejects_non_json_file_path():
             load_dataset(save_path)
 
 
+# ---------------------------------------------------------------------------
+# bounds and biological_ode round-trip
+# ---------------------------------------------------------------------------
+
+
+from bp_format import BiologicalOde, RateDecl
+
+
+def _make_process_with_biological_ode_and_bounds(sample_process):
+    """Augment the sample process with bounds on every relevant slot and a
+    minimal but realistic ``biological_ode`` block for round-trip testing."""
+    p = sample_process
+    p.volume.bounds = (0.0, 5.0)
+    p.reactor_medium.components["biomass"].bounds = (0.0, None)
+    p.reactor_medium.components["glucose"].bounds = (0.0, 500.0)
+    # Both controlled and uncontrolled PVs get bounds
+    for pv in p.process_variables.values():
+        if pv.is_controlled:
+            pv.bounds = (0.0, 14.0)
+        else:
+            pv.bounds = (None, 100.0)
+    p.biological_ode = BiologicalOde(
+        derived={"X_active": "biomass"},
+        rates={
+            "q_X": RateDecl(bounds=(0.0, None)),
+            "q_S": RateDecl(bounds=(None, 0.0)),
+            "q_unused": RateDecl(),
+        },
+        derivatives={"biomass": "q_X * X_active", "glucose": "q_S * X_active"},
+    )
+    return p
+
+
+def test_json_roundtrip_bounds_on_every_slot(sample_process):
+    """Bounds on reactor components, PVs, volume, and rates round-trip
+    losslessly. The unbounded default ``(None, None)`` is omitted from JSON."""
+    _make_process_with_biological_ode_and_bounds(sample_process)
+    cs = CaseStudy(
+        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+    )
+    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_dataset_json(ds, Path(tmpdir) / "d.json")
+        loaded = load_dataset_json(Path(tmpdir) / "d.json")
+
+    p2 = loaded.case_studies["b"].processes["fed_batch_001"]
+    assert p2.volume.bounds == (0.0, 5.0)
+    assert p2.reactor_medium.components["biomass"].bounds == (0.0, None)
+    assert p2.reactor_medium.components["glucose"].bounds == (0.0, 500.0)
+    for pv in p2.process_variables.values():
+        if pv.is_controlled:
+            assert pv.bounds == (0.0, 14.0)
+        else:
+            assert pv.bounds == (None, 100.0)
+
+
+def test_json_roundtrip_biological_ode(sample_process):
+    """biological_ode block round-trips losslessly: derived / derivatives /
+    rates (with per-rate bounds)."""
+    _make_process_with_biological_ode_and_bounds(sample_process)
+    cs = CaseStudy(
+        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+    )
+    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_dataset_json(ds, Path(tmpdir) / "d.json")
+        loaded = load_dataset_json(Path(tmpdir) / "d.json")
+
+    p2 = loaded.case_studies["b"].processes["fed_batch_001"]
+    assert p2.biological_ode is not None
+    assert p2.biological_ode.derived == {"X_active": "biomass"}
+    assert p2.biological_ode.derivatives == {
+        "biomass": "q_X * X_active",
+        "glucose": "q_S * X_active",
+    }
+    assert set(p2.biological_ode.rates.keys()) == {"q_X", "q_S", "q_unused"}
+    assert p2.biological_ode.rates["q_X"].bounds == (0.0, None)
+    assert p2.biological_ode.rates["q_S"].bounds == (None, 0.0)
+    assert p2.biological_ode.rates["q_unused"].bounds == (None, None)
+
+
+def test_default_unbounded_is_omitted_from_json(sample_process):
+    """A freshly built process without bounds writes no bounds keys to JSON."""
+    cs = CaseStudy(
+        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+    )
+    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "d.json"
+        save_dataset_json(ds, path)
+        text = path.read_text()
+        assert '"bounds"' not in text
+
+
+def test_biological_ode_absent_means_none_after_roundtrip(sample_process):
+    """A process without a biological_ode block round-trips with
+    ``biological_ode is None`` (auto-RHS path)."""
+    cs = CaseStudy(
+        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+    )
+    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_dataset_json(ds, Path(tmpdir) / "d.json")
+        loaded = load_dataset_json(Path(tmpdir) / "d.json")
+
+    p2 = loaded.case_studies["b"].processes["fed_batch_001"]
+    assert p2.biological_ode is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
