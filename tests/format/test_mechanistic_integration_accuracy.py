@@ -104,7 +104,7 @@ def _run_mechanistic_pipeline(fixture_dir: Path, *, mutator=None) -> dict:
 
     t_eval_int = np.linspace(t_start, t_end, 200)
     result = bpm.integrate_process(
-        process, ctrl, mb, rates_func, t_eval_int, state_splines=state_splines
+        process, ctrl, mb, rates_func, t_eval_int
     )
 
     metrics: dict = {"species": {}}

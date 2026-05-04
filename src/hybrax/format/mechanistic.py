@@ -37,8 +37,15 @@ estimate_specific_rates(process, ctrl, mb, state_splines, t_eval) -> jnp.ndarray
     Estimate specific rates q(t) via ODE RHS inversion (convenience wrapper).
 
 integrate_process(process, ctrl, mb, rates_func, t_eval) -> dict
+    Full hybrid ODE integration with discrete event handling. Honest
+    forward integration: state read directly from the integrator at every
+    step.
 integrate_process_pseudospace(process, ctrl, mb, rates_func, t_eval) -> dict
-    Full hybrid ODE integration with discrete event handling.
+    Single-pass integration in pseudo-batch ``c*`` coordinates. Useful as
+    a post-processing / spline-fitting helper. The state lives in
+    spline-derived coordinates so the trajectory is biased toward the
+    reference splines — do not use for honest forward prediction with
+    externally-supplied q.
 
 Rates Pipeline
 --------------
@@ -1697,38 +1704,32 @@ def _build_segment_rhs(
     ctrl,
     rates_func,
     batched_mod,
-    conc_eval_list=None,
 ):
     """Build the ODE right-hand side function for a segment.
+
+    Honest forward integration: the RHS reads everything (including
+    ``X_active`` for the reaction term) from the integrator's current state.
+    No spline-substitution trick. UserDefinedRhsOde takes a separate
+    branch that also passes controlled-PV values evaluated from
+    ``ControlSplines``.
 
     Parameters
     ----------
     batched_mod : interpax.PPoly or None
         Batched PPoly for modeled (uncontrolled) cumulative volume splines.
         Evaluate with ``batched_mod(t, nu=1)`` to get flow rates.
-    conc_eval_list : list of callables or None
-        Per-species concentration spline callables (e.g. BacktransformSpline).
-        If provided, the RHS uses spline-evaluated concentrations for the
-        active-biomass term (``X_active``) instead of the ODE state.
     """
     flow_idx = jnp.array(list(ctrl.flow_indices))
     ctrl_idx = jnp.array(list(ctrl.ctrl_indices))
     is_user_defined = isinstance(mb, UserDefinedRhsOde)
-
-    if conc_eval_list is not None:
-        biomass_idx = mb.biomass_idx
-        intra_idx = (
-            jnp.array(mb.intracellular_indices) if mb.intracellular_indices else None
-        )
 
     def rhs(t, state, args):
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
         q, r = rates_func(t, state, u)
 
-        # Modeled flow rates via batched PPoly derivative
         if batched_mod is not None:
-            f_mod = batched_mod(t, nu=1)  # (n_modeled_flows,)
+            f_mod = batched_mod(t, nu=1)
         else:
             f_mod = jnp.zeros(mb.f_modeled_size)
 
@@ -1737,50 +1738,7 @@ def _build_segment_rhs(
                 u[ctrl_idx] if len(ctrl_idx) > 0 else jnp.zeros(0)
             )
             return mb(state, q, u_flow, f_mod, ctrl_pv_values)
-
-        if conc_eval_list is not None:
-            all_conc = jnp.stack([sp(t) for sp in conc_eval_list])
-            X_active = all_conc[biomass_idx]
-            if intra_idx is not None:
-                X_active = X_active - jnp.sum(all_conc[intra_idx])
-            X_active = jnp.maximum(X_active, 1e-6)
-
-            n_reactor = mb.n_reactor_states
-            n_non_volume = mb.r_size
-            c_reactor = state[:n_reactor]
-            c_pv = (
-                state[n_reactor:n_non_volume]
-                if mb.n_pv_states > 0
-                else jnp.zeros(0, dtype=state.dtype)
-            )
-            V = state[mb.volume_idx]
-
-            reaction = q * X_active
-            reaction = _add_intracellular_to_biomass(
-                reaction, q, X_active, mb.biomass_idx, mb.intracellular_indices
-            )
-
-            feed_term = jnp.zeros(n_reactor)
-            dV = jnp.zeros(())
-            if mb.u_flow_size > 0:
-                feed_contrib = u_flow[:, None] * (mb.Cin - c_reactor[None, :])
-                feed_term = feed_term + jnp.sum(feed_contrib, axis=0) / V
-                dV = dV + jnp.sum(u_flow)
-            if mb.f_modeled_size > 0:
-                mod_contrib = f_mod[:, None] * (mb.Cin_modeled - c_reactor[None, :])
-                feed_term = feed_term + jnp.sum(mod_contrib, axis=0) / V
-                dV = dV + jnp.sum(f_mod)
-
-            r_reactor = r[:n_reactor]
-            r_pv = r[n_reactor:]
-            if mb.n_pv_states > 0 and len(mb.static_pv_indices) > 0:
-                static_idx = jnp.array(mb.static_pv_indices, dtype=int)
-                r_pv = r_pv.at[static_idx].set(0.0)
-            dc_reactor = reaction + feed_term + r_reactor
-            dc_pv = c_pv * 0.0 + r_pv
-            return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
-        else:
-            return mb(state, q, u_flow, f_mod, r)
+        return mb(state, q, u_flow, f_mod, r)
 
     return rhs
 
@@ -2325,8 +2283,6 @@ def integrate_process(
     rates_func: Callable,
     t_eval: jnp.ndarray,
     *,
-    state_splines: Optional[Dict[str, Any]] = None,
-    conc_splines: Optional[Dict[str, Any]] = None,
     rtol: float = 1e-4,
     atol: float = 1e-6,
     max_steps: int = 16384,
@@ -2362,12 +2318,6 @@ def integrate_process(
         states.
     t_eval:
         1-D array of time points at which to record the solution.
-    state_splines:
-        Optional dict mapping non-volume state name -> callable spline. When
-        provided, the ODE RHS uses the reactor-component splines for biomass
-        (and intracellular) concentrations when computing ``X_active`` instead
-        of the ODE state. This prevents exponential error amplification when
-        biomass spans many orders of magnitude.
     rtol, atol:
         Relative and absolute tolerances for the ODE solver.
     max_steps:
@@ -2389,10 +2339,6 @@ def integrate_process(
         where ``c`` has shape ``(len(t_eval), n_non_volume_states)`` and
         ``V`` has shape ``(len(t_eval),)``.
     """
-    state_splines = _resolve_state_splines(
-        state_splines=state_splines,
-        conc_splines=conc_splines,
-    )
     t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
@@ -2487,20 +2433,12 @@ def integrate_process(
         controls=controls0_probe,
     )
 
-    # Build per-species concentration spline evaluators for X_active
-    # (avoids cubic resampling of piecewise-linear fc in batched approach)
-    if state_splines is not None:
-        conc_eval_list = [state_splines[s] for s in mb.reactor_component_state_names]
-    else:
-        conc_eval_list = None
-
     # Build RHS in original coordinates, then wrap for normalized state
     rhs_original = _build_segment_rhs(
         mb,
         ctrl,
         rates_func,
         batched_mod,
-        conc_eval_list,
     )
 
     def rhs_normalized(t, state_norm, args):

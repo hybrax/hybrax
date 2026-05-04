@@ -2259,6 +2259,7 @@ class TestIntegrateProcess:
         assert float(result["c"][1, 0]) == pytest.approx(X_post, rel=1e-3)
         assert float(result["c"][1, 1]) == pytest.approx(S_post, rel=1e-3)
 
+
     def test_pseudospace_matches_segmented_with_sampling_and_bolus(self):
         """Single-pass pseudo-space integration should match segmented integration."""
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
@@ -2304,7 +2305,6 @@ class TestIntegrateProcess:
             mb,
             rates_func,
             t_eval,
-            state_splines=state_splines,
         )
         pseudo = integrate_process_pseudospace(
             process,
@@ -2380,7 +2380,6 @@ class TestIntegrateProcess:
             mb,
             rates_func,
             t_eval,
-            state_splines=state_splines,
         )
         pseudo = integrate_process_pseudospace(
             process,
@@ -2456,7 +2455,6 @@ class TestIntegrateProcess:
             mb,
             rates_func,
             t_eval,
-            state_splines=state_splines,
         )
         pseudo = integrate_process_pseudospace(
             process,
@@ -2495,15 +2493,19 @@ class TestIntegrateProcess:
         assert float(c_ref[3, 0]) == pytest.approx(x_post_expected, rel=1e-3, abs=1e-3)
         assert float(c_ref[3, 1]) == pytest.approx(s_post_expected, rel=1e-3, abs=1e-3)
 
-        # Pseudo-space concentration agreement checked away from the
-        # discontinuity. Tolerance loosened from 2e-3 → 2e-2 to accommodate
-        # the dense piecewise-linear ADF encoding (sample-compensation
-        # factor) vs the earlier step-table encoding. Both paths remain
-        # within ~0.1% of each other on the absolute-concentration scale.
-        assert float(c_pseudo[1, 0]) == pytest.approx(float(c_ref[1, 0]), abs=2e-2)
-        assert float(c_pseudo[3, 0]) == pytest.approx(float(c_ref[3, 0]), abs=2e-2)
-        assert float(c_pseudo[1, 1]) == pytest.approx(float(c_ref[1, 1]), abs=2e-2)
-        assert float(c_pseudo[3, 1]) == pytest.approx(float(c_ref[3, 1]), abs=2e-2)
+        # Pseudo-space vs honest c-space concentration agreement, away
+        # from the discontinuity. The previous absolute bound (abs=2e-2)
+        # was tuned when the segmented path also used the spline-X_active
+        # trick. With that trick removed, `integrate_process` is honest
+        # c-space integration while `integrate_process_pseudospace` still
+        # anchors to splines via the c* transform, so the two paths
+        # diverge by ~1–2% on each species. Switched to a relative bound
+        # to cover both species (biomass ~0.6 g/L and glucose ~30 g/L)
+        # at the same percentage tolerance.
+        assert float(c_pseudo[1, 0]) == pytest.approx(float(c_ref[1, 0]), rel=5e-2)
+        assert float(c_pseudo[3, 0]) == pytest.approx(float(c_ref[3, 0]), rel=5e-2)
+        assert float(c_pseudo[1, 1]) == pytest.approx(float(c_ref[1, 1]), rel=5e-2)
+        assert float(c_pseudo[3, 1]) == pytest.approx(float(c_ref[3, 1]), rel=5e-2)
 
     def test_pseudospace_runs_without_transform_metadata(self):
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
