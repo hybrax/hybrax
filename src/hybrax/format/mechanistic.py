@@ -139,10 +139,13 @@ from .dataclasses import (
     TimeSeries,
 )
 from .splines import (
-    make_interpax_spline,
-    build_backtransform_spline,
+    _MIN_REACTOR_VOLUME,
+    _adf_for_division,
     _constant_timeseries,
     _evaluate_with_boundary_start,
+    _require_reactor_volume_scalar,
+    build_backtransform_spline,
+    make_interpax_spline,
 )
 
 
@@ -151,6 +154,23 @@ from .splines import (
 # ---------------------------------------------------------------------------
 
 _DEFAULT_BATCH_KNOTS = 128
+_MIN_ACTIVE_BIOMASS = 1e-6
+_SEGMENT_BOUNDARY_TOL = 1e-12
+_MIN_SOLVER_DT0 = 1e-6
+
+
+def _require_reactor_volume_above_threshold(
+    volume: jnp.ndarray,
+    *,
+    context: str,
+) -> jnp.ndarray:
+    """Fail when reactor volume reaches a physically invalid near-zero value."""
+    volume_arr = jnp.asarray(volume)
+    return eqx.error_if(
+        volume_arr,
+        jnp.any(volume_arr <= _MIN_REACTOR_VOLUME),
+        f"{context} reached zero or near-zero reactor volume.",
+    )
 
 
 def _batch_splines(
@@ -277,17 +297,21 @@ def _apply_feed_dilution(
     and the user-defined RHS so the physical-contributions code stays in one
     place.
     """
+    V = _require_reactor_volume_above_threshold(V, context="ODE state")
     feed_term = jnp.zeros(n_reactor)
     dV = jnp.zeros(())
     if u_flow_size > 0:
-        feed_term = feed_term + jnp.sum(
-            u_flow[:, None] * (Cin - c_reactor[None, :]), axis=0
-        ) / V
+        feed_term = (
+            feed_term
+            + jnp.sum(u_flow[:, None] * (Cin - c_reactor[None, :]), axis=0) / V
+        )
         dV = dV + jnp.sum(u_flow)
     if f_modeled_size > 0:
-        feed_term = feed_term + jnp.sum(
-            f_modeled[:, None] * (Cin_modeled - c_reactor[None, :]), axis=0
-        ) / V
+        feed_term = (
+            feed_term
+            + jnp.sum(f_modeled[:, None] * (Cin_modeled - c_reactor[None, :]), axis=0)
+            / V
+        )
         dV = dV + jnp.sum(f_modeled)
     return feed_term, dV
 
@@ -544,9 +568,15 @@ class RhsOde(eqx.Module):
         )
 
         feed_term, dV = _apply_feed_dilution(
-            c_reactor, V, u_flow, f_modeled,
-            self.Cin, self.Cin_modeled,
-            self.u_flow_size, self.f_modeled_size, n_reactor,
+            c_reactor,
+            V,
+            u_flow,
+            f_modeled,
+            self.Cin,
+            self.Cin_modeled,
+            self.u_flow_size,
+            self.f_modeled_size,
+            n_reactor,
         )
 
         dc_reactor = reaction + r_reactor + feed_term
@@ -699,9 +729,15 @@ class UserDefinedRhsOde(eqx.Module):
         # 3. Reactor states get feed/dilution on top; PV states are
         # biological-only (PV physical dynamics are out of scope here).
         feed_term, dV = _apply_feed_dilution(
-            c_reactor, V, u_flow, f_modeled,
-            self.Cin, self.Cin_modeled,
-            self.u_flow_size, self.f_modeled_size, n_reactor,
+            c_reactor,
+            V,
+            u_flow,
+            f_modeled,
+            self.Cin,
+            self.Cin_modeled,
+            self.u_flow_size,
+            self.f_modeled_size,
+            n_reactor,
         )
 
         dc_reactor = biol_dc[:n_reactor] + feed_term
@@ -1414,7 +1450,10 @@ def build_q_func(
         ev_times = None
         ev_dV_cum = None
 
-    V0 = jnp.array(float(process.volume.initial_volume))
+    V0 = _require_reactor_volume_above_threshold(
+        jnp.array(float(process.volume.initial_volume)),
+        context="initial reactor volume",
+    )
     Cin = jnp.array(mb.Cin)
     Cin_mod = jnp.array(mb.Cin_modeled)
 
@@ -1489,7 +1528,9 @@ def build_q_func(
         if ev_times is not None:
             idx = jnp.searchsorted(ev_times, t, side="left")
             V_t = V_t + jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
-        V_t = jnp.maximum(V_t, jnp.array(1e-10))
+        V_t = _require_reactor_volume_above_threshold(
+            V_t, context="q-function reconstructed volume"
+        )
 
         # Flow rates (derivatives of cumulative volume splines) — batched
         if u_flow_size > 0 or f_mod_size > 0:
@@ -1515,7 +1556,7 @@ def build_q_func(
         X_active = c_t[biomass_idx]
         if len(intra_idx) > 0:
             X_active = X_active - jnp.sum(c_t[jnp.array(intra_idx)])
-        X_active = jnp.maximum(X_active, jnp.array(1e-6))
+        X_active = jnp.maximum(X_active, jnp.array(_MIN_ACTIVE_BIOMASS))
 
         r_reactor = jnp.zeros(n_reactor)
         if r_func is not None:
@@ -1731,9 +1772,7 @@ def _build_segment_rhs(
             f_mod = jnp.zeros(mb.f_modeled_size)
 
         if is_user_defined:
-            ctrl_pv_values = (
-                u[ctrl_idx] if len(ctrl_idx) > 0 else jnp.zeros(0)
-            )
+            ctrl_pv_values = u[ctrl_idx] if len(ctrl_idx) > 0 else jnp.zeros(0)
             return mb(state, q, u_flow, f_mod, ctrl_pv_values)
         return mb(state, q, u_flow, f_mod, r)
 
@@ -1959,6 +1998,15 @@ def _build_pseudobatch_transforms(
                 "pseudobatch mechanistic path; regenerate transformed "
                 "TimeSeries payloads."
             )
+        if fc_interp not in {
+            "cubic",
+            "piecewise_polynomial",
+            "piecewise_constant",
+        }:
+            raise ValueError(
+                f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic', "
+                "'piecewise_polynomial', or 'piecewise_constant'."
+            )
         if adf_ts.breaks is None or adf_ts.coeffs is None:
             raise ValueError("ADF transform TimeSeries must provide spline state.")
         if feed_corr_ts.breaks is None or feed_corr_ts.coeffs is None:
@@ -1976,15 +2024,6 @@ def _build_pseudobatch_transforms(
                 "fc_interp": fc_interp,
             }
         )
-        if fc_interp not in {
-            "cubic",
-            "piecewise_polynomial",
-            "piecewise_constant",
-        }:
-            raise ValueError(
-                f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic', "
-                "'piecewise_polynomial', or 'piecewise_constant'."
-            )
 
     for _ in mb.process_variable_state_names:
         adf_ts = _constant_timeseries(1.0, t_start, t_end)
@@ -2096,7 +2135,10 @@ def integrate_process_pseudospace(
     flow_idx = jnp.array(list(ctrl.flow_indices))
     Cin = jnp.array(mb.Cin)
     Cin_mod = jnp.array(mb.Cin_modeled)
-    V0 = jnp.array(float(process.volume.initial_volume))
+    V0 = _require_reactor_volume_above_threshold(
+        jnp.array(float(process.volume.initial_volume)),
+        context="initial reactor volume",
+    )
 
     # Initial state: [c*_0, V_cont_0], where c*_0 == c_0.
     c0_reactor = jnp.array(
@@ -2163,7 +2205,7 @@ def integrate_process_pseudospace(
         c_star = state[:n_non_volume]
         V_cont = state[n_non_volume]
 
-        adf = jnp.maximum(_eval_adf(t), 1e-12)
+        adf = _adf_for_division(_eval_adf(t))
         fc, dfc = _eval_fc_and_dfc(t)
         c = (c_star + fc) / adf
         c_reactor = jnp.maximum(c[:n_reactor], 0.0)
@@ -2176,7 +2218,10 @@ def integrate_process_pseudospace(
         if ev_times is not None:
             idx = jnp.searchsorted(ev_times, t, side="left")
             V_disc = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
-        V = jnp.maximum(V0 + V_cont + V_disc, 1e-10)
+        V = _require_reactor_volume_above_threshold(
+            V0 + V_cont + V_disc,
+            context="pseudospace integration volume",
+        )
 
         u = ctrl(t)
         u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
@@ -2191,7 +2236,7 @@ def integrate_process_pseudospace(
             X_active = c_reactor[mb.biomass_idx]
             for i in mb.intracellular_indices:
                 X_active = X_active - c_reactor[i]
-        X_active = jnp.maximum(X_active, 1e-6)
+        X_active = jnp.maximum(X_active, _MIN_ACTIVE_BIOMASS)
 
         reaction = q * X_active
         reaction = _add_intracellular_to_biomass(
@@ -2240,7 +2285,7 @@ def integrate_process_pseudospace(
     term = diffrax.ODETerm(rhs_normalized)
     solver = diffrax.Tsit5()
     controller = diffrax.PIDController(rtol=rtol, atol=atol, jump_ts=jump_ts)
-    dt0 = min(0.1, max((t_end - t_start) / 100.0, 1e-6))
+    dt0 = min(0.1, max((t_end - t_start) / 100.0, _MIN_SOLVER_DT0))
 
     @eqx.filter_jit
     def _solve(ts):
@@ -2264,7 +2309,7 @@ def integrate_process_pseudospace(
 
     adf_out = jax.vmap(_eval_adf)(t_output)
     fc_out, _ = jax.vmap(_eval_fc_and_dfc)(t_output)
-    c_out = (c_star_out + fc_out) / jnp.maximum(adf_out, 1e-12)
+    c_out = (c_star_out + fc_out) / _adf_for_division(adf_out)
     c_out = c_out.at[:, :n_reactor].set(jnp.maximum(c_out[:, :n_reactor], 0.0))
 
     if ev_times is not None:
@@ -2272,7 +2317,10 @@ def integrate_process_pseudospace(
         V_disc_out = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
     else:
         V_disc_out = jnp.zeros_like(t_eval)
-    V_out = jnp.maximum(V0 + V_cont_out + V_disc_out, 1e-10)
+    V_out = _require_reactor_volume_above_threshold(
+        V0 + V_cont_out + V_disc_out,
+        context="pseudospace output volume",
+    )
 
     return {
         "t": t_eval,
@@ -2405,7 +2453,10 @@ def integrate_process(
     )
     c0 = jnp.concatenate([c0_reactor, c0_pv])
     c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
-    V0 = float(process.volume.initial_volume)
+    V0 = _require_reactor_volume_scalar(
+        process.volume.initial_volume,
+        context="initial reactor volume",
+    )
 
     # Save pre-event initial state for left-continuous output at t_start.
     c0_pre_event = c0
@@ -2415,7 +2466,10 @@ def integrate_process(
     # segment begins from the correct post-event initial condition.
     for ev in event_lookup.get(t_start, []):
         dV = float(ev["dV"])
-        V_new = max(V0 + dV, 1e-10)
+        V_new = _require_reactor_volume_scalar(
+            V0 + dV,
+            context="initial discrete event",
+        )
         if ev["kind"] == "bolus_feed" and ev["Cin"] is not None:
             Cin = jnp.asarray(ev["Cin"], dtype=float)
             c0_reactor = (c0[:n_reactor] * V0 + Cin * dV) / V_new
@@ -2465,9 +2519,9 @@ def integrate_process(
         if len(t_seg) == 0:
             t_seg = jnp.array([t_lo, t_hi])
         else:
-            if t_seg[0] > t_lo + 1e-12:
+            if t_seg[0] > t_lo + _SEGMENT_BOUNDARY_TOL:
                 t_seg = jnp.concatenate([jnp.array([t_lo]), t_seg])
-            if t_seg[-1] < t_hi - 1e-12:
+            if t_seg[-1] < t_hi - _SEGMENT_BOUNDARY_TOL:
                 t_seg = jnp.concatenate([t_seg, jnp.array([t_hi])])
         seg_t_arrays.append(t_seg)
 
@@ -2562,10 +2616,15 @@ def integrate_process(
                     else jnp.zeros(0, dtype=state.dtype)
                 )
                 V = state[mb.volume_idx]
-                V_new = V + dV
-                c_reactor_bolus = (c_reactor * V + Cin * dV) / jnp.maximum(V_new, 1e-10)
+                V = _require_reactor_volume_above_threshold(
+                    V, context="pre-event integration volume"
+                )
+                V_new = _require_reactor_volume_above_threshold(
+                    V + dV,
+                    context="discrete event volume",
+                )
+                c_reactor_bolus = (c_reactor * V + Cin * dV) / V_new
                 c_reactor_new = jnp.where(is_bolus, c_reactor_bolus, c_reactor)
-                V_new = jnp.maximum(V_new, 1e-10)
                 c_reactor_new = jnp.maximum(c_reactor_new, 0.0)
                 new_state = jnp.append(
                     jnp.append(c_reactor_new, c_pv),
@@ -2622,7 +2681,10 @@ def integrate_process(
 
         c_seg = ys_seg[:, :n_non_volume]
         c_seg = c_seg.at[:, :n_reactor].set(jnp.maximum(c_seg[:, :n_reactor], 0.0))
-        V_seg = jnp.maximum(ys_seg[:, mb.volume_idx], 1e-10)
+        V_seg = _require_reactor_volume_above_threshold(
+            ys_seg[:, mb.volume_idx],
+            context="segmented integration output volume",
+        )
         t_seg = seg_t_arrays[seg_idx]
 
         # Each segment starts at the previous boundary t_b. For non-first

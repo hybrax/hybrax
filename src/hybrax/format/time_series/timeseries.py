@@ -68,12 +68,12 @@ class TimeSeries(eqx.Module):
     """Scalar-valued time series with optional samples and/or spline state.
 
     The `dtype` field governs all floating-point array fields (`times`,
-    `values`, `jump_times`, `breaks`, `coeffs`). It defaults to
+    `values`, `jump_times`, `breaks`, `coeffs`). It defaults to requested
     `jnp.float64`.
 
     Note: if `jax_enable_x64` is off, `jnp.float64` will silently be
-    downgraded by JAX to float32; setting x64 mode is the user's
-    responsibility.
+    downgraded by JAX to float32. In that case, `dtype` records the actual
+    dtype JAX can represent.
     """
 
     times: jnp.ndarray | None = None
@@ -85,7 +85,7 @@ class TimeSeries(eqx.Module):
     derived: bool = eqx.field(static=True, default=False)
     continuity_side: str = eqx.field(static=True, default="right")
     metadata: Any = eqx.field(static=True, default=None)
-    dtype: Any = eqx.field(static=True, default=jnp.dtype(jnp.float64))
+    dtype: jnp.dtype = eqx.field(static=True, default=jnp.dtype(jnp.float64))
 
     def __init__(
         self,
@@ -102,9 +102,10 @@ class TimeSeries(eqx.Module):
         dtype: Any | None = None,
     ) -> None:
         # Resolve dtype first so all field setup can use it.
-        dtype_resolved = (
+        dtype_requested = (
             jnp.dtype(dtype) if dtype is not None else jnp.dtype(jnp.float64)
         )
+        dtype_resolved = jnp.asarray(0.0, dtype=dtype_requested).dtype
         object.__setattr__(self, "dtype", dtype_resolved)
 
         has_discrete = times is not None or values is not None
@@ -365,9 +366,7 @@ class TimeSeries(eqx.Module):
 
     def _binary_discrete(self, other: "TimeSeries", op: str) -> "TimeSeries":
         if self.dtype != other.dtype:
-            raise TypeError(
-                f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}"
-            )
+            raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
         if not self._has_discrete() or not other._has_discrete():
             raise ValueError(
                 "binary operation without spline requires both operands to "
@@ -420,9 +419,7 @@ class TimeSeries(eqx.Module):
 
     def _binary_exact(self, other: "TimeSeries", op: str) -> "TimeSeries":
         if self.dtype != other.dtype:
-            raise TypeError(
-                f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}"
-            )
+            raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
         if self.breaks is None or self.coeffs is None:
             raise ValueError("left operand missing spline representation")
         if other.breaks is None or other.coeffs is None:
@@ -483,9 +480,7 @@ class TimeSeries(eqx.Module):
 
     def _binary_approx(self, other: "TimeSeries", op: str) -> "TimeSeries":
         if self.dtype != other.dtype:
-            raise TypeError(
-                f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}"
-            )
+            raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
         if self.breaks is None or self.coeffs is None:
             raise ValueError("left operand missing spline representation")
         if other.breaks is None or other.coeffs is None:

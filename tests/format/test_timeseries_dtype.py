@@ -4,6 +4,8 @@ x64 mode is enabled globally in `tests/conftest.py`.
 """
 
 import warnings
+import subprocess
+import sys
 
 import jax.numpy as jnp
 import pytest
@@ -15,6 +17,7 @@ from bp_format.splines import _fit_spline_timeseries
 # ---------------------------------------------------------------------------
 # 1. Default dtype is float64
 # ---------------------------------------------------------------------------
+
 
 def test_default_dtype_is_float64():
     ts = TimeSeries(times=[1.0, 2.0, 3.0], values=[1.0, 2.0, 3.0])
@@ -39,6 +42,7 @@ def test_default_dtype_float64_spline_fields():
 # ---------------------------------------------------------------------------
 # 2. Explicit float32: fields and dtype attribute
 # ---------------------------------------------------------------------------
+
 
 def test_explicit_float32_dtype():
     ts = TimeSeries(
@@ -66,6 +70,7 @@ def test_explicit_float32_no_warning():
 # 3. Casting warning fires on float-input dtype mismatch
 # ---------------------------------------------------------------------------
 
+
 def test_casting_warning_fires_on_float_mismatch():
     with pytest.warns(UserWarning, match="casting") as record:
         TimeSeries(
@@ -81,12 +86,14 @@ def test_casting_warning_fires_on_float_mismatch():
 # 4. No casting warning on plain Python-list input
 # ---------------------------------------------------------------------------
 
+
 def test_no_casting_warning_for_python_list_input():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         TimeSeries(times=[1.0, 2.0], values=[1.0, 2.0])
     casting_warnings = [
-        w for w in caught
+        w
+        for w in caught
         if issubclass(w.category, UserWarning) and "casting" in str(w.message)
     ]
     assert casting_warnings == [], (
@@ -97,6 +104,7 @@ def test_no_casting_warning_for_python_list_input():
 # ---------------------------------------------------------------------------
 # 5. JSON roundtrip preserves float32 dtype
 # ---------------------------------------------------------------------------
+
 
 def test_json_roundtrip_preserves_float32():
     ts = TimeSeries(
@@ -115,6 +123,7 @@ def test_json_roundtrip_preserves_float32():
 # 6. JSON roundtrip preserves float64 dtype
 # ---------------------------------------------------------------------------
 
+
 def test_json_roundtrip_preserves_float64():
     ts = TimeSeries(times=[1.0, 2.0, 3.0], values=[4.0, 5.0, 6.0])
     d = ts.to_dict()
@@ -127,6 +136,7 @@ def test_json_roundtrip_preserves_float64():
 # ---------------------------------------------------------------------------
 # 7. to_dict includes "dtype" string
 # ---------------------------------------------------------------------------
+
 
 def test_to_dict_includes_dtype_string_float64():
     ts = TimeSeries(times=[1.0, 2.0], values=[1.0, 2.0])
@@ -149,6 +159,7 @@ def test_to_dict_includes_dtype_string_float32():
 # 8. Backwards compat: old dict without "dtype" key defaults to float64
 # ---------------------------------------------------------------------------
 
+
 def test_backwards_compat_no_dtype_key():
     old_dict = {"times": [1.0, 2.0, 3.0], "values": [1.0, 2.0, 3.0]}
     ts = TimeSeries.from_dict(old_dict)
@@ -159,6 +170,7 @@ def test_backwards_compat_no_dtype_key():
 # ---------------------------------------------------------------------------
 # 9. from_dict explicit dtype kwarg overrides saved field
 # ---------------------------------------------------------------------------
+
 
 def test_from_dict_dtype_kwarg_overrides_saved_field():
     ts = TimeSeries(
@@ -180,6 +192,7 @@ def test_from_dict_dtype_kwarg_overrides_saved_field():
 # 10. Binary op on dtype-mismatched TimeSeries raises TypeError
 # ---------------------------------------------------------------------------
 
+
 def test_binary_op_dtype_mismatch_raises():
     a = TimeSeries(times=[1.0, 2.0, 3.0], values=[1.0, 2.0, 3.0])
     b = TimeSeries(
@@ -191,9 +204,30 @@ def test_binary_op_dtype_mismatch_raises():
         _ = a + b
 
 
+def test_x64_off_default_dtype_matches_actual_arrays_in_subprocess():
+    code = """
+import jax
+jax.config.update("jax_enable_x64", False)
+import jax.numpy as jnp
+from bp_format.time_series.timeseries import TimeSeries
+
+a = TimeSeries(times=[1.0, 2.0], values=[1.0, 2.0])
+b = TimeSeries(times=[1.0, 2.0], values=[3.0, 4.0], dtype=jnp.float32)
+c = a + b
+
+assert a.dtype == jnp.dtype("float32")
+assert a.times.dtype == jnp.float32
+assert b.dtype == jnp.dtype("float32")
+assert c.dtype == jnp.dtype("float32")
+assert c.values.dtype == jnp.float32
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
 # ---------------------------------------------------------------------------
 # 11. evaluate_many(ts.times) ≈ ts.values at tight rtol with float64
 # ---------------------------------------------------------------------------
+
 
 def test_evaluate_many_roundtrip_float64_tight():
     t = jnp.asarray([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0])

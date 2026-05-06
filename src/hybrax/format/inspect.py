@@ -339,16 +339,12 @@ def _count_datapoints_in_value(value) -> int:
     TimeSeries -> number of times
     StaticVariable -> count as 1
     """
-    try:
-        if _is_dynamic_series(value):
-            return int(len(value.times))
-        elif _is_spline_only_series(value):
-            return int(len(value.breaks))
-        elif hasattr(value, "value"):
-            return 1
-    except Exception:
-        # If something unexpected (e.g., None or incompatible), treat as 0
-        return 0
+    if _is_dynamic_series(value):
+        return int(len(value.times))
+    elif _is_spline_only_series(value):
+        return int(len(value.breaks))
+    elif hasattr(value, "value"):
+        return 1
     return 0
 
 
@@ -432,11 +428,7 @@ def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> No
 
     total_datapoints = 0
     for cs_key, cs in dataset.case_studies.items():
-        cs_header = f"{cs_key}"
-        try:
-            cs_header += f"  (case_id: {cs.case_id})"
-        except Exception:
-            pass
+        cs_header = f"{cs_key}  (case_id: {cs.case_id})"
         if verbosity == 3:
             print(f"  - {cs_header}")
             print(f"      Organism: {cs.organism}")

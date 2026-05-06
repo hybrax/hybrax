@@ -48,6 +48,14 @@ from .time_series import spline_ops
 _CONSTANT_SPLINE_DT = 1e-6
 _IS_CONSTANT_ABS_TOL = 1e-8
 _IS_CONSTANT_REL_TOL = 1e-4
+_JUMP_VALUE_ABS_TOL = 1e-12
+_FLOAT_EQ_ATOL = 1e-12
+_FLOAT32_TOL_MULTIPLIER = 64.0
+_ADF_MIN_FOR_DIVISION = 1e-12
+_PCHIP_OVERSHOOT_REL_TOL = 0.05
+_PCHIP_NEGATIVE_OVERSHOOT_FLOOR = -1e-8
+_NONNEGATIVE_DATA_MIN = 0.0
+_MIN_REACTOR_VOLUME = 1e-10
 
 DEFAULT_MAX_SEGMENTS = 16
 DEFAULT_MAX_CTRL_POINTS = 128
@@ -98,22 +106,43 @@ def _evaluate_timeseries_on_grid(ts: TimeSeries, grid: jnp.ndarray) -> jnp.ndarr
     )
 
 
-def _ppoly_to_power_basis(ppoly) -> Tuple[np.ndarray, np.ndarray]:
-    """Convert SciPy PPoly coefficients to local cubic power-basis arrays."""
-    x = np.asarray(ppoly.x, dtype=np.float64)
-    c = np.asarray(ppoly.c, dtype=np.float64)
-    if c.shape[0] < 1 or c.shape[0] > 4:
-        raise ValueError("unsupported polynomial degree")
-    if c.shape[0] < 4:
-        full = np.zeros((4, c.shape[1]), dtype=np.float64)
-        full[4 - c.shape[0] :, :] = c
-        c = full
+def _adf_for_division(adf: jnp.ndarray) -> jnp.ndarray:
+    """Fail fast when ADF is too close to zero before division."""
+    adf_arr = jnp.asarray(adf)
+    return eqx.error_if(
+        adf_arr,
+        jnp.any(jnp.abs(adf_arr) <= _ADF_MIN_FOR_DIVISION),
+        "Pseudobatch ADF reached zero or near-zero; reactor volume/sample "
+        "compensation is physically invalid.",
+    )
 
-    widths = np.diff(x)
-    keep = widths > 0
-    breaks = np.concatenate([x[:-1][keep], x[-1:]], axis=0)
-    coeffs = np.stack([c[3], c[2], c[1], c[0]], axis=1)[keep]
-    return breaks, coeffs
+
+def _require_reactor_volume_scalar(volume: float, *, context: str) -> float:
+    """Python-side reactor-volume invariant check."""
+    volume_float = float(volume)
+    if volume_float <= _MIN_REACTOR_VOLUME:
+        raise ValueError(f"{context} reached zero or near-zero reactor volume.")
+    return volume_float
+
+
+def _require_volume_piece_above_threshold(
+    coeff_row: np.ndarray,
+    width: float,
+    *,
+    context: str,
+) -> None:
+    """Fail if a local cubic reactor-volume piece crosses the volume floor."""
+    a, b, c, d = np.asarray(coeff_row, dtype=np.float64)
+    candidates = [0.0, float(width)]
+    derivative_roots = np.roots(np.asarray([3.0 * d, 2.0 * c, b], dtype=np.float64))
+    for root in derivative_roots:
+        if abs(root.imag) <= _FLOAT_EQ_ATOL:
+            t = float(root.real)
+            if 0.0 <= t <= width:
+                candidates.append(t)
+    values = [a + b * t + c * (t**2) + d * (t**3) for t in candidates]
+    if min(values) <= _MIN_REACTOR_VOLUME:
+        raise ValueError(f"{context} reached zero or near-zero reactor volume.")
 
 
 def _fit_spline_timeseries(
@@ -135,7 +164,7 @@ def _fit_spline_timeseries(
     else:
         raise ValueError(f"Unsupported spline method {method!r}")
 
-    breaks, coeffs = _ppoly_to_power_basis(ppoly)
+    breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
     return TimeSeries(
         times=t,
         values=y,
@@ -311,7 +340,7 @@ def _combine_segment_splines(
             bc_type="natural",
             extrapolate=True,
         )
-        seg_breaks, seg_coeffs = _ppoly_to_power_basis(ppoly)
+        seg_breaks, seg_coeffs = spline_ops.ppoly_to_power_basis(ppoly)
         if seg_coeffs.shape[0] == 0:
             continue
 
@@ -391,10 +420,10 @@ def fit_timeseries_spline(
 
         if n_pts < 2:
             if n_pts == 1:
-                seg_t = jnp.array([seg_t[0], seg_t[0] + 1e-6])
+                seg_t = jnp.array([seg_t[0], seg_t[0] + _CONSTANT_SPLINE_DT])
                 seg_v = jnp.array([seg_v[0], seg_v[0]])
             else:
-                seg_t = jnp.array([0.0, 1e-6])
+                seg_t = jnp.array([0.0, _CONSTANT_SPLINE_DT])
                 seg_v = jnp.array([0.0, 0.0])
             segment_points.append((seg_t, seg_v))
             continue
@@ -776,7 +805,7 @@ def _series_jump_times_and_values(
         post = series.evaluate(start, side="right")
         delta = post - pre
         has_start = bool(jnp.any(jump_times == start)) if jump_times.size > 0 else False
-        if (not has_start) and abs(float(delta)) > 1e-12:
+        if (not has_start) and abs(float(delta)) > _JUMP_VALUE_ABS_TOL:
             jump_times = jnp.concatenate([jnp.asarray([start]), jump_times])
             jump_values = jnp.concatenate([jnp.asarray([delta]), jump_values])
     if jump_times.size == 0:
@@ -882,6 +911,7 @@ def _build_direct_pseudobatch_series(
     breaks_np = np.asarray(breaks, dtype=np.float64)
     n_pieces = breaks_np.size - 1
     V_init = float(process.volume.initial_volume)
+    _require_reactor_volume_scalar(V_init, context="initial reactor volume")
 
     continuous_feed_coeffs: dict[str, jnp.ndarray] = {}
     feed_concentrations: dict[str, float] = {}
@@ -923,6 +953,10 @@ def _build_direct_pseudobatch_series(
     boundary_volume = V_init
     if n_pieces > 0:
         boundary_volume += float(continuous_volume_coeffs[0, 0])
+    _require_reactor_volume_scalar(
+        boundary_volume,
+        context="pseudobatch boundary reactor volume",
+    )
     boundary_sample_comp = sample_compensation
     boundary_adf = boundary_volume * boundary_sample_comp / V_init
     boundary_feed_corr = feed_corr_current
@@ -935,14 +969,25 @@ def _build_direct_pseudobatch_series(
             if sample_delta != 0.0:
                 v_before_sample = V_init + continuous_at_break + discrete_volume_delta
                 v_after_sample = v_before_sample + sample_delta
-                if v_before_sample <= 0.0 or v_after_sample <= 0.0:
-                    raise ValueError(
-                        "Sampling event would make reactor volume non-positive."
-                    )
+                _require_reactor_volume_scalar(
+                    v_before_sample,
+                    context="pre-sampling reactor volume",
+                )
+                _require_reactor_volume_scalar(
+                    v_after_sample,
+                    context="post-sampling reactor volume",
+                )
                 sample_compensation *= v_before_sample / v_after_sample
                 discrete_volume_delta += sample_delta
 
             for vc_name, delta_v, c_feed in event["boluses"]:
+                v_after_bolus = (
+                    V_init + continuous_at_break + discrete_volume_delta + delta_v
+                )
+                _require_reactor_volume_scalar(
+                    v_after_bolus,
+                    context="post-bolus reactor volume",
+                )
                 delta_fc = sample_compensation * delta_v * c_feed / V_init
                 if delta_fc != 0.0:
                     feed_corr_jump_times.append(float(t_i))
@@ -954,6 +999,11 @@ def _build_direct_pseudobatch_series(
 
         vol_coeff = np.asarray(continuous_volume_coeffs[i], dtype=np.float64).copy()
         vol_coeff[0] += V_init + discrete_volume_delta
+        _require_volume_piece_above_threshold(
+            vol_coeff,
+            breaks_np[i + 1] - breaks_np[i],
+            context="pseudobatch reactor volume spline",
+        )
         reactor_coeffs[i] = vol_coeff
         sample_comp_values[i] = sample_compensation
         adf_coeffs[i] = vol_coeff * (sample_compensation / V_init)
@@ -1138,7 +1188,7 @@ def _prepare_knots(t: jnp.ndarray, y: jnp.ndarray):
     _, idx = jnp.unique(t, return_index=True)
     t, y = t[idx], y[idx]
     if len(t) < 2:
-        t = jnp.array([t[0], t[0] + 1e-6])
+        t = jnp.array([t[0], t[0] + _CONSTANT_SPLINE_DT])
         y = jnp.array([y[0], y[0]])
     return jnp.asarray(t), jnp.asarray(y)
 
@@ -1261,10 +1311,13 @@ def build_splines(
         data_min = float(jnp.min(c_star_vals))
         data_max = float(jnp.max(c_star_vals))
         data_range = max(data_max - data_min, 1.0)
-        overshoot_tol = 0.05 * data_range
+        overshoot_tol = _PCHIP_OVERSHOOT_REL_TOL * data_range
         dense_min = float(jnp.min(c_dense))
         dense_max = float(jnp.max(c_dense))
-        negative_overshoot = data_min >= 0.0 and dense_min < -1e-8
+        negative_overshoot = (
+            data_min >= _NONNEGATIVE_DATA_MIN
+            and dense_min < _PCHIP_NEGATIVE_OVERSHOOT_FLOOR
+        )
         range_overshoot = (dense_min < data_min - overshoot_tol) or (
             dense_max > data_max + overshoot_tol
         )
@@ -1369,6 +1422,22 @@ def _assert_same_timeseries(
     species_name: str,
 ) -> None:
     """Fail if two shared process-level TimeSeries differ materially."""
+
+    def _allclose_for_dtype(left_value, right_value) -> bool:
+        left_arr = np.asarray(left_value)
+        right_arr = np.asarray(right_value)
+        dtype = np.result_type(left_arr.dtype, right_arr.dtype)
+        if np.issubdtype(dtype, np.floating):
+            tol = max(
+                _FLOAT_EQ_ATOL,
+                _FLOAT32_TOL_MULTIPLIER * float(np.finfo(dtype).eps),
+            )
+            left_arr = left_arr.astype(dtype, copy=False)
+            right_arr = right_arr.astype(dtype, copy=False)
+        else:
+            tol = _FLOAT_EQ_ATOL
+        return bool(np.allclose(left_arr, right_arr, rtol=tol, atol=tol))
+
     for attr in ("breaks", "coeffs", "jump_times"):
         left_arr = getattr(left, attr, None)
         right_arr = getattr(right, attr, None)
@@ -1378,12 +1447,7 @@ def _assert_same_timeseries(
             raise ValueError(
                 f"Shared {name} TimeSeries mismatch for species {species_name!r}."
             )
-        if not np.allclose(
-            np.asarray(left_arr, dtype=float),
-            np.asarray(right_arr, dtype=float),
-            rtol=1e-12,
-            atol=1e-12,
-        ):
+        if not _allclose_for_dtype(left_arr, right_arr):
             raise ValueError(
                 f"Shared {name} TimeSeries mismatch for species {species_name!r}."
             )
@@ -1392,8 +1456,8 @@ def _assert_same_timeseries(
     right_meta = right.metadata if isinstance(right.metadata, dict) else {}
     left_jumps = np.asarray(left_meta.get("jump_values", []), dtype=float)
     right_jumps = np.asarray(right_meta.get("jump_values", []), dtype=float)
-    if left_jumps.shape != right_jumps.shape or not np.allclose(
-        left_jumps, right_jumps, rtol=1e-12, atol=1e-12
+    if left_jumps.shape != right_jumps.shape or not _allclose_for_dtype(
+        left_jumps, right_jumps
     ):
         raise ValueError(
             f"Shared {name} jump metadata mismatch for species {species_name!r}."
@@ -1597,7 +1661,7 @@ def evaluate_real_concentration(
     else:
         fc = _evaluate_many_with_boundary_start(feed_corr_ts, t_eval)
 
-    adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+    adf = _adf_for_division(adf)
 
     return (cs + fc) / adf
 
@@ -1669,7 +1733,7 @@ class BacktransformSpline(eqx.Module):
         cs = self.c_star_spline(t)
         adf = _evaluate_with_boundary_start(self.adf_ts, t, side="left")
         fc = _evaluate_with_boundary_start(self.feed_corr_ts, t, side="left")
-        adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+        adf = _adf_for_division(adf)
         return (cs + fc) / adf
 
     def derivative(self):
@@ -1699,7 +1763,7 @@ class BacktransformSpline(eqx.Module):
                 return t * 0.0
             adf = _evaluate_with_boundary_start(self.adf_ts, t, side="left")
             dadf_dt = self.dadf_ts.evaluate(t, side="left")
-            adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+            adf = _adf_for_division(adf)
             dc_star_dt = dc_star(t)
             dfc_dt = self.dfc_ts.evaluate(t, side="left")
             # c(t) = (cs + fc) / adf; derive dc/dt from the evaluated c(t)
@@ -1760,8 +1824,6 @@ def build_backtransform_spline(
 
     adf_times = jnp.asarray(adf_ts.times, dtype=float)
     adf_values = _timeseries_base_values_without_jumps(adf_ts)
-    adf_jump_times = jnp.asarray(adf_ts.jump_times, dtype=float)
-    adf_jump_values = _timeseries_jump_values(adf_ts)
     adf_jump_times, adf_jump_values = _series_jump_times_and_values(adf_ts)
 
     fc_interp = _timeseries_interp_mode(
@@ -1867,7 +1929,7 @@ class BatchedBacktransformSpline(eqx.Module):
         if int(self.adf_jump_times.shape[0]) > 0:
             adf_jump_idx = jnp.searchsorted(self.adf_jump_times, t, side="left")
             adf = adf + self.adf_jump_cumsum[adf_jump_idx]
-        adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+        adf = _adf_for_division(adf)
         result = (cs + fc) / adf
         return jnp.where(self.constant_mask, self.constant_values, result)
 
@@ -1901,7 +1963,7 @@ class BatchedBacktransformSpline(eqx.Module):
         if int(self.adf_jump_times.shape[0]) > 0:
             adf_jump_idx = jnp.searchsorted(self.adf_jump_times, t, side="left")
             adf = adf + self.adf_jump_cumsum[adf_jump_idx]
-        adf = jnp.where(jnp.abs(adf) < 1e-12, 1e-12, adf)
+        adf = _adf_for_division(adf)
         # Derivative ignores instantaneous jumps and follows exact smooth pieces.
         dadf_dt = self.adf_deriv_ppoly(t)
         c_val = (cs + fc) / adf
@@ -2022,16 +2084,20 @@ def build_batched_conc_splines(
                     and jnp.allclose(
                         adf_values,
                         _baseline_values_on_grid(sp.adf_ts, x_common),
-                        atol=1e-12,
+                        atol=_FLOAT_EQ_ATOL,
                     )
                     and jnp.array_equal(adf_jump_times, other_jump_times)
-                    and jnp.allclose(adf_jump_cumsum, other_jump_cumsum, atol=1e-12)
+                    and jnp.allclose(
+                        adf_jump_cumsum,
+                        other_jump_cumsum,
+                        atol=_FLOAT_EQ_ATOL,
+                    )
                     and jnp.allclose(
                         adf_deriv_coeffs,
                         _power_coeffs_to_ppoly_coeffs(
                             spline_ops.derivative_coeffs(other_base_coeffs)
                         ),
-                        atol=1e-12,
+                        atol=_FLOAT_EQ_ATOL,
                     )
                 ):
                     raise ValueError(
@@ -2111,7 +2177,7 @@ def build_batched_conc_splines(
                 continue
             idx = np.searchsorted(shared_jump_times, jt_np)
             valid = idx < shared_jump_times.shape[0]
-            valid &= np.isclose(shared_jump_times[idx], jt_np, atol=1e-12)
+            valid &= np.isclose(shared_jump_times[idx], jt_np, atol=_FLOAT_EQ_ATOL)
             np.add.at(jump_matrix[i], idx[valid], jv_np[valid])
         jump_cumsum = np.concatenate(
             [np.zeros((n_sp, 1), dtype=float), np.cumsum(jump_matrix, axis=1)],

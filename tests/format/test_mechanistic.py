@@ -13,32 +13,36 @@ import numpy as np
 
 import bp_format
 from bp_format import (
+    BiologicalOde,
     BioProcess,
     BioProcessMetadata,
-    TimeAxis,
-    TimeSeries,
-    StaticVariable,
+    FeedMediumComponent,
+    FeedMedium,
+    FeedVolumeChange,
+    ProcessVariable,
+    RateDecl,
     ReactorMedium,
     ReactorMediumComponent,
-    FeedMedium,
-    FeedMediumComponent,
-    FeedVolumeChange,
     SampleVolumeChange,
+    StaticVariable,
+    TimeAxis,
+    TimeSeries,
     Volume,
-    ProcessVariable,
 )
 from bp_format.mechanistic import (
     ControlSplines,
     RhsOde,
-    get_control_splines,
-    get_rhs_ode,
-    extract_discrete_events,
-    estimate_specific_rates,
-    integrate_process,
-    integrate_process_pseudospace,
-    build_state_splines,
+    UserDefinedRhsOde,
+    build_derived_func,
     build_q_func,
     build_rates_func,
+    build_state_splines,
+    extract_discrete_events,
+    estimate_specific_rates,
+    get_control_splines,
+    get_rhs_ode,
+    integrate_process,
+    integrate_process_pseudospace,
 )
 from bp_format.splines import (
     make_interpax_spline,
@@ -1119,14 +1123,6 @@ class TestIntracellularRoundTrip:
 # ---------------------------------------------------------------------------
 # User-defined biological ODE
 # ---------------------------------------------------------------------------
-
-
-from bp_format import BiologicalOde, RateDecl
-from bp_format.mechanistic import (
-    UserDefinedRhsOde,
-    build_user_defined_rhs_ode,
-    build_derived_func,
-)
 
 
 def _make_batch_with_biological_ode_intracellular():
@@ -2560,7 +2556,6 @@ class TestIntegrateProcess:
             mb,
             rates_func,
             t_eval,
-            state_splines=state_splines,
         )
         pseudo = integrate_process_pseudospace(
             process,
@@ -2589,6 +2584,44 @@ class TestIntegrateProcess:
         assert float(c_pseudo[3, 0]) == pytest.approx(float(c_ref[3, 0]), rel=5e-2)
         assert float(c_pseudo[1, 1]) == pytest.approx(float(c_ref[1, 1]), rel=5e-2)
         assert float(c_pseudo[3, 1]) == pytest.approx(float(c_ref[3, 1]), rel=5e-2)
+
+    def test_integrate_process_fails_when_event_empties_reactor(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-2.0]),
+        )
+        ctrl = get_control_splines(process)
+        mb = get_rhs_ode(process)
+
+        def q_func(t):
+            del t
+            return jnp.zeros(mb.n_reactor_states)
+
+        rates_func = _wrap_q_as_rates(mb, q_func)
+        with pytest.raises(Exception, match="reactor volume"):
+            integrate_process(
+                process,
+                ctrl,
+                mb,
+                rates_func,
+                jnp.array([0.0, 5.0, 10.0]),
+            )
+
+    def test_pseudobatch_transform_fails_when_sampling_empties_reactor(self):
+        process = _make_process(with_controlled_flow=False, with_controlled_pv=False)
+        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+            name="sampling",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0], [-1.0]),
+        )
+        with pytest.raises(ValueError, match="reactor volume"):
+            _apply_pseudobatch_transform(process)
 
     def test_pseudospace_runs_without_transform_metadata(self):
         process = _make_process(with_controlled_flow=True, with_controlled_pv=False)
