@@ -131,8 +131,7 @@ class TimeSeries(eqx.Module):
                 "for spline representation"
             )
 
-        if continuity_side not in {"left", "right"}:
-            raise ValueError("continuity_side must be 'left' or 'right'")
+        spline_ops.validate_side(continuity_side, name="continuity_side")
 
         object.__setattr__(self, "derived", bool(derived))
         object.__setattr__(self, "continuity_side", continuity_side)

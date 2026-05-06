@@ -139,6 +139,7 @@ from .dataclasses import (
     TimeSeries,
 )
 from .splines import (
+    _DEFAULT_BATCH_KNOTS,
     _MIN_REACTOR_VOLUME,
     _adf_for_division,
     _constant_timeseries,
@@ -153,7 +154,6 @@ from .splines import (
 # Batched spline helpers
 # ---------------------------------------------------------------------------
 
-_DEFAULT_BATCH_KNOTS = 128
 _MIN_ACTIVE_BIOMASS = 1e-6
 _SEGMENT_BOUNDARY_TOL = 1e-12
 _MIN_SOLVER_DT0 = 1e-6
@@ -1563,6 +1563,9 @@ def build_q_func(
             r_full = jnp.asarray(r_func(t), dtype=float)
             r_reactor = r_full[:n_reactor]
 
+        # For species in q∩r the feed-balance also produces an r-coupling term;
+        # subtract it here so q is recovered purely from the reaction-side mass
+        # balance (overlap_mask selects exactly those species).
         q_all = (dc_dt - feed_term - jnp.where(overlap_mask, r_reactor, 0.0)) / X_active
         # Intracellular correction: q[biomass] from this division is the
         # *apparent* specific rate of measured biomass; subtract the

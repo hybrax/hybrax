@@ -10,14 +10,17 @@ import numpy as np
 from scipy.interpolate import PPoly
 
 
-def _validate_side(side: str) -> None:
-    if side not in {"left", "right"}:
-        raise ValueError("side must be 'left' or 'right'")
+VALID_SIDES = ("left", "right")
+
+
+def validate_side(side: str, *, name: str = "side") -> None:
+    if side not in VALID_SIDES:
+        raise ValueError(f"{name} must be 'left' or 'right'")
 
 
 def piece_index(t: Any, breaks: jnp.ndarray, side: str) -> jnp.ndarray:
     """Return the piece index for time t with continuity-side semantics."""
-    _validate_side(side)
+    validate_side(side)
     raw = jnp.searchsorted(breaks, t, side=side) - 1
     return jnp.clip(raw, 0, breaks.shape[0] - 2)
 
