@@ -33,6 +33,7 @@ from bp_format.serialization import (
 # Low-level structures
 # ---------------------------------------------------------------------------
 
+
 def test_time_axis_creation():
     ta = TimeAxis(unit="hours", start=0.0, end=48.0, time_reference="inoculation")
     assert ta.unit == "hours"
@@ -43,7 +44,7 @@ def test_time_axis_creation():
 
 def test_timeseries_creation():
     ts = TimeSeries(
-        times=jnp.array([0., 12., 24., 36., 48.]),
+        times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     assert ts.times.shape == (5,)
@@ -63,7 +64,9 @@ def test_bioprocess_metadata_creation():
 
 
 def test_bioprocess_metadata_with_notes():
-    meta = BioProcessMetadata(name="fb_001", process_type="fed_batch", notes="Replicate A")
+    meta = BioProcessMetadata(
+        name="fb_001", process_type="fed_batch", notes="Replicate A"
+    )
     assert meta.notes == "Replicate A"
 
 
@@ -71,9 +74,10 @@ def test_bioprocess_metadata_with_notes():
 # Component structures
 # ---------------------------------------------------------------------------
 
+
 def test_process_variable_timeseries():
     ts = TimeSeries(
-        times=jnp.array([0., 1., 2.]),
+        times=jnp.array([0.0, 1.0, 2.0]),
         values=jnp.array([37.0, 37.0, 37.0]),
     )
     pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
@@ -91,7 +95,8 @@ def test_process_variable_static():
 
 def test_feed_medium_component_static():
     fmc = FeedMediumComponent(
-        name="glucose", unit="g/L",
+        name="glucose",
+        unit="g/L",
         concentration=StaticVariable(value=500.0),
         is_controlled=True,
     )
@@ -100,21 +105,26 @@ def test_feed_medium_component_static():
 
 
 def test_feed_medium_component_timeseries():
-    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([100.0, 200.0]))
-    fmc = FeedMediumComponent(name="glucose", unit="g/L", concentration=ts, is_controlled=True)
+    ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([100.0, 200.0]))
+    fmc = FeedMediumComponent(
+        name="glucose", unit="g/L", concentration=ts, is_controlled=True
+    )
     assert hasattr(fmc.concentration, "times")
 
 
 def test_reactor_medium_component_timeseries():
-    ts = TimeSeries(times=jnp.array([0., 1., 2.]), values=jnp.array([0.1, 0.5, 1.0]))
-    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    ts = TimeSeries(times=jnp.array([0.0, 1.0, 2.0]), values=jnp.array([0.1, 0.5, 1.0]))
+    rc = ReactorMediumComponent(
+        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+    )
     assert rc.name == "biomass"
     assert rc.is_intracellular is False
 
 
 def test_reactor_medium_component_static():
     rc = ReactorMediumComponent(
-        name="biomass", unit="g/L",
+        name="biomass",
+        unit="g/L",
         concentration=StaticVariable(value=1.0),
         is_intracellular=False,
     )
@@ -125,6 +135,7 @@ def test_reactor_medium_component_static():
 # Medium-level structures
 # ---------------------------------------------------------------------------
 
+
 def test_feed_medium_empty_components():
     fm = FeedMedium(name="glucose_feed", density=1.0, density_unit="kg/L")
     assert fm.name == "glucose_feed"
@@ -133,12 +144,15 @@ def test_feed_medium_empty_components():
 
 def test_feed_medium_with_components():
     fmc = FeedMediumComponent(
-        name="glucose", unit="g/L",
+        name="glucose",
+        unit="g/L",
         concentration=StaticVariable(value=500.0),
         is_controlled=True,
     )
     fm = FeedMedium(
-        name="glucose_feed", density=1.1, density_unit="kg/L",
+        name="glucose_feed",
+        density=1.1,
+        density_unit="kg/L",
         components={"glucose": fmc},
     )
     assert "glucose" in fm.components
@@ -151,17 +165,29 @@ def test_reactor_medium_empty_components():
 
 
 def test_reactor_medium_with_components():
-    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([0.1, 0.5]))
-    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
-    rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc})
+    ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.1, 0.5]))
+    rc = ReactorMediumComponent(
+        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+    )
+    rm = ReactorMedium(
+        name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc}
+    )
     assert "biomass" in rm.components
 
 
 def test_volume_change_continuous():
-    ts = TimeSeries(times=jnp.array([0., 5., 10.]), values=jnp.array([0.0, 0.5, 1.0]))
+    ts = TimeSeries(
+        times=jnp.array([0.0, 5.0, 10.0]), values=jnp.array([0.0, 0.5, 1.0])
+    )
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = FeedVolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
-                          feed_medium=fm, values=ts)
+    vc = FeedVolumeChange(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=ts,
+    )
     assert vc.name == "feed"
     assert vc.is_continuous is True
     assert vc.values.times.shape == (3,)
@@ -170,8 +196,14 @@ def test_volume_change_continuous():
 def test_volume_change_discrete():
     ts = TimeSeries(times=jnp.array([2.0, 5.0]), values=jnp.array([0.5, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = FeedVolumeChange(name="bolus", unit="L", is_controlled=True, is_continuous=False,
-                          feed_medium=fm, values=ts)
+    vc = FeedVolumeChange(
+        name="bolus",
+        unit="L",
+        is_controlled=True,
+        is_continuous=False,
+        feed_medium=fm,
+        values=ts,
+    )
     assert vc.is_continuous is False
 
 
@@ -182,10 +214,16 @@ def test_volume_default_volume_changes():
 
 
 def test_volume_with_changes():
-    ts = TimeSeries(times=jnp.array([0., 10.]), values=jnp.array([0.0, 0.5]))
+    ts = TimeSeries(times=jnp.array([0.0, 10.0]), values=jnp.array([0.0, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = FeedVolumeChange(name="feed", unit="L", is_controlled=True, is_continuous=True,
-                          feed_medium=fm, values=ts)
+    vc = FeedVolumeChange(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=ts,
+    )
     vol = Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc})
     assert "feed" in vol.volume_changes
 
@@ -194,10 +232,13 @@ def test_volume_with_changes():
 # Process-level structures
 # ---------------------------------------------------------------------------
 
+
 def test_bioprocess_minimal():
     process = BioProcess(
         metadata=BioProcessMetadata(name="batch_001", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=24.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
@@ -207,11 +248,13 @@ def test_bioprocess_minimal():
 
 
 def test_bioprocess_with_process_variables():
-    ts = TimeSeries(times=jnp.array([0., 1.]), values=jnp.array([37.0, 37.0]))
+    ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([37.0, 37.0]))
     pv = ProcessVariable(name="temperature", unit="°C", is_controlled=True, values=ts)
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
         process_variables={"temperature": pv},
@@ -222,7 +265,9 @@ def test_bioprocess_with_process_variables():
 def test_case_study_creation():
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=24.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
@@ -240,7 +285,9 @@ def test_case_study_creation():
 def test_benchmark_dataset_creation():
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=24.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
@@ -269,6 +316,7 @@ def test_benchmark_dataset_empty():
 # AugmentedBioProcess
 # ---------------------------------------------------------------------------
 
+
 def _make_minimal_process(name="p1"):
     return BioProcess(
         metadata=BioProcessMetadata(name=name, process_type="batch"),
@@ -276,9 +324,7 @@ def _make_minimal_process(name="p1"):
             unit="hours", start=0.0, end=24.0, time_reference="inoculation"
         ),
         volume=Volume(initial_volume=1.0, unit="L"),
-        reactor_medium=ReactorMedium(
-            name="medium", density=1.0, density_unit="kg/L"
-        ),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
 
 
@@ -303,7 +349,9 @@ def test_augmented_bioprocess_parent_process_required():
         AugmentedBioProcess(  # type: ignore[call-arg]
             metadata=BioProcessMetadata(name="c", process_type="batch"),
             time_axis=TimeAxis(
-                unit="hours", start=0.0, end=24.0,
+                unit="hours",
+                start=0.0,
+                end=24.0,
                 time_reference="inoculation",
             ),
             volume=Volume(initial_volume=1.0, unit="L"),
