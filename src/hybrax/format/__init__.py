@@ -39,6 +39,9 @@ from .dataclasses import (
     BenchmarkDataset,
 )
 
+# Import simulation helpers
+from .simulation import Simulation, SimulationEvent, SimulationResult
+
 
 # Import inspect
 from .inspect import (
@@ -95,6 +98,9 @@ __all__ = [
     "Bounds",
     "RateDecl",
     "BiologicalOde",
+    "Simulation",
+    "SimulationEvent",
+    "SimulationResult",
     # Utils
     "print_process_structure",
     "print_dataset_structure",

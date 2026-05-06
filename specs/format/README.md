@@ -14,6 +14,7 @@
 7. [Splines](07_splines.md) -- pseudobatch transform and spline fitting
 8. [Mechanistic](08_mechanistic.md) -- ODE RHS generation and integration
 9. [Utilities](09_utilities.md) -- cross-validation helpers
+10. [Simulation](10_simulation.md) -- deterministic ground-truth simulation helpers
 
 ## Module Reference
 
@@ -23,6 +24,7 @@
 | TimeSeries | `bp_format/time_series/` | [06_time_series.md](06_time_series.md) | Time-series container with optional fitted spline coefficients (eqx.Module) |
 | Splines | `bp_format/splines.py` | [07_splines.md](07_splines.md) | Pseudobatch transformation and segmented spline fitting |
 | Mechanistic | `bp_format/mechanistic.py` | [08_mechanistic.md](08_mechanistic.md) | JAX/Equinox ODE RHS generation and integration |
+| Simulation | `bp_format/simulation.py` | [10_simulation.md](10_simulation.md) | Deterministic simulation helpers for dense truth and event CSVs |
 | Serialization | `bp_format/serialization.py` | [03_serialization.md](03_serialization.md) | JSON save/load for the full data hierarchy |
 | Validation | `bp_format/validate.py` | [04_validation.md](04_validation.md) | Data integrity checks (9 validators) |
 | Inspection | `bp_format/inspect.py` | [05_inspection.md](05_inspection.md) | Text printing and matplotlib visualization |
@@ -108,18 +110,22 @@ FeedMedium
 
 ## Examples
 
-The `examples/` directory contains 11 case studies with complete data preprocessing workflows:
+The `examples/` directory contains case-study workflows plus focused
+simulation/verification examples:
 
-| Directory | Organism | Citation |
-|-----------|----------|----------|
-| `01_kittler_2022/` | E. coli | Kittler, S., Ebner, J., et al. (2022). Recombinant protein L: production, purification and characterization of a universal binding ligand. *Journal of Biotechnology*, 359, 108-115. |
-| `02_gotsmy_2023/` | E. coli | Gotsmy, M., Strobl, F., et al. (2023). Sulfate limitation increases specific plasmid DNA yield and productivity in E. coli fed-batch processes. *Microbial Cell Factories*, 22(1), 242. |
-| `03_bayer_2020_a/` | E. coli HMS174(DE3) | Bayer, B., Striedner, G., & Duerkop, M. (2020). Hybrid modeling and intensified DoE: an approach to accelerate upstream process characterization. *Biotechnology Journal*, 15(9), 2000121. |
-| `04_bayer_2020_b/` | E. coli HMS174(DE3) | Bayer, B., Striedner, G., & Duerkop, M. (2020). (same as above, variant B) |
-| `05_martens_2025_a/` -- `10_martens_2025_f/` | CHO (simulated) | Martens, A., Neufang, M., et al. (2025). Holistic Bioprocess Development Across Scales Using Multi-Fidelity Batch Bayesian Optimization. *arXiv preprint arXiv:2508.10970*. |
-| `11_tub_2025/` | V. natriegens | Unpublished data, TU Berlin, 2025. |
+| Directory | Type | Organism | Citation / purpose |
+|-----------|------|----------|--------------------|
+| `01_kittler_2022/` | case study | E. coli | Kittler, S., Ebner, J., et al. (2022). Recombinant protein L: production, purification and characterization of a universal binding ligand. *Journal of Biotechnology*, 359, 108-115. |
+| `02_gotsmy_2023/` | case study | E. coli | Gotsmy, M., Strobl, F., et al. (2023). Sulfate limitation increases specific plasmid DNA yield and productivity in E. coli fed-batch processes. *Microbial Cell Factories*, 22(1), 242. |
+| `03_bayer_2020_a/` | case study | E. coli HMS174(DE3) | Bayer, B., Striedner, G., & Duerkop, M. (2020). Hybrid modeling and intensified DoE: an approach to accelerate upstream process characterization. *Biotechnology Journal*, 15(9), 2000121. |
+| `04_bayer_2020_b/` | case study | E. coli HMS174(DE3) | Bayer, B., Striedner, G., & Duerkop, M. (2020). (same as above, variant B) |
+| `05_martens_2025_a/` -- `10_martens_2025_f/` | case study | CHO (simulated) | Martens, A., Neufang, M., et al. (2025). Holistic Bioprocess Development Across Scales Using Multi-Fidelity Batch Bayesian Optimization. *arXiv preprint arXiv:2508.10970*. |
+| `11_tub_2025/` | case study | V. natriegens | Unpublished data, TU Berlin, 2025. |
+| `12_martens_expanded/` | case study | CHO (simulated) | Expanded Martens-inspired fed-batch case study with bolus, sampling, and mechanistic verification. |
+| `13_volume_integration/` | verification | Synthetic | Pure dilution and volume-integration verification example. |
+| `14_simulation_intracellular/` | simulation | Synthetic CHO | Deterministic Simulation example with intracellular product and dense event-output CSVs. |
 
-Each case study follows the same structure:
+Most literature case-study directories follow this structure:
 ```
 <case_study>/
   00_original_data/          # raw CSV files + README
@@ -127,6 +133,10 @@ Each case study follows the same structure:
   01_bp_format_data_single/    # single process in bp-format format (data.json)
   02_bp_format_data_all/       # all processes aggregated (data.json)
 ```
+
+Focused simulation/verification examples, such as `13_volume_integration/` and
+`14_simulation_intracellular/`, use smaller task-specific stage directories
+instead of the full case-study layout.
 
 The `00_combined/` directory contains cross-study workflows:
 - `01_combined_dataset/` -- merging all case studies into one BenchmarkDataset
