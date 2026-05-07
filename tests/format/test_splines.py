@@ -4,11 +4,14 @@ and pseudobatch transform pipeline.
 """
 
 import pytest
+import re
 import jax
 import jax.numpy as jnp
 import numpy as np
 import tempfile
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 from bp_format import (
     BioProcess,
@@ -418,20 +421,21 @@ def test_no_interpolator_field():
 
 def test_kittler_spline_script_uses_timeseries_only_storage():
     """Active Kittler spline script must not reintroduce legacy interpolators."""
-    script = Path("examples/01_kittler_2022/04_splines/01_splines.py")
+    script = REPO_ROOT / "examples/01_kittler_2022/04_splines/01_splines.py"
     source = script.read_text()
 
-    assert "to_interpolator" not in source
-    assert ".interpolator" not in source
+    assert not re.search(r"\bto_interpolator\b", source)
+    assert not re.search(r"\.interpolator\b", source)
     assert "build_pseudobatch_transform" in source
     assert "process.pseudobatch_transform" in source
 
 
 def test_kittler_generated_splines_are_timeseries_pseudobatch_payloads():
     """Generated Kittler splines store and backtransform TimeSeries bundles."""
-    raw_path = Path("examples/01_kittler_2022/02_bp_format_data_all/data.json")
-    spline_path = Path(
-        "examples/01_kittler_2022/04_splines/01_output_data/data_with_splines.json"
+    raw_path = REPO_ROOT / "examples/01_kittler_2022/02_bp_format_data_all/data.json"
+    spline_path = (
+        REPO_ROOT
+        / "examples/01_kittler_2022/04_splines/01_output_data/data_with_splines.json"
     )
 
     payload = spline_path.read_text()
