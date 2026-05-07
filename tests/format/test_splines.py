@@ -4,14 +4,13 @@ and pseudobatch transform pipeline.
 """
 
 import pytest
-import re
 import jax
 import jax.numpy as jnp
 import numpy as np
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = Path(__file__).parent / "fixtures"
 
 from bp_format import (
     BioProcess,
@@ -418,79 +417,94 @@ def test_no_interpolator_field():
     np.testing.assert_allclose(loaded_pv.values.values, pv.values.values)
 
 
-def test_kittler_spline_script_uses_timeseries_only_storage():
-    """Active Kittler spline script must not reintroduce legacy interpolators."""
-    script = REPO_ROOT / "examples/01_kittler_2022/04_splines/01_splines.py"
-    source = script.read_text()
+def test_pseudobatch_transform_payload_round_trips_through_serialization():
+    """build_pseudobatch_transform output survives save/load and backtransforms."""
+    raw_dataset = load_dataset_json(str(FIXTURES / "martens_2025_f_single/data.json"))
+    case_study = next(iter(raw_dataset.case_studies.values()))
+    raw_process = next(iter(case_study.processes.values()))
+    species_names = [
+        name
+        for name, comp in raw_process.reactor_medium.components.items()
+        if isinstance(comp.concentration, TimeSeries)
+    ]
+    raw_concentrations = {
+        name: TimeSeries(
+            times=jnp.asarray(raw_process.reactor_medium.components[name].concentration.times),
+            values=jnp.asarray(raw_process.reactor_medium.components[name].concentration.values),
+        )
+        for name in species_names
+    }
 
-    assert not re.search(r"\bto_interpolator\b", source)
-    assert not re.search(r"\.interpolator\b", source)
-    assert "build_pseudobatch_transform" in source
-    assert "process.pseudobatch_transform" in source
+    transform = build_pseudobatch_transform(raw_process, species_names)
+    raw_process.pseudobatch_transform = transform
+    for name in species_names:
+        raw_process.reactor_medium.components[name].concentration = transform.species[
+            name
+        ].c_star_ts
 
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w+", delete=False) as f:
+        save_dataset_json(raw_dataset, f.name)
+        payload = Path(f.name).read_text()
+        loaded = load_dataset_json(f.name)
 
-def test_kittler_generated_splines_are_timeseries_pseudobatch_payloads():
-    """Generated Kittler splines store and backtransform TimeSeries bundles."""
-    raw_path = REPO_ROOT / "examples/01_kittler_2022/02_bp_format_data_all/data.json"
-    spline_path = (
-        REPO_ROOT
-        / "examples/01_kittler_2022/04_splines/01_output_data/data_with_splines.json"
-    )
-
-    payload = spline_path.read_text()
-    assert '"interpolator"' not in payload
     assert '"pseudobatch_transform"' in payload
+    assert '"interpolator"' not in payload
 
-    raw = load_dataset_json(raw_path)
-    fitted = load_dataset_json(spline_path)
+    process = next(iter(next(iter(loaded.case_studies.values())).processes.values()))
+    loaded_transform = process.pseudobatch_transform
+    assert loaded_transform is not None
 
-    raw_process = raw.case_studies["protein_L"].processes["DoE1_R1"]
-    process = fitted.case_studies["protein_L"].processes["DoE1_R1"]
-    transform = process.pseudobatch_transform
-    assert transform is not None
-    doe3_r1_transform = (
-        fitted.case_studies["protein_L"].processes["DoE3_R1"].pseudobatch_transform
-    )
-    assert doe3_r1_transform is not None
-    doe3_r1_glycerol = doe3_r1_transform.species["glycerol"]
-    assert doe3_r1_glycerol.is_constant is True
-    assert doe3_r1_glycerol.constant_value == 0.0
-    temperature = process.process_variables["temperature"].values
-    assert temperature.metadata["fit_strategy"] == "smoothing_bspline"
-    assert temperature.metadata["smoothing_s"] == 2.0
-
-    for species_name in ("biomass", "glycerol", "product"):
-        concentration = process.reactor_medium.components[species_name].concentration
-        species_transform = transform.species[species_name]
-        raw_concentration = raw_process.reactor_medium.components[
-            species_name
-        ].concentration
-
+    for name in species_names:
+        concentration = process.reactor_medium.components[name].concentration
+        species_transform = loaded_transform.species[name]
         assert concentration.breaks is not None
         assert species_transform.c_star_ts.breaks is not None
-        np.testing.assert_allclose(
-            concentration.times,
-            species_transform.c_star_ts.times,
-            rtol=0.0,
-            atol=0.0,
+        np.testing.assert_array_equal(
+            concentration.times, species_transform.c_star_ts.times
         )
-        np.testing.assert_allclose(
-            concentration.values,
-            species_transform.c_star_ts.values,
-            rtol=0.0,
-            atol=0.0,
+        np.testing.assert_array_equal(
+            concentration.values, species_transform.c_star_ts.values
         )
 
-        backtransform = build_backtransform_spline(transform, species_name)
-        recovered = jax.vmap(backtransform)(raw_concentration.times)
-        # Generated Kittler artifacts are float32 under x64-off script runs;
-        # tolerance reflects observed float32-level reconstruction error.
+        backtransform = build_backtransform_spline(loaded_transform, name)
+        recovered = jax.vmap(backtransform)(raw_concentrations[name].times)
         np.testing.assert_allclose(
             recovered,
-            raw_concentration.values,
-            rtol=1e-4,
-            atol=1e-4,
+            raw_concentrations[name].values,
+            rtol=1e-6,
+            atol=1e-6,
         )
+
+
+def test_smoothing_spline_metadata_round_trips_through_serialization():
+    """fit_strategy/smoothing_s on TimeSeries metadata survive save/load."""
+    n = 150
+    times = jnp.linspace(0.0, 10.0, n)
+    rng = np.random.default_rng(0)
+    values = jnp.asarray(np.sin(np.asarray(times)) + 0.05 * rng.standard_normal(n))
+    ts = TimeSeries(times=times, values=values)
+    fitted = fit_timeseries_spline(ts, smoothing_s=2.0)
+    assert fitted.metadata["fit_strategy"] == "smoothing_bspline"
+    assert fitted.metadata["smoothing_s"] == 2.0
+
+    process = _make_process_continuous_only()
+    process.process_variables["temperature"] = ProcessVariable(
+        name="temperature", unit="C", is_controlled=False, values=fitted
+    )
+    case_study = CaseStudy(
+        case_id="cs", organism="test", citation="test", processes={"p": process}
+    )
+    dataset = BenchmarkDataset(case_studies={"cs": case_study})
+
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w+", delete=False) as f:
+        save_dataset_json(dataset, f.name)
+        loaded = load_dataset_json(f.name)
+
+    reloaded = (
+        loaded.case_studies["cs"].processes["p"].process_variables["temperature"].values
+    )
+    assert reloaded.metadata["fit_strategy"] == "smoothing_bspline"
+    assert reloaded.metadata["smoothing_s"] == 2.0
 
 
 # ---------------------------------------------------------------------------
