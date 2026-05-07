@@ -107,13 +107,11 @@ def _make_process(
                 name="biomass",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0, 20.0], [0.5, 1.0, 2.0, 4.0]),
-                is_intracellular=False,
             ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0, 20.0], [10.0, 8.0, 5.0, 1.0]),
-                is_intracellular=False,
             ),
         },
     )
@@ -179,13 +177,11 @@ def _make_batch_process():
                 name="biomass",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0], [0.5, 1.5, 4.0]),
-                is_intracellular=False,
             ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0], [10.0, 6.0, 1.0]),
-                is_intracellular=False,
             ),
         },
     )
@@ -563,7 +559,6 @@ class TestGetRhsOde:
                     name="glucose",
                     unit="g/L",
                     concentration=_ts([0.0, 1.0], [10.0, 5.0]),
-                    is_intracellular=False,
                 )
             },
         )
@@ -789,13 +784,11 @@ class TestBiomassAtIndexZero:
                     name="glucose",
                     unit="g/L",
                     concentration=_ts([0.0, 10.0], [10.0, 1.0]),
-                    is_intracellular=False,
                 ),
                 "biomass": ReactorMediumComponent(
                     name="biomass",
                     unit="g/L",
                     concentration=_ts([0.0, 10.0], [0.5, 4.0]),
-                    is_intracellular=False,
                 ),
             },
         )
@@ -837,170 +830,8 @@ class TestBiomassAtIndexZero:
 
 
 # ---------------------------------------------------------------------------
-# Intracellular components tests
+# Helpers used by TestUserDefinedRhsOde — formerly intracellular fixtures
 # ---------------------------------------------------------------------------
-
-
-def _make_process_with_intracellular():
-    """Process with an intracellular product component."""
-    feed = FeedMedium(
-        name="glucose_feed",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "biomass": FeedMediumComponent(
-                name="biomass",
-                unit="g/L",
-                concentration=StaticVariable(value=0.0),
-                is_controlled=False,
-            ),
-            "glucose": FeedMediumComponent(
-                name="glucose",
-                unit="g/L",
-                concentration=StaticVariable(value=500.0),
-                is_controlled=False,
-            ),
-        },
-    )
-    rm = ReactorMedium(
-        name="medium",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "biomass": ReactorMediumComponent(
-                name="biomass",
-                unit="g/L",
-                concentration=_ts([0.0, 10.0], [0.5, 4.0]),
-                is_intracellular=False,
-            ),
-            "product": ReactorMediumComponent(
-                name="product",
-                unit="g/L",
-                concentration=_ts([0.0, 10.0], [0.0, 1.0]),
-                is_intracellular=True,
-            ),
-            "glucose": ReactorMediumComponent(
-                name="glucose",
-                unit="g/L",
-                concentration=_ts([0.0, 10.0], [10.0, 1.0]),
-                is_intracellular=False,
-            ),
-        },
-    )
-    vc = FeedVolumeChange(
-        name="feed",
-        unit="L",
-        is_controlled=True,
-        is_continuous=True,
-        feed_medium=feed,
-        values=_ts([0.0, 5.0, 10.0], [0.0, 0.25, 0.5]),
-    )
-    return BioProcess(
-        metadata=BioProcessMetadata(name="intracellular", process_type="fed_batch"),
-        time_axis=TimeAxis(
-            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
-        ),
-        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
-        reactor_medium=rm,
-    )
-
-
-class TestIntracellular:
-    def test_intracellular_indices_populated(self):
-        mb = get_rhs_ode(_make_process_with_intracellular())
-        assert len(mb.intracellular_indices) == 1
-
-    def test_intracellular_indices_correct(self):
-        mb = get_rhs_ode(_make_process_with_intracellular())
-        # biomass is at 0, product (intracellular) should be at 1
-        assert (
-            mb.reactor_component_state_names[mb.intracellular_indices[0]] == "product"
-        )
-
-    def test_no_intracellular_indices_for_normal_process(self):
-        mb = get_rhs_ode(_make_process())
-        assert mb.intracellular_indices == ()
-
-    def test_biomass_still_at_index_0(self):
-        mb = get_rhs_ode(_make_process_with_intracellular())
-        assert mb.biomass_idx == 0
-        assert mb.reactor_component_state_names[0] == "biomass"
-
-    def test_x_active_used_in_reaction(self):
-        """Reaction uses X_active = biomass - product, and the measured-biomass
-        derivative absorbs the intracellular accumulation rate so mass balance
-        holds: dX_meas/dt = (q_X_active + q_P) * X_active.
-        """
-        mb = get_rhs_ode(_make_process_with_intracellular())
-        # state: [biomass_measured=2.0, product=0.5, glucose=5.0, V=1.0]
-        X_active = 2.0 - 0.5  # = 1.5
-        qX, qP, qS = 0.4, 0.1, -0.2
-        dc = mb(
-            jnp.array([2.0, 0.5, 5.0, 1.0]),
-            jnp.array([qX, qP, qS]),
-            jnp.zeros(0),
-            jnp.zeros(0),
-            jnp.zeros(mb.r_size),
-        )
-        # No flow: pure reaction. Biomass entry includes intracellular term.
-        assert float(dc[0]) == pytest.approx((qX + qP) * X_active, rel=1e-5)
-        assert float(dc[1]) == pytest.approx(qP * X_active, rel=1e-5)
-        assert float(dc[2]) == pytest.approx(qS * X_active, rel=1e-5)
-        # Mass-balance identity: dX_meas/dt == dX_active/dt + dP/dt.
-        assert float(dc[0]) == pytest.approx(qX * X_active + float(dc[1]), rel=1e-5)
-
-    def test_x_active_with_flow(self):
-        """Full balance with flow: biomass derivative includes intracellular q
-        accumulation so dX_meas/dt = dX_active/dt + dP/dt at any feed rate.
-        """
-        mb = get_rhs_ode(_make_process_with_intracellular())
-        X_meas, P, S, V, F = 2.0, 0.5, 5.0, 1.0, 0.1
-        X_active = X_meas - P
-        qX, qP, qS = 0.4, 0.1, -0.2
-        Cin_glucose = 500.0
-        dc = mb(
-            jnp.array([X_meas, P, S, V]),
-            jnp.array([qX, qP, qS]),
-            jnp.array([F]),
-            jnp.zeros(0),
-            jnp.zeros(mb.r_size),
-        )
-        # biomass in feed = 0, product not in feed = 0
-        assert float(dc[0]) == pytest.approx(
-            (qX + qP) * X_active + (F / V) * (0.0 - X_meas), rel=1e-5
-        )
-        assert float(dc[1]) == pytest.approx(
-            qP * X_active + (F / V) * (0.0 - P), rel=1e-5
-        )
-        assert float(dc[2]) == pytest.approx(
-            qS * X_active + (F / V) * (Cin_glucose - S), rel=1e-5
-        )
-        assert float(dc[3]) == pytest.approx(F, rel=1e-5)
-
-    def test_intracellular_jit_compatible(self):
-        mb = get_rhs_ode(_make_process_with_intracellular())
-        dc = eqx.filter_jit(mb)(
-            jnp.array([2.0, 0.5, 5.0, 1.0]),
-            jnp.array([0.4, 0.1, -0.2]),
-            jnp.zeros(0),
-            jnp.zeros(0),
-            jnp.zeros(mb.r_size),
-        )
-        assert dc.shape == (4,)
-
-    def test_no_intracellular_backward_compat(self):
-        """Without intracellular components, X_active remains X_measured."""
-        mb = get_rhs_ode(_make_batch_process())
-        X = 2.0
-        dc = mb(
-            jnp.array([X, 5.0, 1.0]),
-            jnp.array([0.3, -0.15]),
-            jnp.zeros(0),
-            jnp.zeros(0),
-            jnp.zeros(mb.r_size),
-        )
-        assert float(dc[0]) == pytest.approx(0.3 * X, rel=1e-5)
-        assert float(dc[1]) == pytest.approx(-0.15 * X, rel=1e-5)
 
 
 def _make_batch_process_with_intracellular():
@@ -1014,19 +845,16 @@ def _make_batch_process_with_intracellular():
                 name="biomass",
                 unit="g/L",
                 concentration=_ts([0.0, 10.0], [1.0, 5.0]),
-                is_intracellular=False,
             ),
             "product": ReactorMediumComponent(
                 name="product",
                 unit="g/L",
                 concentration=_ts([0.0, 10.0], [0.0, 1.0]),
-                is_intracellular=True,
             ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
                 concentration=_ts([0.0, 10.0], [10.0, 1.0]),
-                is_intracellular=False,
             ),
         },
     )
@@ -1038,86 +866,6 @@ def _make_batch_process_with_intracellular():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
-
-
-class TestIntracellularRoundTrip:
-    """End-to-end round-trip on a batch process with intracellular product.
-
-    Closed-form analytic batch with constant specific rates:
-      dX_active/dt = qXa * X_active   →   X_active(t) = X0 * exp(qXa * t)
-      dP/dt        = qP  * X_active   →   P(t) = P0 + (qP/qXa) * X0 * (exp(qXa*t)-1)
-      dS/dt        = qS  * X_active   →   S(t) = S0 + (qS/qXa) * X0 * (exp(qXa*t)-1)
-      X_meas(t)    = X_active(t) + P(t)
-
-    These checks would silently pass under the pre-fix apparent-rate
-    convention because forward and inversion were symmetrically wrong.
-    After the Phase 1 fix, inversion must recover the *active* growth
-    rate qXa rather than the apparent rate (qXa + qP).
-    """
-
-    qXa, qP, qS = 0.30, 0.10, -0.20
-    X0_active, P0, S0 = 1.0, 0.0, 10.0
-
-    def _analytic(self, t):
-        t = np.asarray(t, dtype=float)
-        X_active = self.X0_active * np.exp(self.qXa * t)
-        P = self.P0 + (self.qP / self.qXa) * self.X0_active * (
-            np.exp(self.qXa * t) - 1.0
-        )
-        X_meas = X_active + P
-        S = np.maximum(
-            self.S0
-            + (self.qS / self.qXa) * self.X0_active * (np.exp(self.qXa * t) - 1.0),
-            0.0,
-        )
-        return X_meas, P, S, X_active
-
-    def test_inversion_recovers_active_specific_growth_rate(self):
-        t = np.linspace(0.0, 10.0, 51)
-        X_meas, P, S, _ = self._analytic(t)
-
-        process = _make_batch_process_with_intracellular()
-        ctrl = get_control_splines(process)
-        mb = get_rhs_ode(process)
-
-        state_splines = {
-            "biomass": make_interpax_spline(t, X_meas),
-            "product": make_interpax_spline(t, P),
-            "glucose": make_interpax_spline(t, S),
-        }
-
-        # Stay away from data edges; cubic-spline derivative noise near
-        # boundaries is unrelated to the inversion correctness being tested.
-        t_eval = np.linspace(1.0, 8.0, 15)
-        q_est = estimate_specific_rates(process, ctrl, mb, state_splines, t_eval)
-
-        np.testing.assert_allclose(q_est[:, 0], self.qXa, rtol=0.02)
-        np.testing.assert_allclose(q_est[:, 1], self.qP, rtol=0.02)
-        np.testing.assert_allclose(q_est[:, 2], self.qS, rtol=0.02)
-
-        apparent = self.qXa + self.qP
-        assert not np.allclose(q_est[:, 0], apparent, rtol=0.02), (
-            "q[biomass] must NOT equal apparent rate (qXa + qP) after Phase 1 fix"
-        )
-
-    def test_forward_with_known_active_rates_matches_analytic(self):
-        process = _make_batch_process_with_intracellular()
-        ctrl = get_control_splines(process)
-        mb = get_rhs_ode(process)
-
-        q_arr = jnp.array([self.qXa, self.qP, self.qS])
-
-        def q_func(_t):
-            return q_arr
-
-        rates_func = _wrap_q_as_rates(mb, q_func)
-        t_eval = np.linspace(0.0, 10.0, 21)
-        result = integrate_process(process, ctrl, mb, rates_func, t_eval)
-
-        X_meas_true, P_true, S_true, _ = self._analytic(np.asarray(result["t"]))
-        np.testing.assert_allclose(result["c"][:, 0], X_meas_true, rtol=5e-3, atol=1e-3)
-        np.testing.assert_allclose(result["c"][:, 1], P_true, rtol=5e-3, atol=1e-3)
-        np.testing.assert_allclose(result["c"][:, 2], S_true, rtol=5e-3, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -1160,21 +908,23 @@ class TestUserDefinedRhsOde:
         mb = get_rhs_ode(p)
         assert isinstance(mb, RhsOde)
 
-    def test_user_defined_rhs_matches_auto_on_intracellular_state(self):
-        """Hand-written biological_ode that matches the auto-RHS semantics
-        must produce identical dc/dt at sample states (no flow)."""
+    def test_user_defined_rhs_uses_x_active_in_derivatives(self):
+        """User-defined RHS evaluates derivatives over X_active = biomass -
+        product, and routes the product accumulation back into the biomass
+        derivative so dX_meas/dt = dX_active/dt + dP/dt."""
         p_user = _make_batch_with_biological_ode_intracellular()
-        p_auto = _make_batch_process_with_intracellular()
         mb_user = get_rhs_ode(p_user)
-        mb_auto = get_rhs_ode(p_auto)
 
         c = jnp.array([2.0, 0.5, 5.0, 1.0])
-        rates = jnp.array([0.4, 0.1, -0.2])
+        rates = jnp.array([0.4, 0.1, -0.2])  # q_X_active, q_P, q_S
         dc_user = mb_user(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))
-        dc_auto = mb_auto(
-            c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(mb_auto.r_size)
+
+        X_active = 2.0 - 0.5
+        np.testing.assert_allclose(
+            np.asarray(dc_user),
+            np.array([(0.4 + 0.1) * X_active, 0.1 * X_active, -0.2 * X_active, 0.0]),
+            atol=1e-6,
         )
-        np.testing.assert_allclose(np.asarray(dc_user), np.asarray(dc_auto), atol=1e-6)
 
     def test_algebraic_func_returns_x_active(self):
         p = _make_batch_with_biological_ode_intracellular()
@@ -1284,13 +1034,11 @@ def _make_process_with_modeled_flow():
                 name="biomass",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0, 20.0], [0.5, 1.0, 2.0, 4.0]),
-                is_intracellular=False,
             ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0, 20.0], [10.0, 8.0, 5.0, 1.0]),
-                is_intracellular=False,
             ),
         },
     )

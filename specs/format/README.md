@@ -66,8 +66,7 @@ BioProcess
  │    └─ components: Dict[str, ReactorMediumComponent]
  │         ├─ name: str
  │         ├─ unit: str
- │         ├─ concentration: TimeSeries | StaticVariable
- │         └─ is_intracellular: bool
+ │         └─ concentration: TimeSeries | StaticVariable
  ├─ process_variables: Dict[str, ProcessVariable]
  │    ├─ name: str
  │    ├─ unit: str

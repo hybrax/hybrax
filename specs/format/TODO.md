@@ -93,8 +93,10 @@ ReactorMedium(Medium): # here goes the classic biomass, product, substrate trio,
 └── MediumComponents[Dict]
     ├── name: str
     ├── unit: str
-    ├── is_intracellular: bool # indicate if, e.g., product is part of the biomass
     └── concentration: {TimeSeries, StaticVariable} # here most concentrations are going to be time-series
+    # Intracellular accumulation (e.g. plasmid DNA, inclusion bodies) is no
+    # longer expressed via a flag here; declare it as a BiologicalOde block
+    # on the BioProcess: algebraic={"X_active": "biomass - product"}, etc.
 
 Volume: # here go all the feed and sampling operations
 ├── initial_value: float

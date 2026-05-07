@@ -255,7 +255,6 @@ def _print_reactor_component_info(comp, prefix: str) -> None:
     """Helper function to print ReactorMediumComponent information (verbosity=3)."""
     print(f"{prefix}{comp.name}")
     print(f"{prefix}  Unit: {comp.unit}")
-    print(f"{prefix}  Intracellular: {comp.is_intracellular}")
     print(f"{prefix}  Bounds: {_format_bounds(comp.bounds)}")
 
     if _is_dynamic_series(comp.concentration):  # TimeSeries

@@ -115,10 +115,9 @@ def test_feed_medium_component_timeseries():
 def test_reactor_medium_component_timeseries():
     ts = TimeSeries(times=jnp.array([0.0, 1.0, 2.0]), values=jnp.array([0.1, 0.5, 1.0]))
     rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+        name="biomass", unit="g/L", concentration=ts
     )
     assert rc.name == "biomass"
-    assert rc.is_intracellular is False
 
 
 def test_reactor_medium_component_static():
@@ -126,9 +125,22 @@ def test_reactor_medium_component_static():
         name="biomass",
         unit="g/L",
         concentration=StaticVariable(value=1.0),
-        is_intracellular=False,
     )
     assert isinstance(rc.concentration, StaticVariable)
+
+
+def test_reactor_medium_component_rejects_is_intracellular_kwarg():
+    """The legacy ``is_intracellular`` flag was purged; passing it as a
+    kwarg must raise. Intracellular semantics live in
+    ``BiologicalOde.algebraic`` instead."""
+    import pytest
+    with pytest.raises(TypeError, match="is_intracellular"):
+        ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=StaticVariable(value=1.0),
+            is_intracellular=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +179,7 @@ def test_reactor_medium_empty_components():
 def test_reactor_medium_with_components():
     ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.1, 0.5]))
     rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+        name="biomass", unit="g/L", concentration=ts
     )
     rm = ReactorMedium(
         name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc}

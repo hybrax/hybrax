@@ -148,11 +148,6 @@ class RhsOde(eqx.Module):
         *f_modeled*.
     biomass_idx : int
         Index of ``"biomass"`` in reactor-component ordering (always 0).
-    intracellular_indices : tuple[int, ...]
-        Indices of intracellular states in reactor-component ordering.
-        Intracellular components (e.g., intracellular product) accumulate
-        inside the cells.  Active biomass is therefore:
-        ``X_active = c[biomass_idx] - sum(c[i] for i in intracellular_indices)``.
     Cin : jnp.ndarray, shape (n_flows, n_reactor_states)
         Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
         concentration of species *i* in controlled feed stream *k*.

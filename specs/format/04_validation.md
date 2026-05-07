@@ -38,8 +38,8 @@ Checks that the reactor medium contains a component named `"biomass"` (case-inse
 #### `validate_measurement_sampling_alignment(process)`
 Checks that measurement times for reactor medium components do not coincide with sampling events. Measurements taken exactly at a sampling time may have corrupted concentrations due to the volume change.
 
-#### `validate_intracellular_units(process)`
-Checks that components marked as `is_intracellular=True` have units consistent with the biomass component. Intracellular products are subtracted from measured biomass to compute active biomass, so units must match.
+#### `validate_biological_ode(process)` (unit consistency)
+When `process.biological_ode` is set, the validator parses every algebraic and derivative expression with sympy, walks each `Add` subtree, and rejects any sum or difference that combines two or more reactor-component / process-variable symbols whose units disagree. This generalises the legacy intracellular-vs-biomass unit check: `algebraic = {"X_active": "biomass - product"}` is accepted when both have unit `g/L`, and rejected with a clear error when one is `g/L` and the other `mg/L`. Other `BiologicalOde` checks (state coverage, name-collision, cycle detection, rate bounds) live in the same function.
 
 #### `validate_volume_consistency(process)`
 Checks that the volume balance is internally consistent: initial volume plus cumulative volume changes should match the expected final volume (within a tolerance).

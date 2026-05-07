@@ -55,13 +55,11 @@ def sample_process():
         name="biomass",
         unit="g/L",
         concentration=biomass_ts,
-        is_intracellular=False,
     )
     glucose_rc = ReactorMediumComponent(
         name="glucose",
         unit="g/L",
         concentration=glucose_ts,
-        is_intracellular=False,
     )
     reactor_medium = ReactorMedium(
         name="medium",
@@ -566,6 +564,46 @@ def test_biological_ode_absent_means_none_after_roundtrip(sample_process):
 
     p2 = loaded.case_studies["b"].processes["fed_batch_001"]
     assert p2.biological_ode is None
+
+
+def test_serialized_reactor_component_omits_is_intracellular(sample_dataset):
+    """The legacy ``is_intracellular`` flag was purged from the data
+    model and must not appear in newly written JSON."""
+    import json
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "data.json"
+        save_dataset_json(sample_dataset, save_path)
+        with open(save_path) as f:
+            raw = f.read()
+    assert "is_intracellular" not in raw
+
+
+def test_load_tolerates_legacy_is_intracellular_field(sample_dataset):
+    """Pre-purge JSON files contain ``is_intracellular`` on every reactor
+    component. The deserializer ignores the field instead of crashing,
+    so existing on-disk artefacts continue to load."""
+    import json
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "data.json"
+        save_dataset_json(sample_dataset, save_path)
+        with open(save_path) as f:
+            payload = json.load(f)
+
+        # Inject the legacy field into every reactor component before reload.
+        for cs in payload["case_studies"].values():
+            for proc in cs["processes"].values():
+                for comp in proc["reactor_medium"]["components"].values():
+                    comp["is_intracellular"] = True
+
+        with open(save_path, "w") as f:
+            json.dump(payload, f)
+
+        loaded = load_dataset_json(save_path)
+
+    proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+    # Field is gone from the dataclass entirely; the legacy JSON entry
+    # was just dropped on the floor.
+    assert not hasattr(proc.reactor_medium.components["biomass"], "is_intracellular")
 
 
 if __name__ == "__main__":

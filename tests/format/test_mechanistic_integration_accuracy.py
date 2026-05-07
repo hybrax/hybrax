@@ -32,6 +32,7 @@ import pytest
 
 import bp_format
 import bp_format.mechanistic as bpm
+from bp_format import BiologicalOde, RateDecl
 from bp_format.splines import (
     build_pseudobatch_transform,
     make_interpax_spline,
@@ -189,18 +190,34 @@ def test_mechanistic_rms_summary(fixture_dir, tol_rms):
 
 
 # --------------------------------------------------------------------------
-# Intracellular variants: re-run the same fixtures after marking the
-# `product` component as intracellular. After the Phase 1 fix to the
-# auto-generated RHS, the inversion + forward-integration self-consistency
-# must still hold (the pipeline infers q from the measurements with the
-# corrected formula, then re-integrates with the corrected forward, so the
-# round-trip remains exact regardless of whether q[biomass] is active or
-# apparent).
+# Intracellular variants: re-run the same fixtures after attaching a
+# BiologicalOde that encodes ``X_active = biomass - product`` and routes the
+# product accumulation back into the biomass derivative. The inversion +
+# forward-integration self-consistency must still hold for the user-defined
+# RHS path.
 # --------------------------------------------------------------------------
 
 
-def _mark_product_intracellular(process):
-    process.reactor_medium.components["product"].is_intracellular = True
+def _attach_intracellular_biological_ode(process):
+    state_names = list(process.reactor_medium.components.keys())
+    biomass_name = next(n for n in state_names if n.strip().lower() == "biomass")
+    other_names = [n for n in state_names if n != biomass_name]
+    rates = {f"q_{biomass_name}": RateDecl()}
+    for n in other_names:
+        rates[f"q_{n}"] = RateDecl()
+    derivatives = {
+        biomass_name: f"q_{biomass_name} * X_active + q_product * X_active",
+    }
+    for n in other_names:
+        derivatives[n] = f"q_{n} * X_active"
+    for pv_name, pv in process.process_variables.items():
+        if not pv.is_controlled:
+            derivatives[pv_name] = "0"
+    process.biological_ode = BiologicalOde(
+        algebraic={"X_active": f"{biomass_name} - product"},
+        rates=rates,
+        derivatives=derivatives,
+    )
 
 
 @pytest.mark.parametrize(
@@ -209,7 +226,7 @@ def _mark_product_intracellular(process):
 )
 def test_mechanistic_integration_with_intracellular_product(fixture_dir):
     metrics = _run_mechanistic_pipeline(
-        FIXTURES / fixture_dir, mutator=_mark_product_intracellular
+        FIXTURES / fixture_dir, mutator=_attach_intracellular_biological_ode
     )
     _assert_per_species(metrics, tol=0.01)
 
@@ -252,40 +269,21 @@ def _make_equivalent_biological_ode(mb) -> BiologicalOde:
     - ``X_active`` is declared as an algebraic variable (``biomass - sum(intra)``)
       when intracellular components exist, otherwise it equals biomass directly
       and we inline that.
-    - Per-state biological RHS is ``q_i * X_active`` for non-biomass states;
-      for biomass it additionally absorbs the intracellular accumulation rates
-      to mirror the Phase-1 mass-balance correction inside RhsOde.
+    - Per-state biological RHS is ``q_i * c_biomass``.
     - Process-variable states get ``"0"`` (auto path adds only the additive
       r-vector to PV states; with r=0 in this test that matches).
     """
     state_names = list(mb.reactor_component_state_names)
-    biomass_idx = mb.biomass_idx
-    intra_idxs = list(mb.intracellular_indices)
-    intra_names = [state_names[i] for i in intra_idxs]
-    biomass_name = state_names[biomass_idx]
+    biomass_name = state_names[mb.biomass_idx]
 
     rates = {f"q_{n}": RateDecl() for n in state_names}
-
-    if intra_names:
-        algebraic = {"X_active": " - ".join([biomass_name] + intra_names)}
-        x_active = "X_active"
-    else:
-        algebraic = {}
-        x_active = biomass_name
-
-    derivatives: dict = {}
-    for i, name in enumerate(state_names):
-        if i == biomass_idx and intra_names:
-            terms = [f"q_{biomass_name} * {x_active}"]
-            terms.extend(f"q_{nm} * {x_active}" for nm in intra_names)
-            derivatives[name] = " + ".join(terms)
-        else:
-            derivatives[name] = f"q_{name} * {x_active}"
-
+    derivatives: dict = {
+        name: f"q_{name} * {biomass_name}" for name in state_names
+    }
     for pv_name in mb.process_variable_state_names:
         derivatives[pv_name] = "0"
 
-    return BiologicalOde(algebraic=algebraic, rates=rates, derivatives=derivatives)
+    return BiologicalOde(algebraic={}, rates=rates, derivatives=derivatives)
 
 
 def _assert_dual_path_dcdt_equivalence(process, *, n_samples: int = 5, seed: int = 7):
@@ -299,10 +297,6 @@ def _assert_dual_path_dcdt_equivalence(process, *, n_samples: int = 5, seed: int
     for _ in range(n_samples):
         c = rng.uniform(0.1, 5.0, size=mb_auto.c_size).astype(np.float64)
         c[mb_auto.volume_idx] = float(rng.uniform(0.5, 2.0))  # ensure V > 0
-        # Keep biomass > sum(intracellular) so X_active > 0
-        if mb_auto.intracellular_indices:
-            intra_sum = sum(c[i] for i in mb_auto.intracellular_indices)
-            c[mb_auto.biomass_idx] = float(intra_sum + rng.uniform(0.5, 2.0))
         rates_auto = rng.uniform(-0.3, 0.3, size=mb_auto.q_size).astype(np.float64)
         u_flow = rng.uniform(0.0, 0.05, size=mb_auto.u_flow_size).astype(np.float64)
         f_modeled = rng.uniform(0.0, 0.05, size=mb_auto.f_modeled_size).astype(

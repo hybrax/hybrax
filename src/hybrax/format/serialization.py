@@ -377,7 +377,6 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
     result = {
         "name": comp.name,
         "unit": comp.unit,
-        "is_intracellular": comp.is_intracellular,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
     }
     bounds_dict = _bounds_to_dict(comp.bounds)
@@ -809,7 +808,6 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
-        is_intracellular=comp_data["is_intracellular"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
         bounds=_dict_to_bounds(comp_data.get("bounds")),
     )

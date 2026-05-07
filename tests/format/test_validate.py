@@ -27,7 +27,6 @@ from bp_format import (
     validate_volume_change_states,
     validate_biomass_in_reactor_medium,
     validate_measurement_sampling_alignment,
-    validate_intracellular_units,
     validate_process,
     validate_volume_consistency,
     validate_case_study,
@@ -163,7 +162,7 @@ class TestValidateVolumeChangeStates:
     def _reactor_comp(self, name, dynamic=True):
         conc = _ts([0.0, 1.0], [1.0, 2.0]) if dynamic else StaticVariable(value=1.0)
         return ReactorMediumComponent(
-            name=name, unit="g/L", concentration=conc, is_intracellular=False
+            name=name, unit="g/L", concentration=conc
         )
 
     def _feed_medium(self, component_names):
@@ -260,7 +259,6 @@ class TestValidateBiomassInReactorMedium:
         return ReactorMediumComponent(
             name=name, unit="g/L",
             concentration=StaticVariable(value=1.0),
-            is_intracellular=False,
         )
 
     def test_biomass_present(self):
@@ -318,7 +316,6 @@ class TestValidateProcess:
                 "biomass": ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=biomass_ts,
-                    is_intracellular=False,
                 ),
             },
             volume_changes={"feed": vc},
@@ -352,7 +349,6 @@ class TestValidateProcess:
                 "biomass": ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=StaticVariable(value=1.0),
-                    is_intracellular=False,
                 ),
             },
         )
@@ -467,7 +463,6 @@ def _make_biomass_process(
         "biomass": ReactorMediumComponent(
             name="biomass", unit="g/L",
             concentration=biomass_ts,
-            is_intracellular=False,
         )
     }
     if extra_components:
@@ -542,7 +537,6 @@ class TestValidateCaseStudy:
                 "glucose": ReactorMediumComponent(
                     name="glucose", unit="g/L",
                     concentration=StaticVariable(value=10.0),
-                    is_intracellular=False,
                 )
             },
         )
@@ -620,7 +614,6 @@ class TestValidateCaseStudy:
         p2.reactor_medium.components["biomass"] = ReactorMediumComponent(
             name="biomass", unit="mmol/L",
             concentration=ts,
-            is_intracellular=False,
         )
         cs = self._case_study({"run1": p1, "run2": p2})
         all_valid, report = validate_case_study(cs)
@@ -689,7 +682,6 @@ class TestValidateMeasurementSamplingAlignment:
                 "biomass": ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=_ts([2.0, 5.0, 8.0], [0.1, 0.5, 1.0]),
-                    is_intracellular=False,
                 ),
             },
             volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
@@ -709,7 +701,6 @@ class TestValidateMeasurementSamplingAlignment:
                 "biomass": ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=_ts(meas_times, [0.1, 0.5, 1.0]),
-                    is_intracellular=False,
                 ),
             },
             volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
@@ -729,7 +720,6 @@ class TestValidateMeasurementSamplingAlignment:
                 "biomass": ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=_ts(meas_times, [0.1, 0.5, 1.0]),
-                    is_intracellular=False,
                 ),
             },
             volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
@@ -744,87 +734,10 @@ class TestValidateMeasurementSamplingAlignment:
                 "biomass": ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=_ts([0.0, 5.0, 10.0], [0.1, 0.5, 1.0]),
-                    is_intracellular=False,
                 ),
             },
         )
         ok, msg = validate_measurement_sampling_alignment(process)
-        assert ok is True
-        assert "skipped" in msg.lower()
-
-
-# ---------------------------------------------------------------------------
-# validate_intracellular_units
-# ---------------------------------------------------------------------------
-
-class TestValidateIntracellularUnits:
-    def test_same_units_pass(self):
-        """Intracellular component with same unit as biomass — should pass."""
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
-                    concentration=_ts([0.0, 1.0], [0.1, 1.0]),
-                    is_intracellular=False,
-                ),
-                "product": ReactorMediumComponent(
-                    name="product", unit="g/L",
-                    concentration=_ts([0.0, 1.0], [0.0, 0.5]),
-                    is_intracellular=True,
-                ),
-            },
-        )
-        ok, msg = validate_intracellular_units(process)
-        assert ok is True
-        assert "OK" in msg
-
-    def test_different_units_fail(self):
-        """Intracellular component with mg/L vs biomass g/L — should warn."""
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
-                    concentration=_ts([0.0, 1.0], [0.1, 1.0]),
-                    is_intracellular=False,
-                ),
-                "plasmid": ReactorMediumComponent(
-                    name="plasmid", unit="mg/L",
-                    concentration=_ts([0.0, 1.0], [0.0, 50.0]),
-                    is_intracellular=True,
-                ),
-            },
-        )
-        ok, msg = validate_intracellular_units(process)
-        assert ok is False
-        assert "plasmid" in msg
-        assert "mg/L" in msg
-
-    def test_no_intracellular_pass(self):
-        """No intracellular components — should pass."""
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
-                    concentration=_ts([0.0, 1.0], [0.1, 1.0]),
-                    is_intracellular=False,
-                ),
-            },
-        )
-        ok, msg = validate_intracellular_units(process)
-        assert ok is True
-
-    def test_no_biomass_skipped(self):
-        """No biomass component — check should be skipped."""
-        process = _make_process(
-            reactor_components={
-                "glucose": ReactorMediumComponent(
-                    name="glucose", unit="g/L",
-                    concentration=_ts([0.0, 1.0], [10.0, 5.0]),
-                    is_intracellular=False,
-                ),
-            },
-        )
-        ok, msg = validate_intracellular_units(process)
         assert ok is True
         assert "skipped" in msg.lower()
 
@@ -939,13 +852,13 @@ def _make_intra_process():
     return _make_process(
         reactor_components={
             "biomass": ReactorMediumComponent(
-                "biomass", "g/L", StaticVariable(1.0), is_intracellular=False
+                "biomass", "g/L", StaticVariable(1.0)
             ),
             "product": ReactorMediumComponent(
-                "product", "g/L", StaticVariable(0.0), is_intracellular=True
+                "product", "g/L", StaticVariable(0.0)
             ),
             "glucose": ReactorMediumComponent(
-                "glucose", "g/L", StaticVariable(10.0), is_intracellular=False
+                "glucose", "g/L", StaticVariable(10.0)
             ),
         }
     )
@@ -1059,6 +972,128 @@ class TestValidateBiologicalOde:
         ok, msg = validate_biological_ode(p)
         assert ok is False
         assert "invalid" in msg.lower()
+
+    def test_unit_consistent_state_subtraction_passes(self):
+        """X_active = biomass - product with both g/L: accepted."""
+        p = _make_intra_process()  # biomass, product, glucose all g/L
+        p.biological_ode = BiologicalOde(
+            algebraic={"X_active": "biomass - product"},
+            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            derivatives={
+                "biomass": "q_X * X_active + q_P * X_active",
+                "product": "q_P * X_active",
+                "glucose": "q_S * X_active",
+            },
+        )
+        ok, _ = validate_biological_ode(p)
+        assert ok is True
+
+    def test_unit_mismatched_state_subtraction_is_rejected(self):
+        """X_active = biomass (g/L) - product (mg/L): rejected with both
+        names and both units in the message."""
+        p = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    "biomass", "g/L", StaticVariable(1.0)
+                ),
+                "product": ReactorMediumComponent(
+                    "product", "mg/L", StaticVariable(0.0)
+                ),
+                "glucose": ReactorMediumComponent(
+                    "glucose", "g/L", StaticVariable(10.0)
+                ),
+            }
+        )
+        p.biological_ode = BiologicalOde(
+            algebraic={"X_active": "biomass - product"},
+            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            derivatives={
+                "biomass": "q_X * X_active",
+                "product": "q_P * X_active",
+                "glucose": "q_S * X_active",
+            },
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "X_active" in msg
+        assert "biomass" in msg
+        assert "product" in msg
+        assert "g/L" in msg and "mg/L" in msg
+
+    def test_unit_mismatch_in_derivative_expression_is_rejected(self):
+        """Mismatch can also occur inside a `derivatives` expression, not
+        just `algebraic`. ``biomass + glucose`` directly is unit-nonsense
+        when biomass is g/L and glucose is mmol/L."""
+        p = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    "biomass", "g/L", StaticVariable(1.0)
+                ),
+                "glucose": ReactorMediumComponent(
+                    "glucose", "mmol/L", StaticVariable(10.0)
+                ),
+            }
+        )
+        p.biological_ode = BiologicalOde(
+            algebraic={},
+            rates={"q_X": RateDecl()},
+            derivatives={
+                "biomass": "q_X * (biomass + glucose)",
+                "glucose": "0",
+            },
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "biomass" in msg
+        assert "glucose" in msg
+
+    def test_unit_check_ignores_products_only_subexpressions(self):
+        """``q_X * X_active + q_P * X_active`` is an Add of two Muls; each
+        operand contains only one state symbol, so no unit-mismatch error
+        should fire even though the sum technically has two state-symbol
+        free symbols when collected at the Add level."""
+        # We use components where biomass and product DO match on units so
+        # the algebraic check passes, then check that the derivative — whose
+        # Add-level free_symbols include {q_X, X_active, q_P} but NO state
+        # symbols (X_active is algebraic, q_* are rates) — does not trigger.
+        p = _make_intra_process()
+        p.biological_ode = BiologicalOde(
+            algebraic={"X_active": "biomass - product"},
+            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            derivatives={
+                "biomass": "q_X * X_active + q_P * X_active",
+                "product": "q_P * X_active",
+                "glucose": "q_S * X_active",
+            },
+        )
+        ok, _ = validate_biological_ode(p)
+        assert ok is True
+
+    def test_unit_mismatch_with_uncontrolled_pv_is_rejected(self):
+        """A sum of a reactor component and an uncontrolled PV state with
+        differing units should also be flagged. Controlled PVs are inputs,
+        not states, so they do not appear in the state-name set and are
+        intentionally ignored by the unit check."""
+        p = _make_intra_process()
+        p.process_variables = {
+            "viability": ProcessVariable(
+                "viability", "%", is_controlled=False, values=StaticVariable(95.0),
+            ),
+        }
+        p.biological_ode = BiologicalOde(
+            algebraic={"weird": "biomass + viability"},
+            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            derivatives={
+                "biomass": "q_X * biomass",
+                "product": "q_P * biomass",
+                "glucose": "q_S * biomass",
+                "viability": "0",
+            },
+        )
+        ok, msg = validate_biological_ode(p)
+        assert ok is False
+        assert "viability" in msg
+        assert "biomass" in msg
 
 
 class TestValidateBounds:

@@ -42,7 +42,7 @@ def simple_process():
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
     rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+        name="biomass", unit="g/L", concentration=ts
     )
     rm = ReactorMedium(
         name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc}
@@ -68,10 +68,10 @@ def complex_process():
         values=jnp.array([20.0, 15.0, 8.0, 2.0, 0.5]),
     )
     biomass_rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=biomass_ts, is_intracellular=False
+        name="biomass", unit="g/L", concentration=biomass_ts
     )
     glucose_rc = ReactorMediumComponent(
-        name="glucose", unit="g/L", concentration=glucose_ts, is_intracellular=False
+        name="glucose", unit="g/L", concentration=glucose_ts
     )
     rm = ReactorMedium(
         name="medium",
@@ -234,7 +234,6 @@ def test_print_process_structure_static_concentration(capsys):
         name="biomass",
         unit="g/L",
         concentration=StaticVariable(value=2.0),
-        is_intracellular=False,
     )
     rm = ReactorMedium(
         name="m", density=1.0, density_unit="kg/L", components={"biomass": rc}
@@ -332,7 +331,7 @@ def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
 def _make_minimal_process(name):
     ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.1, 0.5]))
     rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=ts, is_intracellular=False
+        name="biomass", unit="g/L", concentration=ts
     )
     rm = ReactorMedium(
         name="m", density=1.0, density_unit="kg/L", components={"biomass": rc}
@@ -669,7 +668,6 @@ def test_plot_process_draws_curve_for_spline_only_series():
                     name="curve",
                     unit="g/L",
                     concentration=spline_only,
-                    is_intracellular=False,
                 )
             },
         ),
@@ -744,7 +742,6 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
                         times=jnp.array([0.0, 2.0, 4.0, 6.0]),
                         values=jnp.array([10.0, 9.0, 8.0, 7.0]),
                     ),
-                    is_intracellular=False,
                 )
             },
         ),

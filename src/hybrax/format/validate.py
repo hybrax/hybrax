@@ -123,8 +123,39 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
         return expr
 
     algebraic_exprs = {n: _parse(n, e, "algebraic") for n, e in bo.algebraic.items()}
-    for n, e in bo.derivatives.items():
-        _parse(n, e, "derivatives")
+    derivative_exprs = {n: _parse(n, e, "derivatives") for n, e in bo.derivatives.items()}
+
+    # Unit consistency: a sympy ``Add`` whose operands collectively reference
+    # two or more dynamic states (reactor components or uncontrolled PVs) must
+    # have those states share a unit. Catches things like ``biomass - product``
+    # when biomass is g/L and product is mg/L (raw numerical subtraction would
+    # be meaningless). This generalises the legacy intracellular unit check.
+    def _state_unit(name: str) -> Optional[str]:
+        if (
+            process.reactor_medium
+            and name in process.reactor_medium.components
+        ):
+            return process.reactor_medium.components[name].unit
+        pv = process.process_variables.get(name)
+        return pv.unit if pv is not None else None
+
+    for expr_name, expr in {**algebraic_exprs, **derivative_exprs}.items():
+        if expr is None:
+            continue
+        for node in sympy.preorder_traversal(expr):
+            if not isinstance(node, sympy.Add):
+                continue
+            state_syms = {str(s) for s in node.free_symbols} & state_names
+            if len(state_syms) < 2:
+                continue
+            units = {s: _state_unit(s) for s in state_syms}
+            if len(set(units.values())) > 1:
+                pretty = ", ".join(f"{s}={u!r}" for s, u in sorted(units.items()))
+                errors.append(
+                    f"{expr_name!r}: state variables combined additively with "
+                    f"mismatched units ({pretty})"
+                )
+                break  # one error per expression is enough
 
     # Cycle detection on algebraic-variable graph
     deps = {
@@ -469,11 +500,6 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     messages.append(msg)
     all_valid = all_valid and ok
 
-    # --- Intracellular unit consistency check ---
-    ok, msg = validate_intracellular_units(process)
-    messages.append(msg)
-    all_valid = all_valid and ok
-
     # --- Bounds sanity ---
     ok, msg = validate_bounds(process)
     messages.append(msg)
@@ -558,54 +584,6 @@ def validate_measurement_sampling_alignment(
         )
         return False, header + "\n".join(warnings)
     return True, "Measurement/sampling time alignment — OK"
-
-
-def validate_intracellular_units(
-    process: BioProcess,
-) -> Tuple[bool, str]:
-    """Check that intracellular components use the same unit as biomass.
-
-    When the mechanistic ODE module computes the active biomass
-    (``X_active = c_biomass - sum(c_intracellular)``), it subtracts raw
-    numerical values.  If the intracellular components have a different
-    unit (e.g. mg/L vs g/L), the subtraction is physically meaningless
-    and leads to wildly incorrect specific rates.
-
-    Args:
-        process: BioProcess object to validate.
-
-    Returns:
-        A tuple ``(is_valid, message)``.
-    """
-    if not process.reactor_medium or not process.reactor_medium.components:
-        return True, "Intracellular unit check skipped — no reactor medium components"
-
-    # Find biomass component
-    biomass_unit: Optional[str] = None
-    for name, comp in process.reactor_medium.components.items():
-        if name.strip().lower() == "biomass":
-            biomass_unit = comp.unit
-            break
-    if biomass_unit is None:
-        return True, "Intracellular unit check skipped — no biomass component found"
-
-    warnings: List[str] = []
-    for name, comp in process.reactor_medium.components.items():
-        if comp.is_intracellular and comp.unit != biomass_unit:
-            warnings.append(
-                f"  '{name}' has unit '{comp.unit}' but biomass has "
-                f"unit '{biomass_unit}'"
-            )
-
-    if warnings:
-        header = (
-            "Intracellular component units differ from biomass unit. "
-            "This will cause incorrect X_active computation in the "
-            "mechanistic ODE module (raw numerical subtraction without "
-            "unit conversion).\n"
-        )
-        return False, header + "\n".join(warnings)
-    return True, "Intracellular component units — OK"
 
 
 def validate_volume_consistency(

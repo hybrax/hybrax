@@ -74,8 +74,7 @@ The JSON file follows the dataclass hierarchy directly:
                   "type": "TimeSeries",
                   "times": [0.0, 6.0, 12.0],
                   "values": [0.5, 1.2, 3.1]
-                },
-                "is_intracellular": false
+                }
               }
             }
           },

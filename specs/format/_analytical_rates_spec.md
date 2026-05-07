@@ -226,26 +226,26 @@ keys are known at build time); only `t` and the spline data are traced.
 The previous inversion path is [`build_q_func`](../bp_format/mechanistic.py#L1296)
 plus its wrapper [`build_rates_func`](../bp_format/mechanistic.py#L1811).
 That path is still in the codebase and still operates on the
-auto-generated `RhsOde` (the `q · X_active + r + feed` form). The
+auto-generated `RhsOde` (the `q · biomass + r + feed` form). The
 analytical path is a parallel inversion specialized for the user-defined
 RHS branch.
 
 | aspect | `build_q_func` / `build_rates_func` (auto path) | `build_rates_func_analytical` (user-defined path) |
 |---|---|---|
-| RHS form | hard-coded `dc/dt = q·X_active + r + feed_term`; biomass row corrected for intracellular accumulation via `_subtract_intracellular_from_biomass_q` | arbitrary user-supplied expressions, must be linear in declared rates; mass balance must be encoded in the expressions themselves |
+| RHS form | hard-coded `dc/dt = q·biomass + r + feed_term` for every reactor state | arbitrary user-supplied expressions, must be linear in declared rates; mass balance (e.g. intracellular accumulation) must be encoded in the expressions themselves |
 | Rate-vector dimension | `q.shape == (n_reactor_states,)` — one specific rate per reactor component | `rates.shape == (rate_size,)` — set by `len(biological_ode.rates)`; independent of state count |
 | Rate semantics | always *biomass-specific* | abstract user-declared symbols; no fixed biological meaning |
 | State scope of inversion | reactor-component states only; PV states get `r_pv` from spline derivatives in `build_rates_func` | all non-volume states (reactor + PV); a rate that only appears in PV derivatives is still recoverable |
 | Feed / dilution handling | reconstructs `V(t)` from `V0` + cumulative-volume splines + discrete events; subtracts `feed_term = Σ_k (f_k/V)·(C_in_k - c)` in real space | uses pseudo-batch coordinates: `dc/dt_biol = (dc*/dt) / adf(t)`; the `c*` transform absorbs feed, dilution, sampling, and `dV` exactly — no `V`, `Cin`, `u_flow` reconstruction inside the inversion |
 | Volume / discrete-event plumbing | `extract_discrete_events`, `cum_splines_ctrl`, `cum_splines_mod`, `_batch_splines`, `ev_dV_cum`, `searchsorted` | none — handled by the `BacktransformSpline` upstream |
 | `q` vs `r` partitioning | explicit `q_state_indices` / `r_state_indices` / `r_func` API with overlap-only-with-`r_func` rules | n/a — biological vs. physical split is encoded in the `biological_ode` block; everything outside that block is physical and added by bp-format on top |
-| Linearity assumption | implicit (`q · X_active` is linear by construction) | verified symbolically (`sympy.diff` / `sympy.expand` residual check) and rejected at build time if violated |
-| Solve | per-row scalar division: `q_i = (dc/dt - feed_term - r_overlap) / X_active`; biomass corrected | diagonal fast path (per-row scalar) or `jnp.linalg.solve(A, b)` over non-zero rows |
+| Linearity assumption | implicit (`q · biomass` is linear by construction) | verified symbolically (`sympy.diff` / `sympy.expand` residual check) and rejected at build time if violated |
+| Solve | per-row scalar division: `q_i = (dc/dt - feed_term - r_overlap) / biomass` | diagonal fast path (per-row scalar) or `jnp.linalg.solve(A, b)` over non-zero rows |
 | Symbolic toolchain | none; pure numerical formulas | sympy: `sympify`, `_topo_sort_algebraic`, `diff`, `expand`, `subs`, `lambdify(modules="jax")` |
 | Dependence on `ctrl` | only through downstream callers (the inversion itself ignores `ctrl`) | required: controlled-PV values are bound into `args` via `ctrl(t)[ctrl_indices]` |
 | Reactor-spline contract | calls `state_splines[s](t)` and `state_splines[s].derivative()(t)` directly in real space | requires `BacktransformSpline` (with `c_star_spline`, `adf_times`, `adf_values`) for the `c*`-domain inversion; gracefully falls back to identity transform if absent (correct only when `adf ≡ 1`) |
 | Output | wrapped by `build_rates_func` into `(q, r)` for the integration callback signature `rates_func(t, state, controls)` | returns rates only; signature is `rates_func(t)`. Integration of a `UserDefinedRhsOde` consumes this rate vector via the `is_user_defined` branch in [`_build_segment_rhs`](../bp_format/mechanistic.py#L1975) |
-| Active-biomass handling | `X_active = c[biomass] - Σ c[intra]`, clamped to `1e-6` | not handled here; the user expresses `X_active` as an `algebraic` entry and writes it into the relevant per-state expressions explicitly |
+| Active-biomass handling | not modelled in the auto path — `q` is divided by `c[biomass]` directly (clamped to `1e-6`) | not handled here; the user expresses `X_active = biomass − intracellular` as an `algebraic` entry and writes it into the relevant per-state expressions explicitly |
 
 ### Inputs newly required
 

@@ -82,7 +82,6 @@ def _build_process() -> BioProcess:
                         segment_start_piece_idx=jnp.array([0]),
                         metadata=_lightweight_transform_metadata(),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),

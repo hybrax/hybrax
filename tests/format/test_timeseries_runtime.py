@@ -143,7 +143,6 @@ def _build_process_with_spline_only_feed() -> BioProcess:
                     name="biomass",
                     unit="g/L",
                     concentration=biomass_ts,
-                    is_intracellular=False,
                 )
             },
         ),
@@ -211,7 +210,6 @@ def _build_process_with_discrete_continuous_feed() -> BioProcess:
                     name="biomass",
                     unit="g/L",
                     concentration=biomass_ts,
-                    is_intracellular=False,
                 )
             },
         ),
@@ -295,7 +293,6 @@ def test_mechanistic_control_splines_smoke_for_canonical_timeseries() -> None:
                         times=jnp.array([0.0, 5.0, 10.0]),
                         values=jnp.array([0.2, 0.8, 1.6]),
                     ),
-                    is_intracellular=False,
                 )
             },
         ),

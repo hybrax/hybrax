@@ -33,7 +33,7 @@ def _ts(timepoints, values):
 
 def _make_process():
     ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
-    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     return BioProcess(
         metadata=BioProcessMetadata(name="test", process_type="batch"),
         time_axis=TimeAxis(unit="hours", start=0.0, end=2.0, time_reference="inoculation"),
@@ -57,7 +57,7 @@ def test_timeseries_stores_jax_arrays():
 
 def test_reactor_component_stores_timeseries():
     ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
-    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts, is_intracellular=False)
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     assert isinstance(rc.concentration.values, jnp.ndarray)
 
 

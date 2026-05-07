@@ -10,7 +10,7 @@ The data model defines a hierarchical set of Python dataclasses that describe bi
 
 - **Dict keyed by name, not lists:** Components are stored as `Dict[str, Component]` (e.g., `reactor_medium.components["glucose"]`). This gives O(1) lookup, produces clean JSON keys, and makes iteration order explicit.
 - **Volume is separate from states and controls:** Volume is affected by multiple operations (feeds, sampling, evaporation) and enters the ODE differently from states. See [Design Rationale: Volume](01_design_rationale.md#3-volume-as-a-first-class-concept).
-- **`is_intracellular` flag:** Some products accumulate inside cells (e.g., inclusion bodies). The mass balance needs to compute active biomass as `X_active = X_measured - sum(intracellular)`. The flag on `ReactorMediumComponent` marks these species.
+- **Intracellular accumulation lives in `BiologicalOde`:** When a species accumulates inside cells (e.g., inclusion bodies), the user encodes the active-biomass relationship explicitly via `BiologicalOde.algebraic` (e.g., `{"X_active": "biomass - product"}`) and the corresponding derivatives. There is no flag on `ReactorMediumComponent`; the auto-RHS treats every reactor component uniformly with `dc/dt = q · biomass + feed_term`, and any deviation from that template (intracellular bookkeeping, dead-cell pools, custom algebraics) is a `BiologicalOde` block that dispatches to `UserDefinedRhsOde`.
 - **Feed/Sample subtypes:** `FeedVolumeChange` and `SampleVolumeChange` enforce sign conventions at the type level and only feeds carry a `FeedMedium` reference (sampling removes reactor contents at current concentrations).
 - **`TimeSeries | StaticVariable` union:** Concentrations and process variables can be either time-varying (measured) or constant (known). The union type handles both cases cleanly.
 
@@ -86,11 +86,10 @@ class ReactorMediumComponent:
     name: str                                    # e.g. "glucose", "biomass"
     unit: str                                    # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable   # measured concentration over time
-    is_intracellular: bool                       # True for intracellular products (e.g., inclusion bodies)
     bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
 ```
 
-The `is_intracellular` flag is used by the auto-generated mechanistic module to compute active biomass: `X_active = X_total - sum(intracellular species)`. Under a user-defined `BiologicalOde`, the flag is ignored by the evaluator — `X_active` (or any other derived quantity) is declared explicitly in `BiologicalOde.derived`.
+Active biomass and other derived quantities (e.g. `X_active = biomass - product`) are declared on `BiologicalOde.algebraic`, not on the component itself. The auto-RHS path uses `dc/dt = q · biomass + feed_term` uniformly; any process whose biology departs from that template attaches a `BiologicalOde` block and dispatches to `UserDefinedRhsOde`.
 
 The `bounds` field is **metadata only**: never plumbed into `RhsOde` / `UserDefinedRhsOde` / integrator. Downstream consumers (e.g. `bp-train`'s loss generator) read it off the process to build soft-constraint penalties such as "concentrations cannot be negative".
 
@@ -229,7 +228,7 @@ class BioProcess:
     biological_ode: Optional[BiologicalOde] = None  # user-defined per-state biological RHS
 ```
 
-When `biological_ode` is `None` (default), the mechanistic module auto-generates the RHS as `q_i * X_active + r_i + feed_dilution` per reactor state, with a mass-balance correction on the biomass entry for intracellular components. When set, the user-defined block takes precedence — see `BiologicalOde` below and the [Mechanistic Module](08_mechanistic.md) page for full semantics.
+When `biological_ode` is `None` (default), the mechanistic module auto-generates the RHS as `q_i * c_biomass + r_i + feed_dilution` per reactor state, uniformly across components. When set, the user-defined block takes precedence — intracellular bookkeeping, dead-cell pools, and other custom biology are expressed there. See `BiologicalOde` below and the [Mechanistic Module](08_mechanistic.md) page for full semantics.
 
 #### `BiologicalOde`
 User-defined per-state biological RHS expressions. Describes only the *biological* part of `dc/dt`; physical contributions (feed, dilution, sample, dV) continue to be added by bp-format from the existing `VolumeChange` machinery.
@@ -363,7 +362,6 @@ reactor_medium = bp.ReactorMedium(
                 times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
                 values=jnp.array([0.5, 1.2, 3.1, 7.5, 12.0]),
             ),
-            is_intracellular=False,
         ),
         "glucose": bp.ReactorMediumComponent(
             name="glucose", unit="g/L",
@@ -371,7 +369,6 @@ reactor_medium = bp.ReactorMedium(
                 times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
                 values=jnp.array([20.0, 17.5, 12.0, 4.0, 0.1]),
             ),
-            is_intracellular=False,
         ),
     },
 )

@@ -239,45 +239,6 @@ def _value_to_interpax_spline(
 # ---------------------------------------------------------------------------
 
 
-def _add_intracellular_to_biomass(
-    reaction: jnp.ndarray,
-    q: jnp.ndarray,
-    X_active: jnp.ndarray,
-    biomass_idx: int,
-    intracellular_indices: tuple,
-) -> jnp.ndarray:
-    """Add intracellular q contributions to the measured-biomass derivative.
-
-    ``X_measured = X_active + Σ P_intracellular``, so
-    ``dX_meas/dt = dX_active/dt + Σ dP_intra/dt``. The per-state reaction term
-    ``q[i] * X_active`` is the intracellular accumulation rate for index *i*;
-    summing over intracellular indices and adding to the biomass entry keeps
-    the measured-biomass equation consistent.
-    """
-    if not intracellular_indices:
-        return reaction
-    intra_arr = jnp.array(intracellular_indices, dtype=int)
-    return reaction.at[biomass_idx].add(jnp.sum(q[intra_arr]) * X_active)
-
-
-def _subtract_intracellular_from_biomass_q(
-    q_all: jnp.ndarray,
-    biomass_idx: int,
-    intracellular_indices: tuple,
-) -> jnp.ndarray:
-    """Inverse of :func:`_add_intracellular_to_biomass` for q inversion.
-
-    Inversion yields ``q_all[i] = (dc_i/dt - feed_i) / X_active``. For
-    ``i == biomass_idx`` this is the *apparent* specific growth rate of
-    measured biomass; subtracting the intracellular q values recovers the
-    specific growth rate of active biomass.
-    """
-    if not intracellular_indices:
-        return q_all
-    intra_arr = jnp.array(intracellular_indices, dtype=int)
-    return q_all.at[biomass_idx].add(-jnp.sum(q_all[intra_arr]))
-
-
 def _apply_feed_dilution(
     c_reactor: jnp.ndarray,
     V: jnp.ndarray,
@@ -420,11 +381,6 @@ class RhsOde(eqx.Module):
         *f_modeled*.
     biomass_idx : int
         Index of ``"biomass"`` in reactor-component ordering (always 0).
-    intracellular_indices : tuple[int, ...]
-        Indices of intracellular states in reactor-component ordering.
-        Intracellular components (e.g., intracellular product) accumulate
-        inside the cells.  Active biomass is therefore:
-        ``X_active = c[biomass_idx] - sum(c[i] for i in intracellular_indices)``.
     Cin : jnp.ndarray, shape (n_flows, n_reactor_states)
         Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
         concentration of species *i* in controlled feed stream *k*.
@@ -460,7 +416,6 @@ class RhsOde(eqx.Module):
     flow_names: tuple = eqx.field(static=True)
     modeled_flow_names: tuple = eqx.field(static=True)
     biomass_idx: int = eqx.field(static=True)
-    intracellular_indices: tuple = eqx.field(static=True)
     Cin: jnp.ndarray
     Cin_modeled: jnp.ndarray
 
@@ -478,9 +433,7 @@ class RhsOde(eqx.Module):
         ----------
         c:
             State vector ``[reactor_components..., pv_states..., V]``,
-            shape ``(c_size,)``.
-            Biomass (measured) is at index 0; intracellular components follow
-            in the positions given by :attr:`intracellular_indices`.
+            shape ``(c_size,)``. Biomass (measured) is at index 0.
         q:
             Specific rates aligned with reactor-component ordering, shape
             ``(q_size,)``.
@@ -509,31 +462,18 @@ class RhsOde(eqx.Module):
 
         .. math::
 
-            X_{active} = c_{biomass} - \\sum_{i \\in intracellular} c_i
-
-            \\frac{dc_i}{dt} = q_i \\cdot X_{active} + r_i
+            \\frac{dc_i}{dt} = q_i \\cdot c_{biomass} + r_i
                 + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,i} - c_i)
-                \\quad (i \\notin \\{biomass\\})
-
-            \\frac{dc_{biomass}}{dt} = \\Big(q_{biomass}
-                + \\sum_{j \\in intracellular} q_j\\Big) \\cdot X_{active}
-                + r_{biomass}
-                + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,biomass} - c_{biomass})
 
             \\frac{dc_{pv,j}}{dt} = r_{pv,j}
 
             \\frac{dV}{dt} = \\sum_k f_k
 
-        where :math:`X_{active}` is the active biomass concentration
-        (measured biomass minus intracellular component concentrations),
-        and the sums over *k* include both controlled and modeled flows.
-        The extra :math:`\\sum_{j} q_j` term in the biomass derivative
-        comes from :math:`X_{measured} = X_{active} + \\sum_j P_j` so that
-        :math:`dX_{measured}/dt = dX_{active}/dt + \\sum_j dP_j/dt`. With
-        no intracellular components the sum is empty and
-        :math:`dc_{biomass}/dt` collapses to the same form as the other
-        states. ``q_{biomass}`` is therefore the specific growth rate of
-        *active* biomass, not of measured biomass.
+        where the sums over *k* include both controlled and modeled flows.
+        Biological dynamics that don't fit this generic ``q * biomass``
+        template (e.g. intracellular accumulation) belong in a
+        :class:`BiologicalOde` block, which dispatches to
+        :class:`UserDefinedRhsOde` instead of this auto path.
         """
         n_reactor = self.n_reactor_states
         n_non_volume = self.r_size
@@ -550,22 +490,7 @@ class RhsOde(eqx.Module):
             static_idx = jnp.array(self.static_pv_indices, dtype=int)
             r_pv = r_pv.at[static_idx].set(0.0)
 
-        # Active biomass: measured biomass minus intracellular components
-        X_measured = c[self.biomass_idx]
-        if len(self.intracellular_indices) > 0:
-            intracellular_sum = jnp.sum(
-                c_reactor[jnp.array(self.intracellular_indices)]
-            )
-        else:
-            intracellular_sum = jnp.zeros(())
-        X_active = X_measured - intracellular_sum
-
-        # Reaction contribution: q_i * X_active, plus intracellular accumulation
-        # added back into the measured-biomass entry for mass balance.
-        reaction = q * X_active
-        reaction = _add_intracellular_to_biomass(
-            reaction, q, X_active, self.biomass_idx, self.intracellular_indices
-        )
+        reaction = q * c[self.biomass_idx]
 
         feed_term, dV = _apply_feed_dilution(
             c_reactor,
@@ -677,7 +602,6 @@ class UserDefinedRhsOde(eqx.Module):
     pv_indices: tuple = eqx.field(static=True)
     volume_idx: int = eqx.field(static=True)
     biomass_idx: int = eqx.field(static=True)
-    intracellular_indices: tuple = eqx.field(static=True)
     static_pv_indices: tuple = eqx.field(static=True)
 
     # --- Names (deterministic ordering) ---
@@ -763,8 +687,8 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
         )
 
     # Reuse the auto path's symbol/index discovery so biomass-at-0 and
-    # intracellular ordering match exactly. We construct a transient RhsOde
-    # for its metadata and discard the rest.
+    # state ordering match exactly. We construct a transient RhsOde for its
+    # metadata and discard the rest.
     auto = _build_auto_rhs_ode(process)
 
     reactor_state_names = auto.reactor_component_state_names
@@ -846,7 +770,6 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
         pv_indices=auto.pv_indices,
         volume_idx=auto.volume_idx,
         biomass_idx=auto.biomass_idx,
-        intracellular_indices=auto.intracellular_indices,
         static_pv_indices=auto.static_pv_indices,
         reactor_component_state_names=auto.reactor_component_state_names,
         process_variable_state_names=auto.process_variable_state_names,
@@ -981,10 +904,8 @@ def get_rhs_ode(process: BioProcess):
     - When set: returns :class:`UserDefinedRhsOde` built from the
       user-declared per-state biological expressions, algebraic variables,
       and abstract rate symbols.
-    - When ``None`` (default / backward compatible): returns the
-      auto-generated :class:`RhsOde` whose biological term is
-      ``q_i * X_active`` per reactor component (with the intracellular
-      mass-balance correction applied to the biomass entry).
+    - When ``None`` (default): returns the auto-generated :class:`RhsOde`
+      whose biological term is ``q_i * c_biomass`` per reactor component.
 
     Parameters
     ----------
@@ -1034,13 +955,6 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
     )
     n_reactor = len(reactor_component_state_names)
     biomass_idx: int = 0  # always 0 by construction
-
-    # --- Intracellular indices ---
-    intracellular_indices: List[int] = []
-    for i, name in enumerate(reactor_component_state_names):
-        comp = process.reactor_medium.components[name]
-        if comp.is_intracellular:
-            intracellular_indices.append(i)
 
     process_variable_state_names: Tuple[str, ...] = tuple(
         pv_name
@@ -1141,7 +1055,6 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
         flow_names=tuple(flow_names),
         modeled_flow_names=tuple(modeled_flow_names),
         biomass_idx=biomass_idx,
-        intracellular_indices=tuple(intracellular_indices),
         Cin=Cin,
         Cin_modeled=Cin_modeled,
     )
@@ -1354,23 +1267,12 @@ def build_q_func(
     at *any* time ``t`` using the analytical spline derivatives:
 
     .. math::
-        q_i(t) = \\frac{dc_i/dt - \\text{feed\\_term}_i}{X_{active}}
-        \\quad (i \\notin \\{biomass\\})
+        q_i(t) = \\frac{dc_i/dt - \\text{feed\\_term}_i}{c_{biomass}}
 
-        q_{biomass}(t) = \\frac{dc_{biomass}/dt
-            - \\sum_{j \\in intracellular} dc_j/dt
-            - \\text{feed\\_term}_{biomass}}{X_{active}}
-
-    The biomass-specific case subtracts the intracellular concentration
-    derivatives so the returned ``q[biomass]`` is the specific growth rate
-    of *active* biomass (the inverse of the forward RHS in :class:`RhsOde`).
-    Without intracellular components the sum is empty and the formula
-    collapses to the same form as the other states.
-
-    All components (concentration derivatives, volume, flow rates, active
-    biomass) are evaluated analytically from splines and discrete-event
-    data via ``jnp.searchsorted``.  The returned callable is compatible
-    with ``jax.jit``.
+    All components (concentration derivatives, volume, flow rates, biomass)
+    are evaluated analytically from splines and discrete-event data via
+    ``jnp.searchsorted``.  The returned callable is compatible with
+    ``jax.jit``.
 
     Parameters
     ----------
@@ -1508,7 +1410,6 @@ def build_q_func(
     ]
 
     biomass_idx = mb.biomass_idx
-    intra_idx = mb.intracellular_indices
     u_flow_size = mb.u_flow_size
     f_mod_size = mb.f_modeled_size
 
@@ -1551,11 +1452,7 @@ def build_q_func(
                 (f_mod[:, None] / V_t) * (Cin_mod - c_t[None, :]), axis=0
             )
 
-        # Active biomass
-        X_active = c_t[biomass_idx]
-        if len(intra_idx) > 0:
-            X_active = X_active - jnp.sum(c_t[jnp.array(intra_idx)])
-        X_active = jnp.maximum(X_active, jnp.array(_MIN_ACTIVE_BIOMASS))
+        biomass = jnp.maximum(c_t[biomass_idx], jnp.array(_MIN_ACTIVE_BIOMASS))
 
         r_reactor = jnp.zeros(n_reactor)
         if r_func is not None:
@@ -1565,11 +1462,7 @@ def build_q_func(
         # For species in q∩r the feed-balance also produces an r-coupling term;
         # subtract it here so q is recovered purely from the reaction-side mass
         # balance (overlap_mask selects exactly those species).
-        q_all = (dc_dt - feed_term - jnp.where(overlap_mask, r_reactor, 0.0)) / X_active
-        # Intracellular correction: q[biomass] from this division is the
-        # *apparent* specific rate of measured biomass; subtract the
-        # intracellular q values to recover the active-biomass specific rate.
-        q_all = _subtract_intracellular_from_biomass_q(q_all, biomass_idx, intra_idx)
+        q_all = (dc_dt - feed_term - jnp.where(overlap_mask, r_reactor, 0.0)) / biomass
         return jnp.where(q_mask, q_all, 0.0)
 
     return q_func
@@ -2098,13 +1991,8 @@ def integrate_process_pseudospace(
 
     if state_splines is not None:
         bio_spline = state_splines[mb.reactor_component_state_names[mb.biomass_idx]]
-        intra_splines = [
-            state_splines[mb.reactor_component_state_names[i]]
-            for i in mb.intracellular_indices
-        ]
     else:
         bio_spline = None
-        intra_splines = []
 
     # Modeled (uncontrolled) continuous flows.
     cum_splines_mod: List[interpax.CubicSpline] = []
@@ -2231,19 +2119,12 @@ def integrate_process_pseudospace(
         q, r = rates_func(t, state_rates, u)
 
         if bio_spline is not None:
-            X_active = bio_spline(t)
-            for spl in intra_splines:
-                X_active = X_active - spl(t)
+            biomass = bio_spline(t)
         else:
-            X_active = c_reactor[mb.biomass_idx]
-            for i in mb.intracellular_indices:
-                X_active = X_active - c_reactor[i]
-        X_active = jnp.maximum(X_active, _MIN_ACTIVE_BIOMASS)
+            biomass = c_reactor[mb.biomass_idx]
+        biomass = jnp.maximum(biomass, _MIN_ACTIVE_BIOMASS)
 
-        reaction = q * X_active
-        reaction = _add_intracellular_to_biomass(
-            reaction, q, X_active, mb.biomass_idx, mb.intracellular_indices
-        )
+        reaction = q * biomass
         feed_term = jnp.zeros(n_reactor)
         dV_cont = jnp.zeros(())
         if mb.u_flow_size > 0:

@@ -86,7 +86,6 @@ def _make_process_with_discrete():
                 name="biomass",
                 unit="g/L",
                 concentration=_ts([0.0, 5.0, 10.0, 20.0], [0.5, 1.0, 2.0, 4.0]),
-                is_intracellular=False,
             ),
         },
     )
@@ -539,7 +538,6 @@ def _make_process_with_bolus_feed(
                 name="glucose",
                 unit="mmol/L",
                 concentration=_ts(glucose_times, glucose_values),
-                is_intracellular=False,
             ),
         },
     )
@@ -594,7 +592,6 @@ def _make_process_continuous_only(glucose_feed_conc=100.0):
                     [0.0, 5.0, 10.0, 15.0, 20.0],
                     [10.0, 8.0, 6.0, 4.0, 2.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )
@@ -689,7 +686,6 @@ def test_pseudobatch_species_not_in_feed():
         name="biomass",
         unit="cells/L",
         concentration=_ts([0.0, 25.0, 50.0, 75.0, 100.0], [1.0, 2.0, 4.0, 8.0, 16.0]),
-        is_intracellular=False,
     )
     inputs = build_pseudobatch_inputs(proc, "biomass")
     np.testing.assert_allclose(inputs["feed_corr_at_meas"], 0.0, atol=1e-10)
@@ -1051,7 +1047,6 @@ def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
                 name="glucose",
                 unit="mmol/L",
                 concentration=_ts([0.0, 5.0, 10.0, 15.0], [10.0, 9.0, 7.0, 6.0]),
-                is_intracellular=False,
             ),
         },
     )
@@ -1344,7 +1339,6 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
                 name="glucose",
                 unit="g/L",
                 concentration=ts,
-                is_intracellular=False,
             )
         },
     )
@@ -1449,7 +1443,6 @@ def test_pseudobatch_with_sample_volume_change():
                     [0.0, 5.0, 10.0, 15.0, 20.0],
                     [10.0, 8.0, 6.0, 5.0, 4.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )
@@ -1536,7 +1529,6 @@ def test_pseudobatch_multiple_feed_streams():
                 name="glucose",
                 unit="mmol/L",
                 concentration=_ts([0.0, 10.0, 20.0], [10.0, 7.0, 5.0]),
-                is_intracellular=False,
             ),
         },
     )
@@ -1654,7 +1646,6 @@ def _make_process_sharp_profile():
                     [0.0, 2.0, 3.0, 4.5, 6.0, 7.5, 9.0, 10.0],
                     [0.0, 0.15, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )
@@ -1681,7 +1672,6 @@ def _make_process_smooth_profile():
                     [0.0, 2.0, 5.0, 8.0, 10.0],
                     [0.1, 0.5, 2.0, 5.0, 8.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )

@@ -95,9 +95,6 @@ class ReactorMediumComponent:
     name: str  # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
-    # If True, this component is intracellular (e.g.,
-    # X_measured = X_active + P) and needs different ODE RHS handling.
-    is_intracellular: bool
     bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 

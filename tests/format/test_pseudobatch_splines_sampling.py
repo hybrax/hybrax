@@ -70,7 +70,6 @@ def test_sampling_only_no_concentration_jump():
                     [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
                     [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )
@@ -152,7 +151,6 @@ def test_bolus_only_has_concentration_jump():
                     [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
                     [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )
@@ -240,7 +238,6 @@ def test_mixed_continuous_bolus_sampling():
                     [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
                     [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
                 ),
-                is_intracellular=False,
             ),
         },
     )

@@ -28,26 +28,22 @@ c = [reactor_component_states..., process_variable_states..., V]
 
 ### Dynamics partition
 
-For reactor states `c_r` other than biomass:
+For every reactor state (including biomass):
 
 ```text
-dc_i/dt = q_i(t) * X_active + r_i(t) + feed_dilution(c_i, V, u_flow, f_modeled)
+dc_i/dt = q_i(t) * c_biomass + r_i(t) + feed_dilution(c_i, V, u_flow, f_modeled)
 ```
 
-The biomass entry additionally absorbs the intracellular accumulation rates so
-that mass balance `X_measured = X_active + Σ P_intracellular` holds:
+`q_biomass` is therefore the specific growth rate of measured biomass.
+`build_q_func` is the inverse: it returns
+`q_i(t) = (dc_i/dt − feed_term_i) / c_biomass`.
 
-```text
-dc_biomass/dt = (q_biomass(t) + Σ_{j ∈ intracellular} q_j(t)) * X_active
-              + r_biomass(t) + feed_dilution(c_biomass, V, u_flow, f_modeled)
-```
-
-When no component is marked `is_intracellular=True` the sum is empty and the
-biomass equation collapses to the same form as the other states. `q_biomass`
-is therefore the specific growth rate of *active* biomass, not the apparent
-specific rate of measured biomass; the inversion in `build_q_func` reflects
-the same convention by subtracting the intracellular concentration
-derivatives before dividing by `X_active`.
+Processes whose biology departs from this generic `q · biomass` template
+(e.g. intracellular accumulation, dead-cell pools, custom algebraic
+intermediates) declare a `BiologicalOde` block on the process; that
+dispatches to `UserDefinedRhsOde` and the `q · biomass` formula is
+replaced by user-supplied expressions over algebraic variables and
+declared rate symbols.
 
 For PV states `c_pv`:
 
