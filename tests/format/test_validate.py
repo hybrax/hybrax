@@ -961,7 +961,7 @@ class TestValidateBiologicalOde:
     def test_well_formed_block_passes(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={"X_active": "biomass - product"},
+            algebraic={"X_active": "biomass - product"},
             rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
             derivatives={
                 "biomass": "q_X * X_active + q_P * X_active",
@@ -975,7 +975,7 @@ class TestValidateBiologicalOde:
     def test_unknown_symbol_in_expression_is_rejected(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={},
+            algebraic={},
             rates={"q_X": RateDecl()},
             derivatives={"biomass": "q_X * biomass + zzz", "product": "0", "glucose": "0"},
         )
@@ -986,7 +986,7 @@ class TestValidateBiologicalOde:
     def test_missing_derivative_for_state_is_rejected(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={},
+            algebraic={},
             rates={"q_X": RateDecl()},
             derivatives={"biomass": "q_X * biomass"},
         )
@@ -999,7 +999,7 @@ class TestValidateBiologicalOde:
     def test_extra_derivative_for_non_state_is_rejected(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={},
+            algebraic={},
             rates={"q_X": RateDecl()},
             derivatives={
                 "biomass": "0", "product": "0", "glucose": "0",
@@ -1010,10 +1010,10 @@ class TestValidateBiologicalOde:
         assert ok is False
         assert "ghost" in msg
 
-    def test_derived_dependency_cycle_is_rejected(self):
+    def test_algebraic_dependency_cycle_is_rejected(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={"a": "b + 1", "b": "a * 2"},
+            algebraic={"a": "b + 1", "b": "a * 2"},
             rates={"q_X": RateDecl()},
             derivatives={"biomass": "0", "product": "0", "glucose": "0"},
         )
@@ -1024,7 +1024,7 @@ class TestValidateBiologicalOde:
     def test_rate_name_collides_with_state_is_rejected(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={},
+            algebraic={},
             rates={"biomass": RateDecl()},
             derivatives={"biomass": "biomass", "product": "0", "glucose": "0"},
         )
@@ -1041,7 +1041,7 @@ class TestValidateBiologicalOde:
             )
         }
         p.biological_ode = BiologicalOde(
-            derived={},
+            algebraic={},
             rates={"feed_rate": RateDecl()},
             derivatives={"biomass": "0", "product": "0", "glucose": "0"},
         )
@@ -1052,7 +1052,7 @@ class TestValidateBiologicalOde:
     def test_invalid_rate_bounds_lo_greater_than_hi_is_rejected(self):
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
-            derived={},
+            algebraic={},
             rates={"q_X": RateDecl(bounds=(2.0, 1.0))},
             derivatives={"biomass": "q_X * biomass", "product": "0", "glucose": "0"},
         )

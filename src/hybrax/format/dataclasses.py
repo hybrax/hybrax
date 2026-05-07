@@ -223,7 +223,7 @@ class BiologicalOde:
 
     Attributes
     ----------
-    derived:
+    algebraic:
         Mapping ``name -> expression string``. Algebraic (no time derivative);
         recomputed every RHS call. Must be acyclic.
     rates:
@@ -235,7 +235,7 @@ class BiologicalOde:
         entry; use ``"0"`` to declare "no biological dynamics".
     """
 
-    derived: Dict[str, str] = field(default_factory=dict)
+    algebraic: Dict[str, str] = field(default_factory=dict)
     rates: Dict[str, RateDecl] = field(default_factory=dict)
     derivatives: Dict[str, str] = field(default_factory=dict)
 

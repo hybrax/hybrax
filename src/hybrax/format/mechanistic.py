@@ -612,21 +612,21 @@ def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
     return fn
 
 
-def _topo_sort_derived(derived_exprs: Dict[str, Any]) -> List[str]:
-    """Topologically sort derived names by mutual dependencies. Assumes the
+def _topo_sort_algebraic(algebraic_exprs: Dict[str, Any]) -> List[str]:
+    """Topologically sort algebraic names by mutual dependencies. Assumes the
     expressions have already been parsed and validated as acyclic."""
-    derived_names = set(derived_exprs.keys())
+    algebraic_names = set(algebraic_exprs.keys())
     deps = {
-        name: {str(s) for s in expr.free_symbols} & derived_names
-        for name, expr in derived_exprs.items()
+        name: {str(s) for s in expr.free_symbols} & algebraic_names
+        for name, expr in algebraic_exprs.items()
     }
     order: List[str] = []
-    remaining = set(derived_names)
+    remaining = set(algebraic_names)
     while remaining:
         ready = sorted(n for n in remaining if not (deps[n] & remaining))
         if not ready:
             raise ValueError(
-                "Cyclic derived dependencies detected during topo-sort: "
+                "Cyclic algebraic dependencies detected during topo-sort: "
                 f"{sorted(remaining)}"
             )
         order.extend(ready)
@@ -673,7 +673,6 @@ class UserDefinedRhsOde(eqx.Module):
     n_reactor_states: int = eqx.field(static=True)
     n_pv_states: int = eqx.field(static=True)
     n_controlled_pv: int = eqx.field(static=True)
-    n_derived: int = eqx.field(static=True)
     reactor_indices: tuple = eqx.field(static=True)
     pv_indices: tuple = eqx.field(static=True)
     volume_idx: int = eqx.field(static=True)
@@ -687,14 +686,14 @@ class UserDefinedRhsOde(eqx.Module):
     controlled_pv_names: tuple = eqx.field(static=True)
     flow_names: tuple = eqx.field(static=True)
     modeled_flow_names: tuple = eqx.field(static=True)
-    derived_names: tuple = eqx.field(static=True)
+    name_modeled_algebraic: tuple = eqx.field(static=True)
     rate_names: tuple = eqx.field(static=True)
 
     # --- Compiled callables ---
-    # Each takes a flat args array (state | ctrl_pv | derived | rates) and
+    # Each takes a flat args array (state | ctrl_pv | algebraic | rates) and
     # returns a scalar. Stored as static so equinox treats them as Python
     # config rather than pytree leaves.
-    derived_funcs: tuple = eqx.field(static=True)
+    algebraic_funcs: tuple = eqx.field(static=True)
     derivative_funcs: tuple = eqx.field(static=True)
 
     # --- Feed-dilution data ---
@@ -715,14 +714,15 @@ class UserDefinedRhsOde(eqx.Module):
         c_reactor = c[:n_reactor]
         V = c[self.volume_idx]
 
-        # 1. Compute derived variables in topo order (already sorted at build).
-        derived_arr = jnp.zeros(self.n_derived) if self.n_derived > 0 else jnp.zeros(0)
-        for i, fn in enumerate(self.derived_funcs):
-            args = jnp.concatenate([state_values, ctrl_pv_values, derived_arr, rates])
-            derived_arr = derived_arr.at[i].set(fn(args))
+        # 1. Compute algebraic variables in topo order (already sorted at build).
+        n_algebraic = len(self.name_modeled_algebraic)
+        algebraic_arr = jnp.zeros(n_algebraic) if n_algebraic > 0 else jnp.zeros(0)
+        for i, fn in enumerate(self.algebraic_funcs):
+            args = jnp.concatenate([state_values, ctrl_pv_values, algebraic_arr, rates])
+            algebraic_arr = algebraic_arr.at[i].set(fn(args))
 
         # 2. Compute biological derivatives per dynamic state.
-        full_args = jnp.concatenate([state_values, ctrl_pv_values, derived_arr, rates])
+        full_args = jnp.concatenate([state_values, ctrl_pv_values, algebraic_arr, rates])
         biol_dc_list = [fn(full_args) for fn in self.derivative_funcs]
         biol_dc = jnp.stack(biol_dc_list) if biol_dc_list else jnp.zeros(0)
 
@@ -774,24 +774,24 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
     )
 
     state_derivative_names = tuple(reactor_state_names) + tuple(pv_state_names)
-    derived_names_set = set(bo.derived.keys())
+    algebraic_names_set = set(bo.algebraic.keys())
     rate_names_tuple = tuple(bo.rates.keys())
     allowed_names = (
         set(state_derivative_names)
         | set(controlled_pv_names)
-        | derived_names_set
+        | algebraic_names_set
         | set(rate_names_tuple)
     )
     symbol_table = {n: sympy.Symbol(n) for n in allowed_names}
 
     # Parse all expressions; surface any error from validation for clarity.
-    derived_exprs: Dict[str, Any] = {}
-    for name, expr_str in bo.derived.items():
+    algebraic_exprs: Dict[str, Any] = {}
+    for name, expr_str in bo.algebraic.items():
         try:
-            derived_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
+            algebraic_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
         except Exception as exc:
             raise ValueError(
-                f"biological_ode.derived[{name!r}] failed to parse: {exc}"
+                f"biological_ode.algebraic[{name!r}] failed to parse: {exc}"
             ) from exc
 
     derivative_exprs: Dict[str, Any] = {}
@@ -803,23 +803,23 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
                 f"biological_ode.derivatives[{name!r}] failed to parse: {exc}"
             ) from exc
 
-    # Topo-sort derived; build ordered tuple of names.
-    derived_order = _topo_sort_derived(derived_exprs)
-    derived_names_ordered = tuple(derived_order)
+    # Topo-sort algebraic; build ordered tuple of names.
+    algebraic_order = _topo_sort_algebraic(algebraic_exprs)
+    name_modeled_algebraic_ordered = tuple(algebraic_order)
 
     # Build the canonical args ordering used by every lambdified expression.
     # Concatenation order: state_derivative_names | controlled_pv_names
-    #                      | derived_names_ordered | rate_names_tuple.
+    #                      | name_modeled_algebraic_ordered | rate_names_tuple.
     args_order = (
         tuple(state_derivative_names)
         + tuple(controlled_pv_names)
-        + derived_names_ordered
+        + name_modeled_algebraic_ordered
         + rate_names_tuple
     )
 
-    derived_funcs = tuple(
-        _lambdify_with_array_arg(derived_exprs[n], args_order)
-        for n in derived_names_ordered
+    algebraic_funcs = tuple(
+        _lambdify_with_array_arg(algebraic_exprs[n], args_order)
+        for n in name_modeled_algebraic_ordered
     )
 
     # Build per-state derivative callables in state order; missing state
@@ -842,7 +842,6 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
         n_reactor_states=auto.n_reactor_states,
         n_pv_states=auto.n_pv_states,
         n_controlled_pv=len(controlled_pv_names),
-        n_derived=len(derived_names_ordered),
         reactor_indices=auto.reactor_indices,
         pv_indices=auto.pv_indices,
         volume_idx=auto.volume_idx,
@@ -854,44 +853,44 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
         controlled_pv_names=controlled_pv_names,
         flow_names=auto.flow_names,
         modeled_flow_names=auto.modeled_flow_names,
-        derived_names=derived_names_ordered,
+        name_modeled_algebraic=name_modeled_algebraic_ordered,
         rate_names=rate_names_tuple,
-        derived_funcs=derived_funcs,
+        algebraic_funcs=algebraic_funcs,
         derivative_funcs=derivative_funcs,
         Cin=auto.Cin,
         Cin_modeled=auto.Cin_modeled,
     )
 
 
-def build_derived_func(
+def build_algebraic_func(
     process: BioProcess,
 ) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], Dict[str, jnp.ndarray]]:
-    """Build a callable that evaluates the ``biological_ode.derived`` variables
-    given concrete state, controlled-PV, and rate arrays.
+    """Build a callable that evaluates the ``biological_ode.algebraic``
+    variables given concrete state, controlled-PV, and rate arrays.
 
     Returns ``f(state_values, ctrl_pv_values, rates) -> {name: scalar}``.
-    Useful to expose derived quantities like ``X_active`` as observables for
+    Useful to expose algebraic quantities like ``X_active`` as observables for
     plotting or loss computation. Raises ``ValueError`` if the process has no
     ``biological_ode`` block.
     """
     bo = process.biological_ode
     if bo is None:
         raise ValueError(
-            "build_derived_func requires process.biological_ode to be set."
+            "build_algebraic_func requires process.biological_ode to be set."
         )
     mb = build_user_defined_rhs_ode(process)
-    n_derived = mb.n_derived
-    derived_names = mb.derived_names
-    derived_funcs = mb.derived_funcs
+    name_modeled_algebraic = mb.name_modeled_algebraic
+    n_algebraic = len(name_modeled_algebraic)
+    algebraic_funcs = mb.algebraic_funcs
 
-    def derived_func(state_values, ctrl_pv_values, rates):
-        derived_arr = jnp.zeros(n_derived) if n_derived > 0 else jnp.zeros(0)
-        for i, fn in enumerate(derived_funcs):
-            args = jnp.concatenate([state_values, ctrl_pv_values, derived_arr, rates])
-            derived_arr = derived_arr.at[i].set(fn(args))
-        return {name: derived_arr[i] for i, name in enumerate(derived_names)}
+    def algebraic_func(state_values, ctrl_pv_values, rates):
+        algebraic_arr = jnp.zeros(n_algebraic) if n_algebraic > 0 else jnp.zeros(0)
+        for i, fn in enumerate(algebraic_funcs):
+            args = jnp.concatenate([state_values, ctrl_pv_values, algebraic_arr, rates])
+            algebraic_arr = algebraic_arr.at[i].set(fn(args))
+        return {name: algebraic_arr[i] for i, name in enumerate(name_modeled_algebraic)}
 
-    return derived_func
+    return algebraic_func
 
 
 # ---------------------------------------------------------------------------
@@ -980,7 +979,7 @@ def get_rhs_ode(process: BioProcess):
     Dispatches based on the presence of ``process.biological_ode``:
 
     - When set: returns :class:`UserDefinedRhsOde` built from the
-      user-declared per-state biological expressions, derived variables,
+      user-declared per-state biological expressions, algebraic variables,
       and abstract rate symbols.
     - When ``None`` (default / backward compatible): returns the
       auto-generated :class:`RhsOde` whose biological term is

@@ -50,7 +50,7 @@ def _dict_to_bounds(data: Optional[Dict]) -> Bounds:
 
 def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
     return {
-        "derived": dict(ode.derived),
+        "algebraic": dict(ode.algebraic),
         "rates": {
             name: {"bounds": _bounds_to_dict(rd.bounds)}
             for name, rd in ode.rates.items()
@@ -61,7 +61,7 @@ def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
 
 def _dict_to_biological_ode(data: Dict) -> BiologicalOde:
     return BiologicalOde(
-        derived=dict(data.get("derived", {})),
+        algebraic=dict(data.get("algebraic", {})),
         rates={
             name: RateDecl(bounds=_dict_to_bounds((rd or {}).get("bounds")))
             for name, rd in data.get("rates", {}).items()

@@ -14,7 +14,7 @@ on an auto-generated [`RhsOde`](../bp_format/mechanistic.py).
 
 Given
 
-- a process with a `biological_ode` block declaring `derived`, `rates`,
+- a process with a `biological_ode` block declaring `algebraic`, `rates`,
   and per-state biological derivative expressions, and
 - splines that reconstruct each non-volume state trajectory from data,
 
@@ -36,7 +36,7 @@ algebraic solve for the rate vector.
 |---|---|---|
 | `process` | `BioProcess` | must have `biological_ode is not None` |
 | `ctrl` | `ControlSplines` | evaluates controlled-PV symbols at `t` |
-| `mb` | `UserDefinedRhsOde` | provides ordering of states / rates / derived / controlled PVs |
+| `mb` | `UserDefinedRhsOde` | provides ordering of states / rates / algebraic / controlled PVs |
 | `state_splines` | `Dict[str, spline]` (optional) | reactor entries should be `BacktransformSpline`; built via [`build_state_splines`](../bp_format/mechanistic.py#L1200) when omitted |
 
 Output: `Callable[[float], jnp.ndarray]` of shape `(mb.rate_size,)`.
@@ -55,11 +55,11 @@ f_s(c_state, u_ctrl, d(c_state, u_ctrl, rates), rates)
 over the symbol table
 
 ```
-{state names} ∪ {controlled-PV names} ∪ {derived names} ∪ {rate names}
+{state names} ∪ {controlled-PV names} ∪ {algebraic names} ∪ {rate names}
 ```
 
-where `d` is the vector of `derived` quantities (acyclic, recomputed every
-call). After topo-sorting `derived` and inlining every entry into the
+where `d` is the vector of `algebraic` quantities (acyclic, recomputed every
+call). After topo-sorting `algebraic` and inlining every entry into the
 state derivatives, each per-state expression depends only on
 `(c_state, u_ctrl, rates)`:
 
@@ -70,7 +70,7 @@ f_s(c_state, u_ctrl, rates)
 ### 3.2 Linearity requirement
 
 `build_rates_func_analytical` requires that every per-state expression be
-**linear** in the declared rate symbols. After inlining `derived`, each
+**linear** in the declared rate symbols. After inlining `algebraic`, each
 must factor as
 
 ```
@@ -171,12 +171,12 @@ attempting any solve.
 1. Validate inputs: `process.biological_ode is not None`,
    `isinstance(mb, UserDefinedRhsOde)`. Build `state_splines` if missing.
 2. Collect orderings: `state_names = reactor + pv`, `ctrl_pv_names`,
-   `rate_names`, `derived_names`. These are static under JIT.
-3. Build a sympy symbol table covering states, controlled PVs, derived
-   names, and rates. `sympify` every `derived` and `derivatives` expression
+   `rate_names`, `name_modeled_algebraic`. These are static under JIT.
+3. Build a sympy symbol table covering states, controlled PVs, algebraic
+   names, and rates. `sympify` every `algebraic` and `derivatives` expression
    under that table.
-4. Topo-sort `derived` ([`_topo_sort_derived`](../bp_format/mechanistic.py#L545));
-   inline each derived expression into all later expressions and into every
+4. Topo-sort `algebraic` ([`_topo_sort_algebraic`](../bp_format/mechanistic.py#L545));
+   inline each algebraic expression into all later expressions and into every
    per-state derivative; `sympy.expand` the result.
 5. For each per-state expression, compute the row of the rate Jacobian
    `A_row` and the rate-zero intercept `b0`; check linearity (Section 3.2).
@@ -219,7 +219,7 @@ keys are known at build time); only `t` and the spline data are traced.
 | `mb` not `UserDefinedRhsOde` | requires UserDefinedRhsOde from `get_rhs_ode` |
 | derivative non-linear in rates | "biological_ode.derivatives[s] is non-linear in rates" |
 | `n_rates != len(nonzero_rows)` and not diagonal | "analytical inversion requires a square system" |
-| cyclic `derived` | from `_topo_sort_derived` |
+| cyclic `algebraic` | from `_topo_sort_algebraic` |
 
 ## 7. Differences vs. the previous implementation
 
@@ -241,15 +241,15 @@ RHS branch.
 | `q` vs `r` partitioning | explicit `q_state_indices` / `r_state_indices` / `r_func` API with overlap-only-with-`r_func` rules | n/a — biological vs. physical split is encoded in the `biological_ode` block; everything outside that block is physical and added by bp-format on top |
 | Linearity assumption | implicit (`q · X_active` is linear by construction) | verified symbolically (`sympy.diff` / `sympy.expand` residual check) and rejected at build time if violated |
 | Solve | per-row scalar division: `q_i = (dc/dt - feed_term - r_overlap) / X_active`; biomass corrected | diagonal fast path (per-row scalar) or `jnp.linalg.solve(A, b)` over non-zero rows |
-| Symbolic toolchain | none; pure numerical formulas | sympy: `sympify`, `_topo_sort_derived`, `diff`, `expand`, `subs`, `lambdify(modules="jax")` |
+| Symbolic toolchain | none; pure numerical formulas | sympy: `sympify`, `_topo_sort_algebraic`, `diff`, `expand`, `subs`, `lambdify(modules="jax")` |
 | Dependence on `ctrl` | only through downstream callers (the inversion itself ignores `ctrl`) | required: controlled-PV values are bound into `args` via `ctrl(t)[ctrl_indices]` |
 | Reactor-spline contract | calls `state_splines[s](t)` and `state_splines[s].derivative()(t)` directly in real space | requires `BacktransformSpline` (with `c_star_spline`, `adf_times`, `adf_values`) for the `c*`-domain inversion; gracefully falls back to identity transform if absent (correct only when `adf ≡ 1`) |
 | Output | wrapped by `build_rates_func` into `(q, r)` for the integration callback signature `rates_func(t, state, controls)` | returns rates only; signature is `rates_func(t)`. Integration of a `UserDefinedRhsOde` consumes this rate vector via the `is_user_defined` branch in [`_build_segment_rhs`](../bp_format/mechanistic.py#L1975) |
-| Active-biomass handling | `X_active = c[biomass] - Σ c[intra]`, clamped to `1e-6` | not handled here; the user expresses `X_active` as a `derived` entry and writes it into the relevant per-state expressions explicitly |
+| Active-biomass handling | `X_active = c[biomass] - Σ c[intra]`, clamped to `1e-6` | not handled here; the user expresses `X_active` as an `algebraic` entry and writes it into the relevant per-state expressions explicitly |
 
 ### Inputs newly required
 
-- A validated `biological_ode` block (`derived`, `rates`, `derivatives`)
+- A validated `biological_ode` block (`algebraic`, `rates`, `derivatives`)
   with every dynamic state present and every expression sympy-parseable
   over the typed symbol table.
 - Reactor-component splines built as `BacktransformSpline` (the default

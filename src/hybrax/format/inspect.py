@@ -199,9 +199,9 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
         if process.biological_ode is not None:
             bo = process.biological_ode
             print("\nBiological ODE (user-defined):")
-            if bo.derived:
-                print(f"  Derived ({len(bo.derived)}):")
-                for name, expr in bo.derived.items():
+            if bo.algebraic:
+                print(f"  Algebraic ({len(bo.algebraic)}):")
+                for name, expr in bo.algebraic.items():
                     print(f"    {name} = {expr}")
             if bo.rates:
                 print(f"  Rates ({len(bo.rates)}):")

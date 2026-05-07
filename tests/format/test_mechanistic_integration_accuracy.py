@@ -249,7 +249,7 @@ def _make_equivalent_biological_ode(mb) -> BiologicalOde:
 
     Convention used:
     - One rate per reactor-component state, named ``q_<state_name>``.
-    - ``X_active`` is declared as a derived variable (``biomass - sum(intra)``)
+    - ``X_active`` is declared as an algebraic variable (``biomass - sum(intra)``)
       when intracellular components exist, otherwise it equals biomass directly
       and we inline that.
     - Per-state biological RHS is ``q_i * X_active`` for non-biomass states;
@@ -267,10 +267,10 @@ def _make_equivalent_biological_ode(mb) -> BiologicalOde:
     rates = {f"q_{n}": RateDecl() for n in state_names}
 
     if intra_names:
-        derived = {"X_active": " - ".join([biomass_name] + intra_names)}
+        algebraic = {"X_active": " - ".join([biomass_name] + intra_names)}
         x_active = "X_active"
     else:
-        derived = {}
+        algebraic = {}
         x_active = biomass_name
 
     derivatives: dict = {}
@@ -285,7 +285,7 @@ def _make_equivalent_biological_ode(mb) -> BiologicalOde:
     for pv_name in mb.process_variable_state_names:
         derivatives[pv_name] = "0"
 
-    return BiologicalOde(derived=derived, rates=rates, derivatives=derivatives)
+    return BiologicalOde(algebraic=algebraic, rates=rates, derivatives=derivatives)
 
 
 def _assert_dual_path_dcdt_equivalence(process, *, n_samples: int = 5, seed: int = 7):

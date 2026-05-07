@@ -477,7 +477,7 @@ def _make_process_with_biological_ode_and_bounds(sample_process):
         else:
             pv.bounds = (None, 100.0)
     p.biological_ode = BiologicalOde(
-        derived={"X_active": "biomass"},
+        algebraic={"X_active": "biomass"},
         rates={
             "q_X": RateDecl(bounds=(0.0, None)),
             "q_S": RateDecl(bounds=(None, 0.0)),
@@ -527,7 +527,7 @@ def test_json_roundtrip_biological_ode(sample_process):
 
     p2 = loaded.case_studies["b"].processes["fed_batch_001"]
     assert p2.biological_ode is not None
-    assert p2.biological_ode.derived == {"X_active": "biomass"}
+    assert p2.biological_ode.algebraic == {"X_active": "biomass"}
     assert p2.biological_ode.derivatives == {
         "biomass": "q_X * X_active",
         "glucose": "q_S * X_active",

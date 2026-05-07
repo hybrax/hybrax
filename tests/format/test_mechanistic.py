@@ -33,7 +33,7 @@ from bp_format.mechanistic import (
     ControlSplines,
     RhsOde,
     UserDefinedRhsOde,
-    build_derived_func,
+    build_algebraic_func,
     build_q_func,
     build_rates_func,
     build_state_splines,
@@ -1133,7 +1133,7 @@ def _make_batch_with_biological_ode_intracellular():
     """
     p = _make_batch_process_with_intracellular()
     p.biological_ode = BiologicalOde(
-        derived={"X_active": "biomass - product"},
+        algebraic={"X_active": "biomass - product"},
         rates={
             "q_X_active": RateDecl(),
             "q_P": RateDecl(),
@@ -1176,9 +1176,9 @@ class TestUserDefinedRhsOde:
         )
         np.testing.assert_allclose(np.asarray(dc_user), np.asarray(dc_auto), atol=1e-6)
 
-    def test_derived_func_returns_x_active(self):
+    def test_algebraic_func_returns_x_active(self):
         p = _make_batch_with_biological_ode_intracellular()
-        df = build_derived_func(p)
+        df = build_algebraic_func(p)
         state_values = jnp.array([2.0, 0.5, 5.0])
         out = df(state_values, jnp.zeros(0), jnp.array([0.0, 0.0, 0.0]))
         assert "X_active" in out

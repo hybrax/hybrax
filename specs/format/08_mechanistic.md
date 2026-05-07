@@ -75,12 +75,12 @@ Where:
 - `get_control_splines(process) -> ControlSplines`
 - `get_rhs_ode(process) -> RhsOde | UserDefinedRhsOde` *(dispatching)*
 - `build_user_defined_rhs_ode(process) -> UserDefinedRhsOde` *(force user-defined path; raises if `process.biological_ode` is unset)*
-- `build_derived_func(process) -> Callable` *(evaluator for `BiologicalOde.derived` quantities, e.g. `X_active(t)` as an observable)*
+- `build_algebraic_func(process) -> Callable` *(evaluator for `BiologicalOde.algebraic` quantities, e.g. `X_active(t)` as an observable)*
 
 `get_rhs_ode` dispatches based on `process.biological_ode`:
 
 - When `None` (default), it returns the auto-generated `RhsOde` with the dynamics described above.
-- When set, it returns a `UserDefinedRhsOde` built from the user's per-state biological RHS expressions, derived variables, and abstract rate placeholders. The dilution / feed / volume contributions are still added by bp-format on top of the user's biological RHS — the boundary is what makes the block named `biological_ode` and not just `ode`.
+- When set, it returns a `UserDefinedRhsOde` built from the user's per-state biological RHS expressions, algebraic variables, and abstract rate placeholders. The dilution / feed / volume contributions are still added by bp-format on top of the user's biological RHS — the boundary is what makes the block named `biological_ode` and not just `ode`.
 
 Both factories validate strictly: unknown feed-medium components and malformed `biological_ode` blocks raise `ValueError`.
 
@@ -127,7 +127,7 @@ Return shape: `(mb.output_size,) == (mb.c_size,)`.
 
 Evaluation order inside `__call__`:
 
-1. Compute derived variables (e.g. `X_active`) in topo-sorted order.
+1. Compute algebraic variables (e.g. `X_active`) in topo-sorted order.
 2. Evaluate the per-state biological RHS expression.
 3. Add the standard feed/dilution contribution on the reactor block (PV states are biological-only).
 4. Append `dV/dt` from the volume changes.
@@ -135,7 +135,7 @@ Evaluation order inside `__call__`:
 ### Additional metadata on `UserDefinedRhsOde`
 
 - `controlled_pv_names`, `n_controlled_pv`
-- `derived_names`, `n_derived`
+- `name_modeled_algebraic`
 - `rate_names`, `rate_size` (replaces `q_size`; not pinned to `n_reactor_states`)
 
 ### Boundary: biological vs. physical

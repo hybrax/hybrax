@@ -39,10 +39,10 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     - Every key in ``derivatives`` must correspond to a dynamic state.
     - All expressions parse successfully via ``sympy.sympify``.
     - Every free symbol in any expression resolves to a dynamic state, a
-      controlled process variable (input), a derived name, or a declared
+      controlled process variable (input), an algebraic name, or a declared
       rate name.
-    - Derived-variable dependencies are acyclic.
-    - Rate names do not collide with state, derived, or controlled-PV names.
+    - Algebraic-variable dependencies are acyclic.
+    - Rate names do not collide with state, algebraic, or controlled-PV names.
     - All bounds tuples are sane (``lo <= hi`` when both set).
     """
     bo = process.biological_ode
@@ -60,7 +60,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     controlled_pv_names = {
         name for name, pv in process.process_variables.items() if pv.is_controlled
     }
-    derived_names = set(bo.derived.keys())
+    algebraic_names = set(bo.algebraic.keys())
     rate_names = set(bo.rates.keys())
 
     errors: List[str] = []
@@ -69,25 +69,25 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     overlap_rate_state = rate_names & state_names
     if overlap_rate_state:
         errors.append(f"rate names collide with state names: {sorted(overlap_rate_state)}")
-    overlap_rate_derived = rate_names & derived_names
-    if overlap_rate_derived:
+    overlap_rate_algebraic = rate_names & algebraic_names
+    if overlap_rate_algebraic:
         errors.append(
-            f"rate names collide with derived names: {sorted(overlap_rate_derived)}"
+            f"rate names collide with algebraic names: {sorted(overlap_rate_algebraic)}"
         )
     overlap_rate_ctrl = rate_names & controlled_pv_names
     if overlap_rate_ctrl:
         errors.append(
             f"rate names collide with controlled PV names: {sorted(overlap_rate_ctrl)}"
         )
-    overlap_derived_state = derived_names & state_names
-    if overlap_derived_state:
+    overlap_algebraic_state = algebraic_names & state_names
+    if overlap_algebraic_state:
         errors.append(
-            f"derived names collide with state names: {sorted(overlap_derived_state)}"
+            f"algebraic names collide with state names: {sorted(overlap_algebraic_state)}"
         )
-    overlap_derived_ctrl = derived_names & controlled_pv_names
-    if overlap_derived_ctrl:
+    overlap_algebraic_ctrl = algebraic_names & controlled_pv_names
+    if overlap_algebraic_ctrl:
         errors.append(
-            f"derived names collide with controlled PV names: {sorted(overlap_derived_ctrl)}"
+            f"algebraic names collide with controlled PV names: {sorted(overlap_algebraic_ctrl)}"
         )
 
     # Coverage of derivatives
@@ -105,7 +105,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
         )
 
     # Expression parsing + symbol resolution
-    allowed = state_names | controlled_pv_names | derived_names | rate_names
+    allowed = state_names | controlled_pv_names | algebraic_names | rate_names
     symbol_table = {n: sympy.Symbol(n) for n in allowed}
 
     def _parse(name: str, expr_str: str, kind: str):
@@ -122,14 +122,14 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
             )
         return expr
 
-    derived_exprs = {n: _parse(n, e, "derived") for n, e in bo.derived.items()}
+    algebraic_exprs = {n: _parse(n, e, "algebraic") for n, e in bo.algebraic.items()}
     for n, e in bo.derivatives.items():
         _parse(n, e, "derivatives")
 
-    # Cycle detection on derived-variable graph
+    # Cycle detection on algebraic-variable graph
     deps = {
-        n: {str(s) for s in (expr.free_symbols if expr is not None else set())} & derived_names
-        for n, expr in derived_exprs.items()
+        n: {str(s) for s in (expr.free_symbols if expr is not None else set())} & algebraic_names
+        for n, expr in algebraic_exprs.items()
     }
     visiting: set = set()
     visited: set = set()
@@ -137,7 +137,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     def _dfs(node: str, stack: List[str]) -> bool:
         if node in visiting:
             cycle = stack[stack.index(node):] + [node]
-            errors.append(f"derived dependency cycle: {' -> '.join(cycle)}")
+            errors.append(f"algebraic dependency cycle: {' -> '.join(cycle)}")
             return False
         if node in visited:
             return True
@@ -148,7 +148,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
         visited.add(node)
         return True
 
-    for n in derived_exprs:
+    for n in algebraic_exprs:
         _dfs(n, [])
 
     # Bounds sanity on rates
