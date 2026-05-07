@@ -1152,7 +1152,8 @@ def _build_direct_pseudobatch_series(
     )
     meas_indices = jnp.asarray(meas_indices_np, dtype=int)
     has_discrete_feed = any(
-        not vc.is_continuous for vc in process.volume.volume_changes.values()
+        isinstance(vc, FeedVolumeChange) and not vc.is_continuous
+        for vc in process.volume.volume_changes.values()
     )
 
     return {

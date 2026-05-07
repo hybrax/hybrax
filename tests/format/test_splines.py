@@ -416,6 +416,80 @@ def test_no_interpolator_field():
     np.testing.assert_allclose(loaded_pv.values.values, pv.values.values)
 
 
+def test_kittler_spline_script_uses_timeseries_only_storage():
+    """Active Kittler spline script must not reintroduce legacy interpolators."""
+    script = Path("examples/01_kittler_2022/04_splines/01_splines.py")
+    source = script.read_text()
+
+    assert "to_interpolator" not in source
+    assert ".interpolator" not in source
+    assert "build_pseudobatch_transform" in source
+    assert "process.pseudobatch_transform" in source
+
+
+def test_kittler_generated_splines_are_timeseries_pseudobatch_payloads():
+    """Generated Kittler splines store and backtransform TimeSeries bundles."""
+    raw_path = Path("examples/01_kittler_2022/02_bp_format_data_all/data.json")
+    spline_path = Path(
+        "examples/01_kittler_2022/04_splines/01_output_data/data_with_splines.json"
+    )
+
+    payload = spline_path.read_text()
+    assert '"interpolator"' not in payload
+    assert '"pseudobatch_transform"' in payload
+
+    raw = load_dataset_json(raw_path)
+    fitted = load_dataset_json(spline_path)
+
+    raw_process = raw.case_studies["protein_L"].processes["DoE1_R1"]
+    process = fitted.case_studies["protein_L"].processes["DoE1_R1"]
+    transform = process.pseudobatch_transform
+    assert transform is not None
+    doe3_r1_transform = (
+        fitted.case_studies["protein_L"].processes["DoE3_R1"].pseudobatch_transform
+    )
+    assert doe3_r1_transform is not None
+    doe3_r1_glycerol = doe3_r1_transform.species["glycerol"]
+    assert doe3_r1_glycerol.is_constant is True
+    assert doe3_r1_glycerol.constant_value == 0.0
+    temperature = process.process_variables["temperature"].values
+    assert temperature.metadata["fit_strategy"] == "smoothing_bspline"
+    assert temperature.metadata["smoothing_s"] == 2.0
+
+    for species_name in ("biomass", "glycerol", "product"):
+        concentration = process.reactor_medium.components[species_name].concentration
+        species_transform = transform.species[species_name]
+        raw_concentration = raw_process.reactor_medium.components[
+            species_name
+        ].concentration
+
+        assert concentration.breaks is not None
+        assert species_transform.c_star_ts.breaks is not None
+        np.testing.assert_allclose(
+            concentration.times,
+            species_transform.c_star_ts.times,
+            rtol=0.0,
+            atol=0.0,
+        )
+        np.testing.assert_allclose(
+            concentration.values,
+            species_transform.c_star_ts.values,
+            rtol=0.0,
+            atol=0.0,
+        )
+
+        backtransform = build_backtransform_spline(transform, species_name)
+        recovered = jax.vmap(backtransform)(raw_concentration.times)
+        # Generated Kittler artifacts are float32 under x64-off script runs;
+        # tolerance reflects observed float32-level reconstruction error.
+        np.testing.assert_allclose(
+            recovered,
+            raw_concentration.values,
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Pseudo-batch helpers
 # ---------------------------------------------------------------------------
@@ -575,6 +649,33 @@ def test_pseudobatch_inputs_continuous():
     assert inputs["c_star"].shape == (5,)
     assert np.all(np.isfinite(inputs["c_star"]))
     assert inputs["has_discrete_feed"] is False
+
+
+def test_pseudobatch_sampling_does_not_disable_constant_concentration_bypass():
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    proc.reactor_medium.components["glucose"].concentration = _ts(
+        [0.0, 5.0, 10.0, 15.0, 20.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0],
+    )
+    proc.volume.volume_changes["sample"] = SampleVolumeChange(
+        name="sample",
+        unit="L",
+        is_controlled=True,
+        is_continuous=False,
+        values=_ts([5.0, 10.0, 15.0], [-0.05, -0.05, -0.05]),
+    )
+
+    inputs = build_pseudobatch_inputs(proc, "glucose")
+    assert inputs["has_discrete_feed"] is False
+
+    transform = build_pseudobatch_transform(proc, ["glucose"])
+    species_transform = transform.species["glucose"]
+    assert species_transform.is_constant is True
+    assert species_transform.constant_value == 0.0
+
+    backtransform = build_backtransform_spline(transform, "glucose")
+    dense_times = jnp.linspace(0.0, 20.0, 101)
+    np.testing.assert_allclose(jax.vmap(backtransform)(dense_times), 0.0)
 
 
 def test_pseudobatch_species_not_in_feed():
