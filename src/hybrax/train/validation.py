@@ -67,7 +67,6 @@ def _serialize_reactor_component(
     return {
         "name": component.name,
         "unit": component.unit,
-        "is_intracellular": bool(component.is_intracellular),
         "concentration": _serialize_concentration(component.concentration),
     }
 

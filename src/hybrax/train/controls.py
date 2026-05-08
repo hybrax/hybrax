@@ -67,56 +67,6 @@ def _piecewise_linear_derivative(
     return slopes[indices]
 
 
-def _compact_ppoly_breaks(
-    x: np.ndarray, coefficients: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    breaks: list[float] = []
-    coeff_cols: list[np.ndarray] = []
-    for idx in range(x.size - 1):
-        left = float(x[idx])
-        right = float(x[idx + 1])
-        if right <= left:
-            continue
-        breaks.append(left)
-        coeff_cols.append(coefficients[:, idx])
-    if not breaks:
-        raise ValueError("interpax_ppoly did not contain any positive-width interval")
-    breaks.append(float(x[-1]))
-    return np.asarray(breaks, dtype=float), np.stack(coeff_cols, axis=1)
-
-
-def _eval_ppoly(
-    x: np.ndarray,
-    coefficients: np.ndarray,
-    ts: np.ndarray,
-    order: int = 0,
-) -> np.ndarray:
-    breaks, coeff_cols = _compact_ppoly_breaks(x, coefficients)
-    n_intervals = coeff_cols.shape[1]
-    idx = np.searchsorted(breaks[1:], ts, side="right")
-    idx = np.clip(idx, 0, n_intervals - 1)
-    dx = ts - breaks[idx]
-    selected = coeff_cols[:, idx]
-
-    degree = coeff_cols.shape[0] - 1
-    if order > degree:
-        return np.zeros_like(ts, dtype=float)
-
-    if order > 0:
-        deriv = selected.copy()
-        current_degree = degree
-        for _ in range(order):
-            powers = np.arange(current_degree, 0, -1, dtype=float)[:, None]
-            deriv = deriv[:-1] * powers
-            current_degree -= 1
-        selected = deriv
-
-    out = selected[0]
-    for row in selected[1:]:
-        out = out * dx + row
-    return np.asarray(out, dtype=float)
-
-
 def _make_source_from_xy(
     name: str,
     kind: str,
@@ -174,25 +124,12 @@ def _make_source_from_process_variable(
     name: str,
     process_variable: ProcessVariable,
 ) -> SignalSource:
-    interpolator = process_variable.interpolator
-    if interpolator is not None and interpolator.kind == "interpax_ppoly":
-        x = _as_numpy(interpolator.x)
-        coefficients = _as_numpy(interpolator.coefficients)
-        breaks, _ = _compact_ppoly_breaks(x, coefficients)
-        return SignalSource(
-            name=name,
-            kind="process_variable",
-            times=breaks,
-            values=_eval_ppoly(x, coefficients, breaks),
-            evaluator=lambda ts: _eval_ppoly(x, coefficients, _as_numpy(ts), order=0),
-            derivative=lambda ts: _eval_ppoly(x, coefficients, _as_numpy(ts), order=1),
-            # PPoly-backed process variables are smooth (continuous): no real
-            # jump times.  See the comment in `_make_source_from_xy`.
-            step_ts=[],
-            metadata={"source": "ppoly"},
-        )
-
     if isinstance(process_variable.values, TimeSeries):
+        if process_variable.values.breaks is not None:
+            raise ValueError(
+                f"{name}: spline-backed TimeSeries controls are not supported; "
+                "sample the control to times/values during prepare"
+            )
         return _make_source_from_xy(
             name=name,
             kind="process_variable",
@@ -257,6 +194,11 @@ def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
 def _make_source_from_volume_change(
     name: str, volume_change: FeedVolumeChange
 ) -> SignalSource:
+    if volume_change.values.breaks is not None:
+        raise ValueError(
+            f"{name}: spline-backed TimeSeries controls are not supported; "
+            "sample the control to times/values during prepare"
+        )
     return _make_source_from_xy(
         name=name,
         kind="volume_change",

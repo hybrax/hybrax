@@ -24,6 +24,7 @@ from bp_format.dataclasses import (
 
 from pathlib import Path
 
+from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import prepare_artifact
 
@@ -59,7 +60,6 @@ def _make_two_process_collection() -> BioProcessCollection:
                         name="biomass",
                         unit="g/L",
                         concentration=StaticVariable(0.1),
-                        is_intracellular=False,
                     )
                 },
             ),
@@ -87,6 +87,42 @@ def _make_two_process_collection() -> BioProcessCollection:
     return BioProcessCollection(
         metadata={"case_study": {"case_id": "two-process"}}, processes=processes
     )
+
+
+def _spline_control_values() -> TimeSeries:
+    return TimeSeries(
+        times=jnp.asarray([0.0, 1.0]),
+        values=jnp.asarray([0.0, 1.0]),
+        breaks=jnp.asarray([0.0, 1.0]),
+        coeffs=jnp.asarray([[0.0, 1.0, 0.0, 0.0]]),
+        segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
+    )
+
+
+def test_select_control_sources_rejects_spline_process_variable_control():
+    collection = _make_two_process_collection()
+    process = collection.processes["p1"]
+    process.process_variables["CF"].is_controlled = True
+    process.process_variables["CF"].values = _spline_control_values()
+
+    with pytest.raises(ValueError, match="spline-backed TimeSeries controls"):
+        select_control_sources("p1", process, {"control_order": ["CF"]})
+
+
+def test_select_control_sources_rejects_spline_feed_control():
+    collection = _make_two_process_collection()
+    process = collection.processes["p1"]
+    process.volume.volume_changes["feed_A"] = FeedVolumeChange(
+        name="feed_A",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=_spline_control_values(),
+        feed_medium=FeedMedium(name="feed", density=1.0, density_unit="kg/L"),
+    )
+
+    with pytest.raises(ValueError, match="spline-backed TimeSeries controls"):
+        select_control_sources("p1", process, {"control_order": ["feed_A"]})
 
 
 def _write_control_custom_py(path: Path) -> None:
