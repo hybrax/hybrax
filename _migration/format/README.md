@@ -134,21 +134,12 @@ bp-format is the data foundation for a planned ecosystem of bioprocess modeling 
 |---------|---------|--------|
 | **bp-form** (current bp-format) | Data classes, I/O, validation, basic simulation | Active development |
 | **bp-bench** | Pre-processed case study database | Planned |
-| **bp-prep** | Web app for preprocessing raw data | Planned |
-| **bp-train** | Training utilities (LOO-CV, augmentation) | Planned |
+| **bp-prep** | Web app for preprocessing raw data | Active development |
+| **bp-train** | Training utilities (LOO-CV, augmentation) | Active development |
 | **bp-sim** | Data generation with DoE support | Planned |
-| **bp-opt** | Post-training model optimization | Planned |
+| **bp-design** | Post-training model-based DoE | Planned |
+| **bp-control** | Post-training model-based MPC | Planned |
 
 ## Documentation
 
 See the [full documentation](documentation/README.md) for detailed module guides, design rationale, and examples.
-
-## TimeSeries Migration
-
-- Hard break applied: use `TimeSeries(times=..., values=...)` and `.times`.
-- Legacy `timepoints` constructor/property are removed.
-- Serialization is canonical-only (`times` + `values` for discrete payloads).
-- Spline-only series in pseudobatch workflows currently use spline breakpoints
-  as the fallback measurement grid when no discrete sample grid is provided.
-  Provide explicit discrete samples when exact experimental sampling times are
-  required.
