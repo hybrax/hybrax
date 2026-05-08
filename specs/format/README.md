@@ -13,8 +13,7 @@
 6. [TimeSeries](06_time_series.md) -- measurement container with optional spline state
 7. [Splines](07_splines.md) -- pseudobatch transform and spline fitting
 8. [Mechanistic](08_mechanistic.md) -- ODE RHS generation and integration
-9. [Utilities](09_utilities.md) -- cross-validation helpers
-10. [Simulation](10_simulation.md) -- deterministic ground-truth simulation helpers
+9. [Simulation](10_simulation.md) -- deterministic ground-truth simulation helpers
 
 ## Module Reference
 
@@ -28,7 +27,6 @@
 | Serialization | `bp_format/serialization.py` | [03_serialization.md](03_serialization.md) | JSON save/load for the full data hierarchy |
 | Validation | `bp_format/validate.py` | [04_validation.md](04_validation.md) | Data integrity checks (9 validators) |
 | Inspection | `bp_format/inspect.py` | [05_inspection.md](05_inspection.md) | Text printing and matplotlib visualization |
-| Utilities | `bp_format/utils.py` | [09_utilities.md](09_utilities.md) | Cross-validation helpers (LOO-CV) |
 
 ## Cross-Cutting Design
 

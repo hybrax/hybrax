@@ -53,7 +53,6 @@ fig = bp.plot_process(process)
 | [`serialization`](documentation/03_serialization.md) | JSON save/load for the full data hierarchy |
 | [`validate`](documentation/04_validation.md) | Data integrity checks (9 validators) |
 | [`inspect`](documentation/05_inspection.md) | Text printing and matplotlib visualization |
-| [`utils`](documentation/09_utilities.md) | Cross-validation helpers (leave-one-process-out) |
 
 ## Data Structure
 
