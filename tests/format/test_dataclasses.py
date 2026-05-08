@@ -12,7 +12,6 @@ from bp_format import (
     BiologicalOde,
     BioProcessMetadata,
     ProcessVariable,
-    RateDecl,
     FeedMediumComponent,
     ReactorMediumComponent,
     FeedMedium,
@@ -311,7 +310,7 @@ def test_bioprocess_user_defined_biological_ode_skips_biomass_check():
         },
     )
     user_block = BiologicalOde(
-        rates={"q_glucose": RateDecl()},
+        rates={"q_glucose": (None, None)},
         derivatives={"glucose": "q_glucose"},
     )
     process = BioProcess(

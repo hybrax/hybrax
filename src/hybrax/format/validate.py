@@ -183,8 +183,8 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
         _dfs(n, [])
 
     # Bounds sanity on rates
-    for rname, rdecl in bo.rates.items():
-        ok, msg = _check_bounds_tuple(rdecl.bounds, f"rate {rname!r}")
+    for rname, bounds in bo.rates.items():
+        ok, msg = _check_bounds_tuple(bounds, f"rate {rname!r}")
         if not ok:
             errors.append(msg)
 

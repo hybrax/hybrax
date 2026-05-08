@@ -516,7 +516,7 @@ asserted that an auto-built `RhsOde` and a hand-written
 def _make_equivalent_biological_ode(rhs_ode) -> BiologicalOde:
     state_names = list(rhs_ode.reactor_component_state_names)
     biomass_name = state_names[0]   # was: state_names[rhs_ode.biomass_idx]
-    rates = {f"q_{n}": RateDecl() for n in state_names}
+    rates = {f"q_{n}": (None, None) for n in state_names}
     derivatives = {n: f"q_{n} * {biomass_name}" for n in state_names}
     for pv_name in rhs_ode.process_variable_state_names:
         derivatives[pv_name] = "0"
@@ -542,9 +542,9 @@ def _attach_intracellular_biological_ode(process):
     state_names = list(process.reactor_medium.components.keys())
     biomass_name = next(n for n in state_names if n.strip().lower() == "biomass")
     other_names = [n for n in state_names if n != biomass_name]
-    rates = {f"q_{biomass_name}": RateDecl()}
+    rates = {f"q_{biomass_name}": (None, None)}
     for n in other_names:
-        rates[f"q_{n}"] = RateDecl()
+        rates[f"q_{n}"] = (None, None)
     derivatives = {
         biomass_name: f"q_{biomass_name} * X_active + q_product * X_active",
     }

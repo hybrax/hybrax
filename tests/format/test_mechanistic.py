@@ -24,7 +24,6 @@ from bp_format import (
     FeedVolumeChange,
     ProcessOrdering,
     ProcessVariable,
-    RateDecl,
     ReactorMedium,
     ReactorMediumComponent,
     SampleVolumeChange,
@@ -281,7 +280,7 @@ class TestProcessOrdering:
         process = _make_batch_process()
         process.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"r_zeta": RateDecl(), "r_alpha": RateDecl()},
+            rates={"r_zeta": (None, None), "r_alpha": (None, None)},
             derivatives={
                 "biomass": "r_alpha",
                 "glucose": "r_zeta",
@@ -298,7 +297,7 @@ class TestProcessOrdering:
                 "A": "biomass",
                 "C": "B + A",
             },
-            rates={"q_x": RateDecl()},
+            rates={"q_x": (None, None)},
             derivatives={
                 "biomass": "q_x * C",
                 "glucose": "0",
@@ -371,7 +370,7 @@ class TestProcessOrdering:
         }
         process.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"q_b": RateDecl()},
+            rates={"q_b": (None, None)},
             derivatives={"biomass": "q_b * biomass"},
         )
         with pytest.raises(ValueError, match="Name collisions"):
@@ -558,7 +557,7 @@ class TestRhsOde:
         process = _make_batch_process()
         process.biological_ode = BiologicalOde(
             algebraic={"X_active": "biomass - 0.1"},
-            rates={"q_b": RateDecl(), "q_g": RateDecl()},
+            rates={"q_b": (None, None), "q_g": (None, None)},
             derivatives={
                 "biomass": "q_b * X_active",
                 "glucose": "q_g * X_active",
@@ -701,7 +700,7 @@ class TestBuildAlgebraicFunc:
         process = _make_batch_process()
         process.biological_ode = BiologicalOde(
             algebraic={"X_active": "biomass - 0.1"},
-            rates={"q_b": RateDecl(), "q_g": RateDecl()},
+            rates={"q_b": (None, None), "q_g": (None, None)},
             derivatives={
                 "biomass": "q_b * X_active",
                 "glucose": "q_g * X_active",

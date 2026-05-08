@@ -28,7 +28,6 @@ from .dataclasses import (
     ReactorMedium,
     # User-defined biological ODE
     Bounds,
-    RateDecl,
     BiologicalOde,
     ProcessOrdering,
     PseudobatchSpeciesTransform,
@@ -98,7 +97,6 @@ __all__ = [
     "CaseStudy",
     "BenchmarkDataset",
     "Bounds",
-    "RateDecl",
     "BiologicalOde",
     "ProcessOrdering",
     "Simulation",

@@ -237,7 +237,7 @@ User-defined per-state biological RHS expressions. Describes only the *biologica
 @dataclass
 class BiologicalOde:
     derived: Dict[str, str]            # name -> algebraic expression string
-    rates: Dict[str, RateDecl]         # rate-symbol name -> per-rate metadata
+    rates: Dict[str, Bounds]           # rate-symbol name -> (lower, upper) bounds
     derivatives: Dict[str, str]        # state name -> dc/dt expression (biological part)
 ```
 
@@ -248,16 +248,7 @@ Validation (see `validate_biological_ode`) requires:
 - Derived-variable dependencies are acyclic (topo-sorted at build time).
 - Rate names are disjoint from state, derived, and controlled-PV names.
 
-#### `RateDecl`
-Per-rate metadata under `BiologicalOde.rates`.
-
-```python
-@dataclass
-class RateDecl:
-    bounds: Bounds = (None, None)      # metadata only
-```
-
-Rates are abstract placeholders: their values are supplied at call time by the runtime — today by spline-fitting from concentrations, later by a neural network in `bp-train`. `len(BiologicalOde.rates)` is the rate-vector dimension (and therefore `bp-train`'s NN output dimension when training).
+Rates are abstract placeholders: their values are supplied at call time by the runtime — today by spline-fitting from concentrations, later by a neural network in `bp-train`. `len(BiologicalOde.rates)` is the rate-vector dimension (and therefore `bp-train`'s NN output dimension when training). Each entry is a `Bounds = Tuple[Optional[float], Optional[float]]` of `(lower, upper)`; use `(None, None)` for unbounded rates. The bounds are pure metadata for downstream loss generators.
 
 #### `AugmentedBioProcess`
 A synthetic variant of a real `BioProcess` that lives next to its parent in

@@ -19,7 +19,6 @@ from .dataclasses import (
     DiscreteEvents,
     FeedMedium,
     FeedMediumComponent,
-    RateDecl,
     StaticVariable,
     BioProcessMetadata,
     Volume,
@@ -49,13 +48,9 @@ def _dict_to_bounds(data: Optional[Dict]) -> Bounds:
 
 
 def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
-    rates_out: Dict[str, Dict] = {}
-    for name, rd in ode.rates.items():
-        bounds_dict = _bounds_to_dict(rd.bounds)
-        rates_out[name] = {} if bounds_dict is None else {"bounds": bounds_dict}
     return {
         "algebraic": dict(ode.algebraic),
-        "rates": rates_out,
+        "rates": {name: _bounds_to_dict(bounds) for name, bounds in ode.rates.items()},
         "derivatives": dict(ode.derivatives),
     }
 
@@ -64,8 +59,7 @@ def _dict_to_biological_ode(data: Dict) -> BiologicalOde:
     return BiologicalOde(
         algebraic=dict(data.get("algebraic", {})),
         rates={
-            name: RateDecl(bounds=_dict_to_bounds((rd or {}).get("bounds")))
-            for name, rd in data.get("rates", {}).items()
+            name: _dict_to_bounds(rd) for name, rd in data.get("rates", {}).items()
         },
         derivatives=dict(data.get("derivatives", {})),
     )

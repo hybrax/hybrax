@@ -205,8 +205,8 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                     print(f"    {name} = {expr}")
             if bo.rates:
                 print(f"  Rates ({len(bo.rates)}):")
-                for name, rd in bo.rates.items():
-                    print(f"    {name}: bounds={_format_bounds(rd.bounds)}")
+                for name, bounds in bo.rates.items():
+                    print(f"    {name}: bounds={_format_bounds(bounds)}")
             if bo.derivatives:
                 print(f"  Derivatives ({len(bo.derivatives)}):")
                 for name, expr in bo.derivatives.items():

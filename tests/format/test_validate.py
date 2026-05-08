@@ -841,7 +841,6 @@ class TestValidateAugmentedParentRefs:
 
 from bp_format import (
     BiologicalOde,
-    RateDecl,
     validate_biological_ode,
     validate_bounds,
 )
@@ -877,7 +876,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={"X_active": "biomass - product"},
-            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
                 "biomass": "q_X * X_active + q_P * X_active",
                 "product": "q_P * X_active",
@@ -891,7 +890,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"q_X": RateDecl()},
+            rates={"q_X": (None, None)},
             derivatives={"biomass": "q_X * biomass + zzz", "product": "0", "glucose": "0"},
         )
         ok, msg = validate_biological_ode(p)
@@ -902,7 +901,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"q_X": RateDecl()},
+            rates={"q_X": (None, None)},
             derivatives={"biomass": "q_X * biomass"},
         )
         ok, msg = validate_biological_ode(p)
@@ -915,7 +914,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"q_X": RateDecl()},
+            rates={"q_X": (None, None)},
             derivatives={
                 "biomass": "0", "product": "0", "glucose": "0",
                 "ghost": "q_X",
@@ -929,7 +928,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={"a": "b + 1", "b": "a * 2"},
-            rates={"q_X": RateDecl()},
+            rates={"q_X": (None, None)},
             derivatives={"biomass": "0", "product": "0", "glucose": "0"},
         )
         ok, msg = validate_biological_ode(p)
@@ -940,7 +939,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"biomass": RateDecl()},
+            rates={"biomass": (None, None)},
             derivatives={"biomass": "biomass", "product": "0", "glucose": "0"},
         )
         ok, msg = validate_biological_ode(p)
@@ -957,7 +956,7 @@ class TestValidateBiologicalOde:
         }
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"feed_rate": RateDecl()},
+            rates={"feed_rate": (None, None)},
             derivatives={"biomass": "0", "product": "0", "glucose": "0"},
         )
         ok, msg = validate_biological_ode(p)
@@ -968,7 +967,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"q_X": RateDecl(bounds=(2.0, 1.0))},
+            rates={"q_X": (2.0, 1.0)},
             derivatives={"biomass": "q_X * biomass", "product": "0", "glucose": "0"},
         )
         ok, msg = validate_biological_ode(p)
@@ -980,7 +979,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()  # biomass, product, glucose all g/L
         p.biological_ode = BiologicalOde(
             algebraic={"X_active": "biomass - product"},
-            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
                 "biomass": "q_X * X_active + q_P * X_active",
                 "product": "q_P * X_active",
@@ -1008,7 +1007,7 @@ class TestValidateBiologicalOde:
         )
         p.biological_ode = BiologicalOde(
             algebraic={"X_active": "biomass - product"},
-            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
                 "biomass": "q_X * X_active",
                 "product": "q_P * X_active",
@@ -1038,7 +1037,7 @@ class TestValidateBiologicalOde:
         )
         p.biological_ode = BiologicalOde(
             algebraic={},
-            rates={"q_X": RateDecl()},
+            rates={"q_X": (None, None)},
             derivatives={
                 "biomass": "q_X * (biomass + glucose)",
                 "glucose": "0",
@@ -1061,7 +1060,7 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.biological_ode = BiologicalOde(
             algebraic={"X_active": "biomass - product"},
-            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
                 "biomass": "q_X * X_active + q_P * X_active",
                 "product": "q_P * X_active",
@@ -1084,7 +1083,7 @@ class TestValidateBiologicalOde:
         }
         p.biological_ode = BiologicalOde(
             algebraic={"weird": "biomass + viability"},
-            rates={"q_X": RateDecl(), "q_P": RateDecl(), "q_S": RateDecl()},
+            rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
                 "biomass": "q_X * biomass",
                 "product": "q_P * biomass",

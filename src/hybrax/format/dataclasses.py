@@ -237,19 +237,6 @@ class Volume:
 
 
 @dataclass
-class RateDecl:
-    """Declaration of one abstract specific-rate symbol used in a
-    :class:`BiologicalOde` block.
-
-    Rates are abstract placeholders: their values are supplied at call time
-    by the runtime (today: spline-fitted from concentrations; later: NN output
-    from bp-train). Bounds are pure metadata for downstream loss generators.
-    """
-
-    bounds: Bounds = _NO_BOUNDS
-
-
-@dataclass
 class BiologicalOde:
     """User-defined per-state biological RHS expressions.
 
@@ -264,8 +251,11 @@ class BiologicalOde:
         Mapping ``name -> expression string``. Algebraic (no time derivative);
         recomputed every RHS call. Must be acyclic.
     rates:
-        Mapping ``name -> RateDecl``. Names of abstract specific rates that
-        the runtime supplies; ``len(rates)`` is the rate-vector dimension.
+        Mapping ``name -> Bounds``. Names of abstract specific rates that the
+        runtime supplies; ``len(rates)`` is the rate-vector dimension. Each
+        value is a ``(lower, upper)`` tuple with ``None`` on either side
+        meaning unbounded; use ``(None, None)`` (i.e. ``_NO_BOUNDS``) for
+        rates without bounds.
     derivatives:
         Mapping ``state_name -> expression string`` giving the biological
         contribution to ``d(state)/dt``. Every dynamic state must have an
@@ -273,7 +263,7 @@ class BiologicalOde:
     """
 
     algebraic: Dict[str, str] = field(default_factory=dict)
-    rates: Dict[str, RateDecl] = field(default_factory=dict)
+    rates: Dict[str, Bounds] = field(default_factory=dict)
     derivatives: Dict[str, str] = field(default_factory=dict)
 
 
@@ -322,11 +312,11 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
         if (not pv.is_controlled) and isinstance(pv.values, TimeSeries)
     ]
 
-    rates: Dict[str, RateDecl] = {}
+    rates: Dict[str, Bounds] = {}
     for rmc in rmc_names:
-        rates[f"q_{rmc}"] = RateDecl()
+        rates[f"q_{rmc}"] = _NO_BOUNDS
     for pv in pv_dynamic:
-        rates[f"r_{pv}"] = RateDecl()
+        rates[f"r_{pv}"] = _NO_BOUNDS
 
     derivatives: Dict[str, str] = {
         rmc: f"q_{rmc} * {biomass_name}" for rmc in rmc_names

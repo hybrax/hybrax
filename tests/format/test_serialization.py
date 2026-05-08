@@ -458,7 +458,7 @@ def test_default_load_rejects_non_json_file_path():
 # ---------------------------------------------------------------------------
 
 
-from bp_format import BiologicalOde, RateDecl
+from bp_format import BiologicalOde
 
 
 def _make_process_with_biological_ode_and_bounds(sample_process):
@@ -477,9 +477,9 @@ def _make_process_with_biological_ode_and_bounds(sample_process):
     p.biological_ode = BiologicalOde(
         algebraic={"X_active": "biomass"},
         rates={
-            "q_X": RateDecl(bounds=(0.0, None)),
-            "q_S": RateDecl(bounds=(None, 0.0)),
-            "q_unused": RateDecl(),
+            "q_X": (0.0, None),
+            "q_S": (None, 0.0),
+            "q_unused": (None, None),
         },
         derivatives={"biomass": "q_X * X_active", "glucose": "q_S * X_active"},
     )
@@ -531,9 +531,9 @@ def test_json_roundtrip_biological_ode(sample_process):
         "glucose": "q_S * X_active",
     }
     assert set(p2.biological_ode.rates.keys()) == {"q_X", "q_S", "q_unused"}
-    assert p2.biological_ode.rates["q_X"].bounds == (0.0, None)
-    assert p2.biological_ode.rates["q_S"].bounds == (None, 0.0)
-    assert p2.biological_ode.rates["q_unused"].bounds == (None, None)
+    assert p2.biological_ode.rates["q_X"] == (0.0, None)
+    assert p2.biological_ode.rates["q_S"] == (None, 0.0)
+    assert p2.biological_ode.rates["q_unused"] == (None, None)
 
 
 def test_default_unbounded_is_omitted_from_json(sample_process):
