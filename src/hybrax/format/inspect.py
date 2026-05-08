@@ -490,14 +490,14 @@ def _collect_process_panels(process: BioProcess):
                     "y": comp.concentration.values,
                     "render": "line",
                 }
-                if _has_spline_state(comp.concentration):
+                if has_transform:
                     panel["series"] = comp.concentration
-                    panel["series_type"] = (
-                        "backtransform" if has_transform else "direct"
-                    )
-                    if has_transform:
-                        panel["pseudobatch_transform"] = pseudobatch_transform
-                        panel["species_name"] = comp.name
+                    panel["series_type"] = "backtransform"
+                    panel["pseudobatch_transform"] = pseudobatch_transform
+                    panel["species_name"] = comp.name
+                elif _has_spline_state(comp.concentration):
+                    panel["series"] = comp.concentration
+                    panel["series_type"] = "direct"
                 panels.append(panel)
             elif _is_spline_only_series(comp.concentration):
                 x = jnp.asarray(comp.concentration.breaks)
