@@ -23,6 +23,7 @@ observed metrics so the underlying cause can be diagnosed quickly.
 
 from __future__ import annotations
 
+import functools
 import os
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
@@ -61,6 +62,7 @@ def _relative_error(c_back: np.ndarray, c_gt: np.ndarray) -> np.ndarray:
     return np.abs(c_back - c_gt) / denom
 
 
+@functools.lru_cache(maxsize=None)
 def _evaluate_case(fixture_dir: Path, species: str) -> dict:
     """Build splines + evaluate at every ground-truth timestamp within the
     measurement domain. Returns a dict of observed metrics."""

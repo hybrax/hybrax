@@ -566,6 +566,9 @@ def _is_near_constant(values: jnp.ndarray) -> bool:
     return span <= max(_IS_CONSTANT_ABS_TOL, _IS_CONSTANT_REL_TOL * scale)
 
 
+_evaluate_piece_batched = jax.jit(jax.vmap(spline_ops.evaluate_piece))
+
+
 def _break_values_from_coeffs(
     breaks: jnp.ndarray,
     coeffs: jnp.ndarray,
@@ -573,25 +576,15 @@ def _break_values_from_coeffs(
     continuity_side: str,
 ) -> jnp.ndarray:
     """Return representative values at breaks for metadata/sample payloads."""
-    breaks_np = np.asarray(breaks, dtype=np.float64)
-    coeffs_np = np.asarray(coeffs, dtype=np.float64)
-    values = np.empty(breaks_np.shape[0], dtype=np.float64)
+    breaks_j = jnp.asarray(breaks, dtype=float)
+    coeffs_j = jnp.asarray(coeffs, dtype=float)
     if continuity_side == "left":
-        values[0] = coeffs_np[0, 0]
-        for i in range(1, breaks_np.shape[0]):
-            width = breaks_np[i] - breaks_np[i - 1]
-            values[i] = spline_ops.evaluate_piece(
-                jnp.asarray(coeffs_np[i - 1]),
-                jnp.asarray(width),
-            )
-    else:
-        values[:-1] = coeffs_np[:, 0]
-        width = breaks_np[-1] - breaks_np[-2]
-        values[-1] = spline_ops.evaluate_piece(
-            jnp.asarray(coeffs_np[-1]),
-            jnp.asarray(width),
-        )
-    return jnp.asarray(values, dtype=float)
+        widths = breaks_j[1:] - breaks_j[:-1]
+        evaluated = _evaluate_piece_batched(coeffs_j, widths)
+        return jnp.concatenate([coeffs_j[:1, 0], evaluated])
+    width = breaks_j[-1:] - breaks_j[-2:-1]
+    last = _evaluate_piece_batched(coeffs_j[-1:], width)
+    return jnp.concatenate([coeffs_j[:, 0], last])
 
 
 def _piecewise_polynomial_timeseries(
@@ -1015,8 +1008,9 @@ def _build_direct_pseudobatch_series(
         feed_corr_coeffs[i] = fc_coeff
 
         width = breaks_np[i + 1] - breaks_np[i]
+        a_fc, b_fc, c_fc, d_fc = fc_coeff
         feed_corr_current = float(
-            spline_ops.evaluate_piece(jnp.asarray(fc_coeff), jnp.asarray(width))
+            a_fc + width * (b_fc + width * (c_fc + width * d_fc))
         )
         for vc_name in discrete_feed_names:
             discrete_feed_interval_values[vc_name][i] = discrete_feed_current[vc_name]
