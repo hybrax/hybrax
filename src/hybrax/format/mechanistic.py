@@ -1,128 +1,53 @@
 """
 Mechanistic API for bp-format.
 
-Provides JAX/Equinox-compatible modules for building continuous-time control
-functions and ODE right-hand sides directly from a :class:`~bp_format.BioProcess`.
-
-All modules are fully JAX-jittable via ``equinox.filter_jit``.  Spline
-evaluation uses ``interpax.CubicSpline``, which is itself an
-``equinox.Module`` and therefore a valid JAX pytree.
+JAX/Equinox-compatible modules for building continuous-time control functions
+and ODE right-hand sides directly from a :class:`~bp_format.BioProcess`. All
+modules are fully JAX-jittable via ``equinox.filter_jit``.
 
 Public API
 ----------
 get_control_splines(process) -> ControlSplines
-    Returns an ``eqx.Module`` whose ``__call__(t)`` evaluates all controlled
-    signals at time ``t``.  Continuous volume-change feeds are returned as
-    **flow rates** (derivative of the cumulative-volume spline).
+    ``ControlSplines.__call__(t)`` evaluates all controlled signals at ``t``.
+    Continuous volume-change feeds are returned as **flow rates** (derivative
+    of the cumulative-volume spline).
 
 get_rhs_ode(process) -> RhsOde
-    Returns an ``eqx.Module`` whose ``__call__(c, q, u_flow, f_modeled, r)``
-    computes the ODE RHS ``dc/dt`` (including ``dV/dt``).
-    Uncontrolled continuous volume changes (modeled feeds) are supported via
-    the optional ``f_modeled`` argument.
+    Build the :class:`RhsOde` for a process whose ``biological_ode`` block
+    is set (auto-generated in :meth:`BioProcess.__post_init__` when not
+    user-supplied). ``RhsOde.__call__(c, rates, u_flow, f_modeled, ctrl_pv_values)``
+    computes ``dc/dt`` (including ``dV/dt``).
 
-extract_discrete_events(process, mb) -> list[dict]
+extract_discrete_events(process, rhs_ode) -> list[dict]
     Extract discrete events (sampling, bolus feeds) from a BioProcess.
 
-build_state_splines(process, mb) -> dict
+build_state_splines(process, rhs_ode) -> dict
     Build spline callables for all non-volume states.
 
-build_q_func(process, ctrl, mb, state_splines) -> Callable
-    Build an analytical, JIT-compilable q(t) callable from state splines.
+integrate_process(process, ctrl, rhs_ode, rates_func, t_eval) -> dict
+    Full hybrid ODE integration with discrete event handling. Honest forward
+    integration: state read directly from the integrator at every step.
 
-build_rates_func(process, ctrl, mb, state_splines) -> Callable
-    Build a ``rates_func(t, state, controls) -> (q, r)`` from state splines.
-
-estimate_specific_rates(process, ctrl, mb, state_splines, t_eval) -> jnp.ndarray
-    Estimate specific rates q(t) via ODE RHS inversion (convenience wrapper).
-
-integrate_process(process, ctrl, mb, rates_func, t_eval) -> dict
-    Full hybrid ODE integration with discrete event handling. Honest
-    forward integration: state read directly from the integrator at every
-    step.
-integrate_process_pseudospace(process, ctrl, mb, rates_func, t_eval) -> dict
-    Single-pass integration in pseudo-batch ``c*`` coordinates. Useful as
-    a post-processing / spline-fitting helper. The state lives in
-    spline-derived coordinates so the trajectory is biased toward the
-    reference splines — do not use for honest forward prediction with
-    externally-supplied q.
-
-Rates Pipeline
+Rates protocol
 --------------
-The intended workflow is:
+``rates_func(t, state, controls) -> jnp.ndarray`` of shape ``(rhs_ode.rate_size,)``
+aligned with ``rhs_ode.rate_names`` (= the insertion order of
+``process.biological_ode.rates``). The integrator handles feed, dilution, sample
+and volume dynamics on top of the biological ``dc/dt`` returned by ``rhs_ode``.
 
-1. Build ``state_splines = build_state_splines(process, mb)``.
-2. Build inversion-side rates with ``q_func = build_q_func(...)``.
-3. Build integration-side callback with
-   ``rates_func = build_rates_func(..., r_func=...)`` or provide your own
-   callable with signature ``rates_func(t, state, controls) -> (q, r)``.
-4. Integrate via ``integrate_process*``.
+For the auto-generated :class:`BiologicalOde` produced by
+``BioProcess.__post_init__``, the rate name layout is
+``q_<rmc_biomass_first>... + r_<dynamic_pv>...``.
 
-Default assumptions:
-
-- All reactor-component states are treated as biologically driven and therefore
-  represented in biomass-specific ``q``.
-- ``r`` defaults depend on state block when ``r_func`` is not supplied:
-  reactor-component entries are zero, process-variable entries come from PV
-  spline derivatives.
-- Reactor-component states are represented in both vectors: ``q`` has one entry
-  per reactor-component state, and the first ``n_reactor_states`` entries of
-  ``r`` align to those same reactor-component states.
-- Process-variable states are represented only in ``r`` (tail entries after the
-  reactor-component block).
-- Process-variable states are additive-only in the ODE path:
-  ``dc_pv/dt = r_pv`` (no dilution/feed term). Reactor-component states receive
-  reaction + feed + ``r_reactor`` terms.
-
-``q_state_indices`` and ``r_state_indices`` let callers split reactor-component
-state dynamics between ``q`` and ``r`` during inversion. They are optional; if
-omitted, all reactor-component states are ``q``-states.
-
-Supported Runtime Scenarios
----------------------------
-1. Data-driven default (no explicit physical rates):
-
-   - Build spline-backed rates with ``build_rates_func(..., r_func=None)``.
-   - Internally this uses :func:`build_q_func` for all reactor-component states.
-   - Default ``r`` behavior is:
-     - reactor-component block: zeros,
-     - process-variable block: inferred from PV spline derivatives.
-   - Integration then applies reaction + feed/dilution for reactor states, and
-     additive PV rates from inferred derivatives.
-
-2. Data-driven + explicit physical rates:
-
-   - Build spline-backed rates with ``build_rates_func(..., r_func=...)``.
-   - In this mode, callers must pass both ``q_state_indices`` and
-     ``r_state_indices`` explicitly, so inversion knows where physical terms
-     should be treated as ``r`` (including overlap subtraction when needed).
-
-3. Fully custom runtime rates callback:
-
-   - Provide your own ``rates_func(t, state, controls) -> (q, r)`` directly to
-     ``integrate_process*``.
-   - The integrator still handles feed/dilution, volume dynamics, and discrete
-     events. Callers provide only the biological ``q`` and additive physical
-     ``r`` terms.
-
-Usage with JIT
---------------
-Both modules are equinox Modules (JAX pytrees).  Use ``eqx.filter_jit``
-to compile them::
-
-    import equinox as eqx
-    ctrl = get_control_splines(process)
-    mb   = get_rhs_ode(process)
-
-    u      = eqx.filter_jit(ctrl)(t)
-    r      = jnp.zeros(mb.r_size)
-    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, jnp.zeros(0), r)
-    # With modeled flows (e.g. base feed):
-    dc_dt  = eqx.filter_jit(mb)(c, q, u_flow, f_modeled, r)
+The legacy spline-based rate inversion helpers (``build_q_func``,
+``build_rates_func``, ``estimate_specific_rates``, ``integrate_process_pseudospace``)
+were removed as part of the P3 refactor. They will be replaced by
+``build_rates_func_analytical`` (see ``documentation/_analytical_rates_spec.md``).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass as _py_dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import diffrax
@@ -344,175 +269,7 @@ class ControlSplines(eqx.Module):
 
 
 # ---------------------------------------------------------------------------
-# RhsOde module
-# ---------------------------------------------------------------------------
-
-
-class RhsOde(eqx.Module):
-    """JAX/Equinox module implementing the generalized fed-batch ODE RHS.
-
-    Created by :func:`get_rhs_ode`; do not instantiate directly.
-
-    The state vector is ``c = [reactor_components..., pv_states..., V]`` where
-    the last element is reactor volume. Biomass is always index 0 in the
-    reactor-component block.
-
-    Attributes
-    ----------
-    c_size : int
-        ``n_non_volume_states + 1``.
-    q_size : int
-        ``n_reactor_states`` — number of specific rates (reactor block only).
-    u_flow_size : int
-        Number of continuous controlled flow streams.
-    f_modeled_size : int
-        Number of continuous uncontrolled (modeled) flow streams.
-    output_size : int
-        Same as :attr:`c_size`.
-    reactor_component_state_names : tuple[str, ...]
-        Ordering of reactor-component states in *c* and *q*. Biomass is
-        always first.
-    process_variable_state_names : tuple[str, ...]
-        Ordering of process-variable states in *c*.
-    flow_names : tuple[str, ...]
-        Ordering of continuous controlled flow streams in *u_flow*.
-    modeled_flow_names : tuple[str, ...]
-        Ordering of continuous uncontrolled (modeled) flow streams in
-        *f_modeled*.
-    biomass_idx : int
-        Index of ``"biomass"`` in reactor-component ordering (always 0).
-    Cin : jnp.ndarray, shape (n_flows, n_reactor_states)
-        Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
-        concentration of species *i* in controlled feed stream *k*.
-    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_reactor_states)
-        Feed composition matrix for modeled (uncontrolled) flows.
-
-    Notes
-    -----
-    JIT usage::
-
-        import equinox as eqx
-        mb    = get_rhs_ode(process)
-        r     = jnp.zeros(mb.r_size)
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, jnp.zeros(0), r)
-        # With modeled flows:
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled, r)
-    """
-
-    c_size: int = eqx.field(static=True)
-    q_size: int = eqx.field(static=True)
-    r_size: int = eqx.field(static=True)
-    u_flow_size: int = eqx.field(static=True)
-    f_modeled_size: int = eqx.field(static=True)
-    output_size: int = eqx.field(static=True)
-    n_reactor_states: int = eqx.field(static=True)
-    n_pv_states: int = eqx.field(static=True)
-    reactor_indices: tuple = eqx.field(static=True)
-    pv_indices: tuple = eqx.field(static=True)
-    volume_idx: int = eqx.field(static=True)
-    reactor_component_state_names: tuple = eqx.field(static=True)
-    process_variable_state_names: tuple = eqx.field(static=True)
-    static_pv_indices: tuple = eqx.field(static=True)
-    flow_names: tuple = eqx.field(static=True)
-    modeled_flow_names: tuple = eqx.field(static=True)
-    biomass_idx: int = eqx.field(static=True)
-    Cin: jnp.ndarray
-    Cin_modeled: jnp.ndarray
-
-    def __call__(
-        self,
-        c: jnp.ndarray,
-        q: jnp.ndarray,
-        u_flow: jnp.ndarray,
-        f_modeled: jnp.ndarray,
-        r: jnp.ndarray,
-    ) -> jnp.ndarray:
-        """Compute the ODE RHS ``dc/dt``.
-
-        Parameters
-        ----------
-        c:
-            State vector ``[reactor_components..., pv_states..., V]``,
-            shape ``(c_size,)``. Biomass (measured) is at index 0.
-        q:
-            Specific rates aligned with reactor-component ordering, shape
-            ``(q_size,)``.
-        u_flow:
-            Volumetric flow rates for each continuous controlled feed stream
-            (volume / time, matching the units of the stored
-            ``VolumeChange``), shape ``(u_flow_size,)``.
-        f_modeled:
-            Volumetric flow rates for each continuous uncontrolled (modeled)
-            feed stream, shape ``(f_modeled_size,)``.  Pass
-            ``jnp.zeros(0)`` when there are no modeled flows.
-        r:
-            Additive physical-rate vector for all non-volume states, shape
-            ``(r_size,)``. The first ``n_reactor_states`` entries align to
-            reactor-component states and the remaining entries align to
-            process-variable states.
-
-        Returns
-        -------
-        jnp.ndarray, shape ``(output_size,)``
-            ``dc/dt`` with ``dV/dt`` as the last element.
-
-        Notes
-        -----
-        ODE RHS implemented:
-
-        .. math::
-
-            \\frac{dc_i}{dt} = q_i \\cdot c_{biomass} + r_i
-                + \\sum_k \\frac{f_k}{V}\\,(C_{in,k,i} - c_i)
-
-            \\frac{dc_{pv,j}}{dt} = r_{pv,j}
-
-            \\frac{dV}{dt} = \\sum_k f_k
-
-        where the sums over *k* include both controlled and modeled flows.
-        Biological dynamics that don't fit this generic ``q * biomass``
-        template (e.g. intracellular accumulation) belong in a
-        :class:`BiologicalOde` block, which dispatches to
-        :class:`UserDefinedRhsOde` instead of this auto path.
-        """
-        n_reactor = self.n_reactor_states
-        n_non_volume = self.r_size
-        c_reactor = c[:n_reactor]
-        V = c[self.volume_idx]
-        if self.n_pv_states > 0:
-            c_pv = c[n_reactor:n_non_volume]
-        else:
-            c_pv = jnp.zeros(0)
-        r_non_volume = r
-        r_reactor = r_non_volume[:n_reactor]
-        r_pv = r_non_volume[n_reactor:]
-        if self.n_pv_states > 0 and len(self.static_pv_indices) > 0:
-            static_idx = jnp.array(self.static_pv_indices, dtype=int)
-            r_pv = r_pv.at[static_idx].set(0.0)
-
-        reaction = q * c[self.biomass_idx]
-
-        feed_term, dV = _apply_feed_dilution(
-            c_reactor,
-            V,
-            u_flow,
-            f_modeled,
-            self.Cin,
-            self.Cin_modeled,
-            self.u_flow_size,
-            self.f_modeled_size,
-            n_reactor,
-        )
-
-        dc_reactor = reaction + r_reactor + feed_term
-        dc_pv = c_pv * 0.0 + r_pv
-
-        return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
-
-
-# ---------------------------------------------------------------------------
-# User-defined biological ODE (RhsOde alternative when
-# ``process.biological_ode`` is set)
+# Sympy helpers used by the RhsOde builder
 # ---------------------------------------------------------------------------
 
 
@@ -559,38 +316,34 @@ def _topo_sort_algebraic(algebraic_exprs: Dict[str, Any]) -> List[str]:
     return order
 
 
-class UserDefinedRhsOde(eqx.Module):
-    """JAX/Equinox module that evaluates a user-defined biological RHS.
+class RhsOde(eqx.Module):
+    """JAX/Equinox module that evaluates the biological RHS for a process.
 
-    Created by :func:`build_user_defined_rhs_ode` when
-    ``process.biological_ode is not None``. The biological ``dc/dt`` per
-    state is given by user-written expression strings; bp-format adds the
-    physical contributions (feed, dilution, dV) on top.
+    Built by :func:`get_rhs_ode` from ``process.biological_ode`` (auto-generated
+    in :meth:`BioProcess.__post_init__` when not user-supplied). The biological
+    ``dc/dt`` per state comes from user-written expression strings; bp-format
+    adds the physical contributions (feed, dilution, dV) on top.
 
     Call signature::
 
-        dc_dt = mb(c, rates, u_flow, f_modeled, ctrl_pv_values)
+        dc_dt = rhs_ode(c, rates, u_flow, f_modeled, ctrl_pv_values)
 
     where:
 
     - ``c`` is the state vector ``[reactor..., pv..., V]``.
     - ``rates`` is the user-declared rate vector, shape ``(rate_size,)``,
       aligned with :attr:`rate_names`.
-    - ``u_flow``, ``f_modeled`` are continuous flow rates (same as
-      :class:`RhsOde`).
+    - ``u_flow`` are continuous controlled-feed flow rates,
+      shape ``(u_flow_size,)``.
+    - ``f_modeled`` are continuous uncontrolled (modeled) flow rates,
+      shape ``(f_modeled_size,)``. Pass ``jnp.zeros(0)`` when none.
     - ``ctrl_pv_values`` is an array of controlled-PV values at the current
-      time, aligned with :attr:`controlled_pv_names`. Pass
-      ``jnp.zeros(0)`` when there are no controlled PVs.
+      time, aligned with :attr:`controlled_pv_names`. Pass ``jnp.zeros(0)``
+      when there are no controlled PVs.
     """
 
-    # --- Sizes / indices (mirror RhsOde so downstream introspection works) ---
     c_size: int = eqx.field(static=True)
     rate_size: int = eqx.field(static=True)
-    # Alias for `rate_size` so code paths that currently expect ``mb.q_size``
-    # (e.g. _validate_rates_output_shapes, _build_segment_rhs dispatch) keep
-    # working when given a UserDefinedRhsOde. With the user-defined path,
-    # ``q_size == rate_size`` and may differ from ``n_reactor_states``.
-    q_size: int = eqx.field(static=True)
     r_size: int = eqx.field(static=True)
     u_flow_size: int = eqx.field(static=True)
     f_modeled_size: int = eqx.field(static=True)
@@ -601,7 +354,6 @@ class UserDefinedRhsOde(eqx.Module):
     reactor_indices: tuple = eqx.field(static=True)
     pv_indices: tuple = eqx.field(static=True)
     volume_idx: int = eqx.field(static=True)
-    biomass_idx: int = eqx.field(static=True)
     static_pv_indices: tuple = eqx.field(static=True)
 
     # --- Names (deterministic ordering) ---
@@ -673,26 +425,24 @@ class UserDefinedRhsOde(eqx.Module):
         return jnp.append(jnp.append(dc_reactor, dc_pv), dV)
 
 
-def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
-    """Build a :class:`UserDefinedRhsOde` from a process whose
-    ``biological_ode`` block is set. Raises :class:`ValueError` if the block
-    is missing or fails validation.
+def build_rhs_ode(process: BioProcess) -> RhsOde:
+    """Build a :class:`RhsOde` from a process whose ``biological_ode`` block is
+    set (auto-generated in :meth:`BioProcess.__post_init__` when not
+    user-supplied). Raises :class:`ValueError` if the block is missing or
+    fails validation.
     """
     import sympy
 
     bo = process.biological_ode
     if bo is None:
         raise ValueError(
-            "build_user_defined_rhs_ode requires process.biological_ode to be set."
+            "build_rhs_ode requires process.biological_ode to be set."
         )
 
-    # Reuse the auto path's symbol/index discovery so biomass-at-0 and
-    # state ordering match exactly. We construct a transient RhsOde for its
-    # metadata and discard the rest.
-    auto = _build_auto_rhs_ode(process)
+    meta = _build_process_metadata(process)
 
-    reactor_state_names = auto.reactor_component_state_names
-    pv_state_names = auto.process_variable_state_names
+    reactor_state_names = meta.reactor_component_state_names
+    pv_state_names = meta.process_variable_state_names
     controlled_pv_names = tuple(
         name for name, pv in process.process_variables.items() if pv.is_controlled
     )
@@ -755,33 +505,31 @@ def build_user_defined_rhs_ode(process: BioProcess) -> UserDefinedRhsOde:
         for n in state_derivative_names
     )
 
-    return UserDefinedRhsOde(
-        c_size=auto.c_size,
+    return RhsOde(
+        c_size=meta.c_size,
         rate_size=len(rate_names_tuple),
-        q_size=len(rate_names_tuple),
-        r_size=auto.r_size,
-        u_flow_size=auto.u_flow_size,
-        f_modeled_size=auto.f_modeled_size,
-        output_size=auto.output_size,
-        n_reactor_states=auto.n_reactor_states,
-        n_pv_states=auto.n_pv_states,
+        r_size=meta.r_size,
+        u_flow_size=meta.u_flow_size,
+        f_modeled_size=meta.f_modeled_size,
+        output_size=meta.output_size,
+        n_reactor_states=meta.n_reactor_states,
+        n_pv_states=meta.n_pv_states,
         n_controlled_pv=len(controlled_pv_names),
-        reactor_indices=auto.reactor_indices,
-        pv_indices=auto.pv_indices,
-        volume_idx=auto.volume_idx,
-        biomass_idx=auto.biomass_idx,
-        static_pv_indices=auto.static_pv_indices,
-        reactor_component_state_names=auto.reactor_component_state_names,
-        process_variable_state_names=auto.process_variable_state_names,
+        reactor_indices=meta.reactor_indices,
+        pv_indices=meta.pv_indices,
+        volume_idx=meta.volume_idx,
+        static_pv_indices=meta.static_pv_indices,
+        reactor_component_state_names=meta.reactor_component_state_names,
+        process_variable_state_names=meta.process_variable_state_names,
         controlled_pv_names=controlled_pv_names,
-        flow_names=auto.flow_names,
-        modeled_flow_names=auto.modeled_flow_names,
+        flow_names=meta.flow_names,
+        modeled_flow_names=meta.modeled_flow_names,
         name_modeled_algebraic=name_modeled_algebraic_ordered,
         rate_names=rate_names_tuple,
         algebraic_funcs=algebraic_funcs,
         derivative_funcs=derivative_funcs,
-        Cin=auto.Cin,
-        Cin_modeled=auto.Cin_modeled,
+        Cin=meta.Cin,
+        Cin_modeled=meta.Cin_modeled,
     )
 
 
@@ -801,10 +549,10 @@ def build_algebraic_func(
         raise ValueError(
             "build_algebraic_func requires process.biological_ode to be set."
         )
-    mb = build_user_defined_rhs_ode(process)
-    name_modeled_algebraic = mb.name_modeled_algebraic
+    rhs_ode = build_rhs_ode(process)
+    name_modeled_algebraic = rhs_ode.name_modeled_algebraic
     n_algebraic = len(name_modeled_algebraic)
-    algebraic_funcs = mb.algebraic_funcs
+    algebraic_funcs = rhs_ode.algebraic_funcs
 
     def algebraic_func(state_values, ctrl_pv_values, rates):
         algebraic_arr = jnp.zeros(n_algebraic) if n_algebraic > 0 else jnp.zeros(0)
@@ -896,47 +644,45 @@ def get_control_splines(process: BioProcess) -> ControlSplines:
     )
 
 
-def get_rhs_ode(process: BioProcess):
-    """Build the appropriate RHS ODE module for *process*.
+def get_rhs_ode(process: BioProcess) -> RhsOde:
+    """Build the :class:`RhsOde` module for *process*.
 
-    Dispatches based on the presence of ``process.biological_ode``:
-
-    - When set: returns :class:`UserDefinedRhsOde` built from the
-      user-declared per-state biological expressions, algebraic variables,
-      and abstract rate symbols.
-    - When ``None`` (default): returns the auto-generated :class:`RhsOde`
-      whose biological term is ``q_i * c_biomass`` per reactor component.
-
-    Parameters
-    ----------
-    process:
-        A :class:`~bp_format.BioProcess` instance.  The reactor medium must
-        contain a component named ``"biomass"`` (case-insensitive).
-
-    Returns
-    -------
-    RhsOde or UserDefinedRhsOde
-        See above.
-
-    Raises
-    ------
-    ValueError
-        If no ``"biomass"`` component is found in the reactor medium, or if
-        ``biological_ode`` is set but malformed (see
-        :func:`bp_format.validate.validate_biological_ode` for the rules).
+    ``process.biological_ode`` must be set (auto-generated in
+    :meth:`BioProcess.__post_init__` when not user-supplied).
     """
-    if process.biological_ode is not None:
-        return build_user_defined_rhs_ode(process)
-    return _build_auto_rhs_ode(process)
+    return build_rhs_ode(process)
 
 
-def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
-    """Build the auto-generated :class:`RhsOde` (the pre-Phase-2 behavior).
+@_py_dataclass(frozen=True)
+class _ProcessMetadata:
+    """Static, RHS-independent process geometry derived from a :class:`BioProcess`.
 
-    Used by :func:`get_rhs_ode` as the fallback when no
-    ``biological_ode`` block is present, and by
-    :func:`build_user_defined_rhs_ode` for shared metadata discovery.
+    Single source of truth for state/flow ordering, sizes, and feed
+    composition matrices. Consumed by :func:`build_rhs_ode`.
     """
+
+    reactor_component_state_names: Tuple[str, ...]
+    process_variable_state_names: Tuple[str, ...]
+    static_pv_indices: Tuple[int, ...]
+    flow_names: Tuple[str, ...]
+    modeled_flow_names: Tuple[str, ...]
+    n_reactor_states: int
+    n_pv_states: int
+    c_size: int
+    r_size: int
+    u_flow_size: int
+    f_modeled_size: int
+    output_size: int
+    reactor_indices: Tuple[int, ...]
+    pv_indices: Tuple[int, ...]
+    volume_idx: int
+    Cin: jnp.ndarray
+    Cin_modeled: jnp.ndarray
+
+
+def _build_process_metadata(process: BioProcess) -> _ProcessMetadata:
+    """Build :class:`_ProcessMetadata` for *process* (biomass-first ordering,
+    feed validation, Cin matrices)."""
     # --- Reactor component ordering: biomass always at index 0 ---
     all_component_names = list(process.reactor_medium.components.keys())
     biomass_name: str = ""
@@ -954,7 +700,6 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
         other_names
     )
     n_reactor = len(reactor_component_state_names)
-    biomass_idx: int = 0  # always 0 by construction
 
     process_variable_state_names: Tuple[str, ...] = tuple(
         pv_name
@@ -993,14 +738,13 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
                 "process.reactor_medium.components."
             )
 
-    # --- Helper to build a Cin matrix for a list of volume-change names ---
     def _build_cin(vc_names):
         n = len(vc_names)
         Cin = jnp.zeros((n, n_reactor), dtype=float)
         for k, vc_name in enumerate(vc_names):
             vc = process.volume.volume_changes[vc_name]
             if not isinstance(vc, FeedVolumeChange):
-                continue  # SampleVolumeChange has no feed medium
+                continue
             if vc.feed_medium is None:
                 raise ValueError(
                     "FeedVolumeChange must define feed_medium for Cin construction. "
@@ -1022,39 +766,36 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
                     )
         return Cin
 
-    # --- Controlled continuous flows ---
-    flow_names: List[str] = []
-    for vc_name, vc in process.volume.volume_changes.items():
-        if vc.is_controlled and vc.is_continuous:
-            flow_names.append(vc_name)
-
-    # --- Modeled (uncontrolled) continuous flows ---
-    modeled_flow_names: List[str] = []
-    for vc_name, vc in process.volume.volume_changes.items():
-        if (not vc.is_controlled) and vc.is_continuous:
-            modeled_flow_names.append(vc_name)
+    flow_names: List[str] = [
+        vc_name
+        for vc_name, vc in process.volume.volume_changes.items()
+        if vc.is_controlled and vc.is_continuous
+    ]
+    modeled_flow_names: List[str] = [
+        vc_name
+        for vc_name, vc in process.volume.volume_changes.items()
+        if (not vc.is_controlled) and vc.is_continuous
+    ]
 
     Cin = _build_cin(flow_names)
     Cin_modeled = _build_cin(modeled_flow_names)
 
-    return RhsOde(
+    return _ProcessMetadata(
+        reactor_component_state_names=reactor_component_state_names,
+        process_variable_state_names=process_variable_state_names,
+        static_pv_indices=tuple(static_pv_indices),
+        flow_names=tuple(flow_names),
+        modeled_flow_names=tuple(modeled_flow_names),
+        n_reactor_states=n_reactor,
+        n_pv_states=n_pv,
         c_size=n_non_volume + 1,
-        q_size=n_reactor,
         r_size=n_non_volume,
         u_flow_size=len(flow_names),
         f_modeled_size=len(modeled_flow_names),
         output_size=n_non_volume + 1,
-        n_reactor_states=n_reactor,
-        n_pv_states=n_pv,
         reactor_indices=tuple(range(n_reactor)),
         pv_indices=tuple(range(n_reactor, n_non_volume)),
         volume_idx=n_non_volume,
-        reactor_component_state_names=tuple(reactor_component_state_names),
-        process_variable_state_names=tuple(process_variable_state_names),
-        static_pv_indices=tuple(static_pv_indices),
-        flow_names=tuple(flow_names),
-        modeled_flow_names=tuple(modeled_flow_names),
-        biomass_idx=biomass_idx,
         Cin=Cin,
         Cin_modeled=Cin_modeled,
     )
@@ -1067,7 +808,7 @@ def _build_auto_rhs_ode(process: BioProcess) -> RhsOde:
 
 def extract_discrete_events(
     process: BioProcess,
-    mb: RhsOde,
+    rhs_ode: RhsOde,
 ) -> List[Dict[str, Any]]:
     """Extract discrete events (sampling, bolus feeds) from a BioProcess.
 
@@ -1075,7 +816,7 @@ def extract_discrete_events(
     ----------
     process:
         A :class:`~bp_format.BioProcess` instance.
-    mb:
+    rhs_ode:
         A :class:`RhsOde` module (used to align ``Cin`` with species ordering).
 
     Returns
@@ -1086,11 +827,11 @@ def extract_discrete_events(
         - ``kind`` (str): ``'sample'`` or ``'bolus_feed'``
         - ``dV`` (float): signed volume change (positive = add, negative = remove)
         - ``Cin`` (jnp.ndarray | None): feed composition aligned with
-          ``mb.reactor_component_state_names`` (None for sampling)
+          ``rhs_ode.reactor_component_state_names`` (None for sampling)
         - ``source`` (str): name of the originating VolumeChange
     """
     events: List[Dict[str, Any]] = []
-    n_reactor = mb.n_reactor_states
+    n_reactor = rhs_ode.n_reactor_states
 
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.is_continuous:
@@ -1106,7 +847,7 @@ def extract_discrete_events(
             if dV_event > 0 and isinstance(vc, FeedVolumeChange):
                 Cin_event = jnp.zeros(n_reactor)
                 if vc.feed_medium is not None:
-                    for j, sp_name in enumerate(mb.reactor_component_state_names):
+                    for j, sp_name in enumerate(rhs_ode.reactor_component_state_names):
                         if sp_name in vc.feed_medium.components:
                             conc = vc.feed_medium.components[sp_name].concentration
                             if isinstance(conc, StaticVariable):
@@ -1169,7 +910,7 @@ def extract_discrete_events(
 
 def build_state_splines(
     process: BioProcess,
-    mb: "RhsOde",
+    rhs_ode: "RhsOde",
 ) -> Dict[str, Any]:
     """Build state splines from stored TimeSeries spline state.
 
@@ -1183,7 +924,7 @@ def build_state_splines(
     ----------
     process:
         A :class:`~bp_format.BioProcess` instance.
-    mb:
+    rhs_ode:
         A :class:`RhsOde` module (provides species ordering).
 
     Returns
@@ -1192,9 +933,9 @@ def build_state_splines(
         Mapping non-volume state name -> callable spline.
     """
     state_splines: Dict[str, Any] = {}
-    pseudobatch_transform = _validate_process_pseudobatch_transform(process, mb)
+    pseudobatch_transform = _validate_process_pseudobatch_transform(process, rhs_ode)
 
-    for sp_name in mb.reactor_component_state_names:
+    for sp_name in rhs_ode.reactor_component_state_names:
         comp = process.reactor_medium.components[sp_name]
         concentration = comp.concentration
         if (
@@ -1213,7 +954,7 @@ def build_state_splines(
                 t_end=float(process.time_axis.end),
             )
 
-    for pv_name in mb.process_variable_state_names:
+    for pv_name in rhs_ode.process_variable_state_names:
         pv = process.process_variables[pv_name]
         state_splines[pv_name] = _value_to_interpax_spline(
             pv.values,
@@ -1226,10 +967,10 @@ def build_state_splines(
 
 def build_conc_splines(
     process: BioProcess,
-    mb: "RhsOde",
+    rhs_ode: "RhsOde",
 ) -> Dict[str, Any]:
     """Compatibility alias for :func:`build_state_splines`."""
-    return build_state_splines(process, mb)
+    return build_state_splines(process, rhs_ode)
 
 
 def _resolve_state_splines(
@@ -1246,405 +987,31 @@ def _resolve_state_splines(
 
 
 # ---------------------------------------------------------------------------
-# Analytical q(t) builder and specific rate estimation
-# ---------------------------------------------------------------------------
-
-
-def build_q_func(
-    process: BioProcess,
-    ctrl: ControlSplines,
-    mb: RhsOde,
-    state_splines: Optional[Dict[str, Any]] = None,
-    *,
-    conc_splines: Optional[Dict[str, Any]] = None,
-    q_state_indices: Optional[List[int]] = None,
-    r_state_indices: Optional[List[int]] = None,
-    r_func: Optional[Callable] = None,
-) -> Callable:
-    """Build an analytical, JIT-compilable ``q(t)`` callable.
-
-    Returns a function ``q(t) -> jnp.ndarray`` that evaluates specific rates
-    at *any* time ``t`` using the analytical spline derivatives:
-
-    .. math::
-        q_i(t) = \\frac{dc_i/dt - \\text{feed\\_term}_i}{c_{biomass}}
-
-    All components (concentration derivatives, volume, flow rates, biomass)
-    are evaluated analytically from splines and discrete-event data via
-    ``jnp.searchsorted``.  The returned callable is compatible with
-    ``jax.jit``.
-
-    Parameters
-    ----------
-    process:
-        A :class:`~bp_format.BioProcess` instance.
-    ctrl:
-        :class:`ControlSplines` module for evaluating control signals.
-    mb:
-        :class:`RhsOde` module (provides species ordering, Cin, etc.).
-    state_splines:
-        Dict mapping non-volume state name -> callable spline that supports
-        ``spline(t)`` and ``spline.derivative()(t)``.
-    q_state_indices, r_state_indices:
-        Optional reactor-component index partition for inversion:
-        ``dc/dt = q*X_active + r + feed``.
-
-        - If both are omitted and ``r_func`` is not provided, all
-          reactor-component states are treated as
-          ``q``-states (default biological assumption).
-        - If ``r_func`` is provided, both ``q_state_indices`` and
-          ``r_state_indices`` must be provided explicitly.
-        - If either is supplied, both must be supplied.
-        - The union of ``q_state_indices`` and ``r_state_indices`` must cover
-          all reactor-component states.
-        - Overlap (indicating that biological and physical both affect some of the state
-          variables) is allowed only when ``r_func`` is provided, so overlap ``r`` can
-          be subtracted before solving for ``q``.
-    r_func:
-        Optional ``r_func(t) -> r`` used during inversion partitioning.
-        ``r`` is interpreted as additive physical rates over all non-volume
-        states; only reactor-component entries are used by ``build_q_func``.
-
-    Returns
-    -------
-    Callable
-        ``q_func(t) -> jnp.ndarray`` of shape ``(n_reactor_states,)``.
-    """
-    state_splines = _resolve_state_splines(
-        state_splines=state_splines,
-        conc_splines=conc_splines,
-    )
-    if state_splines is None:
-        raise ValueError("state_splines is required.")
-    n_reactor = mb.n_reactor_states
-    t_start = float(process.time_axis.start)
-    t_end = float(process.time_axis.end)
-
-    # -- Cumulative volume splines for continuous flows --
-    cum_splines_ctrl = []
-    for fn in mb.flow_names:
-        vc = process.volume.volume_changes[fn]
-        sp = _timeseries_to_interpax_spline(vc.values)
-        cum_splines_ctrl.append(sp)
-
-    cum_splines_mod = []
-    for fn in mb.modeled_flow_names:
-        vc = process.volume.volume_changes[fn]
-        sp = _timeseries_to_interpax_spline(vc.values)
-        cum_splines_mod.append(sp)
-
-    # -- Batch all volume splines into a single PPoly --
-    all_vol_splines = cum_splines_ctrl + cum_splines_mod
-    n_vol = len(all_vol_splines)
-    if n_vol > 0:
-        batched_vol = _batch_splines(all_vol_splines, t_start, t_end)
-    else:
-        batched_vol = None
-
-    # -- Discrete events: precompute sorted times and cumulative dV --
-    events = extract_discrete_events(process, mb)
-    if events:
-        ev_sorted = sorted(events, key=lambda e: e["t"])
-        ev_times = jnp.array([e["t"] for e in ev_sorted])
-        ev_dV_cum = jnp.cumsum(jnp.array([e["dV"] for e in ev_sorted]))
-    else:
-        ev_times = None
-        ev_dV_cum = None
-
-    V0 = _require_reactor_volume_above_threshold(
-        jnp.array(float(process.volume.initial_volume)),
-        context="initial reactor volume",
-    )
-    Cin = jnp.array(mb.Cin)
-    Cin_mod = jnp.array(mb.Cin_modeled)
-
-    q_idx_arg = None if q_state_indices is None else list(q_state_indices)
-    r_idx_arg = None if r_state_indices is None else list(r_state_indices)
-
-    if r_func is not None and (q_idx_arg is None or r_idx_arg is None):
-        raise ValueError(
-            "r_func requires explicit q_state_indices and r_state_indices "
-            "so q/r inversion partitioning is unambiguous."
-        )
-
-    if q_idx_arg is None and r_idx_arg is None:
-        q_idx = list(range(n_reactor))
-        r_idx = []
-    else:
-        if q_idx_arg is None or r_idx_arg is None:
-            raise ValueError(
-                "q_state_indices and r_state_indices must both be provided "
-                "when using runtime q/r partitioning."
-            )
-        q_idx = sorted(set(int(i) for i in q_idx_arg))
-        r_idx = sorted(set(int(i) for i in r_idx_arg))
-        if any(i < 0 or i >= n_reactor for i in q_idx + r_idx):
-            raise ValueError(
-                f"q/r indices must be in [0, {n_reactor - 1}] for reactor states."
-            )
-        overlap = set(q_idx).intersection(r_idx)
-        if overlap and r_func is None:
-            raise ValueError(
-                "Overlapping q/r state indices require r_func(t) so r can be "
-                "subtracted during q inversion."
-            )
-        if set(q_idx).union(r_idx) != set(range(n_reactor)):
-            raise ValueError(
-                "q_state_indices and r_state_indices must together cover all "
-                "reactor states."
-            )
-
-    q_mask = jnp.zeros(n_reactor, dtype=bool).at[jnp.array(q_idx, dtype=int)].set(True)
-    overlap_mask = jnp.zeros(n_reactor, dtype=bool)
-    if len(r_idx) > 0:
-        overlap_idx = sorted(set(q_idx).intersection(r_idx))
-        if overlap_idx:
-            overlap_mask = overlap_mask.at[jnp.array(overlap_idx, dtype=int)].set(True)
-
-    # -- Per-species concentration spline evaluators --
-    # Uses original BacktransformSpline evaluations (exact piecewise-linear fc)
-    # to avoid Gibbs oscillation from cubic resampling of step-like fc data.
-    conc_evals = [state_splines[s] for s in mb.reactor_component_state_names]
-    deriv_evals = [
-        state_splines[s].derivative() for s in mb.reactor_component_state_names
-    ]
-
-    biomass_idx = mb.biomass_idx
-    u_flow_size = mb.u_flow_size
-    f_mod_size = mb.f_modeled_size
-
-    def q_func(t):
-        # Concentrations — per-species spline evaluation
-        c_t = jnp.stack([conc_evals[i](t) for i in range(n_reactor)])
-        c_t = jnp.maximum(c_t, 0.0)
-
-        # Concentration derivatives (analytical) — per-species
-        dc_dt = jnp.stack([deriv_evals[i](t) for i in range(n_reactor)])
-
-        # Volume: V0 + continuous flows + discrete events
-        V_t = V0
-        if batched_vol is not None:
-            V_t = V_t + jnp.sum(batched_vol(t))  # single batched eval
-        if ev_times is not None:
-            idx = jnp.searchsorted(ev_times, t, side="left")
-            V_t = V_t + jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
-        V_t = _require_reactor_volume_above_threshold(
-            V_t, context="q-function reconstructed volume"
-        )
-
-        # Flow rates (derivatives of cumulative volume splines) — batched
-        if u_flow_size > 0 or f_mod_size > 0:
-            all_flow_rates = batched_vol(t, nu=1)  # (n_vol,)
-            u_flow = all_flow_rates[:u_flow_size] if u_flow_size > 0 else jnp.zeros(0)
-            f_mod = all_flow_rates[u_flow_size:] if f_mod_size > 0 else jnp.zeros(0)
-        else:
-            u_flow = jnp.zeros(0)
-            f_mod = jnp.zeros(0)
-
-        # Feed term: sum_k (f_k / V) * (C_in_k - c)
-        feed_term = jnp.zeros(n_reactor)
-        if u_flow_size > 0:
-            feed_term = feed_term + jnp.sum(
-                (u_flow[:, None] / V_t) * (Cin - c_t[None, :]), axis=0
-            )
-        if f_mod_size > 0:
-            feed_term = feed_term + jnp.sum(
-                (f_mod[:, None] / V_t) * (Cin_mod - c_t[None, :]), axis=0
-            )
-
-        biomass = jnp.maximum(c_t[biomass_idx], jnp.array(_MIN_ACTIVE_BIOMASS))
-
-        r_reactor = jnp.zeros(n_reactor)
-        if r_func is not None:
-            r_full = jnp.asarray(r_func(t), dtype=float)
-            r_reactor = r_full[:n_reactor]
-
-        # For species in q∩r the feed-balance also produces an r-coupling term;
-        # subtract it here so q is recovered purely from the reaction-side mass
-        # balance (overlap_mask selects exactly those species).
-        q_all = (dc_dt - feed_term - jnp.where(overlap_mask, r_reactor, 0.0)) / biomass
-        return jnp.where(q_mask, q_all, 0.0)
-
-    return q_func
-
-
-def build_rates_func(
-    process: BioProcess,
-    ctrl: ControlSplines,
-    mb: RhsOde,
-    state_splines: Optional[Dict[str, Any]] = None,
-    *,
-    conc_splines: Optional[Dict[str, Any]] = None,
-    q_state_indices: Optional[List[int]] = None,
-    r_state_indices: Optional[List[int]] = None,
-    r_func: Optional[Callable] = None,
-) -> Callable:
-    """Build integration callback ``rates_func(t, state, controls) -> (q, r)``.
-
-    This is the bridge between inversion-side spline reconstruction and
-    runtime integration APIs.
-
-    Pipeline semantics:
-
-    - ``q`` is obtained from :func:`build_q_func` and has one biomass-specific
-      rate per reactor-component state.
-    - ``r`` is an additive physical-rate vector over all non-volume states.
-      Its first ``n_reactor_states`` entries align to the same reactor-component
-      states covered by ``q``; any remaining entries correspond to
-      process-variable states. If ``r_func`` is not supplied, reactor-component
-      ``r`` entries default to zero and process-variable entries are inferred
-      from state-spline derivatives.
-    - ``state`` and ``controls`` are accepted to satisfy integration callback
-      signature, but this spline-derived wrapper currently depends on ``t``
-      only.
-
-    Parameters
-    ----------
-    process, ctrl, mb, state_splines, conc_splines:
-        Same meaning as :func:`build_q_func`.
-    q_state_indices, r_state_indices:
-        Forwarded to :func:`build_q_func`; see its docstring for partitioning
-        rules.
-    r_func:
-        Optional ``r_func(t) -> r`` used to populate additive physical rates.
-
-    Returns
-    -------
-    Callable
-        ``rates_func(t, state, controls) -> tuple[q, r]`` with shapes
-        ``q.shape == (mb.q_size,)`` and ``r.shape == (mb.r_size,)``.
-    """
-    state_splines = _resolve_state_splines(
-        state_splines=state_splines,
-        conc_splines=conc_splines,
-    )
-    q_only = build_q_func(
-        process,
-        ctrl,
-        mb,
-        state_splines,
-        conc_splines=None,
-        q_state_indices=q_state_indices,
-        r_state_indices=r_state_indices,
-        r_func=r_func,
-    )
-    pv_derivs: List[Callable] = []
-    if r_func is None and mb.n_pv_states > 0:
-        pv_derivs = [
-            state_splines[pv_name].derivative()
-            for pv_name in mb.process_variable_state_names
-        ]
-
-    def rates_func(t, _state, _controls):
-        # default rates_func only uses inverted splines: we can ignore state and
-        # controls
-        q = q_only(t)
-        if r_func is None:
-            if mb.n_pv_states == 0:
-                r = jnp.zeros(mb.r_size, dtype=float)
-            else:
-                r_reactor = jnp.zeros(mb.n_reactor_states, dtype=float)
-                r_pv = jnp.stack([pv_derivs[i](t) for i in range(mb.n_pv_states)])
-                r = jnp.concatenate([r_reactor, r_pv])
-        else:
-            r = jnp.asarray(r_func(t), dtype=float)
-        return q, r
-
-    return rates_func
-
-
-def estimate_specific_rates(
-    process: BioProcess,
-    ctrl: ControlSplines,
-    mb: RhsOde,
-    state_splines: Optional[Dict[str, Any]] = None,
-    t_eval: Optional[jnp.ndarray] = None,
-    *,
-    conc_splines: Optional[Dict[str, Any]] = None,
-    q_state_indices: Optional[List[int]] = None,
-    r_state_indices: Optional[List[int]] = None,
-    r_func: Optional[Callable] = None,
-) -> jnp.ndarray:
-    """Estimate specific rates q(t) via ODE RHS inversion.
-
-    Convenience wrapper around :func:`build_q_func` that evaluates the
-    analytical rate function at the given time points.
-
-    This helper is inversion-only and returns ``q`` values. Integration APIs
-    consume ``rates_func(t, state, controls) -> (q, r)``; use
-    :func:`build_rates_func` to assemble that callback from spline-derived
-    ``q`` and optional ``r_func``.
-
-    Parameters
-    ----------
-    process:
-        A :class:`~bp_format.BioProcess` instance.
-    ctrl:
-        :class:`ControlSplines` module for evaluating control signals.
-    mb:
-        :class:`RhsOde` module (provides species ordering, Cin, etc.).
-    state_splines:
-        Dict mapping non-volume state name -> callable spline that supports
-        ``spline(t)`` and ``spline.derivative()(t)``.
-    t_eval:
-        1-D array of time points at which to estimate q.
-    q_state_indices, r_state_indices:
-        Forwarded to :func:`build_q_func`; see its docstring for partitioning
-        rules.
-    r_func:
-        Optional ``r_func(t)`` forwarded to :func:`build_q_func` for overlap
-        handling in q/r partitioning.
-
-    Returns
-    -------
-    jnp.ndarray, shape (len(t_eval), n_reactor_states)
-        Estimated specific rates at each time point.
-    """
-    if t_eval is None:
-        raise ValueError("t_eval is required.")
-    t_eval = jnp.asarray(t_eval, dtype=float)
-    q_func = build_q_func(
-        process,
-        ctrl,
-        mb,
-        state_splines,
-        conc_splines=conc_splines,
-        q_state_indices=q_state_indices,
-        r_state_indices=r_state_indices,
-        r_func=r_func,
-    )
-    q_func_jit = eqx.filter_jit(q_func)
-    return jax.vmap(q_func_jit)(t_eval)
-
-
-# ---------------------------------------------------------------------------
 # Full hybrid ODE integration
 # ---------------------------------------------------------------------------
 
 
 def _require_rates_func(rates_func: Optional[Callable]) -> Callable:
-    """Require the mixed-state runtime rates callback."""
+    """Require the runtime rates callback."""
     if rates_func is None:
         raise ValueError(
             "rates_func is required and must have signature "
-            "rates_func(t, state, controls) -> (q, r)."
+            "rates_func(t, state, controls) -> rates_array, "
+            "shape (rhs_ode.rate_size,) aligned with rhs_ode.rate_names."
         )
     return rates_func
 
 
 def _build_segment_rhs(
-    mb,
+    rhs_ode,
     ctrl,
     rates_func,
     batched_mod,
 ):
     """Build the ODE right-hand side function for a segment.
 
-    Honest forward integration: the RHS reads everything (including
-    ``X_active`` for the reaction term) from the integrator's current state.
-    No spline-substitution trick. UserDefinedRhsOde takes a separate
-    branch that also passes controlled-PV values evaluated from
-    ``ControlSplines``.
+    The RHS reads everything from the integrator's current state and from
+    user-supplied ``rates_func(t, state, controls) -> rates_array``.
 
     Parameters
     ----------
@@ -1654,60 +1021,51 @@ def _build_segment_rhs(
     """
     flow_idx = jnp.array(list(ctrl.flow_indices))
     ctrl_idx = jnp.array(list(ctrl.ctrl_indices))
-    is_user_defined = isinstance(mb, UserDefinedRhsOde)
 
     def rhs(t, state, args):
         u = ctrl(t)
-        u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
-        q, r = rates_func(t, state, u)
-
-        if batched_mod is not None:
-            f_mod = batched_mod(t, nu=1)
-        else:
-            f_mod = jnp.zeros(mb.f_modeled_size)
-
-        if is_user_defined:
-            ctrl_pv_values = u[ctrl_idx] if len(ctrl_idx) > 0 else jnp.zeros(0)
-            return mb(state, q, u_flow, f_mod, ctrl_pv_values)
-        return mb(state, q, u_flow, f_mod, r)
+        u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(rhs_ode.u_flow_size)
+        rates = rates_func(t, state, u)
+        f_mod = (
+            batched_mod(t, nu=1)
+            if batched_mod is not None
+            else jnp.zeros(rhs_ode.f_modeled_size)
+        )
+        ctrl_pv_values = u[ctrl_idx] if len(ctrl_idx) > 0 else jnp.zeros(0)
+        return rhs_ode(state, rates, u_flow, f_mod, ctrl_pv_values)
 
     return rhs
 
 
 def _validate_rates_output_shapes(
-    mb: "RhsOde",
+    rhs_ode: "RhsOde",
     rates_func: Callable,
     *,
     t: float,
     state: jnp.ndarray,
     controls: jnp.ndarray,
 ) -> None:
-    """Validate ``rates_func`` output shapes before JIT solve."""
-    q_probe, r_probe = rates_func(float(t), state, controls)
-    q_probe = jnp.asarray(q_probe, dtype=float)
-    r_probe = jnp.asarray(r_probe, dtype=float)
-    if q_probe.shape != (mb.q_size,):
+    """Validate ``rates_func`` output shape before JIT solve."""
+    rates_probe = jnp.asarray(rates_func(float(t), state, controls), dtype=float)
+    if rates_probe.shape != (rhs_ode.rate_size,):
         raise ValueError(
-            f"rates_func must return q with shape ({mb.q_size},), got {q_probe.shape}."
-        )
-    if r_probe.shape != (mb.r_size,):
-        raise ValueError(
-            f"rates_func must return r with shape ({mb.r_size},), got {r_probe.shape}."
+            f"rates_func must return shape ({rhs_ode.rate_size},), "
+            f"got {rates_probe.shape}."
         )
 
 
-def _compute_scale_factors(process: BioProcess, mb: "RhsOde") -> jnp.ndarray:
+def _compute_scale_factors(process: BioProcess, rhs_ode: "RhsOde") -> jnp.ndarray:
     """Compute non-volume state scale factors for numerical conditioning."""
-    scales = jnp.ones(mb.r_size)
-    for i, sp_name in enumerate(mb.reactor_component_state_names):
+    scales = jnp.ones(rhs_ode.r_size)
+    for i, sp_name in enumerate(rhs_ode.reactor_component_state_names):
         vals = jnp.asarray(
             process.reactor_medium.components[sp_name].concentration.values, dtype=float
         )
         s = float(jnp.max(jnp.abs(vals)))
         if s > 1.0:
             scales = scales.at[i].set(s)
-    offset = mb.n_reactor_states
-    for j, pv_name in enumerate(mb.process_variable_state_names):
+    offset = rhs_ode.n_reactor_states
+    for j, pv_name in enumerate(rhs_ode.process_variable_state_names):
         pv = process.process_variables[pv_name]
         if isinstance(pv.values, TimeSeries):
             vals = jnp.asarray(pv.values.values, dtype=float)
@@ -1808,12 +1166,12 @@ def _timeseries_samples_match(left: TimeSeries, right: TimeSeries) -> bool:
 
 def _validate_process_pseudobatch_transform(
     process: BioProcess,
-    mb: "RhsOde",
+    rhs_ode: "RhsOde",
 ):
     """Validate process-level pseudobatch bundle before runtime use."""
     transform = getattr(process, "pseudobatch_transform", None)
     if transform is None:
-        for sp_name in mb.reactor_component_state_names:
+        for sp_name in rhs_ode.reactor_component_state_names:
             comp = process.reactor_medium.components[sp_name]
             _reject_orphan_pseudobatch_metadata(comp.concentration, sp_name)
         return None
@@ -1849,7 +1207,7 @@ def _validate_process_pseudobatch_transform(
 
 def _build_pseudobatch_transforms(
     process: BioProcess,
-    mb: "RhsOde",
+    rhs_ode: "RhsOde",
 ) -> List[Dict[str, Any]]:
     """Build per-species pseudo-batch transform descriptors.
 
@@ -1860,9 +1218,9 @@ def _build_pseudobatch_transforms(
     """
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
-    pseudobatch_transform = _validate_process_pseudobatch_transform(process, mb)
+    pseudobatch_transform = _validate_process_pseudobatch_transform(process, rhs_ode)
     transforms: List[Dict[str, Any]] = []
-    for sp_name in mb.reactor_component_state_names:
+    for sp_name in rhs_ode.reactor_component_state_names:
         if (
             pseudobatch_transform is None
             or sp_name not in pseudobatch_transform.species
@@ -1920,7 +1278,7 @@ def _build_pseudobatch_transforms(
             }
         )
 
-    for _ in mb.process_variable_state_names:
+    for _ in rhs_ode.process_variable_state_names:
         adf_ts = _constant_timeseries(1.0, t_start, t_end)
         fc_ts = _constant_timeseries(0.0, t_start, t_end)
         transforms.append(
@@ -1936,288 +1294,10 @@ def _build_pseudobatch_transforms(
     return transforms
 
 
-def integrate_process_pseudospace(
-    process: BioProcess,
-    ctrl: ControlSplines,
-    mb: RhsOde,
-    rates_func: Callable,
-    t_eval: jnp.ndarray,
-    *,
-    state_splines: Optional[Dict[str, Any]] = None,
-    conc_splines: Optional[Dict[str, Any]] = None,
-    rtol: float = 1e-6,
-    atol: float = 1e-8,
-    use_jump_ts: bool = True,
-    max_steps: int = 16384,
-) -> Dict[str, Any]:
-    """Integrate in c* (pseudo-batch) space with a single ``diffeqsolve``.
-
-    Parameters
-    ----------
-    rates_func:
-        Callable ``rates_func(t, state, controls) -> tuple[q, r]``.
-        ``q`` covers reactor-component biomass-specific rates and ``r`` covers
-        additive physical rates over all non-volume states.
-
-    Notes
-    -----
-    Process-variable states are integrated as additive-only:
-    ``dc_pv/dt = r_pv``. They do not receive dilution/feed terms.
-    """
-    state_splines = _resolve_state_splines(
-        state_splines=state_splines,
-        conc_splines=conc_splines,
-    )
-    t_eval = jnp.asarray(t_eval, dtype=float)
-    t_start = float(process.time_axis.start)
-    t_end = float(process.time_axis.end)
-    n_reactor = mb.n_reactor_states
-    n_non_volume = mb.r_size
-    rates_func = _require_rates_func(rates_func)
-
-    transforms = _build_pseudobatch_transforms(process, mb)
-
-    # Per-state pseudobatch transforms. ADF/feed-correction are canonical
-    # TimeSeries objects; derivatives ignore instantaneous jump impulses.
-    adf_ts_list: List[TimeSeries] = []
-    dadf_ts_list: List[TimeSeries] = []
-    fc_ts_list: List[TimeSeries] = []
-    dfc_ts_list: List[TimeSeries] = []
-    for tr in transforms:
-        adf_ts_list.append(tr["adf_ts"])
-        dadf_ts_list.append(tr["dadf_ts"])
-        fc_ts_list.append(tr["feed_corr_ts"])
-        dfc_ts_list.append(tr["dfc_ts"])
-
-    if state_splines is not None:
-        bio_spline = state_splines[mb.reactor_component_state_names[mb.biomass_idx]]
-    else:
-        bio_spline = None
-
-    # Modeled (uncontrolled) continuous flows.
-    cum_splines_mod: List[interpax.CubicSpline] = []
-    for fn in mb.modeled_flow_names:
-        vc = process.volume.volume_changes[fn]
-        sp = _timeseries_to_interpax_spline(vc.values)
-        cum_splines_mod.append(sp)
-    batched_mod = (
-        _batch_splines(cum_splines_mod, t_start, t_end)
-        if len(cum_splines_mod) > 0
-        else None
-    )
-
-    events = extract_discrete_events(process, mb)
-    if events:
-        ev_sorted = sorted(events, key=lambda e: e["t"])
-        ev_times = jnp.asarray([e["t"] for e in ev_sorted], dtype=float)
-        ev_dV_cum = jnp.cumsum(jnp.asarray([e["dV"] for e in ev_sorted], dtype=float))
-        jump_times = sorted(
-            set(float(e["t"]) for e in ev_sorted if t_start < float(e["t"]) < t_end)
-        )
-    else:
-        ev_times = None
-        ev_dV_cum = None
-        jump_times = []
-    jump_ts = (
-        jnp.asarray(jump_times, dtype=float) if (use_jump_ts and jump_times) else None
-    )
-
-    flow_idx = jnp.array(list(ctrl.flow_indices))
-    Cin = jnp.array(mb.Cin)
-    Cin_mod = jnp.array(mb.Cin_modeled)
-    V0 = _require_reactor_volume_above_threshold(
-        jnp.array(float(process.volume.initial_volume)),
-        context="initial reactor volume",
-    )
-
-    # Initial state: [c*_0, V_cont_0], where c*_0 == c_0.
-    c0_reactor = jnp.array(
-        [
-            float(
-                jnp.asarray(
-                    process.reactor_medium.components[s].concentration.values[0]
-                )
-            )
-            for s in mb.reactor_component_state_names
-        ]
-    )
-    c0_pv = jnp.array(
-        [
-            float(jnp.asarray(pv.values.values[0]))
-            if isinstance(pv.values, TimeSeries)
-            else float(pv.values.value)
-            for pv_name, pv in process.process_variables.items()
-            if pv_name in mb.process_variable_state_names
-        ],
-        dtype=float,
-    )
-    c0 = jnp.concatenate([c0_reactor, c0_pv])
-    c0 = c0.at[:n_reactor].set(jnp.maximum(c0[:n_reactor], 0.0))
-    y0 = jnp.append(c0, jnp.array(0.0))
-    state0_probe = jnp.append(c0, V0)
-    controls0_probe = ctrl(jnp.array(t_start))
-    _validate_rates_output_shapes(
-        mb,
-        rates_func,
-        t=t_start,
-        state=state0_probe,
-        controls=controls0_probe,
-    )
-
-    scales = _compute_scale_factors(process, mb)
-    state_scale = jnp.append(jnp.array(scales), 1.0)
-
-    def _eval_adf(t):
-        adf_vals = []
-        for i in range(n_non_volume):
-            adf_vals.append(
-                _evaluate_with_boundary_start(adf_ts_list[i], t, side="left")
-            )
-        return jnp.stack(adf_vals)
-
-    def _eval_dadf(t):
-        dadf_vals = []
-        for i in range(n_non_volume):
-            dadf_vals.append(dadf_ts_list[i].evaluate(t, side="left"))
-        return jnp.stack(dadf_vals)
-
-    def _eval_fc_and_dfc(t):
-        fc_vals = []
-        dfc_vals = []
-        for i in range(n_non_volume):
-            fc_i = _evaluate_with_boundary_start(fc_ts_list[i], t, side="left")
-            dfc_i = dfc_ts_list[i].evaluate(t, side="left")
-            fc_vals.append(fc_i)
-            dfc_vals.append(dfc_i)
-        return jnp.stack(fc_vals), jnp.stack(dfc_vals)
-
-    def rhs_cstar(t, state, args):
-        c_star = state[:n_non_volume]
-        V_cont = state[n_non_volume]
-
-        adf = _adf_for_division(_eval_adf(t))
-        fc, dfc = _eval_fc_and_dfc(t)
-        c = (c_star + fc) / adf
-        c_reactor = jnp.maximum(c[:n_reactor], 0.0)
-        if mb.n_pv_states > 0:
-            c_pv = c[n_reactor:]
-        else:
-            c_pv = jnp.zeros(0, dtype=c.dtype)
-
-        V_disc = jnp.zeros(())
-        if ev_times is not None:
-            idx = jnp.searchsorted(ev_times, t, side="left")
-            V_disc = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
-        V = _require_reactor_volume_above_threshold(
-            V0 + V_cont + V_disc,
-            context="pseudospace integration volume",
-        )
-
-        u = ctrl(t)
-        u_flow = u[flow_idx] if len(flow_idx) > 0 else jnp.zeros(mb.u_flow_size)
-        state_rates = jnp.append(c, V)
-        q, r = rates_func(t, state_rates, u)
-
-        if bio_spline is not None:
-            biomass = bio_spline(t)
-        else:
-            biomass = c_reactor[mb.biomass_idx]
-        biomass = jnp.maximum(biomass, _MIN_ACTIVE_BIOMASS)
-
-        reaction = q * biomass
-        feed_term = jnp.zeros(n_reactor)
-        dV_cont = jnp.zeros(())
-        if mb.u_flow_size > 0:
-            feed_term = feed_term + jnp.sum(
-                (u_flow[:, None] / V) * (Cin - c_reactor[None, :]), axis=0
-            )
-            dV_cont = dV_cont + jnp.sum(u_flow)
-        if mb.f_modeled_size > 0:
-            f_mod = (
-                batched_mod(t, nu=1)
-                if batched_mod is not None
-                else jnp.zeros(mb.f_modeled_size)
-            )
-            feed_term = feed_term + jnp.sum(
-                (f_mod[:, None] / V) * (Cin_mod - c_reactor[None, :]), axis=0
-            )
-            dV_cont = dV_cont + jnp.sum(f_mod)
-
-        r_reactor = r[:n_reactor]
-        r_pv = r[n_reactor:]
-        if mb.n_pv_states > 0 and len(mb.static_pv_indices) > 0:
-            static_idx = jnp.array(mb.static_pv_indices, dtype=int)
-            r_pv = r_pv.at[static_idx].set(0.0)
-        dc_reactor = reaction + feed_term + r_reactor
-        dc_pv = c_pv * 0.0 + r_pv
-        dc = jnp.concatenate([dc_reactor, dc_pv])
-        # c_star = c * adf - fc, so
-        #   dc_star/dt = adf * dc/dt + c * d(adf)/dt - dfc/dt
-        # The c · d(adf)/dt term matters whenever ADF varies smoothly between
-        # events (continuous feed / sample-compensation factor); without it
-        # the pseudospace integrator drifts off reference.
-        dadf = _eval_dadf(t)
-        dc_star = adf * dc + c * dadf - dfc
-        return jnp.append(dc_star, dV_cont)
-
-    def rhs_normalized(t, state_n, args):
-        state = state_n * state_scale
-        dstate = rhs_cstar(t, state, args)
-        return dstate / state_scale
-
-    term = diffrax.ODETerm(rhs_normalized)
-    solver = diffrax.Tsit5()
-    controller = diffrax.PIDController(rtol=rtol, atol=atol, jump_ts=jump_ts)
-    dt0 = min(0.1, max((t_end - t_start) / 100.0, _MIN_SOLVER_DT0))
-
-    @eqx.filter_jit
-    def _solve(ts):
-        return diffrax.diffeqsolve(
-            term,
-            solver,
-            t0=t_start,
-            t1=t_end,
-            dt0=dt0,
-            y0=y0 / state_scale,
-            saveat=diffrax.SaveAt(ts=ts),
-            stepsize_controller=controller,
-            max_steps=max_steps,
-        )
-
-    sol = _solve(t_eval)
-    ys = sol.ys * state_scale[None, :]
-    c_star_out = ys[:, :n_non_volume]
-    V_cont_out = ys[:, n_non_volume]
-    t_output = _snap_times_to_discrete_events(t_eval, ev_times)
-
-    adf_out = jax.vmap(_eval_adf)(t_output)
-    fc_out, _ = jax.vmap(_eval_fc_and_dfc)(t_output)
-    c_out = (c_star_out + fc_out) / _adf_for_division(adf_out)
-    c_out = c_out.at[:, :n_reactor].set(jnp.maximum(c_out[:, :n_reactor], 0.0))
-
-    if ev_times is not None:
-        idx = jax.vmap(lambda t: jnp.searchsorted(ev_times, t, side="left"))(t_output)
-        V_disc_out = jnp.where(idx > 0, ev_dV_cum[jnp.clip(idx - 1, 0)], 0.0)
-    else:
-        V_disc_out = jnp.zeros_like(t_eval)
-    V_out = _require_reactor_volume_above_threshold(
-        V0 + V_cont_out + V_disc_out,
-        context="pseudospace output volume",
-    )
-
-    return {
-        "t": t_eval,
-        "c": c_out,
-        "V": V_out,
-        "stats": {"num_steps": int(sol.stats["num_steps"])},
-        "_solve": _solve,
-    }
-
-
 def integrate_process(
     process: BioProcess,
     ctrl: ControlSplines,
-    mb: RhsOde,
+    rhs_ode: RhsOde,
     rates_func: Callable,
     t_eval: jnp.ndarray,
     *,
@@ -2244,16 +1324,12 @@ def integrate_process(
         A :class:`~bp_format.BioProcess` instance.
     ctrl:
         :class:`ControlSplines` module.
-    mb:
+    rhs_ode:
         :class:`RhsOde` module.
     rates_func:
-        Callable
-        ``rates_func(t, state, controls) -> tuple[q, r]`` where
-        ``q`` has one biomass-specific rate per reactor-component state and
-        ``r`` has one additive physical rate per non-volume state. The first
-        ``n_reactor_states`` entries of ``r`` align to the same
-        reactor-component states as ``q``; tail entries cover process-variable
-        states.
+        Callable ``rates_func(t, state, controls) -> jnp.ndarray`` of shape
+        ``(rhs_ode.rate_size,)`` aligned with ``rhs_ode.rate_names``
+        (= the insertion order of ``process.biological_ode.rates``).
     t_eval:
         1-D array of time points at which to record the solution.
     rtol, atol:
@@ -2280,18 +1356,18 @@ def integrate_process(
     t_eval = jnp.asarray(t_eval, dtype=float)
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
-    n_reactor = mb.n_reactor_states
-    n_non_volume = mb.r_size
+    n_reactor = rhs_ode.n_reactor_states
+    n_non_volume = rhs_ode.r_size
     rates_func = _require_rates_func(rates_func)
 
     # Per-state scale factors for numerical conditioning
-    scales = _compute_scale_factors(process, mb)
+    scales = _compute_scale_factors(process, rhs_ode)
     scale_vec = jnp.array(scales)  # (n_non_volume,)
     state_scale = jnp.append(scale_vec, 1.0)  # [scales..., 1.0]
 
     # Build modeled flow splines (batched)
     cum_splines_mod_list = []
-    for fn in mb.modeled_flow_names:
+    for fn in rhs_ode.modeled_flow_names:
         vc = process.volume.volume_changes[fn]
         sp = _timeseries_to_interpax_spline(vc.values)
         cum_splines_mod_list.append(sp)
@@ -2302,7 +1378,7 @@ def integrate_process(
     )
 
     # Extract discrete events and build segment boundaries
-    events = extract_discrete_events(process, mb)
+    events = extract_discrete_events(process, rhs_ode)
     event_times = sorted(set(ev["t"] for ev in events))
     event_times_in_range = [t for t in event_times if t_start < t < t_end]
     boundaries = [t_start] + event_times_in_range + [t_end]
@@ -2321,7 +1397,7 @@ def integrate_process(
                     process.reactor_medium.components[s].concentration.values[0]
                 )
             )
-            for s in mb.reactor_component_state_names
+            for s in rhs_ode.reactor_component_state_names
         ]
     )
     c0_pv = jnp.array(
@@ -2330,7 +1406,7 @@ def integrate_process(
             if isinstance(pv.values, TimeSeries)
             else float(pv.values.value)
             for pv_name, pv in process.process_variables.items()
-            if pv_name in mb.process_variable_state_names
+            if pv_name in rhs_ode.process_variable_state_names
         ],
         dtype=float,
     )
@@ -2363,7 +1439,7 @@ def integrate_process(
     state0_probe = jnp.append(c0, V0)
     controls0_probe = ctrl(jnp.array(t_start))
     _validate_rates_output_shapes(
-        mb,
+        rhs_ode,
         rates_func,
         t=t_start,
         state=state0_probe,
@@ -2372,7 +1448,7 @@ def integrate_process(
 
     # Build RHS in original coordinates, then wrap for normalized state
     rhs_original = _build_segment_rhs(
-        mb,
+        rhs_ode,
         ctrl,
         rates_func,
         batched_mod,
@@ -2495,10 +1571,10 @@ def integrate_process(
                 c_reactor = state[:n_reactor]
                 c_pv = (
                     state[n_reactor:n_non_volume]
-                    if mb.n_pv_states > 0
+                    if rhs_ode.n_pv_states > 0
                     else jnp.zeros(0, dtype=state.dtype)
                 )
-                V = state[mb.volume_idx]
+                V = state[rhs_ode.volume_idx]
                 V = _require_reactor_volume_above_threshold(
                     V, context="pre-event integration volume"
                 )
@@ -2565,7 +1641,7 @@ def integrate_process(
         c_seg = ys_seg[:, :n_non_volume]
         c_seg = c_seg.at[:, :n_reactor].set(jnp.maximum(c_seg[:, :n_reactor], 0.0))
         V_seg = _require_reactor_volume_above_threshold(
-            ys_seg[:, mb.volume_idx],
+            ys_seg[:, rhs_ode.volume_idx],
             context="segmented integration output volume",
         )
         t_seg = seg_t_arrays[seg_idx]

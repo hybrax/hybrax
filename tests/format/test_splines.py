@@ -548,6 +548,11 @@ def _make_process_with_bolus_feed(
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(glucose_times, glucose_values),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -599,6 +604,14 @@ def _make_process_continuous_only(glucose_feed_conc=100.0):
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [10.0, 8.0, 6.0, 4.0, 2.0],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -1057,6 +1070,11 @@ def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts([0.0, 5.0, 10.0, 15.0], [10.0, 9.0, 7.0, 6.0]),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -1349,11 +1367,16 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=ts,
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
                 concentration=ts,
-            )
+            ),
         },
     )
     proc = BioProcess(
@@ -1450,6 +1473,14 @@ def test_pseudobatch_with_sample_volume_change():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [10.0, 8.0, 6.0, 5.0, 4.0],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -1539,6 +1570,11 @@ def test_pseudobatch_multiple_feed_streams():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts([0.0, 10.0, 20.0], [10.0, 7.0, 5.0]),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -1653,6 +1689,14 @@ def _make_process_sharp_profile():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 2.0, 3.0, 4.5, 6.0, 7.5, 9.0, 10.0],
+                    [0.0, 0.15, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0],
+                ),
+            ),
             "acetate": ReactorMediumComponent(
                 name="acetate",
                 unit="g/L",

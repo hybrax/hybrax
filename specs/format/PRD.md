@@ -26,8 +26,12 @@ There will be 3-6 packages:
     - user can select feed profile (continuous based on function or bolus with schedule) and sampling schedule 
     - parameters determined by user-defined functions
     - simple DoE utils (Latin hypercube sampling, etc.)
-- `bp-opt`:
-    - once a model is trained, we need to be able to optimize it
+- `bp-design`:
+    - once a model is trained, we want it for model-based design of experiments
+- `bp-control`:
+    - once a model is trained, we can use it for MPC
+- `bp-augment`:
+    - sophisticated augmentation methods
 
 ## APIs
 - interface with process data:      part of `bp-form`
@@ -116,20 +120,23 @@ class RhsOde(q, f):
 
 
 class RhsOde(eqx.Module):
-    """JAX/Equinox module implementing the generalized fed-batch ODE RHS.
+    """JAX/Equinox module implementing the biological RHS for a process.
 
-    Created by :func:`get_rhs_ode`; do not instantiate directly.
-
-    The state vector is ``c = [reactor_components..., pv_states..., V]`` where
-    the last element is reactor volume. Biomass is always index 0 in the
-    reactor-component block.
+    Built by :func:`get_rhs_ode` from ``process.biological_ode`` (auto-generated
+    in :meth:`BioProcess.__post_init__` when not user-supplied). The state
+    vector is ``c = [reactor_components..., pv_states..., V]`` where the last
+    element is reactor volume. Biomass is always index 0 in the
+    reactor-component block (by construction in ``_build_process_metadata``).
 
     Attributes
     ----------
     c_size : int
         ``n_non_volume_states + 1``.
-    q_size : int
-        ``n_reactor_states`` — number of specific rates (reactor block only).
+    rate_size : int
+        Length of the user-declared rate vector (= ``len(biological_ode.rates)``).
+    rate_names : tuple[str, ...]
+        Insertion order of ``biological_ode.rates`` keys; the runtime
+        ``rates`` argument must be aligned with this tuple.
     u_flow_size : int
         Number of continuous controlled flow streams.
     f_modeled_size : int
@@ -137,31 +144,22 @@ class RhsOde(eqx.Module):
     output_size : int
         Same as :attr:`c_size`.
     reactor_component_state_names : tuple[str, ...]
-        Ordering of reactor-component states in *c* and *q*. Biomass is
-        always first.
+        Ordering of reactor-component states in *c*. Biomass is always first.
     process_variable_state_names : tuple[str, ...]
-        Ordering of process-variable states in *c*.
-    flow_names : tuple[str, ...]
-        Ordering of continuous controlled flow streams in *u_flow*.
-    modeled_flow_names : tuple[str, ...]
-        Ordering of continuous uncontrolled (modeled) flow streams in
-        *f_modeled*.
-    biomass_idx : int
-        Index of ``"biomass"`` in reactor-component ordering (always 0).
-    Cin : jnp.ndarray, shape (n_flows, n_reactor_states)
-        Feed composition matrix for controlled flows: ``Cin[k, i]`` is the
-        concentration of species *i* in controlled feed stream *k*.
-    Cin_modeled : jnp.ndarray, shape (n_modeled_flows, n_reactor_states)
-        Feed composition matrix for modeled (uncontrolled) flows.
+        Ordering of dynamic process-variable states in *c*.
+    controlled_pv_names : tuple[str, ...]
+        Ordering of controlled-PV inputs consumed by user expressions.
+    flow_names, modeled_flow_names : tuple[str, ...]
+        Ordering of continuous controlled / modeled flow streams.
+    Cin, Cin_modeled : jnp.ndarray
+        Feed composition matrices.
 
     Notes
     -----
     JIT usage::
 
         import equinox as eqx
-        mb    = get_rhs_ode(process)
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow)
-        # With modeled flows:
-        dc_dt = eqx.filter_jit(mb)(c, q, u_flow, f_modeled)
+        rhs_ode = get_rhs_ode(process)
+        dc_dt = eqx.filter_jit(rhs_ode)(c, rates, u_flow, f_modeled, ctrl_pv)
     """
 ```

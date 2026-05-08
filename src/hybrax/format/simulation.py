@@ -58,7 +58,10 @@ class Simulation(ABC):
 
     @abstractmethod
     def evaluate_rates(self, t, state, controls=None):
-        """Return ``(q, r)`` using ``mechanistic.integrate_process`` semantics."""
+        """Return a flat rates array of shape ``(rhs_ode.rate_size,)`` aligned
+        with ``rhs_ode.rate_names`` (= the insertion order of
+        ``process.biological_ode.rates``). Consumed by
+        ``mechanistic.integrate_process`` via :meth:`as_rates_func`."""
 
     def as_rates_func(self):
         """Return a ``rates_func(t, state, controls)`` wrapper."""

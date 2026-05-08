@@ -11,9 +11,9 @@ from .time_series import TimeSeries
 
 # Bounds metadata: ``(lower, upper)`` with ``None`` on either side meaning
 # unbounded. Default ``(None, None)`` is unbounded on both sides. Bounds are
-# pure metadata — not enforced inside RhsOde / UserDefinedRhsOde / build_q_func
-# / integrator. Downstream consumers (e.g. bp-train's loss generator) read
-# them off the process to build soft-constraint penalties.
+# pure metadata — not enforced inside RhsOde / integrator. Downstream consumers
+# (e.g. bp-train's loss generator) read them off the process to build
+# soft-constraint penalties.
 Bounds = Tuple[Optional[float], Optional[float]]
 _NO_BOUNDS: Bounds = (None, None)
 
@@ -237,6 +237,65 @@ class BiologicalOde:
     derivatives: Dict[str, str] = field(default_factory=dict)
 
 
+def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
+    """Generate the minimal default :class:`BiologicalOde` for a process.
+
+    For every reactor-medium component ``c`` the derivative is
+    ``q_<c> * <biomass>``; for every dynamic (non-controlled, non-static)
+    process variable ``p`` it is ``r_<p>``. Static process variables
+    (``StaticVariable`` values) are skipped — they have no biological
+    derivative, matching the legacy auto-RHS semantics that zeroed their
+    rate contribution.
+
+    Rate insertion order is biomass-first reactor components followed by
+    dynamic process variables, so the flat rates array layout matches the
+    insertion order of :attr:`BiologicalOde.rates`.
+
+    Auto-generation requires a ``"biomass"`` reactor-medium component
+    (case-insensitive). Users who do not have a biomass component must
+    define ``BioProcess.biological_ode`` themselves; the
+    :meth:`BioProcess.__post_init__` skips auto-generation when the user
+    already supplied a block.
+    """
+    if not process.reactor_medium.components:
+        return BiologicalOde()
+    biomass_name = next(
+        (n for n in process.reactor_medium.components
+         if n.strip().lower() == "biomass"),
+        None,
+    )
+    if biomass_name is None:
+        raise ValueError(
+            "auto-generated BiologicalOde requires a 'biomass' component "
+            "in process.reactor_medium.components. Pass an explicit "
+            "BioProcess.biological_ode to skip auto-generation. "
+            f"Available reactor components: "
+            f"{list(process.reactor_medium.components)}"
+        )
+
+    rmc_names = [biomass_name] + [
+        n for n in process.reactor_medium.components if n != biomass_name
+    ]
+    pv_dynamic = [
+        name
+        for name, pv in process.process_variables.items()
+        if (not pv.is_controlled) and isinstance(pv.values, TimeSeries)
+    ]
+
+    rates: Dict[str, RateDecl] = {}
+    for rmc in rmc_names:
+        rates[f"q_{rmc}"] = RateDecl()
+    for pv in pv_dynamic:
+        rates[f"r_{pv}"] = RateDecl()
+
+    derivatives: Dict[str, str] = {
+        rmc: f"q_{rmc} * {biomass_name}" for rmc in rmc_names
+    }
+    derivatives.update({pv: f"r_{pv}" for pv in pv_dynamic})
+
+    return BiologicalOde(algebraic={}, rates=rates, derivatives=derivatives)
+
+
 # ============================================================
 # Process Level
 # ============================================================
@@ -294,6 +353,10 @@ class BioProcess:
     discrete_events: Optional[DiscreteEvents] = None
     biological_ode: Optional[BiologicalOde] = None
     pseudobatch_transform: Optional[PseudobatchTransform] = None
+
+    def __post_init__(self):
+        if self.biological_ode is None:
+            self.biological_ode = _auto_generate_biological_ode(self)
 
 
 @dataclass(kw_only=True)

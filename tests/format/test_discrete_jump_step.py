@@ -59,6 +59,14 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [0.5, 1.0, 1.5, 2.0, 2.5],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
@@ -145,6 +153,14 @@ def test_no_jump_for_sampling():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 5.0, 10.0, 15.0, 20.0],
+                    [0.5, 1.0, 1.5, 2.0, 2.5],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",
@@ -210,6 +226,11 @@ def test_start_boundary_same_time_sample_bolus_physical_invariants():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts([0.0, 5.0, 10.0], [0.5, 1.0, 1.5]),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="g/L",

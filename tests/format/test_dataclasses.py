@@ -9,8 +9,10 @@ from bp_format import (
     TimeAxis,
     TimeSeries,
     StaticVariable,
+    BiologicalOde,
     BioProcessMetadata,
     ProcessVariable,
+    RateDecl,
     FeedMediumComponent,
     ReactorMediumComponent,
     FeedMedium,
@@ -257,6 +259,71 @@ def test_bioprocess_minimal():
     assert process.metadata.name == "batch_001"
     assert process.metadata.process_type == "batch"
     assert process.process_variables == {}
+
+
+def test_bioprocess_autogen_biological_ode_requires_biomass():
+    """When ``biological_ode`` is omitted and the reactor medium has
+    components, ``__post_init__`` auto-generates a default block — and
+    that auto-generation requires a 'biomass' reactor component."""
+    rm = ReactorMedium(
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]),
+                    values=jnp.array([10.0, 5.0]),
+                ),
+            ),
+        },
+    )
+    with pytest.raises(ValueError, match="biomass"):
+        BioProcess(
+            metadata=BioProcessMetadata(name="p", process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=2.0, time_reference="inoculation"
+            ),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=rm,
+        )
+
+
+def test_bioprocess_user_defined_biological_ode_skips_biomass_check():
+    """When the user supplies their own ``biological_ode``,
+    ``__post_init__`` skips auto-generation and the biomass-component
+    requirement does not apply — the user's block is the source of truth."""
+    rm = ReactorMedium(
+        name="medium",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "glucose": ReactorMediumComponent(
+                name="glucose",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]),
+                    values=jnp.array([10.0, 5.0]),
+                ),
+            ),
+        },
+    )
+    user_block = BiologicalOde(
+        rates={"q_glucose": RateDecl()},
+        derivatives={"glucose": "q_glucose"},
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=2.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=rm,
+        biological_ode=user_block,
+    )
+    assert process.biological_ode is user_block
 
 
 def test_bioprocess_with_process_variables():

@@ -49,12 +49,13 @@ def _dict_to_bounds(data: Optional[Dict]) -> Bounds:
 
 
 def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
+    rates_out: Dict[str, Dict] = {}
+    for name, rd in ode.rates.items():
+        bounds_dict = _bounds_to_dict(rd.bounds)
+        rates_out[name] = {} if bounds_dict is None else {"bounds": bounds_dict}
     return {
         "algebraic": dict(ode.algebraic),
-        "rates": {
-            name: {"bounds": _bounds_to_dict(rd.bounds)}
-            for name, rd in ode.rates.items()
-        },
+        "rates": rates_out,
         "derivatives": dict(ode.derivatives),
     }
 

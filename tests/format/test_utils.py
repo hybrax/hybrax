@@ -653,6 +653,10 @@ def test_plot_process_draws_curve_for_spline_only_series():
         ),
         segment_start_piece_idx=jnp.array([0]),
     )
+    biomass_ts = TimeSeries(
+        times=jnp.array([0.0, 1.0, 2.0]),
+        values=jnp.array([0.5, 1.0, 1.5]),
+    )
     process = BioProcess(
         metadata=BioProcessMetadata(name="curve", process_type="batch"),
         time_axis=TimeAxis(
@@ -664,11 +668,16 @@ def test_plot_process_draws_curve_for_spline_only_series():
             density=1.0,
             density_unit="kg/L",
             components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=biomass_ts,
+                ),
                 "curve": ReactorMediumComponent(
                     name="curve",
                     unit="g/L",
                     concentration=spline_only,
-                )
+                ),
             },
         ),
     )
@@ -735,6 +744,14 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
             density=1.0,
             density_unit="kg/L",
             components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.array([0.0, 2.0, 4.0, 6.0]),
+                        values=jnp.array([0.5, 1.0, 1.5, 2.0]),
+                    ),
+                ),
                 "glucose": ReactorMediumComponent(
                     name="glucose",
                     unit="g/L",
@@ -742,7 +759,7 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
                         times=jnp.array([0.0, 2.0, 4.0, 6.0]),
                         values=jnp.array([10.0, 9.0, 8.0, 7.0]),
                     ),
-                )
+                ),
             },
         ),
     )

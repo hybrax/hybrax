@@ -550,9 +550,9 @@ def test_default_unbounded_is_omitted_from_json(sample_process):
         assert '"bounds"' not in text
 
 
-def test_biological_ode_absent_means_none_after_roundtrip(sample_process):
-    """A process without a biological_ode block round-trips with
-    ``biological_ode is None`` (auto-RHS path)."""
+def test_auto_generated_biological_ode_roundtrips(sample_process):
+    """Processes without a user-supplied block get one auto-populated in
+    ``BioProcess.__post_init__``; the auto block round-trips losslessly."""
     cs = CaseStudy(
         case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
     )
@@ -563,7 +563,13 @@ def test_biological_ode_absent_means_none_after_roundtrip(sample_process):
         loaded = load_dataset_json(Path(tmpdir) / "d.json")
 
     p2 = loaded.case_studies["b"].processes["fed_batch_001"]
-    assert p2.biological_ode is None
+    assert p2.biological_ode is not None
+    assert sample_process.biological_ode is not None
+    assert (
+        list(p2.biological_ode.rates.keys())
+        == list(sample_process.biological_ode.rates.keys())
+    )
+    assert p2.biological_ode.derivatives == sample_process.biological_ode.derivatives
 
 
 def test_serialized_reactor_component_omits_is_intracellular(sample_dataset):

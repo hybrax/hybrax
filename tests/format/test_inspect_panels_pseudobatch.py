@@ -72,6 +72,11 @@ def _make_process_with_continuous_feed():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(real_times, real_vals),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",

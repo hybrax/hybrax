@@ -273,10 +273,10 @@ class TestValidateBiomassInReactorMedium:
         assert ok is True
 
     def test_biomass_missing(self):
-        process = _make_process(reactor_components={"glucose": self._comp("glucose")})
-        ok, msg = validate_biomass_in_reactor_medium(process)
-        assert ok is False
-        assert "biomass" in msg.lower()
+        # Auto-generation in BioProcess.__post_init__ raises before
+        # validate_biomass_in_reactor_medium ever runs.
+        with pytest.raises(ValueError, match="biomass"):
+            _make_process(reactor_components={"glucose": self._comp("glucose")})
 
     def test_no_components(self):
         process = _make_process(reactor_components={})
@@ -865,11 +865,13 @@ def _make_intra_process():
 
 
 class TestValidateBiologicalOde:
-    def test_no_block_is_ok(self):
+    def test_auto_generated_block_validates_clean(self):
+        # BioProcess.__post_init__ populates biological_ode automatically;
+        # the auto-generated block must always pass validation.
         p = _make_intra_process()
+        assert p.biological_ode is not None
         ok, msg = validate_biological_ode(p)
         assert ok is True
-        assert "not set" in msg
 
     def test_well_formed_block_passes(self):
         p = _make_intra_process()

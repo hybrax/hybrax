@@ -63,6 +63,14 @@ def test_sampling_only_no_concentration_jump():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                    [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -144,6 +152,14 @@ def test_bolus_only_has_concentration_jump():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                    [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",
@@ -231,6 +247,14 @@ def test_mixed_continuous_bolus_sampling():
         density=1.0,
         density_unit="kg/L",
         components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=_ts(
+                    [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                    [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                ),
+            ),
             "glucose": ReactorMediumComponent(
                 name="glucose",
                 unit="mmol/L",

@@ -10,7 +10,7 @@ The data model defines a hierarchical set of Python dataclasses that describe bi
 
 - **Dict keyed by name, not lists:** Components are stored as `Dict[str, Component]` (e.g., `reactor_medium.components["glucose"]`). This gives O(1) lookup, produces clean JSON keys, and makes iteration order explicit.
 - **Volume is separate from states and controls:** Volume is affected by multiple operations (feeds, sampling, evaporation) and enters the ODE differently from states. See [Design Rationale: Volume](01_design_rationale.md#3-volume-as-a-first-class-concept).
-- **Intracellular accumulation lives in `BiologicalOde`:** When a species accumulates inside cells (e.g., inclusion bodies), the user encodes the active-biomass relationship explicitly via `BiologicalOde.algebraic` (e.g., `{"X_active": "biomass - product"}`) and the corresponding derivatives. There is no flag on `ReactorMediumComponent`; the auto-RHS treats every reactor component uniformly with `dc/dt = q · biomass + feed_term`, and any deviation from that template (intracellular bookkeeping, dead-cell pools, custom algebraics) is a `BiologicalOde` block that dispatches to `UserDefinedRhsOde`.
+- **Intracellular accumulation lives in `BiologicalOde`:** When a species accumulates inside cells (e.g., inclusion bodies), the user encodes the active-biomass relationship explicitly via `BiologicalOde.algebraic` (e.g., `{"X_active": "biomass - product"}`) and the corresponding derivatives. There is no flag on `ReactorMediumComponent`; `BioProcess.__post_init__` auto-fills a minimal block with `dc/dt = q · biomass` for each reactor component when the user does not supply one, and biology that departs from that template (intracellular bookkeeping, dead-cell pools, custom algebraics) is a user-supplied `BiologicalOde` block consumed by the same `RhsOde`.
 - **Feed/Sample subtypes:** `FeedVolumeChange` and `SampleVolumeChange` enforce sign conventions at the type level and only feeds carry a `FeedMedium` reference (sampling removes reactor contents at current concentrations).
 - **`TimeSeries | StaticVariable` union:** Concentrations and process variables can be either time-varying (measured) or constant (known). The union type handles both cases cleanly.
 
@@ -89,9 +89,9 @@ class ReactorMediumComponent:
     bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
 ```
 
-Active biomass and other derived quantities (e.g. `X_active = biomass - product`) are declared on `BiologicalOde.algebraic`, not on the component itself. The auto-RHS path uses `dc/dt = q · biomass + feed_term` uniformly; any process whose biology departs from that template attaches a `BiologicalOde` block and dispatches to `UserDefinedRhsOde`.
+Active biomass and other derived quantities (e.g. `X_active = biomass - product`) are declared on `BiologicalOde.algebraic`, not on the component itself. The auto-generated block uses `dc/dt = q · biomass` uniformly; any process whose biology departs from that template supplies a custom `BiologicalOde` block consumed by the same `RhsOde`.
 
-The `bounds` field is **metadata only**: never plumbed into `RhsOde` / `UserDefinedRhsOde` / integrator. Downstream consumers (e.g. `bp-train`'s loss generator) read it off the process to build soft-constraint penalties such as "concentrations cannot be negative".
+The `bounds` field is **metadata only**: never plumbed into `RhsOde` / integrator. Downstream consumers (e.g. `bp-train`'s loss generator) read it off the process to build soft-constraint penalties such as "concentrations cannot be negative".
 
 #### `FeedMediumComponent`
 A single species in a feed stream.

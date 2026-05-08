@@ -21,19 +21,18 @@ physically inconsistent.
 Subclasses implement:
 
 ```python
-evaluate_rates(self, t, state, controls=None) -> tuple[q, r]
+evaluate_rates(self, t, state, controls=None) -> jnp.ndarray
 ```
 
-The return values match `bp_format.mechanistic.integrate_process`:
+returning a flat rates array of shape `(rhs_ode.rate_size,)` aligned with
+`rhs_ode.rate_names` (= the insertion order of `process.biological_ode.rates`).
 
-- `q`: specific rates for reactor-component states.
-- `r`: additive rates for non-volume states, reactor states first and
-  uncontrolled process-variable states after them.
 - `controls` is optional. Standalone simulations may evaluate controls from
   `t`; reintegration can pass the controls vector from `ControlSplines`.
 
 `Simulation.as_rates_func()` returns a wrapper with the
-`rates_func(t, state, controls)` signature expected by mechanistic integration.
+`rates_func(t, state, controls)` signature expected by mechanistic integration
+in `bp_format.mechanistic.integrate_process`.
 
 ## Event Semantics
 
