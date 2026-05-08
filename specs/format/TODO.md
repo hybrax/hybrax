@@ -38,6 +38,51 @@
     * Different Augmentation methods
     * Different ML methods
 
+# Pseudobatch performance — remaining headroom
+
+After the `_break_values_from_coeffs` vmap fix, `build_pseudobatch_inputs` on
+`12_martens_expanded` is ~6 s/species (down from ~104 s). The remainder is now
+dominated by the per-piece Python event loop in `_build_direct_pseudobatch_series`,
+not by the spline math.
+
+Root cause: `_canonical_pseudobatch_breaks` merges every sample timestamp from
+continuous-feed `TimeSeries`. `conti_feed`/`base_feed` ship as 19,201 raw points,
+so `n_pieces ≈ 19,200`. Every per-piece operation in the loop runs that many times.
+
+Possible improvements, in order of impact:
+
+1. **Vectorize the whole event loop** in `_build_direct_pseudobatch_series`
+   (`splines.py:904-1015`). Today the loop interleaves per-piece bookkeeping
+   (`np.asarray(coeffs[i])`, `feed_corr_coeffs[i] = ...`,
+   `discrete_feed_interval_values[name][i] = ...`) with sparse event handling
+   (samples, boluses) at a small subset of `t_i`. Rewriting it as numpy ops
+   over the full break grid + a sparse pass over event timestamps only would
+   collapse 19,200 Python iterations into a handful of vectorized statements.
+   Estimated speedup: ~5–10× on this stage. Biggest win, biggest refactor.
+
+2. **Vectorize `_require_volume_piece_above_threshold`** (`splines.py:128-145`).
+   Currently calls `np.roots` per piece (LAPACK eig) → ~1 s of the 6 s.
+   Closed-form quadratic for the cubic's derivative + batched cubic eval +
+   `np.nanmin` reduction kills the per-piece overhead. Decline rule: ~17% of
+   total wall time — not worth a standalone PR; bundle with (1).
+
+3. **Fit splines on continuous-feed `TimeSeries` before the pseudobatch
+   transform.** `_canonical_pseudobatch_breaks` collects `values.breaks` when
+   spline state is present, otherwise falls back to `values.times` (the raw
+   sample grid). Fitting first would shrink `n_pieces` from ~19k to ~50–200
+   and amortize *every* downstream cost without any algorithmic change.
+   Workflow / dataset choice, not a code refactor — but the fastest path to
+   a 100× speedup on the existing pipeline.
+
+4. **Amortize species-independent state across species inside
+   `build_pseudobatch_transform`.** `_build_direct_pseudobatch_series` rebuilds
+   the volume / ADF / sample-compensation / accumulated-feed series from
+   scratch for every species, even though only `feed_corr` and
+   `concentration_in_feed` are species-dependent. Splitting the function into
+   a shared pass + a per-species pass turns 8 processes × 10 species = 80 full
+   builds into 8 shared + 80 thin per-species passes. Largest win on
+   `01_serialize_splines.py` even after (1).
+
 # Modeling Choices
 
 1. Volume is encouraged to be modeled indirectly with kg (there is an additional density tag one can use)
