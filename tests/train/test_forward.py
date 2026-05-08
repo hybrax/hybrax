@@ -606,8 +606,13 @@ KITTLER_PREPARED = (
     / "01_kittler_2022"
     / "prepared.json"
 )
+# Vanilla is arbitrary here; both variants expose the same train/forward hooks.
 KITTLER_CUSTOM = (
-    Path(__file__).resolve().parents[1] / "examples" / "01_kittler_2022" / "custom.py"
+    Path(__file__).resolve().parents[1]
+    / "examples"
+    / "01_kittler_2022"
+    / "vanilla"
+    / "custom.py"
 )
 
 
