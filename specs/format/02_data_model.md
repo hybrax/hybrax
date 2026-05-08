@@ -305,6 +305,51 @@ consumers discover the parent → children grouping deterministically.
 loaders reconstruct them via `load_process_collection_json` /
 `load_dataset_json`. Plain `BioProcess` payloads are unchanged.
 
+### Mechanistic Ordering
+
+#### `ProcessOrdering`
+Frozen dataclass holding the canonical name ordering across every derived
+mechanistic module. Built by
+`bp_format.mechanistic.get_process_ordering(process)` and consumed by
+`get_control_splines`, `get_rhs_ode`, `extract_discrete_events`, and
+`build_state_splines` so every state/control/rate vector has the same
+layout.
+
+```python
+@dataclass(frozen=True)
+class ProcessOrdering:
+    name_modeled_rates: Tuple[str, ...]      # user dict-order from BiologicalOde.rates
+    name_modeled_algebraic: Tuple[str, ...]  # topo-sorted (alphabetical within levels)
+    name_modeled_RMCs: Tuple[str, ...]       # alphabetical
+    name_modeled_PVs: Tuple[str, ...]        # alphabetical, is_controlled=False
+    name_modeled_FVCs: Tuple[str, ...]       # alphabetical, continuous + uncontrolled
+    name_modeled_SVCs: Tuple[str, ...]       # alphabetical, continuous + uncontrolled
+    name_controlled_PVs: Tuple[str, ...]     # alphabetical, is_controlled=True
+    name_controlled_FVCs: Tuple[str, ...]    # alphabetical, continuous + controlled
+    name_controlled_SVCs: Tuple[str, ...]    # alphabetical, continuous + controlled
+```
+
+Ordering rules:
+
+- `name_modeled_rates` preserves the user-supplied insertion order of
+  `BiologicalOde.rates`. Sorting it would silently reorder downstream rate
+  vectors.
+- `name_modeled_algebraic` is topo-sorted by inter-algebraic dependencies;
+  ties are broken alphabetically. Topo-order must be preserved so each
+  algebraic expression's dependencies are already evaluated by the time it
+  is computed.
+- All other tuples are alphabetical within their sub-group. Biomass has no
+  reserved index — RMCs are sorted purely by string.
+
+State vector layout: `c = [name_modeled_RMCs... | name_modeled_PVs... | V]`.
+Control vector layout: `u = [name_controlled_FVCs... | name_controlled_SVCs... | name_controlled_PVs...]`.
+
+`get_process_ordering` validates: every `FeedVolumeChange` has a
+`feed_medium` whose components exist in `reactor_medium.components`;
+non-controlled PVs carry a `TimeSeries` (static PVs must be
+`is_controlled=True`); `BiologicalOde.algebraic` is acyclic; no name
+collisions across groups.
+
 ### Collection Level
 
 #### `BioProcessCollection`

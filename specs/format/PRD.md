@@ -124,35 +124,26 @@ class RhsOde(eqx.Module):
 
     Built by :func:`get_rhs_ode` from ``process.biological_ode`` (auto-generated
     in :meth:`BioProcess.__post_init__` when not user-supplied). The state
-    vector is ``c = [reactor_components..., pv_states..., V]`` where the last
-    element is reactor volume. Biomass is always index 0 in the
-    reactor-component block (by construction in ``_build_process_metadata``).
+    vector is ``c = [name_modeled_RMCs..., name_modeled_PVs..., V]``; the last
+    element is reactor volume. RMCs are alphabetical (no biomass-first
+    exception). The control vector layout (output of ``ControlSplines``) is
+    ``[FVC_flows | SVC_flows | PV_values]``.
 
     Attributes
     ----------
-    c_size : int
-        ``n_non_volume_states + 1``.
-    rate_size : int
-        Length of the user-declared rate vector (= ``len(biological_ode.rates)``).
-    rate_names : tuple[str, ...]
+    name_modeled_rates : tuple[str, ...]
         Insertion order of ``biological_ode.rates`` keys; the runtime
         ``rates`` argument must be aligned with this tuple.
-    u_flow_size : int
-        Number of continuous controlled flow streams.
-    f_modeled_size : int
-        Number of continuous uncontrolled (modeled) flow streams.
-    output_size : int
-        Same as :attr:`c_size`.
-    reactor_component_state_names : tuple[str, ...]
-        Ordering of reactor-component states in *c*. Biomass is always first.
-    process_variable_state_names : tuple[str, ...]
-        Ordering of dynamic process-variable states in *c*.
-    controlled_pv_names : tuple[str, ...]
-        Ordering of controlled-PV inputs consumed by user expressions.
-    flow_names, modeled_flow_names : tuple[str, ...]
-        Ordering of continuous controlled / modeled flow streams.
-    Cin, Cin_modeled : jnp.ndarray
-        Feed composition matrices.
+    name_modeled_algebraic : tuple[str, ...]
+        Topo-sorted algebraic names.
+    name_modeled_RMCs / name_modeled_PVs : tuple[str, ...]
+        Alphabetical reactor-component / non-controlled PV names.
+    name_controlled_PVs / name_controlled_FVCs / name_controlled_SVCs :
+        tuple[str, ...] — alphabetical controlled signals.
+    name_modeled_FVCs / name_modeled_SVCs : tuple[str, ...]
+        Alphabetical uncontrolled (modeled) continuous flows.
+    Cin_controlled_FVCs, Cin_modeled_FVCs : jnp.ndarray
+        Feed composition matrices (rows = FVCs, cols = RMCs).
 
     Notes
     -----
@@ -160,6 +151,8 @@ class RhsOde(eqx.Module):
 
         import equinox as eqx
         rhs_ode = get_rhs_ode(process)
-        dc_dt = eqx.filter_jit(rhs_ode)(c, rates, u_flow, f_modeled, ctrl_pv)
+        dc_dt = eqx.filter_jit(rhs_ode)(
+            c, rates, u, f_modeled_FVCs, f_modeled_SVCs
+        )
     """
 ```

@@ -310,5 +310,6 @@ def test_mechanistic_control_splines_smoke_for_canonical_timeseries() -> None:
     )
     control = get_control_splines(process)
     values = control(jnp.array(5.0))
-    assert control.control_names == ("feed", "pH")
+    assert control.name_controlled_FVCs == ("feed",)
+    assert control.name_controlled_PVs == ("pH",)
     assert values.shape == (2,)

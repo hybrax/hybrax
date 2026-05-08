@@ -17,6 +17,46 @@ from .time_series import TimeSeries
 Bounds = Tuple[Optional[float], Optional[float]]
 _NO_BOUNDS: Bounds = (None, None)
 
+
+@dataclass(frozen=True)
+class ProcessOrdering:
+    """Canonical name ordering across all derived mechanistic modules.
+
+    Built once from a :class:`BioProcess` via
+    :func:`bp_format.mechanistic.get_process_ordering`. ``RhsOde``,
+    ``ControlSplines``, and the spline/event helpers all consume this object
+    so the layout of every state/control/rate vector is determined in exactly
+    one place.
+
+    Ordering rules:
+
+    - ``name_modeled_rates`` preserves the user-supplied insertion order of
+      ``BiologicalOde.rates`` (downstream consumers such as ``bp-train``
+      pass rate vectors in this order).
+    - ``name_modeled_algebraic`` is topo-sorted by inter-algebraic
+      dependencies; ties broken alphabetically.
+    - All other tuples are alphabetical within their sub-group.
+
+    State vector layout:
+        ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``
+
+    Control vector layout (output of ``ControlSplines.__call__``):
+        ``u = [name_controlled_FVCs... | name_controlled_SVCs... | name_controlled_PVs...]``
+
+    The first ``len(FVCs)+len(SVCs)`` entries of ``u`` are flow rates (spline
+    derivatives); the remaining ``len(PVs)`` entries are direct values.
+    """
+
+    name_modeled_rates: Tuple[str, ...]
+    name_modeled_algebraic: Tuple[str, ...]
+    name_modeled_RMCs: Tuple[str, ...]
+    name_modeled_PVs: Tuple[str, ...]
+    name_modeled_FVCs: Tuple[str, ...]
+    name_modeled_SVCs: Tuple[str, ...]
+    name_controlled_PVs: Tuple[str, ...]
+    name_controlled_FVCs: Tuple[str, ...]
+    name_controlled_SVCs: Tuple[str, ...]
+
 # TODO for later: standardize unit spelling so it might be used for unit checks
 
 

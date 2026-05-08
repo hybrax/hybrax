@@ -6,11 +6,12 @@ Source: `bp_format/mechanistic.py`
 
 Build JAX/Equinox-compatible ODE components from a `BioProcess`:
 
-- `ControlSplines`: controlled inputs (controlled feeds, controlled PVs) over time.
+- `ProcessOrdering`: canonical name ordering across every derived module
+  (states, controls, rates, algebraic, FVCs, SVCs).
+- `ControlSplines`: controlled inputs (controlled FVCs/SVCs/PVs) over time.
 - `RhsOde`: mechanistic RHS evaluating user-supplied biological expressions
   for each dynamic state, with bp-format adding feed/dilution and volume
   dynamics on top.
-- `integrate_process`: full hybrid ODE integration with discrete event handling.
 - `extract_discrete_events`, `build_state_splines`, `build_algebraic_func`:
   helpers for events, state splines, and algebraic-variable observables.
 
@@ -19,23 +20,44 @@ The legacy spline-based rate-inversion helpers (`build_q_func`,
 were removed in the P3 refactor. See
 [`_analytical_rates_spec.md`](_analytical_rates_spec.md) for the full
 description of their behavior and the planned replacement
-`build_rates_func_analytical`.
+`build_rates_func_analytical`. Forward integration of the process
+(`integrate_process`) lives in `bp-train` and is not part of bp-format.
 
-## State and Rate Model
+## ProcessOrdering — single source of truth
 
-### State layout
+`get_process_ordering(process) -> ProcessOrdering` collects every name
+group consumed by every other factory. Sub-group ordering rules:
 
-The ODE state is always:
+- `name_modeled_rates`: preserve user-supplied insertion order of
+  `BiologicalOde.rates` (downstream consumers pass rate vectors in this
+  order).
+- `name_modeled_algebraic`: topo-sorted by inter-algebraic dependencies,
+  ties broken alphabetically.
+- All other tuples are alphabetical within their sub-group.
 
-```text
-c = [reactor_component_states..., process_variable_states..., V]
+Layout invariants:
+
+```
+c = [name_modeled_RMCs... | name_modeled_PVs... | V]
+u = [name_controlled_FVCs... | name_controlled_SVCs... | name_controlled_PVs...]
 ```
 
-- Reactor block order: `rhs_ode.reactor_component_state_names` (biomass always
-  index 0, by construction in `_build_process_metadata`).
-- PV block order: `rhs_ode.process_variable_state_names` (uncontrolled
-  process variables only).
-- Volume index: `rhs_ode.volume_idx`.
+The first `len(FVCs)+len(SVCs)` entries of `u` are flow rates (spline
+derivatives). FVC flow rates are non-negative; SVC flow rates carry their
+storage sign (non-positive) so the feed-dilution machinery treats them as
+signed outflows. The remaining entries of `u` are direct PV values.
+
+`get_process_ordering` validates:
+
+- Every continuous `FeedVolumeChange` defines `feed_medium`, with every
+  feed component existing in `reactor_medium.components`.
+- Every non-controlled `ProcessVariable` carries a `TimeSeries` value
+  (static PVs must be `is_controlled=True`).
+- The `BiologicalOde.algebraic` graph is acyclic.
+- All names across every group are unique (no shared names between
+  states, rates, algebraic, controlled PVs, FVCs, SVCs).
+
+## State and Rate Model
 
 ### Dynamics partition
 
@@ -46,63 +68,54 @@ biological derivative expression over the symbol table
 {state names} ∪ {controlled-PV names} ∪ {algebraic names} ∪ {rate names}
 ```
 
-and bp-format adds the physical contribution on top. For reactor states
-this is feed inflow and dilution; for PV states it is biological-only
-(no feed/dilution); for volume it is `dV/dt = sum(u_flow) + sum(f_modeled)`.
+and bp-format adds the physical contribution on top. For reactor (RMC)
+states this is feed inflow (FVCs add species) and dilution from all flows
+(FVCs and SVCs); for PV states it is biological-only (no feed/dilution);
+for volume it is `dV/dt = total_FVC_inflow - total_SVC_outflow_magnitude`.
 
 The biological derivative expressions live in
 `process.biological_ode.derivatives`. When the user does not supply a
-`biological_ode` block, `BioProcess.__post_init__` auto-generates a minimal
-one:
-
-- For each reactor-medium component `c`: `dc/dt = q_<c> * <biomass>`.
-- For each dynamic (non-controlled, non-static) PV `p`: `dp/dt = r_<p>`.
-- Static PVs are skipped (no rate symbol, derivative implicitly zero).
-
-The auto-generated rate names are `q_<rmc_biomass_first>...` followed by
-`r_<dynamic_pv>...`, in that exact insertion order — this layout is the
-load-bearing invariant for any caller-supplied rates_func that must produce
-a flat array aligned with `rhs_ode.rate_names`.
+`biological_ode` block, `BioProcess.__post_init__` auto-generates a
+minimal one keyed by reactor-medium component names and dynamic PV names.
 
 ## Public API
 
 ### Factory functions
 
-- `get_control_splines(process) -> ControlSplines`
-- `get_rhs_ode(process) -> RhsOde`
-- `build_rhs_ode(process) -> RhsOde` — alias used internally; raises if
-  `process.biological_ode` is unset (which only happens for processes whose
-  reactor medium has no components, e.g. shape-only fixtures).
-- `build_algebraic_func(process) -> Callable` — evaluator for
+- `get_process_ordering(process) -> ProcessOrdering`
+- `get_control_splines(process, ordering=None) -> ControlSplines`
+- `get_rhs_ode(process, ordering=None) -> RhsOde`
+- `build_rhs_ode(process, ordering=None) -> RhsOde` — equivalent to
+  `get_rhs_ode`; raises if `process.biological_ode` is unset.
+- `build_algebraic_func(process, ordering=None) -> Callable` — evaluator for
   `BiologicalOde.algebraic` quantities, e.g. `X_active(t)` as an observable.
+- `extract_discrete_events(process, ordering) -> list[dict]`
+- `build_state_splines(process, ordering) -> dict[str, callable]`
 
-`get_rhs_ode` returns the same `RhsOde` regardless of whether the process's
-`biological_ode` block is auto-generated or user-supplied — the dispatch
-distinction from before the P3 refactor is gone.
-
-The factory validates strictly: unknown feed-medium components and malformed
-`biological_ode` blocks raise `ValueError`.
+`extract_discrete_events` and `build_state_splines` take a
+`ProcessOrdering` rather than a compiled `RhsOde` — they only need name
+tuples, not lambdified callables.
 
 ### `RhsOde` call signature
 
 ```python
-rhs_ode(c, rates, u_flow, f_modeled, ctrl_pv_values) -> dc_dt
+rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs) -> dc_dt
 ```
 
 Argument shapes:
 
-- `c`: `(rhs_ode.c_size,)` = `[reactor..., pv..., V]`
-- `rates`: `(rhs_ode.rate_size,)` — flat user-supplied rate vector, aligned
-  with `rhs_ode.rate_names` (= the insertion order of
-  `process.biological_ode.rates`)
-- `u_flow`: `(rhs_ode.u_flow_size,)` — controlled continuous flow rates
-- `f_modeled`: `(rhs_ode.f_modeled_size,)` — modeled (uncontrolled) continuous
-  flow rates; pass `jnp.zeros(0)` when none
-- `ctrl_pv_values`: `(rhs_ode.n_controlled_pv,)` — controlled-PV values at the
-  current time, aligned with `rhs_ode.controlled_pv_names`; pass `jnp.zeros(0)`
-  when there are no controlled PVs
+- `c`: `(len(name_modeled_RMCs) + len(name_modeled_PVs) + 1,)` —
+  `[RMCs..., PVs..., V]`.
+- `rates`: `(len(name_modeled_rates),)` aligned with
+  `rhs_ode.name_modeled_rates`.
+- `u`: full control vector from `ControlSplines.__call__(t)` —
+  `[FVC_flows | SVC_flows | PV_values]`.
+- `f_modeled_FVCs`: `(len(name_modeled_FVCs),)` — uncontrolled FVC flow
+  rates (non-negative); pass `jnp.zeros(0)` when none.
+- `f_modeled_SVCs`: `(len(name_modeled_SVCs),)` — uncontrolled SVC flow
+  rates (non-positive, signed); pass `jnp.zeros(0)` when none.
 
-Return shape: `(rhs_ode.output_size,) == (rhs_ode.c_size,)`.
+Return shape: same as `c`.
 
 Evaluation order inside `__call__`:
 
@@ -110,58 +123,40 @@ Evaluation order inside `__call__`:
 2. Evaluate the per-state biological RHS expression.
 3. Add feed/dilution contributions on the reactor block (PV states are
    biological-only).
-4. Append `dV/dt` from the volume changes.
+4. Append `dV/dt` from FVC inflow + SVC outflow.
 
-### Important metadata on `RhsOde`
+### Fields on `RhsOde`
 
-- `reactor_component_state_names`, `process_variable_state_names`,
-  `controlled_pv_names`
-- `n_reactor_states`, `n_pv_states`, `n_controlled_pv`
-- `reactor_indices`, `pv_indices`, `volume_idx`, `static_pv_indices`
-- `flow_names`, `modeled_flow_names`
-- `name_modeled_algebraic`, `rate_names`, `rate_size`
-- `Cin`, `Cin_modeled`
+- Names: `name_modeled_rates`, `name_modeled_algebraic`,
+  `name_modeled_RMCs`, `name_modeled_PVs`, `name_modeled_FVCs`,
+  `name_modeled_SVCs`, `name_controlled_PVs`, `name_controlled_FVCs`,
+  `name_controlled_SVCs`.
+- Compiled callables: `algebraic_funcs`, `derivative_funcs`.
+- Feed compositions: `Cin_controlled_FVCs`, `Cin_modeled_FVCs`.
 
-`biomass_idx` was removed; biomass is identified by its name in
-`reactor_component_state_names` (always at index 0 by construction).
+All sizes derive from the lengths of the name tuples (`len(...)`); there
+are no separate sizing fields.
 
 ### Boundary: biological vs. physical
 
 User-written expressions describe only the *biological* part of `dc/dt`.
 bp-format unconditionally adds, on top of the biological derivatives:
 
-- Feed inflow + dilution on reactor states from `VolumeChange` flows and
-  the Cin matrices.
-- Sample outflow.
-- `dV/dt = sum(u_flow) + sum(f_modeled)`.
+- Feed inflow + dilution on reactor states from FVC flows and the
+  `Cin_*` matrices.
+- Dilution from SVC outflows on reactor states.
+- `dV/dt = total_FVC_inflow - total_SVC_outflow_magnitude`.
 
-Process-variable states receive *no* physical contribution — their dynamics
-are entirely encoded in the user expressions.
+Process-variable states receive *no* physical contribution — their
+dynamics are entirely encoded in the user expressions.
 
 ### Bounds
 
-`bounds` on reactor components, process variables, volume, and per-rate are
-**metadata only** — they are never plumbed into `RhsOde` or the integrator.
-Downstream consumers (e.g. `bp-train`'s loss generator) read them off the
-process to build soft-constraint penalties (concentrations ≥ 0, quality
+`bounds` on reactor components, process variables, volume, and per-rate
+are **metadata only** — never plumbed into `RhsOde`. Downstream
+consumers (e.g. `bp-train`'s loss generator) read them off the process
+to build soft-constraint penalties (concentrations ≥ 0, quality
 attributes in [0, 1], etc.).
-
-## Integration
-
-`integrate_process(process, ctrl, rhs_ode, rates_func, t_eval, ...) -> dict`
-runs the full hybrid ODE integration segment-by-segment using
-`jax.lax.scan` over segments separated by discrete events. The entire scan
-is JIT-compiled once via `eqx.filter_jit`; subsequent calls reuse the
-compiled code. Between events the ODE is solved with `diffrax.Tsit5`. At
-event boundaries, discrete state updates (sampling, bolus feeds) are applied.
-
-The `rates_func` callback signature is
-
-```python
-rates_func(t, state, controls) -> jnp.ndarray  # shape (rhs_ode.rate_size,)
-```
-
-aligned with `rhs_ode.rate_names`.
 
 ## Example
 
@@ -170,23 +165,23 @@ import jax.numpy as jnp
 import bp_format as bp
 
 process = ...
-ctrl = bp.mechanistic.get_control_splines(process)
-rhs_ode = bp.mechanistic.get_rhs_ode(process)
+ordering = bp.mechanistic.get_process_ordering(process)
+ctrl = bp.mechanistic.get_control_splines(process, ordering)
+rhs_ode = bp.mechanistic.get_rhs_ode(process, ordering)
 
-def rates_func(t, state, controls):
-    del t, state, controls
-    return jnp.zeros(rhs_ode.rate_size)
-
-t_eval = jnp.linspace(
-    process.time_axis.start, process.time_axis.end, 100, dtype=float
-)
-result = bp.mechanistic.integrate_process(
-    process, ctrl, rhs_ode, rates_func, t_eval
-)
+t = jnp.array(5.0)
+u = ctrl(t)
+c = jnp.zeros(len(rhs_ode.name_modeled_RMCs) + len(rhs_ode.name_modeled_PVs) + 1)
+rates = jnp.zeros(len(rhs_ode.name_modeled_rates))
+dc_dt = rhs_ode(c, rates, u, jnp.zeros(0), jnp.zeros(0))
 ```
+
+Forward integration is provided by `bp-train`; consume `RhsOde` and
+`ControlSplines` from there.
 
 ## See Also
 
+- [Data Model](02_data_model.md) — `ProcessOrdering` listing
 - [Splines](07_splines.md)
-- [Data Model](02_data_model.md)
-- [Analytical rate inversion spec](_analytical_rates_spec.md)
+- [Analytical rate inversion spec](_analytical_rates_spec.md) — planned
+  `build_rates_func_analytical`

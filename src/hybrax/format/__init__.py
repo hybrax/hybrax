@@ -30,6 +30,7 @@ from .dataclasses import (
     Bounds,
     RateDecl,
     BiologicalOde,
+    ProcessOrdering,
     PseudobatchSpeciesTransform,
     PseudobatchTransform,
     # Higher-level structures
@@ -99,6 +100,7 @@ __all__ = [
     "Bounds",
     "RateDecl",
     "BiologicalOde",
+    "ProcessOrdering",
     "Simulation",
     "SimulationEvent",
     "SimulationResult",

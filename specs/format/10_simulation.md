@@ -24,15 +24,16 @@ Subclasses implement:
 evaluate_rates(self, t, state, controls=None) -> jnp.ndarray
 ```
 
-returning a flat rates array of shape `(rhs_ode.rate_size,)` aligned with
-`rhs_ode.rate_names` (= the insertion order of `process.biological_ode.rates`).
+returning a flat rates array of shape `(len(rhs_ode.name_modeled_rates),)`
+aligned with `rhs_ode.name_modeled_rates` (= the insertion order of
+`process.biological_ode.rates`).
 
 - `controls` is optional. Standalone simulations may evaluate controls from
   `t`; reintegration can pass the controls vector from `ControlSplines`.
 
 `Simulation.as_rates_func()` returns a wrapper with the
-`rates_func(t, state, controls)` signature expected by mechanistic integration
-in `bp_format.mechanistic.integrate_process`.
+`rates_func(t, state, controls)` signature consumed by forward integration
+in `bp-train` (bp-format no longer ships its own integrator).
 
 ## Event Semantics
 
