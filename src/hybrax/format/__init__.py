@@ -48,6 +48,7 @@ from .simulation import Simulation, SimulationEvent, SimulationResult
 from .inspect import (
     print_process_structure,
     print_dataset_structure,
+    print_rhs_ode,
     plot_process,
     plot_case_study,
 )
@@ -68,6 +69,7 @@ from .validate import (
     validate_case_study,
     validate_augmented_parent_refs,
     validate_biological_ode,
+    validate_biological_ode_equivalence,
     validate_bounds,
 )
 
@@ -105,6 +107,7 @@ __all__ = [
     # Utils
     "print_process_structure",
     "print_dataset_structure",
+    "print_rhs_ode",
     "plot_process",
     "plot_case_study",
     # Validate
@@ -118,6 +121,7 @@ __all__ = [
     "validate_case_study",
     "validate_augmented_parent_refs",
     "validate_biological_ode",
+    "validate_biological_ode_equivalence",
     "validate_bounds",
     # Modules
     "serialization",

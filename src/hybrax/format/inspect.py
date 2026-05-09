@@ -1,6 +1,17 @@
+from typing import Optional
+
 import numpy as np
 import jax.numpy as jnp
-from .dataclasses import BioProcess, CaseStudy, BenchmarkDataset, FeedVolumeChange
+from .dataclasses import (
+    BioProcess,
+    BioProcessCollection,
+    CaseStudy,
+    BenchmarkDataset,
+    FeedVolumeChange,
+    ProcessOrdering,
+    SampleVolumeChange,
+    StaticVariable,
+)
 
 
 def _is_dynamic_series(value: object) -> bool:
@@ -1051,3 +1062,262 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
     # fig.show()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# RhsOde structure printer
+# ---------------------------------------------------------------------------
+
+
+def _cin_static_value(vc, rmc_name: str) -> float:
+    """Static feed concentration of *rmc_name* in *vc*'s feed medium (0 if absent)."""
+    if not isinstance(vc, FeedVolumeChange) or vc.feed_medium is None:
+        return 0.0
+    comp = vc.feed_medium.components.get(rmc_name)
+    if comp is None:
+        return 0.0
+    if isinstance(comp.concentration, StaticVariable):
+        return float(comp.concentration.value)
+    return 0.0  # TimeSeries Cin not supported (mirrors mechanistic._build_cin)
+
+
+def _measure_subtable_width(headers: list, rows: list) -> int:
+    """Width required by a sub-table with these headers and rows."""
+    n = len(headers)
+    col_w = [
+        max(len(str(headers[i])), 3, *(len(str(r[i])) for r in rows))
+        for i in range(n)
+    ]
+    return sum(col_w) + 3 * n + 1
+
+
+def _format_subtable_lines(
+    headers: list, rows: list, aligns: list, target_width: int
+) -> list:
+    """Render header row + data rows, padding the last column so each row
+    reaches *target_width*. Returns lines with ``| ... |`` borders included."""
+    n = len(headers)
+    col_w = [
+        max(len(str(headers[i])), 3, *(len(str(r[i])) for r in rows))
+        for i in range(n)
+    ]
+    req = sum(col_w) + 3 * n + 1
+    if target_width > req:
+        col_w[-1] += target_width - req
+
+    def _pad(s: str, w: int, align: str) -> str:
+        return s.rjust(w) if align == "r" else s.ljust(w)
+
+    def _row(cells) -> str:
+        padded = [_pad(str(c), col_w[i], aligns[i]) for i, c in enumerate(cells)]
+        return "| " + " | ".join(padded) + " |"
+
+    return [_row(headers)] + [_row(r) for r in rows]
+
+
+def _render_combined_box(title: str, sections: list) -> str:
+    """Render a single ASCII box containing several sub-tables.
+
+    *sections* is a list of ``(banner, headers, rows, aligns)`` tuples.
+    """
+    sub_widths = [_measure_subtable_width(s[1], s[2]) for s in sections]
+    banner_widths = [4 + len(s[0]) for s in sections]
+    title_str = f" {title} "
+    title_width = len(title_str) + 2
+    total_width = max([*sub_widths, *banner_widths, title_width])
+
+    divider = "+" + "-" * (total_width - 2) + "+"
+    pad = total_width - 2 - len(title_str)
+    left = pad // 2
+    right = pad - left
+    title_line = "+" + "-" * left + title_str + "-" * right + "+"
+
+    lines = [title_line]
+    for banner, headers, rows, aligns in sections:
+        banner_pad = total_width - 4 - len(banner)
+        lines.append(f"| {banner}{' ' * banner_pad} |")
+        lines.append(divider)
+        lines.extend(_format_subtable_lines(headers, rows, aligns, total_width))
+        lines.append(divider)
+    return "\n".join(lines)
+
+
+def _format_rmc_feed(
+    rmc_name: str,
+    fvc_names: list,
+    process: BioProcess,
+) -> str:
+    """``+ feed(<FVCs supplying Cin for this RMC>)`` or empty when none."""
+    feeders = [
+        n for n in fvc_names
+        if _cin_static_value(process.volume.volume_changes[n], rmc_name) != 0.0
+    ]
+    return "+ feed(" + ", ".join(feeders) + ")" if feeders else ""
+
+
+def _format_rmc_dilution(fvc_names: list, svc_names: list) -> str:
+    """``− dilution(<all FVC+SVC>)`` or empty when there are no flows."""
+    flows = list(fvc_names) + list(svc_names)
+    return "− dilution(" + ", ".join(flows) + ")" if flows else ""
+
+
+def _discrete_volume_changes(process: BioProcess):
+    """Return ``(discrete_FVCs, discrete_SVCs)`` — names of discrete (bolus
+    / discrete-sample) volume changes. ``ProcessOrdering`` only enumerates
+    continuous volume changes, so the discrete ones are recovered here.
+    """
+    disc_fvc = sorted(
+        n for n, vc in process.volume.volume_changes.items()
+        if not vc.is_continuous and isinstance(vc, FeedVolumeChange)
+    )
+    disc_svc = sorted(
+        n for n, vc in process.volume.volume_changes.items()
+        if not vc.is_continuous and isinstance(vc, SampleVolumeChange)
+    )
+    return disc_fvc, disc_svc
+
+
+def _format_v_additions(
+    cont_fvc: list, disc_fvc: list,
+) -> str:
+    """V's positive contributions: continuous FVC flow rates and discrete
+    bolus events. Returns ``0`` when neither is present."""
+    parts: list = []
+    if cont_fvc:
+        parts.append(" + ".join(cont_fvc))
+    if disc_fvc:
+        parts.append("bolus(" + ", ".join(disc_fvc) + ")")
+    return " + ".join(parts) if parts else "0"
+
+
+def _format_v_removals(
+    cont_svc: list, disc_svc: list,
+) -> str:
+    """V's negative contributions: continuous SVC flow rates and discrete
+    sampling events. Returns ``0`` when neither is present."""
+    parts: list = []
+    if cont_svc:
+        parts.append("− |" + " + ".join(cont_svc) + "|")
+    if disc_svc:
+        parts.append("− sample(" + ", ".join(disc_svc) + ")")
+    return " ".join(parts) if parts else "0"
+
+
+def _resolve_target(target):
+    """Return ``(process, title_label)`` from BioProcess / CaseStudy / Collection.
+
+    For multi-process containers, equivalence of ``biological_ode`` is
+    enforced before the first process is selected. The returned label is
+    the case-study id (or collection name / fallback), never a process
+    name, so the printed title represents the whole container.
+    """
+    from .validate import validate_biological_ode_equivalence
+
+    if isinstance(target, BioProcess):
+        return target, _get_process_name(target)
+    if isinstance(target, (CaseStudy, BioProcessCollection)):
+        if not target.processes:
+            raise ValueError("print_rhs_ode: container has no processes.")
+        ok, msg = validate_biological_ode_equivalence(target)
+        if not ok:
+            raise ValueError(f"Cannot print unified ODE structure: {msg}")
+        process = next(iter(target.processes.values()))
+        n = len(target.processes)
+        if isinstance(target, CaseStudy):
+            label = target.case_id
+        else:
+            label = (target.metadata or {}).get("name", "BioProcessCollection")
+        if n > 1:
+            label = f"{label} ({n} processes)"
+        return process, label
+    raise TypeError(
+        "print_rhs_ode expects BioProcess, CaseStudy, or "
+        f"BioProcessCollection; got {type(target).__name__!r}"
+    )
+
+
+def print_rhs_ode(
+    target,
+    ordering: Optional[ProcessOrdering] = None,
+) -> None:
+    """Print the mechanistic ODE structure as a single ASCII box with two
+    sub-tables (Algebraic, Derivatives).
+
+    Accepts a :class:`BioProcess`, a :class:`CaseStudy`, or a
+    :class:`BioProcessCollection`. For multi-process containers,
+    :func:`bp_format.validate.validate_biological_ode_equivalence` is
+    invoked first and the title represents the whole container — the
+    individual process picked to render is not exposed.
+
+    The Derivatives sub-table separates the *Biological* expression
+    (verbatim from ``biological_ode.derivatives``) from the *Feed* and
+    *Dilution* contributions that bp-format adds on top: ``+ feed(<FVCs
+    with Cin>)`` and ``− dilution(<all FVC+SVC>)`` per RMC. The Volume
+    sub-table lists V separately with *Additions* (FVC sum) and
+    *Removals* (``− |<SVC sum>|``) columns.
+
+    Raises:
+        ValueError: if a multi-process container's processes do not share
+            equivalent ``biological_ode`` blocks.
+    """
+    from .mechanistic import get_process_ordering
+
+    process, title_label = _resolve_target(target)
+
+    bo = process.biological_ode
+    if bo is None:
+        raise ValueError(
+            "print_rhs_ode requires process.biological_ode to be set."
+        )
+    if ordering is None:
+        ordering = get_process_ordering(process)
+
+    sections: list = []
+
+    if ordering.name_modeled_algebraic:
+        alg_rows = [[n, bo.algebraic[n]] for n in ordering.name_modeled_algebraic]
+        sections.append((
+            "Algebraic",
+            ["Name", "Expression"],
+            alg_rows,
+            ["l", "l"],
+        ))
+
+    fvc_all = list(ordering.name_controlled_FVCs) + list(ordering.name_modeled_FVCs)
+    svc_all = list(ordering.name_controlled_SVCs) + list(ordering.name_modeled_SVCs)
+
+    deriv_rows: list = []
+    for n in ordering.name_modeled_RMCs:
+        unit = process.reactor_medium.components[n].unit
+        bio_str = bo.derivatives.get(n, "0")
+        feed = _format_rmc_feed(n, fvc_all, process)
+        dilution = _format_rmc_dilution(fvc_all, svc_all)
+        deriv_rows.append([n, f"[{unit}]", bio_str, feed, dilution])
+    for n in ordering.name_modeled_PVs:
+        unit = process.process_variables[n].unit
+        bio_str = bo.derivatives.get(n, "0")
+        deriv_rows.append([n, f"[{unit}]", bio_str, "", ""])
+
+    sections.append((
+        "Derivatives",
+        ["State", "Unit", "Biological", "Feed", "Dilution"],
+        deriv_rows,
+        ["l", "l", "l", "l", "l"],
+    ))
+
+    if process.volume is not None:
+        disc_fvc, disc_svc = _discrete_volume_changes(process)
+        vol_rows = [[
+            "V",
+            f"[{process.volume.unit}]",
+            _format_v_additions(fvc_all, disc_fvc),
+            _format_v_removals(svc_all, disc_svc),
+        ]]
+        sections.append((
+            "Volume",
+            ["State", "Unit", "Additions", "Removals"],
+            vol_rows,
+            ["l", "l", "l", "l"],
+        ))
+
+    print(_render_combined_box(f"RhsOde Structure: {title_label}", sections))

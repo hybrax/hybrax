@@ -194,6 +194,62 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     return True, "biological_ode ok"
 
 
+def validate_biological_ode_equivalence(
+    container: "CaseStudy | BioProcessCollection",
+) -> Tuple[bool, str]:
+    """Verify all processes in *container* share the same ``biological_ode``.
+
+    Equivalence requires identical ``algebraic``, ``derivatives``, and
+    ``rates`` dicts (same keys mapped to the same values). Containers with
+    zero or one process trivially pass.
+
+    Returns ``(is_valid, message)``.
+    """
+    if not isinstance(container, (CaseStudy, BioProcessCollection)):
+        raise TypeError(
+            "validate_biological_ode_equivalence() expects a CaseStudy or "
+            f"BioProcessCollection, got {type(container).__name__!r}"
+        )
+
+    procs = list(container.processes.items())
+    if len(procs) <= 1:
+        return True, (
+            f"biological_ode equivalence trivially holds ({len(procs)} processes)"
+        )
+
+    first_name, first_proc = procs[0]
+    ref_bo = first_proc.biological_ode
+
+    errors: List[str] = []
+    for name, proc in procs[1:]:
+        bo = proc.biological_ode
+        if (ref_bo is None) != (bo is None):
+            errors.append(
+                f"Process '{name}' biological_ode presence differs from '{first_name}'"
+            )
+            continue
+        if ref_bo is None:
+            continue
+        if dict(bo.algebraic) != dict(ref_bo.algebraic):
+            errors.append(
+                f"Process '{name}' biological_ode.algebraic differs from '{first_name}'"
+            )
+        if dict(bo.derivatives) != dict(ref_bo.derivatives):
+            errors.append(
+                f"Process '{name}' biological_ode.derivatives differs from '{first_name}'"
+            )
+        if dict(bo.rates) != dict(ref_bo.rates):
+            errors.append(
+                f"Process '{name}' biological_ode.rates differs from '{first_name}'"
+            )
+
+    if errors:
+        return False, "biological_ode mismatch across processes:\n  - " + "\n  - ".join(
+            errors
+        )
+    return True, f"biological_ode equivalent across {len(procs)} processes"
+
+
 def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
     """Sanity-check all bounds tuples on the process (states, PVs, volume)."""
     errors: List[str] = []
