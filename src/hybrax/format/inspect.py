@@ -12,13 +12,8 @@ from .dataclasses import (
     SampleVolumeChange,
     StaticVariable,
 )
-
-
-def _is_dynamic_series(value: object) -> bool:
-    """Return True when *value* looks like a time-varying series."""
-    times = getattr(value, "times", None)
-    values = getattr(value, "values", None)
-    return times is not None and values is not None
+from .splines import _has_spline_state
+from .validate import _is_dynamic_series
 
 
 def _is_spline_only_series(value: object) -> bool:
@@ -29,14 +24,6 @@ def _is_spline_only_series(value: object) -> bool:
     values = getattr(value, "values", None)
     return (
         breaks is not None and coeffs is not None and times is None and values is None
-    )
-
-
-def _has_spline_state(value: object) -> bool:
-    """Return True when a series carries spline coefficients."""
-    return (
-        getattr(value, "breaks", None) is not None
-        and getattr(value, "coeffs", None) is not None
     )
 
 
