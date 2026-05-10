@@ -398,9 +398,9 @@ class TrainingDataStore(eqx.Module):
         target_name_to_index = {name: idx for idx, name in enumerate(target_names)}
 
         ref_process = collection.processes[process_order[0]]
-        modeled_flow_names = tuple(get_rhs_ode(ref_process).modeled_flow_names)
+        modeled_flow_names = tuple(get_rhs_ode(ref_process).name_modeled_FVCs)
         for _pn in process_order[1:]:
-            other = tuple(get_rhs_ode(collection.processes[_pn]).modeled_flow_names)
+            other = tuple(get_rhs_ode(collection.processes[_pn]).name_modeled_FVCs)
             if other != modeled_flow_names:
                 raise ValueError(
                     f"modeled flow names differ across processes: "

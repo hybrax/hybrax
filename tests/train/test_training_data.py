@@ -52,7 +52,6 @@ def _make_two_process_collection() -> BioProcessCollection:
                     name="biomass",
                     unit="g/L",
                     concentration=StaticVariable(0.1),
-                    is_intracellular=False,
                 )
             },
         ),
@@ -115,7 +114,6 @@ def _make_two_process_collection() -> BioProcessCollection:
                     name="biomass",
                     unit="g/L",
                     concentration=StaticVariable(0.1),
-                    is_intracellular=False,
                 )
             },
         ),
@@ -160,7 +158,6 @@ def _write_custom(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "CONFIG = {'control_order': ['CF', 'T']}",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    for process in collection.processes.values():",
@@ -213,7 +210,6 @@ def _make_reactor_target_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 2.0, 4.0]),
                         values=jnp.asarray([0.2, 0.3, 0.4]),
                     ),
-                    is_intracellular=False,
                 ),
                 "product": ReactorMediumComponent(
                     name="product",
@@ -222,7 +218,6 @@ def _make_reactor_target_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 2.0, 4.0]),
                         values=jnp.asarray([0.0, 0.1, 0.2]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -269,7 +264,6 @@ def _make_reactor_target_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([0.25, 0.35]),
                     ),
-                    is_intracellular=False,
                 ),
                 "product": ReactorMediumComponent(
                     name="product",
@@ -278,7 +272,6 @@ def _make_reactor_target_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([0.02, 0.09]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -370,7 +363,6 @@ def test_training_data_store_rejects_inconsistent_target_order(tmp_path):
     custom_py.write_text(
         "\n".join(
             [
-                "CONFIG = {'control_order': ['CF']}",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    for process in collection.processes.values():",

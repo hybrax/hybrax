@@ -78,7 +78,6 @@ def _make_process(name: str, biomass_values=(1.0, 0.8, 0.64)) -> BioProcess:
                         times=jnp.asarray([0.0, 1.0, 2.0]),
                         values=jnp.asarray(biomass_values),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),

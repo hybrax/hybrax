@@ -154,6 +154,9 @@ class _BatchIndexedControls(eqx.Module):
     def eval_derivative(self, ts: float | jax.Array) -> jax.Array:
         return self.batch_controls.eval_derivative(self.process_idx, ts)
 
+    def eval_u(self, ts: float | jax.Array) -> jax.Array:
+        return self.batch_controls.eval_u(self.process_idx, ts)
+
 
 def simulate_measurement_states(
     wrapper: HybridOdeWrapper,
@@ -296,7 +299,7 @@ def build_batched_loss_fn_from_sample_loss(
                 process_idx=process_idx,
             )
             sample_wrapper = eqx.tree_at(
-                lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+                lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
                 wrapper,
                 (controls, cin, cin_modeled),
             )

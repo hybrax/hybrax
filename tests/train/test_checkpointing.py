@@ -207,7 +207,6 @@ def _make_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 1.0, 2.0]),
                         values=jnp.asarray([1.0, 0.8, 0.64]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),

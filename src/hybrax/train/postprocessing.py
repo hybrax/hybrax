@@ -128,12 +128,12 @@ def _compute_dense_process_export(
     """Solve one process on dense grid and return export-ready arrays."""
     process = collection.processes[process_name]
     process_data = store.get_process(process_name)
-    rhs = get_rhs_ode(process)
+    rhs_ode = get_rhs_ode(process)
 
     process_wrapper = eqx.tree_at(
-        lambda w: (w.controls, w.rhs_ode.Cin, w.rhs_ode.Cin_modeled),
+        lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
         trained_wrapper,
-        (process_data.controls, rhs.Cin, rhs.Cin_modeled),
+        (process_data.controls, rhs_ode.Cin_controlled_FVCs, rhs_ode.Cin_modeled_FVCs),
     )
 
     t_dense = jnp.linspace(

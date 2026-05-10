@@ -484,13 +484,46 @@ def build_bolus_sources(
     return sources
 
 
+@dataclass(frozen=True)
+class ControlSourceBundle:
+    """Categorised control sources from a process.
+
+    Layout mirrors bp-format ``ControlSplines`` plus bp-train-specific
+    extras for signals that do not flow into RhsOde's ``u`` argument
+    (continuous-FVC ramps for bolus events; sample-acc trace appended
+    in :class:`ControlsStore`):
+
+        [name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras_bolus]
+    """
+
+    name_controlled_FVCs: tuple[str, ...]
+    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_PVs: tuple[str, ...]
+    name_extras_bolus: tuple[str, ...]
+    sources_by_name: dict[str, SignalSource]
+
+    @property
+    def all_names(self) -> tuple[str, ...]:
+        return (
+            self.name_controlled_FVCs
+            + self.name_controlled_SVCs
+            + self.name_controlled_PVs
+            + self.name_extras_bolus
+        )
+
+    @property
+    def all_sources(self) -> list[SignalSource]:
+        return [self.sources_by_name[n] for n in self.all_names]
+
+
 def select_control_sources(
     process_name: str,
     process: BioProcess,
     config: dict[str, Any],
-) -> list[SignalSource]:
-    volume_sources: dict[str, SignalSource] = {}
-    process_var_sources: dict[str, SignalSource] = {}
+) -> ControlSourceBundle:
+    fvc_continuous: dict[str, SignalSource] = {}
+    fvc_bolus: dict[str, SignalSource] = {}
+    pv_controlled: dict[str, SignalSource] = {}
 
     for name, volume_change in process.volume.volume_changes.items():
         if not isinstance(volume_change, FeedVolumeChange):
@@ -499,56 +532,43 @@ def select_control_sources(
             continue
         if not volume_change.is_continuous:
             continue
-        volume_sources[name] = _make_source_from_volume_change(name, volume_change)
+        fvc_continuous[name] = _make_source_from_volume_change(name, volume_change)
 
     run_min_dt = run_min_dt_from_config(config)
     for source in build_bolus_sources(process, run_min_dt=run_min_dt):
-        if source.name in volume_sources:
+        if source.name in fvc_continuous:
             raise ValueError(
                 f"{process_name}: duplicate control source name {source.name}"
             )
-        volume_sources[source.name] = source
+        fvc_bolus[source.name] = source
 
     for name, process_variable in process.process_variables.items():
         if not process_variable.is_controlled:
             continue
-        process_var_sources[name] = _make_source_from_process_variable(
+        pv_controlled[name] = _make_source_from_process_variable(
             process=process,
             name=name,
             process_variable=process_variable,
         )
 
-    explicit = config.get("control_order")
-    if isinstance(explicit, dict):
-        explicit = explicit.get(process_name)
+    name_controlled_FVCs = tuple(sorted(fvc_continuous))
+    name_controlled_SVCs: tuple[str, ...] = ()
+    name_controlled_PVs = tuple(sorted(pv_controlled))
+    name_extras_bolus = tuple(sorted(fvc_bolus))
 
-    ordered_names: list[str] = []
-    if explicit is not None:
-        all_names = set(volume_sources) | set(process_var_sources)
-        missing = [name for name in explicit if name not in all_names]
-        if missing:
-            missing_str = ", ".join(missing)
-            raise ValueError(
-                f"{process_name}: control_order references missing controls:"
-                f" {missing_str}"
-            )
-        ordered_names.extend(explicit)
+    sources_by_name: dict[str, SignalSource] = {
+        **fvc_continuous,
+        **pv_controlled,
+        **fvc_bolus,
+    }
 
-    volume_names = [name for name in volume_sources if name not in ordered_names]
-    process_var_names = [
-        name for name in process_var_sources if name not in ordered_names
-    ]
-
-    ordered_names.extend(volume_names)
-    ordered_names.extend(process_var_names)
-
-    sources: list[SignalSource] = []
-    for name in ordered_names:
-        if name in volume_sources:
-            sources.append(volume_sources[name])
-        else:
-            sources.append(process_var_sources[name])
-    return sources
+    return ControlSourceBundle(
+        name_controlled_FVCs=name_controlled_FVCs,
+        name_controlled_SVCs=name_controlled_SVCs,
+        name_controlled_PVs=name_controlled_PVs,
+        name_extras_bolus=name_extras_bolus,
+        sources_by_name=sources_by_name,
+    )
 
 
 def run_min_dt_from_config(config: dict[str, Any]) -> float | None:

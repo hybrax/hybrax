@@ -98,7 +98,6 @@ def _make_two_process_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 1.0, 2.0]),
                         values=jnp.asarray([1.0, 0.8, 0.64]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -135,7 +134,6 @@ def _make_two_process_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([0.9, 0.72]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -458,8 +456,8 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
     rhs_by_process = [
         get_rhs_ode(collection.processes[name]) for name in store.process_order
     ]
-    batched_cin = jnp.stack([rhs.Cin for rhs in rhs_by_process], axis=0)
-    batched_cin_modeled = jnp.stack([rhs.Cin_modeled for rhs in rhs_by_process], axis=0)
+    batched_cin = jnp.stack([rhs.Cin_controlled_FVCs for rhs in rhs_by_process], axis=0)
+    batched_cin_modeled = jnp.stack([rhs.Cin_modeled_FVCs for rhs in rhs_by_process], axis=0)
 
     received_steps: list[int | None] = []
 
@@ -522,8 +520,8 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
     rhs_by_process = [
         get_rhs_ode(collection.processes[name]) for name in store.process_order
     ]
-    batched_cin = jnp.stack([rhs.Cin for rhs in rhs_by_process], axis=0)
-    batched_cin_modeled = jnp.stack([rhs.Cin_modeled for rhs in rhs_by_process], axis=0)
+    batched_cin = jnp.stack([rhs.Cin_controlled_FVCs for rhs in rhs_by_process], axis=0)
+    batched_cin_modeled = jnp.stack([rhs.Cin_modeled_FVCs for rhs in rhs_by_process], axis=0)
 
     def _sample_loss_fn(
         _wrapper,

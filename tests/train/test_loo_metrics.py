@@ -62,7 +62,6 @@ def _make_process(
                 times=jnp.asarray(biomass_times),
                 values=jnp.asarray(biomass_values),
             ),
-            is_intracellular=False,
         ),
     }
     volume_changes = {}

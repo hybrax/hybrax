@@ -6,6 +6,8 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
+from bp_format.mechanistic import get_rhs_ode
+
 from .controls import build_sample_acc_source_default, run_min_dt_from_config
 from .model_api import ReactionOutputs, UserReactionModule, trainable_field
 
@@ -53,17 +55,18 @@ def default_build_sample_acc_series(
 class DefaultReactionModule(UserReactionModule):
     """Minimal default reaction model for harness runs.
 
-    This model predicts concentration-space reaction terms from species states.
-    It ignores controls and emits no modeled feed rates.
+    Predicts a flat ``specific_rates`` vector aligned with
+    ``rhs_ode.name_modeled_rates``. Ignores controls; emits no modeled feed
+    rates.
     """
 
     model: eqx.nn.MLP = trainable_field()
 
-    def __init__(self, *, n_species: int, key: jax.Array):
+    def __init__(self, *, n_species: int, n_rates: int, key: jax.Array):
         self.model = eqx.nn.MLP(
             in_size=n_species,
-            out_size=n_species,
-            width_size=max(8, 2 * n_species),
+            out_size=n_rates,
+            width_size=max(8, 2 * max(n_species, n_rates)),
             depth=2,
             key=key,
         )
@@ -90,9 +93,20 @@ def default_build_reaction_module(
     seed: int,
     collection: Any,
 ) -> UserReactionModule:
-    """Default train hook for reaction-module construction."""
-    del process_names, config, collection
+    """Default train hook for reaction-module construction.
+
+    Derives the rates head size from the first process's BiologicalOde via
+    ``rhs_ode.name_modeled_rates`` so user-defined ODEs with rate counts that
+    differ from the species count are supported out of the box.
+    """
+    del config
+    if not process_names:
+        raise ValueError("default_build_reaction_module requires at least one process")
+    first_process = collection.processes[process_names[0]]
+    rhs_ode = get_rhs_ode(first_process)
+    n_rates = len(rhs_ode.name_modeled_rates)
     return DefaultReactionModule(
         n_species=len(target_names),
+        n_rates=n_rates,
         key=jax.random.key(int(seed)),
     )

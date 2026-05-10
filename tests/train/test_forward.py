@@ -342,7 +342,6 @@ def _make_one_species_process(
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -604,14 +603,15 @@ KITTLER_PREPARED = (
     Path(__file__).resolve().parents[1]
     / "examples"
     / "01_kittler_2022"
+    / "migration"
     / "prepared.json"
 )
-# Vanilla is arbitrary here; both variants expose the same train/forward hooks.
+# Migration variant uses the bp-format v2 API.
 KITTLER_CUSTOM = (
     Path(__file__).resolve().parents[1]
     / "examples"
     / "01_kittler_2022"
-    / "vanilla"
+    / "migration"
     / "custom.py"
 )
 

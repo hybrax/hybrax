@@ -107,7 +107,6 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
                 "            times=jnp.asarray([0.0, 1.0]),",
                 "            values=jnp.asarray([0.1, 0.2]),",
                 "        ),",
-                "        is_intracellular=False,",
                 "    )",
                 "    return collection",
             ]
@@ -132,7 +131,6 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.1),",
-                "        is_intracellular=False,",
                 "    )",
                 "    process.reactor_medium.components['glucose'] = "
                 "ReactorMediumComponent(",
@@ -142,7 +140,6 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "            times=jnp.asarray([0.0, 1.0]),",
                 "            values=jnp.asarray([1.0, 1.2]),",
                 "        ),",
-                "        is_intracellular=False,",
                 "    )",
                 "    process.volume.volume_changes['feed_A']"
                 ".feed_medium.components['biomass'] = FeedMediumComponent(",
@@ -174,7 +171,6 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.1),",
-                "        is_intracellular=False,",
                 "    )",
                 "    process.reactor_medium.components['glucose'] = "
                 "ReactorMediumComponent(",
@@ -184,7 +180,6 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "            times=jnp.asarray([0.0, 1.0]),",
                 "            values=jnp.asarray([1.0, 1.2]),",
                 "        ),",
-                "        is_intracellular=False,",
                 "    )",
                 "    process.volume.volume_changes['feed_A']"
                 ".feed_medium.components = {}",
@@ -271,7 +266,6 @@ def _make_two_process_collection() -> BioProcessCollection:
                         name="biomass",
                         unit="g/L",
                         concentration=StaticVariable(0.1),
-                        is_intracellular=False,
                     )
                 },
             ),
@@ -350,7 +344,6 @@ def _make_bolus_collection() -> BioProcessCollection:
                     name="X",
                     unit="g/L",
                     concentration=StaticVariable(0.0),
-                    is_intracellular=False,
                 ),
                 "biomass": ReactorMediumComponent(
                     name="biomass",
@@ -359,7 +352,6 @@ def _make_bolus_collection() -> BioProcessCollection:
                         times=jnp.asarray([0.0, 5.0, 10.0]),
                         values=jnp.asarray([0.1, 0.5, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -402,7 +394,7 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
     assert process_md["sample_acc_name"] == "V_sample_acc"
-    assert process_md["local_control_names"][-1] == "V_sample_acc"
+    assert process_md["name_extras"][-1] == "V_sample_acc"
     assert process_md["control_metadata"]["V_sample_acc"]["event_count"] >= 1
     assert any(
         not entry["ok"] for entry in metadata["bp_format_validation_raw"].values()
@@ -439,7 +431,6 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
     custom_py.write_text(
         "\n".join(
             [
-                "CONFIG = {'control_order': ['CF', 'T']}",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    for process in collection.processes.values():",
@@ -457,10 +448,10 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
     prepared = load_process_collection_json(output)
     metadata = prepared.metadata["bp_train"]
     first_name = metadata["process_order"][0]
-    control_names = metadata["processes"][first_name]["local_control_names"]
+    process_md = metadata["processes"][first_name]
 
-    assert control_names[:2] == ["CF", "T"]
-    assert control_names[-1] == "V_sample_acc"
+    assert process_md["name_controlled_PVs"] == ["CF", "T"]
+    assert process_md["name_extras"][-1] == "V_sample_acc"
 
 
 def test_prepare_artifact_can_rename_processes(tmp_path):
@@ -601,7 +592,8 @@ def test_prepare_artifact_persists_feed_metadata(tmp_path):
     feed_md = process_md["control_metadata"]["feed_A"]
     semantics = metadata["semantics_provenance"]["processes"]["p1"]
 
-    assert process_md["local_control_names"] == ["feed_A", "V_sample_acc"]
+    assert process_md["name_controlled_FVCs"] == ["feed_A"]
+    assert process_md["name_extras"] == ["V_sample_acc"]
     assert feed_md["signal_family"] == "feed"
     assert feed_md["source_kind"] == "control"
     assert feed_md["inlet_feed_medium"]["components"]["glucose"]["unit"] == "g/L"
@@ -648,7 +640,6 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
         name="biomass",
         unit="g/L",
         concentration=StaticVariable(0.1),
-        is_intracellular=False,
     )
     process.volume.volume_changes["feed_A"].values = TimeSeries(
         times=jnp.asarray([0.0, 1.0]),
@@ -680,7 +671,7 @@ def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="control names/order differ"):
+    with pytest.raises(ValueError, match="categorised control layout differs"):
         prepare_artifact(
             _make_two_process_collection(),
             tmp_path / "prepared-bad.json",
@@ -772,8 +763,12 @@ def _make_bolus_collection_with_events(
                     name="X",
                     unit="g/L",
                     concentration=StaticVariable(0.0),
-                    is_intracellular=False,
-                )
+                ),
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(0.1),
+                ),
             },
         ),
         process_variables={
@@ -855,7 +850,6 @@ def test_prepare_allows_custom_sample_hook_without_run_min_dt(tmp_path):
                     name="biomass",
                     unit="g/L",
                     concentration=StaticVariable(0.1),
-                    is_intracellular=False,
                 )
             },
         ),
@@ -945,10 +939,12 @@ def test_select_control_sources_handles_null_feed_medium():
             ),
         },
     )
-    sources = select_control_sources("p1", process, {})
+    bundle = select_control_sources("p1", process, {})
+    sources = bundle.all_sources
     assert len(sources) == 1
     assert sources[0].name == "feed_A"
     assert sources[0].metadata["inlet_feed_medium"] is None
+    assert bundle.name_controlled_FVCs == ("feed_A",)
 
 
 def test_build_bolus_sources_handles_null_feed_medium():
@@ -1017,7 +1013,6 @@ def _write_bolus_biomass_custom_py(path: Path) -> None:
                 "            times=jnp.asarray([0.0, 5.0, 10.0]),",
                 "            values=jnp.asarray([0.1, 0.5, 1.0]),",
                 "        ),",
-                "        is_intracellular=False,",
                 "    )",
                 "    feed = process.volume.volume_changes['feed_bolus'].feed_medium",
                 "    feed.components['biomass'] = FeedMediumComponent(",

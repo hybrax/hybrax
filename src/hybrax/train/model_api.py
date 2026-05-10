@@ -294,13 +294,15 @@ class ReactionOutputs(eqx.Module):
     Attributes
     ----------
     specific_rates:
-        Specific rates ``q_i`` for each species, aligned with the species state
-        vector.  These are multiplied by ``X_active`` inside the mechanistic
-        ODE (``dc_i/dt = q_i * X_active + transport``).
+        Flat array of rate values aligned with ``rhs_ode.name_modeled_rates``,
+        shape ``(len(name_modeled_rates),)``. The wrapper passes this array
+        straight to ``RhsOde.__call__`` as the ``rates`` argument; expressions
+        inside ``BiologicalOde`` resolve rate names via ``sympy.lambdify``
+        against this canonical order.
     modeled_feed_rates:
-        Volumetric flow rates for uncontrolled (modeled) feed streams, aligned
-        with the modeled-flow ordering from the mechanistic ODE module.
-        Use a zero-length array when there are no modeled flows.
+        Volumetric flow rates for uncontrolled (modeled) FeedVolumeChanges,
+        aligned with ``rhs_ode.name_modeled_FVCs``. Use a zero-length array
+        when there are no modeled flows.
     auxiliary:
         Optional model-defined observables that should follow the solver-time
         save path. Conservative V1 contract: ``None`` or ``dict[str, array]``

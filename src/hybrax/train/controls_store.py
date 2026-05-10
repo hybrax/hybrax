@@ -15,6 +15,7 @@ from bp_format.serialization import load_process_collection_json
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
     EVENT_RUN_MIN_DT_CONFIG_KEY,
+    ControlSourceBundle,
     SignalSource,
     build_dense_payload,
     build_sample_acc_source_default,
@@ -81,75 +82,64 @@ def _piecewise_linear_derivative(
 
 
 class PerProcessControls(eqx.Module):
-    """Per-process runtime view over padded, global-axis dense-grid controls.
+    """Per-process runtime view over padded, canonical-axis dense-grid controls.
 
-    All non-array fields are ``eqx.field(static=True)`` so they live in the
-    pytree treedef rather than as dynamic leaves. This keeps the leaf
-    ordering identical across processes (only the four padded ``jax.Array``
-    fields are leaves), which is what
-    ``eqx.tree_deserialise_leaves(..., like=template)`` relies on when a
-    trained wrapper saved with one process's controls is loaded into a
-    template built from a different process — e.g. during LOO-CV, where
-    the holdout fold's forward pass uses the holdout process as template
-    reference but the saved wrapper carries a training process's
-    metadata.
+    Column axis follows
+    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras]``
+    matching bp-format ``ControlSplines`` plus bp-train's extras block
+    (bolus-FVC triangle ramps + the cumulative sample-acc trace at the
+    very end). The first ``len(name_controlled_FVCs) +
+    len(name_controlled_SVCs) + len(name_controlled_PVs)`` columns are
+    consumed by ``eval_u(t)`` to build RhsOde's ``u`` argument; the
+    extras tail carries bp-train-specific signals (bolus dilution and
+    sample-volume bookkeeping) that the wrapper indexes directly.
+
+    All non-array fields are ``eqx.field(static=True)`` so they live in
+    the pytree treedef rather than as dynamic leaves.
     """
 
-    # Canonical prepared process identifier used by the collection metadata.
     process_name: str = eqx.field(static=True)
-    # Integer row index into the collection-level padded tensors.
     process_index: int = eqx.field(static=True)
-    # Shared control names/order for this prepared artifact.
-    control_names: list[str] = eqx.field(static=True)
-    # Mapping from control name to shared control column index.
-    control_name_to_index: dict[str, int] = eqx.field(static=True)
-    # Shared control names/order across the entire collection.
-    global_control_names: list[str] = eqx.field(static=True)
-    # Mapping from global control name to global control column index.
-    global_control_name_to_index: dict[str, int] = eqx.field(static=True)
-    # Padded dense time grid for this process, shape `[max_grid_length]`.
+    name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
+    name_extras: tuple[str, ...] = eqx.field(static=True)
     dense_grid: jax.Array
-    # Padded control values in shared control order, shape
-    # `[max_grid_length, max_controls]`.
     control_values: jax.Array
-    # Padded control derivatives in shared control order, same shape as
-    # `control_values`.
     control_derivatives: jax.Array
-    # Padded step-boundary times used to guide the ODE solver.
     step_ts: jax.Array
-    # Number of active dense-grid points for this process.
     grid_length: int = eqx.field(static=True)
-    # Number of active step-boundary entries for this process.
     step_ts_length: int = eqx.field(static=True)
-    # Per-control metadata persisted during preparation.
     control_metadata: dict[str, dict[str, Any]] = eqx.field(static=True)
-    # Reserved name of the cumulative sampled-volume control.
     sample_acc_name: str = eqx.field(static=True)
-    # Global control index of `sample_acc_name`.
     sample_acc_global_index: int = eqx.field(static=True)
 
     @property
+    def n_u(self) -> int:
+        return (
+            len(self.name_controlled_FVCs)
+            + len(self.name_controlled_SVCs)
+            + len(self.name_controlled_PVs)
+        )
+
+    @property
     def active_dense_grid(self) -> jax.Array:
-        """Return the active, unpadded dense grid prefix for this process."""
         return self.dense_grid[: self.grid_length]
 
     @property
     def active_step_ts(self) -> jax.Array:
-        """Return the active, unpadded step-boundary prefix for this process."""
         return self.step_ts[: self.step_ts_length]
 
     @property
     def active_control_values(self) -> jax.Array:
-        """Return active control values in global control order."""
         return self.control_values[: self.grid_length]
 
     @property
     def active_control_derivatives(self) -> jax.Array:
-        """Return active control derivatives in global control order."""
         return self.control_derivatives[: self.grid_length]
 
     def eval(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Evaluate controls at one or more times in global control order."""
+        """Evaluate all controls at one or more times in canonical order."""
         query = jnp.asarray(ts, dtype=self.dense_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
@@ -163,7 +153,7 @@ class PerProcessControls(eqx.Module):
         return values
 
     def eval_derivative(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Evaluate precomputed control derivatives in global control order."""
+        """Evaluate precomputed control derivatives in canonical order."""
         query = jnp.asarray(ts, dtype=self.dense_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
@@ -176,9 +166,29 @@ class PerProcessControls(eqx.Module):
             return values[0]
         return values
 
+    def eval_u(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
+        """Evaluate RhsOde's u vector: ``[FVC_flows | SVC_flows | PV_values]``.
+
+        Flows come from precomputed derivatives of the cumulative-volume
+        signals; PV values come from the raw signal trace.
+        """
+        n_fvc = len(self.name_controlled_FVCs)
+        n_svc = len(self.name_controlled_SVCs)
+        n_pv = len(self.name_controlled_PVs)
+        derivatives = self.eval_derivative(ts)
+        values = self.eval(ts)
+        flows = derivatives[..., : n_fvc + n_svc]
+        pvs = values[..., n_fvc + n_svc : n_fvc + n_svc + n_pv]
+        return jnp.concatenate([flows, pvs], axis=-1)
+
 
 class BatchControls(eqx.Module):
-    """All-process controls evaluator with index-based runtime lookup."""
+    """All-process controls evaluator with index-based runtime lookup.
+
+    Column axis follows the same canonical
+    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras]``
+    order as :class:`PerProcessControls`.
+    """
 
     # Padded dense grids `[n_processes, max_grid_length]` with right-clamped tail.
     dense_grid: jax.Array
@@ -186,6 +196,10 @@ class BatchControls(eqx.Module):
     control_values: jax.Array
     # Padded control derivatives, same shape as control_values.
     control_derivatives: jax.Array
+    name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
+    name_extras: tuple[str, ...] = eqx.field(static=True)
 
     def eval(self, process_idx: int, t: jax.Array) -> jax.Array:
         """Evaluate controls for one process index at one or more times."""
@@ -219,16 +233,34 @@ class BatchControls(eqx.Module):
             return out[0]
         return out
 
+    def eval_u(self, process_idx: int, t: jax.Array) -> jax.Array:
+        """Evaluate RhsOde's u vector for one process index."""
+        n_fvc = len(self.name_controlled_FVCs)
+        n_svc = len(self.name_controlled_SVCs)
+        n_pv = len(self.name_controlled_PVs)
+        derivatives = self.eval_derivative(process_idx, t)
+        values = self.eval(process_idx, t)
+        flows = derivatives[..., : n_fvc + n_svc]
+        pvs = values[..., n_fvc + n_svc : n_fvc + n_svc + n_pv]
+        return jnp.concatenate([flows, pvs], axis=-1)
+
 
 class ControlsStore(eqx.Module):
-    """Collection-level loader and index for prepared, padded JAX control tensors."""
+    """Collection-level loader and index for prepared, padded JAX control tensors.
+
+    Column axis follows
+    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras]``
+    consistently across every process; the wrapper consumes the leading
+    u-block via :meth:`PerProcessControls.eval_u`.
+    """
 
     # Canonical prepared process keys in stable collection order.
     process_order: list[str]
-    # Shared control names/order across all processes.
-    global_control_names: list[str]
-    # Mapping from control name to shared control column index.
-    global_control_name_to_index: dict[str, int]
+    # Categorised name tuples (must be identical across processes).
+    name_controlled_FVCs: tuple[str, ...]
+    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_PVs: tuple[str, ...]
+    name_extras: tuple[str, ...]
     # Shape metadata persisted in `prepared.json`.
     shape_metadata: dict[str, Any]
     # Stacked padded dense grids, shape `[n_processes, max_grid_length]`.
@@ -244,7 +276,7 @@ class ControlsStore(eqx.Module):
     grid_lengths: jax.Array
     # Active `step_ts` lengths per process.
     step_ts_lengths: jax.Array
-    # Shared control index of the cumulative sampled-volume control.
+    # Column index of the cumulative sampled-volume signal (always at the very end of name_extras).
     sample_acc_global_index: int
     # Runtime-built per-process metadata entries needed to construct thin views.
     _process_md_by_name: dict[str, dict[str, Any]]
@@ -272,29 +304,28 @@ class ControlsStore(eqx.Module):
         return list(process_order)
 
     @staticmethod
-    def _ordered_control_sources(
+    def _validate_bundle_against_metadata(
         process_name: str,
-        sources: list[Any],
+        bundle: ControlSourceBundle,
         process_md: dict[str, Any] | None,
-    ) -> tuple[list[str], list[Any]]:
-        source_by_name = {source.name: source for source in sources}
-        source_names = list(source_by_name.keys())
-
-        if not process_md or "local_control_names" not in process_md:
-            return source_names, [source_by_name[name] for name in source_names]
-
-        local_control_names = list(process_md["local_control_names"])
-        expected_names = [
-            name for name in local_control_names if name != BP_TRAIN_SAMPLE_ACC_NAME
-        ]
-
-        if set(expected_names) != set(source_names):
-            raise ValueError(
-                f"{process_name}: controls derived from prepared process do not match "
-                "prepared metadata local_control_names"
-            )
-
-        return expected_names, [source_by_name[name] for name in expected_names]
+    ) -> None:
+        if not process_md:
+            return
+        expected_extras = bundle.name_extras_bolus + (BP_TRAIN_SAMPLE_ACC_NAME,)
+        for key, expected in (
+            ("name_controlled_FVCs", bundle.name_controlled_FVCs),
+            ("name_controlled_SVCs", bundle.name_controlled_SVCs),
+            ("name_controlled_PVs", bundle.name_controlled_PVs),
+            ("name_extras", expected_extras),
+        ):
+            if key not in process_md:
+                continue
+            stored = tuple(process_md[key])
+            if stored != expected:
+                raise ValueError(
+                    f"{process_name}: prepared metadata {key}={stored!r} "
+                    f"does not match derived {expected!r}"
+                )
 
     @staticmethod
     def _sample_source_from_prepared_metadata(
@@ -335,13 +366,14 @@ class ControlsStore(eqx.Module):
     def _pad_payload(
         *,
         payload: dict[str, Any],
-        local_control_names: list[str],
-        global_control_names: list[str],
+        payload_source_names: list[str],
+        canonical_names: list[str],
         max_grid_length: int,
         max_step_ts_length: int,
     ) -> tuple[
         list[float], list[list[float]], list[list[float]], list[float], int, int
     ]:
+        """Reorder payload columns from build order to canonical order, then pad."""
         grid = list(payload["grid"])
         values = [list(row) for row in payload["values"]]
         derivatives = [list(row) for row in payload["derivatives"]]
@@ -349,22 +381,22 @@ class ControlsStore(eqx.Module):
 
         grid_length = len(grid)
         step_ts_length = len(step_ts)
-        max_controls = len(global_control_names)
-        global_index = {name: idx for idx, name in enumerate(global_control_names)}
+        max_controls = len(canonical_names)
+        canonical_index = {name: idx for idx, name in enumerate(canonical_names)}
 
         dense_grid = grid + [0.0] * (max_grid_length - grid_length)
 
         control_values = []
         control_derivatives = []
         for row, deriv_row in zip(values, derivatives, strict=False):
-            global_row = [0.0] * max_controls
-            global_deriv = [0.0] * max_controls
-            for local_idx, control_name in enumerate(local_control_names):
-                idx = global_index[control_name]
-                global_row[idx] = row[local_idx]
-                global_deriv[idx] = deriv_row[local_idx]
-            control_values.append(global_row)
-            control_derivatives.append(global_deriv)
+            canonical_row = [0.0] * max_controls
+            canonical_deriv = [0.0] * max_controls
+            for local_idx, control_name in enumerate(payload_source_names):
+                idx = canonical_index[control_name]
+                canonical_row[idx] = row[local_idx]
+                canonical_deriv[idx] = deriv_row[local_idx]
+            control_values.append(canonical_row)
+            control_derivatives.append(canonical_deriv)
 
         zero_row = [0.0] * max_controls
         for _ in range(max_grid_length - grid_length):
@@ -406,23 +438,24 @@ class ControlsStore(eqx.Module):
             if run_min_dt is not None:
                 cfg[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
-        process_sources: dict[str, list[Any]] = {}
+        process_bundles: dict[str, ControlSourceBundle] = {}
         process_sample_sources: dict[str, Any] = {}
-        process_control_names: dict[str, list[str]] = {}
         process_control_metadata: dict[str, dict[str, Any]] = {}
-        reference_control_names: list[str] | None = None
+        reference_categorised: tuple[
+            tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]
+        ] | None = None
 
         for process_name in process_order:
             process = collection.processes[process_name]
-            selected = select_control_sources(
+            bundle = select_control_sources(
                 process_name=process_name,
                 process=process,
                 config=cfg,
             )
             prepared_md = prepared_process_md.get(process_name)
-            ordered_names, ordered_sources = cls._ordered_control_sources(
+            cls._validate_bundle_against_metadata(
                 process_name=process_name,
-                sources=selected,
+                bundle=bundle,
                 process_md=prepared_md,
             )
             sample_source = cls._sample_source_from_prepared_metadata(
@@ -440,36 +473,50 @@ class ControlsStore(eqx.Module):
                     f"{BP_TRAIN_SAMPLE_ACC_NAME}"
                 )
 
-            local_names = [*ordered_names, sample_source.name]
-            if reference_control_names is None:
-                reference_control_names = local_names
-            elif local_names != reference_control_names:
+            categorised = (
+                bundle.name_controlled_FVCs,
+                bundle.name_controlled_SVCs,
+                bundle.name_controlled_PVs,
+                bundle.name_extras_bolus,
+            )
+            if reference_categorised is None:
+                reference_categorised = categorised
+            elif categorised != reference_categorised:
                 raise ValueError(
-                    "controls store requires identical control names/order across "
-                    f"processes; {process_name!r} has {local_names!r} but "
-                    f"expected {reference_control_names!r}"
+                    "controls store requires identical categorised control "
+                    f"layouts across processes; {process_name!r} has "
+                    f"{categorised!r} but expected {reference_categorised!r}"
                 )
 
-            process_sources[process_name] = ordered_sources
+            process_bundles[process_name] = bundle
             process_sample_sources[process_name] = sample_source
-            process_control_names[process_name] = local_names
             process_control_metadata[process_name] = {
                 source.name: source.metadata
-                for source in [*ordered_sources, sample_source]
+                for source in [*bundle.all_sources, sample_source]
             }
 
-        if reference_control_names is None:
+        if reference_categorised is None:
             raise ValueError("process collection is empty")
 
-        global_control_names = list(reference_control_names)
-
-        global_control_name_to_index = {
-            name: idx for idx, name in enumerate(global_control_names)
-        }
+        (
+            name_controlled_FVCs,
+            name_controlled_SVCs,
+            name_controlled_PVs,
+            name_extras_bolus,
+        ) = reference_categorised
+        # Extras layout: bolus FVCs first (alphabetical), then sample_acc at the very end.
+        name_extras = name_extras_bolus + (BP_TRAIN_SAMPLE_ACC_NAME,)
+        canonical_names: list[str] = list(
+            name_controlled_FVCs
+            + name_controlled_SVCs
+            + name_controlled_PVs
+            + name_extras
+        )
+        sample_acc_global_index = len(canonical_names) - 1
 
         spread_inputs = {
             process_name: [
-                *process_sources[process_name],
+                *process_bundles[process_name].all_sources,
                 process_sample_sources[process_name],
             ]
             for process_name in process_order
@@ -477,13 +524,16 @@ class ControlsStore(eqx.Module):
         spreads = compute_signal_spreads(spread_inputs)
 
         payloads_by_process: dict[str, dict[str, Any]] = {}
+        payload_source_names_by_process: dict[str, list[str]] = {}
         max_grid_length = 0
         max_step_ts_length = 0
         for process_name in process_order:
             process = collection.processes[process_name]
-            sources = [
-                *process_sources[process_name],
-                process_sample_sources[process_name],
+            bundle = process_bundles[process_name]
+            sample_source = process_sample_sources[process_name]
+            sources = [*bundle.all_sources, sample_source]
+            payload_source_names_by_process[process_name] = [
+                source.name for source in sources
             ]
             payload = build_dense_payload(
                 process=process,
@@ -505,7 +555,7 @@ class ControlsStore(eqx.Module):
 
         for process_name in process_order:
             payload = payloads_by_process[process_name]
-            local_names = process_control_names[process_name]
+            payload_source_names = payload_source_names_by_process[process_name]
             (
                 dense_grid,
                 control_values,
@@ -515,8 +565,8 @@ class ControlsStore(eqx.Module):
                 step_ts_length,
             ) = cls._pad_payload(
                 payload=payload,
-                local_control_names=local_names,
-                global_control_names=global_control_names,
+                payload_source_names=payload_source_names,
+                canonical_names=canonical_names,
                 max_grid_length=max_grid_length,
                 max_step_ts_length=max_step_ts_length,
             )
@@ -528,7 +578,10 @@ class ControlsStore(eqx.Module):
             grid_lengths.append(grid_length)
             step_ts_lengths.append(step_ts_length)
             processes_metadata[process_name] = {
-                "local_control_names": local_names,
+                "name_controlled_FVCs": list(name_controlled_FVCs),
+                "name_controlled_SVCs": list(name_controlled_SVCs),
+                "name_controlled_PVs": list(name_controlled_PVs),
+                "name_extras": list(name_extras),
                 "control_metadata": process_control_metadata[process_name],
                 "sample_acc_name": BP_TRAIN_SAMPLE_ACC_NAME,
             }
@@ -536,14 +589,16 @@ class ControlsStore(eqx.Module):
         shape_metadata = {
             "n_processes": len(process_order),
             "max_grid_length": max_grid_length,
-            "max_controls": len(global_control_names),
+            "max_controls": len(canonical_names),
             "max_step_ts_length": max_step_ts_length,
         }
 
         return cls(
             process_order=process_order,
-            global_control_names=global_control_names,
-            global_control_name_to_index=global_control_name_to_index,
+            name_controlled_FVCs=name_controlled_FVCs,
+            name_controlled_SVCs=name_controlled_SVCs,
+            name_controlled_PVs=name_controlled_PVs,
+            name_extras=name_extras,
             shape_metadata=shape_metadata,
             dense_grid=_as_jax_array(dense_grid_rows),
             control_values=_as_jax_array(control_value_rows),
@@ -551,9 +606,7 @@ class ControlsStore(eqx.Module):
             step_ts=_as_jax_array(step_ts_rows),
             grid_lengths=jnp.asarray(grid_lengths, dtype=jnp.int32),
             step_ts_lengths=jnp.asarray(step_ts_lengths, dtype=jnp.int32),
-            sample_acc_global_index=global_control_name_to_index[
-                BP_TRAIN_SAMPLE_ACC_NAME
-            ],
+            sample_acc_global_index=sample_acc_global_index,
             _process_md_by_name=processes_metadata,
         )
 
@@ -577,10 +630,10 @@ class ControlsStore(eqx.Module):
         return PerProcessControls(
             process_name=process_name,
             process_index=process_index,
-            control_names=self.global_control_names,
-            control_name_to_index=self.global_control_name_to_index,
-            global_control_names=self.global_control_names,
-            global_control_name_to_index=self.global_control_name_to_index,
+            name_controlled_FVCs=self.name_controlled_FVCs,
+            name_controlled_SVCs=self.name_controlled_SVCs,
+            name_controlled_PVs=self.name_controlled_PVs,
+            name_extras=self.name_extras,
             dense_grid=self.dense_grid[process_index],
             control_values=self.control_values[process_index],
             control_derivatives=self.control_derivatives[process_index],
@@ -630,4 +683,8 @@ class ControlsStore(eqx.Module):
             dense_grid=grid_clamped,
             control_values=values_clamped,
             control_derivatives=derivatives_clamped,
+            name_controlled_FVCs=self.name_controlled_FVCs,
+            name_controlled_SVCs=self.name_controlled_SVCs,
+            name_controlled_PVs=self.name_controlled_PVs,
+            name_extras=self.name_extras,
         )

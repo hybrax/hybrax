@@ -93,7 +93,7 @@ class WrapperEvaluation(eqx.Module):
     c_species_runtime: jax.Array
     v_real_export: jax.Array
     v_real_runtime: jax.Array
-    u_flow: jax.Array
+    u_for_rhs: jax.Array
     u_flow_extra: jax.Array
     specific_rates_physical: jax.Array
     modeled_feed_rates_physical: jax.Array
@@ -109,6 +109,16 @@ class SaveOutputs(eqx.Module):
     specific_rates_physical: jax.Array
     modeled_feed_rates_physical: jax.Array
     auxiliary: dict[str, jax.Array] | None = None
+
+
+def _canonical_control_names(controls: PerProcessControls) -> tuple[str, ...]:
+    """Flat list of control column names in canonical order."""
+    return (
+        controls.name_controlled_FVCs
+        + controls.name_controlled_SVCs
+        + controls.name_controlled_PVs
+        + controls.name_extras
+    )
 
 
 def _normalize_auxiliary_outputs(
@@ -153,7 +163,7 @@ class HybridOdeWrapper(eqx.Module):
       - index   ``n_species``            → V_cont (cumulative inflow volume)
       - indices ``n_species+1..end``     → cumulative modeled feed amounts
                                            (one per modeled flow, in
-                                           ``rhs_ode.modeled_flow_names`` order)
+                                           ``rhs_ode.name_modeled_FVCs`` order)
 
     V_cont is in the state because the wrapper needs to compute
     ``V_real = V_cont - V_sample_acc(t)`` for the dilution denominator inside
@@ -187,7 +197,6 @@ class HybridOdeWrapper(eqx.Module):
     reaction_module: Any
     controls: PerProcessControls
 
-    flow_control_indices: jax.Array
     extra_flow_control_indices: jax.Array
     extra_flow_cin: jax.Array
     sample_acc_control_index: int = eqx.field(static=True)
@@ -202,7 +211,7 @@ class HybridOdeWrapper(eqx.Module):
     # --- Scaling vectors (frozen, not trainable) ---
     state_scale: jax.Array  # [n_species + 1 + n_modeled]
     controls_scale: jax.Array  # [len(augmented_controls)]
-    q_scale: jax.Array  # [n_species]
+    q_scale: jax.Array  # [len(rhs_ode.name_modeled_rates)]
     f_scale: jax.Array  # [n_modeled_feeds]
     target_variance: jax.Array  # [len(target_state_indices)]
     target_state_indices: jax.Array  # which state columns are loss targets
@@ -228,23 +237,36 @@ class HybridOdeWrapper(eqx.Module):
             getattr(reaction_module, "expects_v_real_feature", False)
         )
 
-        if rhs_ode.process_variable_state_names:
+        if rhs_ode.name_modeled_PVs:
             raise NotImplementedError(
-                "HybridOdeWrapper does not yet support processes with PV states "
-                f"({rhs_ode.process_variable_state_names}). "
-                "Extend C_rhs construction in __call__ first."
+                "HybridOdeWrapper does not support modeled PVs "
+                f"({rhs_ode.name_modeled_PVs}); extend C_rhs construction first."
+            )
+        if rhs_ode.name_controlled_SVCs:
+            raise NotImplementedError(
+                "HybridOdeWrapper does not support continuous controlled SVCs "
+                f"({rhs_ode.name_controlled_SVCs})."
+            )
+        if rhs_ode.name_modeled_SVCs:
+            raise NotImplementedError(
+                "HybridOdeWrapper does not support continuous modeled SVCs "
+                f"({rhs_ode.name_modeled_SVCs})."
             )
 
-        flow_control_indices: list[int] = []
-        for flow_name in rhs_ode.flow_names:
-            if flow_name not in controls.control_name_to_index:
-                raise ValueError(
-                    f"RhsOde flow '{flow_name}' not found in controls; "
-                    f"available: {list(controls.control_name_to_index.keys())}"
-                )
-            flow_control_indices.append(controls.control_name_to_index[flow_name])
+        if rhs_ode.name_controlled_FVCs != controls.name_controlled_FVCs:
+            raise ValueError(
+                "RhsOde and controls disagree on name_controlled_FVCs: "
+                f"{rhs_ode.name_controlled_FVCs} vs "
+                f"{controls.name_controlled_FVCs}"
+            )
 
-        n_species = len(rhs_ode.reactor_component_state_names)
+        n_species = len(rhs_ode.name_modeled_RMCs)
+        n_u = controls.n_u
+        # Bolus FVCs live in the extras block; sample_acc is the last extras column.
+        bolus_extras = controls.name_extras[:-1]
+        bolus_index_in_columns = {
+            name: n_u + idx for idx, name in enumerate(bolus_extras)
+        }
         extra_flow_control_indices: list[int] = []
         extra_flow_cin_rows: list[list[float]] = []
         for flow_name, volume_change in process.volume.volume_changes.items():
@@ -252,10 +274,10 @@ class HybridOdeWrapper(eqx.Module):
                 continue
             if not volume_change.is_controlled or volume_change.is_continuous:
                 continue
-            if flow_name not in controls.control_name_to_index:
+            if flow_name not in bolus_index_in_columns:
                 raise ValueError(
-                    f"non-continuous feed '{flow_name}' not found in controls; "
-                    f"available: {list(controls.control_name_to_index.keys())}"
+                    f"non-continuous feed '{flow_name}' not found in controls extras; "
+                    f"available bolus extras: {list(bolus_extras)}"
                 )
             if volume_change.feed_medium is None:
                 raise ValueError(
@@ -263,7 +285,7 @@ class HybridOdeWrapper(eqx.Module):
                     f"transport. Missing for volume change '{flow_name}'."
                 )
             cin_row: list[float] = []
-            for species_name in rhs_ode.reactor_component_state_names:
+            for species_name in rhs_ode.name_modeled_RMCs:
                 if species_name not in volume_change.feed_medium.components:
                     cin_row.append(0.0)
                     continue
@@ -279,28 +301,29 @@ class HybridOdeWrapper(eqx.Module):
                         f"Found TimeSeries for species '{species_name}' in "
                         f"feed '{flow_name}'."
                     )
-            extra_flow_control_indices.append(controls.control_name_to_index[flow_name])
+            extra_flow_control_indices.append(bolus_index_in_columns[flow_name])
             extra_flow_cin_rows.append(cin_row)
 
         aug_names = _build_augmented_controls_names(
-            control_names=controls.control_names,
-            controlled_flow_names=rhs_ode.flow_names,
-            modeled_flow_names=rhs_ode.modeled_flow_names,
-            species_names=rhs_ode.reactor_component_state_names,
+            control_names=list(_canonical_control_names(controls)),
+            controlled_flow_names=rhs_ode.name_controlled_FVCs,
+            modeled_flow_names=rhs_ode.name_modeled_FVCs,
+            species_names=rhs_ode.name_modeled_RMCs,
             include_v_real_feature=include_v_real_feature,
         )
         aug_units = _build_augmented_controls_units(
             control_metadata=controls.control_metadata,
-            control_names=controls.control_names,
+            control_names=list(_canonical_control_names(controls)),
             process=process,
-            controlled_flow_names=rhs_ode.flow_names,
-            modeled_flow_names=rhs_ode.modeled_flow_names,
-            species_names=rhs_ode.reactor_component_state_names,
+            controlled_flow_names=rhs_ode.name_controlled_FVCs,
+            modeled_flow_names=rhs_ode.name_modeled_FVCs,
+            species_names=rhs_ode.name_modeled_RMCs,
             include_v_real_feature=include_v_real_feature,
         )
 
         n_aug = len(aug_names)
-        n_modeled = rhs_ode.f_modeled_size
+        n_modeled = len(rhs_ode.name_modeled_FVCs) + len(rhs_ode.name_modeled_SVCs)
+        n_rates = len(rhs_ode.name_modeled_rates)
         full_state_size = n_species + 1 + n_modeled
 
         # Default scales: ones (no scaling)
@@ -317,7 +340,7 @@ class HybridOdeWrapper(eqx.Module):
         _q_scale = (
             jnp.asarray(q_scale, dtype=jnp.float32)
             if q_scale is not None
-            else jnp.ones(n_species, dtype=jnp.float32)
+            else jnp.ones(n_rates, dtype=jnp.float32)
         )
         _f_scale = (
             jnp.asarray(f_scale, dtype=jnp.float32)
@@ -348,15 +371,14 @@ class HybridOdeWrapper(eqx.Module):
             rhs_ode=rhs_ode,
             reaction_module=reaction_module,
             controls=controls,
-            flow_control_indices=jnp.asarray(flow_control_indices, dtype=jnp.int32),
             extra_flow_control_indices=jnp.asarray(
                 extra_flow_control_indices, dtype=jnp.int32
             ),
             extra_flow_cin=_extra_flow_cin,
             sample_acc_control_index=int(controls.sample_acc_global_index),
             min_real_volume=float(min_real_volume),
-            species_names=rhs_ode.reactor_component_state_names,
-            modeled_flow_names=rhs_ode.modeled_flow_names,
+            species_names=rhs_ode.name_modeled_RMCs,
+            modeled_flow_names=rhs_ode.name_modeled_FVCs,
             augmented_controls_names=aug_names,
             augmented_controls_units=aug_units,
             include_v_real_feature=include_v_real_feature,
@@ -411,9 +433,6 @@ class HybridOdeWrapper(eqx.Module):
         # Values are interpolated from the dense grid: feed channels store the
         # CUMULATIVE volume, process variables store the actual signal value.
         controls_vector = self.controls.eval(t_arr)
-        # Derivatives at the same time: feed channels become flow rates (kg/h),
-        # which is what RhsOde expects for `u_flow`.
-        controls_derivatives = self.controls.eval_derivative(t_arr)
 
         V_sample_acc = controls_vector[self.sample_acc_control_index]
         V_real_export = Y[n_species] - V_sample_acc
@@ -422,9 +441,12 @@ class HybridOdeWrapper(eqx.Module):
             jnp.asarray(self.min_real_volume, dtype=y.dtype),
         )
 
-        U_flow = controls_derivatives[self.flow_control_indices]
-        # Non-continuous controlled feeds are represented in prep as short
-        # rate ramps (not cumulative traces), so use control values directly.
+        # Canonical RhsOde u vector: [FVC_flows | SVC_flows | PV_values].
+        # In the current wrapper SVCs and PVs are guarded out, so this is just
+        # the controlled-FVC flow rates (derivatives of the cumulative-volume
+        # signal). Non-continuous bolus FVCs are stored separately as short
+        # rate ramps that the wrapper applies via extra_flow_cin.
+        u_for_rhs = self.controls.eval_u(t_arr)
         U_flow_extra = controls_vector[self.extra_flow_control_indices]
 
         # Build augmented controls for the MLP. Use the *values* (cumulative for
@@ -432,8 +454,8 @@ class HybridOdeWrapper(eqx.Module):
         # `augmented_controls_names` semantics.
         cin_flat = jnp.concatenate(
             [
-                self.rhs_ode.Cin.reshape(-1),
-                self.rhs_ode.Cin_modeled.reshape(-1),
+                self.rhs_ode.Cin_controlled_FVCs.reshape(-1),
+                self.rhs_ode.Cin_modeled_FVCs.reshape(-1),
             ]
         )
         U_augmented = jnp.concatenate([controls_vector, cin_flat])
@@ -456,12 +478,15 @@ class HybridOdeWrapper(eqx.Module):
         q_scaled = jnp.asarray(outputs.specific_rates, dtype=y.dtype)
         f_scaled = jnp.asarray(outputs.modeled_feed_rates, dtype=y.dtype)
 
-        if q_scaled.shape != C_species_runtime.shape:
+        expected_rates_shape = (len(self.rhs_ode.name_modeled_rates),)
+        if q_scaled.shape != expected_rates_shape:
             raise ValueError(
-                f"specific_rates must match species shape "
-                f"{tuple(C_species_runtime.shape)}, got {tuple(q_scaled.shape)}"
+                f"specific_rates must match name_modeled_rates shape "
+                f"{expected_rates_shape}, got {tuple(q_scaled.shape)}"
             )
-        expected_modeled_shape = (self.rhs_ode.f_modeled_size,)
+        expected_modeled_shape = (
+            len(self.rhs_ode.name_modeled_FVCs) + len(self.rhs_ode.name_modeled_SVCs),
+        )
         if f_scaled.shape != expected_modeled_shape:
             raise ValueError(
                 f"modeled_feed_rates must have shape {expected_modeled_shape}, "
@@ -473,7 +498,7 @@ class HybridOdeWrapper(eqx.Module):
             c_species_runtime=C_species_runtime,
             v_real_export=V_real_export,
             v_real_runtime=V_real_runtime,
-            u_flow=U_flow,
+            u_for_rhs=u_for_rhs,
             u_flow_extra=U_flow_extra,
             specific_rates_physical=q_scaled * self.q_scale,
             modeled_feed_rates_physical=jax.nn.softplus(f_scaled) * self.f_scale,
@@ -505,13 +530,15 @@ class HybridOdeWrapper(eqx.Module):
         C_rhs = jnp.concatenate(
             [eval_terms.c_species_runtime, eval_terms.v_real_runtime[None]]
         )
-        r = jnp.zeros(self.rhs_ode.r_size, dtype=y.dtype)
+        f_modeled_SVCs = jnp.zeros(
+            (len(self.rhs_ode.name_modeled_SVCs),), dtype=y.dtype
+        )
         dY_rhs = self.rhs_ode(
             C_rhs,
             eval_terms.specific_rates_physical,
-            eval_terms.u_flow,
+            eval_terms.u_for_rhs,
             eval_terms.modeled_feed_rates_physical,
-            r,
+            f_modeled_SVCs,
         )
         if self.extra_flow_cin.shape[0] > 0:
             extra_contrib = eval_terms.u_flow_extra[:, None] * (
@@ -554,42 +581,51 @@ class HybridOdeWrapper(eqx.Module):
 
 def validate_rhs_ode_compatibility(
     reference_name: str,
-    reference_rhs: RhsOde,
+    reference_rhs_ode: RhsOde,
     candidate_name: str,
-    candidate_rhs: RhsOde,
+    candidate_rhs_ode: RhsOde,
 ) -> None:
     """Validate that two RhsOde instances have compatible structure."""
     if (
-        reference_rhs.reactor_component_state_names
-        != candidate_rhs.reactor_component_state_names
+        reference_rhs_ode.name_modeled_RMCs
+        != candidate_rhs_ode.name_modeled_RMCs
     ):
         raise ValueError(
-            f"RhsOde reactor_component_state_names differ between "
+            f"RhsOde name_modeled_RMCs differ between "
             f"{reference_name!r} and {candidate_name!r}: "
-            f"{reference_rhs.reactor_component_state_names} vs "
-            f"{candidate_rhs.reactor_component_state_names}"
+            f"{reference_rhs_ode.name_modeled_RMCs} vs "
+            f"{candidate_rhs_ode.name_modeled_RMCs}"
         )
-    if reference_rhs.flow_names != candidate_rhs.flow_names:
+    if (
+        reference_rhs_ode.name_controlled_FVCs
+        != candidate_rhs_ode.name_controlled_FVCs
+    ):
         raise ValueError(
-            f"RhsOde flow_names differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs.flow_names} vs "
-            f"{candidate_rhs.flow_names}"
+            f"RhsOde name_controlled_FVCs differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs_ode.name_controlled_FVCs} vs "
+            f"{candidate_rhs_ode.name_controlled_FVCs}"
         )
-    if reference_rhs.modeled_flow_names != candidate_rhs.modeled_flow_names:
+    if reference_rhs_ode.name_modeled_FVCs != candidate_rhs_ode.name_modeled_FVCs:
         raise ValueError(
-            f"RhsOde modeled_flow_names differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs.modeled_flow_names} vs "
-            f"{candidate_rhs.modeled_flow_names}"
+            f"RhsOde name_modeled_FVCs differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs_ode.name_modeled_FVCs} vs "
+            f"{candidate_rhs_ode.name_modeled_FVCs}"
         )
-    if reference_rhs.Cin.shape != candidate_rhs.Cin.shape:
+    if (
+        reference_rhs_ode.Cin_controlled_FVCs.shape
+        != candidate_rhs_ode.Cin_controlled_FVCs.shape
+    ):
         raise ValueError(
-            f"RhsOde Cin shapes differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs.Cin.shape} vs "
-            f"{candidate_rhs.Cin.shape}"
+            f"RhsOde Cin_controlled_FVCs shapes differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs_ode.Cin_controlled_FVCs.shape} vs "
+            f"{candidate_rhs_ode.Cin_controlled_FVCs.shape}"
         )
-    if reference_rhs.Cin_modeled.shape != candidate_rhs.Cin_modeled.shape:
+    if (
+        reference_rhs_ode.Cin_modeled_FVCs.shape
+        != candidate_rhs_ode.Cin_modeled_FVCs.shape
+    ):
         raise ValueError(
-            f"RhsOde Cin_modeled shapes differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs.Cin_modeled.shape} vs "
-            f"{candidate_rhs.Cin_modeled.shape}"
+            f"RhsOde Cin_modeled_FVCs shapes differ between {reference_name!r} and "
+            f"{candidate_name!r}: {reference_rhs_ode.Cin_modeled_FVCs.shape} vs "
+            f"{candidate_rhs_ode.Cin_modeled_FVCs.shape}"
         )

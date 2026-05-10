@@ -184,15 +184,17 @@ def _build_semantics_provenance(
 
 
 def _validate_prepared_control_contract(
-    process_sources: dict[str, list[Any]],
+    process_bundles: dict[str, Any],
     sample_sources: dict[str, Any],
     *,
     require_consistent_controls: bool,
 ) -> None:
-    reference_names: list[str] | None = None
+    reference_categorised: tuple[
+        tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]
+    ] | None = None
 
-    for process_name, sources in process_sources.items():
-        control_names = [source.name for source in sources]
+    for process_name, bundle in process_bundles.items():
+        control_names = list(bundle.all_names)
         if BP_TRAIN_SAMPLE_ACC_NAME in control_names:
             raise ValueError(
                 f"{process_name}: reserved control name {BP_TRAIN_SAMPLE_ACC_NAME} "
@@ -209,12 +211,18 @@ def _validate_prepared_control_contract(
             )
 
         if require_consistent_controls:
-            if reference_names is None:
-                reference_names = control_names
-            elif control_names != reference_names:
+            categorised = (
+                bundle.name_controlled_FVCs,
+                bundle.name_controlled_SVCs,
+                bundle.name_controlled_PVs,
+                bundle.name_extras_bolus,
+            )
+            if reference_categorised is None:
+                reference_categorised = categorised
+            elif categorised != reference_categorised:
                 raise ValueError(
-                    f"{process_name}: control names/order differ across processes; "
-                    "either make hooks consistent or disable "
+                    f"{process_name}: categorised control layout differs across "
+                    "processes; either make hooks consistent or disable "
                     "require_consistent_controls"
                 )
 
@@ -273,6 +281,15 @@ def prepare_artifact(
         if old_name != process_name:
             reverse_rename_map[process_name] = old_name
 
+    # transform_process_collection may have toggled is_controlled flags or
+    # added/removed components; regenerate the auto-generated biological_ode
+    # so it reflects the post-transform structure (BioProcess.__post_init__
+    # only fills biological_ode when it is None — explicitly clear and re-run
+    # so stale auto-gen does not survive the transform).
+    for process in collection.processes.values():
+        process.biological_ode = None
+        process.__post_init__()
+
     prepared_semantics: dict[str, dict[str, object]] = {}
     for process_name, process in collection.processes.items():
         prepared_semantics[process_name] = summarize_process_semantics(process)
@@ -285,7 +302,7 @@ def prepare_artifact(
         reverse_rename_map=reverse_rename_map,
     )
 
-    process_sources: dict[str, list[Any]] = {}
+    process_bundles: dict[str, Any] = {}
     sample_sources: dict[str, Any] = {}
 
     required_control_names = resolved_config.get("required_control_names", [])
@@ -305,14 +322,14 @@ def prepare_artifact(
             resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
     for process_name, process in collection.processes.items():
-        control_sources = select_control_sources(
+        bundle = select_control_sources(
             process_name=process_name,
             process=process,
             config=resolved_config,
         )
         ensure_required_controls(
             process_name=process_name,
-            available_control_names=[source.name for source in control_sources],
+            available_control_names=list(bundle.all_names),
             required_control_names=required_control_names_by_process.get(
                 process_name, []
             ),
@@ -323,11 +340,11 @@ def prepare_artifact(
             collection.metadata or {},
             resolved_config,
         )
-        process_sources[process_name] = control_sources
+        process_bundles[process_name] = bundle
         sample_sources[process_name] = sample_source
 
     _validate_prepared_control_contract(
-        process_sources=process_sources,
+        process_bundles=process_bundles,
         sample_sources=sample_sources,
         require_consistent_controls=bool(
             resolved_config.get("require_consistent_controls", True)
@@ -381,16 +398,17 @@ def prepare_artifact(
     }
 
     for process_name, process in collection.processes.items():
-        control_sources = process_sources[process_name]
+        bundle = process_bundles[process_name]
         sample_source = sample_sources[process_name]
-        local_control_names = [source.name for source in control_sources] + [
-            sample_source.name
-        ]
+        name_extras = list(bundle.name_extras_bolus) + [sample_source.name]
         bp_train_metadata["processes"][process_name] = {
-            "local_control_names": local_control_names,
+            "name_controlled_FVCs": list(bundle.name_controlled_FVCs),
+            "name_controlled_SVCs": list(bundle.name_controlled_SVCs),
+            "name_controlled_PVs": list(bundle.name_controlled_PVs),
+            "name_extras": name_extras,
             "control_metadata": {
                 source.name: source.metadata
-                for source in [*control_sources, sample_source]
+                for source in [*bundle.all_sources, sample_source]
             },
             "sample_acc_name": BP_TRAIN_SAMPLE_ACC_NAME,
             "sample_acc_source": {

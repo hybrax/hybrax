@@ -409,27 +409,27 @@ def _build_template_wrapper(
     """Build a HybridOdeWrapper with the same structure train_collection produces.
 
     Returns the wrapper plus a dict with the per-process RhsOde map under
-    ``per_process_rhs`` so callers can reuse it for evaluation.
+    ``per_process_rhs_ode`` so callers can reuse it for evaluation.
     """
     if len(selected_processes) == 0:
         raise ValueError("selected_processes must be non-empty")
 
-    per_process_rhs: dict[str, Any] = {}
-    reference_rhs = None
+    per_process_rhs_ode: dict[str, Any] = {}
+    reference_rhs_ode = None
     reference_process_name = selected_processes[0]
     for process_name in store.process_order:
         process = collection.processes[process_name]
-        rhs = get_rhs_ode(process)
-        per_process_rhs[process_name] = rhs
+        rhs_ode = get_rhs_ode(process)
+        per_process_rhs_ode[process_name] = rhs_ode
         if process_name == reference_process_name:
-            reference_rhs = rhs
-    assert reference_rhs is not None
+            reference_rhs_ode = rhs_ode
+    assert reference_rhs_ode is not None
     for process_name in selected_processes[1:]:
         validate_rhs_ode_compatibility(
             reference_process_name,
-            reference_rhs,
+            reference_rhs_ode,
             process_name,
-            per_process_rhs[process_name],
+            per_process_rhs_ode[process_name],
         )
 
     n_y_cols = int(store.y_meas.shape[2])
@@ -466,7 +466,7 @@ def _build_template_wrapper(
         target_variance=target_variance,
         target_state_indices=target_state_indices,
     )
-    return wrapper, {"per_process_rhs": per_process_rhs}
+    return wrapper, {"per_process_rhs_ode": per_process_rhs_ode}
 
 
 @dataclass(frozen=True)
@@ -577,7 +577,7 @@ def forward_from_collection(
         selected_processes=template_processes,
         **scale_kwargs,
     )
-    per_process_rhs = extras["per_process_rhs"]
+    per_process_rhs_ode = extras["per_process_rhs_ode"]
     batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
         custom_module=custom_module,
         custom_cfg=custom_cfg,
@@ -612,9 +612,9 @@ def forward_from_collection(
     all_Cin = []
     all_Cin_modeled = []
     for process_name in store.process_order:
-        rhs = per_process_rhs[process_name]
-        all_Cin.append(rhs.Cin)
-        all_Cin_modeled.append(rhs.Cin_modeled)
+        rhs_ode = per_process_rhs_ode[process_name]
+        all_Cin.append(rhs_ode.Cin_controlled_FVCs)
+        all_Cin_modeled.append(rhs_ode.Cin_modeled_FVCs)
     batched_Cin = jnp.stack(all_Cin)
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
@@ -719,23 +719,23 @@ def train_collection(
     warmup_batch = store.gather_batch(batch_index_stream[0])
 
     # Build per-process RhsOde and validate structural compatibility
-    per_process_rhs = {}
-    reference_rhs = None
+    per_process_rhs_ode = {}
+    reference_rhs_ode = None
     reference_process_name = selected_processes[0]
     for process_name in store.process_order:
         process = collection.processes[process_name]
-        rhs = get_rhs_ode(process)
-        per_process_rhs[process_name] = rhs
+        rhs_ode = get_rhs_ode(process)
+        per_process_rhs_ode[process_name] = rhs_ode
         if process_name == reference_process_name:
-            reference_rhs = rhs
+            reference_rhs_ode = rhs_ode
 
-    assert reference_rhs is not None
+    assert reference_rhs_ode is not None
     for process_name in selected_processes[1:]:
         validate_rhs_ode_compatibility(
             reference_process_name,
-            reference_rhs,
+            reference_rhs_ode,
             process_name,
-            per_process_rhs[process_name],
+            per_process_rhs_ode[process_name],
         )
 
     # Compute per-target variance for loss normalization.
@@ -807,9 +807,9 @@ def train_collection(
     all_Cin = []
     all_Cin_modeled = []
     for process_name in store.process_order:
-        rhs = per_process_rhs[process_name]
-        all_Cin.append(rhs.Cin)
-        all_Cin_modeled.append(rhs.Cin_modeled)
+        rhs_ode = per_process_rhs_ode[process_name]
+        all_Cin.append(rhs_ode.Cin_controlled_FVCs)
+        all_Cin_modeled.append(rhs_ode.Cin_modeled_FVCs)
     batched_Cin = jnp.stack(all_Cin)
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 

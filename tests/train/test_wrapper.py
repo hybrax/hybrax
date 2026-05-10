@@ -156,7 +156,6 @@ def _make_single_species_process(
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -263,7 +262,6 @@ def _make_two_species_two_feed_process() -> BioProcess:
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
                 "product": ReactorMediumComponent(
                     name="product",
@@ -272,7 +270,6 @@ def _make_two_species_two_feed_process() -> BioProcess:
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([2.0, 2.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -389,7 +386,6 @@ def test_wrapper_with_modeled_feed_produces_finite_derivative():
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -509,7 +505,6 @@ def test_wrapper_rejects_modeled_rate_shape_mismatch():
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -688,7 +683,6 @@ def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates()
                         times=jnp.asarray([0.0, 2.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -846,7 +840,7 @@ def test_validate_rhs_ode_compatibility_rejects_different_species():
     rhs_a = get_rhs_ode(process_a)
     rhs_b = get_rhs_ode(process_b)
 
-    with pytest.raises(ValueError, match="reactor_component_state_names differ"):
+    with pytest.raises(ValueError, match="name_modeled_RMCs differ"):
         validate_rhs_ode_compatibility("a", rhs_a, "b", rhs_b)
 
 
@@ -907,7 +901,6 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
                         times=jnp.asarray([0.0, 10.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -1011,7 +1004,6 @@ def test_wrapper_bolus_feed_integrates_v_cont():
                         times=jnp.asarray([0.0, 4.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -1100,7 +1092,6 @@ def _make_bolus_ramp_process(*, bolus_time: float = 10.0) -> BioProcess:
                         times=jnp.asarray([0.0, 0.01, 100.0]),
                         values=jnp.asarray([1.0, 1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -1255,7 +1246,6 @@ def test_wrapper_bolus_transport_only_for_present_species():
                         times=jnp.asarray([0.0, 10.0]),
                         values=jnp.asarray([1.0, 1.0]),
                     ),
-                    is_intracellular=False,
                 ),
                 "product": ReactorMediumComponent(
                     name="product",
@@ -1264,7 +1254,6 @@ def test_wrapper_bolus_transport_only_for_present_species():
                         times=jnp.asarray([0.0, 10.0]),
                         values=jnp.asarray([0.0, 0.0]),
                     ),
-                    is_intracellular=False,
                 ),
             },
         ),
@@ -1356,7 +1345,6 @@ def test_wrapper_multi_bolus_final_v_cont_invariant():
                         times=jnp.asarray([0.0, 8.0], dtype=jnp.float32),
                         values=jnp.asarray([1.0, 1.0], dtype=jnp.float32),
                     ),
-                    is_intracellular=False,
                 )
             },
         ),
