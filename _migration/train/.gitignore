@@ -2,6 +2,7 @@
 reference/
 *.log
 *.log.*
+checkpoints/
 
 # no local dev stuff
 *-local/
