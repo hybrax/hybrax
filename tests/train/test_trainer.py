@@ -203,34 +203,35 @@ def test_clamp_padded_time_rows_repeats_last_active_timestamp():
 
 def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
     wrapper, process_data = _build_wrapper_and_process()
-    assert process_data.n_meas == 2
-    assert bool(process_data.meas_mask[2]) is False
-    t_meas = clamp_padded_time_rows(
-        process_data.t_meas[None, :],
-        jnp.asarray([process_data.n_meas], dtype=jnp.int32),
+    assert process_data.n_measured == 2
+    # Padded row: mask is False on every column.
+    assert bool(jnp.any(process_data.mask_measured[2])) is False
+    t_measured = clamp_padded_time_rows(
+        process_data.t_measured[None, :],
+        jnp.asarray([process_data.n_measured], dtype=jnp.int32),
     )[0]
 
     base_total, _ = measurement_loss_from_arrays(
         wrapper,
-        t_meas=t_meas,
-        y_meas=process_data.y_meas,
-        meas_mask=process_data.meas_mask,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_measured=t_measured,
+        y_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
         solver_atol=1e-7,
     )
 
-    poisoned_y = process_data.y_meas.at[2, 0].set(1e6)
+    poisoned_y = process_data.y_measured.at[2, 0].set(1e6)
     poisoned_total, _ = measurement_loss_from_arrays(
         wrapper,
-        t_meas=t_meas,
-        y_meas=poisoned_y,
-        meas_mask=process_data.meas_mask,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_measured=t_measured,
+        y_measured=poisoned_y,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -248,7 +249,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         wrapper_arg,
         *,
         t_eval,
-        n_meas,
+        n_measured,
         y0,
         max_steps,
         rtol,
@@ -257,7 +258,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
     ):
         captured["wrapper"] = wrapper_arg
         captured["t_eval"] = t_eval
-        captured["n_meas"] = n_meas
+        captured["n_measured"] = n_measured
         captured["y0"] = y0
         captured["max_steps"] = max_steps
         captured["rtol"] = rtol
@@ -288,11 +289,11 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
 
     total_loss, _ = measurement_loss_from_arrays(
         wrapper,
-        t_meas=process_data.t_meas,
-        y_meas=process_data.y_meas,
-        meas_mask=process_data.meas_mask,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_measured=process_data.t_measured,
+        y_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        y0_measured=process_data.y0_measured,
         jump_ts=None,
         max_solver_steps=321_000,
         solver_rtol=1e-4,
@@ -312,11 +313,11 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
 
     result = evaluate_sample_from_arrays(
         wrapper,
-        t_meas=process_data.t_meas,
-        y_meas=process_data.y_meas,
-        meas_mask=process_data.meas_mask,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_measured=process_data.t_measured,
+        y_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -324,19 +325,21 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
     )
     states = trainer_module._simulate_measurement_states_on_grid(
         wrapper,
-        t_eval=process_data.t_meas,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_eval=process_data.t_measured,
+        n_measured=process_data.n_measured,
+        y0=process_data.y0_measured,
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
         jump_ts=process_data.controls.active_step_ts,
     )
     y_pred = states[:, wrapper.target_state_indices]
-    sq_err = jnp.square(y_pred - process_data.y_meas) / wrapper.target_variance[None, :]
-    masked_sq_err = jnp.where(process_data.meas_mask[:, None], sq_err, 0.0)
-    n_active = jnp.maximum(jnp.sum(process_data.meas_mask), 1)
-    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
+    # Per-cell mask: shape (max_n_meas, n_y_cols). Mirror the loss code.
+    y_meas_safe = jnp.where(process_data.mask_measured, process_data.y_measured, 0.0)
+    sq_err = jnp.square(y_pred - y_meas_safe) / wrapper.target_variance[None, :]
+    masked_sq_err = jnp.where(process_data.mask_measured, sq_err, 0.0)
+    n_active_per_target = jnp.maximum(jnp.sum(process_data.mask_measured, axis=0), 1)
+    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active_per_target
     total_loss = jnp.mean(per_target_loss)
 
     assert jnp.isclose(result.total_loss, total_loss)
@@ -347,29 +350,29 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
 
 def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
     wrapper, process_data = _build_wrapper_and_process()
-    t_meas = process_data.t_meas.at[2].set(-123.0)
+    t_measured = process_data.t_measured.at[2].set(-123.0)
 
     result = evaluate_sample_from_arrays(
         wrapper,
-        t_meas=t_meas,
-        y_meas=process_data.y_meas,
-        meas_mask=process_data.meas_mask,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_measured=t_measured,
+        y_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
         solver_atol=1e-7,
     )
     clamped = clamp_padded_time_rows(
-        t_meas[None, :],
-        jnp.asarray([process_data.n_meas], dtype=jnp.int32),
+        t_measured[None, :],
+        jnp.asarray([process_data.n_measured], dtype=jnp.int32),
     )[0]
     expected_states = trainer_module._simulate_measurement_states_on_grid(
         wrapper,
         t_eval=clamped,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        n_measured=process_data.n_measured,
+        y0=process_data.y0_measured,
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
@@ -381,17 +384,17 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
 
 def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
     wrapper, process_data = _build_aux_wrapper_and_process()
-    t_meas = process_data.t_meas.at[1:].set(jnp.asarray([999.0, -999.0]))
-    y_meas = process_data.y_meas.at[1:, :].set(0.0)
-    meas_mask = process_data.meas_mask.at[1:].set(False)
+    t_measured = process_data.t_measured.at[1:].set(jnp.asarray([999.0, -999.0]))
+    y_measured = process_data.y_measured.at[1:, :].set(0.0)
+    mask_measured = process_data.mask_measured.at[1:].set(False)
 
     result = evaluate_sample_from_arrays(
         wrapper,
-        t_meas=t_meas,
-        y_meas=y_meas,
-        meas_mask=meas_mask,
-        n_meas=1,
-        y0=process_data.y0,
+        t_measured=t_measured,
+        y_measured=y_measured,
+        mask_measured=mask_measured,
+        n_measured=1,
+        y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -400,19 +403,19 @@ def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
 
     assert result.save_outputs.auxiliary is not None
     assert set(result.save_outputs.auxiliary) == {"latent_pair", "mu_raw"}
-    assert result.states.shape[0] == t_meas.shape[0]
+    assert result.states.shape[0] == t_measured.shape[0]
     assert jnp.allclose(
         result.states,
-        jnp.repeat(process_data.y0[None, :], repeats=t_meas.shape[0], axis=0),
+        jnp.repeat(process_data.y0_measured[None, :], repeats=t_measured.shape[0], axis=0),
     )
     assert jnp.allclose(result.save_outputs.auxiliary["mu_raw"], 0.0)
     assert result.save_outputs.auxiliary["latent_pair"].shape == (
-        t_meas.shape[0],
+        t_measured.shape[0],
         2,
     )
     assert jnp.allclose(
         result.save_outputs.auxiliary["latent_pair"][:, 0],
-        jnp.zeros((t_meas.shape[0],), dtype=process_data.y0.dtype),
+        jnp.zeros((t_measured.shape[0],), dtype=process_data.y0_measured.dtype),
     )
 
 
@@ -420,11 +423,11 @@ def test_evaluate_sample_from_arrays_forwards_step_to_result():
     wrapper, process_data = _build_wrapper_and_process()
     result = evaluate_sample_from_arrays(
         wrapper,
-        t_meas=process_data.t_meas,
-        y_meas=process_data.y_meas,
-        meas_mask=process_data.meas_mask,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        t_measured=process_data.t_measured,
+        y_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -464,11 +467,11 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
     def _sample_loss_fn(
         _wrapper,
         *,
-        t_meas,
-        y_meas,
-        meas_mask,
-        n_meas,
-        y0,
+        t_measured,
+        y_measured,
+        mask_measured,
+        n_measured,
+        y0_measured,
         jump_ts,
         max_solver_steps,
         solver_rtol,
@@ -476,7 +479,7 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
         step=None,
     ):
         received_steps.append(step)
-        del t_meas, y_meas, meas_mask, n_meas, y0, jump_ts
+        del t_measured, y_measured, mask_measured, n_measured, y0_measured, jump_ts
         del max_solver_steps, solver_rtol, solver_atol
         score = float(step) if step is not None else -1.0
         return jnp.asarray(score), jnp.asarray([score], dtype=jnp.float32)
@@ -526,11 +529,11 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
     def _sample_loss_fn(
         _wrapper,
         *,
-        t_meas,
-        y_meas,
-        meas_mask,
-        n_meas,
-        y0,
+        t_measured,
+        y_measured,
+        mask_measured,
+        n_measured,
+        y0_measured,
         jump_ts,
         max_solver_steps,
         solver_rtol,
@@ -538,11 +541,11 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
         step=None,
     ):
         del (
-            t_meas,
-            y_meas,
-            meas_mask,
-            n_meas,
-            y0,
+            t_measured,
+            y_measured,
+            mask_measured,
+            n_measured,
+            y0_measured,
             max_solver_steps,
             solver_rtol,
             solver_atol,

@@ -90,7 +90,7 @@ _RESERVED_COLUMN_NAMES = frozenset(
         "holdout_process",
         "target_kind",
         "target_name",
-        "n_meas",
+        "n_measured",
         "n_obs",
         "n_processes",
     }
@@ -106,7 +106,7 @@ _RESERVED_COLUMN_NAMES = frozenset(
 class LOOMetricsResult:
     """Outputs of :func:`compute_loo_metrics`."""
 
-    per_fold_target: pd.DataFrame  # columns: fold_idx, holdout_parent, holdout_process, target, n_meas, r2, nmae, mae, rmse
+    per_fold_target: pd.DataFrame  # columns: fold_idx, holdout_parent, holdout_process, target, n_measured, r2, nmae, mae, rmse
     aggregate: dict[str, Any]      # per-target mean/std/median across folds + overall summary
     metrics_csv_path: Path | None
     aggregate_json_path: Path | None
@@ -198,7 +198,7 @@ def _compute_metrics(
     n = int(y_true.size)
     if n == 0:
         return {
-            "n_meas": 0,
+            "n_measured": 0,
             "r2": float("nan"),
             "nmae": float("nan"),
             "mae": float("nan"),
@@ -217,7 +217,7 @@ def _compute_metrics(
         # constant ground truth: R² is undefined; report NaN rather than ±inf.
         r2 = float("nan")
     return {
-        "n_meas": n,
+        "n_measured": n,
         "r2": r2,
         "nmae": nmae,
         "mae": mae,
@@ -487,7 +487,7 @@ def _aggregate_metrics(per_fold_target: pd.DataFrame) -> dict[str, Any]:
         "per_target": {},
     }
     for target, sub in per_fold_target.groupby("target", sort=False):
-        target_stats: dict[str, Any] = {"n_observations": int(sub["n_meas"].sum())}
+        target_stats: dict[str, Any] = {"n_observations": int(sub["n_measured"].sum())}
         for metric in ("r2", "nmae", "mae", "rmse"):
             vals = [float(v) for v in sub[metric].tolist() if _is_finite(v)]
             target_stats[f"{metric}_mean"] = _safe_mean(vals)
@@ -832,7 +832,7 @@ def compute_per_process_metrics(
             "holdout_process": rec.holdout_process,
             "target_kind": rec.target_kind,
             "target_name": rec.target_name,
-            "n_meas": int(y_true.size),
+            "n_measured": int(y_true.size),
         }
         for metric_name, metric_fn in metric_registry.items():
             row[metric_name] = _safe_call_metric(

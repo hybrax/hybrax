@@ -248,7 +248,7 @@ def test_per_process_single_dir_default_metrics(tmp_path):
         "holdout_process",
         "target_kind",
         "target_name",
-        "n_meas",
+        "n_measured",
         "r2",
         "nmae",
         "mae",
@@ -452,7 +452,7 @@ def test_rejects_reserved_metric_name(tmp_path):
     out_dir, collection = _perfect_loo_dir(tmp_path)
     with pytest.raises(ValueError, match="reserved column"):
         compute_per_process_metrics(
-            out_dir, collection, extra_metrics={"n_meas": lambda yt, yp: 1.0}
+            out_dir, collection, extra_metrics={"n_measured": lambda yt, yp: 1.0}
         )
 
 

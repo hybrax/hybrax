@@ -383,7 +383,7 @@ def test_train_collection_uses_custom_batched_loss_fn():
             step,
         )
         total = jnp.asarray(0.0, dtype=jnp.float32)
-        per_target = jnp.zeros((batch.y_meas.shape[2],), dtype=jnp.float32)
+        per_target = jnp.zeros((batch.y_measured.shape[2],), dtype=jnp.float32)
         per_sample = jnp.zeros((batch.process_indices.shape[0],), dtype=jnp.float32)
         return total, per_target, per_sample
 
@@ -443,7 +443,7 @@ def test_train_collection_uses_falsy_custom_batched_loss_fn():
                 step,
             )
             total = jnp.asarray(0.0, dtype=jnp.float32)
-            per_target = jnp.zeros((batch.y_meas.shape[2],), dtype=jnp.float32)
+            per_target = jnp.zeros((batch.y_measured.shape[2],), dtype=jnp.float32)
             per_sample = jnp.zeros((batch.process_indices.shape[0],), dtype=jnp.float32)
             return total, per_target, per_sample
 
@@ -723,8 +723,9 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
     collection = _make_collection()
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -768,8 +769,9 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
     captured: dict[str, object] = {}
 
     class _DummyStore:
-        target_names = ("cfg_biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("cfg_biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("cfg_biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -818,8 +820,9 @@ def test_train_from_collection_wires_build_batched_loss_fn_hook(monkeypatch):
     captured: dict[str, object] = {}
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -876,8 +879,9 @@ def test_train_from_collection_rejects_non_callable_build_batched_loss_fn(monkey
     collection = _make_collection()
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -924,8 +928,9 @@ def test_train_from_collection_wires_build_sample_loss_fn_hook(monkeypatch):
     captured: dict[str, object] = {}
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -983,8 +988,9 @@ def test_train_from_collection_rejects_non_callable_build_sample_loss_fn(monkeyp
     collection = _make_collection()
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -1030,8 +1036,9 @@ def test_train_from_collection_rejects_both_loss_hooks(monkeypatch):
     collection = _make_collection()
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -1100,11 +1107,11 @@ def test_forward_from_collection_uses_build_sample_loss_fn(monkeypatch):
             def _sample_loss(
                 wrapper,
                 *,
-                t_meas,
-                y_meas,
-                meas_mask,
-                n_meas,
-                y0,
+                t_measured,
+                y_measured,
+                mask_measured,
+                n_measured,
+                y0_measured,
                 jump_ts,
                 max_solver_steps,
                 solver_rtol,
@@ -1113,17 +1120,17 @@ def test_forward_from_collection_uses_build_sample_loss_fn(monkeypatch):
             ):
                 del (
                     wrapper,
-                    t_meas,
-                    meas_mask,
-                    n_meas,
-                    y0,
+                    t_measured,
+                    mask_measured,
+                    n_measured,
+                    y0_measured,
                     jump_ts,
                     max_solver_steps,
                     solver_rtol,
                     solver_atol,
                     step,
                 )
-                n_targets = y_meas.shape[1]
+                n_targets = y_measured.shape[1]
                 return jnp.asarray(7.0), jnp.full((n_targets,), 7.0)
 
             return _sample_loss
@@ -1272,8 +1279,9 @@ def test_train_from_collection_wires_extra_loss_names_from_sample_hook(monkeypat
     captured: dict[str, object] = {}
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -1334,8 +1342,9 @@ def test_train_from_collection_wires_extra_loss_names_from_batched_hook(monkeypa
     captured: dict[str, object] = {}
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1", "p2")
 
     def fake_from_collection(collection, *, target_variable_order, target_source):
@@ -1432,8 +1441,9 @@ def test_resolve_loss_hook_rejects_invalid_tuple_shape(monkeypatch):
     collection = _make_collection()
 
     class _DummyStore:
-        target_names = ("biomass",)
-        target_source = "reactor_components"
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
         process_order = ("p1",)
 
     def fake_from_collection(collection, *, target_variable_order, target_source):

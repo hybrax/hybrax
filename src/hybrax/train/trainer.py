@@ -43,7 +43,7 @@ def _simulate_measurement_states_on_grid(
     wrapper: HybridOdeWrapper,
     *,
     t_eval: jax.Array,
-    n_meas: int | jax.Array,
+    n_measured: int | jax.Array,
     y0: jax.Array,
     max_steps: int,
     rtol: float,
@@ -56,7 +56,7 @@ def _simulate_measurement_states_on_grid(
     integrates internally in scaled space and the results are un-scaled before
     returning.
     """
-    n_meas_arr = jnp.asarray(n_meas, dtype=jnp.int32)
+    n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
     t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
 
@@ -96,7 +96,7 @@ def _solve_measurement_save_outputs_on_grid(
     wrapper: HybridOdeWrapper,
     *,
     t_eval: jax.Array,
-    n_meas: int | jax.Array,
+    n_measured: int | jax.Array,
     y0: jax.Array,
     max_steps: int,
     rtol: float,
@@ -104,7 +104,7 @@ def _solve_measurement_save_outputs_on_grid(
     jump_ts: jax.Array | None,
 ) -> SaveOutputs:
     """Solve measurement grid once and return stacked save-time observables."""
-    n_meas_arr = jnp.asarray(n_meas, dtype=jnp.int32)
+    n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
     t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
 
@@ -168,15 +168,15 @@ def simulate_measurement_states(
     use_jump_ts: bool = True,
 ) -> jax.Array:
     """Simulate full state trajectories at active measurement timestamps."""
-    ts = process_data.active_t_meas
+    ts = process_data.active_t_measured
     if ts.size == 0:
         raise ValueError("process has no active measurement timestamps")
     jump_ts = process_data.controls.active_step_ts if use_jump_ts else None
     return _simulate_measurement_states_on_grid(
         wrapper,
         t_eval=ts,
-        n_meas=process_data.n_meas,
-        y0=process_data.y0,
+        n_measured=process_data.n_measured,
+        y0=process_data.y0_measured,
         max_steps=max_steps,
         rtol=rtol,
         atol=atol,
@@ -187,11 +187,11 @@ def simulate_measurement_states(
 def evaluate_sample_from_arrays(
     wrapper: HybridOdeWrapper,
     *,
-    t_meas: jax.Array,
-    y_meas: jax.Array,
-    meas_mask: jax.Array,
-    n_meas: int | jax.Array,
-    y0: jax.Array,
+    t_measured: jax.Array,
+    y_measured: jax.Array,
+    mask_measured: jax.Array,
+    n_measured: int | jax.Array,
+    y0_measured: jax.Array,
     jump_ts: jax.Array | None,
     max_solver_steps: int,
     solver_rtol: float,
@@ -200,9 +200,9 @@ def evaluate_sample_from_arrays(
 ) -> SingleSampleResult:
     save_outputs = _solve_measurement_save_outputs_on_grid(
         wrapper,
-        t_eval=t_meas,
-        n_meas=n_meas,
-        y0=y0,
+        t_eval=t_measured,
+        n_measured=n_measured,
+        y0=y0_measured,
         max_steps=max_solver_steps,
         rtol=solver_rtol,
         atol=solver_atol,
@@ -215,13 +215,18 @@ def evaluate_sample_from_arrays(
     # (V_cont is in the state but not a loss target).
     y_pred = states[:, wrapper.target_state_indices]
 
-    # Normalize per-target MSE by variance (all-zero targets get variance=1)
-    sq_err = jnp.square(y_pred - y_meas) / wrapper.target_variance[None, :]
-    masked_sq_err = jnp.where(meas_mask[:, None], sq_err, 0.0)
-    n_active = jnp.maximum(jnp.sum(meas_mask), 1)
-    # Per-target mean: [n_targets+1]
-    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active
-    # Total: mean over all targets
+    # Per-cell mask: shape (max_n_meas, n_y_cols). The double-where guard
+    # zero-fills unmeasured y_measured cells before subtraction so NaN never
+    # leaks into the gradient via the canonical "double where" pitfall —
+    # internal y_measured already stores 0.0 there but the safe pattern
+    # survives every JAX auto-diff edge case.
+    y_meas_safe = jnp.where(mask_measured, y_measured, 0.0)
+    sq_err = jnp.square(y_pred - y_meas_safe) / wrapper.target_variance[None, :]
+    masked_sq_err = jnp.where(mask_measured, sq_err, 0.0)
+    # Per-target active counts so each target column is normalised by its
+    # own number of real measurements rather than the global row count.
+    n_active_per_target = jnp.maximum(jnp.sum(mask_measured, axis=0), 1)
+    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active_per_target
     total_loss = jnp.mean(per_target_loss)
     step_arr = jnp.asarray(step if step is not None else -1, dtype=jnp.int32)
     return SingleSampleResult(
@@ -236,11 +241,11 @@ def evaluate_sample_from_arrays(
 def measurement_loss_from_arrays(
     wrapper: HybridOdeWrapper,
     *,
-    t_meas: jax.Array,
-    y_meas: jax.Array,
-    meas_mask: jax.Array,
-    n_meas: int | jax.Array,
-    y0: jax.Array,
+    t_measured: jax.Array,
+    y_measured: jax.Array,
+    mask_measured: jax.Array,
+    n_measured: int | jax.Array,
+    y0_measured: jax.Array,
     jump_ts: jax.Array | None,
     max_solver_steps: int,
     solver_rtol: float,
@@ -249,11 +254,11 @@ def measurement_loss_from_arrays(
 ) -> tuple[jax.Array, jax.Array]:
     result = evaluate_sample_from_arrays(
         wrapper,
-        t_meas=t_meas,
-        y_meas=y_meas,
-        meas_mask=meas_mask,
-        n_meas=n_meas,
-        y0=y0,
+        t_measured=t_measured,
+        y_measured=y_measured,
+        mask_measured=mask_measured,
+        n_measured=n_measured,
+        y0_measured=y0_measured,
         jump_ts=jump_ts,
         max_solver_steps=max_solver_steps,
         solver_rtol=solver_rtol,
@@ -281,15 +286,15 @@ def build_batched_loss_fn_from_sample_loss(
         solver_atol: float,
         step: int | jax.Array | None = None,
     ) -> tuple[jax.Array, jax.Array, jax.Array]:
-        batch_t_meas = clamp_padded_time_rows(batch.t_meas, batch.n_meas)
+        batch_t_meas = clamp_padded_time_rows(batch.t_measured, batch.n_measured)
 
         def _sample_loss(
             process_idx: jax.Array,
-            t_meas: jax.Array,
-            y_meas: jax.Array,
-            meas_mask: jax.Array,
-            n_meas: jax.Array,
-            y0: jax.Array,
+            t_measured: jax.Array,
+            y_measured: jax.Array,
+            mask_measured: jax.Array,
+            n_measured: jax.Array,
+            y0_measured: jax.Array,
             cin: jax.Array,
             cin_modeled: jax.Array,
             jump_ts: jax.Array | None,
@@ -305,11 +310,11 @@ def build_batched_loss_fn_from_sample_loss(
             )
             total_loss, per_target = sample_loss_fn(
                 sample_wrapper,
-                t_meas=t_meas,
-                y_meas=y_meas,
-                meas_mask=meas_mask,
-                n_meas=n_meas,
-                y0=y0,
+                t_measured=t_measured,
+                y_measured=y_measured,
+                mask_measured=mask_measured,
+                n_measured=n_measured,
+                y0_measured=y0_measured,
                 jump_ts=jump_ts,
                 max_solver_steps=max_solver_steps,
                 solver_rtol=solver_rtol,
@@ -326,10 +331,10 @@ def build_batched_loss_fn_from_sample_loss(
         )(
             batch.process_indices,
             batch_t_meas,
-            batch.y_meas,
-            batch.meas_mask,
-            batch.n_meas,
-            batch.y0,
+            batch.y_measured,
+            batch.mask_measured,
+            batch.n_measured,
+            batch.y0_measured,
             batched_Cin[batch.process_indices],
             batched_Cin_modeled[batch.process_indices],
             jump_ts_rows,

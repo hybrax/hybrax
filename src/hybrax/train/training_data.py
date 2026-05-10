@@ -257,37 +257,54 @@ class PerProcessTrainingData(eqx.Module):
     process_name: str
     # Integer row index into collection-level stacked arrays.
     process_index: int
-    # Ordered measured target names.
-    target_names: list[str]
-    # Source family of targets (`process_variables` or `reactor_components`).
-    target_source: str
+    # Measured-target names. Exactly one of ``name_measured_RMCs`` /
+    # ``name_measured_PVs`` is non-empty depending on which BioProcess group
+    # the prepared collection chose to measure.
+    name_measured_RMCs: tuple[str, ...]
+    name_measured_PVs: tuple[str, ...]
+    # Modeled volume-change names (mirrored from store for JIT-friendly
+    # per-process access).
+    name_modeled_FVCs: tuple[str, ...]
+    name_modeled_SVCs: tuple[str, ...]
     # Number of active measurement rows for this process.
-    n_meas: int
+    n_measured: int
     # Padded measurement times for this process.
-    t_meas: jax.Array
-    # Padded measurement values for this process, columns follow `target_names`.
-    y_meas: jax.Array
-    # Padded boolean mask for active measurement rows.
-    meas_mask: jax.Array
-    # Initial state `[targets..., V_cont]`.
-    y0: jax.Array
+    t_measured: jax.Array
+    # Padded measurement values for this process, columns follow
+    # ``name_measured`` (whichever of RMCs/PVs is populated) then the
+    # cumulative-volume tail for ``name_modeled_FVCs + name_modeled_SVCs``.
+    y_measured: jax.Array
+    # Padded per-cell boolean mask `[max_n_meas, n_y_cols]`. True iff the
+    # corresponding (timestamp, target) pair is a real measurement; False
+    # for rows beyond ``n_measured`` and for cells where a target has no
+    # measurement at that timestamp on the union grid.
+    mask_measured: jax.Array
+    # Initial state `[targets..., V_cont]`, sourced from measurements at t=0.
+    y0_measured: jax.Array
     # Per-process controls view from ControlsStore.
     controls: PerProcessControls
 
     @property
-    def active_t_meas(self) -> jax.Array:
+    def active_t_measured(self) -> jax.Array:
         """Active measurement-time prefix."""
-        return self.t_meas[: self.n_meas]
+        return self.t_measured[: self.n_measured]
 
     @property
-    def active_y_meas(self) -> jax.Array:
+    def active_y_measured(self) -> jax.Array:
         """Active measurement/value prefix."""
-        return self.y_meas[: self.n_meas]
+        return self.y_measured[: self.n_measured]
 
     @property
-    def active_meas_mask(self) -> jax.Array:
+    def active_mask_measured(self) -> jax.Array:
         """Active measurement-mask prefix."""
-        return self.meas_mask[: self.n_meas]
+        return self.mask_measured[: self.n_measured]
+
+    @property
+    def name_measured(self) -> tuple[str, ...]:
+        """Whichever of ``name_measured_RMCs`` / ``name_measured_PVs`` is
+        populated. Convenience for code that just needs the abstract
+        target list (plot labels, loss column titles)."""
+        return self.name_measured_RMCs or self.name_measured_PVs
 
 
 class BatchTrainingData(eqx.Module):
@@ -296,21 +313,22 @@ class BatchTrainingData(eqx.Module):
     # Process indices used to gather this batch view.
     process_indices: jax.Array
     # Gathered measurement times `[batch_size, max_n_meas]`.
-    t_meas: jax.Array
+    t_measured: jax.Array
     # Gathered measurement values `[batch_size, max_n_meas, n_targets]`.
-    y_meas: jax.Array
-    # Gathered measurement masks `[batch_size, max_n_meas]`.
-    meas_mask: jax.Array
+    y_measured: jax.Array
+    # Gathered per-cell measurement masks `[batch_size, max_n_meas, n_y_cols]`.
+    mask_measured: jax.Array
     # Gathered active measurement counts `[batch_size]`.
-    n_meas: jax.Array
-    # Gathered initial state vectors `[batch_size, n_targets + 1]`.
-    y0: jax.Array
+    n_measured: jax.Array
+    # Gathered initial state vectors `[batch_size, n_targets + 1]`, sourced
+    # from measurements at t=0.
+    y0_measured: jax.Array
 
 
 class TrainingDataStore(eqx.Module):
     """Collection-level training-data store built from a prepared collection.
 
-    The y_meas columns are ``[species..., B_modeled_cum_per_modeled_feed...]``
+    The y_measured columns are ``[species..., B_modeled_cum_per_modeled_feed...]``
     (NOT V_cont — V_cont is in the ODE *state* but not in the *loss targets*).
 
     The y0 vector has layout
@@ -320,30 +338,58 @@ class TrainingDataStore(eqx.Module):
 
     # Stable process order across all stacked arrays.
     process_order: list[str]
-    # Ordered measured target names (shared across processes).
-    target_names: list[str]
-    # Ordered modeled-flow names (shared across processes).  Each contributes
-    # one cumulative-volume column to y_meas.
-    modeled_flow_names: tuple[str, ...]
-    # Source family of targets (`process_variables` or `reactor_components`).
-    target_source: str
-    # Mapping from target name to column index in y-measurement arrays.
-    target_name_to_index: dict[str, int]
+    # Measured-target names, split by which BioProcess group is being
+    # measured. Exactly one is non-empty. ``__post_init__`` enforces the
+    # invariant; ``name_measured`` (property) returns whichever one carries
+    # the names for code that doesn't care about the kind.
+    name_measured_RMCs: tuple[str, ...]
+    name_measured_PVs: tuple[str, ...]
+    # Ordered modeled-FVC names (shared across processes). Each contributes
+    # one cumulative-volume column to y_measured.
+    name_modeled_FVCs: tuple[str, ...]
+    # Ordered modeled-SVC names. Future-proof placeholder; always ``()`` today
+    # (the wrapper rejects continuous modeled SVCs). When populated, each name
+    # contributes one cumulative-volume column to y_measured after the
+    # FVC block, mirroring ``RhsOde.name_modeled_SVCs`` ordering.
+    name_modeled_SVCs: tuple[str, ...]
     # Shared controls store for this prepared artifact.
     controls_store: ControlsStore
     # Padded measurement times `[n_processes, max_n_meas]`.
-    t_meas: jax.Array
+    t_measured: jax.Array
     # Padded measurement values
     # `[n_processes, max_n_meas, n_species + n_modeled_feeds]`.
-    y_meas: jax.Array
-    # Padded measurement mask `[n_processes, max_n_meas]`.
-    meas_mask: jax.Array
+    y_measured: jax.Array
+    # Padded per-cell measurement mask `[n_processes, max_n_meas, n_y_cols]`.
+    # True iff the corresponding (timestamp, target) pair is a real
+    # measurement. The modeled-feed cumulative columns are dense by
+    # construction (mask=True throughout).
+    mask_measured: jax.Array
     # Active measurement counts per process.
-    n_meas: jax.Array
-    # Initial state matrix
-    # `[n_processes, n_species + 1 + n_modeled_feeds]`
-    # where layout is `[species_0..., V_cont(0), B_modeled_cum_0(0), ...]`.
-    y0: jax.Array
+    n_measured: jax.Array
+    # Initial state matrix `[n_processes, n_species + 1 + n_modeled_feeds]`
+    # where layout is `[species_0..., V_cont(0), B_modeled_cum_0(0), ...]`,
+    # sourced from measurements at t=0.
+    y0_measured: jax.Array
+
+    def __check_init__(self) -> None:
+        # Exactly one of name_measured_RMCs / name_measured_PVs must be
+        # populated. Match-fail is fail-fast per CLAUDE.md principle 7.
+        rmcs_set = bool(self.name_measured_RMCs)
+        pvs_set = bool(self.name_measured_PVs)
+        if rmcs_set == pvs_set:
+            raise ValueError(
+                "TrainingDataStore: exactly one of name_measured_RMCs / "
+                "name_measured_PVs must be non-empty. Got "
+                f"name_measured_RMCs={self.name_measured_RMCs!r}, "
+                f"name_measured_PVs={self.name_measured_PVs!r}."
+            )
+
+    @property
+    def name_measured(self) -> tuple[str, ...]:
+        """Whichever of ``name_measured_RMCs`` / ``name_measured_PVs`` is
+        populated. Convenience for code that just needs the abstract
+        target list (plot labels, loss column titles, target_state_indices)."""
+        return self.name_measured_RMCs or self.name_measured_PVs
 
     @classmethod
     def from_collection(
@@ -394,81 +440,132 @@ class TrainingDataStore(eqx.Module):
         if len(reference_targets) == 0:
             raise ValueError("no measured target variables found in process collection")
 
-        target_names = list(reference_targets)
-        target_name_to_index = {name: idx for idx, name in enumerate(target_names)}
+        # Split the resolved target names into the two mutually-exclusive
+        # tuples; the discriminator is the source family that
+        # ``_resolve_target_source`` returned at the top.
+        if resolved_target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
+            name_measured_RMCs = tuple(reference_targets)
+            name_measured_PVs: tuple[str, ...] = ()
+        elif resolved_target_source == TARGET_SOURCE_PROCESS_VARIABLES:
+            name_measured_RMCs = ()
+            name_measured_PVs = tuple(reference_targets)
+        else:
+            raise ValueError(
+                f"resolved target_source must be {TARGET_SOURCE_REACTOR_COMPONENTS!r} "
+                f"or {TARGET_SOURCE_PROCESS_VARIABLES!r}, got "
+                f"{resolved_target_source!r}"
+            )
 
         ref_process = collection.processes[process_order[0]]
-        modeled_flow_names = tuple(get_rhs_ode(ref_process).name_modeled_FVCs)
+        ref_rhs_ode = get_rhs_ode(ref_process)
+        name_modeled_FVCs = tuple(ref_rhs_ode.name_modeled_FVCs)
+        name_modeled_SVCs = tuple(ref_rhs_ode.name_modeled_SVCs)
         for _pn in process_order[1:]:
-            other = tuple(get_rhs_ode(collection.processes[_pn]).name_modeled_FVCs)
-            if other != modeled_flow_names:
+            _other_rhs_ode = get_rhs_ode(collection.processes[_pn])
+            if tuple(_other_rhs_ode.name_modeled_FVCs) != name_modeled_FVCs:
                 raise ValueError(
-                    f"modeled flow names differ across processes: "
-                    f"{process_order[0]!r} has {modeled_flow_names!r} but "
-                    f"{_pn!r} has {other!r}"
+                    f"name_modeled_FVCs differs across processes: "
+                    f"{process_order[0]!r} has {name_modeled_FVCs!r} but "
+                    f"{_pn!r} has {tuple(_other_rhs_ode.name_modeled_FVCs)!r}"
                 )
-        n_modeled = len(modeled_flow_names)
+            if tuple(_other_rhs_ode.name_modeled_SVCs) != name_modeled_SVCs:
+                raise ValueError(
+                    f"name_modeled_SVCs differs across processes: "
+                    f"{process_order[0]!r} has {name_modeled_SVCs!r} but "
+                    f"{_pn!r} has {tuple(_other_rhs_ode.name_modeled_SVCs)!r}"
+                )
+        n_modeled = len(name_modeled_FVCs) + len(name_modeled_SVCs)
 
         per_process_times: list[np.ndarray] = []
         per_process_values: list[np.ndarray] = []
+        per_process_masks: list[np.ndarray] = []
         per_process_y0: list[np.ndarray] = []
         n_meas_list: list[int] = []
         max_n_meas = 0
+        n_targets = len(reference_targets)
+        # y_measured columns = [species targets..., B_modeled_cum per FVC...,
+        # B_modeled_cum per SVC...]. SVC columns are absent today (no example
+        # uses modeled SVCs and the wrapper rejects them) but the layout is
+        # there for future use.
+        n_y_cols = n_targets + n_modeled
 
         for process_name in process_order:
             process = collection.processes[process_name]
             process_targets = per_process_targets[process_name]
 
-            target_columns = []
-            shared_ts: np.ndarray | None = None
+            # Per-target (times, values) — each target may have its own grid.
+            per_target_times: list[np.ndarray] = []
+            per_target_values: list[np.ndarray] = []
             for target_name in process_targets:
                 ts, ys = _timeseries_numpy(
                     process,
                     target_name,
                     resolved_target_source,
                 )
-                if shared_ts is None:
-                    shared_ts = ts
-                elif not np.array_equal(ts, shared_ts):
-                    raise ValueError(
-                        f"{process_name}: measurement times differ across targets; "
-                        "V1 expects aligned measurement timestamps per process"
-                    )
-                target_columns.append(ys)
+                per_target_times.append(np.asarray(ts, dtype=np.float32))
+                per_target_values.append(np.asarray(ys, dtype=np.float32))
 
-            if shared_ts is None:
+            if not per_target_times:
                 raise ValueError(f"{process_name}: no measurement data for targets")
 
-            # Cumulative measurement of each modeled feed at the species
-            # measurement times — interpolated from the raw FeedVolumeChange
-            # time series.  This is the new training target that *directly*
-            # constrains the MLP's modeled feed prediction.
+            # Union grid across all per-target measurement times.
+            union_ts = np.unique(
+                np.concatenate(per_target_times).astype(np.float32)
+            )
+            t0_union = float(union_ts[0])
+
+            # Strict t[0] requirement: every target must have a measurement
+            # at union_ts[0]. Otherwise y0 is undefined.
+            for tname, t_arr in zip(process_targets, per_target_times, strict=True):
+                if t_arr.size == 0 or not np.any(np.isclose(t_arr, t0_union, atol=1e-9)):
+                    raise ValueError(
+                        f"Process {process_name!r}: target {tname!r} has no "
+                        f"measurement at union_grid t[0] = {t0_union:.6g}. "
+                        f"Either supply a t={t0_union:.6g} measurement, mark "
+                        f"this variable as a StaticVariable, or remove it from "
+                        f"target_variable_order."
+                    )
+
+            # Build (n_measured, n_y_cols) value + mask matrices on the union grid.
+            n_measured = int(union_ts.size)
+            y_matrix = np.zeros((n_measured, n_y_cols), dtype=np.float32)
+            mask_matrix = np.zeros((n_measured, n_y_cols), dtype=bool)
+
+            for col_idx, (t_arr, v_arr) in enumerate(
+                zip(per_target_times, per_target_values, strict=True)
+            ):
+                # Map each target measurement onto its row in the union grid.
+                # np.searchsorted on a sorted union finds exact-match positions.
+                positions = np.searchsorted(union_ts, t_arr)
+                # Clamp pathological out-of-range positions defensively.
+                positions = np.clip(positions, 0, n_measured - 1)
+                y_matrix[positions, col_idx] = v_arr.astype(np.float32)
+                mask_matrix[positions, col_idx] = True
+
+            # Modeled-VC cumulative columns: dense by construction, fill the
+            # value via linear interpolation of the cumulative volume trace
+            # and mark mask True throughout. Layout matches y_measured's
+            # column order: FVCs first, then SVCs.
             v0 = float(process.volume.initial_volume)
-            b_modeled_cum_columns: list[np.ndarray] = []
-            for fn in modeled_flow_names:
+            for k, fn in enumerate(name_modeled_FVCs + name_modeled_SVCs):
+                col_idx = n_targets + k
                 vc = process.volume.volume_changes[fn]
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
                 b_col = np.interp(
-                    shared_ts.astype(float),
+                    union_ts.astype(float),
                     vc_t,
                     vc_v,
                     left=float(vc_v[0]),
                     right=float(vc_v[-1]),
                 ).astype(np.float32)
-                b_modeled_cum_columns.append(b_col)
-
-            # y_meas columns = [species..., B_modeled_cum...]   (no V_cont)
-            y_matrix_parts = [np.stack(target_columns, axis=1)]
-            if b_modeled_cum_columns:
-                y_matrix_parts.append(np.stack(b_modeled_cum_columns, axis=1))
-            y_matrix = np.concatenate(y_matrix_parts, axis=1)
-            n_meas = int(shared_ts.size)
-            max_n_meas = max(max_n_meas, n_meas)
+                y_matrix[:, col_idx] = b_col
+                mask_matrix[:, col_idx] = True
 
             # y0 = [species(0)..., V_cont(0)=v0, B_modeled_cum_k(0)=0...]
-            n_species = len(target_columns)
-            y0_species = y_matrix[0, :n_species]
+            # Strict t[0] check above guarantees y_matrix[0, :n_targets] are
+            # all real measurements.
+            y0_species = y_matrix[0, :n_targets]
             y0 = np.concatenate(
                 [
                     y0_species,
@@ -478,40 +575,43 @@ class TrainingDataStore(eqx.Module):
                 axis=0,
             )
 
-            per_process_times.append(shared_ts)
+            max_n_meas = max(max_n_meas, n_measured)
+            per_process_times.append(union_ts)
             per_process_values.append(y_matrix)
+            per_process_masks.append(mask_matrix)
             per_process_y0.append(y0)
-            n_meas_list.append(n_meas)
+            n_meas_list.append(n_measured)
 
         n_processes = len(process_order)
-        n_targets = len(target_names)
-        # y_meas has n_targets + n_modeled columns:
-        # species targets + cumulative modeled-feed targets.
-        n_y_cols = n_targets + n_modeled
-        t_meas = np.zeros((n_processes, max_n_meas), dtype=np.float32)
-        y_meas = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=np.float32)
-        meas_mask = np.zeros((n_processes, max_n_meas), dtype=bool)
+        t_measured = np.zeros((n_processes, max_n_meas), dtype=np.float32)
+        y_measured = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=np.float32)
+        mask_measured = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=bool)
 
-        for index, (ts, ys) in enumerate(
-            zip(per_process_times, per_process_values, strict=False)
+        for index, (ts, ys, mk) in enumerate(
+            zip(
+                per_process_times,
+                per_process_values,
+                per_process_masks,
+                strict=True,
+            )
         ):
-            n_meas = n_meas_list[index]
-            t_meas[index, :n_meas] = ts.astype(np.float32)
-            y_meas[index, :n_meas, :] = ys.astype(np.float32)
-            meas_mask[index, :n_meas] = True
+            n_measured = n_meas_list[index]
+            t_measured[index, :n_measured] = ts.astype(np.float32)
+            y_measured[index, :n_measured, :] = ys.astype(np.float32)
+            mask_measured[index, :n_measured, :] = mk
 
         return cls(
             process_order=process_order,
-            target_names=target_names,
-            modeled_flow_names=modeled_flow_names,
-            target_source=resolved_target_source,
-            target_name_to_index=target_name_to_index,
+            name_measured_RMCs=name_measured_RMCs,
+            name_measured_PVs=name_measured_PVs,
+            name_modeled_FVCs=name_modeled_FVCs,
+            name_modeled_SVCs=name_modeled_SVCs,
             controls_store=controls_store,
-            t_meas=jnp.asarray(t_meas),
-            y_meas=jnp.asarray(y_meas),
-            meas_mask=jnp.asarray(meas_mask),
-            n_meas=jnp.asarray(n_meas_list, dtype=jnp.int32),
-            y0=jnp.asarray(np.asarray(per_process_y0, dtype=np.float32)),
+            t_measured=jnp.asarray(t_measured),
+            y_measured=jnp.asarray(y_measured),
+            mask_measured=jnp.asarray(mask_measured),
+            n_measured=jnp.asarray(n_meas_list, dtype=jnp.int32),
+            y0_measured=jnp.asarray(np.asarray(per_process_y0, dtype=np.float32)),
         )
 
     @classmethod
@@ -538,13 +638,15 @@ class TrainingDataStore(eqx.Module):
         return PerProcessTrainingData(
             process_name=process_name,
             process_index=process_index,
-            target_names=self.target_names,
-            target_source=self.target_source,
-            n_meas=int(self.n_meas[process_index]),
-            t_meas=self.t_meas[process_index],
-            y_meas=self.y_meas[process_index],
-            meas_mask=self.meas_mask[process_index],
-            y0=self.y0[process_index],
+            name_measured_RMCs=self.name_measured_RMCs,
+            name_measured_PVs=self.name_measured_PVs,
+            name_modeled_FVCs=self.name_modeled_FVCs,
+            name_modeled_SVCs=self.name_modeled_SVCs,
+            n_measured=int(self.n_measured[process_index]),
+            t_measured=self.t_measured[process_index],
+            y_measured=self.y_measured[process_index],
+            mask_measured=self.mask_measured[process_index],
+            y0_measured=self.y0_measured[process_index],
             controls=self.controls_store.get_controls(process_name),
         )
 
@@ -564,9 +666,9 @@ class TrainingDataStore(eqx.Module):
 
         return BatchTrainingData(
             process_indices=indices,
-            t_meas=self.t_meas[indices],
-            y_meas=self.y_meas[indices],
-            meas_mask=self.meas_mask[indices],
-            n_meas=self.n_meas[indices],
-            y0=self.y0[indices],
+            t_measured=self.t_measured[indices],
+            y_measured=self.y_measured[indices],
+            mask_measured=self.mask_measured[indices],
+            n_measured=self.n_measured[indices],
+            y0_measured=self.y0_measured[indices],
         )

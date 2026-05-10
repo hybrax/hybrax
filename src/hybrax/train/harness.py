@@ -270,7 +270,7 @@ def _build_reaction_module(
         default_build_reaction_module,
     )
     module = hook(
-        target_names=list(store.target_names),
+        target_names=list(store.name_measured),
         process_names=list(store.process_order),
         config=custom_config,
         seed=int(config.seed),
@@ -432,13 +432,18 @@ def _build_template_wrapper(
             per_process_rhs_ode[process_name],
         )
 
-    n_y_cols = int(store.y_meas.shape[2])
+    n_y_cols = int(store.y_measured.shape[2])
+    # Per-target variance from real measurements only — a sparse target's
+    # zero-filled cells are excluded via mask_measured so they don't deflate
+    # the variance estimate.
     per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
     for pname in selected_processes:
         pd = store.get_process(pname)
-        y_active = np.asarray(pd.active_y_meas)
+        y_active = np.asarray(pd.active_y_measured)
+        mask_active = np.asarray(pd.active_mask_measured)
         for col in range(n_y_cols):
-            per_col_values[col].extend(y_active[:, col].tolist())
+            real_values = y_active[mask_active[:, col], col]
+            per_col_values[col].extend(real_values.tolist())
     target_variance = jnp.asarray(
         [
             float(np.var(vals)) if vals and float(np.var(vals)) > VARIANCE_EPS else 1.0
@@ -447,8 +452,8 @@ def _build_template_wrapper(
         dtype=jnp.float32,
     )
 
-    n_species = len(store.target_names)
-    n_modeled_feeds = len(store.modeled_flow_names)
+    n_species = len(store.name_measured)
+    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
     target_state_indices = jnp.asarray(
         list(range(n_species))
         + list(range(n_species + 1, n_species + 1 + n_modeled_feeds)),
@@ -490,7 +495,8 @@ class ForwardResult:
     store: TrainingDataStore
     process_names: tuple[str, ...]
     target_names: tuple[str, ...]
-    modeled_flow_names: tuple[str, ...]
+    name_modeled_FVCs: tuple[str, ...]
+    name_modeled_SVCs: tuple[str, ...]
     training_process_names: tuple[str, ...]
     per_process_total_loss: dict[str, float]
     per_process_per_target_loss: dict[str, tuple[float, ...]]
@@ -560,7 +566,7 @@ def forward_from_collection(
     if estimate_scales_hook is not None:
         state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
             collection,
-            list(store.target_names),
+            list(store.name_measured),
             custom_cfg,
         )
         scale_kwargs = {
@@ -644,15 +650,15 @@ def forward_from_collection(
             total,
             per_target,
             _per_sample,
-            n_targets=int(batch.y_meas.shape[2]) + len(extra_loss_names),
+            n_targets=int(batch.y_measured.shape[2]) + len(extra_loss_names),
             batch_size=int(batch.process_indices.shape[0]),
         )
         per_process_total[process_name] = float(total)
         per_process_per_target[process_name] = tuple(float(v) for v in per_target)
 
     target_column_labels = (
-        tuple(store.target_names)
-        + tuple(f"B_{name}_cum" for name in store.modeled_flow_names)
+        tuple(store.name_measured)
+        + tuple(f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs))
         + tuple(extra_loss_names)
     )
 
@@ -661,7 +667,8 @@ def forward_from_collection(
         store=store,
         process_names=eval_processes,
         target_names=target_column_labels,
-        modeled_flow_names=tuple(store.modeled_flow_names),
+        name_modeled_FVCs=tuple(store.name_modeled_FVCs),
+        name_modeled_SVCs=tuple(store.name_modeled_SVCs),
         training_process_names=tuple(training_process_names)
         if training_process_names is not None
         else (),
@@ -739,20 +746,23 @@ def train_collection(
         )
 
     # Compute per-target variance for loss normalization.
-    # y_meas columns are [species..., B_modeled_cum_per_modeled_feed...].
+    # y_measured columns are [species..., B_modeled_cum_per_modeled_feed...].
     # Rule:
     #   - if any nonzero variance is observed → use that variance
     #   - if all measurements are identical (variance == 0) → fall back to 1.0
     # The previous version used max(var, 1.0) which clamped small but nonzero
     # variances (e.g. cumulative base feed in kg² ~ 5e-3) to 1.0, making the
     # loss insensitive by ~200x.
-    n_y_cols = int(store.y_meas.shape[2])  # n_species + n_modeled_feeds
+    n_y_cols = int(store.y_measured.shape[2])  # n_species + n_modeled_feeds
+    # Per-target variance from real measurements only.
     _per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
     for pname in selected_processes:
         pd = store.get_process(pname)
-        y_active = np.asarray(pd.active_y_meas)  # [n_meas, n_y_cols]
+        y_active = np.asarray(pd.active_y_measured)  # [n_measured, n_y_cols]
+        mask_active = np.asarray(pd.active_mask_measured)  # [n_measured, n_y_cols]
         for col in range(n_y_cols):
-            _per_col_values[col].extend(y_active[:, col].tolist())
+            real_values = y_active[mask_active[:, col], col]
+            _per_col_values[col].extend(real_values.tolist())
     target_variance = jnp.asarray(
         [
             float(np.var(vals)) if vals and float(np.var(vals)) > VARIANCE_EPS else 1.0
@@ -760,8 +770,8 @@ def train_collection(
         ],
         dtype=jnp.float32,
     )
-    _target_labels = list(store.target_names) + [
-        f"B_{name}_cum" for name in store.modeled_flow_names
+    _target_labels = list(store.name_measured) + [
+        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
     ]
     # Custom loss hooks may declare extra per-target loss components (e.g.
     # regularization terms). They get their own labels and appear as new
@@ -782,8 +792,8 @@ def train_collection(
     # Build target_state_indices: species columns + cumulative-modeled-feed
     # columns. State layout is [species..., V_cont, B_modeled_cum_0, ...] so
     # V_cont (at index n_species) is in the state but NOT a loss target.
-    n_species = len(store.target_names)
-    n_modeled_feeds = len(store.modeled_flow_names)
+    n_species = len(store.name_measured)
+    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
     target_state_indices = jnp.asarray(
         list(range(n_species))
         + list(range(n_species + 1, n_species + 1 + n_modeled_feeds)),
@@ -870,7 +880,7 @@ def train_collection(
                     total_loss,
                     per_target,
                     per_sample,
-                    n_targets=int(current_batch.y_meas.shape[2])
+                    n_targets=int(current_batch.y_measured.shape[2])
                     + len(extra_loss_names),
                     batch_size=int(current_batch.process_indices.shape[0]),
                 )
@@ -917,8 +927,8 @@ def train_collection(
         "train harness setup: processes=%s, targets=%s source=%s steps=%d "
         "batch_size=%d optimizer=%s lr=%s grad_clip=%s",
         list(selected_processes),
-        list(store.target_names),
-        store.target_source,
+        list(store.name_measured),
+        "reactor_components" if store.name_measured_RMCs else "process_variables",
         cfg.steps,
         effective_batch_size,
         cfg.optimizer_name,
@@ -1161,14 +1171,17 @@ def train_from_collection(
         target_source=cfg.target_source,
     )
     if effective_target_order is None:
+        _resolved_source = (
+            "reactor_components" if store.name_measured_RMCs else "process_variables"
+        )
         warnings.warn(
             "No target_variable_order specified in custom.py CONFIG or --target "
-            f"flag. Defaulting to target_source={store.target_source!r} measured "
-            f"targets: {tuple(store.target_names)}. Specify "
+            f"flag. Defaulting to target_source={_resolved_source!r} measured "
+            f"targets: {tuple(store.name_measured)}. Specify "
             "CONFIG['target_variable_order'] in custom.py to silence this warning.",
             stacklevel=2,
         )
-    logger.info("Training targets: %s", tuple(store.target_names))
+    logger.info("Training targets: %s", tuple(store.name_measured))
 
     selected_processes = _ensure_process_names(store, cfg.process_names)
     train_cfg = dataclasses.replace(
@@ -1203,7 +1216,7 @@ def train_from_collection(
     if estimate_scales_hook is not None:
         state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
             collection,
-            list(store.target_names),
+            list(store.name_measured),
             custom_cfg,
         )
         scale_kwargs = {

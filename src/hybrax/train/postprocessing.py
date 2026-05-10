@@ -141,7 +141,7 @@ def _compute_dense_process_export(
         float(process.time_axis.end),
         n_dense,
     )
-    y0_scaled = process_wrapper.scale_state(process_data.y0)
+    y0_scaled = process_wrapper.scale_state(process_data.y0_measured)
     term = diffrax.ODETerm(_wrapper_vector_field)
     jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
     sol = diffrax.diffeqsolve(
@@ -720,10 +720,10 @@ def plot_process_simulations(
             for i, sp_name in enumerate(species_names):
                 ax_c = axes[i, 0]
                 comp = process.reactor_medium.components[sp_name]
-                t_meas = np.asarray(comp.concentration.times, dtype=float)
+                t_measured = np.asarray(comp.concentration.times, dtype=float)
                 v_meas = np.asarray(comp.concentration.values, dtype=float)
                 ax_c.scatter(
-                    t_meas, v_meas, s=16, zorder=5, color="black", label="measured"
+                    t_measured, v_meas, s=16, zorder=5, color="black", label="measured"
                 )
                 ax_c.plot(
                     t_dense_np,
@@ -734,7 +734,7 @@ def plot_process_simulations(
                     label="integrated",
                 )
                 # Interpolate dense prediction at measurement times for fit metrics.
-                v_pred_at_meas = np.interp(t_meas, t_dense_np, c_dense[:, i])
+                v_pred_at_meas = np.interp(t_measured, t_dense_np, c_dense[:, i])
                 mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
                 _annotate_fit(ax_c, mse, r2)
                 ax_c.set_title(f"{sp_name} [{comp.unit}]")
