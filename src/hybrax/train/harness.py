@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 import warnings
 from collections import Counter
@@ -16,6 +17,7 @@ import jax.tree_util as jtu
 import numpy as np
 import optax
 from bp_format.dataclasses import BioProcessCollection
+from bp_format.inspect import print_rhs_ode
 from bp_format.mechanistic import get_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
@@ -824,6 +826,8 @@ def train_collection(
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
     trainable_params, trainable_static = partition_trainable(reaction_module)
+    print_rhs_ode(collection)
+    sys.stdout.flush()
     print_trainable_structure(reaction_module)
     optimizer = _build_optimizer(
         cfg.optimizer_name,

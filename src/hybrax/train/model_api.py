@@ -280,7 +280,7 @@ def print_trainable_structure(
     """
     if color is None:
         color = bool(getattr(sys.stdout, "isatty", lambda: False)())
-    print(format_trainable_structure(module, color=color))
+    print(format_trainable_structure(module, color=color), flush=True)
 
 
 # ---------------------------------------------------------------------------
