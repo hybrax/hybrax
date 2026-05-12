@@ -58,7 +58,6 @@ _NONNEGATIVE_DATA_MIN = 0.0
 _MIN_REACTOR_VOLUME = 1e-10
 
 DEFAULT_MAX_SEGMENTS = 16
-DEFAULT_MAX_CTRL_POINTS = 128
 SMOOTHING_THRESHOLD = 100  # > 100 points -> smoothing spline
 
 
@@ -300,31 +299,44 @@ def _fit_smoothing_segment(
     y: jnp.ndarray,
     *,
     s: float,
-    n_ctrl: int,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    """Fit a SciPy smoothing B-spline, then resample to *n_ctrl* control points."""
+    """Fit a SciPy smoothing B-spline and return power-basis arrays."""
 
     if len(x) < 4:
-        return x, y
-    tck = interpolate.splrep(np.asarray(x), np.asarray(y), s=s, k=3)
-    x_ctrl = jnp.linspace(float(x[0]), float(x[-1]), n_ctrl)
-    y_ctrl = jnp.asarray(interpolate.splev(np.asarray(x_ctrl), tck))
-    return x_ctrl, y_ctrl
+        return _fit_interp_segment(x, y)
+
+    degree = 3
+    bspline = interpolate.make_splrep(
+        np.asarray(x, dtype=np.float64),
+        np.asarray(y, dtype=np.float64),
+        s=s,
+        k=degree,
+    )
+    ppoly = interpolate.PPoly.from_spline(bspline)
+    breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
+    return jnp.asarray(breaks, dtype=float), jnp.asarray(coeffs, dtype=float)
 
 
 def _fit_interp_segment(
     x: jnp.ndarray, y: jnp.ndarray
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    """For <= SMOOTHING_THRESHOLD points, store original sorted/unique data."""
-    _, idx = jnp.unique(x, return_index=True)
-    return x[idx], y[idx]
+    """Fit an interpolating natural cubic segment in power-basis form."""
+    x_unique, y_unique = _prepare_knots(x, y)
+    ppoly = interpolate.CubicSpline(
+        np.asarray(x_unique, dtype=np.float64),
+        np.asarray(y_unique, dtype=np.float64),
+        bc_type="natural",
+        extrapolate=True,
+    )
+    breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
+    return jnp.asarray(breaks, dtype=float), jnp.asarray(coeffs, dtype=float)
 
 
 def _combine_segment_splines(
-    segment_points: List[Tuple[jnp.ndarray, jnp.ndarray]],
+    segment_splines: List[Tuple[jnp.ndarray, jnp.ndarray]],
     boundaries: jnp.ndarray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Flatten per-segment cubic fits into TimeSeries spline arrays."""
+    """Flatten per-segment power-basis splines into TimeSeries arrays."""
     all_breaks: List[np.ndarray] = []
     all_coeffs: List[np.ndarray] = []
     segment_starts: List[int] = []
@@ -332,15 +344,7 @@ def _combine_segment_splines(
 
     boundary_arr = jnp.asarray(boundaries, dtype=float)
 
-    for seg_idx, (seg_t, seg_v) in enumerate(segment_points):
-        seg_t, seg_v = _prepare_knots(seg_t, seg_v)
-        ppoly = interpolate.CubicSpline(
-            np.asarray(seg_t, dtype=np.float64),
-            np.asarray(seg_v, dtype=np.float64),
-            bc_type="natural",
-            extrapolate=True,
-        )
-        seg_breaks, seg_coeffs = spline_ops.ppoly_to_power_basis(ppoly)
+    for seg_idx, (seg_breaks, seg_coeffs) in enumerate(segment_splines):
         if seg_coeffs.shape[0] == 0:
             continue
 
@@ -387,7 +391,6 @@ def fit_timeseries_spline(
     *,
     boundaries: Optional[jnp.ndarray] = None,
     smoothing_s: float = 0.0,
-    n_ctrl: int = DEFAULT_MAX_CTRL_POINTS,
 ) -> TimeSeries:
     """Fit segmented cubic spline state onto a TimeSeries."""
     t_arr = jnp.asarray(ts.times)
@@ -409,7 +412,7 @@ def fit_timeseries_spline(
     )
     actual_n_segments = len(segments)
 
-    segment_points: List[Tuple[jnp.ndarray, jnp.ndarray]] = []
+    segment_splines: List[Tuple[jnp.ndarray, jnp.ndarray]] = []
     kind = "interpax_cubic"
     used_smoothing_fit = False
 
@@ -425,31 +428,33 @@ def fit_timeseries_spline(
             else:
                 seg_t = jnp.array([0.0, _CONSTANT_SPLINE_DT])
                 seg_v = jnp.array([0.0, 0.0])
-            segment_points.append((seg_t, seg_v))
+            segment_splines.append(_fit_interp_segment(seg_t, seg_v))
             continue
 
         strategy = choose_spline_kind(n_pts)
         if strategy == "smoothing_bspline":
             used_smoothing_fit = True
-            xc, yc = _fit_smoothing_segment(seg_t, seg_v, s=smoothing_s, n_ctrl=n_ctrl)
+            segment_spline = _fit_smoothing_segment(seg_t, seg_v, s=smoothing_s)
         else:
-            xc, yc = _fit_interp_segment(seg_t, seg_v)
+            segment_spline = _fit_interp_segment(seg_t, seg_v)
 
-        segment_points.append((xc, yc))
+        segment_splines.append(segment_spline)
 
     breaks, coeffs, segment_start_piece_idx = _combine_segment_splines(
-        segment_points, boundaries
+        segment_splines, boundaries
     )
 
     metadata = {
         "smoothing_s": float(smoothing_s),
-        "n_ctrl": int(n_ctrl),
         "actual_segments": int(actual_n_segments),
         "fit_strategy": "smoothing_bspline" if used_smoothing_fit else "cubic_interp",
         "kind": kind,
-        "bc_type": "natural",
         "segment_boundaries": np.asarray(boundaries, dtype=float).tolist(),
     }
+    if used_smoothing_fit:
+        metadata["smoothing_storage"] = "direct_power_basis"
+        metadata["smoothing_bc_type"] = "not-a-knot"
+        metadata["interp_segment_bc_type"] = "natural"
 
     return TimeSeries(
         times=jnp.asarray(t_arr, dtype=float),
@@ -462,72 +467,17 @@ def fit_timeseries_spline(
     )
 
 
-def _segment_boundaries_from_series(rep: TimeSeries) -> jnp.ndarray:
-    """Return explicit segment boundaries for a spline-backed TimeSeries."""
-    metadata = rep.metadata if isinstance(rep.metadata, dict) else {}
-    boundaries = metadata.get("segment_boundaries")
-    if boundaries is not None:
-        return jnp.asarray(boundaries, dtype=float)
-    return jnp.asarray([rep.breaks[0], rep.breaks[-1]], dtype=float)
-
-
-def build_interpax_spline(rep: TimeSeries):
-    """Reconstruct per-segment interpax splines from a TimeSeries.
-
-    Returns ``(splines, boundaries)`` where *splines* is a list of
-    per-segment interpax spline objects (one per segment) and *boundaries*
-    is a 1-D array of length ``n_segments + 1``.
-    """
-    boundaries = _segment_boundaries_from_series(rep)
-    if _has_spline_state(rep):
-        piece_starts = jnp.asarray(rep.segment_start_piece_idx, dtype=int)
-        piece_starts = np.asarray(piece_starts, dtype=int)
-        breaks = jnp.asarray(rep.breaks, dtype=float)
-        coeffs = jnp.asarray(rep.coeffs, dtype=float)
-        splines = []
-        n_pieces = int(coeffs.shape[0])
-        if len(piece_starts) + 1 != len(boundaries):
-            raise ValueError(
-                "Segment boundary metadata must align with segment_start_piece_idx."
-            )
-        for i, start in enumerate(piece_starts):
-            end = piece_starts[i + 1] if i + 1 < len(piece_starts) else n_pieces
-            seg_breaks = breaks[start : end + 1]
-            if not (
-                np.isclose(float(seg_breaks[0]), float(boundaries[i]))
-                and np.isclose(float(seg_breaks[-1]), float(boundaries[i + 1]))
-            ):
-                raise ValueError(
-                    "Spline segment breaks must match stored segment boundaries."
-                )
-            seg_coeffs = coeffs[start:end].T[::-1]
-            splines.append(
-                interpax.PPoly.construct_fast(
-                    seg_coeffs,
-                    seg_breaks,
-                    extrapolate=True,
-                )
-            )
-        return splines, boundaries
-
-    metadata = rep.metadata if isinstance(rep.metadata, dict) else {}
-    bc_type = metadata.get("bc_type", "natural")
-    segments = split_timeseries(rep, boundaries)
-    splines = []
-    for seg in segments:
-        xi = jnp.asarray(seg.times, dtype=float)
-        yi = jnp.asarray(seg.values, dtype=float)
-        sp = interpax.CubicSpline(xi, yi, bc_type=bc_type, check=False)
-        splines.append(sp)
-    return splines, boundaries
-
-
-def evaluate_spline_at(rep: TimeSeries, t: float) -> float:
-    """Evaluate a segmented cubic TimeSeries at scalar time *t* (not jitted)."""
-    splines, boundaries = build_interpax_spline(rep)
-    idx = int(jnp.searchsorted(boundaries[1:], float(t), side="right"))
-    idx = max(0, min(idx, len(splines) - 1))
-    return float(splines[idx](t))
+def _interpax_ppoly_from_spline_state(rep: TimeSeries) -> interpax.PPoly:
+    """Build an interpax PPoly from stored TimeSeries power-basis state."""
+    if not _has_spline_state(rep):
+        raise ValueError("spline representation required for interpax conversion")
+    coeffs = jnp.asarray(rep.coeffs, dtype=float)
+    breaks = jnp.asarray(rep.breaks, dtype=float)
+    if not bool(jnp.all(jnp.diff(breaks) > 0.0)):
+        raise ValueError("TimeSeries spline breaks must be strictly increasing")
+    if coeffs.shape[0] + 1 != breaks.shape[0]:
+        raise ValueError("TimeSeries spline coeffs must align with breaks")
+    return interpax.PPoly.construct_fast(coeffs.T[::-1], breaks, extrapolate=True)
 
 
 def make_constant_spline(
@@ -1705,7 +1655,7 @@ class BacktransformSpline(eqx.Module):
     :class:`TimeSeries`.
     """
 
-    c_star_spline: interpax.CubicSpline  # or PchipInterpolator (PPoly subclass)
+    c_star_spline: interpax.PPoly
     adf_ts: TimeSeries
     feed_corr_ts: TimeSeries
     dadf_ts: TimeSeries
@@ -1800,19 +1750,18 @@ def build_backtransform_spline(
         )
 
     rep = species_transform.c_star_ts
-    metadata = rep.metadata if isinstance(rep.metadata, dict) else {}
-    xi = jnp.asarray(rep.times, dtype=float)
-    yi = jnp.asarray(rep.values, dtype=float)
+    if not _has_spline_state(rep):
+        raise ValueError(
+            "Pseudobatch c_star_ts must carry stored spline state; "
+            "regenerate the pseudobatch transform."
+        )
+    xi_source = rep.times if rep.times is not None else rep.breaks
+    xi = jnp.asarray(xi_source, dtype=float)
 
     is_constant = bool(species_transform.is_constant)
     constant_value = jnp.array(species_transform.constant_value or 0.0)
 
-    cstar_method = species_transform.cstar_interp
-    if cstar_method == "pchip":
-        c_star_spline = interpax.PchipInterpolator(xi, yi, check=False)
-    else:
-        bc_type = metadata.get("bc_type", "natural")
-        c_star_spline = interpax.CubicSpline(xi, yi, bc_type=bc_type, check=False)
+    c_star_spline = _interpax_ppoly_from_spline_state(rep)
 
     adf_ts = transform.adf_ts
     feed_corr_ts = species_transform.feed_corr_ts

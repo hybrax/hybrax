@@ -705,7 +705,7 @@ def _evaluate_series_curve(
     species_name=None,
 ):
     """Evaluate a spline-backed TimeSeries over [t_start, t_end]."""
-    from .splines import build_backtransform_spline, evaluate_spline_at
+    from .splines import build_backtransform_spline
 
     t_plot = np.linspace(t_start, t_end, n_points)
     if series_type == "backtransform":
@@ -717,7 +717,7 @@ def _evaluate_series_curve(
         bt = build_backtransform_spline(pseudobatch_transform, species_name)
         y_plot = np.array([float(bt(jnp.array(t))) for t in t_plot])
     else:
-        y_plot = np.array([evaluate_spline_at(series, t) for t in t_plot])
+        y_plot = np.asarray(series.evaluate_many(jnp.asarray(t_plot, dtype=float)))
     return t_plot, y_plot
 
 

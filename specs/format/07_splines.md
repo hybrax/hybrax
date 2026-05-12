@@ -138,7 +138,6 @@ uses the sample-first value of `S(t)` at the event timestamp.
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `DEFAULT_MAX_SEGMENTS` | `16` | Maximum number of segments in padded storage |
-| `DEFAULT_MAX_CTRL_POINTS` | `128` | Maximum control points per segment |
 | `SMOOTHING_THRESHOLD` | `100` | Switch from interpolation to smoothing spline above this many points |
 | PCHIP overshoot threshold | 5 % of data range | Cubic→PCHIP switchover for near-stepwise `c_star` |
 
@@ -148,7 +147,7 @@ uses the sample-first value of `S(t)` at the event timestamp.
 
 | Function | Description |
 |----------|-------------|
-| `fit_timeseries_spline(ts, boundaries, max_segments, max_ctrl_points)` | Fit segmented spline state onto a `TimeSeries`. Returns a spline-backed `TimeSeries`. |
+| `fit_timeseries_spline(ts, boundaries, smoothing_s)` | Fit segmented spline state onto a `TimeSeries`. Returns a spline-backed `TimeSeries`. |
 | `choose_spline_kind(n_points)` | Returns `"smoothing_bspline"` (> `SMOOTHING_THRESHOLD` pts) or `"cubic_interp"` otherwise. |
 | `make_interpax_spline(t, y, bc_type)` | Create an `interpax.CubicSpline` from arrays. |
 | `make_pchip_spline(t, y)` | Create a monotonicity-preserving PCHIP spline from arrays. |
@@ -158,8 +157,8 @@ uses the sample-first value of `S(t)` at the event timestamp.
 
 | Function | Description |
 |----------|-------------|
-| `build_interpax_spline(rep)` | Reconstruct per-segment `interpax.CubicSpline` objects from a spline-backed `TimeSeries`. |
-| `evaluate_spline_at(rep, t)` | Evaluate a spline-backed `TimeSeries` at a single time point. |
+| `TimeSeries.evaluate(t)` | Evaluate a spline-backed `TimeSeries` at a single time point. |
+| `TimeSeries.evaluate_many(t)` | Evaluate a spline-backed `TimeSeries` on a 1-D time grid. |
 
 ### Segmentation
 

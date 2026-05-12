@@ -8,7 +8,7 @@ import warnings
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
-from scipy.interpolate import BSpline, PPoly, splrep
+from scipy.interpolate import PPoly, make_splrep
 
 from . import grid_utils
 from . import spline_ops
@@ -576,8 +576,7 @@ class TimeSeries(eqx.Module):
         degree = min(3, int(x_arr.shape[0] - 1))
 
         for _ in range(APPROX_MAX_REFIT_ATTEMPTS):
-            tck = splrep(x_arr, y_arr, k=degree, s=s_val)
-            bspline = BSpline(*tck)
+            bspline = make_splrep(x_arr, y_arr, k=degree, s=s_val)
             ppoly = PPoly.from_spline(bspline)
             breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
             probe = TimeSeries(

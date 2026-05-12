@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import tempfile
 from pathlib import Path
+from scipy import interpolate
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -27,6 +28,8 @@ from bp_format import (
     Volume,
     ProcessVariable,
     DiscreteEvents,
+    PseudobatchSpeciesTransform,
+    PseudobatchTransform,
 )
 from bp_format.splines import (
     detect_discrete_state_events,
@@ -34,8 +37,7 @@ from bp_format.splines import (
     split_timeseries,
     choose_spline_kind,
     fit_timeseries_spline,
-    build_interpax_spline,
-    evaluate_spline_at,
+    make_constant_spline,
     build_pseudobatch_inputs,
     build_pseudobatch_transform,
     build_splines,
@@ -274,34 +276,24 @@ def test_fit_roundtrip_accuracy():
     ts = _ts([0.0, 2.0, 4.0, 6.0, 8.0], [0.0, 1.0, 0.0, 1.0, 0.0])
     rep = fit_timeseries_spline(ts)
     for t_val, expected in zip([0.0, 2.0, 4.0, 6.0, 8.0], [0.0, 1.0, 0.0, 1.0, 0.0]):
-        result = evaluate_spline_at(rep, t_val)
+        result = float(rep.evaluate(t_val))
         assert abs(result - expected) < 1e-4, (
             f"At t={t_val}: got {result}, expected {expected}"
         )
 
 
 # ---------------------------------------------------------------------------
-# build_interpax_spline / evaluate_spline_at
+# TimeSeries.evaluate
 # ---------------------------------------------------------------------------
 
 
-def test_build_interpax_spline():
-    ts = _ts([0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 4.0, 9.0])
-    rep = fit_timeseries_spline(ts)
-    splines, boundaries = build_interpax_spline(rep)
-    assert len(splines) == 1
-    assert len(boundaries) == 2
-    val = float(splines[0](jnp.array(1.0)))
-    assert abs(val - 1.0) < 1e-4
-
-
-def test_evaluate_spline_at_multi_segment():
+def test_timeseries_evaluate_multi_segment_fit():
     ts = _ts([0.0, 1.0, 2.0, 5.0, 6.0, 7.0], [0.0, 1.0, 2.0, 10.0, 11.0, 12.0])
     boundaries = np.array([0.0, 3.0, 7.0])
     rep = fit_timeseries_spline(ts, boundaries=boundaries)
-    val_seg1 = evaluate_spline_at(rep, 1.0)
+    val_seg1 = float(rep.evaluate(1.0))
     assert abs(val_seg1 - 1.0) < 1e-3
-    val_seg2 = evaluate_spline_at(rep, 6.0)
+    val_seg2 = float(rep.evaluate(6.0))
     assert abs(val_seg2 - 11.0) < 1e-3
 
 
@@ -353,8 +345,8 @@ def test_spline_json_roundtrip():
     )
 
     for t_val in [0.0, 1.0, 2.0, 3.0, 4.0]:
-        orig = evaluate_spline_at(rep, t_val)
-        loaded_val = evaluate_spline_at(loaded_pv.values, t_val)
+        orig = float(rep.evaluate(t_val))
+        loaded_val = float(loaded_pv.values.evaluate(t_val))
         assert abs(orig - loaded_val) < 1e-6, (
             f"At t={t_val}: orig={orig}, loaded={loaded_val}"
         )
@@ -474,6 +466,138 @@ def test_pseudobatch_transform_payload_round_trips_through_serialization():
             rtol=1e-6,
             atol=1e-6,
         )
+
+
+def test_smoothing_spline_uses_bspline_knots_without_uniform_resampling():
+    """Smoothing path stores SciPy's fitted spline pieces directly."""
+    n = 150
+    times = jnp.linspace(0.0, 10.0, n)
+    rng = np.random.default_rng(0)
+    values = jnp.asarray(np.sin(np.asarray(times)) + 0.05 * rng.standard_normal(n))
+    ts = TimeSeries(times=times, values=values)
+
+    fitted = fit_timeseries_spline(ts, smoothing_s=2.0)
+    scipy_bspline = interpolate.make_splrep(
+        np.asarray(times), np.asarray(values), s=2.0, k=3
+    )
+
+    assert fitted.metadata["fit_strategy"] == "smoothing_bspline"
+    assert "bc_type" not in fitted.metadata
+    assert fitted.metadata["smoothing_storage"] == "direct_power_basis"
+    assert "n_ctrl" not in fitted.metadata
+    assert "n_ctrl_semantics" not in fitted.metadata
+    for t_val in np.linspace(0.25, 9.75, 7):
+        assert float(fitted.evaluate(t_val)) == pytest.approx(
+            float(scipy_bspline(t_val)), abs=1e-6
+        )
+
+
+def test_exact_smoothing_bspline_uses_scipy_default_knots():
+    """Exact smoothing path delegates knot selection to SciPy."""
+    n = 150
+    times = jnp.linspace(0.0, 10.0, n)
+    values = jnp.sin(times)
+    ts = TimeSeries(times=times, values=values)
+
+    fitted = fit_timeseries_spline(ts, smoothing_s=0.0)
+    scipy_bspline = interpolate.make_splrep(
+        np.asarray(times), np.asarray(values), s=0.0, k=3
+    )
+
+    assert fitted.metadata["fit_strategy"] == "smoothing_bspline"
+    assert "n_ctrl" not in fitted.metadata
+    assert "n_ctrl_semantics" not in fitted.metadata
+    for t_val in np.linspace(0.25, 9.75, 7):
+        assert float(fitted.evaluate(t_val)) == pytest.approx(
+            float(scipy_bspline(t_val)), abs=1e-6
+        )
+
+
+def test_segmented_smoothing_spline_matches_per_segment_scipy_fit():
+    """Segmented smoothing preserves each segment's fitted BSpline pieces."""
+    n = 302
+    times = jnp.linspace(0.0, 20.0, n)
+    values = jnp.sin(times) + 0.1 * jnp.cos(3.0 * times)
+    boundaries = np.array([0.0, 10.0, 20.0])
+    fitted = fit_timeseries_spline(
+        TimeSeries(times=times, values=values),
+        boundaries=boundaries,
+        smoothing_s=1.0,
+    )
+
+    for lo, hi in zip(boundaries[:-1], boundaries[1:]):
+        mask = (np.asarray(times) >= lo) & (np.asarray(times) <= hi)
+        scipy_bspline = interpolate.make_splrep(
+            np.asarray(times)[mask],
+            np.asarray(values)[mask],
+            s=1.0,
+            k=3,
+        )
+        for t_val in np.linspace(lo + 0.25, hi - 0.25, 4):
+            assert float(fitted.evaluate(t_val)) == pytest.approx(
+                float(scipy_bspline(t_val)), abs=1e-6
+            )
+
+
+def test_backtransform_uses_stored_cstar_spline_state():
+    """Backtransform reconstruction must not refit smoothed c* raw samples."""
+    n = 150
+    times = jnp.linspace(0.0, 10.0, n)
+    rng = np.random.default_rng(1)
+    values = jnp.asarray(np.sin(np.asarray(times)) + 0.1 * rng.standard_normal(n))
+    c_star_ts = fit_timeseries_spline(
+        TimeSeries(times=times, values=values), smoothing_s=2.0
+    )
+    zero_ts = make_constant_spline(0.0, 0.0, 10.0)
+    one_ts = make_constant_spline(1.0, 0.0, 10.0)
+    transform = PseudobatchTransform(
+        adf_ts=one_ts,
+        reactor_volume_ts=one_ts,
+        sample_compensation_ts=one_ts,
+        accumulated_feed_ts={},
+        species={
+            "glucose": PseudobatchSpeciesTransform(
+                species="glucose",
+                c_star_ts=c_star_ts,
+                feed_corr_ts=zero_ts,
+                cstar_interp="cubic",
+            )
+        },
+    )
+
+    backtransform = build_backtransform_spline(transform, "glucose")
+
+    for t_val in np.linspace(0.25, 9.75, 7):
+        assert float(backtransform(jnp.asarray(t_val))) == pytest.approx(
+            float(c_star_ts.evaluate(t_val)), abs=1e-6
+        )
+
+
+def test_backtransform_rejects_cstar_without_stored_spline_state():
+    """Pseudobatch backtransform requires canonical spline-backed c* carriers."""
+    raw_c_star_ts = TimeSeries(
+        times=jnp.asarray([0.0, 1.0, 2.0]),
+        values=jnp.asarray([0.0, 1.0, 0.0]),
+    )
+    zero_ts = make_constant_spline(0.0, 0.0, 2.0)
+    one_ts = make_constant_spline(1.0, 0.0, 2.0)
+    transform = PseudobatchTransform(
+        adf_ts=one_ts,
+        reactor_volume_ts=one_ts,
+        sample_compensation_ts=one_ts,
+        accumulated_feed_ts={},
+        species={
+            "glucose": PseudobatchSpeciesTransform(
+                species="glucose",
+                c_star_ts=raw_c_star_ts,
+                feed_corr_ts=zero_ts,
+                cstar_interp="cubic",
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="c_star_ts must carry stored spline state"):
+        build_backtransform_spline(transform, "glucose")
 
 
 def test_smoothing_spline_metadata_round_trips_through_serialization():
