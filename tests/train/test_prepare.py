@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from bp_format.dataclasses import (
+    BiologicalOde,
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -90,6 +91,75 @@ def _make_feed_collection() -> BioProcessCollection:
     )
 
 
+def _make_explicit_ode_collection() -> BioProcessCollection:
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=1.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_A": FeedVolumeChange(
+                    name="feed_A",
+                    unit="L/h",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]),
+                        values=jnp.asarray([0.1, 0.1]),
+                    ),
+                    feed_medium=feed_medium,
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]),
+                        values=jnp.asarray([0.1, 0.2]),
+                    ),
+                )
+            },
+        ),
+        process_variables={
+            "X": ProcessVariable(
+                name="X",
+                unit="g/L",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 1.0]),
+                    values=jnp.asarray([1.0, 1.2]),
+                ),
+            )
+        },
+    )
+    process.biological_ode = BiologicalOde(
+        algebraic={"growth": "mu * biomass"},
+        rates={"mu": (None, None), "r_X": (None, None)},
+        derivatives={"biomass": "growth", "X": "r_X"},
+    )
+    return BioProcessCollection(metadata={}, processes={"p1": process})
+
+
 def _write_sample_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
@@ -108,6 +178,8 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
                 "            values=jnp.asarray([0.1, 0.2]),",
                 "        ),",
                 "    )",
+                "    process.biological_ode = None",
+                "    process.__post_init__()",
                 "    return collection",
             ]
         ),
@@ -148,6 +220,8 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "        concentration=StaticVariable(0.0),",
                 "        is_controlled=False,",
                 "    )",
+                "    process.biological_ode = None",
+                "    process.__post_init__()",
                 "    return collection",
             ]
         ),
@@ -190,6 +264,8 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "        concentration=StaticVariable(0.0),",
                 "        is_controlled=False,",
                 "    )",
+                "    process.biological_ode = None",
+                "    process.__post_init__()",
                 "    return collection",
             ]
         ),
@@ -229,6 +305,10 @@ def _make_invalid_collection() -> BioProcessCollection:
                 ),
             )
         },
+    )
+    process.biological_ode = BiologicalOde(
+        rates={"r_X": (None, None)},
+        derivatives={"X": "r_X"},
     )
     return BioProcessCollection(
         metadata={"case_study": {"case_id": "invalid"}}, processes={"invalid": process}
@@ -378,6 +458,108 @@ def test_load_raw_collection_reads_input():
     assert "hybrax" in (collection.metadata or {})
 
 
+def test_prepare_artifact_preserves_valid_user_biological_ode(tmp_path):
+    collection = _make_explicit_ode_collection()
+    expected_ode = collection.processes["p1"].biological_ode
+
+    prepared = prepare_artifact(
+        collection,
+        tmp_path / "prepared-explicit-ode.json",
+    )
+
+    prepared_ode = prepared.processes["p1"].biological_ode
+    assert prepared_ode == expected_ode
+    reloaded = load_process_collection_json(tmp_path / "prepared-explicit-ode.json")
+    assert reloaded.processes["p1"].biological_ode == expected_ode
+
+
+def test_prepare_artifact_rejects_missing_biological_ode_after_transform(
+    tmp_path,
+):
+    collection = _make_explicit_ode_collection()
+    custom_py = tmp_path / "clear_ode.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "def transform_process_collection(collection, config):",
+                "    collection.processes['p1'].biological_ode = None",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="biological_ode is missing"):
+        prepare_artifact(
+            collection,
+            tmp_path / "prepared-missing-ode.json",
+            custom_py=custom_py,
+        )
+
+
+def test_prepare_artifact_rejects_invalid_stale_biological_ode_after_transform(
+    tmp_path,
+):
+    collection = _make_explicit_ode_collection()
+    collection.processes["p1"].biological_ode = None
+    collection.processes["p1"].__post_init__()
+    stale_ode = collection.processes["p1"].biological_ode
+    assert stale_ode.derivatives == {"biomass": "q_biomass * biomass", "X": "r_X"}
+
+    custom_py = tmp_path / "control_x.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "def transform_process_collection(collection, config):",
+                "    process = collection.processes['p1']",
+                "    process.process_variables['X'].is_controlled = True",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="biological_ode invalid"):
+        prepare_artifact(
+            collection,
+            tmp_path / "prepared-regenerated-ode.json",
+            custom_py=custom_py,
+        )
+
+
+def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
+    tmp_path,
+):
+    collection = _make_explicit_ode_collection()
+    collection.processes["p1"].biological_ode = None
+    collection.processes["p1"].__post_init__()
+
+    custom_py = tmp_path / "control_x_regenerate.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "def transform_process_collection(collection, config):",
+                "    process = collection.processes['p1']",
+                "    process.process_variables['X'].is_controlled = True",
+                "    process.biological_ode = None",
+                "    process.__post_init__()",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    prepared = prepare_artifact(
+        collection,
+        tmp_path / "prepared-regenerated-ode.json",
+        custom_py=custom_py,
+    )
+
+    prepared_ode = prepared.processes["p1"].biological_ode
+    assert prepared_ode.derivatives == {"biomass": "q_biomass * biomass"}
+    assert prepared_ode.rates == {"q_biomass": (None, None)}
+
+
 def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     output = tmp_path / "prepared.json"
     custom_py = tmp_path / "custom.py"
@@ -436,6 +618,8 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
                 "    for process in collection.processes.values():",
                 "        process.process_variables['CF'].is_controlled = True",
                 "        process.process_variables['T'].is_controlled = True",
+                "        process.biological_ode = None",
+                "        process.__post_init__()",
                 "    return collection",
             ]
         ),
@@ -646,6 +830,8 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
         values=jnp.asarray([0.0, 0.0]),
     )
     process.volume.volume_changes["feed_A"].feed_medium.components = {}
+    process.biological_ode = None
+    process.__post_init__()
 
     with pytest.raises(
         ValueError,
@@ -665,6 +851,8 @@ def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
                 "            process.process_variables['CF'].is_controlled = True",
                 "        else:",
                 "            process.process_variables['T'].is_controlled = True",
+                "        process.biological_ode = None",
+                "        process.__post_init__()",
                 "    return collection",
             ]
         ),

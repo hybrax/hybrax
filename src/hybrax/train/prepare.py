@@ -280,21 +280,16 @@ def prepare_artifact(
         if old_name != process_name:
             reverse_rename_map[process_name] = old_name
 
-    # transform_process_collection may have toggled is_controlled flags or
-    # added/removed components; regenerate the auto-generated biological_ode
-    # so it reflects the post-transform structure (BioProcess.__post_init__
-    # only fills biological_ode when it is None — explicitly clear and re-run
-    # so stale auto-gen does not survive the transform).
-    for process in collection.processes.values():
-        process.biological_ode = None
-        process.__post_init__()
-
     prepared_semantics: dict[str, dict[str, object]] = {}
     for process_name, process in collection.processes.items():
         prepared_semantics[process_name] = summarize_process_semantics(process)
 
     semantics_validation_report = ensure_prepared_training_semantics(collection)
-    prepared_validation_report = validate_collection(collection, strict=True)
+    prepared_validation_report = validate_collection(
+        collection,
+        strict=True,
+        require_biological_ode=True,
+    )
     semantics_provenance = _build_semantics_provenance(
         raw_snapshots=raw_semantics,
         prepared_snapshots=prepared_semantics,

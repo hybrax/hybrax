@@ -18,14 +18,21 @@ def validate_collection(
     collection: BioProcessCollection,
     *,
     strict: bool = False,
+    require_biological_ode: bool = False,
 ) -> dict[str, dict[str, object]]:
     report: dict[str, dict[str, object]] = {}
 
     for process_name, process in collection.processes.items():
         ok, messages = validate_process(process)
+        process_messages = list(messages)
+        if require_biological_ode and process.biological_ode is None:
+            ok = False
+            process_messages.append(
+                "biological_ode is missing after transform_process_collection"
+            )
         report[process_name] = {
             "ok": bool(ok),
-            "messages": list(messages),
+            "messages": process_messages,
         }
 
     if strict:
