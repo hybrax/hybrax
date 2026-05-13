@@ -33,7 +33,6 @@ from .validation import (
     ensure_required_controls,
     summarize_process_semantics,
     validate_collection,
-    validate_raw_collection,
 )
 
 
@@ -248,7 +247,7 @@ def prepare_artifact(
     resolved_config = defaults
 
     raw_collection = load_raw_collection(input_json, case_study=case_study)
-    validation_report = validate_raw_collection(
+    validation_report = validate_collection(
         raw_collection,
         strict=bool(resolved_config.get("strict_bp_format_validation", False)),
     )

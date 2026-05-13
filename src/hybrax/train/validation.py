@@ -40,14 +40,6 @@ def validate_collection(
     return report
 
 
-def validate_raw_collection(
-    collection: BioProcessCollection,
-    *,
-    strict: bool = False,
-) -> dict[str, dict[str, object]]:
-    return validate_collection(collection, strict=strict)
-
-
 def _serialize_concentration(value: TimeSeries | StaticVariable) -> dict[str, object]:
     if isinstance(value, StaticVariable):
         return {
