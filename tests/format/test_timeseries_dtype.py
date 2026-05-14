@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import pytest
 
 from bp_format.time_series.timeseries import TimeSeries
-from bp_format.splines import _fit_spline_timeseries
+from bp_format.splines import fit_timeseries_spline
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +232,7 @@ assert c.values.dtype == jnp.float32
 def test_evaluate_many_roundtrip_float64_tight():
     t = jnp.asarray([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0])
     y = jnp.asarray([1.0, 1.5, 2.0, 1.8, 1.2, 0.8, 1.0])
-    ts = _fit_spline_timeseries(t, y)
+    ts = fit_timeseries_spline(TimeSeries(times=t, values=y))
 
     assert ts.dtype == jnp.dtype("float64")
 

@@ -9,7 +9,7 @@ This module provides the pseudobatch transformation pipeline and spline fitting 
 The module handles three related tasks:
 
 1. **Pseudobatch normalization** — transforms fed-batch concentrations to batch-equivalent pseudo-concentrations by removing dilution and feed-addition effects.
-2. **Smooth spline fitting** — fits a cubic or PCHIP spline to the resulting pseudo-concentrations (which are smooth by design).
+2. **Smooth spline fitting** — fits smoothing `TimeSeries` splines to the resulting pseudo-concentrations (which are smooth by design).
 3. **Backtransformation** — reconstructs real-space concentrations from the pseudo-concentration spline, the accumulated dilution factor (ADF), and the feed-correction trajectory.
 
 ## Mathematical background
@@ -94,22 +94,18 @@ polynomial pieces plus `continuity_side="left"` semantics.
    `TimeSeries` objects for reactor volume, accumulated feed, sample
    compensation, ADF, and feed correction. It computes `c_star = meas_conc ·
    adf − feed_corr` at measurement times.
-2. **`build_splines(inputs, process, species_name)`** — fits a cubic spline (or
-   PCHIP, see below) through `(meas_times, c_star)` and passes through the
-   canonical `adf_ts` and `feed_corr_ts`.
-3. **`to_timeseries(inputs, splines, species_name)`** — converts the runtime pseudobatch payload into the canonical transformed `TimeSeries` carrier with nested `metadata["transform"]["series"]` payloads for `adf_ts` and `feed_corr_ts`.
+2. **`build_splines(inputs, process, species_name)`** — builds the runtime
+   backtransform payload for `(meas_times, c_star)` and passes through the
+   canonical `adf_ts` and `feed_corr_ts`. Stored `TimeSeries` carriers use the
+   common smoothing-B-spline policy: segments with at least four points use
+   SciPy cubic smoothing B-splines (`smoothing_s=0` is exact/interpolating),
+   while shorter segments fall back to interpolating `CubicSpline`. Mixed
+   segmented fits can therefore combine not-a-knot smoothing B-spline pieces
+   with natural-CubicSpline fallback pieces at segment boundaries.
+3. **`to_timeseries(inputs, splines, species_name)`** — converts pseudobatch samples into the canonical transformed `TimeSeries` carrier, using the same smoothing-B-spline policy as `build_splines`.
 4. **`evaluate_real_concentration(t_eval, splines)`** — evaluates `c(t) =
    (cs(t) + fc(t)) / ADF(t)` with ADF and feed correction evaluated via
    `TimeSeries.evaluate`.
-
-### Cubic vs PCHIP fallback
-
-`build_splines` starts with an `interpax.CubicSpline` through `(meas_times, c_star)`. It then checks a dense evaluation of the spline and switches to a PCHIP (monotonicity-preserving) spline when either:
-
-- the cubic goes negative on any dense point while the raw `c_star` values are all non-negative, or
-- the cubic overshoots the raw `c_star` range by more than 5 % of the data span.
-
-The overshoot check catches processes with stepwise `c_star` (e.g. bolus-only processes with no continuous feed, where `c_star = meas · ADF` is essentially piecewise constant). In such cases a natural cubic spline exhibits Gibbs-style oscillation between knots; PCHIP traces the staircase monotonically.
 
 ## Design rationale
 
@@ -138,8 +134,7 @@ uses the sample-first value of `S(t)` at the event timestamp.
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `DEFAULT_MAX_SEGMENTS` | `16` | Maximum number of segments in padded storage |
-| `SMOOTHING_THRESHOLD` | `100` | Switch from interpolation to smoothing spline above this many points |
-| PCHIP overshoot threshold | 5 % of data range | Cubic→PCHIP switchover for near-stepwise `c_star` |
+| Smoothing B-spline minimum samples | `4` | Segments with fewer samples fall back to interpolating `CubicSpline` |
 
 ## Public API
 
@@ -147,10 +142,8 @@ uses the sample-first value of `S(t)` at the event timestamp.
 
 | Function | Description |
 |----------|-------------|
-| `fit_timeseries_spline(ts, boundaries, smoothing_s)` | Fit segmented spline state onto a `TimeSeries`. Returns a spline-backed `TimeSeries`. |
-| `choose_spline_kind(n_points)` | Returns `"smoothing_bspline"` (> `SMOOTHING_THRESHOLD` pts) or `"cubic_interp"` otherwise. |
+| `fit_timeseries_spline(ts, boundaries, smoothing_s)` | Fit segmented spline state onto a `TimeSeries`. Segments with at least four points use SciPy cubic smoothing B-splines; `smoothing_s=0` gives an exact/interpolating fit. Shorter segments fall back to interpolating `CubicSpline`. |
 | `make_interpax_spline(t, y, bc_type)` | Create an `interpax.CubicSpline` from arrays. |
-| `make_pchip_spline(t, y)` | Create a monotonicity-preserving PCHIP spline from arrays. |
 | `make_constant_spline(value, t_start, t_end)` | Create a constant-valued spline over a time range. |
 
 ### Evaluation
@@ -173,8 +166,9 @@ uses the sample-first value of `S(t)` at the event timestamp.
 | Function | Description |
 |----------|-------------|
 | `build_pseudobatch_inputs(process, species_name)` | Build canonical pseudobatch `TimeSeries` objects and measurement-level `c_star`, `adf_at_meas`, and `feed_corr_at_meas`. |
-| `build_splines(inputs, process=None, species_name=None)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: cubic/PCHIP `spline_cstar`, plus canonical `adf_ts` and `feed_corr_ts`. |
-| `to_timeseries(inputs, splines, species_name)` | Convert the in-memory pseudobatch payload to the canonical transformed `TimeSeries` carrier used for serialization and runtime backtransform. |
+| `build_pseudobatch_transform(process, species_names, cstar_smoothing_s)` | Build process-level pseudobatch `TimeSeries` storage, including smoothed `c_star_ts` carriers when `cstar_smoothing_s > 0`. |
+| `build_splines(inputs, process=None, species_name=None, cstar_smoothing_s=0.0)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: `spline_cstar`, plus canonical `adf_ts` and `feed_corr_ts`. |
+| `to_timeseries(inputs, splines, species_name, cstar_smoothing_s=0.0)` | Convert the in-memory pseudobatch payload to the canonical transformed `TimeSeries` carrier used for serialization and runtime backtransform. |
 | `evaluate_real_concentration(t_eval, splines)` | Evaluate the backtransformed real concentration using `TimeSeries.evaluate` for ADF and feed correction. |
 
 ### JAX-compatible backtransform classes
@@ -188,7 +182,7 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 ```
 
 Fields:
-- `c_star_spline` — interpax `CubicSpline` or `PchipInterpolator` for `c*`
+- `c_star_spline` — interpax `PPoly` view of the stored `TimeSeries` c* spline
 - `adf_ts`, `feed_corr_ts` — canonical transform `TimeSeries`
 - `dadf_ts`, `dfc_ts` — derivative `TimeSeries` for smooth RHS terms
 - `is_constant` — bypass flag for constant-concentration species
@@ -288,7 +282,7 @@ On the three real datasets `10_martens_2025_f`, `12_martens_expanded`, and `02_g
 - `rel@gt_p90 < 1 %` between measurements on dense ground-truth CSVs for the fed species (`glucose`, `glutamine`) on all martens datasets.
 - `rel@gt_p99 < 5 %` for all species on dense continuous-feed datasets (`12_martens_expanded`).
 
-Outliers beyond this range (e.g. `10_martens_2025_f` glucose at its sharpest peak) are a sampling-density limitation: 9 sparse meas points cannot fully constrain a cubic/PCHIP spline through rapid transitions. They are not pipeline bugs.
+Outliers beyond this range (e.g. `10_martens_2025_f` glucose at its sharpest peak) are a sampling-density limitation: 9 sparse measurement points cannot fully constrain a cubic spline through rapid transitions. They are not pipeline bugs.
 
 ## See also
 

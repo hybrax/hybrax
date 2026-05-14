@@ -11,8 +11,8 @@ Design goals:
 - Always compute pseudobatch transform (c*) and correction terms from physical
   event semantics.
 - Avoid dense-grid pseudo-events from interpolation artifacts.
-- Interpolate:
-    - c*: cubic/PCHIP (smooth pseudobatch space)
+- Fit:
+    - c*: smoothing TimeSeries spline where possible
     - ADF: exact TimeSeries pieces with left-continuous jumps
     - feed_correction: exact TimeSeries pieces with left-continuous jumps
 """
@@ -20,6 +20,7 @@ Design goals:
 from __future__ import annotations
 
 from typing import Dict, Any, List, Optional, Tuple
+import dataclasses
 
 import equinox as eqx
 import interpax
@@ -52,13 +53,10 @@ _JUMP_VALUE_ABS_TOL = 1e-12
 _FLOAT_EQ_ATOL = 1e-12
 _FLOAT32_TOL_MULTIPLIER = 64.0
 _ADF_MIN_FOR_DIVISION = 1e-12
-_PCHIP_OVERSHOOT_REL_TOL = 0.05
-_PCHIP_NEGATIVE_OVERSHOOT_FLOOR = -1e-8
-_NONNEGATIVE_DATA_MIN = 0.0
 _MIN_REACTOR_VOLUME = 1e-10
+_MIN_SMOOTHING_BSPLINE_SAMPLES = 4
 
 DEFAULT_MAX_SEGMENTS = 16
-SMOOTHING_THRESHOLD = 100  # > 100 points -> smoothing spline
 
 
 # ===========================================================================
@@ -142,37 +140,6 @@ def _require_volume_piece_above_threshold(
     values = [a + b * t + c * (t**2) + d * (t**3) for t in candidates]
     if min(values) <= _MIN_REACTOR_VOLUME:
         raise ValueError(f"{context} reached zero or near-zero reactor volume.")
-
-
-def _fit_spline_timeseries(
-    t: jnp.ndarray,
-    y: jnp.ndarray,
-    *,
-    method: str = "cubic",
-    continuity_side: str = "right",
-    metadata: Optional[dict] = None,
-) -> TimeSeries:
-    """Build a spline-backed TimeSeries from discrete samples."""
-    t, y = _prepare_knots(t, y)
-    t_np = np.asarray(t, dtype=np.float64)
-    y_np = np.asarray(y, dtype=np.float64)
-    if method == "pchip":
-        ppoly = interpolate.PchipInterpolator(t_np, y_np, extrapolate=True)
-    elif method == "cubic":
-        ppoly = interpolate.CubicSpline(t_np, y_np, bc_type="natural", extrapolate=True)
-    else:
-        raise ValueError(f"Unsupported spline method {method!r}")
-
-    breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
-    return TimeSeries(
-        times=t,
-        values=y,
-        breaks=breaks,
-        coeffs=coeffs,
-        segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
-        continuity_side=continuity_side,
-        metadata=metadata,
-    )
 
 
 def _timeseries_to_canonical_payload(series: TimeSeries) -> Dict[str, Any]:
@@ -287,13 +254,6 @@ def split_timeseries(ts: TimeSeries, boundaries: jnp.ndarray) -> List[TimeSeries
     return segments
 
 
-def choose_spline_kind(n_points: int) -> str:
-    """Pick ``'smoothing_bspline'`` for large N, else ``'cubic_interp'``."""
-    if n_points > SMOOTHING_THRESHOLD:
-        return "smoothing_bspline"
-    return "cubic_interp"
-
-
 def _fit_smoothing_segment(
     x: jnp.ndarray,
     y: jnp.ndarray,
@@ -302,7 +262,7 @@ def _fit_smoothing_segment(
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fit a SciPy smoothing B-spline and return power-basis arrays."""
 
-    if len(x) < 4:
+    if len(x) < _MIN_SMOOTHING_BSPLINE_SAMPLES:
         return _fit_interp_segment(x, y)
 
     degree = 3
@@ -392,7 +352,13 @@ def fit_timeseries_spline(
     boundaries: Optional[jnp.ndarray] = None,
     smoothing_s: float = 0.0,
 ) -> TimeSeries:
-    """Fit segmented cubic spline state onto a TimeSeries."""
+    """Fit segmented spline state onto a TimeSeries.
+
+    Segments with at least four points use SciPy's cubic smoothing B-spline
+    path. ``smoothing_s=0`` makes that path exact/interpolating. Shorter
+    segments fall back to an interpolating natural CubicSpline because cubic
+    smoothing B-splines require at least four samples.
+    """
     t_arr = jnp.asarray(ts.times)
     v_arr = jnp.asarray(ts.values)
 
@@ -413,30 +379,28 @@ def fit_timeseries_spline(
     actual_n_segments = len(segments)
 
     segment_splines: List[Tuple[jnp.ndarray, jnp.ndarray]] = []
-    kind = "interpax_cubic"
-    used_smoothing_fit = False
+    segment_fit_strategies: list[str] = []
 
     for seg in segments:
         seg_t = jnp.asarray(seg.times)
         seg_v = jnp.asarray(seg.values)
         n_pts = len(seg_t)
 
-        if n_pts < 2:
-            if n_pts == 1:
-                seg_t = jnp.array([seg_t[0], seg_t[0] + _CONSTANT_SPLINE_DT])
-                seg_v = jnp.array([seg_v[0], seg_v[0]])
-            else:
-                seg_t = jnp.array([0.0, _CONSTANT_SPLINE_DT])
-                seg_v = jnp.array([0.0, 0.0])
+        if n_pts == 0:
+            raise ValueError("Spline segment has no samples; adjust boundaries.")
+        if n_pts == 1:
+            seg_t = jnp.array([seg_t[0], seg_t[0] + _CONSTANT_SPLINE_DT])
+            seg_v = jnp.array([seg_v[0], seg_v[0]])
             segment_splines.append(_fit_interp_segment(seg_t, seg_v))
+            segment_fit_strategies.append("cubic_interp")
             continue
 
-        strategy = choose_spline_kind(n_pts)
-        if strategy == "smoothing_bspline":
-            used_smoothing_fit = True
+        if n_pts >= _MIN_SMOOTHING_BSPLINE_SAMPLES:
             segment_spline = _fit_smoothing_segment(seg_t, seg_v, s=smoothing_s)
+            segment_fit_strategies.append("smoothing_bspline")
         else:
             segment_spline = _fit_interp_segment(seg_t, seg_v)
+            segment_fit_strategies.append("cubic_interp")
 
         segment_splines.append(segment_spline)
 
@@ -444,11 +408,14 @@ def fit_timeseries_spline(
         segment_splines, boundaries
     )
 
+    unique_strategies = set(segment_fit_strategies)
+    fit_strategy = segment_fit_strategies[0] if len(unique_strategies) == 1 else "mixed"
+    used_smoothing_fit = "smoothing_bspline" in unique_strategies
     metadata = {
         "smoothing_s": float(smoothing_s),
         "actual_segments": int(actual_n_segments),
-        "fit_strategy": "smoothing_bspline" if used_smoothing_fit else "cubic_interp",
-        "kind": kind,
+        "fit_strategy": fit_strategy,
+        "fit_strategies": segment_fit_strategies,
         "segment_boundaries": np.asarray(boundaries, dtype=float).tolist(),
     }
     if used_smoothing_fit:
@@ -959,9 +926,7 @@ def _build_direct_pseudobatch_series(
 
         width = breaks_np[i + 1] - breaks_np[i]
         a_fc, b_fc, c_fc, d_fc = fc_coeff
-        feed_corr_current = float(
-            a_fc + width * (b_fc + width * (c_fc + width * d_fc))
-        )
+        feed_corr_current = float(a_fc + width * (b_fc + width * (c_fc + width * d_fc)))
         for vc_name in discrete_feed_names:
             discrete_feed_interval_values[vc_name][i] = discrete_feed_current[vc_name]
 
@@ -1146,17 +1111,6 @@ def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural
     return interpax.CubicSpline(t, y, bc_type=bc_type, check=False)
 
 
-def make_pchip_spline(t: jnp.ndarray, y: jnp.ndarray):
-    """
-    Build an interpax.PchipInterpolator from arrays. Ensures unique, sorted knots.
-
-    PCHIP preserves monotonicity between consecutive knots, preventing
-    overshoot that can cause negative concentrations from sparse data.
-    """
-    t, y = _prepare_knots(t, y)
-    return interpax.PchipInterpolator(t, y, check=False)
-
-
 def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str, Any]:
     """
     Build canonical inputs for pseudobatch normalization.
@@ -1224,6 +1178,8 @@ def build_splines(
     inputs: Dict[str, Any],
     process: "BioProcess | None" = None,
     species_name: "str | None" = None,
+    *,
+    cstar_smoothing_s: float = 0.0,
 ) -> Dict[str, Any]:
     """
     Build the runtime pseudobatch spline payload from
@@ -1237,38 +1193,11 @@ def build_splines(
     ``evaluate_real_concentration``, ``to_timeseries``,
     ``BacktransformSpline``, and the mechanistic pseudobatch path.
     """
-    spline_cstar = make_interpax_spline(inputs["meas_times"], inputs["c_star"])
-
-    # Switch to PCHIP (monotonicity-preserving) if the cubic spline goes
-    # negative OR overshoots the measured c* range significantly. The latter
-    # catches near-stepwise c* trajectories that arise when discrete events
-    # dominate (e.g. bolus-only processes with no continuous feed) — there,
-    # c_star = meas × ADF is essentially piecewise-constant and a natural
-    # cubic spline exhibits Gibbs-style oscillation between knots.
-    c_star_vals = jnp.asarray(inputs["c_star"], dtype=float)
-    if len(c_star_vals) >= 2:
-        t_dense = jnp.linspace(
-            float(inputs["meas_times"][0]),
-            float(inputs["meas_times"][-1]),
-            max(200, 10 * len(inputs["meas_times"])),
-        )
-        c_dense = jax.vmap(spline_cstar)(t_dense)
-        data_min = float(jnp.min(c_star_vals))
-        data_max = float(jnp.max(c_star_vals))
-        data_range = max(data_max - data_min, 1.0)
-        overshoot_tol = _PCHIP_OVERSHOOT_REL_TOL * data_range
-        dense_min = float(jnp.min(c_dense))
-        dense_max = float(jnp.max(c_dense))
-        negative_overshoot = (
-            data_min >= _NONNEGATIVE_DATA_MIN
-            and dense_min < _PCHIP_NEGATIVE_OVERSHOOT_FLOOR
-        )
-        range_overshoot = (dense_min < data_min - overshoot_tol) or (
-            dense_max > data_max + overshoot_tol
-        )
-        if negative_overshoot or range_overshoot:
-            spline_cstar = make_pchip_spline(inputs["meas_times"], inputs["c_star"])
-            inputs["cstar_interp"] = "pchip"
+    c_star_ts = fit_timeseries_spline(
+        TimeSeries(times=inputs["meas_times"], values=inputs["c_star"]),
+        smoothing_s=cstar_smoothing_s,
+    )
+    spline_cstar = _interpax_ppoly_from_spline_state(c_star_ts)
 
     meas_times = jnp.array(inputs["meas_times"])
     adf_at_meas = jnp.array(inputs["adf_at_meas"])
@@ -1319,7 +1248,7 @@ def build_splines(
 def _cstar_metadata(
     species_name: str,
     *,
-    cstar_method: str,
+    fit_strategy: str,
     is_constant: bool,
     constant_value: float | None,
 ) -> dict:
@@ -1328,7 +1257,7 @@ def _cstar_metadata(
         "transform": {
             "name": "pseudo_batch",
             "species": species_name,
-            "cstar_interp": cstar_method,
+            "cstar_interp": fit_strategy,
             "is_constant": bool(is_constant),
             "constant_value": constant_value,
         }
@@ -1340,22 +1269,26 @@ def _build_cstar_timeseries(
     c_star: jnp.ndarray,
     *,
     species_name: str,
-    cstar_method: str,
     is_constant: bool,
     constant_value: float | None,
+    smoothing_s: float = 0.0,
 ) -> TimeSeries:
-    """Fit the transformed concentration carrier using the selected policy."""
-    return _fit_spline_timeseries(
-        meas_times,
-        c_star,
-        method="pchip" if cstar_method == "pchip" else "cubic",
-        continuity_side="right",
-        metadata=_cstar_metadata(
-            species_name,
-            cstar_method=cstar_method,
-            is_constant=is_constant,
-            constant_value=constant_value,
-        ),
+    """Fit the transformed concentration carrier as a TimeSeries spline."""
+    fitted = fit_timeseries_spline(
+        TimeSeries(times=meas_times, values=c_star),
+        smoothing_s=smoothing_s,
+    )
+    return dataclasses.replace(
+        fitted,
+        metadata={
+            **(fitted.metadata or {}),
+            **_cstar_metadata(
+                species_name,
+                fit_strategy=fitted.metadata["fit_strategy"],
+                is_constant=is_constant,
+                constant_value=constant_value,
+            ),
+        },
     )
 
 
@@ -1478,6 +1411,8 @@ def _selected_pseudobatch_species(
 def build_pseudobatch_transform(
     process: BioProcess,
     species_names: Optional[List[str]] = None,
+    *,
+    cstar_smoothing_s: float = 0.0,
 ) -> PseudobatchTransform:
     """Build a shared process-level pseudobatch transform bundle."""
     selected_species = _selected_pseudobatch_species(process, species_names)
@@ -1525,40 +1460,26 @@ def build_pseudobatch_transform(
         feed_corr_at_meas = _evaluate_many_with_boundary_start(
             series_inputs["feed_corr_ts"], meas_times
         )
-        c_star = meas_conc * adf_at_meas - feed_corr_at_meas
-        inputs = {
-            "meas_times": meas_times,
-            "meas_conc": meas_conc,
-            "c_star": jnp.asarray(c_star),
-            "adf_at_meas": jnp.asarray(adf_at_meas),
-            "feed_corr_at_meas": jnp.asarray(feed_corr_at_meas),
-            "adf_ts": series_inputs["adf_ts"],
-            "feed_corr_ts": series_inputs["feed_corr_ts"],
-            "dense_times": series_inputs["dense_times"],
-            "adf_dense": series_inputs["adf_dense"],
-            "has_discrete_feed": series_inputs["has_discrete_feed"],
-        }
-        splines = build_splines(inputs, process, name)
-        cstar_method = inputs.get("cstar_interp", "cubic")
+        c_star = jnp.asarray(meas_conc * adf_at_meas - feed_corr_at_meas)
         is_constant = _is_near_constant(meas_conc) and not bool(
-            inputs.get("has_discrete_feed", False)
+            series_inputs["has_discrete_feed"]
         )
         constant_value = float(jnp.mean(meas_conc)) if is_constant else None
         c_star_ts = _build_cstar_timeseries(
-            inputs["meas_times"],
-            inputs["c_star"],
+            meas_times,
+            c_star,
             species_name=name,
-            cstar_method=cstar_method,
             is_constant=is_constant,
             constant_value=constant_value,
+            smoothing_s=cstar_smoothing_s,
         )
         species_transforms[name] = PseudobatchSpeciesTransform(
             species=name,
             c_star_ts=c_star_ts,
-            feed_corr_ts=splines["feed_corr_ts"],
+            feed_corr_ts=series_inputs["feed_corr_ts"],
             is_constant=is_constant,
             constant_value=constant_value,
-            cstar_interp=cstar_method,
+            cstar_interp=c_star_ts.metadata["fit_strategy"],
         )
 
     assert reference_inputs is not None
@@ -1620,20 +1541,20 @@ def to_timeseries(
     inputs: Dict[str, Any],
     splines: Dict[str, Any],
     species_name: str,
+    *,
+    cstar_smoothing_s: float = 0.0,
 ) -> TimeSeries:
     """Convert pseudobatch pipeline outputs to a TimeSeries-first carrier."""
     meas_conc = jnp.asarray(inputs["meas_conc"], dtype=float)
     has_discrete = bool(inputs.get("has_discrete_feed", False))
     is_constant = _is_near_constant(meas_conc) and not has_discrete
-    cstar_method = inputs.get("cstar_interp", "cubic")
-
     return _build_cstar_timeseries(
         inputs["meas_times"],
         inputs["c_star"],
         species_name=species_name,
-        cstar_method=cstar_method,
         is_constant=is_constant,
         constant_value=float(jnp.mean(meas_conc)) if is_constant else None,
+        smoothing_s=cstar_smoothing_s,
     )
 
 
@@ -1697,7 +1618,7 @@ class BacktransformSpline(eqx.Module):
         events, so it MUST be included to avoid a systematic dc/dt bias in
         the mechanistic q-inversion.
 
-        ``dc^*/dt`` uses the analytical cubic/PCHIP spline derivative.
+        ``dc^*/dt`` uses the analytical c* spline derivative.
         ``dfc/dt`` and ``d(ADF)/dt`` use the derivative TimeSeries, ignoring
         instantaneous jump impulses.
         """
