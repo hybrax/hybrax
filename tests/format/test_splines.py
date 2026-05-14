@@ -597,7 +597,7 @@ def test_backtransform_uses_stored_cstar_spline_state():
                 species="glucose",
                 c_star_ts=c_star_ts,
                 feed_corr_ts=zero_ts,
-                cstar_interp="cubic",
+                cstar_fit_strategy="smoothing_bspline",
             )
         },
     )
@@ -628,7 +628,7 @@ def test_backtransform_rejects_cstar_without_stored_spline_state():
                 species="glucose",
                 c_star_ts=raw_c_star_ts,
                 feed_corr_ts=zero_ts,
-                cstar_interp="cubic",
+                cstar_fit_strategy="cubic_interp",
             )
         },
     )
@@ -903,7 +903,11 @@ def test_interpolator_roundtrip_bolus():
     tr = rep.metadata["transform"]
     assert tr["name"] == "pseudo_batch"
     assert tr["species"] == "glucose"
-    assert tr["cstar_interp"] in {"smoothing_bspline", "cubic_interp", "mixed"}
+    assert tr["cstar_fit_strategy"] in {
+        "smoothing_bspline",
+        "cubic_interp",
+        "mixed",
+    }
     assert "series" not in tr
 
     bt = _build_single_species_backtransform(proc, "glucose")
@@ -1459,7 +1463,11 @@ def test_pseudobatch_metadata_json_serializable():
     assert tr["name"] == "pseudo_batch"
     assert tr["species"] == "glucose"
     assert "series" not in tr
-    assert tr["cstar_interp"] in {"smoothing_bspline", "cubic_interp", "mixed"}
+    assert tr["cstar_fit_strategy"] in {
+        "smoothing_bspline",
+        "cubic_interp",
+        "mixed",
+    }
 
     meta_json = json.dumps(rep.metadata)
     meta_loaded = json.loads(meta_json)
@@ -1887,8 +1895,8 @@ class TestCstarSmoothingPolicy:
         splines = build_splines(inputs, proc, "acetate")
         rep = to_timeseries(inputs, splines, "acetate")
 
-        assert inputs.get("cstar_interp") is None
-        assert rep.metadata["transform"]["cstar_interp"] == "smoothing_bspline"
+        assert inputs.get("cstar_fit_strategy") is None
+        assert rep.metadata["transform"]["cstar_fit_strategy"] == "smoothing_bspline"
 
         t_dense = jnp.linspace(0.0, 10.0, 500)
         from_payload = jax.vmap(splines["spline_cstar"])(t_dense)
@@ -1917,7 +1925,7 @@ class TestCstarSmoothingPolicy:
         splines = build_splines(inputs, proc, "acetate")
         rep = to_timeseries(inputs, splines, "acetate")
 
-        assert rep.metadata["transform"]["cstar_interp"] == "smoothing_bspline"
+        assert rep.metadata["transform"]["cstar_fit_strategy"] == "smoothing_bspline"
 
         bt = _build_single_species_backtransform(proc, "acetate")
         meas_t = jnp.array(inputs["meas_times"])

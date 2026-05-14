@@ -42,7 +42,7 @@ def _lightweight_transform_metadata() -> dict:
         "transform": {
             "name": "pseudo_batch",
             "species": "biomass",
-            "cstar_interp": "cubic",
+            "cstar_fit_strategy": "cubic_interp",
             "is_constant": False,
             "constant_value": None,
         }
@@ -199,7 +199,7 @@ def test_pseudobatch_transform_roundtrips_process_level_bundle() -> None:
                 feed_corr_ts=_ts([0.0, 5.0, 10.0], [0.0, 0.1, 0.2]),
                 is_constant=False,
                 constant_value=None,
-                cstar_interp="pchip",
+                cstar_fit_strategy="smoothing_bspline",
             )
         },
     )
@@ -214,7 +214,7 @@ def test_pseudobatch_transform_roundtrips_process_level_bundle() -> None:
     stored = payload["processes"]["p"]["pseudobatch_transform"]
     assert "times" in stored["adf_ts"]
     assert "values" in stored["accumulated_feed_ts"]["feed"]
-    assert stored["species"]["biomass"]["cstar_interp"] == "pchip"
+    assert stored["species"]["biomass"]["cstar_fit_strategy"] == "smoothing_bspline"
 
     transform = loaded.processes["p"].pseudobatch_transform
     assert transform is not None
@@ -222,6 +222,76 @@ def test_pseudobatch_transform_roundtrips_process_level_bundle() -> None:
     assert transform.accumulated_feed_ts["feed"].values.shape == (2,)
     assert transform.species["biomass"].c_star_ts.values.shape == (3,)
     assert transform.species["biomass"].feed_corr_ts.values.shape == (3,)
+
+
+@pytest.mark.parametrize("keep_new_key", [False, True])
+def test_load_rejects_old_pseudobatch_cstar_interp_key(keep_new_key: bool) -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 10.0], [1.0, 1.2]),
+        reactor_volume_ts=_ts([0.0, 10.0], [1.0, 1.1]),
+        sample_compensation_ts=_ts([0.0, 10.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 10.0], [0.2, 2.5]),
+                feed_corr_ts=_ts([0.0, 10.0], [0.0, 0.2]),
+                cstar_fit_strategy="smoothing_bspline",
+            )
+        },
+    )
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        species = payload["processes"]["p"]["pseudobatch_transform"]["species"][
+            "biomass"
+        ]
+        if keep_new_key:
+            species["cstar_interp"] = "pchip"
+        else:
+            species["cstar_interp"] = species.pop("cstar_fit_strategy")
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(ValueError, match="cstar_interp"):
+            load_process_collection(out_dir)
+
+
+def test_load_rejects_unknown_pseudobatch_cstar_fit_strategy() -> None:
+    process = _build_process()
+    process.pseudobatch_transform = PseudobatchTransform(
+        adf_ts=_ts([0.0, 10.0], [1.0, 1.2]),
+        reactor_volume_ts=_ts([0.0, 10.0], [1.0, 1.1]),
+        sample_compensation_ts=_ts([0.0, 10.0], [1.0, 1.0]),
+        accumulated_feed_ts={},
+        species={
+            "biomass": PseudobatchSpeciesTransform(
+                species="biomass",
+                c_star_ts=_ts([0.0, 10.0], [0.2, 2.5]),
+                feed_corr_ts=_ts([0.0, 10.0], [0.0, 0.2]),
+                cstar_fit_strategy="smoothing_bspline",
+            )
+        },
+    )
+    collection = BioProcessCollection(metadata=None, processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "collection"
+        save_process_collection(collection, out_dir)
+        payload = _read_payload(out_dir / "data.json")
+        species = payload["processes"]["p"]["pseudobatch_transform"]["species"][
+            "biomass"
+        ]
+        species["cstar_fit_strategy"] = "legacy_pchip"
+        with open(out_dir / "data.json", "w") as fh:
+            json.dump(payload, fh)
+
+        with pytest.raises(ValueError, match="cstar_fit_strategy"):
+            load_process_collection(out_dir)
 
 
 def test_pseudobatch_transform_roundtrips_empty_species_dict() -> None:
@@ -257,6 +327,7 @@ def test_pseudobatch_transform_loader_rejects_missing_required_keys() -> None:
                 species="biomass",
                 c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
                 feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+                cstar_fit_strategy="smoothing_bspline",
             )
         },
     )
@@ -287,6 +358,7 @@ def test_pseudobatch_transform_loader_rejects_malformed_species_entries() -> Non
                 species="biomass",
                 c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
                 feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+                cstar_fit_strategy="smoothing_bspline",
             )
         },
     )
@@ -321,6 +393,7 @@ def test_pseudobatch_transform_loader_rejects_species_key_mismatch() -> None:
                 species="biomass",
                 c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
                 feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+                cstar_fit_strategy="smoothing_bspline",
             )
         },
     )
@@ -353,6 +426,7 @@ def test_pseudobatch_transform_loader_rejects_invalid_is_constant_type() -> None
                 species="biomass",
                 c_star_ts=_ts([0.0, 1.0], [0.2, 0.3]),
                 feed_corr_ts=_ts([0.0, 1.0], [0.0, 0.0]),
+                cstar_fit_strategy="smoothing_bspline",
             )
         },
     )

@@ -4,7 +4,7 @@ JAX-compatible dataclasses for standardized bioprocess data
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 import jax.numpy as jnp
 
 from .time_series import TimeSeries
@@ -41,7 +41,8 @@ class ProcessOrdering:
         ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``
 
     Control vector layout (output of ``ControlSplines.__call__``):
-        ``u = [name_controlled_FVCs... | name_controlled_SVCs... | name_controlled_PVs...]``
+        ``u = [name_controlled_FVCs... | name_controlled_SVCs... |
+        name_controlled_PVs...]``
 
     The first ``len(FVCs)+len(SVCs)`` entries of ``u`` are flow rates (spline
     derivatives); the remaining ``len(PVs)`` entries are direct values.
@@ -56,6 +57,7 @@ class ProcessOrdering:
     name_controlled_PVs: Tuple[str, ...]
     name_controlled_FVCs: Tuple[str, ...]
     name_controlled_SVCs: Tuple[str, ...]
+
 
 # TODO for later: standardize unit spelling so it might be used for unit checks
 
@@ -290,8 +292,11 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
     if not process.reactor_medium.components:
         return BiologicalOde()
     biomass_name = next(
-        (n for n in process.reactor_medium.components
-         if n.strip().lower() == "biomass"),
+        (
+            n
+            for n in process.reactor_medium.components
+            if n.strip().lower() == "biomass"
+        ),
         None,
     )
     if biomass_name is None:
@@ -344,9 +349,9 @@ class PseudobatchSpeciesTransform:
     species: str
     c_star_ts: TimeSeries
     feed_corr_ts: TimeSeries
+    cstar_fit_strategy: str
     is_constant: bool = False
     constant_value: Optional[float] = None
-    cstar_interp: str = "cubic"
 
 
 @dataclass

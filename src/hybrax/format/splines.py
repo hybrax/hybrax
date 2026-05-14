@@ -1257,7 +1257,7 @@ def _cstar_metadata(
         "transform": {
             "name": "pseudo_batch",
             "species": species_name,
-            "cstar_interp": fit_strategy,
+            "cstar_fit_strategy": fit_strategy,
             "is_constant": bool(is_constant),
             "constant_value": constant_value,
         }
@@ -1479,7 +1479,7 @@ def build_pseudobatch_transform(
             feed_corr_ts=series_inputs["feed_corr_ts"],
             is_constant=is_constant,
             constant_value=constant_value,
-            cstar_interp=c_star_ts.metadata["fit_strategy"],
+            cstar_fit_strategy=c_star_ts.metadata["fit_strategy"],
         )
 
     assert reference_inputs is not None

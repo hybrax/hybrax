@@ -31,6 +31,10 @@ from .dataclasses import (
     ProcessVariable,
 )
 
+_ALLOWED_CSTAR_FIT_STRATEGIES = frozenset(
+    {"smoothing_bspline", "cubic_interp", "mixed"}
+)
+
 
 def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
     """Serialize bounds; return ``None`` when both sides are unbounded so the
@@ -58,9 +62,7 @@ def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
 def _dict_to_biological_ode(data: Dict) -> BiologicalOde:
     return BiologicalOde(
         algebraic=dict(data.get("algebraic", {})),
-        rates={
-            name: _dict_to_bounds(rd) for name, rd in data.get("rates", {}).items()
-        },
+        rates={name: _dict_to_bounds(rd) for name, rd in data.get("rates", {}).items()},
         derivatives=dict(data.get("derivatives", {})),
     )
 
@@ -430,7 +432,7 @@ def _pseudobatch_species_transform_to_dict(
         ),
         "is_constant": entry.is_constant,
         "constant_value": entry.constant_value,
-        "cstar_interp": entry.cstar_interp,
+        "cstar_fit_strategy": entry.cstar_fit_strategy,
     }
 
 
@@ -737,6 +739,11 @@ def _dict_to_pseudobatch_species_transform(
 ) -> PseudobatchSpeciesTransform:
     """Reconstruct PseudobatchSpeciesTransform from dictionary."""
     data = _require_mapping(data, "pseudobatch_transform.species entry")
+    if "cstar_interp" in data:
+        raise ValueError(
+            "pseudobatch_transform species cstar_interp is no longer supported; "
+            "use cstar_fit_strategy."
+        )
     _require_keys(
         data,
         (
@@ -745,7 +752,7 @@ def _dict_to_pseudobatch_species_transform(
             "feed_corr_ts",
             "is_constant",
             "constant_value",
-            "cstar_interp",
+            "cstar_fit_strategy",
         ),
         "pseudobatch_transform.species entry",
     )
@@ -761,9 +768,17 @@ def _dict_to_pseudobatch_species_transform(
         raise ValueError(
             "pseudobatch_transform species constant_value must be numeric or None."
         )
-    cstar_interp = data["cstar_interp"]
-    if not isinstance(cstar_interp, str):
-        raise ValueError("pseudobatch_transform species cstar_interp must be str.")
+    cstar_fit_strategy = data["cstar_fit_strategy"]
+    if not isinstance(cstar_fit_strategy, str):
+        raise ValueError(
+            "pseudobatch_transform species cstar_fit_strategy must be str."
+        )
+    if cstar_fit_strategy not in _ALLOWED_CSTAR_FIT_STRATEGIES:
+        allowed = ", ".join(sorted(_ALLOWED_CSTAR_FIT_STRATEGIES))
+        raise ValueError(
+            "pseudobatch_transform species cstar_fit_strategy must be one "
+            f"of: {allowed}."
+        )
     return PseudobatchSpeciesTransform(
         species=data["species"],
         c_star_ts=_dict_to_pseudobatch_timeseries(
@@ -776,7 +791,7 @@ def _dict_to_pseudobatch_species_transform(
         ),
         is_constant=data["is_constant"],
         constant_value=constant_value,
-        cstar_interp=cstar_interp,
+        cstar_fit_strategy=cstar_fit_strategy,
     )
 
 
