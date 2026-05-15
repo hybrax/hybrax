@@ -7,7 +7,6 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.interpolate import PPoly
 
 
 VALID_SIDES = ("left", "right")
@@ -94,24 +93,6 @@ def rebase_to_breaks(
 def merge_breaks(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
     merged = np.unique(np.concatenate([np.asarray(a), np.asarray(b)]))
     return jnp.asarray(merged, dtype=jnp.float64)
-
-
-def ppoly_to_power_basis(ppoly: PPoly) -> tuple[np.ndarray, np.ndarray]:
-    """Convert SciPy PPoly to cubic power-basis arrays (breaks, coeffs)."""
-    x = np.asarray(ppoly.x, dtype=np.float64)
-    c = np.asarray(ppoly.c, dtype=np.float64)
-    if c.shape[0] < 1 or c.shape[0] > 4:
-        raise ValueError("unsupported polynomial degree")
-    if c.shape[0] < 4:
-        full = np.zeros((4, c.shape[1]), dtype=np.float64)
-        full[4 - c.shape[0] :, :] = c
-        c = full
-
-    widths = np.diff(x)
-    keep = widths > 0
-    breaks = np.concatenate([x[:-1][keep], x[-1:]], axis=0)
-    coeffs = np.stack([c[3], c[2], c[1], c[0]], axis=1)[keep]
-    return breaks, coeffs
 
 
 def _piece_has_near_zero(coeff_row: np.ndarray, width: float, threshold: float) -> bool:

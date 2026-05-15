@@ -66,8 +66,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "product": {
                 "name": "product",
@@ -108,8 +107,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "product_non_glyco": {
                 "name": "product_non_glyco",
@@ -150,8 +148,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "product_denat": {
                 "name": "product_denat",
@@ -192,8 +189,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "product_non_glyco_denat": {
                 "name": "product_non_glyco_denat",
@@ -234,8 +230,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "dead_cells": {
                 "name": "dead_cells",
@@ -276,8 +271,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "glucose": {
                 "name": "glucose",
@@ -318,8 +312,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "glutamine": {
                 "name": "glutamine",
@@ -360,8 +353,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "lactate": {
                 "name": "lactate",
@@ -402,8 +394,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "ammonia": {
                 "name": "ammonia",
@@ -444,8 +435,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               }
             }
           },
@@ -38874,8 +38864,7 @@
                   "dtype": "float32"
                 },
                 "continuity_side": "right"
-              },
-              "interpolator": null
+              }
             },
             "temperature": {
               "name": "Temperature",
@@ -77301,8 +77290,7 @@
                   "dtype": "float32"
                 },
                 "continuity_side": "right"
-              },
-              "interpolator": null
+              }
             },
             "non_glyco_product_ratio": {
               "name": "non_glyco_product_ratio",
@@ -77344,8 +77332,7 @@
                   "dtype": "float32"
                 },
                 "continuity_side": "right"
-              },
-              "interpolator": null
+              }
             }
           },
           "volume": {
@@ -115874,8 +115861,7 @@
                       }
                     }
                   }
-                },
-                "interpolator": null
+                }
               },
               "base_feed": {
                 "name": "base_feed",
@@ -154399,8 +154385,7 @@
                       }
                     }
                   }
-                },
-                "interpolator": null
+                }
               },
               "bolus_feed": {
                 "name": "bolus_feed",
@@ -154530,8 +154515,7 @@
                       }
                     }
                   }
-                },
-                "interpolator": null
+                }
               },
               "sampling": {
                 "name": "sampling",
@@ -154572,8 +154556,7 @@
                   },
                   "continuity_side": "right"
                 },
-                "type": "SampleVolumeChange",
-                "interpolator": null
+                "type": "SampleVolumeChange"
               }
             }
           }

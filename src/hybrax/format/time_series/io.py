@@ -6,9 +6,9 @@ from typing import Any, Mapping
 
 import jax.numpy as jnp
 import numpy as np
-from scipy.interpolate import BSpline, PPoly
+from scipy.interpolate import BSpline, PPoly as SciPyPPoly
 
-from . import spline_ops
+from .ppoly import PPoly
 
 
 def _array_to_list(value: Any) -> Any:
@@ -78,8 +78,9 @@ def _convert_bspline_segments(
         if degree != 3:
             raise ValueError("Only cubic segments are supported")
         spline = BSpline(knots, coeffs, degree, extrapolate=True)
-        ppoly = PPoly.from_spline(spline)
-        seg_breaks, seg_coeffs = spline_ops.ppoly_to_power_basis(ppoly)
+        seg_poly = PPoly.from_scipy_ppoly(SciPyPPoly.from_spline(spline))
+        seg_breaks = np.asarray(seg_poly.breaks, dtype=np.float64)
+        seg_coeffs = np.asarray(seg_poly.coeffs, dtype=np.float64)
         if seg_coeffs.shape[0] == 0:
             continue
         segment_starts.append(piece_cursor)

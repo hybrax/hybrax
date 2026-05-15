@@ -92,8 +92,7 @@ BioProcess
  │    ├─ name: str
  │    ├─ unit: str
  │    ├─ is_controlled: bool  # True for controls, False for states
- │    ├─ values: TimeSeries | StaticVariable
- │    └─ interpolator: Optional[Interpolator]
+ │    └─ values: TimeSeries | StaticVariable
  └─ volume: Volume
       ├─ initial_volume: float
       ├─ unit: str

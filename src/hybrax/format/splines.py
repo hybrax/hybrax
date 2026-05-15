@@ -271,9 +271,8 @@ def _fit_smoothing_segment(
         s=s,
         k=degree,
     )
-    ppoly = interpolate.PPoly.from_spline(bspline)
-    breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
-    return jnp.asarray(breaks, dtype=float), jnp.asarray(coeffs, dtype=float)
+    poly = PPoly.from_scipy_ppoly(interpolate.PPoly.from_spline(bspline))
+    return jnp.asarray(poly.breaks, dtype=float), jnp.asarray(poly.coeffs, dtype=float)
 
 
 def _fit_interp_segment(
@@ -287,8 +286,8 @@ def _fit_interp_segment(
         bc_type="natural",
         extrapolate=True,
     )
-    breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
-    return jnp.asarray(breaks, dtype=float), jnp.asarray(coeffs, dtype=float)
+    poly = PPoly.from_scipy_ppoly(ppoly)
+    return jnp.asarray(poly.breaks, dtype=float), jnp.asarray(poly.coeffs, dtype=float)
 
 
 def _combine_segment_splines(

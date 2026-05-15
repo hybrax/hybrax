@@ -264,9 +264,9 @@ RHS branch.
 - A validated `biological_ode` block (`algebraic`, `rates`, `derivatives`)
   with every dynamic state present and every expression sympy-parseable
   over the typed symbol table.
-- Reactor-component splines built as `BacktransformSpline` (the default
-  output of `build_state_splines` when an interpolator with a `transform`
-  metadata field is present).
+- Reactor-component splines built as `BacktransformSpline` from the stored
+  process-level `pseudobatch_transform` when c*-domain concentrations are
+  present.
 - Linearity of every `derivatives[s]` in the declared rate symbols.
 - A square inversion system: `n_rates` rate symbols matched by `n_rates`
   states whose derivatives depend on at least one rate.

@@ -67,8 +67,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "product": {
                 "name": "product",
@@ -109,8 +108,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "total_cells": {
                 "name": "total_cells",
@@ -151,8 +149,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "dead_cells": {
                 "name": "dead_cells",
@@ -193,8 +190,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "glucose": {
                 "name": "glucose",
@@ -235,8 +231,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "glutamine": {
                 "name": "glutamine",
@@ -277,8 +272,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "lactate": {
                 "name": "lactate",
@@ -319,8 +313,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               },
               "ammonia": {
                 "name": "ammonia",
@@ -361,8 +354,7 @@
                     "dtype": "float32"
                   },
                   "continuity_side": "right"
-                },
-                "interpolator": null
+                }
               }
             }
           },
@@ -374,8 +366,7 @@
               "values": {
                 "type": "StaticVariable",
                 "value": 7.7
-              },
-              "interpolator": null
+              }
             },
             "temperature": {
               "name": "Temperature",
@@ -384,8 +375,7 @@
               "values": {
                 "type": "StaticVariable",
                 "value": 31.8
-              },
-              "interpolator": null
+              }
             }
           },
           "volume": {
@@ -516,8 +506,7 @@
                       }
                     }
                   }
-                },
-                "interpolator": null
+                }
               },
               "bolus_feed": {
                 "name": "bolus_feed",
@@ -629,8 +618,7 @@
                       }
                     }
                   }
-                },
-                "interpolator": null
+                }
               },
               "sampling": {
                 "name": "sampling",
@@ -669,8 +657,7 @@
                   },
                   "continuity_side": "right"
                 },
-                "type": "SampleVolumeChange",
-                "interpolator": null
+                "type": "SampleVolumeChange"
               }
             }
           }
