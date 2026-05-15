@@ -55,7 +55,6 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import equinox as eqx
-import interpax
 import jax.numpy as jnp
 
 from .dataclasses import (
@@ -70,8 +69,9 @@ from .splines import (
     _DEFAULT_BATCH_KNOTS,
     _MIN_REACTOR_VOLUME,
     build_backtransform_spline,
-    make_interpax_spline,
+    make_cubic_ppoly,
 )
+from .time_series import PPoly
 
 
 # ---------------------------------------------------------------------------
@@ -94,70 +94,60 @@ def _require_reactor_volume_above_threshold(
 
 
 def _batch_splines(
-    spline_list: List[interpax.CubicSpline],
+    spline_list: List[PPoly],
     t_start: float,
     t_end: float,
     n_knots: int = _DEFAULT_BATCH_KNOTS,
-) -> interpax.PPoly:
-    """Resample splines onto a shared uniform grid and stack into one PPoly.
+) -> PPoly:
+    """Resample scalar splines onto a shared grid and stack into one PPoly.
 
-    The returned PPoly has coefficients of shape ``(4, n_knots-1, n_splines)``
-    so evaluating at scalar ``t`` returns ``(n_splines,)`` in one call.
+    The returned owned PPoly has coefficients of shape
+    ``(n_knots - 1, 4, n_splines)`` so evaluating at scalar ``t`` returns
+    ``(n_splines,)`` in one call.
     """
     x_common = jnp.linspace(t_start, t_end, n_knots)
-    resampled = [
-        interpax.CubicSpline(x_common, sp(x_common), bc_type="natural", check=False)
-        for sp in spline_list
-    ]
-    c_stacked = jnp.stack([s.c for s in resampled], axis=-1)
-    return interpax.PPoly.construct_fast(c_stacked, x_common, extrapolate=True)
+    # Match the old batching semantics: every input is resampled/refit onto a
+    # common grid, so stored splines are approximate when their knots differ.
+    resampled = [make_cubic_ppoly(x_common, sp(x_common)) for sp in spline_list]
+    coeffs_stacked = jnp.stack([s.coeffs for s in resampled], axis=-1)
+    return PPoly(x_common, coeffs_stacked)
 
 
-def _empty_ppoly() -> interpax.PPoly:
+def _empty_ppoly() -> PPoly:
     """Construct a zero-spline PPoly placeholder for empty control sets."""
-    return interpax.PPoly.construct_fast(
-        jnp.zeros((4, 1, 0)), jnp.array([0.0, 1.0]), extrapolate=True
-    )
+    return PPoly(jnp.array([0.0, 1.0]), jnp.zeros((1, 4, 0)))
 
 
-def _timeseries_to_interpax_spline(series: TimeSeries) -> interpax.PPoly:
-    """Build an interpax spline from a TimeSeries carrier.
+def _timeseries_to_ppoly(series: TimeSeries) -> PPoly:
+    """Build an owned PPoly from a TimeSeries carrier.
 
     Prefer stored spline state when available so mechanistic consumers use
     the same canonical representation that was fit/serialized. Fall back to
     a cubic refit only for sample-only series without spline coefficients.
     """
-    if (
-        getattr(series, "breaks", None) is not None
-        and getattr(series, "coeffs", None) is not None
-    ):
-        coeffs = jnp.asarray(series.coeffs, dtype=float).T[::-1]
-        breaks = jnp.asarray(series.breaks, dtype=float)
-        return interpax.PPoly.construct_fast(coeffs, breaks, extrapolate=True)
-    if (
-        getattr(series, "times", None) is not None
-        and getattr(series, "values", None) is not None
-    ):
-        return make_interpax_spline(
+    if series.poly is not None:
+        return series.poly
+    if series.times is not None and series.values is not None:
+        return make_cubic_ppoly(
             jnp.asarray(series.times, dtype=float),
             jnp.asarray(series.values, dtype=float),
         )
     raise ValueError("TimeSeries must provide spline state or discrete samples.")
 
 
-def _value_to_interpax_spline(
+def _value_to_ppoly(
     value: TimeSeries | StaticVariable,
     *,
     t_start: float,
     t_end: float,
-) -> interpax.CubicSpline:
-    """Build an interpax spline from a dynamic or static state carrier."""
+) -> PPoly:
+    """Build an owned PPoly from a dynamic or static state carrier."""
     if isinstance(value, TimeSeries):
-        return _timeseries_to_interpax_spline(value)
+        return _timeseries_to_ppoly(value)
     v = float(value.value)
-    return make_interpax_spline(
+    return PPoly(
         jnp.array([t_start, t_end], dtype=float),
-        jnp.array([v, v], dtype=float),
+        jnp.array([[v, 0.0, 0.0, 0.0]], dtype=float),
     )
 
 
@@ -200,13 +190,14 @@ def _apply_feed_dilution(
 
     addition = jnp.zeros(n_RMCs)
     if Cin_controlled_FVCs.shape[0] > 0:
-        addition = addition + jnp.sum(
-            u_controlled_FVCs[:, None] * Cin_controlled_FVCs, axis=0
-        ) / V
+        addition = (
+            addition
+            + jnp.sum(u_controlled_FVCs[:, None] * Cin_controlled_FVCs, axis=0) / V
+        )
     if Cin_modeled_FVCs.shape[0] > 0:
-        addition = addition + jnp.sum(
-            f_modeled_FVCs[:, None] * Cin_modeled_FVCs, axis=0
-        ) / V
+        addition = (
+            addition + jnp.sum(f_modeled_FVCs[:, None] * Cin_modeled_FVCs, axis=0) / V
+        )
 
     return dilution + addition, dV
 
@@ -321,12 +312,12 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     name_modeled_RMCs = tuple(sorted(process.reactor_medium.components.keys()))
 
     # ---- Process variables — partition into controlled vs modeled, alphabetical
-    name_modeled_PVs = tuple(sorted(
-        n for n, pv in process.process_variables.items() if not pv.is_controlled
-    ))
-    name_controlled_PVs = tuple(sorted(
-        n for n, pv in process.process_variables.items() if pv.is_controlled
-    ))
+    name_modeled_PVs = tuple(
+        sorted(n for n, pv in process.process_variables.items() if not pv.is_controlled)
+    )
+    name_controlled_PVs = tuple(
+        sorted(n for n, pv in process.process_variables.items() if pv.is_controlled)
+    )
 
     # Static PVs must be is_controlled=True; modeled PVs must carry a TimeSeries.
     for pv_name in name_modeled_PVs:
@@ -340,26 +331,46 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
             )
 
     # ---- Volume changes — partition by FVC/SVC × controlled/modeled, alphabetical
-    name_modeled_FVCs = tuple(sorted(
-        n
-        for n, vc in process.volume.volume_changes.items()
-        if isinstance(vc, FeedVolumeChange) and vc.is_continuous and not vc.is_controlled
-    ))
-    name_controlled_FVCs = tuple(sorted(
-        n
-        for n, vc in process.volume.volume_changes.items()
-        if isinstance(vc, FeedVolumeChange) and vc.is_continuous and vc.is_controlled
-    ))
-    name_modeled_SVCs = tuple(sorted(
-        n
-        for n, vc in process.volume.volume_changes.items()
-        if isinstance(vc, SampleVolumeChange) and vc.is_continuous and not vc.is_controlled
-    ))
-    name_controlled_SVCs = tuple(sorted(
-        n
-        for n, vc in process.volume.volume_changes.items()
-        if isinstance(vc, SampleVolumeChange) and vc.is_continuous and vc.is_controlled
-    ))
+    name_modeled_FVCs = tuple(
+        sorted(
+            n
+            for n, vc in process.volume.volume_changes.items()
+            if (
+                isinstance(vc, FeedVolumeChange)
+                and vc.is_continuous
+                and not vc.is_controlled
+            )
+        )
+    )
+    name_controlled_FVCs = tuple(
+        sorted(
+            n
+            for n, vc in process.volume.volume_changes.items()
+            if isinstance(vc, FeedVolumeChange)
+            and vc.is_continuous
+            and vc.is_controlled
+        )
+    )
+    name_modeled_SVCs = tuple(
+        sorted(
+            n
+            for n, vc in process.volume.volume_changes.items()
+            if (
+                isinstance(vc, SampleVolumeChange)
+                and vc.is_continuous
+                and not vc.is_controlled
+            )
+        )
+    )
+    name_controlled_SVCs = tuple(
+        sorted(
+            n
+            for n, vc in process.volume.volume_changes.items()
+            if isinstance(vc, SampleVolumeChange)
+            and vc.is_continuous
+            and vc.is_controlled
+        )
+    )
 
     # FVC feed-medium validation (across modeled and controlled)
     rmc_set = set(name_modeled_RMCs)
@@ -369,9 +380,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
             raise ValueError(
                 f"FeedVolumeChange {vc_name!r} has no feed_medium defined."
             )
-        unknown = [
-            c for c in vc.feed_medium.components.keys() if c not in rmc_set
-        ]
+        unknown = [c for c in vc.feed_medium.components.keys() if c not in rmc_set]
         if unknown:
             raise ValueError(
                 f"FeedVolumeChange {vc_name!r} references unknown reactor "
@@ -416,9 +425,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     for group_name, names in groups.items():
         for n in names:
             if n in seen:
-                duplicates.append(
-                    f"{n!r} appears in both {seen[n]} and {group_name}"
-                )
+                duplicates.append(f"{n!r} appears in both {seen[n]} and {group_name}")
             else:
                 seen[n] = group_name
     if duplicates:
@@ -463,20 +470,22 @@ class ControlSplines(eqx.Module):
     name_controlled_FVCs: tuple = eqx.field(static=True)
     name_controlled_SVCs: tuple = eqx.field(static=True)
     name_controlled_PVs: tuple = eqx.field(static=True)
-    _batched: interpax.PPoly  # batched PPoly (4, m, n_FVCs+n_SVCs+n_PVs)
+    _batched: PPoly  # owned batched PPoly coeffs (m, 4, n_FVCs+n_SVCs+n_PVs)
     _n_flows: int = eqx.field(static=True)
     _n_total: int = eqx.field(static=True)
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
         if self._n_total == 0:
-            return jnp.zeros(0)
+            return jnp.zeros(jnp.shape(t) + (0,))
         vals = self._batched(t)
         if self._n_flows == 0:
             return vals
         if self._n_flows == self._n_total:
             return self._batched(t, nu=1)
         dvals = self._batched(t, nu=1)
-        return jnp.concatenate([dvals[: self._n_flows], vals[self._n_flows :]])
+        return jnp.concatenate(
+            [dvals[..., : self._n_flows], vals[..., self._n_flows :]], axis=-1
+        )
 
 
 def get_control_splines(
@@ -493,19 +502,17 @@ def get_control_splines(
 
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
-    splines: List[interpax.CubicSpline] = []
+    splines: List[PPoly] = []
 
     for vc_name in ordering.name_controlled_FVCs:
         vc = process.volume.volume_changes[vc_name]
-        splines.append(_timeseries_to_interpax_spline(vc.values))
+        splines.append(_timeseries_to_ppoly(vc.values))
     for vc_name in ordering.name_controlled_SVCs:
         vc = process.volume.volume_changes[vc_name]
-        splines.append(_timeseries_to_interpax_spline(vc.values))
+        splines.append(_timeseries_to_ppoly(vc.values))
     for pv_name in ordering.name_controlled_PVs:
         pv = process.process_variables[pv_name]
-        splines.append(
-            _value_to_interpax_spline(pv.values, t_start=t_start, t_end=t_end)
-        )
+        splines.append(_value_to_ppoly(pv.values, t_start=t_start, t_end=t_end))
 
     n_flows = len(ordering.name_controlled_FVCs) + len(ordering.name_controlled_SVCs)
     n_total = n_flows + len(ordering.name_controlled_PVs)
@@ -689,9 +696,7 @@ def build_rhs_ode(
 
     bo = process.biological_ode
     if bo is None:
-        raise ValueError(
-            "build_rhs_ode requires process.biological_ode to be set."
-        )
+        raise ValueError("build_rhs_ode requires process.biological_ode to be set.")
 
     if ordering is None:
         ordering = get_process_ordering(process)
@@ -1004,7 +1009,7 @@ def build_state_splines(
             )
         else:
             _reject_orphan_pseudobatch_metadata(concentration, sp_name)
-            state_splines[sp_name] = _value_to_interpax_spline(
+            state_splines[sp_name] = _value_to_ppoly(
                 concentration,
                 t_start=float(process.time_axis.start),
                 t_end=float(process.time_axis.end),
@@ -1012,7 +1017,7 @@ def build_state_splines(
 
     for pv_name in ordering.name_modeled_PVs:
         pv = process.process_variables[pv_name]
-        state_splines[pv_name] = _value_to_interpax_spline(
+        state_splines[pv_name] = _value_to_ppoly(
             pv.values,
             t_start=float(process.time_axis.start),
             t_end=float(process.time_axis.end),

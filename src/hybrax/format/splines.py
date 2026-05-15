@@ -23,7 +23,6 @@ from typing import Dict, Any, List, Optional, Tuple
 import dataclasses
 
 import equinox as eqx
-import interpax
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -39,7 +38,7 @@ from .dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from .time_series import spline_ops
+from .time_series import PPoly, spline_ops
 
 
 # ---------------------------------------------------------------------------
@@ -434,17 +433,14 @@ def fit_timeseries_spline(
     )
 
 
-def _interpax_ppoly_from_spline_state(rep: TimeSeries) -> interpax.PPoly:
-    """Build an interpax PPoly from stored TimeSeries power-basis state."""
+def _ppoly_from_spline_state(rep: TimeSeries) -> PPoly:
+    """Return stored TimeSeries power-basis spline state as owned PPoly."""
     if not _has_spline_state(rep):
-        raise ValueError("spline representation required for interpax conversion")
-    coeffs = jnp.asarray(rep.coeffs, dtype=float)
-    breaks = jnp.asarray(rep.breaks, dtype=float)
-    if not bool(jnp.all(jnp.diff(breaks) > 0.0)):
-        raise ValueError("TimeSeries spline breaks must be strictly increasing")
-    if coeffs.shape[0] + 1 != breaks.shape[0]:
-        raise ValueError("TimeSeries spline coeffs must align with breaks")
-    return interpax.PPoly.construct_fast(coeffs.T[::-1], breaks, extrapolate=True)
+        raise ValueError("spline representation required")
+    poly = rep.poly
+    if poly is None:
+        raise ValueError("spline representation required")
+    return poly
 
 
 def make_constant_spline(
@@ -773,11 +769,6 @@ def _baseline_coeffs_on_breaks(
     return coeffs
 
 
-def _power_coeffs_to_ppoly_coeffs(coeffs: jnp.ndarray) -> jnp.ndarray:
-    """Convert local [a, b, c, d] coeffs to interpax PPoly [d, c, b, a]."""
-    return jnp.stack([coeffs[:, 3], coeffs[:, 2], coeffs[:, 1], coeffs[:, 0]], axis=0)
-
-
 def _evaluate_many_with_boundary_start(
     series: TimeSeries,
     times: jnp.ndarray,
@@ -1103,12 +1094,16 @@ def _prepare_knots(t: jnp.ndarray, y: jnp.ndarray):
     return jnp.asarray(t), jnp.asarray(y)
 
 
-def make_interpax_spline(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural"):
-    """
-    Build a robust interpax.CubicSpline from arrays. Ensures unique, sorted knots.
-    """
+def make_cubic_ppoly(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural") -> PPoly:
+    """Build a robust cubic PPoly from arrays. Ensures unique, sorted knots."""
     t, y = _prepare_knots(t, y)
-    return interpax.CubicSpline(t, y, bc_type=bc_type, check=False)
+    scipy_ppoly = interpolate.CubicSpline(
+        np.asarray(t, dtype=np.float64),
+        np.asarray(y, dtype=np.float64),
+        bc_type=bc_type,
+        extrapolate=True,
+    )
+    return PPoly.from_scipy_ppoly(scipy_ppoly)
 
 
 def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str, Any]:
@@ -1197,7 +1192,7 @@ def build_splines(
         TimeSeries(times=inputs["meas_times"], values=inputs["c_star"]),
         smoothing_s=cstar_smoothing_s,
     )
-    spline_cstar = _interpax_ppoly_from_spline_state(c_star_ts)
+    spline_cstar = _ppoly_from_spline_state(c_star_ts)
 
     meas_times = jnp.array(inputs["meas_times"])
     adf_at_meas = jnp.array(inputs["adf_at_meas"])
@@ -1206,7 +1201,7 @@ def build_splines(
     has_discrete_feed = bool(inputs.get("has_discrete_feed", False))
     spline_feed_corr = None
     if not has_discrete_feed:
-        spline_feed_corr = make_interpax_spline(
+        spline_feed_corr = make_cubic_ppoly(
             inputs["meas_times"], inputs["feed_corr_at_meas"]
         )
 
@@ -1499,7 +1494,7 @@ def evaluate_real_concentration(
     Backtransform c*(t) -> c(t) at arbitrary evaluation times t_eval.
 
     Uses:
-      - c*(t) via the fitted interpax spline
+      - c*(t) via the fitted owned PPoly spline
       - ADF via canonical ``TimeSeries.evaluate``
       - feed_correction via canonical ``TimeSeries.evaluate``
 
@@ -1576,7 +1571,7 @@ class BacktransformSpline(eqx.Module):
     :class:`TimeSeries`.
     """
 
-    c_star_spline: interpax.PPoly
+    c_star_spline: PPoly
     adf_ts: TimeSeries
     feed_corr_ts: TimeSeries
     dadf_ts: TimeSeries
@@ -1682,7 +1677,7 @@ def build_backtransform_spline(
     is_constant = bool(species_transform.is_constant)
     constant_value = jnp.array(species_transform.constant_value or 0.0)
 
-    c_star_spline = _interpax_ppoly_from_spline_state(rep)
+    c_star_spline = _ppoly_from_spline_state(rep)
 
     adf_ts = transform.adf_ts
     feed_corr_ts = species_transform.feed_corr_ts
@@ -1755,16 +1750,16 @@ class BatchedBacktransformSpline(eqx.Module):
 
     Resamples all per-species ``c*`` and feed-correction splines onto a
     shared uniform knot grid and stacks their polynomial coefficients into
-    batched ``interpax.PPoly`` objects.  A single call evaluates all N
+    batched owned ``PPoly`` objects.  A single call evaluates all N
     species simultaneously, replacing the N separate Python-loop calls
     that dominate ODE RHS cost.
 
     Build with :func:`build_batched_conc_splines`.
     """
 
-    c_star_ppoly: interpax.PPoly  # coeff shape (4, m, n_sp)
-    fc_ppoly: interpax.PPoly  # coeff shape (4, m, n_sp)
-    adf_deriv_ppoly: interpax.PPoly
+    c_star_ppoly: PPoly  # coeff shape (m, 4, n_sp)
+    fc_ppoly: PPoly  # coeff shape (m, 4, n_sp)
+    adf_deriv_ppoly: PPoly
     fc_jump_times: jnp.ndarray  # (n_jump,)
     fc_jump_cumsum: jnp.ndarray  # (n_jump + 1, n_sp)
     fc_step_mask: jnp.ndarray  # (n_sp,) bool
@@ -1777,12 +1772,13 @@ class BatchedBacktransformSpline(eqx.Module):
     n_species: int = eqx.field(static=True)
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate all species concentrations at scalar time *t*.
+        """Evaluate all species concentrations at scalar or vector time *t*.
 
         Returns
         -------
         jnp.ndarray
-            Shape ``(n_sp,)``.
+            Shape ``(n_sp,)`` for scalar ``t`` or ``(n_t, n_sp)`` for
+            one-dimensional vector ``t``.
         """
         cs = self.c_star_ppoly(t)  # (n_sp,)
         fc = self.fc_ppoly(t)  # (n_sp,)
@@ -1794,12 +1790,12 @@ class BatchedBacktransformSpline(eqx.Module):
         if int(self.adf_jump_times.shape[0]) > 0:
             adf_jump_idx = jnp.searchsorted(self.adf_jump_times, t, side="left")
             adf = adf + self.adf_jump_cumsum[adf_jump_idx]
-        adf = _adf_for_division(adf)
+        adf = _adf_for_division(adf)[..., jnp.newaxis]
         result = (cs + fc) / adf
         return jnp.where(self.constant_mask, self.constant_values, result)
 
     def eval_derivative(self, t: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate dc/dt for all species at scalar time *t*.
+        """Evaluate dc/dt for all species at scalar or vector time *t*.
 
         Applies the full quotient rule for ``c(t) = (c* + fc) / ADF(t)``:
 
@@ -1814,7 +1810,8 @@ class BatchedBacktransformSpline(eqx.Module):
         Returns
         -------
         jnp.ndarray
-            Shape ``(n_sp,)``.
+            Shape ``(n_sp,)`` for scalar ``t`` or ``(n_t, n_sp)`` for
+            one-dimensional vector ``t``.
         """
         cs = self.c_star_ppoly(t)  # (n_sp,)
         fc = self.fc_ppoly(t)  # (n_sp,)
@@ -1828,9 +1825,9 @@ class BatchedBacktransformSpline(eqx.Module):
         if int(self.adf_jump_times.shape[0]) > 0:
             adf_jump_idx = jnp.searchsorted(self.adf_jump_times, t, side="left")
             adf = adf + self.adf_jump_cumsum[adf_jump_idx]
-        adf = _adf_for_division(adf)
+        adf = _adf_for_division(adf)[..., jnp.newaxis]
         # Derivative ignores instantaneous jumps and follows exact smooth pieces.
-        dadf_dt = self.adf_deriv_ppoly(t)
+        dadf_dt = self.adf_deriv_ppoly(t)[..., jnp.newaxis]
         c_val = (cs + fc) / adf
         result = (dc_star + dfc - c_val * dadf_dt) / adf
         return jnp.where(self.constant_mask, 0.0, result)
@@ -1917,9 +1914,7 @@ def build_batched_conc_splines(
                 adf_times = x_common
                 adf_values = _baseline_values_on_grid(sp.adf_ts, x_common)
                 adf_base_coeffs = _baseline_coeffs_on_breaks(sp.adf_ts, x_common)
-                adf_deriv_coeffs = _power_coeffs_to_ppoly_coeffs(
-                    spline_ops.derivative_coeffs(adf_base_coeffs)
-                )
+                adf_deriv_coeffs = spline_ops.derivative_coeffs(adf_base_coeffs)
                 adf_jump_times, adf_jump_values = _series_jump_times_and_values(
                     sp.adf_ts
                 )
@@ -1959,9 +1954,7 @@ def build_batched_conc_splines(
                     )
                     and jnp.allclose(
                         adf_deriv_coeffs,
-                        _power_coeffs_to_ppoly_coeffs(
-                            spline_ops.derivative_coeffs(other_base_coeffs)
-                        ),
+                        spline_ops.derivative_coeffs(other_base_coeffs),
                         atol=_FLOAT_EQ_ATOL,
                     )
                 ):
@@ -1977,7 +1970,7 @@ def build_batched_conc_splines(
                 # Dummy splines for constant species (masked out in eval)
                 c_star_resampled.append(jnp.zeros(n_knots))
                 fc_resampled.append(jnp.zeros(n_knots))
-                fc_ppoly_coeffs.append(jnp.zeros((4, n_knots - 1), dtype=float))
+                fc_ppoly_coeffs.append(jnp.zeros((n_knots - 1, 4), dtype=float))
                 fc_step_mask_list.append(False)
                 fc_jump_times_list.append(jnp.zeros(0, dtype=float))
                 fc_jump_values_list.append(jnp.zeros(0, dtype=float))
@@ -1985,7 +1978,7 @@ def build_batched_conc_splines(
                 c_star_resampled.append(sp.c_star_spline(x_common))
                 fc_coeffs = _baseline_coeffs_on_breaks(sp.feed_corr_ts, x_common)
                 fc_resampled.append(fc_coeffs[:, 0])
-                fc_ppoly_coeffs.append(_power_coeffs_to_ppoly_coeffs(fc_coeffs))
+                fc_ppoly_coeffs.append(fc_coeffs)
                 fc_jump_times, fc_jump_values = _series_jump_times_and_values(
                     sp.feed_corr_ts
                 )
@@ -1994,12 +1987,12 @@ def build_batched_conc_splines(
                 fc_jump_times_list.append(fc_jump_times)
                 fc_jump_values_list.append(fc_jump_values)
         else:
-            # Plain CubicSpline or other callable: treat as c*=spline, fc=0, ADF=1
+            # Plain callable: treat as c*=spline, fc=0, ADF=1
             constant_mask_list.append(False)
             constant_values_list.append(0.0)
             c_star_resampled.append(sp(x_common))
             fc_resampled.append(jnp.zeros(n_knots))
-            fc_ppoly_coeffs.append(jnp.zeros((4, n_knots - 1), dtype=float))
+            fc_ppoly_coeffs.append(jnp.zeros((n_knots - 1, 4), dtype=float))
             fc_step_mask_list.append(False)
             fc_jump_times_list.append(jnp.zeros(0, dtype=float))
             fc_jump_values_list.append(jnp.zeros(0, dtype=float))
@@ -2010,22 +2003,17 @@ def build_batched_conc_splines(
         adf_values = jnp.array([1.0, 1.0])
         adf_jump_times = jnp.zeros(0, dtype=float)
         adf_jump_cumsum = jnp.asarray([0.0], dtype=float)
-        adf_deriv_coeffs = jnp.zeros((4, 1), dtype=float)
-    adf_deriv_ppoly = interpax.PPoly.construct_fast(
-        adf_deriv_coeffs, x_common, extrapolate=True
-    )
+        adf_deriv_coeffs = jnp.zeros((n_knots - 1, 4), dtype=float)
+    adf_deriv_ppoly = PPoly(x_common, adf_deriv_coeffs)
 
-    # Build batched PPoly for c* splines
-    c_star_cubic = [
-        interpax.CubicSpline(x_common, y, bc_type="natural", check=False)
-        for y in c_star_resampled
-    ]
-    c_star_c = jnp.stack([s.c for s in c_star_cubic], axis=-1)  # (4, m, n_sp)
-    c_star_ppoly = interpax.PPoly.construct_fast(c_star_c, x_common, extrapolate=True)
+    # Build batched PPoly for c* splines.
+    c_star_cubic = [make_cubic_ppoly(x_common, y) for y in c_star_resampled]
+    c_star_c = jnp.stack([s.coeffs for s in c_star_cubic], axis=-1)
+    c_star_ppoly = PPoly(x_common, c_star_c)
 
     # Build batched PPoly for the exact jump-free feed-correction baseline.
     fc_c = jnp.stack(fc_ppoly_coeffs, axis=-1)
-    fc_ppoly = interpax.PPoly.construct_fast(fc_c, x_common, extrapolate=True)
+    fc_ppoly = PPoly(x_common, fc_c)
 
     all_jump_times = [
         np.asarray(jt, dtype=float)

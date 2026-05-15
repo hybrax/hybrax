@@ -143,7 +143,7 @@ uses the sample-first value of `S(t)` at the event timestamp.
 | Function | Description |
 |----------|-------------|
 | `fit_timeseries_spline(ts, boundaries, smoothing_s)` | Fit segmented spline state onto a `TimeSeries`. Segments with at least four points use SciPy cubic smoothing B-splines; `smoothing_s=0` gives an exact/interpolating fit. Shorter segments fall back to interpolating `CubicSpline`. |
-| `make_interpax_spline(t, y, bc_type)` | Create an `interpax.CubicSpline` from arrays. |
+| `make_cubic_ppoly(t, y, bc_type)` | Create an owned `PPoly` cubic spline from arrays. |
 | `make_constant_spline(value, t_start, t_end)` | Create a constant-valued spline over a time range. |
 
 ### Evaluation
@@ -182,7 +182,7 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 ```
 
 Fields:
-- `c_star_spline` — interpax `PPoly` view of the stored `TimeSeries` c* spline
+- `c_star_spline` — owned `PPoly` view of the stored `TimeSeries` c* spline
 - `adf_ts`, `feed_corr_ts` — canonical transform `TimeSeries`
 - `dadf_ts`, `dfc_ts` — derivative `TimeSeries` for smooth RHS terms
 - `is_constant` — bypass flag for constant-concentration species

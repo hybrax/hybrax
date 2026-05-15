@@ -8,10 +8,12 @@ import warnings
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
-from scipy.interpolate import PPoly, make_splrep
+from scipy.interpolate import PPoly as SciPyPPoly
+from scipy.interpolate import make_splrep
 
 from . import grid_utils
 from . import spline_ops
+from .ppoly import PPoly
 from .constants import APPROX_ABS_FLOOR
 from .constants import APPROX_INITIAL_S
 from .constants import APPROX_MAX_REFIT_ATTEMPTS
@@ -94,6 +96,7 @@ class TimeSeries(eqx.Module):
         values: Any | None = None,
         derived: bool = False,
         jump_times: Any | None = None,
+        poly: PPoly | None = None,
         breaks: Any | None = None,
         coeffs: Any | None = None,
         segment_start_piece_idx: Any | None = None,
@@ -110,7 +113,8 @@ class TimeSeries(eqx.Module):
 
         has_discrete = times is not None or values is not None
         has_spline = (
-            breaks is not None
+            poly is not None
+            or breaks is not None
             or coeffs is not None
             or segment_start_piece_idx is not None
         )
@@ -122,6 +126,22 @@ class TimeSeries(eqx.Module):
             raise ValueError(
                 "times and values must either both be provided or both be None"
             )
+
+        if poly is not None:
+            if not isinstance(poly, PPoly):
+                raise TypeError("poly must be a bp_format.time_series.PPoly")
+            if poly.continuity_side != continuity_side:
+                raise ValueError("poly continuity_side must match continuity_side")
+            if poly.coeffs.ndim != 2:
+                raise ValueError("TimeSeries requires scalar-valued PPoly coeffs")
+            if breaks is None:
+                breaks = poly.breaks
+            elif not np.allclose(np.asarray(breaks), np.asarray(poly.breaks)):
+                raise ValueError("breaks must match poly.breaks when both are provided")
+            if coeffs is None:
+                coeffs = poly.coeffs
+            elif not np.allclose(np.asarray(coeffs), np.asarray(poly.coeffs)):
+                raise ValueError("coeffs must match poly.coeffs when both are provided")
 
         if has_spline and (
             breaks is None or coeffs is None or segment_start_piece_idx is None
@@ -238,28 +258,39 @@ class TimeSeries(eqx.Module):
 
         return timeseries_to_dict(self)
 
-    def evaluate(self, t, *, side=None):
+    @property
+    def poly(self) -> PPoly | None:
+        """Return the owned spline evaluator for the canonical spline state."""
         if self.breaks is None or self.coeffs is None:
+            return None
+        return PPoly(self.breaks, self.coeffs, continuity_side=self.continuity_side)
+
+    def evaluate(self, t, *, side=None):
+        poly = self.poly
+        if poly is None:
             raise ValueError("spline representation required for evaluation")
-        effective_side = self.continuity_side if side is None else side
-        return spline_ops.evaluate_scalar(t, self.breaks, self.coeffs, effective_side)
+        return poly(t, side=side)
 
     def evaluate_many(self, ts, *, side=None):
-        if self.breaks is None or self.coeffs is None:
+        poly = self.poly
+        if poly is None:
             raise ValueError("spline representation required for evaluation")
-        effective_side = self.continuity_side if side is None else side
-        return spline_ops.evaluate_many(ts, self.breaks, self.coeffs, effective_side)
+        ts_arr = jnp.asarray(ts, dtype=poly.breaks.dtype)
+        if ts_arr.ndim != 1:
+            raise ValueError("ts must be a 1D array")
+        return poly(ts_arr, side=side)
 
     def deriv(self, order: int = 1):
         order = int(order)
-        if self.breaks is None or self.coeffs is None:
+        poly = self.poly
+        if poly is None:
             raise ValueError("spline representation required for derivative")
-        new_coeffs = spline_ops.derivative_coeffs(self.coeffs, order=order)
+        new_poly = poly.derivative(order=order)
         return TimeSeries(
             derived=True,
             jump_times=self.jump_times,
-            breaks=self.breaks,
-            coeffs=new_coeffs,
+            breaks=new_poly.breaks,
+            coeffs=new_poly.coeffs,
             segment_start_piece_idx=self.segment_start_piece_idx,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
@@ -577,8 +608,11 @@ class TimeSeries(eqx.Module):
 
         for _ in range(APPROX_MAX_REFIT_ATTEMPTS):
             bspline = make_splrep(x_arr, y_arr, k=degree, s=s_val)
-            ppoly = PPoly.from_spline(bspline)
-            breaks, coeffs = spline_ops.ppoly_to_power_basis(ppoly)
+            poly = PPoly.from_scipy_ppoly(
+                SciPyPPoly.from_spline(bspline),
+                continuity_side=self.continuity_side,
+            )
+            breaks, coeffs = poly.breaks, poly.coeffs
             probe = TimeSeries(
                 breaks=breaks,
                 coeffs=coeffs,

@@ -1079,6 +1079,84 @@ def test_batched_backtransform_derivative_matches_scalar_continuous_feed():
     np.testing.assert_allclose(vectorized, scalar, rtol=1e-4, atol=1e-3)
 
 
+def test_backtransform_accepts_vector_time():
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    transform = _build_single_species_transform(proc, "glucose")
+    bt = build_backtransform_spline(transform, "glucose")
+    derivative = bt.derivative()
+
+    t_eval = jnp.linspace(0.0, 20.0, 9)
+    direct = bt(t_eval)
+    direct_derivative = derivative(t_eval)
+    expected = jax.vmap(bt)(t_eval)
+    expected_derivative = jax.vmap(derivative)(t_eval)
+
+    assert direct.shape == t_eval.shape
+    assert direct_derivative.shape == t_eval.shape
+    np.testing.assert_allclose(direct, expected, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(
+        direct_derivative, expected_derivative, rtol=1e-6, atol=1e-6
+    )
+
+
+def test_batched_backtransform_accepts_vector_time_for_one_species():
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    transform = _build_single_species_transform(proc, "glucose")
+    batched = build_batched_conc_splines(
+        transform,
+        species_names=["glucose"],
+        t_start=0.0,
+        t_end=20.0,
+    )
+
+    t_eval = jnp.linspace(0.0, 20.0, 9)
+    direct = batched(t_eval)
+    direct_derivative = batched.eval_derivative(t_eval)
+    expected = jax.vmap(lambda t: batched(t)[0])(t_eval)
+    expected_derivative = jax.vmap(lambda t: batched.eval_derivative(t)[0])(t_eval)
+
+    assert direct.shape == (t_eval.shape[0], 1)
+    assert direct_derivative.shape == (t_eval.shape[0], 1)
+    np.testing.assert_allclose(direct[:, 0], expected, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(
+        direct_derivative[:, 0], expected_derivative, rtol=1e-6, atol=1e-6
+    )
+
+
+def test_batched_backtransform_accepts_vector_time_for_two_species():
+    species_names = ["glucose", "biomass"]
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    transform = build_pseudobatch_transform(proc, species_names)
+    batched = build_batched_conc_splines(
+        transform,
+        species_names=species_names,
+        t_start=0.0,
+        t_end=20.0,
+    )
+
+    t_eval = jnp.linspace(0.0, 20.0, 9)
+    direct = batched(t_eval)
+    direct_derivative = batched.eval_derivative(t_eval)
+    expected = jnp.stack(
+        [jax.vmap(lambda t, i=i: batched(t)[i])(t_eval) for i in range(2)],
+        axis=-1,
+    )
+    expected_derivative = jnp.stack(
+        [
+            jax.vmap(lambda t, i=i: batched.eval_derivative(t)[i])(t_eval)
+            for i in range(2)
+        ],
+        axis=-1,
+    )
+
+    assert direct.shape == (t_eval.shape[0], 2)
+    assert direct_derivative.shape == (t_eval.shape[0], 2)
+    np.testing.assert_allclose(direct, expected, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(
+        direct_derivative, expected_derivative, rtol=1e-6, atol=1e-6
+    )
+
+
 def test_batched_backtransform_preserves_start_boundary_bolus():
     proc = _make_process_with_bolus_feed(
         V0=1.0,
@@ -1522,7 +1600,7 @@ def test_load_rejects_legacy_process_variable_interpolator_payload():
         payload = path.read_text()
         mutated = payload.replace(
             '"values": {',
-            '"interpolator": {"kind": "interpax_linear"},\n          "values": {',
+            '"interpolator": {"kind": "legacy_linear"},\n          "values": {',
             1,
         )
         path.write_text(mutated)
@@ -1571,7 +1649,7 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
         payload = path.read_text()
         mutated = payload.replace(
             '"concentration": {',
-            '"interpolator": {"kind": "interpax_ppoly"},\n'
+            '"interpolator": {"kind": "legacy_ppoly"},\n'
             '              "concentration": {',
             1,
         )
@@ -1611,7 +1689,7 @@ def test_load_rejects_legacy_volume_change_interpolator_payload():
         payload = path.read_text()
         mutated = payload.replace(
             '"values": {',
-            '"interpolator": {"kind": "interpax_linear"},\n            "values": {',
+            '"interpolator": {"kind": "legacy_linear"},\n            "values": {',
             1,
         )
         path.write_text(mutated)

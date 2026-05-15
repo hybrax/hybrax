@@ -10,7 +10,6 @@ modules that contain JAX-array fields).
 """
 
 import equinox as eqx
-import interpax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -44,8 +43,9 @@ from bp_format.mechanistic import (
 )
 from bp_format.splines import (
     build_pseudobatch_transform,
-    make_interpax_spline,
+    make_cubic_ppoly,
 )
+from bp_format.time_series import PPoly
 
 
 # ---------------------------------------------------------------------------
@@ -195,26 +195,26 @@ def _apply_pseudobatch_transform(process, species_names=("biomass", "glucose")):
 
 
 # ---------------------------------------------------------------------------
-# make_interpax_spline (passthrough sanity)
+# make_cubic_ppoly (passthrough sanity)
 # ---------------------------------------------------------------------------
 
 
-class TestMakeInterpaxSpline:
-    def test_returns_interpax_spline(self):
-        sp = make_interpax_spline(
+class TestMakeCubicPPoly:
+    def test_returns_owned_ppoly(self):
+        sp = make_cubic_ppoly(
             np.array([0.0, 1.0, 2.0, 3.0]), np.array([0.0, 1.0, 4.0, 9.0])
         )
-        assert isinstance(sp, interpax.CubicSpline)
+        assert isinstance(sp, PPoly)
 
     def test_eval_at_knots(self):
         t = np.array([0.0, 1.0, 2.0, 3.0])
         v = np.array([0.0, 1.0, 4.0, 9.0])
-        sp = make_interpax_spline(t, v)
+        sp = make_cubic_ppoly(t, v)
         for ti, vi in zip(t, v):
             assert float(sp(ti)) == pytest.approx(float(vi), abs=1e-4)
 
     def test_derivative_of_linear_is_slope(self):
-        sp = make_interpax_spline(np.array([0.0, 10.0]), np.array([0.0, 5.0]))
+        sp = make_cubic_ppoly(np.array([0.0, 10.0]), np.array([0.0, 5.0]))
         assert float(sp.derivative()(5.0)) == pytest.approx(0.5, rel=1e-4)
 
 
@@ -411,7 +411,9 @@ class TestControlSplines:
         process = _make_batch_process()
         ctrl = get_control_splines(process)
         u = ctrl(jnp.array(5.0))
+        u_vector = ctrl(jnp.array([0.0, 5.0, 10.0]))
         assert u.shape == (0,)
+        assert u_vector.shape == (3, 0)
 
     def test_jit_callable(self):
         process = _make_process()
@@ -489,9 +491,7 @@ class TestRhsOde:
         assert dc.shape == (3,)  # 2 RMCs + 0 PVs + V
 
     def test_dV_from_FVC(self):
-        process = _make_process(
-            with_controlled_FVC=True, with_controlled_PV=False
-        )
+        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
         rhs = get_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
@@ -509,7 +509,6 @@ class TestRhsOde:
         rhs = get_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
-        u = jnp.zeros(0)
         f_modeled_SVCs = jnp.array([-0.001])  # outflow
         dc = rhs(c, rates, jnp.zeros(0), jnp.zeros(0), f_modeled_SVCs)
         # dV = total_in - total_out = 0 - 0.001 = -0.001
@@ -580,9 +579,7 @@ class TestRhsOde:
             get_rhs_ode(process)
 
     def test_feed_dilution_concentration(self):
-        process = _make_process(
-            with_controlled_FVC=True, with_controlled_PV=False
-        )
+        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
         rhs = get_rhs_ode(process)
         c_biomass = 2.0
         c_glucose = 5.0

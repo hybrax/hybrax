@@ -371,7 +371,7 @@ A thin, JIT-compiled wrapper around `build_q_func`:
 
 - Cumulative-volume splines per controlled and modeled flow, sourced from
   `process.volume.volume_changes[fn].values`.
-- All flows batched into a single `interpax.PPoly` via `_batch_splines`.
+- All flows batched into a single owned `PPoly` via `_batch_splines`.
 - Discrete events extracted via `extract_discrete_events(process, rhs_ode)`,
   sorted by time, cumulative `dV` precomputed.
 - `V(t) = V0 + Σ batched_vol(t) + Σ_{events ≤ t} dV`, with `V0` clamped via
@@ -452,7 +452,7 @@ For each fixture directory, the helper performed:
    `t_eval_q = np.linspace(t_start, t_end, n_q_grid)`.
 8. Estimate q on `t_eval_q` (was: `bpm.estimate_specific_rates(...)` →
    `(len(t_eval_q), n_reactor)`) and fit a single cubic
-   `interpax`-spline `q_spline` over `t_eval_q`.
+   owned `PPoly`/cubic spline `q_spline` over `t_eval_q`.
 9. Wrap the spline as a runtime `rates_func` (was: `_wrap_q_as_rates(rhs_ode, q_func)`
    producing `(q(t), jnp.zeros(rhs_ode.r_size))`). With the new flat
    protocol the wrapper must produce a flat `(rate_size,)` array aligned

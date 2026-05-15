@@ -31,7 +31,6 @@ dependencies = [
     "jaxlib>=0.4.0",
     "numpy>=1.20.0",
     "equinox>=0.10.0",
-    "interpax>=0.3.0",
     "scipy>=1.15.0",
     "pseudobatch>=1.0.0",
     "diffrax>=0.7.0",
