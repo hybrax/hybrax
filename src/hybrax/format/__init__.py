@@ -30,7 +30,6 @@ from .dataclasses import (
     Bounds,
     BiologicalOde,
     ProcessOrdering,
-    PseudobatchSpeciesTransform,
     PseudobatchTransform,
     # Higher-level structures
     BioProcess,
@@ -87,7 +86,6 @@ __all__ = [
     "ReactorMediumComponent",
     "FeedMedium",
     "ReactorMedium",
-    "PseudobatchSpeciesTransform",
     "PseudobatchTransform",
     "VolumeChange",
     "FeedVolumeChange",

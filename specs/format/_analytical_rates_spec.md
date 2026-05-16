@@ -441,9 +441,11 @@ For each fixture directory, the helper performed:
 4. Snapshot the original measured `(times, values)` for every
    reactor-medium component whose concentration is a `TimeSeries`. These
    are the *ground truth* the integrator output is benchmarked against.
-5. Build pseudobatch transforms for those species and reassign each
-   reactor component's `concentration` to the matching `c_star_ts` so
-   downstream spline construction lives in pseudo-batch coordinates.
+5. Build pseudobatch transforms for those species. Keep each reactor
+   component's real measured `concentration` intact and store the matching
+   pseudobatch c* carrier in `component.c_star_concentration`; downstream
+   state-spline construction uses the process-level transform bundle to
+   backtransform c* to real concentration when needed.
 6. Build `ctrl = bpm.get_control_splines(process)`,
    `rhs_ode = bpm.get_rhs_ode(process)`,
    `state_splines = bpm.build_state_splines(process, rhs_ode)`.

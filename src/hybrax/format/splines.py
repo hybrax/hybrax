@@ -32,7 +32,6 @@ from .dataclasses import (
     BioProcess,
     DiscreteEvents,
     FeedVolumeChange,
-    PseudobatchSpeciesTransform,
     PseudobatchTransform,
     SampleVolumeChange,
     StaticVariable,
@@ -1242,7 +1241,6 @@ def build_splines(
 def _cstar_metadata(
     species_name: str,
     *,
-    fit_strategy: str,
     is_constant: bool,
     constant_value: float | None,
 ) -> dict:
@@ -1250,8 +1248,7 @@ def _cstar_metadata(
     return {
         "transform": {
             "name": "pseudo_batch",
-            "species": species_name,
-            "cstar_fit_strategy": fit_strategy,
+            "component": species_name,
             "is_constant": bool(is_constant),
             "constant_value": constant_value,
         }
@@ -1278,7 +1275,6 @@ def _build_cstar_timeseries(
             **(fitted.metadata or {}),
             **_cstar_metadata(
                 species_name,
-                fit_strategy=fitted.metadata["fit_strategy"],
                 is_constant=is_constant,
                 constant_value=constant_value,
             ),
@@ -1425,7 +1421,7 @@ def build_pseudobatch_transform(
     shared_meas_times = jnp.asarray(sorted(set(shared_times)), dtype=float)
 
     reference_inputs = None
-    species_transforms: dict[str, PseudobatchSpeciesTransform] = {}
+    feed_corrections: dict[str, TimeSeries] = {}
     for name in selected_species:
         component = process.reactor_medium.components[name]
         ts = component.concentration
@@ -1467,22 +1463,17 @@ def build_pseudobatch_transform(
             constant_value=constant_value,
             smoothing_s=cstar_smoothing_s,
         )
-        species_transforms[name] = PseudobatchSpeciesTransform(
-            species=name,
-            c_star_ts=c_star_ts,
-            feed_corr_ts=series_inputs["feed_corr_ts"],
-            is_constant=is_constant,
-            constant_value=constant_value,
-            cstar_fit_strategy=c_star_ts.metadata["fit_strategy"],
-        )
+        component.c_star_concentration = c_star_ts
+        feed_corrections[name] = series_inputs["feed_corr_ts"]
 
     assert reference_inputs is not None
+    if process.volume.total_volume is None:
+        process.volume.total_volume = reference_inputs["reactor_volume_ts"]
     return PseudobatchTransform(
-        adf_ts=reference_inputs["adf_ts"],
-        reactor_volume_ts=reference_inputs["reactor_volume_ts"],
-        sample_compensation_ts=reference_inputs["sample_compensation_ts"],
-        accumulated_feed_ts=reference_inputs["accumulated_feed_ts"],
-        species=species_transforms,
+        adf=reference_inputs["adf_ts"],
+        feed_corrections=feed_corrections,
+        sample_compensation=reference_inputs["sample_compensation_ts"],
+        accumulated_feeds=reference_inputs["accumulated_feed_ts"],
     )
 
 
@@ -1523,6 +1514,85 @@ def evaluate_real_concentration(
 
     adf = _adf_for_division(adf)
 
+    return (cs + fc) / adf
+
+
+def _resolve_component(process: BioProcess, component: Any):
+    """Return a reactor-medium component from a component object or name."""
+    if isinstance(component, str):
+        return process.reactor_medium.components[component]
+    return component
+
+
+def _evaluate_c_star_concentration(value: Any, t_eval: jnp.ndarray) -> jnp.ndarray:
+    """Evaluate a component-level c* carrier at scalar or vector times."""
+    if isinstance(value, StaticVariable):
+        return jnp.asarray(value.value, dtype=float) + jnp.zeros_like(t_eval)
+    if not isinstance(value, TimeSeries):
+        raise TypeError(
+            "Pseudobatch evaluation requires component.c_star_concentration "
+            "to be a TimeSeries or StaticVariable."
+        )
+    if not _has_spline_state(value):
+        raise ValueError(
+            "Pseudobatch evaluation requires component.c_star_concentration "
+            "to carry stored spline state; regenerate the pseudobatch transform."
+        )
+    if t_eval.ndim == 0:
+        return value.evaluate(t_eval)
+    return value.evaluate_many(t_eval)
+
+
+def _require_pseudobatch_transform_spline_state(value: TimeSeries, name: str) -> None:
+    """Fail fast when a pseudobatch helper lacks stored spline state."""
+    if not _has_spline_state(value):
+        raise ValueError(
+            f"Pseudobatch evaluation requires {name} to carry stored spline "
+            "state; regenerate the pseudobatch transform."
+        )
+
+
+def evaluate_pseudobatch_transform(
+    process: BioProcess,
+    component: Any,
+    times: jnp.ndarray,
+) -> jnp.ndarray:
+    """Evaluate stored pseudobatch c* as real concentration.
+
+    Implements only the c* -> real concentration direction:
+    ``c(t) = (c*(t) + feed_correction(t)) / ADF(t)``.
+    """
+    transform = getattr(process, "pseudobatch_transform", None)
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+
+    comp = _resolve_component(process, component)
+    c_star = getattr(comp, "c_star_concentration", None)
+    if c_star is None:
+        raise ValueError(
+            f"Component {comp.name!r} has no c_star_concentration to backtransform."
+        )
+    if comp.name not in transform.feed_corrections:
+        raise KeyError(comp.name)
+    _require_pseudobatch_transform_spline_state(transform.adf, "transform.adf")
+    _require_pseudobatch_transform_spline_state(
+        transform.feed_corrections[comp.name],
+        f"transform.feed_corrections[{comp.name!r}]",
+    )
+
+    t_eval = jnp.asarray(times, dtype=float)
+    cs = _evaluate_c_star_concentration(c_star, t_eval)
+    if t_eval.ndim == 0:
+        adf = _evaluate_with_boundary_start(transform.adf, t_eval, side="left")
+        fc = _evaluate_with_boundary_start(
+            transform.feed_corrections[comp.name], t_eval, side="left"
+        )
+    else:
+        adf = _evaluate_many_with_boundary_start(transform.adf, t_eval)
+        fc = _evaluate_many_with_boundary_start(
+            transform.feed_corrections[comp.name], t_eval
+        )
+    adf = _adf_for_division(adf)
     return (cs + fc) / adf
 
 
@@ -1636,50 +1706,71 @@ class BacktransformSpline(eqx.Module):
 
 
 def build_backtransform_spline(
-    transform: PseudobatchTransform,
+    process: BioProcess,
     species_name: str,
 ) -> BacktransformSpline:
-    """Build a JIT-compatible backtransform from a pseudobatch bundle.
+    """Build a JIT-compatible c* -> real concentration backtransform.
 
-    This is meant to be called **once** (outside JIT).  The returned module
-    can then be passed into ``eqx.filter_jit``-compiled functions.
-
-    Parameters
-    ----------
-    transform:
-        Process-level pseudobatch transform bundle.
-    species_name:
-        Reactor-medium species name stored in ``transform.species``.
-
-    Returns
-    -------
-    BacktransformSpline
+    The process supplies the shared pseudobatch transform bundle; the component
+    supplies the stored ``c_star_concentration`` carrier.
     """
-    if species_name not in transform.species:
+    transform = getattr(process, "pseudobatch_transform", None)
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+    if species_name not in process.reactor_medium.components:
         raise KeyError(species_name)
-    species_transform = transform.species[species_name]
-    if species_transform.species != species_name:
-        raise ValueError(
-            f"Pseudobatch species key {species_name!r} does not match stored "
-            f"species {species_transform.species!r}."
-        )
+    if species_name not in transform.feed_corrections:
+        raise KeyError(species_name)
 
-    rep = species_transform.c_star_ts
-    if not _has_spline_state(rep):
+    component = process.reactor_medium.components[species_name]
+    rep = component.c_star_concentration
+    if rep is None:
         raise ValueError(
-            "Pseudobatch c_star_ts must carry stored spline state; "
+            f"Pseudobatch species {species_name!r} has no c_star_concentration; "
             "regenerate the pseudobatch transform."
         )
-    xi_source = rep.times if rep.times is not None else rep.breaks
+
+    adf_ts = transform.adf
+    feed_corr_ts = transform.feed_corrections[species_name]
+    t_start = (
+        float(adf_ts.breaks[0]) if adf_ts.breaks is not None else float(adf_ts.times[0])
+    )
+    t_end = (
+        float(adf_ts.breaks[-1])
+        if adf_ts.breaks is not None
+        else float(adf_ts.times[-1])
+    )
+
+    if isinstance(rep, StaticVariable):
+        c_star_ts = _constant_timeseries(rep.value, t_start, t_end)
+        # A static c* is not necessarily a static real concentration; still
+        # apply ADF/feed-correction rather than using the measured-concentration
+        # constant bypass reserved for near-constant raw measurements.
+        is_constant = False
+        constant_value = jnp.asarray(0.0)
+    elif isinstance(rep, TimeSeries):
+        if not _has_spline_state(rep):
+            raise ValueError(
+                "Pseudobatch c_star_concentration must carry stored spline state; "
+                "regenerate the pseudobatch transform."
+            )
+        c_star_ts = rep
+        metadata = rep.metadata if isinstance(rep.metadata, dict) else {}
+        transform_meta = metadata.get("transform")
+        if isinstance(transform_meta, dict):
+            is_constant = bool(transform_meta.get("is_constant", False))
+            constant_value = jnp.asarray(transform_meta.get("constant_value") or 0.0)
+        else:
+            is_constant = False
+            constant_value = jnp.asarray(0.0)
+    else:
+        raise TypeError(
+            "component.c_star_concentration must be a TimeSeries or StaticVariable."
+        )
+
+    xi_source = c_star_ts.times if c_star_ts.times is not None else c_star_ts.breaks
     xi = jnp.asarray(xi_source, dtype=float)
-
-    is_constant = bool(species_transform.is_constant)
-    constant_value = jnp.array(species_transform.constant_value or 0.0)
-
-    c_star_spline = _ppoly_from_spline_state(rep)
-
-    adf_ts = transform.adf_ts
-    feed_corr_ts = species_transform.feed_corr_ts
+    c_star_spline = _ppoly_from_spline_state(c_star_ts)
 
     adf_times = jnp.asarray(adf_ts.times, dtype=float)
     adf_values = _timeseries_base_values_without_jumps(adf_ts)
@@ -1691,7 +1782,7 @@ def build_backtransform_spline(
     )
     fc_times = jnp.asarray(feed_corr_ts.times, dtype=float)
     fc_values = _timeseries_base_values_without_jumps(feed_corr_ts)
-    if fc_interp in {"piecewise_polynomial", "piecewise_constant"}:
+    if fc_interp in {"piecewise_polynomial", "piecewise_constant", "constant"}:
         fc_jump_times, fc_jump_values = _series_jump_times_and_values(feed_corr_ts)
     elif fc_interp == "cubic":
         fc_jump_times = jnp.zeros(0, dtype=float)
@@ -1705,7 +1796,7 @@ def build_backtransform_spline(
     else:
         raise ValueError(
             f"Unknown feed_corr_interp={fc_interp!r}; expected 'cubic', "
-            "'piecewise_polynomial', or 'piecewise_constant'."
+            "'piecewise_polynomial', 'piecewise_constant', or 'constant'."
         )
     dadf_ts = (
         adf_ts.deriv()
@@ -1833,43 +1924,67 @@ class BatchedBacktransformSpline(eqx.Module):
 
 
 def build_batched_conc_splines(
-    transform: PseudobatchTransform,
+    process: BioProcess,
     species_names: Optional[List[str]] = None,
     t_start: float | None = None,
     t_end: float | None = None,
     n_knots: int = _DEFAULT_BATCH_KNOTS,
 ):
-    """Build a :class:`BatchedBacktransformSpline` from a transform bundle.
+    """Build a :class:`BatchedBacktransformSpline` from a process.
 
-    The bundle supplies one shared ADF TimeSeries and one c*/feed-correction
+    The process supplies one shared ADF TimeSeries through
+    ``process.pseudobatch_transform`` and one component-level c*/feed-correction
     pair per species.
-
-    Parameters
-    ----------
-    transform : PseudobatchTransform
-        Process-level pseudobatch transform bundle.
-    species_names : list[str] | None
-        Ordered species names (determines column order in batched arrays).
-    t_start, t_end : float | None
-        Time range for resampling.
-    n_knots : int
-        Number of uniformly-spaced knots for resampling (default 128).
-
-    Returns
-    -------
-    BatchedBacktransformSpline
     """
+    transform = getattr(process, "pseudobatch_transform", None)
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
     if species_names is None:
-        species_names = list(transform.species)
+        species_names = [
+            name
+            for name, component in process.reactor_medium.components.items()
+            if component.c_star_concentration is not None
+        ]
     else:
         species_names = list(species_names)
+    try:
+        _require_pseudobatch_transform_spline_state(transform.adf, "transform.adf")
+    except ValueError as exc:
+        raise ValueError(
+            "Batched pseudobatch splines require transform.adf to carry stored "
+            "spline state; regenerate the pseudobatch transform."
+        ) from exc
+    for name in species_names:
+        if name not in transform.feed_corrections:
+            raise KeyError(name)
+        try:
+            _require_pseudobatch_transform_spline_state(
+                transform.feed_corrections[name],
+                f"transform.feed_corrections[{name!r}]",
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "Batched pseudobatch splines require feed_corrections entries "
+                "to carry stored spline state; regenerate the pseudobatch "
+                "transform."
+            ) from exc
     conc_splines = {
-        name: build_backtransform_spline(transform, name) for name in species_names
+        name: build_backtransform_spline(process, name) for name in species_names
     }
     if t_start is None:
-        t_start = float(transform.adf_ts.breaks[0])
+        if transform.adf.breaks is not None:
+            t_start = float(transform.adf.breaks[0])
+        elif transform.adf.times is not None:
+            t_start = float(transform.adf.times[0])
+        else:
+            raise ValueError("transform.adf must define breaks or times.")
     if t_end is None:
-        t_end = float(transform.adf_ts.breaks[-1])
+        if transform.adf.breaks is not None:
+            t_end = float(transform.adf.breaks[-1])
+        elif transform.adf.times is not None:
+            t_end = float(transform.adf.times[-1])
+        else:
+            raise ValueError("transform.adf must define breaks or times.")
 
     common_points = [float(t) for t in np.linspace(t_start, t_end, n_knots)]
     for sp_name in species_names:

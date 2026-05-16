@@ -24,15 +24,10 @@ from .dataclasses import (
     Volume,
     FeedVolumeChange,
     SampleVolumeChange,
-    PseudobatchSpeciesTransform,
     PseudobatchTransform,
     ReactorMedium,
     ReactorMediumComponent,
     ProcessVariable,
-)
-
-_ALLOWED_CSTAR_FIT_STRATEGIES = frozenset(
-    {"smoothing_bspline", "cubic_interp", "mixed"}
 )
 
 
@@ -376,6 +371,10 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "unit": comp.unit,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
     }
+    if comp.c_star_concentration is not None:
+        result["c_star_concentration"] = _timeseries_or_static_to_dict(
+            comp.c_star_concentration
+        )
     bounds_dict = _bounds_to_dict(comp.bounds)
     if bounds_dict is not None:
         result["bounds"] = bounds_dict
@@ -398,42 +397,23 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
 
 def _pseudobatch_transform_to_dict(transform: PseudobatchTransform) -> Dict:
     """Convert PseudobatchTransform to dictionary."""
-    return {
-        "adf_ts": _timeseries_to_dict_payload(transform.adf_ts, include_type=False),
-        "reactor_volume_ts": _timeseries_to_dict_payload(
-            transform.reactor_volume_ts,
-            include_type=False,
-        ),
-        "sample_compensation_ts": _timeseries_to_dict_payload(
-            transform.sample_compensation_ts,
-            include_type=False,
-        ),
-        "accumulated_feed_ts": {
+    result = {
+        "adf": _timeseries_to_dict_payload(transform.adf, include_type=False),
+        "feed_corrections": {
             name: _timeseries_to_dict_payload(ts, include_type=False)
-            for name, ts in transform.accumulated_feed_ts.items()
+            for name, ts in transform.feed_corrections.items()
         },
-        "species": {
-            name: _pseudobatch_species_transform_to_dict(entry)
-            for name, entry in transform.species.items()
+        "accumulated_feeds": {
+            name: _timeseries_to_dict_payload(ts, include_type=False)
+            for name, ts in transform.accumulated_feeds.items()
         },
     }
-
-
-def _pseudobatch_species_transform_to_dict(
-    entry: PseudobatchSpeciesTransform,
-) -> Dict:
-    """Convert PseudobatchSpeciesTransform to dictionary."""
-    return {
-        "species": entry.species,
-        "c_star_ts": _timeseries_to_dict_payload(entry.c_star_ts, include_type=False),
-        "feed_corr_ts": _timeseries_to_dict_payload(
-            entry.feed_corr_ts,
+    if transform.sample_compensation is not None:
+        result["sample_compensation"] = _timeseries_to_dict_payload(
+            transform.sample_compensation,
             include_type=False,
-        ),
-        "is_constant": entry.is_constant,
-        "constant_value": entry.constant_value,
-        "cstar_fit_strategy": entry.cstar_fit_strategy,
-    }
+        )
+    return result
 
 
 def _timeseries_to_dict_payload(
@@ -488,6 +468,11 @@ def _volume_to_dict(volume: Volume) -> Dict:
             for name, vc in volume.volume_changes.items()
         },
     }
+    if volume.total_volume is not None:
+        result["total_volume"] = _timeseries_to_dict_payload(
+            volume.total_volume,
+            include_type=False,
+        )
     bounds_dict = _bounds_to_dict(volume.bounds)
     if bounds_dict is not None:
         result["bounds"] = bounds_dict
@@ -684,45 +669,44 @@ def _dict_to_pseudobatch_transform(data: Dict) -> PseudobatchTransform:
     _require_keys(
         data,
         (
-            "adf_ts",
-            "reactor_volume_ts",
-            "sample_compensation_ts",
-            "accumulated_feed_ts",
-            "species",
+            "adf",
+            "feed_corrections",
         ),
         "pseudobatch_transform",
     )
 
-    accumulated_feed_data = _require_mapping(
-        data["accumulated_feed_ts"],
-        "pseudobatch_transform.accumulated_feed_ts",
+    feed_corrections_data = _require_mapping(
+        data["feed_corrections"],
+        "pseudobatch_transform.feed_corrections",
     )
-    species_data = _require_mapping(
-        data["species"],
-        "pseudobatch_transform.species",
+    accumulated_feeds_data = _require_mapping(
+        data.get("accumulated_feeds", {}),
+        "pseudobatch_transform.accumulated_feeds",
     )
 
+    sample_compensation = None
+    if data.get("sample_compensation") is not None:
+        sample_compensation = _dict_to_pseudobatch_timeseries(
+            data["sample_compensation"],
+            "pseudobatch_transform.sample_compensation",
+        )
+
     return PseudobatchTransform(
-        adf_ts=_dict_to_pseudobatch_timeseries(
-            data["adf_ts"], "pseudobatch_transform.adf_ts"
-        ),
-        reactor_volume_ts=_dict_to_pseudobatch_timeseries(
-            data["reactor_volume_ts"], "pseudobatch_transform.reactor_volume_ts"
-        ),
-        sample_compensation_ts=_dict_to_pseudobatch_timeseries(
-            data["sample_compensation_ts"],
-            "pseudobatch_transform.sample_compensation_ts",
-        ),
-        accumulated_feed_ts={
+        adf=_dict_to_pseudobatch_timeseries(data["adf"], "pseudobatch_transform.adf"),
+        feed_corrections={
             name: _dict_to_pseudobatch_timeseries(
                 ts_data,
-                f"pseudobatch_transform.accumulated_feed_ts.{name}",
+                f"pseudobatch_transform.feed_corrections.{name}",
             )
-            for name, ts_data in accumulated_feed_data.items()
+            for name, ts_data in feed_corrections_data.items()
         },
-        species={
-            name: _dict_to_pseudobatch_species_transform(name, entry_data)
-            for name, entry_data in species_data.items()
+        sample_compensation=sample_compensation,
+        accumulated_feeds={
+            name: _dict_to_pseudobatch_timeseries(
+                ts_data,
+                f"pseudobatch_transform.accumulated_feeds.{name}",
+            )
+            for name, ts_data in accumulated_feeds_data.items()
         },
     )
 
@@ -731,68 +715,6 @@ def _dict_to_pseudobatch_timeseries(data: Dict, context: str) -> TimeSeries:
     """Reconstruct one strict TimeSeries payload in a pseudobatch bundle."""
     data = _require_mapping(data, context)
     return _timeseries_from_dict_payload(data)
-
-
-def _dict_to_pseudobatch_species_transform(
-    species_key: str,
-    data: Dict,
-) -> PseudobatchSpeciesTransform:
-    """Reconstruct PseudobatchSpeciesTransform from dictionary."""
-    data = _require_mapping(data, "pseudobatch_transform.species entry")
-    if "cstar_interp" in data:
-        raise ValueError(
-            "pseudobatch_transform species cstar_interp is no longer supported; "
-            "use cstar_fit_strategy."
-        )
-    _require_keys(
-        data,
-        (
-            "species",
-            "c_star_ts",
-            "feed_corr_ts",
-            "is_constant",
-            "constant_value",
-            "cstar_fit_strategy",
-        ),
-        "pseudobatch_transform.species entry",
-    )
-    if data["species"] != species_key:
-        raise ValueError(
-            "pseudobatch_transform species key must match entry species "
-            f"({species_key!r} != {data['species']!r})."
-        )
-    if not isinstance(data["is_constant"], bool):
-        raise ValueError("pseudobatch_transform species is_constant must be bool.")
-    constant_value = data["constant_value"]
-    if constant_value is not None and not isinstance(constant_value, (int, float)):
-        raise ValueError(
-            "pseudobatch_transform species constant_value must be numeric or None."
-        )
-    cstar_fit_strategy = data["cstar_fit_strategy"]
-    if not isinstance(cstar_fit_strategy, str):
-        raise ValueError(
-            "pseudobatch_transform species cstar_fit_strategy must be str."
-        )
-    if cstar_fit_strategy not in _ALLOWED_CSTAR_FIT_STRATEGIES:
-        allowed = ", ".join(sorted(_ALLOWED_CSTAR_FIT_STRATEGIES))
-        raise ValueError(
-            "pseudobatch_transform species cstar_fit_strategy must be one "
-            f"of: {allowed}."
-        )
-    return PseudobatchSpeciesTransform(
-        species=data["species"],
-        c_star_ts=_dict_to_pseudobatch_timeseries(
-            data["c_star_ts"],
-            "pseudobatch_transform.species entry.c_star_ts",
-        ),
-        feed_corr_ts=_dict_to_pseudobatch_timeseries(
-            data["feed_corr_ts"],
-            "pseudobatch_transform.species entry.feed_corr_ts",
-        ),
-        is_constant=data["is_constant"],
-        constant_value=constant_value,
-        cstar_fit_strategy=cstar_fit_strategy,
-    )
 
 
 def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
@@ -815,10 +737,16 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     _reject_legacy_interpolator_payload(
         comp_data.get("interpolator"), "ReactorMediumComponent"
     )
+    c_star_concentration = None
+    if comp_data.get("c_star_concentration") is not None:
+        c_star_concentration = _dict_to_timeseries_or_static(
+            comp_data["c_star_concentration"]
+        )
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
+        c_star_concentration=c_star_concentration,
         bounds=_dict_to_bounds(comp_data.get("bounds")),
     )
 
@@ -889,10 +817,15 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
         for name, vc_data in vol_data.get("volume_changes", {}).items()
     }
 
+    total_volume = None
+    if vol_data.get("total_volume") is not None:
+        total_volume = _timeseries_from_dict_payload(vol_data["total_volume"])
+
     return Volume(
         initial_volume=vol_data["initial_volume"],
         unit=vol_data["unit"],
         volume_changes=volume_changes,
+        total_volume=total_volume,
         bounds=_dict_to_bounds(vol_data.get("bounds")),
     )
 

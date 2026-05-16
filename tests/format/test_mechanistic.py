@@ -9,6 +9,8 @@ JAX-jit tests use ``eqx.filter_jit`` (the equinox-idiomatic way to JIT
 modules that contain JAX-array fields).
 """
 
+import dataclasses
+
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
@@ -187,10 +189,6 @@ def _make_batch_process():
 def _apply_pseudobatch_transform(process, species_names=("biomass", "glucose")):
     transform = build_pseudobatch_transform(process, list(species_names))
     process.pseudobatch_transform = transform
-    for sp_name in species_names:
-        process.reactor_medium.components[sp_name].concentration = transform.species[
-            sp_name
-        ].c_star_ts
     return transform
 
 
@@ -685,6 +683,27 @@ class TestBuildStateSplines:
         ordering = get_process_ordering(process)
         state_splines = build_state_splines(process, ordering)
         assert set(state_splines.keys()) == {"biomass", "glucose"}
+
+    def test_pseudobatch_feed_correction_requires_c_star(self):
+        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+        _apply_pseudobatch_transform(process)
+        process.reactor_medium.components["glucose"].c_star_concentration = None
+        ordering = get_process_ordering(process)
+
+        with pytest.raises(ValueError, match="no c_star_concentration"):
+            build_state_splines(process, ordering)
+
+    def test_pseudobatch_feed_correction_requires_c_star_for_unmodeled_component(self):
+        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+        _apply_pseudobatch_transform(process)
+        process.reactor_medium.components["biomass"].c_star_concentration = None
+        ordering = dataclasses.replace(
+            get_process_ordering(process),
+            name_modeled_RMCs=("glucose",),
+        )
+
+        with pytest.raises(ValueError, match="no matching c_star_concentration"):
+            build_state_splines(process, ordering)
 
 
 # ---------------------------------------------------------------------------

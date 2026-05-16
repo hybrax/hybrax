@@ -72,9 +72,10 @@ Event-by-event behaviour:
 | bolus only | grows by `V_b` | unchanged | grows | `(V_pre+V_b)/V_pre` |
 | simultaneous sample + bolus (sample first, then bolus) | net `V_b−V_s` | multiplied by `V_pre/(V_pre−V_s)` | steps by `(V_pre−V_s+V_b)/(V_pre−V_s)` | correct physics |
 
-`S(t)` is exposed as a canonical `sample_compensation_ts` `TimeSeries` from
-`build_pseudobatch_inputs`. Compatibility plotting arrays may be present, but
-runtime evaluation uses `TimeSeries.evaluate`.
+`S(t)` is exposed as `pseudobatch_transform.sample_compensation` when the
+process-level pseudobatch bundle is materialized. Compatibility plotting arrays
+may be present in lower-level helper payloads, but runtime evaluation uses
+`TimeSeries.evaluate`.
 
 ### Exact TimeSeries break grid
 
@@ -90,22 +91,24 @@ polynomial pieces plus `continuity_side="left"` semantics.
 
 ## Implementation pipeline
 
-1. **`build_pseudobatch_inputs(process, species_name)`** — builds canonical
+1. **`build_pseudobatch_inputs(process, species_name)`** — builds lower-level
    `TimeSeries` objects for reactor volume, accumulated feed, sample
    compensation, ADF, and feed correction. It computes `c_star = meas_conc ·
    adf − feed_corr` at measurement times.
-2. **`build_splines(inputs, process, species_name)`** — builds the runtime
-   backtransform payload for `(meas_times, c_star)` and passes through the
-   canonical `adf_ts` and `feed_corr_ts`. Stored `TimeSeries` carriers use the
-   common smoothing-B-spline policy: segments with at least four points use
-   SciPy cubic smoothing B-splines (`smoothing_s=0` is exact/interpolating),
-   while shorter segments fall back to interpolating `CubicSpline`. Mixed
-   segmented fits can therefore combine not-a-knot smoothing B-spline pieces
-   with natural-CubicSpline fallback pieces at segment boundaries.
-3. **`to_timeseries(inputs, splines, species_name)`** — converts pseudobatch samples into the canonical transformed `TimeSeries` carrier, using the same smoothing-B-spline policy as `build_splines`.
-4. **`evaluate_real_concentration(t_eval, splines)`** — evaluates `c(t) =
-   (cs(t) + fc(t)) / ADF(t)` with ADF and feed correction evaluated via
-   `TimeSeries.evaluate`.
+2. **`build_pseudobatch_transform(process, species_names)`** — materializes the
+   JSON-facing schema: shared `pseudobatch_transform.adf`, species-keyed
+   `pseudobatch_transform.feed_corrections`, optional helper traces, derived
+   `volume.total_volume`, and each component's `c_star_concentration`. Raw
+   real concentration remains in `component.concentration`.
+3. **`build_splines(inputs, process, species_name)`** — builds a lower-level
+   runtime backtransform payload for `(meas_times, c_star)`. Stored
+   `TimeSeries` carriers use the common smoothing-B-spline policy: segments
+   with at least four points use SciPy cubic smoothing B-splines
+   (`smoothing_s=0` is exact/interpolating), while shorter segments fall back
+   to interpolating `CubicSpline`.
+4. **`evaluate_pseudobatch_transform(process, component, times)`** — evaluates
+   `c(t) = (c*(t) + fc(t)) / ADF(t)` from the stored component-level c* and the
+   process-level transform bundle.
 
 ## Design rationale
 
@@ -166,10 +169,10 @@ uses the sample-first value of `S(t)` at the event timestamp.
 | Function | Description |
 |----------|-------------|
 | `build_pseudobatch_inputs(process, species_name)` | Build canonical pseudobatch `TimeSeries` objects and measurement-level `c_star`, `adf_at_meas`, and `feed_corr_at_meas`. |
-| `build_pseudobatch_transform(process, species_names, cstar_smoothing_s)` | Build process-level pseudobatch `TimeSeries` storage, including smoothed `c_star_ts` carriers when `cstar_smoothing_s > 0`. |
-| `build_splines(inputs, process=None, species_name=None, cstar_smoothing_s=0.0)` | Build runtime spline payload from the `build_pseudobatch_inputs` output: `spline_cstar`, plus canonical `adf_ts` and `feed_corr_ts`. |
-| `to_timeseries(inputs, splines, species_name, cstar_smoothing_s=0.0)` | Convert the in-memory pseudobatch payload to the canonical transformed `TimeSeries` carrier used for serialization and runtime backtransform. |
-| `evaluate_real_concentration(t_eval, splines)` | Evaluate the backtransformed real concentration using `TimeSeries.evaluate` for ADF and feed correction. |
+| `build_pseudobatch_transform(process, species_names, cstar_smoothing_s)` | Build process-level pseudobatch storage: `adf`, `feed_corrections`, optional helper traces, `volume.total_volume`, and component-level `c_star_concentration`. |
+| `build_splines(inputs, process=None, species_name=None, cstar_smoothing_s=0.0)` | Build lower-level runtime spline payloads from `build_pseudobatch_inputs`; mainly useful for tests/internal pipelines. |
+| `to_timeseries(inputs, splines, species_name, cstar_smoothing_s=0.0)` | Convert lower-level pseudobatch samples to a transformed `TimeSeries` carrier. |
+| `evaluate_pseudobatch_transform(process, component, times)` | Evaluate stored c* as real concentration using `component.c_star_concentration`, `pseudobatch_transform.adf`, and `feed_corrections[component]`. |
 
 ### JAX-compatible backtransform classes
 
@@ -183,8 +186,9 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 
 Fields:
 - `c_star_spline` — owned `PPoly` view of the stored `TimeSeries` c* spline
-- `adf_ts`, `feed_corr_ts` — canonical transform `TimeSeries`
-- `dadf_ts`, `dfc_ts` — derivative `TimeSeries` for smooth RHS terms
+- ADF and feed-correction `TimeSeries` — internal canonical transform fields
+  sourced from `pseudobatch_transform.adf` and `feed_corrections[species]`
+- derivative `TimeSeries` for smooth RHS terms
 - `is_constant` — bypass flag for constant-concentration species
 - `constant_value` — returned directly when `is_constant = True`
 
@@ -192,13 +196,14 @@ Methods:
 - `__call__(t)` — evaluate backtransformed concentration
 - `derivative()` — return a callable for `dc/dt`
 
-Build with `build_backtransform_spline(rep)` from a transformed `TimeSeries`.
+Build with `build_backtransform_spline(process, species_name)` from a process
+that has `pseudobatch_transform` and component-level `c_star_concentration`.
 
 #### `BatchedBacktransformSpline`
 
 Stacks multiple `BacktransformSpline` objects for vectorised evaluation across species. Used inside JIT-compiled ODE solvers.
 
-Build with `build_batched_conc_splines(conc_splines, species_names, t_start, t_end)`.
+Build with `build_batched_conc_splines(process, species_names)`.
 
 ## Examples
 
@@ -223,42 +228,43 @@ import bp_format as bp
 dataset = bp.serialization.load_dataset("data.json")
 process = dataset.case_studies["martens_2025_f"].processes["run_1"]
 
-# Build pseudobatch inputs + runtime spline payload for one species
-inputs = bp.splines.build_pseudobatch_inputs(process, "glucose")
-splines = bp.splines.build_splines(inputs, process, "glucose")
-series = bp.splines.to_timeseries(inputs, splines, "glucose")
+# Build JSON-facing pseudobatch storage for one species
+transform = bp.splines.build_pseudobatch_transform(process, ["glucose"])
+process.pseudobatch_transform = transform
+series = process.reactor_medium.components["glucose"].c_star_concentration
 ```
 
 ### Inspecting ADF and `S(t)`
 
 ```python
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-inputs = bp.splines.build_pseudobatch_inputs(process, "glucose")
+times = jnp.linspace(process.time_axis.start, process.time_axis.end, 500)
+transform = process.pseudobatch_transform
 
 fig, ax1 = plt.subplots()
-ax1.plot(inputs["dense_times"], inputs["adf_dense"], label="ADF")
+ax1.plot(times, transform.adf.evaluate_many(times), label="ADF")
 ax2 = ax1.twinx()
-ax2.plot(inputs["dense_times"], inputs["sample_compensation_dense"],
-         color="tab:green", label="S(t)")
+if transform.sample_compensation is not None:
+    ax2.plot(
+        times,
+        transform.sample_compensation.evaluate_many(times),
+        color="tab:green",
+        label="S(t)",
+    )
 ax1.set_xlabel("time"); ax1.set_ylabel("ADF"); ax2.set_ylabel("S(t)")
 ```
 
 ### Evaluating backtransformed concentrations
 
 ```python
-import jax
 import jax.numpy as jnp
-from bp_format.splines import build_backtransform_spline
+from bp_format.splines import evaluate_pseudobatch_transform
 
-bt = build_backtransform_spline(series)
-
-# Evaluate at a single time (works inside jax.jit)
-c_glucose = bt(5.0)
-
-# Evaluate at many times
+# Evaluate at many times from stored c*, feed correction, and ADF.
 t_dense = jnp.linspace(0.0, 48.0, 500)
-c_dense = jax.vmap(bt)(t_dense)
+c_dense = evaluate_pseudobatch_transform(process, "glucose", t_dense)
 ```
 
 ### Using `BacktransformSpline` in a JIT-compiled function
@@ -266,6 +272,10 @@ c_dense = jax.vmap(bt)(t_dense)
 ```python
 import equinox as eqx
 import jax
+import jax.numpy as jnp
+from bp_format.splines import build_backtransform_spline
+
+bt = build_backtransform_spline(process, "glucose")
 
 @eqx.filter_jit
 def eval_concentrations(bt_spline, times):

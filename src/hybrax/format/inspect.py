@@ -477,7 +477,8 @@ def _collect_process_panels(process: BioProcess):
             unit_label = f" [{comp.unit}]" if comp.unit else ""
             has_transform = (
                 pseudobatch_transform is not None
-                and comp.name in pseudobatch_transform.species
+                and comp.c_star_concentration is not None
+                and comp.name in pseudobatch_transform.feed_corrections
             )
             if _is_dynamic_series(comp.concentration):
                 panel = {
@@ -489,9 +490,9 @@ def _collect_process_panels(process: BioProcess):
                     "render": "line",
                 }
                 if has_transform:
-                    panel["series"] = comp.concentration
+                    panel["series"] = comp.c_star_concentration
                     panel["series_type"] = "backtransform"
-                    panel["pseudobatch_transform"] = pseudobatch_transform
+                    panel["process"] = process
                     panel["species_name"] = comp.name
                 elif _has_spline_state(comp.concentration):
                     panel["series"] = comp.concentration
@@ -511,7 +512,7 @@ def _collect_process_panels(process: BioProcess):
                     "series_type": "backtransform" if has_transform else "direct",
                 }
                 if has_transform:
-                    panel["pseudobatch_transform"] = pseudobatch_transform
+                    panel["process"] = process
                     panel["species_name"] = comp.name
                 panels.append(panel)
             elif hasattr(comp.concentration, "value"):
@@ -615,10 +616,39 @@ def _collect_process_panels(process: BioProcess):
 
 
 def _build_total_volume_panel(process: BioProcess, t_start: float, t_end: float):
-    """Construct total-volume trajectory panel from initial volume and all changes."""
+    """Construct total-volume trajectory panel from stored trace or changes."""
     volume = getattr(process, "volume", None)
     if volume is None:
         return None
+
+    stored_total = getattr(volume, "total_volume", None)
+    unit_label = f" [{volume.unit}]" if volume.unit else ""
+    if _is_dynamic_series(stored_total):
+        panel = {
+            "title": f"total volume{unit_label}",
+            "category": "Volume",
+            "type": "dynamic",
+            "x": stored_total.times,
+            "y": stored_total.values,
+            "render": "line",
+        }
+        if _has_spline_state(stored_total):
+            panel["series"] = stored_total
+            panel["series_type"] = "direct"
+        return panel
+    if _is_spline_only_series(stored_total):
+        x = jnp.asarray(stored_total.breaks)
+        y = stored_total.evaluate_many(x)
+        return {
+            "title": f"total volume{unit_label}",
+            "category": "Volume",
+            "type": "dynamic",
+            "x": x,
+            "y": y,
+            "render": "line",
+            "series": stored_total,
+            "series_type": "direct",
+        }
 
     time_grid = [t_start, t_end]
     continuous_changes = []
@@ -665,7 +695,6 @@ def _build_total_volume_panel(process: BioProcess, t_start: float, t_end: float)
     for event_time, delta_v in discrete_events:
         total_volume += np.where(t_plot >= event_time, float(delta_v), 0.0)
 
-    unit_label = f" [{volume.unit}]" if volume.unit else ""
     return {
         "title": f"total volume{unit_label}",
         "category": "Volume",
@@ -703,19 +732,20 @@ def _evaluate_series_curve(
     *,
     pseudobatch_transform=None,
     species_name=None,
+    process=None,
 ):
     """Evaluate a spline-backed TimeSeries over [t_start, t_end]."""
-    from .splines import build_backtransform_spline
+    from .splines import evaluate_pseudobatch_transform
 
     t_plot = np.linspace(t_start, t_end, n_points)
     if series_type == "backtransform":
-        if pseudobatch_transform is None or species_name is None:
+        if process is None or species_name is None:
             raise ValueError(
-                "Backtransform plotting requires a process-level "
-                "pseudobatch_transform and species_name."
+                "Backtransform plotting requires process and species_name."
             )
-        bt = build_backtransform_spline(pseudobatch_transform, species_name)
-        y_plot = np.array([float(bt(jnp.array(t))) for t in t_plot])
+        y_plot = np.asarray(
+            evaluate_pseudobatch_transform(process, species_name, jnp.asarray(t_plot))
+        )
     else:
         y_plot = np.asarray(series.evaluate_many(jnp.asarray(t_plot, dtype=float)))
     return t_plot, y_plot
@@ -795,6 +825,7 @@ def _draw_panel(
                     t_end,
                     pseudobatch_transform=panel.get("pseudobatch_transform"),
                     species_name=panel.get("species_name"),
+                    process=panel.get("process"),
                 )
                 ax.plot(
                     t_plot,
@@ -1072,8 +1103,7 @@ def _measure_subtable_width(headers: list, rows: list) -> int:
     """Width required by a sub-table with these headers and rows."""
     n = len(headers)
     col_w = [
-        max(len(str(headers[i])), 3, *(len(str(r[i])) for r in rows))
-        for i in range(n)
+        max(len(str(headers[i])), 3, *(len(str(r[i])) for r in rows)) for i in range(n)
     ]
     return sum(col_w) + 3 * n + 1
 
@@ -1085,8 +1115,7 @@ def _format_subtable_lines(
     reaches *target_width*. Returns lines with ``| ... |`` borders included."""
     n = len(headers)
     col_w = [
-        max(len(str(headers[i])), 3, *(len(str(r[i])) for r in rows))
-        for i in range(n)
+        max(len(str(headers[i])), 3, *(len(str(r[i])) for r in rows)) for i in range(n)
     ]
     req = sum(col_w) + 3 * n + 1
     if target_width > req:
@@ -1136,7 +1165,8 @@ def _format_rmc_feed(
 ) -> str:
     """``+ feed(<FVCs supplying Cin for this RMC>)`` or empty when none."""
     feeders = [
-        n for n in fvc_names
+        n
+        for n in fvc_names
         if _cin_static_value(process.volume.volume_changes[n], rmc_name) != 0.0
     ]
     return "+ feed(" + ", ".join(feeders) + ")" if feeders else ""
@@ -1154,18 +1184,21 @@ def _discrete_volume_changes(process: BioProcess):
     continuous volume changes, so the discrete ones are recovered here.
     """
     disc_fvc = sorted(
-        n for n, vc in process.volume.volume_changes.items()
+        n
+        for n, vc in process.volume.volume_changes.items()
         if not vc.is_continuous and isinstance(vc, FeedVolumeChange)
     )
     disc_svc = sorted(
-        n for n, vc in process.volume.volume_changes.items()
+        n
+        for n, vc in process.volume.volume_changes.items()
         if not vc.is_continuous and isinstance(vc, SampleVolumeChange)
     )
     return disc_fvc, disc_svc
 
 
 def _format_v_additions(
-    cont_fvc: list, disc_fvc: list,
+    cont_fvc: list,
+    disc_fvc: list,
 ) -> str:
     """V's positive contributions: continuous FVC flow rates and discrete
     bolus events. Returns ``0`` when neither is present."""
@@ -1178,7 +1211,8 @@ def _format_v_additions(
 
 
 def _format_v_removals(
-    cont_svc: list, disc_svc: list,
+    cont_svc: list,
+    disc_svc: list,
 ) -> str:
     """V's negative contributions: continuous SVC flow rates and discrete
     sampling events. Returns ``0`` when neither is present."""
@@ -1253,9 +1287,7 @@ def print_rhs_ode(
 
     bo = process.biological_ode
     if bo is None:
-        raise ValueError(
-            "print_rhs_ode requires process.biological_ode to be set."
-        )
+        raise ValueError("print_rhs_ode requires process.biological_ode to be set.")
     if ordering is None:
         ordering = get_process_ordering(process)
 
@@ -1263,12 +1295,14 @@ def print_rhs_ode(
 
     if ordering.name_modeled_algebraic:
         alg_rows = [[n, bo.algebraic[n]] for n in ordering.name_modeled_algebraic]
-        sections.append((
-            "Algebraic",
-            ["Name", "Expression"],
-            alg_rows,
-            ["l", "l"],
-        ))
+        sections.append(
+            (
+                "Algebraic",
+                ["Name", "Expression"],
+                alg_rows,
+                ["l", "l"],
+            )
+        )
 
     fvc_all = list(ordering.name_controlled_FVCs) + list(ordering.name_modeled_FVCs)
     svc_all = list(ordering.name_controlled_SVCs) + list(ordering.name_modeled_SVCs)
@@ -1285,26 +1319,32 @@ def print_rhs_ode(
         bio_str = bo.derivatives.get(n, "0")
         deriv_rows.append([n, f"[{unit}]", bio_str, "", ""])
 
-    sections.append((
-        "Derivatives",
-        ["State", "Unit", "Biological", "Feed", "Dilution"],
-        deriv_rows,
-        ["l", "l", "l", "l", "l"],
-    ))
+    sections.append(
+        (
+            "Derivatives",
+            ["State", "Unit", "Biological", "Feed", "Dilution"],
+            deriv_rows,
+            ["l", "l", "l", "l", "l"],
+        )
+    )
 
     if process.volume is not None:
         disc_fvc, disc_svc = _discrete_volume_changes(process)
-        vol_rows = [[
-            "V",
-            f"[{process.volume.unit}]",
-            _format_v_additions(fvc_all, disc_fvc),
-            _format_v_removals(svc_all, disc_svc),
-        ]]
-        sections.append((
-            "Volume",
-            ["State", "Unit", "Additions", "Removals"],
-            vol_rows,
-            ["l", "l", "l", "l"],
-        ))
+        vol_rows = [
+            [
+                "V",
+                f"[{process.volume.unit}]",
+                _format_v_additions(fvc_all, disc_fvc),
+                _format_v_removals(svc_all, disc_svc),
+            ]
+        ]
+        sections.append(
+            (
+                "Volume",
+                ["State", "Unit", "Additions", "Removals"],
+                vol_rows,
+                ["l", "l", "l", "l"],
+            )
+        )
 
     print(_render_combined_box(f"RhsOde Structure: {title_label}", sections))

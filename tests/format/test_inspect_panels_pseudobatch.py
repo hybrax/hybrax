@@ -115,7 +115,9 @@ def test_plot_process_panel_scatter_matches_backtransform_after_roundtrip(tmp_pa
     transform = build_pseudobatch_transform(process, ["glucose"])
     process.pseudobatch_transform = transform
 
-    cstar_vals = np.asarray(transform.species["glucose"].c_star_ts.values)
+    cstar_vals = np.asarray(
+        process.reactor_medium.components["glucose"].c_star_concentration.values
+    )
     assert not np.allclose(cstar_vals, real_vals, rtol=1e-2), (
         "Test fixture invalid: c* must differ from real measurements so that "
         "the regression check actually exercises the bug. Got c*="
@@ -140,7 +142,7 @@ def test_plot_process_panel_scatter_matches_backtransform_after_roundtrip(tmp_pa
     glucose = next(p for p in panels if p["title"].startswith("glucose"))
 
     assert glucose.get("series_type") == "backtransform"
-    assert glucose.get("pseudobatch_transform") is loaded_proc.pseudobatch_transform
+    assert glucose.get("process") is loaded_proc
     assert glucose.get("species_name") == "glucose"
 
     np.testing.assert_allclose(np.asarray(glucose["x"]), np.asarray(real_times))
@@ -149,10 +151,8 @@ def test_plot_process_panel_scatter_matches_backtransform_after_roundtrip(tmp_pa
         np.asarray(glucose["y"]), np.asarray(real_vals), rtol=5e-3, atol=5e-3
     )
 
-    bt = build_backtransform_spline(loaded_proc.pseudobatch_transform, "glucose")
-    curve_at_meas = np.asarray(
-        jax.vmap(bt)(jnp.asarray(glucose["x"], dtype=float))
-    )
+    bt = build_backtransform_spline(loaded_proc, "glucose")
+    curve_at_meas = np.asarray(jax.vmap(bt)(jnp.asarray(glucose["x"], dtype=float)))
     np.testing.assert_allclose(
         np.asarray(glucose["y"]), curve_at_meas, rtol=5e-3, atol=5e-3
     )

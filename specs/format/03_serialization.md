@@ -74,6 +74,14 @@ The JSON file follows the dataclass hierarchy directly:
                   "type": "TimeSeries",
                   "times": [0.0, 6.0, 12.0],
                   "values": [0.5, 1.2, 3.1]
+                },
+                "c_star_concentration": {
+                  "type": "TimeSeries",
+                  "times": [0.0, 6.0, 12.0],
+                  "values": [0.5, 1.1, 2.8],
+                  "metadata": {
+                    "transform": {"name": "pseudo_batch", "component": "biomass"}
+                  }
                 }
               }
             }
@@ -81,9 +89,18 @@ The JSON file follows the dataclass hierarchy directly:
           "volume": {
             "initial_volume": 1.0,
             "unit": "L",
-            "volume_changes": {}
+            "volume_changes": {},
+            "total_volume": {"times": [0.0, 24.0], "values": [1.0, 1.2]}
           },
-          "process_variables": {}
+          "process_variables": {},
+          "pseudobatch_transform": {
+            "adf": {"times": [0.0, 24.0], "values": [1.0, 1.2]},
+            "feed_corrections": {
+              "biomass": {"times": [0.0, 24.0], "values": [0.0, 0.0]}
+            },
+            "sample_compensation": {"times": [0.0, 24.0], "values": [1.0, 1.0]},
+            "accumulated_feeds": {}
+          }
         }
       }
     }
@@ -91,7 +108,7 @@ The JSON file follows the dataclass hierarchy directly:
 }
 ```
 
-**TimeSeries payloads** include `times` and `values` arrays. If spline state is present, `breaks`, `coeffs`, and `segment_start_piece_idx` are also included.
+**TimeSeries payloads** include `times` and `values` arrays. If spline state is present, `breaks`, `coeffs`, and `segment_start_piece_idx` are also included. Raw real concentration stays in `concentration`; optional pseudobatch c* lives in `c_star_concentration`. The process-level pseudobatch bundle uses `adf`, `feed_corrections`, `sample_compensation`, and `accumulated_feeds`; old `species`, `adf_ts`, `reactor_volume_ts`, `sample_compensation_ts`, `accumulated_feed_ts`, `c_star_ts`, and `feed_corr_ts` payloads are not active schema.
 
 **StaticVariable payloads** are represented as `{"type": "StaticVariable", "value": 500.0}`.
 

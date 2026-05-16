@@ -137,6 +137,7 @@ class ReactorMediumComponent:
     name: str  # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
+    c_star_concentration: TimeSeries | StaticVariable | None = None
     bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
 
 
@@ -230,6 +231,7 @@ class Volume:
     initial_volume: float
     unit: str  # e.g. "L", "m3", "kg"
     volume_changes: Dict[str, VolumeChange] = field(default_factory=dict)
+    total_volume: TimeSeries | None = None
     bounds: Bounds = _NO_BOUNDS  # (lo, hi) on V; None on either side = unbounded
 
 
@@ -337,39 +339,20 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
 
 
 @dataclass
-class PseudobatchSpeciesTransform:
-    """
-    Pseudobatch transform data for one reactor-medium species.
-
-    `c_star_ts` stores the transformed concentration carrier used by the reactor
-    component. `feed_corr_ts` stores the species-specific feed correction needed
-    to map between transformed and real concentration.
-    """
-
-    species: str
-    c_star_ts: TimeSeries
-    feed_corr_ts: TimeSeries
-    cstar_fit_strategy: str
-    is_constant: bool = False
-    constant_value: Optional[float] = None
-
-
-@dataclass
 class PseudobatchTransform:
     """
     Process-level pseudobatch transform bundle.
 
-    `adf_ts`, `reactor_volume_ts`, and `sample_compensation_ts` are shared
-    process-level TimeSeries carriers. `accumulated_feed_ts` stores feed-volume
-    contributions by feed/volume-change name. `species` stores per-species
-    transformed concentrations and feed corrections.
+    `adf` stores the shared accumulated dilution factor. `feed_corrections`
+    stores species-specific feed corrections needed to map between transformed
+    and real concentration. `sample_compensation` and `accumulated_feeds` store
+    optional helper traces for transparency/debugging.
     """
 
-    adf_ts: TimeSeries
-    reactor_volume_ts: TimeSeries
-    sample_compensation_ts: TimeSeries
-    accumulated_feed_ts: Dict[str, TimeSeries]
-    species: Dict[str, PseudobatchSpeciesTransform]
+    adf: TimeSeries
+    feed_corrections: Dict[str, TimeSeries]
+    sample_compensation: Optional[TimeSeries] = None
+    accumulated_feeds: Dict[str, TimeSeries] = field(default_factory=dict)
 
 
 @dataclass

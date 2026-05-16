@@ -950,30 +950,41 @@ def _validate_process_pseudobatch_transform(
     if transform is None:
         for sp_name in ordering.name_modeled_RMCs:
             comp = process.reactor_medium.components[sp_name]
-            _reject_orphan_pseudobatch_metadata(comp.concentration, sp_name)
+            _reject_orphan_pseudobatch_metadata(comp.c_star_concentration, sp_name)
         return None
 
-    for species_key, species_transform in transform.species.items():
-        if species_transform.species != species_key:
+    for sp_name in ordering.name_modeled_RMCs:
+        comp = process.reactor_medium.components[sp_name]
+        if comp.c_star_concentration is None:
+            if sp_name in transform.feed_corrections:
+                raise ValueError(
+                    f"Pseudobatch species {sp_name!r} has a feed_corrections "
+                    "entry but no c_star_concentration."
+                )
+            _reject_orphan_pseudobatch_metadata(comp.concentration, sp_name)
+            continue
+        if sp_name not in transform.feed_corrections:
             raise ValueError(
-                f"Pseudobatch species key {species_key!r} does not match "
-                f"stored species {species_transform.species!r}."
+                f"Pseudobatch species {sp_name!r} has c_star_concentration "
+                "but no matching feed_corrections entry."
             )
+        if not isinstance(comp.c_star_concentration, (TimeSeries, StaticVariable)):
+            raise TypeError(
+                f"Pseudobatch species {sp_name!r} c_star_concentration must be "
+                "a TimeSeries or StaticVariable."
+            )
+
+    for species_key in transform.feed_corrections:
         if species_key not in process.reactor_medium.components:
             raise ValueError(
-                f"Pseudobatch species {species_key!r} is not a reactor component."
+                f"Pseudobatch feed correction {species_key!r} is not a reactor "
+                "component."
             )
-        concentration = process.reactor_medium.components[species_key].concentration
-        if not isinstance(concentration, TimeSeries):
-            raise TypeError(
-                f"Pseudobatch species {species_key!r} concentration must be a "
-                "TimeSeries c* carrier."
-            )
-        if not _timeseries_samples_match(concentration, species_transform.c_star_ts):
+        comp = process.reactor_medium.components[species_key]
+        if comp.c_star_concentration is None:
             raise ValueError(
-                f"Pseudobatch species {species_key!r} reactor concentration "
-                "does not match transform c_star_ts. Assign the bundle "
-                "c_star_ts to the reactor component before mechanistic runtime use."
+                f"Pseudobatch feed correction {species_key!r} has no matching "
+                "c_star_concentration."
             )
 
     return transform
@@ -1002,12 +1013,12 @@ def build_state_splines(
         concentration = comp.concentration
         if (
             pseudobatch_transform is not None
-            and sp_name in pseudobatch_transform.species
+            and comp.c_star_concentration is not None
+            and sp_name in pseudobatch_transform.feed_corrections
         ):
-            state_splines[sp_name] = build_backtransform_spline(
-                pseudobatch_transform, sp_name
-            )
+            state_splines[sp_name] = build_backtransform_spline(process, sp_name)
         else:
+            _reject_orphan_pseudobatch_metadata(comp.c_star_concentration, sp_name)
             _reject_orphan_pseudobatch_metadata(concentration, sp_name)
             state_splines[sp_name] = _value_to_ppoly(
                 concentration,

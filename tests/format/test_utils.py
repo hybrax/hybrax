@@ -41,9 +41,7 @@ def simple_process():
         times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.1, 1.2, 3.5, 5.8, 6.0]),
     )
-    rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=ts
-    )
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     rm = ReactorMedium(
         name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc}
     )
@@ -330,9 +328,7 @@ def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
 
 def _make_minimal_process(name):
     ts = TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.1, 0.5]))
-    rc = ReactorMediumComponent(
-        name="biomass", unit="g/L", concentration=ts
-    )
+    rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     rm = ReactorMedium(
         name="m", density=1.0, density_unit="kg/L", components={"biomass": rc}
     )
@@ -765,9 +761,6 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
     )
     transform = build_pseudobatch_transform(process, ["glucose"])
     process.pseudobatch_transform = transform
-    process.reactor_medium.components["glucose"].concentration = transform.species[
-        "glucose"
-    ].c_star_ts
 
     fig = plot_process(process)
     axes = [ax for ax in fig.axes if ax.get_visible()]

@@ -4,23 +4,37 @@ This note documents the current post-`Interpolator` pseudobatch design.
 
 ## Current schema
 
-Transformed reactor-component concentrations are stored as `TimeSeries`.
-Pseudobatch metadata lives under:
+Raw real reactor-component concentrations remain in
+`ReactorMediumComponent.concentration`. Optional pseudobatch transformed
+concentrations are stored as component-level `TimeSeries` values in
+`ReactorMediumComponent.c_star_concentration`.
+
+Lightweight c* provenance metadata lives under:
 
 ```python
 ts.metadata["transform"] = {
     "name": "pseudo_batch",
-    "species": "...",
-    "feed_corr_interp": "piecewise_polynomial",
-    "series": {
-        "adf_ts": ...,
-        "feed_corr_ts": ...,
-    },
+    "component": "...",
+    "is_constant": False,
+    "constant_value": None,
 }
 ```
 
-Both nested entries are canonical serialized `TimeSeries` payloads, not raw
-array blobs.
+The shared process-level transform bundle lives in
+`BioProcess.pseudobatch_transform`:
+
+```python
+PseudobatchTransform(
+    adf=...,                    # TimeSeries
+    feed_corrections={...},      # component name -> TimeSeries
+    sample_compensation=...,     # optional TimeSeries
+    accumulated_feeds={...},     # feed/change name -> TimeSeries
+)
+```
+
+The full reactor-volume trace, when stored, lives at
+`Volume.total_volume`. It may be raw online data or derived from volume
+changes.
 
 ## Physical semantics
 
@@ -34,7 +48,7 @@ The implementation preserves these invariants:
 
 ## ADF representation
 
-ADF is now a `TimeSeries` with:
+ADF is a `TimeSeries` with:
 
 - `continuity_side="left"`
 - exact local polynomial pieces stored in `breaks` / `coeffs`
@@ -53,10 +67,11 @@ Feed correction is also a canonical `TimeSeries`:
 
 ## Runtime consumers
 
-The nested `TimeSeries` schema is the primary path used by:
+The process/component schema is the primary path used by:
 
+- `bp_format.splines.evaluate_pseudobatch_transform`
 - `bp_format.splines.build_backtransform_spline`
-- `bp_format.mechanistic._build_pseudobatch_transforms`
+- `bp_format.mechanistic.build_state_splines`
 
 Older flat metadata keys such as `adf_times`, `adf_values`,
 `feed_corr_times`, and `feed_corr_values` are no longer runtime carriers.

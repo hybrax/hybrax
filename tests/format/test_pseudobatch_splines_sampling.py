@@ -47,7 +47,8 @@ def _ts(t, v):
 def _build_backtransform(proc, species):
     """Build real-space backtransform from the process-level bundle."""
     transform = build_pseudobatch_transform(proc, [species])
-    return build_backtransform_spline(transform, species)
+    proc.pseudobatch_transform = transform
+    return build_backtransform_spline(proc, species)
 
 
 # ---------------------------------------------------------------------------

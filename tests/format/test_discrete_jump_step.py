@@ -101,7 +101,8 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
 
 def _build_backtransform(proc, species="glucose"):
     transform = build_pseudobatch_transform(proc, [species])
-    return build_backtransform_spline(transform, species)
+    proc.pseudobatch_transform = transform
+    return build_backtransform_spline(proc, species)
 
 
 # ---------------------------------------------------------------------------
@@ -135,14 +136,14 @@ def test_adf_is_instantaneous_at_bolus():
 
     t_b = 10.0
     post_delta = 1e-6
-    adf_ts = transform.adf_ts
+    adf_trace = transform.adf
 
-    adf_at = float(adf_ts.evaluate(jnp.array(t_b), side="left"))
-    adf_after = float(adf_ts.evaluate(jnp.array(t_b + post_delta), side="left"))
-    adf_after_far = float(adf_ts.evaluate(jnp.array(t_b + 5e-4), side="left"))
+    adf_at = float(adf_trace.evaluate(jnp.array(t_b), side="left"))
+    adf_after = float(adf_trace.evaluate(jnp.array(t_b + post_delta), side="left"))
+    adf_after_far = float(adf_trace.evaluate(jnp.array(t_b + 5e-4), side="left"))
 
     assert adf_after > adf_at
-    assert adf_ts.continuity_side == "left"
+    assert adf_trace.continuity_side == "left"
     assert adf_after == pytest.approx(adf_after_far, rel=1e-3)
 
 
@@ -269,15 +270,15 @@ def test_start_boundary_same_time_sample_bolus_physical_invariants():
     transform = build_pseudobatch_transform(proc, ["glucose"])
     t_post = jnp.array(1e-6)
 
-    assert transform.adf_ts.metadata["boundary_start_value"] == pytest.approx(1.0)
-    assert transform.species["glucose"].feed_corr_ts.metadata[
+    assert transform.adf.metadata["boundary_start_value"] == pytest.approx(1.0)
+    assert transform.feed_corrections["glucose"].metadata[
         "boundary_start_value"
     ] == pytest.approx(0.0)
 
-    sample_comp = float(transform.sample_compensation_ts.evaluate(t_post))
-    reactor_volume = float(transform.reactor_volume_ts.evaluate(t_post))
-    adf = float(transform.adf_ts.evaluate(t_post))
-    feed_corr = float(transform.species["glucose"].feed_corr_ts.evaluate(t_post))
+    sample_comp = float(transform.sample_compensation.evaluate(t_post))
+    reactor_volume = float(proc.volume.total_volume.evaluate(t_post))
+    adf = float(transform.adf.evaluate(t_post))
+    feed_corr = float(transform.feed_corrections["glucose"].evaluate(t_post))
 
     expected_sample_comp = 1.0 / 0.8
     expected_volume = 0.9

@@ -85,9 +85,17 @@ A single species (biomass, substrate, product) measured in the reactor.
 class ReactorMediumComponent:
     name: str                                    # e.g. "glucose", "biomass"
     unit: str                                    # e.g. "g/L", "mM"
-    concentration: TimeSeries | StaticVariable   # measured concentration over time
-    bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
+    concentration: TimeSeries | StaticVariable                 # measured real concentration over time
+    c_star_concentration: TimeSeries | StaticVariable | None    # optional derived pseudobatch c* trace
+    bounds: Bounds = (None, None)                              # optional metadata: (lo, hi); None on either side = unbounded
 ```
+
+`concentration` always denotes the real reactor concentration in physical units.
+When a pseudobatch transform is available, the derived c* carrier lives in
+`c_star_concentration` and shared transform helpers live on
+`BioProcess.pseudobatch_transform`. Spline state for either quantity is stored
+inside that quantity's `TimeSeries`; there is no sibling interpolator or
+separate `concentration_fit` field.
 
 Active biomass and other derived quantities (e.g. `X_active = biomass - product`) are declared on `BiologicalOde.algebraic`, not on the component itself. The auto-generated block uses `dc/dt = q · biomass` uniformly; any process whose biology departs from that template supplies a custom `BiologicalOde` block consumed by the same `RhsOde`.
 
@@ -197,8 +205,13 @@ class Volume:
     initial_volume: float
     unit: str                                      # "L", "m3", "kg"
     volume_changes: Dict[str, VolumeChange]        # keyed by operation name
+    total_volume: TimeSeries | None                # optional full reactor-volume trace
     bounds: Bounds = (None, None)                  # optional metadata on V (e.g. (0, V_max_reactor))
 ```
+
+`total_volume` may be raw online volume data or a derived trace reconstructed
+from `initial_volume` plus `volume_changes`. Pseudobatch builders populate it
+when they materialize the shared volume/ADF support traces.
 
 ### Process Level
 
@@ -226,7 +239,13 @@ class BioProcess:
     process_variables: Dict[str, ProcessVariable]
     discrete_events: Optional[DiscreteEvents]
     biological_ode: Optional[BiologicalOde] = None  # user-defined per-state biological RHS
+    pseudobatch_transform: Optional[PseudobatchTransform] = None
 ```
+
+`pseudobatch_transform`, when present, contains shared helpers only:
+`adf`, species-keyed `feed_corrections`, optional `sample_compensation`, and
+`accumulated_feeds`. It does not duplicate per-species c*, which is stored on
+the corresponding `ReactorMediumComponent.c_star_concentration`.
 
 When `biological_ode` is `None` (default), the mechanistic module auto-generates the RHS as `q_i * c_biomass + r_i + feed_dilution` per reactor state, uniformly across components. When set, the user-defined block takes precedence — intracellular bookkeeping, dead-cell pools, and other custom biology are expressed there. See `BiologicalOde` below and the [Mechanistic Module](08_mechanistic.md) page for full semantics.
 
