@@ -321,7 +321,7 @@ loaders reconstruct them via `load_process_collection_json` /
 Frozen dataclass holding the canonical name ordering across every derived
 mechanistic module. Built by
 `bp_format.mechanistic.get_process_ordering(process)` and consumed by
-`get_control_splines`, `get_rhs_ode`, `extract_discrete_events`, and
+`get_control_splines`, `build_rhs_ode`, `extract_discrete_events`, and
 `build_state_splines` so every state/control/rate vector has the same
 layout.
 

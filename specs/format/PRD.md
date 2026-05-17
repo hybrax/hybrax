@@ -122,7 +122,7 @@ class RhsOde(q, f):
 class RhsOde(eqx.Module):
     """JAX/Equinox module implementing the biological RHS for a process.
 
-    Built by :func:`get_rhs_ode` from ``process.biological_ode`` (auto-generated
+    Built by :func:`build_rhs_ode` from ``process.biological_ode`` (auto-generated
     in :meth:`BioProcess.__post_init__` when not user-supplied). The state
     vector is ``c = [name_modeled_RMCs..., name_modeled_PVs..., V]``; the last
     element is reactor volume. RMCs are alphabetical (no biomass-first
@@ -150,7 +150,7 @@ class RhsOde(eqx.Module):
     JIT usage::
 
         import equinox as eqx
-        rhs_ode = get_rhs_ode(process)
+        rhs_ode = build_rhs_ode(process)
         dc_dt = eqx.filter_jit(rhs_ode)(
             c, rates, u, f_modeled_FVCs, f_modeled_SVCs
         )

@@ -84,9 +84,8 @@ minimal one keyed by reactor-medium component names and dynamic PV names.
 
 - `get_process_ordering(process) -> ProcessOrdering`
 - `get_control_splines(process, ordering=None) -> ControlSplines`
-- `get_rhs_ode(process, ordering=None) -> RhsOde`
-- `build_rhs_ode(process, ordering=None) -> RhsOde` — equivalent to
-  `get_rhs_ode`; raises if `process.biological_ode` is unset.
+- `build_rhs_ode(process, ordering=None) -> RhsOde` — raises if
+  `process.biological_ode` is unset.
 - `build_algebraic_func(process, ordering=None) -> Callable` — evaluator for
   `BiologicalOde.algebraic` quantities, e.g. `X_active(t)` as an observable.
 - `extract_discrete_events(process, ordering) -> list[dict]`
@@ -167,7 +166,7 @@ import bp_format as bp
 process = ...
 ordering = bp.mechanistic.get_process_ordering(process)
 ctrl = bp.mechanistic.get_control_splines(process, ordering)
-rhs_ode = bp.mechanistic.get_rhs_ode(process, ordering)
+rhs_ode = bp.mechanistic.build_rhs_ode(process, ordering)
 
 t = jnp.array(5.0)
 u = ctrl(t)

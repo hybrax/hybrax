@@ -228,7 +228,7 @@ keys are known at build time); only `t` and the spline data are traced.
 | condition | message |
 |---|---|
 | `process.biological_ode is None` | requires biological_ode to be set |
-| `mb` not `RhsOde` | requires RhsOde from `get_rhs_ode` |
+| `mb` not `RhsOde` | requires RhsOde from `build_rhs_ode` |
 | derivative non-linear in rates | "biological_ode.derivatives[s] is non-linear in rates" |
 | `n_rates != len(nonzero_rows)` and not diagonal | "analytical inversion requires a square system" |
 | cyclic `algebraic` | from `_topo_sort_algebraic` |
@@ -447,7 +447,7 @@ For each fixture directory, the helper performed:
    state-spline construction uses the process-level transform bundle to
    backtransform c* to real concentration when needed.
 6. Build `ctrl = bpm.get_control_splines(process)`,
-   `rhs_ode = bpm.get_rhs_ode(process)`,
+   `rhs_ode = bpm.build_rhs_ode(process)`,
    `state_splines = bpm.build_state_splines(process, rhs_ode)`.
 7. Extract discrete events to size the q-inversion grid:
    `n_q_grid = max(500, 20 * n_events)`,

@@ -1,6 +1,6 @@
 """Tests for bp_format.mechanistic post-P3 refactor.
 
-Covers ``get_process_ordering``, ``get_control_splines``, ``get_rhs_ode``,
+Covers ``get_process_ordering``, ``get_control_splines``, ``build_rhs_ode``,
 ``extract_discrete_events``, ``build_state_splines``, and
 ``build_algebraic_func``. Forward integration moved to ``bp-train`` and is
 not exercised here.
@@ -37,11 +37,11 @@ from bp_format.mechanistic import (
     ControlSplines,
     RhsOde,
     build_algebraic_func,
+    build_rhs_ode,
     build_state_splines,
     extract_discrete_events,
     get_control_splines,
     get_process_ordering,
-    get_rhs_ode,
 )
 from bp_format.splines import (
     build_pseudobatch_transform,
@@ -443,7 +443,7 @@ class TestControlSplines:
 class TestRhsOde:
     def test_class_type(self):
         process = _make_process()
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         assert isinstance(rhs, RhsOde)
 
     def test_field_names(self):
@@ -452,7 +452,7 @@ class TestRhsOde:
             with_controlled_PV=True,
             with_modeled_SVC=True,
         )
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         assert rhs.name_modeled_RMCs == ("biomass", "glucose")
         assert rhs.name_modeled_PVs == ()
         assert rhs.name_controlled_PVs == ("pH",)
@@ -465,20 +465,20 @@ class TestRhsOde:
 
     def test_Cin_shapes(self):
         process = _make_process(with_controlled_FVC=True)
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         assert rhs.Cin_controlled_FVCs.shape == (1, 2)  # one feed × two RMCs
         assert rhs.Cin_modeled_FVCs.shape == (0, 2)
 
     def test_Cin_values(self):
         process = _make_process(with_controlled_FVC=True)
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         # biomass=0, glucose=500 in feed; RMC order is (biomass, glucose) alphabetical
         assert float(rhs.Cin_controlled_FVCs[0, 0]) == pytest.approx(0.0)
         assert float(rhs.Cin_controlled_FVCs[0, 1]) == pytest.approx(500.0)
 
     def test_call_output_shape(self):
         process = _make_process()
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         ctrl = get_control_splines(process)
         c = jnp.array([1.0, 5.0, 1.0])  # biomass, glucose, V
         rates = jnp.array([0.1, -0.5])  # q_biomass, q_glucose (auto order)
@@ -490,7 +490,7 @@ class TestRhsOde:
 
     def test_dV_from_FVC(self):
         process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
         u = jnp.array([0.05])  # FVC flow
@@ -504,7 +504,7 @@ class TestRhsOde:
             with_controlled_PV=False,
             with_modeled_SVC=True,
         )
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
         f_modeled_SVCs = jnp.array([-0.001])  # outflow
@@ -518,7 +518,7 @@ class TestRhsOde:
             with_controlled_PV=False,
             with_modeled_SVC=True,
         )
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
         u = jnp.array([0.05])
@@ -528,7 +528,7 @@ class TestRhsOde:
 
     def test_pure_batch_no_feed_term(self):
         process = _make_batch_process()
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         c = jnp.array([2.0, 5.0, 1.0])
         rates = jnp.array([0.1, -0.5])  # auto rate order: q_biomass, q_glucose
         dc = rhs(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))
@@ -541,7 +541,7 @@ class TestRhsOde:
 
     def test_jit_call(self):
         process = _make_process()
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         ctrl = get_control_splines(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
@@ -560,7 +560,7 @@ class TestRhsOde:
                 "glucose": "q_g * X_active",
             },
         )
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         c = jnp.array([2.0, 5.0, 1.0])
         rates = jnp.array([0.5, -0.3])
         dc = rhs(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))
@@ -574,11 +574,11 @@ class TestRhsOde:
         process = _make_batch_process()
         process.biological_ode = None
         with pytest.raises(ValueError, match="biological_ode"):
-            get_rhs_ode(process)
+            build_rhs_ode(process)
 
     def test_feed_dilution_concentration(self):
         process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
-        rhs = get_rhs_ode(process)
+        rhs = build_rhs_ode(process)
         c_biomass = 2.0
         c_glucose = 5.0
         V = 1.0

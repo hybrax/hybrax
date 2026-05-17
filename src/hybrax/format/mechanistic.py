@@ -20,7 +20,7 @@ get_control_splines(process, ordering=None) -> ControlSplines
     the storage sign (negative cumulative volume → negative flow rate); the
     feed-dilution machinery interprets them as signed quantities.
 
-get_rhs_ode(process, ordering=None) -> RhsOde
+build_rhs_ode(process, ordering=None) -> RhsOde
     Build the :class:`RhsOde` for a process. ``BiologicalOde`` is required
     (auto-generated in ``BioProcess.__post_init__`` when not user-supplied).
     Call signature::
@@ -293,7 +293,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     """Build the canonical :class:`ProcessOrdering` for a process.
 
     All other mechanistic factories (``get_control_splines``,
-    ``get_rhs_ode``, ``extract_discrete_events``, ``build_state_splines``)
+    ``build_rhs_ode``, ``extract_discrete_events``, ``build_state_splines``)
     consume this object so every state/control/rate vector has the same
     layout.
 
@@ -579,7 +579,7 @@ def _build_cin(
 class RhsOde(eqx.Module):
     """JAX/Equinox module that evaluates the biological RHS for a process.
 
-    Built by :func:`get_rhs_ode` from ``process.biological_ode``
+    Built by :func:`build_rhs_ode` from ``process.biological_ode``
     (auto-generated in :meth:`BioProcess.__post_init__` when not
     user-supplied). The biological ``dc/dt`` per state comes from
     user-written expression strings; bp-format adds the physical
@@ -751,14 +751,6 @@ def build_rhs_ode(
         Cin_controlled_FVCs=Cin_controlled_FVCs,
         Cin_modeled_FVCs=Cin_modeled_FVCs,
     )
-
-
-def get_rhs_ode(
-    process: BioProcess,
-    ordering: Optional[ProcessOrdering] = None,
-) -> RhsOde:
-    """Convenience wrapper around :func:`build_rhs_ode`."""
-    return build_rhs_ode(process, ordering=ordering)
 
 
 # ---------------------------------------------------------------------------
