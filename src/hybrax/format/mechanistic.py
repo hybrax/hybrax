@@ -66,7 +66,6 @@ from .dataclasses import (
     TimeSeries,
 )
 from .splines import (
-    _DEFAULT_BATCH_KNOTS,
     _MIN_REACTOR_VOLUME,
     build_backtransform_spline,
     make_cubic_ppoly,
@@ -77,6 +76,9 @@ from .time_series import PPoly
 # ---------------------------------------------------------------------------
 # Spline helpers
 # ---------------------------------------------------------------------------
+
+
+_DEFAULT_BATCH_KNOTS = 128
 
 
 def _require_reactor_volume_above_threshold(

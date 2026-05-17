@@ -199,12 +199,6 @@ Methods:
 Build with `build_backtransform_spline(process, species_name)` from a process
 that has `pseudobatch_transform` and component-level `c_star_concentration`.
 
-#### `BatchedBacktransformSpline`
-
-Stacks multiple `BacktransformSpline` objects for vectorised evaluation across species. Used inside JIT-compiled ODE solvers.
-
-Build with `build_batched_conc_splines(process, species_names)`.
-
 ## Examples
 
 ### Detecting discrete events
