@@ -1304,6 +1304,22 @@ def print_rhs_ode(
             )
         )
 
+    if ordering.name_modeled_rates:
+        def _fmt_bound(b):
+            return "—" if b is None else f"{b:g}"
+        rate_rows = []
+        for n in ordering.name_modeled_rates:
+            lo, hi = bo.rates.get(n, (None, None))
+            rate_rows.append([n, _fmt_bound(lo), _fmt_bound(hi)])
+        sections.append(
+            (
+                "Rates (declaration order — this is `name_modeled_rates`)",
+                ["Name", "Lower", "Upper"],
+                rate_rows,
+                ["l", "r", "r"],
+            )
+        )
+
     fvc_all = list(ordering.name_controlled_FVCs) + list(ordering.name_modeled_FVCs)
     svc_all = list(ordering.name_controlled_SVCs) + list(ordering.name_modeled_SVCs)
 
