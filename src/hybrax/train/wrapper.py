@@ -6,7 +6,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from bp_format.dataclasses import BioProcess, FeedVolumeChange, StaticVariable
-from bp_format.mechanistic import RhsOde, get_rhs_ode
+from bp_format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
 
@@ -232,7 +232,7 @@ class HybridOdeWrapper(eqx.Module):
         min_real_volume: float = 1e-8,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
-        rhs_ode = get_rhs_ode(process)
+        rhs_ode = build_rhs_ode(process)
         include_v_real_feature = bool(
             getattr(reaction_module, "expects_v_real_feature", False)
         )

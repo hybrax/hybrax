@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
-from bp_format.mechanistic import get_rhs_ode
+from bp_format.mechanistic import build_rhs_ode
 
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
@@ -128,7 +128,7 @@ def _compute_dense_process_export(
     """Solve one process on dense grid and return export-ready arrays."""
     process = collection.processes[process_name]
     process_data = store.get_process(process_name)
-    rhs_ode = get_rhs_ode(process)
+    rhs_ode = build_rhs_ode(process)
 
     process_wrapper = eqx.tree_at(
         lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),

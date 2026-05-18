@@ -15,7 +15,7 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import get_rhs_ode
+from bp_format.mechanistic import build_rhs_ode
 
 import bp_train.trainer as trainer_module
 from bp_train.model_api import (
@@ -457,7 +457,7 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
     batch_controls = store.controls_store.as_batch_controls()
 
     rhs_by_process = [
-        get_rhs_ode(collection.processes[name]) for name in store.process_order
+        build_rhs_ode(collection.processes[name]) for name in store.process_order
     ]
     batched_cin = jnp.stack([rhs.Cin_controlled_FVCs for rhs in rhs_by_process], axis=0)
     batched_cin_modeled = jnp.stack([rhs.Cin_modeled_FVCs for rhs in rhs_by_process], axis=0)
@@ -521,7 +521,7 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
     batch_controls = store.controls_store.as_batch_controls()
 
     rhs_by_process = [
-        get_rhs_ode(collection.processes[name]) for name in store.process_order
+        build_rhs_ode(collection.processes[name]) for name in store.process_order
     ]
     batched_cin = jnp.stack([rhs.Cin_controlled_FVCs for rhs in rhs_by_process], axis=0)
     batched_cin_modeled = jnp.stack([rhs.Cin_modeled_FVCs for rhs in rhs_by_process], axis=0)

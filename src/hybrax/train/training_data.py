@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from bp_format.dataclasses import BioProcessCollection
-from bp_format.mechanistic import get_rhs_ode
+from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
 from .controls_store import ControlsStore, PerProcessControls
@@ -457,11 +457,11 @@ class TrainingDataStore(eqx.Module):
             )
 
         ref_process = collection.processes[process_order[0]]
-        ref_rhs_ode = get_rhs_ode(ref_process)
+        ref_rhs_ode = build_rhs_ode(ref_process)
         name_modeled_FVCs = tuple(ref_rhs_ode.name_modeled_FVCs)
         name_modeled_SVCs = tuple(ref_rhs_ode.name_modeled_SVCs)
         for _pn in process_order[1:]:
-            _other_rhs_ode = get_rhs_ode(collection.processes[_pn])
+            _other_rhs_ode = build_rhs_ode(collection.processes[_pn])
             if tuple(_other_rhs_ode.name_modeled_FVCs) != name_modeled_FVCs:
                 raise ValueError(
                     f"name_modeled_FVCs differs across processes: "

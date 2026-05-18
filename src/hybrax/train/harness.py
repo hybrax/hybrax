@@ -18,7 +18,7 @@ import numpy as np
 import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.inspect import print_rhs_ode
-from bp_format.mechanistic import get_rhs_ode
+from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
 from .checkpointing import CheckpointConfig, CheckpointWriter
@@ -421,7 +421,7 @@ def _build_template_wrapper(
     reference_process_name = selected_processes[0]
     for process_name in store.process_order:
         process = collection.processes[process_name]
-        rhs_ode = get_rhs_ode(process)
+        rhs_ode = build_rhs_ode(process)
         per_process_rhs_ode[process_name] = rhs_ode
         if process_name == reference_process_name:
             reference_rhs_ode = rhs_ode
@@ -733,7 +733,7 @@ def train_collection(
     reference_process_name = selected_processes[0]
     for process_name in store.process_order:
         process = collection.processes[process_name]
-        rhs_ode = get_rhs_ode(process)
+        rhs_ode = build_rhs_ode(process)
         per_process_rhs_ode[process_name] = rhs_ode
         if process_name == reference_process_name:
             reference_rhs_ode = rhs_ode

@@ -20,7 +20,7 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import get_rhs_ode
+from bp_format.mechanistic import build_rhs_ode
 
 from bp_train.controls import EVENT_RUN_MIN_DT_CONFIG_KEY
 from bp_train.controls_store import ControlsStore
@@ -837,8 +837,8 @@ def test_wrapper_save_outputs_rejects_non_mapping_auxiliary():
 def test_validate_rhs_ode_compatibility_rejects_different_species():
     process_a = _make_single_species_process()
     process_b = _make_two_species_two_feed_process()
-    rhs_a = get_rhs_ode(process_a)
-    rhs_b = get_rhs_ode(process_b)
+    rhs_a = build_rhs_ode(process_a)
+    rhs_b = build_rhs_ode(process_b)
 
     with pytest.raises(ValueError, match="name_modeled_RMCs differ"):
         validate_rhs_ode_compatibility("a", rhs_a, "b", rhs_b)

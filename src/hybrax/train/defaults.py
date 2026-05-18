@@ -6,7 +6,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from bp_format.mechanistic import get_rhs_ode
+from bp_format.mechanistic import build_rhs_ode
 
 from .controls import build_sample_acc_source_default, run_min_dt_from_config
 from .model_api import ReactionOutputs, UserReactionModule, trainable_field
@@ -103,7 +103,7 @@ def default_build_reaction_module(
     if not process_names:
         raise ValueError("default_build_reaction_module requires at least one process")
     first_process = collection.processes[process_names[0]]
-    rhs_ode = get_rhs_ode(first_process)
+    rhs_ode = build_rhs_ode(first_process)
     n_rates = len(rhs_ode.name_modeled_rates)
     return DefaultReactionModule(
         n_species=len(target_names),
