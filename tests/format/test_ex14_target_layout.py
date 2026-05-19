@@ -1,4 +1,5 @@
 import csv
+import importlib.util
 import json
 import shutil
 from collections import defaultdict
@@ -31,6 +32,15 @@ EXPECTED_HEADER = [
 ]
 ALLOWED_ROW_TYPES = {"online", "offline", "pre-event", "post-event"}
 EXPECTED_PROCESS_IDS = {"ex14_run_1", "ex14_run_2"}
+
+
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _copy_ex14(tmp_path: Path) -> Path:
@@ -99,6 +109,31 @@ def _perturb_first_event_row_state(
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def test_ex14_visible_loaders_regenerate_reloadable_outputs(tmp_path):
+    assert not (EXAMPLE_ROOT / "_target_generation.py").exists()
+
+    single_loader = _load_module(
+        "ex14_single_loader",
+        EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
+    )
+    all_loader = _load_module(
+        "ex14_all_loader",
+        EXAMPLE_ROOT / "02_all_processes" / "load_all_processes.py",
+    )
+
+    single = single_loader.generate_single_process_output(tmp_path / "single")
+    all_processes = all_loader.generate_all_processes_output(tmp_path / "all")
+
+    reloaded_single = load_process_collection_json(tmp_path / "single" / "data.json")
+    reloaded_all = load_process_collection_json(tmp_path / "all" / "data.json")
+    assert set(single.processes) == {"ex14_run_1"}
+    assert set(reloaded_single.processes) == {"ex14_run_1"}
+    assert set(all_processes.processes) == EXPECTED_PROCESS_IDS
+    assert set(reloaded_all.processes) == EXPECTED_PROCESS_IDS
+    assert not (tmp_path / "single" / "dense_truth.csv").exists()
+    assert (tmp_path / "all" / "dense_truth.csv").exists()
 
 
 def test_ex14_dense_truth_contract_matches_all_process_json():

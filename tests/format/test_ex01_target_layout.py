@@ -13,9 +13,8 @@ SINGLE_PROCESS_ID = "DoE1_R1"
 EXPECTED_PROCESS_COUNT = 12
 
 
-def _load_target_generation_module():
-    path = EXAMPLE_ROOT / "_target_generation.py"
-    spec = importlib.util.spec_from_file_location("ex01_target_generation", path)
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -28,8 +27,17 @@ def _copy_ex01(tmp_path: Path) -> Path:
     (target / "01_single_process" / "output").mkdir(parents=True)
     (target / "02_all_processes" / "output").mkdir(parents=True)
     (target / "03_validate").mkdir(parents=True)
-    shutil.copy2(
-        EXAMPLE_ROOT / "_target_generation.py", target / "_target_generation.py"
+    shutil.copytree(
+        EXAMPLE_ROOT / "00_data_preprocessing",
+        target / "00_data_preprocessing",
+    )
+    shutil.copytree(
+        EXAMPLE_ROOT / "01_bp_format_data_single",
+        target / "01_bp_format_data_single",
+    )
+    shutil.copytree(
+        EXAMPLE_ROOT / "02_bp_format_data_all",
+        target / "02_bp_format_data_all",
     )
     shutil.copy2(
         EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
@@ -71,18 +79,29 @@ def test_ex01_target_layout_json_contract():
     assert not (ALL_PROCESS_OUTPUT / "dense_truth.csv").exists()
 
 
-def test_ex01_target_generation_helper_writes_reloadable_json(tmp_path):
-    target_generation = _load_target_generation_module()
+def test_ex01_visible_loaders_write_reloadable_json(tmp_path):
+    assert not (EXAMPLE_ROOT / "_target_generation.py").exists()
+    assert (EXAMPLE_ROOT / "00_data_preprocessing" / "target_conversion.py").exists()
 
-    single = target_generation.generate_single_process_output(tmp_path / "single")
-    all_processes = target_generation.generate_all_processes_output(tmp_path / "all")
+    single_loader = _load_module(
+        "ex01_single_loader",
+        EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
+    )
+    all_loader = _load_module(
+        "ex01_all_loader",
+        EXAMPLE_ROOT / "02_all_processes" / "load_all_processes.py",
+    )
+
+    single = single_loader.generate_single_process_output(tmp_path / "single")
+    all_processes = all_loader.generate_all_processes_output(tmp_path / "all")
 
     reloaded_single = load_process_collection_json(tmp_path / "single" / "data.json")
     reloaded_all = load_process_collection_json(tmp_path / "all" / "data.json")
-    assert set(single.processes) == set(reloaded_single.processes)
     assert set(single.processes) == {SINGLE_PROCESS_ID}
+    assert set(reloaded_single.processes) == {SINGLE_PROCESS_ID}
     assert set(all_processes.processes) == set(reloaded_all.processes)
-    assert len(all_processes.processes) == EXPECTED_PROCESS_COUNT
+    assert len(reloaded_all.processes) == EXPECTED_PROCESS_COUNT
+    assert SINGLE_PROCESS_ID in reloaded_all.processes
 
 
 def test_ex01_validator_sparse_real_summary_passes(tmp_path, capsys):
