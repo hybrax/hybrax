@@ -793,12 +793,18 @@ def plot_process_simulations(
                 ax_c.grid(True, alpha=0.3)
 
                 ax_q = axes[i, 1]
-                ax_q.plot(t_dense_np, q_dense[:, i], "-", lw=1.5, color="black")
-                ax_q.axhline(0, color="gray", lw=0.5, ls="--")
-                ax_q.set_title(f"q_{sp_name}")
-                ax_q.set_xlabel(f"time [{time_unit}]")
-                ax_q.set_xlim(t_start, t_end)
-                ax_q.grid(True, alpha=0.3)
+                # Rate panels are aligned with rhs_ode.name_modeled_rates, NOT
+                # with species; under a user-defined BiologicalOde the orderings
+                # differ. Title with the rate name so labels match values.
+                if i < n_rates:
+                    ax_q.plot(t_dense_np, q_dense[:, i], "-", lw=1.5, color="black")
+                    ax_q.axhline(0, color="gray", lw=0.5, ls="--")
+                    ax_q.set_title(rate_names[i])
+                    ax_q.set_xlabel(f"time [{time_unit}]")
+                    ax_q.set_xlim(t_start, t_end)
+                    ax_q.grid(True, alpha=0.3)
+                else:
+                    ax_q.set_visible(False)
 
             # ---- Volume panel: dense true V_real + integrated curve ----
             ax_v = axes[n_species, 0]
