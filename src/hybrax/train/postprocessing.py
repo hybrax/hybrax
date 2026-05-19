@@ -43,29 +43,40 @@ def _wrapper_save_outputs(
 
 @dataclass(frozen=True)
 class DenseProcessExport:
-    """Dense, human-facing per-process export arrays in physical units."""
+    """Dense, human-facing per-process export arrays in physical units.
+
+    ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modelled
+    rate vector), not with ``species_names``. Under a user-defined
+    ``BiologicalOde`` these orderings differ.
+    """
 
     t: np.ndarray
     c_species: np.ndarray
     v_cont: np.ndarray
     v_real: np.ndarray
     b_modeled_cum: np.ndarray
-    q_species: np.ndarray
+    q_rates: np.ndarray
     auxiliary: dict[str, np.ndarray] | None = None
 
 
 def _predictions_csv_header(
     species_names: tuple[str, ...],
     modeled_flow_names: tuple[str, ...],
+    rate_names: tuple[str, ...],
     auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
-    """Build stable predictions.csv column order."""
+    """Build stable predictions.csv column order.
+
+    Rate columns are derived from ``rate_names`` (i.e.
+    ``rhs_ode.name_modeled_rates``); these already carry the ``q_``/``r_``
+    prefix used in bp-format, so they are written verbatim.
+    """
     return (
         ["process", "t"]
         + [f"c_{name}" for name in species_names]
         + ["V_cont", "V_real"]
         + [f"B_{name}_cum" for name in modeled_flow_names]
-        + [f"q_{name}" for name in species_names]
+        + list(rate_names)
         + list(auxiliary_columns)
     )
 
@@ -161,22 +172,38 @@ def _compute_dense_process_export(
         max_steps=solver_max_steps,
         throw=False,
     )
+    n_species = len(process_wrapper.species_names)
+    n_modeled = len(process_wrapper.modeled_flow_names)
+    n_rates = len(process_wrapper.rhs_ode.name_modeled_rates)
+
     if sol.result != diffrax.RESULTS.successful:
-        raise RuntimeError(
-            "dense export solve failed for process "
-            f"{process_name!r}: result={sol.result}"
+        # Training can survive a transient stiff forward pass, so don't kill the
+        # whole run at checkpoint time. Emit NaN rows; auxiliary keys are unknown
+        # on a failed solve so propagate None.
+        logger.warning(
+            "dense export solve failed for process %r (result=%s); "
+            "writing NaN rows to predictions.csv",
+            process_name,
+            sol.result,
+        )
+        return DenseProcessExport(
+            t=np.asarray(t_dense),
+            c_species=np.full((n_dense, n_species), np.nan),
+            v_cont=np.full(n_dense, np.nan),
+            v_real=np.full(n_dense, np.nan),
+            b_modeled_cum=np.full((n_dense, n_modeled), np.nan),
+            q_rates=np.full((n_dense, n_rates), np.nan),
+            auxiliary=None,
         )
 
     states_physical = np.asarray(sol.ys.states_physical)
-    n_species = len(process_wrapper.species_names)
-    n_modeled = len(process_wrapper.modeled_flow_names)
     return DenseProcessExport(
         t=np.asarray(t_dense),
         c_species=states_physical[:, :n_species],
         v_cont=states_physical[:, n_species],
         v_real=np.asarray(sol.ys.v_real_export),
         b_modeled_cum=states_physical[:, n_species + 1 : n_species + 1 + n_modeled],
-        q_species=np.asarray(sol.ys.specific_rates_physical),
+        q_rates=np.asarray(sol.ys.specific_rates_physical),
         auxiliary=(
             None
             if sol.ys.auxiliary is None
@@ -203,8 +230,10 @@ def _write_predictions_csv(
 
     species_names = trained_wrapper.species_names
     modeled_flow_names = trained_wrapper.modeled_flow_names
+    rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
     n_species = len(species_names)
     n_modeled = len(modeled_flow_names)
+    n_rates = len(rate_names)
     if process_names is None:
         selected_processes = tuple(store.process_order)
     else:
@@ -220,6 +249,7 @@ def _write_predictions_csv(
         header = _predictions_csv_header(
             species_names=species_names,
             modeled_flow_names=modeled_flow_names,
+            rate_names=rate_names,
         )
         pd.DataFrame(columns=header).to_csv(output_path, index=False)
         logger.info("timeseries csv saved to %s", output_path)
@@ -240,6 +270,7 @@ def _write_predictions_csv(
     header = _predictions_csv_header(
         species_names=species_names,
         modeled_flow_names=modeled_flow_names,
+        rate_names=rate_names,
         auxiliary_columns=auxiliary_columns,
     )
     pd.DataFrame(columns=header).to_csv(output_path, index=False)
@@ -248,7 +279,14 @@ def _write_predictions_csv(
         process_name: str,
         dense_export: DenseProcessExport,
     ) -> None:
-        if _auxiliary_csv_columns(dense_export.auxiliary) != auxiliary_columns:
+        # On a failed solve `auxiliary` is None — that's not a column-set drift,
+        # just absence of data, so emit NaN values for the previously-seen aux
+        # columns instead of raising.
+        aux_failed = dense_export.auxiliary is None
+        if (
+            not aux_failed
+            and _auxiliary_csv_columns(dense_export.auxiliary) != auxiliary_columns
+        ):
             raise ValueError(
                 "predictions.csv auxiliary columns differ across processes; "
                 f"expected {auxiliary_columns}, got "
@@ -257,13 +295,18 @@ def _write_predictions_csv(
             )
         ts_rows: list[list[float | str]] = []
         for i_t in range(len(dense_export.t)):
+            aux_cells = (
+                [float("nan")] * len(auxiliary_columns)
+                if aux_failed
+                else _auxiliary_row_values(dense_export.auxiliary, i_t)
+            )
             row = (
                 [process_name, float(dense_export.t[i_t])]
                 + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
                 + [float(dense_export.v_cont[i_t]), float(dense_export.v_real[i_t])]
                 + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
-                + [float(dense_export.q_species[i_t, j]) for j in range(n_species)]
-                + _auxiliary_row_values(dense_export.auxiliary, i_t)
+                + [float(dense_export.q_rates[i_t, j]) for j in range(n_rates)]
+                + aux_cells
             )
             ts_rows.append(row)
         pd.DataFrame(ts_rows, columns=header).to_csv(
@@ -604,6 +647,9 @@ def plot_process_simulations(
         set(training_process_names) if training_process_names is not None else None
     )
 
+    rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
+    n_rates = len(rate_names)
+
     # Prepare merged timeseries rows (one file, all processes).
     ts_header: list[str] | None = None
     ts_auxiliary_columns: list[str] | None = None
@@ -615,6 +661,7 @@ def plot_process_simulations(
             ts_header = _predictions_csv_header(
                 species_names=species_names,
                 modeled_flow_names=modeled_flow_names,
+                rate_names=rate_names,
             )
             pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
 
@@ -641,7 +688,7 @@ def plot_process_simulations(
         v_cont_pred = dense_export.v_cont
         v_real_pred = dense_export.v_real
         b_modeled_pred = dense_export.b_modeled_cum
-        q_dense = dense_export.q_species
+        q_dense = dense_export.q_rates
         auxiliary_dense = dense_export.auxiliary
 
         if ts_path is not None and ts_header is None:
@@ -649,12 +696,14 @@ def plot_process_simulations(
             ts_header = _predictions_csv_header(
                 species_names=species_names,
                 modeled_flow_names=modeled_flow_names,
+                rate_names=rate_names,
                 auxiliary_columns=ts_auxiliary_columns,
             )
             pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
         elif (
             ts_path is not None
             and ts_auxiliary_columns is not None
+            and auxiliary_dense is not None
             and _auxiliary_csv_columns(auxiliary_dense) != ts_auxiliary_columns
         ):
             raise ValueError(
@@ -863,14 +912,20 @@ def plot_process_simulations(
         if ts_header is not None:
             assert ts_path is not None
             ts_rows: list[list[float | str]] = []
+            aux_failed = auxiliary_dense is None
             for i_t in range(len(t_dense_np)):
+                aux_cells = (
+                    [float("nan")] * len(ts_auxiliary_columns or ())
+                    if aux_failed
+                    else _auxiliary_row_values(auxiliary_dense, i_t)
+                )
                 row = (
                     [process_name, float(t_dense_np[i_t])]
                     + [float(c_dense[i_t, j]) for j in range(n_species)]
                     + [float(v_cont_pred[i_t]), float(v_real_pred[i_t])]
                     + [float(b_modeled_pred[i_t, k]) for k in range(n_modeled)]
-                    + [float(q_dense[i_t, j]) for j in range(n_species)]
-                    + _auxiliary_row_values(auxiliary_dense, i_t)
+                    + [float(q_dense[i_t, j]) for j in range(n_rates)]
+                    + aux_cells
                 )
                 ts_rows.append(row)
             pd.DataFrame(ts_rows, columns=ts_header).to_csv(

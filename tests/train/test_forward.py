@@ -704,9 +704,13 @@ def test_plot_process_simulations_is_exported_with_new_kwargs():
 def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection(
     tmp_path: Path,
 ):
+    class _RhsOde:
+        name_modeled_rates = ("q_X", "q_S")
+
     class _Wrapper:
         species_names = ("X", "S")
         modeled_flow_names = ("F",)
+        rhs_ode = _RhsOde()
 
     class _Store:
         process_order = ("p1",)
@@ -784,8 +788,8 @@ def test_compute_dense_process_export_returns_physical_q_values():
         n_dense=9,
     )
 
-    assert export.q_species.shape == (9, 1)
-    assert np.allclose(export.q_species[:, 0], 3.0)
+    assert export.q_rates.shape == (9, 1)
+    assert np.allclose(export.q_rates[:, 0], 3.0)
 
 
 def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(
@@ -871,9 +875,13 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
 def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(
     monkeypatch, tmp_path: Path
 ):
+    class _RhsOde:
+        name_modeled_rates = ("q_biomass",)
+
     class _Wrapper:
         species_names = ("biomass",)
         modeled_flow_names = ()
+        rhs_ode = _RhsOde()
 
     class _Store:
         process_order = ("p1", "p2")
@@ -898,7 +906,7 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(
             v_cont=np.asarray([1.0, 1.0], dtype=float),
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
-            q_species=np.asarray([[0.0], [0.0]], dtype=float),
+            q_rates=np.asarray([[0.0], [0.0]], dtype=float),
             auxiliary=auxiliary,
         )
 
@@ -927,8 +935,12 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(
 def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(
     monkeypatch, tmp_path: Path
 ):
+    class _RhsOde:
+        name_modeled_rates = ("q_biomass",)
+
     class _Wrapper:
         species_names = ("biomass",)
+        rhs_ode = _RhsOde()
         modeled_flow_names = ()
 
     class _Store:
@@ -968,7 +980,7 @@ def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(
             v_cont=np.asarray([1.0, 1.0], dtype=float),
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
-            q_species=np.asarray([[0.0], [0.0]], dtype=float),
+            q_rates=np.asarray([[0.0], [0.0]], dtype=float),
             auxiliary=auxiliary,
         )
 
