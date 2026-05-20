@@ -22,6 +22,47 @@ def test_list_command_prints_migrated_examples(capsys):
     assert capsys.readouterr().out.splitlines() == list(EXPECTED_MIGRATED_EXAMPLES)
 
 
+def test_migrated_target_layout_contracts_pass_for_repo_examples():
+    for example in validate_migrated_examples.MIGRATED_TARGET_EXAMPLES:
+        result = validate_migrated_examples.check_migrated_target_layout(
+            validate_migrated_examples.REPO_ROOT / example
+        )
+        assert result["ok"] is True
+        assert result["errors"] == []
+
+
+def test_migrated_target_layout_contract_reports_missing_required(tmp_path):
+    root = tmp_path / "repo"
+    example = root / "examples/01_kittler_2022"
+    example.mkdir(parents=True)
+    result = validate_migrated_examples.check_migrated_target_layout(example)
+
+    assert result["ok"] is False
+    assert any("missing file" in error for error in result["errors"])
+
+
+def test_migrated_target_layout_contract_reports_unexpected_artifact(tmp_path):
+    root = tmp_path / "repo"
+    example = root / "examples/01_kittler_2022"
+    for relative_path, _ in validate_migrated_examples.MIGRATED_TARGET_LAYOUT_CONTRACTS[
+        "examples/01_kittler_2022"
+    ]["required"]:
+        path = example / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}")
+    unexpected = example / "_target_generation.py"
+    unexpected.write_text("# stale helper\n")
+
+    result = validate_migrated_examples.check_migrated_target_layout(example)
+
+    assert result["ok"] is False
+    assert any(
+        "_target_generation.py" in error
+        and "unexpected target-layout artifact" in error
+        for error in result["errors"]
+    )
+
+
 def test_delegates_to_shared_validator(monkeypatch):
     calls: list[list[str]] = []
 

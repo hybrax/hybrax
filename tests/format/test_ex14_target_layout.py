@@ -115,8 +115,6 @@ def _perturb_first_event_row_state(
 
 
 def test_ex14_visible_loaders_regenerate_reloadable_outputs(tmp_path):
-    assert not (EXAMPLE_ROOT / "_target_generation.py").exists()
-
     single_loader = load_module(
         "ex14_single_loader",
         EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",

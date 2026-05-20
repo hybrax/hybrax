@@ -67,13 +67,9 @@ def test_ex01_target_layout_json_contract():
     assert SINGLE_PROCESS_ID in all_processes.processes
     assert single.metadata["case_id"] == "protein_L"
     assert all_processes.metadata["case_id"] == "protein_L"
-    assert not (ALL_PROCESS_OUTPUT / "dense_truth.csv").exists()
 
 
 def test_ex01_visible_loaders_write_reloadable_json(tmp_path):
-    assert not (EXAMPLE_ROOT / "_target_generation.py").exists()
-    assert (EXAMPLE_ROOT / "00_data_preprocessing" / "target_conversion.py").exists()
-
     single_loader = load_module(
         "ex01_single_loader",
         EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
