@@ -69,6 +69,7 @@ def _make_example(
     name="01_example",
 ):
     root = tmp_path / name
+    (root / "00_simulation").mkdir(parents=True)
     (root / "01_single_process" / "output").mkdir(parents=True)
     (root / "02_all_processes" / "output").mkdir(parents=True)
     (root / "03_validate").mkdir(parents=True)
@@ -96,15 +97,18 @@ def _summary(root: Path):
     return json.loads(path.read_text())
 
 
-def _write_dense_truth(root: Path, content: str) -> Path:
-    path = root / "02_all_processes" / "output" / "dense_truth.csv"
+def _write_simulation_dense_output(root: Path, content: str) -> Path:
+    path = root / "00_simulation" / "simulation_dense_output.csv"
     path.write_text(content)
     return path
 
 
-def _dense_truth_for_process(process_id: str, state_columns: tuple[str, ...]):
+def _simulation_dense_output_for_process(
+    process_id: str,
+    state_columns: tuple[str, ...],
+):
     rows = (
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             process_id=process_id,
             time=0.0,
             row_type="online",
@@ -112,7 +116,7 @@ def _dense_truth_for_process(process_id: str, state_columns: tuple[str, ...]):
             volume=1.0,
             line_number=2,
         ),
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             process_id=process_id,
             time=1.0,
             row_type="online",
@@ -120,7 +124,7 @@ def _dense_truth_for_process(process_id: str, state_columns: tuple[str, ...]):
             volume=1.0,
             line_number=3,
         ),
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             process_id=process_id,
             time=2.0,
             row_type="online",
@@ -129,10 +133,9 @@ def _dense_truth_for_process(process_id: str, state_columns: tuple[str, ...]):
             line_number=4,
         ),
     )
-    return validate_example.DenseTruth(
-        path=Path("dense_truth.csv"),
+    return validate_example.SimulationDenseOutput(
+        path=Path("simulation_dense_output.csv"),
         state_columns=state_columns,
-        rows=rows,
         processes={process_id: rows},
     )
 
@@ -221,7 +224,7 @@ def _flow_process(*, modeled_fvc_values=(0.0, 0.2, 0.4)):
     )
 
 
-VALID_DENSE_TRUTH = """\
+VALID_SIMULATION_DENSE_OUTPUT = """\
 process_id,time,row_type,biomass,volume
 process_1,0.0,online,0.1,1.0
 process_1,1.0,online,0.2,1.0
@@ -264,7 +267,7 @@ def test_normal_run_defaults_to_real_and_writes_report_sections(tmp_path, capsys
     assert exit_code == 0
     summary = _summary(root)
     assert summary["config"]["values"]["kind"] == "real"
-    assert summary["files"]["dense_truth"] is None
+    assert summary["files"]["simulation_dense_output"] is None
     assert summary["single_process"]["ok"] is True
     assert summary["all_processes"]["ok"] is True
     assert summary["all_processes_case_study"]["ok"] is True
@@ -399,23 +402,29 @@ def test_sparse_real_helper_smoke_on_legacy_real_json(tmp_path):
     assert "errors" in result
 
 
-def test_invalid_dense_truth_fails_in_simulation_mode(tmp_path, capsys):
+def test_invalid_simulation_dense_output_fails_in_simulation_mode(
+    tmp_path,
+    capsys,
+):
     root = _make_example(tmp_path)
-    dense_truth = _write_dense_truth(root, "not,a,validated,milestone1,csv\n")
+    simulation_dense_output = _write_simulation_dense_output(
+        root,
+        "not,a,validated,milestone1,csv\n",
+    )
 
     exit_code = validate_example.main([str(root)])
 
     assert exit_code == 1
     summary = _summary(root)
     assert summary["config"]["values"]["kind"] == "simulation"
-    assert summary["structure"]["dense_truth_detected"] is True
-    assert summary["files"]["dense_truth"] == str(dense_truth)
-    assert summary["dense_truth"]["ok"] is False
+    assert summary["structure"]["simulation_dense_output_detected"] is True
+    assert summary["files"]["simulation_dense_output"] == str(simulation_dense_output)
+    assert summary["simulation_dense_output"]["ok"] is False
     assert summary["dense_event_validation"] == {
         "ok": False,
         "status": "skipped",
-        "reason": "dense_truth validation failed",
-        "errors": ["dense_truth validation failed"],
+        "reason": "simulation dense output validation failed",
+        "errors": ["simulation dense output validation failed"],
     }
     capsys.readouterr()
 
@@ -435,7 +444,7 @@ def test_dense_event_warning_when_pre_event_online_check_never_runs():
         values=TimeSeries(times=jnp.array([1.0]), values=jnp.array([-0.1])),
     )
     rows = (
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             "process_1",
             0.0,
             "online",
@@ -443,7 +452,7 @@ def test_dense_event_warning_when_pre_event_online_check_never_runs():
             1.0,
             2,
         ),
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             "process_1",
             1.0,
             "pre-event",
@@ -451,7 +460,7 @@ def test_dense_event_warning_when_pre_event_online_check_never_runs():
             1.0,
             3,
         ),
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             "process_1",
             1.0,
             "post-event",
@@ -459,7 +468,7 @@ def test_dense_event_warning_when_pre_event_online_check_never_runs():
             0.9,
             4,
         ),
-        validate_example.DenseTruthRow(
+        validate_example.SimulationDenseOutputRow(
             "process_1",
             2.0,
             "online",
@@ -468,10 +477,9 @@ def test_dense_event_warning_when_pre_event_online_check_never_runs():
             5,
         ),
     )
-    dense = validate_example.DenseTruth(
-        path=Path("dense_truth.csv"),
+    dense = validate_example.SimulationDenseOutput(
+        path=Path("simulation_dense_output.csv"),
         state_columns=("biomass",),
-        rows=rows,
         processes={"process_1": rows},
     )
 
@@ -490,9 +498,9 @@ def test_dense_event_warning_when_pre_event_online_check_never_runs():
     )
 
 
-def test_real_config_with_dense_truth_fails_setup(tmp_path, capsys):
+def test_real_config_with_simulation_dense_output_fails_setup(tmp_path, capsys):
     root = _make_example(tmp_path)
-    _write_dense_truth(root, VALID_DENSE_TRUTH)
+    _write_simulation_dense_output(root, VALID_SIMULATION_DENSE_OUTPUT)
     (root / "03_validate" / "config.json").write_text('{"kind": "real"}\n')
 
     exit_code = validate_example.main(["--check-structure", str(root)])
@@ -504,21 +512,21 @@ def test_real_config_with_dense_truth_fails_setup(tmp_path, capsys):
     capsys.readouterr()
 
 
-def test_valid_dense_truth_parser_mapping_and_repeated_timestamp_pass(
+def test_valid_simulation_dense_output_parser_mapping_and_repeated_timestamp_pass(
     tmp_path,
     capsys,
 ):
     root = _make_example(tmp_path)
-    _write_dense_truth(root, VALID_DENSE_TRUTH)
+    _write_simulation_dense_output(root, VALID_SIMULATION_DENSE_OUTPUT)
 
     exit_code = validate_example.main([str(root)])
 
     assert exit_code == 0
     summary = _summary(root)
-    assert summary["dense_truth"]["ok"] is True
-    assert summary["dense_truth"]["row_count"] == 3
-    assert summary["dense_truth"]["state_columns"] == ["biomass"]
-    assert summary["dense_truth"]["process_ids"] == ["process_1"]
+    assert summary["simulation_dense_output"]["ok"] is True
+    assert summary["simulation_dense_output"]["row_count"] == 3
+    assert summary["simulation_dense_output"]["state_columns"] == ["biomass"]
+    assert summary["simulation_dense_output"]["process_ids"] == ["process_1"]
     assert summary["dense_event_validation"]["ok"] is True
     assert summary["dense_event_validation"]["event_checks"] == 0
     assert summary["dense_trajectory_validation"]["ok"] is True
@@ -527,9 +535,28 @@ def test_valid_dense_truth_parser_mapping_and_repeated_timestamp_pass(
     )
     assert "sparse_real_diagnostics" not in summary
     text = (root / "03_validate" / "output" / "validation.txt").read_text()
-    assert "Dense truth:" in text
+    assert "Simulation dense output:" in text
     assert "Dense event validation:" in text
     assert "Dense trajectory diagnostics:" in text
+    capsys.readouterr()
+
+
+def test_simulation_dense_output_parser_ignores_extra_columns(tmp_path, capsys):
+    root = _make_example(tmp_path)
+    _write_simulation_dense_output(
+        root,
+        "process_id,time,row_type,rate,biomass,volume,diagnostic\n"
+        "process_1,0.0,online,9.0,0.1,1.0,ignored\n"
+        "process_1,1.0,online,9.0,0.2,1.0,ignored\n"
+        "process_1,2.0,online,9.0,0.4,1.0,ignored\n",
+    )
+
+    exit_code = validate_example.main([str(root)])
+
+    assert exit_code == 0
+    summary = _summary(root)
+    assert summary["simulation_dense_output"]["ok"] is True
+    assert summary["simulation_dense_output"]["state_columns"] == ["biomass"]
     capsys.readouterr()
 
 
@@ -538,7 +565,7 @@ def test_valid_dense_truth_parser_mapping_and_repeated_timestamp_pass(
     [
         (
             "process_id,time,row_type,biomass\nprocess_1,0.0,online,0.1\n",
-            "must end with volume",
+            "missing required columns",
         ),
         (
             "process_id,time,row_type,biomass,biomass,volume\n"
@@ -547,7 +574,7 @@ def test_valid_dense_truth_parser_mapping_and_repeated_timestamp_pass(
         ),
         (
             "process_id,time,row_type,,volume\nprocess_1,0.0,online,0.1,1.0\n",
-            "empty state column names",
+            "empty column names",
         ),
         (
             "process_id,time,row_type,biomass,volume\n"
@@ -598,25 +625,28 @@ def test_valid_dense_truth_parser_mapping_and_repeated_timestamp_pass(
             "process_id,time,row_type,biomass,volume\n"
             "process_1,0.0,online,0.1,1.0\n"
             "process_1,0.0,online,0.2,1.0\n",
-            "Duplicate dense truth row",
-        ),
-        (
-            "process_id,time,row_type,biomass,unknown,volume\n"
-            "process_1,0.0,online,0.1,0.2,1.0\n",
-            "unmapped state columns",
+            "Duplicate simulation dense output row",
         ),
     ],
 )
-def test_dense_truth_parser_failures(tmp_path, capsys, content, error_fragment):
+def test_simulation_dense_output_parser_failures(
+    tmp_path,
+    capsys,
+    content,
+    error_fragment,
+):
     root = _make_example(tmp_path)
-    _write_dense_truth(root, content)
+    _write_simulation_dense_output(root, content)
 
     exit_code = validate_example.main([str(root)])
 
     assert exit_code == 1
     summary = _summary(root)
-    assert summary["dense_truth"]["ok"] is False
-    assert any(error_fragment in error for error in summary["dense_truth"]["errors"])
+    assert summary["simulation_dense_output"]["ok"] is False
+    assert any(
+        error_fragment in error
+        for error in summary["simulation_dense_output"]["errors"]
+    )
     capsys.readouterr()
 
 
@@ -695,7 +725,7 @@ def test_dense_trajectory_reports_rank_deficiency():
             derivatives={"biomass": "q1 * biomass + q2 * biomass"},
         ),
     )
-    dense = _dense_truth_for_process("rank", ("biomass",))
+    dense = _simulation_dense_output_for_process("rank", ("biomass",))
 
     result = validate_example.validate_dense_trajectory(
         dense,
@@ -738,7 +768,7 @@ def test_dense_trajectory_reports_nonlinear_rate_expression():
             derivatives={"biomass": "q1 * q1 * biomass"},
         ),
     )
-    dense = _dense_truth_for_process("nonlinear", ("biomass",))
+    dense = _simulation_dense_output_for_process("nonlinear", ("biomass",))
 
     result = validate_example.validate_dense_trajectory(
         dense,
@@ -749,7 +779,7 @@ def test_dense_trajectory_reports_nonlinear_rate_expression():
     assert any("not affine" in error for error in result["errors"])
 
 
-def test_dense_truth_missing_state_column_fails(tmp_path, capsys):
+def test_simulation_dense_output_missing_state_column_fails(tmp_path, capsys):
     root = _make_example(
         tmp_path,
         all_processes={
@@ -759,7 +789,7 @@ def test_dense_truth_missing_state_column_fails(tmp_path, capsys):
             )
         },
     )
-    _write_dense_truth(
+    _write_simulation_dense_output(
         root,
         "process_id,time,row_type,biomass,volume\nprocess_1,0.0,online,0.1,1.0\n",
     )
@@ -768,14 +798,15 @@ def test_dense_truth_missing_state_column_fails(tmp_path, capsys):
 
     assert exit_code == 1
     summary = _summary(root)
-    assert summary["dense_truth"]["ok"] is False
+    assert summary["simulation_dense_output"]["ok"] is False
     assert any(
-        "missing state columns" in error for error in summary["dense_truth"]["errors"]
+        "missing required columns" in error
+        for error in summary["simulation_dense_output"]["errors"]
     )
     capsys.readouterr()
 
 
-def test_dense_truth_process_id_mismatch_fails(tmp_path, capsys):
+def test_simulation_dense_output_process_id_mismatch_fails(tmp_path, capsys):
     root = _make_example(
         tmp_path,
         all_processes={
@@ -783,7 +814,7 @@ def test_dense_truth_process_id_mismatch_fails(tmp_path, capsys):
             "process_2": _make_process("process_2"),
         },
     )
-    _write_dense_truth(
+    _write_simulation_dense_output(
         root,
         "process_id,time,row_type,biomass,volume\n"
         "process_1,0.0,online,0.1,1.0\n"
@@ -794,23 +825,20 @@ def test_dense_truth_process_id_mismatch_fails(tmp_path, capsys):
 
     assert exit_code == 1
     summary = _summary(root)
-    assert summary["dense_truth"]["missing_in_dense"] == ["process_2"]
-    assert summary["dense_truth"]["extra_in_dense"] == ["process_extra"]
-    assert any(
-        "missing process IDs" in error for error in summary["dense_truth"]["errors"]
-    )
-    assert any(
-        "unknown process IDs" in error for error in summary["dense_truth"]["errors"]
-    )
+    section = summary["simulation_dense_output"]
+    assert section["missing_in_dense"] == ["process_2"]
+    assert section["extra_in_dense"] == ["process_extra"]
+    assert any("missing process IDs" in error for error in section["errors"])
+    assert any("unknown process IDs" in error for error in section["errors"])
     capsys.readouterr()
 
 
-def test_dense_truth_row_semantics_reject_orphan_event_and_offline_rows(
+def test_simulation_dense_output_row_semantics_reject_orphan_event_and_offline_rows(
     tmp_path,
     capsys,
 ):
     root = _make_example(tmp_path)
-    _write_dense_truth(
+    _write_simulation_dense_output(
         root,
         "process_id,time,row_type,biomass,volume\n"
         "process_1,0.0,online,0.1,1.0\n"
@@ -823,7 +851,7 @@ def test_dense_truth_row_semantics_reject_orphan_event_and_offline_rows(
     exit_code = validate_example.main([str(root)])
 
     assert exit_code == 1
-    errors = _summary(root)["dense_truth"]["errors"]
+    errors = _summary(root)["simulation_dense_output"]["errors"]
     assert any("non-event time" in error for error in errors)
     assert any("non-sample time" in error for error in errors)
     capsys.readouterr()

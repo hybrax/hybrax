@@ -1,25 +1,16 @@
-import importlib.util
 import json
 import shutil
 from pathlib import Path
 
 from bp_format.serialization import load_process_collection_json
 from examples import validate_example
+from tests.loader_helpers import load_module
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1] / "examples/01_kittler_2022"
 SINGLE_OUTPUT = EXAMPLE_ROOT / "01_single_process" / "output"
 ALL_PROCESS_OUTPUT = EXAMPLE_ROOT / "02_all_processes" / "output"
 SINGLE_PROCESS_ID = "DoE1_R1"
 EXPECTED_PROCESS_COUNT = 12
-
-
-def _load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _copy_ex01(tmp_path: Path) -> Path:
@@ -83,11 +74,11 @@ def test_ex01_visible_loaders_write_reloadable_json(tmp_path):
     assert not (EXAMPLE_ROOT / "_target_generation.py").exists()
     assert (EXAMPLE_ROOT / "00_data_preprocessing" / "target_conversion.py").exists()
 
-    single_loader = _load_module(
+    single_loader = load_module(
         "ex01_single_loader",
         EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
     )
-    all_loader = _load_module(
+    all_loader = load_module(
         "ex01_all_loader",
         EXAMPLE_ROOT / "02_all_processes" / "load_all_processes.py",
     )
@@ -113,8 +104,8 @@ def test_ex01_validator_sparse_real_summary_passes(tmp_path, capsys):
     summary = _summary(root)
     assert summary["ok"] is True
     assert summary["config"]["values"]["kind"] == "real"
-    assert summary["files"]["dense_truth"] is None
-    assert "dense_truth" not in summary
+    assert summary["files"]["simulation_dense_output"] is None
+    assert "simulation_dense_output" not in summary
     assert "dense_event_validation" not in summary
     assert "dense_trajectory_validation" not in summary
 

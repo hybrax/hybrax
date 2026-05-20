@@ -1,7 +1,7 @@
 import csv
-import importlib.util
 import json
 import shutil
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,13 +9,15 @@ import pytest
 
 from bp_format.serialization import load_process_collection_json
 from examples import validate_example
+from tests.loader_helpers import load_module
 
 EXAMPLE_ROOT = (
     Path(__file__).resolve().parents[1] / "examples/14_simulation_intracellular"
 )
+SIMULATION_DIR = EXAMPLE_ROOT / "00_simulation"
 ALL_PROCESS_OUTPUT = EXAMPLE_ROOT / "02_all_processes" / "output"
-DENSE_TRUTH = ALL_PROCESS_OUTPUT / "dense_truth.csv"
-EXPECTED_HEADER = [
+SIMULATION_DENSE_OUTPUT = SIMULATION_DIR / "simulation_dense_output.csv"
+EXPECTED_REQUIRED_COLUMNS = [
     "process_id",
     "time",
     "row_type",
@@ -30,43 +32,44 @@ EXPECTED_HEADER = [
     "intracellular_product_ratio",
     "volume",
 ]
+EXPECTED_EXTRA_COLUMNS = {"pH", "temperature", "q_biomass", "r_biomass"}
 ALLOWED_ROW_TYPES = {"online", "offline", "pre-event", "post-event"}
 EXPECTED_PROCESS_IDS = {"ex14_run_1", "ex14_run_2"}
 
 
-def _load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _copy_ex14_files(target: Path, *, include_outputs: bool) -> None:
+    (target / "00_simulation").mkdir(parents=True)
+    (target / "01_single_process").mkdir(parents=True)
+    (target / "02_all_processes").mkdir(parents=True)
+    shutil.copy2(EXAMPLE_ROOT / "load_utils.py", target / "load_utils.py")
+    for name in ["ex14_simulation.py", "simulation_dense_output.csv", "events.csv"]:
+        shutil.copy2(SIMULATION_DIR / name, target / "00_simulation" / name)
+    for directory, loader_name in [
+        ("01_single_process", "load_single_process.py"),
+        ("02_all_processes", "load_all_processes.py"),
+    ]:
+        shutil.copy2(
+            EXAMPLE_ROOT / directory / loader_name,
+            target / directory / loader_name,
+        )
+        if include_outputs:
+            (target / directory / "output").mkdir()
+            shutil.copy2(
+                EXAMPLE_ROOT / directory / "output" / "data.json",
+                target / directory / "output" / "data.json",
+            )
 
 
 def _copy_ex14(tmp_path: Path) -> Path:
     target = tmp_path / "14_simulation_intracellular"
-    (target / "01_single_process" / "output").mkdir(parents=True)
-    (target / "02_all_processes" / "output").mkdir(parents=True)
+    _copy_ex14_files(target, include_outputs=True)
     (target / "03_validate").mkdir(parents=True)
-    shutil.copy2(
-        EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
-        target / "01_single_process" / "load_single_process.py",
-    )
-    shutil.copy2(
-        EXAMPLE_ROOT / "01_single_process" / "output" / "data.json",
-        target / "01_single_process" / "output" / "data.json",
-    )
-    shutil.copy2(
-        EXAMPLE_ROOT / "02_all_processes" / "load_all_processes.py",
-        target / "02_all_processes" / "load_all_processes.py",
-    )
-    shutil.copy2(
-        EXAMPLE_ROOT / "02_all_processes" / "output" / "data.json",
-        target / "02_all_processes" / "output" / "data.json",
-    )
-    shutil.copy2(
-        DENSE_TRUTH, target / "02_all_processes" / "output" / "dense_truth.csv"
-    )
+    return target
+
+
+def _copy_ex14_loader_fixture(tmp_path: Path) -> Path:
+    target = tmp_path / "14_simulation_intracellular"
+    _copy_ex14_files(target, include_outputs=False)
     return target
 
 
@@ -83,7 +86,7 @@ def _perturb_first_event_row_state(
     delta: float,
     keep_offline_matched: bool = False,
 ) -> None:
-    path = root / "02_all_processes" / "output" / "dense_truth.csv"
+    path = root / "00_simulation" / "simulation_dense_output.csv"
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle)
         assert reader.fieldnames is not None
@@ -114,17 +117,21 @@ def _perturb_first_event_row_state(
 def test_ex14_visible_loaders_regenerate_reloadable_outputs(tmp_path):
     assert not (EXAMPLE_ROOT / "_target_generation.py").exists()
 
-    single_loader = _load_module(
+    single_loader = load_module(
         "ex14_single_loader",
         EXAMPLE_ROOT / "01_single_process" / "load_single_process.py",
     )
-    all_loader = _load_module(
+    all_loader = load_module(
         "ex14_all_loader",
         EXAMPLE_ROOT / "02_all_processes" / "load_all_processes.py",
     )
 
+    all_output_dir = tmp_path / "all"
+    all_output_dir.mkdir()
+    (all_output_dir / "dense_truth.csv").write_text("stale\n")
+
     single = single_loader.generate_single_process_output(tmp_path / "single")
-    all_processes = all_loader.generate_all_processes_output(tmp_path / "all")
+    all_processes = all_loader.generate_all_processes_output(all_output_dir)
 
     reloaded_single = load_process_collection_json(tmp_path / "single" / "data.json")
     reloaded_all = load_process_collection_json(tmp_path / "all" / "data.json")
@@ -133,16 +140,47 @@ def test_ex14_visible_loaders_regenerate_reloadable_outputs(tmp_path):
     assert set(all_processes.processes) == EXPECTED_PROCESS_IDS
     assert set(reloaded_all.processes) == EXPECTED_PROCESS_IDS
     assert not (tmp_path / "single" / "dense_truth.csv").exists()
-    assert (tmp_path / "all" / "dense_truth.csv").exists()
+    assert not (tmp_path / "all" / "dense_truth.csv").exists()
 
 
-def test_ex14_dense_truth_contract_matches_all_process_json():
+def test_ex14_loaders_consume_existing_simulation_artifacts(tmp_path):
+    root = _copy_ex14_loader_fixture(tmp_path)
+    single_loader_path = root / "01_single_process" / "load_single_process.py"
+    all_loader_path = root / "02_all_processes" / "load_all_processes.py"
+    assert "run_all_default" not in single_loader_path.read_text()
+    assert "run_all_default" not in all_loader_path.read_text()
+    assert "TemporaryDirectory" not in single_loader_path.read_text()
+    assert "TemporaryDirectory" not in all_loader_path.read_text()
+
+    sys.modules.pop("load_utils", None)
+    sys.modules.pop("ex14_simulation", None)
+    single_loader = load_module("copied_ex14_single_loader", single_loader_path)
+    all_loader = load_module("copied_ex14_all_loader", all_loader_path)
+
+    single_output_dir = tmp_path / "single_from_copy"
+    all_output_dir = tmp_path / "all_from_copy"
+    (all_output_dir).mkdir()
+    (all_output_dir / "dense_truth.csv").write_text("stale\n")
+    single = single_loader.generate_single_process_output(single_output_dir)
+    all_processes = all_loader.generate_all_processes_output(all_output_dir)
+
+    assert set(single.processes) == {"ex14_run_1"}
+    assert set(all_processes.processes) == EXPECTED_PROCESS_IDS
+    assert (single_output_dir / "data.json").exists()
+    assert (all_output_dir / "data.json").exists()
+    assert not (single_output_dir / "dense_truth.csv").exists()
+    assert not (all_output_dir / "dense_truth.csv").exists()
+
+
+def test_ex14_simulation_dense_output_contract_matches_all_process_json():
     collection = load_process_collection_json(ALL_PROCESS_OUTPUT / "data.json")
     json_process_ids = set(collection.processes)
 
-    with DENSE_TRUTH.open(newline="") as handle:
+    with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:
         reader = csv.DictReader(handle)
-        assert reader.fieldnames == EXPECTED_HEADER
+        assert reader.fieldnames is not None
+        assert all(column in reader.fieldnames for column in EXPECTED_REQUIRED_COLUMNS)
+        assert EXPECTED_EXTRA_COLUMNS <= set(reader.fieldnames)
         assert "process" not in reader.fieldnames
 
         process_ids = set()
@@ -171,12 +209,12 @@ def test_ex14_validator_dense_event_summary_passes(tmp_path, capsys):
 
     assert exit_code == 0
     summary = _summary(root)
-    dense_truth = summary["dense_truth"]
+    simulation_dense_output = summary["simulation_dense_output"]
     dense_events = summary["dense_event_validation"]
     dense_trajectory = summary["dense_trajectory_validation"]
-    assert dense_truth["ok"] is True
-    assert dense_truth["row_count"] > 0
-    assert set(dense_truth["process_ids"]) == EXPECTED_PROCESS_IDS
+    assert simulation_dense_output["ok"] is True
+    assert simulation_dense_output["row_count"] > 0
+    assert set(simulation_dense_output["process_ids"]) == EXPECTED_PROCESS_IDS
     assert dense_events["ok"] is True
     assert dense_events["scope"] == "event-side physical validation only"
     assert dense_events["event_checks"] > 0
@@ -206,7 +244,7 @@ def test_ex14_validator_dense_event_summary_passes(tmp_path, capsys):
             "sample",
         }
     text = (root / "03_validate" / "output" / "validation.txt").read_text()
-    assert "Dense truth:" in text
+    assert "Simulation dense output:" in text
     assert "Dense event validation:" in text
     assert "Dense trajectory diagnostics:" in text
     assert "event-side physical validation only" in text
@@ -254,7 +292,10 @@ def test_ex14_validator_rejects_small_state_relative_event_mismatch(
 
 def test_ex14_dense_segments_are_side_aware_at_shared_sample_bolus_time():
     collection = load_process_collection_json(ALL_PROCESS_OUTPUT / "data.json")
-    dense, dense_result = validate_example.validate_dense_truth(DENSE_TRUTH, collection)
+    dense, dense_result = validate_example.validate_simulation_dense_output(
+        SIMULATION_DENSE_OUTPUT,
+        collection,
+    )
     assert dense_result["ok"] is True
     assert dense is not None
 
@@ -292,11 +333,14 @@ def test_ex14_dense_segments_are_side_aware_at_shared_sample_bolus_time():
 
 def test_ex14_validator_fails_on_online_state_perturbation(tmp_path, capsys):
     root = _copy_ex14(tmp_path)
-    dense_truth = root / "02_all_processes" / "output" / "dense_truth.csv"
+    simulation_dense_output = root / "00_simulation" / "simulation_dense_output.csv"
     collection = load_process_collection_json(
         root / "02_all_processes" / "output" / "data.json"
     )
-    dense, dense_result = validate_example.validate_dense_truth(dense_truth, collection)
+    dense, dense_result = validate_example.validate_simulation_dense_output(
+        simulation_dense_output,
+        collection,
+    )
     assert dense_result["ok"] is True
     assert dense is not None
     process = collection.processes["ex14_run_1"]
@@ -311,7 +355,7 @@ def test_ex14_validator_fails_on_online_state_perturbation(tmp_path, capsys):
     assert errors == []
     diagnostic_time = validate_example.segment_diagnostic_times(segments[0])[0]
 
-    with dense_truth.open(newline="") as handle:
+    with simulation_dense_output.open(newline="") as handle:
         rows = list(csv.DictReader(handle))
         fieldnames = rows[0].keys()
 
@@ -326,7 +370,7 @@ def test_ex14_validator_fails_on_online_state_perturbation(tmp_path, capsys):
             )
             break
 
-    with dense_truth.open("w", newline="") as handle:
+    with simulation_dense_output.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
@@ -335,7 +379,7 @@ def test_ex14_validator_fails_on_online_state_perturbation(tmp_path, capsys):
 
     assert exit_code == 1
     summary = _summary(root)
-    assert summary["dense_truth"]["ok"] is True
+    assert summary["simulation_dense_output"]["ok"] is True
     assert summary["dense_event_validation"]["ok"] is True
     assert summary["dense_trajectory_validation"]["ok"] is False
     assert summary["dense_trajectory_validation"]["errors"]
@@ -345,8 +389,8 @@ def test_ex14_validator_fails_on_online_state_perturbation(tmp_path, capsys):
 @pytest.mark.parametrize("column", ["volume", "biomass"])
 def test_ex14_validator_fails_on_post_event_perturbation(tmp_path, capsys, column):
     root = _copy_ex14(tmp_path)
-    dense_truth = root / "02_all_processes" / "output" / "dense_truth.csv"
-    with dense_truth.open(newline="") as handle:
+    simulation_dense_output = root / "00_simulation" / "simulation_dense_output.csv"
+    with simulation_dense_output.open(newline="") as handle:
         rows = list(csv.DictReader(handle))
         fieldnames = rows[0].keys()
 
@@ -355,7 +399,7 @@ def test_ex14_validator_fails_on_post_event_perturbation(tmp_path, capsys, colum
             row[column] = str(float(row[column]) + 1e-4)
             break
 
-    with dense_truth.open("w", newline="") as handle:
+    with simulation_dense_output.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
@@ -364,7 +408,7 @@ def test_ex14_validator_fails_on_post_event_perturbation(tmp_path, capsys, colum
 
     assert exit_code == 1
     summary = _summary(root)
-    assert summary["dense_truth"]["ok"] is True
+    assert summary["simulation_dense_output"]["ok"] is True
     assert summary["dense_event_validation"]["ok"] is False
     assert summary["dense_event_validation"]["errors"]
     capsys.readouterr()
