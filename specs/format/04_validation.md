@@ -38,11 +38,17 @@ Checks that the reactor medium contains a component named `"biomass"` (case-inse
 #### `validate_measurement_sampling_alignment(process)`
 Checks that measurement times for reactor medium components do not coincide with sampling events. Measurements taken exactly at a sampling time may have corrupted concentrations due to the volume change.
 
-#### `validate_biological_ode(process)` (unit consistency)
-When `process.biological_ode` is set, the validator parses every algebraic and derivative expression with sympy, walks each `Add` subtree, and rejects any sum or difference that combines two or more reactor-component / process-variable symbols whose units disagree. This generalises the legacy intracellular-vs-biomass unit check: `algebraic = {"X_active": "biomass - product"}` is accepted when both have unit `g/L`, and rejected with a clear error when one is `g/L` and the other `mg/L`. Other `BiologicalOde` checks (state coverage, name-collision, cycle detection, rate bounds) live in the same function.
+#### `validate_biological_ode(process)`
+Aggregate validator for `process.biological_ode`. Covers: every dynamic state has an entry in `derivatives` (including `"0"` for "no biological dynamics"); every free symbol resolves to a state, controlled-PV, `algebraic` name, or rate; `algebraic` dependencies are acyclic; rate-symbol names do not collide with any other name in scope; each `rates` entry has a well-formed `Bounds` tuple. The validator also parses every `algebraic` and `derivatives` expression with sympy and rejects any `Add` subtree that sums two or more reactor-component / process-variable symbols with incompatible units (e.g. `biomass - product` is accepted at matching units, rejected when one is `g/L` and the other `mg/L`).
+
+#### `validate_biological_ode_equivalence(container)`
+Cross-process consistency. Given a `CaseStudy` or `BioProcessCollection`, verifies that every contained process exposes an identical `BiologicalOde` block (same `algebraic`, `rates`, and `derivatives` mappings). Returns `(bool, str)`.
+
+#### `validate_bounds(process)`
+Walks every `Bounds` carrier on the process (`ReactorMediumComponent.bounds`, `ProcessVariable.bounds`, `Volume.bounds`, and each `BiologicalOde.rates` entry) and checks that each is a 2-tuple of `Optional[float]` with `lower <= upper` when both are set.
 
 #### `validate_volume_consistency(process)`
-Checks that the volume balance is internally consistent: initial volume plus cumulative volume changes should match the expected final volume (within a tolerance).
+Checks that the volume balance is internally consistent: initial volume plus cumulative volume changes should match the expected final volume (within a tolerance). Returns `(bool, str, float)` — the third element is the total cumulative volume change, useful for reporting alongside the pass/fail message.
 
 ### Aggregate Validators
 

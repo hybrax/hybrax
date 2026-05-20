@@ -169,10 +169,11 @@ uses the sample-first value of `S(t)` at the event timestamp.
 | Function | Description |
 |----------|-------------|
 | `build_pseudobatch_inputs(process, species_name)` | Build canonical pseudobatch `TimeSeries` objects and measurement-level `c_star`, `adf_at_meas`, and `feed_corr_at_meas`. |
-| `build_pseudobatch_transform(process, species_names, cstar_smoothing_s)` | Build process-level pseudobatch storage: `adf`, `feed_corrections`, optional helper traces, `volume.total_volume`, and component-level `c_star_concentration`. |
-| `build_splines(inputs, process=None, species_name=None, cstar_smoothing_s=0.0)` | Build lower-level runtime spline payloads from `build_pseudobatch_inputs`; mainly useful for tests/internal pipelines. |
-| `to_timeseries(inputs, splines, species_name, cstar_smoothing_s=0.0)` | Convert lower-level pseudobatch samples to a transformed `TimeSeries` carrier. |
+| `build_pseudobatch_transform(process, species_names, *, cstar_smoothing_s=0.0)` | Build process-level pseudobatch storage: `adf`, `feed_corrections`, optional helper traces, `volume.total_volume`, and component-level `c_star_concentration`. |
+| `build_splines(inputs, process=None, species_name=None, *, cstar_smoothing_s=0.0)` | Build lower-level runtime spline payloads from `build_pseudobatch_inputs`; mainly useful for tests/internal pipelines. |
+| `to_timeseries(inputs, splines, species_name, *, cstar_smoothing_s=0.0)` | Convert lower-level pseudobatch samples to a transformed `TimeSeries` carrier. |
 | `evaluate_pseudobatch_transform(process, component, times)` | Evaluate stored c* as real concentration using `component.c_star_concentration`, `pseudobatch_transform.adf`, and `feed_corrections[component]`. |
+| `evaluate_real_concentration(t_eval, splines)` | Lower-level backtransform on a `build_splines` payload (used by tests / internal pipelines). |
 
 ### JAX-compatible backtransform classes
 
@@ -186,10 +187,15 @@ c(t) = (c*(t) + feed_correction(t)) / ADF(t)
 
 Fields:
 - `c_star_spline` — owned `PPoly` view of the stored `TimeSeries` c* spline
-- ADF and feed-correction `TimeSeries` — internal canonical transform fields
+- `adf_ts`, `feed_corr_ts` — canonical ADF and feed-correction `TimeSeries`
   sourced from `pseudobatch_transform.adf` and `feed_corrections[species]`
-- derivative `TimeSeries` for smooth RHS terms
-- `is_constant` — bypass flag for constant-concentration species
+- `dadf_ts`, `dfc_ts` — derivative `TimeSeries` for `d(ADF)/dt` and
+  `d(feed_corr)/dt`, used by `derivative()` for smooth RHS terms
+- `adf_times`, `adf_values`, `adf_jump_times`, `adf_jump_values` — flat
+  break-grid arrays mirroring `adf_ts` for cheap JAX evaluation
+- `fc_times`, `fc_values`, `fc_jump_times`, `fc_jump_values` — same for
+  the feed-correction trajectory
+- `is_constant` — static bypass flag for constant-concentration species
 - `constant_value` — returned directly when `is_constant = True`
 
 Methods:

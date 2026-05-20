@@ -19,13 +19,13 @@
 
 | Module | Source | Documentation | Description |
 |--------|--------|---------------|-------------|
-| Data Model | `bp_format/dataclasses.py` | [02_data_model.md](02_data_model.md) | 20 hierarchical dataclasses for bioprocess data (incl. `AugmentedBioProcess` placeholder) |
+| Data Model | `bp_format/dataclasses.py` | [02_data_model.md](02_data_model.md) | 21 hierarchical dataclasses for bioprocess data (incl. `AugmentedBioProcess`, `BiologicalOde`, `PseudobatchTransform`, `ProcessOrdering`) |
 | TimeSeries | `bp_format/time_series/` | [06_time_series.md](06_time_series.md) | Time-series container with optional fitted spline coefficients (eqx.Module) |
 | Splines | `bp_format/splines.py` | [07_splines.md](07_splines.md) | Pseudobatch transformation and segmented spline fitting |
-| Mechanistic | `bp_format/mechanistic.py` | [08_mechanistic.md](08_mechanistic.md) | JAX/Equinox ODE RHS generation and integration |
+| Mechanistic | `bp_format/mechanistic.py` | [08_mechanistic.md](08_mechanistic.md) | JAX/Equinox ODE RHS generation |
 | Simulation | `bp_format/simulation.py` | [10_simulation.md](10_simulation.md) | Deterministic simulation helpers for dense truth and event CSVs |
 | Serialization | `bp_format/serialization.py` | [03_serialization.md](03_serialization.md) | JSON save/load for the full data hierarchy |
-| Validation | `bp_format/validate.py` | [04_validation.md](04_validation.md) | Data integrity checks (9 validators) |
+| Validation | `bp_format/validate.py` | [04_validation.md](04_validation.md) | Data integrity checks (12 validators) |
 | Inspection | `bp_format/inspect.py` | [05_inspection.md](05_inspection.md) | Text printing and matplotlib visualization |
 
 ## Cross-Cutting Design
@@ -88,8 +88,7 @@ TimeSeries
  ├─ times: jnp.ndarray
  ├─ values: jnp.ndarray
  ├─ breaks / coeffs / segment_start_piece_idx (optional fitted spline state)
- ├─ metadata (optional transform / fit metadata)
- └─ canonical API only (legacy `timepoints` removed)
+ └─ metadata (optional transform / fit metadata)
 
 StaticVariable
  └─ value: float
@@ -150,5 +149,4 @@ The following documents are developer-facing and not part of the user documentat
 |------|---------|
 | [PRD.md](PRD.md) | Product roadmap and 6-package ecosystem design |
 | [TODO.md](TODO.md) | Active development priorities and known issues |
-| [TIMESERIES_MIGRATION.md](TIMESERIES_MIGRATION.md) | Breaking API change: `timepoints` to `times` migration |
 | [fix_discrete_jumps.md](fix_discrete_jumps.md) | Technical guide: step vs. linear interpolation for ADF |

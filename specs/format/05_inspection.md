@@ -24,6 +24,10 @@ Prints a hierarchical tree view of a BioProcess. The `verbosity` parameter contr
 
 Prints an overview of a full BenchmarkDataset: metadata, case studies, organisms, process counts, and per-process details (controlled by verbosity).
 
+#### `print_rhs_ode(target, ordering=None)`
+
+Renders the mechanistic ODE structure of a `BioProcess`, `CaseStudy`, or `BioProcessCollection` as a single ASCII box with sub-tables for algebraic quantities, rate symbols (with bounds), the per-state biological derivative expressions, the feed/dilution contributions that bp-format adds on top, and the volume balance (FVC additions, SVC removals). For multi-process containers, `validate_biological_ode_equivalence` runs first; the call raises `ValueError` if the contained processes do not share an identical `biological_ode` block.
+
 ### Plotting
 
 #### `plot_process(process, figsize_per_panel=(5, 3), save_path=None)`

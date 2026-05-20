@@ -99,18 +99,3 @@ Bioprocess data comes from diverse sources (different labs, instruments, convent
 bp-format validates data early and explicitly. All validation functions return `(bool, str)` tuples, making them composable and easy to aggregate. `validate_process()` runs all checks on a single process; `validate_case_study()` adds cross-process consistency checks (e.g., all processes in a case study should have the same reactor medium components).
 
 **Why not raise exceptions?** Returning `(bool, str)` allows callers to collect all issues in one pass and present a comprehensive report, rather than failing on the first error.
-
-## 7. Ecosystem Vision
-
-bp-format is currently a single package, but it is designed as the data foundation for a planned ecosystem of 6 packages:
-
-| Package | Purpose |
-|---------|---------|
-| **bp-form** (current bp-format) | Data classes, I/O, validation, basic simulation |
-| **bp-bench** | Pre-processed case study database |
-| **bp-prep** | Web app for preprocessing raw experimental data |
-| **bp-train** | Training utilities (LOO-CV, augmentation, checkpointing) |
-| **bp-sim** | Data generation with design-of-experiments support |
-| **bp-opt** | Post-training model optimization |
-
-Currently, bp-format combines the functionality of both bp-form and bp-bench. The split will happen as the ecosystem matures. All downstream packages will depend on bp-form for data structures and I/O.

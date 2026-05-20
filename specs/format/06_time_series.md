@@ -40,6 +40,7 @@ class TimeSeries(eqx.Module):
     continuity_side: str           # "left" or "right", default "right"
     jump_times: jnp.ndarray | None # event times for discontinuities
     metadata: Any                  # arbitrary metadata dict
+    dtype: jnp.dtype               # JAX dtype for arrays, default float64
 ```
 
 **Construction invariants:**
@@ -82,7 +83,6 @@ Low-level spline evaluation primitives.
 | `integrate_definite(breaks, coeffs, a, b)` | Definite integral over `[a, b]`. |
 | `merge_breaks(breaks_a, breaks_b)` | Union of two breakpoint arrays. |
 | `merge_segment_starts(...)` | Merge segment start indices for two splines. |
-| `ppoly_to_power_basis(ppoly)` | Convert a SciPy `PPoly` to power-basis `(breaks, coeffs)`. |
 
 ### `grid_utils` Module
 

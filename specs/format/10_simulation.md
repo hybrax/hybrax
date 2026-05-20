@@ -16,9 +16,53 @@ growth/product rates; otherwise event replay can mix bolus feeds into different
 raw pre-event states during reintegration or the simulated biology becomes
 physically inconsistent.
 
+## Module Constants
+
+Row-type discriminators used in dense-output rows:
+`ROW_TYPE_ONLINE = "online"`, `ROW_TYPE_OFFLINE = "offline"`,
+`ROW_TYPE_PRE_EVENT = "pre-event"`, `ROW_TYPE_POST_EVENT = "post-event"`.
+
+Event-type discriminators: `EVENT_TYPE_SAMPLE = "sample"`,
+`EVENT_TYPE_BOLUS = "bolus"`.
+
+## Data Classes
+
+### `SimulationEvent`
+
+Frozen dataclass representing one realized discrete event operation.
+
+```python
+@dataclass(frozen=True)
+class SimulationEvent:
+    process: str
+    time: float
+    event_type: str                                 # "sample" or "bolus"
+    delta_volume: float                             # signed volume delta
+    feed_id: str | None = None
+    feed_concentrations: Mapping[str, float] = {}   # per-RMC feed comp for bolus
+```
+
+### `SimulationResult`
+
+Frozen dataclass holding in-memory simulation output plus rows ready for CSV writing.
+
+```python
+@dataclass(frozen=True)
+class SimulationResult:
+    process: str
+    times: np.ndarray
+    states: np.ndarray
+    state_names: tuple[str, ...]
+    reactor_state_names: tuple[str, ...]
+    dense_rows: list[dict[str, Any]]
+    event_rows: list[dict[str, Any]]
+    row_columns: tuple[str, ...]
+    event_columns: tuple[str, ...]
+```
+
 ## Runtime Contract
 
-Subclasses implement:
+Subclasses of `Simulation` implement:
 
 ```python
 evaluate_rates(self, t, state, controls=None) -> jnp.ndarray
@@ -33,9 +77,9 @@ aligned with `rhs_ode.name_modeled_rates` (= the insertion order of
 
 `Simulation.as_rates_func()` returns a wrapper with the
 `rates_func(t, state, controls)` signature consumed by forward integration
-in `bp-train` (bp-format no longer ships its own integrator).
+in `bp-train`.
 
-## Event Semantics
+## Event Semantics and Helpers
 
 The base class owns generic realized sampling and bolus mechanics:
 
@@ -44,6 +88,18 @@ The base class owns generic realized sampling and bolus mechanics:
 - sampling changes volume only,
 - bolus changes volume and reactor concentrations by mixing feed mass,
 - process-variable states are not changed by sample or bolus events.
+
+The base class exposes these helpers (all callable from subclass code):
+
+| Method | Description |
+|--------|-------------|
+| `group_events(events)` | Group `SimulationEvent`s by `(process, time)` and enforce sample-before-bolus ordering. |
+| `apply_events(state, events, state_names, reactor_state_names, ...)` | Apply a group of events to a state vector and return the post-event state. |
+| `build_dense_rows(...)` | Produce the ordered dense-output rows (online / offline / pre-event / post-event). |
+| `build_event_rows(events, reactor_state_names)` | Produce the per-event rows for the events CSV. |
+| `event_columns(reactor_state_names)` | Return the column tuple for the events CSV (used by `build_result`). |
+| `build_result(process, state_times, states, online_times, state_names, ...)` | Assemble a `SimulationResult` and optionally write the CSV outputs. |
+| `write_csvs(result, output_dir)` | Write `simulation_dense_output.csv` and `events.csv` from a `SimulationResult`. |
 
 ## CSV Outputs
 

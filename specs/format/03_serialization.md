@@ -12,7 +12,7 @@ both plain `.json` and gzipped `.json.gz` files.
 
 ## Design Rationale
 
-- **Why JSON?** Human-readable, language-agnostic, git-diffable, and requires no binary format lock-in. An earlier YAML + HDF5 approach was abandoned in favor of single-file JSON for simplicity and portability.
+- **Why JSON?** Human-readable, language-agnostic, git-diffable, and requires no binary format lock-in.
 - **Why separate dataset and collection APIs?** `BenchmarkDataset` includes the full `CaseStudy` hierarchy with metadata (organism, citation). `BioProcessCollection` is a simpler wrapper for intermediate work (e.g., loading a single case study's processes before assembling into a dataset).
 - **Smart path resolution:** Functions accept either a `.json`/`.json.gz` file path or a directory path. When given a directory, they write `data.json` inside it and load `data.json` or `data.json.gz`.
 
@@ -108,13 +108,11 @@ The JSON file follows the dataclass hierarchy directly:
 }
 ```
 
-**TimeSeries payloads** include `times` and `values` arrays. If spline state is present, `breaks`, `coeffs`, and `segment_start_piece_idx` are also included. Raw real concentration stays in `concentration`; optional pseudobatch c* lives in `c_star_concentration`. The process-level pseudobatch bundle uses `adf`, `feed_corrections`, `sample_compensation`, and `accumulated_feeds`; old `species`, `adf_ts`, `reactor_volume_ts`, `sample_compensation_ts`, `accumulated_feed_ts`, `c_star_ts`, and `feed_corr_ts` payloads are not active schema.
+**TimeSeries payloads** are tagged with `"type": "TimeSeries"` at the top level and carry `times`, `values`, `derived` (bool), `jump_times`, `continuity_side` (`"left"` or `"right"`), `metadata`, and `dtype`. If spline state is present, `breaks`, `coeffs`, and `segment_start_piece_idx` are also included. Raw real concentration stays in `concentration`; optional pseudobatch c* lives in `c_star_concentration`. The process-level pseudobatch bundle uses `adf`, `feed_corrections`, `sample_compensation`, and `accumulated_feeds`.
 
 **StaticVariable payloads** are represented as `{"type": "StaticVariable", "value": 500.0}`.
 
-Legacy sibling `"interpolator"` payloads are no longer part of the active
-schema. The loader rejects non-null legacy payloads loudly instead of silently
-supporting two spline representations.
+**VolumeChange payloads** carry a `"type"` discriminator of either `"FeedVolumeChange"` or `"SampleVolumeChange"`, plus the common fields `name`, `unit`, `is_controlled`, `is_continuous`, `values` (a nested `TimeSeries` payload). `FeedVolumeChange` adds a nested `feed_medium` object.
 
 **AugmentedBioProcess payloads** carry every field a `BioProcess` does, plus `"__type__": "AugmentedBioProcess"` and a `"parent_process": "<parent-key>"` entry. Loaders inspect `__type__` to reconstruct the correct subclass; entries without that tag are loaded as plain `BioProcess`.
 
@@ -124,7 +122,7 @@ supporting two spline representations.
 
 ```json
 "biological_ode": {
-  "derived": {
+  "algebraic": {
     "X_active": "biomass - product"
   },
   "rates": {

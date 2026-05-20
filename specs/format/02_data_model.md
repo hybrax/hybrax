@@ -255,7 +255,7 @@ User-defined per-state biological RHS expressions. Describes only the *biologica
 ```python
 @dataclass
 class BiologicalOde:
-    derived: Dict[str, str]            # name -> algebraic expression string
+    algebraic: Dict[str, str]          # name -> algebraic expression string
     rates: Dict[str, Bounds]           # rate-symbol name -> (lower, upper) bounds
     derivatives: Dict[str, str]        # state name -> dc/dt expression (biological part)
 ```
@@ -263,11 +263,19 @@ class BiologicalOde:
 Validation (see `validate_biological_ode`) requires:
 
 - Every dynamic state (reactor component or uncontrolled PV) appears as a key in `derivatives`. Use `"0"` to declare *no biological dynamics for this state* — the entry must be present, even when zero, so every choice is deliberate.
-- Every free symbol in any expression resolves to one of: a state name, a controlled-PV name (input), a `derived` name, or a `rates` name.
-- Derived-variable dependencies are acyclic (topo-sorted at build time).
-- Rate names are disjoint from state, derived, and controlled-PV names.
+- Every free symbol in any expression resolves to one of: a state name, a controlled-PV name (input), an `algebraic` name, or a `rates` name.
+- `algebraic` dependencies are acyclic (topo-sorted at build time).
+- Rate names are disjoint from state, algebraic, and controlled-PV names.
 
-Rates are abstract placeholders: their values are supplied at call time by the runtime — today by spline-fitting from concentrations, later by a neural network in `bp-train`. `len(BiologicalOde.rates)` is the rate-vector dimension (and therefore `bp-train`'s NN output dimension when training). Each entry is a `Bounds = Tuple[Optional[float], Optional[float]]` of `(lower, upper)`; use `(None, None)` for unbounded rates. The bounds are pure metadata for downstream loss generators.
+Rates are abstract placeholders: their values are supplied at call time by the runtime. `len(BiologicalOde.rates)` is the rate-vector dimension. Each entry is a `Bounds = Tuple[Optional[float], Optional[float]]` of `(lower, upper)`; use `(None, None)` for unbounded rates. The bounds are pure metadata for downstream loss generators.
+
+When `BioProcess.biological_ode` is `None` at construction, `BioProcess.__post_init__` calls `_auto_generate_biological_ode(process)` to fill it. The auto-generated block requires a `"biomass"` reactor-medium component (case-insensitive) and produces:
+
+- `algebraic = {}`
+- `rates = {"q_<biomass>": (None, None), "q_<other_RMC>": ..., "r_<dynamic_PV>": ...}` in *biomass-first → other RMCs (insertion order) → dynamic PVs (insertion order)* order — this is the rate-vector layout downstream consumers see.
+- `derivatives = {"<RMC>": "q_<RMC> * <biomass>", "<dynamic_PV>": "r_<dynamic_PV>"}`
+
+Processes without a biomass component must define `BioProcess.biological_ode` explicitly.
 
 #### `AugmentedBioProcess`
 A synthetic variant of a real `BioProcess` that lives next to its parent in
@@ -280,24 +288,15 @@ class AugmentedBioProcess(BioProcess):
     parent_process: str        # key of the real BioProcess this was derived from
 ```
 
-**What it represents (current and future).** Augmented processes are
-intended to capture *data augmentation* outputs — for example pseudo-batch
-transformations, noise-injected replicates, spline-resampled variants, or
-counterfactual reconstructions of an experiment. Today the class is a
-placeholder: bp-format only defines the data shape and validates parent
-references, while the actual augmentation pipelines live in downstream
-packages (`bp-train prepare` is the planned producer).
+The structural contract is:
 
-The structural contract is intentionally narrow:
-
-- Augmented children must share the parent's structural identity (same
+- Augmented children share the parent's structural identity (same
   control/state schema, medium semantics, units). Validation reuses the
   cross-process consistency checks that already apply to real processes
   in a `CaseStudy`.
 - `parent_process` must resolve to a non-augmented `BioProcess` in the
   same container. Chained augmentation (augmented-of-augmented) is
-  rejected in v1; if a future use case demands it, lift the restriction
-  in `validate_augmented_parent_refs`.
+  rejected by `validate_augmented_parent_refs`.
 - Because `AugmentedBioProcess` is a `BioProcess` subclass, every existing
   `Dict[str, BioProcess]` container, the mechanistic RHS path, and any
   validation/serialization hook that already accepts `BioProcess`

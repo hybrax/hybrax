@@ -15,13 +15,8 @@ Build JAX/Equinox-compatible ODE components from a `BioProcess`:
 - `extract_discrete_events`, `build_state_splines`, `build_algebraic_func`:
   helpers for events, state splines, and algebraic-variable observables.
 
-The legacy spline-based rate-inversion helpers (`build_q_func`,
-`build_rates_func`, `estimate_specific_rates`, `integrate_process_pseudospace`)
-were removed in the P3 refactor. See
-[`_analytical_rates_spec.md`](_analytical_rates_spec.md) for the full
-description of their behavior and the planned replacement
-`build_rates_func_analytical`. Forward integration of the process
-(`integrate_process`) lives in `bp-train` and is not part of bp-format.
+Forward integration of the process lives in `bp-train` and is not part of
+bp-format.
 
 ## ProcessOrdering — single source of truth
 
@@ -182,5 +177,3 @@ Forward integration is provided by `bp-train`; consume `RhsOde` and
 
 - [Data Model](02_data_model.md) — `ProcessOrdering` listing
 - [Splines](07_splines.md)
-- [Analytical rate inversion spec](_analytical_rates_spec.md) — planned
-  `build_rates_func_analytical`
