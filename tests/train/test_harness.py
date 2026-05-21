@@ -49,17 +49,15 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     # override these.
     "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
     "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_VCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_modeled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_SVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_controlled_FVCs_bolus_rates": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_extras": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_controlled_FVC_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_SVC_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_Cin_controlled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_Cin_modeled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_modeled_VC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_modeled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
 }
 
 
@@ -81,7 +79,7 @@ class _LinearReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
 
 
@@ -98,23 +96,20 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
     n_VCs = len(rhs_ode.name_modeled_FVCs)
     n_rates = len(rhs_ode.name_modeled_rates)
     n_FVC = len(controls.name_controlled_FVCs)
-    n_SVC = len(controls.name_controlled_SVCs)
     n_PV = len(controls.name_controlled_PVs)
-    n_extras = len(controls.name_extras)
+    n_bolus = len(controls.name_extras) - 1  # sample_acc is always the trailing column
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
         "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
-        "SCALE_modeled_VCs_cumulative": jnp.ones(n_VCs, dtype=f32),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_VCs, dtype=f32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
-        "SCALE_controlled_SVCs_cumulative": jnp.ones(n_SVC, dtype=f32),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC, dtype=f32),
+        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs), dtype=f32),
+        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(n_bolus, dtype=f32),
         "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
-        "SCALE_extras": jnp.ones(n_extras, dtype=f32),
-        "SCALE_controlled_FVC_rates": jnp.ones(n_FVC, dtype=f32),
-        "SCALE_controlled_SVC_rates": jnp.ones(n_SVC, dtype=f32),
-        "SCALE_Cin_controlled_FVCs": jnp.ones((n_FVC, n_RMCs), dtype=f32),
-        "SCALE_Cin_modeled_FVCs": jnp.ones((n_VCs, n_RMCs), dtype=f32),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_VCs, n_RMCs), dtype=f32),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
-        "SCALE_modeled_VC_rates": jnp.ones(n_VCs, dtype=f32),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_VCs, dtype=f32),
     }
 
 

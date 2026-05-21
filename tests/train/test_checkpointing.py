@@ -161,17 +161,15 @@ def test_checkpoint_writer_latest_updates_across_writes(tmp_path: Path):
 _DEFAULT_CHECKPOINTING_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
     "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_VCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_modeled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_SVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_controlled_FVCs_bolus_rates": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_extras": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_controlled_FVC_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_SVC_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_Cin_controlled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_Cin_modeled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_modeled_VC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_modeled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
 }
 
 
@@ -192,7 +190,7 @@ class _LinearReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
 
 

@@ -145,36 +145,32 @@ def _default_scale_kwargs(
     n_controlled_FVCs: int,
     rhs_ode: Any,
 ) -> dict[str, jnp.ndarray]:
-    """All-ones defaults for every SCALE_* axis. Used when no estimate hook is supplied."""
+    """All-ones defaults for every SCALE_* axis. Used when no estimate hook is supplied.
+
+    Bolus FVCs (n_controlled_FVCs_bolus) aren't reachable from rhs_ode here, so the
+    placeholder size 0 is used; the wrapper's shape validation will surface a clean
+    error if the actual layout has bolus events and no estimate_all_scales hook is
+    configured.
+    """
     one = jnp.float32(1.0)
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=jnp.float32),
         "SCALE_V_in_cumulative": one,
-        "SCALE_modeled_VCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(
             n_controlled_FVCs, dtype=jnp.float32
         ),
-        "SCALE_controlled_SVCs_cumulative": jnp.ones(
-            len(rhs_ode.name_controlled_SVCs), dtype=jnp.float32
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=jnp.float32),
+        "SCALE_controlled_FVCs_Cin": jnp.ones(
+            (n_controlled_FVCs, n_species), dtype=jnp.float32
         ),
+        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(0, dtype=jnp.float32),
         "SCALE_controlled_PVs": jnp.ones(
             len(rhs_ode.name_controlled_PVs), dtype=jnp.float32
         ),
-        # name_extras isn't on rhs_ode — we don't have its size here. Use a single
-        # dummy entry; the wrapper's shape validation will surface a clean error
-        # if the actual layout has more extras and the user isn't supplying
-        # estimate_all_scales.
-        "SCALE_extras": jnp.ones(1, dtype=jnp.float32),
-        "SCALE_controlled_FVC_rates": jnp.ones(n_controlled_FVCs, dtype=jnp.float32),
-        "SCALE_controlled_SVC_rates": jnp.ones(
-            len(rhs_ode.name_controlled_SVCs), dtype=jnp.float32
-        ),
-        "SCALE_Cin_controlled_FVCs": jnp.ones(
-            (n_controlled_FVCs, n_species), dtype=jnp.float32
-        ),
-        "SCALE_Cin_modeled_FVCs": jnp.ones(
+        "SCALE_modeled_FVCs_Cin": jnp.ones(
             (n_modeled_FVCs, n_species), dtype=jnp.float32
         ),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=jnp.float32),
-        "SCALE_modeled_VC_rates": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
     }

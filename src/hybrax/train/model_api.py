@@ -299,32 +299,35 @@ class ReactionInputs(eqx.Module):
     State-slice axes (from the integrated SCL state):
     - ``SCL_modeled_RMCs``: species concentrations, UNCLIPPED so MLP gradient flow
       survives transient negative excursions near depletion.
-    - ``SCL_V``: real reactor volume at time t (already includes the
+    - ``SCL_modeled_V``: real reactor volume at time t (already includes the
       ``min_V`` floor applied by the wrapper).
-    - ``SCL_modeled_VCs_cumulative``: cumulative MODELED feed volumes.
+    - ``SCL_modeled_FVCs_cumulative``: per-feed cumulative volume of each
+      MODELED feed (integrated state).
 
-    Control values from ``controls.eval(t)``:
-    - ``SCL_controlled_FVCs_cumulative``, ``SCL_controlled_SVCs_cumulative``,
-      ``SCL_controlled_PVs``, ``SCL_extras``.
+    Continuous controlled FVC axes (controls.eval(t) + controls.eval_u(t)):
+    - ``SCL_controlled_FVCs_cumulative`` — per-feed cumulative volume.
+    - ``SCL_controlled_FVCs_rates`` — per-feed instantaneous flow rate.
+    - ``SCL_controlled_FVCs_Cin`` — per-feed Cin matrix [n_FVC, n_RMCs].
 
-    Control derivatives from ``controls.eval_u(t)``:
-    - ``SCL_controlled_FVC_rates``, ``SCL_controlled_SVC_rates``.
+    Discrete bolus controlled FVCs (split out of the old `extras`):
+    - ``SCL_controlled_FVCs_bolus_rates`` — instantaneous triangle-wave rate of each
+      bolus event at time t.
 
-    Feed-medium composition (static-ish per process):
-    - ``SCL_Cin_controlled_FVCs``, ``SCL_Cin_modeled_FVCs``.
+    Process variables and modeled-feed composition:
+    - ``SCL_controlled_PVs`` — process-variable signals (pH, DO, T, …).
+    - ``SCL_modeled_FVCs_Cin`` — Cin matrix [n_modeled_FVCs, n_RMCs] for the
+      modeled feeds.
     """
 
     SCL_modeled_RMCs: jax.Array
-    SCL_V: jax.Array
-    SCL_modeled_VCs_cumulative: jax.Array
+    SCL_modeled_V: jax.Array
+    SCL_modeled_FVCs_cumulative: jax.Array
     SCL_controlled_FVCs_cumulative: jax.Array
-    SCL_controlled_SVCs_cumulative: jax.Array
+    SCL_controlled_FVCs_rates: jax.Array
+    SCL_controlled_FVCs_Cin: jax.Array
+    SCL_controlled_FVCs_bolus_rates: jax.Array
     SCL_controlled_PVs: jax.Array
-    SCL_extras: jax.Array
-    SCL_controlled_FVC_rates: jax.Array
-    SCL_controlled_SVC_rates: jax.Array
-    SCL_Cin_controlled_FVCs: jax.Array
-    SCL_Cin_modeled_FVCs: jax.Array
+    SCL_modeled_FVCs_Cin: jax.Array
 
 
 class ReactionOutputs(eqx.Module):
@@ -341,7 +344,7 @@ class ReactionOutputs(eqx.Module):
         Rates emitted by the BiologicalOde block, aligned with
         ``rhs_ode.name_modeled_rates``. Not 1:1 with RMCs — algebraic rates
         (e.g. ``q_X_active`` in TUB) live here without a corresponding RMC.
-    SCL_modeled_VC_rates:
+    SCL_modeled_FVCs_rates:
         Flow rates for modeled FeedVolumeChanges, aligned with
         ``rhs_ode.name_modeled_FVCs``. Must be non-negative — the module
         applies its own positivity transform (typically softplus) before
@@ -353,7 +356,7 @@ class ReactionOutputs(eqx.Module):
     """
 
     SCL_modeled_BiologicalOde_rates: jax.Array
-    SCL_modeled_VC_rates: jax.Array
+    SCL_modeled_FVCs_rates: jax.Array
     auxiliary: dict[str, jax.Array] | None = None
 
 
@@ -368,17 +371,15 @@ class EstimatedScales:
 
     SCALE_modeled_RMCs: jax.Array
     SCALE_V_in_cumulative: jax.Array
-    SCALE_modeled_VCs_cumulative: jax.Array
+    SCALE_modeled_FVCs_cumulative: jax.Array
     SCALE_controlled_FVCs_cumulative: jax.Array
-    SCALE_controlled_SVCs_cumulative: jax.Array
+    SCALE_controlled_FVCs_rates: jax.Array
+    SCALE_controlled_FVCs_Cin: jax.Array
+    SCALE_controlled_FVCs_bolus_rates: jax.Array
     SCALE_controlled_PVs: jax.Array
-    SCALE_extras: jax.Array
-    SCALE_controlled_FVC_rates: jax.Array
-    SCALE_controlled_SVC_rates: jax.Array
-    SCALE_Cin_controlled_FVCs: jax.Array
-    SCALE_Cin_modeled_FVCs: jax.Array
+    SCALE_modeled_FVCs_Cin: jax.Array
     SCALE_modeled_BiologicalOde_rates: jax.Array
-    SCALE_modeled_VC_rates: jax.Array
+    SCALE_modeled_FVCs_rates: jax.Array
 
 
 class UserReactionModule(eqx.Module):
@@ -391,7 +392,7 @@ class UserReactionModule(eqx.Module):
     Subclasses inherit the scale fields below — they do NOT redeclare them;
     instead they pass values to ``super().__init__(**scale_kwargs)``.
 
-    The 18 ``scale_*`` / ``unscale_*`` helpers below are linear and work
+    The ``scale_*`` / ``unscale_*`` helpers below are linear and work
     identically for state values AND state derivatives (since
     ``d(x/k)/dt = (dx/dt)/k`` for constant ``k``).
     """
@@ -407,37 +408,31 @@ class UserReactionModule(eqx.Module):
     SCALE_V_in_cumulative: jax.Array = frozen_field(
         default_factory=lambda: jnp.asarray(1.0, dtype=jnp.float32)
     )
-    SCALE_modeled_VCs_cumulative: jax.Array = frozen_field(
+    SCALE_modeled_FVCs_cumulative: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
     SCALE_controlled_FVCs_cumulative: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
-    SCALE_controlled_SVCs_cumulative: jax.Array = frozen_field(
+    SCALE_controlled_FVCs_rates: jax.Array = frozen_field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
+    SCALE_controlled_FVCs_Cin: jax.Array = frozen_field(
+        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float32)
+    )
+    SCALE_controlled_FVCs_bolus_rates: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
     SCALE_controlled_PVs: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
-    SCALE_extras: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
-    )
-    SCALE_controlled_FVC_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
-    )
-    SCALE_controlled_SVC_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
-    )
-    SCALE_Cin_controlled_FVCs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float32)
-    )
-    SCALE_Cin_modeled_FVCs: jax.Array = frozen_field(
+    SCALE_modeled_FVCs_Cin: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float32)
     )
     SCALE_modeled_BiologicalOde_rates: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
-    SCALE_modeled_VC_rates: jax.Array = frozen_field(
+    SCALE_modeled_FVCs_rates: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
 
@@ -448,17 +443,17 @@ class UserReactionModule(eqx.Module):
 
     @property
     def SCALE_state(self) -> jax.Array:
-        """Concatenated state-scale: ``[modeled_RMCs | V_in_cumulative | modeled_VCs_cumulative]``."""
+        """Concatenated state-scale: ``[modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]``."""
         return jnp.concatenate(
             [
                 self.SCALE_modeled_RMCs,
                 jnp.atleast_1d(self.SCALE_V_in_cumulative),
-                self.SCALE_modeled_VCs_cumulative,
+                self.SCALE_modeled_FVCs_cumulative,
             ]
         )
 
     @property
-    def SCALE_V(self) -> jax.Array:
+    def SCALE_modeled_V(self) -> jax.Array:
         """Real-volume scale shares the V_in_cumulative scale (same units, L)."""
         return self.SCALE_V_in_cumulative
 
@@ -492,11 +487,11 @@ class UserReactionModule(eqx.Module):
     def unscale_modeled_RMCs(self, SCL_modeled_RMCs):
         return SCL_modeled_RMCs * self.SCALE_modeled_RMCs
 
-    def scale_V(self, RAW_V):
-        return RAW_V / self.SCALE_V
+    def scale_modeled_V(self, RAW_modeled_V):
+        return RAW_modeled_V / self.SCALE_modeled_V
 
-    def unscale_V(self, SCL_V):
-        return SCL_V * self.SCALE_V
+    def unscale_modeled_V(self, SCL_modeled_V):
+        return SCL_modeled_V * self.SCALE_modeled_V
 
     def scale_V_in_cumulative(self, RAW_V_in_cumulative):
         return RAW_V_in_cumulative / self.SCALE_V_in_cumulative
@@ -504,11 +499,11 @@ class UserReactionModule(eqx.Module):
     def unscale_V_in_cumulative(self, SCL_V_in_cumulative):
         return SCL_V_in_cumulative * self.SCALE_V_in_cumulative
 
-    def scale_modeled_VCs_cumulative(self, RAW_modeled_VCs_cumulative):
-        return RAW_modeled_VCs_cumulative / self.SCALE_modeled_VCs_cumulative
+    def scale_modeled_FVCs_cumulative(self, RAW_modeled_FVCs_cumulative):
+        return RAW_modeled_FVCs_cumulative / self.SCALE_modeled_FVCs_cumulative
 
-    def unscale_modeled_VCs_cumulative(self, SCL_modeled_VCs_cumulative):
-        return SCL_modeled_VCs_cumulative * self.SCALE_modeled_VCs_cumulative
+    def unscale_modeled_FVCs_cumulative(self, SCL_modeled_FVCs_cumulative):
+        return SCL_modeled_FVCs_cumulative * self.SCALE_modeled_FVCs_cumulative
 
     def scale_controlled_FVCs_cumulative(self, RAW_controlled_FVCs_cumulative):
         return RAW_controlled_FVCs_cumulative / self.SCALE_controlled_FVCs_cumulative
@@ -516,11 +511,23 @@ class UserReactionModule(eqx.Module):
     def unscale_controlled_FVCs_cumulative(self, SCL_controlled_FVCs_cumulative):
         return SCL_controlled_FVCs_cumulative * self.SCALE_controlled_FVCs_cumulative
 
-    def scale_controlled_SVCs_cumulative(self, RAW_controlled_SVCs_cumulative):
-        return RAW_controlled_SVCs_cumulative / self.SCALE_controlled_SVCs_cumulative
+    def scale_controlled_FVCs_rates(self, RAW_controlled_FVCs_rates):
+        return RAW_controlled_FVCs_rates / self.SCALE_controlled_FVCs_rates
 
-    def unscale_controlled_SVCs_cumulative(self, SCL_controlled_SVCs_cumulative):
-        return SCL_controlled_SVCs_cumulative * self.SCALE_controlled_SVCs_cumulative
+    def unscale_controlled_FVCs_rates(self, SCL_controlled_FVCs_rates):
+        return SCL_controlled_FVCs_rates * self.SCALE_controlled_FVCs_rates
+
+    def scale_controlled_FVCs_Cin(self, RAW_controlled_FVCs_Cin):
+        return RAW_controlled_FVCs_Cin / self.SCALE_controlled_FVCs_Cin
+
+    def unscale_controlled_FVCs_Cin(self, SCL_controlled_FVCs_Cin):
+        return SCL_controlled_FVCs_Cin * self.SCALE_controlled_FVCs_Cin
+
+    def scale_controlled_FVCs_bolus_rates(self, RAW_controlled_FVCs_bolus_rates):
+        return RAW_controlled_FVCs_bolus_rates / self.SCALE_controlled_FVCs_bolus_rates
+
+    def unscale_controlled_FVCs_bolus_rates(self, SCL_controlled_FVCs_bolus_rates):
+        return SCL_controlled_FVCs_bolus_rates * self.SCALE_controlled_FVCs_bolus_rates
 
     def scale_controlled_PVs(self, RAW_controlled_PVs):
         return RAW_controlled_PVs / self.SCALE_controlled_PVs
@@ -528,35 +535,11 @@ class UserReactionModule(eqx.Module):
     def unscale_controlled_PVs(self, SCL_controlled_PVs):
         return SCL_controlled_PVs * self.SCALE_controlled_PVs
 
-    def scale_extras(self, RAW_extras):
-        return RAW_extras / self.SCALE_extras
+    def scale_modeled_FVCs_Cin(self, RAW_modeled_FVCs_Cin):
+        return RAW_modeled_FVCs_Cin / self.SCALE_modeled_FVCs_Cin
 
-    def unscale_extras(self, SCL_extras):
-        return SCL_extras * self.SCALE_extras
-
-    def scale_controlled_FVC_rates(self, RAW_controlled_FVC_rates):
-        return RAW_controlled_FVC_rates / self.SCALE_controlled_FVC_rates
-
-    def unscale_controlled_FVC_rates(self, SCL_controlled_FVC_rates):
-        return SCL_controlled_FVC_rates * self.SCALE_controlled_FVC_rates
-
-    def scale_controlled_SVC_rates(self, RAW_controlled_SVC_rates):
-        return RAW_controlled_SVC_rates / self.SCALE_controlled_SVC_rates
-
-    def unscale_controlled_SVC_rates(self, SCL_controlled_SVC_rates):
-        return SCL_controlled_SVC_rates * self.SCALE_controlled_SVC_rates
-
-    def scale_Cin_controlled_FVCs(self, RAW_Cin_controlled_FVCs):
-        return RAW_Cin_controlled_FVCs / self.SCALE_Cin_controlled_FVCs
-
-    def unscale_Cin_controlled_FVCs(self, SCL_Cin_controlled_FVCs):
-        return SCL_Cin_controlled_FVCs * self.SCALE_Cin_controlled_FVCs
-
-    def scale_Cin_modeled_FVCs(self, RAW_Cin_modeled_FVCs):
-        return RAW_Cin_modeled_FVCs / self.SCALE_Cin_modeled_FVCs
-
-    def unscale_Cin_modeled_FVCs(self, SCL_Cin_modeled_FVCs):
-        return SCL_Cin_modeled_FVCs * self.SCALE_Cin_modeled_FVCs
+    def unscale_modeled_FVCs_Cin(self, SCL_modeled_FVCs_Cin):
+        return SCL_modeled_FVCs_Cin * self.SCALE_modeled_FVCs_Cin
 
     def scale_modeled_BiologicalOde_rates(self, RAW_modeled_BiologicalOde_rates):
         return RAW_modeled_BiologicalOde_rates / self.SCALE_modeled_BiologicalOde_rates
@@ -564,8 +547,8 @@ class UserReactionModule(eqx.Module):
     def unscale_modeled_BiologicalOde_rates(self, SCL_modeled_BiologicalOde_rates):
         return SCL_modeled_BiologicalOde_rates * self.SCALE_modeled_BiologicalOde_rates
 
-    def scale_modeled_VC_rates(self, RAW_modeled_VC_rates):
-        return RAW_modeled_VC_rates / self.SCALE_modeled_VC_rates
+    def scale_modeled_FVCs_rates(self, RAW_modeled_FVCs_rates):
+        return RAW_modeled_FVCs_rates / self.SCALE_modeled_FVCs_rates
 
-    def unscale_modeled_VC_rates(self, SCL_modeled_VC_rates):
-        return SCL_modeled_VC_rates * self.SCALE_modeled_VC_rates
+    def unscale_modeled_FVCs_rates(self, SCL_modeled_FVCs_rates):
+        return SCL_modeled_FVCs_rates * self.SCALE_modeled_FVCs_rates

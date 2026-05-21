@@ -312,17 +312,15 @@ def _resolve_estimated_scales(
     return {
         "SCALE_modeled_RMCs": estimated.SCALE_modeled_RMCs,
         "SCALE_V_in_cumulative": estimated.SCALE_V_in_cumulative,
-        "SCALE_modeled_VCs_cumulative": estimated.SCALE_modeled_VCs_cumulative,
+        "SCALE_modeled_FVCs_cumulative": estimated.SCALE_modeled_FVCs_cumulative,
         "SCALE_controlled_FVCs_cumulative": estimated.SCALE_controlled_FVCs_cumulative,
-        "SCALE_controlled_SVCs_cumulative": estimated.SCALE_controlled_SVCs_cumulative,
+        "SCALE_controlled_FVCs_rates": estimated.SCALE_controlled_FVCs_rates,
+        "SCALE_controlled_FVCs_Cin": estimated.SCALE_controlled_FVCs_Cin,
+        "SCALE_controlled_FVCs_bolus_rates": estimated.SCALE_controlled_FVCs_bolus_rates,
         "SCALE_controlled_PVs": estimated.SCALE_controlled_PVs,
-        "SCALE_extras": estimated.SCALE_extras,
-        "SCALE_controlled_FVC_rates": estimated.SCALE_controlled_FVC_rates,
-        "SCALE_controlled_SVC_rates": estimated.SCALE_controlled_SVC_rates,
-        "SCALE_Cin_controlled_FVCs": estimated.SCALE_Cin_controlled_FVCs,
-        "SCALE_Cin_modeled_FVCs": estimated.SCALE_Cin_modeled_FVCs,
+        "SCALE_modeled_FVCs_Cin": estimated.SCALE_modeled_FVCs_Cin,
         "SCALE_modeled_BiologicalOde_rates": estimated.SCALE_modeled_BiologicalOde_rates,
-        "SCALE_modeled_VC_rates": estimated.SCALE_modeled_VC_rates,
+        "SCALE_modeled_FVCs_rates": estimated.SCALE_modeled_FVCs_rates,
     }
 
 

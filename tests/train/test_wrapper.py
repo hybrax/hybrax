@@ -42,51 +42,46 @@ def _unit_scale_kwargs(
     n_modeled_VCs: int,
     controls: ControlsStore | None = None,
     n_controlled_FVCs: int | None = None,
-    n_controlled_SVCs: int | None = None,
     n_controlled_PVs: int | None = None,
-    n_extras: int | None = None,
+    n_controlled_FVCs_bolus: int | None = None,
 ) -> dict[str, jnp.ndarray]:
     """All-ones SCALE_* kwargs sized to a layout. Pass either ``controls`` or
     explicit per-axis sizes."""
     if controls is not None:
         n_controlled_FVCs = len(controls.name_controlled_FVCs)
-        n_controlled_SVCs = len(controls.name_controlled_SVCs)
         n_controlled_PVs = len(controls.name_controlled_PVs)
-        n_extras = len(controls.name_extras)
-    assert n_controlled_FVCs is not None and n_controlled_SVCs is not None
-    assert n_controlled_PVs is not None and n_extras is not None
+        n_controlled_FVCs_bolus = len(controls.name_extras) - 1
+    assert n_controlled_FVCs is not None
+    assert n_controlled_PVs is not None
+    assert n_controlled_FVCs_bolus is not None
     f32 = jnp.float32
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=f32),
         "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
-        "SCALE_modeled_VCs_cumulative": jnp.ones(n_modeled_VCs, dtype=f32),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_VCs, dtype=f32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs, dtype=f32),
-        "SCALE_controlled_SVCs_cumulative": jnp.ones(n_controlled_SVCs, dtype=f32),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=f32),
+        "SCALE_controlled_FVCs_Cin": jnp.ones((n_controlled_FVCs, n_species), dtype=f32),
+        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(n_controlled_FVCs_bolus, dtype=f32),
         "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs, dtype=f32),
-        "SCALE_extras": jnp.ones(n_extras, dtype=f32),
-        "SCALE_controlled_FVC_rates": jnp.ones(n_controlled_FVCs, dtype=f32),
-        "SCALE_controlled_SVC_rates": jnp.ones(n_controlled_SVCs, dtype=f32),
-        "SCALE_Cin_controlled_FVCs": jnp.ones((n_controlled_FVCs, n_species), dtype=f32),
-        "SCALE_Cin_modeled_FVCs": jnp.ones((n_modeled_VCs, n_species), dtype=f32),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_VCs, n_species), dtype=f32),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
-        "SCALE_modeled_VC_rates": jnp.ones(n_modeled_VCs, dtype=f32),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_VCs, dtype=f32),
     }
 
 
 _PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_RMCs": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_VCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_modeled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_controlled_SVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
+    "SCALE_controlled_FVCs_bolus_rates": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_controlled_PVs": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_extras": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_controlled_FVC_rates": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_controlled_SVC_rates": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_Cin_controlled_FVCs": jnp.zeros((0, 0), dtype=jnp.float32),
-    "SCALE_Cin_modeled_FVCs": jnp.zeros((0, 0), dtype=jnp.float32),
+    "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_modeled_VC_rates": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_modeled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
 }
 
 
@@ -119,7 +114,7 @@ class ConstantReactionModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
-            SCL_modeled_VC_rates=self.SCL_feed_rates,
+            SCL_modeled_FVCs_rates=self.SCL_feed_rates,
             auxiliary=self.aux,
         )
 
@@ -135,7 +130,7 @@ class InvalidReactionShapeModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([[0.1]], dtype=jnp.float32),
-            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
@@ -153,12 +148,12 @@ class VolumeFeatureEchoReactionModule(UserReactionModule):
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
-        v_feature = jnp.asarray(inputs.SCL_V, dtype=jnp.float32)
+        v_feature = jnp.asarray(inputs.SCL_modeled_V, dtype=jnp.float32)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.full(
                 (self.n_species,), v_feature, dtype=jnp.float32
             ),
-            SCL_modeled_VC_rates=jnp.zeros((self.n_modeled,), dtype=jnp.float32),
+            SCL_modeled_FVCs_rates=jnp.zeros((self.n_modeled,), dtype=jnp.float32),
         )
 
 
@@ -611,7 +606,7 @@ def test_wrapper_rejects_modeled_rate_shape_mismatch():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    with pytest.raises(ValueError, match="SCL_modeled_VC_rates must have shape"):
+    with pytest.raises(ValueError, match="SCL_modeled_FVCs_rates must have shape"):
         # State layout: [biomass, V_cont, B_base_feed_cum]
         wrapper(0.0, jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32))
 
@@ -677,7 +672,7 @@ def test_wrapper_save_outputs_splits_export_and_runtime_v_real():
     assert float(saved.RAW_modeled_BiologicalOde_rates[0]) == pytest.approx(
         0.02, abs=1e-6
     )
-    assert saved.RAW_modeled_VC_rates.shape == (0,)
+    assert saved.RAW_modeled_FVCs_rates.shape == (0,)
 
 
 def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates():
@@ -774,7 +769,7 @@ def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates()
     scale_kwargs["SCALE_modeled_BiologicalOde_rates"] = jnp.asarray(
         [4.0], dtype=jnp.float32
     )
-    scale_kwargs["SCALE_modeled_VC_rates"] = jnp.asarray([2.5], dtype=jnp.float32)
+    scale_kwargs["SCALE_modeled_FVCs_rates"] = jnp.asarray([2.5], dtype=jnp.float32)
     reaction_module = ConstantReactionModule(
         specific_rates=jnp.asarray([0.25], dtype=jnp.float32),
         modeled_feed_rates=jnp.asarray([0.3], dtype=jnp.float32),
@@ -802,7 +797,7 @@ def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates()
     # RAW feed rate = SCL_f (0.3) * SCALE_f (2.5) = 0.75. (Wrapper no longer
     # applies softplus — the module owns positivity.)
     assert jnp.allclose(
-        saved.RAW_modeled_VC_rates,
+        saved.RAW_modeled_FVCs_rates,
         jnp.asarray([0.75], dtype=jnp.float32),
     )
 
@@ -895,8 +890,8 @@ def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
         expected.RAW_modeled_BiologicalOde_rates,
     )
     assert jnp.allclose(
-        save_sol.ys.RAW_modeled_VC_rates[0],
-        expected.RAW_modeled_VC_rates,
+        save_sol.ys.RAW_modeled_FVCs_rates[0],
+        expected.RAW_modeled_FVCs_rates,
     )
 
 
