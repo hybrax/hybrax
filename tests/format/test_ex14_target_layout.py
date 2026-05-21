@@ -200,6 +200,43 @@ def test_ex14_simulation_dense_output_contract_matches_all_process_json():
         assert row_types_by_process[process_id] == ALLOWED_ROW_TYPES
 
 
+def test_ex14_reintegration_script_writes_metrics_and_plots(tmp_path, capsys):
+    root = _copy_ex14(tmp_path)
+    script_path = root / "03_validate" / "verify_reintegration.py"
+    shutil.copy2(EXAMPLE_ROOT / "03_validate" / "verify_reintegration.py", script_path)
+    verify_reintegration = load_module("copied_ex14_verify_reintegration", script_path)
+
+    exit_code = verify_reintegration.main([str(root)])
+
+    assert exit_code == 0
+    metrics_path = root / "03_validate" / "output" / "reintegration_metrics.json"
+    metrics = json.loads(metrics_path.read_text())
+    assert metrics["ok"] is True
+    assert metrics["errors"] == []
+    assert set(metrics["processes"]) == EXPECTED_PROCESS_IDS
+    for process_id in EXPECTED_PROCESS_IDS:
+        process_metrics = metrics["processes"][process_id]
+        assert set(process_metrics) == {"raw", "pseudobatch", "dense_pseudobatch"}
+        for mode in ("raw", "pseudobatch", "dense_pseudobatch"):
+            mode_metrics = process_metrics[mode]
+            assert mode_metrics["point_count"] > 0
+            assert mode_metrics["segment_count"] > 0
+            if mode == "dense_pseudobatch":
+                assert mode_metrics["max_abs_error"] <= (
+                    verify_reintegration.DENSE_PSEUDOBATCH_MAX_ABS_ERROR
+                )
+                assert mode_metrics["max_rel_error"] <= (
+                    verify_reintegration.DENSE_PSEUDOBATCH_MAX_REL_ERROR
+                )
+                assert mode_metrics["max_rhs_derivative_abs_residual"] <= (
+                    verify_reintegration.DENSE_PSEUDOBATCH_MAX_RHS_RESIDUAL
+                )
+            plot_path = root / mode_metrics["plot_path"]
+            assert plot_path.exists()
+            assert plot_path.stat().st_size > 0
+    capsys.readouterr()
+
+
 def test_ex14_validator_dense_event_summary_passes(tmp_path, capsys):
     root = _copy_ex14(tmp_path)
 
