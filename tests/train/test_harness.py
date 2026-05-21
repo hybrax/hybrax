@@ -43,21 +43,79 @@ from bp_train.model_api import (
 from bp_train.training_data import TrainingDataStore
 
 
+_DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
+    # Defaults sized for ``_make_collection`` (single biomass species, one sample
+    # event, no feeds). Tests with different layouts pass explicit kwargs to
+    # override these.
+    "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
+    "SCALE_modeled_VCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_SVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_extras": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_controlled_FVC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_SVC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_Cin_controlled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_Cin_modeled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_modeled_VC_rates": jnp.ones(0, dtype=jnp.float32),
+}
+
+
 class _LinearReactionModule(UserReactionModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
-    def __init__(self):
+    def __init__(self, **scale_kwargs):
+        merged = {**_DEFAULT_LINEAR_SCALES, **scale_kwargs}
+        super().__init__(**merged)
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(42))
         self.non_model_bias = jnp.asarray([0.05], dtype=jnp.float32)
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, controls_vector
-        rate = self.model(c_species)[0] + self.non_model_bias[0]
+    def __call__(self, t, inputs):
+        del t
+        SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
+        rate = self.model(SCL_modeled_RMCs)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
-            modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+                [rate], dtype=SCL_modeled_RMCs.dtype
+            ),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
+
+
+def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.ndarray]:
+    """Build unit SCALE_* kwargs sized to a process / its controls."""
+    from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
+
+    rhs_ode = _build_rhs_ode(collection.processes[process_name])
+    from bp_train.controls_store import ControlsStore as _ControlsStore
+
+    controls = _ControlsStore.from_collection(collection).get_controls(process_name)
+    f32 = jnp.float32
+    n_RMCs = len(rhs_ode.name_modeled_RMCs)
+    n_VCs = len(rhs_ode.name_modeled_FVCs)
+    n_rates = len(rhs_ode.name_modeled_rates)
+    n_FVC = len(controls.name_controlled_FVCs)
+    n_SVC = len(controls.name_controlled_SVCs)
+    n_PV = len(controls.name_controlled_PVs)
+    n_extras = len(controls.name_extras)
+    return {
+        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
+        "SCALE_modeled_VCs_cumulative": jnp.ones(n_VCs, dtype=f32),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
+        "SCALE_controlled_SVCs_cumulative": jnp.ones(n_SVC, dtype=f32),
+        "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
+        "SCALE_extras": jnp.ones(n_extras, dtype=f32),
+        "SCALE_controlled_FVC_rates": jnp.ones(n_FVC, dtype=f32),
+        "SCALE_controlled_SVC_rates": jnp.ones(n_SVC, dtype=f32),
+        "SCALE_Cin_controlled_FVCs": jnp.ones((n_FVC, n_RMCs), dtype=f32),
+        "SCALE_Cin_modeled_FVCs": jnp.ones((n_VCs, n_RMCs), dtype=f32),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
+        "SCALE_modeled_VC_rates": jnp.ones(n_VCs, dtype=f32),
+    }
 
 
 class _CustomPartitionReactionModule(_LinearReactionModule):
@@ -334,7 +392,9 @@ def test_train_collection_with_different_cin_per_process():
     )
     result = train_collection(
         store,
-        reaction_module=_LinearReactionModule(),
+        reaction_module=_LinearReactionModule(
+            **_harness_unit_scale_kwargs(collection, "p1")
+        ),
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
@@ -1108,10 +1168,10 @@ def test_forward_from_collection_uses_build_sample_loss_fn(monkeypatch):
                 wrapper,
                 *,
                 t_measured,
-                y_measured,
+                SCL_target_measured,
                 mask_measured,
                 n_measured,
-                y0_measured,
+                SCL_target0_measured,
                 jump_ts,
                 max_solver_steps,
                 solver_rtol,
@@ -1123,14 +1183,14 @@ def test_forward_from_collection_uses_build_sample_loss_fn(monkeypatch):
                     t_measured,
                     mask_measured,
                     n_measured,
-                    y0_measured,
+                    SCL_target0_measured,
                     jump_ts,
                     max_solver_steps,
                     solver_rtol,
                     solver_atol,
                     step,
                 )
-                n_targets = y_measured.shape[1]
+                n_targets = SCL_target_measured.shape[1]
                 return jnp.asarray(7.0), jnp.full((n_targets,), 7.0)
 
             return _sample_loss

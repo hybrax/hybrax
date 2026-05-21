@@ -9,116 +9,45 @@ from bp_format.dataclasses import BioProcess, FeedVolumeChange, StaticVariable
 from bp_format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
+from .model_api import ReactionInputs
 
 
-def _build_augmented_controls_names(
-    control_names: list[str],
-    controlled_flow_names: tuple[str, ...],
-    modeled_flow_names: tuple[str, ...],
-    species_names: tuple[str, ...],
-    *,
-    include_v_real_feature: bool = False,
-) -> tuple[str, ...]:
-    """Build descriptive names for each element of the augmented controls vector."""
-    names: list[str] = list(control_names)
-    for flow_name in controlled_flow_names:
-        for species_name in species_names:
-            names.append(f"cin:{flow_name}:{species_name}")
-    for flow_name in modeled_flow_names:
-        for species_name in species_names:
-            names.append(f"cin:{flow_name}:{species_name}")
-    if include_v_real_feature:
-        names.append("v_real")
-    return tuple(names)
-
-
-def _build_augmented_controls_units(
-    control_metadata: dict[str, dict[str, Any]],
-    control_names: list[str],
-    process: BioProcess,
-    controlled_flow_names: tuple[str, ...],
-    modeled_flow_names: tuple[str, ...],
-    species_names: tuple[str, ...],
-    *,
-    include_v_real_feature: bool = False,
-) -> tuple[str, ...]:
-    """Build unit strings for each element of the augmented controls vector."""
-    units: list[str] = []
-
-    for name in control_names:
-        md = control_metadata.get(name, {})
-        unit = md.get("unit", "")
-        if not unit:
-            if name in process.volume.volume_changes:
-                unit = process.volume.volume_changes[name].unit
-            elif name in process.process_variables:
-                unit = process.process_variables[name].unit
-        units.append(str(unit))
-
-    for flow_name in controlled_flow_names:
-        vc = process.volume.volume_changes.get(flow_name)
-        for species_name in species_names:
-            if (
-                vc is not None
-                and isinstance(vc, FeedVolumeChange)
-                and vc.feed_medium is not None
-                and species_name in vc.feed_medium.components
-            ):
-                units.append(str(vc.feed_medium.components[species_name].unit))
-            else:
-                units.append("")
-
-    for flow_name in modeled_flow_names:
-        vc = process.volume.volume_changes.get(flow_name)
-        for species_name in species_names:
-            if (
-                vc is not None
-                and isinstance(vc, FeedVolumeChange)
-                and vc.feed_medium is not None
-                and species_name in vc.feed_medium.components
-            ):
-                units.append(str(vc.feed_medium.components[species_name].unit))
-            else:
-                units.append("")
-    if include_v_real_feature:
-        units.append(str(process.volume.unit))
-
-    return tuple(units)
 
 
 class WrapperEvaluation(eqx.Module):
-    """Shared wrapper evaluation results for RHS and save-time exports."""
+    """Shared wrapper evaluation results for RHS and save-time exports.
 
-    states_physical: jax.Array
-    c_species_runtime: jax.Array
-    v_real_export: jax.Array
-    v_real_runtime: jax.Array
-    u_for_rhs: jax.Array
-    u_flow_extra: jax.Array
-    specific_rates_physical: jax.Array
-    modeled_feed_rates_physical: jax.Array
+    State is carried in SCL space (matches the solver's integration space);
+    rates are carried in RAW physical units (the form they take after the
+    module's ``unscale_*`` helpers). Plot/CSV exporters convert state to RAW
+    at write time via ``module.unscale_state(SCL_states)``.
+    """
+
+    SCL_states: jax.Array
+    RAW_RMC_rhs: jax.Array
+    RAW_V_export: jax.Array
+    RAW_V: jax.Array
+    RAW_u_rhs_full: jax.Array
+    RAW_u_flow_extra: jax.Array
+    RAW_modeled_BiologicalOde_rates: jax.Array
+    RAW_modeled_VC_rates: jax.Array
     auxiliary: dict[str, jax.Array] | None = None
 
 
 class SaveOutputs(eqx.Module):
-    """Diffrax-saveable wrapper outputs in physical units."""
+    """Diffrax-saveable wrapper outputs.
 
-    states_physical: jax.Array
-    v_real_export: jax.Array
-    v_real_runtime: jax.Array
-    specific_rates_physical: jax.Array
-    modeled_feed_rates_physical: jax.Array
+    ``SCL_states`` are in the solver's scaled state space; rates are RAW. Use
+    ``module.unscale_state`` to convert ``SCL_states`` to physical units when
+    exporting to plots/CSV/JSONL.
+    """
+
+    SCL_states: jax.Array
+    RAW_V_export: jax.Array
+    RAW_V: jax.Array
+    RAW_modeled_BiologicalOde_rates: jax.Array
+    RAW_modeled_VC_rates: jax.Array
     auxiliary: dict[str, jax.Array] | None = None
-
-
-def _canonical_control_names(controls: PerProcessControls) -> tuple[str, ...]:
-    """Flat list of control column names in canonical order."""
-    return (
-        controls.name_controlled_FVCs
-        + controls.name_controlled_SVCs
-        + controls.name_controlled_PVs
-        + controls.name_extras
-    )
 
 
 def _normalize_auxiliary_outputs(
@@ -153,44 +82,38 @@ def _normalize_auxiliary_outputs(
 class HybridOdeWrapper(eqx.Module):
     """ODE wrapper integrating in **scaled state space**.
 
-    The ODE state vector ``y`` is normalised:  ``y = Y / state_scale`` where
-    ``Y`` is the physical state vector
+    The integration state ``SCL_state`` is the SCL-space view of the physical
+    state ``RAW_state`` (= ``SCL_state * SCALE_state`` using the scale vector
+    that lives on the attached ``UserReactionModule``):
 
-        Y = [c_species_0, ..., c_species_{n_sp-1}, V_cont, B_modeled_cum_0, ...]
+        RAW_state = [modeled_RMCs (n_RMCs)
+                     | V_in_cumulative (1)
+                     | modeled_VCs_cumulative (n_VCs)]
 
-    layout:
-      - indices ``0..n_species-1``       → species concentrations
-      - index   ``n_species``            → V_cont (cumulative inflow volume)
-      - indices ``n_species+1..end``     → cumulative modeled feed amounts
-                                           (one per modeled flow, in
-                                           ``rhs_ode.name_modeled_FVCs`` order)
+    The wrapper holds **no scale fields of its own** — every scale comes from
+    ``self.reaction_module.SCALE_*``.
 
-    V_cont is in the state because the wrapper needs to compute
-    ``V_real = V_cont - V_sample_acc(t)`` for the dilution denominator inside
-    the RhsOde.  ``B_modeled_cum_k`` is also in the state so it can be matched
-    against the measured cumulative for that feed (a much more direct training
-    signal than V_cont itself, which is mostly determined by *known* controlled
-    feeds).
+    Inside each RHS evaluation:
 
-    Inside each RHS evaluation the wrapper:
+    1. Unscale ``SCL_state`` → ``RAW_state`` via the module.
+    2. Decompose ``controls.eval(t)`` and ``controls.eval_u(t)`` into their
+       semantic axes (controlled_FVCs_cumulative, controlled_SVCs_cumulative,
+       controlled_PVs, extras, controlled_FVC_rates, controlled_SVC_rates).
+    3. Compute ``RAW_V = max(V_in_cumulative - V_sample_acc, min_V)``.
+    4. Scale every per-axis input via the module's ``scale_*`` helpers and
+       build a ``ReactionInputs`` instance.
+    5. Call ``reaction_module(t, inputs) → ReactionOutputs`` (SCL rates).
+    6. Unscale rates via the module to RAW for the physical ``RhsOde`` call.
+    7. ``RhsOde`` yields ``RAW_d_RMCs_V_dt`` of shape ``(n_RMCs + 1,)``.
+    8. Append the cumulative-modeled-feed derivatives (= ``RAW_modeled_VC_rates``)
+       to form the full ``RAW_d_state_dt``.
+    9. Rescale via the module to return ``SCL_d_state_dt``.
 
-    1. Un-scales ``y`` → ``Y``.
-    2. Evaluates controls (values + derivatives) at time ``t``.
-    3. Builds the augmented controls vector for the MLP and scales it.
-    4. Calls the reaction module with **scaled** inputs only:
-       ``reaction_module(t, c_scaled, u_scaled) → (q_scaled, f_scaled)``.
-    5. Un-scales the MLP outputs using ``q_scale`` / ``f_scale``.
-    6. Delegates to ``RhsOde`` (physical space) for ``[dc/dt, dV_cont/dt]``.
-    7. Appends ``dB_k/dt = F_modeled_k`` for the cumulative-modeled-feed states.
-    8. Re-scales the full derivative: ``dy/dt = dY/dt / state_scale``.
+    The wrapper applies one safety clip — ``RAW_RMC_rhs = max(RAW_state[:n_RMCs], 0)``
+    — only on the path into ``RhsOde``. The module receives the **unclipped**
+    SCL slice so MLP gradient flow survives transient negative excursions.
 
-    Note that the controlled feed rates passed into ``RhsOde`` come from
-    ``controls.eval_derivative(t)``, **not** ``controls.eval(t)``.  The control
-    values for feed channels are *cumulative volumes*, not flow rates; the
-    derivative gives the actual flow rate that ``RhsOde`` expects.
-
-    All ``*_scale`` arrays and ``target_state_indices`` are **frozen**
-    (not trainable).
+    Modeled PVs and continuous SVCs are not supported (the constructor raises).
     """
 
     rhs_ode: RhsOde
@@ -200,20 +123,20 @@ class HybridOdeWrapper(eqx.Module):
     extra_flow_control_indices: jax.Array
     extra_flow_cin: jax.Array
     sample_acc_control_index: int = eqx.field(static=True)
-    min_real_volume: float = eqx.field(static=True)
+    min_V: float = eqx.field(static=True)
 
-    species_names: tuple[str, ...] = eqx.field(static=True)
-    modeled_flow_names: tuple[str, ...] = eqx.field(static=True)
-    augmented_controls_names: tuple[str, ...] = eqx.field(static=True)
-    augmented_controls_units: tuple[str, ...] = eqx.field(static=True)
-    include_v_real_feature: bool = eqx.field(static=True)
+    modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
+    modeled_VC_names: tuple[str, ...] = eqx.field(static=True)
 
-    # --- Scaling vectors (frozen, not trainable) ---
-    state_scale: jax.Array  # [n_species + 1 + n_modeled]
-    controls_scale: jax.Array  # [len(augmented_controls)]
-    q_scale: jax.Array  # [len(rhs_ode.name_modeled_rates)]
-    f_scale: jax.Array  # [n_modeled_feeds]
-    target_variance: jax.Array  # [len(target_state_indices)]
+    # Cached slice sizes for the canonical controls vector; sourced from
+    # PerProcessControls at construction time so the runtime path doesn't have
+    # to introspect ``self.controls`` (which may be swapped to a
+    # ``_BatchIndexedControls`` adapter that doesn't expose name tuples).
+    n_controlled_FVCs: int = eqx.field(static=True)
+    n_controlled_SVCs: int = eqx.field(static=True)
+    n_controlled_PVs: int = eqx.field(static=True)
+    n_extras: int = eqx.field(static=True)
+
     target_state_indices: jax.Array  # which state columns are loss targets
 
     @classmethod
@@ -223,24 +146,21 @@ class HybridOdeWrapper(eqx.Module):
         reaction_module: Any,
         process: BioProcess,
         controls: PerProcessControls,
-        state_scale: jax.Array | None = None,
-        controls_scale: jax.Array | None = None,
-        q_scale: jax.Array | None = None,
-        f_scale: jax.Array | None = None,
-        target_variance: jax.Array | None = None,
         target_state_indices: jax.Array | None = None,
-        min_real_volume: float = 1e-8,
+        min_V: float = 1e-8,
     ) -> HybridOdeWrapper:
-        """Build a wrapper from a BioProcess and per-process controls."""
+        """Build a wrapper from a BioProcess and per-process controls.
+
+        Scales are read from ``reaction_module`` (a ``UserReactionModule``
+        subclass with ``SCALE_*`` fields). The constructor validates each
+        ``SCALE_*`` shape against the RhsOde / controls layout.
+        """
         rhs_ode = build_rhs_ode(process)
-        include_v_real_feature = bool(
-            getattr(reaction_module, "expects_v_real_feature", False)
-        )
 
         if rhs_ode.name_modeled_PVs:
             raise NotImplementedError(
                 "HybridOdeWrapper does not support modeled PVs "
-                f"({rhs_ode.name_modeled_PVs}); extend C_rhs construction first."
+                f"({rhs_ode.name_modeled_PVs}); extend the RhsOde input first."
             )
         if rhs_ode.name_controlled_SVCs:
             raise NotImplementedError(
@@ -260,8 +180,50 @@ class HybridOdeWrapper(eqx.Module):
                 f"{controls.name_controlled_FVCs}"
             )
 
-        n_species = len(rhs_ode.name_modeled_RMCs)
+        n_RMCs = len(rhs_ode.name_modeled_RMCs)
+        n_VCs = len(rhs_ode.name_modeled_FVCs)
+        n_rates = len(rhs_ode.name_modeled_rates)
         n_u = controls.n_u
+
+        # Validate reaction_module SCALE_* shapes match the layout we'll feed.
+        _expected_shapes: dict[str, tuple[int, ...]] = {
+            "SCALE_modeled_RMCs": (n_RMCs,),
+            "SCALE_modeled_VCs_cumulative": (n_VCs,),
+            "SCALE_controlled_FVCs_cumulative": (len(controls.name_controlled_FVCs),),
+            "SCALE_controlled_SVCs_cumulative": (len(controls.name_controlled_SVCs),),
+            "SCALE_controlled_PVs": (len(controls.name_controlled_PVs),),
+            "SCALE_extras": (len(controls.name_extras),),
+            "SCALE_controlled_FVC_rates": (len(controls.name_controlled_FVCs),),
+            "SCALE_controlled_SVC_rates": (len(controls.name_controlled_SVCs),),
+            "SCALE_Cin_controlled_FVCs": (
+                len(rhs_ode.name_controlled_FVCs),
+                n_RMCs,
+            ),
+            "SCALE_Cin_modeled_FVCs": (n_VCs, n_RMCs),
+            "SCALE_modeled_BiologicalOde_rates": (n_rates,),
+            "SCALE_modeled_VC_rates": (n_VCs,),
+        }
+        for field_name, expected in _expected_shapes.items():
+            if not hasattr(reaction_module, field_name):
+                raise TypeError(
+                    f"reaction_module is missing SCALE field {field_name!r}; "
+                    "subclass UserReactionModule and pass all 13 SCALE_* fields "
+                    "to super().__init__(...)."
+                )
+            arr = getattr(reaction_module, field_name)
+            if tuple(arr.shape) != expected:
+                raise ValueError(
+                    f"reaction_module.{field_name} has shape {tuple(arr.shape)}, "
+                    f"expected {expected}"
+                )
+        # V_in_cumulative is a scalar — accept any ndim-0 array.
+        if not hasattr(reaction_module, "SCALE_V_in_cumulative"):
+            raise TypeError(
+                "reaction_module is missing SCALE_V_in_cumulative; subclass "
+                "UserReactionModule and pass all 13 SCALE_* fields to "
+                "super().__init__(...)."
+            )
+
         # Bolus FVCs live in the extras block; sample_acc is the last extras column.
         bolus_extras = controls.name_extras[:-1]
         bolus_index_in_columns = {
@@ -304,68 +266,22 @@ class HybridOdeWrapper(eqx.Module):
             extra_flow_control_indices.append(bolus_index_in_columns[flow_name])
             extra_flow_cin_rows.append(cin_row)
 
-        aug_names = _build_augmented_controls_names(
-            control_names=list(_canonical_control_names(controls)),
-            controlled_flow_names=rhs_ode.name_controlled_FVCs,
-            modeled_flow_names=rhs_ode.name_modeled_FVCs,
-            species_names=rhs_ode.name_modeled_RMCs,
-            include_v_real_feature=include_v_real_feature,
-        )
-        aug_units = _build_augmented_controls_units(
-            control_metadata=controls.control_metadata,
-            control_names=list(_canonical_control_names(controls)),
-            process=process,
-            controlled_flow_names=rhs_ode.name_controlled_FVCs,
-            modeled_flow_names=rhs_ode.name_modeled_FVCs,
-            species_names=rhs_ode.name_modeled_RMCs,
-            include_v_real_feature=include_v_real_feature,
-        )
+        n_modeled = n_VCs + len(rhs_ode.name_modeled_SVCs)
 
-        n_aug = len(aug_names)
-        n_modeled = len(rhs_ode.name_modeled_FVCs) + len(rhs_ode.name_modeled_SVCs)
-        n_rates = len(rhs_ode.name_modeled_rates)
-        full_state_size = n_species + 1 + n_modeled
-
-        # Default scales: ones (no scaling)
-        _state_scale = (
-            jnp.asarray(state_scale, dtype=jnp.float32)
-            if state_scale is not None
-            else jnp.ones(full_state_size, dtype=jnp.float32)
-        )
-        _controls_scale = (
-            jnp.asarray(controls_scale, dtype=jnp.float32)
-            if controls_scale is not None
-            else jnp.ones(n_aug, dtype=jnp.float32)
-        )
-        _q_scale = (
-            jnp.asarray(q_scale, dtype=jnp.float32)
-            if q_scale is not None
-            else jnp.ones(n_rates, dtype=jnp.float32)
-        )
-        _f_scale = (
-            jnp.asarray(f_scale, dtype=jnp.float32)
-            if f_scale is not None
-            else jnp.ones(n_modeled, dtype=jnp.float32)
-        )
         # Default target_state_indices: species columns + modeled-cumulative columns
-        # (V_cont at index n_species is in the state but not a loss target).
+        # (V_in_cumulative at index n_RMCs is in the state but not a loss target).
         if target_state_indices is None:
-            default_indices = list(range(n_species)) + list(
-                range(n_species + 1, n_species + 1 + n_modeled)
+            default_indices = list(range(n_RMCs)) + list(
+                range(n_RMCs + 1, n_RMCs + 1 + n_modeled)
             )
             _target_state_indices = jnp.asarray(default_indices, dtype=jnp.int32)
         else:
             _target_state_indices = jnp.asarray(target_state_indices, dtype=jnp.int32)
-        n_targets = int(_target_state_indices.shape[0])
-        _target_variance = (
-            jnp.asarray(target_variance, dtype=jnp.float32)
-            if target_variance is not None
-            else jnp.ones(n_targets, dtype=jnp.float32)
-        )
+
         if extra_flow_cin_rows:
             _extra_flow_cin = jnp.asarray(extra_flow_cin_rows, dtype=jnp.float32)
         else:
-            _extra_flow_cin = jnp.zeros((0, n_species), dtype=jnp.float32)
+            _extra_flow_cin = jnp.zeros((0, n_RMCs), dtype=jnp.float32)
 
         return cls(
             rhs_ode=rhs_ode,
@@ -376,205 +292,224 @@ class HybridOdeWrapper(eqx.Module):
             ),
             extra_flow_cin=_extra_flow_cin,
             sample_acc_control_index=int(controls.sample_acc_global_index),
-            min_real_volume=float(min_real_volume),
-            species_names=rhs_ode.name_modeled_RMCs,
-            modeled_flow_names=rhs_ode.name_modeled_FVCs,
-            augmented_controls_names=aug_names,
-            augmented_controls_units=aug_units,
-            include_v_real_feature=include_v_real_feature,
-            state_scale=_state_scale,
-            controls_scale=_controls_scale,
-            q_scale=_q_scale,
-            f_scale=_f_scale,
-            target_variance=_target_variance,
+            min_V=float(min_V),
+            modeled_RMC_names=rhs_ode.name_modeled_RMCs,
+            modeled_VC_names=rhs_ode.name_modeled_FVCs,
+            n_controlled_FVCs=len(controls.name_controlled_FVCs),
+            n_controlled_SVCs=len(controls.name_controlled_SVCs),
+            n_controlled_PVs=len(controls.name_controlled_PVs),
+            n_extras=len(controls.name_extras),
             target_state_indices=_target_state_indices,
         )
 
-    # ------ helpers exposed to callers (e.g. plotting, harness) ------
-
-    def scale_state(self, Y: jax.Array) -> jax.Array:
-        """Physical state → scaled state."""
-        return Y / self.state_scale
-
-    def unscale_state(self, y: jax.Array) -> jax.Array:
-        """Scaled state → physical state."""
-        return y * self.state_scale
-
-    def _validate_state_vector(self, y: jax.Array) -> None:
+    def _validate_state_vector(self, SCL_state: jax.Array) -> None:
         """Validate scaled wrapper state layout."""
-        if y.ndim != 1:
-            raise ValueError("state vector y ndim must be 1")
-        n_species = len(self.species_names)
-        n_modeled = len(self.modeled_flow_names)
-        expected_state_size = n_species + 1 + n_modeled
-        if y.shape[0] != expected_state_size:
+        if SCL_state.ndim != 1:
+            raise ValueError("state vector ndim must be 1")
+        n_RMCs = len(self.modeled_RMC_names)
+        n_VCs = len(self.modeled_VC_names)
+        expected_state_size = n_RMCs + 1 + n_VCs
+        if SCL_state.shape[0] != expected_state_size:
             raise ValueError(
-                f"state vector y must have shape ({expected_state_size},), "
-                f"got {tuple(y.shape)}"
+                f"state vector must have shape ({expected_state_size},), "
+                f"got {tuple(SCL_state.shape)}"
             )
 
     def _evaluate_wrapper_terms(
         self,
         t: float | jax.Array,
-        y: jax.Array,
+        SCL_state: jax.Array,
     ) -> WrapperEvaluation:
         """Evaluate shared wrapper quantities used by RHS and save path."""
-        self._validate_state_vector(y)
+        self._validate_state_vector(SCL_state)
+        module = self.reaction_module
+        n_RMCs = len(self.modeled_RMC_names)
+        t_arr = jnp.asarray(t, dtype=SCL_state.dtype)
 
-        n_species = len(self.species_names)
-        t_arr = jnp.asarray(t, dtype=y.dtype)
-
-        # Keep raw physical state for export; runtime math still clamps the
-        # quantities that must remain non-negative inside the mechanistic ODE.
-        Y = self.unscale_state(y)
-        C_species_runtime = jnp.clip(Y[:n_species], 0.0)
-        V_cont_runtime = jnp.maximum(Y[n_species], jnp.asarray(0.0, dtype=y.dtype))
-
-        # Values are interpolated from the dense grid: feed channels store the
-        # CUMULATIVE volume, process variables store the actual signal value.
-        controls_vector = self.controls.eval(t_arr)
-
-        V_sample_acc = controls_vector[self.sample_acc_control_index]
-        V_real_export = Y[n_species] - V_sample_acc
-        V_real_runtime = jnp.maximum(
-            V_cont_runtime - V_sample_acc,
-            jnp.asarray(self.min_real_volume, dtype=y.dtype),
+        # Unscale the integrated state to physical units for RhsOde-facing work.
+        RAW_state = module.unscale_state(SCL_state)
+        RAW_RMC_rhs = jnp.maximum(RAW_state[:n_RMCs], 0.0)
+        RAW_V_in_cumulative = jnp.maximum(
+            RAW_state[n_RMCs], jnp.asarray(0.0, dtype=SCL_state.dtype)
         )
 
-        # Canonical RhsOde u vector: [FVC_flows | SVC_flows | PV_values].
-        # In the current wrapper SVCs and PVs are guarded out, so this is just
-        # the controlled-FVC flow rates (derivatives of the cumulative-volume
-        # signal). Non-continuous bolus FVCs are stored separately as short
-        # rate ramps that the wrapper applies via extra_flow_cin.
-        u_for_rhs = self.controls.eval_u(t_arr)
-        U_flow_extra = controls_vector[self.extra_flow_control_indices]
+        # Decompose the canonical control vector into semantic axes.
+        #   [FVC_cum | SVC_cum | controlled_PVs | extras]
+        n_FVC = self.n_controlled_FVCs
+        n_SVC = self.n_controlled_SVCs
+        n_PV = self.n_controlled_PVs
+        n_extras = self.n_extras
 
-        # Build augmented controls for the MLP. Use the *values* (cumulative for
-        # feeds) — these are perfectly fine MLP features and match the existing
-        # `augmented_controls_names` semantics.
-        cin_flat = jnp.concatenate(
-            [
-                self.rhs_ode.Cin_controlled_FVCs.reshape(-1),
-                self.rhs_ode.Cin_modeled_FVCs.reshape(-1),
-            ]
+        RAW_u_canonical_full = self.controls.eval(t_arr)
+        RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
+        RAW_controlled_SVCs_cumulative = RAW_u_canonical_full[n_FVC : n_FVC + n_SVC]
+        RAW_controlled_PVs = RAW_u_canonical_full[
+            n_FVC + n_SVC : n_FVC + n_SVC + n_PV
+        ]
+        RAW_extras = RAW_u_canonical_full[
+            n_FVC + n_SVC + n_PV : n_FVC + n_SVC + n_PV + n_extras
+        ]
+
+        # RhsOde u vector: [FVC_flows | SVC_flows | PV_values]. Decompose flows
+        # for the module; the full vector is passed through to RhsOde.
+        RAW_u_rhs_full = self.controls.eval_u(t_arr)
+        RAW_controlled_FVC_rates = RAW_u_rhs_full[:n_FVC]
+        RAW_controlled_SVC_rates = RAW_u_rhs_full[n_FVC : n_FVC + n_SVC]
+
+        # Bolus FVC contributions (short rate ramps) live in the extras block.
+        RAW_u_flow_extra = RAW_u_canonical_full[self.extra_flow_control_indices]
+
+        # V_real, with the min_V floor for dilution-term safety.
+        RAW_V_sample_acc = RAW_u_canonical_full[self.sample_acc_control_index]
+        RAW_V_export = RAW_state[n_RMCs] - RAW_V_sample_acc
+        RAW_V = jnp.maximum(
+            RAW_V_in_cumulative - RAW_V_sample_acc,
+            jnp.asarray(self.min_V, dtype=SCL_state.dtype),
         )
-        U_augmented = jnp.concatenate([controls_vector, cin_flat])
-        if self.include_v_real_feature:
-            U_augmented = jnp.concatenate(
-                [U_augmented, jnp.asarray([V_real_runtime], dtype=y.dtype)]
-            )
 
-        # Reaction module still sees scaled inputs only.
-        c_scaled = y[:n_species]
-        u_scaled = U_augmented / self.controls_scale
-        outputs = self.reaction_module(t_arr, c_scaled, u_scaled)
-        if not hasattr(outputs, "specific_rates") or not hasattr(
-            outputs, "modeled_feed_rates"
+        # Feed-medium concentrations (static-ish per process).
+        RAW_Cin_controlled_FVCs = self.rhs_ode.Cin_controlled_FVCs
+        RAW_Cin_modeled_FVCs = self.rhs_ode.Cin_modeled_FVCs
+
+        # Build ReactionInputs: every axis scaled by the module's own helpers.
+        # State-slice axes are pulled from SCL_state directly so the module sees
+        # the UNCLIPPED SCL species (gradient flow preserved near depletion).
+        SCL_modeled_RMCs = SCL_state[:n_RMCs]
+        SCL_modeled_VCs_cumulative = SCL_state[n_RMCs + 1 :]
+        SCL_V = module.scale_V(RAW_V)
+        inputs = ReactionInputs(
+            SCL_modeled_RMCs=SCL_modeled_RMCs,
+            SCL_V=SCL_V,
+            SCL_modeled_VCs_cumulative=SCL_modeled_VCs_cumulative,
+            SCL_controlled_FVCs_cumulative=module.scale_controlled_FVCs_cumulative(
+                RAW_controlled_FVCs_cumulative
+            ),
+            SCL_controlled_SVCs_cumulative=module.scale_controlled_SVCs_cumulative(
+                RAW_controlled_SVCs_cumulative
+            ),
+            SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
+            SCL_extras=module.scale_extras(RAW_extras),
+            SCL_controlled_FVC_rates=module.scale_controlled_FVC_rates(
+                RAW_controlled_FVC_rates
+            ),
+            SCL_controlled_SVC_rates=module.scale_controlled_SVC_rates(
+                RAW_controlled_SVC_rates
+            ),
+            SCL_Cin_controlled_FVCs=module.scale_Cin_controlled_FVCs(
+                RAW_Cin_controlled_FVCs
+            ),
+            SCL_Cin_modeled_FVCs=module.scale_Cin_modeled_FVCs(
+                RAW_Cin_modeled_FVCs
+            ),
+        )
+
+        outputs = module(t_arr, inputs)
+        if not hasattr(outputs, "SCL_modeled_BiologicalOde_rates") or not hasattr(
+            outputs, "SCL_modeled_VC_rates"
         ):
             raise TypeError(
-                "reaction_module output must expose `specific_rates` and "
-                "`modeled_feed_rates`"
+                "reaction_module output must expose `SCL_modeled_BiologicalOde_rates` "
+                "and `SCL_modeled_VC_rates`"
             )
-        q_scaled = jnp.asarray(outputs.specific_rates, dtype=y.dtype)
-        f_scaled = jnp.asarray(outputs.modeled_feed_rates, dtype=y.dtype)
+        SCL_modeled_BiologicalOde_rates = jnp.asarray(
+            outputs.SCL_modeled_BiologicalOde_rates, dtype=SCL_state.dtype
+        )
+        SCL_modeled_VC_rates = jnp.asarray(
+            outputs.SCL_modeled_VC_rates, dtype=SCL_state.dtype
+        )
 
         expected_rates_shape = (len(self.rhs_ode.name_modeled_rates),)
-        if q_scaled.shape != expected_rates_shape:
+        if SCL_modeled_BiologicalOde_rates.shape != expected_rates_shape:
             raise ValueError(
-                f"specific_rates must match name_modeled_rates shape "
-                f"{expected_rates_shape}, got {tuple(q_scaled.shape)}"
+                "SCL_modeled_BiologicalOde_rates must match name_modeled_rates "
+                f"shape {expected_rates_shape}, got "
+                f"{tuple(SCL_modeled_BiologicalOde_rates.shape)}"
             )
         expected_modeled_shape = (
-            len(self.rhs_ode.name_modeled_FVCs) + len(self.rhs_ode.name_modeled_SVCs),
+            len(self.rhs_ode.name_modeled_FVCs)
+            + len(self.rhs_ode.name_modeled_SVCs),
         )
-        if f_scaled.shape != expected_modeled_shape:
+        if SCL_modeled_VC_rates.shape != expected_modeled_shape:
             raise ValueError(
-                f"modeled_feed_rates must have shape {expected_modeled_shape}, "
-                f"got {tuple(f_scaled.shape)}"
+                f"SCL_modeled_VC_rates must have shape {expected_modeled_shape}, "
+                f"got {tuple(SCL_modeled_VC_rates.shape)}"
             )
 
+        # Cross to RAW for the physical RhsOde and the saved diagnostic.
+        RAW_modeled_BiologicalOde_rates = module.unscale_modeled_BiologicalOde_rates(
+            SCL_modeled_BiologicalOde_rates
+        )
+        RAW_modeled_VC_rates = module.unscale_modeled_VC_rates(SCL_modeled_VC_rates)
+
         return WrapperEvaluation(
-            states_physical=Y,
-            c_species_runtime=C_species_runtime,
-            v_real_export=V_real_export,
-            v_real_runtime=V_real_runtime,
-            u_for_rhs=u_for_rhs,
-            u_flow_extra=U_flow_extra,
-            specific_rates_physical=q_scaled * self.q_scale,
-            modeled_feed_rates_physical=jax.nn.softplus(f_scaled) * self.f_scale,
+            SCL_states=SCL_state,
+            RAW_RMC_rhs=RAW_RMC_rhs,
+            RAW_V_export=RAW_V_export,
+            RAW_V=RAW_V,
+            RAW_u_rhs_full=RAW_u_rhs_full,
+            RAW_u_flow_extra=RAW_u_flow_extra,
+            RAW_modeled_BiologicalOde_rates=RAW_modeled_BiologicalOde_rates,
+            RAW_modeled_VC_rates=RAW_modeled_VC_rates,
             auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
         )
 
     # ------ ODE RHS ------
 
-    def __call__(self, t: float | jax.Array, y: jax.Array) -> jax.Array:
-        """Compute ``dy/dt`` in **scaled** state space.
-
-        Parameters
-        ----------
-        t : scalar time
-        y : scaled state vector with layout
-            ``[c_species, V_cont, B_modeled_cum_0, ...] / state_scale``
-
-        Returns
-        -------
-        dy/dt in scaled space, same layout as ``y``.
-        """
-        n_species = len(self.species_names)
-        eval_terms = self._evaluate_wrapper_terms(t, y)
+    def __call__(self, t: float | jax.Array, SCL_state: jax.Array) -> jax.Array:
+        """Compute ``d(SCL_state)/dt`` in **scaled** state space."""
+        n_RMCs = len(self.modeled_RMC_names)
+        eval_terms = self._evaluate_wrapper_terms(t, SCL_state)
 
         # ---- 6. Mechanistic RHS in physical space ----
-        # RhsOde returns [dc_species/dt, dV/dt] where dV/dt = sum(U_flow) +
-        # sum(F_modeled).  By construction this equals dV_cont/dt because
-        # V_cont = V0 + ∫(inflows) (sampling lives in V_sample_acc, not in V_cont).
-        C_rhs = jnp.concatenate(
-            [eval_terms.c_species_runtime, eval_terms.v_real_runtime[None]]
+        RAW_RMCs_V = jnp.concatenate(
+            [eval_terms.RAW_RMC_rhs, eval_terms.RAW_V[None]]
         )
         f_modeled_SVCs = jnp.zeros(
-            (len(self.rhs_ode.name_modeled_SVCs),), dtype=y.dtype
+            (len(self.rhs_ode.name_modeled_SVCs),), dtype=SCL_state.dtype
         )
-        dY_rhs = self.rhs_ode(
-            C_rhs,
-            eval_terms.specific_rates_physical,
-            eval_terms.u_for_rhs,
-            eval_terms.modeled_feed_rates_physical,
+        RAW_d_RMCs_V_dt = self.rhs_ode(
+            RAW_RMCs_V,
+            eval_terms.RAW_modeled_BiologicalOde_rates,
+            eval_terms.RAW_u_rhs_full,
+            eval_terms.RAW_modeled_VC_rates,
             f_modeled_SVCs,
         )
         if self.extra_flow_cin.shape[0] > 0:
-            extra_contrib = eval_terms.u_flow_extra[:, None] * (
-                self.extra_flow_cin.astype(y.dtype)
-                - eval_terms.c_species_runtime[None, :]
+            RAW_extra_contrib = eval_terms.RAW_u_flow_extra[:, None] * (
+                self.extra_flow_cin.astype(SCL_state.dtype)
+                - eval_terms.RAW_RMC_rhs[None, :]
             )
-            dY_rhs = dY_rhs.at[:n_species].add(
-                jnp.sum(extra_contrib, axis=0) / eval_terms.v_real_runtime
+            RAW_d_RMCs_V_dt = RAW_d_RMCs_V_dt.at[:n_RMCs].add(
+                jnp.sum(RAW_extra_contrib, axis=0) / eval_terms.RAW_V
             )
-            dY_rhs = dY_rhs.at[n_species].add(jnp.sum(eval_terms.u_flow_extra))
-        # dY_rhs has length n_species + 1 (species + V_cont).
+            RAW_d_RMCs_V_dt = RAW_d_RMCs_V_dt.at[n_RMCs].add(
+                jnp.sum(eval_terms.RAW_u_flow_extra)
+            )
 
         # ---- 7. Append cumulative-modeled-feed derivatives ----
-        # dB_k/dt = F_modeled_k by definition.
-        dY_full = jnp.concatenate([dY_rhs, eval_terms.modeled_feed_rates_physical])
+        RAW_d_state_dt = jnp.concatenate(
+            [RAW_d_RMCs_V_dt, eval_terms.RAW_modeled_VC_rates]
+        )
 
-        # ---- 8. Re-scale derivative ----
-        dy_dt = dY_full / self.state_scale
-
-        return dy_dt
+        # ---- 8. Re-scale derivative via the module ----
+        SCL_d_state_dt = self.reaction_module.scale_state(RAW_d_state_dt)
+        return SCL_d_state_dt
 
     def save_outputs(
         self,
         t: float | jax.Array,
-        y: jax.Array,
+        SCL_state: jax.Array,
         args: Any = None,
     ) -> SaveOutputs:
-        """Return physical solver-time outputs for Diffrax ``SaveAt(fn=...)``."""
+        """Return solver-time outputs for Diffrax ``SaveAt(fn=...)``."""
         del args
-        eval_terms = self._evaluate_wrapper_terms(t, y)
+        eval_terms = self._evaluate_wrapper_terms(t, SCL_state)
         return SaveOutputs(
-            states_physical=eval_terms.states_physical,
-            v_real_export=eval_terms.v_real_export,
-            v_real_runtime=eval_terms.v_real_runtime,
-            specific_rates_physical=eval_terms.specific_rates_physical,
-            modeled_feed_rates_physical=eval_terms.modeled_feed_rates_physical,
+            SCL_states=eval_terms.SCL_states,
+            RAW_V_export=eval_terms.RAW_V_export,
+            RAW_V=eval_terms.RAW_V,
+            RAW_modeled_BiologicalOde_rates=eval_terms.RAW_modeled_BiologicalOde_rates,
+            RAW_modeled_VC_rates=eval_terms.RAW_modeled_VC_rates,
             auxiliary=eval_terms.auxiliary,
         )
 

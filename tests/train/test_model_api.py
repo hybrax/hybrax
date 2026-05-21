@@ -30,14 +30,15 @@ class _CustomPartitionModule(UserReactionModule):
     non_model_bias: jax.Array = frozen_field()
 
     def __init__(self):
+        super().__init__()
         self.model = eqx.nn.Linear(in_features=2, out_features=1, key=jax.random.key(1))
         self.non_model_bias = jnp.asarray([2.0], dtype=jnp.float32)
 
-    def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
     def partition_trainable(self):
@@ -103,13 +104,14 @@ class _UntaggedArrayModule(UserReactionModule):
     raw: jax.Array
 
     def __init__(self):
+        super().__init__()
         self.raw = jnp.asarray([1.0], dtype=jnp.float32)
 
-    def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
@@ -118,14 +120,15 @@ class _MixedTagsModule(UserReactionModule):
     bias_frozen: jax.Array = frozen_field()
 
     def __init__(self):
+        super().__init__()
         self.weights = jnp.asarray([1.0, 2.0], dtype=jnp.float32)
         self.bias_frozen = jnp.asarray([10.0], dtype=jnp.float32)
 
-    def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
@@ -167,13 +170,14 @@ class _OuterFrozenParent(UserReactionModule):
     sub: _Inner = frozen_field()
 
     def __init__(self):
+        super().__init__()
         self.sub = _Inner()
 
-    def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
@@ -181,13 +185,14 @@ class _OuterTrainableParent(UserReactionModule):
     sub: _Inner = trainable_field()
 
     def __init__(self):
+        super().__init__()
         self.sub = _Inner()
 
-    def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
@@ -195,13 +200,14 @@ class _OuterUntaggedParent(UserReactionModule):
     sub: _Inner
 
     def __init__(self):
+        super().__init__()
         self.sub = _Inner()
 
-    def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
@@ -291,6 +297,7 @@ def test_format_trainable_structure_auto_widths():
         a_very_long_field_name_for_testing: jax.Array = trainable_field()
 
         def __init__(self):
+            super().__init__()
             self.a_very_long_field_name_for_testing = jnp.asarray(
                 [1.0], dtype=jnp.float32
             )

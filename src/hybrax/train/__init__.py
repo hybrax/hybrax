@@ -2,6 +2,8 @@ from .prepare import PrepareConfig, load_raw_collection, prepare_artifact
 from .controls_store import ControlsStore, PerProcessControls
 from .training_data import PerProcessTrainingData, TrainingDataStore
 from .model_api import (
+    EstimatedScales,
+    ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
     format_trainable_structure,
@@ -47,6 +49,8 @@ __all__ = [
     "PrepareConfig",
     "PerProcessControls",
     "PerProcessTrainingData",
+    "EstimatedScales",
+    "ReactionInputs",
     "ReactionOutputs",
     "UserReactionModule",
     "partition_trainable",

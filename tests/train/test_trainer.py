@@ -39,29 +39,38 @@ class _LinearReactionModule(UserReactionModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
-    def __init__(self):
+    def __init__(self, **scale_kwargs):
+        super().__init__(**scale_kwargs)
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(123))
         self.non_model_bias = jnp.asarray([0.05], dtype=jnp.float32)
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, controls_vector
-        rate = self.model(c_species)[0] + self.non_model_bias[0]
+    def __call__(self, t, inputs):
+        del t
+        SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
+        rate = self.model(SCL_modeled_RMCs)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
-            modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+                [rate], dtype=SCL_modeled_RMCs.dtype
+            ),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
 
 
 class _AuxReactionModule(UserReactionModule):
-    def __call__(self, t, c_species, controls_vector):
-        del controls_vector
-        rate = jnp.asarray([0.0], dtype=c_species.dtype)
+    def __init__(self, **scale_kwargs):
+        super().__init__(**scale_kwargs)
+
+    def __call__(self, t, inputs):
+        SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
+        rate = jnp.asarray([0.0], dtype=SCL_modeled_RMCs.dtype)
         return ReactionOutputs(
-            specific_rates=rate,
-            modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
+            SCL_modeled_BiologicalOde_rates=rate,
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
             auxiliary={
                 "mu_raw": t,
-                "latent_pair": jnp.asarray([t, c_species[0]], dtype=c_species.dtype),
+                "latent_pair": jnp.asarray(
+                    [t, SCL_modeled_RMCs[0]], dtype=SCL_modeled_RMCs.dtype
+                ),
             },
         )
 
@@ -142,7 +151,35 @@ def _make_two_process_collection() -> BioProcessCollection:
     return BioProcessCollection(processes={"p1": p1, "p2": p2}, metadata={})
 
 
-def _build_wrapper_and_process():
+def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
+    f32 = jnp.float32
+    n_RMCs = len(rhs_ode.name_modeled_RMCs)
+    n_VCs = len(rhs_ode.name_modeled_FVCs)
+    n_rates = len(rhs_ode.name_modeled_rates)
+    n_FVC = len(controls.name_controlled_FVCs)
+    n_SVC = len(controls.name_controlled_SVCs)
+    n_PV = len(controls.name_controlled_PVs)
+    n_extras = len(controls.name_extras)
+    return {
+        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
+        "SCALE_modeled_VCs_cumulative": jnp.ones(n_VCs, dtype=f32),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
+        "SCALE_controlled_SVCs_cumulative": jnp.ones(n_SVC, dtype=f32),
+        "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
+        "SCALE_extras": jnp.ones(n_extras, dtype=f32),
+        "SCALE_controlled_FVC_rates": jnp.ones(n_FVC, dtype=f32),
+        "SCALE_controlled_SVC_rates": jnp.ones(n_SVC, dtype=f32),
+        "SCALE_Cin_controlled_FVCs": jnp.ones((n_FVC, n_RMCs), dtype=f32),
+        "SCALE_Cin_modeled_FVCs": jnp.ones((n_VCs, n_RMCs), dtype=f32),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
+        "SCALE_modeled_VC_rates": jnp.ones(n_VCs, dtype=f32),
+    }
+
+
+def _build_wrapper_and_process(module_cls=_LinearReactionModule):
+    from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
+
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
@@ -150,8 +187,10 @@ def _build_wrapper_and_process():
         target_source="reactor_components",
     )
     process_data = store.get_process("p2")
+    rhs_ode = _build_rhs_ode(collection.processes["p2"])
+    scale_kwargs = _unit_scale_kwargs_for(rhs_ode, process_data.controls)
     wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_LinearReactionModule(),
+        reaction_module=module_cls(**scale_kwargs),
         process=collection.processes["p2"],
         controls=process_data.controls,
     )
@@ -159,19 +198,7 @@ def _build_wrapper_and_process():
 
 
 def _build_aux_wrapper_and_process():
-    collection = _make_two_process_collection()
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=["biomass"],
-        target_source="reactor_components",
-    )
-    process_data = store.get_process("p2")
-    wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_AuxReactionModule(),
-        process=collection.processes["p2"],
-        controls=process_data.controls,
-    )
-    return wrapper, process_data
+    return _build_wrapper_and_process(_AuxReactionModule)
 
 
 def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
@@ -214,10 +241,10 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
     base_total, _ = measurement_loss_from_arrays(
         wrapper,
         t_measured=t_measured,
-        y_measured=process_data.y_measured,
+        SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -228,10 +255,10 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
     poisoned_total, _ = measurement_loss_from_arrays(
         wrapper,
         t_measured=t_measured,
-        y_measured=poisoned_y,
+        SCL_target_measured=poisoned_y,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -250,7 +277,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         *,
         t_eval,
         n_measured,
-        y0,
+        SCL_y0,
         max_steps,
         rtol,
         atol,
@@ -259,23 +286,23 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         captured["wrapper"] = wrapper_arg
         captured["t_eval"] = t_eval
         captured["n_measured"] = n_measured
-        captured["y0"] = y0
+        captured["y0"] = SCL_y0
         captured["max_steps"] = max_steps
         captured["rtol"] = rtol
         captured["atol"] = atol
         captured["jump_ts"] = jump_ts
         n_rows = t_eval.shape[0]
-        states = jnp.repeat(y0[None, :], repeats=n_rows, axis=0)
+        states = jnp.repeat(SCL_y0[None, :], repeats=n_rows, axis=0)
         return SaveOutputs(
-            states_physical=states,
-            v_real_export=states[:, len(wrapper_arg.species_names)],
-            v_real_runtime=states[:, len(wrapper_arg.species_names)],
-            specific_rates_physical=jnp.zeros(
-                (n_rows, len(wrapper_arg.species_names)),
+            SCL_states=states,
+            RAW_V_export=states[:, len(wrapper_arg.modeled_RMC_names)],
+            RAW_V=states[:, len(wrapper_arg.modeled_RMC_names)],
+            RAW_modeled_BiologicalOde_rates=jnp.zeros(
+                (n_rows, len(wrapper_arg.modeled_RMC_names)),
                 dtype=states.dtype,
             ),
-            modeled_feed_rates_physical=jnp.zeros(
-                (n_rows, len(wrapper_arg.modeled_flow_names)),
+            RAW_modeled_VC_rates=jnp.zeros(
+                (n_rows, len(wrapper_arg.modeled_VC_names)),
                 dtype=states.dtype,
             ),
             auxiliary=None,
@@ -290,10 +317,10 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
     total_loss, _ = measurement_loss_from_arrays(
         wrapper,
         t_measured=process_data.t_measured,
-        y_measured=process_data.y_measured,
+        SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=None,
         max_solver_steps=321_000,
         solver_rtol=1e-4,
@@ -314,10 +341,10 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
     result = evaluate_sample_from_arrays(
         wrapper,
         t_measured=process_data.t_measured,
-        y_measured=process_data.y_measured,
+        SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -327,16 +354,18 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
         wrapper,
         t_eval=process_data.t_measured,
         n_measured=process_data.n_measured,
-        y0=process_data.y0_measured,
+        RAW_y0=process_data.y0_measured,
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
         jump_ts=process_data.controls.active_step_ts,
     )
+    # Manually replicate the SCL-space loss kernel. ``states`` here is in
+    # RAW space (returned by ``_simulate_measurement_states_on_grid`` which
+    # unscales). With unit SCALE_* it doesn't matter; SCL == RAW.
     y_pred = states[:, wrapper.target_state_indices]
-    # Per-cell mask: shape (max_n_meas, n_y_cols). Mirror the loss code.
     y_meas_safe = jnp.where(process_data.mask_measured, process_data.y_measured, 0.0)
-    sq_err = jnp.square(y_pred - y_meas_safe) / wrapper.target_variance[None, :]
+    sq_err = jnp.square(y_pred - y_meas_safe)
     masked_sq_err = jnp.where(process_data.mask_measured, sq_err, 0.0)
     n_active_per_target = jnp.maximum(jnp.sum(process_data.mask_measured, axis=0), 1)
     per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active_per_target
@@ -344,8 +373,12 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
 
     assert jnp.isclose(result.total_loss, total_loss)
     assert jnp.allclose(result.per_target_loss, per_target_loss)
-    assert jnp.allclose(result.states, states)
-    assert jnp.allclose(result.states, result.save_outputs.states_physical)
+    # ``result.states`` is in SCL space; convert back for the comparison.
+    assert jnp.allclose(
+        jax.vmap(wrapper.reaction_module.unscale_state)(result.states),
+        states,
+    )
+    assert jnp.allclose(result.states, result.save_outputs.SCL_states)
 
 
 def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
@@ -355,10 +388,10 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
     result = evaluate_sample_from_arrays(
         wrapper,
         t_measured=t_measured,
-        y_measured=process_data.y_measured,
+        SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -372,7 +405,7 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         wrapper,
         t_eval=clamped,
         n_measured=process_data.n_measured,
-        y0=process_data.y0_measured,
+        RAW_y0=process_data.y0_measured,
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
@@ -385,16 +418,16 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
 def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
     wrapper, process_data = _build_aux_wrapper_and_process()
     t_measured = process_data.t_measured.at[1:].set(jnp.asarray([999.0, -999.0]))
-    y_measured = process_data.y_measured.at[1:, :].set(0.0)
+    SCL_target_measured = process_data.y_measured.at[1:, :].set(0.0)
     mask_measured = process_data.mask_measured.at[1:].set(False)
 
     result = evaluate_sample_from_arrays(
         wrapper,
         t_measured=t_measured,
-        y_measured=y_measured,
+        SCL_target_measured=SCL_target_measured,
         mask_measured=mask_measured,
         n_measured=1,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -424,10 +457,10 @@ def test_evaluate_sample_from_arrays_forwards_step_to_result():
     result = evaluate_sample_from_arrays(
         wrapper,
         t_measured=process_data.t_measured,
-        y_measured=process_data.y_measured,
+        SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        y0_measured=process_data.y0_measured,
+        SCL_target0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -447,8 +480,11 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
         target_source="reactor_components",
     )
     process_data = store.get_process("p2")
+    rhs_p2 = build_rhs_ode(collection.processes["p2"])
     wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_LinearReactionModule(),
+        reaction_module=_LinearReactionModule(
+            **_unit_scale_kwargs_for(rhs_p2, process_data.controls)
+        ),
         process=collection.processes["p2"],
         controls=process_data.controls,
     )
@@ -468,10 +504,10 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
         _wrapper,
         *,
         t_measured,
-        y_measured,
+        SCL_target_measured,
         mask_measured,
         n_measured,
-        y0_measured,
+        SCL_target0_measured,
         jump_ts,
         max_solver_steps,
         solver_rtol,
@@ -479,7 +515,8 @@ def test_batched_loss_builder_forwards_step_to_sample_loss_fn():
         step=None,
     ):
         received_steps.append(step)
-        del t_measured, y_measured, mask_measured, n_measured, y0_measured, jump_ts
+        del t_measured, SCL_target_measured, mask_measured, n_measured
+        del SCL_target0_measured, jump_ts
         del max_solver_steps, solver_rtol, solver_atol
         score = float(step) if step is not None else -1.0
         return jnp.asarray(score), jnp.asarray([score], dtype=jnp.float32)
@@ -511,8 +548,11 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
         target_source="reactor_components",
     )
     process_data = store.get_process("p2")
+    rhs_p2 = build_rhs_ode(collection.processes["p2"])
     wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_LinearReactionModule(),
+        reaction_module=_LinearReactionModule(
+            **_unit_scale_kwargs_for(rhs_p2, process_data.controls)
+        ),
         process=collection.processes["p2"],
         controls=process_data.controls,
     )
@@ -530,10 +570,10 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
         _wrapper,
         *,
         t_measured,
-        y_measured,
+        SCL_target_measured,
         mask_measured,
         n_measured,
-        y0_measured,
+        SCL_target0_measured,
         jump_ts,
         max_solver_steps,
         solver_rtol,
@@ -542,10 +582,10 @@ def test_batched_loss_builder_preserves_none_jump_ts_branch():
     ):
         del (
             t_measured,
-            y_measured,
+            SCL_target_measured,
             mask_measured,
             n_measured,
-            y0_measured,
+            SCL_target0_measured,
             max_solver_steps,
             solver_rtol,
             solver_atol,

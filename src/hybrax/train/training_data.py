@@ -279,7 +279,7 @@ class PerProcessTrainingData(eqx.Module):
     # for rows beyond ``n_measured`` and for cells where a target has no
     # measurement at that timestamp on the union grid.
     mask_measured: jax.Array
-    # Initial state `[targets..., V_cont]`, sourced from measurements at t=0.
+    # Initial state `[targets..., V_in_cumulative]`, sourced from measurements at t=0.
     y0_measured: jax.Array
     # Per-process controls view from ControlsStore.
     controls: PerProcessControls
@@ -329,10 +329,10 @@ class TrainingDataStore(eqx.Module):
     """Collection-level training-data store built from a prepared collection.
 
     The y_measured columns are ``[species..., B_modeled_cum_per_modeled_feed...]``
-    (NOT V_cont — V_cont is in the ODE *state* but not in the *loss targets*).
+    (NOT V_in_cumulative — V_in_cumulative is in the ODE *state* but not in the *loss targets*).
 
     The y0 vector has layout
-    ``[species_0..., V_cont(0), B_modeled_cum_0(0), ...]`` matching the ODE
+    ``[species_0..., V_in_cumulative(0), B_modeled_cum_0(0), ...]`` matching the ODE
     state shape that the wrapper expects.
     """
 
@@ -367,7 +367,7 @@ class TrainingDataStore(eqx.Module):
     # Active measurement counts per process.
     n_measured: jax.Array
     # Initial state matrix `[n_processes, n_species + 1 + n_modeled_feeds]`
-    # where layout is `[species_0..., V_cont(0), B_modeled_cum_0(0), ...]`,
+    # where layout is `[species_0..., V_in_cumulative(0), B_modeled_cum_0(0), ...]`,
     # sourced from measurements at t=0.
     y0_measured: jax.Array
 
@@ -562,7 +562,7 @@ class TrainingDataStore(eqx.Module):
                 y_matrix[:, col_idx] = b_col
                 mask_matrix[:, col_idx] = True
 
-            # y0 = [species(0)..., V_cont(0)=v0, B_modeled_cum_k(0)=0...]
+            # y0 = [species(0)..., V_in_cumulative(0)=v0, B_modeled_cum_k(0)=0...]
             # Strict t[0] check above guarantees y_matrix[0, :n_targets] are
             # all real measurements.
             y0_species = y_matrix[0, :n_targets]

@@ -24,6 +24,7 @@ from bp_format.serialization import load_process_collection_json
 from .checkpointing import CheckpointConfig, CheckpointWriter
 from .defaults import default_build_reaction_module
 from .model_api import (
+    EstimatedScales,
     UserReactionModule,
     partition_trainable,
     print_trainable_structure,
@@ -51,7 +52,6 @@ logger = logging.getLogger(__name__)
 
 # Floor below which `np.var` is treated as "all measurements identical" when
 # computing per-target variance for loss normalization.
-VARIANCE_EPS = 1e-12
 
 
 @dataclass(frozen=True)
@@ -265,6 +265,7 @@ def _build_reaction_module(
     custom_module,
     custom_config: dict[str, Any],
     collection: BioProcessCollection,
+    scale_kwargs: dict[str, Any],
 ) -> UserReactionModule:
     hook = get_hook(
         custom_module,
@@ -277,12 +278,52 @@ def _build_reaction_module(
         config=custom_config,
         seed=int(config.seed),
         collection=collection,
+        **scale_kwargs,
     )
     if not isinstance(module, UserReactionModule):
         raise TypeError(
             "build_reaction_module(...) must return a UserReactionModule instance"
         )
     return module
+
+
+def _resolve_estimated_scales(
+    *,
+    custom_module,
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    custom_cfg: dict[str, Any],
+) -> dict[str, Any]:
+    """Call the optional ``estimate_all_scales`` hook and unpack into kwargs.
+
+    The hook returns an ``EstimatedScales`` dataclass (or a falsy result if no
+    hook is configured). The output flattens into 13 ``SCALE_*`` kwargs that
+    feed ``build_reaction_module``.
+    """
+    hook = get_hook(custom_module, "estimate_all_scales", None)
+    if hook is None:
+        return {}
+    estimated = hook(collection, list(store.name_measured), custom_cfg)
+    if not isinstance(estimated, EstimatedScales):
+        raise TypeError(
+            "estimate_all_scales(...) must return an EstimatedScales dataclass; "
+            f"got {type(estimated).__name__}"
+        )
+    return {
+        "SCALE_modeled_RMCs": estimated.SCALE_modeled_RMCs,
+        "SCALE_V_in_cumulative": estimated.SCALE_V_in_cumulative,
+        "SCALE_modeled_VCs_cumulative": estimated.SCALE_modeled_VCs_cumulative,
+        "SCALE_controlled_FVCs_cumulative": estimated.SCALE_controlled_FVCs_cumulative,
+        "SCALE_controlled_SVCs_cumulative": estimated.SCALE_controlled_SVCs_cumulative,
+        "SCALE_controlled_PVs": estimated.SCALE_controlled_PVs,
+        "SCALE_extras": estimated.SCALE_extras,
+        "SCALE_controlled_FVC_rates": estimated.SCALE_controlled_FVC_rates,
+        "SCALE_controlled_SVC_rates": estimated.SCALE_controlled_SVC_rates,
+        "SCALE_Cin_controlled_FVCs": estimated.SCALE_Cin_controlled_FVCs,
+        "SCALE_Cin_modeled_FVCs": estimated.SCALE_Cin_modeled_FVCs,
+        "SCALE_modeled_BiologicalOde_rates": estimated.SCALE_modeled_BiologicalOde_rates,
+        "SCALE_modeled_VC_rates": estimated.SCALE_modeled_VC_rates,
+    }
 
 
 def _normalize_loss_hook_result(
@@ -403,15 +444,14 @@ def _build_template_wrapper(
     reaction_module: UserReactionModule,
     collection: BioProcessCollection,
     selected_processes: tuple[str, ...],
-    state_scale: jax.Array | None = None,
-    controls_scale: jax.Array | None = None,
-    q_scale: jax.Array | None = None,
-    f_scale: jax.Array | None = None,
 ) -> tuple[HybridOdeWrapper, dict[str, Any]]:
     """Build a HybridOdeWrapper with the same structure train_collection produces.
 
     Returns the wrapper plus a dict with the per-process RhsOde map under
     ``per_process_rhs_ode`` so callers can reuse it for evaluation.
+
+    Scales now live on ``reaction_module``; the wrapper validates the shapes
+    in its constructor.
     """
     if len(selected_processes) == 0:
         raise ValueError("selected_processes must be non-empty")
@@ -434,26 +474,6 @@ def _build_template_wrapper(
             per_process_rhs_ode[process_name],
         )
 
-    n_y_cols = int(store.y_measured.shape[2])
-    # Per-target variance from real measurements only — a sparse target's
-    # zero-filled cells are excluded via mask_measured so they don't deflate
-    # the variance estimate.
-    per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
-    for pname in selected_processes:
-        pd = store.get_process(pname)
-        y_active = np.asarray(pd.active_y_measured)
-        mask_active = np.asarray(pd.active_mask_measured)
-        for col in range(n_y_cols):
-            real_values = y_active[mask_active[:, col], col]
-            per_col_values[col].extend(real_values.tolist())
-    target_variance = jnp.asarray(
-        [
-            float(np.var(vals)) if vals and float(np.var(vals)) > VARIANCE_EPS else 1.0
-            for vals in per_col_values
-        ],
-        dtype=jnp.float32,
-    )
-
     n_species = len(store.name_measured)
     n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
     target_state_indices = jnp.asarray(
@@ -466,11 +486,6 @@ def _build_template_wrapper(
         reaction_module=reaction_module,
         process=collection.processes[reference_process_name],
         controls=store.get_process(reference_process_name).controls,
-        state_scale=state_scale,
-        controls_scale=controls_scale,
-        q_scale=q_scale,
-        f_scale=f_scale,
-        target_variance=target_variance,
         target_state_indices=target_state_indices,
     )
     return wrapper, {"per_process_rhs_ode": per_process_rhs_ode}
@@ -555,35 +570,29 @@ def forward_from_collection(
         target_variable_order=effective_target_order,
         target_source=cfg.target_source,
     )
+    # `estimate_all_scales` runs FIRST: its output is plumbed into the
+    # reaction-module constructor as 13 SCALE_* kwargs (the module is the
+    # single source of truth for scales).
+    scale_kwargs = _resolve_estimated_scales(
+        custom_module=custom_module,
+        collection=collection,
+        store=store,
+        custom_cfg=custom_cfg,
+    )
     reaction_module = _build_reaction_module(
         store=store,
         config=train_like_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
         collection=collection,
+        scale_kwargs=scale_kwargs,
     )
-
-    estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
-    scale_kwargs: dict[str, Any] = {}
-    if estimate_scales_hook is not None:
-        state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
-            collection,
-            list(store.name_measured),
-            custom_cfg,
-        )
-        scale_kwargs = {
-            "state_scale": state_scale,
-            "controls_scale": controls_scale,
-            "q_scale": q_scale,
-            "f_scale": f_scale,
-        }
 
     template_wrapper, extras = _build_template_wrapper(
         store,
         reaction_module=reaction_module,
         collection=collection,
         selected_processes=template_processes,
-        **scale_kwargs,
     )
     per_process_rhs_ode = extras["per_process_rhs_ode"]
     batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
@@ -685,14 +694,13 @@ def train_collection(
     reaction_module: UserReactionModule,
     collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
-    state_scale: jax.Array | None = None,
-    controls_scale: jax.Array | None = None,
-    q_scale: jax.Array | None = None,
-    f_scale: jax.Array | None = None,
     batched_loss_fn: BatchedLossFn | None = None,
     extra_loss_names: tuple[str, ...] = (),
 ) -> TrainHarnessResult:
-    """Train one reaction module over one or many processes from one store."""
+    """Train one reaction module over one or many processes from one store.
+
+    Scales live on ``reaction_module``; no scale kwargs here.
+    """
     cfg = config or TrainHarnessConfig()
     effective_batched_loss_fn = (
         _DEFAULT_BATCHED_MEASUREMENT_LOSS
@@ -747,53 +755,9 @@ def train_collection(
             per_process_rhs_ode[process_name],
         )
 
-    # Compute per-target variance for loss normalization.
-    # y_measured columns are [species..., B_modeled_cum_per_modeled_feed...].
-    # Rule:
-    #   - if any nonzero variance is observed → use that variance
-    #   - if all measurements are identical (variance == 0) → fall back to 1.0
-    # The previous version used max(var, 1.0) which clamped small but nonzero
-    # variances (e.g. cumulative base feed in kg² ~ 5e-3) to 1.0, making the
-    # loss insensitive by ~200x.
-    n_y_cols = int(store.y_measured.shape[2])  # n_species + n_modeled_feeds
-    # Per-target variance from real measurements only.
-    _per_col_values: list[list[float]] = [[] for _ in range(n_y_cols)]
-    for pname in selected_processes:
-        pd = store.get_process(pname)
-        y_active = np.asarray(pd.active_y_measured)  # [n_measured, n_y_cols]
-        mask_active = np.asarray(pd.active_mask_measured)  # [n_measured, n_y_cols]
-        for col in range(n_y_cols):
-            real_values = y_active[mask_active[:, col], col]
-            _per_col_values[col].extend(real_values.tolist())
-    target_variance = jnp.asarray(
-        [
-            float(np.var(vals)) if vals and float(np.var(vals)) > VARIANCE_EPS else 1.0
-            for vals in _per_col_values
-        ],
-        dtype=jnp.float32,
-    )
-    _target_labels = list(store.name_measured) + [
-        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
-    ]
-    # Custom loss hooks may declare extra per-target loss components (e.g.
-    # regularization terms). They get their own labels and appear as new
-    # columns in the per-target log table, CSV, JSONL, and loss_curve.png
-    # subpanels.
-    if extra_loss_names:
-        _target_labels = _target_labels + list(extra_loss_names)
-    logger.info(
-        "target_variance: %s",
-        {
-            name: f"{v:.2f}"
-            for name, v in zip(
-                _target_labels[: target_variance.shape[0]], target_variance.tolist()
-            )
-        },
-    )
-
     # Build target_state_indices: species columns + cumulative-modeled-feed
-    # columns. State layout is [species..., V_cont, B_modeled_cum_0, ...] so
-    # V_cont (at index n_species) is in the state but NOT a loss target.
+    # columns. State layout is [modeled_RMCs | V_in_cumulative | modeled_VCs_cumulative]
+    # so V_in_cumulative (at index n_species) is in the state but NOT a loss target.
     n_species = len(store.name_measured)
     n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
     target_state_indices = jnp.asarray(
@@ -802,16 +766,21 @@ def train_collection(
         dtype=jnp.int32,
     )
 
-    # Build wrapper from reference process
+    # Per-target labels: species + cumulative-feed-volume targets, plus any
+    # extra labels declared by the custom loss hook.
+    _target_labels = list(store.name_measured) + [
+        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
+    ]
+    if extra_loss_names:
+        _target_labels = _target_labels + list(extra_loss_names)
+
+    # Build wrapper from reference process. Scales now live on
+    # ``reaction_module``; the wrapper validates SCALE_* shapes in its
+    # constructor.
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=reaction_module,
         process=collection.processes[reference_process_name],
         controls=store.get_process(reference_process_name).controls,
-        state_scale=state_scale,
-        controls_scale=controls_scale,
-        q_scale=q_scale,
-        f_scale=f_scale,
-        target_variance=target_variance,
         target_state_indices=target_state_indices,
     )
 
@@ -1193,12 +1162,22 @@ def train_from_collection(
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
+    # estimate_all_scales runs FIRST: its return flattens into 13 SCALE_*
+    # kwargs feeding build_reaction_module (the module is the single source of
+    # truth for scales).
+    scale_kwargs = _resolve_estimated_scales(
+        custom_module=custom_module,
+        collection=collection,
+        store=store,
+        custom_cfg=custom_cfg,
+    )
     reaction_module = _build_reaction_module(
         store=store,
         config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
         collection=collection,
+        scale_kwargs=scale_kwargs,
     )
     # Call optional build_learning_rate hook (overrides CLI --learning-rate)
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
@@ -1214,22 +1193,6 @@ def train_from_collection(
         train_cfg=train_cfg,
     )
 
-    # Call optional estimate_all_scales hook for state/controls/q/f scaling
-    estimate_scales_hook = get_hook(custom_module, "estimate_all_scales", None)
-    scale_kwargs: dict[str, Any] = {}
-    if estimate_scales_hook is not None:
-        state_scale, controls_scale, q_scale, f_scale = estimate_scales_hook(
-            collection,
-            list(store.name_measured),
-            custom_cfg,
-        )
-        scale_kwargs = {
-            "state_scale": state_scale,
-            "controls_scale": controls_scale,
-            "q_scale": q_scale,
-            "f_scale": f_scale,
-        }
-
     return train_collection(
         store,
         reaction_module=reaction_module,
@@ -1237,7 +1200,6 @@ def train_from_collection(
         config=train_cfg,
         batched_loss_fn=batched_loss_fn,
         extra_loss_names=extra_loss_names,
-        **scale_kwargs,
     )
 
 

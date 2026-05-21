@@ -158,20 +158,41 @@ def test_checkpoint_writer_latest_updates_across_writes(tmp_path: Path):
 # --------------------------------------------------------------------------
 
 
+_DEFAULT_CHECKPOINTING_SCALES: dict[str, jnp.ndarray] = {
+    "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
+    "SCALE_modeled_VCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_SVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_extras": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_controlled_FVC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_SVC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_Cin_controlled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_Cin_modeled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_modeled_VC_rates": jnp.ones(0, dtype=jnp.float32),
+}
+
+
 class _LinearReactionModule(UserReactionModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
-    def __init__(self):
+    def __init__(self, **scale_kwargs):
+        super().__init__(**{**_DEFAULT_CHECKPOINTING_SCALES, **scale_kwargs})
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(42))
         self.non_model_bias = jnp.asarray([0.05], dtype=jnp.float32)
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, controls_vector
-        rate = self.model(c_species)[0] + self.non_model_bias[0]
+    def __call__(self, t, inputs):
+        del t
+        SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
+        rate = self.model(SCL_modeled_RMCs)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            specific_rates=jnp.asarray([rate], dtype=c_species.dtype),
-            modeled_feed_rates=jnp.zeros((0,), dtype=c_species.dtype),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+                [rate], dtype=SCL_modeled_RMCs.dtype
+            ),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
 
 

@@ -284,27 +284,46 @@ def _stub_forward_result(**kwargs) -> ForwardResult:
     return ForwardResult(**defaults)
 
 
+_FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
+    "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
+    "SCALE_modeled_VCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_SVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_extras": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_controlled_FVC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_controlled_SVC_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_Cin_controlled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_Cin_modeled_FVCs": jnp.ones((0, 1), dtype=jnp.float32),
+    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
+    "SCALE_modeled_VC_rates": jnp.ones(0, dtype=jnp.float32),
+}
+
+
 class _ConstantReactionModule(UserReactionModule):
-    specific_rates: jnp.ndarray
-    modeled_feed_rates: jnp.ndarray
-    auxiliary: dict[str, jnp.ndarray] | None
+    SCL_specific_rates: jnp.ndarray
+    SCL_feed_rates: jnp.ndarray
+    aux: dict[str, jnp.ndarray] | None
 
     def __init__(
         self,
         specific_rates: jnp.ndarray,
         modeled_feed_rates: jnp.ndarray,
         auxiliary: dict[str, jnp.ndarray] | None = None,
+        **scale_kwargs,
     ):
-        self.specific_rates = specific_rates
-        self.modeled_feed_rates = modeled_feed_rates
-        self.auxiliary = auxiliary
+        super().__init__(**{**_FORWARD_DEFAULT_SCALES, **scale_kwargs})
+        self.SCL_specific_rates = specific_rates
+        self.SCL_feed_rates = modeled_feed_rates
+        self.aux = auxiliary
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs):
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=self.specific_rates,
-            modeled_feed_rates=self.modeled_feed_rates,
-            auxiliary=self.auxiliary,
+            SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
+            SCL_modeled_VC_rates=self.SCL_feed_rates,
+            auxiliary=self.aux,
         )
 
 
@@ -375,11 +394,13 @@ def _build_single_process_runtime(
             specific_rates=jnp.asarray([q_scaled], dtype=jnp.float32),
             modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
             auxiliary=auxiliary,
+            SCALE_modeled_BiologicalOde_rates=jnp.asarray(
+                [q_scale], dtype=jnp.float32
+            ),
         ),
         process=process,
         controls=controls,
-        q_scale=jnp.asarray([q_scale], dtype=jnp.float32),
-        min_real_volume=0.02,
+        min_V=0.02,
     )
     return collection, store, wrapper
 
@@ -708,8 +729,8 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
         name_modeled_rates = ("q_X", "q_S")
 
     class _Wrapper:
-        species_names = ("X", "S")
-        modeled_flow_names = ("F",)
+        modeled_RMC_names = ("X", "S")
+        modeled_VC_names = ("F",)
         rhs_ode = _RhsOde()
 
     class _Store:
@@ -879,8 +900,8 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(
         name_modeled_rates = ("q_biomass",)
 
     class _Wrapper:
-        species_names = ("biomass",)
-        modeled_flow_names = ()
+        modeled_RMC_names = ("biomass",)
+        modeled_VC_names = ()
         rhs_ode = _RhsOde()
 
     class _Store:
@@ -939,9 +960,9 @@ def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(
         name_modeled_rates = ("q_biomass",)
 
     class _Wrapper:
-        species_names = ("biomass",)
+        modeled_RMC_names = ("biomass",)
         rhs_ode = _RhsOde()
-        modeled_flow_names = ()
+        modeled_VC_names = ()
 
     class _Store:
         process_order = ("p1", "p2")

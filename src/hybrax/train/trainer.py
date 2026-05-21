@@ -44,7 +44,7 @@ def _simulate_measurement_states_on_grid(
     *,
     t_eval: jax.Array,
     n_measured: int | jax.Array,
-    y0: jax.Array,
+    RAW_y0: jax.Array,
     max_steps: int,
     rtol: float,
     atol: float,
@@ -52,16 +52,16 @@ def _simulate_measurement_states_on_grid(
 ) -> jax.Array:
     """Simulate state trajectories at possibly padded measurement timestamps.
 
-    ``y0`` and the returned states are in **physical** space.  The wrapper
-    integrates internally in scaled space and the results are un-scaled before
-    returning.
+    ``RAW_y0`` and the returned states are in **physical** (RAW) space. The
+    wrapper integrates internally in SCL space; this helper scales the initial
+    state on the way in and un-scales the saved trajectory on the way out.
     """
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
     t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
 
-    # Scale the initial state for the solver
-    y0_scaled = wrapper.scale_state(y0)
+    module = wrapper.reaction_module
+    SCL_y0 = module.scale_state(RAW_y0)
 
     def _solve_trajectory(_) -> jax.Array:
         term = diffrax.ODETerm(lambda t, y, args: wrapper(t, y))
@@ -77,17 +77,17 @@ def _simulate_measurement_states_on_grid(
             t0=t_eval[0],
             t1=t1,
             dt0=None,
-            y0=y0_scaled,
+            y0=SCL_y0,
             saveat=diffrax.SaveAt(ts=t_eval),
             stepsize_controller=stepsize_controller,
             max_steps=max_steps,
             throw=False,
         )
-        # Un-scale back to physical space
-        return jax.vmap(wrapper.unscale_state)(solution.ys)
+        # Un-scale saved SCL states back to RAW for the export-side caller.
+        return jax.vmap(module.unscale_state)(solution.ys)
 
     def _single_point(_) -> jax.Array:
-        return jnp.repeat(y0[None, :], repeats=t_eval.shape[0], axis=0)
+        return jnp.repeat(RAW_y0[None, :], repeats=t_eval.shape[0], axis=0)
 
     return jax.lax.cond(n_meas_arr > 1, _solve_trajectory, _single_point, operand=None)
 
@@ -97,18 +97,21 @@ def _solve_measurement_save_outputs_on_grid(
     *,
     t_eval: jax.Array,
     n_measured: int | jax.Array,
-    y0: jax.Array,
+    SCL_y0: jax.Array,
     max_steps: int,
     rtol: float,
     atol: float,
     jump_ts: jax.Array | None,
 ) -> SaveOutputs:
-    """Solve measurement grid once and return stacked save-time observables."""
+    """Solve measurement grid once and return stacked save-time observables.
+
+    ``SCL_y0`` is already in SCL space (the trainer pre-scales measurements
+    via the module's helpers). ``SaveOutputs.SCL_states`` is the SCL trajectory;
+    rate fields are RAW.
+    """
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
     t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
-
-    y0_scaled = wrapper.scale_state(y0)
 
     def _solve_trajectory(_) -> SaveOutputs:
         term = diffrax.ODETerm(lambda t, y, args: wrapper(t, y))
@@ -124,7 +127,7 @@ def _solve_measurement_save_outputs_on_grid(
             t0=t_eval[0],
             t1=t1,
             dt0=None,
-            y0=y0_scaled,
+            y0=SCL_y0,
             saveat=diffrax.SaveAt(ts=t_eval, fn=wrapper.save_outputs),
             stepsize_controller=stepsize_controller,
             max_steps=max_steps,
@@ -133,7 +136,7 @@ def _solve_measurement_save_outputs_on_grid(
         return solution.ys
 
     def _single_point(_) -> SaveOutputs:
-        single = wrapper.save_outputs(t_eval[0], y0_scaled)
+        single = wrapper.save_outputs(t_eval[0], SCL_y0)
         return jtu.tree_map(
             lambda leaf: jnp.repeat(leaf[None, ...], repeats=t_eval.shape[0], axis=0),
             single,
@@ -167,7 +170,11 @@ def simulate_measurement_states(
     atol: float = 1e-7,
     use_jump_ts: bool = True,
 ) -> jax.Array:
-    """Simulate full state trajectories at active measurement timestamps."""
+    """Simulate full state trajectories at active measurement timestamps.
+
+    Returns RAW (physical) state for export / plotting. The stored
+    ``y0_measured`` on ``process_data`` is RAW physical.
+    """
     ts = process_data.active_t_measured
     if ts.size == 0:
         raise ValueError("process has no active measurement timestamps")
@@ -176,7 +183,7 @@ def simulate_measurement_states(
         wrapper,
         t_eval=ts,
         n_measured=process_data.n_measured,
-        y0=process_data.y0_measured,
+        RAW_y0=process_data.y0_measured,
         max_steps=max_steps,
         rtol=rtol,
         atol=atol,
@@ -188,40 +195,49 @@ def evaluate_sample_from_arrays(
     wrapper: HybridOdeWrapper,
     *,
     t_measured: jax.Array,
-    y_measured: jax.Array,
+    SCL_target_measured: jax.Array,
     mask_measured: jax.Array,
     n_measured: int | jax.Array,
-    y0_measured: jax.Array,
+    SCL_target0_measured: jax.Array,
     jump_ts: jax.Array | None,
     max_solver_steps: int,
     solver_rtol: float,
     solver_atol: float,
     step: int | jax.Array | None = None,
 ) -> SingleSampleResult:
+    """Solve, gather predicted target columns, and compute SCL-space loss.
+
+    ``SCL_target_measured`` is the measurement matrix divided by
+    ``module.SCALE_state[target_state_indices]`` (pre-computed by the harness).
+    ``SCL_target0_measured`` is the SCL initial state at the target columns
+    (the trainer expands it back to the full integration state shape — note:
+    the trainer expects the FULL SCL initial state for diffrax). For now, this
+    helper assumes the caller supplies the full SCL initial state under the
+    name ``SCL_target0_measured`` matching the integration state layout.
+    """
     save_outputs = _solve_measurement_save_outputs_on_grid(
         wrapper,
         t_eval=t_measured,
         n_measured=n_measured,
-        y0=y0_measured,
+        SCL_y0=SCL_target0_measured,
         max_steps=max_solver_steps,
         rtol=solver_rtol,
         atol=solver_atol,
         jump_ts=jump_ts,
     )
-    states = save_outputs.states_physical
-    # Gather predicted target columns from the integrated state.
-    # State layout: [c_species..., V_cont, B_modeled_cum_0, ...]
-    # target_state_indices selects the species + cumulative-modeled-feed columns
-    # (V_cont is in the state but not a loss target).
-    y_pred = states[:, wrapper.target_state_indices]
+    SCL_states = save_outputs.SCL_states
+    # Gather predicted target columns from the integrated SCL state.
+    # State layout: [modeled_RMCs | V_in_cumulative | modeled_VCs_cumulative].
+    # target_state_indices selects modeled_RMCs + modeled_VCs_cumulative; the
+    # V_in_cumulative column is in the state but not a loss target.
+    SCL_target_pred = SCL_states[:, wrapper.target_state_indices]
 
     # Per-cell mask: shape (max_n_meas, n_y_cols). The double-where guard
-    # zero-fills unmeasured y_measured cells before subtraction so NaN never
-    # leaks into the gradient via the canonical "double where" pitfall —
-    # internal y_measured already stores 0.0 there but the safe pattern
-    # survives every JAX auto-diff edge case.
-    y_meas_safe = jnp.where(mask_measured, y_measured, 0.0)
-    sq_err = jnp.square(y_pred - y_meas_safe) / wrapper.target_variance[None, :]
+    # zero-fills unmeasured cells before subtraction so NaN never leaks into
+    # the gradient.
+    SCL_target_meas_safe = jnp.where(mask_measured, SCL_target_measured, 0.0)
+    SCL_residual = SCL_target_pred - SCL_target_meas_safe
+    sq_err = jnp.square(SCL_residual)
     masked_sq_err = jnp.where(mask_measured, sq_err, 0.0)
     # Per-target active counts so each target column is normalised by its
     # own number of real measurements rather than the global row count.
@@ -232,7 +248,7 @@ def evaluate_sample_from_arrays(
     return SingleSampleResult(
         total_loss=total_loss,
         per_target_loss=per_target_loss,
-        states=states,
+        states=SCL_states,
         save_outputs=save_outputs,
         step=step_arr,
     )
@@ -242,10 +258,10 @@ def measurement_loss_from_arrays(
     wrapper: HybridOdeWrapper,
     *,
     t_measured: jax.Array,
-    y_measured: jax.Array,
+    SCL_target_measured: jax.Array,
     mask_measured: jax.Array,
     n_measured: int | jax.Array,
-    y0_measured: jax.Array,
+    SCL_target0_measured: jax.Array,
     jump_ts: jax.Array | None,
     max_solver_steps: int,
     solver_rtol: float,
@@ -255,10 +271,10 @@ def measurement_loss_from_arrays(
     result = evaluate_sample_from_arrays(
         wrapper,
         t_measured=t_measured,
-        y_measured=y_measured,
+        SCL_target_measured=SCL_target_measured,
         mask_measured=mask_measured,
         n_measured=n_measured,
-        y0_measured=y0_measured,
+        SCL_target0_measured=SCL_target0_measured,
         jump_ts=jump_ts,
         max_solver_steps=max_solver_steps,
         solver_rtol=solver_rtol,
@@ -271,7 +287,12 @@ def measurement_loss_from_arrays(
 def build_batched_loss_fn_from_sample_loss(
     sample_loss_fn: SampleLossFn,
 ) -> BatchedLossFn:
-    """Lift a per-sample loss fn to batched harness contract."""
+    """Lift a per-sample loss fn to batched harness contract.
+
+    The batched fn receives RAW measurements (``batch.y_measured`` /
+    ``batch.y0_measured``); it pre-scales them via the module's
+    ``SCALE_state`` so the per-sample loss fn operates entirely in SCL space.
+    """
 
     def _batched_loss_fn(
         wrapper: HybridOdeWrapper,
@@ -288,13 +309,19 @@ def build_batched_loss_fn_from_sample_loss(
     ) -> tuple[jax.Array, jax.Array, jax.Array]:
         batch_t_meas = clamp_padded_time_rows(batch.t_measured, batch.n_measured)
 
+        # Pre-scale measurements and initial states to SCL once per batch.
+        SCALE_state = wrapper.reaction_module.SCALE_state
+        SCALE_state_for_targets = SCALE_state[wrapper.target_state_indices]
+        SCL_y_measured = batch.y_measured / SCALE_state_for_targets[None, None, :]
+        SCL_y0_measured = batch.y0_measured / SCALE_state[None, :]
+
         def _sample_loss(
             process_idx: jax.Array,
             t_measured: jax.Array,
-            y_measured: jax.Array,
+            SCL_target_measured: jax.Array,
             mask_measured: jax.Array,
             n_measured: jax.Array,
-            y0_measured: jax.Array,
+            SCL_target0_measured: jax.Array,
             cin: jax.Array,
             cin_modeled: jax.Array,
             jump_ts: jax.Array | None,
@@ -311,10 +338,10 @@ def build_batched_loss_fn_from_sample_loss(
             total_loss, per_target = sample_loss_fn(
                 sample_wrapper,
                 t_measured=t_measured,
-                y_measured=y_measured,
+                SCL_target_measured=SCL_target_measured,
                 mask_measured=mask_measured,
                 n_measured=n_measured,
-                y0_measured=y0_measured,
+                SCL_target0_measured=SCL_target0_measured,
                 jump_ts=jump_ts,
                 max_solver_steps=max_solver_steps,
                 solver_rtol=solver_rtol,
@@ -331,10 +358,10 @@ def build_batched_loss_fn_from_sample_loss(
         )(
             batch.process_indices,
             batch_t_meas,
-            batch.y_measured,
+            SCL_y_measured,
             batch.mask_measured,
             batch.n_measured,
-            batch.y0_measured,
+            SCL_y0_measured,
             batched_Cin[batch.process_indices],
             batched_Cin_modeled[batch.process_indices],
             jump_ts_rows,

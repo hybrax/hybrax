@@ -10,6 +10,7 @@ from typing import Any, Sequence
 
 import diffrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -46,7 +47,7 @@ class DenseProcessExport:
     """Dense, human-facing per-process export arrays in physical units.
 
     ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modelled
-    rate vector), not with ``species_names``. Under a user-defined
+    rate vector), not with ``modeled_RMC_names``. Under a user-defined
     ``BiologicalOde`` these orderings differ.
     """
 
@@ -60,8 +61,8 @@ class DenseProcessExport:
 
 
 def _predictions_csv_header(
-    species_names: tuple[str, ...],
-    modeled_flow_names: tuple[str, ...],
+    modeled_RMC_names: tuple[str, ...],
+    modeled_VC_names: tuple[str, ...],
     rate_names: tuple[str, ...],
     auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
@@ -73,9 +74,9 @@ def _predictions_csv_header(
     """
     return (
         ["process", "t"]
-        + [f"c_{name}" for name in species_names]
+        + [f"c_{name}" for name in modeled_RMC_names]
         + ["V_cont", "V_real"]
-        + [f"B_{name}_cum" for name in modeled_flow_names]
+        + [f"B_{name}_cum" for name in modeled_VC_names]
         + list(rate_names)
         + list(auxiliary_columns)
     )
@@ -152,7 +153,7 @@ def _compute_dense_process_export(
         float(process.time_axis.end),
         n_dense,
     )
-    y0_scaled = process_wrapper.scale_state(process_data.y0_measured)
+    SCL_y0 = process_wrapper.reaction_module.scale_state(process_data.y0_measured)
     term = diffrax.ODETerm(_wrapper_vector_field)
     jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
     sol = diffrax.diffeqsolve(
@@ -161,7 +162,7 @@ def _compute_dense_process_export(
         t0=t_dense[0],
         t1=t_dense[-1],
         dt0=None,
-        y0=y0_scaled,
+        y0=SCL_y0,
         args=process_wrapper,
         saveat=diffrax.SaveAt(ts=t_dense, fn=_wrapper_save_outputs),
         stepsize_controller=diffrax.PIDController(
@@ -172,8 +173,8 @@ def _compute_dense_process_export(
         max_steps=solver_max_steps,
         throw=False,
     )
-    n_species = len(process_wrapper.species_names)
-    n_modeled = len(process_wrapper.modeled_flow_names)
+    n_species = len(process_wrapper.modeled_RMC_names)
+    n_modeled = len(process_wrapper.modeled_VC_names)
     n_rates = len(process_wrapper.rhs_ode.name_modeled_rates)
 
     if sol.result != diffrax.RESULTS.successful:
@@ -196,14 +197,19 @@ def _compute_dense_process_export(
             auxiliary=None,
         )
 
-    states_physical = np.asarray(sol.ys.states_physical)
+    # SaveOutputs carries SCL_states (in SCL space); convert to RAW for export
+    # via the module's unscale_state helper.
+    SCL_states = np.asarray(sol.ys.SCL_states)
+    RAW_states = np.asarray(
+        jax.vmap(process_wrapper.reaction_module.unscale_state)(sol.ys.SCL_states)
+    )
     return DenseProcessExport(
         t=np.asarray(t_dense),
-        c_species=states_physical[:, :n_species],
-        v_cont=states_physical[:, n_species],
-        v_real=np.asarray(sol.ys.v_real_export),
-        b_modeled_cum=states_physical[:, n_species + 1 : n_species + 1 + n_modeled],
-        q_rates=np.asarray(sol.ys.specific_rates_physical),
+        c_species=RAW_states[:, :n_species],
+        v_cont=RAW_states[:, n_species],
+        v_real=np.asarray(sol.ys.RAW_V_export),
+        b_modeled_cum=RAW_states[:, n_species + 1 : n_species + 1 + n_modeled],
+        q_rates=np.asarray(sol.ys.RAW_modeled_BiologicalOde_rates),
         auxiliary=(
             None
             if sol.ys.auxiliary is None
@@ -228,11 +234,11 @@ def _write_predictions_csv(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    species_names = trained_wrapper.species_names
-    modeled_flow_names = trained_wrapper.modeled_flow_names
+    modeled_RMC_names = trained_wrapper.modeled_RMC_names
+    modeled_VC_names = trained_wrapper.modeled_VC_names
     rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
-    n_species = len(species_names)
-    n_modeled = len(modeled_flow_names)
+    n_species = len(modeled_RMC_names)
+    n_modeled = len(modeled_VC_names)
     n_rates = len(rate_names)
     if process_names is None:
         selected_processes = tuple(store.process_order)
@@ -247,8 +253,8 @@ def _write_predictions_csv(
 
     if not selected_processes:
         header = _predictions_csv_header(
-            species_names=species_names,
-            modeled_flow_names=modeled_flow_names,
+            modeled_RMC_names=modeled_RMC_names,
+            modeled_VC_names=modeled_VC_names,
             rate_names=rate_names,
         )
         pd.DataFrame(columns=header).to_csv(output_path, index=False)
@@ -268,8 +274,8 @@ def _write_predictions_csv(
     )
     auxiliary_columns = _auxiliary_csv_columns(first_export.auxiliary)
     header = _predictions_csv_header(
-        species_names=species_names,
-        modeled_flow_names=modeled_flow_names,
+        modeled_RMC_names=modeled_RMC_names,
+        modeled_VC_names=modeled_VC_names,
         rate_names=rate_names,
         auxiliary_columns=auxiliary_columns,
     )
@@ -628,10 +634,10 @@ def plot_process_simulations(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    species_names = trained_wrapper.species_names
-    modeled_flow_names = trained_wrapper.modeled_flow_names
-    n_species = len(species_names)
-    n_modeled = len(modeled_flow_names)
+    modeled_RMC_names = trained_wrapper.modeled_RMC_names
+    modeled_VC_names = trained_wrapper.modeled_VC_names
+    n_species = len(modeled_RMC_names)
+    n_modeled = len(modeled_VC_names)
     if process_names is None:
         selected_processes = tuple(store.process_order)
     else:
@@ -659,8 +665,8 @@ def plot_process_simulations(
         ts_path.parent.mkdir(parents=True, exist_ok=True)
         if not selected_processes:
             ts_header = _predictions_csv_header(
-                species_names=species_names,
-                modeled_flow_names=modeled_flow_names,
+                modeled_RMC_names=modeled_RMC_names,
+                modeled_VC_names=modeled_VC_names,
                 rate_names=rate_names,
             )
             pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
@@ -694,8 +700,8 @@ def plot_process_simulations(
         if ts_path is not None and ts_header is None:
             ts_auxiliary_columns = _auxiliary_csv_columns(auxiliary_dense)
             ts_header = _predictions_csv_header(
-                species_names=species_names,
-                modeled_flow_names=modeled_flow_names,
+                modeled_RMC_names=modeled_RMC_names,
+                modeled_VC_names=modeled_VC_names,
                 rate_names=rate_names,
                 auxiliary_columns=ts_auxiliary_columns,
             )
@@ -750,7 +756,7 @@ def plot_process_simulations(
 
             # Cumulative measured B_modeled per modeled flow on the dense grid.
             b_modeled_true_dense = np.zeros((len(t_dense_np), n_modeled), dtype=float)
-            for k, fn in enumerate(modeled_flow_names):
+            for k, fn in enumerate(modeled_VC_names):
                 vc = process.volume.volume_changes[fn]
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
@@ -766,7 +772,7 @@ def plot_process_simulations(
             n_rows = n_species + 1 + n_modeled
             fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
 
-            for i, sp_name in enumerate(species_names):
+            for i, sp_name in enumerate(modeled_RMC_names):
                 ax_c = axes[i, 0]
                 comp = process.reactor_medium.components[sp_name]
                 t_measured = np.asarray(comp.concentration.times, dtype=float)
@@ -870,7 +876,7 @@ def plot_process_simulations(
                 ax_vc.legend(handles=handles + extra_handles, fontsize="small")
 
             # ---- Cumulative modeled feed panels ----
-            for k, fn in enumerate(modeled_flow_names):
+            for k, fn in enumerate(modeled_VC_names):
                 row = n_species + 1 + k
                 ax_b = axes[row, 0]
                 ax_b.plot(

@@ -24,74 +24,141 @@ from bp_format.mechanistic import build_rhs_ode
 
 from bp_train.controls import EVENT_RUN_MIN_DT_CONFIG_KEY
 from bp_train.controls_store import ControlsStore
-from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.model_api import (
+    ReactionInputs,
+    ReactionOutputs,
+    UserReactionModule,
+)
 from bp_train.wrapper import (
     HybridOdeWrapper,
     validate_rhs_ode_compatibility,
 )
 
 
-class ConstantReactionModule(UserReactionModule):
-    """Test reaction module returning fixed `ReactionOutputs`."""
+def _unit_scale_kwargs(
+    *,
+    n_species: int,
+    n_rates: int,
+    n_modeled_VCs: int,
+    controls: ControlsStore | None = None,
+    n_controlled_FVCs: int | None = None,
+    n_controlled_SVCs: int | None = None,
+    n_controlled_PVs: int | None = None,
+    n_extras: int | None = None,
+) -> dict[str, jnp.ndarray]:
+    """All-ones SCALE_* kwargs sized to a layout. Pass either ``controls`` or
+    explicit per-axis sizes."""
+    if controls is not None:
+        n_controlled_FVCs = len(controls.name_controlled_FVCs)
+        n_controlled_SVCs = len(controls.name_controlled_SVCs)
+        n_controlled_PVs = len(controls.name_controlled_PVs)
+        n_extras = len(controls.name_extras)
+    assert n_controlled_FVCs is not None and n_controlled_SVCs is not None
+    assert n_controlled_PVs is not None and n_extras is not None
+    f32 = jnp.float32
+    return {
+        "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=f32),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
+        "SCALE_modeled_VCs_cumulative": jnp.ones(n_modeled_VCs, dtype=f32),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs, dtype=f32),
+        "SCALE_controlled_SVCs_cumulative": jnp.ones(n_controlled_SVCs, dtype=f32),
+        "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs, dtype=f32),
+        "SCALE_extras": jnp.ones(n_extras, dtype=f32),
+        "SCALE_controlled_FVC_rates": jnp.ones(n_controlled_FVCs, dtype=f32),
+        "SCALE_controlled_SVC_rates": jnp.ones(n_controlled_SVCs, dtype=f32),
+        "SCALE_Cin_controlled_FVCs": jnp.ones((n_controlled_FVCs, n_species), dtype=f32),
+        "SCALE_Cin_modeled_FVCs": jnp.ones((n_modeled_VCs, n_species), dtype=f32),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
+        "SCALE_modeled_VC_rates": jnp.ones(n_modeled_VCs, dtype=f32),
+    }
 
-    specific_rates: jnp.ndarray
-    modeled_feed_rates: jnp.ndarray
-    auxiliary: dict[str, jnp.ndarray] | None
+
+_PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
+    "SCALE_modeled_RMCs": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
+    "SCALE_modeled_VCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_SVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_PVs": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_extras": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_FVC_rates": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_controlled_SVC_rates": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_Cin_controlled_FVCs": jnp.zeros((0, 0), dtype=jnp.float32),
+    "SCALE_Cin_modeled_FVCs": jnp.zeros((0, 0), dtype=jnp.float32),
+    "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_modeled_VC_rates": jnp.zeros(0, dtype=jnp.float32),
+}
+
+
+class ConstantReactionModule(UserReactionModule):
+    """Test reaction module returning fixed rates (in SCL space).
+
+    Tests construct without scale kwargs (placeholder zeros fill in); the
+    test ``_build_wrapper`` helper injects correctly-sized all-ones SCALE_*
+    via ``eqx.tree_at`` before constructing the wrapper.
+    """
+
+    SCL_specific_rates: jnp.ndarray
+    SCL_feed_rates: jnp.ndarray
+    aux: dict[str, jnp.ndarray] | None
 
     def __init__(
         self,
         specific_rates: jnp.ndarray,
         modeled_feed_rates: jnp.ndarray,
         auxiliary: dict[str, jnp.ndarray] | None = None,
+        **scale_kwargs,
     ):
-        self.specific_rates = specific_rates
-        self.modeled_feed_rates = modeled_feed_rates
-        self.auxiliary = auxiliary
+        scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
+        super().__init__(**scale_kwargs)
+        self.SCL_specific_rates = specific_rates
+        self.SCL_feed_rates = modeled_feed_rates
+        self.aux = auxiliary
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, c_species, controls_vector
+    def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=self.specific_rates,
-            modeled_feed_rates=self.modeled_feed_rates,
-            auxiliary=self.auxiliary,
+            SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
+            SCL_modeled_VC_rates=self.SCL_feed_rates,
+            auxiliary=self.aux,
         )
 
 
 class InvalidReactionShapeModule(UserReactionModule):
     """Test reaction module returning malformed output ranks."""
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, c_species, controls_vector
+    def __init__(self, **scale_kwargs):
+        scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
+        super().__init__(**scale_kwargs)
+
+    def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
+        del t, inputs
         return ReactionOutputs(
-            specific_rates=jnp.asarray([[0.1]], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([[0.1]], dtype=jnp.float32),
+            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
 
 class VolumeFeatureEchoReactionModule(UserReactionModule):
-    """Reaction module that echoes the last ANN control feature into q."""
+    """Reaction module that echoes ``SCL_V`` into the rates output."""
 
-    n_species: int
-    n_modeled: int
-    expects_v_real_feature: bool
+    n_species: int = eqx.field(static=True)
+    n_modeled: int = eqx.field(static=True)
 
-    def __init__(
-        self,
-        *,
-        n_species: int,
-        n_modeled: int = 0,
-        expects_v_real_feature: bool = False,
-    ):
+    def __init__(self, *, n_species: int, n_modeled: int = 0, **scale_kwargs):
+        scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
+        super().__init__(**scale_kwargs)
         self.n_species = n_species
         self.n_modeled = n_modeled
-        self.expects_v_real_feature = expects_v_real_feature
 
-    def __call__(self, t, c_species, controls_vector):
-        del t, c_species
-        v_feature = jnp.asarray(controls_vector[-1], dtype=jnp.float32)
+    def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
+        del t
+        v_feature = jnp.asarray(inputs.SCL_V, dtype=jnp.float32)
         return ReactionOutputs(
-            specific_rates=jnp.full((self.n_species,), v_feature, dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((self.n_modeled,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.full(
+                (self.n_species,), v_feature, dtype=jnp.float32
+            ),
+            SCL_modeled_VC_rates=jnp.zeros((self.n_modeled,), dtype=jnp.float32),
         )
 
 
@@ -277,11 +344,36 @@ def _make_two_species_two_feed_process() -> BioProcess:
     )
 
 
-def _build_wrapper(process, controls, reaction_module):
+def _derive_unit_scale_kwargs(process, controls) -> dict[str, jnp.ndarray]:
+    """Build all-ones SCALE_* kwargs sized to the process / controls layout."""
+    rhs_ode = build_rhs_ode(process)
+    return _unit_scale_kwargs(
+        n_species=len(rhs_ode.name_modeled_RMCs),
+        n_rates=len(rhs_ode.name_modeled_rates),
+        n_modeled_VCs=len(rhs_ode.name_modeled_FVCs),
+        controls=controls,
+    )
+
+
+def _inject_scales(reaction_module: UserReactionModule, scale_kwargs: dict[str, jnp.ndarray]) -> UserReactionModule:
+    """Replace placeholder SCALE_* fields on a test module with correctly-sized values."""
+    return eqx.tree_at(
+        lambda m: tuple(getattr(m, name) for name in scale_kwargs.keys()),
+        reaction_module,
+        tuple(scale_kwargs.values()),
+    )
+
+
+def _build_wrapper(process, controls, reaction_module, **kwargs):
+    """Test helper: derives unit SCALE_* from layout, injects them into the
+    module, and constructs the HybridOdeWrapper."""
+    scale_kwargs = _derive_unit_scale_kwargs(process, controls)
+    reaction_module = _inject_scales(reaction_module, scale_kwargs)
     return HybridOdeWrapper.from_process(
         reaction_module=reaction_module,
         process=process,
         controls=controls,
+        **kwargs,
     )
 
 
@@ -519,7 +611,7 @@ def test_wrapper_rejects_modeled_rate_shape_mismatch():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    with pytest.raises(ValueError, match="modeled_feed_rates must have shape"):
+    with pytest.raises(ValueError, match="SCL_modeled_VC_rates must have shape"):
         # State layout: [biomass, V_cont, B_base_feed_cum]
         wrapper(0.0, jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32))
 
@@ -534,44 +626,25 @@ def test_wrapper_rejects_invalid_state_vector_shape():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    with pytest.raises(ValueError, match="state vector y must have shape"):
+    with pytest.raises(ValueError, match="state vector must have shape"):
         wrapper(0.0, jnp.asarray([1.0, 1.0, 1.0], dtype=jnp.float32))
 
 
-def test_wrapper_augmented_controls_names_includes_cin():
+def test_wrapper_ann_v_feature_reaches_module():
+    """``SCL_V`` is always passed to the module via ReactionInputs."""
     process = _make_single_species_process()
     collection = _make_single_species_collection()
     controls = ControlsStore.from_collection(collection).get_controls("p1")
-    reaction_module = ConstantReactionModule(
-        specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
-        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
-    )
+    reaction_module = VolumeFeatureEchoReactionModule(n_species=1)
     wrapper = _build_wrapper(process, controls, reaction_module)
-
-    assert "cin:feed_A:biomass" in wrapper.augmented_controls_names
-    assert len(wrapper.augmented_controls_units) == len(
-        wrapper.augmented_controls_names
-    )
-
-
-def test_wrapper_optional_ann_volume_feature_uses_v_real():
-    process = _make_single_species_process()
-    collection = _make_single_species_collection()
-    controls = ControlsStore.from_collection(collection).get_controls("p1")
-    reaction_module = VolumeFeatureEchoReactionModule(
-        n_species=1,
-        expects_v_real_feature=True,
-    )
-    wrapper = _build_wrapper(process, controls, reaction_module)
-
-    assert wrapper.include_v_real_feature is True
-    assert wrapper.augmented_controls_names[-1] == "v_real"
 
     # t=2.0 is after the sample event at t=1.0; V_sample_acc ~= 0.1 L.
+    # Unit scales mean SCL == RAW everywhere, so SCL_V == RAW_V == 1.1 L.
     y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
-    y_scaled = wrapper.scale_state(y_physical)
+    y_scaled = wrapper.reaction_module.scale_state(y_physical)
     dy_scaled = wrapper(2.0, y_scaled)
-    dy_physical = dy_scaled * wrapper.state_scale
+    dy_physical = dy_scaled * wrapper.reaction_module.SCALE_state
+    # The module echoes SCL_V into specific_rates; with unit scales that's 1.1.
     assert float(dy_physical[0]) == pytest.approx(1.1, rel=1e-6, abs=1e-6)
 
 
@@ -579,27 +652,32 @@ def test_wrapper_save_outputs_splits_export_and_runtime_v_real():
     process = _make_single_species_process(feed_rate=0.0)
     collection = _make_single_species_collection(feed_rate=0.0)
     controls = ControlsStore.from_collection(collection).get_controls("p1")
-    reaction_module = VolumeFeatureEchoReactionModule(
-        n_species=1,
-        expects_v_real_feature=True,
+    reaction_module = VolumeFeatureEchoReactionModule(n_species=1)
+    reaction_module = _inject_scales(
+        reaction_module, _derive_unit_scale_kwargs(process, controls)
     )
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=reaction_module,
         process=process,
         controls=controls,
-        min_real_volume=0.02,
+        min_V=0.02,
     )
 
     # At t=2.0 the accumulated sample volume is 0.1 L.
     y_physical = jnp.asarray([1.0, 0.05], dtype=jnp.float32)
-    saved = wrapper.save_outputs(2.0, wrapper.scale_state(y_physical))
+    y_scaled = wrapper.reaction_module.scale_state(y_physical)
+    saved = wrapper.save_outputs(2.0, y_scaled)
 
-    assert jnp.allclose(saved.states_physical, y_physical)
-    assert float(saved.v_real_export) == pytest.approx(-0.05, abs=1e-6)
-    assert float(saved.v_real_runtime) == pytest.approx(0.02, abs=1e-6)
-    # The optional ANN feature must use runtime semantics, not export semantics.
-    assert float(saved.specific_rates_physical[0]) == pytest.approx(0.02, abs=1e-6)
-    assert saved.modeled_feed_rates_physical.shape == (0,)
+    # Saved state is in SCL space; with unit scales SCL == RAW.
+    assert jnp.allclose(saved.SCL_states, y_physical)
+    assert float(saved.RAW_V_export) == pytest.approx(-0.05, abs=1e-6)
+    assert float(saved.RAW_V) == pytest.approx(0.02, abs=1e-6)
+    # Module echoes SCL_V (= 0.02 after the min_V floor); unit q-scale makes
+    # RAW == SCL.
+    assert float(saved.RAW_modeled_BiologicalOde_rates[0]) == pytest.approx(
+        0.02, abs=1e-6
+    )
+    assert saved.RAW_modeled_VC_rates.shape == (0,)
 
 
 def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates():
@@ -690,28 +768,42 @@ def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates()
     )
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
+    # Build the module with non-unit q-/f-scales so save_outputs returns
+    # unscaled (RAW) rates from the module's SCL outputs.
+    scale_kwargs = _derive_unit_scale_kwargs(process, controls)
+    scale_kwargs["SCALE_modeled_BiologicalOde_rates"] = jnp.asarray(
+        [4.0], dtype=jnp.float32
+    )
+    scale_kwargs["SCALE_modeled_VC_rates"] = jnp.asarray([2.5], dtype=jnp.float32)
+    reaction_module = ConstantReactionModule(
+        specific_rates=jnp.asarray([0.25], dtype=jnp.float32),
+        modeled_feed_rates=jnp.asarray([0.3], dtype=jnp.float32),
+        **scale_kwargs,
+    )
     wrapper = HybridOdeWrapper.from_process(
-        reaction_module=ConstantReactionModule(
-            specific_rates=jnp.asarray([0.25], dtype=jnp.float32),
-            modeled_feed_rates=jnp.asarray([0.3], dtype=jnp.float32),
-        ),
+        reaction_module=reaction_module,
         process=process,
         controls=controls,
-        q_scale=jnp.asarray([4.0], dtype=jnp.float32),
-        f_scale=jnp.asarray([2.5], dtype=jnp.float32),
     )
 
     y_physical = jnp.asarray([1.0, 1.0, 0.7], dtype=jnp.float32)
-    saved = wrapper.save_outputs(0.0, wrapper.scale_state(y_physical))
+    SCL_state = y_physical / wrapper.reaction_module.SCALE_state
+    saved = wrapper.save_outputs(0.0, SCL_state)
 
-    assert jnp.allclose(saved.states_physical, y_physical)
+    # Saved state is SCL; convert back for the assertion.
     assert jnp.allclose(
-        saved.specific_rates_physical,
+        wrapper.reaction_module.unscale_state(saved.SCL_states), y_physical
+    )
+    # RAW q rate = SCL_q (0.25) * SCALE_q (4.0) = 1.0.
+    assert jnp.allclose(
+        saved.RAW_modeled_BiologicalOde_rates,
         jnp.asarray([1.0], dtype=jnp.float32),
     )
+    # RAW feed rate = SCL_f (0.3) * SCALE_f (2.5) = 0.75. (Wrapper no longer
+    # applies softplus — the module owns positivity.)
     assert jnp.allclose(
-        saved.modeled_feed_rates_physical,
-        jnp.asarray([jax.nn.softplus(0.3) * 2.5], dtype=jnp.float32),
+        saved.RAW_modeled_VC_rates,
+        jnp.asarray([0.75], dtype=jnp.float32),
     )
 
 
@@ -733,7 +825,7 @@ def test_wrapper_save_outputs_returns_auxiliary_observables():
     )
 
     y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
-    saved = wrapper.save_outputs(2.0, wrapper.scale_state(y_physical))
+    saved = wrapper.save_outputs(2.0, wrapper.reaction_module.scale_state(y_physical))
 
     assert saved.auxiliary is not None
     assert float(saved.auxiliary["mu_raw"]) == pytest.approx(-1.25, abs=1e-6)
@@ -757,7 +849,7 @@ def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
     )
 
     y0_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
-    y0_scaled = wrapper.scale_state(y0_physical)
+    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
     save_ts = jnp.asarray([2.0], dtype=jnp.float32)
     solve_kwargs = dict(
         solver=diffrax.Tsit5(),
@@ -789,22 +881,22 @@ def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
     assert save_sol.result == diffrax.RESULTS.successful
 
     expected = wrapper.save_outputs(2.0, state_sol.ys[0])
-    assert jnp.allclose(save_sol.ys.states_physical[0], expected.states_physical)
-    assert float(save_sol.ys.v_real_export[0]) == pytest.approx(
-        float(expected.v_real_export),
+    assert jnp.allclose(save_sol.ys.SCL_states[0], expected.SCL_states)
+    assert float(save_sol.ys.RAW_V_export[0]) == pytest.approx(
+        float(expected.RAW_V_export),
         abs=1e-6,
     )
-    assert float(save_sol.ys.v_real_runtime[0]) == pytest.approx(
-        float(expected.v_real_runtime),
+    assert float(save_sol.ys.RAW_V[0]) == pytest.approx(
+        float(expected.RAW_V),
         abs=1e-6,
     )
     assert jnp.allclose(
-        save_sol.ys.specific_rates_physical[0],
-        expected.specific_rates_physical,
+        save_sol.ys.RAW_modeled_BiologicalOde_rates[0],
+        expected.RAW_modeled_BiologicalOde_rates,
     )
     assert jnp.allclose(
-        save_sol.ys.modeled_feed_rates_physical[0],
-        expected.modeled_feed_rates_physical,
+        save_sol.ys.RAW_modeled_VC_rates[0],
+        expected.RAW_modeled_VC_rates,
     )
 
 
@@ -822,7 +914,7 @@ def test_wrapper_save_outputs_rejects_non_mapping_auxiliary():
         ),
     )
     wrapper = eqx.tree_at(
-        lambda w: w.reaction_module.auxiliary,
+        lambda w: w.reaction_module.aux,
         wrapper,
         jnp.asarray([1.0], dtype=jnp.float32),
     )
@@ -831,7 +923,7 @@ def test_wrapper_save_outputs_rejects_non_mapping_auxiliary():
         TypeError,
         match="ReactionOutputs.auxiliary must be None or dict\\[str, array\\]",
     ):
-        wrapper.save_outputs(0.0, wrapper.scale_state(jnp.asarray([1.0, 1.0])))
+        wrapper.save_outputs(0.0, wrapper.reaction_module.scale_state(jnp.asarray([1.0, 1.0])))
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():
@@ -913,15 +1005,11 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
         specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
         modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
     )
-    wrapper = HybridOdeWrapper.from_process(
-        reaction_module=reaction_module,
-        process=process,
-        controls=controls,
-    )
+    wrapper = _build_wrapper(process, controls, reaction_module)
 
     # State layout: [biomass, V_cont] (no modeled feeds → state size = 2)
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y0_scaled = wrapper.scale_state(y0_physical)
+    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
 
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
@@ -935,7 +1023,7 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
         max_steps=4096,
         throw=False,
     )
-    final_physical = wrapper.unscale_state(sol.ys[0])
+    final_physical = wrapper.reaction_module.unscale_state(sol.ys[0])
     final_v_cont = float(final_physical[-1])
 
     # V_cont(10) = V0 + cumulative_feed(10) = 1.0 + 1.0 = 2.0
@@ -1018,7 +1106,7 @@ def test_wrapper_bolus_feed_integrates_v_cont():
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y0_scaled = wrapper.scale_state(y0_physical)
+    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
     solution = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
         solver=diffrax.Tsit5(),
@@ -1036,7 +1124,7 @@ def test_wrapper_bolus_feed_integrates_v_cont():
         throw=False,
     )
     assert solution.result == diffrax.RESULTS.successful
-    final_physical = wrapper.unscale_state(solution.ys[0])
+    final_physical = wrapper.reaction_module.unscale_state(solution.ys[0])
     final_v_cont = float(final_physical[-1])
 
     # V_cont must increase by the specified bolus volume (2.0 L).
@@ -1128,7 +1216,7 @@ def _integrate_bolus_ramp_volume_trace(
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y0_scaled = wrapper.scale_state(y0_physical)
+    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
     peak_time = bolus_time + 0.5 * expected_ramp_duration
     end_time = bolus_time + expected_ramp_duration
     save_ts = jnp.asarray(
@@ -1159,7 +1247,7 @@ def _integrate_bolus_ramp_volume_trace(
     )
     assert solution.result == diffrax.RESULTS.successful
 
-    physical_trace = jax.vmap(wrapper.unscale_state)(solution.ys)
+    physical_trace = jax.vmap(wrapper.reaction_module.unscale_state)(solution.ys)
     return physical_trace[:, 1]
 
 
@@ -1272,9 +1360,9 @@ def test_wrapper_bolus_transport_only_for_present_species():
 
     # Evaluate inside the synthetic bolus ramp.
     y_physical = jnp.asarray([1.0, 0.0, 1.0], dtype=jnp.float32)
-    y_scaled = wrapper.scale_state(y_physical)
+    y_scaled = wrapper.reaction_module.scale_state(y_physical)
     dy_scaled = wrapper(t_in_ramp, y_scaled)
-    dy_physical = dy_scaled * wrapper.state_scale
+    dy_physical = dy_scaled * wrapper.reaction_module.SCALE_state
 
     # biomass present in feed medium -> non-zero bolus transport contribution.
     assert float(dy_physical[0]) != pytest.approx(0.0, abs=1e-9)
@@ -1362,7 +1450,7 @@ def test_wrapper_multi_bolus_final_v_cont_invariant():
         ),
     )
 
-    y0_scaled = wrapper.scale_state(jnp.asarray([1.0, 1.0], dtype=jnp.float32))
+    y0_scaled = wrapper.reaction_module.scale_state(jnp.asarray([1.0, 1.0], dtype=jnp.float32))
     solution = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
         solver=diffrax.Tsit5(),
@@ -1380,7 +1468,7 @@ def test_wrapper_multi_bolus_final_v_cont_invariant():
         throw=False,
     )
     assert solution.result == diffrax.RESULTS.successful
-    final_state = wrapper.unscale_state(solution.ys[0])
+    final_state = wrapper.reaction_module.unscale_state(solution.ys[0])
     final_v_cont = float(final_state[-1])
     expected_final_v = 1.0 + float(jnp.sum(bolus_deltas))
     assert final_v_cont == pytest.approx(expected_final_v, abs=2e-3)
