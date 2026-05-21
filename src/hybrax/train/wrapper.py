@@ -460,7 +460,7 @@ class HybridOdeWrapper(eqx.Module):
         RAW_RMCs_V = jnp.concatenate(
             [eval_terms.RAW_RMC_rhs, eval_terms.RAW_V[None]]
         )
-        f_modeled_SVCs = jnp.zeros(
+        RAW_modeled_SVCs_rates = jnp.zeros(
             (len(self.rhs_ode.name_modeled_SVCs),), dtype=SCL_state.dtype
         )
         RAW_d_RMCs_V_dt = self.rhs_ode(
@@ -468,7 +468,7 @@ class HybridOdeWrapper(eqx.Module):
             eval_terms.RAW_modeled_BiologicalOde_rates,
             eval_terms.RAW_u_rhs_full,
             eval_terms.RAW_modeled_FVCs_rates,
-            f_modeled_SVCs,
+            RAW_modeled_SVCs_rates,
         )
         if self.controlled_FVCs_bolus_Cin.shape[0] > 0:
             RAW_controlled_FVCs_bolus_contrib = (
