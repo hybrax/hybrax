@@ -88,7 +88,7 @@ class HybridOdeWrapper(eqx.Module):
 
         RAW_state = [modeled_RMCs (n_RMCs)
                      | V_in_cumulative (1)
-                     | modeled_VCs_cumulative (n_VCs)]
+                     | modeled_FVCs_cumulative (n_FVCs)]
 
     The wrapper holds **no scale fields of its own** — every scale comes from
     ``self.reaction_module.SCALE_*``.
@@ -126,7 +126,7 @@ class HybridOdeWrapper(eqx.Module):
     min_V: float = eqx.field(static=True)
 
     modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
-    modeled_VC_names: tuple[str, ...] = eqx.field(static=True)
+    modeled_FVC_names: tuple[str, ...] = eqx.field(static=True)
 
     # Cached slice sizes for the canonical controls vector; sourced from
     # PerProcessControls at construction time so the runtime path doesn't have
@@ -180,7 +180,7 @@ class HybridOdeWrapper(eqx.Module):
             )
 
         n_RMCs = len(rhs_ode.name_modeled_RMCs)
-        n_VCs = len(rhs_ode.name_modeled_FVCs)
+        n_FVCs = len(rhs_ode.name_modeled_FVCs)
         n_rates = len(rhs_ode.name_modeled_rates)
         n_u = controls.n_u
 
@@ -191,15 +191,15 @@ class HybridOdeWrapper(eqx.Module):
         # Validate reaction_module SCALE_* shapes match the layout we'll feed.
         _expected_shapes: dict[str, tuple[int, ...]] = {
             "SCALE_modeled_RMCs": (n_RMCs,),
-            "SCALE_modeled_FVCs_cumulative": (n_VCs,),
+            "SCALE_modeled_FVCs_cumulative": (n_FVCs,),
             "SCALE_controlled_FVCs_cumulative": (n_controlled_FVCs_count,),
             "SCALE_controlled_FVCs_rates": (n_controlled_FVCs_count,),
             "SCALE_controlled_FVCs_Cin": (n_controlled_FVCs_count, n_RMCs),
             "SCALE_controlled_FVCs_bolus_rates": (n_controlled_FVCs_bolus,),
             "SCALE_controlled_PVs": (len(controls.name_controlled_PVs),),
-            "SCALE_modeled_FVCs_Cin": (n_VCs, n_RMCs),
+            "SCALE_modeled_FVCs_Cin": (n_FVCs, n_RMCs),
             "SCALE_modeled_BiologicalOde_rates": (n_rates,),
-            "SCALE_modeled_FVCs_rates": (n_VCs,),
+            "SCALE_modeled_FVCs_rates": (n_FVCs,),
         }
         for field_name, expected in _expected_shapes.items():
             if not hasattr(reaction_module, field_name):
@@ -264,7 +264,7 @@ class HybridOdeWrapper(eqx.Module):
             bolus_control_indices.append(bolus_index_in_columns[flow_name])
             bolus_Cin_rows.append(cin_row)
 
-        n_modeled = n_VCs + len(rhs_ode.name_modeled_SVCs)
+        n_modeled = n_FVCs + len(rhs_ode.name_modeled_SVCs)
 
         # Default target_state_indices: species columns + modeled-cumulative columns
         # (V_in_cumulative at index n_RMCs is in the state but not a loss target).
@@ -292,7 +292,7 @@ class HybridOdeWrapper(eqx.Module):
             sample_acc_control_index=int(controls.sample_acc_global_index),
             min_V=float(min_V),
             modeled_RMC_names=rhs_ode.name_modeled_RMCs,
-            modeled_VC_names=rhs_ode.name_modeled_FVCs,
+            modeled_FVC_names=rhs_ode.name_modeled_FVCs,
             n_controlled_FVCs=n_controlled_FVCs_count,
             n_controlled_PVs=len(controls.name_controlled_PVs),
             n_controlled_FVCs_bolus=n_controlled_FVCs_bolus,
@@ -304,8 +304,8 @@ class HybridOdeWrapper(eqx.Module):
         if SCL_state.ndim != 1:
             raise ValueError("state vector ndim must be 1")
         n_RMCs = len(self.modeled_RMC_names)
-        n_VCs = len(self.modeled_VC_names)
-        expected_state_size = n_RMCs + 1 + n_VCs
+        n_FVCs = len(self.modeled_FVC_names)
+        expected_state_size = n_RMCs + 1 + n_FVCs
         if SCL_state.shape[0] != expected_state_size:
             raise ValueError(
                 f"state vector must have shape ({expected_state_size},), "

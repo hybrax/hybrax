@@ -436,10 +436,41 @@ class UserReactionModule(eqx.Module):
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
 
+    # ------------------------------------------------------------------
+    # Axis-dimension properties. Subclass authors size their MLPs /
+    # mechanistic equations from these after ``super().__init__()``; no
+    # need to thread `n_*` kwargs through `build_reaction_module`.
+    # ------------------------------------------------------------------
+
     @property
     def n_modeled_RMCs(self) -> int:
-        """Number of modeled RMCs (species), inferred from SCALE_modeled_RMCs shape."""
+        """Number of modeled RMCs (species)."""
         return int(self.SCALE_modeled_RMCs.shape[0])
+
+    @property
+    def n_modeled_FVCs(self) -> int:
+        """Number of modeled feed volume changes (per-feed state slice)."""
+        return int(self.SCALE_modeled_FVCs_cumulative.shape[0])
+
+    @property
+    def n_modeled_BiologicalOde_rates(self) -> int:
+        """Number of rates emitted by the BiologicalOde block."""
+        return int(self.SCALE_modeled_BiologicalOde_rates.shape[0])
+
+    @property
+    def n_controlled_FVCs(self) -> int:
+        """Number of continuous controlled feeds."""
+        return int(self.SCALE_controlled_FVCs_cumulative.shape[0])
+
+    @property
+    def n_controlled_FVCs_bolus(self) -> int:
+        """Number of discrete bolus controlled-FVC events."""
+        return int(self.SCALE_controlled_FVCs_bolus_rates.shape[0])
+
+    @property
+    def n_controlled_PVs(self) -> int:
+        """Number of controlled process-variable signals."""
+        return int(self.SCALE_controlled_PVs.shape[0])
 
     @property
     def SCALE_state(self) -> jax.Array:

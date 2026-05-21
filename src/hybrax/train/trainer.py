@@ -227,8 +227,8 @@ def evaluate_sample_from_arrays(
     )
     SCL_states = save_outputs.SCL_states
     # Gather predicted target columns from the integrated SCL state.
-    # State layout: [modeled_RMCs | V_in_cumulative | modeled_VCs_cumulative].
-    # target_state_indices selects modeled_RMCs + modeled_VCs_cumulative; the
+    # State layout: [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative].
+    # target_state_indices selects modeled_RMCs + modeled_FVCs_cumulative; the
     # V_in_cumulative column is in the state but not a loss target.
     SCL_target_pred = SCL_states[:, wrapper.target_state_indices]
 

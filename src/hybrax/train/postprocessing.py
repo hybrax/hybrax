@@ -62,7 +62,7 @@ class DenseProcessExport:
 
 def _predictions_csv_header(
     modeled_RMC_names: tuple[str, ...],
-    modeled_VC_names: tuple[str, ...],
+    modeled_FVC_names: tuple[str, ...],
     rate_names: tuple[str, ...],
     auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
@@ -76,7 +76,7 @@ def _predictions_csv_header(
         ["process", "t"]
         + [f"c_{name}" for name in modeled_RMC_names]
         + ["V_cont", "V_real"]
-        + [f"B_{name}_cum" for name in modeled_VC_names]
+        + [f"B_{name}_cum" for name in modeled_FVC_names]
         + list(rate_names)
         + list(auxiliary_columns)
     )
@@ -174,7 +174,7 @@ def _compute_dense_process_export(
         throw=False,
     )
     n_species = len(process_wrapper.modeled_RMC_names)
-    n_modeled = len(process_wrapper.modeled_VC_names)
+    n_modeled = len(process_wrapper.modeled_FVC_names)
     n_rates = len(process_wrapper.rhs_ode.name_modeled_rates)
 
     if sol.result != diffrax.RESULTS.successful:
@@ -235,10 +235,10 @@ def _write_predictions_csv(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     modeled_RMC_names = trained_wrapper.modeled_RMC_names
-    modeled_VC_names = trained_wrapper.modeled_VC_names
+    modeled_FVC_names = trained_wrapper.modeled_FVC_names
     rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
     n_species = len(modeled_RMC_names)
-    n_modeled = len(modeled_VC_names)
+    n_modeled = len(modeled_FVC_names)
     n_rates = len(rate_names)
     if process_names is None:
         selected_processes = tuple(store.process_order)
@@ -254,7 +254,7 @@ def _write_predictions_csv(
     if not selected_processes:
         header = _predictions_csv_header(
             modeled_RMC_names=modeled_RMC_names,
-            modeled_VC_names=modeled_VC_names,
+            modeled_FVC_names=modeled_FVC_names,
             rate_names=rate_names,
         )
         pd.DataFrame(columns=header).to_csv(output_path, index=False)
@@ -275,7 +275,7 @@ def _write_predictions_csv(
     auxiliary_columns = _auxiliary_csv_columns(first_export.auxiliary)
     header = _predictions_csv_header(
         modeled_RMC_names=modeled_RMC_names,
-        modeled_VC_names=modeled_VC_names,
+        modeled_FVC_names=modeled_FVC_names,
         rate_names=rate_names,
         auxiliary_columns=auxiliary_columns,
     )
@@ -635,9 +635,9 @@ def plot_process_simulations(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     modeled_RMC_names = trained_wrapper.modeled_RMC_names
-    modeled_VC_names = trained_wrapper.modeled_VC_names
+    modeled_FVC_names = trained_wrapper.modeled_FVC_names
     n_species = len(modeled_RMC_names)
-    n_modeled = len(modeled_VC_names)
+    n_modeled = len(modeled_FVC_names)
     if process_names is None:
         selected_processes = tuple(store.process_order)
     else:
@@ -666,7 +666,7 @@ def plot_process_simulations(
         if not selected_processes:
             ts_header = _predictions_csv_header(
                 modeled_RMC_names=modeled_RMC_names,
-                modeled_VC_names=modeled_VC_names,
+                modeled_FVC_names=modeled_FVC_names,
                 rate_names=rate_names,
             )
             pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
@@ -701,7 +701,7 @@ def plot_process_simulations(
             ts_auxiliary_columns = _auxiliary_csv_columns(auxiliary_dense)
             ts_header = _predictions_csv_header(
                 modeled_RMC_names=modeled_RMC_names,
-                modeled_VC_names=modeled_VC_names,
+                modeled_FVC_names=modeled_FVC_names,
                 rate_names=rate_names,
                 auxiliary_columns=ts_auxiliary_columns,
             )
@@ -756,7 +756,7 @@ def plot_process_simulations(
 
             # Cumulative measured B_modeled per modeled flow on the dense grid.
             b_modeled_true_dense = np.zeros((len(t_dense_np), n_modeled), dtype=float)
-            for k, fn in enumerate(modeled_VC_names):
+            for k, fn in enumerate(modeled_FVC_names):
                 vc = process.volume.volume_changes[fn]
                 vc_t = np.asarray(vc.values.times, dtype=float)
                 vc_v = np.asarray(vc.values.values, dtype=float)
@@ -876,7 +876,7 @@ def plot_process_simulations(
                 ax_vc.legend(handles=handles + extra_handles, fontsize="small")
 
             # ---- Cumulative modeled feed panels ----
-            for k, fn in enumerate(modeled_VC_names):
+            for k, fn in enumerate(modeled_FVC_names):
                 row = n_species + 1 + k
                 ax_b = axes[row, 0]
                 ax_b.plot(

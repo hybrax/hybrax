@@ -154,7 +154,7 @@ def _make_two_process_collection() -> BioProcessCollection:
 def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     f32 = jnp.float32
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
-    n_VCs = len(rhs_ode.name_modeled_FVCs)
+    n_FVCs = len(rhs_ode.name_modeled_FVCs)
     n_rates = len(rhs_ode.name_modeled_rates)
     n_FVC = len(controls.name_controlled_FVCs)
     n_PV = len(controls.name_controlled_PVs)
@@ -162,15 +162,15 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
         "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_VCs, dtype=f32),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs, dtype=f32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
         "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC, dtype=f32),
         "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs), dtype=f32),
         "SCALE_controlled_FVCs_bolus_rates": jnp.ones(n_bolus, dtype=f32),
         "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_VCs, n_RMCs), dtype=f32),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs), dtype=f32),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_VCs, dtype=f32),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs, dtype=f32),
     }
 
 
@@ -299,7 +299,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
                 dtype=states.dtype,
             ),
             RAW_modeled_FVCs_rates=jnp.zeros(
-                (n_rows, len(wrapper_arg.modeled_VC_names)),
+                (n_rows, len(wrapper_arg.modeled_FVC_names)),
                 dtype=states.dtype,
             ),
             auxiliary=None,

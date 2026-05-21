@@ -66,12 +66,14 @@ class DefaultReactionModule(UserReactionModule):
 
     model: eqx.nn.MLP = trainable_field()
 
-    def __init__(self, *, n_species: int, n_rates: int, key: jax.Array, **scale_kwargs):
+    def __init__(self, *, key: jax.Array, **scale_kwargs):
         super().__init__(**scale_kwargs)
+        n_in = self.n_modeled_RMCs
+        n_out = self.n_modeled_BiologicalOde_rates
         self.model = eqx.nn.MLP(
-            in_size=n_species,
-            out_size=n_rates,
-            width_size=max(8, 2 * max(n_species, n_rates)),
+            in_size=n_in,
+            out_size=n_out,
+            width_size=max(8, 2 * max(n_in, n_out)),
             depth=2,
             key=key,
         )
@@ -84,7 +86,9 @@ class DefaultReactionModule(UserReactionModule):
         )
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=SCL_modeled_BiologicalOde_rates,
-            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_FVCs_rates=jnp.zeros(
+                (self.n_modeled_FVCs,), dtype=SCL_modeled_RMCs.dtype
+            ),
         )
 
 
@@ -130,8 +134,6 @@ def default_build_reaction_module(
         )
 
     return DefaultReactionModule(
-        n_species=n_species,
-        n_rates=n_rates,
         key=jax.random.key(int(seed)),
         **scale_kwargs,
     )

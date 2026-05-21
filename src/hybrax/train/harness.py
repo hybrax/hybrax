@@ -754,7 +754,7 @@ def train_collection(
         )
 
     # Build target_state_indices: species columns + cumulative-modeled-feed
-    # columns. State layout is [modeled_RMCs | V_in_cumulative | modeled_VCs_cumulative]
+    # columns. State layout is [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]
     # so V_in_cumulative (at index n_species) is in the state but NOT a loss target.
     n_species = len(store.name_measured)
     n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
