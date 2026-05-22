@@ -23,11 +23,11 @@ from bp_format.serialization import load_process_collection_json
 
 from .checkpointing import CheckpointConfig, CheckpointWriter
 from .defaults import default_build_reaction_module
+from .inspect import print_reaction_schema, print_trainable_structure
 from .model_api import (
     EstimatedScales,
     UserReactionModule,
     partition_trainable,
-    print_trainable_structure,
 )
 from .trainer import (
     build_batched_loss_fn_from_sample_loss,
@@ -796,6 +796,7 @@ def train_collection(
     print_rhs_ode(collection)
     sys.stdout.flush()
     print_trainable_structure(reaction_module)
+    print_reaction_schema(wrapper)
     optimizer = _build_optimizer(
         cfg.optimizer_name,
         cfg.learning_rate,

@@ -6,11 +6,15 @@ from .model_api import (
     ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
-    format_trainable_structure,
     frozen_field,
     partition_trainable,
-    print_trainable_structure,
     trainable_field,
+)
+from .inspect import (
+    format_reaction_schema,
+    format_trainable_structure,
+    print_reaction_schema,
+    print_trainable_structure,
 )
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .defaults import DefaultReactionModule
@@ -57,7 +61,9 @@ __all__ = [
     "trainable_field",
     "frozen_field",
     "format_trainable_structure",
+    "format_reaction_schema",
     "print_trainable_structure",
+    "print_reaction_schema",
     "HybridOdeWrapper",
     "validate_rhs_ode_compatibility",
     "simulate_measurement_states",

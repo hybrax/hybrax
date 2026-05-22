@@ -9,11 +9,11 @@ import jax.tree_util as jtu
 import optax
 import pytest
 
+from bp_train.inspect import format_trainable_structure
 from bp_train.model_api import (
     TRAINABLE_METADATA_KEY,
     ReactionOutputs,
     UserReactionModule,
-    format_trainable_structure,
     frozen_field,
     partition_trainable,
     trainable_field,
