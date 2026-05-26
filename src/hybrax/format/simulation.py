@@ -14,16 +14,23 @@ ROW_TYPE_ONLINE = "online"
 ROW_TYPE_OFFLINE = "offline"
 ROW_TYPE_PRE_EVENT = "pre-event"
 ROW_TYPE_POST_EVENT = "post-event"
+ROW_TYPE_FERMENTATION_END = "fermentation_end"
 ROW_TYPE_ORDER = (
     ROW_TYPE_ONLINE,
     ROW_TYPE_OFFLINE,
     ROW_TYPE_PRE_EVENT,
     ROW_TYPE_POST_EVENT,
+    ROW_TYPE_FERMENTATION_END,
 )
 
 EVENT_TYPE_SAMPLE = "sample"
 EVENT_TYPE_BOLUS = "bolus"
-_EVENT_ORDER = {EVENT_TYPE_SAMPLE: 0, EVENT_TYPE_BOLUS: 1}
+EVENT_TYPE_FERMENTATION_END = "fermentation_end"
+_EVENT_ORDER = {
+    EVENT_TYPE_SAMPLE: 0,
+    EVENT_TYPE_BOLUS: 1,
+    EVENT_TYPE_FERMENTATION_END: 2,
+}
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,11 @@ class Simulation(ABC):
                 raise ValueError("sample events must have negative delta_volume.")
             if event.event_type == EVENT_TYPE_BOLUS and event.delta_volume <= 0.0:
                 raise ValueError("bolus events must have positive delta_volume.")
+            if (
+                event.event_type == EVENT_TYPE_FERMENTATION_END
+                and event.delta_volume != 0.0
+            ):
+                raise ValueError("fermentation_end events must have zero delta_volume.")
             grouped.setdefault((event.process, float(event.time)), []).append(event)
 
         for (process, time), group in grouped.items():
@@ -125,6 +137,8 @@ class Simulation(ABC):
             if new_volume <= 0.0:
                 raise ValueError("event would make reactor volume non-positive.")
 
+            if event.event_type == EVENT_TYPE_FERMENTATION_END:
+                continue
             if event.event_type == EVENT_TYPE_SAMPLE:
                 out[volume_idx] = new_volume
                 continue
@@ -256,6 +270,21 @@ class Simulation(ABC):
 
             event_group = list(events_by_time.get(float(time), ()))
             if not event_group:
+                continue
+            if any(
+                event.event_type == EVENT_TYPE_FERMENTATION_END for event in event_group
+            ):
+                rows.append(
+                    self._dense_row(
+                        process,
+                        time,
+                        ROW_TYPE_FERMENTATION_END,
+                        state,
+                        state_names,
+                        cum_bolus_feed,
+                        extras,
+                    )
+                )
                 continue
             if any(event.event_type == EVENT_TYPE_SAMPLE for event in event_group):
                 rows.append(
