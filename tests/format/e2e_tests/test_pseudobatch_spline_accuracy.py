@@ -43,7 +43,7 @@ from bp_format.splines import (
 )
 
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 SPECIES_COLUMNS = {
     "biomass": "Viable cells [cells/L]",

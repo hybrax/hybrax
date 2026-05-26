@@ -4,9 +4,9 @@ from pathlib import Path
 
 from bp_format.serialization import load_process_collection_json
 from examples import validate_example
-from tests.loader_helpers import load_module
+from tests.unit_tests.loader_helpers import load_module
 
-EXAMPLE_ROOT = Path(__file__).resolve().parents[1] / "examples/01_kittler_2022"
+EXAMPLE_ROOT = Path(__file__).resolve().parents[2] / "examples/01_kittler_2022"
 SINGLE_OUTPUT = EXAMPLE_ROOT / "01_single_process" / "output"
 ALL_PROCESS_OUTPUT = EXAMPLE_ROOT / "02_all_processes" / "output"
 SINGLE_PROCESS_ID = "DoE1_R1"

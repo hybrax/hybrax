@@ -72,7 +72,7 @@ def _legacy_timepoints_usages(path: Path) -> list[str]:
 
 
 def test_runtime_modules_use_canonical_times_api() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     runtime_files = [
         repo_root / "bp_format" / "validate.py",
         repo_root / "bp_format" / "splines.py",

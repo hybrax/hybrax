@@ -49,7 +49,7 @@ from bp_format.serialization import (
 )
 from bp_format import BenchmarkDataset, CaseStudy
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 
 # ---------------------------------------------------------------------------

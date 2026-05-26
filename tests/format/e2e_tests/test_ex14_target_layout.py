@@ -9,10 +9,10 @@ import pytest
 
 from bp_format.serialization import load_process_collection_json
 from examples import validate_example
-from tests.loader_helpers import load_module
+from tests.unit_tests.loader_helpers import load_module
 
 EXAMPLE_ROOT = (
-    Path(__file__).resolve().parents[1] / "examples/14_simulation_intracellular"
+    Path(__file__).resolve().parents[2] / "examples/14_simulation_intracellular"
 )
 SIMULATION_DIR = EXAMPLE_ROOT / "00_simulation"
 ALL_PROCESS_OUTPUT = EXAMPLE_ROOT / "02_all_processes" / "output"
