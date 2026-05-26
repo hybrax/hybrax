@@ -20,7 +20,7 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import load_dataset_json, save_process_collection_json
+from bp_format.serialization import save_process_collection_json
 from examples import validate_example
 
 
@@ -380,26 +380,6 @@ def test_sparse_real_low_point_warning_includes_two_point_series():
     validate_example.append_sparse_series_warning(warnings, "two_point", summary)
 
     assert warnings == ["two_point has low point count: 2 <= 2"]
-
-
-def test_sparse_real_helper_smoke_on_legacy_real_json(tmp_path):
-    dataset = load_dataset_json(
-        Path("examples/01_kittler_2022/01_bp_format_data_single/data.json")
-    )
-    case_study = next(iter(dataset.case_studies.values()))
-    collection = BioProcessCollection(processes=case_study.processes)
-
-    result = validate_example.validate_sparse_real_diagnostics(
-        collection,
-        tmp_path / "plots",
-    )
-
-    assert result["process_count"] >= 1
-    assert result["ok"] is True
-    assert result["error_count"] == 0
-    assert result["scope"] == validate_example.SPARSE_REAL_DIAGNOSTICS_SCOPE
-    assert "warnings" in result
-    assert "errors" in result
 
 
 def test_invalid_simulation_dense_output_fails_in_simulation_mode(

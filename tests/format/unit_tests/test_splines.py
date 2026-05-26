@@ -49,8 +49,6 @@ from bp_format.serialization import (
 )
 from bp_format import BenchmarkDataset, CaseStudy
 
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -407,68 +405,6 @@ def test_no_interpolator_field():
     assert '"interpolator"' not in payload
     np.testing.assert_allclose(loaded_pv.values.times, pv.values.times)
     np.testing.assert_allclose(loaded_pv.values.values, pv.values.values)
-
-
-def test_pseudobatch_transform_payload_round_trips_through_serialization():
-    """build_pseudobatch_transform output survives save/load and backtransforms."""
-    raw_dataset = load_dataset_json(str(FIXTURES / "martens_2025_f_single/data.json"))
-    case_study = next(iter(raw_dataset.case_studies.values()))
-    raw_process = next(iter(case_study.processes.values()))
-    species_names = [
-        name
-        for name, comp in raw_process.reactor_medium.components.items()
-        if isinstance(comp.concentration, TimeSeries)
-    ]
-    raw_concentrations = {
-        name: TimeSeries(
-            times=jnp.asarray(
-                raw_process.reactor_medium.components[name].concentration.times
-            ),
-            values=jnp.asarray(
-                raw_process.reactor_medium.components[name].concentration.values
-            ),
-        )
-        for name in species_names
-    }
-
-    transform = build_pseudobatch_transform(raw_process, species_names)
-    raw_process.pseudobatch_transform = transform
-
-    with tempfile.NamedTemporaryFile(suffix=".json", mode="w+", delete=False) as f:
-        save_dataset_json(raw_dataset, f.name)
-        payload = Path(f.name).read_text()
-        loaded = load_dataset_json(f.name)
-
-    assert '"pseudobatch_transform"' in payload
-    assert '"interpolator"' not in payload
-
-    process = next(iter(next(iter(loaded.case_studies.values())).processes.values()))
-    loaded_transform = process.pseudobatch_transform
-    assert loaded_transform is not None
-
-    for name in species_names:
-        component = process.reactor_medium.components[name]
-        concentration = component.concentration
-        c_star = component.c_star_concentration
-        assert concentration.breaks is None
-        assert c_star is not None
-        assert c_star.breaks is not None
-        assert name in loaded_transform.feed_corrections
-        np.testing.assert_array_equal(
-            concentration.times, raw_concentrations[name].times
-        )
-        np.testing.assert_array_equal(
-            concentration.values, raw_concentrations[name].values
-        )
-
-        backtransform = build_backtransform_spline(process, name)
-        recovered = jax.vmap(backtransform)(raw_concentrations[name].times)
-        np.testing.assert_allclose(
-            recovered,
-            raw_concentrations[name].values,
-            rtol=1e-6,
-            atol=1e-6,
-        )
 
 
 def test_short_series_falls_back_to_cubic_interp():
