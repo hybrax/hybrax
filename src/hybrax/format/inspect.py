@@ -13,6 +13,7 @@ from .dataclasses import (
     StaticVariable,
 )
 from .splines import _has_spline_state
+from .time_series import TimeSeries
 from .validate import _is_dynamic_series
 
 
@@ -1082,6 +1083,17 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     return fig
 
 
+def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot(ts.times, ts.values, "-")
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # RhsOde structure printer
 # ---------------------------------------------------------------------------
@@ -1305,8 +1317,10 @@ def print_rhs_ode(
         )
 
     if ordering.name_modeled_rates:
+
         def _fmt_bound(b):
             return "—" if b is None else f"{b:g}"
+
         rate_rows = []
         for n in ordering.name_modeled_rates:
             lo, hi = bo.rates.get(n, (None, None))

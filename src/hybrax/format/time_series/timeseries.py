@@ -8,6 +8,7 @@ import warnings
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 from scipy.interpolate import PPoly as SciPyPPoly
 from scipy.interpolate import make_splrep
 
@@ -258,12 +259,22 @@ class TimeSeries(eqx.Module):
 
         return timeseries_to_dict(self)
 
+    def to_pd_series(self):
+        if self.times is None or self.values is None:
+            raise ValueError("to_pd_series requires discrete samples")
+        return pd.Series(data=np.asarray(self.values), index=np.asarray(self.times))
+
     @property
     def poly(self) -> PPoly | None:
         """Return the owned spline evaluator for the canonical spline state."""
         if self.breaks is None or self.coeffs is None:
             return None
         return PPoly(self.breaks, self.coeffs, continuity_side=self.continuity_side)
+    
+    def lin_interp(self, t):
+        if self.times is None or self.values is None:
+            raise ValueError("lin_interp requires discrete samples")
+        return grid_utils.linear_interpolate_samples(self.times, self.values, t)
 
     def evaluate(self, t, *, side=None):
         poly = self.poly
