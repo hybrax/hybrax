@@ -13,6 +13,7 @@ import bp_format as bp  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 from scipy.integrate import solve_ivp  # noqa: E402
+from scipy.interpolate import CubicSpline  # noqa: E402
 from bp_format.serialization import (  # noqa: E402
     load_process_collection_json,
     save_process_collection_json,
@@ -93,6 +94,21 @@ DENSE_REINTEGRATION_MAX_ABSOLUTE_ERRORS = {
     "ammonia": 4e-5,
 }
 DENSE_REINTEGRATION_MAX_RANGE_NORMALIZED_ERROR = 5e-4
+REAL_SPACE_SEGMENT_MIN_POINTS = 4
+# Real-space segment errors come from spline-derivative rate inference, continuous
+# feed-rate spline derivatives, and ODE integration. Segments start from observed
+# post-event states and end at observed pre-event states, so no event jump is
+# integrated through these bounds.
+REAL_SPACE_SEGMENT_MAX_ABSOLUTE_ERRORS = {
+    "biomass": 0.002,
+    "product_extracellular": 0.001,
+    "product_intracellular": 0.001,
+    "dead_cells": 2e-5,
+    "glucose": 2e-4,
+    "glutamine": 2e-4,
+    "lactate": 2e-5,
+    "ammonia": 1e-5,
+}
 
 
 def _clear_ex14_fixture_modules() -> None:
@@ -568,6 +584,286 @@ def _use_dense_reactor_observations(process: bp.BioProcess) -> None:
         )
 
 
+def _dense_real_space_segments(process: bp.BioProcess) -> list[dict]:
+    if process.metadata.name is None:
+        raise ValueError("Process metadata name is required.")
+    process_name = process.metadata.name
+    rows_by_kind: dict[str, dict[float, dict[str, str]]] = {
+        "online": {},
+        "pre-event": {},
+        "post-event": {},
+    }
+    with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:
+        for row in csv.DictReader(handle):
+            if process_name != row["process_id"] or row["row_type"] not in rows_by_kind:
+                continue
+            rows_by_kind[row["row_type"]][float(row["time"])] = row
+
+    start_time = float(process.time_axis.start)
+    end_time = float(process.time_axis.end)
+    event_times = np.asarray(
+        sorted(
+            {
+                float(time)
+                for volume_change in process.volume.volume_changes.values()
+                if not volume_change.is_continuous
+                for time in np.asarray(volume_change.values.times, dtype=float)
+            }
+        ),
+        dtype=float,
+    )
+    boundaries = np.concatenate([[start_time], event_times, [end_time]])
+    segments = []
+    for index, (start, end) in enumerate(
+        zip(boundaries[:-1], boundaries[1:], strict=True)
+    ):
+        start = float(start)
+        end = float(end)
+        if index == 0:
+            segment_rows = [rows_by_kind["online"][start]]
+        else:
+            if start not in rows_by_kind["post-event"]:
+                raise ValueError(f"Missing post-event row at {start} h.")
+            segment_rows = [rows_by_kind["post-event"][start]]
+        segment_rows.extend(
+            row
+            for time, row in sorted(rows_by_kind["online"].items())
+            if start < time < end
+        )
+        if index < len(event_times):
+            if end not in rows_by_kind["pre-event"]:
+                raise ValueError(f"Missing pre-event row at {end} h.")
+            segment_rows.append(rows_by_kind["pre-event"][end])
+        else:
+            segment_rows.append(rows_by_kind["online"][end])
+        times = np.asarray([float(row["time"]) for row in segment_rows], dtype=float)
+        _require_strict_segment_times(times, process_name, start, end)
+        segments.append(
+            {
+                "process": process_name,
+                "start": start,
+                "end": end,
+                "times": times,
+                "volume": np.asarray(
+                    [float(row["volume"]) for row in segment_rows],
+                    dtype=float,
+                ),
+                "states": {
+                    name: np.asarray(
+                        [float(row[name]) for row in segment_rows],
+                        dtype=float,
+                    )
+                    for name in EXPECTED_REACTOR_COMPONENT_ORDER
+                },
+            }
+        )
+    assert len(segments) == len(event_times) + 1
+    return segments
+
+
+def _require_strict_segment_times(
+    times: np.ndarray,
+    process_name: str,
+    start: float,
+    end: float,
+) -> None:
+    if len(times) < REAL_SPACE_SEGMENT_MIN_POINTS or not np.all(np.diff(times) > 0.0):
+        raise ValueError(
+            f"Invalid real-space segment grid for {process_name} [{start}, {end}]."
+        )
+
+
+def _fit_real_space_segment_splines(
+    process: bp.BioProcess,
+    segment: dict,
+) -> dict:
+    times = segment["times"]
+    continuous_feeds = {}
+    for name, volume_change in process.volume.volume_changes.items():
+        if not isinstance(volume_change, bp.FeedVolumeChange):
+            continue
+        if not volume_change.is_continuous:
+            continue
+        change_times = np.asarray(volume_change.values.times, dtype=float)
+        change_values = np.asarray(volume_change.values.values, dtype=float)
+        continuous_feeds[name] = CubicSpline(
+            times,
+            np.interp(times, change_times, change_values),
+        )
+    return {
+        "states": {
+            name: CubicSpline(times, values)
+            for name, values in segment["states"].items()
+        },
+        "volume": CubicSpline(times, segment["volume"]),
+        "continuous_feeds": continuous_feeds,
+    }
+
+
+def _real_space_continuous_feed_terms(
+    process: bp.BioProcess,
+    splines: dict,
+    time: float,
+    states: dict[str, float],
+) -> dict[str, float]:
+    volume = float(splines["volume"](time))
+    if volume <= 0.0:
+        raise ValueError(f"Nonpositive segment volume at {time} h.")
+    terms = {name: 0.0 for name in EXPECTED_REACTOR_COMPONENT_ORDER}
+    for change_name, feed_spline in splines["continuous_feeds"].items():
+        volume_change = process.volume.volume_changes[change_name]
+        assert isinstance(volume_change, bp.FeedVolumeChange)
+        feed_rate = float(feed_spline.derivative()(time))
+        for component_name in EXPECTED_REACTOR_COMPONENT_ORDER:
+            feed_concentration = volume_change.feed_medium.components[
+                component_name
+            ].concentration.value
+            terms[component_name] += (
+                feed_rate * (feed_concentration - states[component_name]) / volume
+            )
+    return terms
+
+
+def _ex14_rates_from_biological_derivatives(
+    states: dict[str, np.ndarray],
+    biological_derivatives: dict[str, np.ndarray],
+) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    active_biomass = states["biomass"] - states["product_intracellular"]
+    assert np.all(active_biomass > 0.0)
+    q_product_intracellular = (
+        biological_derivatives["product_intracellular"] / active_biomass
+    )
+    rates = {
+        "q_product_extracellular": (
+            biological_derivatives["product_extracellular"] / active_biomass
+        ),
+        "q_product_intracellular": q_product_intracellular,
+        "q_dead_cells": biological_derivatives["dead_cells"] / active_biomass,
+        "q_glucose": biological_derivatives["glucose"] / active_biomass,
+        "q_glutamine": biological_derivatives["glutamine"] / active_biomass,
+        "q_lactate": biological_derivatives["lactate"] / active_biomass,
+        "q_ammonia": biological_derivatives["ammonia"] / active_biomass,
+        "q_X_active": (
+            biological_derivatives["biomass"] / active_biomass - q_product_intracellular
+        ),
+    }
+    return rates, active_biomass
+
+
+def _infer_real_space_segment_rates(
+    process: bp.BioProcess,
+    segment: dict,
+    splines: dict,
+) -> dict[str, np.ndarray]:
+    times = segment["times"]
+    states = {
+        name: np.asarray(spline(times), dtype=float)
+        for name, spline in splines["states"].items()
+    }
+    state_derivatives = {
+        name: np.asarray(spline.derivative()(times), dtype=float)
+        for name, spline in splines["states"].items()
+    }
+    biological_derivatives = {name: [] for name in EXPECTED_REACTOR_COMPONENT_ORDER}
+    for index, time in enumerate(times):
+        state_at_time = {name: float(values[index]) for name, values in states.items()}
+        feed_terms = _real_space_continuous_feed_terms(
+            process,
+            splines,
+            float(time),
+            state_at_time,
+        )
+        for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+            biological_derivatives[name].append(
+                float(state_derivatives[name][index]) - feed_terms[name]
+            )
+    biological_derivatives = {
+        name: np.asarray(values, dtype=float)
+        for name, values in biological_derivatives.items()
+    }
+    rates, _ = _ex14_rates_from_biological_derivatives(
+        states,
+        biological_derivatives,
+    )
+    assert set(rates) == EXPECTED_RATE_NAMES
+    for values in rates.values():
+        assert values.shape == times.shape
+        assert np.all(np.isfinite(values))
+    return rates
+
+
+def _integrate_real_space_segment(
+    process: bp.BioProcess,
+    segment: dict,
+    splines: dict,
+    rates: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    times = segment["times"]
+    initial_state = np.asarray(
+        [segment["states"][name][0] for name in EXPECTED_REACTOR_COMPONENT_ORDER],
+        dtype=float,
+    )
+
+    def rhs(time, state_vector):
+        states = {
+            name: float(state_vector[index])
+            for index, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER)
+        }
+        q_values = _interpolated_rate_values(rates, times, float(time))
+        biological_derivatives = _ex14_biological_derivatives(states, q_values)
+        feed_terms = _real_space_continuous_feed_terms(
+            process,
+            splines,
+            float(time),
+            states,
+        )
+        return np.asarray(
+            [
+                biological_derivatives[name] + feed_terms[name]
+                for name in EXPECTED_REACTOR_COMPONENT_ORDER
+            ],
+            dtype=float,
+        )
+
+    sol = solve_ivp(
+        rhs,
+        (float(times[0]), float(times[-1])),
+        initial_state,
+        method=PSEUDOBATCH_INTEGRATOR_METHOD,
+        rtol=PSEUDOBATCH_INTEGRATOR_RTOL,
+        atol=PSEUDOBATCH_INTEGRATOR_ATOL,
+        t_eval=times,
+    )
+    if not sol.success:
+        raise RuntimeError(sol.message)
+    return {
+        name: np.asarray(sol.y[index], dtype=float)
+        for index, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER)
+    }
+
+
+def _assert_real_space_segment_reintegration_tight(
+    segment: dict,
+    recovered: dict[str, np.ndarray],
+) -> None:
+    assert tuple(recovered) == EXPECTED_REACTOR_COMPONENT_ORDER
+    assert set(REAL_SPACE_SEGMENT_MAX_ABSOLUTE_ERRORS) == EXPECTED_REACTOR_COMPONENTS
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        observed = segment["states"][name]
+        values = recovered[name]
+        assert values.shape == observed.shape
+        assert np.all(np.isfinite(values))
+        np.testing.assert_allclose(values[0], observed[0], rtol=1e-12, atol=1e-12)
+        max_absolute = float(np.max(np.abs(values - observed)))
+        assert max_absolute <= REAL_SPACE_SEGMENT_MAX_ABSOLUTE_ERRORS[name], (
+            segment["process"],
+            segment["start"],
+            segment["end"],
+            name,
+            max_absolute,
+        )
+
+
 def _evaluate_cstar_spline_states_for_plot(
     process: bp.BioProcess,
     times: np.ndarray,
@@ -593,25 +889,10 @@ def _infer_ex14_rates_from_cstar_splines(
     biological_derivatives = {
         name: derivative / adf for name, derivative in cstar_derivatives.items()
     }
-    active_biomass = states["biomass"] - states["product_intracellular"]
-    q_product_intracellular = (
-        biological_derivatives["product_intracellular"] / active_biomass
+    rates, active_biomass = _ex14_rates_from_biological_derivatives(
+        states,
+        biological_derivatives,
     )
-
-    rates = {
-        "q_product_extracellular": (
-            biological_derivatives["product_extracellular"] / active_biomass
-        ),
-        "q_product_intracellular": q_product_intracellular,
-        "q_dead_cells": biological_derivatives["dead_cells"] / active_biomass,
-        "q_glucose": biological_derivatives["glucose"] / active_biomass,
-        "q_glutamine": biological_derivatives["glutamine"] / active_biomass,
-        "q_lactate": biological_derivatives["lactate"] / active_biomass,
-        "q_ammonia": biological_derivatives["ammonia"] / active_biomass,
-        "q_X_active": (
-            biological_derivatives["biomass"] / active_biomass - q_product_intracellular
-        ),
-    }
     diagnostics = _evaluate_rate_inference_terms(process, times)
     diagnostics["cstar_states"] = cstar_states
     diagnostics["cstar_derivatives"] = cstar_derivatives
@@ -1995,3 +2276,20 @@ def test_ex14_dense_observations_tightly_reintegrate_pseudobatch_real_space(
             observed_concentrations,
             times,
         )
+
+
+def test_ex14_dense_real_space_segments_reintegrate_tightly():
+    collection = _parse_lab_like_collection()
+
+    for process in collection.processes.values():
+        segments = _dense_real_space_segments(process)
+        for segment in segments:
+            splines = _fit_real_space_segment_splines(process, segment)
+            rates = _infer_real_space_segment_rates(process, segment, splines)
+            recovered = _integrate_real_space_segment(
+                process,
+                segment,
+                splines,
+                rates,
+            )
+            _assert_real_space_segment_reintegration_tight(segment, recovered)
