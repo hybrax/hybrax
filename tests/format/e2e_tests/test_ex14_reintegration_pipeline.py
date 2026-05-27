@@ -36,6 +36,16 @@ EXPECTED_SAMPLE_EVENT_TIMES = [24.0, 48.0, 72.0, 96.0]
 EXPECTED_EVENT_JUMP_TIMES = [24.0, 36.0, 48.0, 72.0, 96.0, 108.0]
 EXPECTED_NONZERO_FEED_CORRECTION_COMPONENTS = {"glucose", "glutamine"}
 EXPECTED_VOLUME_CHANGES = {"conti_feed", "base_feed", "sampling", "bolus_feed"}
+EXPECTED_RATE_NAMES = {
+    "q_X_active",
+    "q_product_extracellular",
+    "q_product_intracellular",
+    "q_dead_cells",
+    "q_glucose",
+    "q_glutamine",
+    "q_lactate",
+    "q_ammonia",
+}
 CSTAR_SPLINE_SMOOTHING_S = 0.0
 
 
@@ -364,6 +374,200 @@ def _assert_cstar_splines_sane(process: bp.BioProcess) -> None:
         np.testing.assert_allclose(evaluated, expected_values, rtol=1e-12, atol=1e-12)
 
 
+def _assert_ex14_biological_ode_contract(process: bp.BioProcess) -> None:
+    ode = process.biological_ode
+    assert ode is not None
+    assert ode.algebraic == {"X_active": "biomass - product_intracellular"}
+    assert set(ode.rates) == EXPECTED_RATE_NAMES
+    assert ode.derivatives["biomass"] == (
+        "q_X_active * X_active + q_product_intracellular * X_active"
+    )
+    assert ode.derivatives["product_extracellular"] == (
+        "q_product_extracellular * X_active"
+    )
+    assert ode.derivatives["product_intracellular"] == (
+        "q_product_intracellular * X_active"
+    )
+    for name in ("dead_cells", "glucose", "glutamine", "lactate", "ammonia"):
+        assert ode.derivatives[name] == f"q_{name} * X_active"
+
+
+def _evaluate_cstar_states_and_derivatives(
+    process: bp.BioProcess,
+    times: np.ndarray,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    cstar_states = {}
+    cstar_derivatives = {}
+    for name, component in process.reactor_medium.components.items():
+        cstar = component.c_star_concentration
+        if not isinstance(cstar, bp.TimeSeries):
+            raise TypeError(f"{name} c* concentration must be a TimeSeries.")
+        cstar_states[name] = np.asarray(
+            cstar.evaluate_many(jnp.asarray(times)),
+            dtype=float,
+        )
+        cstar_derivatives[name] = np.asarray(
+            cstar.deriv().evaluate_many(jnp.asarray(times)),
+            dtype=float,
+        )
+    return cstar_states, cstar_derivatives
+
+
+def _evaluate_reconstructed_reactor_states(
+    process: bp.BioProcess,
+    times: np.ndarray,
+    cstar_states: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    transform = process.pseudobatch_transform
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+    adf = _series_values_at_times(transform.adf, times)
+    states = {}
+    for name, cstar in cstar_states.items():
+        feed_correction = _series_values_at_times(
+            transform.feed_corrections[name],
+            times,
+        )
+        states[name] = (cstar + feed_correction) / adf
+    return states
+
+
+def _evaluate_rate_inference_terms(
+    process: bp.BioProcess,
+    times: np.ndarray,
+) -> dict[str, dict[str, np.ndarray]]:
+    transform = process.pseudobatch_transform
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+    assert process.volume.total_volume is not None
+    return {
+        "volume": {
+            "total_volume": _series_values_at_times(process.volume.total_volume, times)
+        },
+        "transform": {"adf": _series_values_at_times(transform.adf, times)},
+        "feed_corrections": {
+            name: _series_values_at_times(series, times)
+            for name, series in transform.feed_corrections.items()
+        },
+    }
+
+
+def _infer_ex14_rates_from_cstar_splines(
+    process: bp.BioProcess,
+    times: np.ndarray,
+) -> tuple[dict[str, np.ndarray], dict[str, dict[str, np.ndarray]]]:
+    _assert_ex14_biological_ode_contract(process)
+    transform = process.pseudobatch_transform
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+
+    cstar_states, cstar_derivatives = _evaluate_cstar_states_and_derivatives(
+        process,
+        times,
+    )
+    states = _evaluate_reconstructed_reactor_states(process, times, cstar_states)
+    adf = _series_values_at_times(transform.adf, times)
+    biological_derivatives = {
+        name: derivative / adf for name, derivative in cstar_derivatives.items()
+    }
+    active_biomass = states["biomass"] - states["product_intracellular"]
+    q_product_intracellular = (
+        biological_derivatives["product_intracellular"] / active_biomass
+    )
+
+    rates = {
+        "q_product_extracellular": (
+            biological_derivatives["product_extracellular"] / active_biomass
+        ),
+        "q_product_intracellular": q_product_intracellular,
+        "q_dead_cells": biological_derivatives["dead_cells"] / active_biomass,
+        "q_glucose": biological_derivatives["glucose"] / active_biomass,
+        "q_glutamine": biological_derivatives["glutamine"] / active_biomass,
+        "q_lactate": biological_derivatives["lactate"] / active_biomass,
+        "q_ammonia": biological_derivatives["ammonia"] / active_biomass,
+        "q_X_active": (
+            biological_derivatives["biomass"] / active_biomass - q_product_intracellular
+        ),
+    }
+    diagnostics = _evaluate_rate_inference_terms(process, times)
+    diagnostics["cstar_states"] = cstar_states
+    diagnostics["cstar_derivatives"] = cstar_derivatives
+    diagnostics["reconstructed_states"] = states
+    diagnostics["biological_derivatives"] = biological_derivatives
+    diagnostics["algebraic"] = {"X_active": active_biomass}
+    return rates, diagnostics
+
+
+def _assert_inferred_rates_finite(
+    rates: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+) -> None:
+    assert set(rates) == EXPECTED_RATE_NAMES
+    for values in rates.values():
+        assert values.shape == (len(EXPECTED_CONCENTRATION_TIMES),)
+        assert np.all(np.isfinite(values))
+    for group in diagnostics.values():
+        for values in group.values():
+            assert values.shape == (len(EXPECTED_CONCENTRATION_TIMES),)
+            assert np.all(np.isfinite(values))
+    assert np.all(diagnostics["volume"]["total_volume"] > 0.0)
+    assert np.all(diagnostics["transform"]["adf"] > 0.0)
+    assert np.all(diagnostics["algebraic"]["X_active"] > 0.0)
+
+
+def _assert_rates_match_biological_derivatives(
+    rates: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+) -> None:
+    adf = diagnostics["transform"]["adf"]
+    active_biomass = diagnostics["algebraic"]["X_active"]
+    biological_derivatives = diagnostics["biological_derivatives"]
+    cstar_derivatives = diagnostics["cstar_derivatives"]
+
+    for name in EXPECTED_REACTOR_COMPONENTS:
+        np.testing.assert_allclose(
+            biological_derivatives[name] * adf,
+            cstar_derivatives[name],
+            rtol=1e-12,
+            atol=1e-12,
+        )
+    np.testing.assert_allclose(
+        (rates["q_X_active"] + rates["q_product_intracellular"]) * active_biomass,
+        biological_derivatives["biomass"],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    for name in EXPECTED_REACTOR_COMPONENTS - {"biomass"}:
+        np.testing.assert_allclose(
+            rates[f"q_{name}"] * active_biomass,
+            biological_derivatives[name],
+            rtol=1e-12,
+            atol=1e-12,
+        )
+
+
+def _assert_state_transform_identities(
+    diagnostics: dict[str, dict[str, np.ndarray]],
+) -> None:
+    adf = diagnostics["transform"]["adf"]
+    cstar_states = diagnostics["cstar_states"]
+    feed_corrections = diagnostics["feed_corrections"]
+    reconstructed_states = diagnostics["reconstructed_states"]
+    np.testing.assert_allclose(
+        diagnostics["algebraic"]["X_active"],
+        reconstructed_states["biomass"] - reconstructed_states["product_intracellular"],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    for name in EXPECTED_REACTOR_COMPONENTS:
+        np.testing.assert_allclose(
+            reconstructed_states[name] * adf - feed_corrections[name],
+            cstar_states[name],
+            rtol=1e-12,
+            atol=1e-12,
+        )
+
+
 def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
     times = _time_grid_from_volume_changes(process.volume.volume_changes.values())
     total_volume = process.volume.total_volume
@@ -605,3 +809,22 @@ def test_ex14_cstar_splines_survive_json_roundtrip(tmp_path):
     _assert_reloaded_collection_matches_parsed(collection, reloaded)
     for process in reloaded.processes.values():
         _assert_cstar_splines_sane(process)
+
+
+def test_ex14_infers_finite_rates_from_reloaded_cstar_splines(tmp_path):
+    collection = _parse_lab_like_collection()
+
+    for process in collection.processes.values():
+        _populate_exact_pseudobatch_transform(process)
+        _populate_cstar_splines(process)
+
+    output_path = tmp_path / "cstar_fitted_collection.json"
+    save_process_collection_json(collection, output_path)
+    reloaded = load_process_collection_json(output_path)
+
+    times = np.asarray(EXPECTED_CONCENTRATION_TIMES, dtype=float)
+    for process in reloaded.processes.values():
+        rates, diagnostics = _infer_ex14_rates_from_cstar_splines(process, times)
+        _assert_inferred_rates_finite(rates, diagnostics)
+        _assert_state_transform_identities(diagnostics)
+        _assert_rates_match_biological_derivatives(rates, diagnostics)
