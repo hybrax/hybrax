@@ -56,6 +56,21 @@ PSEUDOBATCH_INTEGRATOR_ATOL = 1e-9
 RHS_STATE_PERTURBATION = 1.0
 EXPECTED_BOLUS_RIGHT_LIMIT_TIME = 36.0
 EXPECTED_BOLUS_RIGHT_LIMIT_COMPONENT = "glucose"
+# Loose first-stage sparse bounds. They cover five offline samples, spline-
+# derivative rate inference, and linear rate interpolation. Limits are intentionally
+# wider than current observed errors so this is a sanity check, not a golden
+# trajectory check. Dense observations should replace these with tight recovery
+# checks in a later milestone. Values are (absolute_error, relative_error).
+SPARSE_REINTEGRATION_ERROR_LIMITS = {
+    "biomass": (20.0, 0.10),
+    "product_extracellular": (8.0, 0.25),
+    "product_intracellular": (2.0, 0.25),
+    "dead_cells": (2.0, 0.08),
+    "glucose": (2.0, 0.10),
+    "glutamine": (1.0, 1.00),
+    "lactate": (1.5, 0.08),
+    "ammonia": (0.6, 0.08),
+}
 
 
 def _clear_ex14_fixture_modules() -> None:
@@ -1040,6 +1055,44 @@ def _assert_reintegrated_cstar_states_finite(
         )
 
 
+def _observed_sparse_reactor_concentrations(
+    process: bp.BioProcess,
+    times: np.ndarray,
+) -> dict[str, np.ndarray]:
+    observed = {}
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        concentration = process.reactor_medium.components[name].concentration
+        if not isinstance(concentration, bp.TimeSeries):
+            raise TypeError(f"{name} concentration must be a TimeSeries.")
+        observed[name] = _series_values_at_times(concentration, times)
+    return observed
+
+
+def _assert_sparse_real_space_reintegration_sane(
+    recovered_concentrations: dict[str, np.ndarray],
+    observed_concentrations: dict[str, np.ndarray],
+    output_times: np.ndarray,
+) -> None:
+    assert tuple(recovered_concentrations) == EXPECTED_REACTOR_COMPONENT_ORDER
+    assert tuple(observed_concentrations) == EXPECTED_REACTOR_COMPONENT_ORDER
+    assert set(SPARSE_REINTEGRATION_ERROR_LIMITS) == EXPECTED_REACTOR_COMPONENTS
+
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        recovered = recovered_concentrations[name]
+        observed = observed_concentrations[name]
+        assert recovered.shape == (len(output_times),)
+        assert observed.shape == (len(output_times),)
+        assert np.all(np.isfinite(recovered))
+        assert np.all(np.isfinite(observed))
+        np.testing.assert_allclose(recovered[0], observed[0], rtol=1e-12, atol=1e-12)
+
+        abs_error = np.abs(recovered - observed)
+        rel_error = abs_error / np.maximum(np.abs(observed), 1e-12)
+        max_abs_error, max_rel_error = SPARSE_REINTEGRATION_ERROR_LIMITS[name]
+        assert float(np.max(abs_error)) <= max_abs_error
+        assert float(np.max(rel_error)) <= max_rel_error
+
+
 def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
     times = _time_grid_from_volume_changes(process.volume.volume_changes.values())
     total_volume = process.volume.total_volume
@@ -1302,7 +1355,7 @@ def test_ex14_infers_finite_rates_from_reloaded_cstar_splines(tmp_path):
         _assert_rates_match_biological_derivatives(rates, diagnostics)
 
 
-def test_ex14_reintegrates_finite_pseudobatch_cstar_states_from_reloaded_rates(
+def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
     tmp_path,
 ):
     collection = _parse_lab_like_collection()
@@ -1332,5 +1385,19 @@ def test_ex14_reintegrates_finite_pseudobatch_cstar_states_from_reloaded_rates(
         _assert_reintegrated_cstar_states_finite(
             reintegrated_cstar_states,
             diagnostics,
+            times,
+        )
+        recovered_concentrations = _evaluate_reconstructed_reactor_states(
+            process,
+            times,
+            reintegrated_cstar_states,
+        )
+        observed_concentrations = _observed_sparse_reactor_concentrations(
+            process,
+            times,
+        )
+        _assert_sparse_real_space_reintegration_sane(
+            recovered_concentrations,
+            observed_concentrations,
             times,
         )
