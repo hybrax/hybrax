@@ -10,6 +10,7 @@ os.environ.setdefault("JAX_ENABLE_X64", "true")
 import bp_format as bp  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
+from scipy.integrate import solve_ivp  # noqa: E402
 from bp_format.serialization import (  # noqa: E402
     load_process_collection_json,
     save_process_collection_json,
@@ -21,7 +22,7 @@ SIMULATION_DENSE_OUTPUT = SIMULATION_DIR / "simulation_dense_output.csv"
 EVENTS_OUTPUT = SIMULATION_DIR / "events.csv"
 CANONICAL_ARTIFACTS = ("simulation_dense_output.csv", "events.csv")
 EXPECTED_PROCESS_IDS = {"ex14_run_1", "ex14_run_2"}
-EXPECTED_REACTOR_COMPONENTS = {
+EXPECTED_REACTOR_COMPONENT_ORDER = (
     "biomass",
     "product_extracellular",
     "product_intracellular",
@@ -30,7 +31,8 @@ EXPECTED_REACTOR_COMPONENTS = {
     "glutamine",
     "lactate",
     "ammonia",
-}
+)
+EXPECTED_REACTOR_COMPONENTS = set(EXPECTED_REACTOR_COMPONENT_ORDER)
 EXPECTED_CONCENTRATION_TIMES = [0.0, 24.0, 48.0, 72.0, 96.0]
 EXPECTED_SAMPLE_EVENT_TIMES = [24.0, 48.0, 72.0, 96.0]
 EXPECTED_EVENT_JUMP_TIMES = [24.0, 36.0, 48.0, 72.0, 96.0, 108.0]
@@ -47,6 +49,13 @@ EXPECTED_RATE_NAMES = {
     "q_ammonia",
 }
 CSTAR_SPLINE_SMOOTHING_S = 0.0
+EVENT_TIME_ATOL = 1e-12
+PSEUDOBATCH_INTEGRATOR_METHOD = "DOP853"
+PSEUDOBATCH_INTEGRATOR_RTOL = 1e-7
+PSEUDOBATCH_INTEGRATOR_ATOL = 1e-9
+RHS_STATE_PERTURBATION = 1.0
+EXPECTED_BOLUS_RIGHT_LIMIT_TIME = 36.0
+EXPECTED_BOLUS_RIGHT_LIMIT_COMPONENT = "glucose"
 
 
 def _clear_ex14_fixture_modules() -> None:
@@ -568,6 +577,469 @@ def _assert_state_transform_identities(
         )
 
 
+def _event_jump_times(process: bp.BioProcess) -> np.ndarray:
+    assert process.volume.total_volume is not None
+    return np.asarray(process.volume.total_volume.jump_times, dtype=float)
+
+
+def _is_event_jump_time(time: float, jump_times: np.ndarray) -> bool:
+    return bool(np.any(np.isclose(jump_times, time, rtol=0.0, atol=EVENT_TIME_ATOL)))
+
+
+def _discrete_volume_delta_at(process: bp.BioProcess, time: float) -> float:
+    delta = 0.0
+    for volume_change in process.volume.volume_changes.values():
+        if volume_change.is_continuous:
+            continue
+        change_times = np.asarray(volume_change.values.times, dtype=float)
+        change_values = np.asarray(volume_change.values.values, dtype=float)
+        matches = np.flatnonzero(
+            np.isclose(change_times, time, rtol=0.0, atol=EVENT_TIME_ATOL)
+        )
+        if len(matches):
+            delta += float(change_values[int(matches[0])])
+    return delta
+
+
+def _sample_volume_delta_at(process: bp.BioProcess, time: float) -> float:
+    delta = 0.0
+    for volume_change in process.volume.volume_changes.values():
+        if not isinstance(volume_change, bp.SampleVolumeChange):
+            continue
+        change_times = np.asarray(volume_change.values.times, dtype=float)
+        change_values = np.asarray(volume_change.values.values, dtype=float)
+        matches = np.flatnonzero(
+            np.isclose(change_times, time, rtol=0.0, atol=EVENT_TIME_ATOL)
+        )
+        if len(matches):
+            delta += float(change_values[int(matches[0])])
+    return delta
+
+
+def _sample_compensation_after_sample_event(
+    process: bp.BioProcess,
+    time: float,
+) -> float:
+    transform = process.pseudobatch_transform
+    assert transform is not None
+    assert transform.sample_compensation is not None
+    assert process.volume.total_volume is not None
+    sample_compensation = _value_at_time(
+        np.asarray(transform.sample_compensation.times, dtype=float),
+        np.asarray(transform.sample_compensation.values, dtype=float),
+        time,
+    )
+    sample_delta = _sample_volume_delta_at(process, time)
+    if sample_delta == 0.0:
+        return sample_compensation
+    pre_sample_volume = _value_at_time(
+        np.asarray(process.volume.total_volume.times, dtype=float),
+        np.asarray(process.volume.total_volume.values, dtype=float),
+        time,
+    )
+    post_sample_volume = pre_sample_volume + sample_delta
+    return sample_compensation * pre_sample_volume / post_sample_volume
+
+
+def _adf_jump_delta_at(process: bp.BioProcess, time: float) -> float:
+    transform = process.pseudobatch_transform
+    assert transform is not None
+    assert process.volume.total_volume is not None
+    total_volume_times = np.asarray(process.volume.total_volume.times, dtype=float)
+    total_volume_values = np.asarray(process.volume.total_volume.values, dtype=float)
+    adf_times = np.asarray(transform.adf.times, dtype=float)
+    adf_values = np.asarray(transform.adf.values, dtype=float)
+    pre_adf = _value_at_time(adf_times, adf_values, time)
+    volume_delta = _discrete_volume_delta_at(process, time)
+    sample_delta = _sample_volume_delta_at(process, time)
+    if volume_delta == 0.0 and sample_delta == 0.0:
+        return 0.0
+    pre_total_volume = _value_at_time(total_volume_times, total_volume_values, time)
+    post_total_volume = pre_total_volume + volume_delta
+    sample_compensation = _sample_compensation_after_sample_event(process, time)
+    post_adf = post_total_volume / process.volume.initial_volume * sample_compensation
+    return post_adf - pre_adf
+
+
+def _feed_correction_jump_delta_at(
+    process: bp.BioProcess,
+    component_name: str,
+    time: float,
+) -> float:
+    sample_compensation = _sample_compensation_after_sample_event(process, time)
+    delta = 0.0
+    for volume_change in process.volume.volume_changes.values():
+        if volume_change.is_continuous:
+            continue
+        if not isinstance(volume_change, bp.FeedVolumeChange):
+            continue
+        change_times = np.asarray(volume_change.values.times, dtype=float)
+        change_values = np.asarray(volume_change.values.values, dtype=float)
+        matches = np.flatnonzero(
+            np.isclose(change_times, time, rtol=0.0, atol=EVENT_TIME_ATOL)
+        )
+        if not len(matches):
+            continue
+        feed_concentration = volume_change.feed_medium.components[
+            component_name
+        ].concentration.value
+        delta += (
+            sample_compensation
+            * float(change_values[int(matches[0])])
+            * feed_concentration
+            / process.volume.initial_volume
+        )
+    return delta
+
+
+def _event_aware_series_value(
+    series: bp.TimeSeries,
+    time: float,
+    jump_times: np.ndarray,
+    jump_delta_at,
+    *,
+    right_of_jump: bool = False,
+) -> float:
+    if series.times is None or series.values is None:
+        raise ValueError("Stored pseudobatch transform carriers need raw samples.")
+    times = np.asarray(series.times, dtype=float)
+    values = np.asarray(series.values, dtype=float)
+    if time < times[0] or time > times[-1]:
+        raise ValueError(f"Time {time} is outside the transform carrier domain.")
+
+    exact_matches = np.flatnonzero(
+        np.isclose(times, time, rtol=0.0, atol=EVENT_TIME_ATOL)
+    )
+    if len(exact_matches):
+        index = int(exact_matches[0])
+        value = float(values[index])
+        if right_of_jump and _is_event_jump_time(time, jump_times):
+            value += jump_delta_at(time)
+        return value
+
+    left_index = int(np.searchsorted(times, time, side="right") - 1)
+    right_index = left_index + 1
+    left_time = float(times[left_index])
+    left_value = float(values[left_index])
+    if _is_event_jump_time(left_time, jump_times):
+        left_value += jump_delta_at(left_time)
+    return float(
+        np.interp(
+            time, [left_time, times[right_index]], [left_value, values[right_index]]
+        )
+    )
+
+
+def _event_aware_adf_value(
+    process: bp.BioProcess,
+    time: float,
+    jump_times: np.ndarray,
+    *,
+    right_of_jump: bool = False,
+) -> float:
+    transform = process.pseudobatch_transform
+    assert transform is not None
+    return _event_aware_series_value(
+        transform.adf,
+        time,
+        jump_times,
+        lambda jump_time: _adf_jump_delta_at(process, jump_time),
+        right_of_jump=right_of_jump,
+    )
+
+
+def _event_aware_feed_correction_value(
+    process: bp.BioProcess,
+    component_name: str,
+    time: float,
+    jump_times: np.ndarray,
+    *,
+    right_of_jump: bool = False,
+) -> float:
+    transform = process.pseudobatch_transform
+    assert transform is not None
+    return _event_aware_series_value(
+        transform.feed_corrections[component_name],
+        time,
+        jump_times,
+        lambda jump_time: _feed_correction_jump_delta_at(
+            process,
+            component_name,
+            jump_time,
+        ),
+        right_of_jump=right_of_jump,
+    )
+
+
+def _interpolated_rate_values(
+    rates: dict[str, np.ndarray],
+    rate_times: np.ndarray,
+    time: float,
+) -> dict[str, float]:
+    if time < rate_times[0] or time > rate_times[-1]:
+        raise ValueError(f"Time {time} is outside the inferred-rate domain.")
+    return {
+        name: float(np.interp(time, rate_times, values))
+        for name, values in rates.items()
+    }
+
+
+def _ex14_biological_derivatives(
+    states: dict[str, float],
+    rates: dict[str, float],
+) -> dict[str, float]:
+    active_biomass = states["biomass"] - states["product_intracellular"]
+    return {
+        "biomass": (rates["q_X_active"] + rates["q_product_intracellular"])
+        * active_biomass,
+        "product_extracellular": rates["q_product_extracellular"] * active_biomass,
+        "product_intracellular": rates["q_product_intracellular"] * active_biomass,
+        "dead_cells": rates["q_dead_cells"] * active_biomass,
+        "glucose": rates["q_glucose"] * active_biomass,
+        "glutamine": rates["q_glutamine"] * active_biomass,
+        "lactate": rates["q_lactate"] * active_biomass,
+        "ammonia": rates["q_ammonia"] * active_biomass,
+    }
+
+
+def _pseudobatch_rhs_values(
+    process: bp.BioProcess,
+    rate_times: np.ndarray,
+    rates: dict[str, np.ndarray],
+    time: float,
+    cstar_state: np.ndarray,
+    *,
+    right_of_jump: bool = False,
+) -> np.ndarray:
+    transform = process.pseudobatch_transform
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+    if set(process.reactor_medium.components) != EXPECTED_REACTOR_COMPONENTS:
+        raise ValueError("Unexpected ex14 reactor component set.")
+
+    jump_times = _event_jump_times(process)
+    adf = _event_aware_adf_value(
+        process,
+        time,
+        jump_times,
+        right_of_jump=right_of_jump,
+    )
+    states = {}
+    for index, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
+        feed_correction = _event_aware_feed_correction_value(
+            process,
+            name,
+            time,
+            jump_times,
+            right_of_jump=right_of_jump,
+        )
+        states[name] = (float(cstar_state[index]) + feed_correction) / adf
+
+    q_values = _interpolated_rate_values(rates, rate_times, time)
+    biological_derivatives = _ex14_biological_derivatives(states, q_values)
+    return np.asarray(
+        [
+            adf * biological_derivatives[name]
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ],
+        dtype=float,
+    )
+
+
+def _initial_cstar_state(diagnostics: dict[str, dict[str, np.ndarray]]) -> np.ndarray:
+    return np.asarray(
+        [
+            diagnostics["cstar_states"][name][0]
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ],
+        dtype=float,
+    )
+
+
+def _assert_transform_right_limits_are_event_local(process: bp.BioProcess) -> None:
+    transform = process.pseudobatch_transform
+    assert transform is not None
+    jump_times = _event_jump_times(process)
+    bolus_time = EXPECTED_BOLUS_RIGHT_LIMIT_TIME
+    component_name = EXPECTED_BOLUS_RIGHT_LIMIT_COMPONENT
+
+    left_adf = _event_aware_adf_value(process, bolus_time, jump_times)
+    right_adf = _event_aware_adf_value(
+        process,
+        bolus_time,
+        jump_times,
+        right_of_jump=True,
+    )
+    np.testing.assert_allclose(
+        right_adf,
+        left_adf + _adf_jump_delta_at(process, bolus_time),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    left_feed_correction = _event_aware_feed_correction_value(
+        process,
+        component_name,
+        bolus_time,
+        jump_times,
+    )
+    right_feed_correction = _event_aware_feed_correction_value(
+        process,
+        component_name,
+        bolus_time,
+        jump_times,
+        right_of_jump=True,
+    )
+    np.testing.assert_allclose(
+        right_feed_correction,
+        left_feed_correction
+        + _feed_correction_jump_delta_at(process, component_name, bolus_time),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    stored_times = np.asarray(
+        transform.feed_corrections[component_name].times,
+        dtype=float,
+    )
+    stored_values = np.asarray(
+        transform.feed_corrections[component_name].values,
+        dtype=float,
+    )
+    bolus_index = int(np.flatnonzero(stored_times == bolus_time)[0])
+    next_stored_value = stored_values[bolus_index + 1]
+    continuous_component_feed = any(
+        isinstance(volume_change, bp.FeedVolumeChange)
+        and volume_change.is_continuous
+        and volume_change.feed_medium.components[component_name].concentration.value
+        != 0.0
+        and np.any(np.diff(np.asarray(volume_change.values.values, dtype=float)) > 0.0)
+        for volume_change in process.volume.volume_changes.values()
+    )
+    assert continuous_component_feed
+    assert not np.isclose(
+        right_feed_correction,
+        next_stored_value,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def _assert_pseudobatch_rhs_initial_algebra(
+    process: bp.BioProcess,
+    rate_times: np.ndarray,
+    rates: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+) -> None:
+    time = float(rate_times[0])
+    y0 = _initial_cstar_state(diagnostics)
+    rhs0 = _pseudobatch_rhs_values(process, rate_times, rates, time, y0)
+    expected = np.asarray(
+        [
+            diagnostics["cstar_derivatives"][name][0]
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ],
+        dtype=float,
+    )
+    np.testing.assert_allclose(rhs0, expected, rtol=1e-12, atol=1e-12)
+
+    perturbed = y0.copy()
+    perturbed[EXPECTED_REACTOR_COMPONENT_ORDER.index("biomass")] += (
+        RHS_STATE_PERTURBATION
+    )
+    perturbed_rhs = _pseudobatch_rhs_values(
+        process,
+        rate_times,
+        rates,
+        time,
+        perturbed,
+    )
+    assert not np.allclose(perturbed_rhs, rhs0, rtol=1e-12, atol=1e-12)
+
+
+def _pseudobatch_integration_breakpoints(
+    process: bp.BioProcess,
+    output_times: np.ndarray,
+) -> np.ndarray:
+    jump_times = _event_jump_times(process)
+    domain_start = float(output_times[0])
+    domain_end = float(output_times[-1])
+    jumps_in_domain = jump_times[
+        (domain_start < jump_times) & (jump_times < domain_end)
+    ]
+    return np.unique(np.concatenate([output_times, jumps_in_domain]))
+
+
+def _integrate_pseudobatch_cstar_states(
+    process: bp.BioProcess,
+    rate_times: np.ndarray,
+    rates: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+    output_times: np.ndarray,
+) -> dict[str, np.ndarray]:
+    output_time_set = set(float(time) for time in output_times)
+    breakpoints = _pseudobatch_integration_breakpoints(process, output_times)
+    jump_times = _event_jump_times(process)
+    state = _initial_cstar_state(diagnostics)
+    outputs = {float(output_times[0]): state.copy()}
+
+    for start, end in zip(breakpoints[:-1], breakpoints[1:], strict=True):
+        start = float(start)
+        end = float(end)
+
+        def rhs(time, cstar_state):
+            return _pseudobatch_rhs_values(
+                process,
+                rate_times,
+                rates,
+                float(time),
+                np.asarray(cstar_state, dtype=float),
+                right_of_jump=(
+                    _is_event_jump_time(start, jump_times)
+                    and np.isclose(float(time), start, rtol=0.0, atol=EVENT_TIME_ATOL)
+                ),
+            )
+
+        sol = solve_ivp(
+            rhs,
+            (start, end),
+            state,
+            method=PSEUDOBATCH_INTEGRATOR_METHOD,
+            rtol=PSEUDOBATCH_INTEGRATOR_RTOL,
+            atol=PSEUDOBATCH_INTEGRATOR_ATOL,
+            t_eval=[end],
+        )
+        if not sol.success:
+            raise RuntimeError(sol.message)
+        state = np.asarray(sol.y[:, -1], dtype=float)
+        if end in output_time_set:
+            outputs[end] = state.copy()
+
+    return {
+        name: np.asarray(
+            [outputs[float(time)][index] for time in output_times],
+            dtype=float,
+        )
+        for index, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER)
+    }
+
+
+def _assert_reintegrated_cstar_states_finite(
+    reintegrated_cstar_states: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+    output_times: np.ndarray,
+) -> None:
+    assert tuple(reintegrated_cstar_states) == EXPECTED_REACTOR_COMPONENT_ORDER
+    for name, values in reintegrated_cstar_states.items():
+        assert values.shape == (len(output_times),)
+        assert np.all(np.isfinite(values))
+        np.testing.assert_allclose(
+            values[0],
+            diagnostics["cstar_states"][name][0],
+            rtol=1e-12,
+            atol=1e-12,
+        )
+
+
 def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
     times = _time_grid_from_volume_changes(process.volume.volume_changes.values())
     total_volume = process.volume.total_volume
@@ -828,3 +1300,37 @@ def test_ex14_infers_finite_rates_from_reloaded_cstar_splines(tmp_path):
         _assert_inferred_rates_finite(rates, diagnostics)
         _assert_state_transform_identities(diagnostics)
         _assert_rates_match_biological_derivatives(rates, diagnostics)
+
+
+def test_ex14_reintegrates_finite_pseudobatch_cstar_states_from_reloaded_rates(
+    tmp_path,
+):
+    collection = _parse_lab_like_collection()
+
+    for process in collection.processes.values():
+        _populate_exact_pseudobatch_transform(process)
+        _populate_cstar_splines(process)
+
+    output_path = tmp_path / "cstar_fitted_collection.json"
+    save_process_collection_json(collection, output_path)
+    reloaded = load_process_collection_json(output_path)
+
+    times = np.asarray(EXPECTED_CONCENTRATION_TIMES, dtype=float)
+    for process in reloaded.processes.values():
+        rates, diagnostics = _infer_ex14_rates_from_cstar_splines(process, times)
+        _assert_inferred_rates_finite(rates, diagnostics)
+        if process.metadata.name == "ex14_run_1":
+            _assert_transform_right_limits_are_event_local(process)
+        _assert_pseudobatch_rhs_initial_algebra(process, times, rates, diagnostics)
+        reintegrated_cstar_states = _integrate_pseudobatch_cstar_states(
+            process,
+            rate_times=times,
+            rates=rates,
+            diagnostics=diagnostics,
+            output_times=times,
+        )
+        _assert_reintegrated_cstar_states_finite(
+            reintegrated_cstar_states,
+            diagnostics,
+            times,
+        )
