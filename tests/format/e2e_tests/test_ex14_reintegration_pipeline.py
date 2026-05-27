@@ -79,6 +79,20 @@ SPARSE_REINTEGRATION_ERROR_LIMITS = {
     "lactate": (1.5, 0.08),
     "ammonia": (0.6, 0.08),
 }
+# Dense observations should recover nearly exactly. The remaining error comes from
+# dense c* spline derivatives, rate interpolation, and ODE integration roundoff.
+# Use absolute limits for near-zero species and a range-normalized limit for scale.
+DENSE_REINTEGRATION_MAX_ABSOLUTE_ERRORS = {
+    "biomass": 0.08,
+    "product_extracellular": 0.02,
+    "product_intracellular": 0.01,
+    "dead_cells": 1.5e-4,
+    "glucose": 0.003,
+    "glutamine": 0.003,
+    "lactate": 1e-4,
+    "ammonia": 4e-5,
+}
+DENSE_REINTEGRATION_MAX_RANGE_NORMALIZED_ERROR = 5e-4
 
 
 def _clear_ex14_fixture_modules() -> None:
@@ -519,6 +533,41 @@ def _dense_reactor_reference(
     return {name: np.asarray(series, dtype=float) for name, series in values.items()}
 
 
+def _dense_online_reactor_observations(process_name: str) -> dict[str, np.ndarray]:
+    values: dict[str, list[float]] = {
+        "time": [],
+        **{name: [] for name in EXPECTED_REACTOR_COMPONENT_ORDER},
+    }
+    with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["process_id"] != process_name:
+                continue
+            if row["row_type"] != "online":
+                continue
+            values["time"].append(float(row["time"]))
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+                values[name].append(float(row[name]))
+
+    observations = {
+        name: np.asarray(series, dtype=float) for name, series in values.items()
+    }
+    if len(observations["time"]) <= len(EXPECTED_CONCENTRATION_TIMES):
+        raise ValueError(f"Dense observations missing for process {process_name!r}.")
+    return observations
+
+
+def _use_dense_reactor_observations(process: bp.BioProcess) -> None:
+    if process.metadata.name is None:
+        raise ValueError("Process metadata name is required.")
+    observations = _dense_online_reactor_observations(process.metadata.name)
+    times = observations["time"]
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        process.reactor_medium.components[name].concentration = bp.TimeSeries(
+            times=jnp.asarray(times),
+            values=jnp.asarray(observations[name]),
+        )
+
+
 def _evaluate_cstar_spline_states_for_plot(
     process: bp.BioProcess,
     times: np.ndarray,
@@ -577,12 +626,13 @@ def _assert_inferred_rates_finite(
     diagnostics: dict[str, dict[str, np.ndarray]],
 ) -> None:
     assert set(rates) == EXPECTED_RATE_NAMES
+    expected_shape = diagnostics["transform"]["adf"].shape
     for values in rates.values():
-        assert values.shape == (len(EXPECTED_CONCENTRATION_TIMES),)
+        assert values.shape == expected_shape
         assert np.all(np.isfinite(values))
     for group in diagnostics.values():
         for values in group.values():
-            assert values.shape == (len(EXPECTED_CONCENTRATION_TIMES),)
+            assert values.shape == expected_shape
             assert np.all(np.isfinite(values))
     assert np.all(diagnostics["volume"]["total_volume"] > 0.0)
     assert np.all(diagnostics["transform"]["adf"] > 0.0)
@@ -1031,7 +1081,7 @@ def _pseudobatch_integration_breakpoints(
     jumps_in_domain = jump_times[
         (domain_start < jump_times) & (jump_times < domain_end)
     ]
-    return np.unique(np.concatenate([output_times, jumps_in_domain]))
+    return np.unique(np.concatenate([[domain_start, domain_end], jumps_in_domain]))
 
 
 def _integrate_pseudobatch_cstar_states(
@@ -1041,7 +1091,6 @@ def _integrate_pseudobatch_cstar_states(
     diagnostics: dict[str, dict[str, np.ndarray]],
     output_times: np.ndarray,
 ) -> dict[str, np.ndarray]:
-    output_time_set = set(float(time) for time in output_times)
     breakpoints = _pseudobatch_integration_breakpoints(process, output_times)
     jump_times = _event_jump_times(process)
     state = _initial_cstar_state(diagnostics)
@@ -1064,6 +1113,12 @@ def _integrate_pseudobatch_cstar_states(
                 ),
             )
 
+        segment_output_times = output_times[
+            (start < output_times) & (output_times <= end)
+        ]
+        integration_output_times = segment_output_times
+        if len(integration_output_times) == 0:
+            integration_output_times = np.asarray([end], dtype=float)
         sol = solve_ivp(
             rhs,
             (start, end),
@@ -1071,13 +1126,14 @@ def _integrate_pseudobatch_cstar_states(
             method=PSEUDOBATCH_INTEGRATOR_METHOD,
             rtol=PSEUDOBATCH_INTEGRATOR_RTOL,
             atol=PSEUDOBATCH_INTEGRATOR_ATOL,
-            t_eval=[end],
+            t_eval=integration_output_times,
         )
         if not sol.success:
             raise RuntimeError(sol.message)
+        if len(segment_output_times) > 0:
+            for time, values in zip(segment_output_times, sol.y.T, strict=True):
+                outputs[float(time)] = np.asarray(values, dtype=float).copy()
         state = np.asarray(sol.y[:, -1], dtype=float)
-        if end in output_time_set:
-            outputs[end] = state.copy()
 
     return {
         name: np.asarray(
@@ -1105,7 +1161,7 @@ def _assert_reintegrated_cstar_states_finite(
         )
 
 
-def _observed_sparse_reactor_concentrations(
+def _observed_reactor_concentrations(
     process: bp.BioProcess,
     times: np.ndarray,
 ) -> dict[str, np.ndarray]:
@@ -1118,7 +1174,7 @@ def _observed_sparse_reactor_concentrations(
     return observed
 
 
-def _sparse_reintegration_errors(
+def _reintegration_errors(
     recovered_concentrations: dict[str, np.ndarray],
     observed_concentrations: dict[str, np.ndarray],
 ) -> dict[str, dict[str, np.ndarray]]:
@@ -1144,7 +1200,7 @@ def _assert_sparse_real_space_reintegration_sane(
     assert tuple(observed_concentrations) == EXPECTED_REACTOR_COMPONENT_ORDER
     assert set(SPARSE_REINTEGRATION_ERROR_LIMITS) == EXPECTED_REACTOR_COMPONENTS
 
-    errors = _sparse_reintegration_errors(
+    errors = _reintegration_errors(
         recovered_concentrations,
         observed_concentrations,
     )
@@ -1162,6 +1218,37 @@ def _assert_sparse_real_space_reintegration_sane(
         assert float(np.max(errors[name]["relative"])) <= max_rel_error
 
 
+def _assert_dense_real_space_reintegration_tight(
+    recovered_concentrations: dict[str, np.ndarray],
+    observed_concentrations: dict[str, np.ndarray],
+    output_times: np.ndarray,
+) -> None:
+    assert tuple(recovered_concentrations) == EXPECTED_REACTOR_COMPONENT_ORDER
+    assert tuple(observed_concentrations) == EXPECTED_REACTOR_COMPONENT_ORDER
+    assert set(DENSE_REINTEGRATION_MAX_ABSOLUTE_ERRORS) == EXPECTED_REACTOR_COMPONENTS
+
+    errors = _reintegration_errors(
+        recovered_concentrations,
+        observed_concentrations,
+    )
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        recovered = recovered_concentrations[name]
+        observed = observed_concentrations[name]
+        assert recovered.shape == (len(output_times),)
+        assert observed.shape == (len(output_times),)
+        assert np.all(np.isfinite(recovered))
+        assert np.all(np.isfinite(observed))
+        np.testing.assert_allclose(recovered[0], observed[0], rtol=1e-12, atol=1e-12)
+
+        value_range = float(np.max(observed) - np.min(observed))
+        assert value_range > 0.0
+        max_absolute = float(np.max(errors[name]["absolute"]))
+        assert max_absolute <= DENSE_REINTEGRATION_MAX_ABSOLUTE_ERRORS[name], name
+        assert (
+            max_absolute / value_range <= DENSE_REINTEGRATION_MAX_RANGE_NORMALIZED_ERROR
+        ), name
+
+
 def _float_list(values: np.ndarray) -> list[float]:
     return [float(value) for value in values]
 
@@ -1174,7 +1261,7 @@ def _sparse_reintegration_metrics(
     recovered_concentrations: dict[str, np.ndarray],
     observed_concentrations: dict[str, np.ndarray],
 ) -> dict:
-    errors = _sparse_reintegration_errors(
+    errors = _reintegration_errors(
         recovered_concentrations,
         observed_concentrations,
     )
@@ -1820,10 +1907,7 @@ def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
             times,
             reintegrated_cstar_states,
         )
-        observed_concentrations = _observed_sparse_reactor_concentrations(
-            process,
-            times,
-        )
+        observed_concentrations = _observed_reactor_concentrations(process, times)
         _assert_sparse_real_space_reintegration_sane(
             recovered_concentrations,
             observed_concentrations,
@@ -1856,3 +1940,58 @@ def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
         plot_paths,
         len(reloaded.processes),
     )
+
+
+def test_ex14_dense_observations_tightly_reintegrate_pseudobatch_real_space(
+    tmp_path,
+):
+    collection = _parse_lab_like_collection()
+
+    for process in collection.processes.values():
+        _use_dense_reactor_observations(process)
+        _populate_exact_pseudobatch_transform(process)
+        _populate_cstar_splines(process)
+        _assert_cstar_splines_sane(process)
+
+    output_path = tmp_path / "dense_cstar_fitted_collection.json"
+    save_process_collection_json(collection, output_path)
+    reloaded = load_process_collection_json(output_path)
+
+    for process in reloaded.processes.values():
+        concentration = process.reactor_medium.components["biomass"].concentration
+        if not isinstance(concentration, bp.TimeSeries):
+            raise TypeError("biomass concentration must be a TimeSeries.")
+        times = np.asarray(concentration.times, dtype=float)
+        assert len(times) > len(EXPECTED_CONCENTRATION_TIMES)
+
+        rates, diagnostics = _infer_ex14_rates_from_cstar_splines(process, times)
+        _assert_inferred_rates_finite(rates, diagnostics)
+        _assert_state_transform_identities(diagnostics)
+        _assert_rates_match_biological_derivatives(rates, diagnostics)
+        if process.metadata.name == "ex14_run_1":
+            _assert_transform_right_limits_are_event_local(process)
+        _assert_pseudobatch_rhs_initial_algebra(process, times, rates, diagnostics)
+
+        reintegrated_cstar_states = _integrate_pseudobatch_cstar_states(
+            process,
+            rate_times=times,
+            rates=rates,
+            diagnostics=diagnostics,
+            output_times=times,
+        )
+        _assert_reintegrated_cstar_states_finite(
+            reintegrated_cstar_states,
+            diagnostics,
+            times,
+        )
+        recovered_concentrations = _evaluate_reconstructed_reactor_states(
+            process,
+            times,
+            reintegrated_cstar_states,
+        )
+        observed_concentrations = _observed_reactor_concentrations(process, times)
+        _assert_dense_real_space_reintegration_tight(
+            recovered_concentrations,
+            observed_concentrations,
+            times,
+        )
