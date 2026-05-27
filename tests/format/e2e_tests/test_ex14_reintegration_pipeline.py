@@ -1,5 +1,6 @@
 from collections import defaultdict
 from collections.abc import Iterable
+import csv
 import json
 import os
 import sys
@@ -57,10 +58,12 @@ PSEUDOBATCH_INTEGRATOR_ATOL = 1e-9
 RHS_STATE_PERTURBATION = 1.0
 EXPECTED_BOLUS_RIGHT_LIMIT_TIME = 36.0
 EXPECTED_BOLUS_RIGHT_LIMIT_COMPONENT = "glucose"
-SPARSE_DIAGNOSTIC_PLOTS_PER_PROCESS = 2
-SPARSE_CONCENTRATION_PLOT_FIGSIZE = (10, 11)
-SPARSE_RATES_TRANSFORM_PLOT_FIGSIZE = (9, 8)
-SPARSE_DIAGNOSTIC_PLOT_DPI = 120
+SPARSE_DIAGNOSTIC_PLOTS_PER_PROCESS = 3
+SPARSE_STATE_GRID = (4, 2)
+SPARSE_REAL_SPACE_PLOT_FIGSIZE = (14, 12)
+SPARSE_CSTAR_PLOT_FIGSIZE = (14, 12)
+SPARSE_RATES_TRANSFORM_PLOT_FIGSIZE = (11, 9)
+SPARSE_DIAGNOSTIC_PLOT_DPI = 140
 # Loose first-stage sparse bounds. They cover five offline samples, spline-
 # derivative rate inference, and linear rate interpolation. Limits are intentionally
 # wider than current observed errors so this is a sanity check, not a golden
@@ -479,6 +482,48 @@ def _evaluate_rate_inference_terms(
             for name, series in transform.feed_corrections.items()
         },
     }
+
+
+def _plot_time_grid(process: bp.BioProcess, times: np.ndarray) -> np.ndarray:
+    transform = process.pseudobatch_transform
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+    transform_times = np.asarray(transform.adf.times, dtype=float)
+    return transform_times[
+        (float(times[0]) <= transform_times) & (transform_times <= float(times[-1]))
+    ]
+
+
+def _dense_reactor_reference(
+    process_name: str,
+    end_time: float,
+) -> dict[str, np.ndarray]:
+    values: dict[str, list[float]] = {
+        "time": [],
+        "volume": [],
+        **{name: [] for name in EXPECTED_REACTOR_COMPONENT_ORDER},
+    }
+    with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["process_id"] != process_name:
+                continue
+            if row["row_type"] == "offline":
+                continue
+            time = float(row["time"])
+            if time > end_time:
+                continue
+            values["time"].append(time)
+            values["volume"].append(float(row["volume"]))
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+                values[name].append(float(row[name]))
+    return {name: np.asarray(series, dtype=float) for name, series in values.items()}
+
+
+def _evaluate_cstar_spline_states_for_plot(
+    process: bp.BioProcess,
+    times: np.ndarray,
+) -> dict[str, np.ndarray]:
+    return _evaluate_cstar_states_and_derivatives(process, times)[0]
 
 
 def _infer_ex14_rates_from_cstar_splines(
@@ -1188,65 +1233,210 @@ def _plotting_pyplot(output_dir: Path):
     return plt
 
 
+def _style_diagnostic_axis(ax, title: str) -> None:
+    ax.set_title(title)
+    ax.grid(alpha=0.25)
+
+
 def _write_sparse_reintegration_diagnostic_plots(
     output_dir: Path,
-    process_name: str,
+    process: bp.BioProcess,
     times: np.ndarray,
     rates: dict[str, np.ndarray],
     diagnostics: dict[str, dict[str, np.ndarray]],
     recovered_concentrations: dict[str, np.ndarray],
     observed_concentrations: dict[str, np.ndarray],
 ) -> list[Path]:
+    assert process.metadata.name is not None
+    process_name = process.metadata.name
     output_dir.mkdir(parents=True, exist_ok=True)
     plt = _plotting_pyplot(output_dir)
     paths = []
 
+    plot_times = _plot_time_grid(process, times)
+    dense_reference = _dense_reactor_reference(process_name, float(plot_times[-1]))
+    reintegrated_cstar_plot = _integrate_pseudobatch_cstar_states(
+        process,
+        rate_times=times,
+        rates=rates,
+        diagnostics=diagnostics,
+        output_times=plot_times,
+    )
+    reintegrated_concentration_plot = _evaluate_reconstructed_reactor_states(
+        process,
+        plot_times,
+        reintegrated_cstar_plot,
+    )
+    fitted_cstar_plot = _evaluate_cstar_spline_states_for_plot(process, plot_times)
+    fitted_concentration_plot = _evaluate_reconstructed_reactor_states(
+        process,
+        plot_times,
+        fitted_cstar_plot,
+    )
+
     fig, axes = plt.subplots(
-        4,
-        2,
-        figsize=SPARSE_CONCENTRATION_PLOT_FIGSIZE,
+        *SPARSE_STATE_GRID,
+        figsize=SPARSE_REAL_SPACE_PLOT_FIGSIZE,
         sharex=True,
     )
     for ax, name in zip(axes.ravel(), EXPECTED_REACTOR_COMPONENT_ORDER, strict=True):
-        ax.plot(times, recovered_concentrations[name], marker="o", label="recovered")
+        ax.plot(
+            dense_reference["time"],
+            dense_reference[name],
+            color="black",
+            linewidth=1.0,
+            alpha=0.35,
+            label="simulation truth (diagnostic)",
+        )
+        ax.plot(
+            plot_times,
+            fitted_concentration_plot[name],
+            color="tab:blue",
+            linewidth=1.3,
+            label="fitted c* backtransform",
+        )
+        ax.plot(
+            plot_times,
+            reintegrated_concentration_plot[name],
+            color="tab:orange",
+            linewidth=1.3,
+            linestyle="--",
+            label="RHS reintegrated",
+        )
         ax.scatter(
             times,
             observed_concentrations[name],
             color="black",
-            label="observed",
+            s=18,
+            zorder=3,
+            label="sparse observed",
         )
-        ax.set_title(name)
-    axes[-1, 0].set_xlabel("time [h]")
-    axes[-1, 1].set_xlabel("time [h]")
-    axes[0, 0].legend(loc="best")
+        ax.scatter(
+            times,
+            recovered_concentrations[name],
+            color="tab:orange",
+            marker="x",
+            s=28,
+            zorder=3,
+            label="RHS sparse output",
+        )
+        _style_diagnostic_axis(ax, name)
+    axes.ravel()[0].legend(loc="best", fontsize="x-small")
+    fig.suptitle(f"ex14 {process_name}: sparse real-space reintegration")
+    fig.supxlabel("time [h]")
+    fig.supylabel("concentration")
     fig.tight_layout()
-    path = output_dir / f"{process_name}_sparse_reintegration.png"
+    path = output_dir / f"{process_name}_real_space_reintegration.png"
     fig.savefig(path, dpi=SPARSE_DIAGNOSTIC_PLOT_DPI)
     plt.close(fig)
     paths.append(path)
 
     fig, axes = plt.subplots(
-        3,
+        *SPARSE_STATE_GRID,
+        figsize=SPARSE_CSTAR_PLOT_FIGSIZE,
+        sharex=True,
+    )
+    for ax, name in zip(axes.ravel(), EXPECTED_REACTOR_COMPONENT_ORDER, strict=True):
+        component = process.reactor_medium.components[name]
+        cstar_times, cstar_observed = _cstar_values_for_component(process, component)
+        ax.plot(
+            plot_times,
+            fitted_cstar_plot[name],
+            color="tab:blue",
+            linewidth=1.3,
+            label="fitted c* spline",
+        )
+        ax.plot(
+            plot_times,
+            reintegrated_cstar_plot[name],
+            color="tab:orange",
+            linewidth=1.3,
+            linestyle="--",
+            label="RHS reintegrated c*",
+        )
+        ax.scatter(
+            cstar_times,
+            cstar_observed,
+            color="black",
+            s=18,
+            zorder=3,
+            label="sparse c* observed",
+        )
+        _style_diagnostic_axis(ax, name)
+    axes.ravel()[0].legend(loc="best", fontsize="x-small")
+    fig.suptitle(f"ex14 {process_name}: pseudobatch c* spline and reintegration")
+    fig.supxlabel("time [h]")
+    fig.supylabel("c* concentration")
+    fig.tight_layout()
+    path = output_dir / f"{process_name}_pseudobatch_cstar.png"
+    fig.savefig(path, dpi=SPARSE_DIAGNOSTIC_PLOT_DPI)
+    plt.close(fig)
+    paths.append(path)
+
+    plot_rates, plot_transform = _infer_ex14_rates_from_cstar_splines(
+        process,
+        plot_times,
+    )
+    fig, axes = plt.subplots(
+        4,
         1,
         figsize=SPARSE_RATES_TRANSFORM_PLOT_FIGSIZE,
         sharex=True,
     )
-    for name, values in sorted(rates.items()):
-        axes[0].plot(times, values, marker="o", label=name)
+    for name, values in sorted(plot_rates.items()):
+        axes[0].plot(plot_times, values, linewidth=1.0, label=name)
+        axes[0].scatter(times, rates[name], s=12)
     axes[0].set_ylabel("rate")
-    axes[0].legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="small")
-    axes[1].plot(times, diagnostics["volume"]["total_volume"], marker="o")
-    axes[1].set_ylabel("total volume")
-    axes[2].plot(times, diagnostics["transform"]["adf"], marker="o", label="ADF")
+    axes[0].legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="x-small")
+    axes[0].grid(alpha=0.25)
+
+    axes[1].plot(
+        dense_reference["time"],
+        dense_reference["volume"],
+        color="black",
+        linewidth=1.0,
+        alpha=0.35,
+        label="simulation volume",
+    )
+    axes[1].plot(
+        plot_times,
+        plot_transform["volume"]["total_volume"],
+        color="tab:purple",
+        linewidth=1.3,
+        label="stored total volume",
+    )
+    axes[1].set_ylabel("volume [L]")
+    axes[1].legend(loc="best", fontsize="x-small")
+    axes[1].grid(alpha=0.25)
+
+    axes[2].plot(
+        plot_times,
+        plot_transform["transform"]["adf"],
+        color="tab:green",
+        linewidth=1.3,
+        label="ADF",
+    )
+    axes[2].set_ylabel("ADF")
+    axes[2].legend(loc="best", fontsize="x-small")
+    axes[2].grid(alpha=0.25)
+
     for name in sorted(EXPECTED_NONZERO_FEED_CORRECTION_COMPONENTS):
-        axes[2].plot(
-            times,
-            diagnostics["feed_corrections"][name],
-            marker="o",
+        axes[3].plot(
+            plot_times,
+            plot_transform["feed_corrections"][name],
+            linewidth=1.3,
             label=f"{name} feed correction",
         )
-    axes[2].set_xlabel("time [h]")
-    axes[2].legend(loc="best", fontsize="small")
+        axes[3].scatter(
+            times,
+            diagnostics["feed_corrections"][name],
+            s=12,
+        )
+    axes[3].set_xlabel("time [h]")
+    axes[3].set_ylabel("feed correction")
+    axes[3].legend(loc="best", fontsize="x-small")
+    axes[3].grid(alpha=0.25)
+    fig.suptitle(f"ex14 {process_name}: inferred rates and transform carriers")
     fig.tight_layout()
     path = output_dir / f"{process_name}_rates_and_transform.png"
     fig.savefig(path, dpi=SPARSE_DIAGNOSTIC_PLOT_DPI)
@@ -1651,7 +1841,7 @@ def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
         plot_paths.extend(
             _write_sparse_reintegration_diagnostic_plots(
                 diagnostics_dir,
-                process.metadata.name,
+                process,
                 times,
                 rates,
                 diagnostics,
