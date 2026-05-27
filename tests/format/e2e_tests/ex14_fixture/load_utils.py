@@ -145,6 +145,12 @@ def _load_single_process(
     _require_strictly_increasing(t_measure, "offline plus initial times")
     _require_strictly_increasing(t_online, "online times")
     _validate_event_rows(event_rows)
+    _require_offline_rows_match_sample_events(offline_rows, event_rows)
+    fermentation_end_time = _fermentation_end_time(event_rows)
+    if fermentation_end_time != float(t_online[-1]):
+        raise ValueError(
+            f"fermentation_end event does not match online end time for {process_id!r}."
+        )
 
     reactor_components = {}
     for name in REACTOR_STATE_NAMES:
@@ -203,7 +209,7 @@ def _load_single_process(
         time_axis=bp.TimeAxis(
             unit="h",
             start=float(t_online[0]),
-            end=float(t_online[-1]),
+            end=fermentation_end_time,
             time_reference="batch_start",
         ),
         volume=bp.Volume(
@@ -251,6 +257,29 @@ def _build_biological_ode() -> bp.BiologicalOde:
             ),
         },
     )
+
+
+def _require_offline_rows_match_sample_events(
+    offline_rows: list[dict[str, str]],
+    event_rows: list[dict[str, str]],
+) -> None:
+    offline_times = _times(offline_rows)
+    sample_times = _times(
+        _sort_time_rows(row for row in event_rows if row["event_type"] == "sample")
+    )
+    if offline_times != sample_times:
+        raise ValueError(
+            "Offline measurement times must match sample event times exactly."
+        )
+
+
+def _fermentation_end_time(event_rows: list[dict[str, str]]) -> float:
+    fermentation_end_rows = [
+        row for row in event_rows if row["event_type"] == "fermentation_end"
+    ]
+    if len(fermentation_end_rows) != 1:
+        raise ValueError("Each process must have exactly one fermentation_end event.")
+    return float(fermentation_end_rows[0]["time"])
 
 
 def _build_volume_changes(
