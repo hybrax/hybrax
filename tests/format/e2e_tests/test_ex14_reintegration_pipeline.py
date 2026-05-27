@@ -36,6 +36,7 @@ EXPECTED_SAMPLE_EVENT_TIMES = [24.0, 48.0, 72.0, 96.0]
 EXPECTED_EVENT_JUMP_TIMES = [24.0, 36.0, 48.0, 72.0, 96.0, 108.0]
 EXPECTED_NONZERO_FEED_CORRECTION_COMPONENTS = {"glucose", "glutamine"}
 EXPECTED_VOLUME_CHANGES = {"conti_feed", "base_feed", "sampling", "bolus_feed"}
+CSTAR_SPLINE_SMOOTHING_S = 0.0
 
 
 def _clear_ex14_fixture_modules() -> None:
@@ -90,10 +91,28 @@ def _series_times(series):
     return _array_values(series.times)
 
 
+def _assert_optional_array_equal(actual, expected) -> None:
+    if expected is None:
+        assert actual is None
+        return
+    assert actual is not None
+    np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+
+
 def _assert_series_equal(actual, expected) -> None:
-    assert _series_times(actual) == _series_times(expected)
-    assert _series_values(actual) == _series_values(expected)
-    assert _array_values(actual.jump_times) == _array_values(expected.jump_times)
+    for attr in (
+        "times",
+        "values",
+        "jump_times",
+        "breaks",
+        "coeffs",
+        "segment_start_piece_idx",
+    ):
+        _assert_optional_array_equal(getattr(actual, attr), getattr(expected, attr))
+    assert actual.derived == expected.derived
+    assert actual.continuity_side == expected.continuity_side
+    assert actual.metadata == expected.metadata
+    assert np.dtype(actual.dtype) == np.dtype(expected.dtype)
 
 
 def _time_grid_from_volume_changes(
@@ -251,6 +270,100 @@ def _assert_finite_nonnegative(series: bp.TimeSeries) -> None:
     assert np.all(values >= 0.0)
 
 
+def _series_values_at_times(series: bp.TimeSeries, times: np.ndarray) -> np.ndarray:
+    if series.times is None or series.values is None:
+        raise ValueError("Stored pseudobatch transform carriers need raw samples.")
+    series_times = np.asarray(series.times, dtype=float)
+    series_values = np.asarray(series.values, dtype=float)
+    return np.asarray(
+        [
+            _value_at_time(series_times, series_values, float(time))
+            for time in np.asarray(times, dtype=float)
+        ],
+        dtype=float,
+    )
+
+
+def _cstar_transform_metadata(component_name: str) -> dict[str, str]:
+    return {
+        "name": "pseudo_batch",
+        "component": component_name,
+        "source": "stored_pseudobatch_transform",
+    }
+
+
+def _cstar_values_for_component(
+    process: bp.BioProcess,
+    component: bp.ReactorMediumComponent,
+) -> tuple[np.ndarray, np.ndarray]:
+    transform = process.pseudobatch_transform
+    if transform is None:
+        raise ValueError("process.pseudobatch_transform is required.")
+    if component.name not in transform.feed_corrections:
+        raise KeyError(component.name)
+    if not isinstance(component.concentration, bp.TimeSeries):
+        raise TypeError(f"{component.name} concentration must be a TimeSeries.")
+
+    times = np.asarray(component.concentration.times, dtype=float)
+    raw_values = np.asarray(component.concentration.values, dtype=float)
+    adf = _series_values_at_times(transform.adf, times)
+    feed_correction = _series_values_at_times(
+        transform.feed_corrections[component.name],
+        times,
+    )
+    return times, raw_values * adf - feed_correction
+
+
+def _fit_cstar_timeseries(
+    process: bp.BioProcess,
+    component: bp.ReactorMediumComponent,
+) -> bp.TimeSeries:
+    times, cstar_values = _cstar_values_for_component(process, component)
+    fitted = bp.splines.fit_timeseries_spline(
+        bp.TimeSeries(
+            times=jnp.asarray(times),
+            values=jnp.asarray(cstar_values),
+        ),
+        smoothing_s=CSTAR_SPLINE_SMOOTHING_S,
+    )
+    metadata = dict(fitted.metadata or {})
+    metadata["transform"] = _cstar_transform_metadata(component.name)
+    return bp.TimeSeries(
+        times=fitted.times,
+        values=fitted.values,
+        jump_times=fitted.jump_times,
+        breaks=fitted.breaks,
+        coeffs=fitted.coeffs,
+        segment_start_piece_idx=fitted.segment_start_piece_idx,
+        continuity_side=fitted.continuity_side,
+        metadata=metadata,
+        dtype=fitted.dtype,
+    )
+
+
+def _populate_cstar_splines(process: bp.BioProcess) -> None:
+    for component in process.reactor_medium.components.values():
+        component.c_star_concentration = _fit_cstar_timeseries(process, component)
+
+
+def _assert_cstar_splines_sane(process: bp.BioProcess) -> None:
+    for component in process.reactor_medium.components.values():
+        cstar = component.c_star_concentration
+        assert isinstance(cstar, bp.TimeSeries)
+        times, expected_values = _cstar_values_for_component(process, component)
+        np.testing.assert_array_equal(np.asarray(cstar.times), times)
+        np.testing.assert_array_equal(np.asarray(cstar.values), expected_values)
+        assert cstar.breaks is not None
+        assert cstar.coeffs is not None
+        assert cstar.segment_start_piece_idx is not None
+        assert cstar.metadata is not None
+        assert cstar.metadata["smoothing_s"] == CSTAR_SPLINE_SMOOTHING_S
+        assert cstar.metadata["transform"] == _cstar_transform_metadata(component.name)
+        evaluated = np.asarray(cstar.evaluate_many(jnp.asarray(times)), dtype=float)
+        assert np.all(np.isfinite(evaluated))
+        np.testing.assert_allclose(evaluated, expected_values, rtol=1e-12, atol=1e-12)
+
+
 def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
     times = _time_grid_from_volume_changes(process.volume.volume_changes.values())
     total_volume = process.volume.total_volume
@@ -368,10 +481,16 @@ def _assert_reloaded_collection_matches_parsed(parsed, reloaded) -> None:
             assert reloaded_component.name == component.name
             assert reloaded_component.unit == component.unit
             assert reloaded_component.bounds == component.bounds
-            assert (
-                reloaded_component.c_star_concentration
-                == component.c_star_concentration
-            )
+            if component.c_star_concentration is None:
+                assert reloaded_component.c_star_concentration is None
+            else:
+                assert isinstance(
+                    reloaded_component.c_star_concentration, bp.TimeSeries
+                )
+                _assert_series_equal(
+                    reloaded_component.c_star_concentration,
+                    component.c_star_concentration,
+                )
             _assert_series_equal(
                 reloaded_component.concentration,
                 component.concentration,
@@ -469,3 +588,20 @@ def test_ex14_exact_pseudobatch_transform_is_sane_and_roundtrips(tmp_path):
     save_process_collection_json(collection, output_path)
     reloaded = load_process_collection_json(output_path)
     _assert_reloaded_collection_matches_parsed(collection, reloaded)
+
+
+def test_ex14_cstar_splines_survive_json_roundtrip(tmp_path):
+    collection = _parse_lab_like_collection()
+
+    for process in collection.processes.values():
+        _populate_exact_pseudobatch_transform(process)
+        _populate_cstar_splines(process)
+        _assert_exact_pseudobatch_transform_sane(process)
+        _assert_cstar_splines_sane(process)
+
+    output_path = tmp_path / "cstar_fitted_collection.json"
+    save_process_collection_json(collection, output_path)
+    reloaded = load_process_collection_json(output_path)
+    _assert_reloaded_collection_matches_parsed(collection, reloaded)
+    for process in reloaded.processes.values():
+        _assert_cstar_splines_sane(process)
