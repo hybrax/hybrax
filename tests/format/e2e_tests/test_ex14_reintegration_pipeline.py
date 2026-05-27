@@ -1,5 +1,6 @@
 from collections import defaultdict
 from collections.abc import Iterable
+import json
 import os
 import sys
 from contextlib import contextmanager
@@ -56,6 +57,10 @@ PSEUDOBATCH_INTEGRATOR_ATOL = 1e-9
 RHS_STATE_PERTURBATION = 1.0
 EXPECTED_BOLUS_RIGHT_LIMIT_TIME = 36.0
 EXPECTED_BOLUS_RIGHT_LIMIT_COMPONENT = "glucose"
+SPARSE_DIAGNOSTIC_PLOTS_PER_PROCESS = 2
+SPARSE_CONCENTRATION_PLOT_FIGSIZE = (10, 11)
+SPARSE_RATES_TRANSFORM_PLOT_FIGSIZE = (9, 8)
+SPARSE_DIAGNOSTIC_PLOT_DPI = 120
 # Loose first-stage sparse bounds. They cover five offline samples, spline-
 # derivative rate inference, and linear rate interpolation. Limits are intentionally
 # wider than current observed errors so this is a sanity check, not a golden
@@ -1068,6 +1073,23 @@ def _observed_sparse_reactor_concentrations(
     return observed
 
 
+def _sparse_reintegration_errors(
+    recovered_concentrations: dict[str, np.ndarray],
+    observed_concentrations: dict[str, np.ndarray],
+) -> dict[str, dict[str, np.ndarray]]:
+    errors = {}
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        absolute = np.abs(
+            recovered_concentrations[name] - observed_concentrations[name]
+        )
+        errors[name] = {
+            "absolute": absolute,
+            "relative": absolute
+            / np.maximum(np.abs(observed_concentrations[name]), 1e-12),
+        }
+    return errors
+
+
 def _assert_sparse_real_space_reintegration_sane(
     recovered_concentrations: dict[str, np.ndarray],
     observed_concentrations: dict[str, np.ndarray],
@@ -1077,6 +1099,10 @@ def _assert_sparse_real_space_reintegration_sane(
     assert tuple(observed_concentrations) == EXPECTED_REACTOR_COMPONENT_ORDER
     assert set(SPARSE_REINTEGRATION_ERROR_LIMITS) == EXPECTED_REACTOR_COMPONENTS
 
+    errors = _sparse_reintegration_errors(
+        recovered_concentrations,
+        observed_concentrations,
+    )
     for name in EXPECTED_REACTOR_COMPONENT_ORDER:
         recovered = recovered_concentrations[name]
         observed = observed_concentrations[name]
@@ -1086,11 +1112,220 @@ def _assert_sparse_real_space_reintegration_sane(
         assert np.all(np.isfinite(observed))
         np.testing.assert_allclose(recovered[0], observed[0], rtol=1e-12, atol=1e-12)
 
-        abs_error = np.abs(recovered - observed)
-        rel_error = abs_error / np.maximum(np.abs(observed), 1e-12)
         max_abs_error, max_rel_error = SPARSE_REINTEGRATION_ERROR_LIMITS[name]
-        assert float(np.max(abs_error)) <= max_abs_error
-        assert float(np.max(rel_error)) <= max_rel_error
+        assert float(np.max(errors[name]["absolute"])) <= max_abs_error
+        assert float(np.max(errors[name]["relative"])) <= max_rel_error
+
+
+def _float_list(values: np.ndarray) -> list[float]:
+    return [float(value) for value in values]
+
+
+def _sparse_reintegration_metrics(
+    process: bp.BioProcess,
+    times: np.ndarray,
+    rates: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+    recovered_concentrations: dict[str, np.ndarray],
+    observed_concentrations: dict[str, np.ndarray],
+) -> dict:
+    errors = _sparse_reintegration_errors(
+        recovered_concentrations,
+        observed_concentrations,
+    )
+    return {
+        "process": process.metadata.name,
+        "times_h": _float_list(times),
+        "components": {
+            name: {
+                "observed_concentration": _float_list(observed_concentrations[name]),
+                "recovered_concentration": _float_list(recovered_concentrations[name]),
+                "absolute_error": _float_list(errors[name]["absolute"]),
+                "relative_error": _float_list(errors[name]["relative"]),
+                "max_absolute_error": float(np.max(errors[name]["absolute"])),
+                "max_relative_error": float(np.max(errors[name]["relative"])),
+                "absolute_error_limit": SPARSE_REINTEGRATION_ERROR_LIMITS[name][0],
+                "relative_error_limit": SPARSE_REINTEGRATION_ERROR_LIMITS[name][1],
+            }
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        },
+        "rates": {
+            name: {
+                "values": _float_list(values),
+                "min": float(np.min(values)),
+                "max": float(np.max(values)),
+            }
+            for name, values in sorted(rates.items())
+        },
+        "transform": {
+            "total_volume": _float_list(diagnostics["volume"]["total_volume"]),
+            "adf": _float_list(diagnostics["transform"]["adf"]),
+            "feed_corrections": {
+                name: _float_list(diagnostics["feed_corrections"][name])
+                for name in EXPECTED_REACTOR_COMPONENT_ORDER
+            },
+        },
+    }
+
+
+def _write_sparse_reintegration_metrics_json(
+    output_dir: Path,
+    metrics: dict[str, dict],
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "sparse_reintegration_metrics.json"
+    path.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
+    return path
+
+
+def _plotting_pyplot(output_dir: Path):
+    os.environ.setdefault("MPLCONFIGDIR", str(output_dir.parent / "matplotlib-cache"))
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt
+
+
+def _write_sparse_reintegration_diagnostic_plots(
+    output_dir: Path,
+    process_name: str,
+    times: np.ndarray,
+    rates: dict[str, np.ndarray],
+    diagnostics: dict[str, dict[str, np.ndarray]],
+    recovered_concentrations: dict[str, np.ndarray],
+    observed_concentrations: dict[str, np.ndarray],
+) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt = _plotting_pyplot(output_dir)
+    paths = []
+
+    fig, axes = plt.subplots(
+        4,
+        2,
+        figsize=SPARSE_CONCENTRATION_PLOT_FIGSIZE,
+        sharex=True,
+    )
+    for ax, name in zip(axes.ravel(), EXPECTED_REACTOR_COMPONENT_ORDER, strict=True):
+        ax.plot(times, recovered_concentrations[name], marker="o", label="recovered")
+        ax.scatter(
+            times,
+            observed_concentrations[name],
+            color="black",
+            label="observed",
+        )
+        ax.set_title(name)
+    axes[-1, 0].set_xlabel("time [h]")
+    axes[-1, 1].set_xlabel("time [h]")
+    axes[0, 0].legend(loc="best")
+    fig.tight_layout()
+    path = output_dir / f"{process_name}_sparse_reintegration.png"
+    fig.savefig(path, dpi=SPARSE_DIAGNOSTIC_PLOT_DPI)
+    plt.close(fig)
+    paths.append(path)
+
+    fig, axes = plt.subplots(
+        3,
+        1,
+        figsize=SPARSE_RATES_TRANSFORM_PLOT_FIGSIZE,
+        sharex=True,
+    )
+    for name, values in sorted(rates.items()):
+        axes[0].plot(times, values, marker="o", label=name)
+    axes[0].set_ylabel("rate")
+    axes[0].legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="small")
+    axes[1].plot(times, diagnostics["volume"]["total_volume"], marker="o")
+    axes[1].set_ylabel("total volume")
+    axes[2].plot(times, diagnostics["transform"]["adf"], marker="o", label="ADF")
+    for name in sorted(EXPECTED_NONZERO_FEED_CORRECTION_COMPONENTS):
+        axes[2].plot(
+            times,
+            diagnostics["feed_corrections"][name],
+            marker="o",
+            label=f"{name} feed correction",
+        )
+    axes[2].set_xlabel("time [h]")
+    axes[2].legend(loc="best", fontsize="small")
+    fig.tight_layout()
+    path = output_dir / f"{process_name}_rates_and_transform.png"
+    fig.savefig(path, dpi=SPARSE_DIAGNOSTIC_PLOT_DPI)
+    plt.close(fig)
+    paths.append(path)
+
+    return paths
+
+
+def _assert_finite_metric_series(values: list[float], expected_length: int) -> None:
+    assert len(values) == expected_length
+    assert np.all(np.isfinite(np.asarray(values, dtype=float)))
+
+
+def _assert_sparse_reintegration_outputs_written(
+    metrics_path: Path,
+    plot_paths: list[Path],
+    process_count: int,
+) -> None:
+    assert metrics_path.exists()
+    assert metrics_path.stat().st_size > 0
+    metrics = json.loads(metrics_path.read_text())
+    assert set(metrics) == EXPECTED_PROCESS_IDS
+
+    for process_metrics in metrics.values():
+        assert process_metrics["times_h"] == EXPECTED_CONCENTRATION_TIMES
+        assert set(process_metrics["components"]) == EXPECTED_REACTOR_COMPONENTS
+        for name, component_metrics in process_metrics["components"].items():
+            for key in (
+                "observed_concentration",
+                "recovered_concentration",
+                "absolute_error",
+                "relative_error",
+            ):
+                _assert_finite_metric_series(
+                    component_metrics[key],
+                    len(EXPECTED_CONCENTRATION_TIMES),
+                )
+            assert component_metrics["max_absolute_error"] == max(
+                component_metrics["absolute_error"]
+            )
+            assert component_metrics["max_relative_error"] == max(
+                component_metrics["relative_error"]
+            )
+            assert (
+                component_metrics["absolute_error_limit"]
+                == (SPARSE_REINTEGRATION_ERROR_LIMITS[name][0])
+            )
+            assert (
+                component_metrics["relative_error_limit"]
+                == (SPARSE_REINTEGRATION_ERROR_LIMITS[name][1])
+            )
+
+        assert set(process_metrics["rates"]) == EXPECTED_RATE_NAMES
+        for rate_metrics in process_metrics["rates"].values():
+            _assert_finite_metric_series(
+                rate_metrics["values"],
+                len(EXPECTED_CONCENTRATION_TIMES),
+            )
+            assert rate_metrics["min"] == min(rate_metrics["values"])
+            assert rate_metrics["max"] == max(rate_metrics["values"])
+
+        transform_metrics = process_metrics["transform"]
+        _assert_finite_metric_series(
+            transform_metrics["total_volume"],
+            len(EXPECTED_CONCENTRATION_TIMES),
+        )
+        _assert_finite_metric_series(
+            transform_metrics["adf"],
+            len(EXPECTED_CONCENTRATION_TIMES),
+        )
+        assert set(transform_metrics["feed_corrections"]) == EXPECTED_REACTOR_COMPONENTS
+        for values in transform_metrics["feed_corrections"].values():
+            _assert_finite_metric_series(values, len(EXPECTED_CONCENTRATION_TIMES))
+
+    assert len(plot_paths) == SPARSE_DIAGNOSTIC_PLOTS_PER_PROCESS * process_count
+    for path in plot_paths:
+        assert path.exists()
+        assert path.stat().st_size > 0
 
 
 def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
@@ -1369,6 +1604,9 @@ def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
     reloaded = load_process_collection_json(output_path)
 
     times = np.asarray(EXPECTED_CONCENTRATION_TIMES, dtype=float)
+    diagnostics_dir = tmp_path / "ex14_sparse_reintegration_diagnostics"
+    metrics = {}
+    plot_paths = []
     for process in reloaded.processes.values():
         rates, diagnostics = _infer_ex14_rates_from_cstar_splines(process, times)
         _assert_inferred_rates_finite(rates, diagnostics)
@@ -1401,3 +1639,30 @@ def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
             observed_concentrations,
             times,
         )
+        assert process.metadata.name is not None
+        metrics[process.metadata.name] = _sparse_reintegration_metrics(
+            process,
+            times,
+            rates,
+            diagnostics,
+            recovered_concentrations,
+            observed_concentrations,
+        )
+        plot_paths.extend(
+            _write_sparse_reintegration_diagnostic_plots(
+                diagnostics_dir,
+                process.metadata.name,
+                times,
+                rates,
+                diagnostics,
+                recovered_concentrations,
+                observed_concentrations,
+            )
+        )
+
+    metrics_path = _write_sparse_reintegration_metrics_json(diagnostics_dir, metrics)
+    _assert_sparse_reintegration_outputs_written(
+        metrics_path,
+        plot_paths,
+        len(reloaded.processes),
+    )
