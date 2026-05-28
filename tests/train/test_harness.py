@@ -7,6 +7,7 @@ import warnings
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import optax
 import pytest
 from bp_format.dataclasses import (
     BioProcess,
@@ -928,6 +929,87 @@ def test_train_from_collection_wires_build_batched_loss_fn_hook(monkeypatch):
 
     assert result == "train-result"
     assert captured["batched_loss_fn"] is _custom_batched_loss_fn
+
+
+def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
+    """Shared monkeypatch setup for build_optimizer hook wiring tests."""
+
+    class _DummyStore:
+        name_measured_RMCs = ("biomass",)
+        name_measured_PVs: tuple[str, ...] = ()
+        name_measured = ("biomass",)
+        process_order = ("p1", "p2")
+
+    def fake_from_collection(collection, *, target_variable_order, target_source):
+        del collection, target_variable_order, target_source
+        return _DummyStore()
+
+    monkeypatch.setattr(
+        "bp_train.harness.TrainingDataStore.from_collection",
+        fake_from_collection,
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.load_custom_module",
+        lambda _p: custom_module,
+    )
+    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+    )
+
+    def fake_train_collection(*args, **kwargs):
+        del args
+        captured["optimizer"] = kwargs.get("optimizer")
+        return "train-result"
+
+    monkeypatch.setattr("bp_train.harness.train_collection", fake_train_collection)
+
+
+def test_train_from_collection_wires_build_optimizer_hook(monkeypatch):
+    collection = _make_collection()
+    captured: dict[str, object] = {}
+    sentinel = optax.adam(1e-3)
+
+    class _CustomModule:
+        @staticmethod
+        def build_optimizer(config, train_cfg):
+            del config, train_cfg
+            return sentinel
+
+    _patch_train_from_collection_deps(monkeypatch, _CustomModule(), captured)
+
+    result = train_from_collection(
+        collection,
+        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+        custom_py="custom.py",
+        runtime_config=None,
+    )
+
+    assert result == "train-result"
+    assert captured["optimizer"] is sentinel
+
+
+def test_train_from_collection_uses_default_optimizer_when_no_hook(monkeypatch):
+    collection = _make_collection()
+    captured: dict[str, object] = {}
+
+    class _CustomModule:
+        """No build_optimizer hook -> default _build_optimizer path."""
+
+    _patch_train_from_collection_deps(monkeypatch, _CustomModule(), captured)
+
+    result = train_from_collection(
+        collection,
+        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+        custom_py="custom.py",
+        runtime_config=None,
+    )
+
+    assert result == "train-result"
+    assert captured["optimizer"] is None
 
 
 def test_train_from_collection_rejects_non_callable_build_batched_loss_fn(monkeypatch):

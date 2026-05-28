@@ -694,10 +694,13 @@ def train_collection(
     config: TrainHarnessConfig | None = None,
     batched_loss_fn: BatchedLossFn | None = None,
     extra_loss_names: tuple[str, ...] = (),
+    optimizer: optax.GradientTransformation | None = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
 
-    Scales live on ``reaction_module``; no scale kwargs here.
+    Scales live on ``reaction_module``; no scale kwargs here. ``optimizer``, when
+    provided (via the ``build_optimizer`` hook), fully owns optimizer
+    construction; otherwise the default ``_build_optimizer`` chain is used.
     """
     cfg = config or TrainHarnessConfig()
     effective_batched_loss_fn = (
@@ -797,11 +800,12 @@ def train_collection(
     sys.stdout.flush()
     print_trainable_structure(reaction_module)
     print_reaction_schema(wrapper)
-    optimizer = _build_optimizer(
-        cfg.optimizer_name,
-        cfg.learning_rate,
-        grad_clip_norm=float(cfg.grad_clip_norm),
-    )
+    if optimizer is None:
+        optimizer = _build_optimizer(
+            cfg.optimizer_name,
+            cfg.learning_rate,
+            grad_clip_norm=float(cfg.grad_clip_norm),
+        )
     optimizer_state = optimizer.init(trainable_params)
     train_step_input_signature = summarize_train_step_input_signature(
         wrapper,
@@ -1184,6 +1188,13 @@ def train_from_collection(
         lr = lr_hook(custom_cfg, train_cfg)
         train_cfg = dataclasses.replace(train_cfg, learning_rate=lr)
 
+    # Call optional build_optimizer hook (fully owns optimizer construction;
+    # consumes train_cfg.learning_rate, which is already the schedule above).
+    optimizer_hook = get_hook(custom_module, "build_optimizer", None)
+    optimizer = (
+        optimizer_hook(custom_cfg, train_cfg) if optimizer_hook is not None else None
+    )
+
     batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
         custom_module=custom_module,
         custom_cfg=custom_cfg,
@@ -1199,6 +1210,7 @@ def train_from_collection(
         config=train_cfg,
         batched_loss_fn=batched_loss_fn,
         extra_loss_names=extra_loss_names,
+        optimizer=optimizer,
     )
 
 
