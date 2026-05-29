@@ -78,74 +78,22 @@ def _partition_trainable_from_metadata(
     return eqx.partition(module, filter_spec)
 
 
-def _validate_partition_pair(
-    module: eqx.Module,
-    trainable: eqx.Module,
-    static: eqx.Module,
-) -> tuple[eqx.Module, eqx.Module]:
-    """Validate trainable/static pytrees can reconstruct the original module."""
-    module_leaves, module_treedef = jtu.tree_flatten(
-        module,
-        is_leaf=lambda value: value is None,
-    )
-    trainable_leaves, trainable_treedef = jtu.tree_flatten(
-        trainable,
-        is_leaf=lambda value: value is None,
-    )
-    static_leaves, static_treedef = jtu.tree_flatten(
-        static,
-        is_leaf=lambda value: value is None,
-    )
-
-    if trainable_treedef != module_treedef or static_treedef != module_treedef:
-        raise ValueError("partition_trainable outputs must match module structure")
-
-    for module_leaf, trainable_leaf, static_leaf in zip(
-        module_leaves,
-        trainable_leaves,
-        static_leaves,
-        strict=False,
-    ):
-        trainable_is_none = trainable_leaf is None
-        static_is_none = static_leaf is None
-        if trainable_is_none and static_is_none:
-            if module_leaf is None:
-                continue
-            raise ValueError(
-                "partition_trainable leaves must appear in exactly one partition"
-            )
-        if not trainable_is_none and not static_is_none:
-            raise ValueError(
-                "partition_trainable leaves must appear in exactly one partition"
-            )
-
-    try:
-        combined = eqx.combine(trainable, static)
-    except Exception as exc:  # pragma: no cover - defensive guard
-        raise ValueError(
-            "partition_trainable must return compatible trainable/static pytrees"
-        ) from exc
-    if not eqx.tree_equal(combined, module):
-        raise ValueError(
-            "partition_trainable outputs must reconstruct the original module"
-        )
-    return trainable, static
-
-
 def partition_trainable(module: eqx.Module) -> tuple[eqx.Module, eqx.Module]:
-    """Return trainable/static pytrees for a user reaction module.
+    """Return (trainable, static) pytrees from field metadata.
 
-    If the module exposes ``partition_trainable()``, that method is used.
-    Otherwise the metadata-based default applies: array leaves under
-    ``trainable_field()`` are trainable; everything else (including untagged
-    array leaves) is static.
+    Array leaves under ``trainable_field()`` are trainable; everything else
+    (including untagged array leaves) is static. Trainability is declared
+    solely through field tags — there is no per-module custom override.
+    Advanced sub-field control (e.g. freezing some MLP layers) belongs in the
+    ``build_optimizer`` hook via ``optax.masked`` / ``optax.multi_transform``.
+
+    Works on any ``eqx.Module``, including the whole ``HybridOdeWrapper``: the
+    tag-inheritance rule (first explicit tag on the path wins) means untagged
+    container fields let their children's tags through, so the wrapper's
+    ``reaction_module`` and ``loss_module`` contribute exactly their own
+    ``trainable_field()`` leaves and every other leaf stays frozen.
     """
-    method = getattr(module, "partition_trainable", None)
-    if callable(method):
-        trainable, static = method()
-    else:
-        trainable, static = _partition_trainable_from_metadata(module)
-    return _validate_partition_pair(module, trainable, static)
+    return _partition_trainable_from_metadata(module)
 
 
 # ---------------------------------------------------------------------------
@@ -446,3 +394,92 @@ class UserReactionModule(eqx.Module):
 
     def unscale_modeled_FVCs_rates(self, SCL_modeled_FVCs_rates):
         return SCL_modeled_FVCs_rates * self.SCALE_modeled_FVCs_rates
+
+
+# ---------------------------------------------------------------------------
+# Loss API: LossInputs / LossOutputs / UserLossModule
+# ---------------------------------------------------------------------------
+
+
+class LossInputs(eqx.Module):
+    """Everything a loss term needs for one sample, on the measurement grid.
+
+    Built once per sample by the trainer after the shared ODE solve. Predicted
+    trajectories are provided in both SCL and RAW space (scaling is a cheap
+    elementwise broadcast over the leading time axis); the loss module picks
+    whichever space it needs.
+
+    Scales are NOT duplicated here — they live on ``reaction_module`` (the
+    single source of truth), reachable via ``inputs.reaction_module.SCALE_*``
+    or its ``scale_*`` / ``unscale_*`` helpers.
+
+    The masks handle sparse, unaligned measurements (species sampled on
+    different time grids, padded to a common length per batch):
+    - ``mask_measured`` ``(n_meas, n_target)``: per-cell validity. True iff the
+      ``(timepoint, species)`` pair is a real measurement; False for padding
+      rows and for species not sampled at that timestamp.
+    - ``mask_measured_any`` ``(n_meas,)``: ``any(mask_measured, axis=1)`` cast to
+      float — per-row "is this timestep real". Multiply trajectory-wide
+      penalties (e.g. bounds hinges) by this.
+    - ``n_measured``: the unpadded row count for this sample.
+    """
+
+    # Predictions over measurement times (n_meas, ...)
+    SCL_states: jax.Array
+    RAW_states: jax.Array
+    SCL_modeled_BiologicalOde_rates: jax.Array
+    RAW_modeled_BiologicalOde_rates: jax.Array
+    SCL_modeled_FVCs_rates: jax.Array
+    RAW_modeled_FVCs_rates: jax.Array
+    SCL_V: jax.Array
+    RAW_V: jax.Array
+    auxiliary: dict[str, jax.Array]
+
+    # Convenience target slice: SCL_states[:, target_state_indices]
+    SCL_target_pred: jax.Array
+
+    # Ground truth + masks
+    SCL_target_measured: jax.Array
+    mask_measured: jax.Array
+    mask_measured_any: jax.Array
+    t_measured: jax.Array
+    n_measured: jax.Array
+
+    # Single source of SCALE_* (frozen reference, not a copy)
+    reaction_module: UserReactionModule
+
+    # Training step; -1 in forward-eval contexts. For schedules / annealing.
+    step: jax.Array
+
+
+class LossOutputs(eqx.Module):
+    """Named loss scalars. Plot/log panel names = dict keys.
+
+    Total loss for backprop = ``mean(named_losses.values())`` (the harness
+    stacks the values in ``loss_names`` order and takes the mean). Mean keeps
+    gradients in the same range as bp-train's historical default, so a tuned
+    ``grad_clip_norm`` keeps behaving the same as the term count grows. The set
+    of keys is fixed per run and declared up front via
+    ``UserLossModule.loss_names``; ``__call__`` must return exactly those keys
+    in that order.
+    """
+
+    named_losses: dict[str, jax.Array]
+
+
+class UserLossModule(eqx.Module):
+    """Base for user-defined loss modules. Mirrors ``UserReactionModule``.
+
+    Subclasses declare any trainable / frozen state via ``trainable_field()`` /
+    ``frozen_field()`` (e.g. Kendall uncertainty weights), exactly like a
+    reaction module. They are optimized alongside the reaction module because
+    the harness partitions the whole wrapper by field tags.
+    """
+
+    @property
+    def loss_names(self) -> tuple[str, ...]:
+        """Stable ordered term/panel names. MUST equal ``named_losses`` keys."""
+        raise NotImplementedError
+
+    def __call__(self, inputs: LossInputs) -> LossOutputs:
+        raise NotImplementedError

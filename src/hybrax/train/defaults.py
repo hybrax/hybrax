@@ -10,8 +10,11 @@ from bp_format.mechanistic import build_rhs_ode
 
 from .controls import build_sample_acc_source_default, run_min_dt_from_config
 from .model_api import (
+    LossInputs,
+    LossOutputs,
     ReactionInputs,
     ReactionOutputs,
+    UserLossModule,
     UserReactionModule,
     trainable_field,
 )
@@ -137,6 +140,59 @@ def default_build_reaction_module(
         key=jax.random.key(int(seed)),
         **scale_kwargs,
     )
+
+
+class DefaultLossModule(UserLossModule):
+    """Per-target SCL-space measurement loss — the default when no loss hook.
+
+    Emits one named term per measured target (named after the target). Override
+    ``residual_reduction`` to swap the per-target reduction (MSE → MAE / Huber).
+    """
+
+    target_names: tuple[str, ...] = eqx.field(static=True)
+
+    def __init__(self, *, target_names):
+        self.target_names = tuple(target_names)
+
+    @property
+    def loss_names(self) -> tuple[str, ...]:
+        return self.target_names
+
+    def residual_reduction(self, residual, mask):
+        """Per-column reduction of the masked residual; default mean-squared.
+
+        ``residual`` / ``mask`` are ``(n_meas, n_target)``; returns
+        ``(n_target,)``. Each column is normalised by its own active-cell count
+        so sparsely-measured targets are not diluted by padding rows.
+        """
+        sq = jnp.square(residual)
+        masked = jnp.where(mask, sq, 0.0)
+        n_active = jnp.maximum(jnp.sum(mask, axis=0), 1)
+        return jnp.sum(masked, axis=0) / n_active
+
+    def __call__(self, inputs: LossInputs) -> LossOutputs:
+        residual = inputs.SCL_target_pred - jnp.where(
+            inputs.mask_measured, inputs.SCL_target_measured, 0.0
+        )
+        per_target = self.residual_reduction(residual, inputs.mask_measured)
+        return LossOutputs(
+            named_losses={
+                name: per_target[i] for i, name in enumerate(self.target_names)
+            }
+        )
+
+
+def default_build_loss_module(
+    *,
+    target_names: list[str],
+    process_names: list[str],
+    config: dict[str, Any],
+    seed: int,
+    collection: Any,
+) -> UserLossModule:
+    """Default train hook for loss-module construction (per-target MSE)."""
+    del process_names, config, seed, collection
+    return DefaultLossModule(target_names=list(target_names))
 
 
 def _default_scale_kwargs(

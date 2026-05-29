@@ -9,11 +9,11 @@ import jax.tree_util as jtu
 import diffrax
 
 from .controls_store import BatchControls
+from .model_api import LossInputs
 from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 
-SampleLossFn = Callable[..., tuple[jax.Array, jax.Array]]
 BatchedLossFn = Callable[..., tuple[jax.Array, jax.Array, jax.Array]]
 
 
@@ -191,7 +191,7 @@ def simulate_measurement_states(
     )
 
 
-def evaluate_sample_from_arrays(
+def evaluate_sample_with_loss_module(
     wrapper: HybridOdeWrapper,
     *,
     t_measured: jax.Array,
@@ -205,16 +205,21 @@ def evaluate_sample_from_arrays(
     solver_atol: float,
     step: int | jax.Array | None = None,
 ) -> SingleSampleResult:
-    """Solve, gather predicted target columns, and compute SCL-space loss.
+    """Solve once, build ``LossInputs``, and evaluate ``wrapper.loss_module``.
 
-    ``SCL_target_measured`` is the measurement matrix divided by
-    ``module.SCALE_state[target_state_indices]`` (pre-computed by the harness).
-    ``SCL_target0_measured`` is the SCL initial state at the target columns
-    (the trainer expands it back to the full integration state shape — note:
-    the trainer expects the FULL SCL initial state for diffrax). For now, this
-    helper assumes the caller supplies the full SCL initial state under the
-    name ``SCL_target0_measured`` matching the integration state layout.
+    The single shared ODE solve produces ``save_outputs`` (SCL states, RAW
+    rates / volume). We derive the SCL/RAW trajectory pairs by elementwise
+    broadcast against the reaction module's ``SCALE_*`` (no vmap), build a
+    :class:`LossInputs`, and call the loss module. ``per_target_loss`` is the
+    stacked ``named_losses`` in ``loss_module.loss_names`` order; ``total_loss``
+    is their sum.
+
+    ``SCL_target_measured`` is the measurement matrix already divided by
+    ``module.SCALE_state[target_state_indices]`` (pre-scaled by the batched
+    wrapper). ``SCL_target0_measured`` is the FULL SCL initial state matching
+    the integration state layout.
     """
+    module = wrapper.reaction_module
     save_outputs = _solve_measurement_save_outputs_on_grid(
         wrapper,
         t_eval=t_measured,
@@ -226,25 +231,49 @@ def evaluate_sample_from_arrays(
         jump_ts=jump_ts,
     )
     SCL_states = save_outputs.SCL_states
-    # Gather predicted target columns from the integrated SCL state.
     # State layout: [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative].
-    # target_state_indices selects modeled_RMCs + modeled_FVCs_cumulative; the
-    # V_in_cumulative column is in the state but not a loss target.
+    # target_state_indices selects modeled_RMCs + modeled_FVCs_cumulative.
     SCL_target_pred = SCL_states[:, wrapper.target_state_indices]
 
-    # Per-cell mask: shape (max_n_meas, n_y_cols). The double-where guard
-    # zero-fills unmeasured cells before subtraction so NaN never leaks into
-    # the gradient.
-    SCL_target_meas_safe = jnp.where(mask_measured, SCL_target_measured, 0.0)
-    SCL_residual = SCL_target_pred - SCL_target_meas_safe
-    sq_err = jnp.square(SCL_residual)
-    masked_sq_err = jnp.where(mask_measured, sq_err, 0.0)
-    # Per-target active counts so each target column is normalised by its
-    # own number of real measurements rather than the global row count.
-    n_active_per_target = jnp.maximum(jnp.sum(mask_measured, axis=0), 1)
-    per_target_loss = jnp.sum(masked_sq_err, axis=0) / n_active_per_target
-    total_loss = jnp.mean(per_target_loss)
+    # Derive SCL/RAW trajectory pairs. Scaling is elementwise → broadcasts over
+    # the leading time axis: (n_meas, k) op (k,), (n_meas,) op scalar.
+    RAW_states = module.unscale_state(SCL_states)
+    RAW_rates = save_outputs.RAW_modeled_BiologicalOde_rates
+    SCL_rates = module.scale_modeled_BiologicalOde_rates(RAW_rates)
+    RAW_fvc_rates = save_outputs.RAW_modeled_FVCs_rates
+    SCL_fvc_rates = module.scale_modeled_FVCs_rates(RAW_fvc_rates)
+    RAW_V = save_outputs.RAW_V
+    SCL_V = module.scale_modeled_V(RAW_V)
+
+    mask_any = jnp.any(mask_measured, axis=1).astype(SCL_states.dtype)
+    auxiliary = save_outputs.auxiliary or {}
     step_arr = jnp.asarray(step if step is not None else -1, dtype=jnp.int32)
+
+    inputs = LossInputs(
+        SCL_states=SCL_states,
+        RAW_states=RAW_states,
+        SCL_modeled_BiologicalOde_rates=SCL_rates,
+        RAW_modeled_BiologicalOde_rates=RAW_rates,
+        SCL_modeled_FVCs_rates=SCL_fvc_rates,
+        RAW_modeled_FVCs_rates=RAW_fvc_rates,
+        SCL_V=SCL_V,
+        RAW_V=RAW_V,
+        auxiliary=auxiliary,
+        SCL_target_pred=SCL_target_pred,
+        SCL_target_measured=SCL_target_measured,
+        mask_measured=mask_measured,
+        mask_measured_any=mask_any,
+        t_measured=t_measured,
+        n_measured=jnp.asarray(n_measured, dtype=jnp.int32),
+        reaction_module=module,
+        step=step_arr,
+    )
+
+    loss_module = wrapper.loss_module
+    outputs = loss_module(inputs)
+    named = outputs.named_losses
+    per_target_loss = jnp.stack([named[name] for name in loss_module.loss_names])
+    total_loss = jnp.mean(per_target_loss)
     return SingleSampleResult(
         total_loss=total_loss,
         per_target_loss=per_target_loss,
@@ -254,44 +283,14 @@ def evaluate_sample_from_arrays(
     )
 
 
-def measurement_loss_from_arrays(
-    wrapper: HybridOdeWrapper,
-    *,
-    t_measured: jax.Array,
-    SCL_target_measured: jax.Array,
-    mask_measured: jax.Array,
-    n_measured: int | jax.Array,
-    SCL_target0_measured: jax.Array,
-    jump_ts: jax.Array | None,
-    max_solver_steps: int,
-    solver_rtol: float,
-    solver_atol: float,
-    step: int | jax.Array | None = None,
-) -> tuple[jax.Array, jax.Array]:
-    result = evaluate_sample_from_arrays(
-        wrapper,
-        t_measured=t_measured,
-        SCL_target_measured=SCL_target_measured,
-        mask_measured=mask_measured,
-        n_measured=n_measured,
-        SCL_target0_measured=SCL_target0_measured,
-        jump_ts=jump_ts,
-        max_solver_steps=max_solver_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-        step=step,
-    )
-    return result.total_loss, result.per_target_loss
+def build_batched_loss_fn() -> BatchedLossFn:
+    """Build the batched loss fn that evaluates ``wrapper.loss_module``.
 
-
-def build_batched_loss_fn_from_sample_loss(
-    sample_loss_fn: SampleLossFn,
-) -> BatchedLossFn:
-    """Lift a per-sample loss fn to batched harness contract.
-
-    The batched fn receives RAW measurements (``batch.y_measured`` /
-    ``batch.y0_measured``); it pre-scales them via the module's
-    ``SCALE_state`` so the per-sample loss fn operates entirely in SCL space.
+    The returned fn receives RAW measurements (``batch.y_measured`` /
+    ``batch.y0_measured``); it pre-scales them via the module's ``SCALE_state``,
+    then vmaps :func:`evaluate_sample_with_loss_module` over the batch. The loss
+    module is read off the wrapper, so swapping it (or its trainable params)
+    flows through without rebuilding this closure.
     """
 
     def _batched_loss_fn(
@@ -335,7 +334,7 @@ def build_batched_loss_fn_from_sample_loss(
                 wrapper,
                 (controls, cin, cin_modeled),
             )
-            total_loss, per_target = sample_loss_fn(
+            result = evaluate_sample_with_loss_module(
                 sample_wrapper,
                 t_measured=t_measured,
                 SCL_target_measured=SCL_target_measured,
@@ -348,7 +347,7 @@ def build_batched_loss_fn_from_sample_loss(
                 solver_atol=solver_atol,
                 step=step,
             )
-            return total_loss, per_target
+            return result.total_loss, result.per_target_loss
 
         per_sample_total, per_sample_per_target = jax.vmap(
             _sample_loss,

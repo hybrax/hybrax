@@ -616,93 +616,105 @@ def test_forward_cli_unknown_sidecar_marks_everything_holdout(
 
 
 # ---------------------------------------------------------------------------
-# Integration: end-to-end forward on the kittler example (slow)
+# Integration: end-to-end CLI round-trip on a self-contained fixture (slow).
+# The fixture lives under tests/fixtures so the core suite never depends on
+# anything in examples/. It exercises the full train -> checkpoint -> forward
+# path including a custom build_loss_module with extra named terms.
 # ---------------------------------------------------------------------------
 
 
-KITTLER_PREPARED = (
-    Path(__file__).resolve().parents[1]
-    / "examples"
-    / "01_kittler_2022"
-    / "migration"
-    / "prepared.json"
-)
-# Migration variant uses the bp-format v2 API.
-KITTLER_CUSTOM = (
-    Path(__file__).resolve().parents[1]
-    / "examples"
-    / "01_kittler_2022"
-    / "migration"
-    / "custom.py"
-)
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "martens_single"
+FIXTURE_DATA = FIXTURE_DIR / "data.json"
+FIXTURE_CUSTOM = FIXTURE_DIR / "custom.py"
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not KITTLER_PREPARED.exists() or not KITTLER_CUSTOM.exists(),
-    reason="kittler example fixture not available",
+    not FIXTURE_DATA.exists() or not FIXTURE_CUSTOM.exists(),
+    reason="martens_single fixture not available",
 )
-def test_forward_end_to_end_on_kittler(tmp_path: Path):
-    """Full round-trip: train 3 steps → forward → check outputs."""
-    out_dir = tmp_path / "out"
-    exit_code = cli.main(
-        [
-            "train",
-            "--input",
-            str(KITTLER_PREPARED),
-            "--custom",
-            str(KITTLER_CUSTOM),
-            "--target-source",
-            "reactor_components",
-            "--steps",
-            "3",
-            "--log-every",
-            "3",
-            "--seed",
-            "42",
-            "--solver-max-steps",
-            "2048",
-            "--solver-rtol",
-            "1e-3",
-            "--solver-atol",
-            "1e-5",
-            "--output-dir",
-            str(out_dir),
-            "--no-plot",
-        ]
+def test_forward_end_to_end_on_fixture(tmp_path: Path):
+    """Full round-trip on the tests/ fixture: prepare -> train 3 -> forward."""
+    prepared = tmp_path / "prepared.json"
+    assert (
+        cli.main(
+            [
+                "prepare",
+                "--input",
+                str(FIXTURE_DATA),
+                "--output",
+                str(prepared),
+                "--custom",
+                str(FIXTURE_CUSTOM),
+            ]
+        )
+        == 0
     )
-    assert exit_code == 0
+
+    out_dir = tmp_path / "out"
+    assert (
+        cli.main(
+            [
+                "train",
+                "--input",
+                str(prepared),
+                "--custom",
+                str(FIXTURE_CUSTOM),
+                "--target-source",
+                "reactor_components",
+                "--steps",
+                "3",
+                "--log-every",
+                "3",
+                "--seed",
+                "42",
+                "--solver-max-steps",
+                "2048",
+                "--solver-rtol",
+                "1e-3",
+                "--solver-atol",
+                "1e-5",
+                "--output-dir",
+                str(out_dir),
+                "--no-plot",
+            ]
+        )
+        == 0
+    )
     model = out_dir / "trained_wrapper.eqx"
-    sidecar = out_dir / "trained_wrapper.meta.json"
     assert model.exists()
-    assert sidecar.exists()
+    assert (out_dir / "trained_wrapper.meta.json").exists()
 
     fwd_dir = out_dir / "forward"
-    exit_code = cli.main(
-        [
-            "forward",
-            "--model",
-            str(model),
-            "--process",
-            "DoE1_R1",
-            "--output-dir",
-            str(fwd_dir),
-            "--no-plot",
-            "--timeseries-csv",
-            str(fwd_dir / "ts.csv"),
-        ]
+    assert (
+        cli.main(
+            [
+                "forward",
+                "--model",
+                str(model),
+                "--input",
+                str(prepared),
+                "--custom",
+                str(FIXTURE_CUSTOM),
+                "--process",
+                "run_1",
+                "--output-dir",
+                str(fwd_dir),
+                "--no-plot",
+                "--timeseries-csv",
+                str(fwd_dir / "ts.csv"),
+            ]
+        )
+        == 0
     )
-    assert exit_code == 0
     losses_csv = fwd_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
-    # 1 data row + total/train mean rows
-    assert len(rows) == 3
     assert rows.columns[0] == "process"
-    assert rows.iloc[0]["process"] == "DoE1_R1"
-    assert (
-        rows.iloc[0]["split"] == "train"
-    )  # default training covers all kittler processes
+    assert (rows["process"] == "run_1").any()
+    # The custom build_loss_module adds nonneg/<target> columns alongside the
+    # per-target measurement terms — confirm they survived to the CSV.
+    assert any(str(c).startswith("nonneg/") for c in rows.columns)
 
 
 # ---------------------------------------------------------------------------

@@ -22,17 +22,21 @@ from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
 from .checkpointing import CheckpointConfig, CheckpointWriter
-from .defaults import default_build_reaction_module
+from .defaults import (
+    DefaultLossModule,
+    default_build_loss_module,
+    default_build_reaction_module,
+)
 from .inspect import print_reaction_schema, print_trainable_structure
 from .model_api import (
     EstimatedScales,
+    UserLossModule,
     UserReactionModule,
     partition_trainable,
 )
 from .trainer import (
-    build_batched_loss_fn_from_sample_loss,
+    build_batched_loss_fn,
     clamp_padded_time_rows,
-    measurement_loss_from_arrays,
     BatchedLossFn,
 )
 from .logging import RunLogger, StepRecord
@@ -44,9 +48,8 @@ from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import export_predictions_csv
 
-_DEFAULT_BATCHED_MEASUREMENT_LOSS = build_batched_loss_fn_from_sample_loss(
-    measurement_loss_from_arrays
-)
+# Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
+_BATCHED_LOSS_FN = build_batched_loss_fn()
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +290,41 @@ def _build_reaction_module(
     return module
 
 
+def _loss_target_labels(store: TrainingDataStore) -> list[str]:
+    """Canonical loss target-column labels: measured species + cumulative feeds.
+
+    These name the columns of ``SCL_target_pred`` (``target_state_indices``),
+    so ``DefaultLossModule`` emits exactly one term per label.
+    """
+    return list(store.name_measured) + [
+        f"B_{name}_cum"
+        for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
+    ]
+
+
+def _build_loss_module(
+    *,
+    store: TrainingDataStore,
+    config: TrainHarnessConfig,
+    custom_module,
+    custom_config: dict[str, Any],
+    collection: BioProcessCollection,
+) -> UserLossModule:
+    hook = get_hook(custom_module, "build_loss_module", default_build_loss_module)
+    module = hook(
+        target_names=_loss_target_labels(store),
+        process_names=list(store.process_order),
+        config=custom_config,
+        seed=int(config.seed),
+        collection=collection,
+    )
+    if not isinstance(module, UserLossModule):
+        raise TypeError(
+            "build_loss_module(...) must return a UserLossModule instance"
+        )
+    return module
+
+
 def _resolve_estimated_scales(
     *,
     custom_module,
@@ -322,87 +360,6 @@ def _resolve_estimated_scales(
         "SCALE_modeled_BiologicalOde_rates": estimated.SCALE_modeled_BiologicalOde_rates,
         "SCALE_modeled_FVCs_rates": estimated.SCALE_modeled_FVCs_rates,
     }
-
-
-def _normalize_loss_hook_result(
-    result: Any, *, hook_name: str
-) -> tuple[Any, tuple[str, ...]]:
-    """Accept either a bare callable or ``(callable, extra_names)`` tuple."""
-    if callable(result):
-        return result, ()
-    if (
-        isinstance(result, tuple)
-        and len(result) == 2
-        and callable(result[0])
-        and isinstance(result[1], (list, tuple))
-        and all(isinstance(n, str) for n in result[1])
-    ):
-        return result[0], tuple(result[1])
-    raise TypeError(
-        f"{hook_name}(...) must return a callable or a "
-        "(callable, extra_loss_names) tuple where extra_loss_names is a "
-        "sequence of strings"
-    )
-
-
-def _resolve_batched_loss_fn(
-    *,
-    custom_module,
-    custom_cfg: dict[str, Any],
-    store: TrainingDataStore,
-    collection: BioProcessCollection,
-    train_cfg: TrainHarnessConfig,
-    allow_batched_loss_hook: bool = True,
-) -> tuple[BatchedLossFn, tuple[str, ...]]:
-    """Return ``(batched_loss_fn, extra_loss_names)``.
-
-    ``extra_loss_names`` are appended to the per-target loss vector so the
-    harness can label the additional columns/panels (CSV, JSONL, console
-    table, ``loss_curve.png``). Empty when no hook (or when the hook does
-    not declare extras).
-    """
-    sample_loss_hook = get_hook(custom_module, "build_sample_loss_fn", None)
-    batched_loss_hook = get_hook(custom_module, "build_batched_loss_fn", None)
-
-    if sample_loss_hook is not None and batched_loss_hook is not None:
-        raise ValueError(
-            "Define either build_sample_loss_fn(...) or "
-            "build_batched_loss_fn(...), not both"
-        )
-
-    if sample_loss_hook is not None:
-        raw = sample_loss_hook(
-            default_sample_loss_fn=measurement_loss_from_arrays,
-            store=store,
-            collection=collection,
-            train_cfg=train_cfg,
-            config=custom_cfg,
-        )
-        sample_loss_fn, extra_names = _normalize_loss_hook_result(
-            raw, hook_name="build_sample_loss_fn"
-        )
-        return build_batched_loss_fn_from_sample_loss(sample_loss_fn), extra_names
-
-    if batched_loss_hook is not None:
-        if not allow_batched_loss_hook:
-            raise ValueError(
-                "forward loss evaluation supports default loss or "
-                "build_sample_loss_fn(...); "
-                "build_batched_loss_fn(...) is not supported"
-            )
-        raw = batched_loss_hook(
-            default_loss_fn=_DEFAULT_BATCHED_MEASUREMENT_LOSS,
-            store=store,
-            collection=collection,
-            train_cfg=train_cfg,
-            config=custom_cfg,
-        )
-        batched_loss_fn, extra_names = _normalize_loss_hook_result(
-            raw, hook_name="build_batched_loss_fn"
-        )
-        return batched_loss_fn, extra_names
-
-    return _DEFAULT_BATCHED_MEASUREMENT_LOSS, ()
 
 
 def _validate_batched_loss_outputs(
@@ -442,6 +399,7 @@ def _build_template_wrapper(
     reaction_module: UserReactionModule,
     collection: BioProcessCollection,
     selected_processes: tuple[str, ...],
+    loss_module: UserLossModule | None = None,
 ) -> tuple[HybridOdeWrapper, dict[str, Any]]:
     """Build a HybridOdeWrapper with the same structure train_collection produces.
 
@@ -485,6 +443,7 @@ def _build_template_wrapper(
         process=collection.processes[reference_process_name],
         controls=store.get_process(reference_process_name).controls,
         target_state_indices=target_state_indices,
+        loss_module=loss_module,
     )
     return wrapper, {"per_process_rhs_ode": per_process_rhs_ode}
 
@@ -586,21 +545,24 @@ def forward_from_collection(
         scale_kwargs=scale_kwargs,
     )
 
+    loss_module = _build_loss_module(
+        store=store,
+        config=train_like_cfg,
+        custom_module=custom_module,
+        custom_config=custom_cfg,
+        collection=collection,
+    )
+
     template_wrapper, extras = _build_template_wrapper(
         store,
         reaction_module=reaction_module,
         collection=collection,
         selected_processes=template_processes,
+        loss_module=loss_module,
     )
     per_process_rhs_ode = extras["per_process_rhs_ode"]
-    batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
-        custom_module=custom_module,
-        custom_cfg=custom_cfg,
-        store=store,
-        collection=collection,
-        train_cfg=train_like_cfg,
-        allow_batched_loss_hook=False,
-    )
+    batched_loss_fn = _BATCHED_LOSS_FN
+    loss_names = tuple(loss_module.loss_names)
 
     trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
 
@@ -659,17 +621,13 @@ def forward_from_collection(
             total,
             per_target,
             _per_sample,
-            n_targets=int(batch.y_measured.shape[2]) + len(extra_loss_names),
+            n_targets=len(loss_names),
             batch_size=int(batch.process_indices.shape[0]),
         )
         per_process_total[process_name] = float(total)
         per_process_per_target[process_name] = tuple(float(v) for v in per_target)
 
-    target_column_labels = (
-        tuple(store.name_measured)
-        + tuple(f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs))
-        + tuple(extra_loss_names)
-    )
+    target_column_labels = loss_names
 
     return ForwardResult(
         trained_wrapper=trained_wrapper,
@@ -690,24 +648,24 @@ def train_collection(
     store: TrainingDataStore,
     *,
     reaction_module: UserReactionModule,
+    loss_module: UserLossModule | None = None,
     collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
-    batched_loss_fn: BatchedLossFn | None = None,
-    extra_loss_names: tuple[str, ...] = (),
     optimizer: optax.GradientTransformation | None = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
 
-    Scales live on ``reaction_module``; no scale kwargs here. ``optimizer``, when
-    provided (via the ``build_optimizer`` hook), fully owns optimizer
-    construction; otherwise the default ``_build_optimizer`` chain is used.
+    Scales live on ``reaction_module``; loss terms are produced by
+    ``loss_module`` (both attached to the wrapper, partitioned together). When
+    ``loss_module`` is None, the default per-target MSE module is used.
+    ``optimizer``, when provided (via the ``build_optimizer`` hook), fully owns
+    optimizer construction; otherwise the default ``_build_optimizer`` chain is
+    used.
     """
     cfg = config or TrainHarnessConfig()
-    effective_batched_loss_fn = (
-        _DEFAULT_BATCHED_MEASUREMENT_LOSS
-        if batched_loss_fn is None
-        else batched_loss_fn
-    )
+    if loss_module is None:
+        loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
+    effective_batched_loss_fn = _BATCHED_LOSS_FN
     selected_processes = _ensure_process_names(store, cfg.process_names)
 
     effective_batch_size = _validate_batching_config(
@@ -767,22 +725,19 @@ def train_collection(
         dtype=jnp.int32,
     )
 
-    # Per-target labels: species + cumulative-feed-volume targets, plus any
-    # extra labels declared by the custom loss hook.
-    _target_labels = list(store.name_measured) + [
-        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
-    ]
-    if extra_loss_names:
-        _target_labels = _target_labels + list(extra_loss_names)
+    # Per-target labels come straight from the loss module — one panel/column
+    # per named loss term, in declared order.
+    _target_labels = list(loss_module.loss_names)
 
     # Build wrapper from reference process. Scales now live on
     # ``reaction_module``; the wrapper validates SCALE_* shapes in its
-    # constructor.
+    # constructor. The loss module rides along (partitioned with the wrapper).
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=reaction_module,
         process=collection.processes[reference_process_name],
         controls=store.get_process(reference_process_name).controls,
         target_state_indices=target_state_indices,
+        loss_module=loss_module,
     )
 
     # Stack per-process Cin arrays: [n_store_processes, n_feeds, n_species]
@@ -795,10 +750,14 @@ def train_collection(
     batched_Cin = jnp.stack(all_Cin)
     batched_Cin_modeled = jnp.stack(all_Cin_modeled)
 
-    trainable_params, trainable_static = partition_trainable(reaction_module)
+    # Partition the WHOLE wrapper so the loss module's trainable_field() leaves
+    # are optimized alongside the reaction module's. Untagged leaves (controls,
+    # rhs_ode Cin, indices) stay frozen exactly as before.
+    trainable_params, trainable_static = partition_trainable(wrapper)
     print_rhs_ode(collection)
     sys.stdout.flush()
     print_trainable_structure(reaction_module)
+    print_trainable_structure(loss_module, title="UserLossModule")
     print_reaction_schema(wrapper)
     if optimizer is None:
         optimizer = _build_optimizer(
@@ -830,16 +789,10 @@ def train_collection(
                     store.controls_store.step_ts_lengths[current_batch.process_indices],
                 )
 
+            del current_wrapper  # whole-wrapper partition: combine reconstructs it
+
             def _loss_fn(trainable_params: Any) -> jax.Array:
-                reaction_module_updated = eqx.combine(
-                    trainable_params,
-                    trainable_static,
-                )
-                candidate_wrapper = eqx.tree_at(
-                    lambda current: current.reaction_module,
-                    current_wrapper,
-                    reaction_module_updated,
-                )
+                candidate_wrapper = eqx.combine(trainable_params, trainable_static)
                 total_loss, per_target, per_sample = effective_batched_loss_fn(
                     candidate_wrapper,
                     current_batch,
@@ -856,8 +809,7 @@ def train_collection(
                     total_loss,
                     per_target,
                     per_sample,
-                    n_targets=int(current_batch.y_measured.shape[2])
-                    + len(extra_loss_names),
+                    n_targets=len(loss_module.loss_names),
                     batch_size=int(current_batch.process_indices.shape[0]),
                 )
                 return total_loss, (per_target, per_sample)
@@ -875,15 +827,7 @@ def train_collection(
                 params=current_trainable_params,
             )
             trainable_updated = eqx.apply_updates(current_trainable_params, updates)
-            reaction_module_updated = eqx.combine(
-                trainable_updated,
-                trainable_static,
-            )
-            wrapper_updated = eqx.tree_at(
-                lambda current: current.reaction_module,
-                current_wrapper,
-                reaction_module_updated,
-            )
+            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
                 wrapper_updated,
                 trainable_updated,
@@ -1195,21 +1139,20 @@ def train_from_collection(
         optimizer_hook(custom_cfg, train_cfg) if optimizer_hook is not None else None
     )
 
-    batched_loss_fn, extra_loss_names = _resolve_batched_loss_fn(
-        custom_module=custom_module,
-        custom_cfg=custom_cfg,
+    loss_module = _build_loss_module(
         store=store,
+        config=train_cfg,
+        custom_module=custom_module,
+        custom_config=custom_cfg,
         collection=collection,
-        train_cfg=train_cfg,
     )
 
     return train_collection(
         store,
         reaction_module=reaction_module,
+        loss_module=loss_module,
         collection=collection,
         config=train_cfg,
-        batched_loss_fn=batched_loss_fn,
-        extra_loss_names=extra_loss_names,
         optimizer=optimizer,
     )
 

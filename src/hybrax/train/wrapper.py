@@ -138,6 +138,12 @@ class HybridOdeWrapper(eqx.Module):
 
     target_state_indices: jax.Array  # which state columns are loss targets
 
+    # User loss module (a UserLossModule). Untagged so the whole-wrapper
+    # partition_trainable walk reads its own trainable_field()/frozen_field()
+    # tags. Default None for direct constructors / forward-only paths; the
+    # train harness always attaches a real module.
+    loss_module: Any = None
+
     @classmethod
     def from_process(
         cls,
@@ -147,6 +153,7 @@ class HybridOdeWrapper(eqx.Module):
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
         min_V: float = 1e-8,
+        loss_module: Any = None,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls.
 
@@ -297,6 +304,7 @@ class HybridOdeWrapper(eqx.Module):
             n_controlled_PVs=len(controls.name_controlled_PVs),
             n_controlled_FVCs_bolus=n_controlled_FVCs_bolus,
             target_state_indices=_target_state_indices,
+            loss_module=loss_module,
         )
 
     def _validate_state_vector(self, SCL_state: jax.Array) -> None:

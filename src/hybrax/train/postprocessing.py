@@ -218,6 +218,65 @@ def _compute_dense_process_export(
     )
 
 
+def _compute_process_named_losses(
+    trained_wrapper: HybridOdeWrapper,
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    process_name: str,
+    *,
+    solver_max_steps: int,
+    solver_rtol: float,
+    solver_atol: float,
+    solver_use_jump_ts: bool,
+) -> tuple[dict[str, float] | None, float | None]:
+    """Per-process named losses + total, via the wrapper's loss module.
+
+    Solves the process on its measurement grid and evaluates the loss module
+    exactly as training does. Returns ``(None, None)`` when no loss module is
+    attached (forward-only wrappers). Solver tolerances are the plot's, so the
+    value is a diagnostic that may differ slightly from the training-time loss.
+    """
+    loss_module = getattr(trained_wrapper, "loss_module", None)
+    if loss_module is None:
+        return None, None
+    from .trainer import clamp_padded_time_rows, evaluate_sample_with_loss_module
+
+    process = collection.processes[process_name]
+    process_data = store.get_process(process_name)
+    rhs_ode = build_rhs_ode(process)
+    process_wrapper = eqx.tree_at(
+        lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
+        trained_wrapper,
+        (process_data.controls, rhs_ode.Cin_controlled_FVCs, rhs_ode.Cin_modeled_FVCs),
+    )
+    module = process_wrapper.reaction_module
+    n_meas = int(process_data.n_measured)
+    t_measured = clamp_padded_time_rows(
+        process_data.t_measured[None, :], jnp.asarray([n_meas], dtype=jnp.int32)
+    )[0]
+    SCALE_state = module.SCALE_state
+    SCALE_for_targets = SCALE_state[trained_wrapper.target_state_indices]
+    SCL_target_measured = process_data.y_measured / SCALE_for_targets[None, :]
+    SCL_y0 = process_data.y0_measured / SCALE_state
+    jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
+    result = evaluate_sample_with_loss_module(
+        process_wrapper,
+        t_measured=t_measured,
+        SCL_target_measured=SCL_target_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=n_meas,
+        SCL_target0_measured=SCL_y0,
+        jump_ts=jump_ts,
+        max_solver_steps=solver_max_steps,
+        solver_rtol=solver_rtol,
+        solver_atol=solver_atol,
+    )
+    per_target = np.asarray(result.per_target_loss)
+    names = tuple(loss_module.loss_names)
+    named = {name: float(per_target[i]) for i, name in enumerate(names)}
+    return named, float(np.sum(per_target))
+
+
 def _write_predictions_csv(
     trained_wrapper: HybridOdeWrapper,
     collection: BioProcessCollection,
@@ -387,9 +446,23 @@ def _mse_and_r2(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, float]:
     return mse, r2
 
 
-def _annotate_fit(ax, mse: float, r2: float) -> None:
-    """Add a text box with MSE and R² in the upper-left corner of an axis."""
-    text = f"MSE={mse:.4g}\nR²={r2:.4f}"
+def _annotate_fit(
+    ax,
+    r2: float,
+    *,
+    loss_label: str | None = None,
+    loss_value: float | None = None,
+) -> None:
+    """Annotate an axis with R² and, when available, the named loss term.
+
+    The named loss term is the value actually optimized (SCL space, user's
+    reduction). When no term maps to this panel (``loss_value is None``), only
+    R² is shown — never raise on a missing name.
+    """
+    if loss_value is not None:
+        text = f"{loss_label}={loss_value:.4g}\nR²={r2:.4f}"
+    else:
+        text = f"R²={r2:.4f}"
     ax.text(
         0.02,
         0.98,
@@ -677,6 +750,18 @@ def plot_process_simulations(
         process_data = store.get_process(process_name)
         time_unit = process.time_axis.unit
 
+        # Named losses for this process (None when no loss module attached).
+        process_named_losses, process_total_loss = _compute_process_named_losses(
+            trained_wrapper,
+            collection,
+            store,
+            process_name,
+            solver_max_steps=solver_max_steps,
+            solver_rtol=solver_rtol,
+            solver_atol=solver_atol,
+            solver_use_jump_ts=solver_use_jump_ts,
+        )
+
         dense_export = _compute_dense_process_export(
             trained_wrapper,
             collection,
@@ -788,10 +873,15 @@ def plot_process_simulations(
                     color="C0",
                     label="integrated",
                 )
-                # Interpolate dense prediction at measurement times for fit metrics.
+                # Interpolate dense prediction at measurement times for R².
                 v_pred_at_meas = np.interp(t_measured, t_dense_np, c_dense[:, i])
-                mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
-                _annotate_fit(ax_c, mse, r2)
+                _mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
+                _sp_loss = (
+                    process_named_losses.get(sp_name)
+                    if process_named_losses
+                    else None
+                )
+                _annotate_fit(ax_c, r2, loss_label=sp_name, loss_value=_sp_loss)
                 ax_c.set_title(f"{sp_name} [{comp.unit}]")
                 ax_c.set_xlabel(f"time [{time_unit}]")
                 ax_c.set_xlim(t_start, t_end)
@@ -830,8 +920,9 @@ def plot_process_simulations(
                 color="C0",
                 label="integrated",
             )
-            v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
-            _annotate_fit(ax_v, v_mse, v_r2)
+            _v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
+            # V_real is not a loss target → R²-only annotation.
+            _annotate_fit(ax_v, v_r2)
             ax_v.set_title(f"V_real [{process.volume.unit}]")
             ax_v.set_xlabel(f"time [{time_unit}]")
             ax_v.set_xlim(t_start, t_end)
@@ -895,10 +986,16 @@ def plot_process_simulations(
                     color="C0",
                     label="integrated",
                 )
-                b_mse, b_r2 = _mse_and_r2(
+                _b_mse, b_r2 = _mse_and_r2(
                     b_modeled_true_dense[:, k], b_modeled_pred[:, k]
                 )
-                _annotate_fit(ax_b, b_mse, b_r2)
+                _b_label = f"B_{fn}_cum"
+                _b_loss = (
+                    process_named_losses.get(_b_label)
+                    if process_named_losses
+                    else None
+                )
+                _annotate_fit(ax_b, b_r2, loss_label=_b_label, loss_value=_b_loss)
                 unit = process.volume.volume_changes[fn].unit
                 ax_b.set_title(f"cumulative {fn} [{unit}]")
                 ax_b.set_xlabel(f"time [{time_unit}]")
@@ -912,7 +1009,21 @@ def plot_process_simulations(
             else:
                 is_train = process_name in training_set
                 split_tag = " [train]" if is_train else " [holdout]"
-            fig.suptitle(f"{process_name}{split_tag}", fontsize=12)
+            suptitle = f"{process_name}{split_tag}"
+            if process_total_loss is not None:
+                suptitle += f" — total loss {process_total_loss:.4g}"
+                # Named terms with no per-subplot home (penalties, aux): list them.
+                shown = set(modeled_RMC_names) | {
+                    f"B_{fn}_cum" for fn in modeled_FVC_names
+                }
+                extras = [
+                    f"{name}={value:.3g}"
+                    for name, value in process_named_losses.items()
+                    if name not in shown
+                ]
+                if extras:
+                    suptitle += "\n" + "  ".join(extras)
+            fig.suptitle(suptitle, fontsize=12)
             fig.tight_layout()
             fig.savefig(
                 output_dir / f"{process_name}{filename_suffix}.png",

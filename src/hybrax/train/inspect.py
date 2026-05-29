@@ -92,6 +92,7 @@ def format_trainable_structure(
     shape_width: int | None = None,
     status_width: int | None = None,
     color: bool = False,
+    title: str = "UserReactionModule",
 ) -> str:
     """Return a tabular string of (name, shape, status) for the full module.
 
@@ -132,7 +133,7 @@ def format_trainable_structure(
         return f"| {name_cell} | {shape_cell} | {status_cell} |"
 
     divider = "+" + "-" * (total_width - 2) + "+"
-    title = " UserReactionModule Structure "
+    title = f" {title} Structure "
     title_pad_total = total_width - 2 - len(title)
     title_left = title_pad_total // 2
     title_right = title_pad_total - title_left
@@ -156,6 +157,7 @@ def print_trainable_structure(
     module: eqx.Module,
     *,
     color: bool | None = None,
+    title: str = "UserReactionModule",
 ) -> None:
     """Print the trainable-structure table.
 
@@ -163,7 +165,7 @@ def print_trainable_structure(
     """
     if color is None:
         color = bool(getattr(sys.stdout, "isatty", lambda: False)())
-    print(format_trainable_structure(module, color=color), flush=True)
+    print(format_trainable_structure(module, color=color, title=title), flush=True)
 
 
 # ---------------------------------------------------------------------------

@@ -912,6 +912,7 @@ def test_wrapper_save_outputs_rejects_non_mapping_auxiliary():
         lambda w: w.reaction_module.aux,
         wrapper,
         jnp.asarray([1.0], dtype=jnp.float32),
+        is_leaf=lambda x: x is None,
     )
 
     with pytest.raises(

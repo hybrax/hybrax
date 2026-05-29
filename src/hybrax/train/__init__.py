@@ -3,8 +3,11 @@ from .controls_store import ControlsStore, PerProcessControls
 from .training_data import PerProcessTrainingData, TrainingDataStore
 from .model_api import (
     EstimatedScales,
+    LossInputs,
+    LossOutputs,
     ReactionInputs,
     ReactionOutputs,
+    UserLossModule,
     UserReactionModule,
     frozen_field,
     partition_trainable,
@@ -17,10 +20,10 @@ from .inspect import (
     print_trainable_structure,
 )
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
-from .defaults import DefaultReactionModule
+from .defaults import DefaultLossModule, DefaultReactionModule
 from .trainer import (
     SingleSampleResult,
-    evaluate_sample_from_arrays,
+    evaluate_sample_with_loss_module,
     simulate_measurement_states,
 )
 from .harness import (
@@ -56,7 +59,10 @@ __all__ = [
     "EstimatedScales",
     "ReactionInputs",
     "ReactionOutputs",
+    "LossInputs",
+    "LossOutputs",
     "UserReactionModule",
+    "UserLossModule",
     "partition_trainable",
     "trainable_field",
     "frozen_field",
@@ -68,8 +74,9 @@ __all__ = [
     "validate_rhs_ode_compatibility",
     "simulate_measurement_states",
     "SingleSampleResult",
-    "evaluate_sample_from_arrays",
+    "evaluate_sample_with_loss_module",
     "DefaultReactionModule",
+    "DefaultLossModule",
     "ForwardConfig",
     "ForwardResult",
     "TrainHarnessConfig",

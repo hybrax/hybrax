@@ -21,11 +21,11 @@ from bp_train.model_api import (
 
 
 # ---------------------------------------------------------------------------
-# Custom partition_trainable() override path (kept from previous behaviour)
+# Metadata-only partition: trainability is declared solely via field tags.
 # ---------------------------------------------------------------------------
 
 
-class _CustomPartitionModule(UserReactionModule):
+class _TagPartitionModule(UserReactionModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
@@ -38,46 +38,20 @@ class _CustomPartitionModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0], dtype=jnp.float32),
-            SCL_modeled_VC_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
 
-    def partition_trainable(self):
-        return eqx.partition(self, eqx.is_inexact_array)
 
-
-class _InvalidPartitionModule(_CustomPartitionModule):
-    def partition_trainable(self):
-        return 1, 2
-
-
-class _OverlappingPartitionModule(_CustomPartitionModule):
-    def partition_trainable(self):
-        return self, self
-
-
-def test_partition_trainable_uses_custom_override_when_present():
-    module = _CustomPartitionModule()
+def test_partition_trainable_uses_field_tags():
+    module = _TagPartitionModule()
 
     trainable, static = partition_trainable(module)
 
+    # trainable_field() leaf is trained; frozen_field() leaf is not.
     assert trainable.model.weight is not None
-    assert trainable.non_model_bias is not None
     assert static.model.weight is None
-    assert static.non_model_bias is None
-
-
-def test_partition_trainable_rejects_invalid_partition_structure():
-    module = _InvalidPartitionModule()
-
-    with pytest.raises(ValueError, match="must match module structure"):
-        partition_trainable(module)
-
-
-def test_partition_trainable_rejects_overlapping_partitions():
-    module = _OverlappingPartitionModule()
-
-    with pytest.raises(ValueError, match="exactly one partition"):
-        partition_trainable(module)
+    assert trainable.non_model_bias is None
+    assert static.non_model_bias is not None
 
 
 # ---------------------------------------------------------------------------
