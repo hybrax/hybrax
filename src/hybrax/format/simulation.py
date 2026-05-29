@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import csv
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -60,24 +57,8 @@ class SimulationResult:
     event_columns: tuple[str, ...]
 
 
-class Simulation(ABC):
-    """Executable simulation contract plus common event/output helpers."""
-
-    @abstractmethod
-    def evaluate_rates(self, t, state, controls=None):
-        """Return a flat rates array of shape ``(len(rhs_ode.name_modeled_rates),)``
-        aligned with ``rhs_ode.name_modeled_rates`` (= the insertion order of
-        ``process.biological_ode.rates``). Forward integration of the process
-        lives in ``bp-train``; this method produces the rate vector that the
-        downstream integrator consumes via :meth:`as_rates_func`."""
-
-    def as_rates_func(self):
-        """Return a ``rates_func(t, state, controls)`` wrapper."""
-
-        def rates_func(t, state, controls):
-            return self.evaluate_rates(t, state, controls)
-
-        return rates_func
+class Simulation:
+    """Common simulation event/output helpers."""
 
     def group_events(
         self,
@@ -163,7 +144,6 @@ class Simulation(ABC):
         events: Sequence[SimulationEvent] = (),
         extra_columns: Mapping[str, Sequence[float]] | None = None,
         volume_state_name: str = "volume",
-        output_dir: str | Path | None = None,
     ) -> SimulationResult:
         """Build dense rows, event rows, and optionally write CSV outputs."""
         times = np.asarray(state_times, dtype=float)
@@ -232,8 +212,6 @@ class Simulation(ABC):
             row_columns=row_columns,
             event_columns=event_columns,
         )
-        if output_dir is not None:
-            self.write_csvs(result, output_dir)
         return result
 
     def build_dense_rows(
@@ -373,17 +351,6 @@ class Simulation(ABC):
             *(f"feed_{name}" for name in reactor_state_names),
         )
 
-    def write_csvs(self, result: SimulationResult, output_dir: str | Path) -> None:
-        """Write ``simulation_dense_output.csv`` and ``events.csv``."""
-        path = Path(output_dir)
-        path.mkdir(parents=True, exist_ok=True)
-        self._write_csv(
-            path / "simulation_dense_output.csv",
-            result.row_columns,
-            result.dense_rows,
-        )
-        self._write_csv(path / "events.csv", result.event_columns, result.event_rows)
-
     def _dense_row(
         self,
         process: str,
@@ -403,14 +370,3 @@ class Simulation(ABC):
         row["cum_bolus_feed"] = float(cum_bolus_feed)
         row.update(extras)
         return row
-
-    def _write_csv(
-        self,
-        path: Path,
-        columns: Sequence[str],
-        rows: Sequence[Mapping[str, Any]],
-    ) -> None:
-        with path.open("w", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=columns)
-            writer.writeheader()
-            writer.writerows(rows)

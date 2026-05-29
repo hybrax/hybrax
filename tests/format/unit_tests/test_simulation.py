@@ -1,5 +1,3 @@
-import csv
-
 import numpy as np
 import pytest
 
@@ -14,38 +12,16 @@ from bp_format.simulation import (
 )
 
 
-class ToySimulation(Simulation):
-    def __init__(self):
-        self.calls = []
-
-    def evaluate_rates(self, t, state, controls=None):
-        self.calls.append((t, state, controls))
-        return np.asarray([1.0]), np.asarray([2.0])
-
-
 STATE_NAMES = ("biomass", "glucose", "pH", "volume")
 REACTOR_STATE_NAMES = ("biomass", "glucose")
 
 
 def _sim():
-    return ToySimulation()
+    return Simulation()
 
 
 def _state(biomass=10.0, glucose=20.0, ph=7.0, volume=1.0):
     return np.asarray([biomass, glucose, ph, volume], dtype=float)
-
-
-def test_as_rates_func_forwards_t_state_and_controls():
-    sim = _sim()
-    rates_func = sim.as_rates_func()
-    state = np.asarray([1.0, 2.0])
-    controls = np.asarray([3.0])
-
-    q, r = rates_func(4.0, state, controls)
-
-    assert q.tolist() == [1.0]
-    assert r.tolist() == [2.0]
-    assert sim.calls == [(4.0, state, controls)]
 
 
 def test_sampling_changes_volume_only():
@@ -186,7 +162,7 @@ def test_sampling_event_adds_offline_equal_to_pre_event_for_states():
         assert offline[state_name] == pytest.approx(pre_event[state_name])
 
 
-def test_events_table_schema_order_and_csv_writing(tmp_path):
+def test_events_table_schema_order():
     sim = _sim()
     result = sim.build_result(
         process="run_1",
@@ -206,7 +182,6 @@ def test_events_table_schema_order_and_csv_writing(tmp_path):
                 feed_concentrations={"glucose": 100.0},
             ),
         ],
-        output_dir=tmp_path,
     )
 
     assert isinstance(result, SimulationResult)
@@ -227,19 +202,8 @@ def test_events_table_schema_order_and_csv_writing(tmp_path):
     assert [row["event_order"] for row in result.event_rows] == [0, 1]
     assert result.event_rows[1]["feed_glucose"] == pytest.approx(100.0)
 
-    with (tmp_path / "events.csv").open(newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    assert rows[0]["event_type"] == EVENT_TYPE_SAMPLE
-    assert rows[1]["event_type"] == EVENT_TYPE_BOLUS
-    assert rows[1]["feed_glucose"] == "100.0"
 
-    with (tmp_path / "simulation_dense_output.csv").open(newline="") as handle:
-        dense_rows = list(csv.DictReader(handle))
-    assert dense_rows[0]["row_type"] == ROW_TYPE_ONLINE
-    assert "cum_bolus_feed" in dense_rows[0]
-
-
-def test_build_result_scopes_event_rows_to_process(tmp_path):
+def test_build_result_scopes_event_rows_to_process():
     sim = _sim()
     result = sim.build_result(
         process="run_1",
@@ -252,17 +216,11 @@ def test_build_result_scopes_event_rows_to_process(tmp_path):
             SimulationEvent("run_2", 1.0, EVENT_TYPE_SAMPLE, -0.1),
             SimulationEvent("run_1", 2.0, EVENT_TYPE_SAMPLE, -0.2),
         ],
-        output_dir=tmp_path,
     )
 
     assert {row["process"] for row in result.dense_rows} == {"run_1"}
     assert {row["process"] for row in result.event_rows} == {"run_1"}
     assert [row["time"] for row in result.event_rows] == [2.0]
-
-    with (tmp_path / "events.csv").open(newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    assert {row["process"] for row in rows} == {"run_1"}
-    assert [row["time"] for row in rows] == ["2.0"]
 
 
 def test_cum_bolus_feed_updates_after_post_event_and_persists():
@@ -298,7 +256,7 @@ def test_cum_bolus_feed_updates_after_post_event_and_persists():
     ]
 
 
-def test_extra_dense_columns_are_repeated_for_same_time_rows(tmp_path):
+def test_extra_dense_columns_are_repeated_for_same_time_rows():
     sim = _sim()
     result = sim.build_result(
         process="run_1",
@@ -312,7 +270,6 @@ def test_extra_dense_columns_are_repeated_for_same_time_rows(tmp_path):
             "temperature": [36.5, 37.0],
             "cum_base_feed": [0.0, 0.03],
         },
-        output_dir=tmp_path,
     )
 
     assert result.row_columns[-2:] == ("temperature", "cum_base_feed")
@@ -325,8 +282,3 @@ def test_extra_dense_columns_are_repeated_for_same_time_rows(tmp_path):
     ]
     assert {row["temperature"] for row in time_one_rows} == {37.0}
     assert {row["cum_base_feed"] for row in time_one_rows} == {0.03}
-
-    with (tmp_path / "simulation_dense_output.csv").open(newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    assert rows[0]["temperature"] == "36.5"
-    assert rows[-1]["cum_base_feed"] == "0.03"
