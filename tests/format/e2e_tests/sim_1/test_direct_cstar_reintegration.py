@@ -1,6 +1,5 @@
 import hashlib
 import os
-import shutil
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
@@ -32,7 +31,6 @@ from .simulation import REACTOR_STATE_UNITS, run_all_default  # noqa: E402
 from .simulation import write_simulation_plots  # noqa: E402
 
 DATA_JSON = DATA_DIR / "process_collection.json"
-DIAGNOSTICS_DIR = DATA_DIR / "direct_cstar_diagnostics"
 SOLVER_RTOL = 1e-10
 SOLVER_ATOL = 1e-12
 DENSE_SOLVER_RTOL = 1e-12
@@ -325,10 +323,7 @@ def _assert_simulation_artifacts_match(new_root):
         new_path = new_root / artifact
         old_path = DATA_DIR / artifact
         assert new_path.exists(), f"missing regenerated artifact: {new_path}"
-        if not old_path.exists():
-            old_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(new_path, old_path)
-            continue
+        assert old_path.exists(), f"missing canonical artifact: {old_path}"
         assert _sha256(new_path) == _sha256(old_path), old_path
 
 
@@ -437,19 +432,18 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             plot_times,
             integrated_plot_cstar,
         )
-        for diagnostics_dir in (tmp_path / "direct_cstar_diagnostics", DIAGNOSTICS_DIR):
-            _write_plots(
-                diagnostics_dir,
-                process,
-                process_name,
-                sparse_times,
-                plot_times,
-                fitted_cstar,
-                fitted_plot_cstar,
-                integrated_plot_cstar,
-                observed_concentrations,
-                recovered_plot_concentrations,
-            )
+        _write_plots(
+            tmp_path / "direct_cstar_diagnostics",
+            process,
+            process_name,
+            sparse_times,
+            plot_times,
+            fitted_cstar,
+            fitted_plot_cstar,
+            integrated_plot_cstar,
+            observed_concentrations,
+            recovered_plot_concentrations,
+        )
 
 
 def test_sim_1_dense_cstar_oracle_reintegration():

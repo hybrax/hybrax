@@ -13,7 +13,6 @@ import dataclasses
 
 import equinox as eqx
 import jax.numpy as jnp
-import numpy as np
 import pytest
 
 from bp_format import (
@@ -43,11 +42,7 @@ from bp_format.mechanistic import (
     get_control_splines,
     get_process_ordering,
 )
-from bp_format.splines import (
-    build_pseudobatch_transform,
-    make_cubic_ppoly,
-)
-from bp_format.time_series import PPoly
+from bp_format.splines import build_pseudobatch_transform
 
 
 # ---------------------------------------------------------------------------
@@ -190,30 +185,6 @@ def _apply_pseudobatch_transform(process, species_names=("biomass", "glucose")):
     transform = build_pseudobatch_transform(process, list(species_names))
     process.pseudobatch_transform = transform
     return transform
-
-
-# ---------------------------------------------------------------------------
-# make_cubic_ppoly (passthrough sanity)
-# ---------------------------------------------------------------------------
-
-
-class TestMakeCubicPPoly:
-    def test_returns_owned_ppoly(self):
-        sp = make_cubic_ppoly(
-            np.array([0.0, 1.0, 2.0, 3.0]), np.array([0.0, 1.0, 4.0, 9.0])
-        )
-        assert isinstance(sp, PPoly)
-
-    def test_eval_at_knots(self):
-        t = np.array([0.0, 1.0, 2.0, 3.0])
-        v = np.array([0.0, 1.0, 4.0, 9.0])
-        sp = make_cubic_ppoly(t, v)
-        for ti, vi in zip(t, v):
-            assert float(sp(ti)) == pytest.approx(float(vi), abs=1e-4)
-
-    def test_derivative_of_linear_is_slope(self):
-        sp = make_cubic_ppoly(np.array([0.0, 10.0]), np.array([0.0, 5.0]))
-        assert float(sp.derivative()(5.0)) == pytest.approx(0.5, rel=1e-4)
 
 
 # ---------------------------------------------------------------------------

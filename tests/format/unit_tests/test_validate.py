@@ -2,10 +2,13 @@
 Tests for bp_format.validate validation functions
 """
 
+from types import SimpleNamespace
+
 import pytest
 import jax.numpy as jnp
 
 from bp_format import (
+    BiologicalOde,
     TimeSeries,
     StaticVariable,
     BioProcessMetadata,
@@ -31,12 +34,15 @@ from bp_format import (
     validate_volume_consistency,
     validate_case_study,
     validate_augmented_parent_refs,
+    validate_biological_ode,
+    validate_bounds,
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _ts(timepoints, values):
     """Shorthand for building a TimeSeries."""
@@ -55,10 +61,10 @@ def _make_process(
 
     return BioProcess(
         metadata=BioProcessMetadata(name="test", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=10.0,
-                           time_reference="inoculation"),
-        volume=Volume(initial_volume=1.0, unit="L",
-                      volume_changes=volume_changes),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes=volume_changes),
         reactor_medium=ReactorMedium(
             name="medium",
             density=1.0,
@@ -73,6 +79,7 @@ def _make_process(
 # validate_timeseries_shape
 # ---------------------------------------------------------------------------
 
+
 class TestValidateTimeSeriesShape:
     def test_valid_timeseries(self):
         ts = _ts([0.0, 1.0, 2.0], [1.0, 2.0, 3.0])
@@ -86,19 +93,31 @@ class TestValidateTimeSeriesShape:
         assert ok is True
 
     def test_unordered_timepoints(self):
-        with pytest.raises(ValueError, match="strictly increasing"):
-            _ts([0.0, 2.0, 1.0], [1.0, 2.0, 3.0])
+        ts = SimpleNamespace(
+            times=jnp.array([0.0, 2.0, 1.0]),
+            values=jnp.array([1.0, 2.0, 3.0]),
+        )
+        ok, msg = validate_timeseries_shape(ts)
+        assert ok is False
+        assert "strictly monotonically increasing" in msg
 
     def test_duplicate_timepoints(self):
-        with pytest.raises(ValueError, match="strictly increasing"):
-            _ts([0.0, 1.0, 1.0], [1.0, 2.0, 3.0])
+        ts = SimpleNamespace(
+            times=jnp.array([0.0, 1.0, 1.0]),
+            values=jnp.array([1.0, 2.0, 3.0]),
+        )
+        ok, msg = validate_timeseries_shape(ts)
+        assert ok is False
+        assert "strictly monotonically increasing" in msg
 
     def test_length_mismatch(self):
-        with pytest.raises(ValueError, match="same length"):
-            TimeSeries(
-                times=jnp.array([0.0, 1.0, 2.0]),
-                values=jnp.array([1.0, 2.0]),
-            )
+        ts = SimpleNamespace(
+            times=jnp.array([0.0, 1.0, 2.0]),
+            values=jnp.array([1.0, 2.0]),
+        )
+        ok, msg = validate_timeseries_shape(ts)
+        assert ok is False
+        assert "times length (3) does not match values length (2)" in msg
 
     def test_name_appears_in_message(self):
         ts = _ts([0.0, 1.0], [1.0, 2.0])
@@ -109,6 +128,7 @@ class TestValidateTimeSeriesShape:
 # ---------------------------------------------------------------------------
 # validate_volume_change_sign
 # ---------------------------------------------------------------------------
+
 
 class TestValidateVolumeChangeSign:
     def _feed_vc(self, values, name="feed"):
@@ -158,22 +178,25 @@ class TestValidateVolumeChangeSign:
 # validate_volume_change_states
 # ---------------------------------------------------------------------------
 
+
 class TestValidateVolumeChangeStates:
     def _reactor_comp(self, name, dynamic=True):
         conc = _ts([0.0, 1.0], [1.0, 2.0]) if dynamic else StaticVariable(value=1.0)
-        return ReactorMediumComponent(
-            name=name, unit="g/L", concentration=conc
-        )
+        return ReactorMediumComponent(name=name, unit="g/L", concentration=conc)
 
     def _feed_medium(self, component_names):
         comps = {
-            n: FeedMediumComponent(name=n, unit="g/L",
-                                   concentration=StaticVariable(value=10.0),
-                                   is_controlled=True)
+            n: FeedMediumComponent(
+                name=n,
+                unit="g/L",
+                concentration=StaticVariable(value=10.0),
+                is_controlled=True,
+            )
             for n in component_names
         }
-        return FeedMedium(name="feed", density=1.0, density_unit="kg/L",
-                          components=comps)
+        return FeedMedium(
+            name="feed", density=1.0, density_unit="kg/L", components=comps
+        )
 
     def _vc(self, feed_medium, positive=True):
         vals = [0.1, 0.2] if positive else [-0.1, -0.2]
@@ -201,9 +224,7 @@ class TestValidateVolumeChangeStates:
                 "biomass": self._reactor_comp("biomass"),
                 "glucose": self._reactor_comp("glucose"),
             },
-            volume_changes={
-                "f": self._vc(self._feed_medium(["biomass", "glucose"]))
-            },
+            volume_changes={"f": self._vc(self._feed_medium(["biomass", "glucose"]))},
         )
         ok, msg = validate_volume_change_states(process)
         assert ok is True
@@ -228,9 +249,7 @@ class TestValidateVolumeChangeStates:
             reactor_components={
                 "biomass": self._reactor_comp("biomass"),
             },
-            volume_changes={
-                "sample": self._vc(self._feed_medium([]), positive=False)
-            },
+            volume_changes={"sample": self._vc(self._feed_medium([]), positive=False)},
         )
         ok, msg = validate_volume_change_states(process)
         assert ok is True
@@ -241,9 +260,7 @@ class TestValidateVolumeChangeStates:
             reactor_components={
                 "biomass": self._reactor_comp("biomass", dynamic=False),
             },
-            volume_changes={
-                "f": self._vc(self._feed_medium([]))
-            },
+            volume_changes={"f": self._vc(self._feed_medium([]))},
         )
         ok, msg = validate_volume_change_states(process)
         assert ok is True
@@ -254,10 +271,12 @@ class TestValidateVolumeChangeStates:
 # validate_biomass_in_reactor_medium
 # ---------------------------------------------------------------------------
 
+
 class TestValidateBiomassInReactorMedium:
     def _comp(self, name):
         return ReactorMediumComponent(
-            name=name, unit="g/L",
+            name=name,
+            unit="g/L",
             concentration=StaticVariable(value=1.0),
         )
 
@@ -288,6 +307,7 @@ class TestValidateBiomassInReactorMedium:
 # validate_process (integration)
 # ---------------------------------------------------------------------------
 
+
 class TestValidateProcess:
     def test_valid_process_returns_all_ok(self):
         biomass_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
@@ -297,7 +317,8 @@ class TestValidateProcess:
             density_unit="kg/L",
             components={
                 "biomass": FeedMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=StaticVariable(value=0.0),
                     is_controlled=True,
                 ),
@@ -314,7 +335,8 @@ class TestValidateProcess:
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=biomass_ts,
                 ),
             },
@@ -323,11 +345,6 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         assert all_valid is True
         assert all("invalid" not in m.lower() for m in messages)
-
-    def test_invalid_process_returns_false(self):
-        # Unordered time points -> TimeSeries now rejects at construction
-        with pytest.raises(ValueError, match="strictly increasing"):
-            _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
 
     def test_wrong_type_raises_type_error(self):
         """validate_process() must raise TypeError for non-BioProcess arguments."""
@@ -347,7 +364,8 @@ class TestValidateProcess:
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=StaticVariable(value=1.0),
                 ),
             },
@@ -356,15 +374,11 @@ class TestValidateProcess:
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
 
-    def test_process_with_process_variable_timeseries(self):
-        """Invalid TimeSeries (non-monotonic) is now rejected at construction."""
-        with pytest.raises(ValueError, match="strictly increasing"):
-            _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
-
 
 # ---------------------------------------------------------------------------
 # validate_volume_consistency
 # ---------------------------------------------------------------------------
+
 
 class TestValidateVolumeConsistency:
     def _make_process_with_volume(self, initial_volume, changes):
@@ -385,17 +399,22 @@ class TestValidateVolumeConsistency:
                     unit="L",
                     is_controlled=True,
                     is_continuous=is_continuous,
-                    feed_medium=feed_medium or FeedMedium(name="f", density=1.0, density_unit="kg/L"),
+                    feed_medium=feed_medium
+                    or FeedMedium(name="f", density=1.0, density_unit="kg/L"),
                     values=_ts(timepoints, values),
                 )
         return BioProcess(
             metadata=BioProcessMetadata(name="test", process_type="fed_batch"),
-            time_axis=TimeAxis(unit="hours", start=0.0, end=10.0,
-                               time_reference="inoculation"),
-            volume=Volume(initial_volume=initial_volume, unit="L",
-                          volume_changes=volume_changes),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+            ),
+            volume=Volume(
+                initial_volume=initial_volume, unit="L", volume_changes=volume_changes
+            ),
             reactor_medium=ReactorMedium(
-                name="medium", density=1.0, density_unit="kg/L",
+                name="medium",
+                density=1.0,
+                density_unit="kg/L",
             ),
         )
 
@@ -452,6 +471,7 @@ class TestValidateVolumeConsistency:
 # validate_case_study
 # ---------------------------------------------------------------------------
 
+
 def _make_biomass_process(
     biomass_ts,
     extra_components=None,
@@ -461,7 +481,8 @@ def _make_biomass_process(
     """Build a minimal valid BioProcess with a biomass component."""
     components = {
         "biomass": ReactorMediumComponent(
-            name="biomass", unit="g/L",
+            name="biomass",
+            unit="g/L",
             concentration=biomass_ts,
         )
     }
@@ -482,7 +503,8 @@ def _make_feed_medium(component_names):
         density_unit="kg/L",
         components={
             name: FeedMediumComponent(
-                name=name, unit="g/L",
+                name=name,
+                unit="g/L",
                 concentration=StaticVariable(value=0.0),
                 is_controlled=True,
             )
@@ -527,7 +549,7 @@ class TestValidateCaseStudy:
         assert "OK" in report["__consistency__"][0]
 
     def test_inconsistent_reactor_medium_components(self):
-        """Processes with different reactor medium components should fail consistency."""
+        """Processes with different reactor medium components fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         p1 = _make_biomass_process(ts)
         # p2 has an extra 'glucose' component
@@ -535,7 +557,8 @@ class TestValidateCaseStudy:
             ts,
             extra_components={
                 "glucose": ReactorMediumComponent(
-                    name="glucose", unit="g/L",
+                    name="glucose",
+                    unit="g/L",
                     concentration=StaticVariable(value=10.0),
                 )
             },
@@ -549,7 +572,9 @@ class TestValidateCaseStudy:
         """Processes with different process variable names should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         pv = ProcessVariable(
-            name="temperature", unit="°C", is_controlled=True,
+            name="temperature",
+            unit="°C",
+            is_controlled=True,
             values=_ts([0.0, 1.0], [37.0, 37.0]),
         )
         p1 = _make_biomass_process(ts, process_variables={"temperature": pv})
@@ -560,14 +585,18 @@ class TestValidateCaseStudy:
         assert any("process variables" in e for e in report["__consistency__"])
 
     def test_inconsistent_process_variable_types(self):
-        """Same variable name but different type (TimeSeries vs StaticVariable) fails."""
+        """Same variable name but different type fails."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         pv_ts = ProcessVariable(
-            name="temperature", unit="°C", is_controlled=True,
+            name="temperature",
+            unit="°C",
+            is_controlled=True,
             values=_ts([0.0, 1.0], [37.0, 37.0]),
         )
         pv_static = ProcessVariable(
-            name="temperature", unit="°C", is_controlled=True,
+            name="temperature",
+            unit="°C",
+            is_controlled=True,
             values=StaticVariable(value=37.0),
         )
         p1 = _make_biomass_process(ts, process_variables={"temperature": pv_ts})
@@ -581,7 +610,10 @@ class TestValidateCaseStudy:
         """Processes with different volume change names should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         vc = FeedVolumeChange(
-            name="feed", unit="L", is_controlled=True, is_continuous=True,
+            name="feed",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 0.1]),
         )
@@ -591,11 +623,6 @@ class TestValidateCaseStudy:
         all_valid, report = validate_case_study(cs)
         assert all_valid is False
         assert any("volume change" in e for e in report["__consistency__"])
-
-    def test_invalid_process_propagates_failure(self):
-        """Non-monotonic times are now rejected at TimeSeries construction."""
-        with pytest.raises(ValueError, match="strictly increasing"):
-            _ts([0.0, 2.0, 1.0], [0.1, 0.5, 1.0])
 
     def test_wrong_type_raises_type_error(self):
         with pytest.raises(TypeError, match="CaseStudy"):
@@ -612,7 +639,8 @@ class TestValidateCaseStudy:
         p2 = _make_biomass_process(ts)
         # Override the biomass component unit in p2
         p2.reactor_medium.components["biomass"] = ReactorMediumComponent(
-            name="biomass", unit="mmol/L",
+            name="biomass",
+            unit="mmol/L",
             concentration=ts,
         )
         cs = self._case_study({"run1": p1, "run2": p2})
@@ -624,11 +652,15 @@ class TestValidateCaseStudy:
         """Same process variable name and type but different units should fail."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         pv1 = ProcessVariable(
-            name="temperature", unit="°C", is_controlled=True,
+            name="temperature",
+            unit="°C",
+            is_controlled=True,
             values=_ts([0.0, 1.0], [37.0, 37.0]),
         )
         pv2 = ProcessVariable(
-            name="temperature", unit="K", is_controlled=True,
+            name="temperature",
+            unit="K",
+            is_controlled=True,
             values=_ts([0.0, 1.0], [310.0, 310.0]),
         )
         p1 = _make_biomass_process(ts, process_variables={"temperature": pv1})
@@ -642,12 +674,18 @@ class TestValidateCaseStudy:
         """Same volume change name but different units should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         vc1 = FeedVolumeChange(
-            name="feed", unit="L", is_controlled=True, is_continuous=True,
+            name="feed",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 0.1]),
         )
         vc2 = FeedVolumeChange(
-            name="feed", unit="mL", is_controlled=True, is_continuous=True,
+            name="feed",
+            unit="mL",
+            is_controlled=True,
+            is_continuous=True,
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 100.0]),
         )
@@ -662,6 +700,7 @@ class TestValidateCaseStudy:
 # ---------------------------------------------------------------------------
 # validate_measurement_sampling_alignment
 # ---------------------------------------------------------------------------
+
 
 class TestValidateMeasurementSamplingAlignment:
     def _sample_vc(self, times, values):
@@ -680,7 +719,8 @@ class TestValidateMeasurementSamplingAlignment:
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=_ts([2.0, 5.0, 8.0], [0.1, 0.5, 1.0]),
                 ),
             },
@@ -691,7 +731,7 @@ class TestValidateMeasurementSamplingAlignment:
         assert "OK" in msg
 
     def test_small_delay_detected(self):
-        """Measurement 0.0003 h after sampling in a 10 h process (0.003%) — should warn."""
+        """Measurement shortly after sampling should warn."""
         sample_times = [2.0, 5.0, 8.0]
         sample_vals = [-0.01, -0.01, -0.01]
         # Measurements are slightly after sampling
@@ -699,7 +739,8 @@ class TestValidateMeasurementSamplingAlignment:
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=_ts(meas_times, [0.1, 0.5, 1.0]),
                 ),
             },
@@ -718,7 +759,8 @@ class TestValidateMeasurementSamplingAlignment:
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=_ts(meas_times, [0.1, 0.5, 1.0]),
                 ),
             },
@@ -732,7 +774,8 @@ class TestValidateMeasurementSamplingAlignment:
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L",
+                    name="biomass",
+                    unit="g/L",
                     concentration=_ts([0.0, 5.0, 10.0], [0.1, 0.5, 1.0]),
                 ),
             },
@@ -746,17 +789,22 @@ class TestValidateMeasurementSamplingAlignment:
 # validate_augmented_parent_refs
 # ---------------------------------------------------------------------------
 
+
 class TestValidateAugmentedParentRefs:
     def _aug_child(self, *, parent_process: str, name: str = "aug"):
         return AugmentedBioProcess(
             metadata=BioProcessMetadata(name=name, process_type="batch"),
             time_axis=TimeAxis(
-                unit="hours", start=0.0, end=10.0,
+                unit="hours",
+                start=0.0,
+                end=10.0,
                 time_reference="inoculation",
             ),
             volume=Volume(initial_volume=1.0, unit="L"),
             reactor_medium=ReactorMedium(
-                name="medium", density=1.0, density_unit="kg/L",
+                name="medium",
+                density=1.0,
+                density_unit="kg/L",
             ),
             parent_process=parent_process,
         )
@@ -792,11 +840,13 @@ class TestValidateAugmentedParentRefs:
         parent = _make_biomass_process(ts)
         first_aug = self._aug_child(parent_process="parent", name="first_aug")
         chained = self._aug_child(parent_process="first_aug", name="chained")
-        cs = self._case_study({
-            "parent": parent,
-            "first_aug": first_aug,
-            "chained": chained,
-        })
+        cs = self._case_study(
+            {
+                "parent": parent,
+                "first_aug": first_aug,
+                "chained": chained,
+            }
+        )
         ok, messages = validate_augmented_parent_refs(cs)
         assert ok is False
         assert any("itself augmented" in m for m in messages)
@@ -812,9 +862,7 @@ class TestValidateAugmentedParentRefs:
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         parent = _make_biomass_process(ts)
         child = self._aug_child(parent_process="parent")
-        collection = BioProcessCollection(
-            processes={"parent": parent, "child": child}
-        )
+        collection = BioProcessCollection(processes={"parent": parent, "child": child})
         ok, _ = validate_augmented_parent_refs(collection)
         assert ok is True
 
@@ -830,35 +878,21 @@ class TestValidateAugmentedParentRefs:
         all_valid, report = validate_case_study(cs)
         assert all_valid is False
         assert "__augmented__" in report
-        assert any(
-            "unknown parent_process" in m for m in report["__augmented__"]
-        )
+        assert any("unknown parent_process" in m for m in report["__augmented__"])
 
 
 # ---------------------------------------------------------------------------
 # validate_biological_ode + validate_bounds
 # ---------------------------------------------------------------------------
 
-from bp_format import (
-    BiologicalOde,
-    validate_biological_ode,
-    validate_bounds,
-)
-
 
 def _make_intra_process():
     """Process with biomass + intracellular product + glucose. No volume changes."""
     return _make_process(
         reactor_components={
-            "biomass": ReactorMediumComponent(
-                "biomass", "g/L", StaticVariable(1.0)
-            ),
-            "product": ReactorMediumComponent(
-                "product", "g/L", StaticVariable(0.0)
-            ),
-            "glucose": ReactorMediumComponent(
-                "glucose", "g/L", StaticVariable(10.0)
-            ),
+            "biomass": ReactorMediumComponent("biomass", "g/L", StaticVariable(1.0)),
+            "product": ReactorMediumComponent("product", "g/L", StaticVariable(0.0)),
+            "glucose": ReactorMediumComponent("glucose", "g/L", StaticVariable(10.0)),
         }
     )
 
@@ -891,7 +925,11 @@ class TestValidateBiologicalOde:
         p.biological_ode = BiologicalOde(
             algebraic={},
             rates={"q_X": (None, None)},
-            derivatives={"biomass": "q_X * biomass + zzz", "product": "0", "glucose": "0"},
+            derivatives={
+                "biomass": "q_X * biomass + zzz",
+                "product": "0",
+                "glucose": "0",
+            },
         )
         ok, msg = validate_biological_ode(p)
         assert ok is False
@@ -916,7 +954,9 @@ class TestValidateBiologicalOde:
             algebraic={},
             rates={"q_X": (None, None)},
             derivatives={
-                "biomass": "0", "product": "0", "glucose": "0",
+                "biomass": "0",
+                "product": "0",
+                "glucose": "0",
                 "ghost": "q_X",
             },
         )
@@ -1078,7 +1118,10 @@ class TestValidateBiologicalOde:
         p = _make_intra_process()
         p.process_variables = {
             "viability": ProcessVariable(
-                "viability", "%", is_controlled=False, values=StaticVariable(95.0),
+                "viability",
+                "%",
+                is_controlled=False,
+                values=StaticVariable(95.0),
             ),
         }
         p.biological_ode = BiologicalOde(
@@ -1121,7 +1164,10 @@ class TestValidateBounds:
         p = _make_intra_process()
         p.process_variables = {
             "pH": ProcessVariable(
-                "pH", "", is_controlled=False, values=StaticVariable(7.0),
+                "pH",
+                "",
+                is_controlled=False,
+                values=StaticVariable(7.0),
                 bounds=(14.0, 0.0),
             )
         }

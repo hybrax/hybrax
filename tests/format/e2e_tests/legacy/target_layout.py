@@ -1,3 +1,9 @@
+"""Archived target-layout reference checks.
+
+This module is intentionally not collected by pytest. It depends on legacy
+fixtures that are no longer part of the active e2e suite.
+"""
+
 import csv
 import os
 import shutil
@@ -9,7 +15,7 @@ from pathlib import Path
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 from bp_format.serialization import load_process_collection_json
-from tests.unit_tests.loader_helpers import load_module
+from tests.e2e_tests.legacy.loader_helpers import load_module
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "ex14_fixture"
 SIMULATION_DIR = FIXTURE_ROOT / "00_simulation"

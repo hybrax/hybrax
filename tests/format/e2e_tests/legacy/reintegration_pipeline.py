@@ -1,3 +1,9 @@
+"""Archived reintegration reference pipeline.
+
+This module is intentionally not collected by pytest. It depends on legacy
+fixtures that are no longer part of the active e2e suite.
+"""
+
 from collections import defaultdict
 from collections.abc import Iterable
 import csv

@@ -34,6 +34,7 @@ from bp_format.splines import (
     split_timeseries,
     fit_timeseries_spline,
     make_constant_spline,
+    make_cubic_ppoly,
     build_pseudobatch_inputs,
     build_pseudobatch_transform,
     build_splines,
@@ -48,6 +49,31 @@ from bp_format.serialization import (
     load_dataset_json,
 )
 from bp_format import BenchmarkDataset, CaseStudy
+from bp_format.time_series import PPoly
+
+
+# ---------------------------------------------------------------------------
+# make_cubic_ppoly
+# ---------------------------------------------------------------------------
+
+
+class TestMakeCubicPPoly:
+    def test_returns_owned_ppoly(self):
+        sp = make_cubic_ppoly(
+            np.array([0.0, 1.0, 2.0, 3.0]), np.array([0.0, 1.0, 4.0, 9.0])
+        )
+        assert isinstance(sp, PPoly)
+
+    def test_eval_at_knots(self):
+        t = np.array([0.0, 1.0, 2.0, 3.0])
+        v = np.array([0.0, 1.0, 4.0, 9.0])
+        sp = make_cubic_ppoly(t, v)
+        for ti, vi in zip(t, v, strict=True):
+            assert float(sp(ti)) == pytest.approx(float(vi), abs=1e-4)
+
+    def test_derivative_of_linear_is_slope(self):
+        sp = make_cubic_ppoly(np.array([0.0, 10.0]), np.array([0.0, 5.0]))
+        assert float(sp.derivative()(5.0)) == pytest.approx(0.5, rel=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -865,7 +891,7 @@ def test_pseudobatch_species_not_in_feed():
 # ---------------------------------------------------------------------------
 
 
-def test_interpolator_roundtrip_bolus():
+def test_timeseries_backtransform_roundtrip_bolus():
     """to_timeseries -> build_backtransform_spline
     matches evaluate_real_concentration for a bolus feed process."""
     proc = _make_process_with_bolus_feed(
@@ -901,7 +927,7 @@ def test_interpolator_roundtrip_bolus():
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
 
 
-def test_interpolator_roundtrip_continuous():
+def test_timeseries_backtransform_roundtrip_continuous():
     """to_timeseries -> build_backtransform_spline
     matches evaluate_real_concentration for a continuous feed process."""
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
@@ -920,7 +946,7 @@ def test_interpolator_roundtrip_continuous():
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
 
 
-def test_interpolator_scalar():
+def test_timeseries_backtransform_scalar():
     """BacktransformSpline works for scalar evaluation."""
     proc = _make_process_with_bolus_feed()
     inputs = build_pseudobatch_inputs(proc, "glucose")
@@ -1624,7 +1650,7 @@ def test_pseudobatch_multiple_feed_streams():
 
 
 def test_backtransform_spline_jit_bolus():
-    """BacktransformSpline should be JIT-compilable (bolus/linear feed_corr)."""
+    """BacktransformSpline is JIT-compilable for bolus feed correction."""
     import equinox as eqx
 
     proc = _make_process_with_bolus_feed(

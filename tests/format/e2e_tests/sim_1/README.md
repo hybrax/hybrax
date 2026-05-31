@@ -144,6 +144,7 @@ explicit event-boundary rows in `simulation_dense_output.csv`:
 - `offline`: sample measurement row
 - `pre-event`: state before events at that timestamp
 - `post-event`: state after events at that timestamp
+- `fermentation_end`: explicit end-of-fermentation event row
 
 At sampling times, `offline` and `pre-event` have the same state values. At a
 shared sampling/bolus timestamp, both are pre-bolus.
