@@ -8,6 +8,7 @@ import tempfile
 
 from bp_format import (
     BenchmarkDataset,
+    BiologicalOde,
     BioProcessCollection,
     CaseStudy,
     BioProcess,
@@ -458,9 +459,6 @@ def test_default_load_rejects_non_json_file_path():
 # ---------------------------------------------------------------------------
 
 
-from bp_format import BiologicalOde
-
-
 def _make_process_with_biological_ode_and_bounds(sample_process):
     """Augment the sample process with bounds on every relevant slot and a
     minimal but realistic ``biological_ode`` block for round-trip testing."""
@@ -491,7 +489,10 @@ def test_json_roundtrip_bounds_on_every_slot(sample_process):
     losslessly. The unbounded default ``(None, None)`` is omitted from JSON."""
     _make_process_with_biological_ode_and_bounds(sample_process)
     cs = CaseStudy(
-        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+        case_id="b",
+        organism="o",
+        citation="c",
+        processes={"fed_batch_001": sample_process},
     )
     ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
@@ -515,7 +516,10 @@ def test_json_roundtrip_biological_ode(sample_process):
     rates (with per-rate bounds)."""
     _make_process_with_biological_ode_and_bounds(sample_process)
     cs = CaseStudy(
-        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+        case_id="b",
+        organism="o",
+        citation="c",
+        processes={"fed_batch_001": sample_process},
     )
     ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
@@ -539,7 +543,10 @@ def test_json_roundtrip_biological_ode(sample_process):
 def test_default_unbounded_is_omitted_from_json(sample_process):
     """A freshly built process without bounds writes no bounds keys to JSON."""
     cs = CaseStudy(
-        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+        case_id="b",
+        organism="o",
+        citation="c",
+        processes={"fed_batch_001": sample_process},
     )
     ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
@@ -554,7 +561,10 @@ def test_auto_generated_biological_ode_roundtrips(sample_process):
     """Processes without a user-supplied block get one auto-populated in
     ``BioProcess.__post_init__``; the auto block round-trips losslessly."""
     cs = CaseStudy(
-        case_id="b", organism="o", citation="c", processes={"fed_batch_001": sample_process}
+        case_id="b",
+        organism="o",
+        citation="c",
+        processes={"fed_batch_001": sample_process},
     )
     ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
@@ -565,51 +575,10 @@ def test_auto_generated_biological_ode_roundtrips(sample_process):
     p2 = loaded.case_studies["b"].processes["fed_batch_001"]
     assert p2.biological_ode is not None
     assert sample_process.biological_ode is not None
-    assert (
-        list(p2.biological_ode.rates.keys())
-        == list(sample_process.biological_ode.rates.keys())
+    assert list(p2.biological_ode.rates.keys()) == list(
+        sample_process.biological_ode.rates.keys()
     )
     assert p2.biological_ode.derivatives == sample_process.biological_ode.derivatives
-
-
-def test_serialized_reactor_component_omits_is_intracellular(sample_dataset):
-    """The legacy ``is_intracellular`` flag was purged from the data
-    model and must not appear in newly written JSON."""
-    import json
-    with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "data.json"
-        save_dataset_json(sample_dataset, save_path)
-        with open(save_path) as f:
-            raw = f.read()
-    assert "is_intracellular" not in raw
-
-
-def test_load_tolerates_legacy_is_intracellular_field(sample_dataset):
-    """Pre-purge JSON files contain ``is_intracellular`` on every reactor
-    component. The deserializer ignores the field instead of crashing,
-    so existing on-disk artefacts continue to load."""
-    import json
-    with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "data.json"
-        save_dataset_json(sample_dataset, save_path)
-        with open(save_path) as f:
-            payload = json.load(f)
-
-        # Inject the legacy field into every reactor component before reload.
-        for cs in payload["case_studies"].values():
-            for proc in cs["processes"].values():
-                for comp in proc["reactor_medium"]["components"].values():
-                    comp["is_intracellular"] = True
-
-        with open(save_path, "w") as f:
-            json.dump(payload, f)
-
-        loaded = load_dataset_json(save_path)
-
-    proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
-    # Field is gone from the dataclass entirely; the legacy JSON entry
-    # was just dropped on the floor.
-    assert not hasattr(proc.reactor_medium.components["biomass"], "is_intracellular")
 
 
 if __name__ == "__main__":

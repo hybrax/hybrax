@@ -534,10 +534,8 @@ intracellular `BiologicalOde` is attached via `mutator`.
 
 #### 10.11.5 Intracellular helper — `_attach_intracellular_biological_ode(process)`
 
-The fixtures `martens_2025_f_single` and `martens_expanded_single` were
-originally generated with a `is_intracellular` flag on
-`ReactorMediumComponent` (purged in commit `834b104`). The replacement
-helper attaches an equivalent `BiologicalOde` block:
+The fixtures `martens_2025_f_single` and `martens_expanded_single` model
+intracellular accumulation by attaching a `BiologicalOde` block:
 
 ```python
 def _attach_intracellular_biological_ode(process):

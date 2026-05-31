@@ -87,7 +87,11 @@ BioProcess
  │         ├─ name: str
  │         ├─ unit: str
  │         ├─ concentration: TimeSeries | StaticVariable
- │         └─ is_intracellular: bool
+ │         └─ c_star_concentration: Optional[TimeSeries | StaticVariable]
+ ├─ biological_ode: Optional[BiologicalOde]
+ │    ├─ algebraic: Dict[str, str]
+ │    ├─ rates: Dict[str, tuple[Optional[float], Optional[float]]]
+ │    └─ derivatives: Dict[str, str]
  ├─ process_variables: Dict[str, ProcessVariable]
  │    ├─ name: str
  │    ├─ unit: str
