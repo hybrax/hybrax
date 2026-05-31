@@ -213,11 +213,13 @@ def cstar_values_for_component(
     return times, raw_values * adf - feed_correction
 
 
-def fit_cstar_timeseries(
-    process: bp.BioProcess,
-    component: bp.ReactorMediumComponent,
+def fit_cstar_timeseries_from_values(
+    component_name: str,
+    times: np.ndarray,
+    cstar_values: np.ndarray,
+    *,
+    source: str,
 ) -> bp.TimeSeries:
-    times, cstar_values = cstar_values_for_component(process, component)
     fitted = bp.splines.fit_timeseries_spline(
         bp.TimeSeries(times=jnp.asarray(times), values=jnp.asarray(cstar_values)),
         smoothing_s=CSTAR_SPLINE_SMOOTHING_S,
@@ -225,8 +227,8 @@ def fit_cstar_timeseries(
     metadata = dict(fitted.metadata or {})
     metadata["transform"] = {
         "name": "pseudo_batch",
-        "component": component.name,
-        "source": "stored_pseudobatch_transform",
+        "component": component_name,
+        "source": source,
     }
     return bp.TimeSeries(
         times=fitted.times,
@@ -238,6 +240,19 @@ def fit_cstar_timeseries(
         continuity_side=fitted.continuity_side,
         metadata=metadata,
         dtype=fitted.dtype,
+    )
+
+
+def fit_cstar_timeseries(
+    process: bp.BioProcess,
+    component: bp.ReactorMediumComponent,
+) -> bp.TimeSeries:
+    times, cstar_values = cstar_values_for_component(process, component)
+    return fit_cstar_timeseries_from_values(
+        component.name,
+        times,
+        cstar_values,
+        source="stored_pseudobatch_transform",
     )
 
 
@@ -437,15 +452,23 @@ def event_aware_feed_correction_value(
     )
 
 
-def dense_reactor_reference(process_id: str, max_time: float) -> dict[str, np.ndarray]:
+def _dense_reactor_rows(
+    process_id: str,
+    max_time: float,
+    *,
+    row_type: str | None,
+) -> list[dict[str, str]]:
     with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:
-        rows = [
+        return [
             row
             for row in csv.DictReader(handle)
             if row["process_id"] == process_id
-            and row["row_type"] != "offline"
+            and (row_type is None or row["row_type"] == row_type)
             and float(row["time"]) <= max_time
         ]
+
+
+def _reactor_rows_to_arrays(rows: list[dict[str, str]]) -> dict[str, np.ndarray]:
     return {
         "time": np.asarray([float(row["time"]) for row in rows], dtype=float),
         **{
@@ -453,3 +476,17 @@ def dense_reactor_reference(process_id: str, max_time: float) -> dict[str, np.nd
             for name in EXPECTED_REACTOR_COMPONENT_ORDER
         },
     }
+
+
+def dense_reactor_reference(process_id: str, max_time: float) -> dict[str, np.ndarray]:
+    rows = _dense_reactor_rows(process_id, max_time, row_type=None)
+    rows = [row for row in rows if row["row_type"] != "offline"]
+    return _reactor_rows_to_arrays(rows)
+
+
+def dense_online_reactor_reference(
+    process_id: str,
+    max_time: float,
+) -> dict[str, np.ndarray]:
+    rows = _dense_reactor_rows(process_id, max_time, row_type="online")
+    return _reactor_rows_to_arrays(rows)

@@ -15,13 +15,16 @@ from bp_format.serialization import save_process_collection_json  # noqa: E402
 from .cstar_helpers import (  # noqa: E402
     CANONICAL_ARTIFACTS,
     DATA_DIR,
+    EVENT_TIME_ATOL,
     EXPECTED_PROCESS_IDS,
     EXPECTED_REACTOR_COMPONENT_ORDER,
+    dense_online_reactor_reference,
     dense_reactor_reference,
     event_aware_adf_value,
     event_aware_feed_correction_value,
     event_jump_times,
     fit_cstar_timeseries,
+    fit_cstar_timeseries_from_values,
     populate_exact_pseudobatch_transform,
 )
 from .load_utils import parse_all_processes  # noqa: E402
@@ -32,6 +35,14 @@ DATA_JSON = DATA_DIR / "process_collection.json"
 DIAGNOSTICS_DIR = DATA_DIR / "direct_cstar_diagnostics"
 SOLVER_RTOL = 1e-10
 SOLVER_ATOL = 1e-12
+DENSE_SOLVER_RTOL = 1e-12
+DENSE_SOLVER_ATOL = 1e-14
+DENSE_FITTED_CSTAR_RTOL = 1e-10
+DENSE_FITTED_CSTAR_ATOL = 1e-12
+DENSE_CSTAR_RTOL = 1e-9
+DENSE_CSTAR_ATOL = 1e-11
+DENSE_CONCENTRATION_RTOL = 2e-9
+DENSE_CONCENTRATION_ATOL = 1e-9
 DIAGNOSTIC_DPI = 120
 PLOT_POINTS = 241
 
@@ -66,7 +77,15 @@ def _direct_rhs(process):
     return DirectCstarRHS(jnp.asarray(first_breaks), coeffs)
 
 
-def _integrate_direct_cstar(process, rhs, times, y0):
+def _integrate_direct_cstar(
+    process,
+    rhs,
+    times,
+    y0,
+    *,
+    rtol=SOLVER_RTOL,
+    atol=SOLVER_ATOL,
+):
     event_jumps = event_jump_times(process)
     jump_ts = event_jumps[(times[0] < event_jumps) & (event_jumps < times[-1])]
     solution = diffrax.diffeqsolve(
@@ -78,8 +97,8 @@ def _integrate_direct_cstar(process, rhs, times, y0):
         y0=jnp.asarray(y0),
         saveat=diffrax.SaveAt(ts=jnp.asarray(times)),
         stepsize_controller=diffrax.PIDController(
-            rtol=SOLVER_RTOL,
-            atol=SOLVER_ATOL,
+            rtol=rtol,
+            atol=atol,
             jump_ts=jnp.asarray(jump_ts),
         ),
         max_steps=100_000,
@@ -87,7 +106,7 @@ def _integrate_direct_cstar(process, rhs, times, y0):
     return np.asarray(solution.ys, dtype=float)
 
 
-def _backtransform_left(process, times, cstar_values):
+def _backtransform(process, times, cstar_values, *, right_of_jump):
     jump_times = event_jump_times(process)
     return np.column_stack(
         [
@@ -100,14 +119,14 @@ def _backtransform_left(process, times, cstar_values):
                             name,
                             float(time),
                             jump_times,
-                            right_of_jump=False,
+                            right_of_jump=right_of_jump,
                         )
                     )
                     / event_aware_adf_value(
                         process,
                         float(time),
                         jump_times,
-                        right_of_jump=False,
+                        right_of_jump=right_of_jump,
                     )
                     for row, time in enumerate(times)
                 ],
@@ -116,6 +135,55 @@ def _backtransform_left(process, times, cstar_values):
             for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER)
         ]
     )
+
+
+def _backtransform_left(process, times, cstar_values):
+    return _backtransform(process, times, cstar_values, right_of_jump=False)
+
+
+def _dense_oracle_cstar(process, dense, *, right_of_jump):
+    times = dense["time"]
+    jump_times = event_jump_times(process)
+    return np.column_stack(
+        [
+            np.asarray(
+                [
+                    dense[name][row]
+                    * event_aware_adf_value(
+                        process,
+                        float(time),
+                        jump_times,
+                        right_of_jump=right_of_jump,
+                    )
+                    - event_aware_feed_correction_value(
+                        process,
+                        name,
+                        float(time),
+                        jump_times,
+                        right_of_jump=right_of_jump,
+                    )
+                    for row, time in enumerate(times)
+                ],
+                dtype=float,
+            )
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ]
+    )
+
+
+def _print_component_errors(label, actual, desired):
+    print(label)
+    for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
+        abs_error = np.abs(actual[:, column] - desired[:, column])
+        denominator = np.abs(desired[:, column])
+        rel_error = np.full_like(abs_error, np.inf)
+        nonzero = denominator > 0.0
+        rel_error[nonzero] = abs_error[nonzero] / denominator[nonzero]
+        rel_error[~nonzero & (abs_error == 0.0)] = 0.0
+        print(
+            f"  {name}: max_abs={np.max(abs_error):.6e}, "
+            f"max_rel={np.max(rel_error):.6e}"
+        )
 
 
 def _cumulative_discrete_change(volume_change, times):
@@ -382,3 +450,93 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
                 observed_concentrations,
                 recovered_plot_concentrations,
             )
+
+
+def test_sim_1_dense_cstar_oracle_reintegration():
+    collection = load_process_collection_json(DATA_JSON)
+    assert set(collection.processes) == EXPECTED_PROCESS_IDS
+
+    for process_name, process in collection.processes.items():
+        populate_exact_pseudobatch_transform(process)
+        dense = dense_online_reactor_reference(process_name, process.time_axis.end)
+        dense_times = dense["time"]
+        assert len(dense_times) > 0
+        assert dense_times[0] == process.time_axis.start
+        assert dense_times[-1] == process.time_axis.end
+        assert np.all(np.diff(dense_times) > 0.0)
+        for jump_time in event_jump_times(process):
+            assert np.any(
+                np.isclose(dense_times, jump_time, rtol=0.0, atol=EVENT_TIME_ATOL)
+            )
+
+        # Dense online rows are left/pre-event states at exact event times:
+        # Simulation.build_dense_rows emits online rows before pre/post-event rows,
+        # and Sim1Simulation._integrate_left_continuous stores the event-time
+        # state before discrete event application.
+        dense_cstar = _dense_oracle_cstar(process, dense, right_of_jump=False)
+        for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
+            process.reactor_medium.components[
+                name
+            ].c_star_concentration = fit_cstar_timeseries_from_values(
+                name,
+                dense_times,
+                dense_cstar[:, column],
+                source="dense_online_oracle_left_event",
+            )
+
+        fitted_cstar = np.column_stack(
+            [
+                np.asarray(
+                    process.reactor_medium.components[
+                        name
+                    ].c_star_concentration.evaluate_many(jnp.asarray(dense_times)),
+                    dtype=float,
+                )
+                for name in EXPECTED_REACTOR_COMPONENT_ORDER
+            ]
+        )
+        np.testing.assert_allclose(
+            fitted_cstar,
+            dense_cstar,
+            rtol=DENSE_FITTED_CSTAR_RTOL,
+            atol=DENSE_FITTED_CSTAR_ATOL,
+        )
+
+        rhs = _direct_rhs(process)
+        integrated_cstar = _integrate_direct_cstar(
+            process,
+            rhs,
+            dense_times,
+            fitted_cstar[0],
+            rtol=DENSE_SOLVER_RTOL,
+            atol=DENSE_SOLVER_ATOL,
+        )
+        np.testing.assert_allclose(
+            integrated_cstar,
+            fitted_cstar,
+            rtol=DENSE_CSTAR_RTOL,
+            atol=DENSE_CSTAR_ATOL,
+        )
+
+        recovered_concentrations = _backtransform(
+            process,
+            dense_times,
+            integrated_cstar,
+            right_of_jump=False,
+        )
+        dense_concentrations = np.column_stack(
+            [dense[name] for name in EXPECTED_REACTOR_COMPONENT_ORDER]
+        )
+        _print_component_errors(
+            "dense c* raw concentration reconstruction errors",
+            recovered_concentrations,
+            dense_concentrations,
+        )
+        # The real-space check includes ODE reintegration error propagated through
+        # the ADF/feed backtransform. Keep it sub-nanomolar/sub-ng-per-L absolute.
+        np.testing.assert_allclose(
+            recovered_concentrations,
+            dense_concentrations,
+            rtol=DENSE_CONCENTRATION_RTOL,
+            atol=DENSE_CONCENTRATION_ATOL,
+        )
