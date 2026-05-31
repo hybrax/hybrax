@@ -1,4 +1,4 @@
-"""Generate the ex14 single-process target-layout JSON."""
+"""Generate the sim 1 single-process target-layout JSON."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = EXAMPLE_ROOT.parents[2]
+REPO_ROOT = EXAMPLE_ROOT.parents[3]
 SIM_DIR = EXAMPLE_ROOT / "00_simulation"
 
 for path in (REPO_ROOT, EXAMPLE_ROOT):
@@ -22,7 +22,7 @@ from load_utils import parse_all_processes  # noqa: E402
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 SIMULATION_DENSE_CSV = SIM_DIR / "simulation_dense_output.csv"
 SIMULATION_EVENTS_CSV = SIM_DIR / "events.csv"
-SINGLE_PROCESS_ID = "ex14_run_1"
+SINGLE_PROCESS_ID = "sim_1_run_1"
 
 
 def generate_single_process_output(output_dir: Path) -> bp.BioProcessCollection:
@@ -31,7 +31,7 @@ def generate_single_process_output(output_dir: Path) -> bp.BioProcessCollection:
     collection = parse_all_processes(
         dense_csv=SIMULATION_DENSE_CSV,
         events_csv=SIMULATION_EVENTS_CSV,
-        collection_name="ex14_simulation_intracellular_single_process",
+        collection_name="sim_1_intracellular_single_process",
         process_ids=(SINGLE_PROCESS_ID,),
     )
     bp.serialization.save_process_collection_json(
@@ -44,7 +44,7 @@ def generate_single_process_output(output_dir: Path) -> bp.BioProcessCollection:
 def main() -> None:
     collection = generate_single_process_output(OUTPUT_DIR)
     process_ids = ", ".join(collection.processes)
-    print(f"Wrote single-process ex14 collection: {process_ids}")
+    print(f"Wrote single-process sim 1 collection: {process_ids}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,17 @@
+process_id,time,event_order,event_type,delta_volume,feed_id,feed_biomass,feed_product_extracellular,feed_product_intracellular,feed_dead_cells,feed_glucose,feed_glutamine,feed_lactate,feed_ammonia
+sim_1_run_1,24.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_1,36.0,0,bolus,0.06,bolus_feed_medium,0.0,0.0,0.0,0.0,500.0,50.0,0.0,0.0
+sim_1_run_1,48.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_1,72.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_1,72.0,1,bolus,0.06,bolus_feed_medium,0.0,0.0,0.0,0.0,500.0,50.0,0.0,0.0
+sim_1_run_1,96.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_1,108.0,0,bolus,0.06,bolus_feed_medium,0.0,0.0,0.0,0.0,500.0,50.0,0.0,0.0
+sim_1_run_1,120.0,0,fermentation_end,0.0,,,,,,,,,
+sim_1_run_2,24.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_2,36.0,0,bolus,0.13,bolus_feed_medium,0.0,0.0,0.0,0.0,500.0,50.0,0.0,0.0
+sim_1_run_2,48.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_2,72.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_2,72.0,1,bolus,0.13,bolus_feed_medium,0.0,0.0,0.0,0.0,500.0,50.0,0.0,0.0
+sim_1_run_2,96.0,0,sample,-0.05,,,,,,,,,
+sim_1_run_2,108.0,0,bolus,0.13,bolus_feed_medium,0.0,0.0,0.0,0.0,500.0,50.0,0.0,0.0
+sim_1_run_2,120.0,0,fermentation_end,0.0,,,,,,,,,

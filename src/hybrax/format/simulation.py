@@ -256,6 +256,17 @@ class Simulation:
                     self._dense_row(
                         process,
                         time,
+                        ROW_TYPE_OFFLINE,
+                        state,
+                        state_names,
+                        cum_bolus_feed,
+                        extras,
+                    )
+                )
+                rows.append(
+                    self._dense_row(
+                        process,
+                        time,
                         ROW_TYPE_FERMENTATION_END,
                         state,
                         state_names,

@@ -19,12 +19,12 @@ from bp_format.serialization import (  # noqa: E402
     save_process_collection_json,
 )
 
-FIXTURE_ROOT = Path(__file__).resolve().parent / "ex14_fixture"
+FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "sim_1" / "fixture"
 SIMULATION_DIR = FIXTURE_ROOT / "00_simulation"
 SIMULATION_DENSE_OUTPUT = SIMULATION_DIR / "simulation_dense_output.csv"
 EVENTS_OUTPUT = SIMULATION_DIR / "events.csv"
 CANONICAL_ARTIFACTS = ("simulation_dense_output.csv", "events.csv")
-EXPECTED_PROCESS_IDS = {"ex14_run_1", "ex14_run_2"}
+EXPECTED_PROCESS_IDS = {"sim_1_run_1", "sim_1_run_2"}
 EXPECTED_REACTOR_COMPONENT_ORDER = (
     "biomass",
     "product_extracellular",
@@ -42,7 +42,7 @@ EXPECTED_EVENT_JUMP_TIMES = [24.0, 36.0, 48.0, 72.0, 96.0, 108.0]
 EXPECTED_NONZERO_FEED_CORRECTION_COMPONENTS = {"glucose", "glutamine"}
 EXPECTED_VOLUME_CHANGES = {"conti_feed", "base_feed", "sampling", "bolus_feed"}
 EXPECTED_RATE_NAMES = {
-    "q_X_active",
+    "q_biomass",
     "q_product_extracellular",
     "q_product_intracellular",
     "q_dead_cells",
@@ -111,16 +111,16 @@ REAL_SPACE_SEGMENT_MAX_ABSOLUTE_ERRORS = {
 }
 
 
-def _clear_ex14_fixture_modules() -> None:
+def _clear_sim_1_fixture_modules() -> None:
     sys.modules.pop("load_utils", None)
-    sys.modules.pop("ex14_simulation", None)
+    sys.modules.pop("sim_1_simulation", None)
 
 
 @contextmanager
-def _isolated_ex14_fixture_imports():
+def _isolated_sim_1_fixture_imports():
     sys_path = list(sys.path)
     dont_write_bytecode = sys.dont_write_bytecode
-    _clear_ex14_fixture_modules()
+    _clear_sim_1_fixture_modules()
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(FIXTURE_ROOT))
     sys.path.insert(0, str(SIMULATION_DIR))
@@ -129,19 +129,19 @@ def _isolated_ex14_fixture_imports():
     finally:
         sys.path[:] = sys_path
         sys.dont_write_bytecode = dont_write_bytecode
-        _clear_ex14_fixture_modules()
+        _clear_sim_1_fixture_modules()
 
 
 def _regenerate_simulation_artifacts(output_dir: Path) -> Path:
-    with _isolated_ex14_fixture_imports():
-        from ex14_simulation import run_all_default
+    with _isolated_sim_1_fixture_imports():
+        from sim_1_simulation import run_all_default
 
         run_all_default(output_dir=output_dir)
     return output_dir
 
 
 def _parse_lab_like_collection():
-    with _isolated_ex14_fixture_imports():
+    with _isolated_sim_1_fixture_imports():
         from load_utils import parse_all_processes
 
         return parse_all_processes(
@@ -441,9 +441,7 @@ def _assert_ex14_biological_ode_contract(process: bp.BioProcess) -> None:
     assert ode is not None
     assert ode.algebraic == {"X_active": "biomass - product_intracellular"}
     assert set(ode.rates) == EXPECTED_RATE_NAMES
-    assert ode.derivatives["biomass"] == (
-        "q_X_active * X_active + q_product_intracellular * X_active"
-    )
+    assert ode.derivatives["biomass"] == "q_biomass * X_active"
     assert ode.derivatives["product_extracellular"] == (
         "q_product_extracellular * X_active"
     )
@@ -730,22 +728,19 @@ def _ex14_rates_from_biological_derivatives(
 ) -> tuple[dict[str, np.ndarray], np.ndarray]:
     active_biomass = states["biomass"] - states["product_intracellular"]
     assert np.all(active_biomass > 0.0)
-    q_product_intracellular = (
-        biological_derivatives["product_intracellular"] / active_biomass
-    )
     rates = {
         "q_product_extracellular": (
             biological_derivatives["product_extracellular"] / active_biomass
         ),
-        "q_product_intracellular": q_product_intracellular,
+        "q_product_intracellular": (
+            biological_derivatives["product_intracellular"] / active_biomass
+        ),
         "q_dead_cells": biological_derivatives["dead_cells"] / active_biomass,
         "q_glucose": biological_derivatives["glucose"] / active_biomass,
         "q_glutamine": biological_derivatives["glutamine"] / active_biomass,
         "q_lactate": biological_derivatives["lactate"] / active_biomass,
         "q_ammonia": biological_derivatives["ammonia"] / active_biomass,
-        "q_X_active": (
-            biological_derivatives["biomass"] / active_biomass - q_product_intracellular
-        ),
+        "q_biomass": biological_derivatives["biomass"] / active_biomass,
     }
     return rates, active_biomass
 
@@ -937,7 +932,7 @@ def _assert_rates_match_biological_derivatives(
             atol=1e-12,
         )
     np.testing.assert_allclose(
-        (rates["q_X_active"] + rates["q_product_intracellular"]) * active_biomass,
+        rates["q_biomass"] * active_biomass,
         biological_derivatives["biomass"],
         rtol=1e-12,
         atol=1e-12,
@@ -1186,8 +1181,7 @@ def _ex14_biological_derivatives(
 ) -> dict[str, float]:
     active_biomass = states["biomass"] - states["product_intracellular"]
     return {
-        "biomass": (rates["q_X_active"] + rates["q_product_intracellular"])
-        * active_biomass,
+        "biomass": rates["q_biomass"] * active_biomass,
         "product_extracellular": rates["q_product_extracellular"] * active_biomass,
         "product_intracellular": rates["q_product_intracellular"] * active_biomass,
         "dead_cells": rates["q_dead_cells"] * active_biomass,
@@ -1614,6 +1608,8 @@ def _write_sparse_reintegration_diagnostic_plots(
     diagnostics: dict[str, dict[str, np.ndarray]],
     recovered_concentrations: dict[str, np.ndarray],
     observed_concentrations: dict[str, np.ndarray],
+    *,
+    observation_label: str = "sparse",
 ) -> list[Path]:
     assert process.metadata.name is not None
     process_name = process.metadata.name
@@ -1677,7 +1673,7 @@ def _write_sparse_reintegration_diagnostic_plots(
             color="black",
             s=18,
             zorder=3,
-            label="sparse observed",
+            label=f"{observation_label} observed",
         )
         ax.scatter(
             times,
@@ -1686,11 +1682,11 @@ def _write_sparse_reintegration_diagnostic_plots(
             marker="x",
             s=28,
             zorder=3,
-            label="RHS sparse output",
+            label=f"RHS {observation_label} output",
         )
         _style_diagnostic_axis(ax, name)
     axes.ravel()[0].legend(loc="best", fontsize="x-small")
-    fig.suptitle(f"ex14 {process_name}: sparse real-space reintegration")
+    fig.suptitle(f"ex14 {process_name}: {observation_label} real-space reintegration")
     fig.supxlabel("time [h]")
     fig.supylabel("concentration")
     fig.tight_layout()
@@ -1728,7 +1724,7 @@ def _write_sparse_reintegration_diagnostic_plots(
             color="black",
             s=18,
             zorder=3,
-            label="sparse c* observed",
+            label=f"{observation_label} c* observed",
         )
         _style_diagnostic_axis(ax, name)
     axes.ravel()[0].legend(loc="best", fontsize="x-small")
@@ -1819,6 +1815,16 @@ def _assert_finite_metric_series(values: list[float], expected_length: int) -> N
     assert np.all(np.isfinite(np.asarray(values, dtype=float)))
 
 
+def _assert_diagnostic_plots_written(
+    plot_paths: list[Path],
+    process_count: int,
+) -> None:
+    assert len(plot_paths) == SPARSE_DIAGNOSTIC_PLOTS_PER_PROCESS * process_count
+    for path in plot_paths:
+        assert path.exists()
+        assert path.stat().st_size > 0
+
+
 def _assert_sparse_reintegration_outputs_written(
     metrics_path: Path,
     plot_paths: list[Path],
@@ -1880,10 +1886,7 @@ def _assert_sparse_reintegration_outputs_written(
         for values in transform_metrics["feed_corrections"].values():
             _assert_finite_metric_series(values, len(EXPECTED_CONCENTRATION_TIMES))
 
-    assert len(plot_paths) == SPARSE_DIAGNOSTIC_PLOTS_PER_PROCESS * process_count
-    for path in plot_paths:
-        assert path.exists()
-        assert path.stat().st_size > 0
+    _assert_diagnostic_plots_written(plot_paths, process_count)
 
 
 def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
@@ -2238,6 +2241,8 @@ def test_ex14_dense_observations_tightly_reintegrate_pseudobatch_real_space(
     save_process_collection_json(collection, output_path)
     reloaded = load_process_collection_json(output_path)
 
+    diagnostics_dir = tmp_path / "ex14_dense_reintegration_diagnostics"
+    plot_paths = []
     for process in reloaded.processes.values():
         concentration = process.reactor_medium.components["biomass"].concentration
         if not isinstance(concentration, bp.TimeSeries):
@@ -2276,6 +2281,20 @@ def test_ex14_dense_observations_tightly_reintegrate_pseudobatch_real_space(
             observed_concentrations,
             times,
         )
+        plot_paths.extend(
+            _write_sparse_reintegration_diagnostic_plots(
+                diagnostics_dir,
+                process,
+                times,
+                rates,
+                diagnostics,
+                recovered_concentrations,
+                observed_concentrations,
+                observation_label="dense",
+            )
+        )
+
+    _assert_diagnostic_plots_written(plot_paths, len(reloaded.processes))
 
 
 def test_ex14_dense_real_space_segments_reintegrate_tightly():

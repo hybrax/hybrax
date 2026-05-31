@@ -1,4 +1,4 @@
-"""Generate the ex14 all-process target-layout artifacts."""
+"""Generate the sim 1 all-process target-layout artifacts."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = EXAMPLE_ROOT.parents[2]
+REPO_ROOT = EXAMPLE_ROOT.parents[3]
 SIM_DIR = EXAMPLE_ROOT / "00_simulation"
 
 for path in (REPO_ROOT, EXAMPLE_ROOT):
@@ -41,7 +41,7 @@ def generate_all_processes_output(output_dir: Path) -> bp.BioProcessCollection:
 def main() -> None:
     collection = generate_all_processes_output(OUTPUT_DIR)
     process_ids = ", ".join(collection.processes)
-    print(f"Wrote all-process ex14 collection: {process_ids}")
+    print(f"Wrote all-process sim 1 collection: {process_ids}")
 
 
 if __name__ == "__main__":

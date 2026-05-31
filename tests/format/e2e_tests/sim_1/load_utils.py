@@ -1,4 +1,4 @@
-"""Load ex14 simulation CSVs into bp-format collections."""
+"""Load sim 1 simulation CSVs into bp-format collections."""
 
 from __future__ import annotations
 
@@ -6,44 +6,27 @@ import csv
 import os
 from pathlib import Path
 import re
-import sys
 from typing import Iterable
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 import jax.numpy as jnp
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
 import bp_format as bp  # noqa: E402
 
-SIM_DIR = Path(__file__).resolve().parent / "00_simulation"
-if str(SIM_DIR) not in sys.path:
-    sys.path.insert(0, str(SIM_DIR))
-
-from ex14_simulation import (  # noqa: E402
+from .simulation import (  # noqa: E402
     FEED_GLUCOSE,
     FEED_GLUTAMINE,
     RATIO_RELAXATION_PER_H,
     RATIO_TARGET,
     REACTOR_STATE_NAMES,
+    REACTOR_STATE_UNITS,
     STATE_NAMES,
 )
 
 PROCESS_ID_COLUMN = "process_id"
 INITIAL_TIME_MATCH_TOL = 1e-12
-STATE_UNITS = {
-    "biomass": "mg/L",
-    "product_extracellular": "mg/L",
-    "product_intracellular": "mg/L",
-    "dead_cells": "mg/L",
-    "glucose": "mmol/L",
-    "glutamine": "mmol/L",
-    "lactate": "mmol/L",
-    "ammonia": "mmol/L",
-}
+STATE_UNITS = REACTOR_STATE_UNITS
 CONTROL_COLUMNS = ("pH", "temperature", "cum_base_feed", "cum_conti_feed")
 EVENT_COLUMNS = (
     PROCESS_ID_COLUMN,
@@ -60,7 +43,7 @@ def parse_all_processes(
     *,
     dense_csv: Path,
     events_csv: Path,
-    collection_name: str = "ex14_simulation_intracellular",
+    collection_name: str = "sim_1",
     process_ids: Iterable[str] | None = None,
 ) -> bp.BioProcessCollection:
     dense_columns, dense_rows = _read_csv(dense_csv)
@@ -86,7 +69,8 @@ def parse_all_processes(
     unknown_event_process_ids = sorted(event_process_ids - dense_process_ids)
     if unknown_event_process_ids:
         raise ValueError(
-            f"events.csv has unknown process ids: {unknown_event_process_ids}"
+            "simulation_events.csv has unknown process ids: "
+            f"{unknown_event_process_ids}"
         )
 
     processes = {}
@@ -104,9 +88,9 @@ def parse_all_processes(
     return bp.BioProcessCollection(
         metadata={
             "name": collection_name,
-            "source_example": "14_simulation_intracellular",
+            "source_example": "sim_1_intracellular",
             "description": (
-                "Parsed experimental-like view of the ex14 intracellular "
+                "Parsed experimental-like view of the sim 1 intracellular "
                 "simulation output."
             ),
         },
@@ -204,7 +188,7 @@ def _load_single_process(
         metadata=bp.BioProcessMetadata(
             name=process_id,
             process_type="fed_batch",
-            notes="ex14 simulated intracellular-product process",
+            notes="sim 1 simulated intracellular-product process",
         ),
         time_axis=bp.TimeAxis(
             unit="h",
@@ -229,11 +213,11 @@ def _load_single_process(
 
 
 def _build_biological_ode() -> bp.BiologicalOde:
-    """Return the ex14 intracellular-product ODE contract."""
+    """Return the sim 1 intracellular-product ODE contract."""
     return bp.BiologicalOde(
         algebraic={"X_active": "biomass - product_intracellular"},
         rates={
-            "q_X_active": (None, None),
+            "q_biomass": (None, None),
             "q_product_extracellular": (None, None),
             "q_product_intracellular": (None, None),
             "q_dead_cells": (None, None),
@@ -243,7 +227,7 @@ def _build_biological_ode() -> bp.BiologicalOde:
             "q_ammonia": (None, None),
         },
         derivatives={
-            "biomass": "q_X_active * X_active + q_product_intracellular * X_active",
+            "biomass": "q_biomass * X_active",
             "product_extracellular": "q_product_extracellular * X_active",
             "product_intracellular": "q_product_intracellular * X_active",
             "dead_cells": "q_dead_cells * X_active",
@@ -264,12 +248,14 @@ def _require_offline_rows_match_sample_events(
     event_rows: list[dict[str, str]],
 ) -> None:
     offline_times = _times(offline_rows)
-    sample_times = _times(
-        _sort_time_rows(row for row in event_rows if row["event_type"] == "sample")
+    sample_and_end_rows = _sort_time_rows(
+        row for row in event_rows if row["event_type"] in {"sample", "fermentation_end"}
     )
-    if offline_times != sample_times:
+    sample_and_end_times = _times(sample_and_end_rows)
+    if offline_times != sample_and_end_times:
         raise ValueError(
-            "Offline measurement times must match sample event times exactly."
+            "Offline measurement times must match sample and fermentation-end "
+            "event times exactly."
         )
 
 

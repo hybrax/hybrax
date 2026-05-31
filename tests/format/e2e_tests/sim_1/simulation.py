@@ -1,4 +1,4 @@
-"""Intracellular-product simulation for example 14.
+"""Intracellular-product simulation 1.
 
 This is a compact Martens/ex12-inspired CHO fed-batch model for mechanistic
 verification. It keeps the source examples' pH/temperature control,
@@ -9,6 +9,7 @@ intracellular/extracellular split.
 
 from __future__ import annotations
 
+import argparse
 import csv
 from dataclasses import dataclass
 import os
@@ -22,7 +23,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -30,7 +31,7 @@ from bp_format.simulation import Simulation, SimulationEvent, SimulationResult  
 from bp_format.simulation import EVENT_TYPE_BOLUS, EVENT_TYPE_SAMPLE  # noqa: E402
 from bp_format.simulation import EVENT_TYPE_FERMENTATION_END  # noqa: E402
 
-PROCESS_ID = "ex14_run_1"
+PROCESS_ID = "sim_1_run_1"
 T_END = 120.0
 INITIAL_VOLUME = 1.0
 CONTI_FLOW_L_PER_H = 0.0015
@@ -41,15 +42,15 @@ FEED_GLUTAMINE = 50.0
 SAMPLE_VOLUME_L = 0.050
 ONLINE_POINTS_PER_H = 12
 # Martens examples use cells/L, but intracellular components are subtracted
-# from biomass by bp-format, so ex14 uses mass-compatible biomass units.
+# from biomass by bp-format, so sim 1 uses mass-compatible biomass units.
 MG_PER_CELL = 200.0 / 1e9
 # Martens virtual_lab uses Gaussian-like pH/temperature growth factors.
-# Ex14 keeps that dependency but centers it on fixed nominal setpoints.
+# Sim 1 keeps that dependency but centers it on fixed nominal setpoints.
 PH_NOMINAL = 7.05
 PH_WIDTH = 0.35
 TEMPERATURE_NOMINAL = 36.8
 TEMPERATURE_WIDTH = 1.5
-# Ex12 used a time-varying non-glycosylated split. Ex14 replaces that with an
+# Ex12 used a time-varying non-glycosylated split. Sim 1 replaces that with an
 # intracellular retention ratio that relaxes from fully secreted toward 50/50.
 RATIO_MIN = 0.0
 RATIO_MAX = 0.55
@@ -60,7 +61,7 @@ RATIO_RELAXATION_PER_H = 0.030
 MU_MAX_PER_H = 0.0080
 DEATH_RATE_PER_H = 0.0015
 PRODUCT_RATE_PER_H = 0.0040
-# Martens growth is Monod-limited by glucose and glutamine. Ex14 applies the
+# Martens growth is Monod-limited by glucose and glutamine. Sim 1 applies the
 # same limitation to growth/product formation and to substrate uptake, so
 # depletion cannot create biomass/product without substrate.
 GLUCOSE_HALF_SATURATION = 1.0
@@ -80,6 +81,19 @@ REACTOR_STATE_NAMES = (
     "lactate",
     "ammonia",
 )
+# Concentration units for reactor-medium states. Biomass and products are mass
+# concentrations because intracellular product is part of measured biomass.
+# Nutrients/byproducts use molar concentrations. Volume states/feeds use L.
+REACTOR_STATE_UNITS = {
+    "biomass": "mg/L",
+    "product_extracellular": "mg/L",
+    "product_intracellular": "mg/L",
+    "dead_cells": "mg/L",
+    "glucose": "mmol/L",
+    "glutamine": "mmol/L",
+    "lactate": "mmol/L",
+    "ammonia": "mmol/L",
+}
 PROCESS_VARIABLE_STATE_NAMES = ("intracellular_product_ratio",)
 STATE_NAMES = (*REACTOR_STATE_NAMES, *PROCESS_VARIABLE_STATE_NAMES, "volume")
 REACTOR_INDEX = {name: index for index, name in enumerate(REACTOR_STATE_NAMES)}
@@ -118,18 +132,18 @@ INITIAL_STATE = np.asarray(
 
 
 @dataclass(frozen=True)
-class Ex14Schedule:
+class Sim1Schedule:
     online_times: tuple[float, ...]
     sample_times: tuple[float, ...]
     bolus_feeds: tuple[tuple[float, float], ...]
 
 
 @dataclass(frozen=True)
-class Ex14ProcessConfig:
+class Sim1ProcessConfig:
     process_id: str
     conti_flow_l_per_h: float
     base_per_glucose_uptake_l_per_mmol: float
-    schedule: Ex14Schedule
+    schedule: Sim1Schedule
 
 
 DEFAULT_ONLINE_TIMES = tuple(
@@ -138,11 +152,11 @@ DEFAULT_ONLINE_TIMES = tuple(
 DEFAULT_CONFIGS = (
     # First run mirrors ex12's combined setup: continuous nutrient feed,
     # uptake-proportional base-feed dilution, discrete bolus feeds, and regular samples.
-    Ex14ProcessConfig(
-        process_id="ex14_run_1",
+    Sim1ProcessConfig(
+        process_id="sim_1_run_1",
         conti_flow_l_per_h=CONTI_FLOW_L_PER_H,
         base_per_glucose_uptake_l_per_mmol=BASE_PER_GLUCOSE_UPTAKE_L_PER_MMOL,
-        schedule=Ex14Schedule(
+        schedule=Sim1Schedule(
             online_times=DEFAULT_ONLINE_TIMES,
             sample_times=(24.0, 48.0, 72.0, 96.0),
             bolus_feeds=((36.0, 0.060), (72.0, 0.060), (108.0, 0.060)),
@@ -150,11 +164,11 @@ DEFAULT_CONFIGS = (
     ),
     # Second run removes continuous nutrient feed and compensates with larger
     # nutrient boluses. Base feed still follows glucose uptake as a pH-control proxy.
-    Ex14ProcessConfig(
-        process_id="ex14_run_2",
+    Sim1ProcessConfig(
+        process_id="sim_1_run_2",
         conti_flow_l_per_h=0.0,
         base_per_glucose_uptake_l_per_mmol=BASE_PER_GLUCOSE_UPTAKE_L_PER_MMOL,
-        schedule=Ex14Schedule(
+        schedule=Sim1Schedule(
             online_times=DEFAULT_ONLINE_TIMES,
             sample_times=(24.0, 48.0, 72.0, 96.0),
             bolus_feeds=((36.0, 0.130), (72.0, 0.130), (108.0, 0.130)),
@@ -163,7 +177,7 @@ DEFAULT_CONFIGS = (
 )
 
 
-class Ex14Simulation(Simulation):
+class Sim1Simulation(Simulation):
     """Small fed-batch simulation with one intracellular reactor component."""
 
     state_names = STATE_NAMES
@@ -171,7 +185,7 @@ class Ex14Simulation(Simulation):
     process_variable_state_names = PROCESS_VARIABLE_STATE_NAMES
     initial_state = INITIAL_STATE
 
-    def __init__(self, config: Ex14ProcessConfig | None = None):
+    def __init__(self, config: Sim1ProcessConfig | None = None):
         self.config = config or DEFAULT_CONFIGS[0]
         self.process_id = self.config.process_id
         self.schedule = self.config.schedule
@@ -221,30 +235,6 @@ class Ex14Simulation(Simulation):
             )
         return np.asarray(out, dtype=float)
 
-    def evaluate_rates(self, t, state, controls=None):
-        """Return NumPy ``(q, r)`` for standalone SciPy integration."""
-        return self._evaluate_rates(t, state, controls, xp=np)
-
-    def as_rates_func(self):
-        """Return a flat ``rates_func(t, state, controls)`` aligned with
-        ``rhs_ode.name_modeled_rates``.
-
-        For ex14 those names are the 8 ``q_<rmc>`` symbols declared in
-        ``load_utils._build_biological_ode``; the
-        ``intracellular_product_ratio`` PV derivative is encoded inline in
-        ``BiologicalOde.derivatives`` and so is *not* part of this vector.
-        Forward integration consumes this function in ``bp-train``;
-        ``evaluate_rates`` keeps returning the legacy ``(q, r)`` tuple for
-        standalone SciPy integration where the PV ``r`` term is added by
-        the caller's RHS.
-        """
-
-        def rates_func(t, state, controls):
-            q, _r = self._evaluate_rates(t, state, controls, xp=jnp)
-            return q
-
-        return rates_func
-
     def _evaluate_rates(self, t, state, controls=None, *, xp):
         state = xp.asarray(state, dtype=float)
         if controls is None:
@@ -277,14 +267,14 @@ class Ex14Simulation(Simulation):
         mu = MU_MAX_PER_H * control_factor * substrate_factor
         q_product = PRODUCT_RATE_PER_H * control_factor * substrate_factor
 
+        q_product_intracellular = q_product * ratio
         q_values = {
-            # `biomass` is measured viable biomass. The intracellular product
-            # formation term is added back in `_rhs_numpy` so active biomass
-            # growth and intracellular accumulation keep measured biomass
-            # consistent with bp-format's intracellular subtraction.
-            "biomass": mu - DEATH_RATE_PER_H,
+            # `biomass` is measured viable biomass and includes intracellular
+            # product. Active biomass excludes intracellular product only as the
+            # rate basis.
+            "biomass": mu - DEATH_RATE_PER_H + q_product_intracellular,
             "product_extracellular": q_product * (1.0 - ratio),
-            "product_intracellular": q_product * ratio,
+            "product_intracellular": q_product_intracellular,
             "dead_cells": DEATH_RATE_PER_H,
             "glucose": -GLUCOSE_UPTAKE_RATE * glucose_limit,
             "glutamine": -GLUTAMINE_UPTAKE_RATE * glutamine_limit,
@@ -323,9 +313,8 @@ class Ex14Simulation(Simulation):
             reactor_state_names=self.reactor_state_names,
             events=events,
             extra_columns=extras,
-            output_dir=None,
         )
-        result = self._with_ex14_output_schema(result)
+        result = self._with_sim_1_output_schema(result)
         if output_dir is not None:
             write_simulation_csvs((result,), output_dir)
         return result
@@ -459,12 +448,6 @@ class Ex14Simulation(Simulation):
         )
 
         biological = q * active_biomass + r[: len(REACTOR_STATE_NAMES)]
-        # bp-format computes active biomass as biomass minus intracellular
-        # components. Adding intracellular formation to measured biomass keeps
-        # that active-biomass definition physically interpretable.
-        biological[REACTOR_INDEX["biomass"]] += (
-            q[REACTOR_INDEX["product_intracellular"]] * active_biomass
-        )
 
         # Continuous nutrient feed follows ex12's standard CSTR inflow term:
         # D * (feed_concentration - reactor_concentration). Base feed is pure
@@ -484,7 +467,7 @@ class Ex14Simulation(Simulation):
         d_volume = self.config.conti_flow_l_per_h + base_flow_l_per_h
         return np.concatenate([d_reactor, d_pv, [d_volume]])
 
-    def _with_ex14_output_schema(self, result: SimulationResult) -> SimulationResult:
+    def _with_sim_1_output_schema(self, result: SimulationResult) -> SimulationResult:
         dense_rows = []
         rate_rows = self._build_rate_rows(result)
         for row, rate_row in zip(result.dense_rows, rate_rows, strict=True):
@@ -533,10 +516,6 @@ class Ex14Simulation(Simulation):
         )
         return normalized
 
-    def write_csvs(self, result: SimulationResult, output_dir: str | Path) -> None:
-        """Write one wide dense CSV plus events CSV."""
-        write_simulation_csvs((result,), output_dir)
-
     def _build_rate_rows(self, result: SimulationResult) -> list[dict]:
         n_reactor = len(REACTOR_STATE_NAMES)
         rows: list[dict] = []
@@ -581,14 +560,9 @@ class Ex14Simulation(Simulation):
         }
 
 
-def run_default(output_dir: str | Path | None = None) -> SimulationResult:
-    """Run ex14 with default schedule."""
-    return Ex14Simulation().run(output_dir=output_dir)
-
-
 def run_all_default(output_dir: str | Path | None = None) -> list[SimulationResult]:
-    """Run all default ex14 processes and optionally write combined CSVs."""
-    results = [Ex14Simulation(config).run() for config in DEFAULT_CONFIGS]
+    """Run all default sim 1 processes and optionally write combined CSVs."""
+    results = [Sim1Simulation(config).run() for config in DEFAULT_CONFIGS]
     if output_dir is not None:
         write_simulation_csvs(results, output_dir)
     return results
@@ -598,7 +572,7 @@ def write_simulation_csvs(
     results: Sequence[SimulationResult],
     output_dir: str | Path,
 ) -> None:
-    """Write ex14 dense/event CSVs for one or more simulation results."""
+    """Write sim 1 dense/event CSVs for one or more simulation results."""
     if not results:
         raise ValueError("cannot write CSVs for an empty result sequence")
 
@@ -610,7 +584,7 @@ def write_simulation_csvs(
         (row for result in results for row in result.dense_rows),
     )
     _write_csv_lf(
-        path / "events.csv",
+        path / "simulation_events.csv",
         results[0].event_columns,
         (row for result in results for row in result.event_rows),
     )
@@ -624,9 +598,6 @@ def _write_csv_lf(path: Path, columns: Sequence[str], rows: Iterable[dict]) -> N
 
 
 def _plotting_pyplot():
-    import os
-
-    os.environ.setdefault("MPLCONFIGDIR", "/tmp/bpbench-matplotlib")
     import matplotlib
 
     matplotlib.use("Agg")
@@ -658,18 +629,18 @@ def _event_times(result: SimulationResult, event_type: str) -> list[float]:
 
 def _add_event_markers(ax, result: SimulationResult) -> None:
     styles = {
-        "sample": ("tab:pink", ":"),
-        "bolus": ("tab:blue", "--"),
-        "fermentation_end": ("black", "-"),
+        "sample": ("tab:pink", ":", 1.4, 0.8),
+        "bolus": ("tab:blue", "--", 0.8, 0.5),
+        "fermentation_end": ("black", "-", 0.8, 0.5),
     }
-    for event_type, (color, linestyle) in styles.items():
+    for event_type, (color, linestyle, linewidth, alpha) in styles.items():
         for time in _event_times(result, event_type):
             ax.axvline(
                 time,
                 color=color,
                 linestyle=linestyle,
-                linewidth=0.8,
-                alpha=0.5,
+                linewidth=linewidth,
+                alpha=alpha,
             )
 
 
@@ -681,18 +652,24 @@ def _save_panel_plot(
     *,
     ylabel: str = "value",
     mark_events: bool = False,
+    n_cols: int = 2,
 ) -> Path:
     plt = _plotting_pyplot()
     path = Path(output_dir) / filename
     path.parent.mkdir(parents=True, exist_ok=True)
-    n_cols = 2
-    n_rows = max(1, (len(panels) + 1) // n_cols)
-    fig, axes = plt.subplots(n_rows, n_cols, sharex=True, figsize=(10, 2.7 * n_rows))
+    n_rows = max(1, (len(panels) + n_cols - 1) // n_cols)
+    fig, axes = plt.subplots(
+        n_rows, n_cols, sharex=True, figsize=(5 * n_cols, 2.7 * n_rows)
+    )
     axes = np.asarray(axes).ravel()
     for ax, (column, title) in zip(axes, panels, strict=False):
         for result in results:
             frame = _result_frame(result)
             ax.plot(frame["time"], frame[column], label=_result_label(result))
+            ymin, ymax = ax.get_ylim()
+            if ymin <= 0.0 <= ymax:
+                ax.axhline(0.0, color="black", linewidth=0.6, alpha=0.35)
+                ax.set_ylim(ymin, ymax)
             if mark_events:
                 _add_event_markers(ax, result)
         ax.set_title(title)
@@ -713,18 +690,28 @@ def _save_panel_plot(
     return path
 
 
-def plot_reactor_states(
+def plot_reactor_states_and_volumes(
     results: Sequence[SimulationResult],
     output_dir: str | Path,
 ) -> Path:
-    panels = [(name, name) for name in REACTOR_STATE_NAMES]
+    panels = [
+        *(
+            (name, f"{name} [{REACTOR_STATE_UNITS[name]}]")
+            for name in REACTOR_STATE_NAMES
+        ),
+        ("volume", "reactor volume [L]"),
+        ("cum_conti_feed", "continuous feed [L]"),
+        ("cum_base_feed", "base feed [L]"),
+        ("cum_bolus_feed", "bolus feed [L]"),
+    ]
     return _save_panel_plot(
         results,
         output_dir,
-        "reactor_states.png",
+        "reactor_states_and_volumes.png",
         panels,
-        ylabel="concentration",
+        ylabel="value",
         mark_events=True,
+        n_cols=3,
     )
 
 
@@ -740,26 +727,6 @@ def plot_process_variables(
         output_dir,
         "process_variables.png",
         panels,
-        mark_events=True,
-    )
-
-
-def plot_volume_feeds_events(
-    results: Sequence[SimulationResult],
-    output_dir: str | Path,
-) -> Path:
-    panels = [
-        ("volume", "reactor volume [L]"),
-        ("cum_conti_feed", "continuous feed [L]"),
-        ("cum_base_feed", "base feed [L]"),
-        ("cum_bolus_feed", "bolus feed [L]"),
-    ]
-    return _save_panel_plot(
-        results,
-        output_dir,
-        "volume_feeds_events.png",
-        panels,
-        ylabel="volume [L]",
         mark_events=True,
     )
 
@@ -795,16 +762,44 @@ def write_simulation_plots(
         results = run_all_default()
     output_dir = Path(output_dir)
     return [
-        plot_reactor_states(results, output_dir),
+        plot_reactor_states_and_volumes(results, output_dir),
         plot_process_variables(results, output_dir),
-        plot_volume_feeds_events(results, output_dir),
         plot_rates(results, output_dir),
     ]
 
 
-if __name__ == "__main__":
-    plot_paths = write_simulation_plots(
-        Path(__file__).resolve().parent / "output" / "simulation_plots"
+def _arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent,
+        help="Directory for simulation_dense_output.csv and simulation_events.csv.",
     )
-    for path in plot_paths:
-        print(path)
+    parser.add_argument(
+        "--plot-dir",
+        type=Path,
+        default=None,
+        help="Directory for simulation plots.",
+    )
+    parser.add_argument("--skip-plots", action="store_true")
+    return parser
+
+
+def main() -> None:
+    args = _arg_parser().parse_args()
+    results = run_all_default(output_dir=args.output_dir)
+    dense_count = sum(len(result.dense_rows) for result in results)
+    event_count = sum(len(result.event_rows) for result in results)
+    print(f"Wrote {dense_count} dense rows to {args.output_dir}")
+    print(f"Wrote {event_count} event rows to {args.output_dir}")
+
+    if args.skip_plots:
+        return
+    plot_dir = args.plot_dir or args.output_dir / "output" / "simulation_plots"
+    for path in write_simulation_plots(plot_dir, results):
+        print(f"Wrote plot {path}")
+
+
+if __name__ == "__main__":
+    main()

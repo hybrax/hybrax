@@ -4,7 +4,9 @@ import pytest
 from bp_format import Simulation, SimulationEvent, SimulationResult
 from bp_format.simulation import (
     EVENT_TYPE_BOLUS,
+    EVENT_TYPE_FERMENTATION_END,
     EVENT_TYPE_SAMPLE,
+    ROW_TYPE_FERMENTATION_END,
     ROW_TYPE_OFFLINE,
     ROW_TYPE_ONLINE,
     ROW_TYPE_POST_EVENT,
@@ -160,6 +162,30 @@ def test_sampling_event_adds_offline_equal_to_pre_event_for_states():
     assert pre_event["row_type"] == ROW_TYPE_PRE_EVENT
     for state_name in STATE_NAMES:
         assert offline[state_name] == pytest.approx(pre_event[state_name])
+
+
+def test_fermentation_end_adds_offline_without_volume_change():
+    sim = _sim()
+    result = sim.build_result(
+        process="run_1",
+        state_times=[0.0, 1.0],
+        states=[_state(), _state(biomass=11.0, glucose=19.0, volume=0.95)],
+        online_times=[0.0, 1.0],
+        state_names=STATE_NAMES,
+        reactor_state_names=REACTOR_STATE_NAMES,
+        events=[SimulationEvent("run_1", 1.0, EVENT_TYPE_FERMENTATION_END, 0.0)],
+    )
+
+    assert [row["row_type"] for row in result.dense_rows] == [
+        ROW_TYPE_ONLINE,
+        ROW_TYPE_ONLINE,
+        ROW_TYPE_OFFLINE,
+        ROW_TYPE_FERMENTATION_END,
+    ]
+    offline = result.dense_rows[2]
+    fermentation_end = result.dense_rows[3]
+    for state_name in STATE_NAMES:
+        assert offline[state_name] == pytest.approx(fermentation_end[state_name])
 
 
 def test_events_table_schema_order():
