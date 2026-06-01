@@ -20,6 +20,11 @@ from .inspect import (
     print_trainable_structure,
 )
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
+from .dense import (
+    build_union_time_grid,
+    dense_point_mask_away_from_jumps,
+    dense_triple_mask_away_from_jumps,
+)
 from .defaults import DefaultLossModule, DefaultReactionModule
 from .trainer import (
     SingleSampleResult,
@@ -72,6 +77,9 @@ __all__ = [
     "print_reaction_schema",
     "HybridOdeWrapper",
     "validate_rhs_ode_compatibility",
+    "build_union_time_grid",
+    "dense_point_mask_away_from_jumps",
+    "dense_triple_mask_away_from_jumps",
     "simulate_measurement_states",
     "SingleSampleResult",
     "evaluate_sample_with_loss_module",

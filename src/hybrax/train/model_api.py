@@ -451,6 +451,28 @@ class LossInputs(eqx.Module):
     # Training step; -1 in forward-eval contexts. For schedules / annealing.
     step: jax.Array
 
+    # Controls-discontinuity times for this sample (from
+    # ``controls.active_step_ts``). ``None`` when the trainer ran without
+    # jump-ts. Useful for masking dense points near discontinuities; passed
+    # whether or not the dense grid is enabled.
+    jump_ts: jax.Array | None = None
+
+    # ---- Dense-grid view. Populated iff ``UserLossModule.dense_grid_n`` is
+    # not None. All have leading dim ``dense_grid_n + n_meas_padded`` is wrong
+    # -- the dense linspace has exactly ``dense_grid_n`` points and these
+    # arrays are the index-gathered dense rows from the union solve, so the
+    # leading dim is ``dense_grid_n``. ``dense_t`` is the linspace itself.
+    dense_t: jax.Array | None = None
+    dense_SCL_states: jax.Array | None = None
+    dense_RAW_states: jax.Array | None = None
+    dense_SCL_modeled_BiologicalOde_rates: jax.Array | None = None
+    dense_RAW_modeled_BiologicalOde_rates: jax.Array | None = None
+    dense_SCL_modeled_FVCs_rates: jax.Array | None = None
+    dense_RAW_modeled_FVCs_rates: jax.Array | None = None
+    dense_SCL_V: jax.Array | None = None
+    dense_RAW_V: jax.Array | None = None
+    dense_auxiliary: dict[str, jax.Array] | None = None
+
 
 class LossOutputs(eqx.Module):
     """Named loss scalars. Plot/log panel names = dict keys.
@@ -480,6 +502,20 @@ class UserLossModule(eqx.Module):
     def loss_names(self) -> tuple[str, ...]:
         """Stable ordered term/panel names. MUST equal ``named_losses`` keys."""
         raise NotImplementedError
+
+    @property
+    def dense_grid_n(self) -> int | None:
+        """Optional dense-grid opt-in.
+
+        Return an int N to ask the trainer to solve once on the union of the
+        measurement times and ``linspace(t_start, t_end, N)``; the dense view
+        is then populated on :class:`LossInputs` as ``dense_*`` fields. Return
+        ``None`` (default) to stay on the measurement-grid-only path.
+
+        The dense path costs ~zero extra ODE work — it just adds ``SaveAt``
+        evaluations of ``wrapper.save_outputs`` at the dense times.
+        """
+        return None
 
     def __call__(self, inputs: LossInputs) -> LossOutputs:
         raise NotImplementedError

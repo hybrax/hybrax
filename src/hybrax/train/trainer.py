@@ -220,45 +220,89 @@ def evaluate_sample_with_loss_module(
     the integration state layout.
     """
     module = wrapper.reaction_module
-    save_outputs = _solve_measurement_save_outputs_on_grid(
-        wrapper,
-        t_eval=t_measured,
-        n_measured=n_measured,
-        SCL_y0=SCL_target0_measured,
-        max_steps=max_solver_steps,
-        rtol=solver_rtol,
-        atol=solver_atol,
-        jump_ts=jump_ts,
-    )
-    SCL_states = save_outputs.SCL_states
+    loss_module = wrapper.loss_module
+    dense_grid_n = loss_module.dense_grid_n
+
+    def _views_from_save_outputs(save_outputs):
+        """Build SCL/RAW pairs from a SaveOutputs whose leading dim is whatever
+        time grid we solved on. Returns a dict of arrays keyed by LossInputs
+        field name (without the SCL_target_pred slice -- that's handled by the
+        caller using ``target_state_indices``)."""
+        SCL_states = save_outputs.SCL_states
+        RAW_rates = save_outputs.RAW_modeled_BiologicalOde_rates
+        RAW_fvc_rates = save_outputs.RAW_modeled_FVCs_rates
+        RAW_V = save_outputs.RAW_V
+        return {
+            "SCL_states": SCL_states,
+            "RAW_states": module.unscale_state(SCL_states),
+            "SCL_modeled_BiologicalOde_rates": module.scale_modeled_BiologicalOde_rates(RAW_rates),
+            "RAW_modeled_BiologicalOde_rates": RAW_rates,
+            "SCL_modeled_FVCs_rates": module.scale_modeled_FVCs_rates(RAW_fvc_rates),
+            "RAW_modeled_FVCs_rates": RAW_fvc_rates,
+            "SCL_V": module.scale_modeled_V(RAW_V),
+            "RAW_V": RAW_V,
+            "auxiliary": save_outputs.auxiliary or {},
+        }
+
+    if dense_grid_n is None:
+        # Measurement-grid-only path (unchanged behavior).
+        save_outputs = _solve_measurement_save_outputs_on_grid(
+            wrapper,
+            t_eval=t_measured,
+            n_measured=n_measured,
+            SCL_y0=SCL_target0_measured,
+            max_steps=max_solver_steps,
+            rtol=solver_rtol,
+            atol=solver_atol,
+            jump_ts=jump_ts,
+        )
+        meas_views = _views_from_save_outputs(save_outputs)
+        dense_t = None
+        dense_views = {key: None for key in meas_views}
+        # auxiliary is already dict-typed in meas_views; mirror as None on dense.
+        dense_views["auxiliary"] = None
+    else:
+        # Dense-grid path: solve ONCE on union(t_measured, linspace(...)) and
+        # index-split into measurement and dense views. Same single solve as the
+        # measurement-only path; SaveAt just records at more points.
+        from .dense import build_union_time_grid
+
+        t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
+            t_measured, n_measured, int(dense_grid_n)
+        )
+        save_outputs = _solve_measurement_save_outputs_on_grid(
+            wrapper,
+            t_eval=t_eval,
+            n_measured=t_eval.shape[0],
+            SCL_y0=SCL_target0_measured,
+            max_steps=max_solver_steps,
+            rtol=solver_rtol,
+            atol=solver_atol,
+            jump_ts=jump_ts,
+        )
+        sample_save_outputs = jtu.tree_map(lambda leaf: leaf[sample_idx], save_outputs)
+        dense_save_outputs = jtu.tree_map(lambda leaf: leaf[dense_idx], save_outputs)
+        meas_views = _views_from_save_outputs(sample_save_outputs)
+        dense_views = _views_from_save_outputs(dense_save_outputs)
+
+    SCL_states = meas_views["SCL_states"]
     # State layout: [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative].
     # target_state_indices selects modeled_RMCs + modeled_FVCs_cumulative.
     SCL_target_pred = SCL_states[:, wrapper.target_state_indices]
 
-    # Derive SCL/RAW trajectory pairs. Scaling is elementwise → broadcasts over
-    # the leading time axis: (n_meas, k) op (k,), (n_meas,) op scalar.
-    RAW_states = module.unscale_state(SCL_states)
-    RAW_rates = save_outputs.RAW_modeled_BiologicalOde_rates
-    SCL_rates = module.scale_modeled_BiologicalOde_rates(RAW_rates)
-    RAW_fvc_rates = save_outputs.RAW_modeled_FVCs_rates
-    SCL_fvc_rates = module.scale_modeled_FVCs_rates(RAW_fvc_rates)
-    RAW_V = save_outputs.RAW_V
-    SCL_V = module.scale_modeled_V(RAW_V)
-
     mask_any = jnp.any(mask_measured, axis=1).astype(SCL_states.dtype)
-    auxiliary = save_outputs.auxiliary or {}
     step_arr = jnp.asarray(step if step is not None else -1, dtype=jnp.int32)
 
     inputs = LossInputs(
         SCL_states=SCL_states,
-        RAW_states=RAW_states,
-        SCL_modeled_BiologicalOde_rates=SCL_rates,
-        RAW_modeled_BiologicalOde_rates=RAW_rates,
-        SCL_modeled_FVCs_rates=SCL_fvc_rates,
-        RAW_modeled_FVCs_rates=RAW_fvc_rates,
-        SCL_V=SCL_V,
-        RAW_V=RAW_V,
-        auxiliary=auxiliary,
+        RAW_states=meas_views["RAW_states"],
+        SCL_modeled_BiologicalOde_rates=meas_views["SCL_modeled_BiologicalOde_rates"],
+        RAW_modeled_BiologicalOde_rates=meas_views["RAW_modeled_BiologicalOde_rates"],
+        SCL_modeled_FVCs_rates=meas_views["SCL_modeled_FVCs_rates"],
+        RAW_modeled_FVCs_rates=meas_views["RAW_modeled_FVCs_rates"],
+        SCL_V=meas_views["SCL_V"],
+        RAW_V=meas_views["RAW_V"],
+        auxiliary=meas_views["auxiliary"],
         SCL_target_pred=SCL_target_pred,
         SCL_target_measured=SCL_target_measured,
         mask_measured=mask_measured,
@@ -267,9 +311,19 @@ def evaluate_sample_with_loss_module(
         n_measured=jnp.asarray(n_measured, dtype=jnp.int32),
         reaction_module=module,
         step=step_arr,
+        jump_ts=jump_ts,
+        dense_t=dense_t,
+        dense_SCL_states=dense_views["SCL_states"],
+        dense_RAW_states=dense_views["RAW_states"],
+        dense_SCL_modeled_BiologicalOde_rates=dense_views["SCL_modeled_BiologicalOde_rates"],
+        dense_RAW_modeled_BiologicalOde_rates=dense_views["RAW_modeled_BiologicalOde_rates"],
+        dense_SCL_modeled_FVCs_rates=dense_views["SCL_modeled_FVCs_rates"],
+        dense_RAW_modeled_FVCs_rates=dense_views["RAW_modeled_FVCs_rates"],
+        dense_SCL_V=dense_views["SCL_V"],
+        dense_RAW_V=dense_views["RAW_V"],
+        dense_auxiliary=dense_views["auxiliary"],
     )
 
-    loss_module = wrapper.loss_module
     outputs = loss_module(inputs)
     named = outputs.named_losses
     per_target_loss = jnp.stack([named[name] for name in loss_module.loss_names])

@@ -29,6 +29,7 @@ from bp_train import (
     ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
+    dense_triple_mask_away_from_jumps,
     trainable_field,
 )
 from bp_train.controls_store import ControlsStore
@@ -199,25 +200,60 @@ def estimate_all_scales(collection, target_names, config):
 # ---------------------------------------------------------------------------
 
 
+_CURVATURE_RATE_NAMES = ("q_biomass", "q_glucose")
+# Two rate indices the curvature term watches. The default RhsOde for this
+# fixture (no biological_ode) lays rates one-per-species in `name_modeled_RMCs`
+# order, so 0 = biomass, 4 = glucose. Hardcoded for the fixture; a real example
+# would derive these from rhs_ode.name_modeled_rates.
+_CURVATURE_RATE_INDICES = (0, 4)
+
+
 class NonNegLossModule(DefaultLossModule):
     """DefaultLossModule + a ``nonneg/<target>`` hinge penalizing negative
-    predicted concentrations. Exercises the build_loss_module hook + custom
-    named-term plumbing without needing bp-format bound metadata."""
+    predicted concentrations + ``curvature/<rate>`` second-derivative penalties
+    on two BiologicalOde rates evaluated on a dense grid.
+
+    Exercises the build_loss_module hook end-to-end for every new
+    ``LossInputs`` axis: measurement-grid (nonneg/), dense-grid (curvature/),
+    and ``jump_ts`` masking near controls-discontinuities.
+    """
 
     weight: float = eqx.field(static=True)
+    curvature_weight: float = eqx.field(static=True)
+    _dense_grid_n: int = eqx.field(static=True)
+    _jump_epsilon_h: float = eqx.field(static=True)
 
-    def __init__(self, *, target_names, weight=0.1):
+    def __init__(
+        self,
+        *,
+        target_names,
+        weight=0.1,
+        curvature_weight=1e-3,
+        dense_grid_n=32,
+        jump_epsilon_h=0.25,
+    ):
         super().__init__(target_names=target_names)
         self.weight = float(weight)
+        self.curvature_weight = float(curvature_weight)
+        self._dense_grid_n = int(dense_grid_n)
+        self._jump_epsilon_h = float(jump_epsilon_h)
 
     @property
     def loss_names(self):
-        return tuple(self.target_names) + tuple(
-            f"nonneg/{name}" for name in self.target_names
+        return (
+            tuple(self.target_names)
+            + tuple(f"nonneg/{name}" for name in self.target_names)
+            + tuple(f"curvature/{name}" for name in _CURVATURE_RATE_NAMES)
         )
+
+    @property
+    def dense_grid_n(self):
+        return self._dense_grid_n
 
     def __call__(self, inputs: LossInputs) -> LossOutputs:
         base = super().__call__(inputs).named_losses
+
+        # Measurement-grid term: non-negativity hinge per species.
         mask = inputs.mask_measured_any
         denom = jnp.maximum(jnp.sum(mask), 1.0)
         penalties = {}
@@ -226,6 +262,25 @@ class NonNegLossModule(DefaultLossModule):
             penalties[f"nonneg/{name}"] = self.weight * (
                 jnp.sum(jnp.square(violation) * mask) / denom
             )
+
+        # Dense-grid term: second-derivative (curvature) of two SCL rates,
+        # masked away from controls-discontinuity neighborhoods.
+        dense_t = inputs.dense_t
+        dense_rates = inputs.dense_SCL_modeled_BiologicalOde_rates
+        triple_mask = dense_triple_mask_away_from_jumps(
+            dense_t, inputs.jump_ts, self._jump_epsilon_h
+        ).astype(dense_rates.dtype)
+        dt = jnp.maximum(dense_t[1:] - dense_t[:-1], 1e-6)
+        slopes = (dense_rates[1:] - dense_rates[:-1]) / dt[:, None]
+        mid_dt = jnp.maximum(0.5 * (dt[1:] + dt[:-1]), 1e-6)
+        curvature = (slopes[1:] - slopes[:-1]) / mid_dt[:, None]
+        denom_c = jnp.maximum(jnp.sum(triple_mask), 1.0)
+        for rate_name, idx in zip(_CURVATURE_RATE_NAMES, _CURVATURE_RATE_INDICES):
+            sq = jnp.square(curvature[:, idx]) * triple_mask
+            penalties[f"curvature/{rate_name}"] = self.curvature_weight * (
+                jnp.sum(sq) / denom_c
+            )
+
         return LossOutputs(named_losses={**base, **penalties})
 
 

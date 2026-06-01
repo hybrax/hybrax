@@ -558,3 +558,60 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
     )
     assert jnp.isfinite(mean_total_none)
     assert jnp.isfinite(mean_total_present)
+
+
+# ---------------------------------------------------------------------------
+# Dense-grid helpers (bp_train/dense.py)
+# ---------------------------------------------------------------------------
+
+
+def test_build_union_time_grid_sorts_and_indexes_correctly():
+    from bp_train.dense import build_union_time_grid
+
+    t_meas = jnp.asarray([0.0, 1.0, 4.0], dtype=jnp.float32)
+    t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
+        t_meas, n_measured=3, n_dense=3
+    )
+    # dense linspace covers the (active) measurement span.
+    assert jnp.allclose(dense_t, jnp.asarray([0.0, 2.0, 4.0], dtype=jnp.float32))
+    # t_eval is the sorted concat.
+    assert jnp.all(jnp.diff(t_eval) >= 0)
+    assert t_eval.shape[0] == 6
+    # Round-trip: gathering t_eval by the index arrays returns the originals.
+    assert jnp.allclose(t_eval[sample_idx], t_meas)
+    assert jnp.allclose(t_eval[dense_idx], dense_t)
+
+
+def test_dense_point_mask_handles_jump_ts_and_none():
+    from bp_train.dense import dense_point_mask_away_from_jumps
+
+    dense_t = jnp.linspace(0.0, 10.0, 11)
+    # No jumps: every point kept.
+    assert bool(jnp.all(dense_point_mask_away_from_jumps(dense_t, None, 0.6)))
+    # Jump at t=3.5 with eps=0.6 masks dense_t[3]=3.0 and dense_t[4]=4.0.
+    mask = dense_point_mask_away_from_jumps(dense_t, jnp.asarray([3.5]), 0.6)
+    expected = jnp.asarray(
+        [True, True, True, False, False, True, True, True, True, True, True]
+    )
+    assert bool(jnp.all(mask == expected))
+
+
+def test_dense_triple_mask_excludes_triples_straddling_a_jump():
+    from bp_train.dense import dense_triple_mask_away_from_jumps
+
+    dense_t = jnp.linspace(0.0, 10.0, 11)
+    # No jumps: every triple kept.
+    triple = dense_triple_mask_away_from_jumps(dense_t, None, 0.6)
+    assert triple.shape == (9,)
+    assert bool(jnp.all(triple))
+    # Jump at t=3.5: triples whose (left-eps, right+eps) span contains 3.5
+    # are rejected. Triples are (i-1, i, i+1) over indices 0..8.
+    triple = dense_triple_mask_away_from_jumps(dense_t, jnp.asarray([3.5]), 0.6)
+    # Triples (1,2,3), (2,3,4), (3,4,5) all have spans covering 3.5; the rest don't.
+    # (0,1,2) → [0-0.6, 2+0.6]=[-0.6, 2.6] excludes 3.5 → True.
+    # (4,5,6) → [4-0.6, 6+0.6]=[3.4, 6.6] contains 3.5 → False (sits within eps of jump).
+    # so the False region is indices 1..4 inclusive.
+    expected = jnp.asarray(
+        [True, False, False, False, False, True, True, True, True]
+    )
+    assert bool(jnp.all(triple == expected))

@@ -50,6 +50,21 @@ whichever you need.
 | `n_measured` | scalar | unpadded row count |
 | `reaction_module` | — | the `UserReactionModule` (single source of `SCALE_*`) |
 | `step` | scalar | training step (−1 in forward eval) |
+| `jump_ts` | `(n_step_ts,)` or `None` | controls-discontinuity times (`controls.active_step_ts`); use to mask dense points / triples near jumps |
+
+**Dense-grid view** — populated iff the loss module declares
+`dense_grid_n: int` (see [Dense-grid losses](#dense-grid-losses-rate-curvature-between-measurement-constraints)
+below); otherwise all dense fields are `None`. Same dtypes and column layout as
+the measurement-grid fields above, leading dim `n_dense`:
+
+| Field | Shape | Mirror of |
+|---|---|---|
+| `dense_t` | `(n_dense,)` | `t_measured` (but evenly spaced inside `[t_start, t_end]`) |
+| `dense_SCL_states` / `dense_RAW_states` | `(n_dense, n_state)` | `SCL_states` / `RAW_states` |
+| `dense_SCL_modeled_BiologicalOde_rates` / `dense_RAW_…` | `(n_dense, n_rates)` | rates pair |
+| `dense_SCL_modeled_FVCs_rates` / `dense_RAW_…` | `(n_dense, n_modeled_FVCs)` | feed-rates pair |
+| `dense_SCL_V` / `dense_RAW_V` | `(n_dense,)` | volume pair |
+| `dense_auxiliary` | `dict[str, (n_dense, …)]` | `auxiliary` |
 
 ### Masks (sparse, unaligned measurements)
 
@@ -193,6 +208,120 @@ return ReactionOutputs(
 They are saved at every measurement time and arrive stacked in
 `inputs.auxiliary["q_glucose_signed"]` (shape `(n_meas,)`), ready to drive a
 loss term.
+
+## Dense-grid losses (rate curvature, between-measurement constraints)
+
+Some loss terms need values *between* measurement points — e.g. a smoothness
+penalty on rate time-derivatives (finite differences need >3 well-spaced
+points), or a bounds hinge that should hold everywhere, not only when the
+plate was sampled. Opt in by declaring a `dense_grid_n` property:
+
+```python
+class CurvatureLossModule(DefaultLossModule):
+    @property
+    def dense_grid_n(self):
+        return 32  # any int N > 0
+```
+
+When set, the trainer solves **once** on `union(t_measured, linspace(t_start,
+t_end, N))` — the same single ODE solve, just with more `SaveAt` points (no
+extra solver steps) — and populates the `dense_*` fields on `LossInputs`
+alongside the existing measurement-grid fields. `jump_ts` is populated
+unconditionally so any loss (measurement or dense) can locate controls
+discontinuities.
+
+Three helpers in `bp_train` cover the typical needs (lifted from the structured
+example, exported for reuse):
+
+```python
+from bp_train import (
+    build_union_time_grid,
+    dense_point_mask_away_from_jumps,
+    dense_triple_mask_away_from_jumps,
+)
+```
+
+- `build_union_time_grid` — the same routine the trainer uses internally;
+  exposed in case a downstream tool wants the index mapping.
+- `dense_point_mask_away_from_jumps(dense_t, jump_ts, eps)` — per-point
+  mask; rejects dense points within `eps` of any jump.
+- `dense_triple_mask_away_from_jumps(dense_t, jump_ts, eps)` — per-triple
+  mask `(i-1, i, i+1)`; rejects triples whose span crosses a jump. Use this
+  for finite-difference curvature so the second derivative is never measured
+  across a discontinuity.
+
+### Example 1 — rate-curvature penalty
+
+```python
+class CurvatureLossModule(DefaultLossModule):
+    """DefaultLossModule + second-derivative penalty on selected SCL rates."""
+
+    rate_indices: tuple = eqx.field(static=True)
+    weight: float = eqx.field(static=True)
+    jump_eps_h: float = eqx.field(static=True)
+
+    @property
+    def dense_grid_n(self):
+        return 32  # tune to your dynamics; see practical note below
+
+    @property
+    def loss_names(self):
+        return tuple(self.target_names) + tuple(
+            f"curvature/{i}" for i in self.rate_indices
+        )
+
+    def __call__(self, inputs):
+        base = super().__call__(inputs).named_losses
+        rates = inputs.dense_SCL_modeled_BiologicalOde_rates       # (n_dense, n_rates)
+        t = inputs.dense_t                                          # (n_dense,)
+        triple = dense_triple_mask_away_from_jumps(
+            t, inputs.jump_ts, self.jump_eps_h
+        ).astype(rates.dtype)                                       # (n_dense - 2,)
+        dt = jnp.maximum(t[1:] - t[:-1], 1e-6)
+        slopes = (rates[1:] - rates[:-1]) / dt[:, None]
+        mid_dt = jnp.maximum(0.5 * (dt[1:] + dt[:-1]), 1e-6)
+        curv = (slopes[1:] - slopes[:-1]) / mid_dt[:, None]         # (n_dense - 2, n_rates)
+        denom = jnp.maximum(jnp.sum(triple), 1.0)
+        extras = {
+            f"curvature/{i}": self.weight * (jnp.sum(jnp.square(curv[:, i]) * triple) / denom)
+            for i in self.rate_indices
+        }
+        return LossOutputs(named_losses={**base, **extras})
+```
+
+The full version (with `nonneg/<target>` measurement terms alongside the
+curvature) is in
+[tests/fixtures/martens_single/custom.py](../tests/fixtures/martens_single/custom.py)
+— it runs end-to-end through `prepare -> train -> forward -> losses.csv`.
+
+### Example 2 — between-measurement bounds
+
+Today's `BoundsHingeLossModule` only enforces bounds at measurement times.
+Swapping `inputs.SCL_states` → `inputs.dense_SCL_states` (and
+`inputs.mask_measured_any` → a dense-point mask) makes the same hinge fire on
+every dense point — the bound is then enforced *everywhere* the solver
+reports state, not only when the plate was sampled:
+
+```python
+# inside __call__ of a DefaultLossModule subclass with dense_grid_n set
+values = inputs.dense_SCL_states[:, idx]
+mask = dense_point_mask_away_from_jumps(
+    inputs.dense_t, inputs.jump_ts, jump_eps_h
+).astype(values.dtype)
+penalties[label] = self.weight * _hinge_sq(values, scl_threshold, side, mask)
+```
+
+### Practical note on `dense_grid_n` size
+
+The added cost is just more `SaveAt` evaluations of `wrapper.save_outputs`;
+the underlying solver steps are adaptive and unchanged. In practice, very
+large `dense_grid_n` (on the order of the number of internal solver steps)
+can stress the JIT'd graph during the backward pass on some setups; on the
+`martens_single` fixture `dense_grid_n=32` is comfortable, `dense_grid_n>=64`
+started to bite at the default solver tolerances (segfault inside the JIT'd
+train step on the current JAX/diffrax). Pick the smallest N your finite
+differences need; if you hit a hard crash at large N, drop it and/or loosen
+the solver tolerances.
 
 ## Where terms show up
 
