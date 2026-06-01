@@ -7,16 +7,23 @@ import bp_format as bp
 import jax.numpy as jnp
 import numpy as np
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
-SIMULATION_DENSE_OUTPUT = DATA_DIR / "simulation_dense_output.csv"
-EVENTS_OUTPUT = DATA_DIR / "simulation_events.csv"
-CANONICAL_ARTIFACTS = (
-    Path("simulation_dense_output.csv"),
-    Path("simulation_events.csv"),
-    Path("simulation_plots/process_variables.png"),
-    Path("simulation_plots/rates.png"),
-    Path("simulation_plots/reactor_states_and_volumes.png"),
-)
+SIM_1_DIR = Path(__file__).resolve().parent
+SIM_RESULTS_DIR = SIM_1_DIR / "sim_results"
+SIMULATION_PLOTS_DIR = SIM_1_DIR / "simulation_plots"
+DIAGNOSTIC_PLOTS_DIR = SIM_1_DIR / "diagnostic_plots"
+SIMULATION_DENSE_OUTPUT = SIM_RESULTS_DIR / "simulation_dense_output.csv"
+EVENTS_OUTPUT = SIM_RESULTS_DIR / "simulation_events.csv"
+CANONICAL_ARTIFACTS = {
+    Path("simulation_dense_output.csv"): SIMULATION_DENSE_OUTPUT,
+    Path("simulation_events.csv"): EVENTS_OUTPUT,
+    Path("simulation_plots/process_variables.png"): (
+        SIMULATION_PLOTS_DIR / "process_variables.png"
+    ),
+    Path("simulation_plots/rates.png"): SIMULATION_PLOTS_DIR / "rates.png",
+    Path("simulation_plots/reactor_states_and_volumes.png"): (
+        SIMULATION_PLOTS_DIR / "reactor_states_and_volumes.png"
+    ),
+}
 EXPECTED_PROCESS_IDS = {"sim_1_run_1", "sim_1_run_2"}
 EXPECTED_REACTOR_COMPONENT_ORDER = (
     "biomass",

@@ -219,3 +219,7 @@ __marimo__/
 examples/00_combined/06_mechanistic_bolus_feed_executed.ipynb
 environment.yml
 examples/00_combined/04_spline_serialization/01_output_data/data_with_splines.json
+
+# Local scratch directories
+tmp/
+**/tmp/

@@ -13,7 +13,6 @@ from bp_format.serialization import save_process_collection_json  # noqa: E402
 
 from .cstar_helpers import (  # noqa: E402
     CANONICAL_ARTIFACTS,
-    DATA_DIR,
     EVENT_TIME_ATOL,
     EXPECTED_PROCESS_IDS,
     EXPECTED_REACTOR_COMPONENT_ORDER,
@@ -24,13 +23,16 @@ from .cstar_helpers import (  # noqa: E402
     event_jump_times,
     fit_cstar_timeseries,
     fit_cstar_timeseries_from_values,
+    SIM_1_DIR,
+    SIM_RESULTS_DIR,
     populate_exact_pseudobatch_transform,
 )
 from .load_utils import parse_all_processes  # noqa: E402
 from .simulation import REACTOR_STATE_UNITS, run_all_default  # noqa: E402
 from .simulation import write_simulation_plots  # noqa: E402
 
-DATA_JSON = DATA_DIR / "process_collection.json"
+DATA_JSON = SIM_RESULTS_DIR / "process_collection.json"
+LOCAL_DIAGNOSTICS_DIR = SIM_1_DIR / "tmp" / "cstar_integration_sparse"
 SOLVER_RTOL = 1e-10
 SOLVER_ATOL = 1e-12
 DENSE_SOLVER_RTOL = 1e-12
@@ -319,12 +321,11 @@ def _sha256(path):
 
 
 def _assert_simulation_artifacts_match(new_root):
-    for artifact in CANONICAL_ARTIFACTS:
+    for artifact, canonical_path in CANONICAL_ARTIFACTS.items():
         new_path = new_root / artifact
-        old_path = DATA_DIR / artifact
         assert new_path.exists(), f"missing regenerated artifact: {new_path}"
-        assert old_path.exists(), f"missing canonical artifact: {old_path}"
-        assert _sha256(new_path) == _sha256(old_path), old_path
+        assert canonical_path.exists(), f"missing canonical artifact: {canonical_path}"
+        assert _sha256(new_path) == _sha256(canonical_path), canonical_path
 
 
 def test_sim_1_direct_cstar_reintegration(tmp_path):
@@ -382,13 +383,6 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             sparse_times,
             fitted_cstar[0],
         )
-        np.testing.assert_allclose(
-            integrated_cstar,
-            fitted_cstar,
-            rtol=1e-7,
-            atol=1e-9,
-        )
-
         recovered_concentrations = _backtransform_left(
             process,
             sparse_times,
@@ -402,12 +396,6 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
                 )
                 for name in EXPECTED_REACTOR_COMPONENT_ORDER
             ]
-        )
-        np.testing.assert_allclose(
-            recovered_concentrations,
-            observed_concentrations,
-            rtol=1e-7,
-            atol=1e-9,
         )
         plot_times = np.linspace(sparse_times[0], sparse_times[-1], PLOT_POINTS)
         fitted_plot_cstar = np.column_stack(
@@ -432,17 +420,33 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             plot_times,
             integrated_plot_cstar,
         )
-        _write_plots(
-            tmp_path / "direct_cstar_diagnostics",
-            process,
-            process_name,
-            sparse_times,
-            plot_times,
+        for diagnostics_dir in (
+            tmp_path / "cstar_integration_sparse",
+            LOCAL_DIAGNOSTICS_DIR,
+        ):
+            _write_plots(
+                diagnostics_dir,
+                process,
+                process_name,
+                sparse_times,
+                plot_times,
+                fitted_cstar,
+                fitted_plot_cstar,
+                integrated_plot_cstar,
+                observed_concentrations,
+                recovered_plot_concentrations,
+            )
+        np.testing.assert_allclose(
+            integrated_cstar,
             fitted_cstar,
-            fitted_plot_cstar,
-            integrated_plot_cstar,
+            rtol=1e-7,
+            atol=1e-9,
+        )
+        np.testing.assert_allclose(
+            recovered_concentrations,
             observed_concentrations,
-            recovered_plot_concentrations,
+            rtol=1e-7,
+            atol=1e-9,
         )
 
 
