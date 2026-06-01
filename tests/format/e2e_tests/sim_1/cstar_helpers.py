@@ -485,6 +485,16 @@ def _reactor_rows_to_arrays(rows: list[dict[str, str]]) -> dict[str, np.ndarray]
     }
 
 
+def _q_rate_rows_to_arrays(rows: list[dict[str, str]]) -> dict[str, np.ndarray]:
+    return {
+        "time": np.asarray([float(row["time"]) for row in rows], dtype=float),
+        **{
+            name: np.asarray([float(row[f"q_{name}"]) for row in rows], dtype=float)
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        },
+    }
+
+
 def dense_reactor_reference(process_id: str, max_time: float) -> dict[str, np.ndarray]:
     rows = _dense_reactor_rows(process_id, max_time, row_type=None)
     rows = [row for row in rows if row["row_type"] != "offline"]
@@ -497,3 +507,11 @@ def dense_online_reactor_reference(
 ) -> dict[str, np.ndarray]:
     rows = _dense_reactor_rows(process_id, max_time, row_type="online")
     return _reactor_rows_to_arrays(rows)
+
+
+def dense_online_q_rate_reference(
+    process_id: str,
+    max_time: float,
+) -> dict[str, np.ndarray]:
+    rows = _dense_reactor_rows(process_id, max_time, row_type="online")
+    return _q_rate_rows_to_arrays(rows)

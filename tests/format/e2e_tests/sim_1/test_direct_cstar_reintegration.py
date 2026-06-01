@@ -13,9 +13,11 @@ from bp_format.serialization import save_process_collection_json  # noqa: E402
 
 from .cstar_helpers import (  # noqa: E402
     CANONICAL_ARTIFACTS,
+    DIAGNOSTIC_PLOTS_DIR,
     EVENT_TIME_ATOL,
     EXPECTED_PROCESS_IDS,
     EXPECTED_REACTOR_COMPONENT_ORDER,
+    dense_online_q_rate_reference,
     dense_online_reactor_reference,
     dense_reactor_reference,
     event_aware_adf_value,
@@ -234,8 +236,33 @@ def _plot_volume_panels(process, volume_axes):
     ax.legend(loc="best", fontsize="x-small")
 
 
+def _infer_q_rates(process, times, integrated_cstar):
+    cstar_derivatives = np.column_stack(
+        [
+            np.asarray(
+                process.reactor_medium.components[name]
+                .c_star_concentration.deriv()
+                .evaluate_many(jnp.asarray(times)),
+                dtype=float,
+            )
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ]
+    )
+    biomass_index = EXPECTED_REACTOR_COMPONENT_ORDER.index("biomass")
+    product_index = EXPECTED_REACTOR_COMPONENT_ORDER.index("product_intracellular")
+    active_biomass_star = (
+        integrated_cstar[:, biomass_index] - integrated_cstar[:, product_index]
+    )
+    return cstar_derivatives / active_biomass_star[:, np.newaxis]
+
+
+def _assert_tracked_equivalent_matches(path):
+    canonical_path = DIAGNOSTIC_PLOTS_DIR / "cstar_integration_sparse" / path.name
+    if canonical_path.exists():
+        assert _sha256(path) == _sha256(canonical_path), canonical_path
+
+
 def _write_plots(
-    diagnostics_dir,
     process,
     process_name,
     sparse_times,
@@ -246,10 +273,10 @@ def _write_plots(
     observed_concentrations,
     recovered_plot_concentrations,
 ):
-    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    LOCAL_DIAGNOSTICS_DIR.mkdir(parents=True, exist_ok=True)
     dense = dense_reactor_reference(process_name, float(plot_times[-1]))
 
-    real_path = diagnostics_dir / f"{process_name}_real_space.png"
+    real_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_real_space.png"
     fig, axes = plt.subplots(5, 2, figsize=(12, 12), sharex=True)
     component_axes = axes.ravel()[: len(EXPECTED_REACTOR_COMPONENT_ORDER)]
     for idx, (ax, name) in enumerate(
@@ -277,7 +304,7 @@ def _write_plots(
     fig.savefig(real_path, dpi=DIAGNOSTIC_DPI)
     plt.close(fig)
 
-    cstar_path = diagnostics_dir / f"{process_name}_cstar.png"
+    cstar_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_cstar.png"
     fig, axes = plt.subplots(5, 2, figsize=(12, 12), sharex=True)
     component_axes = axes.ravel()[: len(EXPECTED_REACTOR_COMPONENT_ORDER)]
     for idx, (ax, name) in enumerate(
@@ -311,9 +338,60 @@ def _write_plots(
     fig.savefig(cstar_path, dpi=DIAGNOSTIC_DPI)
     plt.close(fig)
 
-    for path in (real_path, cstar_path):
+    q_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_q_rates.png"
+    truth = dense_online_q_rate_reference(process_name, float(plot_times[-1]))
+    inferred_q = _infer_q_rates(process, plot_times, integrated_plot_cstar)
+    sparse_integrated_cstar = np.column_stack(
+        [
+            np.asarray(
+                process.reactor_medium.components[
+                    name
+                ].c_star_concentration.evaluate_many(jnp.asarray(sparse_times)),
+                dtype=float,
+            )
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ]
+    )
+    sparse_inferred_q = _infer_q_rates(process, sparse_times, sparse_integrated_cstar)
+    fig, axes = plt.subplots(4, 2, figsize=(12, 10), sharex=True)
+    for idx, (ax, name) in enumerate(
+        zip(axes.ravel(), EXPECTED_REACTOR_COMPONENT_ORDER, strict=True)
+    ):
+        ax.plot(
+            truth["time"],
+            truth[name],
+            color="0.65",
+            label="simulator q",
+        )
+        ax.scatter(
+            sparse_times,
+            np.interp(sparse_times, truth["time"], truth[name]),
+            s=14,
+            color="0.45",
+        )
+        ax.plot(
+            plot_times,
+            inferred_q[:, idx],
+            color="tab:purple",
+            label="c* derivative / X_active*",
+        )
+        ax.scatter(
+            sparse_times,
+            sparse_inferred_q[:, idx],
+            s=14,
+            color="tab:purple",
+        )
+        ax.set_title(f"q_{name}")
+    _mark_discrete_volume_events(process, axes.ravel())
+    axes.ravel()[0].legend(loc="best", fontsize="small")
+    fig.tight_layout()
+    fig.savefig(q_path, dpi=DIAGNOSTIC_DPI)
+    plt.close(fig)
+
+    for path in (real_path, cstar_path, q_path):
         assert path.exists()
         assert path.stat().st_size > 0
+        _assert_tracked_equivalent_matches(path)
 
 
 def _sha256(path):
@@ -420,22 +498,17 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             plot_times,
             integrated_plot_cstar,
         )
-        for diagnostics_dir in (
-            tmp_path / "cstar_integration_sparse",
-            LOCAL_DIAGNOSTICS_DIR,
-        ):
-            _write_plots(
-                diagnostics_dir,
-                process,
-                process_name,
-                sparse_times,
-                plot_times,
-                fitted_cstar,
-                fitted_plot_cstar,
-                integrated_plot_cstar,
-                observed_concentrations,
-                recovered_plot_concentrations,
-            )
+        _write_plots(
+            process,
+            process_name,
+            sparse_times,
+            plot_times,
+            fitted_cstar,
+            fitted_plot_cstar,
+            integrated_plot_cstar,
+            observed_concentrations,
+            recovered_plot_concentrations,
+        )
         np.testing.assert_allclose(
             integrated_cstar,
             fitted_cstar,
