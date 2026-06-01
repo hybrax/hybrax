@@ -331,7 +331,7 @@ def _assert_simulation_artifacts_match(new_root):
 def test_sim_1_direct_cstar_reintegration(tmp_path):
     simulation_dir = tmp_path / "simulation"
     results = run_all_default(output_dir=simulation_dir)
-    write_simulation_plots(simulation_dir / "simulation_plots", results)
+    write_simulation_plots(simulation_dir / "sim_plots", results)
     _assert_simulation_artifacts_match(simulation_dir)
 
     parsed_json = tmp_path / "process_collection.json"

@@ -126,7 +126,7 @@ sample is recorded first and the bolus is applied second.
 Generate the canonical simulation artifacts with:
 
 ```bash
-pixi run python tests/e2e_tests/sim_1/simulation.py --output-dir tests/e2e_tests/sim_1/sim_results --plot-dir tests/e2e_tests/sim_1/simulation_plots
+pixi run python tests/e2e_tests/sim_1/simulation.py --output-dir tests/e2e_tests/sim_1/sim_results --plot-dir tests/e2e_tests/sim_1/sim_plots
 ```
 
 `simulation.py` writes:
@@ -135,7 +135,7 @@ pixi run python tests/e2e_tests/sim_1/simulation.py --output-dir tests/e2e_tests
   offline rows, event-boundary rows, controls, diagnostics, and simulated rate
   columns (`q_*`, `r_*`).
 - `sim_results/simulation_events.csv`: event rows keyed by `process_id`.
-- `simulation_plots/*.png`: simulation plots.
+- `sim_plots/*.png`: simulation plots.
 
 Online sensor rows are generated every five minutes. Event timestamps also get
 explicit event-boundary rows in `simulation_dense_output.csv`:

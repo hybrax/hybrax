@@ -796,7 +796,7 @@ def main() -> None:
 
     if args.skip_plots:
         return
-    plot_dir = args.plot_dir or args.output_dir / "output" / "simulation_plots"
+    plot_dir = args.plot_dir or args.output_dir / "output" / "sim_plots"
     for path in write_simulation_plots(plot_dir, results):
         print(f"Wrote plot {path}")
 
