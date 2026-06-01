@@ -47,6 +47,7 @@ DENSE_CONCENTRATION_RTOL = 2e-9
 DENSE_CONCENTRATION_ATOL = 1e-9
 DIAGNOSTIC_DPI = 120
 PLOT_POINTS = 241
+PLOT_POST_EVENT_EPS = 1e-6
 
 
 class DirectCstarRHS(eqx.Module):
@@ -173,6 +174,15 @@ def _dense_oracle_cstar(process, dense, *, right_of_jump):
     )
 
 
+def _plot_time_grid(process, start, end):
+    base_times = np.linspace(start, end, PLOT_POINTS)
+    jump_times = event_jump_times(process)
+    jump_times = jump_times[(start < jump_times) & (jump_times < end)]
+    post_jump_times = jump_times + PLOT_POST_EVENT_EPS
+    post_jump_times = post_jump_times[post_jump_times < end]
+    return np.unique(np.concatenate([base_times, jump_times, post_jump_times]))
+
+
 def _print_component_errors(label, actual, desired):
     print(label)
     for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
@@ -262,6 +272,107 @@ def _assert_tracked_equivalent_matches(path):
         assert _sha256(path) == _sha256(canonical_path), canonical_path
 
 
+def _plot_real_axis(
+    ax,
+    dense,
+    sparse_times,
+    plot_times,
+    observed_concentrations,
+    recovered_plot_concentrations,
+    idx,
+    name,
+):
+    ax.plot(dense["time"], dense[name], color="0.75", label="dense")
+    ax.scatter(
+        sparse_times,
+        observed_concentrations[:, idx],
+        s=14,
+        color="tab:orange",
+        label="offline",
+    )
+    ax.plot(
+        plot_times,
+        recovered_plot_concentrations[:, idx],
+        color="tab:blue",
+        label="reintegrated",
+    )
+
+
+def _plot_cstar_axis(
+    ax,
+    sparse_times,
+    plot_times,
+    sparse_cstar,
+    fitted_plot_cstar,
+    idx,
+):
+    ax.plot(
+        plot_times,
+        fitted_plot_cstar[:, idx],
+        color="tab:green",
+        label="fitted c*",
+    )
+    ax.scatter(
+        sparse_times,
+        sparse_cstar[:, idx],
+        s=14,
+        color="tab:olive",
+        label="sparse c*",
+    )
+
+
+def _mark_zero_lines(axes):
+    for ax in axes:
+        ymin, ymax = ax.get_ylim()
+        if ymin <= 0.0 <= ymax:
+            ax.axhline(0.0, color="0.3", linewidth=0.6, alpha=0.45)
+            ax.set_ylim(ymin, ymax)
+
+
+def _plot_q_axis(
+    ax,
+    truth,
+    sparse_times,
+    plot_times,
+    inferred_q,
+    sparse_inferred_q,
+    idx,
+    name,
+):
+    ax.plot(
+        truth["time"],
+        truth[name],
+        color="0.65",
+        label="simulator q",
+    )
+    ax.scatter(
+        sparse_times,
+        np.interp(sparse_times, truth["time"], truth[name]),
+        s=14,
+        color="0.45",
+    )
+    ax.plot(
+        plot_times,
+        inferred_q[:, idx],
+        color="tab:purple",
+        label="c* derivative / X_active*",
+    )
+    ax.scatter(
+        sparse_times,
+        sparse_inferred_q[:, idx],
+        s=14,
+        color="tab:purple",
+    )
+    ax.set_title(f"q_{name}")
+
+
+def _clear_local_diagnostic_plots():
+    if not LOCAL_DIAGNOSTICS_DIR.exists():
+        return
+    for path in LOCAL_DIAGNOSTICS_DIR.glob("*.png"):
+        path.unlink()
+
+
 def _write_plots(
     process,
     process_name,
@@ -275,123 +386,63 @@ def _write_plots(
 ):
     LOCAL_DIAGNOSTICS_DIR.mkdir(parents=True, exist_ok=True)
     dense = dense_reactor_reference(process_name, float(plot_times[-1]))
-
-    real_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_real_space.png"
-    fig, axes = plt.subplots(5, 2, figsize=(12, 12), sharex=True)
-    component_axes = axes.ravel()[: len(EXPECTED_REACTOR_COMPONENT_ORDER)]
-    for idx, (ax, name) in enumerate(
-        zip(component_axes, EXPECTED_REACTOR_COMPONENT_ORDER, strict=True)
-    ):
-        ax.plot(dense["time"], dense[name], color="0.75", label="dense")
-        ax.scatter(
-            sparse_times,
-            observed_concentrations[:, idx],
-            s=18,
-            color="tab:orange",
-            label="sparse",
-        )
-        ax.plot(
-            plot_times,
-            recovered_plot_concentrations[:, idx],
-            color="tab:blue",
-            label="reintegrated",
-        )
-        ax.set_title(f"{name} [{REACTOR_STATE_UNITS[name]}]")
-    _plot_volume_panels(process, axes[-1])
-    _mark_discrete_volume_events(process, axes.ravel())
-    axes.ravel()[0].legend(loc="best", fontsize="small")
-    fig.tight_layout()
-    fig.savefig(real_path, dpi=DIAGNOSTIC_DPI)
-    plt.close(fig)
-
-    cstar_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_cstar.png"
-    fig, axes = plt.subplots(5, 2, figsize=(12, 12), sharex=True)
-    component_axes = axes.ravel()[: len(EXPECTED_REACTOR_COMPONENT_ORDER)]
-    for idx, (ax, name) in enumerate(
-        zip(component_axes, EXPECTED_REACTOR_COMPONENT_ORDER, strict=True)
-    ):
-        ax.plot(
-            plot_times,
-            fitted_plot_cstar[:, idx],
-            color="tab:green",
-            label="fitted",
-        )
-        ax.scatter(
-            sparse_times,
-            sparse_cstar[:, idx],
-            s=18,
-            color="tab:orange",
-            label="sparse",
-        )
-        ax.plot(
-            plot_times,
-            integrated_plot_cstar[:, idx],
-            "--",
-            color="tab:blue",
-            label="integrated",
-        )
-        ax.set_title(f"{name} c* [{REACTOR_STATE_UNITS[name]}]")
-    _plot_volume_panels(process, axes[-1])
-    _mark_discrete_volume_events(process, axes.ravel())
-    axes.ravel()[0].legend(loc="best", fontsize="small")
-    fig.tight_layout()
-    fig.savefig(cstar_path, dpi=DIAGNOSTIC_DPI)
-    plt.close(fig)
-
-    q_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_q_rates.png"
     truth = dense_online_q_rate_reference(process_name, float(plot_times[-1]))
     inferred_q = _infer_q_rates(process, plot_times, integrated_plot_cstar)
-    sparse_integrated_cstar = np.column_stack(
-        [
-            np.asarray(
-                process.reactor_medium.components[
-                    name
-                ].c_star_concentration.evaluate_many(jnp.asarray(sparse_times)),
-                dtype=float,
-            )
-            for name in EXPECTED_REACTOR_COMPONENT_ORDER
-        ]
+    sparse_inferred_q = _infer_q_rates(process, sparse_times, sparse_cstar)
+
+    combined_path = LOCAL_DIAGNOSTICS_DIR / f"{process_name}_overview.png"
+    fig, axes = plt.subplots(
+        len(EXPECTED_REACTOR_COMPONENT_ORDER) + 1,
+        2,
+        figsize=(14, 22),
+        sharex=True,
     )
-    sparse_inferred_q = _infer_q_rates(process, sparse_times, sparse_integrated_cstar)
-    fig, axes = plt.subplots(4, 2, figsize=(12, 10), sharex=True)
-    for idx, (ax, name) in enumerate(
-        zip(axes.ravel(), EXPECTED_REACTOR_COMPONENT_ORDER, strict=True)
-    ):
-        ax.plot(
-            truth["time"],
-            truth[name],
-            color="0.65",
-            label="simulator q",
-        )
-        ax.scatter(
+    for idx, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
+        species_ax = axes[idx, 0]
+        _plot_real_axis(
+            species_ax,
+            dense,
             sparse_times,
-            np.interp(sparse_times, truth["time"], truth[name]),
-            s=14,
-            color="0.45",
-        )
-        ax.plot(
             plot_times,
-            inferred_q[:, idx],
-            color="tab:purple",
-            label="c* derivative / X_active*",
+            observed_concentrations,
+            recovered_plot_concentrations,
+            idx,
+            name,
         )
-        ax.scatter(
+        _plot_cstar_axis(
+            species_ax,
             sparse_times,
-            sparse_inferred_q[:, idx],
-            s=14,
-            color="tab:purple",
+            plot_times,
+            sparse_cstar,
+            fitted_plot_cstar,
+            idx,
         )
-        ax.set_title(f"q_{name}")
+        species_ax.set_title(f"{name}: real-space and c* [{REACTOR_STATE_UNITS[name]}]")
+
+        _plot_q_axis(
+            axes[idx, 1],
+            truth,
+            sparse_times,
+            plot_times,
+            inferred_q,
+            sparse_inferred_q,
+            idx,
+            name,
+        )
+
+    volume_axes = axes[-1]
+    _plot_volume_panels(process, volume_axes)
     _mark_discrete_volume_events(process, axes.ravel())
-    axes.ravel()[0].legend(loc="best", fontsize="small")
+    _mark_zero_lines(axes.ravel())
+    axes[0, 0].legend(loc="best", fontsize="small")
+    axes[0, 1].legend(loc="best", fontsize="small")
     fig.tight_layout()
-    fig.savefig(q_path, dpi=DIAGNOSTIC_DPI)
+    fig.savefig(combined_path, dpi=DIAGNOSTIC_DPI)
     plt.close(fig)
 
-    for path in (real_path, cstar_path, q_path):
-        assert path.exists()
-        assert path.stat().st_size > 0
-        _assert_tracked_equivalent_matches(path)
+    assert combined_path.exists()
+    assert combined_path.stat().st_size > 0
+    _assert_tracked_equivalent_matches(combined_path)
 
 
 def _sha256(path):
@@ -422,6 +473,7 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
 
     collection = load_process_collection_json(DATA_JSON)
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
+    _clear_local_diagnostic_plots()
 
     for process_name, process in collection.processes.items():
         populate_exact_pseudobatch_transform(process)
@@ -475,7 +527,7 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
                 for name in EXPECTED_REACTOR_COMPONENT_ORDER
             ]
         )
-        plot_times = np.linspace(sparse_times[0], sparse_times[-1], PLOT_POINTS)
+        plot_times = _plot_time_grid(process, sparse_times[0], sparse_times[-1])
         fitted_plot_cstar = np.column_stack(
             [
                 np.asarray(
@@ -521,6 +573,10 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             rtol=1e-7,
             atol=1e-9,
         )
+
+    assert {path.name for path in LOCAL_DIAGNOSTICS_DIR.glob("*.png")} == {
+        f"{process_name}_overview.png" for process_name in EXPECTED_PROCESS_IDS
+    }
 
 
 def test_sim_1_dense_cstar_oracle_reintegration():
