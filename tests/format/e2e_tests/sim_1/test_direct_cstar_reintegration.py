@@ -463,6 +463,9 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
     write_simulation_plots(simulation_dir / "sim_plots", results)
     _assert_simulation_artifacts_match(simulation_dir)
 
+    # First write the raw parsed collection and compare it to the canonical
+    # parser artifact. This keeps c* fitting/pseudobatch enrichment out of the
+    # canonical raw-data JSON contract.
     parsed_json = tmp_path / "process_collection.json"
     parsed_collection = parse_all_processes(
         dense_csv=simulation_dir / "simulation_dense_output.csv",
@@ -475,10 +478,23 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
     _clear_local_diagnostic_plots()
 
-    for process_name, process in collection.processes.items():
+    for process in collection.processes.values():
         populate_exact_pseudobatch_transform(process)
         for component in process.reactor_medium.components.values():
             component.c_star_concentration = fit_cstar_timeseries(process, component)
+
+    # Then write a second, derived collection after adding the exact
+    # pseudobatch transform and fitted c* splines. Reloading it verifies that
+    # the enrichment survives JSON serialization before reintegration uses it.
+    enriched_json = tmp_path / "process_collection_with_cstar.json"
+    save_process_collection_json(collection, enriched_json)
+    collection = load_process_collection_json(enriched_json)
+    assert set(collection.processes) == EXPECTED_PROCESS_IDS
+
+    for process_name, process in collection.processes.items():
+        assert process.pseudobatch_transform is not None
+        for component in process.reactor_medium.components.values():
+            assert component.c_star_concentration is not None
 
         sparse_times = np.asarray(
             process.reactor_medium.components[
