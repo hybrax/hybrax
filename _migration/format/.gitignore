@@ -223,3 +223,7 @@ examples/00_combined/04_spline_serialization/01_output_data/data_with_splines.js
 # Local scratch directories
 tmp/
 **/tmp/
+
+# MemPalace per-project files
+mempalace.yaml
+entities.json
