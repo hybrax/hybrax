@@ -510,7 +510,7 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total, per_target, per_sample = batched_loss_fn(
+    mean_total, per_sample_per_target, per_sample, pred_t, pred_save = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -524,8 +524,10 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
     )
     assert jnp.isfinite(mean_total)
     # One named loss term ("biomass") and one sample in the batch.
-    assert per_target.shape == (1,)
+    assert per_sample_per_target.shape == (1, 1)
     assert per_sample.shape == (1,)
+    # No prediction grid requested → prediction views are absent.
+    assert pred_t is None and pred_save is None
 
 
 def test_batched_loss_fn_preserves_none_jump_ts_branch():
@@ -533,7 +535,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total_none, _, _ = batched_loss_fn(
+    mean_total_none, _, _, _, _ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -545,7 +547,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         solver_atol=1e-7,
     )
     jump_ts_rows = jnp.zeros((1, 1), dtype=jnp.float32)
-    mean_total_present, _, _ = batched_loss_fn(
+    mean_total_present, _, _, _, _ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -569,7 +571,7 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
     from bp_train.dense import build_union_time_grid
 
     t_meas = jnp.asarray([0.0, 1.0, 4.0], dtype=jnp.float32)
-    t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
+    t_eval, sample_idx, dense_t, dense_idx, pred_t, pred_idx = build_union_time_grid(
         t_meas, n_measured=3, n_dense=3
     )
     # dense linspace covers the (active) measurement span.
@@ -580,6 +582,18 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
     # Round-trip: gathering t_eval by the index arrays returns the originals.
     assert jnp.allclose(t_eval[sample_idx], t_meas)
     assert jnp.allclose(t_eval[dense_idx], dense_t)
+    # No prediction grid requested → prediction block is absent.
+    assert pred_t is None and pred_idx is None
+
+    # With both grids, each block round-trips and shares the one union.
+    t_eval2, s_idx2, d_t2, d_idx2, p_t2, p_idx2 = build_union_time_grid(
+        t_meas, n_measured=3, n_dense=3, n_prediction=5
+    )
+    assert t_eval2.shape[0] == 3 + 3 + 5
+    assert jnp.allclose(p_t2, jnp.linspace(0.0, 4.0, 5))
+    assert jnp.allclose(t_eval2[s_idx2], t_meas)
+    assert jnp.allclose(t_eval2[d_idx2], d_t2)
+    assert jnp.allclose(t_eval2[p_idx2], p_t2)
 
 
 def test_dense_point_mask_handles_jump_ts_and_none():

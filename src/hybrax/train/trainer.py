@@ -14,7 +14,9 @@ from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 
-BatchedLossFn = Callable[..., tuple[jax.Array, jax.Array, jax.Array]]
+# (mean_total, per_sample_per_target, per_sample_total, prediction_t,
+#  prediction_save_outputs); the last two are None unless prediction_grid_n set.
+BatchedLossFn = Callable[..., tuple]
 
 
 class SingleSampleResult(eqx.Module):
@@ -28,6 +30,11 @@ class SingleSampleResult(eqx.Module):
     step: jax.Array = eqx.field(
         default_factory=lambda: jnp.asarray(-1, dtype=jnp.int32)
     )
+    # Independent prediction-grid trajectory (forward-only output grid), distinct
+    # from the loss module's own dense view. Populated only when
+    # ``prediction_grid_n`` is requested; ``None`` otherwise (e.g. training).
+    prediction_t: jax.Array | None = None
+    prediction_save_outputs: SaveOutputs | None = None
 
 
 def clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
@@ -204,6 +211,7 @@ def evaluate_sample_with_loss_module(
     solver_rtol: float,
     solver_atol: float,
     step: int | jax.Array | None = None,
+    prediction_grid_n: int | None = None,
 ) -> SingleSampleResult:
     """Solve once, build ``LossInputs``, and evaluate ``wrapper.loss_module``.
 
@@ -244,7 +252,7 @@ def evaluate_sample_with_loss_module(
             "auxiliary": save_outputs.auxiliary or {},
         }
 
-    if dense_grid_n is None:
+    if dense_grid_n is None and prediction_grid_n is None:
         # Measurement-grid-only path (unchanged behavior).
         save_outputs = _solve_measurement_save_outputs_on_grid(
             wrapper,
@@ -261,14 +269,30 @@ def evaluate_sample_with_loss_module(
         dense_views = {key: None for key in meas_views}
         # auxiliary is already dict-typed in meas_views; mirror as None on dense.
         dense_views["auxiliary"] = None
+        prediction_t = None
+        prediction_save_outputs = None
     else:
-        # Dense-grid path: solve ONCE on union(t_measured, linspace(...)) and
-        # index-split into measurement and dense views. Same single solve as the
-        # measurement-only path; SaveAt just records at more points.
+        # Solve ONCE on union(t_measured, loss-dense, prediction-dense) and
+        # index-split into the views each consumer needs. The loss reads the
+        # measurement (+ its own dense) block exactly as the measurement-only
+        # path; forward reads the independent prediction block. SaveAt just
+        # records at more points, so the loss value is unchanged.
         from .dense import build_union_time_grid
 
-        t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
-            t_measured, n_measured, int(dense_grid_n)
+        (
+            t_eval,
+            sample_idx,
+            dense_t,
+            dense_idx,
+            prediction_t,
+            prediction_idx,
+        ) = build_union_time_grid(
+            t_measured,
+            n_measured,
+            n_dense=None if dense_grid_n is None else int(dense_grid_n),
+            n_prediction=(
+                None if prediction_grid_n is None else int(prediction_grid_n)
+            ),
         )
         save_outputs = _solve_measurement_save_outputs_on_grid(
             wrapper,
@@ -281,9 +305,21 @@ def evaluate_sample_with_loss_module(
             jump_ts=jump_ts,
         )
         sample_save_outputs = jtu.tree_map(lambda leaf: leaf[sample_idx], save_outputs)
-        dense_save_outputs = jtu.tree_map(lambda leaf: leaf[dense_idx], save_outputs)
         meas_views = _views_from_save_outputs(sample_save_outputs)
-        dense_views = _views_from_save_outputs(dense_save_outputs)
+        if dense_grid_n is None:
+            dense_views = {key: None for key in meas_views}
+            dense_views["auxiliary"] = None
+        else:
+            dense_save_outputs = jtu.tree_map(
+                lambda leaf: leaf[dense_idx], save_outputs
+            )
+            dense_views = _views_from_save_outputs(dense_save_outputs)
+        if prediction_grid_n is None:
+            prediction_save_outputs = None
+        else:
+            prediction_save_outputs = jtu.tree_map(
+                lambda leaf: leaf[prediction_idx], save_outputs
+            )
 
     SCL_states = meas_views["SCL_states"]
     # State layout: [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative].
@@ -334,6 +370,8 @@ def evaluate_sample_with_loss_module(
         states=SCL_states,
         save_outputs=save_outputs,
         step=step_arr,
+        prediction_t=prediction_t,
+        prediction_save_outputs=prediction_save_outputs,
     )
 
 
@@ -359,7 +397,8 @@ def build_batched_loss_fn() -> BatchedLossFn:
         solver_rtol: float,
         solver_atol: float,
         step: int | jax.Array | None = None,
-    ) -> tuple[jax.Array, jax.Array, jax.Array]:
+        prediction_grid_n: int | None = None,
+    ):
         batch_t_meas = clamp_padded_time_rows(batch.t_measured, batch.n_measured)
 
         # Pre-scale measurements and initial states to SCL once per batch.
@@ -378,7 +417,7 @@ def build_batched_loss_fn() -> BatchedLossFn:
             cin: jax.Array,
             cin_modeled: jax.Array,
             jump_ts: jax.Array | None,
-        ) -> tuple[jax.Array, jax.Array]:
+        ):
             controls = _BatchIndexedControls(
                 batch_controls=batch_controls,
                 process_idx=process_idx,
@@ -400,10 +439,21 @@ def build_batched_loss_fn() -> BatchedLossFn:
                 solver_rtol=solver_rtol,
                 solver_atol=solver_atol,
                 step=step,
+                prediction_grid_n=prediction_grid_n,
             )
-            return result.total_loss, result.per_target_loss
+            return (
+                result.total_loss,
+                result.per_target_loss,
+                result.prediction_t,
+                result.prediction_save_outputs,
+            )
 
-        per_sample_total, per_sample_per_target = jax.vmap(
+        (
+            per_sample_total,
+            per_sample_per_target,
+            prediction_t,
+            prediction_save_outputs,
+        ) = jax.vmap(
             _sample_loss,
             # when `jump_ts_rows` is `None` we also have to pass `None` to vmap so that
             # it's not iterated over
@@ -419,8 +469,17 @@ def build_batched_loss_fn() -> BatchedLossFn:
             batched_Cin_modeled[batch.process_indices],
             jump_ts_rows,
         )
-        mean_per_target = jnp.mean(per_sample_per_target, axis=0)
         mean_total = jnp.mean(per_sample_total)
-        return mean_total, mean_per_target, per_sample_total
+        # Return the per-sample per-target matrix (not its mean): training reduces
+        # it to a [n_targets] mean for logging; forward needs the per-process rows
+        # for its loss table. The prediction views are `None` unless a caller
+        # (forward) requested a `prediction_grid_n`; training ignores them.
+        return (
+            mean_total,
+            per_sample_per_target,
+            per_sample_total,
+            prediction_t,
+            prediction_save_outputs,
+        )
 
     return _batched_loss_fn

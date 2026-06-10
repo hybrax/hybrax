@@ -8,7 +8,6 @@ import logging
 from pathlib import Path
 from typing import Any, Sequence
 
-import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -16,7 +15,6 @@ import numpy as np
 import pandas as pd
 
 from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
-from bp_format.mechanistic import build_rhs_ode
 
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
@@ -26,20 +24,6 @@ logger = logging.getLogger(__name__)
 # Bolus bar width in `plot_process_simulations`, expressed as a fraction of the
 # process time span.
 BAR_WIDTH_FRACTION = 0.02
-
-
-def _wrapper_vector_field(
-    t: Any, y: jnp.ndarray, wrapper: HybridOdeWrapper
-) -> jnp.ndarray:
-    """Stable Diffrax vector field; wrapper params stay dynamic via ``args``."""
-    return wrapper(t, y)
-
-
-def _wrapper_save_outputs(
-    t: Any, y: jnp.ndarray, wrapper: HybridOdeWrapper
-) -> SaveOutputs:
-    """Stable Diffrax save function; wrapper params stay dynamic via ``args``."""
-    return wrapper.save_outputs(t, y)
 
 
 @dataclass(frozen=True)
@@ -58,6 +42,50 @@ class DenseProcessExport:
     b_modeled_cum: np.ndarray
     q_rates: np.ndarray
     auxiliary: dict[str, np.ndarray] | None = None
+
+
+def dense_exports_from_save_outputs(
+    prediction_t: jnp.ndarray,
+    prediction_save_outputs: SaveOutputs,
+    trained_wrapper: HybridOdeWrapper,
+    process_names: Sequence[str],
+) -> dict[str, DenseProcessExport]:
+    """Slice one batched forward solve's prediction block into per-process exports.
+
+    Pure reshaping (no ODE solve): the leading axis of every leaf is the process
+    batch (aligned with ``process_names``); un-scale ``SCL_states`` to physical
+    and pick the canonical export columns (``c_*``, ``V_cont``/``V_real``,
+    cumulative modeled feeds, ``q_*`` rates, and per-key ``auxiliary``).
+    """
+    module = trained_wrapper.reaction_module
+    n_species = len(trained_wrapper.modeled_RMC_names)
+    n_modeled = len(trained_wrapper.modeled_FVC_names)
+    # Un-scale [N, n_pred, state] → physical in one vmapped pass, then to numpy.
+    RAW_states = np.asarray(
+        jax.vmap(jax.vmap(module.unscale_state))(prediction_save_outputs.SCL_states)
+    )
+    t_np = np.asarray(prediction_t)
+    v_real_np = np.asarray(prediction_save_outputs.RAW_V_export)
+    q_np = np.asarray(prediction_save_outputs.RAW_modeled_BiologicalOde_rates)
+    auxiliary = prediction_save_outputs.auxiliary
+
+    exports: dict[str, DenseProcessExport] = {}
+    for i, name in enumerate(process_names):
+        aux_i = (
+            None
+            if auxiliary is None
+            else {key: np.asarray(values[i]) for key, values in auxiliary.items()}
+        )
+        exports[name] = DenseProcessExport(
+            t=t_np[i],
+            c_species=RAW_states[i, :, :n_species],
+            v_cont=RAW_states[i, :, n_species],
+            v_real=v_real_np[i],
+            b_modeled_cum=RAW_states[i, :, n_species + 1 : n_species + 1 + n_modeled],
+            q_rates=q_np[i],
+            auxiliary=aux_i,
+        )
+    return exports
 
 
 def _predictions_csv_header(
@@ -123,279 +151,6 @@ def _auxiliary_row_values(
                 f"got key {key!r} with shape {values.shape}"
             )
     return row_values
-
-
-def _compute_dense_process_export(
-    trained_wrapper: HybridOdeWrapper,
-    collection: BioProcessCollection,
-    store: TrainingDataStore,
-    process_name: str,
-    *,
-    solver_max_steps: int,
-    solver_rtol: float,
-    solver_atol: float,
-    solver_use_jump_ts: bool,
-    n_dense: int = 200,
-) -> DenseProcessExport:
-    """Solve one process on dense grid and return export-ready arrays."""
-    process = collection.processes[process_name]
-    process_data = store.get_process(process_name)
-    rhs_ode = build_rhs_ode(process)
-
-    process_wrapper = eqx.tree_at(
-        lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
-        trained_wrapper,
-        (process_data.controls, rhs_ode.Cin_controlled_FVCs, rhs_ode.Cin_modeled_FVCs),
-    )
-
-    t_dense = jnp.linspace(
-        float(process.time_axis.start),
-        float(process.time_axis.end),
-        n_dense,
-    )
-    SCL_y0 = process_wrapper.reaction_module.scale_state(process_data.y0_measured)
-    term = diffrax.ODETerm(_wrapper_vector_field)
-    jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
-    sol = diffrax.diffeqsolve(
-        term,
-        diffrax.Tsit5(),
-        t0=t_dense[0],
-        t1=t_dense[-1],
-        dt0=None,
-        y0=SCL_y0,
-        args=process_wrapper,
-        saveat=diffrax.SaveAt(ts=t_dense, fn=_wrapper_save_outputs),
-        stepsize_controller=diffrax.PIDController(
-            rtol=solver_rtol,
-            atol=solver_atol,
-            jump_ts=jump_ts,
-        ),
-        max_steps=solver_max_steps,
-        throw=False,
-    )
-    n_species = len(process_wrapper.modeled_RMC_names)
-    n_modeled = len(process_wrapper.modeled_FVC_names)
-    n_rates = len(process_wrapper.rhs_ode.name_modeled_rates)
-
-    if sol.result != diffrax.RESULTS.successful:
-        # Training can survive a transient stiff forward pass, so don't kill the
-        # whole run at checkpoint time. Emit NaN rows; auxiliary keys are unknown
-        # on a failed solve so propagate None.
-        logger.warning(
-            "dense export solve failed for process %r (result=%s); "
-            "writing NaN rows to predictions.csv",
-            process_name,
-            sol.result,
-        )
-        return DenseProcessExport(
-            t=np.asarray(t_dense),
-            c_species=np.full((n_dense, n_species), np.nan),
-            v_cont=np.full(n_dense, np.nan),
-            v_real=np.full(n_dense, np.nan),
-            b_modeled_cum=np.full((n_dense, n_modeled), np.nan),
-            q_rates=np.full((n_dense, n_rates), np.nan),
-            auxiliary=None,
-        )
-
-    # SaveOutputs carries SCL_states (in SCL space); convert to RAW for export
-    # via the module's unscale_state helper.
-    SCL_states = np.asarray(sol.ys.SCL_states)
-    RAW_states = np.asarray(
-        jax.vmap(process_wrapper.reaction_module.unscale_state)(sol.ys.SCL_states)
-    )
-    return DenseProcessExport(
-        t=np.asarray(t_dense),
-        c_species=RAW_states[:, :n_species],
-        v_cont=RAW_states[:, n_species],
-        v_real=np.asarray(sol.ys.RAW_V_export),
-        b_modeled_cum=RAW_states[:, n_species + 1 : n_species + 1 + n_modeled],
-        q_rates=np.asarray(sol.ys.RAW_modeled_BiologicalOde_rates),
-        auxiliary=(
-            None
-            if sol.ys.auxiliary is None
-            else {key: np.asarray(values) for key, values in sol.ys.auxiliary.items()}
-        ),
-    )
-
-
-def _compute_process_named_losses(
-    trained_wrapper: HybridOdeWrapper,
-    collection: BioProcessCollection,
-    store: TrainingDataStore,
-    process_name: str,
-    *,
-    solver_max_steps: int,
-    solver_rtol: float,
-    solver_atol: float,
-    solver_use_jump_ts: bool,
-) -> tuple[dict[str, float] | None, float | None]:
-    """Per-process named losses + total, via the wrapper's loss module.
-
-    Solves the process on its measurement grid and evaluates the loss module
-    exactly as training does. Returns ``(None, None)`` when no loss module is
-    attached (forward-only wrappers). Solver tolerances are the plot's, so the
-    value is a diagnostic that may differ slightly from the training-time loss.
-    """
-    loss_module = getattr(trained_wrapper, "loss_module", None)
-    if loss_module is None:
-        return None, None
-    from .trainer import clamp_padded_time_rows, evaluate_sample_with_loss_module
-
-    process = collection.processes[process_name]
-    process_data = store.get_process(process_name)
-    rhs_ode = build_rhs_ode(process)
-    process_wrapper = eqx.tree_at(
-        lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
-        trained_wrapper,
-        (process_data.controls, rhs_ode.Cin_controlled_FVCs, rhs_ode.Cin_modeled_FVCs),
-    )
-    module = process_wrapper.reaction_module
-    n_meas = int(process_data.n_measured)
-    t_measured = clamp_padded_time_rows(
-        process_data.t_measured[None, :], jnp.asarray([n_meas], dtype=jnp.int32)
-    )[0]
-    SCALE_state = module.SCALE_state
-    SCALE_for_targets = SCALE_state[trained_wrapper.target_state_indices]
-    SCL_target_measured = process_data.y_measured / SCALE_for_targets[None, :]
-    SCL_y0 = process_data.y0_measured / SCALE_state
-    jump_ts = process_data.controls.active_step_ts if solver_use_jump_ts else None
-    result = evaluate_sample_with_loss_module(
-        process_wrapper,
-        t_measured=t_measured,
-        SCL_target_measured=SCL_target_measured,
-        mask_measured=process_data.mask_measured,
-        n_measured=n_meas,
-        SCL_target0_measured=SCL_y0,
-        jump_ts=jump_ts,
-        max_solver_steps=solver_max_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-    )
-    per_target = np.asarray(result.per_target_loss)
-    names = tuple(loss_module.loss_names)
-    named = {name: float(per_target[i]) for i, name in enumerate(names)}
-    return named, float(np.sum(per_target))
-
-
-def _write_predictions_csv(
-    trained_wrapper: HybridOdeWrapper,
-    collection: BioProcessCollection,
-    store: TrainingDataStore,
-    output_path: str | Path,
-    process_names: tuple[str, ...] | None = None,
-    *,
-    solver_max_steps: int,
-    solver_rtol: float,
-    solver_atol: float,
-    solver_use_jump_ts: bool,
-) -> None:
-    """Write dense predictions.csv without any plotting-only work."""
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    modeled_RMC_names = trained_wrapper.modeled_RMC_names
-    modeled_FVC_names = trained_wrapper.modeled_FVC_names
-    rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
-    n_species = len(modeled_RMC_names)
-    n_modeled = len(modeled_FVC_names)
-    n_rates = len(rate_names)
-    if process_names is None:
-        selected_processes = tuple(store.process_order)
-    else:
-        missing = [name for name in process_names if name not in store.process_order]
-        if missing:
-            raise ValueError(
-                "export_predictions_csv received unknown process names: "
-                f"{missing}; available={store.process_order}"
-            )
-        selected_processes = tuple(process_names)
-
-    if not selected_processes:
-        header = _predictions_csv_header(
-            modeled_RMC_names=modeled_RMC_names,
-            modeled_FVC_names=modeled_FVC_names,
-            rate_names=rate_names,
-        )
-        pd.DataFrame(columns=header).to_csv(output_path, index=False)
-        logger.info("timeseries csv saved to %s", output_path)
-        return
-
-    first_process = selected_processes[0]
-    first_export = _compute_dense_process_export(
-        trained_wrapper,
-        collection,
-        store,
-        first_process,
-        solver_max_steps=solver_max_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-        solver_use_jump_ts=solver_use_jump_ts,
-    )
-    auxiliary_columns = _auxiliary_csv_columns(first_export.auxiliary)
-    header = _predictions_csv_header(
-        modeled_RMC_names=modeled_RMC_names,
-        modeled_FVC_names=modeled_FVC_names,
-        rate_names=rate_names,
-        auxiliary_columns=auxiliary_columns,
-    )
-    pd.DataFrame(columns=header).to_csv(output_path, index=False)
-
-    def _append_process_rows(
-        process_name: str,
-        dense_export: DenseProcessExport,
-    ) -> None:
-        # On a failed solve `auxiliary` is None — that's not a column-set drift,
-        # just absence of data, so emit NaN values for the previously-seen aux
-        # columns instead of raising.
-        aux_failed = dense_export.auxiliary is None
-        if (
-            not aux_failed
-            and _auxiliary_csv_columns(dense_export.auxiliary) != auxiliary_columns
-        ):
-            raise ValueError(
-                "predictions.csv auxiliary columns differ across processes; "
-                f"expected {auxiliary_columns}, got "
-                f"{_auxiliary_csv_columns(dense_export.auxiliary)} "
-                f"for process {process_name!r}"
-            )
-        ts_rows: list[list[float | str]] = []
-        for i_t in range(len(dense_export.t)):
-            aux_cells = (
-                [float("nan")] * len(auxiliary_columns)
-                if aux_failed
-                else _auxiliary_row_values(dense_export.auxiliary, i_t)
-            )
-            row = (
-                [process_name, float(dense_export.t[i_t])]
-                + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
-                + [float(dense_export.v_cont[i_t]), float(dense_export.v_real[i_t])]
-                + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
-                + [float(dense_export.q_rates[i_t, j]) for j in range(n_rates)]
-                + aux_cells
-            )
-            ts_rows.append(row)
-        pd.DataFrame(ts_rows, columns=header).to_csv(
-            output_path,
-            mode="a",
-            header=False,
-            index=False,
-        )
-
-    _append_process_rows(first_process, first_export)
-    for process_name in selected_processes[1:]:
-        dense_export = _compute_dense_process_export(
-            trained_wrapper,
-            collection,
-            store,
-            process_name,
-            solver_max_steps=solver_max_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-            solver_use_jump_ts=solver_use_jump_ts,
-        )
-        _append_process_rows(process_name, dense_export)
-
-    logger.info("timeseries csv saved to %s", output_path)
 
 
 def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
@@ -615,15 +370,17 @@ def plot_training_results(
     collection: BioProcessCollection,
     store: TrainingDataStore,
     output_dir: str | Path,
+    dense_exports: dict[str, DenseProcessExport],
     process_names: tuple[str, ...] | None = None,
     *,
-    solver_max_steps: int = 4096,
-    solver_rtol: float = 1e-3,
-    solver_atol: float = 1e-5,
-    solver_use_jump_ts: bool = True,
+    per_process_named_losses: dict[str, dict[str, float]] | None = None,
+    per_process_total_loss: dict[str, float] | None = None,
     timeseries_csv_path: str | Path | None = None,
 ) -> None:
-    """Generate loss curve and per-process concentration / rate / volume plots."""
+    """Generate loss curve and per-process concentration / rate / volume plots.
+
+    Per-process trajectories come from precomputed ``dense_exports`` (no solve).
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -648,39 +405,100 @@ def plot_training_results(
         collection,
         store,
         output_dir,
+        dense_exports,
         process_names=process_names,
-        solver_max_steps=solver_max_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-        solver_use_jump_ts=solver_use_jump_ts,
+        per_process_named_losses=per_process_named_losses,
+        per_process_total_loss=per_process_total_loss,
         timeseries_csv_path=timeseries_csv_path,
     )
 
 
 def export_predictions_csv(
     trained_wrapper: HybridOdeWrapper,
-    collection: BioProcessCollection,
-    store: TrainingDataStore,
+    dense_exports: dict[str, DenseProcessExport],
     output_path: str | Path,
     process_names: tuple[str, ...] | None = None,
-    *,
-    solver_max_steps: int = 4096,
-    solver_rtol: float = 1e-3,
-    solver_atol: float = 1e-5,
-    solver_use_jump_ts: bool = True,
 ) -> None:
-    """Write dense predictions.csv without rendering per-process plots."""
-    _write_predictions_csv(
-        trained_wrapper,
-        collection,
-        store,
-        output_path=output_path,
-        process_names=process_names,
-        solver_max_steps=solver_max_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-        solver_use_jump_ts=solver_use_jump_ts,
+    """Write dense predictions.csv from precomputed per-process exports (no solve).
+
+    ``dense_exports`` comes from :func:`bp_train.harness.compute_dense_exports`
+    (the single batched solve). This function only formats and writes rows.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    modeled_RMC_names = trained_wrapper.modeled_RMC_names
+    modeled_FVC_names = trained_wrapper.modeled_FVC_names
+    rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
+    n_species = len(modeled_RMC_names)
+    n_modeled = len(modeled_FVC_names)
+    n_rates = len(rate_names)
+
+    if process_names is None:
+        selected_processes = tuple(dense_exports.keys())
+    else:
+        missing = [name for name in process_names if name not in dense_exports]
+        if missing:
+            raise ValueError(
+                f"export_predictions_csv missing dense exports for {missing}"
+            )
+        selected_processes = tuple(process_names)
+
+    if not selected_processes:
+        header = _predictions_csv_header(
+            modeled_RMC_names=modeled_RMC_names,
+            modeled_FVC_names=modeled_FVC_names,
+            rate_names=rate_names,
+        )
+        pd.DataFrame(columns=header).to_csv(output_path, index=False)
+        logger.info("timeseries csv saved to %s", output_path)
+        return
+
+    auxiliary_columns = _auxiliary_csv_columns(
+        dense_exports[selected_processes[0]].auxiliary
     )
+    header = _predictions_csv_header(
+        modeled_RMC_names=modeled_RMC_names,
+        modeled_FVC_names=modeled_FVC_names,
+        rate_names=rate_names,
+        auxiliary_columns=auxiliary_columns,
+    )
+    pd.DataFrame(columns=header).to_csv(output_path, index=False)
+
+    for process_name in selected_processes:
+        dense_export = dense_exports[process_name]
+        aux_failed = dense_export.auxiliary is None
+        if (
+            not aux_failed
+            and _auxiliary_csv_columns(dense_export.auxiliary) != auxiliary_columns
+        ):
+            raise ValueError(
+                "predictions.csv auxiliary columns differ across processes; "
+                f"expected {auxiliary_columns}, got "
+                f"{_auxiliary_csv_columns(dense_export.auxiliary)} "
+                f"for process {process_name!r}"
+            )
+        ts_rows: list[list[float | str]] = []
+        for i_t in range(len(dense_export.t)):
+            aux_cells = (
+                [float("nan")] * len(auxiliary_columns)
+                if aux_failed
+                else _auxiliary_row_values(dense_export.auxiliary, i_t)
+            )
+            row = (
+                [process_name, float(dense_export.t[i_t])]
+                + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
+                + [float(dense_export.v_cont[i_t]), float(dense_export.v_real[i_t])]
+                + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
+                + [float(dense_export.q_rates[i_t, j]) for j in range(n_rates)]
+                + aux_cells
+            )
+            ts_rows.append(row)
+        pd.DataFrame(ts_rows, columns=header).to_csv(
+            output_path, mode="a", header=False, index=False
+        )
+
+    logger.info("timeseries csv saved to %s", output_path)
 
 
 def plot_process_simulations(
@@ -688,21 +506,22 @@ def plot_process_simulations(
     collection: BioProcessCollection,
     store: TrainingDataStore,
     output_dir: str | Path,
+    dense_exports: dict[str, DenseProcessExport],
     process_names: tuple[str, ...] | None = None,
     *,
-    solver_max_steps: int = 4096,
-    solver_rtol: float = 1e-3,
-    solver_atol: float = 1e-5,
-    solver_use_jump_ts: bool = True,
     training_process_names: tuple[str, ...] | None = None,
+    per_process_named_losses: dict[str, dict[str, float]] | None = None,
+    per_process_total_loss: dict[str, float] | None = None,
     timeseries_csv_path: str | Path | None = None,
     filename_suffix: str = "",
     render_plots: bool = True,
 ) -> None:
-    """Simulate each selected process on a dense grid and render result plots.
+    """Render per-process plots and/or write predictions.csv from precomputed
+    dense exports — no ODE solve here.
 
-    Optionally appends all dense trajectories into a single merged CSV at
-    ``timeseries_csv_path`` with a leading ``process`` column.
+    ``dense_exports`` and the per-process losses come from
+    :func:`bp_train.harness.compute_dense_exports` and the forward loss table.
+    The merged CSV is delegated to :func:`export_predictions_csv` (single writer).
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -729,49 +548,24 @@ def plot_process_simulations(
     rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
     n_rates = len(rate_names)
 
-    # Prepare merged timeseries rows (one file, all processes).
-    ts_header: list[str] | None = None
-    ts_auxiliary_columns: list[str] | None = None
-    ts_path: Path | None = None
+    # CSV: delegate to the single writer (no solve, no per-process row logic here).
     if timeseries_csv_path is not None:
-        ts_path = Path(timeseries_csv_path)
-        ts_path.parent.mkdir(parents=True, exist_ok=True)
-        if not selected_processes:
-            ts_header = _predictions_csv_header(
-                modeled_RMC_names=modeled_RMC_names,
-                modeled_FVC_names=modeled_FVC_names,
-                rate_names=rate_names,
-            )
-            pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
+        export_predictions_csv(
+            trained_wrapper, dense_exports, timeseries_csv_path, selected_processes
+        )
+    if not render_plots:
+        return
 
-    # --- Per-process simulation/exports ---
+    # --- Per-process rendering (from precomputed dense exports) ---
     for process_name in selected_processes:
         process = collection.processes[process_name]
         process_data = store.get_process(process_name)
         time_unit = process.time_axis.unit
 
-        # Named losses for this process (None when no loss module attached).
-        process_named_losses, process_total_loss = _compute_process_named_losses(
-            trained_wrapper,
-            collection,
-            store,
-            process_name,
-            solver_max_steps=solver_max_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-            solver_use_jump_ts=solver_use_jump_ts,
-        )
+        process_named_losses = (per_process_named_losses or {}).get(process_name)
+        process_total_loss = (per_process_total_loss or {}).get(process_name)
 
-        dense_export = _compute_dense_process_export(
-            trained_wrapper,
-            collection,
-            store,
-            process_name,
-            solver_max_steps=solver_max_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-            solver_use_jump_ts=solver_use_jump_ts,
-        )
+        dense_export = dense_exports[process_name]
         t_start = float(process.time_axis.start)
         t_end = float(process.time_axis.end)
         t_dense_np = dense_export.t
@@ -780,29 +574,6 @@ def plot_process_simulations(
         v_real_pred = dense_export.v_real
         b_modeled_pred = dense_export.b_modeled_cum
         q_dense = dense_export.q_rates
-        auxiliary_dense = dense_export.auxiliary
-
-        if ts_path is not None and ts_header is None:
-            ts_auxiliary_columns = _auxiliary_csv_columns(auxiliary_dense)
-            ts_header = _predictions_csv_header(
-                modeled_RMC_names=modeled_RMC_names,
-                modeled_FVC_names=modeled_FVC_names,
-                rate_names=rate_names,
-                auxiliary_columns=ts_auxiliary_columns,
-            )
-            pd.DataFrame(columns=ts_header).to_csv(ts_path, index=False)
-        elif (
-            ts_path is not None
-            and ts_auxiliary_columns is not None
-            and auxiliary_dense is not None
-            and _auxiliary_csv_columns(auxiliary_dense) != ts_auxiliary_columns
-        ):
-            raise ValueError(
-                "timeseries auxiliary columns differ across processes; "
-                f"expected {ts_auxiliary_columns}, got "
-                f"{_auxiliary_csv_columns(auxiliary_dense)} "
-                f"for process {process_name!r}"
-            )
 
         if render_plots:
             import matplotlib.pyplot as plt
@@ -1032,34 +803,4 @@ def plot_process_simulations(
             )
             plt.close(fig)
 
-        if ts_header is not None:
-            assert ts_path is not None
-            ts_rows: list[list[float | str]] = []
-            aux_failed = auxiliary_dense is None
-            for i_t in range(len(t_dense_np)):
-                aux_cells = (
-                    [float("nan")] * len(ts_auxiliary_columns or ())
-                    if aux_failed
-                    else _auxiliary_row_values(auxiliary_dense, i_t)
-                )
-                row = (
-                    [process_name, float(t_dense_np[i_t])]
-                    + [float(c_dense[i_t, j]) for j in range(n_species)]
-                    + [float(v_cont_pred[i_t]), float(v_real_pred[i_t])]
-                    + [float(b_modeled_pred[i_t, k]) for k in range(n_modeled)]
-                    + [float(q_dense[i_t, j]) for j in range(n_rates)]
-                    + aux_cells
-                )
-                ts_rows.append(row)
-            pd.DataFrame(ts_rows, columns=ts_header).to_csv(
-                ts_path,
-                mode="a",
-                header=False,
-                index=False,
-            )
-
-    if ts_header is not None and timeseries_csv_path is not None:
-        logger.info("timeseries csv saved to %s", timeseries_csv_path)
-
-    if render_plots:
-        logger.info("plots saved to %s", output_dir)
+    logger.info("plots saved to %s", output_dir)
