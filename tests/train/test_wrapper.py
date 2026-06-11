@@ -1194,7 +1194,7 @@ def _integrate_bolus_ramp_volume_trace(
     collection = BioProcessCollection(
         processes={"p1": process},
         metadata={
-            "bp_train": {
+            "bp-train": {
                 "runtime_controls_config": {
                     EVENT_RUN_MIN_DT_CONFIG_KEY: configured_min_dt,
                 },

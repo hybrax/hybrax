@@ -534,7 +534,7 @@ def select_control_sources(
             continue
         fvc_continuous[name] = _make_source_from_volume_change(name, volume_change)
 
-    run_min_dt = run_min_dt_from_config(config)
+    run_min_dt = run_min_dt_from_runtime_controls(config)
     for source in build_bolus_sources(process, run_min_dt=run_min_dt):
         if source.name in fvc_continuous:
             raise ValueError(
@@ -571,7 +571,7 @@ def select_control_sources(
     )
 
 
-def run_min_dt_from_config(config: dict[str, Any]) -> float | None:
+def run_min_dt_from_runtime_controls(config: dict[str, Any]) -> float | None:
     run_min_dt_cfg = config.get(EVENT_RUN_MIN_DT_CONFIG_KEY)
     return None if run_min_dt_cfg is None else float(run_min_dt_cfg)
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -17,6 +16,7 @@ from bp_format.serialization import (
     save_process_collection_json,
 )
 
+from .constants import METADATA_NAMESPACE
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
     EVENT_RUN_MIN_DT_CONFIG_KEY,
@@ -27,21 +27,14 @@ from .defaults import (
     default_build_sample_acc_series,
     default_transform_process_collection,
 )
-from .utils import get_hook, load_custom_module, resolve_config
+from .run_config import LoadedRunConfig, PrepareConfig, RunConfig
+from .utils import get_hook
 from .validation import (
     ensure_prepared_training_semantics,
     ensure_required_controls,
     summarize_process_semantics,
     validate_collection,
 )
-
-
-@dataclass
-class PrepareConfig:
-    metadata_namespace: str = "bp_train"
-    initial_grid_points: int = 16
-    max_rel_error: float = 1e-4
-    max_refinement_rounds: int = 8
 
 
 def _read_bytes(path: str | Path | None) -> bytes | None:
@@ -99,8 +92,10 @@ def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) 
     failed = [name for name, entry in validation_report.items() if not entry["ok"]]
     if failed:
         warnings.warn(
-            f"bp_format validation reported non-OK status for {len(failed)} process(es); "
-            "see metadata['bp_train']['bp_format_validation_raw'] for details",
+            "bp_format validation reported non-OK status for "
+            f"{len(failed)} process(es); "
+            f"see metadata[{METADATA_NAMESPACE!r}]['bp_format_validation_raw'] "
+            "for details",
             stacklevel=2,
         )
 
@@ -229,32 +224,67 @@ def _validate_prepared_control_contract(
                 )
 
 
-def prepare_artifact(
-    input_json: str | Path | BioProcessCollection,
-    output_json: str | Path,
+def _runtime_controls_config(prepare: PrepareConfig) -> dict[str, Any]:
+    cfg: dict[str, Any] = {
+        "initial_grid_points": prepare.initial_grid_points,
+        "max_rel_error": prepare.max_rel_error,
+        "max_refinement_rounds": prepare.max_refinement_rounds,
+    }
+    if prepare.bolus_run_min_dt is not None:
+        cfg[EVENT_RUN_MIN_DT_CONFIG_KEY] = prepare.bolus_run_min_dt
+    return cfg
+
+
+def _resolve_prepare_dynamic_defaults(
+    config: RunConfig,
+    collection: BioProcessCollection,
     *,
-    custom_py: str | Path | None = None,
-    config: dict[str, Any] | None = None,
-    case_study: str | None = None,
-) -> BioProcessCollection:
-    input_path = (
-        None if isinstance(input_json, BioProcessCollection) else Path(input_json)
+    include_samples: bool,
+) -> tuple[RunConfig, dict[str, Any]]:
+    """Materialise prepare defaults that depend on the loaded collection."""
+    prepare = config.prepare
+    assert prepare is not None
+    controls_config = _runtime_controls_config(prepare)
+
+    if EVENT_RUN_MIN_DT_CONFIG_KEY not in controls_config:
+        run_min_dt = get_collection_event_min_dt_if_needed(
+            collection,
+            include_samples=include_samples,
+        )
+        if run_min_dt is not None:
+            controls_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
+
+    bolus_run_min_dt = controls_config.get(EVENT_RUN_MIN_DT_CONFIG_KEY)
+    if bolus_run_min_dt is None or prepare.bolus_run_min_dt == bolus_run_min_dt:
+        return config, controls_config
+
+    effective_prepare = prepare.model_copy(
+        update={"bolus_run_min_dt": bolus_run_min_dt}
     )
+    effective_config = config.model_copy(update={"prepare": effective_prepare})
+    return effective_config, controls_config
+
+
+def prepare_artifact(
+    loaded_config: LoadedRunConfig,
+    output_json: str | Path,
+) -> BioProcessCollection:
+    config = loaded_config.config
+    custom_module = loaded_config.custom_module
+    custom_hash = loaded_config.custom_py_sha256
+    prepare = config.prepare
+    if prepare is None:
+        raise ValueError("prepare_artifact requires a prepare config section")
+
+    input_path = prepare.raw_input
     output_path = Path(output_json)
 
-    custom_module = load_custom_module(custom_py)
-    user_config = resolve_config(custom_module, config)
-
-    defaults = asdict(PrepareConfig())
-    defaults.update(user_config)
-    resolved_config = defaults
-
-    raw_collection = load_raw_collection(input_json, case_study=case_study)
+    raw_collection = load_raw_collection(input_path, case_study=prepare.case_study)
     validation_report = validate_collection(
         raw_collection,
-        strict=bool(resolved_config.get("strict_bp_format_validation", False)),
+        strict=prepare.strict_bp_format_validation,
     )
-    if not bool(resolved_config.get("strict_bp_format_validation", False)):
+    if not prepare.strict_bp_format_validation:
         _warn_on_validation_report(validation_report)
 
     collection = deepcopy(raw_collection)
@@ -275,7 +305,7 @@ def prepare_artifact(
     }
     for process_name, process in collection.processes.items():
         process.metadata._pre_transform_key = process_name
-    collection = transform_process_collection(collection, resolved_config)
+    collection = transform_process_collection(collection, config)
     reverse_rename_map = {}
     for process_name, process in collection.processes.items():
         old_name = process.metadata._pre_transform_key
@@ -302,7 +332,7 @@ def prepare_artifact(
     process_bundles: dict[str, Any] = {}
     sample_sources: dict[str, Any] = {}
 
-    required_control_names = resolved_config.get("required_control_names", [])
+    required_control_names = prepare.required_control_names
     if isinstance(required_control_names, dict):
         required_control_names_by_process = required_control_names
     else:
@@ -310,19 +340,17 @@ def prepare_artifact(
             name: list(required_control_names) for name in collection.processes
         }
 
-    if EVENT_RUN_MIN_DT_CONFIG_KEY not in resolved_config:
-        run_min_dt = get_collection_event_min_dt_if_needed(
-            collection,
-            include_samples=build_sample_acc is default_build_sample_acc_series,
-        )
-        if run_min_dt is not None:
-            resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
+    effective_config, controls_config = _resolve_prepare_dynamic_defaults(
+        config,
+        collection,
+        include_samples=build_sample_acc is default_build_sample_acc_series,
+    )
 
     for process_name, process in collection.processes.items():
         bundle = select_control_sources(
             process_name=process_name,
             process=process,
-            config=resolved_config,
+            config=controls_config,
         )
         ensure_required_controls(
             process_name=process_name,
@@ -335,7 +363,7 @@ def prepare_artifact(
             process,
             process_name,
             collection.metadata or {},
-            resolved_config,
+            effective_config,
         )
         process_bundles[process_name] = bundle
         sample_sources[process_name] = sample_source
@@ -343,15 +371,12 @@ def prepare_artifact(
     _validate_prepared_control_contract(
         process_bundles=process_bundles,
         sample_sources=sample_sources,
-        require_consistent_controls=bool(
-            resolved_config.get("require_consistent_controls", True)
-        ),
+        require_consistent_controls=prepare.require_consistent_controls,
     )
 
     process_order = list(collection.processes.keys())
 
     source_hash = _sha256_hex(_read_bytes(input_path))
-    custom_hash = _sha256_hex(_read_bytes(custom_py))
 
     existing_metadata = dict(collection.metadata or {})
     bp_train_metadata: dict[str, Any] = {
@@ -378,15 +403,17 @@ def prepare_artifact(
         },
         "process_order": process_order,
         "runtime_controls_config": {
-            "initial_grid_points": int(resolved_config["initial_grid_points"]),
-            "max_rel_error": float(resolved_config["max_rel_error"]),
-            "max_refinement_rounds": int(resolved_config["max_refinement_rounds"]),
-            "require_consistent_controls": bool(
-                resolved_config.get("require_consistent_controls", True)
-            ),
+            "initial_grid_points": int(controls_config["initial_grid_points"]),
+            "max_rel_error": float(controls_config["max_rel_error"]),
+            "max_refinement_rounds": int(controls_config["max_refinement_rounds"]),
+            "require_consistent_controls": bool(prepare.require_consistent_controls),
             **(
-                {EVENT_RUN_MIN_DT_CONFIG_KEY: float(resolved_config[EVENT_RUN_MIN_DT_CONFIG_KEY])}
-                if EVENT_RUN_MIN_DT_CONFIG_KEY in resolved_config
+                {
+                    EVENT_RUN_MIN_DT_CONFIG_KEY: float(
+                        controls_config[EVENT_RUN_MIN_DT_CONFIG_KEY]
+                    )
+                }
+                if EVENT_RUN_MIN_DT_CONFIG_KEY in controls_config
                 else {}
             ),
         },
@@ -415,7 +442,7 @@ def prepare_artifact(
             },
         }
 
-    existing_metadata[resolved_config["metadata_namespace"]] = bp_train_metadata
+    existing_metadata[METADATA_NAMESPACE] = bp_train_metadata
     collection.metadata = existing_metadata
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

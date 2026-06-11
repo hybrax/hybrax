@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
@@ -21,12 +22,29 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-
-from pathlib import Path
+from bp_format.serialization import save_process_collection_json
 
 from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import prepare_artifact
+from bp_train.run_config import load_prepare_config
+
+
+def _prepare_from_collection(
+    collection: BioProcessCollection,
+    tmp_path: Path,
+    output_json: Path,
+    *,
+    custom_py: Path | None = None,
+) -> None:
+    raw_json = tmp_path / f"{output_json.stem}-raw.json"
+    config_json = tmp_path / f"{output_json.stem}-config.json"
+    save_process_collection_json(collection, raw_json)
+    config: dict[str, object] = {"prepare": {"raw_input": str(raw_json)}}
+    if custom_py is not None:
+        config["custom_py"] = str(custom_py)
+    config_json.write_text(json.dumps(config), encoding="utf-8")
+    prepare_artifact(load_prepare_config(config_json), output_json)
 
 
 def _column_index(controls, name: str) -> int:
@@ -154,8 +172,15 @@ def _write_control_custom_py(path: Path) -> None:
 def _prepare_two_process(tmp_path: Path) -> Path:
     custom_py = tmp_path / "custom.py"
     _write_control_custom_py(custom_py)
+    raw = tmp_path / "raw.json"
+    save_process_collection_json(_make_two_process_collection(), raw)
+    config_path = tmp_path / "prepare-config.json"
+    config_path.write_text(
+        json.dumps({"custom_py": str(custom_py), "prepare": {"raw_input": str(raw)}}),
+        encoding="utf-8",
+    )
     output = tmp_path / "prepared.json"
-    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+    prepare_artifact(load_prepare_config(config_path), output)
     return output
 
 
@@ -164,8 +189,6 @@ def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
     custom_py.write_text(
         "\n".join(
             [
-                "CONFIG = {'require_consistent_controls': False}",
-                "",
                 "def transform_process_collection(collection, config):",
                 "    p1 = collection.processes['p1']",
                 "    p2 = collection.processes['p2']",
@@ -176,8 +199,23 @@ def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    raw = tmp_path / "raw-inconsistent.json"
+    save_process_collection_json(_make_two_process_collection(), raw)
+    config_path = tmp_path / "prepare-inconsistent-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "custom_py": str(custom_py),
+                "prepare": {
+                    "raw_input": str(raw),
+                    "require_consistent_controls": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     output = tmp_path / "prepared-inconsistent.json"
-    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+    prepare_artifact(load_prepare_config(config_path), output)
     return output
 
 
@@ -261,7 +299,7 @@ def test_controls_store_rejects_unknown_process(tmp_path):
 def test_controls_store_rejects_different_control_order(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
     payload = json.loads(prepared_json.read_text(encoding="utf-8"))
-    process_md = payload["metadata"]["bp_train"]["processes"]["p2"]
+    process_md = payload["metadata"]["bp-train"]["processes"]["p2"]
     process_md["name_controlled_PVs"] = ["T", "CF"]
     prepared_json.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -325,7 +363,9 @@ def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
         encoding="utf-8",
     )
     output = tmp_path / "prepared-custom-sample.json"
-    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+    _prepare_from_collection(
+        _make_two_process_collection(), tmp_path, output, custom_py=custom_py
+    )
 
     store = ControlsStore.from_json(output)
     controls = store.get_controls("p1")
@@ -359,7 +399,7 @@ def test_controls_store_skips_run_min_dt_when_prepared_sample_exists():
     collection = BioProcessCollection(
         processes={"p1": process},
         metadata={
-            "bp_train": {
+            "bp-train": {
                 "process_order": ["p1"],
                 "processes": {
                     "p1": {

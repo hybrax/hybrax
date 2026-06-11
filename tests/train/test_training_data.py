@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import jax.numpy as jnp
@@ -18,9 +19,28 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
+from bp_format.serialization import save_process_collection_json
 
 from bp_train.prepare import prepare_artifact
+from bp_train.run_config import load_prepare_config
 from bp_train.training_data import TrainingDataStore
+
+
+def _prepare_from_collection(
+    collection: BioProcessCollection,
+    tmp_path: Path,
+    output_json: Path,
+    *,
+    custom_py: Path | None = None,
+) -> None:
+    raw_json = tmp_path / f"{output_json.stem}-raw.json"
+    config_json = tmp_path / f"{output_json.stem}-config.json"
+    save_process_collection_json(collection, raw_json)
+    config: dict[str, object] = {"prepare": {"raw_input": str(raw_json)}}
+    if custom_py is not None:
+        config["custom_py"] = str(custom_py)
+    config_json.write_text(json.dumps(config), encoding="utf-8")
+    prepare_artifact(load_prepare_config(config_json), output_json)
 
 
 def _make_two_process_collection() -> BioProcessCollection:
@@ -176,7 +196,9 @@ def _prepare_collection(tmp_path: Path) -> Path:
     custom_py = tmp_path / "custom.py"
     _write_custom(custom_py)
     output = tmp_path / "prepared.json"
-    prepare_artifact(_make_two_process_collection(), output, custom_py=custom_py)
+    _prepare_from_collection(
+        _make_two_process_collection(), tmp_path, output, custom_py=custom_py
+    )
     return output
 
 
@@ -353,7 +375,7 @@ def test_training_data_store_rejects_inconsistent_target_set(tmp_path):
     custom_py = tmp_path / "custom.py"
     _write_custom(custom_py)
     prepared_json = tmp_path / "prepared.json"
-    prepare_artifact(collection, prepared_json, custom_py=custom_py)
+    _prepare_from_collection(collection, tmp_path, prepared_json, custom_py=custom_py)
 
     with pytest.raises(
         ValueError,
@@ -384,7 +406,7 @@ def test_training_data_store_rejects_inconsistent_target_order(tmp_path):
         encoding="utf-8",
     )
     prepared_json = tmp_path / "prepared.json"
-    prepare_artifact(collection, prepared_json, custom_py=custom_py)
+    _prepare_from_collection(collection, tmp_path, prepared_json, custom_py=custom_py)
 
     with pytest.raises(
         ValueError,

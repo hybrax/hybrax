@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from bp_train.utils import load_custom_module
+
+_FROZEN = ConfigDict(extra="forbid", frozen=True)
+_ALLOWED_TOP_LEVEL = {"data", "custom_py", "train", "solver", "prepare", "custom"}
+_COMMAND_SECTIONS = {
+    "prepare": {"prepare", "custom_py", "custom"},
+    "train": {"data", "train", "solver", "custom_py", "custom"},
+}
+
+
+class ConfigBase(BaseModel):
+    model_config = _FROZEN
+
+
+class DataConfig(ConfigBase):
+    prepared: Path
+    processes: tuple[str, ...] | None = None
+    targets: tuple[str, ...] | None = None
+    target_source: Literal[
+        "process_variables",
+        "reactor_components",
+        "auto",
+    ] = "auto"
+
+
+class TrainConfig(ConfigBase):
+    steps: int = Field(50, gt=0)
+    seed: int = 0
+    optimizer: Literal["adam", "sgd"] = "adam"
+    learning_rate: float = Field(1e-3, gt=0)
+    grad_clip_norm: float = Field(1000.0, ge=0)
+    batch_size: int | None = Field(None, gt=0)
+    shuffle: bool = True
+    batch_seed: int | None = None
+
+
+class SolverConfig(ConfigBase):
+    max_steps: int = Field(2048, gt=0)
+    rtol: float = Field(1e-5, gt=0)
+    atol: float = Field(1e-7, gt=0)
+    jump_ts: bool = True
+
+
+class PrepareConfig(ConfigBase):
+    raw_input: Path
+    case_study: str | None = None
+    strict_bp_format_validation: bool = False
+    required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
+    require_consistent_controls: bool = True
+    bolus_run_min_dt: float | None = Field(None, gt=0)
+    initial_grid_points: int = Field(16, gt=0)
+    max_rel_error: float = Field(1e-4, gt=0)
+    max_refinement_rounds: int = Field(8, ge=0)
+    process_rename_map: dict[str, str] = Field(default_factory=dict)
+
+
+class RunConfig(ConfigBase):
+    data: DataConfig | None = None
+    custom_py: Path | None = None
+    train: TrainConfig = Field(default_factory=TrainConfig)
+    solver: SolverConfig = Field(default_factory=SolverConfig)
+    prepare: PrepareConfig | None = None
+    custom: Any | None = None
+
+
+class DefaultCustomConfig(BaseModel):
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+
+@dataclass(frozen=True)
+class LoadedRunConfig:
+    config: RunConfig
+    custom_module: ModuleType | None
+    custom_py_sha256: str | None
+
+
+def load_prepare_config(config_path: str | Path) -> LoadedRunConfig:
+    return load_run_config(config_path, command="prepare")
+
+
+def load_train_config(config_path: str | Path) -> LoadedRunConfig:
+    return load_run_config(config_path, command="train")
+
+
+def load_run_config(
+    config_path: str | Path, *, command: Literal["prepare", "train"]
+) -> LoadedRunConfig:
+    path = Path(config_path)
+    raw = _read_raw_config(path)
+    raw_custom = raw.get("custom")
+    _validate_top_level(raw)
+    _validate_raw_custom(raw_custom)
+
+    base_dir = path.parent.resolve()
+    view = _command_view(raw, command=command)
+    config = RunConfig.model_validate(view)
+    _validate_required_sections(config, command=command)
+    config = _resolve_config_paths(config, base_dir=base_dir)
+
+    custom_module, custom_py_sha256 = _load_custom_module_and_hash(config.custom_py)
+    resolved_custom = _resolve_custom(raw_custom, config, custom_module)
+    config = config.model_copy(update={"custom": resolved_custom})
+    return LoadedRunConfig(
+        config=config,
+        custom_module=custom_module,
+        custom_py_sha256=custom_py_sha256,
+    )
+
+
+def _read_raw_config(path: Path) -> dict[str, Any]:
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        raise TypeError("run config must be a JSON object")
+    return raw
+
+
+def _validate_top_level(raw: dict[str, Any]) -> None:
+    unknown = sorted(set(raw) - _ALLOWED_TOP_LEVEL)
+    if unknown:
+        keys = ", ".join(unknown)
+        raise ValueError(f"unknown top-level config key(s): {keys}")
+
+
+def _validate_raw_custom(raw_custom: Any) -> None:
+    if raw_custom is not None and not isinstance(raw_custom, dict):
+        raise TypeError("config custom section must be a JSON object or null")
+
+
+def _command_view(
+    raw: dict[str, Any],
+    *,
+    command: Literal["prepare", "train"],
+) -> dict[str, Any]:
+    sections = _COMMAND_SECTIONS[command]
+    view = {key: value for key, value in raw.items() if key in sections}
+    view["custom"] = None
+    return view
+
+
+def _resolve_config_paths(config: RunConfig, *, base_dir: Path) -> RunConfig:
+    updates: dict[str, Any] = {}
+    if config.custom_py is not None:
+        updates["custom_py"] = _resolve_path(config.custom_py, base_dir=base_dir)
+    if config.data is not None:
+        updates["data"] = config.data.model_copy(
+            update={"prepared": _resolve_path(config.data.prepared, base_dir=base_dir)}
+        )
+    if config.prepare is not None:
+        updates["prepare"] = config.prepare.model_copy(
+            update={
+                "raw_input": _resolve_path(
+                    config.prepare.raw_input,
+                    base_dir=base_dir,
+                )
+            }
+        )
+    if not updates:
+        return config
+    return config.model_copy(update=updates)
+
+
+def _resolve_path(path: Path, *, base_dir: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return (base_dir / path).resolve()
+
+
+def _validate_required_sections(
+    config: RunConfig, *, command: Literal["prepare", "train"]
+) -> None:
+    if command == "prepare" and config.prepare is None:
+        raise ValueError("prepare command requires a prepare config section")
+    if command == "train" and config.data is None:
+        raise ValueError("train command requires a data config section")
+
+
+def _load_custom_module_and_hash(
+    custom_py: Path | None,
+) -> tuple[ModuleType | None, str | None]:
+    if custom_py is None:
+        return None, None
+    custom_bytes = custom_py.read_bytes()
+    custom_module = load_custom_module(custom_py)
+    return custom_module, hashlib.sha256(custom_bytes).hexdigest()
+
+
+def _resolve_custom(
+    raw_custom: dict[str, Any] | None,
+    config: RunConfig,
+    custom_module: ModuleType | None,
+) -> Any | None:
+    if custom_module is not None and hasattr(custom_module, "get_custom_config"):
+        return custom_module.get_custom_config(raw_custom, config)
+    if raw_custom is None:
+        return None
+    return DefaultCustomConfig.model_validate(raw_custom)

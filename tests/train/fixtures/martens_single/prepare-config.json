@@ -1,0 +1,7 @@
+{
+  "custom_py": "custom.py",
+  "prepare": {
+    "raw_input": "data.json",
+    "bolus_run_min_dt": 0.01
+  }
+}

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 
 from bp_format.mechanistic import build_rhs_ode
 
-from .controls import build_sample_acc_source_default, run_min_dt_from_config
+from .controls import build_sample_acc_source_default
 from .model_api import (
     LossInputs,
     LossOutputs,
@@ -18,15 +18,14 @@ from .model_api import (
     UserReactionModule,
     trainable_field,
 )
+from .run_config import RunConfig
 
 
-def default_transform_process_collection(collection, config: dict[str, Any]):
-    """Default prep hook for process-collection transformation.
-
-    Supports optional process key renaming via:
-    `config["process_rename_map"] = {old_name: new_name}`.
-    """
-    rename_map = config.get("process_rename_map")
+def default_transform_process_collection(collection, config: RunConfig):
+    """Default prep hook for process-collection transformation."""
+    if config.prepare is None:
+        raise ValueError("prepare config section is required")
+    rename_map = config.prepare.process_rename_map
     if rename_map is None:
         return collection
     if not isinstance(rename_map, dict):
@@ -50,13 +49,15 @@ def default_build_sample_acc_series(
     process,
     process_name,
     collection_metadata,
-    config,
+    config: RunConfig,
 ):
     """Default prep hook for sampled-volume control construction."""
     del process_name, collection_metadata
+    if config.prepare is None:
+        raise ValueError("prepare config section is required")
     return build_sample_acc_source_default(
         process,
-        run_min_dt=run_min_dt_from_config(config),
+        run_min_dt=config.prepare.bolus_run_min_dt,
     )
 
 
@@ -99,7 +100,7 @@ def default_build_reaction_module(
     *,
     target_names: list[str],
     process_names: list[str],
-    config: dict[str, Any],
+    config: RunConfig,
     seed: int,
     collection: Any,
     **scale_kwargs: Any,
@@ -186,7 +187,7 @@ def default_build_loss_module(
     *,
     target_names: list[str],
     process_names: list[str],
-    config: dict[str, Any],
+    config: RunConfig,
     seed: int,
     collection: Any,
 ) -> UserLossModule:

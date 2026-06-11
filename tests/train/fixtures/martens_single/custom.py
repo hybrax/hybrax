@@ -35,12 +35,6 @@ from bp_train import (
 from bp_train.controls_store import ControlsStore
 
 
-CONFIG = {
-    # Bolus events become triangle ramps of this width (hours).
-    "bolus_run_min_dt": 0.01,
-}
-
-
 # ---------------------------------------------------------------------------
 # Reaction module: plain MLP -> all BiologicalOde + modeled-feed rates
 # ---------------------------------------------------------------------------

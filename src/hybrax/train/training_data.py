@@ -398,13 +398,9 @@ class TrainingDataStore(eqx.Module):
         *,
         target_variable_order: list[str] | None = None,
         target_source: str = TARGET_SOURCE_PROCESS_VARIABLES,
-        metadata_namespace: str = "bp_train",
     ) -> TrainingDataStore:
         """Build training-data tensors from a prepared process collection."""
-        controls_store = ControlsStore.from_collection(
-            collection,
-            metadata_namespace=metadata_namespace,
-        )
+        controls_store = ControlsStore.from_collection(collection)
         process_order = list(controls_store.process_order)
 
         target_order = list(target_variable_order) if target_variable_order else None
@@ -621,7 +617,6 @@ class TrainingDataStore(eqx.Module):
         *,
         target_variable_order: list[str] | None = None,
         target_source: str = TARGET_SOURCE_PROCESS_VARIABLES,
-        metadata_namespace: str = "bp_train",
     ) -> TrainingDataStore:
         """Load a prepared JSON artifact and construct a training-data store."""
         collection = load_process_collection_json(Path(prepared_json))
@@ -629,7 +624,6 @@ class TrainingDataStore(eqx.Module):
             collection,
             target_variable_order=target_variable_order,
             target_source=target_source,
-            metadata_namespace=metadata_namespace,
         )
 
     def get_process(self, process: str | int) -> PerProcessTrainingData:

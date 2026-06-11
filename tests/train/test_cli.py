@@ -31,169 +31,126 @@ def _stub_forward_result() -> ForwardResult:
     )
 
 
+def _stub_train_result() -> TrainHarnessResult:
+    return TrainHarnessResult(
+        trained_wrapper=None,
+        mean_loss_by_step=(1.0, 0.5),
+        sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
+        batch_process_names_by_step=(("p1",), ("p1",)),
+        per_process_loss_by_step=((1.0,), (0.5,)),
+        compile_warmup_seconds=0.1,
+        step_time_seconds=(0.01, 0.01),
+        train_step_input_signature=(("array", (1,), "int32"),),
+        train_step_rebuild_count=1,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _run_each_test_in_tmp_cwd(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
 
 
-def test_prepare_cli_dispatches_to_prepare_artifact(monkeypatch):
+def test_prepare_cli_dispatches_loaded_config(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"prepare": {"raw_input": "raw.json"}}))
 
-    def fake_prepare_artifact(
-        *, input_json, output_json, custom_py, config, case_study=None
-    ):
-        captured["input_json"] = input_json
+    def fake_prepare_artifact(loaded_config, *, output_json):
+        captured["loaded_config"] = loaded_config
         captured["output_json"] = output_json
-        captured["custom_py"] = custom_py
-        captured["config"] = config
 
     monkeypatch.setattr(cli, "prepare_artifact", fake_prepare_artifact)
 
     exit_code = cli.main(
-        [
-            "prepare",
-            "--input",
-            "input.json",
-            "--output",
-            "output.json",
-            "--custom",
-            "custom.py",
-        ]
+        ["prepare", "--config", str(config_path), "--output", "prepared.json"]
     )
 
     assert exit_code == 0
-    assert captured == {
-        "input_json": "input.json",
-        "output_json": "output.json",
-        "custom_py": "custom.py",
-        "config": None,
-    }
+    loaded = captured["loaded_config"]
+    assert loaded.config.prepare.raw_input == tmp_path / "raw.json"
+    assert captured["output_json"] == "prepared.json"
 
 
-def test_prepare_cli_loads_config_json(monkeypatch, tmp_path: Path):
+@pytest.mark.parametrize("flag", ["--input", "--custom", "--case-study"])
+def test_prepare_cli_rejects_legacy_experiment_flags(flag: str) -> None:
+    args = ["prepare", "--config", "config.json", "--output", "prepared.json"]
+    args.extend([flag, "value"])
+
+    with pytest.raises(SystemExit):
+        cli.main(args)
+
+
+def test_train_cli_maps_run_config_to_harness(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
-    config_path = tmp_path / "prepare-config.json"
+    prepared = tmp_path / "prepared.json"
+    config_path = tmp_path / "config.json"
     config_path.write_text(
-        json.dumps({"required_control_names": ["carbon_feed", "temperature"]}),
-        encoding="utf-8",
+        json.dumps(
+            {
+                "data": {
+                    "prepared": "prepared.json",
+                    "processes": ["p1", "p2"],
+                    "targets": ["X", "P"],
+                    "target_source": "reactor_components",
+                },
+                "train": {
+                    "steps": 7,
+                    "seed": 12,
+                    "optimizer": "sgd",
+                    "learning_rate": 0.02,
+                    "grad_clip_norm": 3.0,
+                    "batch_size": 4,
+                    "shuffle": False,
+                    "batch_seed": 99,
+                },
+                "solver": {
+                    "max_steps": 250000,
+                    "rtol": 1e-4,
+                    "atol": 1e-6,
+                    "jump_ts": False,
+                },
+            }
+        )
     )
-
-    def fake_prepare_artifact(
-        *, input_json, output_json, custom_py, config, case_study=None
-    ):
-        captured["input_json"] = input_json
-        captured["output_json"] = output_json
-        captured["custom_py"] = custom_py
-        captured["config"] = config
-
-    monkeypatch.setattr(cli, "prepare_artifact", fake_prepare_artifact)
-
-    exit_code = cli.main(
-        [
-            "prepare",
-            "--input",
-            "input.json",
-            "--output",
-            "output.json",
-            "--config",
-            str(config_path),
-        ]
-    )
-
-    assert exit_code == 0
-    assert captured == {
-        "input_json": "input.json",
-        "output_json": "output.json",
-        "custom_py": None,
-        "config": {"required_control_names": ["carbon_feed", "temperature"]},
-    }
-
-
-def test_train_cli_dispatches_to_train_harness(monkeypatch):
-    captured: dict[str, object] = {}
-
-    sentinel_collection = _DummyCollection()
 
     def fake_load(json_path):
         captured["loaded_path"] = json_path
-        return sentinel_collection
+        return _DummyCollection()
 
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+    def fake_train_from_collection(collection, *, config, custom_module, run_config):
         captured["collection"] = collection
         captured["config"] = config
-        captured["custom_py"] = custom_py
-        captured["runtime_config"] = runtime_config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",), ("p1",)),
-            per_process_loss_by_step=((1.0,), (0.5,)),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01, 0.01),
-            train_step_input_signature=(("array", (1,), "int32"),),
-            train_step_rebuild_count=1,
-        )
+        captured["custom_module"] = custom_module
+        captured["run_config"] = run_config
+        return _stub_train_result()
 
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
-    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-
-    # Stub out model saving (trained_wrapper is None in this test)
+    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
     monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
+    monkeypatch.setattr(cli, "save_model_metadata", lambda path, meta: None)
+    monkeypatch.setattr(
+        cli,
+        "_write_train_results",
+        lambda **kwargs: captured.setdefault("write_kwargs", kwargs),
+    )
 
     exit_code = cli.main(
         [
             "train",
-            "--input",
-            "prepared.json",
-            "--custom",
-            "custom.py",
-            "--process",
-            "p1,p2",
-            "--process",
-            "p3",
-            "--target",
-            "X",
-            "--target",
-            "P,G",
-            "--target-source",
-            "reactor_components",
-            "--steps",
-            "7",
-            "--batch-size",
-            "4",
-            "--batch-seed",
-            "99",
-            "--optimizer",
-            "sgd",
-            "--no-shuffle-batches",
-            "--learning-rate",
-            "0.02",
-            "--seed",
-            "12",
+            "--config",
+            str(config_path),
             "--log-every",
             "3",
-            "--solver-max-steps",
-            "250000",
-            "--solver-rtol",
-            "1e-4",
-            "--solver-atol",
-            "1e-6",
-            "--no-jump-ts",
+            "--metrics-csv",
+            "metrics.csv",
             "--no-plot",
         ]
     )
 
     assert exit_code == 0
     cfg = captured["config"]
-    assert cfg.process_names == ("p1", "p2", "p3")
-    assert cfg.target_variable_order == ("X", "P", "G")
+    assert cfg.process_names == ("p1", "p2")
+    assert cfg.target_variable_order == ("X", "P")
     assert cfg.target_source == "reactor_components"
     assert cfg.steps == 7
     assert cfg.batch_size == 4
@@ -201,364 +158,101 @@ def test_train_cli_dispatches_to_train_harness(monkeypatch):
     assert cfg.shuffle_batches is False
     assert cfg.optimizer_name == "sgd"
     assert cfg.learning_rate == 0.02
+    assert cfg.grad_clip_norm == 3.0
     assert cfg.seed == 12
     assert cfg.log_every == 3
     assert cfg.solver_max_steps == 250000
     assert cfg.solver_rtol == 1e-4
     assert cfg.solver_atol == 1e-6
     assert cfg.solver_use_jump_ts is False
-    assert captured["collection"] is sentinel_collection
-    assert str(captured["loaded_path"]) == "prepared.json"
-    assert captured["custom_py"] == "custom.py"
+    assert cfg.metrics_csv == "metrics.csv"
+    assert captured["loaded_path"] == prepared
+    assert captured["custom_module"] is None
+    assert captured["run_config"].data.prepared == prepared
+    assert captured["write_kwargs"]["run_config"] is captured["run_config"]
 
 
-def test_train_cli_plots_only_selected_processes(monkeypatch):
+def test_train_cli_writes_custom_py_sha256_to_sidecar(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
-
-    sentinel_collection = _DummyCollection()
-
-    def fake_load(json_path):
-        captured["loaded_path"] = json_path
-        return sentinel_collection
-
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
-        captured["config"] = config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",), ("p1",)),
-            per_process_loss_by_step=((1.0,), (0.5,)),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01, 0.01),
-            train_step_input_signature=(("array", (1,), "int32"),),
-            train_step_rebuild_count=1,
+    custom_py = tmp_path / "custom.py"
+    custom_py.write_text("VALUE = 1\n")
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "data": {"prepared": "prepared.json"},
+                "custom_py": "custom.py",
+            }
         )
-
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
     )
 
-    def fake_plot_training_results(
-        result,
-        collection,
-        store,
-        output_dir,
-        process_names=None,
-        *,
-        solver_max_steps=4096,
-        solver_rtol=1e-3,
-        solver_atol=1e-5,
-        solver_use_jump_ts=True,
-        timeseries_csv_path=None,
-    ):
-        del result, collection, store, output_dir
-        del solver_max_steps, solver_rtol, solver_atol
-        captured["plot_process_names"] = process_names
-        captured["predictions_csv"] = timeseries_csv_path
-        captured["solver_use_jump_ts"] = solver_use_jump_ts
-
-    monkeypatch.setattr(cli, "plot_training_results", fake_plot_training_results)
-
-    exit_code = cli.main(
-        [
-            "train",
-            "--input",
-            "prepared.json",
-            "--process",
-            "p1",
-            "--process",
-            "p3",
-            "--steps",
-            "2",
-            "--no-jump-ts",
-            "--output-dir",
-            "out",
-            "--plot",
-        ]
-    )
-
-    assert exit_code == 0
-    assert captured["plot_process_names"] == ("p1", "p3")
-    assert str(captured["predictions_csv"]).endswith("out/predictions.csv")
-    assert captured["solver_use_jump_ts"] is False
-
-
-def test_train_cli_writes_losses_and_predictions_even_with_no_plot(monkeypatch):
-    captured: dict[str, object] = {}
-
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: _DummyCollection())
     monkeypatch.setattr(
         cli,
-        "load_process_collection_json",
-        lambda _p: _DummyCollection(),
+        "train_from_collection",
+        lambda collection, *, config, custom_module, run_config: _stub_train_result(),
     )
-    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
-    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
-
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
-        del collection, config, custom_py, runtime_config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={},
-            batch_process_names_by_step=(("p1",),),
-            per_process_loss_by_step=((0.5,),),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01,),
-            train_step_input_signature=(),
-            train_step_rebuild_count=0,
-        )
-
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-
-    def fake_write_loss_csv(rows, path):
-        captured["loss_path"] = path
-        captured["loss_rows"] = rows
-
-    def fake_plot_process_simulations(*args, **kwargs):
-        captured["render_plots"] = kwargs.get("render_plots")
-        captured["timeseries_csv_path"] = kwargs.get("timeseries_csv_path")
-        captured["solver_use_jump_ts"] = kwargs.get("solver_use_jump_ts")
-
-    monkeypatch.setattr(cli, "_write_loss_csv", fake_write_loss_csv)
-    monkeypatch.setattr(cli, "plot_process_simulations", fake_plot_process_simulations)
-
-    exit_code = cli.main(
-        [
-            "train",
-            "--input",
-            "prepared.json",
-            "--output-dir",
-            "out",
-            "--no-jump-ts",
-            "--no-plot",
-        ]
-    )
-
-    assert exit_code == 0
-    assert str(captured["loss_path"]).endswith("out/losses.csv")
-    assert captured["loss_rows"][0][0] == "process"
-    assert captured["render_plots"] is False
-    assert str(captured["timeseries_csv_path"]).endswith("out/predictions.csv")
-    assert captured["solver_use_jump_ts"] is False
-
-
-def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):
-    """CLI defaults with no flags set must match `TrainHarnessConfig()` defaults."""
-    captured: dict[str, object] = {}
-
-    def fake_load(json_path):
-        return _DummyCollection()
-
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
-        captured["config"] = config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",), ("p1",)),
-            per_process_loss_by_step=((1.0,), (0.5,)),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01, 0.01),
-            train_step_input_signature=(("array", (1,), "int32"),),
-            train_step_rebuild_count=1,
-        )
-
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-
-    cli.main(["train", "--input", "prepared.json", "--no-plot"])
-
-    cfg = captured["config"]
-    d = TrainHarnessConfig()
-    assert cfg.steps == d.steps
-    assert cfg.batch_size == d.batch_size
-    assert cfg.batch_seed == d.batch_seed
-    assert cfg.optimizer_name == d.optimizer_name
-    assert cfg.shuffle_batches == d.shuffle_batches
-    assert cfg.learning_rate == d.learning_rate
-    assert cfg.grad_clip_norm == d.grad_clip_norm
-    assert cfg.seed == d.seed
-    assert cfg.log_every == d.log_every
-    assert cfg.solver_max_steps == d.solver_max_steps
-    assert cfg.solver_rtol == d.solver_rtol
-    assert cfg.solver_atol == d.solver_atol
-    assert cfg.solver_use_jump_ts == d.solver_use_jump_ts
-    assert cfg.log_process_losses == d.log_process_losses
-    assert cfg.metrics_csv == d.metrics_csv
-    assert cfg.metrics_jsonl == d.metrics_jsonl
-    assert cfg.log_decimals == d.log_decimals
-    assert cfg.log_header_every == d.log_header_every
-
-
-def test_train_cli_uses_config_targets_when_target_flag_missing(monkeypatch):
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        cli, "load_process_collection_json", lambda _p: _DummyCollection()
-    )
     monkeypatch.setattr(
         cli,
-        "load_custom_module",
-        lambda path: {"custom_path": path},
+        "save_model_metadata",
+        lambda path, meta: captured.update({"meta_path": path, "meta": meta}),
     )
-    monkeypatch.setattr(
-        cli,
-        "resolve_config",
-        lambda _module, _config: {"target_variable_order": ["X", "P", "G"]},
-    )
+    monkeypatch.setattr(cli, "_write_train_results", lambda **kwargs: _stub_forward_result())
 
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
-        del collection, custom_py, runtime_config
-        captured["config"] = config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",), ("p1",)),
-            per_process_loss_by_step=((1.0,), (0.5,)),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01, 0.01),
-            train_step_input_signature=(("array", (1,), "int32"),),
-            train_step_rebuild_count=1,
-        )
+    cli.main(["train", "--config", str(config_path), "--no-plot"])
 
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-
-    exit_code = cli.main(
-        [
-            "train",
-            "--input",
-            "prepared.json",
-            "--custom",
-            "custom.py",
-            "--no-plot",
-        ]
-    )
-
-    assert exit_code == 0
-    cfg = captured["config"]
-    assert cfg.target_variable_order == ("X", "P", "G")
+    assert captured["meta"]["custom_py_sha256"] is not None
+    assert captured["meta"]["custom_py"] is not None
 
 
-def test_train_cli_uses_none_targets_when_cli_and_config_missing(monkeypatch):
-    captured: dict[str, object] = {}
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--input",
+        "--custom",
+        "--process",
+        "--target",
+        "--target-source",
+        "--steps",
+        "--seed",
+        "--batch-seed",
+        "--learning-rate",
+        "--optimizer",
+        "--batch-size",
+        "--grad-clip-norm",
+        "--solver-max-steps",
+        "--solver-rtol",
+        "--solver-atol",
+    ],
+)
+def test_train_cli_rejects_removed_experiment_flags(flag: str) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["train", "--config", "config.json", flag, "value"])
 
-    monkeypatch.setattr(
-        cli, "load_process_collection_json", lambda _p: _DummyCollection()
-    )
-    monkeypatch.setattr(
-        cli,
-        "load_custom_module",
-        lambda _path: object(),
-    )
-    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
 
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
-        del collection, custom_py, runtime_config
-        captured["config"] = config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",), ("p1",)),
-            per_process_loss_by_step=((1.0,), (0.5,)),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01, 0.01),
-            train_step_input_signature=(("array", (1,), "int32"),),
-            train_step_rebuild_count=1,
-        )
+@pytest.mark.parametrize("flag", ["--shuffle-batches", "--no-shuffle-batches", "--no-jump-ts"])
+def test_train_cli_rejects_removed_boolean_experiment_flags(flag: str) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["train", "--config", "config.json", flag])
 
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
 
-    exit_code = cli.main(
-        [
-            "train",
-            "--input",
-            "prepared.json",
-            "--custom",
-            "custom.py",
-            "--no-plot",
-        ]
+def test_format_loss_table_includes_split_summaries() -> None:
+    result = ForwardResult(
+        trained_wrapper=None,
+        store=_DummyStore(),
+        process_names=("p1", "p2"),
+        target_names=("X",),
+        name_modeled_FVCs=(),
+        name_modeled_SVCs=(),
+        training_process_names=("p1",),
+        per_process_total_loss={"p1": 1.0, "p2": 3.0},
+        per_process_per_target_loss={"p1": (1.0,), "p2": (3.0,)},
     )
 
-    assert exit_code == 0
-    cfg = captured["config"]
-    assert cfg.target_variable_order is None
+    table, rows = cli._format_loss_table(result)
 
-
-def test_train_cli_target_flag_overrides_config_targets(monkeypatch):
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        cli, "load_process_collection_json", lambda _p: _DummyCollection()
-    )
-    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
-    monkeypatch.setattr(
-        cli,
-        "resolve_config",
-        lambda _module, _config: {"target_variable_order": ["X", "P", "G"]},
-    )
-
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
-        del collection, custom_py, runtime_config
-        captured["config"] = config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",), ("p1",)),
-            per_process_loss_by_step=((1.0,), (0.5,)),
-            compile_warmup_seconds=0.1,
-            step_time_seconds=(0.01, 0.01),
-            train_step_input_signature=(("array", (1,), "int32"),),
-            train_step_rebuild_count=1,
-        )
-
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-
-    exit_code = cli.main(
-        [
-            "train",
-            "--input",
-            "prepared.json",
-            "--custom",
-            "custom.py",
-            "--target",
-            "A,B",
-            "--target",
-            "C",
-            "--no-plot",
-        ]
-    )
-
-    assert exit_code == 0
-    cfg = captured["config"]
-    assert cfg.target_variable_order == ("A", "B", "C")
+    assert "train (mean)" in table
+    assert "holdout (mean)" in table
+    assert rows[-2][0] == "train (mean)"
+    assert rows[-1][0] == "holdout (mean)"

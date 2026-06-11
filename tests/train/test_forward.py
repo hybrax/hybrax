@@ -150,7 +150,8 @@ def test_train_cli_writes_sidecar_with_solver_and_training_context(
     def fake_load(_path):
         return sentinel_collection
 
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+    def fake_train_from_collection(collection, *, config, custom_module, run_config):
+        del custom_module, run_config
         return TrainHarnessResult(
             trained_wrapper=None,
             mean_loss_by_step=(1.0, 0.5),
@@ -172,21 +173,28 @@ def test_train_cli_writes_sidecar_with_solver_and_training_context(
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     output_dir = tmp_path / "out"
+    config_path = tmp_path / "train-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "prepared": "prepared.json",
+                    "processes": ["p1", "p2"],
+                    "targets": ["X"],
+                },
+                "solver": {
+                    "max_steps": 1234,
+                    "rtol": 1e-4,
+                    "atol": 1e-6,
+                },
+            }
+        )
+    )
     exit_code = cli.main(
         [
             "train",
-            "--input",
-            "prepared.json",
-            "--process",
-            "p1,p2",
-            "--target",
-            "X",
-            "--solver-rtol",
-            "1e-4",
-            "--solver-atol",
-            "1e-6",
-            "--solver-max-steps",
-            "1234",
+            "--config",
+            str(config_path),
             "--output-dir",
             str(output_dir),
             "--no-plot",
@@ -216,7 +224,8 @@ def test_train_cli_sidecar_defaults_to_none_training_processes_when_not_set(
     def fake_load(_path):
         return _make_fake_collection()
 
-    def fake_train_from_collection(collection, *, config, custom_py, runtime_config):
+    def fake_train_from_collection(collection, *, config, custom_module, run_config):
+        del custom_module, run_config
         return TrainHarnessResult(
             trained_wrapper=None,
             mean_loss_by_step=(1.0,),
@@ -238,11 +247,13 @@ def test_train_cli_sidecar_defaults_to_none_training_processes_when_not_set(
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     output_dir = tmp_path / "out"
+    config_path = tmp_path / "train-config.json"
+    config_path.write_text(json.dumps({"data": {"prepared": "prepared.json"}}))
     cli.main(
         [
             "train",
-            "--input",
-            "prepared.json",
+            "--config",
+            str(config_path),
             "--output-dir",
             str(output_dir),
             "--no-plot",
@@ -636,44 +647,51 @@ FIXTURE_CUSTOM = FIXTURE_DIR / "custom.py"
 def test_forward_end_to_end_on_fixture(tmp_path: Path):
     """Full round-trip on the tests/ fixture: prepare -> train 3 -> forward."""
     prepared = tmp_path / "prepared.json"
+    prepare_config = tmp_path / "prepare-config.json"
+    prepare_config.write_text(
+        json.dumps(
+            {
+                "prepare": {"raw_input": str(FIXTURE_DATA)},
+                "custom_py": str(FIXTURE_CUSTOM),
+            }
+        )
+    )
     assert (
         cli.main(
             [
                 "prepare",
-                "--input",
-                str(FIXTURE_DATA),
+                "--config",
+                str(prepare_config),
                 "--output",
                 str(prepared),
-                "--custom",
-                str(FIXTURE_CUSTOM),
             ]
         )
         == 0
     )
 
     out_dir = tmp_path / "out"
+    train_config = tmp_path / "train-config.json"
+    train_config.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "prepared": str(prepared),
+                    "target_source": "reactor_components",
+                },
+                "custom_py": str(FIXTURE_CUSTOM),
+                "train": {"steps": 3, "seed": 42},
+                "solver": {"max_steps": 2048, "rtol": 1e-3, "atol": 1e-5},
+            }
+        )
+    )
     assert (
         cli.main(
             [
                 "train",
-                "--input",
-                str(prepared),
-                "--custom",
-                str(FIXTURE_CUSTOM),
-                "--target-source",
-                "reactor_components",
-                "--steps",
-                "3",
+                "--config",
+                str(train_config),
                 "--log-every",
                 "3",
-                "--seed",
-                "42",
-                "--solver-max-steps",
-                "2048",
-                "--solver-rtol",
-                "1e-3",
-                "--solver-atol",
-                "1e-5",
                 "--output-dir",
                 str(out_dir),
                 "--no-plot",

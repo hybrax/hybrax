@@ -44,6 +44,7 @@ from .training_data import (
     TARGET_SOURCE_AUTO,
     TrainingDataStore,
 )
+from .run_config import RunConfig
 from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import export_predictions_csv
@@ -266,7 +267,7 @@ def _build_reaction_module(
     store: TrainingDataStore,
     config: TrainHarnessConfig,
     custom_module,
-    custom_config: dict[str, Any],
+    custom_config: Any,
     collection: BioProcessCollection,
     scale_kwargs: dict[str, Any],
 ) -> UserReactionModule:
@@ -307,7 +308,7 @@ def _build_loss_module(
     store: TrainingDataStore,
     config: TrainHarnessConfig,
     custom_module,
-    custom_config: dict[str, Any],
+    custom_config: Any,
     collection: BioProcessCollection,
 ) -> UserLossModule:
     hook = get_hook(custom_module, "build_loss_module", default_build_loss_module)
@@ -330,7 +331,7 @@ def _resolve_estimated_scales(
     custom_module,
     collection: BioProcessCollection,
     store: TrainingDataStore,
-    custom_cfg: dict[str, Any],
+    custom_cfg: Any,
 ) -> dict[str, Any]:
     """Call the optional ``estimate_all_scales`` hook and unpack into kwargs.
 
@@ -484,6 +485,8 @@ def forward_from_collection(
     custom_py: str | Path | None = None,
     runtime_config: dict[str, Any] | None = None,
     training_process_names: tuple[str, ...] | None = None,
+    run_config: RunConfig | None = None,
+    custom_module: Any | None = None,
 ) -> ForwardResult:
     """Load a trained wrapper and run one forward pass per selected process.
 
@@ -495,9 +498,18 @@ def forward_from_collection(
     from .postprocessing import load_trained_wrapper
 
     cfg = config or ForwardConfig()
-    custom_module = load_custom_module(custom_py)
-    custom_cfg = resolve_config(custom_module, runtime_config)
-    config_targets = custom_cfg.get("target_variable_order")
+    if custom_module is None:
+        custom_module = load_custom_module(custom_py)
+    custom_cfg = (
+        run_config
+        if run_config is not None
+        else resolve_config(custom_module, runtime_config)
+    )
+    config_targets = None
+    if run_config is not None and run_config.data is not None:
+        config_targets = run_config.data.targets
+    elif isinstance(custom_cfg, dict):
+        config_targets = custom_cfg.get("target_variable_order")
     if cfg.target_variable_order is not None:
         effective_target_order = cfg.target_variable_order
     elif config_targets:
@@ -526,6 +538,7 @@ def forward_from_collection(
         process_names=hook_process_names,
         target_variable_order=effective_target_order,
         target_source=cfg.target_source,
+        seed=run_config.train.seed if run_config is not None else 0,
     )
     # `estimate_all_scales` runs FIRST: its output is plumbed into the
     # reaction-module constructor as 13 SCALE_* kwargs (the module is the
@@ -1066,6 +1079,8 @@ def train_from_collection(
     config: TrainHarnessConfig | None = None,
     custom_py: str | Path | None = None,
     runtime_config: dict[str, Any] | None = None,
+    run_config: RunConfig | None = None,
+    custom_module: Any | None = None,
 ) -> TrainHarnessResult:
     """Train from an already-loaded process collection with optional custom hooks.
 
@@ -1076,9 +1091,18 @@ def train_from_collection(
     collection and delegates here.
     """
     cfg = config or TrainHarnessConfig()
-    custom_module = load_custom_module(custom_py)
-    custom_cfg = resolve_config(custom_module, runtime_config)
-    config_targets = custom_cfg.get("target_variable_order")
+    if custom_module is None:
+        custom_module = load_custom_module(custom_py)
+    custom_cfg = (
+        run_config
+        if run_config is not None
+        else resolve_config(custom_module, runtime_config)
+    )
+    config_targets = None
+    if run_config is not None and run_config.data is not None:
+        config_targets = run_config.data.targets
+    elif isinstance(custom_cfg, dict):
+        config_targets = custom_cfg.get("target_variable_order")
     if cfg.target_variable_order is not None:
         effective_target_order = cfg.target_variable_order
     elif config_targets:
@@ -1095,10 +1119,9 @@ def train_from_collection(
             "reactor_components" if store.name_measured_RMCs else "process_variables"
         )
         warnings.warn(
-            "No target_variable_order specified in custom.py CONFIG or --target "
-            f"flag. Defaulting to target_source={_resolved_source!r} measured "
-            f"targets: {tuple(store.name_measured)}. Specify "
-            "CONFIG['target_variable_order'] in custom.py to silence this warning.",
+            "No training targets specified in run config data.targets. "
+            f"Defaulting to target_source={_resolved_source!r} measured "
+            f"targets: {tuple(store.name_measured)}.",
             stacklevel=2,
         )
     logger.info("Training targets: %s", tuple(store.name_measured))
@@ -1126,7 +1149,7 @@ def train_from_collection(
         collection=collection,
         scale_kwargs=scale_kwargs,
     )
-    # Call optional build_learning_rate hook (overrides CLI --learning-rate)
+    # Call optional build_learning_rate hook (overrides configured learning_rate).
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
     if lr_hook is not None:
         lr = lr_hook(custom_cfg, train_cfg)

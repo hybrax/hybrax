@@ -27,6 +27,7 @@ from .postprocessing import (
     save_model_metadata,
 )
 from .prepare import prepare_artifact
+from .run_config import LoadedRunConfig, load_prepare_config, load_train_config
 from .training_data import TARGET_SOURCES
 from .utils import load_custom_module, resolve_config
 
@@ -47,23 +48,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "prepare",
         help="Transform a raw bp_format process collection into a prepared artifact.",
     )
-    prepare_parser.add_argument("--input", required=True, help="Path to input JSON.")
-    prepare_parser.add_argument("--output", required=True, help="Path to output JSON.")
-    prepare_parser.add_argument(
-        "--custom",
-        help="Path to the case-study Python module with prep hooks.",
-    )
     prepare_parser.add_argument(
         "--config",
-        help="Optional JSON file with additional prepare config.",
+        required=True,
+        help="Path to prepare run config JSON.",
     )
-    prepare_parser.add_argument(
-        "--case-study",
-        help=(
-            "Case study name to extract from a BenchmarkDataset. "
-            "Defaults to the first case study."
-        ),
-    )
+    prepare_parser.add_argument("--output", required=True, help="Path to output JSON.")
     prepare_parser.set_defaults(handler=_handle_prepare)
 
     # ---- train ----
@@ -72,127 +62,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run minimal one/multi-process training from a prepared artifact.",
     )
     train_parser.add_argument(
-        "--input",
-        required=True,
-        help="Path to prepared JSON.",
-    )
-    train_parser.add_argument(
-        "--custom",
-        help="Optional custom.py path exposing build_reaction_module hooks.",
-    )
-    train_parser.add_argument(
         "--config",
-        help="Optional JSON runtime config.",
-    )
-    train_parser.add_argument(
-        "--process",
-        action="append",
-        default=[],
-        help=(
-            "Process name to include. Can be passed multiple times or as a "
-            "comma-separated list."
-        ),
-    )
-    train_parser.add_argument(
-        "--target",
-        action="append",
-        default=[],
-        help=(
-            "Target variable name to train against. Can be passed multiple times "
-            "or as a comma-separated list."
-        ),
-    )
-    train_parser.add_argument(
-        "--target-source",
-        default=train_cfg_defaults.target_source,
-        choices=sorted(TARGET_SOURCES),
-        help=(
-            "Source family for training targets: process_variables, "
-            "reactor_components, or auto."
-        ),
-    )
-    train_parser.add_argument(
-        "--steps",
-        type=int,
-        default=train_cfg_defaults.steps,
-        help="Number of training steps.",
-    )
-    train_parser.add_argument(
-        "--batch-size",
-        type=int,
-        help="Batch size. Defaults to the number of selected processes.",
-    )
-    train_parser.add_argument(
-        "--batch-seed",
-        type=int,
-        help="Seed used for batch index generation.",
-    )
-    train_parser.add_argument(
-        "--optimizer",
-        default=train_cfg_defaults.optimizer_name,
-        choices=["adam", "sgd"],
-        help="Optimizer to use for batched updates.",
-    )
-    shuffle_group = train_parser.add_mutually_exclusive_group()
-    shuffle_group.add_argument(
-        "--shuffle-batches",
-        dest="shuffle_batches",
-        action="store_true",
-        help="Shuffle selected processes when building batches.",
-    )
-    shuffle_group.add_argument(
-        "--no-shuffle-batches",
-        dest="shuffle_batches",
-        action="store_false",
-        help="Keep batch construction deterministic and round-robin.",
-    )
-    train_parser.set_defaults(shuffle_batches=train_cfg_defaults.shuffle_batches)
-    train_parser.add_argument(
-        "--learning-rate",
-        type=float,
-        default=train_cfg_defaults.learning_rate,
-        help="Learning rate (overridden by build_learning_rate hook in custom.py).",
-    )
-    train_parser.add_argument(
-        "--grad-clip-norm",
-        type=float,
-        default=train_cfg_defaults.grad_clip_norm,
-        help="Global gradient-norm clipping threshold; 0 disables clipping.",
-    )
-    train_parser.add_argument(
-        "--seed",
-        type=int,
-        default=train_cfg_defaults.seed,
-        help="Random seed for default model initialization.",
+        required=True,
+        help="Path to train run config JSON.",
     )
     train_parser.add_argument(
         "--log-every",
         type=int,
         default=train_cfg_defaults.log_every,
         help="Emit progress log every N steps.",
-    )
-    train_parser.add_argument(
-        "--solver-max-steps",
-        type=int,
-        default=train_cfg_defaults.solver_max_steps,
-        help="Maximum diffrax solver steps per simulation call.",
-    )
-    train_parser.add_argument(
-        "--solver-rtol",
-        type=float,
-        default=train_cfg_defaults.solver_rtol,
-        help="Diffrax relative tolerance.",
-    )
-    train_parser.add_argument(
-        "--solver-atol",
-        type=float,
-        default=train_cfg_defaults.solver_atol,
-        help="Diffrax absolute tolerance.",
-    )
-    train_parser.add_argument(
-        "--no-jump-ts",
-        action="store_true",
-        help="Disable passing control step boundaries as jump_ts to the solver.",
     )
     train_parser.add_argument(
         "--output-dir",
@@ -284,7 +162,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     forward_parser.add_argument(
         "--config",
-        help="Optional JSON runtime config (same as `train --config`).",
+        help="Optional legacy JSON runtime config for forward hooks.",
     )
     forward_parser.add_argument(
         "--process",
@@ -301,7 +179,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help=(
             "Target variable order override. Normally inferred from "
-            "custom.CONFIG or the sidecar."
+            "the sidecar."
         ),
     )
     forward_parser.add_argument(
@@ -557,11 +435,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _handle_prepare(args: argparse.Namespace) -> int:
     prepare_artifact(
-        input_json=args.input,
+        load_prepare_config(args.config),
         output_json=args.output,
-        custom_py=args.custom,
-        config=_load_config(args.config),
-        case_study=getattr(args, "case_study", None),
     )
     return 0
 
@@ -581,10 +456,12 @@ def _write_train_results(
     train_result: Any,
     config: TrainHarnessConfig,
     runtime_config: dict[str, Any] | None,
-    custom_py: str | None,
+    custom_py: str | Path | None,
     training_process_names: tuple[str, ...],
     render_plots: bool,
     eval_process_names: tuple[str, ...] | None = None,
+    run_config: Any | None = None,
+    custom_module: Any | None = None,
 ) -> ForwardResult:
     """Write per-run forward artifacts (losses.csv, predictions.csv, plots).
 
@@ -617,6 +494,8 @@ def _write_train_results(
         custom_py=custom_py,
         runtime_config=runtime_config,
         training_process_names=training_process_names,
+        run_config=run_config,
+        custom_module=custom_module,
     )
 
     _table, csv_rows = _format_loss_table(fwd_result)
@@ -660,49 +539,31 @@ def _write_train_results(
     return fwd_result
 
 
-def _handle_train(args: argparse.Namespace) -> int:
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-
-    collection = load_process_collection_json(Path(args.input))
-    runtime_config = _load_config(args.config)
-    custom_module = load_custom_module(args.custom)
-    selected_processes = _split_multi_values(args.process)
-    selected_targets = _split_multi_values(args.target)
-    user_config = resolve_config(custom_module, None)
-    config_targets = user_config.get("target_variable_order")
-    if selected_targets:
-        effective_targets = selected_targets
-    elif config_targets:
-        effective_targets = tuple(config_targets)
-    else:
-        effective_targets = None
-    output_dir = Path(args.output_dir)
-    if args.checkpoint_dir is None:
-        checkpoint_dir: Path | None = output_dir / "checkpoints"
-    elif str(args.checkpoint_dir) == "":
-        checkpoint_dir = None
-    else:
-        checkpoint_dir = Path(args.checkpoint_dir)
-    config = TrainHarnessConfig(
-        process_names=selected_processes if selected_processes else None,
-        target_variable_order=effective_targets,
-        target_source=args.target_source,
-        steps=args.steps,
-        batch_size=args.batch_size,
-        shuffle_batches=args.shuffle_batches,
-        batch_seed=args.batch_seed,
-        optimizer_name=args.optimizer,
-        learning_rate=args.learning_rate,
-        grad_clip_norm=args.grad_clip_norm,
-        seed=args.seed,
+def _train_harness_config_from_loaded(
+    loaded: LoadedRunConfig,
+    args: argparse.Namespace,
+    checkpoint_dir: Path | None,
+) -> TrainHarnessConfig:
+    run_config = loaded.config
+    if run_config.data is None:
+        raise ValueError("train command requires a data config section")
+    return TrainHarnessConfig(
+        process_names=run_config.data.processes,
+        target_variable_order=run_config.data.targets,
+        target_source=run_config.data.target_source,
+        steps=run_config.train.steps,
+        batch_size=run_config.train.batch_size,
+        shuffle_batches=run_config.train.shuffle,
+        batch_seed=run_config.train.batch_seed,
+        optimizer_name=run_config.train.optimizer,
+        learning_rate=run_config.train.learning_rate,
+        grad_clip_norm=run_config.train.grad_clip_norm,
+        seed=run_config.train.seed,
         log_every=args.log_every,
-        solver_max_steps=args.solver_max_steps,
-        solver_rtol=args.solver_rtol,
-        solver_atol=args.solver_atol,
-        solver_use_jump_ts=not args.no_jump_ts,
+        solver_max_steps=run_config.solver.max_steps,
+        solver_rtol=run_config.solver.rtol,
+        solver_atol=run_config.solver.atol,
+        solver_use_jump_ts=run_config.solver.jump_ts,
         log_process_losses=args.log_process_losses,
         metrics_csv=args.metrics_csv,
         metrics_jsonl=args.metrics_jsonl,
@@ -710,11 +571,33 @@ def _handle_train(args: argparse.Namespace) -> int:
         log_header_every=args.log_header_every,
         checkpoint_dir=checkpoint_dir,
     )
+
+
+def _handle_train(args: argparse.Namespace) -> int:
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    loaded = load_train_config(args.config)
+    run_config = loaded.config
+    if run_config.data is None:
+        raise ValueError("train command requires a data config section")
+    prepared_path = run_config.data.prepared
+    collection = load_process_collection_json(prepared_path)
+    output_dir = Path(args.output_dir)
+    if args.checkpoint_dir is None:
+        checkpoint_dir: Path | None = output_dir / "checkpoints"
+    elif str(args.checkpoint_dir) == "":
+        checkpoint_dir = None
+    else:
+        checkpoint_dir = Path(args.checkpoint_dir)
+    config = _train_harness_config_from_loaded(loaded, args, checkpoint_dir)
     result = train_from_collection(
         collection,
         config=config,
-        custom_py=args.custom,
-        runtime_config=runtime_config,
+        custom_module=loaded.custom_module,
+        run_config=run_config,
     )
     first = result.mean_loss_by_step[0]
     last = result.mean_loss_by_step[-1]
@@ -742,10 +625,19 @@ def _handle_train(args: argparse.Namespace) -> int:
     )
     sidecar_dir = output_dir.resolve()
     meta = {
-        "prepared_input": os.path.relpath(Path(args.input).resolve(), sidecar_dir),
-        "custom_py": os.path.relpath(Path(args.custom).resolve(), sidecar_dir) if args.custom else None,
+        "prepared_input": os.path.relpath(prepared_path.resolve(), sidecar_dir),
+        "custom_py": (
+            os.path.relpath(run_config.custom_py.resolve(), sidecar_dir)
+            if run_config.custom_py is not None
+            else None
+        ),
+        "custom_py_sha256": loaded.custom_py_sha256,
         "training_processes": training_processes_list,
-        "targets": list(effective_targets) if effective_targets is not None else None,
+        "targets": (
+            list(config.target_variable_order)
+            if config.target_variable_order is not None
+            else None
+        ),
         "target_source": config.target_source,
         "solver": {
             "max_steps": int(config.solver_max_steps),
@@ -773,8 +665,10 @@ def _handle_train(args: argparse.Namespace) -> int:
         trained_wrapper=result.trained_wrapper,
         train_result=result,
         config=config,
-        runtime_config=runtime_config,
-        custom_py=args.custom,
+        runtime_config=None,
+        custom_py=run_config.custom_py,
+        run_config=run_config,
+        custom_module=loaded.custom_module,
         training_process_names=training_process_names,
         render_plots=args.plot,
     )

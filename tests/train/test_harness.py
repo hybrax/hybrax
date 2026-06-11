@@ -663,7 +663,7 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
     )
 
     caplog.set_level(logging.INFO, logger="bp_train.harness")
-    with pytest.warns(UserWarning, match="No target_variable_order specified"):
+    with pytest.warns(UserWarning, match="No training targets specified"):
         result = train_from_collection(
             collection,
             config=TrainHarnessConfig(target_variable_order=None, steps=1),

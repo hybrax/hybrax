@@ -1,0 +1,11 @@
+{
+  "data": {
+    "prepared": "prepared.json",
+    "target_source": "reactor_components"
+  },
+  "custom_py": "custom.py",
+  "train": {
+    "steps": 2,
+    "seed": 0
+  }
+}

@@ -12,6 +12,7 @@ from bp_format.dataclasses import (
 )
 from bp_format.serialization import load_process_collection_json
 
+from .constants import METADATA_NAMESPACE
 from .controls import (
     BP_TRAIN_SAMPLE_ACC_NAME,
     EVENT_RUN_MIN_DT_CONFIG_KEY,
@@ -21,7 +22,7 @@ from .controls import (
     build_sample_acc_source_default,
     compute_signal_spreads,
     get_collection_event_min_dt_if_needed,
-    run_min_dt_from_config,
+    run_min_dt_from_runtime_controls,
     select_control_sources,
 )
 
@@ -417,14 +418,12 @@ class ControlsStore(eqx.Module):
     def from_collection(
         cls,
         collection: BioProcessCollection,
-        *,
-        metadata_namespace: str = "bp_train",
     ) -> ControlsStore:
         """Build a JAX-backed runtime store from a prepared `BioProcessCollection`."""
         metadata = dict(collection.metadata or {})
-        cfg = cls._runtime_controls_config(metadata, metadata_namespace)
-        process_order = cls._process_order(collection, metadata, metadata_namespace)
-        bp_train = dict(metadata.get(metadata_namespace, {}))
+        cfg = cls._runtime_controls_config(metadata, METADATA_NAMESPACE)
+        process_order = cls._process_order(collection, metadata, METADATA_NAMESPACE)
+        bp_train = dict(metadata.get(METADATA_NAMESPACE, {}))
         prepared_process_md = dict(bp_train.get("processes", {}))
         needs_default_sample_sources = any(
             "sample_acc_source" not in dict(prepared_process_md.get(process_name) or {})
@@ -465,7 +464,7 @@ class ControlsStore(eqx.Module):
             if sample_source is None:
                 sample_source = build_sample_acc_source_default(
                     process,
-                    run_min_dt=run_min_dt_from_config(cfg),
+                    run_min_dt=run_min_dt_from_runtime_controls(cfg),
                 )
             if sample_source.name != BP_TRAIN_SAMPLE_ACC_NAME:
                 raise ValueError(
@@ -614,12 +613,10 @@ class ControlsStore(eqx.Module):
     def from_json(
         cls,
         prepared_json: str | Path,
-        *,
-        metadata_namespace: str = "bp_train",
     ) -> ControlsStore:
         """Load a prepared JSON artifact and construct a `ControlsStore`."""
         collection = load_process_collection_json(Path(prepared_json))
-        return cls.from_collection(collection, metadata_namespace=metadata_namespace)
+        return cls.from_collection(collection)
 
     def get_controls(self, process: str | int) -> PerProcessControls:
         """Return per-process controls by canonical prepared key or index."""
