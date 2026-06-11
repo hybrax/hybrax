@@ -7,6 +7,7 @@ import warnings
 from collections import Counter
 import dataclasses
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ from .model_api import (
 from .trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
+    evaluate_one_sample_loss,
     BatchedLossFn,
 )
 from .logging import RunLogger, StepRecord
@@ -931,7 +933,121 @@ def train_collection(
 
         return eqx.filter_jit(_step_fn)
 
-    step_fn = _make_batched_step()
+    def _make_sharded_step():
+        """Data-parallel step: shard the process batch across local devices,
+        ``pmap`` the per-sample loss + gradient, ``psum``/``all_gather`` to the
+        batch mean, then apply the optimiser update on the (replicated) gradient.
+
+        Each device handles ``batch // n_devices`` processes in parallel, so the
+        per-step wall time drops ~n_devices on CPU (the plain ``vmap`` step runs
+        the whole batch on one device). Numerically equals the ``vmap`` step up
+        to float32 cross-device reduction order. The batch is padded to a
+        multiple of ``n_devices`` with zero-weighted dummies.
+        """
+        n_dev = jax.local_device_count()
+        bs = int(effective_batch_size)
+        pad_n = (-bs) % n_dev
+        padded = bs + pad_n
+        per_dev = padded // n_dev
+        weight_full = jnp.concatenate(
+            [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
+        )
+
+        def _pad(x):
+            return x if pad_n == 0 else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+
+        def _shard(x):
+            return x.reshape((n_dev, per_dev) + x.shape[1:])
+
+        weight_sharded = _shard(weight_full)
+        use_jump = bool(cfg.solver_use_jump_ts)
+        max_steps = int(cfg.solver_max_steps)
+        rtol = float(cfg.solver_rtol)
+        atol = float(cfg.solver_atol)
+
+        @partial(
+            jax.pmap,
+            axis_name="bp_dev",
+            in_axes=(None, 0, 0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None), None),
+        )
+        def _pgrad(params, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+            def _local(p):
+                wrapper = eqx.combine(p, trainable_static)
+                module = wrapper.reaction_module
+                scale_state = module.SCALE_state
+                scale_targets = scale_state[wrapper.target_state_indices]
+                SCL_ym = ym / scale_targets[None, None, :]
+                SCL_y0 = y0 / scale_state[None, :]
+                tmc = clamp_padded_time_rows(tm, nm)
+
+                def _one(pidx, t_row, scl_ym, mask, n_meas, scl_y0, ci, cim, jts):
+                    return evaluate_one_sample_loss(
+                        wrapper, batch_controls, pidx, t_row, scl_ym, mask, n_meas, scl_y0,
+                        ci, cim, jts, max_solver_steps=max_steps, solver_rtol=rtol,
+                        solver_atol=atol, step=step,
+                    )
+
+                totl, pert = jax.vmap(
+                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                )(pi, tmc, SCL_ym, mk, nm, SCL_y0, cin, cinm, jt)
+                return jnp.sum(totl * wt), (pert, totl)
+
+            (_l, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(params)
+            loss = jax.lax.psum(_l, "bp_dev") / bs
+            grads = jax.tree_util.tree_map(lambda g: jax.lax.psum(g, "bp_dev") / bs, grads)
+            per_target = jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "bp_dev") / bs
+            per_sample = jax.lax.all_gather(totl, "bp_dev")
+            return loss, grads, per_target, per_sample
+
+        def _step_fn(current_wrapper, current_trainable_params, current_optimizer_state, current_batch, step):
+            del current_wrapper
+            jump_ts_rows = None
+            if use_jump:
+                jump_ts_rows = clamp_padded_time_rows(
+                    store.controls_store.step_ts[current_batch.process_indices],
+                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                )
+            cin = batched_Cin[current_batch.process_indices]
+            cinm = batched_Cin_modeled[current_batch.process_indices]
+            ins = [
+                _shard(_pad(a))
+                for a in (
+                    current_batch.process_indices, current_batch.t_measured,
+                    current_batch.y_measured, current_batch.mask_measured,
+                    current_batch.n_measured, current_batch.y0_measured, cin, cinm,
+                )
+            ]
+            jt = _shard(_pad(jump_ts_rows)) if jump_ts_rows is not None else None
+            loss, grads, per_target, per_sample = _pgrad(
+                current_trainable_params, ins[0], ins[1], ins[2], ins[3], ins[4],
+                ins[5], ins[6], ins[7], weight_sharded, jt, step,
+            )
+            loss = loss[0]
+            grads = jax.tree_util.tree_map(lambda g: g[0], grads)
+            per_target_loss = per_target[0]
+            per_sample_loss = per_sample[0].reshape(-1)[:bs]
+            grad_norm = optax.tree.norm(grads)
+            updates, next_optimizer_state = optimizer.update(
+                grads, current_optimizer_state, params=current_trainable_params
+            )
+            trainable_updated = eqx.apply_updates(current_trainable_params, updates)
+            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
+            return (
+                wrapper_updated, trainable_updated, loss, per_target_loss,
+                per_sample_loss, next_optimizer_state, grad_norm,
+            )
+
+        return _step_fn
+
+    _n_local_devices = jax.local_device_count()
+    _use_sharded = _n_local_devices > 1 and int(effective_batch_size) >= _n_local_devices
+    _make_step = _make_sharded_step if _use_sharded else _make_batched_step
+    if _use_sharded:
+        logger.info(
+            "training sharded across %d local devices (batch=%d)",
+            _n_local_devices, int(effective_batch_size),
+        )
+    step_fn = _make_step()
     rebuild_count = 0
 
     logger.info(
@@ -1038,7 +1154,7 @@ def train_collection(
                 jnp.asarray(step_index + 1, dtype=jnp.int32),
             )
             if current_signature != train_step_input_signature:
-                step_fn = _make_batched_step()
+                step_fn = _make_step()
                 rebuild_count += 1
                 run_log.record_rebuild(step_index + 1)
 

@@ -173,6 +173,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Emit progress log every N steps.",
     )
     train_parser.add_argument(
+        "--devices",
+        type=str,
+        default="1",
+        metavar="N|max",
+        help=(
+            "CPU devices to shard the process batch across via pmap. 1 = off "
+            "(default); an integer like 8 for ~8x faster steps; or 'max' for all "
+            "CPU cores. Read before JAX init by the package bootstrap (also "
+            "honours the BP_TRAIN_DEVICES env var). Activates only when "
+            "batch >= devices; pick <= free cores when sharing the machine."
+        ),
+    )
+    train_parser.add_argument(
         "--solver-max-steps",
         type=int,
         default=train_cfg_defaults.solver_max_steps,

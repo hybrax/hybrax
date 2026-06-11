@@ -375,6 +375,52 @@ def evaluate_sample_with_loss_module(
     )
 
 
+def evaluate_one_sample_loss(
+    wrapper: HybridOdeWrapper,
+    batch_controls: BatchControls,
+    process_idx: jax.Array,
+    t_measured: jax.Array,
+    SCL_target_measured: jax.Array,
+    mask_measured: jax.Array,
+    n_measured: jax.Array,
+    SCL_target0_measured: jax.Array,
+    cin: jax.Array,
+    cin_modeled: jax.Array,
+    jump_ts: jax.Array | None,
+    *,
+    max_solver_steps: int,
+    solver_rtol: float,
+    solver_atol: float,
+    step: int | jax.Array | None = None,
+):
+    """One process -> ``(total_loss, per_target_loss)``.
+
+    Swaps the per-sample controls/feed-medium into ``wrapper`` and runs the loss
+    module. Shared by the ``vmap`` batched loss and the device-sharded (``pmap``)
+    training step so both compute identical per-sample numbers.
+    """
+    controls = _BatchIndexedControls(batch_controls=batch_controls, process_idx=process_idx)
+    sample_wrapper = eqx.tree_at(
+        lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
+        wrapper,
+        (controls, cin, cin_modeled),
+    )
+    result = evaluate_sample_with_loss_module(
+        sample_wrapper,
+        t_measured=t_measured,
+        SCL_target_measured=SCL_target_measured,
+        mask_measured=mask_measured,
+        n_measured=n_measured,
+        SCL_target0_measured=SCL_target0_measured,
+        jump_ts=jump_ts,
+        max_solver_steps=max_solver_steps,
+        solver_rtol=solver_rtol,
+        solver_atol=solver_atol,
+        step=step,
+    )
+    return result.total_loss, result.per_target_loss
+
+
 def build_batched_loss_fn() -> BatchedLossFn:
     """Build the batched loss fn that evaluates ``wrapper.loss_module``.
 
