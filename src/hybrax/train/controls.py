@@ -368,6 +368,117 @@ def build_sample_acc_source_default(
     return source
 
 
+def _feed_medium_cin_row(
+    feed_medium: FeedMedium | None,
+    species_names: tuple[str, ...],
+    *,
+    feed_name: str,
+) -> list[float]:
+    if feed_medium is None:
+        raise ValueError(
+            f"FeedVolumeChange {feed_name!r} must define feed_medium for transport."
+        )
+    row: list[float] = []
+    for species_name in species_names:
+        component = feed_medium.components.get(species_name)
+        if component is None:
+            row.append(0.0)
+            continue
+        concentration = component.concentration
+        if not isinstance(concentration, StaticVariable):
+            raise NotImplementedError(
+                "TimeSeries feed concentrations are not supported for pseudobatch "
+                f"event transport. Found species {species_name!r} "
+                f"in feed {feed_name!r}."
+            )
+        row.append(float(concentration.value))
+    return row
+
+
+def collect_discrete_event_metadata(
+    process: BioProcess,
+    species_names: tuple[str, ...],
+) -> dict[str, Any]:
+    """Collect true sample/bolus events for pseudobatch algebraic forcing."""
+    t_start = float(process.time_axis.start)
+    t_end = float(process.time_axis.end)
+    sample_events: list[tuple[float, float]] = []
+    bolus_events: list[tuple[float, float, list[float]]] = []
+
+    for name, volume_change in process.volume.volume_changes.items():
+        times = _as_numpy(volume_change.values.times)
+        values = _as_numpy(volume_change.values.values)
+        if times.size != values.size:
+            raise ValueError(f"{name}: volume-change times and values differ in size")
+
+        if isinstance(volume_change, SampleVolumeChange):
+            for event_time, delta_v in zip(
+                times.tolist(), values.tolist(), strict=False
+            ):
+                event_time = float(event_time)
+                delta_v = float(delta_v)
+                if delta_v == 0.0:
+                    continue
+                if delta_v > 0.0:
+                    raise ValueError(
+                        f"Sample {name!r} has positive delta_v at "
+                        f"t={event_time}: {delta_v}. Samples must remove volume."
+                    )
+                sample_v = abs(delta_v)
+                if event_time < t_start:
+                    raise ValueError(
+                        f"Sample {name!r} timestamp {event_time} before "
+                        f"process start {t_start}."
+                    )
+                if event_time > t_end:
+                    continue
+                sample_events.append((event_time, sample_v))
+            continue
+
+        if not isinstance(volume_change, FeedVolumeChange):
+            continue
+        if volume_change.is_continuous or not volume_change.is_controlled:
+            continue
+
+        cin_row = _feed_medium_cin_row(
+            volume_change.feed_medium,
+            species_names,
+            feed_name=name,
+        )
+        for event_time, delta_v in zip(times.tolist(), values.tolist(), strict=False):
+            event_time = float(event_time)
+            delta_v = float(delta_v)
+            if delta_v == 0.0:
+                continue
+            if delta_v < 0.0:
+                raise ValueError(
+                    f"Bolus feed {name!r} has negative delta_v at "
+                    f"t={event_time}: {delta_v}. Boluses must add volume."
+                )
+            if event_time < t_start or event_time >= t_end:
+                raise ValueError(
+                    f"Bolus feed {name!r} timestamp {event_time} outside "
+                    f"[{t_start}, {t_end})."
+                )
+            bolus_events.append((event_time, delta_v, cin_row))
+
+    sample_by_time: dict[float, float] = {}
+    for event_time, sample_v in sample_events:
+        sample_by_time[event_time] = sample_by_time.get(event_time, 0.0) + sample_v
+    sample_events = sorted(sample_by_time.items(), key=lambda item: item[0])
+    bolus_events.sort(key=lambda item: item[0])
+    return {
+        "sample_times": [t for t, _ in sample_events],
+        "sample_volumes": [v for _, v in sample_events],
+        "bolus_times": [t for t, _, _ in bolus_events],
+        "bolus_volumes": [v for _, v, _ in bolus_events],
+        "bolus_Cin": [row for _, _, row in bolus_events],
+        "step_ts": _dedupe_sorted(
+            [t for t, _ in sample_events] + [t for t, _, _ in bolus_events]
+        ),
+    }
+
+
 def build_bolus_sources(
     process: BioProcess, run_min_dt: float | None = None
 ) -> list[SignalSource]:
@@ -493,7 +604,8 @@ class ControlSourceBundle:
     (continuous-FVC ramps for bolus events; sample-acc trace appended
     in :class:`ControlsStore`):
 
-        [name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras_bolus]
+        [name_controlled_FVCs | name_controlled_SVCs |
+         name_controlled_PVs | name_extras_bolus]
     """
 
     name_controlled_FVCs: tuple[str, ...]

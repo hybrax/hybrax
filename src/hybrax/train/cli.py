@@ -15,7 +15,6 @@ from .harness import (
     ForwardResult,
     TrainHarnessConfig,
     forward_from_collection,
-    forward_plot_losses,
     train_from_collection,
 )
 from .loo import LOOConfig, run_loo_cv
@@ -181,8 +180,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "CPU devices to shard the process batch across via pmap. 1 = off "
             "(default); an integer like 8 for ~8x faster steps; or 'max' for all "
             "CPU cores. Read before JAX init by the package bootstrap (also "
-            "honours the BP_TRAIN_DEVICES env var). Activates only when "
-            "batch >= devices; pick <= free cores when sharing the machine."
+            "honours the BP_TRAIN_DEVICES env var). Shards across "
+            "min(devices, n_processes) devices; pick <= free cores when sharing "
+            "the machine."
         ),
     )
     train_parser.add_argument(
@@ -640,19 +640,19 @@ def _write_train_results(
 
     predictions_csv_path = output_dir / "predictions.csv"
     if render_plots:
-        named_losses, total_losses = forward_plot_losses(fwd_result)
         plot_training_results(
             train_result,
             collection,
             fwd_result.store,
             output_dir,
-            fwd_result.dense_exports,
             # Use eval_processes (full set including holdouts in LOO) so the
             # predictions.csv has rows for every evaluated process. Per-process
             # plots are rendered for the same set.
             process_names=eval_processes,
-            per_process_named_losses=named_losses,
-            per_process_total_loss=total_losses,
+            solver_max_steps=config.solver_max_steps,
+            solver_rtol=config.solver_rtol,
+            solver_atol=config.solver_atol,
+            solver_use_jump_ts=config.solver_use_jump_ts,
             timeseries_csv_path=predictions_csv_path,
         )
         return fwd_result
@@ -662,8 +662,11 @@ def _write_train_results(
         collection,
         fwd_result.store,
         output_dir,
-        fwd_result.dense_exports,
         process_names=eval_processes,
+        solver_max_steps=config.solver_max_steps,
+        solver_rtol=config.solver_rtol,
+        solver_atol=config.solver_atol,
+        solver_use_jump_ts=config.solver_use_jump_ts,
         training_process_names=training_process_names,
         timeseries_csv_path=predictions_csv_path,
         render_plots=False,
@@ -1006,22 +1009,19 @@ def _handle_forward(args: argparse.Namespace) -> int:
     _write_loss_csv(csv_rows, loss_csv_path)
     log.info("loss table saved to %s", loss_csv_path)
 
-    # CSV is decoupled from plotting: write it whenever --timeseries-csv is set,
-    # render figures only when --plot. Both reuse the forward solve's dense exports.
-    if args.plot or args.timeseries_csv is not None:
-        named_losses, total_losses = forward_plot_losses(result)
+    if args.plot:
         plot_process_simulations(
             result.trained_wrapper,
             collection,
             result.store,
             output_dir,
-            result.dense_exports,
             process_names=eval_processes,
+            solver_max_steps=solver_max_steps,
+            solver_rtol=solver_rtol,
+            solver_atol=solver_atol,
+            solver_use_jump_ts=solver_use_jump_ts,
             training_process_names=training_processes,
-            per_process_named_losses=named_losses,
-            per_process_total_loss=total_losses,
             timeseries_csv_path=args.timeseries_csv,
-            render_plots=args.plot,
         )
 
     return 0

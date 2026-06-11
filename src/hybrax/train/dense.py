@@ -19,73 +19,32 @@ import jax.numpy as jnp
 def build_union_time_grid(
     t_measured: jax.Array,
     n_measured: jax.Array,
-    n_dense: int | None = None,
-    n_prediction: int | None = None,
-) -> tuple[
-    jax.Array,
-    jax.Array,
-    jax.Array | None,
-    jax.Array | None,
-    jax.Array | None,
-    jax.Array | None,
-]:
-    """Splice up to two evenly-spaced grids into the measurement grid.
+    n_dense: int,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Splice ``n_dense`` evenly-spaced points into the measurement grid.
 
-    ``n_dense`` is the loss module's dense grid (consumed by its loss);
-    ``n_prediction`` is an independent output grid (consumed by forward
-    evaluation for ``predictions.csv``/plots). Either may be ``None``; both
-    spliced into the **same** sorted union so a single solve serves both. Both
-    counts are static.
-
-    Returns ``(t_eval_sorted, sample_indices, dense_t, dense_indices,
-    prediction_t, prediction_indices)``:
+    Returns ``(t_eval_sorted, sample_indices, dense_t, dense_indices)``:
     - ``t_eval_sorted`` — the sorted union grid; pass to the solver as ``t_eval``.
     - ``sample_indices`` — for each measurement row, which output row in the
       sorted union it corresponds to (so ``save_outputs[sample_indices]`` gives
       the measurement-grid view).
-    - ``dense_t`` / ``dense_indices`` — the loss dense linspace and its sorted
-      positions (``None`` when ``n_dense is None``).
-    - ``prediction_t`` / ``prediction_indices`` — analogous for the prediction
-      grid (``None`` when ``n_prediction is None``).
+    - ``dense_t`` — the original (unsorted) dense linspace, useful for
+      finite-difference computations on it.
+    - ``dense_indices`` — analogous to ``sample_indices`` for the dense block.
     """
     t0 = t_measured[0]
     t1 = t_measured[jnp.maximum(jnp.asarray(n_measured, dtype=jnp.int32) - 1, 0)]
-    n_sample = t_measured.shape[0]
-
-    blocks = [t_measured]
-    dense_t = None
-    prediction_t = None
-    if n_dense is not None:
-        dense_t = jnp.linspace(t0, t1, n_dense)
-        blocks.append(dense_t)
-    if n_prediction is not None:
-        prediction_t = jnp.linspace(t0, t1, n_prediction)
-        blocks.append(prediction_t)
-
-    t_unsorted = jnp.concatenate(blocks)
+    dense_t = jnp.linspace(t0, t1, n_dense)
+    t_unsorted = jnp.concatenate([t_measured, dense_t])
     order = jnp.argsort(t_unsorted)
     inverse_order = jnp.empty_like(order)
     inverse_order = inverse_order.at[order].set(
         jnp.arange(order.shape[0], dtype=order.dtype)
     )
+    n_sample = t_measured.shape[0]
     sample_indices = inverse_order[:n_sample]
-    offset = n_sample
-    dense_indices = None
-    prediction_indices = None
-    if n_dense is not None:
-        dense_indices = inverse_order[offset : offset + n_dense]
-        offset += n_dense
-    if n_prediction is not None:
-        prediction_indices = inverse_order[offset : offset + n_prediction]
-        offset += n_prediction
-    return (
-        t_unsorted[order],
-        sample_indices,
-        dense_t,
-        dense_indices,
-        prediction_t,
-        prediction_indices,
-    )
+    dense_indices = inverse_order[n_sample:]
+    return t_unsorted[order], sample_indices, dense_t, dense_indices
 
 
 def dense_point_mask_away_from_jumps(

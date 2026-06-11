@@ -61,8 +61,12 @@ def _unit_scale_kwargs(
         "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_VCs, dtype=f32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs, dtype=f32),
         "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=f32),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_controlled_FVCs, n_species), dtype=f32),
-        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(n_controlled_FVCs_bolus, dtype=f32),
+        "SCALE_controlled_FVCs_Cin": jnp.ones(
+            (n_controlled_FVCs, n_species), dtype=f32
+        ),
+        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(
+            n_controlled_FVCs_bolus, dtype=f32
+        ),
         "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs, dtype=f32),
         "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_VCs, n_species), dtype=f32),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
@@ -350,8 +354,10 @@ def _derive_unit_scale_kwargs(process, controls) -> dict[str, jnp.ndarray]:
     )
 
 
-def _inject_scales(reaction_module: UserReactionModule, scale_kwargs: dict[str, jnp.ndarray]) -> UserReactionModule:
-    """Replace placeholder SCALE_* fields on a test module with correctly-sized values."""
+def _inject_scales(
+    reaction_module: UserReactionModule, scale_kwargs: dict[str, jnp.ndarray]
+) -> UserReactionModule:
+    """Replace placeholder SCALE_* fields with correctly-sized values."""
     return eqx.tree_at(
         lambda m: tuple(getattr(m, name) for name in scale_kwargs.keys()),
         reaction_module,
@@ -385,10 +391,12 @@ def test_wrapper_produces_finite_state_derivative():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    y = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
+    y = wrapper.initial_pseudo_state_from_raw(
+        jnp.asarray([1.0, 1.2], dtype=jnp.float32)
+    )
     dy = wrapper(2.0, y)
 
-    assert dy.shape == (2,)
+    assert dy.shape == y.shape
     assert jnp.all(jnp.isfinite(dy))
 
 
@@ -486,11 +494,12 @@ def test_wrapper_with_modeled_feed_produces_finite_derivative():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    # State layout: [biomass, V_cont, B_base_feed_cum]
-    y = jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
+    y = wrapper.initial_pseudo_state_from_raw(
+        jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
+    )
     dy = wrapper(0.0, y)
 
-    assert dy.shape == (3,)
+    assert dy.shape == y.shape
     assert jnp.all(jnp.isfinite(dy))
 
 
@@ -504,10 +513,12 @@ def test_wrapper_multiple_controlled_feeds():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    y = jnp.asarray([1.0, 2.0, 1.2], dtype=jnp.float32)
+    y = wrapper.initial_pseudo_state_from_raw(
+        jnp.asarray([1.0, 2.0, 1.2], dtype=jnp.float32)
+    )
     dy = wrapper(2.0, y)
 
-    assert dy.shape == (3,)
+    assert dy.shape == y.shape
     assert jnp.all(jnp.isfinite(dy))
 
 
@@ -607,8 +618,12 @@ def test_wrapper_rejects_modeled_rate_shape_mismatch():
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     with pytest.raises(ValueError, match="SCL_modeled_FVCs_rates must have shape"):
-        # State layout: [biomass, V_cont, B_base_feed_cum]
-        wrapper(0.0, jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32))
+        wrapper(
+            0.0,
+            wrapper.initial_pseudo_state_from_raw(
+                jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
+            ),
+        )
 
 
 def test_wrapper_rejects_invalid_state_vector_shape():
@@ -636,11 +651,12 @@ def test_wrapper_ann_v_feature_reaches_module():
     # t=2.0 is after the sample event at t=1.0; V_sample_acc ~= 0.1 L.
     # Unit scales mean SCL == RAW everywhere, so SCL_V == RAW_V == 1.1 L.
     y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
-    y_scaled = wrapper.reaction_module.scale_state(y_physical)
-    dy_scaled = wrapper(2.0, y_scaled)
-    dy_physical = dy_scaled * wrapper.reaction_module.SCALE_state
+    y_scaled = wrapper.initial_pseudo_state_from_raw(y_physical)
+    saved = wrapper.save_outputs(2.0, y_scaled)
     # The module echoes SCL_V into specific_rates; with unit scales that's 1.1.
-    assert float(dy_physical[0]) == pytest.approx(1.1, rel=1e-6, abs=1e-6)
+    assert float(saved.RAW_modeled_BiologicalOde_rates[0]) == pytest.approx(
+        1.1, rel=1e-6, abs=1e-6
+    )
 
 
 def test_wrapper_save_outputs_splits_export_and_runtime_v_real():
@@ -659,18 +675,18 @@ def test_wrapper_save_outputs_splits_export_and_runtime_v_real():
     )
 
     # At t=2.0 the accumulated sample volume is 0.1 L.
-    y_physical = jnp.asarray([1.0, 0.05], dtype=jnp.float32)
-    y_scaled = wrapper.reaction_module.scale_state(y_physical)
+    y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
+    y_scaled = wrapper.initial_pseudo_state_from_raw(y_physical)
     saved = wrapper.save_outputs(2.0, y_scaled)
 
-    # Saved state is in SCL space; with unit scales SCL == RAW.
-    assert jnp.allclose(saved.SCL_states, y_physical)
-    assert float(saved.RAW_V_export) == pytest.approx(-0.05, abs=1e-6)
-    assert float(saved.RAW_V) == pytest.approx(0.02, abs=1e-6)
-    # Module echoes SCL_V (= 0.02 after the min_V floor); unit q-scale makes
-    # RAW == SCL.
+    # Saved state is in physical layout; with unit scales SCL == RAW.
+    expected = jnp.asarray([1.0, 1.1], dtype=jnp.float32)
+    assert jnp.allclose(saved.SCL_states, expected)
+    assert float(saved.RAW_V_export) == pytest.approx(1.1, abs=1e-6)
+    assert float(saved.RAW_V) == pytest.approx(1.1, abs=1e-6)
+    # Module echoes SCL_V (= 1.1); unit q-scale makes RAW == SCL.
     assert float(saved.RAW_modeled_BiologicalOde_rates[0]) == pytest.approx(
-        0.02, abs=1e-6
+        1.1, abs=1e-6
     )
     assert saved.RAW_modeled_FVCs_rates.shape == (0,)
 
@@ -782,8 +798,7 @@ def test_wrapper_save_outputs_returns_physical_specific_and_modeled_feed_rates()
     )
 
     y_physical = jnp.asarray([1.0, 1.0, 0.7], dtype=jnp.float32)
-    SCL_state = y_physical / wrapper.reaction_module.SCALE_state
-    saved = wrapper.save_outputs(0.0, SCL_state)
+    saved = wrapper.save_outputs(0.0, wrapper.initial_pseudo_state_from_raw(y_physical))
 
     # Saved state is SCL; convert back for the assertion.
     assert jnp.allclose(
@@ -820,7 +835,7 @@ def test_wrapper_save_outputs_returns_auxiliary_observables():
     )
 
     y_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
-    saved = wrapper.save_outputs(2.0, wrapper.reaction_module.scale_state(y_physical))
+    saved = wrapper.save_outputs(2.0, wrapper.initial_pseudo_state_from_raw(y_physical))
 
     assert saved.auxiliary is not None
     assert float(saved.auxiliary["mu_raw"]) == pytest.approx(-1.25, abs=1e-6)
@@ -844,7 +859,7 @@ def test_wrapper_save_outputs_works_with_diffrax_saveat_fn():
     )
 
     y0_physical = jnp.asarray([1.0, 1.2], dtype=jnp.float32)
-    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
+    y0_scaled = wrapper.initial_pseudo_state_from_raw(y0_physical)
     save_ts = jnp.asarray([2.0], dtype=jnp.float32)
     solve_kwargs = dict(
         solver=diffrax.Tsit5(),
@@ -919,7 +934,9 @@ def test_wrapper_save_outputs_rejects_non_mapping_auxiliary():
         TypeError,
         match="ReactionOutputs.auxiliary must be None or dict\\[str, array\\]",
     ):
-        wrapper.save_outputs(0.0, wrapper.reaction_module.scale_state(jnp.asarray([1.0, 1.0])))
+        wrapper.save_outputs(
+            0.0, wrapper.initial_pseudo_state_from_raw(jnp.asarray([1.0, 1.0]))
+        )
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():
@@ -1003,9 +1020,8 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    # State layout: [biomass, V_cont] (no modeled feeds → state size = 2)
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
+    y0_scaled = wrapper.initial_pseudo_state_from_raw(y0_physical)
 
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
@@ -1014,12 +1030,15 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
         t1=10.0,
         dt0=None,
         y0=y0_scaled,
-        saveat=diffrax.SaveAt(ts=jnp.asarray([10.0])),
+        saveat=diffrax.SaveAt(
+            ts=jnp.asarray([10.0]),
+            fn=wrapper.save_outputs,
+        ),
         stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-8),
         max_steps=4096,
         throw=False,
     )
-    final_physical = wrapper.reaction_module.unscale_state(sol.ys[0])
+    final_physical = wrapper.reaction_module.unscale_state(sol.ys.SCL_states[0])
     final_v_cont = float(final_physical[-1])
 
     # V_cont(10) = V0 + cumulative_feed(10) = 1.0 + 1.0 = 2.0
@@ -1029,6 +1048,47 @@ def test_wrapper_constant_feed_rate_integrates_volume_correctly():
         "passing controls.eval (cumulative volume) instead of "
         "controls.eval_derivative (flow rate) to RhsOde."
     )
+
+
+def test_wrapper_pseudobatch_continuous_feed_dilutes_inert_species():
+    process = _make_single_species_process(feed_rate=0.0)
+    process.volume.volume_changes["feed_A"].values = TimeSeries(
+        times=jnp.asarray([0.0, 2.0], dtype=jnp.float32),
+        values=jnp.asarray([0.0, 0.4], dtype=jnp.float32),
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    wrapper = _build_wrapper(
+        process,
+        controls,
+        ConstantReactionModule(
+            specific_rates=jnp.asarray([0.0], dtype=jnp.float32),
+            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+        ),
+    )
+
+    RAW_y0 = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    SCL_y0 = wrapper.initial_pseudo_state_from_raw(RAW_y0)
+    solution = diffrax.diffeqsolve(
+        diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
+        solver=diffrax.Tsit5(),
+        t0=0.0,
+        t1=0.5,
+        dt0=None,
+        y0=SCL_y0,
+        saveat=diffrax.SaveAt(
+            ts=jnp.asarray([0.5], dtype=jnp.float32),
+            fn=wrapper.save_outputs,
+        ),
+        stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-8),
+        max_steps=4096,
+        throw=False,
+    )
+
+    RAW_state = wrapper.reaction_module.unscale_state(solution.ys.SCL_states[0])
+    assert float(RAW_state[1]) == pytest.approx(1.1, rel=1e-4)
+    assert float(RAW_state[0]) == pytest.approx(1.0 / 1.1, rel=1e-4)
 
 
 def test_wrapper_bolus_feed_integrates_v_cont():
@@ -1102,7 +1162,7 @@ def test_wrapper_bolus_feed_integrates_v_cont():
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
+    y0_scaled = wrapper.initial_pseudo_state_from_raw(y0_physical)
     solution = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
         solver=diffrax.Tsit5(),
@@ -1110,7 +1170,10 @@ def test_wrapper_bolus_feed_integrates_v_cont():
         t1=4.0,
         dt0=None,
         y0=y0_scaled,
-        saveat=diffrax.SaveAt(ts=jnp.asarray([4.0], dtype=jnp.float32)),
+        saveat=diffrax.SaveAt(
+            ts=jnp.asarray([4.0], dtype=jnp.float32),
+            fn=wrapper.save_outputs,
+        ),
         stepsize_controller=diffrax.PIDController(
             rtol=1e-6,
             atol=1e-8,
@@ -1120,7 +1183,7 @@ def test_wrapper_bolus_feed_integrates_v_cont():
         throw=False,
     )
     assert solution.result == diffrax.RESULTS.successful
-    final_physical = wrapper.reaction_module.unscale_state(solution.ys[0])
+    final_physical = wrapper.reaction_module.unscale_state(solution.ys.SCL_states[0])
     final_v_cont = float(final_physical[-1])
 
     # V_cont must increase by the specified bolus volume (2.0 L).
@@ -1212,7 +1275,7 @@ def _integrate_bolus_ramp_volume_trace(
     wrapper = _build_wrapper(process, controls, reaction_module)
 
     y0_physical = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
-    y0_scaled = wrapper.reaction_module.scale_state(y0_physical)
+    y0_scaled = wrapper.initial_pseudo_state_from_raw(y0_physical)
     peak_time = bolus_time + 0.5 * expected_ramp_duration
     end_time = bolus_time + expected_ramp_duration
     save_ts = jnp.asarray(
@@ -1232,7 +1295,7 @@ def _integrate_bolus_ramp_volume_trace(
         t1=11.0,
         dt0=None,
         y0=y0_scaled,
-        saveat=diffrax.SaveAt(ts=save_ts),
+        saveat=diffrax.SaveAt(ts=save_ts, fn=wrapper.save_outputs),
         stepsize_controller=diffrax.PIDController(
             rtol=1e-7,
             atol=1e-9,
@@ -1243,38 +1306,40 @@ def _integrate_bolus_ramp_volume_trace(
     )
     assert solution.result == diffrax.RESULTS.successful
 
-    physical_trace = jax.vmap(wrapper.reaction_module.unscale_state)(solution.ys)
+    physical_trace = jax.vmap(wrapper.reaction_module.unscale_state)(
+        solution.ys.SCL_states
+    )
     return physical_trace[:, 1]
 
 
-def test_wrapper_configured_bolus_run_min_dt_sets_volume_ramp_duration():
-    """Configured bolus_run_min_dt must set the integrated volume ramp width."""
+def test_wrapper_configured_bolus_run_min_dt_keeps_instant_pseudo_volume_jump():
+    """Configured bolus_run_min_dt only affects legacy control metadata."""
     volume_trace = _integrate_bolus_ramp_volume_trace(
         configured_min_dt=0.05,
         expected_ramp_duration=0.05,
     )
     assert float(volume_trace[0]) == pytest.approx(1.0, abs=2e-4)
     assert float(volume_trace[1]) == pytest.approx(1.0, abs=2e-4)
-    assert float(volume_trace[2]) == pytest.approx(2.0, abs=2e-3)
+    assert float(volume_trace[2]) == pytest.approx(3.0, abs=2e-3)
     assert float(volume_trace[3]) == pytest.approx(3.0, abs=2e-3)
     assert float(volume_trace[4]) == pytest.approx(3.0, abs=2e-3)
 
 
-def test_wrapper_configured_bolus_run_min_dt_clamps_to_duration_cap():
-    """Configured bolus_run_min_dt above duration cap must clamp ramp width."""
+def test_wrapper_configured_bolus_run_min_dt_cap_keeps_instant_pseudo_jump():
+    """Legacy bolus ramp cap does not affect pseudobatch save outputs."""
     volume_trace = _integrate_bolus_ramp_volume_trace(
         configured_min_dt=0.2,
         expected_ramp_duration=0.1,
     )
     assert float(volume_trace[0]) == pytest.approx(1.0, abs=2e-4)
     assert float(volume_trace[1]) == pytest.approx(1.0, abs=2e-4)
-    assert float(volume_trace[2]) == pytest.approx(2.0, abs=2e-3)
+    assert float(volume_trace[2]) == pytest.approx(3.0, abs=2e-3)
     assert float(volume_trace[3]) == pytest.approx(3.0, abs=2e-3)
     assert float(volume_trace[4]) == pytest.approx(3.0, abs=2e-3)
 
 
 def test_wrapper_bolus_transport_only_for_present_species():
-    """Regression: bolus Cin for missing species is zero in extra-feed path."""
+    """Regression: bolus Cin for missing species is zero in event transport."""
     bolus_medium = FeedMedium(
         name="bolus",
         density=1.0,
@@ -1351,21 +1416,16 @@ def test_wrapper_bolus_transport_only_for_present_species():
     )
     wrapper = _build_wrapper(process, controls, reaction_module)
 
-    triangle_width = float(controls.control_metadata["bolus_feed"]["triangle_width"])
-    t_in_ramp = 2.0 + 0.5 * triangle_width
-
-    # Evaluate inside the synthetic bolus ramp.
     y_physical = jnp.asarray([1.0, 0.0, 1.0], dtype=jnp.float32)
-    y_scaled = wrapper.reaction_module.scale_state(y_physical)
-    dy_scaled = wrapper(t_in_ramp, y_scaled)
-    dy_physical = dy_scaled * wrapper.reaction_module.SCALE_state
+    y_scaled = wrapper.initial_pseudo_state_from_raw(y_physical)
+    saved = wrapper.save_outputs(2.01, y_scaled)
+    physical = wrapper.reaction_module.unscale_state(saved.SCL_states)
 
-    # biomass present in feed medium -> non-zero bolus transport contribution.
-    assert float(dy_physical[0]) != pytest.approx(0.0, abs=1e-9)
-    # product absent in feed medium and C_product==0 -> zero bolus contribution.
-    assert float(dy_physical[1]) == pytest.approx(0.0, abs=1e-9)
-    # dV_cont/dt receives bolus rate during the ramp.
-    assert float(dy_physical[2]) > 0.0
+    # biomass present in feed medium -> bolus mixes biomass into reactor.
+    assert float(physical[0]) == pytest.approx(7.0, abs=1e-6)
+    # product absent in feed medium and C_product==0 -> remains zero.
+    assert float(physical[1]) == pytest.approx(0.0, abs=1e-9)
+    assert float(physical[2]) == pytest.approx(3.0, abs=1e-6)
 
 
 def test_wrapper_multi_bolus_final_v_cont_invariant():
@@ -1446,7 +1506,9 @@ def test_wrapper_multi_bolus_final_v_cont_invariant():
         ),
     )
 
-    y0_scaled = wrapper.reaction_module.scale_state(jnp.asarray([1.0, 1.0], dtype=jnp.float32))
+    y0_scaled = wrapper.initial_pseudo_state_from_raw(
+        jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    )
     solution = diffrax.diffeqsolve(
         diffrax.ODETerm(lambda t, y, args: wrapper(t, y)),
         solver=diffrax.Tsit5(),
@@ -1454,7 +1516,10 @@ def test_wrapper_multi_bolus_final_v_cont_invariant():
         t1=8.0,
         dt0=None,
         y0=y0_scaled,
-        saveat=diffrax.SaveAt(ts=jnp.asarray([8.0], dtype=jnp.float32)),
+        saveat=diffrax.SaveAt(
+            ts=jnp.asarray([8.0], dtype=jnp.float32),
+            fn=wrapper.save_outputs,
+        ),
         stepsize_controller=diffrax.PIDController(
             rtol=1e-6,
             atol=1e-8,
@@ -1464,7 +1529,7 @@ def test_wrapper_multi_bolus_final_v_cont_invariant():
         throw=False,
     )
     assert solution.result == diffrax.RESULTS.successful
-    final_state = wrapper.reaction_module.unscale_state(solution.ys[0])
+    final_state = wrapper.reaction_module.unscale_state(solution.ys.SCL_states[0])
     final_v_cont = float(final_state[-1])
     expected_final_v = 1.0 + float(jnp.sum(bolus_deltas))
     assert final_v_cont == pytest.approx(expected_final_v, abs=2e-3)

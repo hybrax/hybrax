@@ -248,7 +248,7 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -262,7 +262,7 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
         SCL_target_measured=poisoned_y,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -281,7 +281,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         *,
         t_eval,
         n_measured,
-        SCL_y0,
+        RAW_y0,
         max_steps,
         rtol,
         atol,
@@ -290,13 +290,13 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         captured["wrapper"] = wrapper_arg
         captured["t_eval"] = t_eval
         captured["n_measured"] = n_measured
-        captured["y0"] = SCL_y0
+        captured["y0"] = RAW_y0
         captured["max_steps"] = max_steps
         captured["rtol"] = rtol
         captured["atol"] = atol
         captured["jump_ts"] = jump_ts
         n_rows = t_eval.shape[0]
-        states = jnp.repeat(SCL_y0[None, :], repeats=n_rows, axis=0)
+        states = jnp.repeat(RAW_y0[None, :], repeats=n_rows, axis=0)
         return SaveOutputs(
             SCL_states=states,
             RAW_V_export=states[:, len(wrapper_arg.modeled_RMC_names)],
@@ -324,7 +324,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=None,
         max_solver_steps=321_000,
         solver_rtol=1e-4,
@@ -348,7 +348,7 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -395,7 +395,7 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -431,7 +431,7 @@ def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
         SCL_target_measured=SCL_target_measured,
         mask_measured=mask_measured,
         n_measured=1,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -443,7 +443,9 @@ def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
     assert result.states.shape[0] == t_measured.shape[0]
     assert jnp.allclose(
         result.states,
-        jnp.repeat(process_data.y0_measured[None, :], repeats=t_measured.shape[0], axis=0),
+        jnp.repeat(
+            process_data.y0_measured[None, :], repeats=t_measured.shape[0], axis=0
+        ),
     )
     assert jnp.allclose(result.save_outputs.auxiliary["mu_raw"], 0.0)
     assert result.save_outputs.auxiliary["latent_pair"].shape == (
@@ -464,7 +466,7 @@ def test_evaluate_sample_from_arrays_forwards_step_to_result():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -510,7 +512,7 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total, per_sample_per_target, per_sample, pred_t, pred_save = batched_loss_fn(
+    mean_total, per_target, per_sample = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -524,10 +526,8 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
     )
     assert jnp.isfinite(mean_total)
     # One named loss term ("biomass") and one sample in the batch.
-    assert per_sample_per_target.shape == (1, 1)
+    assert per_target.shape == (1,)
     assert per_sample.shape == (1,)
-    # No prediction grid requested → prediction views are absent.
-    assert pred_t is None and pred_save is None
 
 
 def test_batched_loss_fn_preserves_none_jump_ts_branch():
@@ -535,7 +535,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total_none, _, _, _, _ = batched_loss_fn(
+    mean_total_none, _, _ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -547,7 +547,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         solver_atol=1e-7,
     )
     jump_ts_rows = jnp.zeros((1, 1), dtype=jnp.float32)
-    mean_total_present, _, _, _, _ = batched_loss_fn(
+    mean_total_present, _, _ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -571,7 +571,7 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
     from bp_train.dense import build_union_time_grid
 
     t_meas = jnp.asarray([0.0, 1.0, 4.0], dtype=jnp.float32)
-    t_eval, sample_idx, dense_t, dense_idx, pred_t, pred_idx = build_union_time_grid(
+    t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
         t_meas, n_measured=3, n_dense=3
     )
     # dense linspace covers the (active) measurement span.
@@ -582,18 +582,6 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
     # Round-trip: gathering t_eval by the index arrays returns the originals.
     assert jnp.allclose(t_eval[sample_idx], t_meas)
     assert jnp.allclose(t_eval[dense_idx], dense_t)
-    # No prediction grid requested → prediction block is absent.
-    assert pred_t is None and pred_idx is None
-
-    # With both grids, each block round-trips and shares the one union.
-    t_eval2, s_idx2, d_t2, d_idx2, p_t2, p_idx2 = build_union_time_grid(
-        t_meas, n_measured=3, n_dense=3, n_prediction=5
-    )
-    assert t_eval2.shape[0] == 3 + 3 + 5
-    assert jnp.allclose(p_t2, jnp.linspace(0.0, 4.0, 5))
-    assert jnp.allclose(t_eval2[s_idx2], t_meas)
-    assert jnp.allclose(t_eval2[d_idx2], d_t2)
-    assert jnp.allclose(t_eval2[p_idx2], p_t2)
 
 
 def test_dense_point_mask_handles_jump_ts_and_none():
@@ -623,9 +611,8 @@ def test_dense_triple_mask_excludes_triples_straddling_a_jump():
     triple = dense_triple_mask_away_from_jumps(dense_t, jnp.asarray([3.5]), 0.6)
     # Triples (1,2,3), (2,3,4), (3,4,5) all have spans covering 3.5; the rest don't.
     # (0,1,2) → [0-0.6, 2+0.6]=[-0.6, 2.6] excludes 3.5 → True.
-    # (4,5,6) → [4-0.6, 6+0.6]=[3.4, 6.6] contains 3.5 → False (sits within eps of jump).
+    # (4,5,6) → [4-0.6, 6+0.6]=[3.4, 6.6] contains 3.5 → False
+    # (sits within eps of jump).
     # so the False region is indices 1..4 inclusive.
-    expected = jnp.asarray(
-        [True, False, False, False, False, True, True, True, True]
-    )
+    expected = jnp.asarray([True, False, False, False, False, True, True, True, True])
     assert bool(jnp.all(triple == expected))
