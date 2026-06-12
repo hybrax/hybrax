@@ -32,6 +32,7 @@ from bp_train.controls import (
     BOLUS_MIN_DT_DURATION_DENOMINATOR,
     EVENT_RUN_MIN_DT_CONFIG_KEY,
     build_bolus_sources,
+    get_collection_bolus_min_dt,
     select_control_sources,
 )
 from bp_train.controls_store import ControlsStore
@@ -604,6 +605,7 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
 
     assert metadata["process_order"] == list(prepared.processes.keys())
     assert metadata["runtime_controls_config"]["initial_grid_points"] >= 2
+    assert metadata["source_input_path"] == "prepared-raw.json"
 
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
@@ -1316,9 +1318,7 @@ def test_prepare_artifact_honors_user_bolus_run_min_dt(tmp_path):
 
 
 def test_prepare_artifact_honors_custom_py_bolus_run_min_dt(tmp_path):
-    """run config prepare.bolus_run_min_dt must override auto-detected collection min_dt."""
-    from bp_train.controls import get_collection_bolus_min_dt
-
+    """Custom prepare.bolus_run_min_dt overrides auto-detected min_dt."""
     output = tmp_path / "prepared_custom_bolus_min_dt.json"
     custom_py = tmp_path / "custom.py"
     user_value = 0.005
@@ -1362,8 +1362,6 @@ def test_prepare_artifact_honors_custom_py_bolus_run_min_dt(tmp_path):
 
 def test_prepare_artifact_auto_detects_bolus_run_min_dt_when_unset(tmp_path):
     """Auto-detection still fires when the user did not supply a value."""
-    from bp_train.controls import get_collection_bolus_min_dt
-
     output = tmp_path / "prepared_bolus_min_dt_auto.json"
     custom_py = tmp_path / "custom_bolus.py"
     _write_bolus_biomass_custom_py(custom_py)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -51,6 +52,15 @@ def _sha256_hex(data: bytes | None) -> str | None:
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _portable_input_path(input_path: Path | None, output_path: Path) -> str | None:
+    if input_path is None:
+        return None
+    if not input_path.is_absolute():
+        return str(input_path)
+    output_dir = output_path.parent.resolve()
+    return os.path.relpath(input_path, output_dir)
 
 
 def load_raw_collection(
@@ -381,7 +391,7 @@ def prepare_artifact(
     existing_metadata = dict(collection.metadata or {})
     bp_train_metadata: dict[str, Any] = {
         "prepared_at": _utc_now_iso(),
-        "source_input_path": None if input_path is None else str(input_path),
+        "source_input_path": _portable_input_path(input_path, output_path),
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
         "transform_hooks": {

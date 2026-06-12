@@ -462,6 +462,12 @@ process_rename_map
 Metadata namespace is not configurable. Use the fixed metadata key `"bp-train"`
 consistently in prepare and downstream training code.
 
+Prepared provenance stores `metadata["bp-train"]["source_input_path"]` relative
+_to the prepared artifact file_ when the input path is absolute after config
+resolution. This keeps regenerated prepared artifacts portable: the value is
+interpreted relative to the directory containing the prepared JSON file, not
+relative to the config file or `custom.py`.
+
 ## LOO behavior
 
 Deferred from the first milestone. Current LOO orchestrates independent folds
