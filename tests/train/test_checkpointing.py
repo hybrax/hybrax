@@ -294,7 +294,7 @@ def test_train_collection_writes_checkpoints_at_log_every(tmp_path: Path):
             reader = csv.reader(handle)
             header = next(reader)
             first_row = next(reader)
-        assert header == ["process", "t", "c_biomass", "V_cont", "V_real", "q_biomass"]
+        assert header == ["process", "t", "c_biomass", "V_real", "q_biomass"]
         assert first_row[0] == "p1"
 
     assert (ckpt_dir / "latest").is_symlink()

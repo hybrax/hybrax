@@ -44,6 +44,8 @@ from bp_train.harness import (
     ForwardResult,
     TrainHarnessResult,
 )
+from bp_train.defaults import DefaultLossModule
+from bp_train.harness import compute_dense_exports
 from bp_train.model_api import ReactionOutputs, UserReactionModule
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper
@@ -398,6 +400,7 @@ def _build_single_process_runtime(
         ),
         process=process,
         controls=controls,
+        loss_module=DefaultLossModule(target_names=tuple(store.name_measured)),
         min_V=0.02,
     )
     return collection, store, wrapper
@@ -456,22 +459,21 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
         collection,
         store,
         output_dir,
+        dense_exports,
         process_names=None,
         *,
-        solver_max_steps,
-        solver_rtol,
-        solver_atol,
-        solver_use_jump_ts=True,
         training_process_names=None,
+        per_process_named_losses=None,
+        per_process_total_loss=None,
         timeseries_csv_path=None,
         filename_suffix="",
+        render_plots=True,
     ):
-        plot_calls["solver_rtol"] = solver_rtol
-        plot_calls["solver_use_jump_ts"] = solver_use_jump_ts
         plot_calls["training_process_names"] = training_process_names
         plot_calls["process_names"] = process_names
         plot_calls["output_dir"] = Path(output_dir)
         plot_calls["timeseries_csv_path"] = timeseries_csv_path
+        plot_calls["render_plots"] = render_plots
 
     monkeypatch.setattr(cli, "plot_process_simulations", fake_plot)
 
@@ -507,9 +509,10 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert rows.columns.tolist() == ["process", "total", "X", "S", "split"]
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
 
-    # Plotting invoked with sidecar-derived solver settings.
-    assert plot_calls["solver_rtol"] == 1e-5
+    # Plotting invoked with the training-split context and process selection.
     assert plot_calls["training_process_names"] == ("p1", "p2")
+    assert plot_calls["process_names"] == ("p1", "p2")
+    assert plot_calls["render_plots"] is True
 
 
 def test_forward_cli_overrides_beat_sidecar(monkeypatch, tmp_path: Path):
@@ -729,11 +732,13 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
 def test_plot_process_simulations_is_exported_with_new_kwargs():
     """Guard against accidental signature regressions."""
     sig = inspect.signature(postprocessing.plot_process_simulations)
+    assert "dense_exports" in sig.parameters
     assert "training_process_names" in sig.parameters
+    assert "per_process_named_losses" in sig.parameters
+    assert "per_process_total_loss" in sig.parameters
     assert "timeseries_csv_path" in sig.parameters
     assert "filename_suffix" in sig.parameters
     assert "render_plots" in sig.parameters
-    assert "solver_use_jump_ts" in sig.parameters
 
 
 def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection(
@@ -759,10 +764,8 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
         collection=_Collection(),
         store=_Store(),
         output_dir=tmp_path / "plots",
+        dense_exports={},
         process_names=(),
-        solver_max_steps=128,
-        solver_rtol=1e-4,
-        solver_atol=1e-6,
         timeseries_csv_path=ts_path,
     )
     rows = pd.read_csv(ts_path)
@@ -771,7 +774,6 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
         "t",
         "c_X",
         "c_S",
-        "V_cont",
         "V_real",
         "B_F_cum",
         "q_X",
@@ -780,48 +782,40 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
     assert rows.empty
 
 
-def test_compute_dense_process_export_uses_export_v_real_semantics():
-    collection, store, wrapper = _build_single_process_runtime(
-        initial_volume=0.05,
-        sample_delta=-0.1,
-    )
-
-    export = postprocessing._compute_dense_process_export(
+def _single_dense_export(collection, store, wrapper, *, prediction_grid_n):
+    _, _, dense_exports = compute_dense_exports(
         wrapper,
-        collection,
         store,
-        "p1",
+        collection,
+        ("p1",),
         solver_max_steps=256,
         solver_rtol=1e-4,
         solver_atol=1e-6,
         solver_use_jump_ts=True,
-        n_dense=11,
+        prediction_grid_n=prediction_grid_n,
     )
+    return dense_exports["p1"]
+
+
+def test_dense_export_uses_export_v_real_semantics():
+    collection, store, wrapper = _build_single_process_runtime(
+        initial_volume=0.05,
+        sample_delta=-0.1,
+    )
+    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=11)
 
     assert export.v_real.shape == (11,)
-    assert float(export.v_cont[-1]) == pytest.approx(0.05, abs=1e-6)
     # Human-facing export should reflect the sampled volume directly, not the
     # runtime clamp used inside the RHS denominator.
     assert float(export.v_real[-1]) == pytest.approx(-0.05, abs=5e-4)
 
 
-def test_compute_dense_process_export_returns_physical_q_values():
+def test_dense_export_returns_physical_q_values():
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
         q_scale=2.0,
     )
-
-    export = postprocessing._compute_dense_process_export(
-        wrapper,
-        collection,
-        store,
-        "p1",
-        solver_max_steps=256,
-        solver_rtol=1e-4,
-        solver_atol=1e-6,
-        solver_use_jump_ts=True,
-        n_dense=9,
-    )
+    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=9)
 
     assert export.q_rates.shape == (9, 1)
     assert np.allclose(export.q_rates[:, 0], 3.0)
@@ -840,25 +834,25 @@ def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(
 
     monkeypatch.setattr(postprocessing, "plot_process_simulations", _boom)
 
-    out_path = tmp_path / "predictions.csv"
-    postprocessing.export_predictions_csv(
+    _, _, dense_exports = compute_dense_exports(
         wrapper,
-        collection,
         store,
-        out_path,
-        process_names=("p1",),
+        collection,
+        ("p1",),
         solver_max_steps=256,
         solver_rtol=1e-4,
         solver_atol=1e-6,
         solver_use_jump_ts=True,
+        prediction_grid_n=9,
     )
+    out_path = tmp_path / "predictions.csv"
+    postprocessing.export_predictions_csv(wrapper, dense_exports, out_path, ("p1",))
 
     rows = pd.read_csv(out_path)
     assert rows.columns.tolist() == [
         "process",
         "t",
         "c_biomass",
-        "V_cont",
         "V_real",
         "q_biomass",
     ]
@@ -876,25 +870,25 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
         },
     )
 
-    out_path = tmp_path / "predictions.csv"
-    postprocessing.export_predictions_csv(
+    _, _, dense_exports = compute_dense_exports(
         wrapper,
-        collection,
         store,
-        out_path,
-        process_names=("p1",),
+        collection,
+        ("p1",),
         solver_max_steps=256,
         solver_rtol=1e-4,
         solver_atol=1e-6,
         solver_use_jump_ts=True,
+        prediction_grid_n=9,
     )
+    out_path = tmp_path / "predictions.csv"
+    postprocessing.export_predictions_csv(wrapper, dense_exports, out_path, ("p1",))
 
     rows = pd.read_csv(out_path)
     assert rows.columns.tolist() == [
         "process",
         "t",
         "c_biomass",
-        "V_cont",
         "V_real",
         "q_biomass",
         "aux_latent_pair_0",
@@ -907,9 +901,28 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
     assert np.allclose(rows["aux_mu_raw"], -0.75)
 
 
-def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(
-    monkeypatch, tmp_path: Path
-):
+def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
+    return {
+        "p1": postprocessing.DenseProcessExport(
+            t=np.asarray([0.0, 1.0], dtype=float),
+            c_species=np.asarray([[1.0], [1.0]], dtype=float),
+            v_real=np.asarray([1.0, 1.0], dtype=float),
+            b_modeled_cum=np.zeros((2, 0), dtype=float),
+            q_rates=np.asarray([[0.0], [0.0]], dtype=float),
+            auxiliary={"mu_raw": np.asarray([-1.0, -1.0], dtype=float)},
+        ),
+        "p2": postprocessing.DenseProcessExport(
+            t=np.asarray([0.0, 1.0], dtype=float),
+            c_species=np.asarray([[1.0], [1.0]], dtype=float),
+            v_real=np.asarray([1.0, 1.0], dtype=float),
+            b_modeled_cum=np.zeros((2, 0), dtype=float),
+            q_rates=np.asarray([[0.0], [0.0]], dtype=float),
+            auxiliary={"latent_pair": np.asarray([[1.0, 2.0], [1.0, 2.0]])},
+        ),
+    }
+
+
+def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(tmp_path: Path):
     class _RhsOde:
         name_modeled_rates = ("q_biomass",)
 
@@ -918,58 +931,18 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(
         modeled_FVC_names = ()
         rhs_ode = _RhsOde()
 
-    class _Store:
-        process_order = ("p1", "p2")
-
-    class _Collection:
-        processes = {"p1": object(), "p2": object()}
-
-    def _fake_dense_export(
-        trained_wrapper,
-        collection,
-        store,
-        process_name,
-        **kwargs,
-    ):
-        del trained_wrapper, collection, store, kwargs
-        auxiliary = {"mu_raw": np.asarray([-1.0, -1.0], dtype=float)}
-        if process_name == "p2":
-            auxiliary = {"latent_pair": np.asarray([[1.0, 2.0], [1.0, 2.0]])}
-        return postprocessing.DenseProcessExport(
-            t=np.asarray([0.0, 1.0], dtype=float),
-            c_species=np.asarray([[1.0], [1.0]], dtype=float),
-            v_cont=np.asarray([1.0, 1.0], dtype=float),
-            v_real=np.asarray([1.0, 1.0], dtype=float),
-            b_modeled_cum=np.zeros((2, 0), dtype=float),
-            q_rates=np.asarray([[0.0], [0.0]], dtype=float),
-            auxiliary=auxiliary,
-        )
-
-    monkeypatch.setattr(
-        postprocessing,
-        "_compute_dense_process_export",
-        _fake_dense_export,
-    )
-
     with pytest.raises(
         ValueError,
         match="predictions.csv auxiliary columns differ across processes",
     ):
         postprocessing.export_predictions_csv(
             _Wrapper(),
-            _Collection(),
-            _Store(),
+            _mismatched_aux_exports(),
             tmp_path / "predictions.csv",
-            solver_max_steps=256,
-            solver_rtol=1e-4,
-            solver_atol=1e-6,
-            solver_use_jump_ts=True,
         )
 
 
-def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(
-    monkeypatch, tmp_path: Path
-):
+def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(tmp_path: Path):
     class _RhsOde:
         name_modeled_rates = ("q_biomass",)
 
@@ -985,58 +958,19 @@ def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(
             del process_name
             return object()
 
-    class _TimeAxis:
-        start = 0.0
-        end = 1.0
-        unit = "h"
-
-    class _Process:
-        time_axis = _TimeAxis()
-        volume = type("Volume", (), {"initial_volume": 1.0, "unit": "L"})()
-        reactor_medium = type("ReactorMedium", (), {"components": {}})()
-
     class _Collection:
-        processes = {"p1": _Process(), "p2": _Process()}
-
-    def _fake_dense_export(
-        trained_wrapper,
-        collection,
-        store,
-        process_name,
-        **kwargs,
-    ):
-        del trained_wrapper, collection, store, kwargs
-        auxiliary = {"mu_raw": np.asarray([-1.0, -1.0], dtype=float)}
-        if process_name == "p2":
-            auxiliary = {"latent_pair": np.asarray([[1.0, 2.0], [1.0, 2.0]])}
-        return postprocessing.DenseProcessExport(
-            t=np.asarray([0.0, 1.0], dtype=float),
-            c_species=np.asarray([[1.0], [1.0]], dtype=float),
-            v_cont=np.asarray([1.0, 1.0], dtype=float),
-            v_real=np.asarray([1.0, 1.0], dtype=float),
-            b_modeled_cum=np.zeros((2, 0), dtype=float),
-            q_rates=np.asarray([[0.0], [0.0]], dtype=float),
-            auxiliary=auxiliary,
-        )
-
-    monkeypatch.setattr(
-        postprocessing,
-        "_compute_dense_process_export",
-        _fake_dense_export,
-    )
+        processes = {"p1": object(), "p2": object()}
 
     with pytest.raises(
         ValueError,
-        match="timeseries auxiliary columns differ across processes",
+        match="predictions.csv auxiliary columns differ across processes",
     ):
         postprocessing.plot_process_simulations(
             trained_wrapper=_Wrapper(),
             collection=_Collection(),
             store=_Store(),
             output_dir=tmp_path / "plots",
-            solver_max_steps=256,
-            solver_rtol=1e-4,
-            solver_atol=1e-6,
+            dense_exports=_mismatched_aux_exports(),
             timeseries_csv_path=tmp_path / "timeseries.csv",
             render_plots=False,
         )

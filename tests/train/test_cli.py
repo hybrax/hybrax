@@ -248,19 +248,17 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
         collection,
         store,
         output_dir,
+        dense_exports,
         process_names=None,
         *,
-        solver_max_steps=4096,
-        solver_rtol=1e-3,
-        solver_atol=1e-5,
-        solver_use_jump_ts=True,
+        per_process_named_losses=None,
+        per_process_total_loss=None,
         timeseries_csv_path=None,
     ):
-        del result, collection, store, output_dir
-        del solver_max_steps, solver_rtol, solver_atol
+        del result, collection, store, output_dir, dense_exports
+        del per_process_named_losses, per_process_total_loss
         captured["plot_process_names"] = process_names
         captured["predictions_csv"] = timeseries_csv_path
-        captured["solver_use_jump_ts"] = solver_use_jump_ts
 
     monkeypatch.setattr(cli, "plot_training_results", fake_plot_training_results)
 
@@ -285,7 +283,6 @@ def test_train_cli_plots_only_selected_processes(monkeypatch):
     assert exit_code == 0
     assert captured["plot_process_names"] == ("p1", "p3")
     assert str(captured["predictions_csv"]).endswith("out/predictions.csv")
-    assert captured["solver_use_jump_ts"] is False
 
 
 def test_train_cli_writes_losses_and_predictions_even_with_no_plot(monkeypatch):
@@ -325,7 +322,6 @@ def test_train_cli_writes_losses_and_predictions_even_with_no_plot(monkeypatch):
     def fake_plot_process_simulations(*args, **kwargs):
         captured["render_plots"] = kwargs.get("render_plots")
         captured["timeseries_csv_path"] = kwargs.get("timeseries_csv_path")
-        captured["solver_use_jump_ts"] = kwargs.get("solver_use_jump_ts")
 
     monkeypatch.setattr(cli, "_write_loss_csv", fake_write_loss_csv)
     monkeypatch.setattr(cli, "plot_process_simulations", fake_plot_process_simulations)
@@ -347,7 +343,6 @@ def test_train_cli_writes_losses_and_predictions_even_with_no_plot(monkeypatch):
     assert captured["loss_rows"][0][0] == "process"
     assert captured["render_plots"] is False
     assert str(captured["timeseries_csv_path"]).endswith("out/predictions.csv")
-    assert captured["solver_use_jump_ts"] is False
 
 
 def test_train_cli_defaults_match_TrainHarnessConfig(monkeypatch):

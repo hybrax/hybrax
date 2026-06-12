@@ -33,6 +33,18 @@ if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""
                 _bp_devices = int(_bp_devices)
             except (TypeError, ValueError):
                 _bp_devices = 1
+        # Never expose more CPU devices than physical cores. Oversubscribed XLA
+        # collective threads can starve past the AllReduce rendezvous timeout
+        # (~20 s) and deadlock mid-training — and extra devices never speed up a
+        # core-bound CPU run. Cap at cpu_count and warn if the user asked for more.
+        _bp_cap = _os.cpu_count() or 1
+        if _bp_devices > _bp_cap:
+            _sys.stderr.write(
+                f"[bp_train] requested --devices {_bp_devices} exceeds {_bp_cap} "
+                f"CPU cores; capping to {_bp_cap} (more devices than cores can "
+                f"only deadlock the pmap collective, never speed it up).\n"
+            )
+            _bp_devices = _bp_cap
         if _bp_devices > 1:
             _os.environ["XLA_FLAGS"] = (
                 _os.environ.get("XLA_FLAGS", "")

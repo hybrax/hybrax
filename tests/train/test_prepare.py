@@ -436,8 +436,8 @@ def _make_bolus_collection() -> BioProcessCollection:
             },
         ),
         process_variables={
-            "X": ProcessVariable(
-                name="X",
+            "pH": ProcessVariable(
+                name="pH",
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(

@@ -69,3 +69,34 @@ def test_sharded_training_matches_vmap():
     # ... and match the single-device run up to float32 reduction order.
     for a, b in zip(vmap["losses"], sharded["losses"]):
         assert abs(a - b) <= 1e-4 + 1e-4 * abs(a), (vmap["losses"], sharded["losses"])
+
+
+def test_devices_exceeding_processes_shards_over_processes():
+    """``--devices`` larger than the process count must shard across
+    ``min(devices, batch)`` — not collapse to a single device. Here 4 devices on
+    a 2-process batch shard over 2, and must match the vmap run."""
+    vmap = _run("1")
+    over = _run("4")
+    assert over["devices"] == 4, "bootstrap should expose 4 CPU devices"
+    assert len(over["losses"]) == len(vmap["losses"]) == 4
+    assert over["losses"][-1] < over["losses"][0]
+    for a, b in zip(vmap["losses"], over["losses"]):
+        assert abs(a - b) <= 1e-4 + 1e-4 * abs(a), (vmap["losses"], over["losses"])
+
+
+def test_device_count_capped_at_cpu_count():
+    """The package bootstrap caps requested devices at ``cpu_count``:
+    over-subscribed XLA CPU collectives can starve the AllReduce rendezvous and
+    deadlock mid-training (and extra devices never speed up a core-bound run)."""
+    env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "9999"}
+    env.pop("XLA_FLAGS", None)
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "import bp_train, jax, os; print('CAP', jax.device_count(), os.cpu_count())"],
+        env=env, capture_output=True, text=True, timeout=180,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("CAP"))
+    _, devcount, cpu = line.split()
+    assert int(devcount) == int(cpu), f"device count {devcount} not capped to cpu_count {cpu}"
+    assert int(devcount) < 9999

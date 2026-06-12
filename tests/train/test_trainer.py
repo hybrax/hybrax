@@ -512,7 +512,7 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total, per_target, per_sample = batched_loss_fn(
+    mean_total, per_sample_per_target, per_sample, *_ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -525,8 +525,9 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
         step=7,
     )
     assert jnp.isfinite(mean_total)
-    # One named loss term ("biomass") and one sample in the batch.
-    assert per_target.shape == (1,)
+    # One sample in the batch, one named loss term ("biomass"): the 2nd element
+    # is per-sample per-target (n_proc, n_targets); per_sample is (n_proc,).
+    assert per_sample_per_target.shape == (1, 1)
     assert per_sample.shape == (1,)
 
 
@@ -535,7 +536,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total_none, _, _ = batched_loss_fn(
+    mean_total_none, *_ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -547,7 +548,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         solver_atol=1e-7,
     )
     jump_ts_rows = jnp.zeros((1, 1), dtype=jnp.float32)
-    mean_total_present, _, _ = batched_loss_fn(
+    mean_total_present, *_ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -571,7 +572,7 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
     from bp_train.dense import build_union_time_grid
 
     t_meas = jnp.asarray([0.0, 1.0, 4.0], dtype=jnp.float32)
-    t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
+    t_eval, sample_idx, dense_t, dense_idx, _pred_t, _pred_idx = build_union_time_grid(
         t_meas, n_measured=3, n_dense=3
     )
     # dense linspace covers the (active) measurement span.

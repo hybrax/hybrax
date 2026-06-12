@@ -334,7 +334,10 @@ def test_controls_store_exposes_discrete_event_metadata():
     assert np.asarray(controls.bolus_event_volumes).tolist() == pytest.approx([0.4])
     assert np.asarray(controls.bolus_event_Cin).shape == (1, 1)
     assert float(controls.bolus_event_Cin[0, 0]) == pytest.approx(5.0)
-    assert {2.0, 3.0}.issubset(set(np.asarray(controls.active_step_ts, dtype=float)))
+    # jump_ts is the discrete EVENT times only (sample 2.0, bolus 3.0) — the
+    # vestigial triangle-ramp breakpoints are no longer spliced into the store's
+    # step_ts (the pseudo solve applies events instantaneously).
+    assert set(np.asarray(controls.active_step_ts, dtype=float).tolist()) == {2.0, 3.0}
 
 
 def test_controls_store_rejects_unknown_process(tmp_path):
