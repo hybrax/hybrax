@@ -3,6 +3,7 @@ import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
+import bp_format as bp  # noqa: E402
 import diffrax  # noqa: E402
 import equinox as eqx  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
@@ -10,6 +11,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from bp_format.serialization import load_process_collection_json  # noqa: E402
 from bp_format.serialization import save_process_collection_json  # noqa: E402
+from bp_format.splines import build_pseudobatch_transform  # noqa: E402
+from bp_format.splines import evaluate_pseudobatch_transform  # noqa: E402
 
 from .cstar_helpers import (  # noqa: E402
     CANONICAL_ARTIFACTS,
@@ -17,17 +20,14 @@ from .cstar_helpers import (  # noqa: E402
     EVENT_TIME_ATOL,
     EXPECTED_PROCESS_IDS,
     EXPECTED_REACTOR_COMPONENT_ORDER,
+    dense_event_pair_reference,
     dense_online_q_rate_reference,
     dense_online_reactor_reference,
     dense_reactor_reference,
-    event_aware_adf_value,
-    event_aware_feed_correction_value,
     event_jump_times,
-    fit_cstar_timeseries,
     fit_cstar_timeseries_from_values,
     SIM_1_DIR,
     SIM_RESULTS_DIR,
-    populate_exact_pseudobatch_transform,
 )
 from .load_utils import parse_all_processes  # noqa: E402
 from .simulation import REACTOR_STATE_UNITS, run_all_default  # noqa: E402
@@ -37,14 +37,32 @@ DATA_JSON = SIM_RESULTS_DIR / "process_collection.json"
 LOCAL_DIAGNOSTICS_DIR = SIM_1_DIR / "tmp" / "cstar_integration_sparse"
 SOLVER_RTOL = 1e-10
 SOLVER_ATOL = 1e-12
-DENSE_SOLVER_RTOL = 1e-12
-DENSE_SOLVER_ATOL = 1e-14
+DENSE_SOLVER_RTOL = 1e-13
+DENSE_SOLVER_ATOL = 1e-15
 DENSE_FITTED_CSTAR_RTOL = 1e-10
 DENSE_FITTED_CSTAR_ATOL = 1e-12
 DENSE_CSTAR_RTOL = 1e-9
 DENSE_CSTAR_ATOL = 1e-11
 DENSE_CONCENTRATION_RTOL = 2e-9
 DENSE_CONCENTRATION_ATOL = 1e-9
+PUBLIC_TRANSFORM_RTOL = 1e-12
+PUBLIC_TRANSFORM_ATOL = 1e-12
+PUBLIC_BACKTRANSFORM_RTOL = 1e-7
+PUBLIC_BACKTRANSFORM_ATOL = 1e-9
+EVENT_CSTAR_CONTINUITY_RTOL = 1e-10
+EVENT_CSTAR_CONTINUITY_ATOL = 1e-10
+ADF_VOLUME_ORACLE_RTOL = 1e-9
+ADF_VOLUME_ORACLE_ATOL = 1e-10
+FEED_VOLUME_ORACLE_RTOL = 1e-9
+FEED_VOLUME_ORACLE_ATOL = 1e-10
+FEED_SPECIES_RATIO_RTOL = 1e-10
+FEED_SPECIES_RATIO_ATOL = 1e-10
+FEED_BOLUS_JUMP_RTOL = 1e-9
+FEED_BOLUS_JUMP_ATOL = 1e-10
+SPARSE_CSTAR_RTOL = 1e-7
+SPARSE_CSTAR_ATOL = 1e-9
+SPARSE_CONCENTRATION_RTOL = 1e-7
+SPARSE_CONCENTRATION_ATOL = 1e-9
 DIAGNOSTIC_DPI = 120
 PLOT_POINTS = 241
 PLOT_POST_EVENT_EPS = 1e-6
@@ -109,69 +127,296 @@ def _integrate_direct_cstar(
     return np.asarray(solution.ys, dtype=float)
 
 
-def _backtransform(process, times, cstar_values, *, right_of_jump):
-    jump_times = event_jump_times(process)
+def _build_public_pseudobatch_transform(process):
+    process.pseudobatch_transform = build_pseudobatch_transform(
+        process,
+        list(EXPECTED_REACTOR_COMPONENT_ORDER),
+    )
+
+
+def _evaluate_left(series, times):
+    return np.asarray(
+        series.evaluate_many(jnp.asarray(times), side="left"), dtype=float
+    )
+
+
+def _transform_values(process, component_name, times, *, side):
+    assert process.pseudobatch_transform is not None
+    t_eval = jnp.asarray(times)
+    adf = np.asarray(
+        process.pseudobatch_transform.adf.evaluate_many(t_eval, side=side),
+        dtype=float,
+    )
+    feed_correction = np.asarray(
+        process.pseudobatch_transform.feed_corrections[component_name].evaluate_many(
+            t_eval, side=side
+        ),
+        dtype=float,
+    )
+    return adf, feed_correction
+
+
+def _transform_values_left(process, component_name, times):
+    return _transform_values(process, component_name, times, side="left")
+
+
+def _public_cstar_from_concentrations(process, dense):
+    times = dense["time"]
     return np.column_stack(
         [
-            np.asarray(
-                [
-                    (
-                        cstar_values[row, column]
-                        + event_aware_feed_correction_value(
-                            process,
-                            name,
-                            float(time),
-                            jump_times,
-                            right_of_jump=right_of_jump,
-                        )
-                    )
-                    / event_aware_adf_value(
-                        process,
-                        float(time),
-                        jump_times,
-                        right_of_jump=right_of_jump,
-                    )
-                    for row, time in enumerate(times)
-                ],
-                dtype=float,
-            )
-            for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER)
+            dense[name] * adf - feed_correction
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+            for adf, feed_correction in [_transform_values_left(process, name, times)]
         ]
     )
 
 
-def _backtransform_left(process, times, cstar_values):
-    return _backtransform(process, times, cstar_values, right_of_jump=False)
+def _public_backtransform_from_cstar(process, times, cstar_values):
+    return np.column_stack(
+        [
+            (cstar_values[:, column] + feed_correction) / adf
+            for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER)
+            for adf, feed_correction in [_transform_values_left(process, name, times)]
+        ]
+    )
 
 
-def _dense_oracle_cstar(process, dense, *, right_of_jump):
-    times = dense["time"]
-    jump_times = event_jump_times(process)
+def _assert_public_volume_matches_dense_simulation(process, dense):
+    assert process.volume.total_volume is not None
+    public_volume = _evaluate_left(process.volume.total_volume, dense["time"])
+    np.testing.assert_allclose(
+        public_volume,
+        dense["volume"],
+        rtol=PUBLIC_TRANSFORM_RTOL,
+        atol=PUBLIC_TRANSFORM_ATOL,
+    )
+
+
+def _assert_public_transform_preserves_event_cstar(process, event_pairs):
+    for pre_event, post_event in event_pairs:
+        time = pre_event["time"]
+        assert post_event["time"] == time
+        times = np.asarray([time], dtype=float)
+        for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+            pre_adf, pre_feed_correction = _transform_values(
+                process,
+                name,
+                times,
+                side="left",
+            )
+            post_adf, post_feed_correction = _transform_values(
+                process,
+                name,
+                times,
+                side="right",
+            )
+            pre_cstar = pre_event[name] * pre_adf[0] - pre_feed_correction[0]
+            post_cstar = post_event[name] * post_adf[0] - post_feed_correction[0]
+            np.testing.assert_allclose(
+                post_cstar,
+                pre_cstar,
+                rtol=EVENT_CSTAR_CONTINUITY_RTOL,
+                atol=EVENT_CSTAR_CONTINUITY_ATOL,
+            )
+
+
+def _evaluate_public_backtransform(process, times):
     return np.column_stack(
         [
             np.asarray(
-                [
-                    dense[name][row]
-                    * event_aware_adf_value(
-                        process,
-                        float(time),
-                        jump_times,
-                        right_of_jump=right_of_jump,
-                    )
-                    - event_aware_feed_correction_value(
-                        process,
-                        name,
-                        float(time),
-                        jump_times,
-                        right_of_jump=right_of_jump,
-                    )
-                    for row, time in enumerate(times)
-                ],
+                evaluate_pseudobatch_transform(process, name, jnp.asarray(times)),
                 dtype=float,
             )
             for name in EXPECTED_REACTOR_COMPONENT_ORDER
         ]
     )
+
+
+# --- Orthogonal ground-truth checks for the public pseudobatch carriers ---
+#
+# The dense reintegration below builds c* from the public ADF/feed-correction
+# carriers and inverts it with the same carriers, so a wrong carrier *magnitude*
+# would cancel. The helpers below pin those magnitudes against simulator ground
+# truth instead: expected values come from the integrated dense output (reactor
+# volume, cumulative feed volumes) plus the known experimental protocol (sample
+# and bolus volumes, feed concentrations), never from bp_format's carrier
+# bookkeeping. See B-D-orthogonal-carrier-checks/TASK.md.
+
+
+def _initial_volume(process):
+    return float(process.volume.initial_volume)
+
+
+def _feed_concentration(process, species_name):
+    """Shared feed concentration of a species across all streams that carry it.
+
+    Asserts every stream feeding this species agrees (true for sim_1, where the
+    continuous nutrient feed and the bolus feed share one medium and the base feed
+    carries nothing). Returns 0.0 for unfed species.
+    """
+    concentrations = set()
+    for volume_change in process.volume.volume_changes.values():
+        if not isinstance(volume_change, bp.FeedVolumeChange):
+            continue
+        component = volume_change.feed_medium.components[species_name]
+        value = float(component.concentration.value)
+        if value != 0.0:
+            concentrations.add(value)
+    assert len(concentrations) <= 1, (species_name, concentrations)
+    return concentrations.pop() if concentrations else 0.0
+
+
+def _sample_compensation_factors(process, event_pairs):
+    """Independent per-sample compensation factors v_before / v_after.
+
+    v_before is the simulator pre-event reactor volume; v_after applies only the
+    protocol sample volume (sampling precedes any same-time bolus). Routes through
+    the integrated volume trace, not the public sample-compensation series.
+    """
+    pre_event_volume = {pre["time"]: pre["volume"] for pre, _post in event_pairs}
+    factors = []
+    for volume_change in process.volume.volume_changes.values():
+        if not isinstance(volume_change, bp.SampleVolumeChange):
+            continue
+        times = np.asarray(volume_change.values.times, dtype=float)
+        deltas = np.asarray(volume_change.values.values, dtype=float)
+        for time, delta in zip(times, deltas, strict=True):
+            time = float(time)
+            matches = [t for t in pre_event_volume if abs(t - time) <= EVENT_TIME_ATOL]
+            assert len(matches) == 1, (time, matches)
+            v_before = pre_event_volume[matches[0]]
+            v_after = v_before + float(delta)
+            factors.append((time, v_before / v_after))
+    factors.sort()
+    return factors
+
+
+def _sample_compensation_at(factors, time, *, inclusive):
+    """Product of sample factors active at `time`.
+
+    inclusive=False gives the left/pre-event value (a sample exactly at `time` is
+    excluded); inclusive=True includes a same-time sample, matching the fact that a
+    bolus is applied after the sample that shares its timestamp.
+    """
+    compensation = 1.0
+    for sample_time, factor in factors:
+        if inclusive:
+            active = sample_time <= time + EVENT_TIME_ATOL
+        else:
+            active = sample_time < time - EVENT_TIME_ATOL
+        if active:
+            compensation *= factor
+    return compensation
+
+
+def _assert_public_adf_matches_volume_oracle(process, dense, factors):
+    """Check B: public ADF equals V_dense/V_init * sample_compensation."""
+    times = dense["time"]
+    v_init = _initial_volume(process)
+    compensation = np.asarray(
+        [_sample_compensation_at(factors, float(t), inclusive=False) for t in times],
+        dtype=float,
+    )
+    expected_adf = dense["volume"] / v_init * compensation
+    public_adf = _evaluate_left(process.pseudobatch_transform.adf, times)
+    np.testing.assert_allclose(
+        public_adf,
+        expected_adf,
+        rtol=ADF_VOLUME_ORACLE_RTOL,
+        atol=ADF_VOLUME_ORACLE_ATOL,
+    )
+
+
+def _assert_public_feed_correction_pre_sample(process, dense, factors):
+    """Check D1: pre-first-sample feed correction equals c_feed * fed_volume / V_init.
+
+    The window before the first sample is chosen because sample compensation is
+    identically 1 there, so the carrier is an unweighted mass balance over the
+    recorded cumulative feed volumes. This has teeth only for processes that feed
+    before their first sample (run_1, continuous feed); a process with no
+    pre-sample feed (run_2) exercises only the trivial 0 == 0 case here, and its
+    feed-correction magnitude is instead pinned by the bolus-jump check (D3).
+    """
+    times = dense["time"]
+    v_init = _initial_volume(process)
+    first_sample = min((t for t, _ in factors), default=np.inf)
+    pre_sample = times < first_sample - EVENT_TIME_ATOL
+    assert np.any(pre_sample)
+    fed_volume = dense["cum_conti_feed"] + dense["cum_bolus_feed"]
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        expected = _feed_concentration(process, name) * fed_volume / v_init
+        public_fc = _evaluate_left(
+            process.pseudobatch_transform.feed_corrections[name], times
+        )
+        np.testing.assert_allclose(
+            public_fc[pre_sample],
+            expected[pre_sample],
+            rtol=FEED_VOLUME_ORACLE_RTOL,
+            atol=FEED_VOLUME_ORACLE_ATOL,
+        )
+
+
+def _assert_public_feed_correction_species_ratio(process, dense):
+    """Check D2: feed correction is linear in feed concentration across species."""
+    times = dense["time"]
+    fed = [
+        (name, _feed_concentration(process, name))
+        for name in EXPECTED_REACTOR_COMPONENT_ORDER
+    ]
+    fed = [(name, conc) for name, conc in fed if conc != 0.0]
+    assert len(fed) >= 2
+    ref_name, ref_conc = fed[0]
+    ref_fc = _evaluate_left(
+        process.pseudobatch_transform.feed_corrections[ref_name], times
+    )
+    for name, conc in fed[1:]:
+        public_fc = _evaluate_left(
+            process.pseudobatch_transform.feed_corrections[name], times
+        )
+        np.testing.assert_allclose(
+            public_fc * ref_conc,
+            ref_fc * conc,
+            rtol=FEED_SPECIES_RATIO_RTOL,
+            atol=FEED_SPECIES_RATIO_ATOL,
+        )
+
+
+def _assert_public_feed_correction_bolus_jumps(process, factors):
+    """Check D3: each bolus jump equals sample_compensation * delta_V * c_feed / V_init.
+
+    Feed correction is continuous across a pure sample, so the right-minus-left jump
+    at a bolus time isolates the bolus contribution. The compensation is taken
+    inclusive of any same-time sample.
+    """
+    v_init = _initial_volume(process)
+    checked = 0
+    for volume_change in process.volume.volume_changes.values():
+        if not isinstance(volume_change, bp.FeedVolumeChange):
+            continue
+        if volume_change.is_continuous:
+            continue
+        times = np.asarray(volume_change.values.times, dtype=float)
+        deltas = np.asarray(volume_change.values.values, dtype=float)
+        for time, delta_v in zip(times, deltas, strict=True):
+            time = float(time)
+            t_eval = jnp.asarray([time])
+            compensation = _sample_compensation_at(factors, time, inclusive=True)
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+                series = process.pseudobatch_transform.feed_corrections[name]
+                left = float(series.evaluate_many(t_eval, side="left")[0])
+                right = float(series.evaluate_many(t_eval, side="right")[0])
+                c_feed = float(
+                    volume_change.feed_medium.components[name].concentration.value
+                )
+                expected_jump = compensation * float(delta_v) * c_feed / v_init
+                np.testing.assert_allclose(
+                    right - left,
+                    expected_jump,
+                    rtol=FEED_BOLUS_JUMP_RTOL,
+                    atol=FEED_BOLUS_JUMP_ATOL,
+                )
+            checked += 1
+    assert checked > 0
 
 
 def _plot_time_grid(process, start, end):
@@ -479,11 +724,9 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
     _clear_local_diagnostic_plots()
 
     for process in collection.processes.values():
-        populate_exact_pseudobatch_transform(process)
-        for component in process.reactor_medium.components.values():
-            component.c_star_concentration = fit_cstar_timeseries(process, component)
+        _build_public_pseudobatch_transform(process)
 
-    # Then write a second, derived collection after adding the exact
+    # Then write a second, derived collection after adding the public
     # pseudobatch transform and fitted c* splines. Reloading it verifies that
     # the enrichment survives JSON serialization before reintegration uses it.
     enriched_json = tmp_path / "process_collection_with_cstar.json"
@@ -529,10 +772,14 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             sparse_times,
             fitted_cstar[0],
         )
-        recovered_concentrations = _backtransform_left(
+        recovered_concentrations = _public_backtransform_from_cstar(
             process,
             sparse_times,
             integrated_cstar,
+        )
+        public_backtransformed_concentrations = _evaluate_public_backtransform(
+            process,
+            sparse_times,
         )
         observed_concentrations = np.column_stack(
             [
@@ -561,7 +808,7 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
             plot_times,
             fitted_cstar[0],
         )
-        recovered_plot_concentrations = _backtransform_left(
+        recovered_plot_concentrations = _public_backtransform_from_cstar(
             process,
             plot_times,
             integrated_plot_cstar,
@@ -580,14 +827,20 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
         np.testing.assert_allclose(
             integrated_cstar,
             fitted_cstar,
-            rtol=1e-7,
-            atol=1e-9,
+            rtol=SPARSE_CSTAR_RTOL,
+            atol=SPARSE_CSTAR_ATOL,
+        )
+        np.testing.assert_allclose(
+            public_backtransformed_concentrations,
+            observed_concentrations,
+            rtol=PUBLIC_BACKTRANSFORM_RTOL,
+            atol=PUBLIC_BACKTRANSFORM_ATOL,
         )
         np.testing.assert_allclose(
             recovered_concentrations,
             observed_concentrations,
-            rtol=1e-7,
-            atol=1e-9,
+            rtol=SPARSE_CONCENTRATION_RTOL,
+            atol=SPARSE_CONCENTRATION_ATOL,
         )
 
     assert {path.name for path in LOCAL_DIAGNOSTICS_DIR.glob("*.png")} == {
@@ -600,7 +853,7 @@ def test_sim_1_dense_cstar_oracle_reintegration():
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
 
     for process_name, process in collection.processes.items():
-        populate_exact_pseudobatch_transform(process)
+        _build_public_pseudobatch_transform(process)
         dense = dense_online_reactor_reference(process_name, process.time_axis.end)
         dense_times = dense["time"]
         assert len(dense_times) > 0
@@ -616,7 +869,20 @@ def test_sim_1_dense_cstar_oracle_reintegration():
         # Simulation.build_dense_rows emits online rows before pre/post-event rows,
         # and Sim1Simulation._integrate_left_continuous stores the event-time
         # state before discrete event application.
-        dense_cstar = _dense_oracle_cstar(process, dense, right_of_jump=False)
+        _assert_public_volume_matches_dense_simulation(process, dense)
+        event_pairs = dense_event_pair_reference(process_name, process.time_axis.end)
+        _assert_public_transform_preserves_event_cstar(process, event_pairs)
+
+        # Orthogonal carrier-magnitude checks (B + D): pin ADF and feed correction
+        # against simulator ground truth so a wrong carrier magnitude cannot cancel
+        # in the c* round-trip below.
+        sample_factors = _sample_compensation_factors(process, event_pairs)
+        _assert_public_adf_matches_volume_oracle(process, dense, sample_factors)
+        _assert_public_feed_correction_pre_sample(process, dense, sample_factors)
+        _assert_public_feed_correction_species_ratio(process, dense)
+        _assert_public_feed_correction_bolus_jumps(process, sample_factors)
+
+        dense_cstar = _public_cstar_from_concentrations(process, dense)
         for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
             process.reactor_medium.components[
                 name
@@ -661,11 +927,10 @@ def test_sim_1_dense_cstar_oracle_reintegration():
             atol=DENSE_CSTAR_ATOL,
         )
 
-        recovered_concentrations = _backtransform(
+        recovered_concentrations = _public_backtransform_from_cstar(
             process,
             dense_times,
             integrated_cstar,
-            right_of_jump=False,
         )
         dense_concentrations = np.column_stack(
             [dense[name] for name in EXPECTED_REACTOR_COMPONENT_ORDER]
