@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 from pathlib import Path
 import sys
@@ -104,6 +104,25 @@ STATE_INDEX = {name: index for index, name in enumerate(STATE_NAMES)}
 CONTROL_NAMES = ("conti_feed", "pH", "temperature")
 CONTROL_INDEX = {name: index for index, name in enumerate(CONTROL_NAMES)}
 
+# Inert pseudobatch tracers. These are NON-PHYSICAL transform witnesses, not real
+# biology: an unfed and a fed inert species whose pseudobatch c* is constant by
+# construction. They are integrated jointly with the real species in the main
+# solve (appended after `volume` in the augmented SOLVE_* state vector below), but
+# emitted as extra dense-CSV columns ONLY and kept out of REACTOR_STATE_NAMES/
+# STATE_NAMES so they never reach the parsed JSON or the events CSV. The dense c*
+# oracle test uses them as a closed-form, integrator-sourced ground truth for the
+# public ADF / feed-correction carriers (the inert-tracer oracle checks A and C in
+# test_direct_cstar_reintegration.py).
+TRACER_UNFED_NAME = "tracer_unfed"
+TRACER_FED_NAME = "tracer_fed"
+TRACER_REACTOR_NAMES = (TRACER_UNFED_NAME, TRACER_FED_NAME)
+TRACER_UNFED_INITIAL = 100.0
+TRACER_FED_INITIAL = 0.0
+# Fed-tracer concentration in BOTH nutrient streams (continuous feed + bolus), the
+# streams that carry glucose/glutamine. Distinct from FEED_GLUCOSE/FEED_GLUTAMINE
+# so the per-species feed-correction ratio check is non-trivial.
+TRACER_FED_FEED_CONCENTRATION = 300.0
+
 # Rate columns included in `simulation_dense_output.csv`. The `r` array is
 # laid out as REACTOR_STATE_NAMES then PROCESS_VARIABLE_STATE_NAMES.
 RATE_COLUMNS = (
@@ -129,6 +148,21 @@ INITIAL_STATE = np.asarray(
     ],
     dtype=float,
 )
+
+# Augmented state used ONLY for the joint solve: the real state vector with the
+# two inert tracers appended after `volume`. Appending at the end keeps every
+# existing index (STATE_INDEX, the reactor/pv slices in `_rhs_numpy`) unchanged,
+# so the real-species RHS is untouched. The serialized result is built from the
+# original (tracer-free) tuples; the tracer slices ride along as extra columns.
+SOLVE_STATE_NAMES = (*STATE_NAMES, *TRACER_REACTOR_NAMES)
+SOLVE_REACTOR_STATE_NAMES = (*REACTOR_STATE_NAMES, *TRACER_REACTOR_NAMES)
+SOLVE_INITIAL_STATE = np.concatenate(
+    [INITIAL_STATE, [TRACER_UNFED_INITIAL, TRACER_FED_INITIAL]]
+)
+# Column indices of the two tracers within the augmented solve state (appended
+# after the 10 real states), used to read/split the tracer columns back off.
+TRACER_UNFED_INDEX = len(STATE_NAMES)
+TRACER_FED_INDEX = len(STATE_NAMES) + 1
 
 
 @dataclass(frozen=True)
@@ -302,8 +336,29 @@ class Sim1Simulation(Simulation):
             sorted(set(self.schedule.online_times) | set(event_times)),
             dtype=float,
         )
-        states = self._integrate_left_continuous(state_times, events)
+        # Integrate the real species jointly with the two inert tracers (appended
+        # after `volume`), then split the tracer columns back off. The serialized
+        # result uses the original tracer-free tuples and the original events, so
+        # the events CSV and parsed JSON stay tracer-free; the tracers ride along
+        # only as extra dense-CSV columns.
+        states_aug = self._integrate_left_continuous(
+            state_times,
+            self._solve_events(events),
+            initial_state=SOLVE_INITIAL_STATE,
+            state_names=SOLVE_STATE_NAMES,
+            reactor_state_names=SOLVE_REACTOR_STATE_NAMES,
+        )
+        states = states_aug[:, : len(STATE_NAMES)]
         extras = self._extra_columns(state_times, states)
+        # The tracers ride as extra columns, so they follow this fixture's existing
+        # extra-column convention: build_dense_rows reuses the (left-continuous,
+        # pre-event) extras for the post-event row too. Like the other derived extras
+        # (e.g. biomass_cells_per_l) they are therefore NOT re-mixed at events, so a
+        # post-event tracer value equals its pre-event value. The A/C oracle helpers
+        # only read online rows, where the left-continuous value is exactly what the
+        # side="left" carrier evaluation expects.
+        extras[TRACER_UNFED_NAME] = states_aug[:, TRACER_UNFED_INDEX]
+        extras[TRACER_FED_NAME] = states_aug[:, TRACER_FED_INDEX]
         result = self.build_result(
             process=self.process_id,
             state_times=state_times,
@@ -358,13 +413,20 @@ class Sim1Simulation(Simulation):
         self,
         state_times: np.ndarray,
         events: Sequence[SimulationEvent],
+        *,
+        initial_state: np.ndarray,
+        state_names: Sequence[str],
+        reactor_state_names: Sequence[str],
     ) -> np.ndarray:
+        # The state layout is supplied explicitly (no tracer-free default): _rhs_numpy
+        # always integrates the augmented SOLVE_* state, so the only valid caller is
+        # run() passing the augmented tuples.
         grouped = self.group_events(events)
         events_by_time = {time: group for (_, time), group in grouped.items()}
         out = []
         next_index = 0
         current_time = float(state_times[0])
-        current_state = self.initial_state.copy()
+        current_state = initial_state.copy()
         for event_time in sorted(events_by_time):
             stop = int(np.searchsorted(state_times, event_time, side="right"))
             segment_times = state_times[next_index:stop]
@@ -391,8 +453,8 @@ class Sim1Simulation(Simulation):
                 current_state = self.apply_events(
                     current_state,
                     events_by_time[event_time],
-                    state_names=self.state_names,
-                    reactor_state_names=self.reactor_state_names,
+                    state_names=state_names,
+                    reactor_state_names=reactor_state_names,
                 )
                 current_time = event_time
 
@@ -465,7 +527,21 @@ class Sim1Simulation(Simulation):
         d_reactor = biological + flow_term
         d_pv = r[len(REACTOR_STATE_NAMES) :]
         d_volume = self.config.conti_flow_l_per_h + base_flow_l_per_h
-        return np.concatenate([d_reactor, d_pv, [d_volume]])
+
+        # Inert tracers, appended after `volume` in the augmented solve state. The
+        # unfed tracer is pure dilution; the fed tracer adds the continuous nutrient
+        # stream at TRACER_FED_FEED_CONCENTRATION (base feed carries no tracer). Both
+        # use the SAME live total flow (== d_volume) and live volume, so d(c*V)/dt is
+        # exactly 0 (unfed) / conti_flow*c_feed (fed) at every solver substep.
+        c_unfed, c_fed = state[TRACER_UNFED_INDEX], state[TRACER_FED_INDEX]
+        total_flow = d_volume
+        d_tracer_unfed = -(total_flow / volume) * c_unfed
+        d_tracer_fed = (
+            self.config.conti_flow_l_per_h * TRACER_FED_FEED_CONCENTRATION
+        ) / volume - (total_flow / volume) * c_fed
+        return np.concatenate(
+            [d_reactor, d_pv, [d_volume], [d_tracer_unfed, d_tracer_fed]]
+        )
 
     def _with_sim_1_output_schema(self, result: SimulationResult) -> SimulationResult:
         dense_rows = []
@@ -558,6 +634,31 @@ class Sim1Simulation(Simulation):
             "biomass_cells_per_l": biomass / MG_PER_CELL,
             "total_cells_per_l": (biomass + dead_cells) / MG_PER_CELL,
         }
+
+    def _solve_events(self, events: Sequence[SimulationEvent]) -> list[SimulationEvent]:
+        """Augment bolus feed concentrations with the inert tracers for the solve.
+
+        The joint solve integrates the tracers alongside the real species, so the
+        boluses applied during integration must carry the tracer feed concentrations
+        IN ADDITION to the real ones (unfed tracer not fed, fed tracer at
+        TRACER_FED_FEED_CONCENTRATION). Samples / fermentation_end are unchanged
+        (samples preserve concentration, so the tracers dilute correctly without a
+        feed entry). The original events are still used to build the serialized
+        result, keeping the events CSV tracer-free.
+        """
+        tracer_feed = {
+            TRACER_UNFED_NAME: 0.0,
+            TRACER_FED_NAME: TRACER_FED_FEED_CONCENTRATION,
+        }
+        return [
+            replace(
+                event,
+                feed_concentrations={**event.feed_concentrations, **tracer_feed},
+            )
+            if event.event_type == EVENT_TYPE_BOLUS
+            else event
+            for event in events
+        ]
 
 
 def run_all_default(output_dir: str | Path | None = None) -> list[SimulationResult]:

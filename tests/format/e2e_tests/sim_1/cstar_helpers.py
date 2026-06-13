@@ -42,6 +42,13 @@ CUMULATIVE_FEED_COLUMNS = (
     "cum_bolus_feed",
     "cum_base_feed",
 )
+# Inert pseudobatch tracer columns (dense CSV only, never in the JSON). Used as a
+# closed-form, integrator-sourced oracle for the public ADF / feed-correction
+# carriers (checks A and C in the dense c* oracle test).
+TRACER_COLUMNS = (
+    "tracer_unfed",
+    "tracer_fed",
+)
 
 
 def fit_cstar_timeseries_from_values(
@@ -106,6 +113,10 @@ def _reactor_rows_to_arrays(rows: list[dict[str, str]]) -> dict[str, np.ndarray]
         **{
             column: np.asarray([float(row[column]) for row in rows], dtype=float)
             for column in CUMULATIVE_FEED_COLUMNS
+        },
+        **{
+            column: np.asarray([float(row[column]) for row in rows], dtype=float)
+            for column in TRACER_COLUMNS
         },
     }
 

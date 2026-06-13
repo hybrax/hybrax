@@ -31,6 +31,7 @@ from .cstar_helpers import (  # noqa: E402
 )
 from .load_utils import parse_all_processes  # noqa: E402
 from .simulation import REACTOR_STATE_UNITS, run_all_default  # noqa: E402
+from .simulation import TRACER_FED_FEED_CONCENTRATION  # noqa: E402
 from .simulation import write_simulation_plots  # noqa: E402
 
 DATA_JSON = SIM_RESULTS_DIR / "process_collection.json"
@@ -42,7 +43,14 @@ DENSE_SOLVER_ATOL = 1e-15
 DENSE_FITTED_CSTAR_RTOL = 1e-10
 DENSE_FITTED_CSTAR_ATOL = 1e-12
 DENSE_CSTAR_RTOL = 1e-9
-DENSE_CSTAR_ATOL = 1e-11
+# Absolute floor for the c* reintegration self-consistency check. The smallest c*
+# column (glutamine, ~2e-3) leaves the reintegration-vs-fit residual atol-bound at
+# ~1e-11, i.e. the spline-fit + diffrax-reintegration floor (not the main-solve
+# accuracy: tightening the integrator does not move it). Folding the two inert
+# tracers into the main DOP853 error norm shifts the real-species trajectory by
+# ~1e-9, nudging this residual just past the old 1e-11; 1e-10 restores margin while
+# staying 4 orders under the 1e-6 carrier mutation the oracle checks must catch.
+DENSE_CSTAR_ATOL = 1e-10
 DENSE_CONCENTRATION_RTOL = 2e-9
 DENSE_CONCENTRATION_ATOL = 1e-9
 PUBLIC_TRANSFORM_RTOL = 1e-12
@@ -59,6 +67,14 @@ FEED_SPECIES_RATIO_RTOL = 1e-10
 FEED_SPECIES_RATIO_ATOL = 1e-10
 FEED_BOLUS_JUMP_RTOL = 1e-9
 FEED_BOLUS_JUMP_ATOL = 1e-10
+# Inert-tracer oracle checks (A + C). The tracers are integrated in the main DOP853
+# solve, so these tolerances are tied to that solve's dense-output accuracy, not a
+# magic constant; they leave >2 orders of margin against the ~1e-6 carrier scaling
+# the mutation check perturbs.
+ADF_TRACER_RTOL = 1e-8
+ADF_TRACER_ATOL = 1e-10
+FEED_TRACER_RTOL = 1e-8
+FEED_TRACER_ATOL = 1e-10
 SPARSE_CSTAR_RTOL = 1e-7
 SPARSE_CSTAR_ATOL = 1e-9
 SPARSE_CONCENTRATION_RTOL = 1e-7
@@ -417,6 +433,57 @@ def _assert_public_feed_correction_bolus_jumps(process, factors):
                 )
             checked += 1
     assert checked > 0
+
+
+def _assert_public_adf_matches_tracer(process, dense):
+    """Check A: public ADF equals c_U(0)/c_U(t) for the unfed inert tracer.
+
+    The unfed tracer is inert and never fed, so its pseudobatch c* is constant and
+    feed_correction is identically zero, leaving ADF(t) = c_U(0)/c_U(t). The RHS is
+    a simulator concentration produced by the ODE integrator, fully independent of
+    bp_format's carrier arithmetic.
+    """
+    times = dense["time"]
+    c_unfed = dense["tracer_unfed"]
+    expected_adf = c_unfed[0] / c_unfed
+    public_adf = _evaluate_left(process.pseudobatch_transform.adf, times)
+    np.testing.assert_allclose(
+        public_adf,
+        expected_adf,
+        rtol=ADF_TRACER_RTOL,
+        atol=ADF_TRACER_ATOL,
+    )
+
+
+def _assert_public_feed_correction_matches_tracer(process, dense):
+    """Check C: feed correction of every real species from the fed inert tracer.
+
+    The fed tracer is inert and fed (at TRACER_FED_FEED_CONCENTRATION) by the same
+    streams as glucose/glutamine, so its constant c* gives a closed-form, species-
+    independent accumulated-feed function G(t) = feed_correction_F / c_feed_F with
+    feed_correction_F = c_F(t)*ADF(t) - c_F(0) and ADF = c_U(0)/c_U(t) from check A.
+    Each real species i must then satisfy feed_correction_i = c_feed_i * G(t),
+    including the unfed species (c_feed_i = 0 -> feed_correction_i = 0).
+
+    The tracer ADF (c_U(0)/c_U(t)) is recomputed here rather than reused from check
+    A on purpose: keeping the two checks independent means either can fail on its own.
+    """
+    times = dense["time"]
+    c_unfed = dense["tracer_unfed"]
+    c_fed = dense["tracer_fed"]
+    adf = c_unfed[0] / c_unfed
+    accumulated_feed = (c_fed * adf - c_fed[0]) / TRACER_FED_FEED_CONCENTRATION
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        expected = _feed_concentration(process, name) * accumulated_feed
+        public_fc = _evaluate_left(
+            process.pseudobatch_transform.feed_corrections[name], times
+        )
+        np.testing.assert_allclose(
+            public_fc,
+            expected,
+            rtol=FEED_TRACER_RTOL,
+            atol=FEED_TRACER_ATOL,
+        )
 
 
 def _plot_time_grid(process, start, end):
@@ -881,6 +948,12 @@ def test_sim_1_dense_cstar_oracle_reintegration():
         _assert_public_feed_correction_pre_sample(process, dense, sample_factors)
         _assert_public_feed_correction_species_ratio(process, dense)
         _assert_public_feed_correction_bolus_jumps(process, sample_factors)
+
+        # Inert-tracer oracles (A + C): derive ADF and feed correction purely from
+        # simulated tracer concentrations (integrator output), independent of the
+        # carrier bookkeeping that B + D reconstruct from the protocol.
+        _assert_public_adf_matches_tracer(process, dense)
+        _assert_public_feed_correction_matches_tracer(process, dense)
 
         dense_cstar = _public_cstar_from_concentrations(process, dense)
         for column, name in enumerate(EXPECTED_REACTOR_COMPONENT_ORDER):
