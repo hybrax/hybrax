@@ -17,11 +17,12 @@ import bp_format as bp  # noqa: E402
 from .simulation import (  # noqa: E402
     FEED_GLUCOSE,
     FEED_GLUTAMINE,
+    FULL_STATE_NAMES,
     RATIO_RELAXATION_PER_H,
     RATIO_TARGET,
-    REACTOR_STATE_NAMES,
+    REACTOR_MEDIUM_NAMES,
     REACTOR_STATE_UNITS,
-    STATE_NAMES,
+    TRACER_FED_FEED_CONCENTRATION,
 )
 
 PROCESS_ID_COLUMN = "process_id"
@@ -35,7 +36,7 @@ EVENT_COLUMNS = (
     "event_type",
     "delta_volume",
     "feed_id",
-    *(f"feed_{name}" for name in REACTOR_STATE_NAMES),
+    *(f"feed_{name}" for name in REACTOR_MEDIUM_NAMES),
 )
 
 
@@ -49,7 +50,7 @@ def parse_all_processes(
     dense_columns, dense_rows = _read_csv(dense_csv)
     event_columns, event_rows = _read_csv(events_csv)
     _require_columns(
-        dense_columns, [PROCESS_ID_COLUMN, "time", "row_type", *STATE_NAMES]
+        dense_columns, [PROCESS_ID_COLUMN, "time", "row_type", *FULL_STATE_NAMES]
     )
     _require_columns(dense_columns, CONTROL_COLUMNS)
     _require_columns(event_columns, EVENT_COLUMNS)
@@ -137,7 +138,7 @@ def _load_single_process(
         )
 
     reactor_components = {}
-    for name in REACTOR_STATE_NAMES:
+    for name in REACTOR_MEDIUM_NAMES:
         reactor_components[name] = bp.ReactorMediumComponent(
             name=name,
             unit=STATE_UNITS[name],
@@ -239,6 +240,12 @@ def _build_biological_ode() -> bp.BiologicalOde:
                 f"{RATIO_RELAXATION_PER_H:.12g} * "
                 f"({RATIO_TARGET:.12g} - intracellular_product_ratio)"
             ),
+            # Inert pseudobatch tracers: reactor-medium components with no biological
+            # dynamics (validate_biological_ode requires every component to have a
+            # derivative; "0" declares none). Their dilution/feed is handled by the
+            # volume-change machinery, like every other species.
+            "tracer_unfed": "0",
+            "tracer_fed": "0",
         },
     )
 
@@ -287,7 +294,14 @@ def _build_volume_changes(
             is_continuous=True,
             feed_medium=_feed_medium(
                 "conti_feed_medium",
-                {"glucose": FEED_GLUCOSE, "glutamine": FEED_GLUTAMINE},
+                {
+                    "glucose": FEED_GLUCOSE,
+                    "glutamine": FEED_GLUTAMINE,
+                    # The continuous stream physically carries the fed inert tracer
+                    # (integrated in _rhs_numpy); record it so the JSON feed medium
+                    # matches the simulation. tracer_unfed is never fed -> 0.
+                    "tracer_fed": TRACER_FED_FEED_CONCENTRATION,
+                },
             ),
             values=bp.TimeSeries(
                 times=jnp.asarray(t_online),
@@ -340,7 +354,7 @@ def _build_volume_changes(
 
 def _feed_medium(name: str, concentrations: dict[str, float]) -> bp.FeedMedium:
     components = {}
-    for state_name in REACTOR_STATE_NAMES:
+    for state_name in REACTOR_MEDIUM_NAMES:
         components[state_name] = bp.FeedMediumComponent(
             name=state_name,
             unit=STATE_UNITS[state_name],
@@ -360,9 +374,9 @@ def _feed_medium(name: str, concentrations: dict[str, float]) -> bp.FeedMedium:
 def _bolus_feed_concentrations(rows: list[dict[str, str]]) -> dict[str, float]:
     if not rows:
         return {}
-    first = {name: float(rows[0][f"feed_{name}"]) for name in REACTOR_STATE_NAMES}
+    first = {name: float(rows[0][f"feed_{name}"]) for name in REACTOR_MEDIUM_NAMES}
     for row in rows[1:]:
-        current = {name: float(row[f"feed_{name}"]) for name in REACTOR_STATE_NAMES}
+        current = {name: float(row[f"feed_{name}"]) for name in REACTOR_MEDIUM_NAMES}
         if current != first:
             raise ValueError("bolus feed composition must be constant per process.")
     return first

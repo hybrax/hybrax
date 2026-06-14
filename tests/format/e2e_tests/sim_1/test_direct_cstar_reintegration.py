@@ -144,6 +144,9 @@ def _integrate_direct_cstar(
 
 
 def _build_public_pseudobatch_transform(process):
+    # Pass the explicit 8 real species: this list is load-bearing because it
+    # EXCLUDES the inert tracer components (also in process.reactor_medium). The
+    # tracers are oracle witnesses, not transform targets - they get no fitted c*.
     process.pseudobatch_transform = build_pseudobatch_transform(
         process,
         list(EXPECTED_REACTOR_COMPONENT_ORDER),
@@ -435,13 +438,33 @@ def _assert_public_feed_correction_bolus_jumps(process, factors):
     assert checked > 0
 
 
+def _assert_tracer_feed_streams(process):
+    """Pin the tracer feed composition the A/C closed forms depend on, per stream.
+
+    `_feed_concentration` only checks that nonzero streams agree; it would not catch a
+    stray tracer on base feed. So assert directly, on every FeedVolumeChange:
+    - the unfed tracer is never fed (-> constant c*, check A);
+    - the fed tracer rides exactly the nutrient streams (those carrying glucose) at
+      TRACER_FED_FEED_CONCENTRATION and nothing else (-> species-independent G(t)).
+    """
+    for volume_change in process.volume.volume_changes.values():
+        if not isinstance(volume_change, bp.FeedVolumeChange):
+            continue
+        components = volume_change.feed_medium.components
+        assert components["tracer_unfed"].concentration.value == 0.0
+        carries_nutrient = components["glucose"].concentration.value > 0.0
+        expected_fed = TRACER_FED_FEED_CONCENTRATION if carries_nutrient else 0.0
+        assert components["tracer_fed"].concentration.value == expected_fed
+
+
 def _assert_public_adf_matches_tracer(process, dense):
     """Check A: public ADF equals c_U(0)/c_U(t) for the unfed inert tracer.
 
     The unfed tracer is inert and never fed, so its pseudobatch c* is constant and
     feed_correction is identically zero, leaving ADF(t) = c_U(0)/c_U(t). The RHS is
     a simulator concentration produced by the ODE integrator, fully independent of
-    bp_format's carrier arithmetic.
+    bp_format's carrier arithmetic. The unfed-tracer "never fed" invariant this relies
+    on is pinned directly by _assert_tracer_feed_streams (called before this check).
     """
     times = dense["time"]
     c_unfed = dense["tracer_unfed"]
@@ -467,6 +490,8 @@ def _assert_public_feed_correction_matches_tracer(process, dense):
 
     The tracer ADF (c_U(0)/c_U(t)) is recomputed here rather than reused from check
     A on purpose: keeping the two checks independent means either can fail on its own.
+    The "fed tracer rides exactly the nutrient streams" invariant this relies on is
+    pinned directly by _assert_tracer_feed_streams (called before this check).
     """
     times = dense["time"]
     c_unfed = dense["tracer_unfed"]
@@ -803,8 +828,20 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
 
     for process_name, process in collection.processes.items():
         assert process.pseudobatch_transform is not None
-        for component in process.reactor_medium.components.values():
+        # Only the real species get a fitted c*; the inert tracers are reactor-medium
+        # components (witnesses) but not pseudobatch transform targets, so they keep
+        # c_star_concentration is None by design.
+        for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+            component = process.reactor_medium.components[name]
             assert component.c_star_concentration is not None
+        # Conversely, pin that the tracers are NOT transform targets: the canonical
+        # JSON carries them as components, so a future generic caller must not fit c*
+        # or build feed corrections for them. (sim_1 passes the explicit 8-species
+        # list to build_pseudobatch_transform; this guards that exclusion.)
+        for tracer in ("tracer_unfed", "tracer_fed"):
+            tracer_component = process.reactor_medium.components[tracer]
+            assert tracer_component.c_star_concentration is None
+            assert tracer not in process.pseudobatch_transform.feed_corrections
 
         sparse_times = np.asarray(
             process.reactor_medium.components[
@@ -952,6 +989,7 @@ def test_sim_1_dense_cstar_oracle_reintegration():
         # Inert-tracer oracles (A + C): derive ADF and feed correction purely from
         # simulated tracer concentrations (integrator output), independent of the
         # carrier bookkeeping that B + D reconstruct from the protocol.
+        _assert_tracer_feed_streams(process)
         _assert_public_adf_matches_tracer(process, dense)
         _assert_public_feed_correction_matches_tracer(process, dense)
 

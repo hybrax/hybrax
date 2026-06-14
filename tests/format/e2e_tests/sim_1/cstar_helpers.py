@@ -42,9 +42,10 @@ CUMULATIVE_FEED_COLUMNS = (
     "cum_bolus_feed",
     "cum_base_feed",
 )
-# Inert pseudobatch tracer columns (dense CSV only, never in the JSON). Used as a
-# closed-form, integrator-sourced oracle for the public ADF / feed-correction
-# carriers (checks A and C in the dense c* oracle test).
+# Inert pseudobatch tracer state columns. The tracers are real reactor-medium
+# species (also parsed into the JSON), but the A/C oracle reads them straight from
+# the dense CSV: a closed-form, integrator-sourced ground truth for the public ADF
+# / feed-correction carriers (checks A and C in the dense c* oracle test).
 TRACER_COLUMNS = (
     "tracer_unfed",
     "tracer_fed",

@@ -309,6 +309,78 @@
               "continuity_side": "right",
               "dtype": "float64"
             }
+          },
+          "tracer_unfed": {
+            "name": "tracer_unfed",
+            "unit": "-",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  24.0,
+                  48.0,
+                  72.0,
+                  96.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  100.0,
+                  95.15880585414565,
+                  85.55171625323696,
+                  81.40790335962821,
+                  73.43130513509247,
+                  66.52013147370836
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right",
+              "dtype": "float64"
+            }
+          },
+          "tracer_fed": {
+            "name": "tracer_fed",
+            "unit": "-",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  24.0,
+                  48.0,
+                  72.0,
+                  96.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  10.277151032247678,
+                  35.109347471640305,
+                  43.07414947138715,
+                  63.19153624122904,
+                  80.26407469607365
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right",
+              "dtype": "float64"
+            }
           }
         }
       },
@@ -9152,6 +9224,24 @@
                     "type": "StaticVariable",
                     "value": 0.0
                   }
+                },
+                "tracer_unfed": {
+                  "name": "tracer_unfed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "tracer_fed": {
+                  "name": "tracer_fed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 300.0
+                  }
                 }
               }
             }
@@ -12139,6 +12229,24 @@
                     "type": "StaticVariable",
                     "value": 0.0
                   }
+                },
+                "tracer_unfed": {
+                  "name": "tracer_unfed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "tracer_fed": {
+                  "name": "tracer_fed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
                 }
               }
             }
@@ -12284,6 +12392,24 @@
                     "type": "StaticVariable",
                     "value": 0.0
                   }
+                },
+                "tracer_unfed": {
+                  "name": "tracer_unfed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "tracer_fed": {
+                  "name": "tracer_fed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 300.0
+                  }
                 }
               }
             }
@@ -12313,7 +12439,9 @@
           "glutamine": "q_glutamine * X_active",
           "lactate": "q_lactate * X_active",
           "ammonia": "q_ammonia * X_active",
-          "intracellular_product_ratio": "0.03 * (0.5 - intracellular_product_ratio)"
+          "intracellular_product_ratio": "0.03 * (0.5 - intracellular_product_ratio)",
+          "tracer_unfed": "0",
+          "tracer_fed": "0"
         }
       }
     },
@@ -12609,6 +12737,78 @@
                   13.200964591098966,
                   16.3951978331452,
                   19.391473016309853
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right",
+              "dtype": "float64"
+            }
+          },
+          "tracer_unfed": {
+            "name": "tracer_unfed",
+            "unit": "-",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  24.0,
+                  48.0,
+                  72.0,
+                  96.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  100.0,
+                  98.56780862761691,
+                  85.698654035477,
+                  84.34263697554314,
+                  73.66172224287179,
+                  64.960119680444
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right",
+              "dtype": "float64"
+            }
+          },
+          "tracer_fed": {
+            "name": "tracer_fed",
+            "unit": "-",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  24.0,
+                  48.0,
+                  72.0,
+                  96.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.0,
+                  35.15505335976557,
+                  34.598791973454965,
+                  63.40226132392225,
+                  86.47784289489186
                 ],
                 "dtype": "float64"
               },
@@ -21464,6 +21664,24 @@
                     "type": "StaticVariable",
                     "value": 0.0
                   }
+                },
+                "tracer_unfed": {
+                  "name": "tracer_unfed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "tracer_fed": {
+                  "name": "tracer_fed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 300.0
+                  }
                 }
               }
             }
@@ -24451,6 +24669,24 @@
                     "type": "StaticVariable",
                     "value": 0.0
                   }
+                },
+                "tracer_unfed": {
+                  "name": "tracer_unfed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "tracer_fed": {
+                  "name": "tracer_fed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
                 }
               }
             }
@@ -24596,6 +24832,24 @@
                     "type": "StaticVariable",
                     "value": 0.0
                   }
+                },
+                "tracer_unfed": {
+                  "name": "tracer_unfed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "tracer_fed": {
+                  "name": "tracer_fed",
+                  "unit": "-",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 300.0
+                  }
                 }
               }
             }
@@ -24625,7 +24879,9 @@
           "glutamine": "q_glutamine * X_active",
           "lactate": "q_lactate * X_active",
           "ammonia": "q_ammonia * X_active",
-          "intracellular_product_ratio": "0.03 * (0.5 - intracellular_product_ratio)"
+          "intracellular_product_ratio": "0.03 * (0.5 - intracellular_product_ratio)",
+          "tracer_unfed": "0",
+          "tracer_fed": "0"
         }
       }
     }
