@@ -41,9 +41,6 @@ FEED_GLUCOSE = 500.0
 FEED_GLUTAMINE = 50.0
 SAMPLE_VOLUME_L = 0.050
 ONLINE_POINTS_PER_H = 12
-# Martens examples use cells/L, but intracellular components are subtracted
-# from biomass by bp-format, so sim 1 uses mass-compatible biomass units.
-MG_PER_CELL = 200.0 / 1e9
 # Martens virtual_lab uses Gaussian-like pH/temperature growth factors.
 # Sim 1 keeps that dependency but centers it on fixed nominal setpoints.
 PH_NOMINAL = 7.05
@@ -350,13 +347,11 @@ class Sim1Simulation(Simulation):
         )
         states = states_aug[:, : len(STATE_NAMES)]
         extras = self._extra_columns(state_times, states)
-        # The tracers ride as extra columns, so they follow this fixture's existing
-        # extra-column convention: build_dense_rows reuses the (left-continuous,
-        # pre-event) extras for the post-event row too. Like the other derived extras
-        # (e.g. biomass_cells_per_l) they are therefore NOT re-mixed at events, so a
-        # post-event tracer value equals its pre-event value. The A/C oracle helpers
-        # only read online rows, where the left-continuous value is exactly what the
-        # side="left" carrier evaluation expects.
+        # The tracers ride as extra columns: build_dense_rows reuses the
+        # (left-continuous, pre-event) extras for the post-event row too, so a
+        # post-event tracer value equals its pre-event value rather than the re-mixed
+        # one. The A/C oracle helpers only read online rows, where the left-continuous
+        # value is exactly what the side="left" carrier evaluation expects.
         extras[TRACER_UNFED_NAME] = states_aug[:, TRACER_UNFED_INDEX]
         extras[TRACER_FED_NAME] = states_aug[:, TRACER_FED_INDEX]
         result = self.build_result(
@@ -622,8 +617,6 @@ class Sim1Simulation(Simulation):
         times: np.ndarray,
         states: np.ndarray,
     ) -> dict[str, np.ndarray]:
-        biomass = states[:, STATE_INDEX["biomass"]]
-        dead_cells = states[:, STATE_INDEX["dead_cells"]]
         return {
             "pH": np.asarray([float(self.pH(t)) for t in times]),
             "temperature": np.asarray([float(self.temperature(t)) for t in times]),
@@ -631,8 +624,6 @@ class Sim1Simulation(Simulation):
             "cum_conti_feed": np.asarray(
                 [float(self.cum_conti_feed(t)) for t in times]
             ),
-            "biomass_cells_per_l": biomass / MG_PER_CELL,
-            "total_cells_per_l": (biomass + dead_cells) / MG_PER_CELL,
         }
 
     def _solve_events(self, events: Sequence[SimulationEvent]) -> list[SimulationEvent]:
