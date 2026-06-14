@@ -43,6 +43,9 @@ from bp_format.splines import (
     to_timeseries,
     build_backtransform_spline,
     BacktransformSpline,
+    _forward_pseudobatch_concentration,
+    _inverse_pseudobatch_concentration,
+    _inverse_pseudobatch_derivative,
 )
 from bp_format.serialization import (
     save_dataset_json,
@@ -891,6 +894,42 @@ def test_pseudobatch_species_not_in_feed():
 # ---------------------------------------------------------------------------
 
 
+def test_canonical_pseudobatch_formula_helpers():
+    real_concentration = jnp.asarray([2.0, 4.0])
+    adf = jnp.asarray([1.5, 2.0])
+    feed_correction = jnp.asarray([0.25, 1.0])
+    c_star = _forward_pseudobatch_concentration(
+        real_concentration,
+        adf,
+        feed_correction,
+    )
+
+    np.testing.assert_allclose(c_star, [2.75, 7.0])
+    np.testing.assert_allclose(
+        _inverse_pseudobatch_concentration(c_star, adf, feed_correction),
+        real_concentration,
+    )
+
+    derivative = _inverse_pseudobatch_derivative(
+        c_star=jnp.asarray([2.75]),
+        feed_correction=jnp.asarray([0.25]),
+        dc_star_dt=jnp.asarray([0.4]),
+        dfc_dt=jnp.asarray([0.1]),
+        adf=jnp.asarray([1.5]),
+        dadf_dt=jnp.asarray([0.2]),
+    )
+    np.testing.assert_allclose(derivative, [(0.4 + 0.1 - 2.0 * 0.2) / 1.5])
+
+
+def test_inverse_pseudobatch_formula_rejects_near_zero_adf():
+    with pytest.raises(Exception, match="Pseudobatch ADF reached zero"):
+        _inverse_pseudobatch_concentration(
+            jnp.asarray([1.0]),
+            jnp.asarray([0.0]),
+            jnp.asarray([0.0]),
+        )
+
+
 def test_timeseries_backtransform_roundtrip_bolus():
     """to_timeseries -> build_backtransform_spline
     matches evaluate_real_concentration for a bolus feed process."""
@@ -944,6 +983,60 @@ def test_timeseries_backtransform_roundtrip_continuous():
     from_rep = np.array([float(bt(jnp.array(t))) for t in t_eval])
 
     np.testing.assert_allclose(from_rep, direct, rtol=1e-4, atol=1e-6)
+
+
+def test_inverse_pseudobatch_entrypoints_match_at_event_sides():
+    """Legacy, process-level, and JIT backtransforms share one inverse formula."""
+    proc = _make_process_with_bolus_feed(
+        V0=1.0,
+        feed_times=[50.0],
+        feed_vols=[0.2],
+        glucose_feed_conc=500.0,
+        glucose_times=[0.0, 10.0, 25.0, 50.0, 60.0, 75.0, 100.0],
+        glucose_values=[10.0, 9.0, 7.5, 6.0, 8.0, 6.5, 5.0],
+    )
+    inputs = build_pseudobatch_inputs(proc, "glucose")
+    splines = build_splines(inputs, proc, "glucose")
+    to_timeseries(inputs, splines, "glucose")
+    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
+    backtransform = build_backtransform_spline(proc, "glucose")
+
+    t_eval = np.asarray(
+        [0.0, 25.0, 50.0, np.nextafter(50.0, 60.0), 75.0, 100.0],
+        dtype=float,
+    )
+    legacy = np.asarray(evaluate_real_concentration(jnp.asarray(t_eval), splines))
+    process_level = np.asarray(evaluate_pseudobatch_transform(proc, "glucose", t_eval))
+    jit_level = np.asarray([float(backtransform(jnp.asarray(t))) for t in t_eval])
+
+    np.testing.assert_allclose(process_level, legacy, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(jit_level, legacy, rtol=1e-10, atol=1e-10)
+
+
+def test_backtransform_derivative_matches_finite_difference_continuous_feed():
+    """Real-space derivative uses the same canonical inverse-transform quotient rule."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
+    backtransform = build_backtransform_spline(proc, "glucose")
+    derivative = backtransform.derivative()
+
+    # Interior points only: BacktransformSpline.derivative() intentionally excludes
+    # instantaneous jump impulses and represents the smooth within-segment derivative.
+    times = np.asarray([2.0, 6.0, 10.0, 14.0, 18.0], dtype=float)
+    h = 1e-4
+    analytical = np.asarray([float(derivative(jnp.asarray(t))) for t in times])
+    finite_difference = np.asarray(
+        [
+            (
+                float(backtransform(jnp.asarray(t + h)))
+                - float(backtransform(jnp.asarray(t - h)))
+            )
+            / (2.0 * h)
+            for t in times
+        ]
+    )
+
+    np.testing.assert_allclose(analytical, finite_difference, rtol=2e-4, atol=1e-5)
 
 
 def test_timeseries_backtransform_scalar():

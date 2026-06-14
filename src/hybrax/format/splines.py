@@ -112,6 +112,43 @@ def _adf_for_division(adf: jnp.ndarray) -> jnp.ndarray:
     )
 
 
+def _forward_pseudobatch_concentration(
+    real_concentration: jnp.ndarray,
+    adf: jnp.ndarray,
+    feed_correction: jnp.ndarray,
+) -> jnp.ndarray:
+    """Canonical forward pseudobatch transform: `c* = c * ADF - fc`."""
+    return jnp.asarray(real_concentration) * jnp.asarray(adf) - jnp.asarray(
+        feed_correction
+    )
+
+
+def _inverse_pseudobatch_concentration(
+    c_star: jnp.ndarray,
+    adf: jnp.ndarray,
+    feed_correction: jnp.ndarray,
+) -> jnp.ndarray:
+    """Canonical inverse pseudobatch transform: `c = (c* + fc) / ADF`."""
+    adf_safe = _adf_for_division(adf)
+    return (jnp.asarray(c_star) + jnp.asarray(feed_correction)) / adf_safe
+
+
+def _inverse_pseudobatch_derivative(
+    c_star: jnp.ndarray,
+    feed_correction: jnp.ndarray,
+    dc_star_dt: jnp.ndarray,
+    dfc_dt: jnp.ndarray,
+    adf: jnp.ndarray,
+    dadf_dt: jnp.ndarray,
+) -> jnp.ndarray:
+    """Canonical smooth-segment derivative of the inverse pseudobatch transform."""
+    adf_safe = _adf_for_division(adf)
+    c_real = (jnp.asarray(c_star) + jnp.asarray(feed_correction)) / adf_safe
+    return (
+        jnp.asarray(dc_star_dt) + jnp.asarray(dfc_dt) - c_real * jnp.asarray(dadf_dt)
+    ) / adf_safe
+
+
 def _require_reactor_volume_scalar(volume: float, *, context: str) -> float:
     """Python-side reactor-volume invariant check."""
     volume_float = float(volume)
@@ -1087,7 +1124,11 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
     feed_corr_at_meas = _evaluate_many_with_boundary_start(
         series_inputs["feed_corr_ts"], meas_times
     )
-    c_star = meas_conc * adf_at_meas - feed_corr_at_meas
+    c_star = _forward_pseudobatch_concentration(
+        meas_conc,
+        adf_at_meas,
+        feed_corr_at_meas,
+    )
 
     return {
         "meas_times": meas_times,
@@ -1396,7 +1437,11 @@ def build_pseudobatch_transform(
         feed_corr_at_meas = _evaluate_many_with_boundary_start(
             series_inputs["feed_corr_ts"], meas_times
         )
-        c_star = jnp.asarray(meas_conc * adf_at_meas - feed_corr_at_meas)
+        c_star = _forward_pseudobatch_concentration(
+            meas_conc,
+            adf_at_meas,
+            feed_corr_at_meas,
+        )
         is_constant = _is_near_constant(meas_conc) and not bool(
             series_inputs["has_discrete_feed"]
         )
@@ -1458,9 +1503,7 @@ def evaluate_real_concentration(
     else:
         fc = _evaluate_many_with_boundary_start(feed_corr_ts, t_eval)
 
-    adf = _adf_for_division(adf)
-
-    return (cs + fc) / adf
+    return _inverse_pseudobatch_concentration(cs, adf, fc)
 
 
 def _resolve_component(process: BioProcess, component: Any):
@@ -1538,8 +1581,7 @@ def evaluate_pseudobatch_transform(
         fc = _evaluate_many_with_boundary_start(
             transform.feed_corrections[comp.name], t_eval
         )
-    adf = _adf_for_division(adf)
-    return (cs + fc) / adf
+    return _inverse_pseudobatch_concentration(cs, adf, fc)
 
 
 # ===========================================================================
@@ -1609,8 +1651,7 @@ class BacktransformSpline(eqx.Module):
         cs = self.c_star_spline(t)
         adf = _evaluate_with_boundary_start(self.adf_ts, t, side="left")
         fc = _evaluate_with_boundary_start(self.feed_corr_ts, t, side="left")
-        adf = _adf_for_division(adf)
-        return (cs + fc) / adf
+        return _inverse_pseudobatch_concentration(cs, adf, fc)
 
     def derivative(self):
         """Return a callable evaluating dc/dt at time *t*.
@@ -1639,14 +1680,18 @@ class BacktransformSpline(eqx.Module):
                 return t * 0.0
             adf = _evaluate_with_boundary_start(self.adf_ts, t, side="left")
             dadf_dt = self.dadf_ts.evaluate(t, side="left")
-            adf = _adf_for_division(adf)
             dc_star_dt = dc_star(t)
             dfc_dt = self.dfc_ts.evaluate(t, side="left")
-            # c(t) = (cs + fc) / adf; derive dc/dt from the evaluated c(t)
             fc = _evaluate_with_boundary_start(self.feed_corr_ts, t, side="left")
             cs = self.c_star_spline(t)
-            c_val = (cs + fc) / adf
-            return (dc_star_dt + dfc_dt - c_val * dadf_dt) / adf
+            return _inverse_pseudobatch_derivative(
+                cs,
+                fc,
+                dc_star_dt,
+                dfc_dt,
+                adf,
+                dadf_dt,
+            )
 
         return _deriv
 
