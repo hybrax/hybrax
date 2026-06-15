@@ -3,6 +3,11 @@
 dev/
 .vscode/
 reference/
+AGENTS.md
+CLAUDE.md
+
+# hidden files
+.*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
