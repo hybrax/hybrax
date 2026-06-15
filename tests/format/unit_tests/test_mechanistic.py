@@ -43,6 +43,7 @@ from bp_format.mechanistic import (
     get_process_ordering,
 )
 from bp_format.splines import build_pseudobatch_transform
+from bp_format.time_series import PPoly
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,10 @@ from bp_format.splines import build_pseudobatch_transform
 
 def _ts(t, v):
     return TimeSeries(times=jnp.array(t, dtype=float), values=jnp.array(v, dtype=float))
+
+
+def _ts_poly(poly):
+    return TimeSeries(poly=poly, segment_start_piece_idx=jnp.array([0]))
 
 
 def _make_feed(name, glucose_conc=500.0, biomass_conc=0.0):
@@ -404,6 +409,78 @@ class TestControlSplines:
         u = ctrl(jnp.array(5.0))
         assert u.shape == (1,)
         assert float(u[0]) == pytest.approx(7.0, abs=1e-3)
+
+    def test_uses_original_control_splines_without_refit(self):
+        process = _make_process(with_controlled_FVC=True, with_controlled_PV=True)
+        feed_poly = PPoly(
+            jnp.array([0.0, 2.0, 20.0]),
+            jnp.array(
+                [
+                    [0.0, 0.3, 0.4, -0.05],
+                    [1.0, -0.2, 0.03, 0.002],
+                ]
+            ),
+        )
+        sample_poly = PPoly(
+            jnp.array([0.0, 4.0, 20.0]),
+            jnp.array(
+                [
+                    [0.0, -0.05, -0.01, 0.001],
+                    [-0.5, -0.02, 0.002, -0.0002],
+                ]
+            ),
+        )
+        ph_poly = PPoly(
+            jnp.array([0.0, 5.0, 20.0]),
+            jnp.array(
+                [
+                    [7.0, 0.1, -0.02, 0.001],
+                    [7.1, -0.03, 0.004, -0.0001],
+                ]
+            ),
+        )
+        process.volume.volume_changes["feed"].values = _ts_poly(feed_poly)
+        process.volume.volume_changes["sample"] = SampleVolumeChange(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
+            values=_ts_poly(sample_poly),
+        )
+        process.process_variables["pH"].values = _ts_poly(ph_poly)
+
+        ctrl = get_control_splines(process)
+        t = jnp.array([0.5, 1.5, 3.0, 12.0])
+        u = ctrl(t)
+
+        assert ctrl.name_controlled_FVCs == ("feed",)
+        assert ctrl.name_controlled_SVCs == ("sample",)
+        assert ctrl.name_controlled_PVs == ("pH",)
+        for actual, expected in zip(
+            ctrl._splines,
+            (feed_poly, sample_poly, ph_poly),
+            strict=True,
+        ):
+            assert actual.breaks == pytest.approx(expected.breaks)
+            assert actual.coeffs == pytest.approx(expected.coeffs)
+        assert u.shape == (4, 3)
+        expected = jnp.stack(
+            [feed_poly(t, nu=1), sample_poly(t, nu=1), ph_poly(t)], axis=-1
+        )
+        assert u == pytest.approx(expected)
+
+        scalar_t = jnp.array(1.25)
+        scalar_u = ctrl(scalar_t)
+        scalar_expected = jnp.stack(
+            [
+                feed_poly(scalar_t, nu=1),
+                sample_poly(scalar_t, nu=1),
+                ph_poly(scalar_t),
+            ],
+            axis=-1,
+        )
+        assert scalar_u.shape == (3,)
+        assert scalar_u == pytest.approx(scalar_expected)
 
 
 # ---------------------------------------------------------------------------

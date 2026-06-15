@@ -78,9 +78,6 @@ from .time_series import PPoly
 # ---------------------------------------------------------------------------
 
 
-_DEFAULT_BATCH_KNOTS = 128
-
-
 def _require_reactor_volume_above_threshold(
     volume: jnp.ndarray,
     *,
@@ -93,31 +90,6 @@ def _require_reactor_volume_above_threshold(
         jnp.any(volume_arr <= _MIN_REACTOR_VOLUME),
         f"{context} reached zero or near-zero reactor volume.",
     )
-
-
-def _batch_splines(
-    spline_list: List[PPoly],
-    t_start: float,
-    t_end: float,
-    n_knots: int = _DEFAULT_BATCH_KNOTS,
-) -> PPoly:
-    """Resample scalar splines onto a shared grid and stack into one PPoly.
-
-    The returned owned PPoly has coefficients of shape
-    ``(n_knots - 1, 4, n_splines)`` so evaluating at scalar ``t`` returns
-    ``(n_splines,)`` in one call.
-    """
-    x_common = jnp.linspace(t_start, t_end, n_knots)
-    # Match the old batching semantics: every input is resampled/refit onto a
-    # common grid, so stored splines are approximate when their knots differ.
-    resampled = [make_cubic_ppoly(x_common, sp(x_common)) for sp in spline_list]
-    coeffs_stacked = jnp.stack([s.coeffs for s in resampled], axis=-1)
-    return PPoly(x_common, coeffs_stacked)
-
-
-def _empty_ppoly() -> PPoly:
-    """Construct a zero-spline PPoly placeholder for empty control sets."""
-    return PPoly(jnp.array([0.0, 1.0]), jnp.zeros((1, 4, 0)))
 
 
 def _timeseries_to_ppoly(series: TimeSeries) -> PPoly:
@@ -469,25 +441,21 @@ class ControlSplines(eqx.Module):
     direct PV values.
     """
 
-    name_controlled_FVCs: tuple = eqx.field(static=True)
-    name_controlled_SVCs: tuple = eqx.field(static=True)
-    name_controlled_PVs: tuple = eqx.field(static=True)
-    _batched: PPoly  # owned batched PPoly coeffs (m, 4, n_FVCs+n_SVCs+n_PVs)
-    _n_flows: int = eqx.field(static=True)
-    _n_total: int = eqx.field(static=True)
+    name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
+    # Original control PPolys in canonical [FVC | SVC | PV] order.
+    _splines: tuple[PPoly, ...]
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
-        if self._n_total == 0:
+        if not self._splines:
             return jnp.zeros(jnp.shape(t) + (0,))
-        vals = self._batched(t)
-        if self._n_flows == 0:
-            return vals
-        if self._n_flows == self._n_total:
-            return self._batched(t, nu=1)
-        dvals = self._batched(t, nu=1)
-        return jnp.concatenate(
-            [dvals[..., : self._n_flows], vals[..., self._n_flows :]], axis=-1
-        )
+        n_flows = len(self.name_controlled_FVCs) + len(self.name_controlled_SVCs)
+        values = [
+            spline(t, nu=1) if i < n_flows else spline(t)
+            for i, spline in enumerate(self._splines)
+        ]
+        return jnp.stack(values, axis=-1)
 
 
 def get_control_splines(
@@ -504,7 +472,7 @@ def get_control_splines(
 
     t_start = float(process.time_axis.start)
     t_end = float(process.time_axis.end)
-    splines: List[PPoly] = []
+    splines: list[PPoly] = []
 
     for vc_name in ordering.name_controlled_FVCs:
         vc = process.volume.volume_changes[vc_name]
@@ -516,21 +484,11 @@ def get_control_splines(
         pv = process.process_variables[pv_name]
         splines.append(_value_to_ppoly(pv.values, t_start=t_start, t_end=t_end))
 
-    n_flows = len(ordering.name_controlled_FVCs) + len(ordering.name_controlled_SVCs)
-    n_total = n_flows + len(ordering.name_controlled_PVs)
-
-    if splines:
-        batched = _batch_splines(splines, t_start, t_end)
-    else:
-        batched = _empty_ppoly()
-
     return ControlSplines(
         name_controlled_FVCs=ordering.name_controlled_FVCs,
         name_controlled_SVCs=ordering.name_controlled_SVCs,
         name_controlled_PVs=ordering.name_controlled_PVs,
-        _batched=batched,
-        _n_flows=n_flows,
-        _n_total=n_total,
+        _splines=tuple(splines),
     )
 
 
