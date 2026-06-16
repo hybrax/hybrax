@@ -1,7 +1,5 @@
 """Tests for sim_1 real-space integration segment construction."""
 
-import csv
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -17,23 +15,23 @@ from .real_space_segments import (
     PRE_EVENT_ROW,
     RealSpaceSegment,
     build_real_space_segments,
+    dense_rows_by_process,
     segment_spline_times,
     segment_state_matrix,
     segment_times,
 )
 
 
-def _dense_rows_by_process() -> dict[str, list[dict[str, str]]]:
-    with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:
-        rows_by_process: dict[str, list[dict[str, str]]] = {}
-        for row in csv.DictReader(handle):
-            rows_by_process.setdefault(row["process_id"], []).append(row)
-    return rows_by_process
-
-
 def test_real_space_segments_split_at_pre_and_post_event_rows():
-    rows_by_process = _dense_rows_by_process()
-    assert set(rows_by_process) == EXPECTED_PROCESS_IDS
+    rows_by_process = dense_rows_by_process(
+        SIMULATION_DENSE_OUTPUT,
+        EXPECTED_PROCESS_IDS,
+    )
+    # `dense_rows_by_process` seeds its keys from EXPECTED_PROCESS_IDS, so a
+    # `set(...) == EXPECTED_PROCESS_IDS` check would be tautological. Assert
+    # instead that every expected process actually has dense rows, which catches
+    # a process missing from the CSV.
+    assert all(rows_by_process[process_id] for process_id in EXPECTED_PROCESS_IDS)
 
     for rows in rows_by_process.values():
         segments = build_real_space_segments(rows)
@@ -100,7 +98,10 @@ def test_post_event_segment_spline_times_shift_selects_right_event_branch():
         continuity_side="left",
     )
 
-    rows_by_process = _dense_rows_by_process()
+    rows_by_process = dense_rows_by_process(
+        SIMULATION_DENSE_OUTPUT,
+        EXPECTED_PROCESS_IDS,
+    )
     for rows in rows_by_process.values():
         post_event_segments = [
             segment

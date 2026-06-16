@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -29,6 +31,18 @@ class RealSpaceSegment:
 
 def _row_time(row: dict[str, str]) -> float:
     return float(row["time"])
+
+
+def dense_rows_by_process(
+    dense_csv: Path,
+    expected_process_ids: set[str],
+) -> dict[str, list[dict[str, str]]]:
+    """Load dense simulator rows keyed by process id."""
+    with dense_csv.open(newline="") as handle:
+        rows_by_process = {process_id: [] for process_id in expected_process_ids}
+        for row in csv.DictReader(handle):
+            rows_by_process[row["process_id"]].append(row)
+    return rows_by_process
 
 
 def segment_times(segment: RealSpaceSegment) -> np.ndarray:
