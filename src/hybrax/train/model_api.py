@@ -512,8 +512,8 @@ class UserLossModule(eqx.Module):
         is then populated on :class:`LossInputs` as ``dense_*`` fields. Return
         ``None`` (default) to stay on the measurement-grid-only path.
 
-        The dense path costs ~zero extra ODE work — it just adds ``SaveAt``
-        evaluations of ``wrapper.save_outputs`` at the dense times.
+        The dense path costs ~zero extra ODE work — it just gathers
+        ``wrapper.physical_save_outputs`` at the dense times.
         """
         return None
 

@@ -311,193 +311,47 @@ class HybridOdeWrapper(eqx.Module):
             loss_module=loss_module,
         )
 
-    def _pseudo_state_size(self) -> int:
-        n_RMCs = len(self.modeled_RMC_names)
-        n_FVCs = len(self.modeled_FVC_names)
-        n_samples = int(self.controls.sample_event_times.shape[0])
-        return n_RMCs + 1 + n_FVCs + n_RMCs + 1 + n_samples
+    # ------ Physical-state RHS (continuous part of the diffrax_callbacks solve) ------
+    #
+    # Integrates the *physical* state ``y = [RAW_RMCs | RAW_V | RAW_modeled_cum]``
+    # directly; discrete bolus/sample events are applied as state jumps between
+    # segments (``physical_event_jump`` / ``physical_solve.solve_physical_states``),
+    # not folded into the vector field. Between events only continuous dynamics act
+    # (biology, plus continuous feeds/dilution if any), so the integrated state stays
+    # O(C) and the reverse-mode adjoint is well-conditioned. (Replaces the earlier
+    # pseudobatch state, whose unbounded accumulator corrupted the gradient.)
 
-    def _pseudo_scale(self) -> jax.Array:
-        module = self.reaction_module
-        n_samples = int(self.controls.sample_event_times.shape[0])
-        return jnp.concatenate(
-            [
-                module.SCALE_modeled_RMCs,
-                jnp.atleast_1d(module.SCALE_V_in_cumulative),
-                module.SCALE_modeled_FVCs_cumulative,
-                module.SCALE_modeled_RMCs,
-                jnp.atleast_1d(module.SCALE_V_in_cumulative),
-                jnp.full(
-                    (n_samples,),
-                    module.SCALE_V_in_cumulative,
-                    dtype=module.SCALE_modeled_RMCs.dtype,
-                ),
-            ]
-        )
+    def physical_rhs(self, t: float | jax.Array, y_phys: jax.Array) -> jax.Array:
+        """d/dt of the physical state ``[RAW_RMCs | RAW_V | RAW_modeled_cum]``.
 
-    def scale_pseudo_state(self, RAW_pseudo_state: jax.Array) -> jax.Array:
-        return RAW_pseudo_state / self._pseudo_scale()
-
-    def unscale_pseudo_state(self, SCL_pseudo_state: jax.Array) -> jax.Array:
-        return SCL_pseudo_state * self._pseudo_scale()
-
-    def initial_pseudo_state_from_raw(self, RAW_state: jax.Array) -> jax.Array:
-        """Build scaled pseudobatch initial state from physical RAW state."""
-        n_RMCs = len(self.modeled_RMC_names)
-        n_FVCs = len(self.modeled_FVC_names)
-        n_samples = int(self.controls.sample_event_times.shape[0])
-        RAW_RMCs = RAW_state[:n_RMCs]
-        RAW_V0 = RAW_state[n_RMCs]
-        RAW_modeled_cum = RAW_state[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
-        RAW_pseudo = jnp.concatenate(
-            [
-                RAW_RMCs,
-                RAW_V0[None],
-                RAW_modeled_cum,
-                jnp.zeros((n_RMCs,), dtype=RAW_state.dtype),
-                RAW_V0[None],
-                jnp.full((n_samples,), RAW_V0, dtype=RAW_state.dtype),
-            ]
-        )
-        return self.scale_pseudo_state(RAW_pseudo)
-
-    def _validate_state_vector(self, SCL_state: jax.Array) -> None:
-        """Validate scaled pseudobatch wrapper state layout."""
-        if SCL_state.ndim != 1:
-            raise ValueError("state vector ndim must be 1")
-        expected_state_size = self._pseudo_state_size()
-        if SCL_state.shape[0] != expected_state_size:
-            raise ValueError(
-                f"state vector must have shape ({expected_state_size},), "
-                f"got {tuple(SCL_state.shape)}"
-            )
-
-    def _split_pseudo_state(
-        self,
-        RAW_pseudo_state: jax.Array,
-    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
-        n_RMCs = len(self.modeled_RMC_names)
-        n_FVCs = len(self.modeled_FVC_names)
-        rmc_star = RAW_pseudo_state[:n_RMCs]
-        v_cont = RAW_pseudo_state[n_RMCs]
-        modeled_cum = RAW_pseudo_state[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
-        feed_corr = RAW_pseudo_state[n_RMCs + 1 + n_FVCs : 2 * n_RMCs + 1 + n_FVCs]
-        v0 = RAW_pseudo_state[2 * n_RMCs + 1 + n_FVCs]
-        sample_dummy = RAW_pseudo_state[2 * n_RMCs + 2 + n_FVCs :]
-        return rmc_star, v_cont, modeled_cum, feed_corr, v0, sample_dummy
-
-    def _transform_terms(
-        self,
-        t_arr: jax.Array,
-        RAW_pseudo_state: jax.Array,
-        *,
-        bolus_right_continuous: bool = True,
-    ) -> tuple[jax.Array, jax.Array, jax.Array]:
-        rmc_star, v_cont, modeled_cum, feed_corr, RAW_V0, sample_dummy = (
-            self._split_pseudo_state(RAW_pseudo_state)
-        )
-        dtype = RAW_pseudo_state.dtype
-        sample_t = self.controls.sample_event_times.astype(dtype)
-        sample_v = self.controls.sample_event_volumes.astype(dtype)
-        sample_mask = self.controls.sample_event_mask
-        bolus_t = self.controls.bolus_event_times.astype(dtype)
-        bolus_v = self.controls.bolus_event_volumes.astype(dtype)
-        bolus_Cin = self.controls.bolus_event_Cin.astype(dtype)
-        bolus_mask = self.controls.bolus_event_mask
-
-        samples_done = (t_arr >= sample_t) & sample_mask
-        if bolus_right_continuous:
-            boluses_done = (t_arr >= bolus_t) & bolus_mask
-        else:
-            boluses_done = (t_arr > bolus_t) & bolus_mask
-        sample_before_sample = (
-            (sample_t[None, :] < sample_t[:, None])
-            & sample_mask[None, :]
-            & sample_mask[:, None]
-        )
-        bolus_before_sample = (
-            (bolus_t[None, :] < sample_t[:, None])
-            & bolus_mask[None, :]
-            & sample_mask[:, None]
-        )
-        sample_pre = sample_dummy
-        sample_pre = sample_pre + jnp.sum(
-            jnp.where(bolus_before_sample, bolus_v[None, :], 0.0), axis=1
-        )
-        sample_pre = sample_pre - jnp.sum(
-            jnp.where(sample_before_sample, sample_v[None, :], 0.0), axis=1
-        )
-        sample_factor_raw = sample_pre / (sample_pre - sample_v)
-        sample_factor = jnp.where(sample_mask, sample_factor_raw, 1.0)
-
-        v_disc = jnp.sum(jnp.where(boluses_done, bolus_v, 0.0))
-        v_disc = v_disc - jnp.sum(jnp.where(samples_done, sample_v, 0.0))
-        RAW_V_export = v_cont + v_disc
-        RAW_V = jnp.maximum(RAW_V_export, jnp.asarray(self.min_V, dtype=dtype))
-        v0 = jnp.maximum(RAW_V0, jnp.asarray(self.min_V, dtype=dtype))
-        sample_product = jnp.prod(jnp.where(samples_done, sample_factor, 1.0))
-        ADF = RAW_V / v0 * sample_product
-
-        samples_before_bolus = (
-            (sample_t[None, :] <= bolus_t[:, None])
-            & sample_mask[None, :]
-            & bolus_mask[:, None]
-        )
-        bolus_sample_factor = jnp.prod(
-            jnp.where(samples_before_bolus, sample_factor[None, :], 1.0), axis=1
-        )
-        bolus_piece = bolus_Cin * (bolus_v * bolus_sample_factor / v0)[:, None]
-        bolus_corr = jnp.sum(jnp.where(boluses_done[:, None], bolus_piece, 0.0), axis=0)
-
-        RAW_RMCs = (rmc_star + feed_corr + bolus_corr) / ADF
-        RAW_state = jnp.concatenate([RAW_RMCs, RAW_V_export[None], modeled_cum])
-        return ADF, RAW_V, RAW_state
-
-    def _evaluate_wrapper_terms(
-        self,
-        t: float | jax.Array,
-        SCL_state: jax.Array,
-        *,
-        bolus_right_continuous: bool = True,
-    ) -> WrapperEvaluation:
-        """Evaluate shared wrapper quantities used by RHS and save path."""
-        self._validate_state_vector(SCL_state)
+        Continuous part only — discrete boluses/samples are handled as jumps.
+        """
         module = self.reaction_module
         n_RMCs = len(self.modeled_RMC_names)
-        t_arr = jnp.asarray(t, dtype=SCL_state.dtype)
+        n_FVCs = len(self.modeled_FVC_names)
+        dtype = y_phys.dtype
+        t_arr = jnp.asarray(t, dtype=dtype)
 
-        RAW_pseudo_state = self.unscale_pseudo_state(SCL_state)
-        ADF, RAW_V, RAW_state = self._transform_terms(
-            t_arr,
-            RAW_pseudo_state,
-            bolus_right_continuous=bolus_right_continuous,
-        )
-        RAW_RMC_rhs = jnp.maximum(RAW_state[:n_RMCs], 0.0)
-        RAW_V_export = RAW_state[n_RMCs]
+        RAW_RMCs = y_phys[:n_RMCs]
+        RAW_V = jnp.maximum(y_phys[n_RMCs], jnp.asarray(self.min_V, dtype=dtype))
+        RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+        RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
         n_FVC = self.n_controlled_FVCs
-        n_SVC = 0
         n_PV = self.n_controlled_PVs
         n_bolus = self.n_controlled_FVCs_bolus
 
         RAW_u_canonical_full = self.controls.eval(t_arr)
         RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
-        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC + n_SVC : n_FVC + n_SVC + n_PV]
-        RAW_controlled_FVCs_bolus_rates = jnp.zeros((n_bolus,), dtype=SCL_state.dtype)
-
+        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
         RAW_u_rhs_full = self.controls.eval_u(t_arr)
         RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
-        RAW_controlled_FVCs_bolus_rates_at_indices = jnp.zeros(
-            (self.controlled_FVCs_bolus_control_indices.shape[0],),
-            dtype=SCL_state.dtype,
-        )
-
+        RAW_controlled_FVCs_bolus_rates = jnp.zeros((n_bolus,), dtype=dtype)
         RAW_controlled_FVCs_Cin = self.rhs_ode.Cin_controlled_FVCs
         RAW_modeled_FVCs_Cin = self.rhs_ode.Cin_modeled_FVCs
-        _, _, RAW_modeled_cum, _, _, _ = self._split_pseudo_state(RAW_pseudo_state)
 
         inputs = ReactionInputs(
-            SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_state[:n_RMCs]),
+            SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
             SCL_modeled_V=module.scale_modeled_V(RAW_V),
             SCL_modeled_FVCs_cumulative=module.scale_modeled_FVCs_cumulative(
                 RAW_modeled_cum
@@ -517,150 +371,147 @@ class HybridOdeWrapper(eqx.Module):
             SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
             SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(RAW_modeled_FVCs_Cin),
         )
-
         outputs = module(t_arr, inputs)
-        if not hasattr(outputs, "SCL_modeled_BiologicalOde_rates") or not hasattr(
-            outputs, "SCL_modeled_FVCs_rates"
-        ):
-            raise TypeError(
-                "reaction_module output must expose `SCL_modeled_BiologicalOde_rates` "
-                "and `SCL_modeled_FVCs_rates`"
-            )
-        SCL_modeled_BiologicalOde_rates = jnp.asarray(
-            outputs.SCL_modeled_BiologicalOde_rates, dtype=SCL_state.dtype
-        )
-        SCL_modeled_FVCs_rates = jnp.asarray(
-            outputs.SCL_modeled_FVCs_rates, dtype=SCL_state.dtype
-        )
-
-        expected_rates_shape = (len(self.rhs_ode.name_modeled_rates),)
-        if SCL_modeled_BiologicalOde_rates.shape != expected_rates_shape:
-            raise ValueError(
-                "SCL_modeled_BiologicalOde_rates must match name_modeled_rates "
-                f"shape {expected_rates_shape}, got "
-                f"{tuple(SCL_modeled_BiologicalOde_rates.shape)}"
-            )
-        expected_modeled_FVCs_shape = (len(self.rhs_ode.name_modeled_FVCs),)
-        if SCL_modeled_FVCs_rates.shape != expected_modeled_FVCs_shape:
-            raise ValueError(
-                "SCL_modeled_FVCs_rates must have shape "
-                f"{expected_modeled_FVCs_shape}, got "
-                f"{tuple(SCL_modeled_FVCs_rates.shape)}"
-            )
-
-        RAW_modeled_BiologicalOde_rates = module.unscale_modeled_BiologicalOde_rates(
-            SCL_modeled_BiologicalOde_rates
+        RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
+            jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
         )
         RAW_modeled_FVCs_rates = module.unscale_modeled_FVCs_rates(
-            SCL_modeled_FVCs_rates
+            jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
         )
 
-        return WrapperEvaluation(
-            SCL_states=module.scale_state(RAW_state),
-            RAW_RMC_rhs=RAW_RMC_rhs,
-            RAW_V_export=RAW_V_export,
-            RAW_V=RAW_V,
-            RAW_u_rhs_full=RAW_u_rhs_full,
-            RAW_controlled_FVCs_rates=RAW_controlled_FVCs_rates,
-            RAW_controlled_FVCs_Cin=RAW_controlled_FVCs_Cin,
-            RAW_modeled_FVCs_Cin=RAW_modeled_FVCs_Cin,
-            RAW_controlled_FVCs_bolus_rates_at_indices=RAW_controlled_FVCs_bolus_rates_at_indices,
-            ADF=ADF,
-            RAW_state=RAW_state,
-            RAW_modeled_BiologicalOde_rates=RAW_modeled_BiologicalOde_rates,
-            RAW_modeled_FVCs_rates=RAW_modeled_FVCs_rates,
-            auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
+        RAW_RMCs_V = jnp.concatenate([RAW_RMC_rhs, RAW_V[None]])
+        n_u = RAW_u_rhs_full.shape[0]
+        RAW_u_bio = jnp.zeros_like(RAW_u_rhs_full).at[n_u - n_PV :].set(
+            RAW_u_rhs_full[n_u - n_PV :]
         )
-
-    # ------ ODE RHS ------
-
-    def __call__(self, t: float | jax.Array, SCL_state: jax.Array) -> jax.Array:
-        """Compute pseudobatch-state derivative in **scaled** state space."""
-        self._validate_state_vector(SCL_state)
-        n_RMCs = len(self.modeled_RMC_names)
-        eval_terms = self._evaluate_wrapper_terms(t, SCL_state)
-
-        RAW_RMCs_V = jnp.concatenate([eval_terms.RAW_RMC_rhs, eval_terms.RAW_V[None]])
+        RAW_zero_modeled_FVCs_rates = jnp.zeros_like(RAW_modeled_FVCs_rates)
         RAW_modeled_SVCs_rates = jnp.zeros(
-            (len(self.rhs_ode.name_modeled_SVCs),), dtype=SCL_state.dtype
+            (len(self.rhs_ode.name_modeled_SVCs),), dtype=dtype
         )
-        n_u = eval_terms.RAW_u_rhs_full.shape[0]
-        n_pv = self.n_controlled_PVs
-        RAW_u_bio = jnp.zeros_like(eval_terms.RAW_u_rhs_full)
-        RAW_u_bio = RAW_u_bio.at[n_u - n_pv :].set(
-            eval_terms.RAW_u_rhs_full[n_u - n_pv :]
-        )
-        RAW_zero_modeled_FVCs_rates = jnp.zeros_like(eval_terms.RAW_modeled_FVCs_rates)
         RAW_d_RMCs_V_dt = self.rhs_ode(
             RAW_RMCs_V,
-            eval_terms.RAW_modeled_BiologicalOde_rates,
+            RAW_bio_rates,
             RAW_u_bio,
             RAW_zero_modeled_FVCs_rates,
             RAW_modeled_SVCs_rates,
         )
-        RAW_biological_dRMCs = RAW_d_RMCs_V_dt[:n_RMCs]
-
+        dC = RAW_d_RMCs_V_dt[:n_RMCs]
+        # Continuous-feed volume/dilution (zero for a bolus-only process).
         controlled_addition = jnp.sum(
-            eval_terms.RAW_controlled_FVCs_rates[:, None]
-            * eval_terms.RAW_controlled_FVCs_Cin.astype(SCL_state.dtype),
+            RAW_controlled_FVCs_rates[:, None]
+            * RAW_controlled_FVCs_Cin.astype(dtype),
             axis=0,
         )
         modeled_addition = jnp.sum(
-            eval_terms.RAW_modeled_FVCs_rates[:, None]
-            * eval_terms.RAW_modeled_FVCs_Cin.astype(SCL_state.dtype),
+            RAW_modeled_FVCs_rates[:, None] * RAW_modeled_FVCs_Cin.astype(dtype),
             axis=0,
         )
-        RAW_dfeed_corr = (
-            eval_terms.ADF * (controlled_addition + modeled_addition) / eval_terms.RAW_V
-        )
-        RAW_dV_cont = jnp.sum(eval_terms.RAW_controlled_FVCs_rates) + jnp.sum(
-            eval_terms.RAW_modeled_FVCs_rates
-        )
-        RAW_dRMC_star = eval_terms.ADF * RAW_biological_dRMCs
-
-        RAW_pseudo_state = self.unscale_pseudo_state(SCL_state)
-        _, _, _, _, _, sample_dummy = self._split_pseudo_state(RAW_pseudo_state)
-        sample_t = self.controls.sample_event_times.astype(SCL_state.dtype)
-        sample_mask = self.controls.sample_event_mask
-        t_arr = jnp.asarray(t, dtype=SCL_state.dtype)
-        RAW_dsample_dummy = jnp.where(
-            (t_arr < sample_t) & sample_mask,
-            RAW_dV_cont,
-            jnp.zeros_like(sample_dummy),
+        dV_cont = jnp.sum(RAW_controlled_FVCs_rates) + jnp.sum(RAW_modeled_FVCs_rates)
+        dilution = RAW_RMCs * (dV_cont / RAW_V)
+        dC = dC + (controlled_addition + modeled_addition) / RAW_V - dilution
+        return jnp.concatenate(
+            [dC, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
         )
 
-        RAW_d_pseudo_state = jnp.concatenate(
-            [
-                RAW_dRMC_star,
-                RAW_dV_cont[None],
-                eval_terms.RAW_modeled_FVCs_rates,
-                RAW_dfeed_corr,
-                jnp.zeros((1,), dtype=SCL_state.dtype),
-                RAW_dsample_dummy,
-            ]
-        )
-        return self.scale_pseudo_state(RAW_d_pseudo_state)
-
-    def save_outputs(
+    def physical_event_jump(
         self,
-        t: float | jax.Array,
-        SCL_state: jax.Array,
-        args: Any = None,
-    ) -> SaveOutputs:
-        """Return solver-time outputs for Diffrax ``SaveAt(fn=...)``."""
-        del args
-        eval_terms = self._evaluate_wrapper_terms(
-            t,
-            SCL_state,
-            bolus_right_continuous=False,
+        y_phys: jax.Array,
+        bolus_dV: jax.Array,
+        bolus_mass: jax.Array,
+        sample_dV: jax.Array,
+    ) -> jax.Array:
+        """Apply the aggregated bolus and/or sample at one event time.
+
+        ``bolus_dV`` is the total added volume and ``bolus_mass`` the total added
+        amount per species (``sum_k Cin_k * dV_k``) for all boluses at this time.
+        Bolus: ``C <- (C*V + bolus_mass)/(V+bolus_dV)``, ``V <- V+bolus_dV``.
+        Sample: ``V <- V - sample_dV`` (concentration unchanged for well-mixed
+        removal). Samples are applied after boluses.
+        """
+        n_RMCs = len(self.modeled_RMC_names)
+        n_FVCs = len(self.modeled_FVC_names)
+        dtype = y_phys.dtype
+        C = y_phys[:n_RMCs]
+        V = y_phys[n_RMCs]
+        cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+        V_after_bolus = V + bolus_dV
+        C = (C * V + bolus_mass.astype(dtype)) / jnp.maximum(
+            V_after_bolus, jnp.asarray(self.min_V, dtype=dtype)
+        )
+        V = V_after_bolus - sample_dV
+        return jnp.concatenate([C, jnp.atleast_1d(V), cum])
+
+    def initial_physical_state_from_raw(self, RAW_state: jax.Array) -> jax.Array:
+        """Identity: the physical solve integrates the raw state layout directly."""
+        n_RMCs = len(self.modeled_RMC_names)
+        n_FVCs = len(self.modeled_FVC_names)
+        return RAW_state[: n_RMCs + 1 + n_FVCs]
+
+    def physical_save_outputs(
+        self, t: float | jax.Array, y_phys: jax.Array
+    ) -> "SaveOutputs":
+        """``SaveOutputs`` computed from the physical state (for loss/exports)."""
+        module = self.reaction_module
+        n_RMCs = len(self.modeled_RMC_names)
+        n_FVCs = len(self.modeled_FVC_names)
+        dtype = y_phys.dtype
+        t_arr = jnp.asarray(t, dtype=dtype)
+        RAW_RMCs = y_phys[:n_RMCs]
+        # Clamped V feeds the reaction module (the concentration denominator can't
+        # go <= 0); the *export* keeps the true (possibly <min_V) volume so the
+        # human-facing v_real reflects the sampled volume directly.
+        RAW_V = jnp.maximum(y_phys[n_RMCs], jnp.asarray(self.min_V, dtype=dtype))
+        RAW_V_export = y_phys[n_RMCs]
+        RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+
+        n_FVC = self.n_controlled_FVCs
+        n_PV = self.n_controlled_PVs
+        n_bolus = self.n_controlled_FVCs_bolus
+        RAW_u_canonical_full = self.controls.eval(t_arr)
+        RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
+        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
+        RAW_u_rhs_full = self.controls.eval_u(t_arr)
+        RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
+        inputs = ReactionInputs(
+            SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
+            SCL_modeled_V=module.scale_modeled_V(RAW_V),
+            SCL_modeled_FVCs_cumulative=module.scale_modeled_FVCs_cumulative(
+                RAW_modeled_cum
+            ),
+            SCL_controlled_FVCs_cumulative=module.scale_controlled_FVCs_cumulative(
+                RAW_controlled_FVCs_cumulative
+            ),
+            SCL_controlled_FVCs_rates=module.scale_controlled_FVCs_rates(
+                RAW_controlled_FVCs_rates
+            ),
+            SCL_controlled_FVCs_Cin=module.scale_controlled_FVCs_Cin(
+                self.rhs_ode.Cin_controlled_FVCs
+            ),
+            SCL_controlled_FVCs_bolus_rates=module.scale_controlled_FVCs_bolus_rates(
+                jnp.zeros((n_bolus,), dtype=dtype)
+            ),
+            SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
+            SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(
+                self.rhs_ode.Cin_modeled_FVCs
+            ),
+        )
+        outputs = module(t_arr, inputs)
+        RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
+            jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
+        )
+        RAW_modeled_FVCs_rates = module.unscale_modeled_FVCs_rates(
+            jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
+        )
+        RAW_state = jnp.concatenate(
+            [RAW_RMCs, RAW_V[None], RAW_modeled_cum]
         )
         return SaveOutputs(
-            SCL_states=eval_terms.SCL_states,
-            RAW_V_export=eval_terms.RAW_V_export,
-            RAW_V=eval_terms.RAW_V,
-            RAW_modeled_BiologicalOde_rates=eval_terms.RAW_modeled_BiologicalOde_rates,
-            RAW_modeled_FVCs_rates=eval_terms.RAW_modeled_FVCs_rates,
-            auxiliary=eval_terms.auxiliary,
+            SCL_states=module.scale_state(RAW_state),
+            RAW_V_export=RAW_V_export,
+            RAW_V=RAW_V,
+            RAW_modeled_BiologicalOde_rates=RAW_bio_rates,
+            RAW_modeled_FVCs_rates=RAW_modeled_FVCs_rates,
+            auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
         )
 
 

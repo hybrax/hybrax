@@ -6,11 +6,9 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
-import diffrax
-
 from .controls_store import BatchControls
 from .model_api import LossInputs
-from .training_data import BatchTrainingData, PerProcessTrainingData
+from .training_data import BatchTrainingData
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 
@@ -44,59 +42,6 @@ def clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
     return jnp.where(tail_mask, last_values[:, None], times)
 
 
-def _simulate_measurement_states_on_grid(
-    wrapper: HybridOdeWrapper,
-    *,
-    t_eval: jax.Array,
-    n_measured: int | jax.Array,
-    RAW_y0: jax.Array,
-    max_steps: int,
-    rtol: float,
-    atol: float,
-    jump_ts: jax.Array | None,
-) -> jax.Array:
-    """Simulate state trajectories at possibly padded measurement timestamps.
-
-    ``RAW_y0`` and the returned states are in **physical** (RAW) space. The
-    wrapper integrates internally in SCL space; this helper scales the initial
-    state on the way in and un-scales the saved trajectory on the way out.
-    """
-    n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
-    t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
-    t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
-
-    module = wrapper.reaction_module
-    SCL_pseudo_y0 = wrapper.initial_pseudo_state_from_raw(RAW_y0)
-
-    def _solve_trajectory(_) -> jax.Array:
-        term = diffrax.ODETerm(lambda t, y, args: wrapper(t, y))
-        solver = diffrax.Tsit5()
-        stepsize_controller = diffrax.PIDController(
-            rtol=float(rtol),
-            atol=float(atol),
-            jump_ts=jump_ts,
-        )
-        solution = diffrax.diffeqsolve(
-            term,
-            solver=solver,
-            t0=t_eval[0],
-            t1=t1,
-            dt0=None,
-            y0=SCL_pseudo_y0,
-            saveat=diffrax.SaveAt(ts=t_eval, fn=wrapper.save_outputs),
-            stepsize_controller=stepsize_controller,
-            max_steps=max_steps,
-            throw=False,
-        )
-        # Saved states are physical-layout SCL states, not pseudo solver states.
-        return jax.vmap(module.unscale_state)(solution.ys.SCL_states)
-
-    def _single_point(_) -> jax.Array:
-        return jnp.repeat(RAW_y0[None, :], repeats=t_eval.shape[0], axis=0)
-
-    return jax.lax.cond(n_meas_arr > 1, _solve_trajectory, _single_point, operand=None)
-
-
 def _solve_measurement_save_outputs_on_grid(
     wrapper: HybridOdeWrapper,
     *,
@@ -114,43 +59,23 @@ def _solve_measurement_save_outputs_on_grid(
     internal pseudobatch solver state. ``SaveOutputs.SCL_states`` stays in
     physical public layout; rate fields are RAW.
     """
+    # Bounded physical-state solve (manual jumps at events) — well-conditioned
+    # gradient. Replaces the pseudobatch single-solve whose unbounded accumulator
+    # corrupted the adjoint (see spec/pseudo_diagnosis.md).
+    from .physical_solve import solve_physical_states
+
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
-    t1 = t_eval[jnp.clip(n_meas_arr - 1, 0, t_eval.shape[0] - 1)]
-
-    def _solve_trajectory(_) -> SaveOutputs:
-        term = diffrax.ODETerm(lambda t, y, args: wrapper(t, y))
-        solver = diffrax.Tsit5()
-        stepsize_controller = diffrax.PIDController(
-            rtol=float(rtol),
-            atol=float(atol),
-            jump_ts=jump_ts,
-        )
-        solution = diffrax.diffeqsolve(
-            term,
-            solver=solver,
-            t0=t_eval[0],
-            t1=t1,
-            dt0=None,
-            y0=wrapper.initial_pseudo_state_from_raw(RAW_y0),
-            saveat=diffrax.SaveAt(ts=t_eval, fn=wrapper.save_outputs),
-            stepsize_controller=stepsize_controller,
-            max_steps=max_steps,
-            throw=False,
-        )
-        return solution.ys
-
-    def _single_point(_) -> SaveOutputs:
-        single = wrapper.save_outputs(
-            t_eval[0],
-            wrapper.initial_pseudo_state_from_raw(RAW_y0),
-        )
-        return jtu.tree_map(
-            lambda leaf: jnp.repeat(leaf[None, ...], repeats=t_eval.shape[0], axis=0),
-            single,
-        )
-
-    return jax.lax.cond(n_meas_arr > 1, _solve_trajectory, _single_point, operand=None)
+    states = solve_physical_states(
+        wrapper,
+        t_eval=t_eval,
+        n_measured=n_meas_arr,
+        RAW_y0=RAW_y0,
+        max_steps=max_steps,
+        rtol=float(rtol),
+        atol=float(atol),
+    )
+    return jax.vmap(wrapper.physical_save_outputs)(t_eval, states)
 
 
 class _BatchIndexedControls(eqx.Module):
@@ -195,36 +120,6 @@ class _BatchIndexedControls(eqx.Module):
     @property
     def bolus_event_mask(self) -> jax.Array:
         return self.batch_controls.bolus_event_mask[self.process_idx]
-
-
-def simulate_measurement_states(
-    wrapper: HybridOdeWrapper,
-    process_data: PerProcessTrainingData,
-    *,
-    max_steps: int = 100_000,
-    rtol: float = 1e-5,
-    atol: float = 1e-7,
-    use_jump_ts: bool = True,
-) -> jax.Array:
-    """Simulate full state trajectories at active measurement timestamps.
-
-    Returns RAW (physical) state for export / plotting. The stored
-    ``y0_measured`` on ``process_data`` is RAW physical.
-    """
-    ts = process_data.active_t_measured
-    if ts.size == 0:
-        raise ValueError("process has no active measurement timestamps")
-    jump_ts = process_data.controls.active_step_ts if use_jump_ts else None
-    return _simulate_measurement_states_on_grid(
-        wrapper,
-        t_eval=ts,
-        n_measured=process_data.n_measured,
-        RAW_y0=process_data.y0_measured,
-        max_steps=max_steps,
-        rtol=rtol,
-        atol=atol,
-        jump_ts=jump_ts,
-    )
 
 
 def evaluate_sample_with_loss_module(
@@ -428,8 +323,8 @@ def evaluate_one_sample_loss(
     step: int | jax.Array | None = None,
 ):
     """One process -> ``(total_loss, per_target_loss)``. Shared by the vmap
-    batched loss and the device-sharded (pmap) step. ``y0`` stays RAW (the
-    wrapper builds the pseudobatch state via ``initial_pseudo_state_from_raw``)."""
+    batched loss and the device-sharded (pmap) step. ``y0`` stays RAW physical;
+    the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""
     controls = _BatchIndexedControls(batch_controls=batch_controls, process_idx=process_idx)
     sample_wrapper = eqx.tree_at(
         lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),

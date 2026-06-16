@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import os
 import time
 import warnings
 from collections import Counter
@@ -1022,14 +1023,146 @@ def train_collection(
 
         return _step_fn
 
+    def _make_gspmd_step():
+        """Data-parallel step via ``jax.jit`` + GSPMD auto-sharding — the modern,
+        future-proof replacement for the deprecated ``jax.pmap``. The batch axis is
+        sharded across an Auto-axis ``Mesh`` (``device_put`` with ``P('bp_dev')``);
+        params/optimiser-state are replicated. The single full vmap-over-batch grad +
+        optimiser update runs under one ``jit``, and XLA's SPMD partitioner splits the
+        per-sample solves across devices and inserts the all-reduce for the
+        batch-mean loss/grad automatically — no manual ``psum``/``all_gather``.
+
+        Why GSPMD and not ``jax.shard_map``: on jax>=0.10 ``shard_map`` runs the body in
+        *manual* sharding mode, which trips ``assert not hlo_sharding.is_manual()`` inside
+        diffrax's nested ``eqx.filter_eval_shape`` solver loop; Explicit-sharding ``jit``
+        likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD keeps shardings
+        out of the per-op type system, so the diffrax adjoint composes cleanly — and it
+        needs **no** equinox/diffrax monkeypatch (unlike the pmap path)."""
+        from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
+
+        bs = int(effective_batch_size)
+        n_dev = min(jax.local_device_count(), bs)
+        devices = jax.local_devices()[:n_dev]
+        mesh = jax.make_mesh((n_dev,), ("bp_dev",), axis_types=(AxisType.Auto,), devices=devices)
+        S_batch = NamedSharding(mesh, P("bp_dev"))   # shard the leading batch axis
+        S_repl = NamedSharding(mesh, P())            # replicated
+        pad_n = (-bs) % n_dev
+        weight_full = jnp.concatenate(
+            [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
+        )
+
+        def _pad(x):
+            return x if pad_n == 0 else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+
+        use_jump = bool(cfg.solver_use_jump_ts)
+        max_steps = int(cfg.solver_max_steps)
+        rtol = float(cfg.solver_rtol)
+        atol = float(cfg.solver_atol)
+
+        @eqx.filter_jit
+        def _full_step(params, opt_state, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+            # Inside-jit sharding constraints (per the equinox autoparallelism tutorial):
+            # emits jax.lax.with_sharding_constraint so XLA keeps params/opt replicated and
+            # the batch axis sharded *through* the computation, rather than replicating it.
+            params, opt_state = eqx.filter_shard((params, opt_state), S_repl)
+            pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
+                (pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
+            )
+
+            def _local(p):
+                wrapper = eqx.combine(p, trainable_static)
+                module = wrapper.reaction_module
+                scale_targets = module.SCALE_state[wrapper.target_state_indices]
+                SCL_ym = ym / scale_targets[None, None, :]
+                tmc = clamp_padded_time_rows(tm, nm)
+
+                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                    return evaluate_one_sample_loss(
+                        wrapper, batch_controls, pidx, t_row, scl_ym, mask, n_meas, raw_y0,
+                        ci, cim, jts, max_solver_steps=max_steps, solver_rtol=rtol,
+                        solver_atol=atol, step=step,
+                    )
+
+                totl, pert = jax.vmap(
+                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
+                # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
+                # measured to NOT help — even with this hint XLA still replicates the
+                # data-dependent diffrax while_loops rather than partitioning the vmap, so
+                # the GSPMD path stays ~60x slower than pmap. Kept as correct practice.
+                totl, pert = eqx.filter_shard((totl, pert), S_batch)
+                # weighted mean: padding rows carry weight 0; XLA all-reduces it (and grad).
+                return jnp.sum(totl * wt) / bs, (pert, totl)
+
+            (loss, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(params)
+            per_target = jnp.sum(pert * wt[:, None], axis=0) / bs
+            updates, next_opt_state = optimizer.update(grads, opt_state, params=params)
+            params_next = eqx.apply_updates(params, updates)
+            grad_norm = optax.tree.norm(grads)
+            params_next, next_opt_state = eqx.filter_shard((params_next, next_opt_state), S_repl)
+            return params_next, next_opt_state, loss, per_target, totl, grad_norm
+
+        def _step_fn(current_wrapper, current_trainable_params, current_optimizer_state, current_batch, step):
+            del current_wrapper
+            jump_ts_rows = None
+            if use_jump:
+                jump_ts_rows = clamp_padded_time_rows(
+                    store.controls_store.step_ts[current_batch.process_indices],
+                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                )
+            cin = batched_Cin[current_batch.process_indices]
+            cinm = batched_Cin_modeled[current_batch.process_indices]
+            with jax.set_mesh(mesh):  # jax>=0.10 needs an active mesh for the sharded jit
+                sharded = [
+                    jax.device_put(_pad(a), S_batch)
+                    for a in (
+                        current_batch.process_indices, current_batch.t_measured,
+                        current_batch.y_measured, current_batch.mask_measured,
+                        current_batch.n_measured, current_batch.y0_measured, cin, cinm,
+                    )
+                ]
+                wt = jax.device_put(weight_full, S_batch)
+                jt = jax.device_put(_pad(jump_ts_rows), S_batch) if jump_ts_rows is not None else None
+                params_r = jax.device_put(current_trainable_params, S_repl)
+                opt_r = jax.device_put(current_optimizer_state, S_repl)
+                step_r = jax.device_put(jnp.asarray(step), S_repl)
+                (
+                    trainable_updated, next_optimizer_state, loss, per_target_loss,
+                    per_sample, grad_norm,
+                ) = _full_step(
+                    params_r, opt_r, sharded[0], sharded[1], sharded[2], sharded[3],
+                    sharded[4], sharded[5], sharded[6], sharded[7], wt, jt, step_r,
+                )
+            per_sample_loss = per_sample.reshape(-1)[:bs]
+            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
+            return (
+                wrapper_updated, trainable_updated, loss, per_target_loss,
+                per_sample_loss, next_optimizer_state, grad_norm,
+            )
+
+        return _step_fn
+
     _n_local_devices = jax.local_device_count()
     _n_shard = min(_n_local_devices, int(effective_batch_size))
     _use_sharded = _n_shard > 1
-    _make_step = _make_sharded_step if _use_sharded else _make_batched_step
+    # pmap stays the DEFAULT sharded path: it is the only fast option on jax>=0.10.
+    # shard_map (manual mode) crashes inside diffrax's nested filter_eval_shape
+    # (`assert not hlo_sharding.is_manual()`), and GSPMD auto-sharding (BP_GSPMD=1) is
+    # correct + patch-free but ~60x slower because XLA cannot partition the
+    # data-dependent ODE solve (it replicates the per-device work). pmap needs the
+    # equinox closure-convert patch on jax>=0.10; GSPMD needs no patch.
+    _use_gspmd = os.environ.get("BP_GSPMD", "") not in ("", "0", "false", "False")
+    if _use_sharded and _use_gspmd:
+        _make_step = _make_gspmd_step
+    elif _use_sharded:
+        _make_step = _make_sharded_step
+    else:
+        _make_step = _make_batched_step
     if _use_sharded:
         logger.info(
-            "training sharded across %d local devices (batch=%d)",
+            "training sharded across %d local devices (batch=%d) via %s",
             _n_shard, int(effective_batch_size),
+            "gspmd" if _use_gspmd else "pmap",
         )
     step_fn = _make_step()
     rebuild_count = 0

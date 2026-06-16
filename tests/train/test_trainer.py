@@ -18,6 +18,7 @@ from bp_format.dataclasses import (
 from bp_format.mechanistic import build_rhs_ode
 
 import bp_train.trainer as trainer_module
+from bp_train.physical_solve import solve_physical_states
 from bp_train.model_api import (
     ReactionOutputs,
     UserReactionModule,
@@ -354,7 +355,7 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
         solver_rtol=1e-5,
         solver_atol=1e-7,
     )
-    states = trainer_module._simulate_measurement_states_on_grid(
+    states = solve_physical_states(
         wrapper,
         t_eval=process_data.t_measured,
         n_measured=process_data.n_measured,
@@ -362,11 +363,9 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
-        jump_ts=process_data.controls.active_step_ts,
     )
-    # Manually replicate the SCL-space loss kernel. ``states`` here is in
-    # RAW space (returned by ``_simulate_measurement_states_on_grid`` which
-    # unscales). With unit SCALE_* it doesn't matter; SCL == RAW.
+    # Manually replicate the SCL-space loss kernel. ``states`` here is RAW
+    # physical state from the callbacks solve. With unit SCALE_* SCL == RAW.
     y_pred = states[:, wrapper.target_state_indices]
     y_meas_safe = jnp.where(process_data.mask_measured, process_data.y_measured, 0.0)
     sq_err = jnp.square(y_pred - y_meas_safe)
@@ -405,7 +404,7 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         t_measured[None, :],
         jnp.asarray([process_data.n_measured], dtype=jnp.int32),
     )[0]
-    expected_states = trainer_module._simulate_measurement_states_on_grid(
+    expected_states = solve_physical_states(
         wrapper,
         t_eval=clamped,
         n_measured=process_data.n_measured,
@@ -413,10 +412,42 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
-        jump_ts=process_data.controls.active_step_ts,
     )
 
     assert jnp.allclose(result.states, expected_states)
+
+
+def test_solve_physical_states_gradient_is_finite():
+    """The diffrax_callbacks discrete-jump solve must be differentiable: the
+    reverse-mode adjoint through the per-event segments yields a finite, non-zero
+    gradient w.r.t. the reaction module. This is the property the pseudobatch
+    formulation broke (its unbounded accumulator corrupted the adjoint), so it is
+    the core regression guard for the callbacks migration."""
+    wrapper, process_data = _build_wrapper_and_process()
+    n_meas = int(process_data.n_measured)
+
+    def loss(w):
+        states = solve_physical_states(
+            w,
+            t_eval=process_data.t_measured,
+            n_measured=process_data.n_measured,
+            RAW_y0=process_data.y0_measured,
+            max_steps=4096,
+            rtol=1e-4,
+            atol=1e-5,
+        )
+        return jnp.sum(states[:n_meas] ** 2)
+
+    value, grad = eqx.filter_value_and_grad(loss)(wrapper)
+    assert bool(jnp.isfinite(value))
+    ann_leaves = [
+        g
+        for g in jax.tree_util.tree_leaves(grad.reaction_module)
+        if eqx.is_inexact_array(g)
+    ]
+    assert ann_leaves, "expected differentiable reaction-module leaves"
+    assert all(bool(jnp.all(jnp.isfinite(g))) for g in ann_leaves)
+    assert any(bool(jnp.any(g != 0.0)) for g in ann_leaves), "adjoint did not propagate"
 
 
 def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():

@@ -23,11 +23,49 @@ def _bp_resolve_devices():
     return None
 
 
+def _bp_count_processes():
+    """Best-effort process count from the ``--input`` prepared JSON (pre-JAX).
+
+    Used to resolve ``--devices max`` to ``min(n_processes, n_cpus)`` instead of every
+    core: exposing more CPU devices than there are processes leaves them idle but still
+    oversubscribes the XLA collective threadpool, which can starve the pmap rendezvous
+    (~20 s) and deadlock mid-training. Returns ``None`` if it can't be determined (then
+    the caller falls back to ``cpu_count``)."""
+    _argv = _sys.argv
+    _path = None
+    for _i, _a in enumerate(_argv):
+        if _a == "--input" and _i + 1 < len(_argv):
+            _path = _argv[_i + 1]; break
+        if _a.startswith("--input="):
+            _path = _a.split("=", 1)[1]; break
+    if not _path:
+        return None
+    try:
+        import json as _json
+        with open(_path) as _f:
+            _d = _json.load(_f)
+        for _k in ("processes", "process_order", "case_studies"):
+            if isinstance(_d, dict) and isinstance(_d.get(_k), (dict, list)):
+                return len(_d[_k]) or None
+    except Exception:
+        return None
+    return None
+
+
 if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""):
     _bp_devices = _bp_resolve_devices()
     if _bp_devices is not None:
         if str(_bp_devices).strip().lower() in ("max", "all", "auto"):
-            _bp_devices = _os.cpu_count() or 1            # use every CPU core
+            # "max" = as many devices as are *useful*: one per process, capped at cores.
+            # Never every core — idle surplus devices oversubscribe the collective
+            # threadpool and deadlock the pmap rendezvous (see _bp_count_processes).
+            _cores = _os.cpu_count() or 1
+            _nproc = _bp_count_processes()
+            # LOO leaves >=1 process out per fold, so the largest fold batch is
+            # n_processes - 1; don't expose an idle surplus device.
+            if _nproc and len(_sys.argv) > 1 and _sys.argv[1] == "loo":
+                _nproc = max(1, _nproc - 1)
+            _bp_devices = min(_cores, _nproc) if _nproc else _cores
         else:
             try:
                 _bp_devices = int(_bp_devices)
@@ -82,7 +120,6 @@ from .defaults import DefaultLossModule, DefaultReactionModule
 from .trainer import (
     SingleSampleResult,
     evaluate_sample_with_loss_module,
-    simulate_measurement_states,
 )
 from .harness import (
     ForwardConfig,
@@ -133,7 +170,6 @@ __all__ = [
     "build_union_time_grid",
     "dense_point_mask_away_from_jumps",
     "dense_triple_mask_away_from_jumps",
-    "simulate_measurement_states",
     "SingleSampleResult",
     "evaluate_sample_with_loss_module",
     "DefaultReactionModule",

@@ -179,8 +179,9 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N|max",
         help=(
             "CPU devices to shard the process batch across via pmap. 1 = off "
-            "(default); an integer like 8 for ~8x faster steps; or 'max' for all "
-            "CPU cores. Read before JAX init by the package bootstrap (also "
+            "(default); an integer like 8 for ~8x faster steps; or 'max' for one "
+            "device per process = min(processes, cores). Read before JAX init by "
+            "the package bootstrap (also "
             "honours the BP_TRAIN_DEVICES env var). Shards across "
             "min(devices, n_processes) devices; pick <= free cores when sharing "
             "the machine."
@@ -497,6 +498,21 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=train_cfg_defaults.log_every,
         help="Emit progress log every N steps.",
+    )
+    loo_parser.add_argument(
+        "--devices",
+        type=str,
+        default="1",
+        metavar="N|max",
+        help=(
+            "CPU devices to shard each fold's process batch across via pmap. 1 = off "
+            "(default); an integer like 8 for ~8x faster steps; or 'max' for one "
+            "device per process = min(processes, cores). Read before JAX init by "
+            "the package bootstrap (also "
+            "honours the BP_TRAIN_DEVICES env var). Shards across "
+            "min(devices, n_processes) devices; pick <= free cores when sharing "
+            "the machine."
+        ),
     )
     loo_parser.add_argument(
         "--solver-max-steps",
