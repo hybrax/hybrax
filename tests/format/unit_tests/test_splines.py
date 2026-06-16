@@ -1013,19 +1013,12 @@ def test_inverse_pseudobatch_entrypoints_match_at_event_sides():
     np.testing.assert_allclose(jit_level, legacy, rtol=1e-10, atol=1e-10)
 
 
-def test_backtransform_derivative_matches_finite_difference_continuous_feed():
-    """Real-space derivative uses the same canonical inverse-transform quotient rule."""
-    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
-    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
-    backtransform = build_backtransform_spline(proc, "glucose")
-    derivative = backtransform.derivative()
-
-    # Interior points only: BacktransformSpline.derivative() intentionally excludes
-    # instantaneous jump impulses and represents the smooth within-segment derivative.
-    times = np.asarray([2.0, 6.0, 10.0, 14.0, 18.0], dtype=float)
-    h = 1e-4
-    analytical = np.asarray([float(derivative(jnp.asarray(t))) for t in times])
-    finite_difference = np.asarray(
+def _finite_difference_backtransform(
+    backtransform: BacktransformSpline,
+    times: np.ndarray,
+    h: float = 1e-4,
+) -> np.ndarray:
+    return np.asarray(
         [
             (
                 float(backtransform(jnp.asarray(t + h)))
@@ -1036,7 +1029,90 @@ def test_backtransform_derivative_matches_finite_difference_continuous_feed():
         ]
     )
 
+
+def _assert_backtransform_derivative_matches_finite_difference(
+    backtransform: BacktransformSpline,
+    times: np.ndarray,
+) -> None:
+    derivative = backtransform.derivative()
+    analytical = np.asarray([float(derivative(jnp.asarray(t))) for t in times])
+    finite_difference = _finite_difference_backtransform(backtransform, times)
     np.testing.assert_allclose(analytical, finite_difference, rtol=2e-4, atol=1e-5)
+
+
+def test_backtransform_derivative_matches_finite_difference_continuous_feed():
+    """Real-space derivative uses the same canonical inverse-transform quotient rule."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
+    backtransform = build_backtransform_spline(proc, "glucose")
+
+    # Interior points only: BacktransformSpline.derivative() intentionally excludes
+    # instantaneous jump impulses and represents the smooth within-segment derivative.
+    times = np.asarray([2.0, 6.0, 10.0, 14.0, 18.0], dtype=float)
+    _assert_backtransform_derivative_matches_finite_difference(backtransform, times)
+
+
+def test_backtransform_derivative_matches_finite_difference_bolus_segment():
+    """Bolus-only segments reduce to smooth dc*/dt over constant non-unity ADF."""
+    proc = _make_process_with_bolus_feed(
+        feed_times=[50.0],
+        feed_vols=[0.2],
+        glucose_times=[0.0, 25.0, 50.0, 60.0, 75.0, 100.0],
+        glucose_values=[10.0, 8.0, 6.0, 7.5, 6.5, 5.0],
+    )
+    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
+    backtransform = build_backtransform_spline(proc, "glucose")
+
+    times = np.asarray([55.0, 65.0, 85.0], dtype=float)
+    dadf_dt = np.asarray(
+        [
+            float(backtransform.dadf_ts.evaluate(jnp.asarray(t), side="left"))
+            for t in times
+        ]
+    )
+    np.testing.assert_allclose(dadf_dt, 0.0, atol=1e-12)
+    _assert_backtransform_derivative_matches_finite_difference(backtransform, times)
+
+
+def test_backtransform_derivative_matches_finite_difference_with_dfc_dt():
+    """Feed-correction derivative is load-bearing in the quotient rule."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
+    backtransform = build_backtransform_spline(proc, "glucose")
+
+    times = np.asarray([2.0, 6.0, 10.0, 14.0, 18.0], dtype=float)
+    dfc_dt = np.asarray(
+        [
+            float(backtransform.dfc_ts.evaluate(jnp.asarray(t), side="left"))
+            for t in times
+        ]
+    )
+    assert np.any(np.abs(dfc_dt) > 1e-8)
+
+    dc_star = backtransform.c_star_spline.derivative()
+    # Deliberately re-run the inverse derivative formula with only dfc/dt zeroed
+    # to prove the feed-correction derivative term is load-bearing.
+    without_feed_corr_derivative = np.asarray(
+        [
+            float(
+                _inverse_pseudobatch_derivative(
+                    c_star=backtransform.c_star_spline(jnp.asarray(t)),
+                    feed_correction=backtransform.feed_corr_ts.evaluate(
+                        jnp.asarray(t), side="left"
+                    ),
+                    dc_star_dt=dc_star(jnp.asarray(t)),
+                    dfc_dt=jnp.asarray(0.0),
+                    adf=backtransform.adf_ts.evaluate(jnp.asarray(t), side="left"),
+                    dadf_dt=backtransform.dadf_ts.evaluate(jnp.asarray(t), side="left"),
+                )
+            )
+            for t in times
+        ]
+    )
+    analytical = np.asarray(
+        [float(backtransform.derivative()(jnp.asarray(t))) for t in times]
+    )
+    assert np.max(np.abs(analytical - without_feed_corr_derivative)) > 1e-3
 
 
 def test_timeseries_backtransform_scalar():
