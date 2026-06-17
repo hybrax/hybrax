@@ -1,3 +1,4 @@
+import copy
 import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
@@ -10,16 +11,21 @@ from bp_format.mechanistic import ControlSplines  # noqa: E402
 from bp_format.mechanistic import RhsOde  # noqa: E402
 from bp_format.mechanistic import _timeseries_to_ppoly  # noqa: E402
 from bp_format.mechanistic import build_rhs_ode  # noqa: E402
+from bp_format.mechanistic import build_state_splines  # noqa: E402
 from bp_format.mechanistic import get_control_splines  # noqa: E402
 from bp_format.mechanistic import get_process_ordering  # noqa: E402
 from bp_format.serialization import load_process_collection_json  # noqa: E402
+from bp_format.splines import build_pseudobatch_transform  # noqa: E402
 from bp_format.splines import make_cubic_ppoly  # noqa: E402
 from bp_format.time_series import PPoly  # noqa: E402
 from scipy.integrate import solve_ivp  # noqa: E402
 
 from .cstar_helpers import EXPECTED_PROCESS_IDS  # noqa: E402
+from .cstar_helpers import EXPECTED_REACTOR_COMPONENT_ORDER  # noqa: E402
 from .cstar_helpers import SIMULATION_DENSE_OUTPUT  # noqa: E402
 from .cstar_helpers import SIM_RESULTS_DIR  # noqa: E402
+from .cstar_helpers import dense_online_reactor_reference  # noqa: E402
+from .cstar_helpers import fit_cstar_timeseries_from_values  # noqa: E402
 from .real_space_segments import PRE_EVENT_ROW  # noqa: E402
 from .real_space_segments import RealSpaceSegment  # noqa: E402
 from .real_space_segments import build_real_space_segments  # noqa: E402
@@ -66,6 +72,9 @@ CONTROL_RTOL = 1e-12
 CONTROL_ATOL = 1e-12
 MODELED_FVC_FLOW_RTOL = 5e-2
 MODELED_FVC_FLOW_ATOL = 2e-5
+BACKTRANSFORM_RTOL = 1e-7
+BACKTRANSFORM_ATOL = 5e-6
+BACKTRANSFORM_QUADRATURE_ORDER = 5
 
 
 def _ppoly_from_segment_rows(segment: RealSpaceSegment, column: str) -> PPoly:
@@ -92,6 +101,38 @@ def _process_modeled_fvc_splines(
     )
 
 
+def _evaluate_left(series, times: np.ndarray) -> np.ndarray:
+    return np.asarray(
+        series.evaluate_many(jnp.asarray(times), side="left"),
+        dtype=float,
+    )
+
+
+def _add_dense_pseudobatch_transform(process: BioProcess, process_id: str) -> None:
+    process.pseudobatch_transform = build_pseudobatch_transform(
+        process,
+        list(EXPECTED_REACTOR_COMPONENT_ORDER),
+    )
+    dense = dense_online_reactor_reference(process_id, process.time_axis.end)
+    dense_times = dense["time"]
+    assert process.pseudobatch_transform is not None
+    adf = _evaluate_left(process.pseudobatch_transform.adf, dense_times)
+    for name in EXPECTED_REACTOR_COMPONENT_ORDER:
+        feed_correction = _evaluate_left(
+            process.pseudobatch_transform.feed_corrections[name],
+            dense_times,
+        )
+        c_star = dense[name] * adf - feed_correction
+        process.reactor_medium.components[
+            name
+        ].c_star_concentration = fit_cstar_timeseries_from_values(
+            name,
+            dense_times,
+            c_star,
+            source="dense_online_oracle_left_event",
+        )
+
+
 def _assert_expected_sim_1_ordering(ordering: ProcessOrdering) -> None:
     assert ordering.name_modeled_RMCs == EXPECTED_MODELED_RMCS
     assert ordering.name_modeled_PVs == EXPECTED_MODELED_PVS
@@ -101,6 +142,35 @@ def _assert_expected_sim_1_ordering(ordering: ProcessOrdering) -> None:
     assert ordering.name_controlled_FVCs == EXPECTED_CONTROLLED_FVCS
     assert ordering.name_modeled_SVCs == EXPECTED_MODELED_SVCS
     assert ordering.name_controlled_SVCs == EXPECTED_CONTROLLED_SVCS
+
+
+def _integrate_backtransform_derivative_for_segment(
+    segment: RealSpaceSegment,
+    backtransform_derivative_fns: dict[str, object],
+) -> tuple[np.ndarray, np.ndarray]:
+    times = segment_times(segment)
+    truth = segment_state_matrix(segment, EXPECTED_REACTOR_COMPONENT_ORDER)
+    nodes, weights = np.polynomial.legendre.leggauss(BACKTRANSFORM_QUADRATURE_ORDER)
+
+    increments = []
+    for start, end in zip(times[:-1], times[1:], strict=True):
+        midpoint = 0.5 * (start + end)
+        half_width = 0.5 * (end - start)
+        eval_times = jnp.asarray(midpoint + half_width * nodes)
+        derivatives = np.column_stack(
+            [
+                np.asarray(
+                    backtransform_derivative_fns[name](eval_times),
+                    dtype=float,
+                )
+                for name in EXPECTED_REACTOR_COMPONENT_ORDER
+            ]
+        )
+        increments.append(half_width * (weights @ derivatives))
+
+    recovered = truth.copy()
+    recovered[1:] = recovered[0] + np.cumsum(increments, axis=0)
+    return recovered, truth
 
 
 def _integrate_segment(
@@ -234,6 +304,16 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
             process,
             ordering.name_modeled_FVCs,
         )
+        backtransform_process = copy.deepcopy(process)
+        _add_dense_pseudobatch_transform(backtransform_process, process_id)
+        backtransform_state_splines = build_state_splines(
+            backtransform_process,
+            ordering,
+        )
+        backtransform_derivative_fns = {
+            name: backtransform_state_splines[name].derivative()
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        }
         segments = build_real_space_segments(rows_by_process[process_id])
         assert len(segments) > 1
 
@@ -260,4 +340,14 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
                 truth,
                 rtol=RHS_REINTEGRATION_RTOL,
                 atol=RHS_REINTEGRATION_ATOL,
+            )
+            recovered, physical_truth = _integrate_backtransform_derivative_for_segment(
+                segment,
+                backtransform_derivative_fns,
+            )
+            np.testing.assert_allclose(
+                recovered,
+                physical_truth,
+                rtol=BACKTRANSFORM_RTOL,
+                atol=BACKTRANSFORM_ATOL,
             )
