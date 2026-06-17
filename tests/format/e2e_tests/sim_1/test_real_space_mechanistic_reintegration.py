@@ -3,6 +3,7 @@ import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
+import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 from bp_format.dataclasses import BioProcess  # noqa: E402
@@ -75,6 +76,16 @@ MODELED_FVC_FLOW_ATOL = 2e-5
 BACKTRANSFORM_RTOL = 1e-7
 BACKTRANSFORM_ATOL = 5e-6
 BACKTRANSFORM_QUADRATURE_ORDER = 5
+# Pointwise derivative residuals compare spline-derived derivatives to dense-grid
+# references. The guard skips cubic-spline boundary artifacts; the absolute
+# tolerances sit just above the measured clean residual floor (~3.5e-4).
+DERIVATIVE_RHS_RTOL = 0.0
+DERIVATIVE_RHS_ATOL = 5e-4
+DERIVATIVE_FD_RTOL = 0.0
+DERIVATIVE_FD_ATOL = 5e-4
+DERIVATIVE_BOUNDARY_GUARD_POINTS = 8
+DERIVATIVE_GRID_RTOL = 1e-10
+DERIVATIVE_GRID_ATOL = 1e-12
 
 
 def _ppoly_from_segment_rows(segment: RealSpaceSegment, column: str) -> PPoly:
@@ -171,6 +182,172 @@ def _integrate_backtransform_derivative_for_segment(
     recovered = truth.copy()
     recovered[1:] = recovered[0] + np.cumsum(increments, axis=0)
     return recovered, truth
+
+
+def _backtransform_derivative_matrix(
+    times: np.ndarray,
+    backtransform_derivative_fns: dict[str, object],
+) -> np.ndarray:
+    return np.column_stack(
+        [
+            np.asarray(
+                backtransform_derivative_fns[name](jnp.asarray(times)),
+                dtype=float,
+            )
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ]
+    )
+
+
+def _physical_state_indices(state_names: tuple[str, ...]) -> list[int]:
+    indices = [state_names.index(name) for name in EXPECTED_REACTOR_COMPONENT_ORDER]
+    assert (
+        tuple(state_names[index] for index in indices)
+        == EXPECTED_REACTOR_COMPONENT_ORDER
+    )
+    return indices
+
+
+def _pointwise_mask(segment: RealSpaceSegment) -> np.ndarray:
+    mask = np.ones(len(segment.rows), dtype=bool)
+    mask[:DERIVATIVE_BOUNDARY_GUARD_POINTS] = False
+    mask[-DERIVATIVE_BOUNDARY_GUARD_POINTS:] = False
+    assert all(row["row_type"] != PRE_EVENT_ROW for row in segment.rows[:-1])
+    return mask
+
+
+def _finite_difference_stencil_indices(
+    times: np.ndarray, mask: np.ndarray
+) -> np.ndarray:
+    indices = []
+    for i in range(2, len(times) - 2):
+        if not mask[i]:
+            continue
+        local_mask = mask[i - 2 : i + 3]
+        local_steps = np.diff(times[i - 2 : i + 3])
+        if np.all(local_mask) and np.allclose(
+            local_steps,
+            local_steps[0],
+            rtol=DERIVATIVE_GRID_RTOL,
+            atol=DERIVATIVE_GRID_ATOL,
+        ):
+            indices.append(i)
+    return np.asarray(indices, dtype=int)
+
+
+def _truth_finite_difference_derivatives(
+    segment: RealSpaceSegment,
+) -> tuple[np.ndarray, np.ndarray]:
+    times = segment_times(segment)
+    truth = segment_state_matrix(segment, EXPECTED_REACTOR_COMPONENT_ORDER)
+    indices = _finite_difference_stencil_indices(times, _pointwise_mask(segment))
+    derivatives = []
+    for i in indices:
+        # The stencil selector verified this whole neighborhood is uniform.
+        dt = times[i + 1] - times[i]
+        derivatives.append(
+            (-truth[i + 2] + 8.0 * truth[i + 1] - 8.0 * truth[i - 1] + truth[i - 2])
+            / (12.0 * dt)
+        )
+    if not derivatives:
+        return times[indices], np.empty((0, len(EXPECTED_REACTOR_COMPONENT_ORDER)))
+    return times[indices], np.vstack(derivatives)
+
+
+def _rhs_truth_derivatives(
+    segment: RealSpaceSegment,
+    ordering: ProcessOrdering,
+    control_splines: ControlSplines,
+    rhs_ode: RhsOde,
+    modeled_fvc_splines: tuple[PPoly, ...],
+) -> tuple[np.ndarray, np.ndarray]:
+    times = segment_times(segment)
+    indices = np.flatnonzero(_pointwise_mask(segment))
+    eval_times = times[indices]
+    state_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs + ("volume",)
+    truth = segment_state_matrix(segment, state_names)[indices]
+    rate_splines = _segment_rate_splines(segment, ordering.name_modeled_rates)
+    rate_values = jnp.asarray(
+        np.column_stack(
+            [
+                np.asarray(spline(jnp.asarray(eval_times)), dtype=float)
+                for spline in rate_splines
+            ]
+        )
+    )
+    controls = control_splines(jnp.asarray(eval_times))
+    modeled_fvc_flows = jnp.asarray(
+        np.column_stack(
+            [
+                np.asarray(spline(jnp.asarray(eval_times), nu=1), dtype=float)
+                for spline in modeled_fvc_splines
+            ]
+        )
+    )
+    rhs_values = jax.vmap(
+        lambda y, rates, control, fvc_flows: rhs_ode(
+            y,
+            rates,
+            control,
+            fvc_flows,
+            jnp.zeros(0),
+        )
+    )(
+        jnp.asarray(truth),
+        rate_values,
+        controls,
+        modeled_fvc_flows,
+    )
+    physical_indices = _physical_state_indices(state_names)
+    return eval_times, np.asarray(rhs_values, dtype=float)[:, physical_indices]
+
+
+def _assert_pointwise_derivatives_match_references(
+    segment: RealSpaceSegment,
+    ordering: ProcessOrdering,
+    control_splines: ControlSplines,
+    rhs_ode: RhsOde,
+    modeled_fvc_splines: tuple[PPoly, ...],
+    backtransform_derivative_fns: dict[str, object],
+) -> tuple[int, int]:
+    fd_times, fd_reference = _truth_finite_difference_derivatives(segment)
+    rhs_times, rhs_reference = _rhs_truth_derivatives(
+        segment,
+        ordering,
+        control_splines,
+        rhs_ode,
+        modeled_fvc_splines,
+    )
+    assertion_errors = []
+    if len(fd_times):
+        try:
+            np.testing.assert_allclose(
+                _backtransform_derivative_matrix(
+                    fd_times,
+                    backtransform_derivative_fns,
+                ),
+                fd_reference,
+                rtol=DERIVATIVE_FD_RTOL,
+                atol=DERIVATIVE_FD_ATOL,
+            )
+        except AssertionError as exc:
+            assertion_errors.append(f"dense-truth finite-difference residual:\n{exc}")
+    if len(rhs_times):
+        try:
+            np.testing.assert_allclose(
+                _backtransform_derivative_matrix(
+                    rhs_times,
+                    backtransform_derivative_fns,
+                ),
+                rhs_reference,
+                rtol=DERIVATIVE_RHS_RTOL,
+                atol=DERIVATIVE_RHS_ATOL,
+            )
+        except AssertionError as exc:
+            assertion_errors.append(f"truth-state rhs_ode residual:\n{exc}")
+    if assertion_errors:
+        raise AssertionError("\n\n".join(assertion_errors))
+    return len(fd_times), len(rhs_times)
 
 
 def _integrate_segment(
@@ -316,6 +493,8 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
         }
         segments = build_real_space_segments(rows_by_process[process_id])
         assert len(segments) > 1
+        n_fd_points = 0
+        n_rhs_points = 0
 
         for segment in segments:
             _assert_control_splines_match_dense_rows(
@@ -341,6 +520,18 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
                 rtol=RHS_REINTEGRATION_RTOL,
                 atol=RHS_REINTEGRATION_ATOL,
             )
+            segment_fd_points, segment_rhs_points = (
+                _assert_pointwise_derivatives_match_references(
+                    segment,
+                    ordering,
+                    control_splines,
+                    rhs_ode,
+                    modeled_fvc_splines,
+                    backtransform_derivative_fns,
+                )
+            )
+            n_fd_points += segment_fd_points
+            n_rhs_points += segment_rhs_points
             recovered, physical_truth = _integrate_backtransform_derivative_for_segment(
                 segment,
                 backtransform_derivative_fns,
@@ -351,3 +542,6 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
                 rtol=BACKTRANSFORM_RTOL,
                 atol=BACKTRANSFORM_ATOL,
             )
+
+        assert n_fd_points > 0
+        assert n_rhs_points > 0
