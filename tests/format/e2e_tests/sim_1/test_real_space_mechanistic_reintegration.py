@@ -3,6 +3,7 @@ import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
+import diffrax  # noqa: E402
 import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
@@ -19,7 +20,6 @@ from bp_format.serialization import load_process_collection_json  # noqa: E402
 from bp_format.splines import build_pseudobatch_transform  # noqa: E402
 from bp_format.splines import make_cubic_ppoly  # noqa: E402
 from bp_format.time_series import PPoly  # noqa: E402
-from scipy.integrate import solve_ivp  # noqa: E402
 
 from .cstar_helpers import EXPECTED_PROCESS_IDS  # noqa: E402
 from .cstar_helpers import EXPECTED_REACTOR_COMPONENT_ORDER  # noqa: E402
@@ -69,6 +69,7 @@ RHS_REINTEGRATION_RTOL = 1e-7
 RHS_REINTEGRATION_ATOL = 5e-6
 SOLVER_RTOL = 1e-10
 SOLVER_ATOL = 1e-12
+SOLVER_MAX_STEPS = 1_000_000
 CONTROL_RTOL = 1e-12
 CONTROL_ATOL = 1e-12
 MODELED_FVC_FLOW_RTOL = 5e-2
@@ -365,33 +366,42 @@ def _integrate_segment(
     state_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs + ("volume",)
     truth = segment_state_matrix(segment, state_names)
     rate_splines = _segment_rate_splines(segment, ordering.name_modeled_rates)
+    no_modeled_svc_flows = jnp.zeros(0)
+    solve_times = jnp.asarray(times)
     assert ordering.name_modeled_SVCs == ()
 
-    def rhs(t, y):
-        t_jax = jnp.asarray(t)
-        return np.asarray(
-            rhs_ode(
-                jnp.asarray(y),
-                jnp.asarray([spline(t_jax) for spline in rate_splines]),
-                control_splines(t_jax),
-                jnp.asarray([spline(t_jax, nu=1) for spline in modeled_fvc_splines]),
-                jnp.zeros(0),
-            ),
-            dtype=float,
+    def rhs(t, y, args):
+        rate_values = jnp.asarray([spline(t) for spline in rate_splines])
+        modeled_fvc_flows = jnp.asarray(
+            [spline(t, nu=1) for spline in modeled_fvc_splines]
+        )
+        return rhs_ode(
+            y,
+            rate_values,
+            control_splines(t),
+            modeled_fvc_flows,
+            no_modeled_svc_flows,
         )
 
-    solution = solve_ivp(
-        rhs,
-        (float(times[0]), float(times[-1])),
-        truth[0],
-        method="DOP853",
-        rtol=SOLVER_RTOL,
-        atol=SOLVER_ATOL,
-        t_eval=times[1:],
-    )
-    if not solution.success:
-        raise RuntimeError(solution.message)
-    return np.vstack([truth[0], solution.y.T]), truth
+    @jax.jit
+    def solve(y0):
+        return diffrax.diffeqsolve(
+            diffrax.ODETerm(rhs),
+            diffrax.Dopri8(),
+            t0=float(times[0]),
+            t1=float(times[-1]),
+            dt0=None,
+            y0=y0,
+            saveat=diffrax.SaveAt(ts=solve_times),
+            stepsize_controller=diffrax.PIDController(
+                rtol=SOLVER_RTOL,
+                atol=SOLVER_ATOL,
+            ),
+            max_steps=SOLVER_MAX_STEPS,
+        )
+
+    solution = solve(jnp.asarray(truth[0]))
+    return np.asarray(solution.ys, dtype=float), truth
 
 
 def _assert_control_splines_match_dense_rows(
