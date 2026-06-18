@@ -163,21 +163,25 @@ def _integrate_backtransform_derivative_for_segment(
     truth = segment_state_matrix(segment, EXPECTED_REACTOR_COMPONENT_ORDER)
     nodes, weights = np.polynomial.legendre.leggauss(BACKTRANSFORM_QUADRATURE_ORDER)
 
-    increments = []
-    for start, end in zip(times[:-1], times[1:], strict=True):
-        midpoint = 0.5 * (start + end)
-        half_width = 0.5 * (end - start)
-        eval_times = jnp.asarray(midpoint + half_width * nodes)
-        derivatives = np.column_stack(
-            [
-                np.asarray(
-                    backtransform_derivative_fns[name](eval_times),
-                    dtype=float,
-                )
-                for name in EXPECTED_REACTOR_COMPONENT_ORDER
-            ]
-        )
-        increments.append(half_width * (weights @ derivatives))
+    starts = times[:-1]
+    ends = times[1:]
+    midpoints = 0.5 * (starts + ends)
+    half_widths = 0.5 * (ends - starts)
+    interval_eval_times = midpoints[:, np.newaxis] + half_widths[:, np.newaxis] * nodes
+    flat_eval_times = jnp.asarray(interval_eval_times.ravel())
+    derivative_blocks = np.stack(
+        [
+            np.asarray(
+                backtransform_derivative_fns[name](flat_eval_times),
+                dtype=float,
+            ).reshape(len(half_widths), len(nodes))
+            for name in EXPECTED_REACTOR_COMPONENT_ORDER
+        ],
+        axis=-1,
+    )
+    increments = half_widths[:, np.newaxis] * np.einsum(
+        "n,ins->is", weights, derivative_blocks
+    )
 
     recovered = truth.copy()
     recovered[1:] = recovered[0] + np.cumsum(increments, axis=0)
