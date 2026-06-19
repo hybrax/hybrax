@@ -1074,7 +1074,7 @@ def test_backtransform_derivative_matches_finite_difference_bolus_segment():
     _assert_backtransform_derivative_matches_finite_difference(backtransform, times)
 
 
-def test_backtransform_derivative_matches_finite_difference_with_dfc_dt():
+def test_backtransform_derivative_dfc_dt_term_is_load_bearing():
     """Feed-correction derivative is load-bearing in the quotient rule."""
     proc = _make_process_continuous_only(glucose_feed_conc=100.0)
     proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
@@ -1113,6 +1113,61 @@ def test_backtransform_derivative_matches_finite_difference_with_dfc_dt():
         [float(backtransform.derivative()(jnp.asarray(t))) for t in times]
     )
     assert np.max(np.abs(analytical - without_feed_corr_derivative)) > 1e-3
+
+
+def test_backtransform_derivative_dadf_dt_term_is_load_bearing():
+    """The ADF-derivative dilution term is load-bearing in the quotient rule."""
+    proc = _make_process_continuous_only(glucose_feed_conc=100.0)
+    proc.pseudobatch_transform = build_pseudobatch_transform(proc, ["glucose"])
+    backtransform = build_backtransform_spline(proc, "glucose")
+
+    times = np.asarray([2.0, 6.0, 10.0, 14.0, 18.0], dtype=float)
+    adf = np.asarray(
+        [
+            float(backtransform.adf_ts.evaluate(jnp.asarray(t), side="left"))
+            for t in times
+        ]
+    )
+    dadf_dt = np.asarray(
+        [
+            float(backtransform.dadf_ts.evaluate(jnp.asarray(t), side="left"))
+            for t in times
+        ]
+    )
+    c_real = np.asarray([float(backtransform(jnp.asarray(t))) for t in times])
+    assert np.any(np.abs(dadf_dt) > 1e-8)
+
+    dc_star = backtransform.c_star_spline.derivative()
+    derivative = backtransform.derivative()
+    # Deliberately re-run the inverse derivative formula with only dADF/dt zeroed
+    # to prove the dilution term is load-bearing.
+    without_dilution_derivative = np.asarray(
+        [
+            float(
+                _inverse_pseudobatch_derivative(
+                    c_star=backtransform.c_star_spline(jnp.asarray(t)),
+                    feed_correction=backtransform.feed_corr_ts.evaluate(
+                        jnp.asarray(t), side="left"
+                    ),
+                    dc_star_dt=dc_star(jnp.asarray(t)),
+                    dfc_dt=backtransform.dfc_ts.evaluate(jnp.asarray(t), side="left"),
+                    adf=jnp.asarray(adf[i]),
+                    dadf_dt=jnp.asarray(0.0),
+                )
+            )
+            for i, t in enumerate(times)
+        ]
+    )
+    analytical = np.asarray([float(derivative(jnp.asarray(t))) for t in times])
+
+    # The isolated term must equal the signed dilution contribution
+    # -c_real * dADF/dt / ADF.
+    expected_dilution_delta = -c_real * dadf_dt / adf
+    actual_delta = analytical - without_dilution_derivative
+    assert np.max(np.abs(actual_delta)) > 1e-3
+    np.testing.assert_allclose(
+        actual_delta, expected_dilution_delta, rtol=1e-10, atol=1e-10
+    )
 
 
 def test_timeseries_backtransform_scalar():

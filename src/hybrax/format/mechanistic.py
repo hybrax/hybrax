@@ -93,11 +93,12 @@ def _require_reactor_volume_above_threshold(
 
 
 def _timeseries_to_ppoly(series: TimeSeries) -> PPoly:
-    """Build an owned PPoly from a TimeSeries carrier.
+    """Return a bp_format PPoly for a TimeSeries carrier.
 
-    Prefer stored spline state when available so mechanistic consumers use
-    the same canonical representation that was fit/serialized. Fall back to
-    a cubic refit only for sample-only series without spline coefficients.
+    When the carrier already stores spline state, return that PPoly directly
+    (no copy, no refit) so mechanistic consumers use the same canonical
+    representation that was fit/serialized. Fall back to a cubic refit only
+    for sample-only series without spline coefficients.
     """
     if series.poly is not None:
         return series.poly
@@ -115,7 +116,7 @@ def _value_to_ppoly(
     t_start: float,
     t_end: float,
 ) -> PPoly:
-    """Build an owned PPoly from a dynamic or static state carrier."""
+    """Return a bp_format PPoly for a dynamic or static state carrier."""
     if isinstance(value, TimeSeries):
         return _timeseries_to_ppoly(value)
     v = float(value.value)
