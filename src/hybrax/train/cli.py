@@ -203,7 +203,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--solver-atol",
         type=float,
         default=train_cfg_defaults.solver_atol,
-        help="Diffrax absolute tolerance.",
+        help="Diffrax absolute tolerance, applied to the O(1) SCALE_*-scaled state "
+        "(not raw physical units).",
     )
     train_parser.add_argument(
         "--no-jump-ts",

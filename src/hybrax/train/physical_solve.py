@@ -1,7 +1,10 @@
 """Bounded physical-state ODE solve with discrete bolus/sample jumps.
 
-Integrates the *physical* state ``[RAW_RMCs | RAW_V | RAW_modeled_cum]`` directly and
-applies boluses/samples as discrete state jumps at their (known) event times, using
+Integrates the physical state ``[RAW_RMCs | RAW_V | RAW_modeled_cum]`` in **scaled**
+space (each component divided by the reaction module's characteristic ``SCALE_state``,
+so one rtol/atol controls every species uniformly and the adjoint stays O(1) — better
+float32 conditioning across a wide dynamic range) and applies boluses/samples as
+discrete state jumps at their (known) event times, using
 ``diffrax_callbacks`` (a differentiable discrete-event layer for diffrax). The jumps
 are applied between separate segment solves, so the adjoint is standard and correct
 (verified: gradient through a preset jump matches the analytic value to 9 digits) —
@@ -59,6 +62,12 @@ def solve_physical_states(
     dtype = RAW_y0.dtype
     controls = wrapper.controls
     min_V = jnp.asarray(wrapper.min_V, dtype=dtype)
+    # Per-state characteristic scale (the user-definable ``SCALE_*`` hook). Integrate
+    # ``SCL = RAW / SCALE`` so a single rtol/atol is uniformly meaningful and the adjoint
+    # stays O(1). Pure linear reparametrization applied only at the solve boundary: the
+    # RHS, jumps and gather stay physical; states are unscaled back before returning.
+    SCALE = jnp.asarray(wrapper.reaction_module.SCALE_state, dtype=dtype)
+    assert SCALE.shape == (n_state,), (SCALE.shape, n_state)
 
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = jnp.asarray(t_eval, dtype=dtype)
@@ -97,7 +106,8 @@ def solve_physical_states(
     meas_times = jnp.where(meas_active & ~near_event, t_eval, BIG)
     preset_times = jnp.concatenate([bolus_times, sample_times, meas_times])
 
-    def affect_fn(y, t, args):
+    def affect_fn(y_scl, t, args):
+        y = y_scl * SCALE  # scaled -> physical (the jump is a physical mass balance)
         C = y[:n_RMCs]
         V = y[n_RMCs]
         cum = y[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
@@ -113,11 +123,13 @@ def solve_physical_states(
         V_after_sample = V - sample_dv
         V_after = V_after_sample + bolus_dv
         C2 = (C * V_after_sample + bolus_mass) / jnp.maximum(V_after, min_V)
-        return jnp.concatenate([C2, V_after[None], cum])
+        return jnp.concatenate([C2, V_after[None], cum]) / SCALE  # physical -> scaled
 
     cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
-    term = diffrax.ODETerm(lambda t, yy, a: wrapper.physical_rhs(t, yy))
+    # RHS evaluated on the unscaled state; the derivative is rescaled (scale_state is
+    # linear, so d(SCL)/dt == d(RAW)/dt / SCALE).
+    term = diffrax.ODETerm(lambda t, yy, a: wrapper.physical_rhs(t, yy * SCALE) / SCALE)
 
     sol = diffeqsolve_with_callbacks(
         term,
@@ -125,7 +137,7 @@ def solve_physical_states(
         t0=t0,
         t1=t1,
         dt0=(t1 - t0) * 1e-3,  # small initial step; adaptive controller adapts
-        y0=y0,
+        y0=y0 / SCALE,
         callbacks=cb,
         max_events=preset_times.shape[0],
         stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
@@ -137,11 +149,11 @@ def solve_physical_states(
     # Gather the state at each measurement time (closest *real* event in the log;
     # unused/padded slots are parked past t1 so they never win the argmin).
     ev_t = jnp.where(sol.event_types >= 0, sol.event_times, BIG)  # [max_events]
-    ev_y = sol.event_states_before                               # [max_events, n_state]
+    ev_y = sol.event_states_before                          # [max_events, n_state] (scaled)
 
     def _gather(tm):
         i = jnp.argmin(jnp.abs(ev_t - tm))
-        y = ev_y[i]
+        y = ev_y[i] * SCALE  # scaled -> physical (states are returned unscaled)
         # Report the POST-sample state at a sample-coincident time: a well-mixed
         # sample leaves concentrations unchanged and only removes volume, so subtract
         # any sample volume scheduled at ``tm`` from V. Boluses stay pre-bolus (the
