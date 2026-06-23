@@ -370,7 +370,7 @@ def test_train_collection_writes_resumable_checkpoints(tmp_path: Path):
     ]
     with (latest / "predictions.csv").open(encoding="utf-8", newline="") as handle:
         header = next(csv.reader(handle))
-    assert header == ["process", "t", "c_biomass", "V_cont", "V_real", "q_biomass"]
+    assert header == ["process", "t", "c_biomass", "V_real", "q_biomass"]
 
 
 def test_train_collection_keep_all_retains_every_checkpoint(tmp_path: Path):

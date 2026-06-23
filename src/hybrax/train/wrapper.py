@@ -12,8 +12,6 @@ from .controls_store import PerProcessControls
 from .model_api import ReactionInputs
 
 
-
-
 class WrapperEvaluation(eqx.Module):
     """Shared wrapper evaluation results for RHS and save-time exports.
 
@@ -28,7 +26,12 @@ class WrapperEvaluation(eqx.Module):
     RAW_V_export: jax.Array
     RAW_V: jax.Array
     RAW_u_rhs_full: jax.Array
+    RAW_controlled_FVCs_rates: jax.Array
+    RAW_controlled_FVCs_Cin: jax.Array
+    RAW_modeled_FVCs_Cin: jax.Array
     RAW_controlled_FVCs_bolus_rates_at_indices: jax.Array
+    ADF: jax.Array
+    RAW_state: jax.Array
     RAW_modeled_BiologicalOde_rates: jax.Array
     RAW_modeled_FVCs_rates: jax.Array
     auxiliary: dict[str, jax.Array] | None = None
@@ -191,7 +194,8 @@ class HybridOdeWrapper(eqx.Module):
         n_rates = len(rhs_ode.name_modeled_rates)
         n_u = controls.n_u
 
-        # name_extras = (bolus FVCs...) + (V_sample_acc,) — last column is always sample_acc.
+        # name_extras = (bolus FVCs...) + (V_sample_acc,).
+        # Last column is always sample_acc.
         n_controlled_FVCs_bolus = len(controls.name_extras) - 1
         n_controlled_FVCs_count = len(controls.name_controlled_FVCs)
 
@@ -307,89 +311,51 @@ class HybridOdeWrapper(eqx.Module):
             loss_module=loss_module,
         )
 
-    def _validate_state_vector(self, SCL_state: jax.Array) -> None:
-        """Validate scaled wrapper state layout."""
-        if SCL_state.ndim != 1:
-            raise ValueError("state vector ndim must be 1")
-        n_RMCs = len(self.modeled_RMC_names)
-        n_FVCs = len(self.modeled_FVC_names)
-        expected_state_size = n_RMCs + 1 + n_FVCs
-        if SCL_state.shape[0] != expected_state_size:
-            raise ValueError(
-                f"state vector must have shape ({expected_state_size},), "
-                f"got {tuple(SCL_state.shape)}"
-            )
+    # ------ Physical-state RHS (continuous part of the diffrax_callbacks solve) ------
+    #
+    # Integrates the *physical* state ``y = [RAW_RMCs | RAW_V | RAW_modeled_cum]``
+    # directly; discrete bolus/sample events are applied as state jumps between
+    # segments (``physical_solve.solve_physical_states``), not folded into the
+    # vector field. Between events only continuous dynamics act
+    # (biology, plus continuous feeds/dilution if any), so the integrated state stays
+    # O(C) and the reverse-mode adjoint is well-conditioned. (Replaces the earlier
+    # pseudobatch state, whose unbounded accumulator corrupted the gradient.)
 
-    def _evaluate_wrapper_terms(
-        self,
-        t: float | jax.Array,
-        SCL_state: jax.Array,
-    ) -> WrapperEvaluation:
-        """Evaluate shared wrapper quantities used by RHS and save path."""
-        self._validate_state_vector(SCL_state)
+    def physical_rhs(self, t: float | jax.Array, y_phys: jax.Array) -> jax.Array:
+        """d/dt of the physical state ``[RAW_RMCs | RAW_V | RAW_modeled_cum]``.
+
+        Continuous part only — discrete boluses/samples are handled as jumps.
+        """
         module = self.reaction_module
         n_RMCs = len(self.modeled_RMC_names)
-        t_arr = jnp.asarray(t, dtype=SCL_state.dtype)
+        n_FVCs = len(self.modeled_FVC_names)
+        dtype = y_phys.dtype
+        t_arr = jnp.asarray(t, dtype=dtype)
 
-        # Unscale the integrated state to physical units for RhsOde-facing work.
-        RAW_state = module.unscale_state(SCL_state)
-        RAW_RMC_rhs = jnp.maximum(RAW_state[:n_RMCs], 0.0)
-        RAW_V_in_cumulative = jnp.maximum(
-            RAW_state[n_RMCs], jnp.asarray(0.0, dtype=SCL_state.dtype)
-        )
+        RAW_RMCs = y_phys[:n_RMCs]
+        RAW_V = jnp.maximum(y_phys[n_RMCs], jnp.asarray(self.min_V, dtype=dtype))
+        RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+        RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
-        # Decompose the canonical control vector into semantic axes.
-        #   [FVC_cum | SVC_cum (always size 0) | controlled_PVs | extras]
-        # where extras = (bolus FVCs ...) + (V_sample_acc,).
         n_FVC = self.n_controlled_FVCs
-        n_SVC = 0  # name_controlled_SVCs is hardcoded `()` in bp-train; kept for slice math
         n_PV = self.n_controlled_PVs
         n_bolus = self.n_controlled_FVCs_bolus
 
         RAW_u_canonical_full = self.controls.eval(t_arr)
         RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
-        # SVC block (always size 0) skipped at index [n_FVC : n_FVC + n_SVC].
-        RAW_controlled_PVs = RAW_u_canonical_full[
-            n_FVC + n_SVC : n_FVC + n_SVC + n_PV
-        ]
-        RAW_controlled_FVCs_bolus_rates = RAW_u_canonical_full[
-            n_FVC + n_SVC + n_PV : n_FVC + n_SVC + n_PV + n_bolus
-        ]
-        # V_sample_acc is the trailing extras column. Wrapper-internal only.
-        RAW_V_sample_acc = RAW_u_canonical_full[self.sample_acc_control_index]
-
-        # RhsOde u vector: [FVC_flows | SVC_flows | PV_values]. Decompose flows
-        # for the module; the full vector is passed through to RhsOde.
+        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
         RAW_u_rhs_full = self.controls.eval_u(t_arr)
         RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
-
-        # Bolus FVC flow rates at their canonical-controls column indices —
-        # used by the wrapper for the bolus mass-balance contribution.
-        RAW_controlled_FVCs_bolus_rates_at_indices = RAW_u_canonical_full[
-            self.controlled_FVCs_bolus_control_indices
-        ]
-
-        # V_real, with the min_V floor for dilution-term safety.
-        RAW_V_export = RAW_state[n_RMCs] - RAW_V_sample_acc
-        RAW_V = jnp.maximum(
-            RAW_V_in_cumulative - RAW_V_sample_acc,
-            jnp.asarray(self.min_V, dtype=SCL_state.dtype),
-        )
-
-        # Feed-medium concentrations (static-ish per process).
+        RAW_controlled_FVCs_bolus_rates = jnp.zeros((n_bolus,), dtype=dtype)
         RAW_controlled_FVCs_Cin = self.rhs_ode.Cin_controlled_FVCs
         RAW_modeled_FVCs_Cin = self.rhs_ode.Cin_modeled_FVCs
 
-        # Build ReactionInputs: every axis scaled by the module's own helpers.
-        # State-slice axes are pulled from SCL_state directly so the module sees
-        # the UNCLIPPED SCL species (gradient flow preserved near depletion).
-        SCL_modeled_RMCs = SCL_state[:n_RMCs]
-        SCL_modeled_FVCs_cumulative = SCL_state[n_RMCs + 1 :]
-        SCL_modeled_V = module.scale_modeled_V(RAW_V)
         inputs = ReactionInputs(
-            SCL_modeled_RMCs=SCL_modeled_RMCs,
-            SCL_modeled_V=SCL_modeled_V,
-            SCL_modeled_FVCs_cumulative=SCL_modeled_FVCs_cumulative,
+            SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
+            SCL_modeled_V=module.scale_modeled_V(RAW_V),
+            SCL_modeled_FVCs_cumulative=module.scale_modeled_FVCs_cumulative(
+                RAW_modeled_cum
+            ),
             SCL_controlled_FVCs_cumulative=module.scale_controlled_FVCs_cumulative(
                 RAW_controlled_FVCs_cumulative
             ),
@@ -403,120 +369,121 @@ class HybridOdeWrapper(eqx.Module):
                 RAW_controlled_FVCs_bolus_rates
             ),
             SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
-            SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(
-                RAW_modeled_FVCs_Cin
-            ),
+            SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(RAW_modeled_FVCs_Cin),
         )
-
         outputs = module(t_arr, inputs)
-        if not hasattr(outputs, "SCL_modeled_BiologicalOde_rates") or not hasattr(
-            outputs, "SCL_modeled_FVCs_rates"
-        ):
-            raise TypeError(
-                "reaction_module output must expose `SCL_modeled_BiologicalOde_rates` "
-                "and `SCL_modeled_FVCs_rates`"
-            )
-        SCL_modeled_BiologicalOde_rates = jnp.asarray(
-            outputs.SCL_modeled_BiologicalOde_rates, dtype=SCL_state.dtype
-        )
-        SCL_modeled_FVCs_rates = jnp.asarray(
-            outputs.SCL_modeled_FVCs_rates, dtype=SCL_state.dtype
-        )
-
-        expected_rates_shape = (len(self.rhs_ode.name_modeled_rates),)
-        if SCL_modeled_BiologicalOde_rates.shape != expected_rates_shape:
-            raise ValueError(
-                "SCL_modeled_BiologicalOde_rates must match name_modeled_rates "
-                f"shape {expected_rates_shape}, got "
-                f"{tuple(SCL_modeled_BiologicalOde_rates.shape)}"
-            )
-        expected_modeled_FVCs_shape = (len(self.rhs_ode.name_modeled_FVCs),)
-        if SCL_modeled_FVCs_rates.shape != expected_modeled_FVCs_shape:
-            raise ValueError(
-                f"SCL_modeled_FVCs_rates must have shape {expected_modeled_FVCs_shape}, "
-                f"got {tuple(SCL_modeled_FVCs_rates.shape)}"
-            )
-
-        # Cross to RAW for the physical RhsOde and the saved diagnostic.
-        RAW_modeled_BiologicalOde_rates = module.unscale_modeled_BiologicalOde_rates(
-            SCL_modeled_BiologicalOde_rates
+        RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
+            jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
         )
         RAW_modeled_FVCs_rates = module.unscale_modeled_FVCs_rates(
-            SCL_modeled_FVCs_rates
+            jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
         )
 
-        return WrapperEvaluation(
-            SCL_states=SCL_state,
-            RAW_RMC_rhs=RAW_RMC_rhs,
-            RAW_V_export=RAW_V_export,
-            RAW_V=RAW_V,
-            RAW_u_rhs_full=RAW_u_rhs_full,
-            RAW_controlled_FVCs_bolus_rates_at_indices=RAW_controlled_FVCs_bolus_rates_at_indices,
-            RAW_modeled_BiologicalOde_rates=RAW_modeled_BiologicalOde_rates,
-            RAW_modeled_FVCs_rates=RAW_modeled_FVCs_rates,
-            auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
+        RAW_RMCs_V = jnp.concatenate([RAW_RMC_rhs, RAW_V[None]])
+        n_u = RAW_u_rhs_full.shape[0]
+        RAW_u_bio = jnp.zeros_like(RAW_u_rhs_full).at[n_u - n_PV :].set(
+            RAW_u_rhs_full[n_u - n_PV :]
         )
-
-    # ------ ODE RHS ------
-
-    def __call__(self, t: float | jax.Array, SCL_state: jax.Array) -> jax.Array:
-        """Compute ``d(SCL_state)/dt`` in **scaled** state space."""
-        n_RMCs = len(self.modeled_RMC_names)
-        eval_terms = self._evaluate_wrapper_terms(t, SCL_state)
-
-        # ---- 6. Mechanistic RHS in physical space ----
-        RAW_RMCs_V = jnp.concatenate(
-            [eval_terms.RAW_RMC_rhs, eval_terms.RAW_V[None]]
-        )
+        RAW_zero_modeled_FVCs_rates = jnp.zeros_like(RAW_modeled_FVCs_rates)
         RAW_modeled_SVCs_rates = jnp.zeros(
-            (len(self.rhs_ode.name_modeled_SVCs),), dtype=SCL_state.dtype
+            (len(self.rhs_ode.name_modeled_SVCs),), dtype=dtype
         )
         RAW_d_RMCs_V_dt = self.rhs_ode(
             RAW_RMCs_V,
-            eval_terms.RAW_modeled_BiologicalOde_rates,
-            eval_terms.RAW_u_rhs_full,
-            eval_terms.RAW_modeled_FVCs_rates,
+            RAW_bio_rates,
+            RAW_u_bio,
+            RAW_zero_modeled_FVCs_rates,
             RAW_modeled_SVCs_rates,
         )
-        if self.controlled_FVCs_bolus_Cin.shape[0] > 0:
-            RAW_controlled_FVCs_bolus_contrib = (
-                eval_terms.RAW_controlled_FVCs_bolus_rates_at_indices[:, None] * (
-                    self.controlled_FVCs_bolus_Cin.astype(SCL_state.dtype)
-                    - eval_terms.RAW_RMC_rhs[None, :]
-                )
-            )
-            RAW_d_RMCs_V_dt = RAW_d_RMCs_V_dt.at[:n_RMCs].add(
-                jnp.sum(RAW_controlled_FVCs_bolus_contrib, axis=0) / eval_terms.RAW_V
-            )
-            RAW_d_RMCs_V_dt = RAW_d_RMCs_V_dt.at[n_RMCs].add(
-                jnp.sum(eval_terms.RAW_controlled_FVCs_bolus_rates_at_indices)
-            )
-
-        # ---- 7. Append cumulative-modeled-feed derivatives ----
-        RAW_d_state_dt = jnp.concatenate(
-            [RAW_d_RMCs_V_dt, eval_terms.RAW_modeled_FVCs_rates]
+        dC = RAW_d_RMCs_V_dt[:n_RMCs]
+        # Continuous-feed volume/dilution (zero for a bolus-only process).
+        controlled_addition = jnp.sum(
+            RAW_controlled_FVCs_rates[:, None]
+            * RAW_controlled_FVCs_Cin.astype(dtype),
+            axis=0,
+        )
+        modeled_addition = jnp.sum(
+            RAW_modeled_FVCs_rates[:, None] * RAW_modeled_FVCs_Cin.astype(dtype),
+            axis=0,
+        )
+        dV_cont = jnp.sum(RAW_controlled_FVCs_rates) + jnp.sum(RAW_modeled_FVCs_rates)
+        dilution = RAW_RMCs * (dV_cont / RAW_V)
+        dC = dC + (controlled_addition + modeled_addition) / RAW_V - dilution
+        return jnp.concatenate(
+            [dC, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
         )
 
-        # ---- 8. Re-scale derivative via the module ----
-        SCL_d_state_dt = self.reaction_module.scale_state(RAW_d_state_dt)
-        return SCL_d_state_dt
+    def initial_physical_state_from_raw(self, RAW_state: jax.Array) -> jax.Array:
+        """Identity: the physical solve integrates the raw state layout directly."""
+        n_RMCs = len(self.modeled_RMC_names)
+        n_FVCs = len(self.modeled_FVC_names)
+        return RAW_state[: n_RMCs + 1 + n_FVCs]
 
-    def save_outputs(
-        self,
-        t: float | jax.Array,
-        SCL_state: jax.Array,
-        args: Any = None,
-    ) -> SaveOutputs:
-        """Return solver-time outputs for Diffrax ``SaveAt(fn=...)``."""
-        del args
-        eval_terms = self._evaluate_wrapper_terms(t, SCL_state)
+    def physical_save_outputs(
+        self, t: float | jax.Array, y_phys: jax.Array
+    ) -> "SaveOutputs":
+        """``SaveOutputs`` computed from the physical state (for loss/exports)."""
+        module = self.reaction_module
+        n_RMCs = len(self.modeled_RMC_names)
+        n_FVCs = len(self.modeled_FVC_names)
+        dtype = y_phys.dtype
+        t_arr = jnp.asarray(t, dtype=dtype)
+        RAW_RMCs = y_phys[:n_RMCs]
+        # Clamped V feeds the reaction module (the concentration denominator can't
+        # go <= 0); the *export* keeps the true (possibly <min_V) volume so the
+        # human-facing v_real reflects the sampled volume directly.
+        RAW_V = jnp.maximum(y_phys[n_RMCs], jnp.asarray(self.min_V, dtype=dtype))
+        RAW_V_export = y_phys[n_RMCs]
+        RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+
+        n_FVC = self.n_controlled_FVCs
+        n_PV = self.n_controlled_PVs
+        n_bolus = self.n_controlled_FVCs_bolus
+        RAW_u_canonical_full = self.controls.eval(t_arr)
+        RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
+        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
+        RAW_u_rhs_full = self.controls.eval_u(t_arr)
+        RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
+        inputs = ReactionInputs(
+            SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
+            SCL_modeled_V=module.scale_modeled_V(RAW_V),
+            SCL_modeled_FVCs_cumulative=module.scale_modeled_FVCs_cumulative(
+                RAW_modeled_cum
+            ),
+            SCL_controlled_FVCs_cumulative=module.scale_controlled_FVCs_cumulative(
+                RAW_controlled_FVCs_cumulative
+            ),
+            SCL_controlled_FVCs_rates=module.scale_controlled_FVCs_rates(
+                RAW_controlled_FVCs_rates
+            ),
+            SCL_controlled_FVCs_Cin=module.scale_controlled_FVCs_Cin(
+                self.rhs_ode.Cin_controlled_FVCs
+            ),
+            SCL_controlled_FVCs_bolus_rates=module.scale_controlled_FVCs_bolus_rates(
+                jnp.zeros((n_bolus,), dtype=dtype)
+            ),
+            SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
+            SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(
+                self.rhs_ode.Cin_modeled_FVCs
+            ),
+        )
+        outputs = module(t_arr, inputs)
+        RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
+            jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
+        )
+        RAW_modeled_FVCs_rates = module.unscale_modeled_FVCs_rates(
+            jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
+        )
+        RAW_state = jnp.concatenate(
+            [RAW_RMCs, RAW_V[None], RAW_modeled_cum]
+        )
         return SaveOutputs(
-            SCL_states=eval_terms.SCL_states,
-            RAW_V_export=eval_terms.RAW_V_export,
-            RAW_V=eval_terms.RAW_V,
-            RAW_modeled_BiologicalOde_rates=eval_terms.RAW_modeled_BiologicalOde_rates,
-            RAW_modeled_FVCs_rates=eval_terms.RAW_modeled_FVCs_rates,
-            auxiliary=eval_terms.auxiliary,
+            SCL_states=module.scale_state(RAW_state),
+            RAW_V_export=RAW_V_export,
+            RAW_V=RAW_V,
+            RAW_modeled_BiologicalOde_rates=RAW_bio_rates,
+            RAW_modeled_FVCs_rates=RAW_modeled_FVCs_rates,
+            auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
         )
 
 
@@ -527,20 +494,14 @@ def validate_rhs_ode_compatibility(
     candidate_rhs_ode: RhsOde,
 ) -> None:
     """Validate that two RhsOde instances have compatible structure."""
-    if (
-        reference_rhs_ode.name_modeled_RMCs
-        != candidate_rhs_ode.name_modeled_RMCs
-    ):
+    if reference_rhs_ode.name_modeled_RMCs != candidate_rhs_ode.name_modeled_RMCs:
         raise ValueError(
             f"RhsOde name_modeled_RMCs differ between "
             f"{reference_name!r} and {candidate_name!r}: "
             f"{reference_rhs_ode.name_modeled_RMCs} vs "
             f"{candidate_rhs_ode.name_modeled_RMCs}"
         )
-    if (
-        reference_rhs_ode.name_controlled_FVCs
-        != candidate_rhs_ode.name_controlled_FVCs
-    ):
+    if reference_rhs_ode.name_controlled_FVCs != candidate_rhs_ode.name_controlled_FVCs:
         raise ValueError(
             f"RhsOde name_controlled_FVCs differ between {reference_name!r} and "
             f"{candidate_name!r}: {reference_rhs_ode.name_controlled_FVCs} vs "

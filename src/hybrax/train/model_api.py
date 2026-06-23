@@ -458,8 +458,10 @@ class LossInputs(eqx.Module):
     jump_ts: jax.Array | None = None
 
     # ---- Dense-grid view. Populated iff ``UserLossModule.dense_grid_n`` is
-    # not None. All have leading dim ``dense_grid_n``. 
-    # ``dense_t`` is the linspace itself.
+    # not None. All have leading dim ``dense_grid_n + n_meas_padded`` is wrong
+    # -- the dense linspace has exactly ``dense_grid_n`` points and these
+    # arrays are the index-gathered dense rows from the union solve, so the
+    # leading dim is ``dense_grid_n``. ``dense_t`` is the linspace itself.
     dense_t: jax.Array | None = None
     dense_SCL_states: jax.Array | None = None
     dense_RAW_states: jax.Array | None = None
@@ -510,8 +512,8 @@ class UserLossModule(eqx.Module):
         is then populated on :class:`LossInputs` as ``dense_*`` fields. Return
         ``None`` (default) to stay on the measurement-grid-only path.
 
-        The dense path costs ~zero extra ODE work — it just adds ``SaveAt``
-        evaluations of ``wrapper.save_outputs`` at the dense times.
+        The dense path costs ~zero extra ODE work — it just gathers
+        ``wrapper.physical_save_outputs`` at the dense times.
         """
         return None
 

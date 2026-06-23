@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import sys
+import os
 import time
 import warnings
 from collections import Counter
 import dataclasses
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +40,7 @@ from .model_api import (
 from .trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
+    evaluate_one_sample_loss,
     BatchedLossFn,
 )
 from .logging import RunLogger, StepRecord
@@ -48,12 +51,89 @@ from .training_data import (
 from .run_config import RunConfig
 from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
-from .postprocessing import export_predictions_csv
+from .postprocessing import (
+    DenseProcessExport,
+    dense_exports_from_save_outputs,
+    export_predictions_csv,
+)
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
 _BATCHED_LOSS_FN = build_batched_loss_fn()
+# JIT'd once at import; reused by every dense-export call (forward + each training
+# checkpoint) so they share one compile per batch shape.
+_BATCHED_LOSS_FN_JIT = eqx.filter_jit(_BATCHED_LOSS_FN)
 
 logger = logging.getLogger(__name__)
+
+
+def compute_dense_exports(
+    trained_wrapper: HybridOdeWrapper,
+    store: TrainingDataStore,
+    collection: BioProcessCollection,
+    process_names: tuple[str, ...],
+    *,
+    solver_max_steps: int,
+    solver_rtol: float,
+    solver_atol: float,
+    solver_use_jump_ts: bool,
+    prediction_grid_n: int = 200,
+) -> tuple[np.ndarray, np.ndarray, dict[str, DenseProcessExport]]:
+    """One batched, jitted solve over ``process_names`` → per-process dense exports.
+
+    THE single source of dense prediction trajectories: forward evaluation and the
+    training-checkpoint ``predictions.csv`` writer both call this instead of
+    solving per process. The prediction grid is harvested from the same loss solve
+    (``BatchControls`` + event-times ``jump_ts``), so predictions match training
+    and there is no second simulation. Returns ``(per_sample_total,
+    per_sample_per_target, dense_exports)`` (loss arrays are ``np``, aligned with
+    ``process_names``)."""
+    rhs_by_name = {
+        name: build_rhs_ode(collection.processes[name]) for name in store.process_order
+    }
+    batched_Cin = jnp.stack(
+        [rhs_by_name[name].Cin_controlled_FVCs for name in store.process_order]
+    )
+    batched_Cin_modeled = jnp.stack(
+        [rhs_by_name[name].Cin_modeled_FVCs for name in store.process_order]
+    )
+    batch_controls = store.controls_store.as_batch_controls()
+    eval_indices = jnp.asarray(
+        [store.process_order.index(name) for name in process_names], dtype=jnp.int32
+    )
+    batch = store.gather_batch(eval_indices)
+    jump_ts_rows = None
+    if solver_use_jump_ts:
+        jump_ts_rows = clamp_padded_time_rows(
+            store.controls_store.step_ts[batch.process_indices],
+            store.controls_store.step_ts_lengths[batch.process_indices],
+        )
+    (
+        _mean_total,
+        per_sample_per_target,
+        per_sample_total,
+        prediction_t,
+        prediction_save_outputs,
+    ) = _BATCHED_LOSS_FN_JIT(
+        trained_wrapper,
+        batch,
+        batch_controls,
+        batched_Cin,
+        batched_Cin_modeled,
+        jump_ts_rows,
+        max_solver_steps=int(solver_max_steps),
+        solver_rtol=float(solver_rtol),
+        solver_atol=float(solver_atol),
+        prediction_grid_n=int(prediction_grid_n),
+    )
+    dense_exports = dense_exports_from_save_outputs(
+        prediction_t, prediction_save_outputs, trained_wrapper, process_names
+    )
+    return (
+        np.asarray(per_sample_total),
+        np.asarray(per_sample_per_target),
+        dense_exports,
+    )
+
 
 # Floor below which `np.var` is treated as "all measurements identical" when
 # computing per-target variance for loss normalization.
@@ -550,6 +630,9 @@ class ForwardResult:
     training_process_names: tuple[str, ...]
     per_process_total_loss: dict[str, float]
     per_process_per_target_loss: dict[str, tuple[float, ...]]
+    # Dense prediction trajectories harvested from the batched loss solve
+    # (``compute_dense_exports``); the source for predictions.csv + plots.
+    dense_exports: dict[str, DenseProcessExport] | None = None
 
 
 def forward_from_collection(
@@ -562,6 +645,7 @@ def forward_from_collection(
     training_process_names: tuple[str, ...] | None = None,
     run_config: RunConfig | None = None,
     custom_module: Any | None = None,
+    prediction_grid_n: int = 200,
 ) -> ForwardResult:
     """Load a trained wrapper and run one forward pass per selected process.
 
@@ -647,15 +731,13 @@ def forward_from_collection(
         collection=collection,
     )
 
-    template_wrapper, extras = _build_template_wrapper(
+    template_wrapper, _extras = _build_template_wrapper(
         store,
         reaction_module=reaction_module,
         collection=collection,
         selected_processes=template_processes,
         loss_module=loss_module,
     )
-    per_process_rhs_ode = extras["per_process_rhs_ode"]
-    batched_loss_fn = _BATCHED_LOSS_FN
     loss_names = tuple(loss_module.loss_names)
 
     trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
@@ -679,47 +761,24 @@ def forward_from_collection(
     if cfg.solver_atol <= 0.0:
         raise ValueError("solver_atol must be positive")
 
-    batch_controls = store.controls_store.as_batch_controls()
-    all_Cin = []
-    all_Cin_modeled = []
-    for process_name in store.process_order:
-        rhs_ode = per_process_rhs_ode[process_name]
-        all_Cin.append(rhs_ode.Cin_controlled_FVCs)
-        all_Cin_modeled.append(rhs_ode.Cin_modeled_FVCs)
-    batched_Cin = jnp.stack(all_Cin)
-    batched_Cin_modeled = jnp.stack(all_Cin_modeled)
-
-    per_process_total: dict[str, float] = {}
-    per_process_per_target: dict[str, tuple[float, ...]] = {}
-    for process_name in eval_processes:
-        process_idx = store.process_order.index(process_name)
-        batch = store.gather_batch(jnp.asarray([process_idx], dtype=jnp.int32))
-        jump_ts_rows = None
-        if cfg.solver_use_jump_ts:
-            jump_ts_rows = clamp_padded_time_rows(
-                store.controls_store.step_ts[batch.process_indices],
-                store.controls_store.step_ts_lengths[batch.process_indices],
-            )
-        total, per_target, _per_sample = batched_loss_fn(
-            trained_wrapper,
-            batch,
-            batch_controls,
-            batched_Cin,
-            batched_Cin_modeled,
-            jump_ts_rows,
-            max_solver_steps=int(cfg.solver_max_steps),
-            solver_rtol=float(cfg.solver_rtol),
-            solver_atol=float(cfg.solver_atol),
-        )
-        total, per_target, _per_sample = _validate_batched_loss_outputs(
-            total,
-            per_target,
-            _per_sample,
-            n_targets=len(loss_names),
-            batch_size=int(batch.process_indices.shape[0]),
-        )
-        per_process_total[process_name] = float(total)
-        per_process_per_target[process_name] = tuple(float(v) for v in per_target)
+    per_sample_total, per_sample_per_target, dense_exports = compute_dense_exports(
+        trained_wrapper,
+        store,
+        collection,
+        eval_processes,
+        solver_max_steps=int(cfg.solver_max_steps),
+        solver_rtol=float(cfg.solver_rtol),
+        solver_atol=float(cfg.solver_atol),
+        solver_use_jump_ts=cfg.solver_use_jump_ts,
+        prediction_grid_n=int(prediction_grid_n),
+    )
+    per_process_total = {
+        name: float(per_sample_total[i]) for i, name in enumerate(eval_processes)
+    }
+    per_process_per_target = {
+        name: tuple(float(v) for v in per_sample_per_target[i])
+        for i, name in enumerate(eval_processes)
+    }
 
     target_column_labels = loss_names
 
@@ -735,7 +794,28 @@ def forward_from_collection(
         else (),
         per_process_total_loss=per_process_total,
         per_process_per_target_loss=per_process_per_target,
+        dense_exports=dense_exports,
     )
+
+
+def forward_plot_losses(
+    result: ForwardResult,
+) -> tuple[dict[str, dict[str, float]], dict[str, float]]:
+    """Build per-process ``(named_losses, total_loss)`` dicts for plot annotations.
+
+    ``named_losses[p]`` maps each loss name → value; ``total_loss[p]`` is the SUM
+    of the named terms (matching the historical per-process plot annotation, which
+    differs from the mean reported in ``losses.csv``).
+    """
+    named = {
+        name: dict(zip(result.target_names, result.per_process_per_target_loss[name]))
+        for name in result.process_names
+    }
+    total = {
+        name: float(sum(result.per_process_per_target_loss[name]))
+        for name in result.process_names
+    }
+    return named, total
 
 
 def train_collection(
@@ -903,7 +983,7 @@ def train_collection(
 
             def _loss_fn(trainable_params: Any) -> jax.Array:
                 candidate_wrapper = eqx.combine(trainable_params, trainable_static)
-                total_loss, per_target, per_sample = effective_batched_loss_fn(
+                total_loss, per_sample_per_target, per_sample, *_ = effective_batched_loss_fn(
                     candidate_wrapper,
                     current_batch,
                     batch_controls,
@@ -915,6 +995,7 @@ def train_collection(
                     solver_atol=float(cfg.solver_atol),
                     step=step,
                 )
+                per_target = jnp.mean(per_sample_per_target, axis=0)
                 total_loss, per_target, per_sample = _validate_batched_loss_outputs(
                     total_loss,
                     per_target,
@@ -950,7 +1031,250 @@ def train_collection(
 
         return eqx.filter_jit(_step_fn)
 
-    step_fn = _make_batched_step()
+    def _make_sharded_step():
+        """Data-parallel step: shard the batch across local devices via pmap,
+        psum/all_gather to the batch mean, then apply the optimiser update.
+        Same math as the vmap step up to float32 cross-device reduction order.
+        Pseudo-space variant: y0 stays RAW (wrapper builds the pseudobatch state).
+        Uses min(devices, batch) devices, so a device count exceeding the process
+        count shards across the processes instead of collapsing to one device."""
+        bs = int(effective_batch_size)
+        n_dev = min(jax.local_device_count(), bs)
+        devices = jax.local_devices()[:n_dev]
+        pad_n = (-bs) % n_dev
+        padded = bs + pad_n
+        per_dev = padded // n_dev
+        weight_full = jnp.concatenate(
+            [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
+        )
+
+        def _pad(x):
+            return x if pad_n == 0 else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+
+        def _shard(x):
+            return x.reshape((n_dev, per_dev) + x.shape[1:])
+
+        weight_sharded = _shard(weight_full)
+        use_jump = bool(cfg.solver_use_jump_ts)
+        max_steps = int(cfg.solver_max_steps)
+        rtol = float(cfg.solver_rtol)
+        atol = float(cfg.solver_atol)
+
+        @partial(
+            jax.pmap,
+            axis_name="bp_dev",
+            devices=devices,
+            in_axes=(None, 0, 0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None), None),
+        )
+        def _pgrad(params, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+            def _local(p):
+                wrapper = eqx.combine(p, trainable_static)
+                module = wrapper.reaction_module
+                scale_targets = module.SCALE_state[wrapper.target_state_indices]
+                SCL_ym = ym / scale_targets[None, None, :]
+                tmc = clamp_padded_time_rows(tm, nm)
+
+                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                    return evaluate_one_sample_loss(
+                        wrapper, batch_controls, pidx, t_row, scl_ym, mask, n_meas, raw_y0,
+                        ci, cim, jts, max_solver_steps=max_steps, solver_rtol=rtol,
+                        solver_atol=atol, step=step,
+                    )
+
+                totl, pert = jax.vmap(
+                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
+                return jnp.sum(totl * wt), (pert, totl)
+
+            (_l, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(params)
+            loss = jax.lax.psum(_l, "bp_dev") / bs
+            grads = jax.tree_util.tree_map(lambda g: jax.lax.psum(g, "bp_dev") / bs, grads)
+            per_target = jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "bp_dev") / bs
+            per_sample = jax.lax.all_gather(totl, "bp_dev")
+            return loss, grads, per_target, per_sample
+
+        def _step_fn(current_wrapper, current_trainable_params, current_optimizer_state, current_batch, step):
+            del current_wrapper
+            jump_ts_rows = None
+            if use_jump:
+                jump_ts_rows = clamp_padded_time_rows(
+                    store.controls_store.step_ts[current_batch.process_indices],
+                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                )
+            cin = batched_Cin[current_batch.process_indices]
+            cinm = batched_Cin_modeled[current_batch.process_indices]
+            ins = [
+                _shard(_pad(a))
+                for a in (
+                    current_batch.process_indices, current_batch.t_measured,
+                    current_batch.y_measured, current_batch.mask_measured,
+                    current_batch.n_measured, current_batch.y0_measured, cin, cinm,
+                )
+            ]
+            jt = _shard(_pad(jump_ts_rows)) if jump_ts_rows is not None else None
+            loss, grads, per_target, per_sample = _pgrad(
+                current_trainable_params, ins[0], ins[1], ins[2], ins[3], ins[4],
+                ins[5], ins[6], ins[7], weight_sharded, jt, step,
+            )
+            loss = loss[0]
+            grads = jax.tree_util.tree_map(lambda g: g[0], grads)
+            per_target_loss = per_target[0]
+            per_sample_loss = per_sample[0].reshape(-1)[:bs]
+            grad_norm = optax.tree.norm(grads)
+            updates, next_optimizer_state = optimizer.update(
+                grads, current_optimizer_state, params=current_trainable_params
+            )
+            trainable_updated = eqx.apply_updates(current_trainable_params, updates)
+            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
+            return (
+                wrapper_updated, trainable_updated, loss, per_target_loss,
+                per_sample_loss, next_optimizer_state, grad_norm,
+            )
+
+        return _step_fn
+
+    def _make_gspmd_step():
+        """Data-parallel step via ``jax.jit`` + GSPMD auto-sharding — the modern,
+        future-proof replacement for the deprecated ``jax.pmap``. The batch axis is
+        sharded across an Auto-axis ``Mesh`` (``device_put`` with ``P('bp_dev')``);
+        params/optimiser-state are replicated. The single full vmap-over-batch grad +
+        optimiser update runs under one ``jit``, and XLA's SPMD partitioner splits the
+        per-sample solves across devices and inserts the all-reduce for the
+        batch-mean loss/grad automatically — no manual ``psum``/``all_gather``.
+
+        Why GSPMD and not ``jax.shard_map``: on jax>=0.10 ``shard_map`` runs the body in
+        *manual* sharding mode, which trips ``assert not hlo_sharding.is_manual()`` inside
+        diffrax's nested ``eqx.filter_eval_shape`` solver loop; Explicit-sharding ``jit``
+        likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD keeps shardings
+        out of the per-op type system, so the diffrax adjoint composes cleanly — and it
+        needs **no** equinox/diffrax monkeypatch (unlike the pmap path)."""
+        from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
+
+        bs = int(effective_batch_size)
+        n_dev = min(jax.local_device_count(), bs)
+        devices = jax.local_devices()[:n_dev]
+        mesh = jax.make_mesh((n_dev,), ("bp_dev",), axis_types=(AxisType.Auto,), devices=devices)
+        S_batch = NamedSharding(mesh, P("bp_dev"))   # shard the leading batch axis
+        S_repl = NamedSharding(mesh, P())            # replicated
+        pad_n = (-bs) % n_dev
+        weight_full = jnp.concatenate(
+            [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
+        )
+
+        def _pad(x):
+            return x if pad_n == 0 else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+
+        use_jump = bool(cfg.solver_use_jump_ts)
+        max_steps = int(cfg.solver_max_steps)
+        rtol = float(cfg.solver_rtol)
+        atol = float(cfg.solver_atol)
+
+        @eqx.filter_jit
+        def _full_step(params, opt_state, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+            # Inside-jit sharding constraints (per the equinox autoparallelism tutorial):
+            # emits jax.lax.with_sharding_constraint so XLA keeps params/opt replicated and
+            # the batch axis sharded *through* the computation, rather than replicating it.
+            params, opt_state = eqx.filter_shard((params, opt_state), S_repl)
+            pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
+                (pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
+            )
+
+            def _local(p):
+                wrapper = eqx.combine(p, trainable_static)
+                module = wrapper.reaction_module
+                scale_targets = module.SCALE_state[wrapper.target_state_indices]
+                SCL_ym = ym / scale_targets[None, None, :]
+                tmc = clamp_padded_time_rows(tm, nm)
+
+                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                    return evaluate_one_sample_loss(
+                        wrapper, batch_controls, pidx, t_row, scl_ym, mask, n_meas, raw_y0,
+                        ci, cim, jts, max_solver_steps=max_steps, solver_rtol=rtol,
+                        solver_atol=atol, step=step,
+                    )
+
+                totl, pert = jax.vmap(
+                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
+                # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
+                # measured to NOT help — even with this hint XLA still replicates the
+                # data-dependent diffrax while_loops rather than partitioning the vmap, so
+                # the GSPMD path stays ~60x slower than pmap. Kept as correct practice.
+                totl, pert = eqx.filter_shard((totl, pert), S_batch)
+                # weighted mean: padding rows carry weight 0; XLA all-reduces it (and grad).
+                return jnp.sum(totl * wt) / bs, (pert, totl)
+
+            (loss, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(params)
+            per_target = jnp.sum(pert * wt[:, None], axis=0) / bs
+            updates, next_opt_state = optimizer.update(grads, opt_state, params=params)
+            params_next = eqx.apply_updates(params, updates)
+            grad_norm = optax.tree.norm(grads)
+            params_next, next_opt_state = eqx.filter_shard((params_next, next_opt_state), S_repl)
+            return params_next, next_opt_state, loss, per_target, totl, grad_norm
+
+        def _step_fn(current_wrapper, current_trainable_params, current_optimizer_state, current_batch, step):
+            del current_wrapper
+            jump_ts_rows = None
+            if use_jump:
+                jump_ts_rows = clamp_padded_time_rows(
+                    store.controls_store.step_ts[current_batch.process_indices],
+                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                )
+            cin = batched_Cin[current_batch.process_indices]
+            cinm = batched_Cin_modeled[current_batch.process_indices]
+            with jax.set_mesh(mesh):  # jax>=0.10 needs an active mesh for the sharded jit
+                sharded = [
+                    jax.device_put(_pad(a), S_batch)
+                    for a in (
+                        current_batch.process_indices, current_batch.t_measured,
+                        current_batch.y_measured, current_batch.mask_measured,
+                        current_batch.n_measured, current_batch.y0_measured, cin, cinm,
+                    )
+                ]
+                wt = jax.device_put(weight_full, S_batch)
+                jt = jax.device_put(_pad(jump_ts_rows), S_batch) if jump_ts_rows is not None else None
+                params_r = jax.device_put(current_trainable_params, S_repl)
+                opt_r = jax.device_put(current_optimizer_state, S_repl)
+                step_r = jax.device_put(jnp.asarray(step), S_repl)
+                (
+                    trainable_updated, next_optimizer_state, loss, per_target_loss,
+                    per_sample, grad_norm,
+                ) = _full_step(
+                    params_r, opt_r, sharded[0], sharded[1], sharded[2], sharded[3],
+                    sharded[4], sharded[5], sharded[6], sharded[7], wt, jt, step_r,
+                )
+            per_sample_loss = per_sample.reshape(-1)[:bs]
+            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
+            return (
+                wrapper_updated, trainable_updated, loss, per_target_loss,
+                per_sample_loss, next_optimizer_state, grad_norm,
+            )
+
+        return _step_fn
+
+    _n_local_devices = jax.local_device_count()
+    _n_shard = min(_n_local_devices, int(effective_batch_size))
+    _use_sharded = _n_shard > 1
+    # pmap stays the DEFAULT sharded path: it is the only fast option on jax>=0.10.
+    # shard_map (manual mode) crashes inside diffrax's nested filter_eval_shape
+    # (`assert not hlo_sharding.is_manual()`), and GSPMD auto-sharding (BP_GSPMD=1) is
+    # correct + patch-free but ~60x slower because XLA cannot partition the
+    # data-dependent ODE solve (it replicates the per-device work). pmap needs the
+    # equinox closure-convert patch on jax>=0.10; GSPMD needs no patch.
+    _use_gspmd = os.environ.get("BP_GSPMD", "") not in ("", "0", "false", "False")
+    if _use_sharded and _use_gspmd:
+        _make_step = _make_gspmd_step
+    elif _use_sharded:
+        _make_step = _make_sharded_step
+    else:
+        _make_step = _make_batched_step
+    if _use_sharded:
+        logger.info(
+            "training sharded across %d local devices (batch=%d) via %s",
+            _n_shard, int(effective_batch_size),
+            "gspmd" if _use_gspmd else "pmap",
+        )
+    step_fn = _make_step()
     rebuild_count = 0
 
     logger.info(
@@ -1075,7 +1399,7 @@ def train_collection(
                 jnp.asarray(step_index + 1, dtype=jnp.int32),
             )
             if current_signature != train_step_input_signature:
-                step_fn = _make_batched_step()
+                step_fn = _make_step()
                 rebuild_count += 1
                 run_log.record_rebuild(step_index + 1)
 
@@ -1107,7 +1431,7 @@ def train_collection(
             # forward pass per `log_every` training steps).
             monitor_loss_value: float | None = None
             if monitor_batch is not None and (step_index + 1) % int(cfg.log_every) == 0:
-                m_total, _m_per_target, _m_per_sample = effective_batched_loss_fn(
+                m_total, _m_per_target, _m_per_sample, *_ = effective_batched_loss_fn(
                     wrapper,
                     monitor_batch,
                     batch_controls,
@@ -1155,16 +1479,23 @@ def train_collection(
             best_loss = min(best_loss, float(loss))
 
             def _render_predictions(path: Path, _wrapper=wrapper) -> None:
-                export_predictions_csv(
+                # Harvest predictions from the same loss solve (no second
+                # simulation), then write them via the dense-arg writer.
+                _, _, ckpt_dense_exports = compute_dense_exports(
                     _wrapper,
-                    collection,
                     store,
-                    path,
-                    process_names=selected_processes,
+                    collection,
+                    selected_processes,
                     solver_max_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
                     solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
+                )
+                export_predictions_csv(
+                    _wrapper,
+                    ckpt_dense_exports,
+                    path,
+                    process_names=selected_processes,
                 )
 
             checkpoint_writer.maybe_write(

@@ -18,6 +18,7 @@ from bp_format.dataclasses import (
 from bp_format.mechanistic import build_rhs_ode
 
 import bp_train.trainer as trainer_module
+from bp_train.physical_solve import solve_physical_states
 from bp_train.model_api import (
     ReactionOutputs,
     UserReactionModule,
@@ -248,7 +249,7 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -262,7 +263,7 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
         SCL_target_measured=poisoned_y,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -281,7 +282,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         *,
         t_eval,
         n_measured,
-        SCL_y0,
+        RAW_y0,
         max_steps,
         rtol,
         atol,
@@ -290,13 +291,13 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         captured["wrapper"] = wrapper_arg
         captured["t_eval"] = t_eval
         captured["n_measured"] = n_measured
-        captured["y0"] = SCL_y0
+        captured["y0"] = RAW_y0
         captured["max_steps"] = max_steps
         captured["rtol"] = rtol
         captured["atol"] = atol
         captured["jump_ts"] = jump_ts
         n_rows = t_eval.shape[0]
-        states = jnp.repeat(SCL_y0[None, :], repeats=n_rows, axis=0)
+        states = jnp.repeat(RAW_y0[None, :], repeats=n_rows, axis=0)
         return SaveOutputs(
             SCL_states=states,
             RAW_V_export=states[:, len(wrapper_arg.modeled_RMC_names)],
@@ -324,7 +325,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=None,
         max_solver_steps=321_000,
         solver_rtol=1e-4,
@@ -348,13 +349,13 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
         solver_atol=1e-7,
     )
-    states = trainer_module._simulate_measurement_states_on_grid(
+    states = solve_physical_states(
         wrapper,
         t_eval=process_data.t_measured,
         n_measured=process_data.n_measured,
@@ -362,11 +363,9 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
-        jump_ts=process_data.controls.active_step_ts,
     )
-    # Manually replicate the SCL-space loss kernel. ``states`` here is in
-    # RAW space (returned by ``_simulate_measurement_states_on_grid`` which
-    # unscales). With unit SCALE_* it doesn't matter; SCL == RAW.
+    # Manually replicate the SCL-space loss kernel. ``states`` here is RAW
+    # physical state from the callbacks solve. With unit SCALE_* SCL == RAW.
     y_pred = states[:, wrapper.target_state_indices]
     y_meas_safe = jnp.where(process_data.mask_measured, process_data.y_measured, 0.0)
     sq_err = jnp.square(y_pred - y_meas_safe)
@@ -377,10 +376,15 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
 
     assert jnp.isclose(result.total_loss, total_loss)
     assert jnp.allclose(result.per_target_loss, per_target_loss)
-    # ``result.states`` is in SCL space; convert back for the comparison.
+    # ``result.states`` is in SCL space; convert back for the comparison. Compare
+    # only the active measurement rows: padded slots are masked out of the loss and
+    # the two paths handle them differently — the evaluate path clamps padded times to
+    # the last valid time (a sample time here, so its post-sample V drops), while the
+    # direct solve above leaves them unclamped — so they need not agree.
+    n = int(process_data.n_measured)
     assert jnp.allclose(
-        jax.vmap(wrapper.reaction_module.unscale_state)(result.states),
-        states,
+        jax.vmap(wrapper.reaction_module.unscale_state)(result.states)[:n],
+        states[:n],
     )
     assert jnp.allclose(result.states, result.save_outputs.SCL_states)
 
@@ -395,7 +399,7 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -405,7 +409,7 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         t_measured[None, :],
         jnp.asarray([process_data.n_measured], dtype=jnp.int32),
     )[0]
-    expected_states = trainer_module._simulate_measurement_states_on_grid(
+    expected_states = solve_physical_states(
         wrapper,
         t_eval=clamped,
         n_measured=process_data.n_measured,
@@ -413,10 +417,42 @@ def test_evaluate_sample_from_arrays_clamps_poisoned_padded_times():
         max_steps=100_000,
         rtol=1e-5,
         atol=1e-7,
-        jump_ts=process_data.controls.active_step_ts,
     )
 
     assert jnp.allclose(result.states, expected_states)
+
+
+def test_solve_physical_states_gradient_is_finite():
+    """The diffrax_callbacks discrete-jump solve must be differentiable: the
+    reverse-mode adjoint through the per-event segments yields a finite, non-zero
+    gradient w.r.t. the reaction module. This is the property the pseudobatch
+    formulation broke (its unbounded accumulator corrupted the adjoint), so it is
+    the core regression guard for the callbacks migration."""
+    wrapper, process_data = _build_wrapper_and_process()
+    n_meas = int(process_data.n_measured)
+
+    def loss(w):
+        states = solve_physical_states(
+            w,
+            t_eval=process_data.t_measured,
+            n_measured=process_data.n_measured,
+            RAW_y0=process_data.y0_measured,
+            max_steps=4096,
+            rtol=1e-4,
+            atol=1e-5,
+        )
+        return jnp.sum(states[:n_meas] ** 2)
+
+    value, grad = eqx.filter_value_and_grad(loss)(wrapper)
+    assert bool(jnp.isfinite(value))
+    ann_leaves = [
+        g
+        for g in jax.tree_util.tree_leaves(grad.reaction_module)
+        if eqx.is_inexact_array(g)
+    ]
+    assert ann_leaves, "expected differentiable reaction-module leaves"
+    assert all(bool(jnp.all(jnp.isfinite(g))) for g in ann_leaves)
+    assert any(bool(jnp.any(g != 0.0)) for g in ann_leaves), "adjoint did not propagate"
 
 
 def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
@@ -431,7 +467,7 @@ def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
         SCL_target_measured=SCL_target_measured,
         mask_measured=mask_measured,
         n_measured=1,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -443,7 +479,9 @@ def test_evaluate_sample_from_arrays_single_point_repeats_auxiliary_outputs():
     assert result.states.shape[0] == t_measured.shape[0]
     assert jnp.allclose(
         result.states,
-        jnp.repeat(process_data.y0_measured[None, :], repeats=t_measured.shape[0], axis=0),
+        jnp.repeat(
+            process_data.y0_measured[None, :], repeats=t_measured.shape[0], axis=0
+        ),
     )
     assert jnp.allclose(result.save_outputs.auxiliary["mu_raw"], 0.0)
     assert result.save_outputs.auxiliary["latent_pair"].shape == (
@@ -464,7 +502,7 @@ def test_evaluate_sample_from_arrays_forwards_step_to_result():
         SCL_target_measured=process_data.y_measured,
         mask_measured=process_data.mask_measured,
         n_measured=process_data.n_measured,
-        SCL_target0_measured=process_data.y0_measured,
+        RAW_y0_measured=process_data.y0_measured,
         jump_ts=process_data.controls.active_step_ts,
         max_solver_steps=100_000,
         solver_rtol=1e-5,
@@ -510,7 +548,7 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total, per_target, per_sample = batched_loss_fn(
+    mean_total, per_sample_per_target, per_sample, *_ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -523,8 +561,9 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
         step=7,
     )
     assert jnp.isfinite(mean_total)
-    # One named loss term ("biomass") and one sample in the batch.
-    assert per_target.shape == (1,)
+    # One sample in the batch, one named loss term ("biomass"): the 2nd element
+    # is per-sample per-target (n_proc, n_targets); per_sample is (n_proc,).
+    assert per_sample_per_target.shape == (1, 1)
     assert per_sample.shape == (1,)
 
 
@@ -533,7 +572,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
-    mean_total_none, _, _ = batched_loss_fn(
+    mean_total_none, *_ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -545,7 +584,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         solver_atol=1e-7,
     )
     jump_ts_rows = jnp.zeros((1, 1), dtype=jnp.float32)
-    mean_total_present, _, _ = batched_loss_fn(
+    mean_total_present, *_ = batched_loss_fn(
         wrapper,
         batch,
         batch_controls,
@@ -569,7 +608,7 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
     from bp_train.dense import build_union_time_grid
 
     t_meas = jnp.asarray([0.0, 1.0, 4.0], dtype=jnp.float32)
-    t_eval, sample_idx, dense_t, dense_idx = build_union_time_grid(
+    t_eval, sample_idx, dense_t, dense_idx, _pred_t, _pred_idx = build_union_time_grid(
         t_meas, n_measured=3, n_dense=3
     )
     # dense linspace covers the (active) measurement span.
@@ -609,9 +648,8 @@ def test_dense_triple_mask_excludes_triples_straddling_a_jump():
     triple = dense_triple_mask_away_from_jumps(dense_t, jnp.asarray([3.5]), 0.6)
     # Triples (1,2,3), (2,3,4), (3,4,5) all have spans covering 3.5; the rest don't.
     # (0,1,2) → [0-0.6, 2+0.6]=[-0.6, 2.6] excludes 3.5 → True.
-    # (4,5,6) → [4-0.6, 6+0.6]=[3.4, 6.6] contains 3.5 → False (sits within eps of jump).
+    # (4,5,6) → [4-0.6, 6+0.6]=[3.4, 6.6] contains 3.5 → False
+    # (sits within eps of jump).
     # so the False region is indices 1..4 inclusive.
-    expected = jnp.asarray(
-        [True, False, False, False, False, True, True, True, True]
-    )
+    expected = jnp.asarray([True, False, False, False, False, True, True, True, True])
     assert bool(jnp.all(triple == expected))

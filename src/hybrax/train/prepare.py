@@ -170,7 +170,9 @@ def _build_semantics_provenance(
             if names
         }
 
-        entry: dict[str, object] = {
+        provenance[process_name] = {
+            "raw": raw_summary,
+            "prepared": prepared_summary,
             "changed_by_hooks": changed_by_hooks,
             "reactor_components_added": _added_names(
                 raw_summary["reactor_component_names"],
@@ -183,11 +185,6 @@ def _build_semantics_provenance(
             "feed_components_added": feed_components_added,
             "feed_components_modified": feed_components_modified,
         }
-        # The prepared snapshot already lives in prepared_semantics_validation;
-        # keep the raw before-state only when a transform actually changed it.
-        if raw_summary != prepared_summary:
-            entry["raw"] = raw_summary
-        provenance[process_name] = entry
 
     return provenance
 
@@ -407,6 +404,7 @@ def prepare_artifact(
             ),
         },
         "dynamic_volume": True,
+        "bp_format_validation": prepared_validation_report,
         "bp_format_validation_raw": validation_report,
         "bp_format_validation_prepared": prepared_validation_report,
         "prepared_semantics_validation": semantics_validation_report,

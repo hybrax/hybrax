@@ -463,8 +463,8 @@ def _make_bolus_collection() -> BioProcessCollection:
             },
         ),
         process_variables={
-            "X": ProcessVariable(
-                name="X",
+            "pH": ProcessVariable(
+                name="pH",
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
@@ -615,6 +615,7 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     assert any(
         not entry["ok"] for entry in metadata["bp_format_validation_raw"].values()
     )
+    assert all(entry["ok"] for entry in metadata["bp_format_validation"].values())
     assert all(
         entry["ok"] for entry in metadata["bp_format_validation_prepared"].values()
     )
@@ -717,14 +718,9 @@ def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
         assert "transform_process_collection" in entry["changed_by_hooks"], (
             f"provenance for {new_name!r} should record the transform hook as a changer"
         )
-        # A pure rename leaves semantics unchanged, so the raw before-state
-        # equals prepared and is omitted; resolving the rename to the wrong
-        # process would instead surface a non-empty diff here.
-        assert "raw" not in entry, (
-            "pure rename must resolve the matching raw snapshot (no semantic diff)"
+        assert entry["raw"] == entry["prepared"], (
+            "pure rename should resolve the correct raw snapshot"
         )
-        assert entry["reactor_components_added"] == []
-        assert entry["reactor_components_modified"] == []
 
 
 def test_prepare_artifact_rejects_duplicate_process_renames(tmp_path):

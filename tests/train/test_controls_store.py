@@ -269,12 +269,8 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
 
     assert values.shape == (3, 3)
     assert derivatives.shape == (3, 3)
-    assert values[:, _column_index(controls, "CF")] == pytest.approx(
-        [1.025, 1.05, 1.1]
-    )
-    assert values[:, _column_index(controls, "T")] == pytest.approx(
-        [30.25, 30.5, 31.0]
-    )
+    assert values[:, _column_index(controls, "CF")] == pytest.approx([1.025, 1.05, 1.1])
+    assert values[:, _column_index(controls, "T")] == pytest.approx([30.25, 30.5, 31.0])
     assert values[0, controls.sample_acc_global_index] == pytest.approx(0.0)
     assert values[-1, controls.sample_acc_global_index] == pytest.approx(0.1)
     assert derivatives[:, _column_index(controls, "CF")] == pytest.approx(
@@ -283,6 +279,103 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     assert derivatives[:, _column_index(controls, "T")] == pytest.approx(
         [1.0, 1.0, 1.0]
     )
+
+
+def test_controls_store_exposes_discrete_event_metadata():
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(5.0),
+                is_controlled=False,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=5.0, time_reference="start"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "sample_a": SampleVolumeChange(
+                    name="sample_a",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([2.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                ),
+                "sample_b": SampleVolumeChange(
+                    name="sample_b",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([2.0]),
+                        values=jnp.asarray([-0.2]),
+                    ),
+                ),
+                "sample_after_end": SampleVolumeChange(
+                    name="sample_after_end",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([6.0]),
+                        values=jnp.asarray([-0.1]),
+                    ),
+                ),
+                "bolus_feed": FeedVolumeChange(
+                    name="bolus_feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([3.0]),
+                        values=jnp.asarray([0.4]),
+                    ),
+                    feed_medium=feed_medium,
+                ),
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(1.0),
+                )
+            },
+        ),
+        process_variables={},
+    )
+    store = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    )
+    controls = store.get_controls("p1")
+
+    assert np.asarray(controls.sample_event_mask).tolist() == [True]
+    assert np.asarray(controls.sample_event_times).tolist() == pytest.approx([2.0])
+    assert np.asarray(controls.sample_event_volumes).tolist() == pytest.approx([0.3])
+    assert np.asarray(controls.bolus_event_mask).tolist() == [True]
+    assert np.asarray(controls.bolus_event_times).tolist() == pytest.approx([3.0])
+    assert np.asarray(controls.bolus_event_volumes).tolist() == pytest.approx([0.4])
+    assert np.asarray(controls.bolus_event_Cin).shape == (1, 1)
+    assert float(controls.bolus_event_Cin[0, 0]) == pytest.approx(5.0)
+    # jump_ts is the discrete EVENT times only (sample 2.0, bolus 3.0) — the
+    # vestigial triangle-ramp breakpoints are no longer spliced into the store's
+    # step_ts (the pseudo solve applies events instantaneously).
+    assert set(np.asarray(controls.active_step_ts, dtype=float).tolist()) == {2.0, 3.0}
 
 
 def test_controls_store_rejects_unknown_process(tmp_path):
@@ -320,9 +413,7 @@ def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
 
     assert values[:, _column_index(controls, "CF")] == pytest.approx([1.0, 1.1])
     assert values[:, _column_index(controls, "T")] == pytest.approx([30.0, 31.0])
-    assert derivatives[:, _column_index(controls, "CF")] == pytest.approx(
-        [0.1, 0.1]
-    )
+    assert derivatives[:, _column_index(controls, "CF")] == pytest.approx([0.1, 0.1])
 
 
 def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
@@ -539,8 +630,8 @@ def test_controls_store_uses_min_of_per_process_min_dt_across_processes():
         density=1.0,
         density_unit="kg/L",
         components={
-            "X": FeedMediumComponent(
-                name="X",
+            "biomass": FeedMediumComponent(
+                name="biomass",
                 unit="g/L",
                 concentration=StaticVariable(0.0),
                 is_controlled=False,
@@ -580,8 +671,8 @@ def test_controls_store_uses_min_of_per_process_min_dt_across_processes():
         ),
         reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
         process_variables={
-            "X": ProcessVariable(
-                name="X",
+            "biomass": ProcessVariable(
+                name="biomass",
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(
@@ -624,8 +715,8 @@ def test_controls_store_uses_min_of_per_process_min_dt_across_processes():
         ),
         reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
         process_variables={
-            "X": ProcessVariable(
-                name="X",
+            "biomass": ProcessVariable(
+                name="biomass",
                 unit="g/L",
                 is_controlled=False,
                 values=TimeSeries(

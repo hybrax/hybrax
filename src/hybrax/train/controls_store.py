@@ -10,6 +10,7 @@ import numpy as np
 from bp_format.dataclasses import (
     BioProcessCollection,
 )
+from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
 from .constants import METADATA_NAMESPACE
@@ -20,6 +21,7 @@ from .controls import (
     SignalSource,
     build_dense_payload,
     build_sample_acc_source_default,
+    collect_discrete_event_metadata,
     compute_signal_spreads,
     get_collection_event_min_dt_if_needed,
     run_min_dt_from_runtime_controls,
@@ -86,7 +88,8 @@ class PerProcessControls(eqx.Module):
     """Per-process runtime view over padded, canonical-axis dense-grid controls.
 
     Column axis follows
-    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras]``
+    ``[name_controlled_FVCs | name_controlled_SVCs |
+    name_controlled_PVs | name_extras]``
     matching bp-format ``ControlSplines`` plus bp-train's extras block
     (bolus-FVC triangle ramps + the cumulative sample-acc trace at the
     very end). The first ``len(name_controlled_FVCs) +
@@ -114,6 +117,13 @@ class PerProcessControls(eqx.Module):
     control_metadata: dict[str, dict[str, Any]] = eqx.field(static=True)
     sample_acc_name: str = eqx.field(static=True)
     sample_acc_global_index: int = eqx.field(static=True)
+    sample_event_times: jax.Array
+    sample_event_volumes: jax.Array
+    sample_event_mask: jax.Array
+    bolus_event_times: jax.Array
+    bolus_event_volumes: jax.Array
+    bolus_event_Cin: jax.Array
+    bolus_event_mask: jax.Array
 
     @property
     def n_u(self) -> int:
@@ -187,7 +197,8 @@ class BatchControls(eqx.Module):
     """All-process controls evaluator with index-based runtime lookup.
 
     Column axis follows the same canonical
-    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras]``
+    ``[name_controlled_FVCs | name_controlled_SVCs |
+    name_controlled_PVs | name_extras]``
     order as :class:`PerProcessControls`.
     """
 
@@ -201,6 +212,13 @@ class BatchControls(eqx.Module):
     name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
     name_extras: tuple[str, ...] = eqx.field(static=True)
+    sample_event_times: jax.Array
+    sample_event_volumes: jax.Array
+    sample_event_mask: jax.Array
+    bolus_event_times: jax.Array
+    bolus_event_volumes: jax.Array
+    bolus_event_Cin: jax.Array
+    bolus_event_mask: jax.Array
 
     def eval(self, process_idx: int, t: jax.Array) -> jax.Array:
         """Evaluate controls for one process index at one or more times."""
@@ -250,7 +268,8 @@ class ControlsStore(eqx.Module):
     """Collection-level loader and index for prepared, padded JAX control tensors.
 
     Column axis follows
-    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs | name_extras]``
+    ``[name_controlled_FVCs | name_controlled_SVCs |
+    name_controlled_PVs | name_extras]``
     consistently across every process; the wrapper consumes the leading
     u-block via :meth:`PerProcessControls.eval_u`.
     """
@@ -277,8 +296,15 @@ class ControlsStore(eqx.Module):
     grid_lengths: jax.Array
     # Active `step_ts` lengths per process.
     step_ts_lengths: jax.Array
-    # Column index of the cumulative sampled-volume signal (always at the very end of name_extras).
+    # Column index of cumulative sampled volume (always at end of name_extras).
     sample_acc_global_index: int
+    sample_event_times: jax.Array
+    sample_event_volumes: jax.Array
+    sample_event_mask: jax.Array
+    bolus_event_times: jax.Array
+    bolus_event_volumes: jax.Array
+    bolus_event_Cin: jax.Array
+    bolus_event_mask: jax.Array
     # Runtime-built per-process metadata entries needed to construct thin views.
     _process_md_by_name: dict[str, dict[str, Any]]
 
@@ -440,9 +466,10 @@ class ControlsStore(eqx.Module):
         process_bundles: dict[str, ControlSourceBundle] = {}
         process_sample_sources: dict[str, Any] = {}
         process_control_metadata: dict[str, dict[str, Any]] = {}
-        reference_categorised: tuple[
-            tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]
-        ] | None = None
+        reference_categorised: (
+            tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]]
+            | None
+        ) = None
 
         for process_name in process_order:
             process = collection.processes[process_name]
@@ -503,7 +530,7 @@ class ControlsStore(eqx.Module):
             name_controlled_PVs,
             name_extras_bolus,
         ) = reference_categorised
-        # Extras layout: bolus FVCs first (alphabetical), then sample_acc at the very end.
+        # Extras layout: bolus FVCs first, then sample_acc at the very end.
         name_extras = name_extras_bolus + (BP_TRAIN_SAMPLE_ACC_NAME,)
         canonical_names: list[str] = list(
             name_controlled_FVCs
@@ -521,6 +548,26 @@ class ControlsStore(eqx.Module):
             for process_name in process_order
         }
         spreads = compute_signal_spreads(spread_inputs)
+
+        event_metadata_by_process: dict[str, dict[str, Any]] = {}
+        reference_species: tuple[str, ...] | None = None
+        max_sample_events = 0
+        max_bolus_events = 0
+        for process_name in process_order:
+            process = collection.processes[process_name]
+            species_names = tuple(build_rhs_ode(process).name_modeled_RMCs)
+            if reference_species is None:
+                reference_species = species_names
+            elif species_names != reference_species:
+                raise ValueError(
+                    "controls store requires identical modeled RMC layout across "
+                    f"processes for event metadata; {process_name!r} has "
+                    f"{species_names!r} but expected {reference_species!r}"
+                )
+            event_md = collect_discrete_event_metadata(process, species_names)
+            event_metadata_by_process[process_name] = event_md
+            max_sample_events = max(max_sample_events, len(event_md["sample_times"]))
+            max_bolus_events = max(max_bolus_events, len(event_md["bolus_times"]))
 
         payloads_by_process: dict[str, dict[str, Any]] = {}
         payload_source_names_by_process: dict[str, list[str]] = {}
@@ -540,6 +587,15 @@ class ControlsStore(eqx.Module):
                 spreads=spreads,
                 config=cfg,
             )
+            # jump_ts = the discrete event times only (bolus ∪ sample). The
+            # pseudo-space solve applies boluses/samples instantaneously via the
+            # wrapper's event metadata, so the per-source triangle-ramp
+            # breakpoints in ``payload["step_ts"]`` are vestigial as solver jump
+            # hints — forcing the solver at them wastes ~3x the steps for an
+            # identical trajectory. Use the event times alone.
+            payload["step_ts"] = sorted(
+                set(event_metadata_by_process[process_name]["step_ts"])
+            )
             payloads_by_process[process_name] = payload
             max_grid_length = max(max_grid_length, len(payload["grid"]))
             max_step_ts_length = max(max_step_ts_length, len(payload["step_ts"]))
@@ -551,6 +607,14 @@ class ControlsStore(eqx.Module):
         grid_lengths = []
         step_ts_lengths = []
         processes_metadata: dict[str, dict[str, Any]] = {}
+        sample_event_time_rows = []
+        sample_event_volume_rows = []
+        sample_event_mask_rows = []
+        bolus_event_time_rows = []
+        bolus_event_volume_rows = []
+        bolus_event_Cin_rows = []
+        bolus_event_mask_rows = []
+        n_species = 0 if reference_species is None else len(reference_species)
 
         for process_name in process_order:
             payload = payloads_by_process[process_name]
@@ -576,6 +640,32 @@ class ControlsStore(eqx.Module):
             step_ts_rows.append(step_ts)
             grid_lengths.append(grid_length)
             step_ts_lengths.append(step_ts_length)
+            event_md = event_metadata_by_process[process_name]
+            n_samples = len(event_md["sample_times"])
+            n_bolus = len(event_md["bolus_times"])
+            sample_event_time_rows.append(
+                event_md["sample_times"] + [0.0] * (max_sample_events - n_samples)
+            )
+            sample_event_volume_rows.append(
+                event_md["sample_volumes"] + [0.0] * (max_sample_events - n_samples)
+            )
+            sample_event_mask_rows.append(
+                [True] * n_samples + [False] * (max_sample_events - n_samples)
+            )
+            bolus_event_time_rows.append(
+                event_md["bolus_times"] + [0.0] * (max_bolus_events - n_bolus)
+            )
+            bolus_event_volume_rows.append(
+                event_md["bolus_volumes"] + [0.0] * (max_bolus_events - n_bolus)
+            )
+            bolus_event_Cin_rows.append(
+                event_md["bolus_Cin"]
+                + [[0.0] * n_species for _ in range(max_bolus_events - n_bolus)]
+            )
+            bolus_event_mask_rows.append(
+                [True] * n_bolus + [False] * (max_bolus_events - n_bolus)
+            )
+
             processes_metadata[process_name] = {
                 "name_controlled_FVCs": list(name_controlled_FVCs),
                 "name_controlled_SVCs": list(name_controlled_SVCs),
@@ -590,6 +680,8 @@ class ControlsStore(eqx.Module):
             "max_grid_length": max_grid_length,
             "max_controls": len(canonical_names),
             "max_step_ts_length": max_step_ts_length,
+            "max_sample_events": max_sample_events,
+            "max_bolus_events": max_bolus_events,
         }
 
         return cls(
@@ -606,6 +698,20 @@ class ControlsStore(eqx.Module):
             grid_lengths=jnp.asarray(grid_lengths, dtype=jnp.int32),
             step_ts_lengths=jnp.asarray(step_ts_lengths, dtype=jnp.int32),
             sample_acc_global_index=sample_acc_global_index,
+            sample_event_times=_as_jax_array(sample_event_time_rows),
+            sample_event_volumes=_as_jax_array(sample_event_volume_rows),
+            sample_event_mask=jnp.asarray(sample_event_mask_rows, dtype=bool),
+            bolus_event_times=_as_jax_array(bolus_event_time_rows),
+            bolus_event_volumes=_as_jax_array(bolus_event_volume_rows),
+            bolus_event_Cin=(
+                jnp.zeros(
+                    (len(process_order), 0, n_species),
+                    dtype=jnp.float32,
+                )
+                if max_bolus_events == 0
+                else _as_jax_array(bolus_event_Cin_rows)
+            ),
+            bolus_event_mask=jnp.asarray(bolus_event_mask_rows, dtype=bool),
             _process_md_by_name=processes_metadata,
         )
 
@@ -640,6 +746,13 @@ class ControlsStore(eqx.Module):
             control_metadata=dict(process_md["control_metadata"]),
             sample_acc_name=sample_acc_name,
             sample_acc_global_index=self.sample_acc_global_index,
+            sample_event_times=self.sample_event_times[process_index],
+            sample_event_volumes=self.sample_event_volumes[process_index],
+            sample_event_mask=self.sample_event_mask[process_index],
+            bolus_event_times=self.bolus_event_times[process_index],
+            bolus_event_volumes=self.bolus_event_volumes[process_index],
+            bolus_event_Cin=self.bolus_event_Cin[process_index],
+            bolus_event_mask=self.bolus_event_mask[process_index],
         )
 
     def as_batch_controls(self) -> BatchControls:
@@ -684,4 +797,11 @@ class ControlsStore(eqx.Module):
             name_controlled_SVCs=self.name_controlled_SVCs,
             name_controlled_PVs=self.name_controlled_PVs,
             name_extras=self.name_extras,
+            sample_event_times=self.sample_event_times,
+            sample_event_volumes=self.sample_event_volumes,
+            sample_event_mask=self.sample_event_mask,
+            bolus_event_times=self.bolus_event_times,
+            bolus_event_volumes=self.bolus_event_volumes,
+            bolus_event_Cin=self.bolus_event_Cin,
+            bolus_event_mask=self.bolus_event_mask,
         )

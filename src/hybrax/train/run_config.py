@@ -62,6 +62,7 @@ class TrainConfig(ConfigBase):
     batch_size: int | None = Field(None, gt=0)
     shuffle: bool = True
     batch_seed: int | None = None
+    devices: int | Literal["max"] = 1
 
 
 class SolverConfig(ConfigBase):
