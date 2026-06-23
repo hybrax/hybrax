@@ -4,6 +4,9 @@ import argparse
 import json
 import logging
 import os
+import shutil
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +18,14 @@ from .harness import (
     ForwardResult,
     TrainHarnessConfig,
     forward_from_collection,
+    resume_run,
     train_from_collection,
+    train_harness_config_from_run_config,
 )
 from .loo import LOOConfig, run_loo_cv
 from .loo_metrics import compute_loo_metrics
 from .postprocessing import (
+    export_observations_csv,
     load_model_metadata,
     plot_process_simulations,
     plot_training_results,
@@ -27,9 +33,24 @@ from .postprocessing import (
     save_model_metadata,
 )
 from .prepare import prepare_artifact
-from .run_config import LoadedRunConfig, load_prepare_config, load_train_config
-from .training_data import TARGET_SOURCES
+from .run_config import LoadedRunConfig, RunConfig, load_prepare_config, load_train_config
+from .serialization import (
+    content_hash,
+    environment_versions as _environment_versions,
+    read_json,
+    read_run_config_json,
+    run_config_to_jsonable,
+    save_model as save_params_model,
+    save_opt_state,
+    update_run_config_status,
+    write_json,
+)
+from .training_data import TARGET_SOURCES, TrainingDataStore
 from .utils import load_custom_module, resolve_config
+
+
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
 
 
 def _load_config(config_path: str | None) -> dict[str, Any] | None:
@@ -54,6 +75,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to prepare run config JSON.",
     )
     prepare_parser.add_argument("--output", required=True, help="Path to output JSON.")
+    prepare_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite an existing prepared.json at --output.",
+    )
     prepare_parser.set_defaults(handler=_handle_prepare)
 
     # ---- train ----
@@ -63,28 +89,33 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument(
         "--config",
-        required=True,
-        help="Path to train run config JSON.",
-    )
-    train_parser.add_argument(
-        "--log-every",
-        type=int,
-        default=train_cfg_defaults.log_every,
-        help="Emit progress log every N steps.",
+        default=None,
+        help="Path to train run config JSON (required unless --resume).",
     )
     train_parser.add_argument(
         "--output-dir",
-        default="output",
-        help="Directory for trained model and plots (default: ./output).",
+        default=None,
+        help="Override output.dir from the config (the FAIR run directory).",
     )
     train_parser.add_argument(
-        "--checkpoint-dir",
+        "--resume",
         default=None,
         help=(
-            "Directory for periodic training checkpoints (wrapper snapshot, "
-            "sidecar, loss curve). Defaults to <output-dir>/checkpoints. "
-            "Pass an empty string to disable. Cadence follows --log-every."
+            "Resume training in place from an existing run directory "
+            "(continues from checkpoints/latest, appending to metrics.csv). "
+            "Combine with --steps to extend the original target."
         ),
+    )
+    train_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow re-running into a run dir that already completed.",
+    )
+    train_parser.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="Override optim.steps (with --resume, may extend the target).",
     )
     plot_group = train_parser.add_mutually_exclusive_group()
     plot_group.add_argument(
@@ -100,34 +131,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip plot generation.",
     )
     train_parser.set_defaults(plot=True)
-    train_parser.add_argument(
-        "--log-process-losses",
-        action="store_true",
-        default=train_cfg_defaults.log_process_losses,
-        help="Emit per-process losses on every step (otherwise only at log steps).",
-    )
-    train_parser.add_argument(
-        "--metrics-csv",
-        default=train_cfg_defaults.metrics_csv,
-        help="If set, write per-step metrics to this CSV file.",
-    )
-    train_parser.add_argument(
-        "--metrics-jsonl",
-        default=train_cfg_defaults.metrics_jsonl,
-        help="If set, write per-step metrics to this JSONL file.",
-    )
-    train_parser.add_argument(
-        "--log-decimals",
-        type=int,
-        default=train_cfg_defaults.log_decimals,
-        help="Decimal places for numeric columns in the per-step console table.",
-    )
-    train_parser.add_argument(
-        "--log-header-every",
-        type=int,
-        default=train_cfg_defaults.log_header_every,
-        help="Re-emit the table header every N rows (0 disables re-emission).",
-    )
+    # Cadence / console-table formatting are config-only now (the `logging`
+    # section: every, decimals, header_every; metrics.csv is always written to
+    # the run dir). The old --log-every / --metrics-csv / --metrics-jsonl /
+    # --log-process-losses / --log-decimals / --log-header-every flags are gone.
     train_parser.add_argument(
         "--log-level",
         default="INFO",
@@ -434,6 +441,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _handle_prepare(args: argparse.Namespace) -> int:
+    output = Path(args.output)
+    if output.exists() and not args.overwrite:
+        logging.getLogger(__name__).error(
+            "prepared artifact already exists at %s; pass --overwrite to replace it",
+            output,
+        )
+        return 1
     prepare_artifact(
         load_prepare_config(args.config),
         output_json=args.output,
@@ -539,37 +553,56 @@ def _write_train_results(
     return fwd_result
 
 
-def _train_harness_config_from_loaded(
-    loaded: LoadedRunConfig,
-    args: argparse.Namespace,
-    checkpoint_dir: Path | None,
-) -> TrainHarnessConfig:
-    run_config = loaded.config
-    if run_config.data is None:
-        raise ValueError("train command requires a data config section")
-    return TrainHarnessConfig(
-        process_names=run_config.data.processes,
-        target_variable_order=run_config.data.targets,
-        target_source=run_config.data.target_source,
-        steps=run_config.train.steps,
-        batch_size=run_config.train.batch_size,
-        shuffle_batches=run_config.train.shuffle,
-        batch_seed=run_config.train.batch_seed,
-        optimizer_name=run_config.train.optimizer,
-        learning_rate=run_config.train.learning_rate,
-        grad_clip_norm=run_config.train.grad_clip_norm,
-        seed=run_config.train.seed,
-        log_every=args.log_every,
-        solver_max_steps=run_config.solver.max_steps,
-        solver_rtol=run_config.solver.rtol,
-        solver_atol=run_config.solver.atol,
-        solver_use_jump_ts=run_config.solver.jump_ts,
-        log_process_losses=args.log_process_losses,
-        metrics_csv=args.metrics_csv,
-        metrics_jsonl=args.metrics_jsonl,
-        log_decimals=args.log_decimals,
-        log_header_every=args.log_header_every,
-        checkpoint_dir=checkpoint_dir,
+def _apply_train_cli_overrides(
+    cfg: RunConfig, args: argparse.Namespace
+) -> RunConfig:
+    """Apply the few CLI flags that override the config file (CLI wins)."""
+    updates: dict[str, Any] = {}
+    if args.output_dir is not None:
+        updates["output"] = cfg.output.model_copy(
+            update={"dir": Path(args.output_dir).resolve()}
+        )
+    if not args.plot:  # --no-plot
+        base = updates.get("output", cfg.output)
+        updates["output"] = base.model_copy(update={"plots": False})
+    if args.steps is not None:
+        updates["train"] = cfg.train.model_copy(update={"steps": int(args.steps)})
+    return cfg.model_copy(update=updates) if updates else cfg
+
+
+def _finalize_run_dir(run_dir: Path, result: Any, config_json: Path) -> None:
+    """Copy best→model/, then mark the run complete in config.json."""
+    model_dir = run_dir / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    best = run_dir / "checkpoints" / "best"
+    best_info: dict[str, Any] | None = None
+    if best.is_symlink() and (best / "params.eqx").is_file():
+        shutil.copyfile(best / "params.eqx", model_dir / "params.eqx")
+        if (best / "opt_state.eqx").is_file():
+            shutil.copyfile(best / "opt_state.eqx", model_dir / "opt_state.eqx")
+        try:
+            best_state = read_json(best / "train_state.json")
+            best_info = {
+                "step": best_state.get("step"),
+                "mean_loss": best_state.get("mean_loss"),
+            }
+        except OSError:
+            best_info = None
+    else:
+        # No checkpoints written — persist the final state directly.
+        save_params_model(result.trained_wrapper, model_dir / "params.eqx")
+        if result.optimizer_state is not None:
+            save_opt_state(result.optimizer_state, model_dir / "opt_state.eqx")
+    final_mean = (
+        float(result.mean_loss_by_step[-1]) if result.mean_loss_by_step else None
+    )
+    update_run_config_status(
+        config_json,
+        status="complete",
+        finished_at=_now_iso(),
+        steps_completed=int(getattr(result, "steps_completed", 0)),
+        best=best_info,
+        final_mean_loss=final_mean,
     )
 
 
@@ -578,101 +611,148 @@ def _handle_train(args: argparse.Namespace) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    log = logging.getLogger(__name__)
 
+    # ---- Resume: continue an existing run dir in place ----
+    if args.resume:
+        resume_arg = Path(args.resume)
+        # Be forgiving: accept the run dir itself OR a sub-path inside it
+        # (e.g. checkpoints/latest, checkpoints/step_00500, model/) and resolve
+        # up to the directory that actually holds config.json. Resume always
+        # continues from checkpoints/latest regardless.
+        run_dir = next(
+            (
+                cand
+                for cand in (resume_arg, resume_arg.parent, resume_arg.parent.parent)
+                if (cand / "config.json").is_file()
+            ),
+            None,
+        )
+        if run_dir is None:
+            log.error(
+                "--resume: no config.json found at %s or its parent run "
+                "directory; pass the RUN directory (e.g. output_single), not a "
+                "checkpoint sub-directory",
+                resume_arg,
+            )
+            return 1
+        if run_dir != resume_arg:
+            log.info(
+                "--resume: resolved run directory %s (continuing from latest "
+                "checkpoint)",
+                run_dir,
+            )
+        config_json = run_dir / "config.json"
+        update_run_config_status(config_json, status="running", resumed_at=_now_iso())
+        try:
+            result = resume_run(run_dir, steps_override=args.steps)
+        except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+            update_run_config_status(
+                config_json,
+                status="failed",
+                error={"type": type(exc).__name__, "message": str(exc)},
+                finished_at=_now_iso(),
+            )
+            raise
+        _finalize_run_dir(run_dir, result, config_json)
+        log.info("resume complete: %s", run_dir)
+        return 0
+
+    # ---- Fresh run ----
+    if args.config is None:
+        log.error("train requires --config (or --resume <run_dir> to continue)")
+        return 1
     loaded = load_train_config(args.config)
-    run_config = loaded.config
-    if run_config.data is None:
+    cfg = _apply_train_cli_overrides(loaded.config, args)
+    if cfg.data is None:
         raise ValueError("train command requires a data config section")
-    prepared_path = run_config.data.prepared
-    collection = load_process_collection_json(prepared_path)
-    output_dir = Path(args.output_dir)
-    if args.checkpoint_dir is None:
-        checkpoint_dir: Path | None = output_dir / "checkpoints"
-    elif str(args.checkpoint_dir) == "":
-        checkpoint_dir = None
-    else:
-        checkpoint_dir = Path(args.checkpoint_dir)
-    config = _train_harness_config_from_loaded(loaded, args, checkpoint_dir)
-    result = train_from_collection(
+    run_dir = Path(cfg.output.dir)
+    config_json = run_dir / "config.json"
+
+    # Re-run guard: block only on a completed run unless --overwrite.
+    if config_json.is_file():
+        try:
+            _, prior = read_run_config_json(config_json)
+        except Exception:  # noqa: BLE001 - treat unparsable as overwritable
+            prior = {}
+        if prior.get("status") == "complete" and not args.overwrite:
+            log.error(
+                "run dir %s already holds a completed run; pass --overwrite to "
+                "re-run or --resume to continue",
+                run_dir,
+            )
+            return 1
+
+    collection = load_process_collection_json(cfg.data.prepared)
+
+    # Assemble the FAIR run directory.
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "model").mkdir(exist_ok=True)
+    (run_dir / "checkpoints").mkdir(exist_ok=True)
+    bundled_custom = None
+    if cfg.custom_py is not None:
+        shutil.copyfile(cfg.custom_py, run_dir / "custom.py")
+        bundled_custom = "custom.py"
+
+    store = TrainingDataStore.from_collection(
         collection,
-        config=config,
-        custom_module=loaded.custom_module,
-        run_config=run_config,
+        target_variable_order=cfg.data.targets,
+        target_source=cfg.data.target_source,
     )
+    export_observations_csv(
+        collection, store, run_dir / "observations.csv", process_names=cfg.data.processes
+    )
+
+    document = {
+        "status": "running",
+        "started_at": _now_iso(),
+        "cli_argv": list(sys.argv),
+        "config": run_config_to_jsonable(cfg),
+        "inputs": {
+            "prepared_input": {
+                "path": str(cfg.data.prepared),
+                "content_hash": content_hash(collection),
+            },
+            "custom_py": {
+                "bundled": bundled_custom,
+                "file_hash": (
+                    f"sha256:{loaded.custom_py_sha256}"
+                    if loaded.custom_py_sha256
+                    else None
+                ),
+            },
+        },
+        "environment": _environment_versions(),
+    }
+    write_json(config_json, document)
+
+    config = train_harness_config_from_run_config(cfg, run_dir=run_dir)
+    try:
+        result = train_from_collection(
+            collection,
+            config=config,
+            custom_module=loaded.custom_module,
+            run_config=cfg,
+        )
+    except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+        update_run_config_status(
+            config_json,
+            status="failed",
+            error={"type": type(exc).__name__, "message": str(exc)},
+            finished_at=_now_iso(),
+        )
+        raise
+
     first = result.mean_loss_by_step[0]
     last = result.mean_loss_by_step[-1]
-    delta = last - first
-    log = logging.getLogger(__name__)
     log.info(
         "training complete: first_mean_loss=%.6g last_mean_loss=%.6g delta=%.6g",
         first,
         last,
-        delta,
+        last - first,
     )
-
-    # Post-training outputs
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    model_path = output_dir / "trained_wrapper.eqx"
-    save_model(result.trained_wrapper, model_path)
-
-    # Sidecar metadata so `bp-train forward` can auto-resolve training context.
-    # training_processes=None means "every process in prepared.json was used"
-    # — `bp-train forward` treats that as a wildcard when classifying splits.
-    training_processes_list = (
-        list(config.process_names) if config.process_names else None
-    )
-    sidecar_dir = output_dir.resolve()
-    meta = {
-        "prepared_input": os.path.relpath(prepared_path.resolve(), sidecar_dir),
-        "custom_py": (
-            os.path.relpath(run_config.custom_py.resolve(), sidecar_dir)
-            if run_config.custom_py is not None
-            else None
-        ),
-        "custom_py_sha256": loaded.custom_py_sha256,
-        "training_processes": training_processes_list,
-        "targets": (
-            list(config.target_variable_order)
-            if config.target_variable_order is not None
-            else None
-        ),
-        "target_source": config.target_source,
-        "solver": {
-            "max_steps": int(config.solver_max_steps),
-            "rtol": float(config.solver_rtol),
-            "atol": float(config.solver_atol),
-            "use_jump_ts": bool(config.solver_use_jump_ts),
-        },
-        "training": {
-            "steps": int(config.steps),
-            "batch_size": config.batch_size,
-            "seed": int(config.seed),
-            "final_mean_loss": float(last),
-        },
-    }
-    save_model_metadata(output_dir / "trained_wrapper.meta.json", meta)
-
-    training_process_names = (
-        config.process_names
-        if config.process_names is not None
-        else tuple(collection.processes.keys())
-    )
-    _write_train_results(
-        output_dir=output_dir,
-        collection=collection,
-        trained_wrapper=result.trained_wrapper,
-        train_result=result,
-        config=config,
-        runtime_config=None,
-        custom_py=run_config.custom_py,
-        run_config=run_config,
-        custom_module=loaded.custom_module,
-        training_process_names=training_process_names,
-        render_plots=args.plot,
-    )
-
+    _finalize_run_dir(run_dir, result, config_json)
+    log.info("run directory: %s", run_dir)
     return 0
 
 
@@ -781,81 +861,102 @@ def _handle_forward(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger(__name__)
 
-    model_path = Path(args.model)
-    if not model_path.exists():
-        raise SystemExit(f"--model path does not exist: {model_path}")
+    model_arg = Path(args.model)
 
-    meta = load_model_metadata(model_path.with_suffix(".meta.json"))
-    if not meta:
-        log.warning(
-            "no sidecar found at %s; --input and solver flags "
-            "fall back to CLI/defaults",
-            model_path.with_suffix(".meta.json"),
+    # Resolve the FAIR run directory for the model: --model may point at the run
+    # dir itself, or at a checkpoint's params.eqx.
+    run_dir: Path | None = None
+    if model_arg.is_dir() and (model_arg / "config.json").is_file():
+        run_dir = model_arg
+    elif (
+        model_arg.name == "params.eqx"
+        and (model_arg.parent.parent / "config.json").is_file()
+    ):
+        run_dir = model_arg.parent.parent
+
+    run_config_obj = None
+    if run_dir is not None:
+        # --- New run-dir layout: solver/prepared/custom are recorded in config.json ---
+        run_config_obj, _doc = read_run_config_json(run_dir / "config.json")
+        model_path = (
+            model_arg
+            if model_arg.name == "params.eqx"
+            else run_dir / "model" / "params.eqx"
         )
+        if not model_path.is_file():
+            raise SystemExit(f"no model params at {model_path}")
 
-    sidecar_dir = model_path.with_suffix(".meta.json").resolve().parent
+        bundled_prepared = run_dir / "prepared.json"
+        if args.input is not None:
+            prepared = str(args.input)
+        elif bundled_prepared.is_file():
+            prepared = str(bundled_prepared)
+        elif run_config_obj.data is not None:
+            prepared = str(run_config_obj.data.prepared)
+        else:
+            raise SystemExit(f"could not resolve prepared.json for run {run_dir}")
 
-    prepared = args.input
-    if prepared is None and meta.get("prepared_input"):
-        prepared = str(sidecar_dir / meta["prepared_input"])
-    if prepared is None:
-        raise SystemExit(
-            "no --input provided and no sidecar to read `prepared_input` from"
+        bundled_custom = run_dir / "custom.py"
+        if args.custom is not None:
+            custom_py = str(args.custom)
+        elif bundled_custom.is_file():
+            custom_py = str(bundled_custom)
+        elif run_config_obj.custom_py is not None:
+            custom_py = str(run_config_obj.custom_py)
+        else:
+            custom_py = None
+
+        # Solver accuracy is read-only from the model's config (reproduces the
+        # trajectory the model was fit under); only the safety cap is overridable.
+        solver_max_steps = (
+            args.solver_max_steps
+            if args.solver_max_steps is not None
+            else int(run_config_obj.solver.max_steps)
         )
-    custom_py = args.custom
-    if custom_py is None and meta.get("custom_py"):
-        custom_py = str(sidecar_dir / meta["custom_py"])
-
-    meta_solver = meta.get("solver", {})
-    solver_max_steps = (
-        args.solver_max_steps
-        if args.solver_max_steps is not None
-        else int(meta_solver.get("max_steps", 4096))
-    )
-    solver_rtol = (
-        args.solver_rtol
-        if args.solver_rtol is not None
-        else float(meta_solver.get("rtol", 1e-5))
-    )
-    solver_atol = (
-        args.solver_atol
-        if args.solver_atol is not None
-        else float(meta_solver.get("atol", 1e-7))
-    )
-    if args.no_jump_ts:
-        solver_use_jump_ts = False
+        solver_rtol = float(run_config_obj.solver.rtol)
+        solver_atol = float(run_config_obj.solver.atol)
+        solver_use_jump_ts = bool(run_config_obj.solver.jump_ts)
+        effective_targets = (
+            run_config_obj.data.targets if run_config_obj.data is not None else None
+        )
+        target_source = (
+            run_config_obj.data.target_source
+            if run_config_obj.data is not None
+            else "auto"
+        )
+        configured_processes = (
+            run_config_obj.data.processes if run_config_obj.data is not None else None
+        )
+        runtime_config = None
     else:
-        solver_use_jump_ts = bool(meta_solver.get("use_jump_ts", True))
+        # --- Legacy layout fallback (no run-dir config.json) ---
+        model_path = model_arg
+        if not model_path.exists():
+            raise SystemExit(f"--model path does not exist: {model_path}")
+        if args.input is None:
+            raise SystemExit("--input is required when --model is not a run dir")
+        prepared = str(args.input)
+        custom_py = str(args.custom) if args.custom else None
+        solver_max_steps = args.solver_max_steps or 4096
+        solver_rtol = args.solver_rtol or 1e-5
+        solver_atol = args.solver_atol or 1e-7
+        solver_use_jump_ts = not args.no_jump_ts
+        cli_targets = _split_multi_values(args.target)
+        effective_targets = cli_targets or None
+        target_source = args.target_source or "auto"
+        configured_processes = None
+        runtime_config = _load_config(args.config)
 
-    runtime_config = _load_config(args.config)
     collection = load_process_collection_json(Path(prepared))
 
     cli_processes = _split_multi_values(args.process)
-    if cli_processes:
-        eval_processes = cli_processes
-    else:
-        eval_processes = tuple(collection.processes.keys())
+    eval_processes = cli_processes or tuple(collection.processes.keys())
 
-    cli_targets = _split_multi_values(args.target)
-    effective_targets: tuple[str, ...] | None = None
-    if cli_targets:
-        effective_targets = cli_targets
-    elif meta.get("targets"):
-        effective_targets = tuple(meta["targets"])
-
-    target_source = args.target_source or meta.get("target_source") or "auto"
-
-    # training_processes in the sidecar:
-    #   * list  → the explicit subset trained on
-    #   * None or missing → default (trained on every process in the input file)
-    if "training_processes" in meta:
-        tp_value = meta["training_processes"]
-        if tp_value is None:
-            training_processes = tuple(collection.processes.keys())
-        else:
-            training_processes = tuple(tp_value)
-    else:
-        training_processes = tuple(collection.processes.keys())
+    training_processes = (
+        tuple(configured_processes)
+        if configured_processes
+        else tuple(collection.processes.keys())
+    )
 
     fwd_cfg = ForwardConfig(
         process_names=eval_processes,
@@ -874,6 +975,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
         custom_py=custom_py,
         runtime_config=runtime_config,
         training_process_names=training_processes,
+        run_config=run_config_obj,
     )
 
     table_str, csv_rows = _format_loss_table(result)
@@ -881,6 +983,8 @@ def _handle_forward(args: argparse.Namespace) -> int:
 
     if args.output_dir is not None:
         output_dir = Path(args.output_dir)
+    elif run_dir is not None:
+        output_dir = run_dir / "forward"
     else:
         output_dir = model_path.parent / "forward"
     output_dir.mkdir(parents=True, exist_ok=True)

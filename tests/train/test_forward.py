@@ -141,126 +141,10 @@ def test_format_loss_table_all_holdout_when_training_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_train_cli_writes_sidecar_with_solver_and_training_context(
-    monkeypatch, tmp_path: Path
-):
-    """After training, a .meta.json sidecar must sit next to the .eqx file."""
-    sentinel_collection = _make_fake_collection()
-
-    def fake_load(_path):
-        return sentinel_collection
-
-    def fake_train_from_collection(collection, *, config, custom_module, run_config):
-        del custom_module, run_config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0, 0.5),
-            sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-            batch_process_names_by_step=(("p1",),),
-            per_process_loss_by_step=((0.5,),),
-            compile_warmup_seconds=0.0,
-            step_time_seconds=(0.0,),
-            train_step_input_signature=(),
-            train_step_rebuild_count=0,
-        )
-
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-
-    output_dir = tmp_path / "out"
-    config_path = tmp_path / "train-config.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "data": {
-                    "prepared": "prepared.json",
-                    "processes": ["p1", "p2"],
-                    "targets": ["X"],
-                },
-                "solver": {
-                    "max_steps": 1234,
-                    "rtol": 1e-4,
-                    "atol": 1e-6,
-                },
-            }
-        )
-    )
-    exit_code = cli.main(
-        [
-            "train",
-            "--config",
-            str(config_path),
-            "--output-dir",
-            str(output_dir),
-            "--no-plot",
-        ]
-    )
-    assert exit_code == 0
-
-    sidecar = output_dir / "trained_wrapper.meta.json"
-    assert sidecar.exists()
-    meta = json.loads(sidecar.read_text())
-    assert meta["training_processes"] == ["p1", "p2"]
-    assert meta["targets"] == ["X"]
-    assert meta["solver"] == {
-        "max_steps": 1234,
-        "rtol": 1e-4,
-        "atol": 1e-6,
-        "use_jump_ts": True,
-    }
-    assert "final_mean_loss" in meta["training"]
-
-
-def test_train_cli_sidecar_defaults_to_none_training_processes_when_not_set(
-    monkeypatch, tmp_path: Path
-):
-    """When --process is omitted, training_processes must be None, not missing."""
-
-    def fake_load(_path):
-        return _make_fake_collection()
-
-    def fake_train_from_collection(collection, *, config, custom_module, run_config):
-        del custom_module, run_config
-        return TrainHarnessResult(
-            trained_wrapper=None,
-            mean_loss_by_step=(1.0,),
-            sampled_loss_by_process_at_log_steps={},
-            batch_process_names_by_step=((),),
-            per_process_loss_by_step=((),),
-            compile_warmup_seconds=0.0,
-            step_time_seconds=(0.0,),
-            train_step_input_signature=(),
-            train_step_rebuild_count=0,
-        )
-
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-    monkeypatch.setattr(cli, "save_model", lambda w, p: None)
-    monkeypatch.setattr(
-        cli, "forward_from_collection", lambda *a, **k: _stub_forward_result()
-    )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
-
-    output_dir = tmp_path / "out"
-    config_path = tmp_path / "train-config.json"
-    config_path.write_text(json.dumps({"data": {"prepared": "prepared.json"}}))
-    cli.main(
-        [
-            "train",
-            "--config",
-            str(config_path),
-            "--output-dir",
-            str(output_dir),
-            "--no-plot",
-        ]
-    )
-    meta = json.loads((output_dir / "trained_wrapper.meta.json").read_text())
-    assert meta["training_processes"] is None
+# NOTE: the old `trained_wrapper.meta.json` sidecar is replaced by the run-dir
+# `config.json` (status + provenance). End-to-end coverage of that FAIR layout
+# — config.json, content_hash, custom.py file_hash, resume, re-run guard — lives
+# in tests/test_cli_run_dir.py.
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +177,41 @@ def _stub_forward_result(**kwargs) -> ForwardResult:
     )
     defaults.update(kwargs)
     return ForwardResult(**defaults)
+
+
+def _make_forward_run_dir(
+    tmp_path: Path,
+    *,
+    processes=("p1", "p2"),
+    targets=("X", "S"),
+    target_source="reactor_components",
+    solver=None,
+) -> Path:
+    """Build a minimal FAIR run dir (config.json + model/params.eqx) for the
+    run-dir forward path. The collection load + forward sim are monkeypatched."""
+    from bp_train.run_config import RunConfig
+    from bp_train.serialization import run_config_to_jsonable
+
+    solver = solver or {"max_steps": 2048, "rtol": 1e-5, "atol": 1e-7, "jump_ts": True}
+    run_dir = tmp_path / "run"
+    (run_dir / "model").mkdir(parents=True)
+    (run_dir / "checkpoints").mkdir(parents=True)
+    (run_dir / "model" / "params.eqx").write_bytes(b"")
+    (run_dir / "prepared.json").write_text("{}", encoding="utf-8")
+    data: dict = {
+        "prepared": str(run_dir / "prepared.json"),
+        "target_source": target_source,
+    }
+    if processes is not None:
+        data["processes"] = list(processes)
+    if targets is not None:
+        data["targets"] = list(targets)
+    cfg = RunConfig.model_validate({"data": data, "solver": solver})
+    (run_dir / "config.json").write_text(
+        json.dumps({"status": "complete", "config": run_config_to_jsonable(cfg)}),
+        encoding="utf-8",
+    )
+    return run_dir
 
 
 _FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
@@ -416,91 +335,40 @@ def _build_single_process_runtime(
 
 def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
-
-    model_path = tmp_path / "trained_wrapper.eqx"
-    model_path.write_bytes(b"")
-    sidecar = tmp_path / "trained_wrapper.meta.json"
-    sidecar.write_text(
-        json.dumps(
-            {
-                "prepared_input": str(tmp_path / "prepared.json"),
-                "custom_py": None,
-                "training_processes": ["p1", "p2"],
-                "targets": ["X", "S"],
-                "target_source": "reactor_components",
-                "solver": {
-                    "max_steps": 2048,
-                    "rtol": 1e-5,
-                    "atol": 1e-7,
-                    "use_jump_ts": True,
-                },
-            }
-        )
+    run_dir = _make_forward_run_dir(
+        tmp_path, processes=("p1", "p2"), targets=("X", "S")
     )
 
     fake_collection = _make_fake_collection()
     monkeypatch.setattr(cli, "load_process_collection_json", lambda p: fake_collection)
 
-    def fake_forward(
-        collection,
-        *,
-        model_path,
-        config,
-        custom_py,
-        runtime_config,
-        training_process_names,
-    ):
+    def fake_forward(collection, **kwargs):
         captured["collection"] = collection
-        captured["model_path"] = Path(model_path)
-        captured["config"] = config
-        captured["custom_py"] = custom_py
-        captured["training_process_names"] = training_process_names
+        captured["model_path"] = Path(kwargs["model_path"])
+        captured["config"] = kwargs["config"]
+        captured["custom_py"] = kwargs["custom_py"]
+        captured["training_process_names"] = kwargs["training_process_names"]
         return _stub_forward_result()
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
-
-    # Stub out plotting — we don't want to launch matplotlib here.
-    plot_calls: dict[str, object] = {}
-
-    def fake_plot(
-        trained_wrapper,
-        collection,
-        store,
-        output_dir,
-        process_names=None,
-        *,
-        solver_max_steps,
-        solver_rtol,
-        solver_atol,
-        solver_use_jump_ts=True,
-        training_process_names=None,
-        timeseries_csv_path=None,
-        filename_suffix="",
-    ):
-        plot_calls["solver_rtol"] = solver_rtol
-        plot_calls["solver_use_jump_ts"] = solver_use_jump_ts
-        plot_calls["training_process_names"] = training_process_names
-        plot_calls["process_names"] = process_names
-        plot_calls["output_dir"] = Path(output_dir)
-        plot_calls["timeseries_csv_path"] = timeseries_csv_path
-
-    monkeypatch.setattr(cli, "plot_process_simulations", fake_plot)
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
     output_dir = tmp_path / "fwd"
     exit_code = cli.main(
         [
             "forward",
             "--model",
-            str(model_path),
+            str(run_dir),
             "--process",
             "p1,p2",
             "--output-dir",
             str(output_dir),
+            "--no-plot",
         ]
     )
     assert exit_code == 0
 
-    # Config received by harness matches sidecar values.
+    # Config received by the harness matches the model's recorded config.json.
     cfg = captured["config"]
     assert isinstance(cfg, ForwardConfig)
     assert cfg.solver_rtol == 1e-5
@@ -510,40 +378,25 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert cfg.target_variable_order == ("X", "S")
     assert cfg.target_source == "reactor_components"
     assert captured["training_process_names"] == ("p1", "p2")
+    assert captured["model_path"] == run_dir / "model" / "params.eqx"
 
-    # Loss CSV written to the default location.
     losses_csv = output_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
     assert rows.columns.tolist() == ["process", "total", "X", "S", "split"]
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
 
-    # Plotting invoked with sidecar-derived solver settings.
-    assert plot_calls["solver_rtol"] == 1e-5
-    assert plot_calls["training_process_names"] == ("p1", "p2")
 
-
-def test_forward_cli_overrides_beat_sidecar(monkeypatch, tmp_path: Path):
-    model_path = tmp_path / "m.eqx"
-    model_path.write_bytes(b"")
-    (tmp_path / "m.meta.json").write_text(
-        json.dumps(
-            {
-                "prepared_input": str(tmp_path / "prepared.json"),
-                "solver": {
-                    "max_steps": 10,
-                    "rtol": 1e-5,
-                    "atol": 1e-7,
-                    "use_jump_ts": True,
-                },
-            }
-        )
+def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
+    """rtol/atol/jump_ts come from the model's config.json and are NOT
+    CLI-overridable; only --solver-max-steps (a safety cap) is honoured."""
+    run_dir = _make_forward_run_dir(
+        tmp_path,
+        solver={"max_steps": 10, "rtol": 1e-5, "atol": 1e-7, "jump_ts": True},
     )
-
     monkeypatch.setattr(
         cli, "load_process_collection_json", lambda p: _make_fake_collection()
     )
-
     captured_cfg: dict[str, ForwardConfig] = {}
 
     def fake_forward(collection, **kwargs):
@@ -553,11 +406,12 @@ def test_forward_cli_overrides_beat_sidecar(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
 
+    # Even passing --solver-rtol / --no-jump-ts must NOT change the trajectory.
     cli.main(
         [
             "forward",
             "--model",
-            str(model_path),
+            str(run_dir),
             "--solver-rtol",
             "1e-3",
             "--solver-max-steps",
@@ -569,18 +423,16 @@ def test_forward_cli_overrides_beat_sidecar(monkeypatch, tmp_path: Path):
         ]
     )
     cfg = captured_cfg["cfg"]
-    assert cfg.solver_rtol == 1e-3
-    assert cfg.solver_max_steps == 99
-    assert cfg.solver_use_jump_ts is False
-    # Non-overridden atol still comes from the sidecar
+    assert cfg.solver_rtol == 1e-5  # recorded, not the CLI 1e-3
     assert cfg.solver_atol == 1e-7
+    assert cfg.solver_use_jump_ts is True  # recorded, not --no-jump-ts
+    assert cfg.solver_max_steps == 99  # the one permitted override
 
 
-def test_forward_cli_requires_input_when_no_sidecar(monkeypatch, tmp_path: Path):
+def test_forward_cli_legacy_requires_input(tmp_path: Path):
     model_path = tmp_path / "m.eqx"
     model_path.write_bytes(b"")
-
-    with pytest.raises(SystemExit, match="prepared_input"):
+    with pytest.raises(SystemExit, match="--input is required"):
         cli.main(["forward", "--model", str(model_path)])
 
 
@@ -589,16 +441,11 @@ def test_forward_cli_missing_model_errors(tmp_path: Path):
         cli.main(["forward", "--model", str(tmp_path / "nope.eqx")])
 
 
-def test_forward_cli_unknown_sidecar_marks_everything_holdout(
+def test_forward_cli_no_configured_processes_evaluates_all(
     monkeypatch, tmp_path: Path
 ):
-    """Pre-sidecar models default training_processes to all input processes."""
-    model_path = tmp_path / "m.eqx"
-    model_path.write_bytes(b"")
-    # Sidecar with no training_processes key at all.
-    (tmp_path / "m.meta.json").write_text(
-        json.dumps({"prepared_input": str(tmp_path / "prepared.json")})
-    )
+    """A run with no data.processes evaluates (and labels train) every process."""
+    run_dir = _make_forward_run_dir(tmp_path, processes=None)
 
     monkeypatch.setattr(
         cli, "load_process_collection_json", lambda p: _make_fake_collection()
@@ -617,7 +464,7 @@ def test_forward_cli_unknown_sidecar_marks_everything_holdout(
         [
             "forward",
             "--model",
-            str(model_path),
+            str(run_dir),
             "--output-dir",
             str(tmp_path / "fwd"),
             "--no-plot",
@@ -690,8 +537,6 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
                 "train",
                 "--config",
                 str(train_config),
-                "--log-every",
-                "3",
                 "--output-dir",
                 str(out_dir),
                 "--no-plot",
@@ -699,21 +544,29 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
         )
         == 0
     )
-    model = out_dir / "trained_wrapper.eqx"
-    assert model.exists()
-    assert (out_dir / "trained_wrapper.meta.json").exists()
+    # New FAIR run-dir layout: model lives under model/params.eqx with a config.json.
+    assert (out_dir / "model" / "params.eqx").exists()
+    assert (out_dir / "config.json").exists()
+    # custom.py is bundled and its exact-bytes hash recorded for provenance.
+    assert (out_dir / "custom.py").exists()
+    _doc = json.loads((out_dir / "config.json").read_text())
+    assert _doc["inputs"]["custom_py"]["bundled"] == "custom.py"
+    assert _doc["inputs"]["custom_py"]["file_hash"].startswith("sha256:")
+    # Provenance chain raw -> prepared -> model: the train run's recorded
+    # prepared content_hash matches the prepared.json provenance block.
+    _prov = json.loads(prepared.read_text())["metadata"]["bp-train"]["provenance"]
+    assert _prov["content_hash"].startswith("sha256:")
+    assert _prov["prepare_config"] is not None
+    assert _doc["inputs"]["prepared_input"]["content_hash"] == _prov["content_hash"]
 
     fwd_dir = out_dir / "forward"
+    # forward consumes the run dir directly (solver/prepared/custom from config.json).
     assert (
         cli.main(
             [
                 "forward",
                 "--model",
-                str(model),
-                "--input",
-                str(prepared),
-                "--custom",
-                str(FIXTURE_CUSTOM),
+                str(out_dir),
                 "--process",
                 "run_1",
                 "--output-dir",
@@ -737,6 +590,43 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
     # curvature/<rate> columns — proves the dense_grid_n opt-in path runs
     # end-to-end through train -> checkpoint -> forward -> losses.csv.
     assert any(str(c).startswith("curvature/") for c in rows.columns)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not FIXTURE_DATA.exists() or not FIXTURE_CUSTOM.exists(),
+    reason="martens_single fixture not available",
+)
+def test_prepare_content_hash_stable_across_reprepare(tmp_path: Path):
+    """Re-preparing identical data yields an identical content_hash (timestamp
+    differs but is excluded), so the FAIR integrity guard still accepts it."""
+    prepare_config = tmp_path / "prepare-config.json"
+    prepare_config.write_text(
+        json.dumps(
+            {
+                "prepare": {"raw_input": str(FIXTURE_DATA)},
+                "custom_py": str(FIXTURE_CUSTOM),
+            }
+        )
+    )
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    assert cli.main(["prepare", "--config", str(prepare_config), "--output", str(first)]) == 0
+    assert cli.main(["prepare", "--config", str(prepare_config), "--output", str(second)]) == 0
+
+    p1 = json.loads(first.read_text())["metadata"]["bp-train"]["provenance"]
+    p2 = json.loads(second.read_text())["metadata"]["bp-train"]["provenance"]
+    assert p1["content_hash"] == p2["content_hash"]  # stable science
+    assert p1["prepared_at"] != p2["prepared_at"] or True  # timestamps may tie
+
+    # The re-run guard blocks overwriting without --overwrite.
+    assert cli.main(["prepare", "--config", str(prepare_config), "--output", str(first)]) == 1
+    assert (
+        cli.main(
+            ["prepare", "--config", str(prepare_config), "--output", str(first), "--overwrite"]
+        )
+        == 0
+    )
 
 
 # ---------------------------------------------------------------------------

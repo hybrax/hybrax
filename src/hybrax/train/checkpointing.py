@@ -1,46 +1,61 @@
-"""Periodic training checkpoints: model snapshot + sidecar metadata + loss curve."""
+"""Periodic training checkpoints: resumable state + background-rendered plots.
+
+A checkpoint is the **lightweight resumable state** written synchronously
+(``params.eqx`` = trainable leaves, ``opt_state.eqx``, ``train_state.json``)
+plus per-checkpoint plots submitted to a :class:`BackgroundPlotter` so training
+never blocks on matplotlib. Retention follows ``checkpoint.keep``: ``best+latest``
+prunes every other ``step_*`` dir after each write; ``all`` keeps everything.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
+import shutil
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from .postprocessing import (
     plot_grad_norm_curve,
     plot_loss_curve,
-    save_model,
-    save_model_metadata,
+    render_process_plots_from_csv,
 )
+from .run_config import CheckpointConfig
+from .serialization import save_model, save_opt_state
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class CheckpointConfig:
-    """Configuration for periodic checkpoints during training.
+class CheckpointWriter:
+    """Write resumable state + submit plot jobs at a fixed step cadence.
 
-    ``every <= 0`` disables checkpointing entirely.
+    Driven by the pydantic :class:`~bp_train.run_config.CheckpointConfig`
+    (``every``, ``keep``) + the ``checkpoints/`` directory — no second config
+    type, no fused ``log_every``.
     """
 
-    output_dir: Path
-    every: int
-
-
-class CheckpointWriter:
-    """Write wrapper snapshot + sidecar + loss curve at a fixed step cadence."""
-
-    def __init__(self, cfg: CheckpointConfig) -> None:
+    def __init__(
+        self,
+        checkpoints_dir: Path,
+        cfg: CheckpointConfig,
+        *,
+        plotter: Any | None = None,
+        plots_enabled: bool = True,
+    ) -> None:
+        self._dir = Path(checkpoints_dir)
         self._cfg = cfg
         self._enabled = int(cfg.every) > 0
+        self._plotter = plotter
+        self._plots_enabled = bool(plots_enabled)
+        self._best_ckpt_loss = float("inf")
         if self._enabled:
-            cfg.output_dir.mkdir(parents=True, exist_ok=True)
+            self._dir.mkdir(parents=True, exist_ok=True)
             logger.info(
-                "checkpointing enabled: dir=%s every=%d steps",
-                cfg.output_dir,
+                "checkpointing enabled: dir=%s every=%d keep=%s",
+                self._dir,
                 int(cfg.every),
+                cfg.keep,
             )
 
     @property
@@ -52,91 +67,113 @@ class CheckpointWriter:
         *,
         step: int,
         wrapper: Any,
-        mean_loss_by_step: Sequence[float],
+        opt_state: Any,
+        mean_loss: float,
+        best_loss: float,
+        observations_csv: Path | None,
+        render_predictions_fn: Callable[[Path], None],
+        loss_by_step: Sequence[float],
+        grad_norm_by_step: Sequence[float] | None = None,
         per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
         target_names: Sequence[str] | None = None,
         monitor_loss_by_step: dict[int, float] | None = None,
         monitor_label: str | None = None,
-        grad_norm_by_step: Sequence[float] | None = None,
+        process_names: tuple[str, ...] | None = None,
+        training_process_names: tuple[str, ...] | None = None,
     ) -> Path | None:
-        """Write a checkpoint if ``step`` is a multiple of ``every``."""
-        if not self._enabled:
-            return None
-        if step <= 0 or step % int(self._cfg.every) != 0:
-            return None
-        return self._write(
-            step=step,
-            wrapper=wrapper,
-            mean_loss_by_step=mean_loss_by_step,
-            per_target_loss_by_step=per_target_loss_by_step,
-            target_names=target_names,
-            monitor_loss_by_step=monitor_loss_by_step,
-            monitor_label=monitor_label,
-            grad_norm_by_step=grad_norm_by_step,
-        )
+        """Write a checkpoint if ``step`` is a positive multiple of ``every``.
 
-    def publish_latest(self, step_dir: Path) -> None:
-        """Publish ``step_dir`` as the latest complete checkpoint.
-
-        Call this only after all per-step artifacts have been written.
+        Order: resumable state (sync) → predictions.csv (sync; may raise) →
+        plot jobs (background) → publish ``latest``/``best`` symlinks → prune.
+        If ``render_predictions_fn`` raises, the partial state remains but no
+        symlink is published and no pruning happens (so a failed export never
+        clobbers a good ``latest``/``best``).
         """
-        self._update_latest_symlink(step_dir)
+        if not self._enabled or step <= 0 or step % int(self._cfg.every) != 0:
+            return None
 
-    def _write(
-        self,
-        *,
-        step: int,
-        wrapper: Any,
-        mean_loss_by_step: Sequence[float],
-        per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
-        target_names: Sequence[str] | None = None,
-        monitor_loss_by_step: dict[int, float] | None = None,
-        monitor_label: str | None = None,
-        grad_norm_by_step: Sequence[float] | None = None,
-    ) -> Path:
-        step_dir = self._cfg.output_dir / f"step_{step:05d}"
-        step_dir.mkdir(parents=True, exist_ok=True)
+        d = self._dir / f"step_{step:05d}"
+        d.mkdir(parents=True, exist_ok=True)
 
-        save_model(wrapper, step_dir / "trained_wrapper.eqx")
-
-        latest_loss = (
-            float(mean_loss_by_step[-1]) if len(mean_loss_by_step) else float("nan")
-        )
-        save_model_metadata(
-            step_dir / "trained_wrapper.meta.json",
-            {
-                "step": int(step),
-                "mean_loss": latest_loss,
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
-            },
-        )
-
-        plot_loss_curve(
-            list(mean_loss_by_step),
-            step_dir / "loss_curve.png",
-            title=f"Training loss (through step {step})",
-            per_target_loss_by_step=(
-                list(per_target_loss_by_step) if per_target_loss_by_step else None
+        save_model(wrapper, d / "params.eqx")  # trainable leaves only
+        save_opt_state(opt_state, d / "opt_state.eqx")
+        (d / "train_state.json").write_text(
+            json.dumps(
+                {
+                    "step": int(step),
+                    "mean_loss": float(mean_loss),
+                    "best_loss": float(best_loss),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
+                },
+                indent=2,
             ),
-            target_names=tuple(target_names) if target_names else None,
-            monitor_loss_by_step=dict(monitor_loss_by_step) if monitor_loss_by_step else None,
-            monitor_label=monitor_label,
+            encoding="utf-8",
         )
 
-        if grad_norm_by_step:
-            plot_grad_norm_curve(
-                list(grad_norm_by_step),
-                step_dir / "grad_norm_curve.png",
-                title=f"Gradient norm (through step {step})",
+        # JAX forward sim, main process. Raising here aborts before publishing.
+        render_predictions_fn(d / "predictions.csv")
+
+        if self._plots_enabled and self._plotter is not None:
+            self._plotter.submit(
+                plot_loss_curve,
+                list(loss_by_step),
+                d / "loss_curve.png",
+                title=f"Training loss (through step {step})",
+                per_target_loss_by_step=(
+                    list(per_target_loss_by_step) if per_target_loss_by_step else None
+                ),
+                target_names=tuple(target_names) if target_names else None,
+                monitor_loss_by_step=(
+                    dict(monitor_loss_by_step) if monitor_loss_by_step else None
+                ),
+                monitor_label=monitor_label,
+            )
+            if grad_norm_by_step:
+                self._plotter.submit(
+                    plot_grad_norm_curve,
+                    list(grad_norm_by_step),
+                    d / "grad_norm_curve.png",
+                    title=f"Gradient norm (through step {step})",
+                )
+            self._plotter.submit(
+                render_process_plots_from_csv,
+                d / "predictions.csv",
+                observations_csv if observations_csv is not None else d / "no_obs.csv",
+                d,
+                process_names=process_names,
+                training_process_names=training_process_names,
             )
 
-        return step_dir
+        self._update_symlink("latest", d)
+        if float(mean_loss) <= self._best_ckpt_loss:
+            self._best_ckpt_loss = float(mean_loss)
+            self._update_symlink("best", d)
 
-    def _update_latest_symlink(self, step_dir: Path) -> None:
-        latest = self._cfg.output_dir / "latest"
+        if self._cfg.keep == "best+latest":
+            self._prune_except({"latest", "best"})
+        return d
+
+    def _update_symlink(self, name: str, step_dir: Path) -> None:
+        link = self._dir / name
         try:
-            if latest.is_symlink() or latest.exists():
-                latest.unlink()
-            latest.symlink_to(step_dir.name)
+            if link.is_symlink() or link.exists():
+                link.unlink()
+            link.symlink_to(step_dir.name)
         except OSError as exc:
-            logger.warning("could not update 'latest' symlink at %s: %s", latest, exc)
+            logger.warning("could not update %r symlink at %s: %s", name, link, exc)
+
+    def _prune_except(self, keep_links: set[str]) -> None:
+        """Remove every ``step_*`` dir not pointed to by a kept symlink."""
+        keep_targets: set[str] = set()
+        for name in keep_links:
+            link = self._dir / name
+            if link.is_symlink():
+                keep_targets.add(Path(link.resolve()).name)
+        for child in self._dir.iterdir():
+            if child.is_symlink() or not child.is_dir():
+                continue
+            if not child.name.startswith("step_"):
+                continue
+            if child.name in keep_targets:
+                continue
+            shutil.rmtree(child, ignore_errors=True)

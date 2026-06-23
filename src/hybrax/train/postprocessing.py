@@ -18,8 +18,14 @@ import pandas as pd
 from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
 from bp_format.mechanistic import build_rhs_ode
 
+from .serialization import (  # re-exported: canonical home is serialization.py
+    load_trained_wrapper,
+    save_model,
+)
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
+
+__all_serialization__ = ["save_model", "load_trained_wrapper"]
 
 logger = logging.getLogger(__name__)
 
@@ -398,21 +404,6 @@ def _write_predictions_csv(
     logger.info("timeseries csv saved to %s", output_path)
 
 
-def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
-    """Serialize a trained wrapper to disk."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    eqx.tree_serialise_leaves(path, wrapper)
-    logger.info("trained model saved to %s", path)
-
-
-def load_trained_wrapper(
-    path: str | Path, *, template: HybridOdeWrapper
-) -> HybridOdeWrapper:
-    """Deserialize a trained wrapper from disk using ``template`` as pytree shape."""
-    return eqx.tree_deserialise_leaves(Path(path), like=template)
-
-
 def save_model_metadata(path: str | Path, meta: dict[str, Any]) -> None:
     """Write a small JSON sidecar next to a saved model."""
     path = Path(path)
@@ -681,6 +672,151 @@ def export_predictions_csv(
         solver_atol=solver_atol,
         solver_use_jump_ts=solver_use_jump_ts,
     )
+
+
+def _measured_timeseries(
+    process: Any, variable: str, *, use_rmc: bool
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Return ``(times, values)`` for a measured target, or None if unavailable.
+
+    Reads RMC targets from ``reactor_medium.components`` and PV targets from
+    ``process_variables``; static (timeless) measurements are skipped.
+    """
+    from bp_format.dataclasses import TimeSeries
+
+    if use_rmc:
+        comp = process.reactor_medium.components.get(variable)
+        src = comp.concentration if comp is not None else None
+    else:
+        pv = process.process_variables.get(variable)
+        src = pv.values if pv is not None else None
+    if src is None or not isinstance(src, TimeSeries):
+        return None
+    return np.asarray(src.times, dtype=float), np.asarray(src.values, dtype=float)
+
+
+def export_observations_csv(
+    collection: BioProcessCollection,
+    store: TrainingDataStore,
+    output_path: str | Path,
+    process_names: tuple[str, ...] | None = None,
+) -> None:
+    """Write measured target points (long format) for plot overlays.
+
+    Columns: ``process, variable, t, value`` — one row per (process, measured
+    variable, measurement time). Written once per run; consumed by
+    :func:`render_process_plots_from_csv` in the background plot worker.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    selected = tuple(process_names) if process_names else tuple(store.process_order)
+    measured_names = tuple(store.name_measured)
+    use_rmc = bool(store.name_measured_RMCs)
+    rows: list[tuple[str, str, float, float]] = []
+    for process_name in selected:
+        process = collection.processes[process_name]
+        for variable in measured_names:
+            ts = _measured_timeseries(process, variable, use_rmc=use_rmc)
+            if ts is None:
+                continue
+            times, values = ts
+            for t, v in zip(times, values, strict=False):
+                rows.append((process_name, variable, float(t), float(v)))
+    pd.DataFrame(rows, columns=["process", "variable", "t", "value"]).to_csv(
+        output_path, index=False
+    )
+    logger.info("observations csv saved to %s", output_path)
+
+
+def render_process_plots_from_csv(
+    predictions_csv: str | Path,
+    observations_csv: str | Path,
+    output_dir: str | Path,
+    *,
+    process_names: tuple[str, ...] | None = None,
+    target_names: tuple[str, ...] | None = None,
+    training_process_names: tuple[str, ...] | None = None,
+) -> None:
+    """Render per-process prediction-vs-observation plots from CSVs **only**.
+
+    Pure numpy/pandas/matplotlib — **NO jax / bp_train heavy imports**. Picklable,
+    safe to call inside a ``spawn`` background worker. Writes ``<process>.png``
+    per process: predicted species trajectories (``c_<name>``) with measured
+    overlays, plus a ``V_real`` panel when present.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    del target_names  # accepted for API symmetry; species inferred from columns
+
+    predictions_csv = Path(predictions_csv)
+    observations_csv = Path(observations_csv)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pred = pd.read_csv(predictions_csv)
+    if observations_csv.is_file():
+        obs = pd.read_csv(observations_csv)
+    else:
+        obs = pd.DataFrame(columns=["process", "variable", "t", "value"])
+
+    species_cols = [c for c in pred.columns if c.startswith("c_")]
+    procs = (
+        tuple(process_names)
+        if process_names is not None
+        else tuple(dict.fromkeys(pred["process"].tolist()))
+    )
+    training_set = (
+        set(training_process_names) if training_process_names is not None else None
+    )
+
+    for process_name in procs:
+        pp = pred[pred["process"] == process_name]
+        if pp.empty:
+            continue
+        po = obs[obs["process"] == process_name]
+        panels = list(species_cols)
+        if "V_real" in pred.columns:
+            panels.append("V_real")
+        if not panels:
+            continue
+        n_panels = len(panels)
+        ncols = min(n_panels, 2)
+        nrows = (n_panels + ncols - 1) // ncols
+        fig, axes = plt.subplots(
+            nrows, ncols, squeeze=False, figsize=(5.0 * ncols, 3.0 * nrows)
+        )
+        axes_flat = list(axes.flat)
+        for ax, col in zip(axes_flat, panels):
+            ax.plot(pp["t"], pp[col], "-", color="C0", lw=1.5, label="integrated")
+            if col.startswith("c_"):
+                variable = col[2:]
+                measured = po[po["variable"] == variable]
+                if not measured.empty:
+                    ax.scatter(
+                        measured["t"],
+                        measured["value"],
+                        s=16,
+                        color="black",
+                        zorder=5,
+                        label="measured",
+                    )
+            ax.set_title(col, fontsize="small")
+            ax.set_xlabel("time")
+            ax.grid(True, alpha=0.3)
+            if ax.get_legend_handles_labels()[1]:
+                ax.legend(fontsize="small")
+        for ax in axes_flat[n_panels:]:
+            ax.set_visible(False)
+        split = ""
+        if training_set is not None:
+            split = " (train)" if process_name in training_set else " (holdout)"
+        fig.suptitle(f"{process_name}{split}")
+        fig.tight_layout()
+        fig.savefig(output_dir / f"{process_name}.png", dpi=150)
+        plt.close(fig)
 
 
 def plot_process_simulations(

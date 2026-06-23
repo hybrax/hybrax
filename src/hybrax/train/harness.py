@@ -22,6 +22,7 @@ from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection_json
 
 from .checkpointing import CheckpointConfig, CheckpointWriter
+from .plotting_worker import BackgroundPlotter
 from .defaults import (
     DefaultLossModule,
     default_build_loss_module,
@@ -83,10 +84,17 @@ class TrainHarnessConfig:
     metrics_csv: str | None = None
     metrics_jsonl: str | None = None
     log_decimals: int = 4
-    log_header_every: int = 30
-    # Checkpointing (periodic wrapper snapshot + loss curve).
-    # When set, cadence ties to log_every; pass None to disable.
+    log_header_every: int = 10
+    # Checkpointing. ``checkpoint_dir`` is the ``checkpoints/`` directory;
+    # ``checkpoint_every`` is the snapshot cadence (distinct from ``log_every``);
+    # ``checkpoint_keep`` is the retention policy ("best+latest"|"all").
+    # ``plots`` gates background plot rendering; ``observations_csv`` (when set)
+    # provides measured-point overlays for per-checkpoint process plots.
     checkpoint_dir: Path | None = None
+    checkpoint_every: int = 0
+    checkpoint_keep: str = "best+latest"
+    plots: bool = True
+    observations_csv: Path | None = None
     # Optional monitor / validation set: a tuple of process names whose loss
     # is evaluated every `log_every` steps with the current wrapper. Diagnostic
     # only — never drives optimizer updates. None disables the monitor.
@@ -115,6 +123,12 @@ class TrainHarnessResult:
     monitor_loss_by_log_step: dict[int, float] = dataclasses.field(default_factory=dict)
     monitor_label: str | None = None
     grad_norm_by_step: tuple[float, ...] = ()
+    # Final optimizer state — used by the CLI to write model/opt_state.eqx when
+    # checkpointing is disabled, and available for programmatic resume.
+    optimizer_state: Any = None
+    # Total steps completed (== config.steps for a full run; the absolute step
+    # index reached when resuming).
+    steps_completed: int = 0
 
 
 def _ensure_process_names(
@@ -191,6 +205,67 @@ def _build_optimizer(
         transforms.append(optax.clip_by_global_norm(float(grad_clip_norm)))
     transforms.append(base)
     return optax.chain(*transforms)
+
+
+def build_optimizer_for_run(
+    *,
+    custom_module,
+    custom_cfg: Any,
+    train_cfg: TrainHarnessConfig,
+) -> tuple[optax.GradientTransformation, TrainHarnessConfig]:
+    """Resolve the optimizer exactly as :func:`train_from_collection` does.
+
+    Applies the optional ``build_learning_rate`` + ``build_optimizer`` hooks,
+    falling back to the default chain. Returns ``(optimizer, train_cfg)`` where
+    ``train_cfg`` carries any hook-overridden learning rate. Shared with
+    ``serialization.load_run`` so a resumed run rebuilds a byte-for-structure
+    identical optimizer state template.
+    """
+    lr_hook = get_hook(custom_module, "build_learning_rate", None)
+    if lr_hook is not None:
+        train_cfg = dataclasses.replace(
+            train_cfg, learning_rate=lr_hook(custom_cfg, train_cfg)
+        )
+    optimizer_hook = get_hook(custom_module, "build_optimizer", None)
+    if optimizer_hook is not None:
+        optimizer = optimizer_hook(custom_cfg, train_cfg)
+    else:
+        optimizer = _build_optimizer(
+            train_cfg.optimizer_name,
+            train_cfg.learning_rate,
+            grad_clip_norm=train_cfg.grad_clip_norm,
+        )
+    return optimizer, train_cfg
+
+
+def _read_metrics_history(
+    metrics_csv: str | Path,
+) -> tuple[list[float], list[float]]:
+    """Read prior ``(mean_loss, grad_norm)`` series from an existing metrics.csv.
+
+    Used to pre-seed the cumulative plot curves on resume so they stay
+    continuous. Returns ``([], [])`` when the file is absent or unreadable.
+    """
+    import pandas as pd
+
+    path = Path(metrics_csv)
+    if not path.is_file():
+        return [], []
+    try:
+        df = pd.read_csv(path)
+    except Exception:  # noqa: BLE001 - pre-seed is best-effort
+        return [], []
+    means = (
+        [float(v) for v in df["mean_loss"].tolist()]
+        if "mean_loss" in df.columns
+        else []
+    )
+    grads = (
+        [float(v) for v in df["grad_norm"].dropna().tolist()]
+        if "grad_norm" in df.columns
+        else []
+    )
+    return means, grads
 
 
 def _resolve_effective_batch_size(
@@ -500,6 +575,12 @@ def forward_from_collection(
     cfg = config or ForwardConfig()
     if custom_module is None:
         custom_module = load_custom_module(custom_py)
+    if run_config is not None:
+        # When the RunConfig was reconstructed from config.json, custom is a raw
+        # dict; re-wrap it so hooks get the typed object (config.custom.X).
+        from .run_config import reresolve_custom
+
+        run_config = reresolve_custom(run_config, custom_module)
     custom_cfg = (
         run_config
         if run_config is not None
@@ -665,6 +746,9 @@ def train_collection(
     collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
     optimizer: optax.GradientTransformation | None = None,
+    start_step: int = 0,
+    initial_trainable_params: Any = None,
+    initial_optimizer_state: Any = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
 
@@ -778,7 +862,20 @@ def train_collection(
             cfg.learning_rate,
             grad_clip_norm=float(cfg.grad_clip_norm),
         )
+    # Resume: graft saved leaves onto the freshly-built pytree structures. We
+    # transplant array leaves (not the source pytrees) so static aux carried in
+    # the treedef — e.g. RhsOde's rebuilt lambdas — comes from THIS build and
+    # avoids treedef-identity mismatches across separate reconstructions.
+    if initial_trainable_params is not None:
+        _, fresh_treedef = jtu.tree_flatten(trainable_params)
+        init_leaves, _ = jtu.tree_flatten(initial_trainable_params)
+        trainable_params = jtu.tree_unflatten(fresh_treedef, init_leaves)
+        wrapper = eqx.combine(trainable_params, trainable_static)
     optimizer_state = optimizer.init(trainable_params)
+    if initial_optimizer_state is not None:
+        _, fresh_os_treedef = jtu.tree_flatten(optimizer_state)
+        init_os_leaves, _ = jtu.tree_flatten(initial_optimizer_state)
+        optimizer_state = jtu.tree_unflatten(fresh_os_treedef, init_os_leaves)
     train_step_input_signature = summarize_train_step_input_signature(
         wrapper,
         trainable_params,
@@ -894,20 +991,36 @@ def train_collection(
         float(warmup_loss),
     )
 
-    checkpoint_writer = CheckpointWriter(
-        CheckpointConfig(
-            output_dir=Path(cfg.checkpoint_dir)
-            if cfg.checkpoint_dir is not None
-            else Path("."),
-            every=int(cfg.log_every) if cfg.checkpoint_dir is not None else 0,
-        )
+    checkpoint_enabled = (
+        cfg.checkpoint_dir is not None and int(cfg.checkpoint_every) > 0
     )
+    plotter = (
+        BackgroundPlotter()
+        if (checkpoint_enabled and bool(cfg.plots))
+        else None
+    )
+    checkpoint_writer = CheckpointWriter(
+        Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
+        CheckpointConfig(
+            every=int(cfg.checkpoint_every) if checkpoint_enabled else 0,
+            keep=str(cfg.checkpoint_keep),
+        ),
+        plotter=plotter,
+        plots_enabled=bool(cfg.plots),
+    )
+    # Cumulative plot history. On resume, pre-seed from the existing metrics.csv
+    # so the per-checkpoint curves stay continuous across the restart.
     loss_so_far: list[float] = []
     per_target_loss_so_far: list[tuple[float, ...]] = []
     grad_norm_so_far: list[float] = []
-    # Cumulative monitor-loss history mirroring `loss_so_far`, threaded to
-    # CheckpointWriter so every per-step loss_curve.png can plot it.
     monitor_loss_so_far: dict[int, float] = {}
+    best_loss = float("inf")
+    if start_step > 0 and cfg.metrics_csv is not None:
+        prior_means, prior_grads = _read_metrics_history(cfg.metrics_csv)
+        loss_so_far.extend(prior_means)
+        grad_norm_so_far.extend(prior_grads)
+        if prior_means:
+            best_loss = min(prior_means)
 
     # Optional monitor (validation) batch — diagnostic only, recomputed at
     # log-step cadence with the current wrapper. JIT compiles once on first
@@ -934,14 +1047,16 @@ def train_collection(
                 store.controls_store.step_ts_lengths[monitor_batch.process_indices],
             )
 
-    with RunLogger(
+    try:
+      with RunLogger(
         log_every=int(cfg.log_every),
         log_process_losses=bool(cfg.log_process_losses),
         metrics_csv=cfg.metrics_csv,
         metrics_jsonl=cfg.metrics_jsonl,
         log_decimals=int(cfg.log_decimals),
         log_header_every=int(cfg.log_header_every),
-    ) as run_log:
+        resume=start_step > 0,
+      ) as run_log:
         run_log.start(
             target_names=_target_labels,
             process_names=selected_processes,
@@ -949,7 +1064,7 @@ def train_collection(
             compile_warmup_seconds=float(warmup_compile_seconds),
         )
 
-        for step_index in range(cfg.steps):
+        for step_index in range(start_step, cfg.steps):
             batch_indices = batch_index_stream[step_index]
             batch = store.gather_batch(batch_indices)
             current_signature = summarize_train_step_input_signature(
@@ -1037,38 +1152,52 @@ def train_collection(
             grad_norm_so_far.append(float(grad_norm))
             if monitor_loss_value is not None:
                 monitor_loss_so_far[step_index + 1] = monitor_loss_value
-            checkpoint_step_dir = checkpoint_writer.maybe_write(
-                step=step_index + 1,
-                wrapper=wrapper,
-                mean_loss_by_step=loss_so_far,
-                per_target_loss_by_step=per_target_loss_so_far,
-                target_names=tuple(_target_labels),
-                monitor_loss_by_step=monitor_loss_so_far
-                if monitor_loss_so_far
-                else None,
-                monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
-                grad_norm_by_step=grad_norm_so_far,
-            )
-            if checkpoint_step_dir is not None:
+            best_loss = min(best_loss, float(loss))
+
+            def _render_predictions(path: Path, _wrapper=wrapper) -> None:
                 export_predictions_csv(
-                    wrapper,
+                    _wrapper,
                     collection,
                     store,
-                    checkpoint_step_dir / "predictions.csv",
+                    path,
                     process_names=selected_processes,
                     solver_max_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
                     solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
                 )
-                checkpoint_writer.publish_latest(checkpoint_step_dir)
+
+            checkpoint_writer.maybe_write(
+                step=step_index + 1,
+                wrapper=wrapper,
+                opt_state=optimizer_state,
+                mean_loss=float(loss),
+                best_loss=best_loss,
+                observations_csv=cfg.observations_csv,
+                render_predictions_fn=_render_predictions,
+                loss_by_step=loss_so_far,
+                grad_norm_by_step=grad_norm_so_far,
+                per_target_loss_by_step=per_target_loss_so_far,
+                target_names=tuple(_target_labels),
+                monitor_loss_by_step=(
+                    monitor_loss_so_far if monitor_loss_so_far else None
+                ),
+                monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
+                process_names=selected_processes,
+                training_process_names=selected_processes,
+            )
 
         history = run_log.finalize()
+    finally:
+        if plotter is not None:
+            plotter.close()
 
     return TrainHarnessResult(
         trained_wrapper=wrapper,
         compile_warmup_seconds=float(warmup_compile_seconds),
         train_step_input_signature=train_step_input_signature,
+        optimizer_state=optimizer_state,
+        steps_completed=int(cfg.steps),
         **history,
     )
 
@@ -1149,17 +1278,12 @@ def train_from_collection(
         collection=collection,
         scale_kwargs=scale_kwargs,
     )
-    # Call optional build_learning_rate hook (overrides configured learning_rate).
-    lr_hook = get_hook(custom_module, "build_learning_rate", None)
-    if lr_hook is not None:
-        lr = lr_hook(custom_cfg, train_cfg)
-        train_cfg = dataclasses.replace(train_cfg, learning_rate=lr)
-
-    # Call optional build_optimizer hook (fully owns optimizer construction;
-    # consumes train_cfg.learning_rate, which is already the schedule above).
-    optimizer_hook = get_hook(custom_module, "build_optimizer", None)
-    optimizer = (
-        optimizer_hook(custom_cfg, train_cfg) if optimizer_hook is not None else None
+    # Resolve the optimizer (build_learning_rate + build_optimizer hooks, else
+    # the default chain). Shared with serialization.load_run for resume.
+    optimizer, train_cfg = build_optimizer_for_run(
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
+        train_cfg=train_cfg,
     )
 
     loss_module = _build_loss_module(
@@ -1177,6 +1301,117 @@ def train_from_collection(
         collection=collection,
         config=train_cfg,
         optimizer=optimizer,
+    )
+
+
+def train_harness_config_from_run_config(
+    cfg: RunConfig,
+    *,
+    run_dir: Path,
+    steps: int | None = None,
+) -> TrainHarnessConfig:
+    """Map a typed :class:`RunConfig` + run-directory layout to the harness
+    config, wiring the FAIR run-dir artifact paths (metrics.csv, checkpoints/,
+    observations.csv) and the checkpoint/output/logging sections. Shared by the
+    CLI train path and :func:`resume_run`.
+    """
+    data = cfg.data
+    return TrainHarnessConfig(
+        process_names=data.processes if data is not None else None,
+        target_variable_order=data.targets if data is not None else None,
+        target_source=data.target_source if data is not None else TARGET_SOURCE_AUTO,
+        steps=int(steps if steps is not None else cfg.train.steps),
+        batch_size=cfg.train.batch_size,
+        shuffle_batches=cfg.train.shuffle,
+        batch_seed=cfg.train.batch_seed,
+        optimizer_name=cfg.train.optimizer,
+        learning_rate=cfg.train.learning_rate,
+        grad_clip_norm=cfg.train.grad_clip_norm,
+        seed=cfg.train.seed,
+        log_every=cfg.logging.every,
+        solver_max_steps=cfg.solver.max_steps,
+        solver_rtol=cfg.solver.rtol,
+        solver_atol=cfg.solver.atol,
+        solver_use_jump_ts=cfg.solver.jump_ts,
+        log_decimals=cfg.logging.decimals,
+        log_header_every=cfg.logging.header_every,
+        metrics_csv=str(Path(run_dir) / "metrics.csv"),
+        checkpoint_dir=Path(run_dir) / "checkpoints",
+        checkpoint_every=cfg.checkpoint.every,
+        checkpoint_keep=cfg.checkpoint.keep,
+        plots=cfg.output.plots,
+        observations_csv=Path(run_dir) / "observations.csv",
+    )
+
+
+def resume_run(
+    run_dir: str | Path,
+    *,
+    steps_override: int | None = None,
+) -> TrainHarnessResult:
+    """Resume training in place from a run directory.
+
+    Delegates reconstruction to the single ``serialization`` path (integrity
+    guarded), restores trainable params + optimizer state from ``checkpoints/
+    latest``, and continues from the recorded step, appending to metrics.csv.
+    ``steps_override`` may extend the original target.
+    """
+    from .serialization import (
+        checkpoint_params_path,
+        load_opt_state,
+        load_trained_wrapper,
+        read_json,
+        read_run_config_json,
+        reconstruct_run,
+    )
+
+    run_dir = Path(run_dir)
+    cfg, _document = read_run_config_json(run_dir / "config.json")
+    reaction_module, loss_module, store, collection = reconstruct_run(run_dir, cfg)
+    template, _extras = _build_template_wrapper(
+        store,
+        reaction_module=reaction_module,
+        collection=collection,
+        selected_processes=tuple(store.process_order),
+        loss_module=loss_module,
+    )
+    params_path = checkpoint_params_path(run_dir, "latest")
+    wrapper = load_trained_wrapper(params_path, template=template)
+    trainable_params, _static = partition_trainable(wrapper)
+
+    steps = int(steps_override) if steps_override is not None else int(cfg.train.steps)
+    train_cfg = train_harness_config_from_run_config(cfg, run_dir=run_dir, steps=steps)
+
+    bundled_custom = run_dir / "custom.py"
+    custom_module = (
+        load_custom_module(bundled_custom) if bundled_custom.is_file() else None
+    )
+    # Re-wrap cfg.custom (a raw dict from config.json) so a build_optimizer hook
+    # sees the same typed config object a fresh run would.
+    from .run_config import reresolve_custom
+
+    cfg = reresolve_custom(cfg, custom_module)
+    optimizer, train_cfg = build_optimizer_for_run(
+        custom_module=custom_module, custom_cfg=cfg, train_cfg=train_cfg
+    )
+    opt_template = optimizer.init(trainable_params)
+    opt_state = load_opt_state(
+        params_path.with_name("opt_state.eqx"), template=opt_template
+    )
+
+    start_step = int(
+        read_json(run_dir / "checkpoints" / "latest" / "train_state.json")["step"]
+    )
+    return train_collection(
+        store,
+        reaction_module=reaction_module,
+        loss_module=loss_module,
+        collection=collection,
+        config=train_cfg,
+        optimizer=optimizer,
+        start_step=start_step,
+        initial_trainable_params=trainable_params,
+        initial_optimizer_state=opt_state,
     )
 
 

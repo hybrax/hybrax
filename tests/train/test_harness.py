@@ -813,7 +813,12 @@ def test_train_from_collection_uses_default_optimizer_when_no_hook(monkeypatch):
     )
 
     assert result == "train-result"
-    assert captured["optimizer"] is None
+    # Optimizer construction is centralized in build_optimizer_for_run (shared
+    # with serialization.load_run for resume): with no build_optimizer hook the
+    # default chain is built eagerly and passed concretely (no longer None).
+    import optax
+
+    assert isinstance(captured["optimizer"], optax.GradientTransformation)
 
 
 def test_build_loss_module_discovers_custom_hook():

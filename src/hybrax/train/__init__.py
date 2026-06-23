@@ -52,6 +52,16 @@ _EXPORTS = {
     "compute_per_process_metrics": "loo_metrics",
     "load_raw_collection": "prepare",
     "prepare_artifact": "prepare",
+    "load_run": "serialization",
+    "load_params": "serialization",
+    "reconstruct_run": "serialization",
+    "LoadedRun": "serialization",
+    "save_model": "serialization",
+    "load_trained_wrapper": "serialization",
+    "save_opt_state": "serialization",
+    "load_opt_state": "serialization",
+    "content_hash": "serialization",
+    "file_hash": "serialization",
 }
 
 __all__ = list(_EXPORTS)

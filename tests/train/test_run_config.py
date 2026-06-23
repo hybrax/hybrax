@@ -166,6 +166,27 @@ def test_prepare_get_custom_config_hook_receives_prepare_config(tmp_path: Path) 
     assert loaded.config.custom == {"raw": {}, "raw_input": tmp_path / "raw.json"}
 
 
+def test_reresolve_custom_rewraps_dict_for_attribute_access():
+    """A custom section reconstructed from config.json comes back as a raw dict;
+    reresolve_custom re-wraps it so hooks can use attribute access (the
+    resume/load_run/forward path that crashed with
+    'dict object has no attribute target_loss_weights')."""
+    from bp_train.run_config import RunConfig, reresolve_custom
+
+    cfg = RunConfig.model_validate(
+        {
+            "data": {"prepared": "prepared.json"},
+            "custom": {"target_loss_weights": {"biomass": 10.0}},
+        }
+    )
+    assert isinstance(cfg.custom, dict)  # raw after JSON round-trip
+    resolved = reresolve_custom(cfg, None)  # no module -> DefaultCustomConfig
+    assert resolved.custom.target_loss_weights == {"biomass": 10.0}
+    # No-op when there is nothing to resolve.
+    none_cfg = RunConfig.model_validate({"data": {"prepared": "p"}})
+    assert reresolve_custom(none_cfg, None).custom is None
+
+
 def test_relative_typed_paths_resolve_relative_to_config_parent(
     tmp_path: Path,
 ) -> None:

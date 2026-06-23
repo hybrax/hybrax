@@ -12,10 +12,29 @@ from pydantic import BaseModel, ConfigDict, Field
 from bp_train.utils import load_custom_module
 
 _FROZEN = ConfigDict(extra="forbid", frozen=True)
-_ALLOWED_TOP_LEVEL = {"data", "custom_py", "train", "solver", "prepare", "custom"}
+_ALLOWED_TOP_LEVEL = {
+    "data",
+    "custom_py",
+    "train",
+    "solver",
+    "checkpoint",
+    "output",
+    "logging",
+    "prepare",
+    "custom",
+}
 _COMMAND_SECTIONS = {
     "prepare": {"prepare", "custom_py", "custom"},
-    "train": {"data", "train", "solver", "custom_py", "custom"},
+    "train": {
+        "data",
+        "train",
+        "solver",
+        "checkpoint",
+        "output",
+        "logging",
+        "custom_py",
+        "custom",
+    },
 }
 
 
@@ -52,6 +71,26 @@ class SolverConfig(ConfigBase):
     jump_ts: bool = True
 
 
+class CheckpointConfig(ConfigBase):
+    every: int = Field(10, ge=0)  # 0 disables; DISTINCT from logging.every
+    keep: Literal["best+latest", "all"] = "best+latest"
+    resume: Path | None = None
+
+
+class OutputConfig(ConfigBase):
+    dir: Path = Path("output")
+    plots: bool = True
+
+
+class LoggingConfig(ConfigBase):
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    every: int = Field(10, gt=0)
+    decimals: int = Field(4, ge=0)
+    # Re-emit the console table header every N rows so the column labels (loss +
+    # per-target names) stay visible on a long scroll; 0 disables.
+    header_every: int = Field(10, ge=0)
+
+
 class PrepareConfig(ConfigBase):
     raw_input: Path
     case_study: str | None = None
@@ -70,6 +109,9 @@ class RunConfig(ConfigBase):
     custom_py: Path | None = None
     train: TrainConfig = Field(default_factory=TrainConfig)
     solver: SolverConfig = Field(default_factory=SolverConfig)
+    checkpoint: CheckpointConfig = Field(default_factory=CheckpointConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     prepare: PrepareConfig | None = None
     custom: Any | None = None
 
@@ -165,6 +207,15 @@ def _resolve_config_paths(config: RunConfig, *, base_dir: Path) -> RunConfig:
                 )
             }
         )
+    updates["output"] = config.output.model_copy(
+        update={"dir": _resolve_path(config.output.dir, base_dir=base_dir)}
+    )
+    if config.checkpoint.resume is not None:
+        updates["checkpoint"] = config.checkpoint.model_copy(
+            update={
+                "resume": _resolve_path(config.checkpoint.resume, base_dir=base_dir)
+            }
+        )
     if not updates:
         return config
     return config.model_copy(update=updates)
@@ -205,3 +256,22 @@ def _resolve_custom(
     if raw_custom is None:
         return None
     return DefaultCustomConfig.model_validate(raw_custom)
+
+
+def reresolve_custom(
+    config: RunConfig, custom_module: ModuleType | None
+) -> RunConfig:
+    """Re-resolve ``config.custom`` (a raw dict loaded from a run's config.json)
+    into the typed object the custom hooks expect.
+
+    A fresh run wraps the raw ``custom`` section via ``get_custom_config`` (or
+    ``DefaultCustomConfig``) so hooks can use attribute access
+    (``config.custom.target_loss_weights``). When a run is reconstructed from
+    config.json (resume / load_run / forward), ``custom`` comes back as a plain
+    dict; this restores the same typed wrapper so reconstruction matches a fresh
+    run. No-op if ``custom`` is already resolved (not a dict) or absent.
+    """
+    if not isinstance(config.custom, dict):
+        return config
+    resolved = _resolve_custom(config.custom, config, custom_module)
+    return config.model_copy(update={"custom": resolved})

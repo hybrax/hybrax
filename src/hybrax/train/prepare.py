@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from .defaults import (
     default_transform_process_collection,
 )
 from .run_config import LoadedRunConfig, PrepareConfig, RunConfig
+from .serialization import content_hash, environment_versions
 from .utils import get_hook
 from .validation import (
     ensure_prepared_training_semantics,
@@ -452,8 +454,24 @@ def prepare_artifact(
             },
         }
 
+    # FAIR provenance sub-block — excluded from content_hash (see
+    # serialization._VOLATILE_NS_KEYS), so re-preparing identical data yields an
+    # identical content_hash. Carries the resolved PrepareConfig, the custom.py
+    # file hash, the raw-input hash, package versions, and a timestamp.
+    bp_train_metadata["provenance"] = {
+        "prepared_at": _utc_now_iso(),
+        "prepare_config": json.loads(prepare.model_dump_json()),
+        "custom_py_file_hash": (f"sha256:{custom_hash}" if custom_hash else None),
+        "raw_input_sha256": (f"sha256:{source_hash}" if source_hash else None),
+        "environment": environment_versions(),
+    }
+
     existing_metadata[METADATA_NAMESPACE] = bp_train_metadata
     collection.metadata = existing_metadata
+
+    # Record the prepared collection's own stable content_hash (computed with the
+    # provenance block excluded, so it is self-consistent and re-prepare-stable).
+    bp_train_metadata["provenance"]["content_hash"] = content_hash(collection)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     save_process_collection_json(collection, output_path)

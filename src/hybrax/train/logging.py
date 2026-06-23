@@ -78,7 +78,7 @@ class _ConsoleTableFormatter:
         target_names: Sequence[str],
         total_steps: int,
         decimals: int = 4,
-        header_every: int = 30,
+        header_every: int = 10,
     ) -> None:
         self._decimals = int(decimals)
         self._header_every = int(header_every)
@@ -229,9 +229,11 @@ class RunLogger:
         metrics_csv: str | Path | None = None,
         metrics_jsonl: str | Path | None = None,
         log_decimals: int = 4,
-        log_header_every: int = 30,
+        log_header_every: int = 10,
         logger_name: str = "bp_train.harness",
+        resume: bool = False,
     ) -> None:
+        self._resume = bool(resume)
         self._log_every = max(int(log_every), 1)
         self._log_process_losses = bool(log_process_losses)
         self._metrics_csv_path = Path(metrics_csv) if metrics_csv is not None else None
@@ -293,9 +295,15 @@ class RunLogger:
 
         if self._metrics_csv_path is not None:
             self._metrics_csv_path.parent.mkdir(parents=True, exist_ok=True)
-            fieldnames = list(_csv_row_dict(_DUMMY_RECORD).keys())
-            pd.DataFrame(columns=fieldnames).to_csv(self._metrics_csv_path, index=False)
-            self._csv_header_written = True
+            if self._resume and self._metrics_csv_path.is_file():
+                # Resume: append to the existing metrics.csv (keep prior rows).
+                self._csv_header_written = True
+            else:
+                fieldnames = list(_csv_row_dict(_DUMMY_RECORD).keys())
+                pd.DataFrame(columns=fieldnames).to_csv(
+                    self._metrics_csv_path, index=False
+                )
+                self._csv_header_written = True
 
         if self._metrics_jsonl_path is not None:
             self._metrics_jsonl_path.parent.mkdir(parents=True, exist_ok=True)

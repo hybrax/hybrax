@@ -80,130 +80,69 @@ def test_prepare_cli_rejects_legacy_experiment_flags(flag: str) -> None:
         cli.main(args)
 
 
-def test_train_cli_maps_run_config_to_harness(monkeypatch, tmp_path: Path):
-    captured: dict[str, object] = {}
-    prepared = tmp_path / "prepared.json"
-    config_path = tmp_path / "config.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "data": {
-                    "prepared": "prepared.json",
-                    "processes": ["p1", "p2"],
-                    "targets": ["X", "P"],
-                    "target_source": "reactor_components",
-                },
-                "train": {
-                    "steps": 7,
-                    "seed": 12,
-                    "optimizer": "sgd",
-                    "learning_rate": 0.02,
-                    "grad_clip_norm": 3.0,
-                    "batch_size": 4,
-                    "shuffle": False,
-                    "batch_seed": 99,
-                },
-                "solver": {
-                    "max_steps": 250000,
-                    "rtol": 1e-4,
-                    "atol": 1e-6,
-                    "jump_ts": False,
-                },
-            }
-        )
+def test_train_harness_config_from_run_config_maps_sections():
+    """RunConfig sections + run-dir paths map onto the harness config.
+
+    (Config drives everything now — the old per-flag CLI mapping is gone; the
+    full FAIR run-dir behavior is covered in tests/test_cli_run_dir.py.)
+    """
+    from bp_train.harness import train_harness_config_from_run_config
+    from bp_train.run_config import RunConfig
+
+    cfg = RunConfig.model_validate(
+        {
+            "data": {
+                "prepared": "prepared.json",
+                "processes": ["p1", "p2"],
+                "targets": ["X", "P"],
+                "target_source": "reactor_components",
+            },
+            "train": {
+                "steps": 7,
+                "seed": 12,
+                "optimizer": "sgd",
+                "learning_rate": 0.02,
+                "grad_clip_norm": 3.0,
+                "batch_size": 4,
+                "shuffle": False,
+                "batch_seed": 99,
+            },
+            "solver": {"max_steps": 250000, "rtol": 1e-4, "atol": 1e-6, "jump_ts": False},
+            "checkpoint": {"every": 5, "keep": "all"},
+            "output": {"plots": False},
+            "logging": {"every": 3},
+        }
     )
+    run_dir = Path("/tmp/run")
+    h = train_harness_config_from_run_config(cfg, run_dir=run_dir)
 
-    def fake_load(json_path):
-        captured["loaded_path"] = json_path
-        return _DummyCollection()
-
-    def fake_train_from_collection(collection, *, config, custom_module, run_config):
-        captured["collection"] = collection
-        captured["config"] = config
-        captured["custom_module"] = custom_module
-        captured["run_config"] = run_config
-        return _stub_train_result()
-
-    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-    monkeypatch.setattr(cli, "train_from_collection", fake_train_from_collection)
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-    monkeypatch.setattr(cli, "save_model_metadata", lambda path, meta: None)
-    monkeypatch.setattr(
-        cli,
-        "_write_train_results",
-        lambda **kwargs: captured.setdefault("write_kwargs", kwargs),
-    )
-
-    exit_code = cli.main(
-        [
-            "train",
-            "--config",
-            str(config_path),
-            "--log-every",
-            "3",
-            "--metrics-csv",
-            "metrics.csv",
-            "--no-plot",
-        ]
-    )
-
-    assert exit_code == 0
-    cfg = captured["config"]
-    assert cfg.process_names == ("p1", "p2")
-    assert cfg.target_variable_order == ("X", "P")
-    assert cfg.target_source == "reactor_components"
-    assert cfg.steps == 7
-    assert cfg.batch_size == 4
-    assert cfg.batch_seed == 99
-    assert cfg.shuffle_batches is False
-    assert cfg.optimizer_name == "sgd"
-    assert cfg.learning_rate == 0.02
-    assert cfg.grad_clip_norm == 3.0
-    assert cfg.seed == 12
-    assert cfg.log_every == 3
-    assert cfg.solver_max_steps == 250000
-    assert cfg.solver_rtol == 1e-4
-    assert cfg.solver_atol == 1e-6
-    assert cfg.solver_use_jump_ts is False
-    assert cfg.metrics_csv == "metrics.csv"
-    assert captured["loaded_path"] == prepared
-    assert captured["custom_module"] is None
-    assert captured["run_config"].data.prepared == prepared
-    assert captured["write_kwargs"]["run_config"] is captured["run_config"]
+    assert h.process_names == ("p1", "p2")
+    assert h.target_variable_order == ("X", "P")
+    assert h.target_source == "reactor_components"
+    assert h.steps == 7
+    assert h.batch_size == 4
+    assert h.batch_seed == 99
+    assert h.shuffle_batches is False
+    assert h.optimizer_name == "sgd"
+    assert h.learning_rate == 0.02
+    assert h.grad_clip_norm == 3.0
+    assert h.seed == 12
+    assert h.log_every == 3  # from logging.every, not a CLI flag
+    assert h.solver_max_steps == 250000
+    assert h.solver_rtol == 1e-4
+    assert h.solver_atol == 1e-6
+    assert h.solver_use_jump_ts is False
+    assert h.checkpoint_every == 5
+    assert h.checkpoint_keep == "all"
+    assert h.plots is False
+    assert h.checkpoint_dir == run_dir / "checkpoints"
+    assert str(h.metrics_csv).endswith("metrics.csv")
+    assert str(h.observations_csv).endswith("observations.csv")
 
 
-def test_train_cli_writes_custom_py_sha256_to_sidecar(monkeypatch, tmp_path: Path):
-    captured: dict[str, object] = {}
-    custom_py = tmp_path / "custom.py"
-    custom_py.write_text("VALUE = 1\n")
-    config_path = tmp_path / "config.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "data": {"prepared": "prepared.json"},
-                "custom_py": "custom.py",
-            }
-        )
-    )
-
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: _DummyCollection())
-    monkeypatch.setattr(
-        cli,
-        "train_from_collection",
-        lambda collection, *, config, custom_module, run_config: _stub_train_result(),
-    )
-    monkeypatch.setattr(cli, "save_model", lambda wrapper, path: None)
-    monkeypatch.setattr(
-        cli,
-        "save_model_metadata",
-        lambda path, meta: captured.update({"meta_path": path, "meta": meta}),
-    )
-    monkeypatch.setattr(cli, "_write_train_results", lambda **kwargs: _stub_forward_result())
-
-    cli.main(["train", "--config", str(config_path), "--no-plot"])
-
-    assert captured["meta"]["custom_py_sha256"] is not None
-    assert captured["meta"]["custom_py"] is not None
+# The old custom.py-sha256 sidecar is replaced by config.json
+# inputs.custom_py.file_hash; see tests/test_forward.py::test_forward_end_to_end_on_fixture
+# and tests/test_cli_run_dir.py.
 
 
 @pytest.mark.parametrize(
@@ -214,7 +153,6 @@ def test_train_cli_writes_custom_py_sha256_to_sidecar(monkeypatch, tmp_path: Pat
         "--process",
         "--target",
         "--target-source",
-        "--steps",
         "--seed",
         "--batch-seed",
         "--learning-rate",
@@ -224,6 +162,12 @@ def test_train_cli_writes_custom_py_sha256_to_sidecar(monkeypatch, tmp_path: Pat
         "--solver-max-steps",
         "--solver-rtol",
         "--solver-atol",
+        # Cadence / logging knobs are config-only now (the `logging` section).
+        "--log-every",
+        "--metrics-csv",
+        "--metrics-jsonl",
+        "--log-decimals",
+        "--log-header-every",
     ],
 )
 def test_train_cli_rejects_removed_experiment_flags(flag: str) -> None:
@@ -231,7 +175,15 @@ def test_train_cli_rejects_removed_experiment_flags(flag: str) -> None:
         cli.main(["train", "--config", "config.json", flag, "value"])
 
 
-@pytest.mark.parametrize("flag", ["--shuffle-batches", "--no-shuffle-batches", "--no-jump-ts"])
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--shuffle-batches",
+        "--no-shuffle-batches",
+        "--no-jump-ts",
+        "--log-process-losses",
+    ],
+)
 def test_train_cli_rejects_removed_boolean_experiment_flags(flag: str) -> None:
     with pytest.raises(SystemExit):
         cli.main(["train", "--config", "config.json", flag])
