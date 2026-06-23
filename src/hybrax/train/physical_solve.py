@@ -101,15 +101,19 @@ def solve_physical_states(
         C = y[:n_RMCs]
         V = y[n_RMCs]
         cum = y[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+        s_on = (jnp.abs(t - st) < eps) & smask
+        sample_dv = jnp.sum(jnp.where(s_on, sv, 0.0))
         b_on = (jnp.abs(t - bt) < eps) & bmask
         bolus_dv = jnp.sum(jnp.where(b_on, bv, 0.0))
         bolus_mass = jnp.sum(jnp.where(b_on[:, None], bC * bv[:, None], 0.0), axis=0)
-        s_on = (jnp.abs(t - st) < eps) & smask
-        sample_dv = jnp.sum(jnp.where(s_on, sv, 0.0))
-        V_after = V + bolus_dv
-        C2 = (C * V + bolus_mass) / jnp.maximum(V_after, min_V)
-        V2 = V_after - sample_dv
-        return jnp.concatenate([C2, V2[None], cum])
+        # Physical order at a coincident timestamp: sample FIRST (well-mixed removal —
+        # concentrations unchanged, volume drops), THEN feed/bolus (dilute from the
+        # post-sample volume and add fed mass). Bolus-before-sample dilutes fed species
+        # from the larger pre-sample volume and systematically under-dilutes them.
+        V_after_sample = V - sample_dv
+        V_after = V_after_sample + bolus_dv
+        C2 = (C * V_after_sample + bolus_mass) / jnp.maximum(V_after, min_V)
+        return jnp.concatenate([C2, V_after[None], cum])
 
     cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
@@ -137,9 +141,24 @@ def solve_physical_states(
 
     def _gather(tm):
         i = jnp.argmin(jnp.abs(ev_t - tm))
-        return ev_y[i]
+        y = ev_y[i]
+        # Report the POST-sample state at a sample-coincident time: a well-mixed
+        # sample leaves concentrations unchanged and only removes volume, so subtract
+        # any sample volume scheduled at ``tm`` from V. Boluses stay pre-bolus (the
+        # offline measurement is taken before feeding). This makes the reported V
+        # honour ``v0 + Σfeeds − Σsamples`` at the final sample, matching the pmap solve.
+        s_here = (jnp.abs(tm - st) < eps) & smask
+        sample_dv_here = jnp.sum(jnp.where(s_here, sv, 0.0))
+        return y.at[n_RMCs].add(-sample_dv_here)
 
     states = jax.vmap(_gather)(t_eval)            # [M, n_state]
-    # measurement 0 is at t0 (no event precedes it) -> the initial state
-    states = states.at[0].set(jnp.where(meas_active[0], y0, states[0]))
+    # Every grid point at t0 is the initial state (no event precedes t0). The dense /
+    # prediction export solves on a union grid that can carry t0 at *several* indices
+    # (measurement-t0, dense-t0, prediction-t0), not only index 0 — so patch all of
+    # them. Patching only states[0] left the other t0 rows on the _gather boundary
+    # value (first feed interval already integrated in), which surfaced as an inflated
+    # V0 / diluted concentrations in the predictions.csv first row for continuous-feed
+    # processes.
+    at_t0 = (jnp.abs(t_eval - t0) < eps) & meas_active
+    states = jnp.where(at_t0[:, None], y0[None, :], states)
     return states

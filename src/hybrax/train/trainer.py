@@ -8,7 +8,7 @@ import jax.tree_util as jtu
 
 from .controls_store import BatchControls
 from .model_api import LossInputs
-from .training_data import BatchTrainingData
+from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 
@@ -76,6 +76,41 @@ def _solve_measurement_save_outputs_on_grid(
         atol=float(atol),
     )
     return jax.vmap(wrapper.physical_save_outputs)(t_eval, states)
+
+
+def simulate_measurement_states(
+    wrapper: HybridOdeWrapper,
+    process_data: PerProcessTrainingData,
+    *,
+    max_steps: int = 100_000,
+    rtol: float = 1e-5,
+    atol: float = 1e-7,
+) -> jax.Array:
+    """RAW physical state trajectories at the active measurement timestamps.
+
+    Convenience entry point for forward/export/plotting and tests: it points the
+    wrapper at ``process_data``'s per-process controls and integrates from
+    ``process_data.y0_measured`` with the discrete-jump callbacks solve
+    (:func:`physical_solve.solve_physical_states`). Returns the RAW physical state
+    ``[modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]`` at each (padded)
+    measurement time. (Replaces the pre-callbacks single-solve of the same name;
+    no ``jump_ts`` argument — the callbacks solve lands segment ends on the events.)
+    """
+    from .physical_solve import solve_physical_states
+
+    ts = process_data.active_t_measured
+    if ts.size == 0:
+        raise ValueError("process has no active measurement timestamps")
+    sample_wrapper = eqx.tree_at(lambda w: w.controls, wrapper, process_data.controls)
+    return solve_physical_states(
+        sample_wrapper,
+        t_eval=ts,
+        n_measured=process_data.n_measured,
+        RAW_y0=process_data.y0_measured,
+        max_steps=max_steps,
+        rtol=rtol,
+        atol=atol,
+    )
 
 
 class _BatchIndexedControls(eqx.Module):

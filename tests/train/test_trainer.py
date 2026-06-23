@@ -376,10 +376,15 @@ def test_evaluate_sample_from_arrays_matches_manual_loss_and_state_solve():
 
     assert jnp.isclose(result.total_loss, total_loss)
     assert jnp.allclose(result.per_target_loss, per_target_loss)
-    # ``result.states`` is in SCL space; convert back for the comparison.
+    # ``result.states`` is in SCL space; convert back for the comparison. Compare
+    # only the active measurement rows: padded slots are masked out of the loss and
+    # the two paths handle them differently — the evaluate path clamps padded times to
+    # the last valid time (a sample time here, so its post-sample V drops), while the
+    # direct solve above leaves them unclamped — so they need not agree.
+    n = int(process_data.n_measured)
     assert jnp.allclose(
-        jax.vmap(wrapper.reaction_module.unscale_state)(result.states),
-        states,
+        jax.vmap(wrapper.reaction_module.unscale_state)(result.states)[:n],
+        states[:n],
     )
     assert jnp.allclose(result.states, result.save_outputs.SCL_states)
 

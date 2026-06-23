@@ -442,3 +442,86 @@ def _make_bolus_ramp_process(*, bolus_time: float = 10.0) -> BioProcess:
         process_variables={},
     )
     return process
+
+
+def test_continuous_feed_transport_volume_and_dilution():
+    """Self-contained continuous-feed volume regression (no ``examples/`` dependency).
+
+    Single biomass species, biomass-free continuous feed (0.2 L/h) plus a 0.1 L sample
+    at t=1, zero reaction (pure transport). Guards:
+      * the t=0 export equals y0 (initial-state correctness),
+      * V(t) tracks ``v0 + ∫feed − samples`` with the post-sample drop applied,
+      * biomass amount ``X·V`` is conserved by the biomass-free feed and only drops at
+        the sample (well-mixed removal),
+      * a duplicated-t0 grid (the measurement/dense/prediction union can carry t0 at
+        several indices) returns y0 at *every* t0 row (V0 dense-export boundary fix).
+    """
+    from bp_train.physical_solve import solve_physical_states
+
+    # Biomass-free continuous feed stored as CUMULATIVE volume (0 -> 0.4 over [0, 2] =
+    # 0.2 L/h) plus a 0.1 L sample at t=1; built inline so the feed is a real flow (a
+    # constant-rate fixture reads as a constant cumulative, i.e. zero flow).
+    feed_medium = FeedMedium(
+        name="feed", density=1.0, density_unit="kg/L",
+        components={"biomass": FeedMediumComponent(
+            name="biomass", unit="g/L",
+            concentration=StaticVariable(0.0), is_controlled=False)},
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={
+            "feed_A": FeedVolumeChange(
+                name="feed_A", unit="L", is_controlled=True, is_continuous=True,
+                values=TimeSeries(times=jnp.asarray([0.0, 2.0]),
+                                  values=jnp.asarray([0.0, 0.4])),
+                feed_medium=feed_medium),
+            "sample_1": SampleVolumeChange(
+                name="sample_1", unit="L", is_controlled=False, is_continuous=False,
+                values=TimeSeries(times=jnp.asarray([1.0]), values=jnp.asarray([-0.1]))),
+        }),
+        reactor_medium=ReactorMedium(
+            name="rm", density=1.0, density_unit="kg/L",
+            components={"biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=TimeSeries(times=jnp.asarray([0.0, 2.0]),
+                                         values=jnp.asarray([1.0, 1.0])))}),
+        process_variables={},
+    )
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,), dtype=jnp.float32),       # zero reaction
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    # state layout is [biomass, V]; initial biomass=1.0, V0=1.0
+    y0 = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    t_eval = jnp.linspace(0.0, 2.0, 21)
+    states = solve_physical_states(
+        wrapper, t_eval=t_eval, n_measured=t_eval.shape[0], RAW_y0=y0,
+        max_steps=100_000, rtol=1e-8, atol=1e-10,
+    )
+    biomass, volume = states[:, 0], states[:, 1]
+
+    assert jnp.allclose(states[0], y0)  # t=0 export == initial state
+
+    # V(t) = v0 + 0.2 t, with a 0.1 L post-sample drop from t=1 onward.
+    expected_V = jnp.where(t_eval < 1.0, 1.0 + 0.2 * t_eval, 1.0 + 0.2 * t_eval - 0.1)
+    assert jnp.allclose(volume, expected_V, atol=1e-3)
+
+    # Biomass-free feed conserves X·V; the sample removes biomass proportionally so
+    # X·V drops once: 1.0 -> (1.0/1.2)*1.1 = 0.9167 from the sample onward.
+    xv = biomass * volume
+    assert jnp.allclose(xv[t_eval < 1.0], 1.0, atol=2e-3)
+    assert jnp.allclose(xv[t_eval >= 1.0], (1.0 / 1.2) * 1.1, atol=2e-3)
+
+    # Regression: t0 repeated across the grid must all return y0 (not the gather
+    # boundary value with the first feed interval already integrated in).
+    dup = jnp.asarray([0.0, 0.0, 0.0, 1.0, 2.0], dtype=jnp.float32)
+    dup_states = solve_physical_states(
+        wrapper, t_eval=dup, n_measured=dup.shape[0], RAW_y0=y0,
+        max_steps=100_000, rtol=1e-8, atol=1e-10,
+    )
+    assert jnp.allclose(dup_states[:3], y0[None, :])

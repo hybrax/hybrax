@@ -315,8 +315,8 @@ class HybridOdeWrapper(eqx.Module):
     #
     # Integrates the *physical* state ``y = [RAW_RMCs | RAW_V | RAW_modeled_cum]``
     # directly; discrete bolus/sample events are applied as state jumps between
-    # segments (``physical_event_jump`` / ``physical_solve.solve_physical_states``),
-    # not folded into the vector field. Between events only continuous dynamics act
+    # segments (``physical_solve.solve_physical_states``), not folded into the
+    # vector field. Between events only continuous dynamics act
     # (biology, plus continuous feeds/dilution if any), so the integrated state stays
     # O(C) and the reverse-mode adjoint is well-conditioned. (Replaces the earlier
     # pseudobatch state, whose unbounded accumulator corrupted the gradient.)
@@ -412,34 +412,6 @@ class HybridOdeWrapper(eqx.Module):
         return jnp.concatenate(
             [dC, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
         )
-
-    def physical_event_jump(
-        self,
-        y_phys: jax.Array,
-        bolus_dV: jax.Array,
-        bolus_mass: jax.Array,
-        sample_dV: jax.Array,
-    ) -> jax.Array:
-        """Apply the aggregated bolus and/or sample at one event time.
-
-        ``bolus_dV`` is the total added volume and ``bolus_mass`` the total added
-        amount per species (``sum_k Cin_k * dV_k``) for all boluses at this time.
-        Bolus: ``C <- (C*V + bolus_mass)/(V+bolus_dV)``, ``V <- V+bolus_dV``.
-        Sample: ``V <- V - sample_dV`` (concentration unchanged for well-mixed
-        removal). Samples are applied after boluses.
-        """
-        n_RMCs = len(self.modeled_RMC_names)
-        n_FVCs = len(self.modeled_FVC_names)
-        dtype = y_phys.dtype
-        C = y_phys[:n_RMCs]
-        V = y_phys[n_RMCs]
-        cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
-        V_after_bolus = V + bolus_dV
-        C = (C * V + bolus_mass.astype(dtype)) / jnp.maximum(
-            V_after_bolus, jnp.asarray(self.min_V, dtype=dtype)
-        )
-        V = V_after_bolus - sample_dV
-        return jnp.concatenate([C, jnp.atleast_1d(V), cum])
 
     def initial_physical_state_from_raw(self, RAW_state: jax.Array) -> jax.Array:
         """Identity: the physical solve integrates the raw state layout directly."""
