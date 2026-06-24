@@ -779,9 +779,8 @@ def plot_process_simulations(
                     contribution[valid] = cumulative[idx[valid]]
                     v_cont_true_dense += contribution
 
-            sample_acc_index = trained_wrapper.sample_acc_control_index
             v_sample_acc_dense = np.asarray(
-                process_data.controls.eval(jnp.asarray(t_dense_np))[:, sample_acc_index]
+                process_data.controls.eval_sample_acc(jnp.asarray(t_dense_np), None)
             )
             v_real_true_dense = v_cont_true_dense - v_sample_acc_dense
 

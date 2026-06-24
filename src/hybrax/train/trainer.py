@@ -119,14 +119,25 @@ class _BatchIndexedControls(eqx.Module):
     batch_controls: BatchControls
     process_idx: jax.Array
 
-    def eval(self, ts: float | jax.Array) -> jax.Array:
-        return self.batch_controls.eval(self.process_idx, ts)
+    def eval_controlled_FVCs_cumulative(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_FVCs_cumulative(
+            self.process_idx, t_arr, states
+        )
 
-    def eval_derivative(self, ts: float | jax.Array) -> jax.Array:
-        return self.batch_controls.eval_derivative(self.process_idx, ts)
+    def eval_controlled_FVCs_rates(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_FVCs_rates(
+            self.process_idx, t_arr, states
+        )
 
-    def eval_u(self, ts: float | jax.Array) -> jax.Array:
-        return self.batch_controls.eval_u(self.process_idx, ts)
+    def eval_controlled_SVCs_rates(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_SVCs_rates(
+            self.process_idx, t_arr, states
+        )
+
+    def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_PVs(
+            self.process_idx, t_arr, states
+        )
 
     @property
     def sample_event_times(self) -> jax.Array:

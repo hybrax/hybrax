@@ -149,8 +149,10 @@ class PerProcessControls(eqx.Module):
     def active_control_derivatives(self) -> jax.Array:
         return self.control_derivatives[: self.grid_length]
 
-    def eval(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Evaluate all controls at one or more times in canonical order."""
+    def _eval_values(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
+        """Interpolate all control VALUES at one or more times, in canonical
+        column order ``[FVCs_cum | SVCs_cum | PVs | extras]``. Private — public
+        access is via the per-axis ``eval_controlled_*`` accessors."""
         query = jnp.asarray(ts, dtype=self.dense_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
@@ -159,12 +161,11 @@ class PerProcessControls(eqx.Module):
             self.active_dense_grid,
             self.active_control_values,
         )
-        if scalar_input:
-            return values[0]
-        return values
+        return values[0] if scalar_input else values
 
-    def eval_derivative(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Evaluate precomputed control derivatives in canonical order."""
+    def _eval_derivatives(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
+        """Interpolate all control DERIVATIVES (flow rates) in canonical order.
+        Private — sliced by the per-axis ``eval_controlled_*_rates`` accessors."""
         query = jnp.asarray(ts, dtype=self.dense_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
@@ -173,24 +174,37 @@ class PerProcessControls(eqx.Module):
             self.active_dense_grid,
             self.active_control_derivatives,
         )
-        if scalar_input:
-            return values[0]
-        return values
+        return values[0] if scalar_input else values
 
-    def eval_u(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Evaluate RhsOde's u vector: ``[FVC_flows | SVC_flows | PV_values]``.
+    # ------------------------------------------------------------------
+    # Semantic, non-overlapping per-axis accessors. Each returns RAW
+    # (physical, unscaled) values for a single control axis. ``states`` is a
+    # placeholder for future state-dependent controls (e.g. pH feedback) and
+    # is currently unused. The wrapper scales each result to SCL space via the
+    # module's ``scale_controlled_*`` helpers before building ReactionInputs.
+    # ------------------------------------------------------------------
+    def eval_controlled_FVCs_cumulative(self, t_arr, states) -> jax.Array:
+        n_fvc = len(self.name_controlled_FVCs)
+        return self._eval_values(t_arr)[..., :n_fvc]
 
-        Flows come from precomputed derivatives of the cumulative-volume
-        signals; PV values come from the raw signal trace.
-        """
+    def eval_controlled_FVCs_rates(self, t_arr, states) -> jax.Array:
+        n_fvc = len(self.name_controlled_FVCs)
+        return self._eval_derivatives(t_arr)[..., :n_fvc]
+
+    def eval_controlled_SVCs_rates(self, t_arr, states) -> jax.Array:
+        n_fvc = len(self.name_controlled_FVCs)
+        n_svc = len(self.name_controlled_SVCs)
+        return self._eval_derivatives(t_arr)[..., n_fvc : n_fvc + n_svc]
+
+    def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
         n_fvc = len(self.name_controlled_FVCs)
         n_svc = len(self.name_controlled_SVCs)
         n_pv = len(self.name_controlled_PVs)
-        derivatives = self.eval_derivative(ts)
-        values = self.eval(ts)
-        flows = derivatives[..., : n_fvc + n_svc]
-        pvs = values[..., n_fvc + n_svc : n_fvc + n_svc + n_pv]
-        return jnp.concatenate([flows, pvs], axis=-1)
+        return self._eval_values(t_arr)[..., n_fvc + n_svc : n_fvc + n_svc + n_pv]
+
+    def eval_sample_acc(self, t_arr, states) -> jax.Array:
+        """Cumulative sampled volume (the trailing extras column)."""
+        return self._eval_values(t_arr)[..., self.sample_acc_global_index]
 
 
 class BatchControls(eqx.Module):
@@ -220,8 +234,9 @@ class BatchControls(eqx.Module):
     bolus_event_Cin: jax.Array
     bolus_event_mask: jax.Array
 
-    def eval(self, process_idx: int, t: jax.Array) -> jax.Array:
-        """Evaluate controls for one process index at one or more times."""
+    def _eval_values(self, process_idx: int, t: jax.Array) -> jax.Array:
+        """Interpolate all control VALUES for one process index, canonical order.
+        Private — sliced by the per-axis ``eval_controlled_*`` accessors."""
         if isinstance(process_idx, (int, np.integer)):
             idx = int(process_idx)
             n_processes = int(self.dense_grid.shape[0])
@@ -235,12 +250,11 @@ class BatchControls(eqx.Module):
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
         out = _interp_columns(query_1d, grid, values)
-        if scalar_input:
-            return out[0]
-        return out
+        return out[0] if scalar_input else out
 
-    def eval_derivative(self, process_idx: int, t: jax.Array) -> jax.Array:
-        """Evaluate control derivatives for one process index at one or more times."""
+    def _eval_derivatives(self, process_idx: int, t: jax.Array) -> jax.Array:
+        """Interpolate all control DERIVATIVES for one process index, canonical
+        order. Private — sliced by the ``eval_controlled_*_rates`` accessors."""
         grid = self.dense_grid[process_idx]
         derivatives = self.control_derivatives[process_idx]
 
@@ -248,20 +262,30 @@ class BatchControls(eqx.Module):
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
         out = _interp_columns(query_1d, grid, derivatives)
-        if scalar_input:
-            return out[0]
-        return out
+        return out[0] if scalar_input else out
 
-    def eval_u(self, process_idx: int, t: jax.Array) -> jax.Array:
-        """Evaluate RhsOde's u vector for one process index."""
+    # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
+    # placeholder for future state-dependent controls and is currently unused.
+    def eval_controlled_FVCs_cumulative(self, process_idx, t_arr, states) -> jax.Array:
+        n_fvc = len(self.name_controlled_FVCs)
+        return self._eval_values(process_idx, t_arr)[..., :n_fvc]
+
+    def eval_controlled_FVCs_rates(self, process_idx, t_arr, states) -> jax.Array:
+        n_fvc = len(self.name_controlled_FVCs)
+        return self._eval_derivatives(process_idx, t_arr)[..., :n_fvc]
+
+    def eval_controlled_SVCs_rates(self, process_idx, t_arr, states) -> jax.Array:
+        n_fvc = len(self.name_controlled_FVCs)
+        n_svc = len(self.name_controlled_SVCs)
+        return self._eval_derivatives(process_idx, t_arr)[..., n_fvc : n_fvc + n_svc]
+
+    def eval_controlled_PVs(self, process_idx, t_arr, states) -> jax.Array:
         n_fvc = len(self.name_controlled_FVCs)
         n_svc = len(self.name_controlled_SVCs)
         n_pv = len(self.name_controlled_PVs)
-        derivatives = self.eval_derivative(process_idx, t)
-        values = self.eval(process_idx, t)
-        flows = derivatives[..., : n_fvc + n_svc]
-        pvs = values[..., n_fvc + n_svc : n_fvc + n_svc + n_pv]
-        return jnp.concatenate([flows, pvs], axis=-1)
+        return self._eval_values(process_idx, t_arr)[
+            ..., n_fvc + n_svc : n_fvc + n_svc + n_pv
+        ]
 
 
 class ControlsStore(eqx.Module):

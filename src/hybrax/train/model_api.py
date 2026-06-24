@@ -115,7 +115,7 @@ class ReactionInputs(eqx.Module):
     - ``SCL_modeled_FVCs_cumulative``: per-feed cumulative volume of each
       MODELED feed (integrated state).
 
-    Continuous controlled FVC axes (controls.eval(t) + controls.eval_u(t)):
+    Continuous controlled FVC axes (from the controls' per-axis accessors):
     - ``SCL_controlled_FVCs_cumulative`` — per-feed cumulative volume.
     - ``SCL_controlled_FVCs_rates`` — per-feed instantaneous flow rate.
     - ``SCL_controlled_FVCs_Cin`` — per-feed Cin matrix [n_FVC, n_RMCs].

@@ -135,32 +135,30 @@ def estimate_all_scales(collection, target_names, config):
             )
         SCALE_modeled_FVCs_cumulative[k] = max(max_cum, 1.0)
 
-    RAW_u_canonical_samples: list[np.ndarray] = []
-    RAW_u_rhs_samples: list[np.ndarray] = []
+    fvc_cum_samples: list[np.ndarray] = []
+    fvc_rate_samples: list[np.ndarray] = []
+    pv_samples: list[np.ndarray] = []
     for process_name, process in collection.processes.items():
         per_process = controls_store.get_controls(process_name)
         t_start = float(process.time_axis.start)
         t_end = float(process.time_axis.end)
         for t in np.linspace(t_start + 1e-3, t_end - 1e-3, 50):
-            RAW_u_canonical_samples.append(np.asarray(per_process.eval(float(t))))
-            RAW_u_rhs_samples.append(np.asarray(per_process.eval_u(float(t))))
+            tt = float(t)
+            fvc_cum_samples.append(
+                np.asarray(per_process.eval_controlled_FVCs_cumulative(tt, None))
+            )
+            fvc_rate_samples.append(
+                np.asarray(per_process.eval_controlled_FVCs_rates(tt, None))
+            )
+            pv_samples.append(np.asarray(per_process.eval_controlled_PVs(tt, None)))
 
-    RAW_u_canonical_arr = (
-        np.stack(RAW_u_canonical_samples, axis=0)
-        if RAW_u_canonical_samples
-        else np.ones((1, n_FVC + n_SVC + n_PV + n_extras))
-    )
-    RAW_u_rhs_arr = (
-        np.stack(RAW_u_rhs_samples, axis=0)
-        if RAW_u_rhs_samples
-        else np.ones((1, n_FVC + n_SVC + n_PV))
-    )
-    canonical_max = np.maximum(np.max(np.abs(RAW_u_canonical_arr), axis=0), 1e-2)
-    rhs_max = np.maximum(np.max(np.abs(RAW_u_rhs_arr), axis=0), 1e-2)
+    def _axis_scale(samples: list[np.ndarray], n_axis: int) -> np.ndarray:
+        arr = np.stack(samples, axis=0) if samples else np.ones((1, n_axis))
+        return np.maximum(np.max(np.abs(arr), axis=0), 1e-2)
 
-    SCALE_controlled_FVCs_cumulative = canonical_max[:n_FVC]
-    SCALE_controlled_FVCs_rates = rhs_max[:n_FVC]
-    SCALE_controlled_PVs = canonical_max[n_FVC + n_SVC : n_FVC + n_SVC + n_PV]
+    SCALE_controlled_FVCs_cumulative = _axis_scale(fvc_cum_samples, n_FVC)
+    SCALE_controlled_FVCs_rates = _axis_scale(fvc_rate_samples, n_FVC)
+    SCALE_controlled_PVs = _axis_scale(pv_samples, n_PV)
 
     RAW_controlled_FVCs_Cin = np.asarray(ref_rhs_ode.Cin_controlled_FVCs, dtype=float)
     RAW_modeled_FVCs_Cin = np.asarray(ref_rhs_ode.Cin_modeled_FVCs, dtype=float)

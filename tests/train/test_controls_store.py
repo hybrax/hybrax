@@ -257,28 +257,27 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     store = ControlsStore.from_json(prepared_json)
     controls = store.get_controls("p1")
 
-    scalar = controls.eval(0.25)
-    assert scalar.shape == (3,)
-    assert scalar[_column_index(controls, "CF")] == pytest.approx(1.025)
-    assert scalar[_column_index(controls, "T")] == pytest.approx(30.25)
-    assert scalar[controls.sample_acc_global_index] == pytest.approx(0.0)
+    # CF and T are the two controlled PVs (this fixture has no controlled FVCs);
+    # sample_acc is the trailing extras column.
+    pvs0 = controls.eval_controlled_PVs(0.25, None)
+    assert pvs0.shape == (2,)
+    assert pvs0[0] == pytest.approx(1.025)  # CF
+    assert pvs0[1] == pytest.approx(30.25)  # T
+    assert float(controls.eval_sample_acc(0.25, None)) == pytest.approx(0.0)
 
     ts = np.asarray([0.25, 0.5, 1.0], dtype=float)
-    values = controls.eval(ts)
-    derivatives = controls.eval_derivative(ts)
+    pvs = controls.eval_controlled_PVs(ts, None)
+    sample_acc = controls.eval_sample_acc(ts, None)
 
-    assert values.shape == (3, 3)
-    assert derivatives.shape == (3, 3)
-    assert values[:, _column_index(controls, "CF")] == pytest.approx([1.025, 1.05, 1.1])
-    assert values[:, _column_index(controls, "T")] == pytest.approx([30.25, 30.5, 31.0])
-    assert values[0, controls.sample_acc_global_index] == pytest.approx(0.0)
-    assert values[-1, controls.sample_acc_global_index] == pytest.approx(0.1)
-    assert derivatives[:, _column_index(controls, "CF")] == pytest.approx(
-        [0.1, 0.1, 0.1]
-    )
-    assert derivatives[:, _column_index(controls, "T")] == pytest.approx(
-        [1.0, 1.0, 1.0]
-    )
+    assert pvs.shape == (3, 2)
+    assert sample_acc.shape == (3,)
+    assert pvs[:, 0] == pytest.approx([1.025, 1.05, 1.1])  # CF
+    assert pvs[:, 1] == pytest.approx([30.25, 30.5, 31.0])  # T
+    assert sample_acc[0] == pytest.approx(0.0)
+    assert sample_acc[-1] == pytest.approx(0.1)
+    # No controlled FVCs/SVCs in this fixture → the rate accessors are empty.
+    assert controls.eval_controlled_FVCs_rates(ts, None).shape == (3, 0)
+    assert controls.eval_controlled_SVCs_rates(ts, None).shape == (3, 0)
 
 
 def test_controls_store_exposes_discrete_event_metadata():
@@ -408,12 +407,11 @@ def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
     store = ControlsStore.from_json(prepared_json)
     controls = store.get_controls("p1")
 
-    values = controls.eval(np.asarray([-1.0, 2.0], dtype=float))
-    derivatives = controls.eval_derivative(np.asarray([-1.0, 2.0], dtype=float))
+    ts = np.asarray([-1.0, 2.0], dtype=float)
+    pvs = controls.eval_controlled_PVs(ts, None)
 
-    assert values[:, _column_index(controls, "CF")] == pytest.approx([1.0, 1.1])
-    assert values[:, _column_index(controls, "T")] == pytest.approx([30.0, 31.0])
-    assert derivatives[:, _column_index(controls, "CF")] == pytest.approx([0.1, 0.1])
+    assert pvs[:, 0] == pytest.approx([1.0, 1.1])  # CF clamped to grid ends
+    assert pvs[:, 1] == pytest.approx([30.0, 31.0])  # T clamped to grid ends
 
 
 def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
@@ -460,7 +458,7 @@ def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
 
     store = ControlsStore.from_json(output)
     controls = store.get_controls("p1")
-    end_value = controls.eval(1.0)[controls.sample_acc_global_index]
+    end_value = controls.eval_sample_acc(1.0, None)
     assert end_value == pytest.approx(0.2)
 
 
@@ -515,9 +513,7 @@ def test_controls_store_skips_run_min_dt_when_prepared_sample_exists():
     assert controls.name_controlled_FVCs == ()
     assert controls.name_controlled_SVCs == ()
     assert controls.name_controlled_PVs == ()
-    assert float(controls.eval(10.0)[controls.sample_acc_global_index]) == (
-        pytest.approx(0.1)
-    )
+    assert float(controls.eval_sample_acc(10.0, None)) == pytest.approx(0.1)
 
 
 def test_controls_store_rejects_not_consistent_controls_at_init():
@@ -602,15 +598,17 @@ def test_controls_store_batch_controls_eval_by_index(tmp_path):
     store = ControlsStore.from_json(prepared_json)
     batch_controls = store.as_batch_controls()
 
-    scalar = batch_controls.eval(0, jnp.asarray(0.25))
-    assert scalar.shape == (3,)
-    assert scalar[_column_index(store, "CF")] == pytest.approx(1.025)
-    assert scalar[_column_index(store, "T")] == pytest.approx(30.25)
+    pvs = batch_controls.eval_controlled_PVs(0, jnp.asarray(0.25), None)
+    assert pvs.shape == (2,)
+    assert pvs[0] == pytest.approx(1.025)  # CF
+    assert pvs[1] == pytest.approx(30.25)  # T
 
-    values = batch_controls.eval(0, jnp.asarray([0.25, 1.5], dtype=jnp.float32))
-    assert values.shape == (2, 3)
-    assert values[0, _column_index(store, "CF")] == pytest.approx(1.025)
-    assert values[1, _column_index(store, "CF")] == pytest.approx(1.1)
+    pvs_ts = batch_controls.eval_controlled_PVs(
+        0, jnp.asarray([0.25, 1.5], dtype=jnp.float32), None
+    )
+    assert pvs_ts.shape == (2, 2)
+    assert pvs_ts[0, 0] == pytest.approx(1.025)  # CF at t=0.25
+    assert pvs_ts[1, 0] == pytest.approx(1.1)  # CF clamped at t=1.5
 
 
 def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_path):
@@ -619,9 +617,9 @@ def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_pa
     batch_controls = store.as_batch_controls()
 
     with pytest.raises(IndexError, match="out of range"):
-        batch_controls.eval(2, jnp.asarray(0.25))
+        batch_controls.eval_controlled_FVCs_cumulative(2, jnp.asarray(0.25), None)
     with pytest.raises(IndexError, match="out of range"):
-        batch_controls.eval(999, jnp.asarray(0.25))
+        batch_controls.eval_controlled_FVCs_cumulative(999, jnp.asarray(0.25), None)
 
 
 def test_controls_store_uses_min_of_per_process_min_dt_across_processes():

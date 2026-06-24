@@ -802,7 +802,7 @@ def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):
     store = ControlsStore.from_json(output)
     controls = store.get_controls("invalid")
     end_t = _make_invalid_collection().processes["invalid"].time_axis.end
-    assert controls.eval(end_t)[controls.sample_acc_global_index] == pytest.approx(0.1)
+    assert controls.eval_sample_acc(end_t, None) == pytest.approx(0.1)
 
 
 def test_load_raw_collection_accepts_in_memory_collection():

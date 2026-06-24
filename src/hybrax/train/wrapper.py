@@ -98,11 +98,10 @@ class HybridOdeWrapper(eqx.Module):
     Inside each RHS evaluation:
 
     1. Unscale ``SCL_state`` → ``RAW_state`` via the module.
-    2. Decompose ``controls.eval(t)`` and ``controls.eval_u(t)`` into their
-       semantic axes (controlled_FVCs_cumulative, controlled_SVCs_cumulative,
-       controlled_PVs, extras, controlled_FVC_rates, controlled_SVC_rates).
-    3. Compute ``RAW_V = max(V_in_cumulative - V_sample_acc, min_V)``.
-    4. Scale every per-axis input via the module's ``scale_*`` helpers and
+    2. Read each control axis via the controls' per-axis accessors
+       (``eval_controlled_FVCs_cumulative`` / ``eval_controlled_FVCs_rates`` /
+       ``eval_controlled_PVs``), which return RAW values.
+    3. Scale every per-axis input via the module's ``scale_*`` helpers and
        build a ``ReactionInputs`` instance.
     5. Call ``reaction_module(t, inputs) → ReactionOutputs`` (SCL rates).
     6. Unscale rates via the module to RAW for the physical ``RhsOde`` call.
@@ -122,7 +121,6 @@ class HybridOdeWrapper(eqx.Module):
     reaction_module: Any
     controls: PerProcessControls
 
-    sample_acc_control_index: int = eqx.field(static=True)
     min_V: float = eqx.field(static=True)
 
     modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
@@ -241,7 +239,6 @@ class HybridOdeWrapper(eqx.Module):
             rhs_ode=rhs_ode,
             reaction_module=reaction_module,
             controls=controls,
-            sample_acc_control_index=int(controls.sample_acc_global_index),
             min_V=float(min_V),
             modeled_RMC_names=rhs_ode.name_modeled_RMCs,
             modeled_FVC_names=rhs_ode.name_modeled_FVCs,
@@ -278,13 +275,15 @@ class HybridOdeWrapper(eqx.Module):
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
         n_FVC = self.n_controlled_FVCs
-        n_PV = self.n_controlled_PVs
+        n_SVC_ctrl = len(self.rhs_ode.name_controlled_SVCs)
 
-        RAW_u_canonical_full = self.controls.eval(t_arr)
-        RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
-        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
-        RAW_u_rhs_full = self.controls.eval_u(t_arr)
-        RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
+        RAW_controlled_FVCs_cumulative = self.controls.eval_controlled_FVCs_cumulative(
+            t_arr, y_phys
+        )
+        RAW_controlled_FVCs_rates = self.controls.eval_controlled_FVCs_rates(
+            t_arr, y_phys
+        )
+        RAW_controlled_PVs = self.controls.eval_controlled_PVs(t_arr, y_phys)
         RAW_controlled_FVCs_Cin = self.rhs_ode.Cin_controlled_FVCs
         RAW_modeled_FVCs_Cin = self.rhs_ode.Cin_modeled_FVCs
 
@@ -315,9 +314,10 @@ class HybridOdeWrapper(eqx.Module):
         )
 
         RAW_RMCs_V = jnp.concatenate([RAW_RMC_rhs, RAW_V[None]])
-        n_u = RAW_u_rhs_full.shape[0]
-        RAW_u_bio = jnp.zeros_like(RAW_u_rhs_full).at[n_u - n_PV :].set(
-            RAW_u_rhs_full[n_u - n_PV :]
+        # RhsOde's u = [FVC_flows | SVC_flows | PV_values]; the wrapper zeroes the
+        # flows (it applies feed/dilution itself below) and forwards only the PVs.
+        RAW_u_bio = jnp.concatenate(
+            [jnp.zeros(n_FVC + n_SVC_ctrl, dtype=dtype), RAW_controlled_PVs]
         )
         RAW_zero_modeled_FVCs_rates = jnp.zeros_like(RAW_modeled_FVCs_rates)
         RAW_modeled_SVCs_rates = jnp.zeros(
@@ -371,13 +371,13 @@ class HybridOdeWrapper(eqx.Module):
         RAW_V_export = y_phys[n_RMCs]
         RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
 
-        n_FVC = self.n_controlled_FVCs
-        n_PV = self.n_controlled_PVs
-        RAW_u_canonical_full = self.controls.eval(t_arr)
-        RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
-        RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
-        RAW_u_rhs_full = self.controls.eval_u(t_arr)
-        RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
+        RAW_controlled_FVCs_cumulative = self.controls.eval_controlled_FVCs_cumulative(
+            t_arr, y_phys
+        )
+        RAW_controlled_FVCs_rates = self.controls.eval_controlled_FVCs_rates(
+            t_arr, y_phys
+        )
+        RAW_controlled_PVs = self.controls.eval_controlled_PVs(t_arr, y_phys)
         inputs = ReactionInputs(
             SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
             SCL_modeled_V=module.scale_modeled_V(RAW_V),
