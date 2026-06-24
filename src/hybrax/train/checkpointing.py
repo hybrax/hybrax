@@ -9,6 +9,7 @@ prunes every other ``step_*`` dir after each write; ``all`` keeps everything.
 
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import shutil
@@ -27,6 +28,16 @@ from .serialization import save_model, save_opt_state
 logger = logging.getLogger(__name__)
 
 
+def _bundle_prepared_gz(src: Path, dst: Path) -> None:
+    """Copy the prepared artifact to ``dst`` as gzip. If ``src`` is already
+    gzipped, copy it verbatim; otherwise gzip-compress the plain JSON."""
+    if src.suffix == ".gz" or src.name.endswith(".json.gz"):
+        shutil.copyfile(src, dst)
+        return
+    with open(src, "rb") as fi, gzip.open(dst, "wb") as fo:
+        shutil.copyfileobj(fi, fo)
+
+
 class CheckpointWriter:
     """Write resumable state + submit plot jobs at a fixed step cadence.
 
@@ -42,12 +53,20 @@ class CheckpointWriter:
         *,
         plotter: Any | None = None,
         plots_enabled: bool = True,
+        prepared_src: Path | None = None,
+        measured_records: list[tuple[str, str, float, float]] | None = None,
     ) -> None:
         self._dir = Path(checkpoints_dir)
         self._cfg = cfg
         self._enabled = int(cfg.every) > 0
         self._plotter = plotter
         self._plots_enabled = bool(plots_enabled)
+        # Resolved prepared.json(.gz) path; bundled into every checkpoint so each
+        # folder is self-contained (config.json + custom.py come from the run dir).
+        self._prepared_src = Path(prepared_src) if prepared_src is not None else None
+        # Picklable measured points for the background plot worker's overlays
+        # (extracted once in the main process; no observations.csv file).
+        self._measured_records = measured_records
         self._best_ckpt_loss = float("inf")
         if self._enabled:
             self._dir.mkdir(parents=True, exist_ok=True)
@@ -70,7 +89,6 @@ class CheckpointWriter:
         opt_state: Any,
         mean_loss: float,
         best_loss: float,
-        observations_csv: Path | None,
         render_predictions_fn: Callable[[Path], None],
         loss_by_step: Sequence[float],
         grad_norm_by_step: Sequence[float] | None = None,
@@ -110,6 +128,16 @@ class CheckpointWriter:
             encoding="utf-8",
         )
 
+        # Make the checkpoint self-contained: bundle config.json + custom.py (from
+        # the run dir) + prepared.json.gz, so the folder loads on its own.
+        run_dir = self._dir.parent
+        for fname in ("config.json", "custom.py"):
+            src = run_dir / fname
+            if src.is_file():
+                shutil.copyfile(src, d / fname)
+        if self._prepared_src is not None and self._prepared_src.is_file():
+            _bundle_prepared_gz(self._prepared_src, d / "prepared.json.gz")
+
         # JAX forward sim, main process. Raising here aborts before publishing.
         render_predictions_fn(d / "predictions.csv")
 
@@ -138,7 +166,7 @@ class CheckpointWriter:
             self._plotter.submit(
                 render_process_plots_from_csv,
                 d / "predictions.csv",
-                observations_csv if observations_csv is not None else d / "no_obs.csv",
+                self._measured_records,
                 d,
                 process_names=process_names,
                 training_process_names=training_process_names,

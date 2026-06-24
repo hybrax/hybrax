@@ -137,7 +137,7 @@ def test_train_harness_config_from_run_config_maps_sections():
     assert h.plots is False
     assert h.checkpoint_dir == run_dir / "checkpoints"
     assert str(h.metrics_csv).endswith("metrics.csv")
-    assert str(h.observations_csv).endswith("observations.csv")
+    assert h.prepared_path is not None
 
 
 # The old custom.py-sha256 sidecar is replaced by config.json

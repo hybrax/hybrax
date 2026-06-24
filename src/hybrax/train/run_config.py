@@ -7,7 +7,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from bp_train.utils import load_custom_module
 
@@ -74,7 +74,7 @@ class SolverConfig(ConfigBase):
 
 class CheckpointConfig(ConfigBase):
     every: int = Field(10, ge=0)  # 0 disables; DISTINCT from logging.every
-    keep: Literal["best+latest", "all"] = "best+latest"
+    keep: Literal["best+latest", "all"] = "all"
     resume: Path | None = None
 
 
@@ -119,6 +119,69 @@ class RunConfig(ConfigBase):
 
 class DefaultCustomConfig(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
+
+
+# --- forward config: a list of self-contained model dirs + optional data override ---
+class ForwardDataConfig(ConfigBase):
+    prepared: Path | None = None
+    processes: tuple[str, ...] | None = None
+
+
+class ModelRef(ConfigBase):
+    """One `models` entry: a self-contained run/checkpoint dir. ``name`` defaults
+    to the basename of the bundle's ``config.output.dir`` (resolved later)."""
+
+    name: str | None = None
+    path: Path
+
+
+class ForwardOutputConfig(ConfigBase):
+    dir: Path | None = None  # None -> <first model>/forward
+    plots: bool = True
+    timeseries_csv: Path | None = None
+
+
+class ForwardRunConfig(ConfigBase):
+    models: tuple[ModelRef, ...] = Field(min_length=1)
+    data: ForwardDataConfig | None = None
+    output: ForwardOutputConfig = Field(default_factory=ForwardOutputConfig)
+
+    @field_validator("models", mode="before")
+    @classmethod
+    def _coerce_models(cls, value: Any) -> Any:
+        # accept bare path strings or {name, path} objects, interchangeably
+        if not isinstance(value, (list, tuple)):
+            return value
+        return [{"path": m} if isinstance(m, (str, Path)) else m for m in value]
+
+
+def load_forward_config(config_path: str | Path) -> ForwardRunConfig:
+    """Load + validate a forward_config.json, resolving model paths and the
+    optional ``data.prepared`` relative to the config file's directory."""
+    path = Path(config_path)
+    raw = _read_raw_config(path)
+    base_dir = path.parent.resolve()
+    cfg = ForwardRunConfig.model_validate(raw)
+    updates: dict[str, Any] = {
+        "models": tuple(
+            m.model_copy(update={"path": _resolve_path(m.path, base_dir=base_dir)})
+            for m in cfg.models
+        )
+    }
+    if cfg.data is not None and cfg.data.prepared is not None:
+        updates["data"] = cfg.data.model_copy(
+            update={"prepared": _resolve_path(cfg.data.prepared, base_dir=base_dir)}
+        )
+    output_updates: dict[str, Any] = {}
+    if cfg.output.dir is not None:
+        output_updates["dir"] = _resolve_path(cfg.output.dir, base_dir=base_dir)
+    if cfg.output.timeseries_csv is not None:
+        output_updates["timeseries_csv"] = _resolve_path(
+            cfg.output.timeseries_csv, base_dir=base_dir
+        )
+    if output_updates:
+        updates["output"] = cfg.output.model_copy(update=output_updates)
+    return cfg.model_copy(update=updates)
 
 
 @dataclass(frozen=True)

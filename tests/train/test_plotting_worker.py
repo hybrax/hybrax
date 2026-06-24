@@ -7,7 +7,7 @@ import pandas as pd
 
 from bp_train.plotting_worker import BackgroundPlotter
 from bp_train.postprocessing import (
-    export_observations_csv,
+    measured_points_records,
     render_process_plots_from_csv,
 )
 from bp_train.training_data import TrainingDataStore
@@ -22,61 +22,54 @@ def _slow_write(path: str, seconds: float) -> None:
     Path(path).write_text("done", encoding="utf-8")
 
 
-def _make_prediction_csvs(tmp_path: Path) -> tuple[Path, Path]:
+def _make_prediction_csv(
+    tmp_path: Path,
+) -> tuple[Path, list[tuple[str, str, float, float]]]:
     pred = pd.DataFrame(
         {
             "process": ["p1"] * 4,
             "t": [0.0, 0.5, 1.0, 2.0],
             "c_biomass": [1.0, 0.9, 0.8, 0.64],
-            "V_cont": [1.0, 1.0, 1.0, 1.0],
             "V_real": [1.0, 1.0, 0.9, 0.9],
             "q_biomass": [-0.1, -0.1, -0.1, -0.1],
         }
     )
-    obs = pd.DataFrame(
-        {
-            "process": ["p1", "p1", "p1"],
-            "variable": ["biomass", "biomass", "biomass"],
-            "t": [0.0, 1.0, 2.0],
-            "value": [1.0, 0.8, 0.64],
-        }
-    )
     pred_path = tmp_path / "predictions.csv"
-    obs_path = tmp_path / "observations.csv"
     pred.to_csv(pred_path, index=False)
-    obs.to_csv(obs_path, index=False)
-    return pred_path, obs_path
+    # measured overlay points handed to the worker as picklable records
+    records = [
+        ("p1", "biomass", 0.0, 1.0),
+        ("p1", "biomass", 1.0, 0.8),
+        ("p1", "biomass", 2.0, 0.64),
+    ]
+    return pred_path, records
 
 
 def test_render_process_plots_from_csv_direct(tmp_path: Path):
-    pred_path, obs_path = _make_prediction_csvs(tmp_path)
+    pred_path, records = _make_prediction_csv(tmp_path)
     out = tmp_path / "plots"
-    render_process_plots_from_csv(
-        pred_path, obs_path, out, process_names=("p1",)
-    )
+    render_process_plots_from_csv(pred_path, records, out, process_names=("p1",))
     png = out / "p1.png"
     assert png.is_file()
     assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_render_tolerates_missing_observations(tmp_path: Path):
-    pred_path, _ = _make_prediction_csvs(tmp_path)
+    pred_path, _ = _make_prediction_csv(tmp_path)
     out = tmp_path / "plots"
-    render_process_plots_from_csv(pred_path, tmp_path / "nope.csv", out)
+    render_process_plots_from_csv(pred_path, None, out)
     assert (out / "p1.png").is_file()
 
 
-def test_export_observations_csv_long_format(tmp_path: Path):
+def test_measured_points_records_long_format(tmp_path: Path):
     collection = _collection()
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    out = tmp_path / "observations.csv"
-    export_observations_csv(collection, store, out)
-    df = pd.read_csv(out)
-    assert list(df.columns) == ["process", "variable", "t", "value"]
+    records = measured_points_records(collection, store)
+    df = pd.DataFrame(records, columns=["process", "variable", "t", "value"])
     assert set(df["variable"]) == {"biomass"}
     assert (df["process"] == "p1").all()
     assert len(df) == 3  # biomass measured at t in {0,1,2}

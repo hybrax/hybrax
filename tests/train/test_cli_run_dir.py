@@ -53,9 +53,14 @@ def test_train_cli_produces_fair_run_dir_and_load_run(tmp_path: Path):
     # FAIR layout.
     assert (run_dir / "config.json").is_file()
     assert (run_dir / "metrics.csv").is_file()
-    assert (run_dir / "observations.csv").is_file()
+    assert (run_dir / "predictions.csv").is_file()
     assert (run_dir / "model" / "params.eqx").is_file()
     assert (run_dir / "checkpoints" / "latest").is_symlink()
+    # each checkpoint is self-contained (config + prepared bundled; custom.py too
+    # when the run has one)
+    latest = (run_dir / "checkpoints" / "latest").resolve()
+    for fname in ("config.json", "prepared.json.gz", "params.eqx"):
+        assert (latest / fname).is_file(), fname
 
     doc = json.loads((run_dir / "config.json").read_text())
     assert doc["status"] == "complete"

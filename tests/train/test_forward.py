@@ -355,6 +355,8 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
+    # the stub ForwardResult has no real wrapper/dense_exports; skip the writers
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     output_dir = tmp_path / "fwd"
     exit_code = cli.main(
@@ -391,8 +393,8 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
 
 
 def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
-    """rtol/atol/jump_ts come from the model's config.json and are NOT
-    CLI-overridable; only --solver-max-steps (a safety cap) is honoured."""
+    """All solver settings (max_steps/rtol/atol/jump_ts) are replayed read-only
+    from the model's config.json — there are no CLI override flags."""
     run_dir = _make_forward_run_dir(
         tmp_path,
         solver={"max_steps": 10, "rtol": 1e-5, "atol": 1e-7, "jump_ts": True},
@@ -408,34 +410,33 @@ def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
-    # Even passing --solver-rtol / --no-jump-ts must NOT change the trajectory.
     cli.main(
-        [
-            "forward",
-            "--model",
-            str(run_dir),
-            "--solver-rtol",
-            "1e-3",
-            "--solver-max-steps",
-            "99",
-            "--no-jump-ts",
-            "--output-dir",
-            str(tmp_path / "fwd"),
-            "--no-plot",
-        ]
+        ["forward", "--model", str(run_dir), "--output-dir", str(tmp_path / "fwd"),
+         "--no-plot"]
     )
     cfg = captured_cfg["cfg"]
-    assert cfg.solver_rtol == 1e-5  # recorded, not the CLI 1e-3
+    assert cfg.solver_rtol == 1e-5
     assert cfg.solver_atol == 1e-7
-    assert cfg.solver_use_jump_ts is True  # recorded, not --no-jump-ts
-    assert cfg.solver_max_steps == 99  # the one permitted override
+    assert cfg.solver_use_jump_ts is True
+    assert cfg.solver_max_steps == 10  # straight from the model's config.json
 
 
-def test_forward_cli_legacy_requires_input(tmp_path: Path):
+def test_forward_cli_removed_solver_flags_are_rejected(tmp_path: Path):
+    run_dir = _make_forward_run_dir(tmp_path)
+    for flag in ("--solver-rtol", "--solver-atol", "--solver-max-steps"):
+        with pytest.raises(SystemExit):
+            cli.main(["forward", "--model", str(run_dir), flag, "1"])
+    with pytest.raises(SystemExit):
+        cli.main(["forward", "--model", str(run_dir), "--no-jump-ts"])
+
+
+def test_forward_cli_bare_model_without_run_dir_errors(tmp_path: Path):
+    # A bare .eqx with no config.json at/above it is not a valid model bundle.
     model_path = tmp_path / "m.eqx"
     model_path.write_bytes(b"")
-    with pytest.raises(SystemExit, match="--input is required"):
+    with pytest.raises(SystemExit, match="config.json"):
         cli.main(["forward", "--model", str(model_path)])
 
 
@@ -462,6 +463,7 @@ def test_forward_cli_no_configured_processes_evaluates_all(
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     cli.main(
         [
@@ -593,6 +595,75 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
     # curvature/<rate> columns — proves the dense_grid_n opt-in path runs
     # end-to-end through train -> checkpoint -> forward -> losses.csv.
     assert any(str(c).startswith("curvature/") for c in rows.columns)
+    # F2: --timeseries-csv is honoured even under --no-plot; predictions are
+    # written too (no longer gated behind plotting).
+    assert (fwd_dir / "ts.csv").exists()
+    assert (fwd_dir / "predictions.csv").exists()
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not FIXTURE_DATA.exists() or not FIXTURE_CUSTOM.exists(),
+    reason="martens_single fixture not available",
+)
+def test_forward_ensemble_on_fixture(tmp_path: Path):
+    """Two self-contained checkpoints forwarded as an ensemble -> per-model
+    predictions + mean (predictions.csv) + std (predictions_std.csv)."""
+    prepared = tmp_path / "prepared.json"
+    prepare_config = tmp_path / "prepare-config.json"
+    prepare_config.write_text(
+        json.dumps(
+            {
+                "prepare": {"raw_input": str(FIXTURE_DATA)},
+                "custom_py": str(FIXTURE_CUSTOM),
+            }
+        )
+    )
+    assert cli.main(
+        ["prepare", "--config", str(prepare_config), "--output", str(prepared)]
+    ) == 0
+
+    out_dir = tmp_path / "run"
+    train_config = tmp_path / "train-config.json"
+    train_config.write_text(
+        json.dumps(
+            {
+                "data": {"prepared": str(prepared), "target_source": "reactor_components"},
+                "custom_py": str(FIXTURE_CUSTOM),
+                "train": {"steps": 2, "seed": 42},
+                "solver": {"max_steps": 2048, "rtol": 1e-3, "atol": 1e-5},
+                "checkpoint": {"every": 1, "keep": "all"},
+            }
+        )
+    )
+    assert cli.main(
+        ["train", "--config", str(train_config), "--output-dir", str(out_dir), "--no-plot"]
+    ) == 0
+
+    ckpt1 = out_dir / "checkpoints" / "step_00001"
+    ckpt2 = out_dir / "checkpoints" / "step_00002"
+    # each checkpoint is self-contained
+    for c in (ckpt1, ckpt2):
+        for f in ("config.json", "custom.py", "prepared.json.gz", "params.eqx"):
+            assert (c / f).is_file(), f"{c}/{f}"
+
+    ens_out = tmp_path / "ensemble"
+    fwd_config = tmp_path / "forward-config.json"
+    fwd_config.write_text(
+        json.dumps(
+            {
+                "models": [str(ckpt1), str(ckpt2)],
+                "data": {"prepared": str(prepared), "processes": ["run_1"]},
+                "output": {"dir": str(ens_out), "plots": False},
+            }
+        )
+    )
+    assert cli.main(["forward", "--config", str(fwd_config)]) == 0
+    assert (ens_out / "predictions.csv").is_file()
+    assert (ens_out / "predictions_std.csv").is_file()
+    # per-model dirs with de-duplicated names (both bundles share output.dir "run")
+    model_dirs = sorted(p.name for p in (ens_out / "models").iterdir())
+    assert len(model_dirs) == 2 and model_dirs[0] != model_dirs[1]
 
 
 @pytest.mark.integration

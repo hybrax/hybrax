@@ -49,6 +49,45 @@ class DenseProcessExport:
     auxiliary: dict[str, np.ndarray] | None = None
 
 
+def aggregate_dense_exports(
+    per_model: list[dict[str, DenseProcessExport]],
+) -> tuple[dict[str, DenseProcessExport], dict[str, DenseProcessExport]]:
+    """Stack per-model dense exports into per-process (mean, std) exports.
+
+    All models must share the same processes and dense ``t`` grid (guaranteed
+    when every model forwards the same prepared data); mismatched shapes raise.
+    """
+    if not per_model:
+        raise ValueError("aggregate_dense_exports: empty model list")
+    processes = list(per_model[0])
+    mean_out: dict[str, DenseProcessExport] = {}
+    std_out: dict[str, DenseProcessExport] = {}
+    for proc in processes:
+        exports = [m[proc] for m in per_model]
+
+        def _mean_std(attr: str) -> tuple[np.ndarray, np.ndarray]:
+            stacked = np.stack([getattr(e, attr) for e in exports], axis=0)
+            return stacked.mean(axis=0), stacked.std(axis=0)
+
+        c_m, c_s = _mean_std("c_species")
+        v_m, v_s = _mean_std("v_real")
+        b_m, b_s = _mean_std("b_modeled_cum")
+        q_m, q_s = _mean_std("q_rates")
+        aux_keys = list(exports[0].auxiliary or {})
+        aux_m = (
+            {k: np.stack([e.auxiliary[k] for e in exports]).mean(0) for k in aux_keys}
+            or None
+        )
+        aux_s = (
+            {k: np.stack([e.auxiliary[k] for e in exports]).std(0) for k in aux_keys}
+            or None
+        )
+        t = exports[0].t
+        mean_out[proc] = DenseProcessExport(t, c_m, v_m, b_m, q_m, aux_m)
+        std_out[proc] = DenseProcessExport(t, c_s, v_s, b_s, q_s, aux_s)
+    return mean_out, std_out
+
+
 def dense_exports_from_save_outputs(
     prediction_t: jnp.ndarray,
     prediction_save_outputs: SaveOutputs,
@@ -511,20 +550,17 @@ def _measured_timeseries(
     return np.asarray(src.times, dtype=float), np.asarray(src.values, dtype=float)
 
 
-def export_observations_csv(
+def measured_points_records(
     collection: BioProcessCollection,
     store: TrainingDataStore,
-    output_path: str | Path,
     process_names: tuple[str, ...] | None = None,
-) -> None:
-    """Write measured target points (long format) for plot overlays.
+) -> list[tuple[str, str, float, float]]:
+    """Measured target points as picklable ``(process, variable, t, value)`` rows.
 
-    Columns: ``process, variable, t, value`` — one row per (process, measured
-    variable, measurement time). Written once per run; consumed by
-    :func:`render_process_plots_from_csv` in the background plot worker.
+    Extracted in the MAIN process (the collection load pulls bp_format/jax) and
+    handed to the lightweight :func:`render_process_plots_from_csv` background
+    worker as plain records — so there is no intermediate observations.csv file.
     """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     selected = tuple(process_names) if process_names else tuple(store.process_order)
     measured_names = tuple(store.name_measured)
     use_rmc = bool(store.name_measured_RMCs)
@@ -538,27 +574,27 @@ def export_observations_csv(
             times, values = ts
             for t, v in zip(times, values, strict=False):
                 rows.append((process_name, variable, float(t), float(v)))
-    pd.DataFrame(rows, columns=["process", "variable", "t", "value"]).to_csv(
-        output_path, index=False
-    )
-    logger.info("observations csv saved to %s", output_path)
+    return rows
 
 
 def render_process_plots_from_csv(
     predictions_csv: str | Path,
-    observations_csv: str | Path,
+    measured_records: list[tuple[str, str, float, float]] | None,
     output_dir: str | Path,
     *,
     process_names: tuple[str, ...] | None = None,
     target_names: tuple[str, ...] | None = None,
     training_process_names: tuple[str, ...] | None = None,
 ) -> None:
-    """Render per-process prediction-vs-observation plots from CSVs **only**.
+    """Render per-process prediction-vs-observation plots from a predictions CSV
+    plus precomputed measured records **only**.
 
     Pure numpy/pandas/matplotlib — **NO jax / bp_train heavy imports**. Picklable,
-    safe to call inside a ``spawn`` background worker. Writes ``<process>.png``
-    per process: predicted species trajectories (``c_<name>``) with measured
-    overlays, plus a ``V_real`` panel when present.
+    safe to call inside a ``spawn`` background worker. ``measured_records`` are
+    ``(process, variable, t, value)`` rows from
+    :func:`measured_points_records` (extracted in the main process). Writes
+    ``<process>.png`` per process: predicted species trajectories (``c_<name>``)
+    with measured overlays, plus a ``V_real`` panel when present.
     """
     import matplotlib
 
@@ -568,15 +604,14 @@ def render_process_plots_from_csv(
     del target_names  # accepted for API symmetry; species inferred from columns
 
     predictions_csv = Path(predictions_csv)
-    observations_csv = Path(observations_csv)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     pred = pd.read_csv(predictions_csv)
-    if observations_csv.is_file():
-        obs = pd.read_csv(observations_csv)
-    else:
-        obs = pd.DataFrame(columns=["process", "variable", "t", "value"])
+    obs = pd.DataFrame(
+        list(measured_records) if measured_records else [],
+        columns=["process", "variable", "t", "value"],
+    )
 
     species_cols = [c for c in pred.columns if c.startswith("c_")]
     procs = (
@@ -643,6 +678,7 @@ def plot_process_simulations(
     dense_exports: dict[str, DenseProcessExport],
     process_names: tuple[str, ...] | None = None,
     *,
+    std_exports: dict[str, DenseProcessExport] | None = None,
     training_process_names: tuple[str, ...] | None = None,
     per_process_named_losses: dict[str, dict[str, float]] | None = None,
     per_process_total_loss: dict[str, float] | None = None,
@@ -707,6 +743,12 @@ def plot_process_simulations(
         v_real_pred = dense_export.v_real
         b_modeled_pred = dense_export.b_modeled_cum
         q_dense = dense_export.q_rates
+
+        # Optional ensemble ±1σ bands (mean is dense_export; std is std_export).
+        std_export = std_exports.get(process_name) if std_exports else None
+        c_std = std_export.c_species if std_export is not None else None
+        v_std = std_export.v_real if std_export is not None else None
+        q_std = std_export.q_rates if std_export is not None else None
 
         if render_plots:
             import matplotlib.pyplot as plt
@@ -777,6 +819,16 @@ def plot_process_simulations(
                     color="C0",
                     label="integrated",
                 )
+                if c_std is not None:
+                    ax_c.fill_between(
+                        t_dense_np,
+                        c_dense[:, i] - c_std[:, i],
+                        c_dense[:, i] + c_std[:, i],
+                        color="C0",
+                        alpha=0.2,
+                        lw=0,
+                        label="±1σ",
+                    )
                 # Interpolate dense prediction at measurement times for R².
                 v_pred_at_meas = np.interp(t_measured, t_dense_np, c_dense[:, i])
                 _mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
@@ -798,6 +850,15 @@ def plot_process_simulations(
                 # differ. Title with the rate name so labels match values.
                 if i < n_rates:
                     ax_q.plot(t_dense_np, q_dense[:, i], "-", lw=1.5, color="black")
+                    if q_std is not None:
+                        ax_q.fill_between(
+                            t_dense_np,
+                            q_dense[:, i] - q_std[:, i],
+                            q_dense[:, i] + q_std[:, i],
+                            color="black",
+                            alpha=0.15,
+                            lw=0,
+                        )
                     ax_q.axhline(0, color="gray", lw=0.5, ls="--")
                     ax_q.set_title(rate_names[i])
                     ax_q.set_xlabel(f"time [{time_unit}]")
@@ -824,6 +885,15 @@ def plot_process_simulations(
                 color="C0",
                 label="integrated",
             )
+            if v_std is not None:
+                ax_v.fill_between(
+                    t_dense_np,
+                    v_real_pred - v_std,
+                    v_real_pred + v_std,
+                    color="C0",
+                    alpha=0.2,
+                    lw=0,
+                )
             _v_mse, v_r2 = _mse_and_r2(v_real_true_dense, v_real_pred)
             # V_real is not a loss target → R²-only annotation.
             _annotate_fit(ax_v, v_r2)

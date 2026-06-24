@@ -97,7 +97,6 @@ def test_checkpoint_writer_disabled_when_every_zero(tmp_path: Path):
         opt_state=_opt_state_for(_TrainableModule()),
         mean_loss=1.0,
         best_loss=1.0,
-        observations_csv=None,
         render_predictions_fn=_dummy_predictions,
         loss_by_step=[1.0],
     )
@@ -116,7 +115,6 @@ def test_checkpoint_writer_cadence_and_latest(tmp_path: Path):
             opt_state=opt_state,
             mean_loss=float(step),
             best_loss=float(step),
-            observations_csv=None,
             render_predictions_fn=_dummy_predictions,
             loss_by_step=[float(step)],
         )
@@ -136,7 +134,6 @@ def test_checkpoint_writer_writes_resumable_state_and_roundtrips(tmp_path: Path)
         opt_state=opt_state,
         mean_loss=0.12345,
         best_loss=0.1,
-        observations_csv=None,
         render_predictions_fn=_dummy_predictions,
         loss_by_step=[0.9, 0.5, 0.12345],
     )
@@ -169,7 +166,6 @@ def test_checkpoint_writer_best_latest_pruning(tmp_path: Path):
             opt_state=opt_state,
             mean_loss=loss,
             best_loss=min(list(losses.values())[:step]),
-            observations_csv=None,
             render_predictions_fn=_dummy_predictions,
             loss_by_step=[loss],
         )
@@ -195,7 +191,6 @@ def test_checkpoint_writer_export_failure_does_not_publish(tmp_path: Path):
             opt_state=opt_state,
             mean_loss=1.0,
             best_loss=1.0,
-            observations_csv=None,
             render_predictions_fn=_boom,
             loss_by_step=[1.0],
         )
@@ -297,7 +292,6 @@ def _run_train(
     steps: int,
     checkpoint_keep: str = "best+latest",
     plots: bool = False,
-    observations_csv: Path | None = None,
     metrics_csv: str | None = None,
     start_step: int = 0,
     initial_trainable_params=None,
@@ -324,7 +318,6 @@ def _run_train(
             checkpoint_every=checkpoint_every,
             checkpoint_keep=checkpoint_keep,
             plots=plots,
-            observations_csv=observations_csv,
             metrics_csv=metrics_csv,
         ),
         start_step=start_step,

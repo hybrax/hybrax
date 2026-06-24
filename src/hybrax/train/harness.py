@@ -55,6 +55,7 @@ from .postprocessing import (
     DenseProcessExport,
     dense_exports_from_save_outputs,
     export_predictions_csv,
+    measured_points_records,
 )
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
@@ -168,13 +169,14 @@ class TrainHarnessConfig:
     # Checkpointing. ``checkpoint_dir`` is the ``checkpoints/`` directory;
     # ``checkpoint_every`` is the snapshot cadence (distinct from ``log_every``);
     # ``checkpoint_keep`` is the retention policy ("best+latest"|"all").
-    # ``plots`` gates background plot rendering; ``observations_csv`` (when set)
-    # provides measured-point overlays for per-checkpoint process plots.
+    # ``plots`` gates background plot rendering; ``prepared_path`` is the resolved
+    # prepared.json(.gz) bundled into every checkpoint (so each is self-contained)
+    # and the source of measured-point overlays for per-checkpoint process plots.
     checkpoint_dir: Path | None = None
     checkpoint_every: int = 0
     checkpoint_keep: str = "best+latest"
     plots: bool = True
-    observations_csv: Path | None = None
+    prepared_path: Path | None = None
     # Optional monitor / validation set: a tuple of process names whose loss
     # is evaluated every `log_every` steps with the current wrapper. Diagnostic
     # only — never drives optimizer updates. None disables the monitor.
@@ -1323,6 +1325,13 @@ def train_collection(
         if (checkpoint_enabled and bool(cfg.plots))
         else None
     )
+    # Measured overlay points for the background plot worker, extracted once here
+    # (main process) and handed over as picklable records — no observations.csv.
+    measured_records = (
+        measured_points_records(collection, store, selected_processes)
+        if plotter is not None
+        else None
+    )
     checkpoint_writer = CheckpointWriter(
         Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
         CheckpointConfig(
@@ -1331,6 +1340,8 @@ def train_collection(
         ),
         plotter=plotter,
         plots_enabled=bool(cfg.plots),
+        prepared_src=cfg.prepared_path,
+        measured_records=measured_records,
     )
     # Cumulative plot history. On resume, pre-seed from the existing metrics.csv
     # so the per-checkpoint curves stay continuous across the restart.
@@ -1504,7 +1515,6 @@ def train_collection(
                 opt_state=optimizer_state,
                 mean_loss=float(loss),
                 best_loss=best_loss,
-                observations_csv=cfg.observations_csv,
                 render_predictions_fn=_render_predictions,
                 loss_by_step=loss_so_far,
                 grad_norm_by_step=grad_norm_so_far,
@@ -1519,6 +1529,29 @@ def train_collection(
             )
 
         history = run_log.finalize()
+
+        # Run-root predictions.csv: wide model trajectories for the final model
+        # (the artifact users expect at the run root).
+        if cfg.checkpoint_dir is not None:
+            try:
+                _, _, _final_dense = compute_dense_exports(
+                    wrapper,
+                    store,
+                    collection,
+                    selected_processes,
+                    solver_max_steps=int(cfg.solver_max_steps),
+                    solver_rtol=float(cfg.solver_rtol),
+                    solver_atol=float(cfg.solver_atol),
+                    solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
+                )
+                export_predictions_csv(
+                    wrapper,
+                    _final_dense,
+                    Path(cfg.checkpoint_dir).parent / "predictions.csv",
+                    process_names=selected_processes,
+                )
+            except Exception:  # noqa: BLE001 - the trained model is already saved
+                logger.exception("failed to write run-root predictions.csv")
     finally:
         if plotter is not None:
             plotter.close()
@@ -1671,7 +1704,7 @@ def train_harness_config_from_run_config(
         checkpoint_every=cfg.checkpoint.every,
         checkpoint_keep=cfg.checkpoint.keep,
         plots=cfg.output.plots,
-        observations_csv=Path(run_dir) / "observations.csv",
+        prepared_path=cfg.data.prepared if cfg.data is not None else None,
     )
 
 

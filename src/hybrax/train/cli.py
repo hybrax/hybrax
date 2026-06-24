@@ -26,7 +26,8 @@ from .harness import (
 from .loo import LOOConfig, run_loo_cv
 from .loo_metrics import compute_loo_metrics
 from .postprocessing import (
-    export_observations_csv,
+    aggregate_dense_exports,
+    export_predictions_csv,
     load_model_metadata,
     plot_process_simulations,
     plot_training_results,
@@ -34,7 +35,14 @@ from .postprocessing import (
     save_model_metadata,
 )
 from .prepare import prepare_artifact
-from .run_config import LoadedRunConfig, RunConfig, load_prepare_config, load_train_config
+from .run_config import (
+    ForwardRunConfig,
+    LoadedRunConfig,
+    RunConfig,
+    load_forward_config,
+    load_prepare_config,
+    load_train_config,
+)
 from .serialization import (
     content_hash,
     environment_versions as _environment_versions,
@@ -46,7 +54,7 @@ from .serialization import (
     update_run_config_status,
     write_json,
 )
-from .training_data import TARGET_SOURCES, TrainingDataStore
+from .training_data import TARGET_SOURCES
 from .utils import load_custom_module, resolve_config
 
 
@@ -153,76 +161,41 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     forward_parser.add_argument(
+        "--config",
+        help=(
+            "forward_config.json: a `models` list of self-contained run/checkpoint "
+            "dirs (len 1 = single, >1 = ensemble) + optional `data`/`output`. "
+            "Mutually exclusive with --model."
+        ),
+    )
+    forward_parser.add_argument(
         "--model",
-        required=True,
-        help="Path to trained_wrapper.eqx.",
+        help=(
+            "Shorthand for a 1-model config: a trained run directory, or a "
+            "checkpoint dir / params.eqx inside it (resolved up to the run's "
+            "config.json like `train --resume`)."
+        ),
     )
     forward_parser.add_argument(
         "--input",
         help=(
-            "Path to prepared.json. If omitted, read from the sidecar "
-            "`<model>.meta.json`."
+            "Optional prepared.json to forward on (new data + controls); defaults "
+            "to each model's own bundled prepared.json."
         ),
-    )
-    forward_parser.add_argument(
-        "--custom",
-        help="Optional custom.py path. Defaults to the sidecar value.",
-    )
-    forward_parser.add_argument(
-        "--config",
-        help="Optional legacy JSON runtime config for forward hooks.",
     )
     forward_parser.add_argument(
         "--process",
         action="append",
         default=[],
         help=(
-            "Process name to evaluate. May be repeated or comma-separated. "
-            "Defaults to every process in the input collection."
+            "Process name to evaluate (repeatable or comma-separated). "
+            "Defaults to every process in the data."
         ),
-    )
-    forward_parser.add_argument(
-        "--target",
-        action="append",
-        default=[],
-        help=(
-            "Target variable order override. Normally inferred from "
-            "the sidecar."
-        ),
-    )
-    forward_parser.add_argument(
-        "--target-source",
-        default=None,
-        choices=sorted(TARGET_SOURCES),
-        help="Override the target-source resolution (defaults to sidecar/train).",
-    )
-    forward_parser.add_argument(
-        "--solver-max-steps",
-        type=int,
-        default=None,
-        help="Override sidecar solver max_steps.",
-    )
-    forward_parser.add_argument(
-        "--solver-rtol",
-        type=float,
-        default=None,
-        help="Override sidecar solver rtol.",
-    )
-    forward_parser.add_argument(
-        "--solver-atol",
-        type=float,
-        default=None,
-        help="Override sidecar solver atol.",
-    )
-    forward_parser.add_argument(
-        "--no-jump-ts",
-        action="store_true",
-        help="Disable passing control step boundaries as jump_ts to the solver.",
     )
     forward_parser.add_argument(
         "--output-dir",
         default=None,
-        help="Directory for forward outputs. Defaults to <model_dir>/forward.",
+        help="Directory for forward outputs. Defaults to <first model>/forward.",
     )
     fwd_plot_group = forward_parser.add_mutually_exclusive_group()
     fwd_plot_group.add_argument(
@@ -620,11 +593,14 @@ def _handle_train(args: argparse.Namespace) -> int:
         # (e.g. checkpoints/latest, checkpoints/step_00500, model/) and resolve
         # up to the directory that actually holds config.json. Resume always
         # continues from checkpoints/latest regardless.
+        # The run dir holds config.json AND a checkpoints/ subdir. Require both so
+        # we skip self-contained checkpoint dirs (which also carry a config.json)
+        # and land on the actual run directory.
         run_dir = next(
             (
                 cand
                 for cand in (resume_arg, resume_arg.parent, resume_arg.parent.parent)
-                if (cand / "config.json").is_file()
+                if (cand / "config.json").is_file() and (cand / "checkpoints").is_dir()
             ),
             None,
         )
@@ -693,15 +669,6 @@ def _handle_train(args: argparse.Namespace) -> int:
     if cfg.custom_py is not None:
         shutil.copyfile(cfg.custom_py, run_dir / "custom.py")
         bundled_custom = "custom.py"
-
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=cfg.data.targets,
-        target_source=cfg.data.target_source,
-    )
-    export_observations_csv(
-        collection, store, run_dir / "observations.csv", process_names=cfg.data.processes
-    )
 
     document = {
         "status": "running",
@@ -854,6 +821,77 @@ def _write_loss_csv(rows: list[list[str]], path: Path) -> None:
     pd.DataFrame(data, columns=headers).to_csv(path, index=False)
 
 
+def _resolve_forward_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
+    """Return the nearest directory at/above ``path`` that holds config.json."""
+    cur = path if path.is_dir() else path.parent
+    for _ in range(max_levels + 1):
+        if (cur / "config.json").is_file():
+            return cur
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return None
+
+
+def _resolve_model_bundle(path: Path) -> tuple[Path, Path, RunConfig, Path | None]:
+    """Resolve a model reference (run dir, checkpoint dir, or params.eqx) to
+    ``(run_dir_with_config, params_path, model_config, own_prepared)``."""
+    path = Path(path)
+    if not path.exists():
+        raise SystemExit(f"forward: model path does not exist: {path}")
+    run_dir = _resolve_forward_run_dir(path)
+    if run_dir is None:
+        raise SystemExit(
+            f"forward: no config.json at or above {path}; pass a trained run "
+            "directory or a self-contained checkpoint dir."
+        )
+    model_cfg, _doc = read_run_config_json(run_dir / "config.json")
+    if path.is_file() and path.name == "params.eqx":
+        params = path
+    elif path.is_dir() and (path / "params.eqx").is_file():
+        params = path / "params.eqx"
+    elif (run_dir / "model" / "params.eqx").is_file():
+        params = run_dir / "model" / "params.eqx"
+    elif (run_dir / "params.eqx").is_file():
+        params = run_dir / "params.eqx"
+    else:
+        raise SystemExit(f"forward: no params.eqx found for model {path}")
+    if (run_dir / "prepared.json.gz").is_file():
+        own_prepared: Path | None = run_dir / "prepared.json.gz"
+    elif (run_dir / "prepared.json").is_file():
+        own_prepared = run_dir / "prepared.json"
+    elif model_cfg.data is not None:
+        own_prepared = Path(model_cfg.data.prepared)
+    else:
+        own_prepared = None
+    return run_dir, params, model_cfg, own_prepared
+
+
+def _resolve_model_names(models: tuple[Any, ...]) -> list[str]:
+    """Per-model name: explicit ``name`` else basename of the bundle's
+    ``config.output.dir`` (run identity); de-duplicated with ``#2``/``#3``."""
+    raw: list[str] = []
+    for ref in models:
+        if ref.name:
+            raw.append(str(ref.name))
+            continue
+        run_dir = _resolve_forward_run_dir(Path(ref.path))
+        nm: str | None = None
+        if run_dir is not None:
+            try:
+                cfg, _ = read_run_config_json(run_dir / "config.json")
+                nm = Path(cfg.output.dir).name
+            except Exception:  # noqa: BLE001 - fall back to the path basename
+                nm = None
+        raw.append(nm or Path(ref.path).name)
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    for nm in raw:
+        seen[nm] = seen.get(nm, 0) + 1
+        out.append(nm if seen[nm] == 1 else f"{nm}#{seen[nm]}")
+    return out
+
+
 def _handle_forward(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -861,151 +899,170 @@ def _handle_forward(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger(__name__)
 
-    model_arg = Path(args.model)
+    # --- Build the forward config (full file, or --model/--input shorthand) ---
+    if args.config and args.model:
+        log.error("forward: pass either --config or --model, not both")
+        return 1
+    if args.config:
+        fcfg = load_forward_config(args.config)
+    elif args.model:
+        raw: dict[str, Any] = {"models": [args.model]}
+        if args.input:
+            raw["data"] = {"prepared": args.input}
+        fcfg = ForwardRunConfig.model_validate(raw)  # paths relative to cwd
+    else:
+        log.error("forward requires --config <forward_config.json> or --model <dir>")
+        return 1
 
-    # Resolve the FAIR run directory for the model: --model may point at the run
-    # dir itself, or at a checkpoint's params.eqx.
-    run_dir: Path | None = None
-    if model_arg.is_dir() and (model_arg / "config.json").is_file():
-        run_dir = model_arg
-    elif (
-        model_arg.name == "params.eqx"
-        and (model_arg.parent.parent / "config.json").is_file()
-    ):
-        run_dir = model_arg.parent.parent
+    models = fcfg.models
+    shared_prepared = fcfg.data.prepared if fcfg.data is not None else None
+    config_processes = fcfg.data.processes if fcfg.data is not None else None
+    cli_processes = _split_multi_values(args.process)
 
-    run_config_obj = None
-    if run_dir is not None:
-        # --- New run-dir layout: solver/prepared/custom are recorded in config.json ---
-        run_config_obj, _doc = read_run_config_json(run_dir / "config.json")
-        model_path = (
-            model_arg
-            if model_arg.name == "params.eqx"
-            else run_dir / "model" / "params.eqx"
+    if len(models) > 1 and shared_prepared is None:
+        log.error(
+            "ensemble forward (>1 model) needs a shared `data.prepared`; add a "
+            "`data` block with `prepared` so per-model predictions align."
         )
-        if not model_path.is_file():
-            raise SystemExit(f"no model params at {model_path}")
+        return 1
 
-        bundled_prepared = run_dir / "prepared.json"
-        if args.input is not None:
-            prepared = str(args.input)
-        elif bundled_prepared.is_file():
-            prepared = str(bundled_prepared)
-        elif run_config_obj.data is not None:
-            prepared = str(run_config_obj.data.prepared)
-        else:
-            raise SystemExit(f"could not resolve prepared.json for run {run_dir}")
+    names = _resolve_model_names(models)
 
-        bundled_custom = run_dir / "custom.py"
-        if args.custom is not None:
-            custom_py = str(args.custom)
-        elif bundled_custom.is_file():
-            custom_py = str(bundled_custom)
-        elif run_config_obj.custom_py is not None:
-            custom_py = str(run_config_obj.custom_py)
+    # --- Forward each model on its data ---
+    per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
+    overlay_collection = None
+    overlay_store = None
+    eval_processes: tuple[str, ...] = ()
+    for ref, name in zip(models, names):
+        _run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)
+        prepared = shared_prepared if shared_prepared is not None else own_prepared
+        if prepared is None:
+            log.error("forward: could not resolve a prepared.json for model %s", name)
+            return 1
+        # The custom.py rebuilds the model's reaction module / loss hooks; without
+        # it forward_from_collection builds the default module (wrong pytree).
+        # Prefer the original recorded path (its sibling helper modules are on
+        # disk on this machine); fall back to the bundled copy for a checkpoint
+        # that was sent elsewhere.
+        if model_cfg.custom_py is not None and Path(model_cfg.custom_py).is_file():
+            custom_py: str | None = str(model_cfg.custom_py)
+        elif (_run_dir / "custom.py").is_file():
+            custom_py = str(_run_dir / "custom.py")
         else:
             custom_py = None
-
-        # Solver accuracy is read-only from the model's config (reproduces the
-        # trajectory the model was fit under); only the safety cap is overridable.
-        solver_max_steps = (
-            args.solver_max_steps
-            if args.solver_max_steps is not None
-            else int(run_config_obj.solver.max_steps)
+        collection = load_process_collection_json(Path(prepared))
+        eval_processes = (
+            tuple(cli_processes)
+            if cli_processes
+            else (
+                tuple(config_processes)
+                if config_processes
+                else tuple(collection.processes.keys())
+            )
         )
-        solver_rtol = float(run_config_obj.solver.rtol)
-        solver_atol = float(run_config_obj.solver.atol)
-        solver_use_jump_ts = bool(run_config_obj.solver.jump_ts)
-        effective_targets = (
-            run_config_obj.data.targets if run_config_obj.data is not None else None
+        model_targets = model_cfg.data.targets if model_cfg.data is not None else None
+        model_source = (
+            model_cfg.data.target_source if model_cfg.data is not None else "auto"
         )
-        target_source = (
-            run_config_obj.data.target_source
-            if run_config_obj.data is not None
-            else "auto"
+        training_processes = (
+            tuple(model_cfg.data.processes)
+            if model_cfg.data is not None and model_cfg.data.processes
+            else eval_processes
         )
-        configured_processes = (
-            run_config_obj.data.processes if run_config_obj.data is not None else None
+        fwd_cfg = ForwardConfig(
+            process_names=eval_processes,
+            target_variable_order=model_targets,
+            target_source=model_source,
+            solver_max_steps=int(model_cfg.solver.max_steps),
+            solver_rtol=float(model_cfg.solver.rtol),
+            solver_atol=float(model_cfg.solver.atol),
+            solver_use_jump_ts=bool(model_cfg.solver.jump_ts),
         )
-        runtime_config = None
-    else:
-        # --- Legacy layout fallback (no run-dir config.json) ---
-        model_path = model_arg
-        if not model_path.exists():
-            raise SystemExit(f"--model path does not exist: {model_path}")
-        if args.input is None:
-            raise SystemExit("--input is required when --model is not a run dir")
-        prepared = str(args.input)
-        custom_py = str(args.custom) if args.custom else None
-        solver_max_steps = args.solver_max_steps or 4096
-        solver_rtol = args.solver_rtol or 1e-5
-        solver_atol = args.solver_atol or 1e-7
-        solver_use_jump_ts = not args.no_jump_ts
-        cli_targets = _split_multi_values(args.target)
-        effective_targets = cli_targets or None
-        target_source = args.target_source or "auto"
-        configured_processes = None
-        runtime_config = _load_config(args.config)
+        result = forward_from_collection(
+            collection,
+            model_path=params_path,
+            config=fwd_cfg,
+            custom_py=custom_py,
+            run_config=model_cfg,
+            training_process_names=training_processes,
+        )
+        per_model.append((name, result))
+        overlay_collection = collection
+        overlay_store = result.store
 
-    collection = load_process_collection_json(Path(prepared))
-
-    cli_processes = _split_multi_values(args.process)
-    eval_processes = cli_processes or tuple(collection.processes.keys())
-
-    training_processes = (
-        tuple(configured_processes)
-        if configured_processes
-        else tuple(collection.processes.keys())
-    )
-
-    fwd_cfg = ForwardConfig(
-        process_names=eval_processes,
-        target_variable_order=effective_targets,
-        target_source=target_source,
-        solver_max_steps=solver_max_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-        solver_use_jump_ts=solver_use_jump_ts,
-    )
-
-    result = forward_from_collection(
-        collection,
-        model_path=model_path,
-        config=fwd_cfg,
-        custom_py=custom_py,
-        runtime_config=runtime_config,
-        training_process_names=training_processes,
-        run_config=run_config_obj,
-    )
-
-    table_str, csv_rows = _format_loss_table(result)
-    log.info("\n%s", table_str)
-
+    # --- Output directory ---
     if args.output_dir is not None:
         output_dir = Path(args.output_dir)
-    elif run_dir is not None:
-        output_dir = run_dir / "forward"
+    elif fcfg.output.dir is not None:
+        output_dir = Path(fcfg.output.dir)
     else:
-        output_dir = model_path.parent / "forward"
+        first_run_dir, *_ = _resolve_model_bundle(models[0].path)
+        output_dir = first_run_dir / "forward"
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    wrapper0 = per_model[0][1].trained_wrapper
+
+    # --- Per-model predictions + loss tables ---
+    for name, result in per_model:
+        mdir = output_dir / "models" / name
+        mdir.mkdir(parents=True, exist_ok=True)
+        export_predictions_csv(
+            result.trained_wrapper,
+            result.dense_exports,
+            mdir / "predictions.csv",
+            process_names=eval_processes,
+        )
+        _table, model_rows = _format_loss_table(result)
+        _write_loss_csv(model_rows, mdir / "losses.csv")
+
+    # --- Aggregate (mean + std across models) ---
+    per_model_dense = [r.dense_exports for _n, r in per_model]
+    if len(per_model_dense) > 1:
+        mean_exports, std_exports = aggregate_dense_exports(per_model_dense)
+    else:
+        mean_exports, std_exports = per_model_dense[0], None
+
+    export_predictions_csv(
+        wrapper0,
+        mean_exports,
+        output_dir / "predictions.csv",
+        process_names=eval_processes,
+    )
+    if std_exports is not None:
+        export_predictions_csv(
+            wrapper0,
+            std_exports,
+            output_dir / "predictions_std.csv",
+            process_names=eval_processes,
+        )
+
+    # --- Loss table (representative = first model; per-model in models/<name>/) ---
+    table_str, csv_rows = _format_loss_table(per_model[0][1])
+    log.info("\n%s", table_str)
     loss_csv_path = Path(args.loss_csv) if args.loss_csv else output_dir / "losses.csv"
     _write_loss_csv(csv_rows, loss_csv_path)
-    log.info("loss table saved to %s", loss_csv_path)
 
-    if args.plot:
-        named_losses, total_losses = forward_plot_losses(result)
+    # --- Optional merged timeseries CSV (mean) ---
+    ts_path = args.timeseries_csv or fcfg.output.timeseries_csv
+    if ts_path is not None:
+        export_predictions_csv(
+            wrapper0, mean_exports, ts_path, process_names=eval_processes
+        )
+
+    # --- Plots: mean line + ±std band + measured overlay ---
+    if args.plot and fcfg.output.plots:
+        named_losses, total_losses = forward_plot_losses(per_model[0][1])
         plot_process_simulations(
-            result.trained_wrapper,
-            collection,
-            result.store,
+            wrapper0,
+            overlay_collection,
+            overlay_store,
             output_dir,
-            result.dense_exports,
+            mean_exports,
             process_names=eval_processes,
-            training_process_names=training_processes,
+            std_exports=std_exports,
+            training_process_names=eval_processes,
             per_process_named_losses=named_losses,
             per_process_total_loss=total_losses,
-            timeseries_csv_path=args.timeseries_csv,
         )
 
     return 0
