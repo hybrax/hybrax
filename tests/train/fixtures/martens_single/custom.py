@@ -50,7 +50,6 @@ class FixtureReactionModule(UserReactionModule):
         n_in = (
             self.n_modeled_RMCs
             + self.n_controlled_FVCs
-            + self.n_controlled_FVCs_bolus
             + self.n_controlled_PVs
         )
         n_out = self.n_modeled_BiologicalOde_rates + self.n_modeled_FVCs
@@ -68,7 +67,6 @@ class FixtureReactionModule(UserReactionModule):
             [
                 inputs.SCL_modeled_RMCs,
                 inputs.SCL_controlled_FVCs_cumulative,
-                inputs.SCL_controlled_FVCs_bolus_rates,
                 inputs.SCL_controlled_PVs,
             ]
         )
@@ -160,14 +158,9 @@ def estimate_all_scales(collection, target_names, config):
     canonical_max = np.maximum(np.max(np.abs(RAW_u_canonical_arr), axis=0), 1e-2)
     rhs_max = np.maximum(np.max(np.abs(RAW_u_rhs_arr), axis=0), 1e-2)
 
-    n_bolus = n_extras - 1
-    bolus_block_start = n_FVC + n_SVC + n_PV
     SCALE_controlled_FVCs_cumulative = canonical_max[:n_FVC]
     SCALE_controlled_FVCs_rates = rhs_max[:n_FVC]
     SCALE_controlled_PVs = canonical_max[n_FVC + n_SVC : n_FVC + n_SVC + n_PV]
-    SCALE_controlled_FVCs_bolus_rates = canonical_max[
-        bolus_block_start : bolus_block_start + n_bolus
-    ]
 
     RAW_controlled_FVCs_Cin = np.asarray(ref_rhs_ode.Cin_controlled_FVCs, dtype=float)
     RAW_modeled_FVCs_Cin = np.asarray(ref_rhs_ode.Cin_modeled_FVCs, dtype=float)
@@ -181,7 +174,6 @@ def estimate_all_scales(collection, target_names, config):
         SCALE_controlled_FVCs_cumulative=jnp.asarray(SCALE_controlled_FVCs_cumulative, dtype=jnp.float32),
         SCALE_controlled_FVCs_rates=jnp.asarray(SCALE_controlled_FVCs_rates, dtype=jnp.float32),
         SCALE_controlled_FVCs_Cin=jnp.asarray(SCALE_controlled_FVCs_Cin, dtype=jnp.float32),
-        SCALE_controlled_FVCs_bolus_rates=jnp.asarray(SCALE_controlled_FVCs_bolus_rates, dtype=jnp.float32),
         SCALE_controlled_PVs=jnp.asarray(SCALE_controlled_PVs, dtype=jnp.float32),
         SCALE_modeled_FVCs_Cin=jnp.asarray(SCALE_modeled_FVCs_Cin, dtype=jnp.float32),
         SCALE_modeled_BiologicalOde_rates=jnp.ones(n_rates, dtype=jnp.float32),

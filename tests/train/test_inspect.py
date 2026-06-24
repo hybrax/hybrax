@@ -47,7 +47,6 @@ def test_format_reaction_schema_contains_all_axis_names():
         "SCL_controlled_FVCs_cumulative",
         "SCL_controlled_FVCs_rates",
         "SCL_controlled_FVCs_Cin",
-        "SCL_controlled_FVCs_bolus_rates",
         "SCL_controlled_PVs",
         "SCL_modeled_FVCs_Cin",
         "SCL_modeled_BiologicalOde_rates",
@@ -68,8 +67,9 @@ def test_format_reaction_schema_renders_bp_format_names():
         assert pv in text
     for rate in ("q_biomass", "q_glucose", "q_acetate"):
         assert rate in text
-    # Bolus name surfaces; V_sample_acc must be hidden (wrapper-internal).
-    assert "inducer_bolus" in text
+    # Bolus FVCs are applied as discrete state jumps, not reaction-module inputs,
+    # so neither the bolus name nor the wrapper-internal V_sample_acc surfaces here.
+    assert "inducer_bolus" not in text
     assert "V_sample_acc" not in text
 
 

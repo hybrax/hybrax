@@ -204,13 +204,7 @@ def _default_scale_kwargs(
     n_controlled_FVCs: int,
     rhs_ode: Any,
 ) -> dict[str, jnp.ndarray]:
-    """All-ones defaults for every SCALE_* axis. Used when no estimate hook is supplied.
-
-    Bolus FVCs (n_controlled_FVCs_bolus) aren't reachable from rhs_ode here, so the
-    placeholder size 0 is used; the wrapper's shape validation will surface a clean
-    error if the actual layout has bolus events and no estimate_all_scales hook is
-    configured.
-    """
+    """All-ones defaults for every SCALE_* axis. Used when no estimate hook is supplied."""
     one = jnp.float32(1.0)
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=jnp.float32),
@@ -223,7 +217,6 @@ def _default_scale_kwargs(
         "SCALE_controlled_FVCs_Cin": jnp.ones(
             (n_controlled_FVCs, n_species), dtype=jnp.float32
         ),
-        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(0, dtype=jnp.float32),
         "SCALE_controlled_PVs": jnp.ones(
             len(rhs_ode.name_controlled_PVs), dtype=jnp.float32
         ),

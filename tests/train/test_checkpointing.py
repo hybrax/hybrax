@@ -216,7 +216,6 @@ _DEFAULT_CHECKPOINTING_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_controlled_FVCs_bolus_rates": jnp.ones(0, dtype=jnp.float32),
     "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
     "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),

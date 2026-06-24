@@ -165,7 +165,6 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     n_rates = len(rhs_ode.name_modeled_rates)
     n_FVC = len(controls.name_controlled_FVCs)
     n_PV = len(controls.name_controlled_PVs)
-    n_bolus = len(controls.name_extras) - 1
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
         "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
@@ -173,7 +172,6 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
         "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
         "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC, dtype=f32),
         "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs), dtype=f32),
-        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(n_bolus, dtype=f32),
         "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
         "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs), dtype=f32),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),

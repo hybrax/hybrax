@@ -512,7 +512,6 @@ def _resolve_estimated_scales(
         "SCALE_controlled_FVCs_cumulative": estimated.SCALE_controlled_FVCs_cumulative,
         "SCALE_controlled_FVCs_rates": estimated.SCALE_controlled_FVCs_rates,
         "SCALE_controlled_FVCs_Cin": estimated.SCALE_controlled_FVCs_Cin,
-        "SCALE_controlled_FVCs_bolus_rates": estimated.SCALE_controlled_FVCs_bolus_rates,
         "SCALE_controlled_PVs": estimated.SCALE_controlled_PVs,
         "SCALE_modeled_FVCs_Cin": estimated.SCALE_modeled_FVCs_Cin,
         "SCALE_modeled_BiologicalOde_rates": estimated.SCALE_modeled_BiologicalOde_rates,

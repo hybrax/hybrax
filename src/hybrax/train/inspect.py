@@ -255,15 +255,10 @@ def _reaction_schema_rows(
     name_controlled_PVs = tuple(rhs_ode.name_controlled_PVs)
     name_modeled_rates = tuple(rhs_ode.name_modeled_rates)
 
-    # Bolus FVC names live in `controls.name_extras`; the trailing column is
-    # the wrapper-internal V_sample_acc accumulator, drop it.
-    bolus_names = tuple(controls.name_extras[:-1]) if controls.name_extras else ()
-
     n_RMCs = len(name_RMCs)
     n_modeled_FVCs = len(name_modeled_FVCs)
     n_controlled_FVCs = len(name_controlled_FVCs)
     n_controlled_PVs = len(name_controlled_PVs)
-    n_bolus = len(bolus_names)
     n_modeled_rates = len(name_modeled_rates)
 
     inputs: list[tuple[str, str, tuple[str, ...]]] = [
@@ -288,11 +283,6 @@ def _reaction_schema_rows(
             "SCL_controlled_FVCs_Cin",
             _shape_tuple_str(n_controlled_FVCs, n_RMCs),
             (),  # 2-D: detail rendered as follow-up lines
-        ),
-        (
-            "SCL_controlled_FVCs_bolus_rates",
-            _shape_tuple_str(n_bolus),
-            bolus_names,
         ),
         (
             "SCL_controlled_PVs",

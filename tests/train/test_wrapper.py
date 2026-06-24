@@ -43,17 +43,14 @@ def _unit_scale_kwargs(
     controls: ControlsStore | None = None,
     n_controlled_FVCs: int | None = None,
     n_controlled_PVs: int | None = None,
-    n_controlled_FVCs_bolus: int | None = None,
 ) -> dict[str, jnp.ndarray]:
     """All-ones SCALE_* kwargs sized to a layout. Pass either ``controls`` or
     explicit per-axis sizes."""
     if controls is not None:
         n_controlled_FVCs = len(controls.name_controlled_FVCs)
         n_controlled_PVs = len(controls.name_controlled_PVs)
-        n_controlled_FVCs_bolus = len(controls.name_extras) - 1
     assert n_controlled_FVCs is not None
     assert n_controlled_PVs is not None
-    assert n_controlled_FVCs_bolus is not None
     f32 = jnp.float32
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=f32),
@@ -63,9 +60,6 @@ def _unit_scale_kwargs(
         "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=f32),
         "SCALE_controlled_FVCs_Cin": jnp.ones(
             (n_controlled_FVCs, n_species), dtype=f32
-        ),
-        "SCALE_controlled_FVCs_bolus_rates": jnp.ones(
-            n_controlled_FVCs_bolus, dtype=f32
         ),
         "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs, dtype=f32),
         "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_VCs, n_species), dtype=f32),
@@ -81,7 +75,6 @@ _PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_controlled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_controlled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
-    "SCALE_controlled_FVCs_bolus_rates": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_controlled_PVs": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0, dtype=jnp.float32),

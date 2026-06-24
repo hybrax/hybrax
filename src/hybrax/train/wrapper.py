@@ -5,7 +5,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.dataclasses import BioProcess, FeedVolumeChange, StaticVariable
+from bp_format.dataclasses import BioProcess
 from bp_format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
@@ -29,7 +29,6 @@ class WrapperEvaluation(eqx.Module):
     RAW_controlled_FVCs_rates: jax.Array
     RAW_controlled_FVCs_Cin: jax.Array
     RAW_modeled_FVCs_Cin: jax.Array
-    RAW_controlled_FVCs_bolus_rates_at_indices: jax.Array
     ADF: jax.Array
     RAW_state: jax.Array
     RAW_modeled_BiologicalOde_rates: jax.Array
@@ -123,8 +122,6 @@ class HybridOdeWrapper(eqx.Module):
     reaction_module: Any
     controls: PerProcessControls
 
-    controlled_FVCs_bolus_control_indices: jax.Array
-    controlled_FVCs_bolus_Cin: jax.Array
     sample_acc_control_index: int = eqx.field(static=True)
     min_V: float = eqx.field(static=True)
 
@@ -137,7 +134,6 @@ class HybridOdeWrapper(eqx.Module):
     # ``_BatchIndexedControls`` adapter that doesn't expose name tuples).
     n_controlled_FVCs: int = eqx.field(static=True)
     n_controlled_PVs: int = eqx.field(static=True)
-    n_controlled_FVCs_bolus: int = eqx.field(static=True)
 
     target_state_indices: jax.Array  # which state columns are loss targets
 
@@ -194,9 +190,6 @@ class HybridOdeWrapper(eqx.Module):
         n_rates = len(rhs_ode.name_modeled_rates)
         n_u = controls.n_u
 
-        # name_extras = (bolus FVCs...) + (V_sample_acc,).
-        # Last column is always sample_acc.
-        n_controlled_FVCs_bolus = len(controls.name_extras) - 1
         n_controlled_FVCs_count = len(controls.name_controlled_FVCs)
 
         # Validate reaction_module SCALE_* shapes match the layout we'll feed.
@@ -206,7 +199,6 @@ class HybridOdeWrapper(eqx.Module):
             "SCALE_controlled_FVCs_cumulative": (n_controlled_FVCs_count,),
             "SCALE_controlled_FVCs_rates": (n_controlled_FVCs_count,),
             "SCALE_controlled_FVCs_Cin": (n_controlled_FVCs_count, n_RMCs),
-            "SCALE_controlled_FVCs_bolus_rates": (n_controlled_FVCs_bolus,),
             "SCALE_controlled_PVs": (len(controls.name_controlled_PVs),),
             "SCALE_modeled_FVCs_Cin": (n_FVCs, n_RMCs),
             "SCALE_modeled_BiologicalOde_rates": (n_rates,),
@@ -216,7 +208,7 @@ class HybridOdeWrapper(eqx.Module):
             if not hasattr(reaction_module, field_name):
                 raise TypeError(
                     f"reaction_module is missing SCALE field {field_name!r}; "
-                    "subclass UserReactionModule and pass all 11 SCALE_* fields "
+                    "subclass UserReactionModule and pass all 10 SCALE_* fields "
                     "to super().__init__(...)."
                 )
             arr = getattr(reaction_module, field_name)
@@ -229,51 +221,9 @@ class HybridOdeWrapper(eqx.Module):
         if not hasattr(reaction_module, "SCALE_V_in_cumulative"):
             raise TypeError(
                 "reaction_module is missing SCALE_V_in_cumulative; subclass "
-                "UserReactionModule and pass all 11 SCALE_* fields to "
+                "UserReactionModule and pass all 10 SCALE_* fields to "
                 "super().__init__(...)."
             )
-
-        # Bolus FVCs live in the extras block; sample_acc is the last extras column.
-        bolus_extras = controls.name_extras[:-1]
-        bolus_index_in_columns = {
-            name: n_u + idx for idx, name in enumerate(bolus_extras)
-        }
-        bolus_control_indices: list[int] = []
-        bolus_Cin_rows: list[list[float]] = []
-        for flow_name, volume_change in process.volume.volume_changes.items():
-            if not isinstance(volume_change, FeedVolumeChange):
-                continue
-            if not volume_change.is_controlled or volume_change.is_continuous:
-                continue
-            if flow_name not in bolus_index_in_columns:
-                raise ValueError(
-                    f"non-continuous feed '{flow_name}' not found in controls extras; "
-                    f"available bolus extras: {list(bolus_extras)}"
-                )
-            if volume_change.feed_medium is None:
-                raise ValueError(
-                    "FeedVolumeChange must define feed_medium for wrapper feed "
-                    f"transport. Missing for volume change '{flow_name}'."
-                )
-            cin_row: list[float] = []
-            for species_name in rhs_ode.name_modeled_RMCs:
-                if species_name not in volume_change.feed_medium.components:
-                    cin_row.append(0.0)
-                    continue
-                concentration = volume_change.feed_medium.components[
-                    species_name
-                ].concentration
-                if isinstance(concentration, StaticVariable):
-                    cin_row.append(float(concentration.value))
-                else:
-                    raise NotImplementedError(
-                        "TimeSeries feed concentrations are not supported in "
-                        "HybridOdeWrapper for non-continuous feeds. "
-                        f"Found TimeSeries for species '{species_name}' in "
-                        f"feed '{flow_name}'."
-                    )
-            bolus_control_indices.append(bolus_index_in_columns[flow_name])
-            bolus_Cin_rows.append(cin_row)
 
         n_modeled = n_FVCs + len(rhs_ode.name_modeled_SVCs)
 
@@ -287,26 +237,16 @@ class HybridOdeWrapper(eqx.Module):
         else:
             _target_state_indices = jnp.asarray(target_state_indices, dtype=jnp.int32)
 
-        if bolus_Cin_rows:
-            _bolus_Cin = jnp.asarray(bolus_Cin_rows, dtype=jnp.float32)
-        else:
-            _bolus_Cin = jnp.zeros((0, n_RMCs), dtype=jnp.float32)
-
         return cls(
             rhs_ode=rhs_ode,
             reaction_module=reaction_module,
             controls=controls,
-            controlled_FVCs_bolus_control_indices=jnp.asarray(
-                bolus_control_indices, dtype=jnp.int32
-            ),
-            controlled_FVCs_bolus_Cin=_bolus_Cin,
             sample_acc_control_index=int(controls.sample_acc_global_index),
             min_V=float(min_V),
             modeled_RMC_names=rhs_ode.name_modeled_RMCs,
             modeled_FVC_names=rhs_ode.name_modeled_FVCs,
             n_controlled_FVCs=n_controlled_FVCs_count,
             n_controlled_PVs=len(controls.name_controlled_PVs),
-            n_controlled_FVCs_bolus=n_controlled_FVCs_bolus,
             target_state_indices=_target_state_indices,
             loss_module=loss_module,
         )
@@ -339,14 +279,12 @@ class HybridOdeWrapper(eqx.Module):
 
         n_FVC = self.n_controlled_FVCs
         n_PV = self.n_controlled_PVs
-        n_bolus = self.n_controlled_FVCs_bolus
 
         RAW_u_canonical_full = self.controls.eval(t_arr)
         RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
         RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
         RAW_u_rhs_full = self.controls.eval_u(t_arr)
         RAW_controlled_FVCs_rates = RAW_u_rhs_full[:n_FVC]
-        RAW_controlled_FVCs_bolus_rates = jnp.zeros((n_bolus,), dtype=dtype)
         RAW_controlled_FVCs_Cin = self.rhs_ode.Cin_controlled_FVCs
         RAW_modeled_FVCs_Cin = self.rhs_ode.Cin_modeled_FVCs
 
@@ -364,9 +302,6 @@ class HybridOdeWrapper(eqx.Module):
             ),
             SCL_controlled_FVCs_Cin=module.scale_controlled_FVCs_Cin(
                 RAW_controlled_FVCs_Cin
-            ),
-            SCL_controlled_FVCs_bolus_rates=module.scale_controlled_FVCs_bolus_rates(
-                RAW_controlled_FVCs_bolus_rates
             ),
             SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
             SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(RAW_modeled_FVCs_Cin),
@@ -438,7 +373,6 @@ class HybridOdeWrapper(eqx.Module):
 
         n_FVC = self.n_controlled_FVCs
         n_PV = self.n_controlled_PVs
-        n_bolus = self.n_controlled_FVCs_bolus
         RAW_u_canonical_full = self.controls.eval(t_arr)
         RAW_controlled_FVCs_cumulative = RAW_u_canonical_full[:n_FVC]
         RAW_controlled_PVs = RAW_u_canonical_full[n_FVC : n_FVC + n_PV]
@@ -458,9 +392,6 @@ class HybridOdeWrapper(eqx.Module):
             ),
             SCL_controlled_FVCs_Cin=module.scale_controlled_FVCs_Cin(
                 self.rhs_ode.Cin_controlled_FVCs
-            ),
-            SCL_controlled_FVCs_bolus_rates=module.scale_controlled_FVCs_bolus_rates(
-                jnp.zeros((n_bolus,), dtype=dtype)
             ),
             SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
             SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(

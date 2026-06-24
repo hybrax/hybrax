@@ -120,10 +120,6 @@ class ReactionInputs(eqx.Module):
     - ``SCL_controlled_FVCs_rates`` — per-feed instantaneous flow rate.
     - ``SCL_controlled_FVCs_Cin`` — per-feed Cin matrix [n_FVC, n_RMCs].
 
-    Discrete bolus controlled FVCs (split out of the old `extras`):
-    - ``SCL_controlled_FVCs_bolus_rates`` — instantaneous triangle-wave rate of each
-      bolus event at time t.
-
     Process variables and modeled-feed composition:
     - ``SCL_controlled_PVs`` — process-variable signals (pH, DO, T, …).
     - ``SCL_modeled_FVCs_Cin`` — Cin matrix [n_modeled_FVCs, n_RMCs] for the
@@ -136,7 +132,6 @@ class ReactionInputs(eqx.Module):
     SCL_controlled_FVCs_cumulative: jax.Array
     SCL_controlled_FVCs_rates: jax.Array
     SCL_controlled_FVCs_Cin: jax.Array
-    SCL_controlled_FVCs_bolus_rates: jax.Array
     SCL_controlled_PVs: jax.Array
     SCL_modeled_FVCs_Cin: jax.Array
 
@@ -186,7 +181,6 @@ class EstimatedScales:
     SCALE_controlled_FVCs_cumulative: jax.Array
     SCALE_controlled_FVCs_rates: jax.Array
     SCALE_controlled_FVCs_Cin: jax.Array
-    SCALE_controlled_FVCs_bolus_rates: jax.Array
     SCALE_controlled_PVs: jax.Array
     SCALE_modeled_FVCs_Cin: jax.Array
     SCALE_modeled_BiologicalOde_rates: jax.Array
@@ -231,9 +225,6 @@ class UserReactionModule(eqx.Module):
     SCALE_controlled_FVCs_Cin: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float32)
     )
-    SCALE_controlled_FVCs_bolus_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
-    )
     SCALE_controlled_PVs: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
@@ -272,11 +263,6 @@ class UserReactionModule(eqx.Module):
     def n_controlled_FVCs(self) -> int:
         """Number of continuous controlled feeds."""
         return int(self.SCALE_controlled_FVCs_cumulative.shape[0])
-
-    @property
-    def n_controlled_FVCs_bolus(self) -> int:
-        """Number of discrete bolus controlled-FVC events."""
-        return int(self.SCALE_controlled_FVCs_bolus_rates.shape[0])
 
     @property
     def n_controlled_PVs(self) -> int:
@@ -364,12 +350,6 @@ class UserReactionModule(eqx.Module):
 
     def unscale_controlled_FVCs_Cin(self, SCL_controlled_FVCs_Cin):
         return SCL_controlled_FVCs_Cin * self.SCALE_controlled_FVCs_Cin
-
-    def scale_controlled_FVCs_bolus_rates(self, RAW_controlled_FVCs_bolus_rates):
-        return RAW_controlled_FVCs_bolus_rates / self.SCALE_controlled_FVCs_bolus_rates
-
-    def unscale_controlled_FVCs_bolus_rates(self, SCL_controlled_FVCs_bolus_rates):
-        return SCL_controlled_FVCs_bolus_rates * self.SCALE_controlled_FVCs_bolus_rates
 
     def scale_controlled_PVs(self, RAW_controlled_PVs):
         return RAW_controlled_PVs / self.SCALE_controlled_PVs
