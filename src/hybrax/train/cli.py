@@ -18,6 +18,7 @@ from .harness import (
     ForwardResult,
     TrainHarnessConfig,
     forward_from_collection,
+    forward_plot_losses,
     resume_run,
     train_from_collection,
     train_harness_config_from_run_config,
@@ -518,20 +519,20 @@ def _write_train_results(
     log.info("loss table saved to %s", loss_csv_path)
 
     predictions_csv_path = output_dir / "predictions.csv"
+    named_losses, total_losses = forward_plot_losses(fwd_result)
     if render_plots:
         plot_training_results(
             train_result,
             collection,
             fwd_result.store,
             output_dir,
+            fwd_result.dense_exports,
             # Use eval_processes (full set including holdouts in LOO) so the
             # predictions.csv has rows for every evaluated process. Per-process
             # plots are rendered for the same set.
             process_names=eval_processes,
-            solver_max_steps=config.solver_max_steps,
-            solver_rtol=config.solver_rtol,
-            solver_atol=config.solver_atol,
-            solver_use_jump_ts=config.solver_use_jump_ts,
+            per_process_named_losses=named_losses,
+            per_process_total_loss=total_losses,
             timeseries_csv_path=predictions_csv_path,
         )
         return fwd_result
@@ -541,12 +542,11 @@ def _write_train_results(
         collection,
         fwd_result.store,
         output_dir,
+        fwd_result.dense_exports,
         process_names=eval_processes,
-        solver_max_steps=config.solver_max_steps,
-        solver_rtol=config.solver_rtol,
-        solver_atol=config.solver_atol,
-        solver_use_jump_ts=config.solver_use_jump_ts,
         training_process_names=training_process_names,
+        per_process_named_losses=named_losses,
+        per_process_total_loss=total_losses,
         timeseries_csv_path=predictions_csv_path,
         render_plots=False,
     )
@@ -994,17 +994,17 @@ def _handle_forward(args: argparse.Namespace) -> int:
     log.info("loss table saved to %s", loss_csv_path)
 
     if args.plot:
+        named_losses, total_losses = forward_plot_losses(result)
         plot_process_simulations(
             result.trained_wrapper,
             collection,
             result.store,
             output_dir,
+            result.dense_exports,
             process_names=eval_processes,
-            solver_max_steps=solver_max_steps,
-            solver_rtol=solver_rtol,
-            solver_atol=solver_atol,
-            solver_use_jump_ts=solver_use_jump_ts,
             training_process_names=training_processes,
+            per_process_named_losses=named_losses,
+            per_process_total_loss=total_losses,
             timeseries_csv_path=args.timeseries_csv,
         )
 
