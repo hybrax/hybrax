@@ -23,24 +23,23 @@ logger = logging.getLogger(__name__)
 class BackgroundPlotter:
     """Submit picklable plot jobs to a single spawned worker.
 
-    Never blocks training: if the worker is backed up beyond ``max_pending``,
-    the job is dropped — the next checkpoint re-renders the cumulative curve
-    anyway. ``close()`` drains in-flight jobs before exit.
+    Non-lossy: **every** submitted job is queued and rendered. Jobs run in the
+    spawned worker as it frees up, so training never blocks on matplotlib; any
+    backlog is drained by ``close()`` before exit.
     """
 
-    def __init__(self, max_pending: int = 2) -> None:
+    def __init__(self) -> None:
         ctx = mp.get_context("spawn")
         self._pool: ProcessPoolExecutor | None = ProcessPoolExecutor(
             max_workers=1, mp_context=ctx
         )
         self._pending: deque[Future] = deque()
-        self._max_pending = int(max_pending)
-        self._dropped = 0
 
     def submit(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         if self._pool is None:
             return
-        # Reap finished jobs (surfacing any worker exception in the log).
+        # Reap finished jobs (surfacing any worker exception in the log); the
+        # rest stay queued — nothing is ever dropped.
         still_pending: deque[Future] = deque()
         for fut in self._pending:
             if fut.done():
@@ -50,13 +49,10 @@ class BackgroundPlotter:
             else:
                 still_pending.append(fut)
         self._pending = still_pending
-        if len(self._pending) >= self._max_pending:
-            self._dropped += 1
-            return
         self._pending.append(self._pool.submit(fn, *args, **kwargs))
 
     def close(self) -> None:
-        """Drain in-flight jobs and shut the worker down."""
+        """Drain the full plot backlog and shut the worker down."""
         if self._pool is None:
             return
         for fut in self._pending:
@@ -67,12 +63,6 @@ class BackgroundPlotter:
         self._pending.clear()
         self._pool.shutdown(wait=True)
         self._pool = None
-        if self._dropped:
-            logger.info(
-                "background plotter dropped %d plot job(s) to keep training "
-                "non-blocking",
-                self._dropped,
-            )
 
     def __enter__(self) -> BackgroundPlotter:
         return self

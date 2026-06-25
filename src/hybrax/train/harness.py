@@ -56,6 +56,9 @@ from .postprocessing import (
     dense_exports_from_save_outputs,
     export_predictions_csv,
     measured_points_records,
+    plot_grad_norm_curve,
+    plot_loss_curve,
+    plot_process_simulations,
 )
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
@@ -1536,11 +1539,14 @@ def train_collection(
 
         history = run_log.finalize()
 
-        # Run-root predictions.csv: wide model trajectories for the final model
-        # (the artifact users expect at the run root).
+        # Run-root final-model outputs: predictions.csv + the complete final plot
+        # set (per-process simulations, loss curve, grad-norm curve) written
+        # directly to the run dir — synchronously, so they are reliable and not
+        # subject to the per-checkpoint background renderer.
         if cfg.checkpoint_dir is not None:
+            run_dir = Path(cfg.checkpoint_dir).parent
             try:
-                _, _, _final_dense = compute_dense_exports(
+                _final_total, _final_per_target, _final_dense = compute_dense_exports(
                     wrapper,
                     store,
                     collection,
@@ -1553,11 +1559,53 @@ def train_collection(
                 export_predictions_csv(
                     wrapper,
                     _final_dense,
-                    Path(cfg.checkpoint_dir).parent / "predictions.csv",
+                    run_dir / "predictions.csv",
                     process_names=selected_processes,
                 )
+                if bool(cfg.plots):
+                    named = {
+                        p: dict(zip(_target_labels, _final_per_target[i]))
+                        for i, p in enumerate(selected_processes)
+                    }
+                    total = {
+                        p: float(sum(_final_per_target[i]))
+                        for i, p in enumerate(selected_processes)
+                    }
+                    plot_process_simulations(
+                        wrapper,
+                        collection,
+                        store,
+                        run_dir,
+                        _final_dense,
+                        process_names=selected_processes,
+                        training_process_names=selected_processes,
+                        per_process_named_losses=named,
+                        per_process_total_loss=total,
+                    )
+                    if loss_so_far:
+                        plot_loss_curve(
+                            list(loss_so_far),
+                            run_dir / "loss_curve.png",
+                            title=f"Training loss (through step {int(cfg.steps)})",
+                            per_target_loss_by_step=list(per_target_loss_so_far),
+                            target_names=tuple(_target_labels),
+                            monitor_loss_by_step=(
+                                dict(monitor_loss_so_far)
+                                if monitor_loss_so_far
+                                else None
+                            ),
+                            monitor_label=(
+                                cfg.monitor_label if monitor_loss_so_far else None
+                            ),
+                        )
+                    if grad_norm_so_far:
+                        plot_grad_norm_curve(
+                            list(grad_norm_so_far),
+                            run_dir / "grad_norm_curve.png",
+                            title=f"Gradient norm (through step {int(cfg.steps)})",
+                        )
             except Exception:  # noqa: BLE001 - the trained model is already saved
-                logger.exception("failed to write run-root predictions.csv")
+                logger.exception("failed to write run-root final outputs")
     finally:
         if plotter is not None:
             plotter.close()

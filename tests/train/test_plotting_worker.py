@@ -77,20 +77,17 @@ def test_measured_points_records_long_format(tmp_path: Path):
 
 def test_background_plotter_runs_and_drains(tmp_path: Path):
     marker = tmp_path / "marker.txt"
-    plotter = BackgroundPlotter(max_pending=2)
+    plotter = BackgroundPlotter()
     plotter.submit(_slow_write, str(marker), 0.01)
     plotter.close()
     assert marker.read_text() == "done"
 
 
-def test_background_plotter_drops_when_backed_up(tmp_path: Path):
-    plotter = BackgroundPlotter(max_pending=1)
-    # First job occupies the single worker slot; subsequent rapid submits with a
-    # full queue are dropped (non-blocking guarantee).
+def test_background_plotter_is_non_lossy(tmp_path: Path):
+    # Every submitted job runs and is drained at close() — nothing is dropped.
+    plotter = BackgroundPlotter()
     for i in range(6):
-        plotter.submit(_slow_write, str(tmp_path / f"m{i}.txt"), 0.2)
+        plotter.submit(_slow_write, str(tmp_path / f"m{i}.txt"), 0.02)
     plotter.close()
-    assert plotter._dropped > 0
-    # At least the first job completed.
-    written = list(tmp_path.glob("m*.txt"))
-    assert len(written) >= 1
+    written = sorted(p.name for p in tmp_path.glob("m*.txt"))
+    assert written == [f"m{i}.txt" for i in range(6)]
