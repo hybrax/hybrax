@@ -102,7 +102,10 @@ def dense_exports_from_save_outputs(
     cumulative modeled feeds, ``q_*`` rates, and per-key ``auxiliary``).
     """
     module = trained_wrapper.reaction_module
-    n_species = len(trained_wrapper.modeled_RMC_names)
+    # "species" export columns = the [RMCs | PVs] leading state block.
+    n_species = len(trained_wrapper.modeled_RMC_names) + len(
+        trained_wrapper.modeled_PV_names
+    )
     n_modeled = len(trained_wrapper.modeled_FVC_names)
     # Un-scale [N, n_pred, state] → physical in one vmapped pass, then to numpy.
     RAW_states = np.asarray(
@@ -133,19 +136,22 @@ def dense_exports_from_save_outputs(
 
 def _predictions_csv_header(
     modeled_RMC_names: tuple[str, ...],
+    modeled_PV_names: tuple[str, ...],
     modeled_FVC_names: tuple[str, ...],
     rate_names: tuple[str, ...],
     auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
     """Build stable predictions.csv column order.
 
-    Rate columns are derived from ``rate_names`` (i.e.
-    ``rhs_ode.name_modeled_rates``); these already carry the ``q_``/``r_``
-    prefix used in bp-format, so they are written verbatim.
+    The leading state block is ``[modeled_RMCs | modeled_PVs]``. Rate columns
+    are derived from ``rate_names`` (i.e. ``rhs_ode.name_modeled_rates``); these
+    already carry the ``q_``/``r_`` prefix used in bp-format, so they are written
+    verbatim.
     """
     return (
         ["process", "t"]
         + [f"c_{name}" for name in modeled_RMC_names]
+        + [f"c_{name}" for name in modeled_PV_names]
         + ["V_real"]
         + [f"B_{name}_cum" for name in modeled_FVC_names]
         + list(rate_names)
@@ -456,9 +462,11 @@ def export_predictions_csv(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     modeled_RMC_names = trained_wrapper.modeled_RMC_names
+    modeled_PV_names = trained_wrapper.modeled_PV_names
     modeled_FVC_names = trained_wrapper.modeled_FVC_names
     rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
-    n_species = len(modeled_RMC_names)
+    # Leading state block written as ``c_*`` columns = modeled RMCs then PVs.
+    n_species = len(modeled_RMC_names) + len(modeled_PV_names)
     n_modeled = len(modeled_FVC_names)
     n_rates = len(rate_names)
 
@@ -475,6 +483,7 @@ def export_predictions_csv(
     if not selected_processes:
         header = _predictions_csv_header(
             modeled_RMC_names=modeled_RMC_names,
+            modeled_PV_names=modeled_PV_names,
             modeled_FVC_names=modeled_FVC_names,
             rate_names=rate_names,
         )
@@ -487,6 +496,7 @@ def export_predictions_csv(
     )
     header = _predictions_csv_header(
         modeled_RMC_names=modeled_RMC_names,
+        modeled_PV_names=modeled_PV_names,
         modeled_FVC_names=modeled_FVC_names,
         rate_names=rate_names,
         auxiliary_columns=auxiliary_columns,
@@ -697,8 +707,9 @@ def plot_process_simulations(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     modeled_RMC_names = trained_wrapper.modeled_RMC_names
+    modeled_PV_names = trained_wrapper.modeled_PV_names
     modeled_FVC_names = trained_wrapper.modeled_FVC_names
-    n_species = len(modeled_RMC_names)
+    n_species = len(modeled_RMC_names) + len(modeled_PV_names)
     n_modeled = len(modeled_FVC_names)
     if process_names is None:
         selected_processes = tuple(store.process_order)
@@ -802,11 +813,27 @@ def plot_process_simulations(
             n_rows = n_species + 1 + n_modeled
             fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
 
-            for i, sp_name in enumerate(modeled_RMC_names):
+            # Measured overlay sources: RMCs from reactor_medium, modeled PVs
+            # from process_variables (the c_dense columns are [RMCs | PVs]).
+            measured_series = [
+                (
+                    name,
+                    process.reactor_medium.components[name].unit,
+                    process.reactor_medium.components[name].concentration,
+                )
+                for name in modeled_RMC_names
+            ] + [
+                (
+                    name,
+                    process.process_variables[name].unit,
+                    process.process_variables[name].values,
+                )
+                for name in modeled_PV_names
+            ]
+            for i, (sp_name, sp_unit, sp_series) in enumerate(measured_series):
                 ax_c = axes[i, 0]
-                comp = process.reactor_medium.components[sp_name]
-                t_measured = np.asarray(comp.concentration.times, dtype=float)
-                v_meas = np.asarray(comp.concentration.values, dtype=float)
+                t_measured = np.asarray(sp_series.times, dtype=float)
+                v_meas = np.asarray(sp_series.values, dtype=float)
                 ax_c.scatter(
                     t_measured, v_meas, s=16, zorder=5, color="black", label="measured"
                 )
@@ -837,7 +864,7 @@ def plot_process_simulations(
                     else None
                 )
                 _annotate_fit(ax_c, r2, loss_label=sp_name, loss_value=_sp_loss)
-                ax_c.set_title(f"{sp_name} [{comp.unit}]")
+                ax_c.set_title(f"{sp_name} [{sp_unit}]")
                 ax_c.set_xlabel(f"time [{time_unit}]")
                 ax_c.set_xlim(t_start, t_end)
                 ax_c.legend(fontsize="small")
@@ -986,7 +1013,7 @@ def plot_process_simulations(
             if process_total_loss is not None:
                 suptitle += f" — total loss {process_total_loss:.4g}"
                 # Named terms with no per-subplot home (penalties, aux): list them.
-                shown = set(modeled_RMC_names) | {
+                shown = set(modeled_RMC_names) | set(modeled_PV_names) | {
                     f"B_{fn}_cum" for fn in modeled_FVC_names
                 }
                 extras = [

@@ -650,3 +650,69 @@ def test_training_data_store_rejects_target_missing_t0():
             target_variable_order=["biomass", "product"],
             target_source="reactor_components",
         )
+
+
+def _make_combined_collection() -> BioProcessCollection:
+    """biomass RMC + one uncontrolled (modeled) PV, both with time series."""
+
+    def _proc(name: str, v0: float) -> BioProcess:
+        return BioProcess(
+            metadata=BioProcessMetadata(name=name, process_type="batch"),
+            time_axis=TimeAxis(unit="h", start=0.0, end=4.0, time_reference="start"),
+            volume=Volume(initial_volume=v0, unit="L", volume_changes={}),
+            reactor_medium=ReactorMedium(
+                name="rm",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 2.0, 4.0]),
+                            values=jnp.asarray([0.2, 0.3, 0.4]),
+                        ),
+                    ),
+                },
+            ),
+            process_variables={
+                "ratio": ProcessVariable(
+                    name="ratio",
+                    unit="-",
+                    is_controlled=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0, 4.0]),
+                        values=jnp.asarray([0.5, 0.55, 0.6]),
+                    ),
+                ),
+            },
+        )
+
+    return BioProcessCollection(
+        processes={"p1": _proc("p1", 1.0), "p2": _proc("p2", 1.2)}
+    )
+
+
+def test_training_data_combined_fits_rmcs_and_pvs(tmp_path):
+    output = tmp_path / "prepared.json"
+    _prepare_from_collection(_make_combined_collection(), tmp_path, output)
+
+    store = TrainingDataStore.from_json(output, target_source="combined")
+
+    # Both source families populate their tuple; name_measured is the ordered
+    # [RMCs | PVs] leading state block.
+    assert store.name_measured_RMCs == ("biomass",)
+    assert store.name_measured_PVs == ("ratio",)
+    assert store.name_measured == ("biomass", "ratio")
+
+    # y0 leading block = [biomass(0), ratio(0)] followed by V(0).
+    y0 = np.asarray(store.y0_measured[0])
+    assert y0[0] == pytest.approx(0.2)  # biomass(0)
+    assert y0[1] == pytest.approx(0.5)  # ratio(0)
+    assert y0[2] == pytest.approx(1.0)  # V(0)
+
+    # y_measured carries the PV column in the leading block (col index 1).
+    y_meas = np.asarray(store.y_measured[0])  # [n_meas, n_y_cols]
+    mask = np.asarray(store.mask_measured[0])
+    pv_col = y_meas[mask[:, 1], 1]
+    assert np.allclose(np.sort(pv_col), [0.5, 0.55, 0.6])

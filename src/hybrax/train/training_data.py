@@ -16,11 +16,44 @@ from .controls_store import ControlsStore, PerProcessControls
 TARGET_SOURCE_AUTO = "auto"
 TARGET_SOURCE_PROCESS_VARIABLES = "process_variables"
 TARGET_SOURCE_REACTOR_COMPONENTS = "reactor_components"
+# Fit BOTH the modeled RMCs and the modeled (uncontrolled) PVs. Targets are
+# ordered to match the integrated state's leading block
+# ``[name_modeled_RMCs | name_modeled_PVs]`` so ``target_state_indices`` stays a
+# simple ``range(n)``; every modeled RMC and PV must carry a time series.
+TARGET_SOURCE_COMBINED = "combined"
 TARGET_SOURCES = {
     TARGET_SOURCE_AUTO,
     TARGET_SOURCE_PROCESS_VARIABLES,
     TARGET_SOURCE_REACTOR_COMPONENTS,
+    TARGET_SOURCE_COMBINED,
 }
+
+
+def _combined_measured_targets(process, rhs_ode) -> tuple[list[str], list[str]]:
+    """Measured (RMC, PV) target names for ``TARGET_SOURCE_COMBINED``, each
+    ordered to match the integrated state (``rhs_ode.name_modeled_RMCs`` then
+    ``rhs_ode.name_modeled_PVs``). Every modeled RMC and PV must have a time
+    series — otherwise the ``range(n)`` state-index mapping would be wrong."""
+    components = getattr(process.reactor_medium, "components", {}) or {}
+    rmc_targets: list[str] = []
+    for name in rhs_ode.name_modeled_RMCs:
+        component = components.get(name)
+        if component is None or not _is_timeseries_compatible(component.concentration):
+            raise ValueError(
+                f"{process.metadata.name}: target_source='combined' requires every "
+                f"modeled RMC to carry a time series; {name!r} does not."
+            )
+        rmc_targets.append(name)
+    pv_targets: list[str] = []
+    for name in rhs_ode.name_modeled_PVs:
+        variable = process.process_variables.get(name)
+        if variable is None or not _is_timeseries_compatible(variable.values):
+            raise ValueError(
+                f"{process.metadata.name}: target_source='combined' requires every "
+                f"modeled PV to carry a time series; {name!r} does not."
+            )
+        pv_targets.append(name)
+    return rmc_targets, pv_targets
 
 
 def _normalize_target_source(target_source: str) -> str:
@@ -301,10 +334,9 @@ class PerProcessTrainingData(eqx.Module):
 
     @property
     def name_measured(self) -> tuple[str, ...]:
-        """Whichever of ``name_measured_RMCs`` / ``name_measured_PVs`` is
-        populated. Convenience for code that just needs the abstract
-        target list (plot labels, loss column titles)."""
-        return self.name_measured_RMCs or self.name_measured_PVs
+        """Combined measured-target names in state order
+        ``[name_measured_RMCs | name_measured_PVs]``."""
+        return tuple(self.name_measured_RMCs) + tuple(self.name_measured_PVs)
 
 
 class BatchTrainingData(eqx.Module):
@@ -372,24 +404,21 @@ class TrainingDataStore(eqx.Module):
     y0_measured: jax.Array
 
     def __check_init__(self) -> None:
-        # Exactly one of name_measured_RMCs / name_measured_PVs must be
-        # populated. Match-fail is fail-fast per CLAUDE.md principle 7.
-        rmcs_set = bool(self.name_measured_RMCs)
-        pvs_set = bool(self.name_measured_PVs)
-        if rmcs_set == pvs_set:
+        # At least one of name_measured_RMCs / name_measured_PVs must be
+        # populated; ``combined`` sets both. Fail-fast per CLAUDE.md principle 7.
+        if not (self.name_measured_RMCs or self.name_measured_PVs):
             raise ValueError(
-                "TrainingDataStore: exactly one of name_measured_RMCs / "
-                "name_measured_PVs must be non-empty. Got "
-                f"name_measured_RMCs={self.name_measured_RMCs!r}, "
-                f"name_measured_PVs={self.name_measured_PVs!r}."
+                "TrainingDataStore: at least one of name_measured_RMCs / "
+                "name_measured_PVs must be non-empty."
             )
 
     @property
     def name_measured(self) -> tuple[str, ...]:
-        """Whichever of ``name_measured_RMCs`` / ``name_measured_PVs`` is
-        populated. Convenience for code that just needs the abstract
-        target list (plot labels, loss column titles, target_state_indices)."""
-        return self.name_measured_RMCs or self.name_measured_PVs
+        """Combined measured-target names in state order
+        ``[name_measured_RMCs | name_measured_PVs]`` — the loss/target column
+        labels and the leading state block that ``target_state_indices`` maps
+        onto."""
+        return tuple(self.name_measured_RMCs) + tuple(self.name_measured_PVs)
 
     @classmethod
     def from_collection(
@@ -412,18 +441,32 @@ class TrainingDataStore(eqx.Module):
         )
         per_process_targets: dict[str, list[str]] = {}
         reference_targets: list[str] | None = None
+        # Source family (reactor_components / process_variables) per target column,
+        # aligned with ``reference_targets``. ``combined`` mixes both.
+        reference_target_sources: list[str] | None = None
 
         for process_name in process_order:
             process = collection.processes[process_name]
-            current_targets = _measurement_targets(
-                process,
-                target_order,
-                resolved_target_source,
-            )
+            if resolved_target_source == TARGET_SOURCE_COMBINED:
+                rmc_targets, pv_targets = _combined_measured_targets(
+                    process, build_rhs_ode(process)
+                )
+                current_targets = rmc_targets + pv_targets
+                current_sources = [TARGET_SOURCE_REACTOR_COMPONENTS] * len(
+                    rmc_targets
+                ) + [TARGET_SOURCE_PROCESS_VARIABLES] * len(pv_targets)
+            else:
+                current_targets = _measurement_targets(
+                    process,
+                    target_order,
+                    resolved_target_source,
+                )
+                current_sources = [resolved_target_source] * len(current_targets)
             per_process_targets[process_name] = current_targets
 
             if reference_targets is None:
                 reference_targets = list(current_targets)
+                reference_target_sources = list(current_sources)
             elif current_targets != reference_targets:
                 raise ValueError(
                     "training data requires identical measured target names/order "
@@ -436,20 +479,26 @@ class TrainingDataStore(eqx.Module):
         if len(reference_targets) == 0:
             raise ValueError("no measured target variables found in process collection")
 
-        # Split the resolved target names into the two mutually-exclusive
-        # tuples; the discriminator is the source family that
-        # ``_resolve_target_source`` returned at the top.
-        if resolved_target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
+        # Split the resolved target names into the RMC / PV tuples. For
+        # ``combined`` the RMC columns come first (the source list discriminates);
+        # the single-source families populate exactly one tuple.
+        name_measured_PVs: tuple[str, ...]
+        if resolved_target_source == TARGET_SOURCE_COMBINED:
+            n_rmc = reference_target_sources.count(TARGET_SOURCE_REACTOR_COMPONENTS)
+            name_measured_RMCs = tuple(reference_targets[:n_rmc])
+            name_measured_PVs = tuple(reference_targets[n_rmc:])
+        elif resolved_target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
             name_measured_RMCs = tuple(reference_targets)
-            name_measured_PVs: tuple[str, ...] = ()
+            name_measured_PVs = ()
         elif resolved_target_source == TARGET_SOURCE_PROCESS_VARIABLES:
             name_measured_RMCs = ()
             name_measured_PVs = tuple(reference_targets)
         else:
             raise ValueError(
-                f"resolved target_source must be {TARGET_SOURCE_REACTOR_COMPONENTS!r} "
-                f"or {TARGET_SOURCE_PROCESS_VARIABLES!r}, got "
-                f"{resolved_target_source!r}"
+                f"resolved target_source must be one of "
+                f"{TARGET_SOURCE_REACTOR_COMPONENTS!r}, "
+                f"{TARGET_SOURCE_PROCESS_VARIABLES!r}, "
+                f"{TARGET_SOURCE_COMBINED!r}, got {resolved_target_source!r}"
             )
 
         ref_process = collection.processes[process_order[0]]
@@ -490,13 +539,17 @@ class TrainingDataStore(eqx.Module):
             process_targets = per_process_targets[process_name]
 
             # Per-target (times, values) — each target may have its own grid.
+            # ``reference_target_sources`` resolves each column to its source
+            # family (combined mixes reactor components and process variables).
             per_target_times: list[np.ndarray] = []
             per_target_values: list[np.ndarray] = []
-            for target_name in process_targets:
+            for col_source, target_name in zip(
+                reference_target_sources, process_targets, strict=True
+            ):
                 ts, ys = _timeseries_numpy(
                     process,
                     target_name,
-                    resolved_target_source,
+                    col_source,
                 )
                 per_target_times.append(np.asarray(ts, dtype=np.float32))
                 per_target_values.append(np.asarray(ys, dtype=np.float32))

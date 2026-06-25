@@ -727,6 +727,7 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
 
     class _Wrapper:
         modeled_RMC_names = ("X", "S")
+        modeled_PV_names = ()
         modeled_FVC_names = ("F",)
         rhs_ode = _RhsOde()
 
@@ -906,6 +907,7 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(tmp_path: P
 
     class _Wrapper:
         modeled_RMC_names = ("biomass",)
+        modeled_PV_names = ()
         modeled_FVC_names = ()
         rhs_ode = _RhsOde()
 
@@ -926,6 +928,7 @@ def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(tmp_path:
 
     class _Wrapper:
         modeled_RMC_names = ("biomass",)
+        modeled_PV_names = ()
         rhs_ode = _RhsOde()
         modeled_FVC_names = ()
 

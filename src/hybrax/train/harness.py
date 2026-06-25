@@ -507,6 +507,7 @@ def _resolve_estimated_scales(
         )
     return {
         "SCALE_modeled_RMCs": estimated.SCALE_modeled_RMCs,
+        "SCALE_modeled_PVs": estimated.SCALE_modeled_PVs,
         "SCALE_V_in_cumulative": estimated.SCALE_V_in_cumulative,
         "SCALE_modeled_FVCs_cumulative": estimated.SCALE_modeled_FVCs_cumulative,
         "SCALE_controlled_FVCs_cumulative": estimated.SCALE_controlled_FVCs_cumulative,
@@ -1283,7 +1284,13 @@ def train_collection(
         "batch_size=%d optimizer=%s lr=%s grad_clip=%s",
         list(selected_processes),
         list(store.name_measured),
-        "reactor_components" if store.name_measured_RMCs else "process_variables",
+        (
+            "combined"
+            if store.name_measured_RMCs and store.name_measured_PVs
+            else "reactor_components"
+            if store.name_measured_RMCs
+            else "process_variables"
+        ),
         cfg.steps,
         effective_batch_size,
         cfg.optimizer_name,
@@ -1608,7 +1615,11 @@ def train_from_collection(
     )
     if effective_target_order is None:
         _resolved_source = (
-            "reactor_components" if store.name_measured_RMCs else "process_variables"
+            "combined"
+            if store.name_measured_RMCs and store.name_measured_PVs
+            else "reactor_components"
+            if store.name_measured_RMCs
+            else "process_variables"
         )
         warnings.warn(
             "No training targets specified in run config data.targets. "

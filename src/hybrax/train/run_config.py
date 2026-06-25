@@ -49,6 +49,7 @@ class DataConfig(ConfigBase):
     target_source: Literal[
         "process_variables",
         "reactor_components",
+        "combined",
         "auto",
     ] = "auto"
 
