@@ -1,15 +1,131 @@
-# Custom loss: `UserLossModule`
+# Reaction & Loss Modules
 
-bp-train computes the training loss through a user-defined `UserLossModule`,
-the loss-side twin of `UserReactionModule`. You write one class that maps a
-`LossInputs` bundle to a dict of **named scalar losses**; the harness sums them
-for backprop, names every plot/log panel by the dict keys, and optimizes any
-`trainable_field()` you declare on the module — all from the single shared ODE
-solve. There is no separate "default loss" callback to wrestructure: the
-default *is* a `UserLossModule` (`DefaultLossModule`), and you subclass or
-replace it.
+Source: [`bp_train/model_api.py`](../bp_train/model_api.py),
+[`bp_train/defaults.py`](../bp_train/defaults.py),
+[`bp_train/wrapper.py`](../bp_train/wrapper.py),
+[`bp_train/dense.py`](../bp_train/dense.py)
 
-## The `build_loss_module` hook
+## Purpose
+
+The two user-pluggable halves of a hybrid model. The **reaction module**
+(`UserReactionModule`) predicts the biological rates that drive the ODE; the
+**loss module** (`UserLossModule`) maps the resulting trajectory to a dict of
+named scalar losses. You supply each via a `custom.py` hook, or take the default.
+
+## Design Rationale
+
+- Both are `eqx.Module`s, partitioned into trainable/static by field tags — one
+  mechanism for both (see
+  [01_design_rationale.md](01_design_rationale.md#5-trainable-partition-via-field-tags)).
+- The reaction module is the **single source of truth for every `SCALE_*`
+  axis**; the loss module reads scales through `inputs.reaction_module`.
+- A sample is **solved once**; the reaction module runs inside the solve, the
+  loss module reads its saved outputs after.
+
+---
+
+## The reaction module
+
+### The `build_reaction_module` hook
+
+Define this in `custom.py` to supply a reaction module; omit it for the default
+MLP.
+
+```python
+def build_reaction_module(*, target_names, process_names, config, seed,
+                          collection, **scale_kwargs):
+    return MyReactionModule(key=jax.random.key(seed), **scale_kwargs)
+```
+
+`scale_kwargs` carries the `SCALE_*` arrays from
+[`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales); pass them to
+`super().__init__(**scale_kwargs)`. The hook is discovered the same way as the
+loss hook ([`get_hook`](02_cli_and_config.md#custompy-hooks-reference), falling
+back to `default_build_reaction_module`).
+
+### `UserReactionModule`
+
+Override `__call__`; everything else is inherited.
+
+```python
+def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
+```
+
+- Inputs arrive in SCL space; return rates in SCL space. Use `self.unscale_*`
+  when you need RAW physical values (chemistry / FBA / kinetic laws), then
+  `self.scale_*` on the way back out — the helpers are linear and work for values
+  and derivatives identically.
+- The 11 stored `SCALE_*` fields are inherited frozen fields; **do not
+  redeclare** them — pass values to `super().__init__()`. Axis dimensions are
+  available as properties (`n_modeled_RMCs`, `n_modeled_PVs`,
+  `n_modeled_BiologicalOde_rates`, `n_modeled_FVCs`, `n_controlled_FVCs`,
+  `n_controlled_PVs`) so you size MLPs after `super().__init__()` without
+  threading `n_*` kwargs.
+
+### `ReactionInputs`
+
+Built by the wrapper at each RHS evaluation; all in SCL space. Read only the
+axes you need — unused fields cost nothing under JIT.
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `SCL_modeled_RMCs` | `(n_RMC,)` | species concentrations (UNCLIPPED — gradient flow survives negative excursions) |
+| `SCL_modeled_PVs` | `(n_modeled_PV,)` | modeled (dynamic) process-variable states |
+| `SCL_modeled_V` | scalar | real reactor volume at `t` (incl. `min_V` floor) |
+| `SCL_modeled_FVCs_cumulative` | `(n_modeled_FVC,)` | per-modeled-feed cumulative volume |
+| `SCL_controlled_FVCs_cumulative` | `(n_ctrl_FVC,)` | per-controlled-feed cumulative volume |
+| `SCL_controlled_FVCs_rates` | `(n_ctrl_FVC,)` | per-controlled-feed flow rate |
+| `SCL_controlled_FVCs_Cin` | `(n_ctrl_FVC, n_RMC)` | controlled-feed composition |
+| `SCL_controlled_PVs` | `(n_ctrl_PV,)` | controlled PV signals (pH, DO, T, …) |
+| `SCL_modeled_FVCs_Cin` | `(n_modeled_FVC, n_RMC)` | modeled-feed composition |
+
+### `ReactionOutputs`
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `SCL_modeled_BiologicalOde_rates` | `(n_rates,)` | rates aligned with `rhs_ode.name_modeled_rates`; **not** 1:1 with RMCs (algebraic rates like `q_X_active` live here) |
+| `SCL_modeled_FVCs_rates` | `(n_modeled_FVC,)` | modeled-feed flow rates; **must be ≥ 0** — apply your own positivity transform (e.g. softplus) before scaling |
+| `auxiliary` | `dict[str, array] \| None` | optional model-defined observables saved at solver times (see [Using auxiliary](#using-auxiliary)) |
+
+### `DefaultReactionModule`
+
+A 2-layer `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
+`SCL_modeled_BiologicalOde_rates` (includes any `r_<pv>` PV rates). It ignores
+controls and emits zero-length modeled-feed rates. The single trainable leaf is
+the MLP (`model: eqx.nn.MLP = trainable_field()`).
+
+### Field tagging
+
+Declare trainable leaves with [`trainable_field()`](../bp_train/model_api.py),
+frozen leaves with `frozen_field()`; untagged array leaves default to frozen.
+[`partition_trainable(module)`](../bp_train/model_api.py) splits the module into
+`(trainable, static)`. The harness partitions the whole wrapper this way, so
+reaction- and loss-module trainable leaves are optimized together. Details in
+[01_design_rationale.md](01_design_rationale.md#5-trainable-partition-via-field-tags).
+
+### The `HybridOdeWrapper` bridge
+
+[`HybridOdeWrapper`](../bp_train/wrapper.py) is the `eqx.Module` that joins your
+reaction module, the controls store, the `SCALE_*` axes, and the bp-format
+`RhsOde`. Its `__call__` is the ODE RHS: it assembles `ReactionInputs`, calls the
+reaction module, unscales the rates, and feeds the physical mass balance;
+`physical_save_outputs` produces the states/rates the loss module reads.
+`validate_rhs_ode_compatibility` checks the reaction module's axes against the
+`RhsOde` at construction. You rarely build it directly — the harness does.
+
+---
+
+## The loss module
+
+bp-train computes the training loss through a user-defined `UserLossModule`, the
+loss-side twin of `UserReactionModule`. You write one class that maps a
+`LossInputs` bundle to a dict of **named scalar losses**; the harness averages
+them for backprop, names every plot/log panel by the dict keys, and optimizes
+any `trainable_field()` you declare — all from the single shared ODE solve. There
+is no separate "default loss" callback: the default *is* a `UserLossModule`
+(`DefaultLossModule`), and you subclass or replace it.
+
+### The `build_loss_module` hook
 
 Define this in your `custom.py` to supply a loss module; omit it to get the
 default per-target MSE.
@@ -26,10 +142,10 @@ def build_loss_module(*, target_names, process_names, config, seed, collection):
   `build_reaction_module`.
 
 The hook is discovered the same way as `build_reaction_module`
-(`get_hook`, falling back to `DefaultLossModule`). It must return a
-`UserLossModule` instance.
+([`get_hook`](02_cli_and_config.md#custompy-hooks-reference), falling back to
+`DefaultLossModule`). It must return a `UserLossModule` instance.
 
-## `LossInputs` — what your `__call__` receives
+### `LossInputs` — what your `__call__` receives
 
 One per sample, evaluated on the measurement-time grid. Predicted trajectories
 come in both SCL and RAW space (scaling is a cheap elementwise broadcast); pick
@@ -53,9 +169,9 @@ whichever you need.
 | `jump_ts` | `(n_step_ts,)` or `None` | controls-discontinuity times (`controls.active_step_ts`); use to mask dense points / triples near jumps |
 
 **Dense-grid view** — populated iff the loss module declares
-`dense_grid_n: int` (see [Dense-grid losses](#dense-grid-losses-rate-curvature-between-measurement-constraints)
-below); otherwise all dense fields are `None`. Same dtypes and column layout as
-the measurement-grid fields above, leading dim `n_dense`:
+`dense_grid_n: int` (see [Dense-grid losses](#dense-grid-losses)); otherwise all
+dense fields are `None`. Same dtypes and column layout as the measurement-grid
+fields above, leading dim `n_dense`:
 
 | Field | Shape | Mirror of |
 |---|---|---|
@@ -66,7 +182,7 @@ the measurement-grid fields above, leading dim `n_dense`:
 | `dense_SCL_V` / `dense_RAW_V` | `(n_dense,)` | volume pair |
 | `dense_auxiliary` | `dict[str, (n_dense, …)]` | `auxiliary` |
 
-### Masks (sparse, unaligned measurements)
+#### Masks (sparse, unaligned measurements)
 
 When species are sampled on different time grids, the data is built on the
 *union* grid and padded per batch. Two masks express what is real:
@@ -82,7 +198,7 @@ Scales live only on `reaction_module` — read them via
 `inputs.reaction_module.SCALE_*` or its `scale_*` / `unscale_*` helpers. They
 are never duplicated onto `LossInputs`.
 
-## `LossOutputs` and aggregation
+### `LossOutputs` and aggregation
 
 ```python
 return LossOutputs(named_losses={"biomass": ..., "glucose": ..., "lwr_bnd/q_glc": ...})
@@ -99,7 +215,7 @@ return LossOutputs(named_losses={"biomass": ..., "glucose": ..., "lwr_bnd/q_glc"
   If you genuinely want sum-style weighting, scale the individual terms inside
   `__call__` and retune `grad_clip_norm` accordingly.
 
-## `loss_names` — required property
+### `loss_names` — required property
 
 Declare the term names up front; they must equal the keys your `__call__`
 returns, in order:
@@ -110,11 +226,12 @@ def loss_names(self) -> tuple[str, ...]:
     return ("biomass", "glucose", "lwr_bnd/q_glc")
 ```
 
-The harness reads `loss_names` once at setup to build the console table, CSV,
-JSONL, and `loss_curve.png` panels, and to size/validate the loss vector. A
-mismatch between `loss_names` and the returned keys is a fail-fast error.
+The harness reads `loss_names` once at setup to build the console table,
+`metrics.csv`, and `loss_curve.png` panels, and to size/validate the loss
+vector. A mismatch between `loss_names` and the returned keys is a fail-fast
+error.
 
-## Choosing the loss type (MAE / MSE / Huber)
+### Choosing the loss type (MAE / MSE / Huber)
 
 `DefaultLossModule.residual_reduction(residual, mask)` is the per-target
 reduction (default: masked mean-squared error). Override it to switch:
@@ -127,7 +244,7 @@ class MAELossModule(DefaultLossModule):
         return jnp.sum(masked, axis=0) / n_active
 ```
 
-## Adding custom loss terms
+### Adding custom loss terms
 
 Subclass and add named entries — they show up automatically as new panels and
 log columns:
@@ -162,7 +279,7 @@ class BoundsHingeLossModule(DefaultLossModule):
 See [examples/11_tub_2026/fba_hyb/custom.py](../examples/11_tub_2026/fba_hyb/custom.py)
 for the full bounds-hinge module.
 
-## Trainable loss parameters
+### Trainable loss parameters
 
 Declare `trainable_field()` leaves and they are optimized alongside the reaction
 module (the harness partitions the whole wrapper by field tags). Example —
@@ -187,13 +304,16 @@ class KendallLossModule(DefaultLossModule):
 
 At training start the harness prints two structure tables —
 `UserReactionModule` and `UserLossModule` — so you can verify exactly which
-leaves are trainable vs frozen. Trainability is declared solely through field
-tags; there is no custom `partition_trainable()` override. For advanced
-sub-field control (e.g. freezing some MLP layers), use the `build_optimizer`
-hook with `optax.masked` / `optax.multi_transform` rather than a second
-partition mechanism.
+leaves are trainable vs frozen (see
+[06_serialization_inspect.md](06_serialization_inspect.md#introspection)).
+Trainability is declared solely through field tags; there is no custom
+`partition_trainable()` override. For advanced sub-field control (e.g. freezing
+some MLP layers), use the
+[`build_optimizer`](02_cli_and_config.md#build_optimizer) hook with
+`optax.masked` / `optax.multi_transform` rather than a second partition
+mechanism.
 
-## Using `auxiliary`
+### Using `auxiliary`
 
 Emit observables from the reaction module:
 
@@ -209,7 +329,7 @@ They are saved at every measurement time and arrive stacked in
 `inputs.auxiliary["q_glucose_signed"]` (shape `(n_meas,)`), ready to drive a
 loss term.
 
-## Dense-grid losses (rate curvature, between-measurement constraints)
+### Dense-grid losses
 
 Some loss terms need values *between* measurement points — e.g. a smoothness
 penalty on rate time-derivatives (finite differences need >3 well-spaced
@@ -250,7 +370,7 @@ from bp_train import (
   for finite-difference curvature so the second derivative is never measured
   across a discontinuity.
 
-### Example 1 — rate-curvature penalty
+#### Example 1 — rate-curvature penalty
 
 ```python
 class CurvatureLossModule(DefaultLossModule):
@@ -294,7 +414,7 @@ curvature) is in
 [tests/fixtures/martens_single/custom.py](../tests/fixtures/martens_single/custom.py)
 — it runs end-to-end through `prepare -> train -> forward -> losses.csv`.
 
-### Example 2 — between-measurement bounds
+#### Example 2 — between-measurement bounds
 
 Today's `BoundsHingeLossModule` only enforces bounds at measurement times.
 Swapping `inputs.SCL_states` → `inputs.dense_SCL_states` (and
@@ -311,7 +431,7 @@ mask = dense_point_mask_away_from_jumps(
 penalties[label] = self.weight * _hinge_sq(values, scl_threshold, side, mask)
 ```
 
-### Practical note on `dense_grid_n` size
+#### Practical note on `dense_grid_n` size
 
 The added cost is just more `SaveAt` evaluations of `wrapper.save_outputs`;
 the underlying solver steps are adaptive and unchanged. In practice, very
@@ -323,12 +443,12 @@ train step on the current JAX/diffrax). Pick the smallest N your finite
 differences need; if you hit a hard crash at large N, drop it and/or loosen
 the solver tolerances.
 
-## Where terms show up
+### Where terms show up
 
 Every named term flows, by its key, to:
 
 - the per-step console table,
-- `run.csv` and `run.jsonl`,
+- `metrics.csv` (the per-step loss history in the run directory),
 - the checkpoint `loss_curve.png` (one panel per term, plus a `total` panel),
 - the per-process fit plot: each species/feed subplot is annotated with its
   named term (when one matches by name) plus R²; the process's total loss is in

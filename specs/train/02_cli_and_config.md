@@ -1,0 +1,309 @@
+# CLI, Config & Hooks
+
+Source: [`bp_train/cli.py`](../bp_train/cli.py),
+[`bp_train/run_config.py`](../bp_train/run_config.py),
+[`bp_train/utils.py`](../bp_train/utils.py),
+[`bp_train/defaults.py`](../bp_train/defaults.py)
+
+## Purpose
+
+Everything you touch from the outside: the `bp-train` subcommands, the JSON run
+config that drives them, and the `custom.py` hooks that let you swap in your own
+reaction/loss modules, scales, and optimizer. The
+[`custom.py` hooks reference](#custompy-hooks-reference) is the single, complete
+list of every hook with its signature.
+
+## The pipeline
+
+```
+raw bp_format collection
+   │  bp-train prepare   (transform + estimate scales + build controls)
+   ▼
+prepared.json
+   │  bp-train train     (fit reaction + loss modules → run directory)
+   ▼
+run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
+   │  bp-train forward   (re-simulate, plot, export predictions)
+   │  bp-train loo       (leave-one-process-out cross-validation)
+   ▼
+predictions.csv / plots / losses.csv / loo summary
+```
+
+`prepare` and `train` are config-driven (`--config run.json`). `forward` and
+`loo` accept a config or direct flags. See
+[03_data_preparation.md](03_data_preparation.md) for prepare and
+[05_train_forward_loo.md](05_train_forward_loo.md) for train/forward/loo
+internals.
+
+## Subcommands
+
+### `bp-train prepare`
+
+Transform a raw bp-format process collection into a prepared artifact.
+
+| Flag | Required | Meaning |
+|---|---|---|
+| `--config` | yes | Path to a prepare run config JSON (needs a `prepare` section). |
+| `--output` | yes | Path to the output `prepared.json`. |
+| `--overwrite` | no | Overwrite an existing `prepared.json` at `--output`. |
+
+### `bp-train train`
+
+Train one or more processes from a prepared artifact into a FAIR run directory.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--config` | — | Train run config JSON (required unless `--resume`). |
+| `--output-dir` | config's `output.dir` | Override the run directory. |
+| `--resume` | — | Resume in place from an existing run dir (`checkpoints/latest`, appends to `metrics.csv`). |
+| `--overwrite` | off | Allow re-running into a completed run dir. |
+| `--steps` | config's `train.steps` | Override step count (with `--resume`, may extend the target). |
+| `--plot` / `--no-plot` | `--plot` | Per-process result plots. |
+| `--log-level` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR`. |
+
+Logging cadence and console-table formatting are **config-only** (the `logging`
+section). `metrics.csv` is always written to the run dir.
+
+### `bp-train forward`
+
+Load a trained model and run one forward ODE pass per selected process (no
+training); regenerates plots and prints a loss table.
+
+| Flag | Meaning |
+|---|---|
+| `--config` | `forward_config.json`: a `models` list of self-contained run/checkpoint dirs (len 1 = single, >1 = ensemble) + optional `data`/`output`. Mutually exclusive with `--model`. |
+| `--model` | Shorthand for a 1-model config: a run dir, or a checkpoint dir / `params.eqx` inside it. |
+| `--input` | Optional `prepared.json` to forward on (new data + controls); defaults to each model's bundled one. |
+| `--process` | Process name to evaluate (repeatable or comma-separated); default all. |
+| `--output-dir` | Forward outputs dir; default `<first model>/forward`. |
+| `--plot` / `--no-plot` | Per-process plots (default on). |
+| `--loss-csv` | Loss-table CSV; default `<output-dir>/losses.csv`. |
+| `--timeseries-csv` | One merged CSV of dense simulated trajectories with a `process` column. |
+| `--log-level` | Python logging level. |
+
+### `bp-train loo`
+
+Leave-one-process-out cross-validation: train one fold per parent process group,
+evaluate each fold's holdout, aggregate. (`loo` is flag-driven.)
+
+| Flag | Meaning |
+|---|---|
+| `--input` | Prepared JSON (required). |
+| `--custom` | Optional `custom.py` exposing the hooks. |
+| `--config` | Optional JSON runtime config. |
+| `--holdouts` | Parent process names to hold out (repeatable/comma-separated); default all. One name → single fold (cluster-friendly). |
+| `--target` | Target variable name to train against (repeatable/comma-separated). |
+| `--target-source` | Target family (`auto`/`process_variables`/`reactor_components`/`combined`). |
+| `--steps`, `--batch-size`, `--batch-seed`, `--optimizer`, … | Per-fold training overrides. |
+
+## Run directory layout
+
+A `train` run writes a self-contained FAIR directory at `output.dir`:
+
+```
+<output.dir>/
+  config.json            # the resolved RunConfig (provenance)
+  custom.py              # copied custom hooks (provenance)
+  metrics.csv            # per-step loss + grad-norm history
+  model/                 # final trained bundle
+  checkpoints/
+    latest/  best/  step_00100/ …
+        params.eqx          # trainable partition only
+        opt_state.eqx       # optimizer state (for resume)
+        train_state.json    # step counter etc.
+        config.json         # resolved config
+        prepared.json.gz    # bundled data → self-contained
+        custom.py           # bundled hooks
+        loss_curve.png  grad_norm_curve.png
+        predictions.csv
+        <process>_run_*.png # per-process fit plots
+```
+
+## `custom.py` hooks reference
+
+A run can supply a `custom.py` module (via `custom_py` in the config, or
+`--custom`/`--model` paths). Hooks are looked up by name with
+[`get_hook(custom_module, "<name>", <default>)`](../bp_train/utils.py); a missing
+hook falls back to its default (or to a no-op for the `None`-default hooks). The
+module is imported with `load_custom_module`. A custom typed config object is
+produced by an optional `get_custom_config(raw_custom, config)` and reaches every
+hook as `config.custom`.
+
+There are **7 hooks**. Stage = when it fires (`prepare` vs `train`).
+
+| Hook | Stage | Default |
+|---|---|---|
+| [`transform_process_collection`](#transform_process_collection) | prepare | `default_transform_process_collection` |
+| [`build_sample_acc_series`](#build_sample_acc_series) | prepare | `default_build_sample_acc_series` |
+| [`estimate_all_scales`](#estimate_all_scales) | train | none (no scaling) |
+| [`build_reaction_module`](#build_reaction_module) | train | `default_build_reaction_module` |
+| [`build_loss_module`](#build_loss_module) | train | `default_build_loss_module` |
+| [`build_learning_rate`](#build_learning_rate) | train | none |
+| [`build_optimizer`](#build_optimizer) | train | none |
+
+### `transform_process_collection`
+
+```python
+def transform_process_collection(collection, config: RunConfig) -> collection
+```
+Mutate/replace the collection before scales and controls are built — e.g. swap a
+fixed `biological_ode` derivative for an `r_<pv>` rate so the reaction module
+learns it. Default applies `prepare.process_rename_map`.
+
+### `build_sample_acc_series`
+
+```python
+def build_sample_acc_series(process, process_name, collection_metadata, config: RunConfig)
+```
+Construct the sampled-volume (sample-accumulation) control source for one
+process. Default delegates to `build_sample_acc_source_default(process,
+run_min_dt=config.prepare.bolus_run_min_dt)`.
+
+### `estimate_all_scales`
+
+```python
+def estimate_all_scales(collection, target_names: list[str], config) -> EstimatedScales | dict
+```
+Return the `SCALE_*` axes (as an [`EstimatedScales`](../bp_train/model_api.py))
+used to normalize state/rate/control vectors. Runs once at train setup; the
+values are baked into the reaction module. No default — when absent, every axis
+is ones (no scaling). See
+[03_data_preparation.md](03_data_preparation.md#scale-estimation).
+
+### `build_reaction_module`
+
+```python
+def build_reaction_module(*, target_names, process_names, config, seed,
+                          collection, **scale_kwargs) -> UserReactionModule
+```
+Construct the reaction module. `scale_kwargs` carries the `SCALE_*` values from
+`estimate_all_scales`. Default is `DefaultReactionModule` (a 2-layer MLP). See
+[04_reaction_and_loss.md](04_reaction_and_loss.md#the-reaction-module).
+
+### `build_loss_module`
+
+```python
+def build_loss_module(*, target_names, process_names, config, seed,
+                      collection) -> UserLossModule
+```
+Construct the loss module. Default is `DefaultLossModule` (per-target MSE). See
+[04_reaction_and_loss.md](04_reaction_and_loss.md#the-loss-module).
+
+### `build_learning_rate`
+
+```python
+def build_learning_rate(custom_cfg, train_cfg) -> float | optax.Schedule
+```
+Override the learning rate (e.g. a decay schedule). No default — `train.learning_rate`
+is used as-is.
+
+### `build_optimizer`
+
+```python
+def build_optimizer(custom_cfg, train_cfg) -> optax.GradientTransformation
+```
+Replace the whole optimizer chain — use `optax.masked` / `optax.multi_transform`
+for per-leaf control (e.g. freezing some MLP layers). No default — the standard
+`adam`/`sgd` + `clip_by_global_norm` chain is built from `train_cfg`.
+
+## `run_config.json` schema
+
+Top-level keys (unknown keys are rejected):
+`data`, `custom_py`, `train`, `solver`, `checkpoint`, `output`, `logging`,
+`prepare`, `custom`. `prepare` needs the `prepare` section; `train` needs the
+`data` section. All paths resolve relative to the config file's directory.
+
+**`data`** — [`DataConfig`](../bp_train/run_config.py)
+
+| Field | Type / default | Meaning |
+|---|---|---|
+| `prepared` | path (required) | The `prepared.json` to train on. |
+| `processes` | tuple\|null = null | Subset of process names; null = all. |
+| `targets` | tuple\|null = null | Explicit target names; null = derived. |
+| `target_source` | `auto` | `auto`/`process_variables`/`reactor_components`/`combined`. |
+
+**`train`** — [`TrainConfig`](../bp_train/run_config.py)
+
+| Field | Default | Meaning |
+|---|---|---|
+| `steps` | 50 (>0) | Optimizer steps. |
+| `seed` | 0 | Init seed. |
+| `optimizer` | `adam` | `adam`/`sgd`. |
+| `learning_rate` | 1e-3 (>0) | Base LR. |
+| `grad_clip_norm` | 1000.0 (≥0) | `clip_by_global_norm` threshold. |
+| `batch_size` | null | Processes per step; null = all. |
+| `shuffle` | true | Shuffle batches. |
+| `batch_seed` | null | Batch-index seed. |
+| `devices` | 1 | CPU devices to shard over; `"max"` = `min(n_proc, n_cpu)`. |
+
+**`solver`** — [`SolverConfig`](../bp_train/run_config.py)
+
+| Field | Default | Meaning |
+|---|---|---|
+| `max_steps` | 2048 (>0) | Max solver steps per solve. |
+| `rtol` | 1e-5 (>0) | Relative tolerance. |
+| `atol` | 1e-7 (>0) | Absolute tolerance. |
+| `jump_ts` | true | Pass merged event times as `jump_ts` hints. |
+
+**`checkpoint`** — [`CheckpointConfig`](../bp_train/run_config.py)
+
+| Field | Default | Meaning |
+|---|---|---|
+| `every` | 10 (0 disables) | Snapshot cadence (distinct from `logging.every`). |
+| `keep` | `best+latest` | `best+latest` (prune step dirs) or `all`. |
+| `resume` | null | Resume-from path. |
+
+**`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
+`output`), `plots` (default true).
+
+**`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `level` (`INFO`),
+`every` (10, >0), `decimals` (4), `header_every` (10; re-emit the table header
+every N rows, 0 disables).
+
+**`prepare`** — [`PrepareConfig`](../bp_train/run_config.py)
+
+| Field | Default | Meaning |
+|---|---|---|
+| `raw_input` | path (required) | Raw bp-format collection / BenchmarkDataset. |
+| `case_study` | null | Case study to extract (null = first). |
+| `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
+| `required_control_names` | () | Controls that must exist (tuple, or per-process dict). |
+| `require_consistent_controls` | true | All processes share the same controls. |
+| `bolus_run_min_dt` | null (>0) | Min event width for ramp/triangle construction. |
+| `initial_grid_points` | 16 (>0) | Starting dense control-grid resolution. |
+| `max_rel_error` | 1e-4 (>0) | Control-grid refinement tolerance. |
+| `max_refinement_rounds` | 8 (≥0) | Refinement round cap. |
+| `process_rename_map` | {} | Old→new process-name map (used by the default transform). |
+
+**`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to
+hooks as `config.custom` (typed via `get_custom_config` or a permissive default).
+
+## Device pooling
+
+```jsonc
+{ "train": { "devices": "max" } }      // or an integer N
+```
+or `BP_TRAIN_DEVICES=8 bp-train train --config …` (env var wins). Resolved
+before JAX initializes; default 1. See
+[01_design_rationale.md](01_design_rationale.md#9-opt-in-multi-core-device-pooling).
+
+## Example: annotated `train-config.json`
+
+From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config.json):
+
+```jsonc
+{
+  "data":   { "prepared": "prepared.json", "target_source": "combined" },
+  "custom_py": "custom.py",          // build_reaction_module / estimate_all_scales / …
+  "train":  { "steps": 1000, "seed": 0, "devices": "max" },
+  "logging":{ "every": 100 },
+  "solver": { "max_steps": 4096, "rtol": 1e-5, "atol": 1e-7 },
+  "checkpoint": { "every": 100, "keep": "all" }
+}
+```
+Run it with:
+```bash
+bp-train prepare --config prepare-config.json --output prepared.json
+bp-train train   --config train-config.json
+bp-train forward --model output
+```

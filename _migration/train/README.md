@@ -1,15 +1,80 @@
-# BP-bench
+# BP-Train: Bioprocess Hybrid Model Training
 
-Bioprocess hybrid model setup and training with Jax and Diffrax
+Bioprocess hybrid model setup and training with JAX and Diffrax.
 
-## Event overlap semantics
+## Motivation
 
-In V1, event-like controls are represented as finite-width piecewise-linear
-segments (sampling ramps and bolus triangles), not instantaneous jumps.
-If a sampling event and a bolus event occur within the same `min_dt` window,
-their support intervals overlap in time and both contributions are active over
-that overlap. All event boundaries are merged into one per-process `step_ts`
-sequence and forwarded to the solver as `jump_ts` hints.
-Training/evaluation loss is still sampled only at measurement timestamps, so a
-measurement strictly before a bolus event (`t_sample < t_bolus`) is unaffected
-by that bolus.
+bp-train turns a [bp-format](../bp-format) bioprocess collection into a
+trainable **hybrid ODE model**: it builds the mechanistic mass balance from the
+process definition, lets you plug in your own neural / mechanistic **reaction
+module** and **loss module**, and fits them with gradient-based optimization
+through adaptive ODE integration. The ODE is integrated in a scaled (O(1)) state
+space for numerical stability, solved once per sample for both the rates and the
+loss, and trained with optax. A FAIR, self-contained run directory makes every
+fit reproducible and resumable.
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+For development (matplotlib, plotly, pytest, …):
+```bash
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+### CLI pipeline
+
+```bash
+# 1. transform a raw bp-format collection into a prepared artifact
+bp-train prepare --config prepare-config.json --output prepared.json
+
+# 2. fit reaction + loss modules into a run directory
+bp-train train   --config train-config.json
+
+# 3. re-simulate a trained model, regenerate plots, export predictions
+bp-train forward --model output --timeseries-csv predictions.csv
+
+# 4. (optional) leave-one-process-out cross-validation
+bp-train loo     --input prepared.json --custom custom.py
+```
+
+A `custom.py` next to the config supplies the hooks (`build_reaction_module`,
+`build_loss_module`, `estimate_all_scales`, …); omit it to train the built-in
+MLP reaction module with per-target MSE loss. See
+[examples/00_e2e_sim/](examples/00_e2e_sim).
+
+### Programmatic
+
+```python
+from bp_train import load_run, forward_from_collection, print_trainable_structure
+
+# reload a trained model from its run directory (rebuilds the static half)
+run = load_run("examples/00_e2e_sim/output", checkpoint="latest")
+print_trainable_structure(run.wrapper.reaction_module)
+
+# forward-simulate every process
+result = forward_from_collection(run.collection, model_path="examples/00_e2e_sim/output")
+```
+
+## Modules
+
+| Module | Documentation |
+|--------|---------------|
+| CLI, run config & `custom.py` hooks | [documentation/02_cli_and_config.md](documentation/02_cli_and_config.md) |
+| Data preparation, scales, layout | [documentation/03_data_preparation.md](documentation/03_data_preparation.md) |
+| Reaction & loss modules | [documentation/04_reaction_and_loss.md](documentation/04_reaction_and_loss.md) |
+| Training, forward & LOO | [documentation/05_train_forward_loo.md](documentation/05_train_forward_loo.md) |
+| Serialization & inspection | [documentation/06_serialization_inspect.md](documentation/06_serialization_inspect.md) |
+
+## Documentation
+
+Full docs — including the design rationale and the **single `custom.py` hooks
+reference** — are in [documentation/](documentation/README.md). Start with the
+[Design Rationale](documentation/01_design_rationale.md).
+
+bp-train builds on [bp-format](../bp-format) for the data model and the
+mechanistic ODE RHS.
