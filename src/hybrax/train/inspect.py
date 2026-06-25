@@ -250,12 +250,14 @@ def _reaction_schema_rows(
     lines underneath the table row.
     """
     name_RMCs = tuple(rhs_ode.name_modeled_RMCs)
+    name_modeled_PVs = tuple(rhs_ode.name_modeled_PVs)
     name_modeled_FVCs = tuple(rhs_ode.name_modeled_FVCs)
     name_controlled_FVCs = tuple(rhs_ode.name_controlled_FVCs)
     name_controlled_PVs = tuple(rhs_ode.name_controlled_PVs)
     name_modeled_rates = tuple(rhs_ode.name_modeled_rates)
 
     n_RMCs = len(name_RMCs)
+    n_modeled_PVs = len(name_modeled_PVs)
     n_modeled_FVCs = len(name_modeled_FVCs)
     n_controlled_FVCs = len(name_controlled_FVCs)
     n_controlled_PVs = len(name_controlled_PVs)
@@ -263,6 +265,7 @@ def _reaction_schema_rows(
 
     inputs: list[tuple[str, str, tuple[str, ...]]] = [
         ("SCL_modeled_RMCs", _shape_tuple_str(n_RMCs), name_RMCs),
+        ("SCL_modeled_PVs", _shape_tuple_str(n_modeled_PVs), name_modeled_PVs),
         ("SCL_modeled_V", "()", ("V_real",)),
         (
             "SCL_modeled_FVCs_cumulative",

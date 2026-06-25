@@ -12,6 +12,7 @@ from bp_format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
+    ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
     SampleVolumeChange,
@@ -40,6 +41,7 @@ def _unit_scale_kwargs(
     n_species: int,
     n_rates: int,
     n_modeled_VCs: int,
+    n_modeled_PVs: int = 0,
     controls: ControlsStore | None = None,
     n_controlled_FVCs: int | None = None,
     n_controlled_PVs: int | None = None,
@@ -54,6 +56,7 @@ def _unit_scale_kwargs(
     f32 = jnp.float32
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=f32),
+        "SCALE_modeled_PVs": jnp.ones(n_modeled_PVs, dtype=f32),
         "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
         "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_VCs, dtype=f32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs, dtype=f32),
@@ -343,6 +346,7 @@ def _derive_unit_scale_kwargs(process, controls) -> dict[str, jnp.ndarray]:
         n_species=len(rhs_ode.name_modeled_RMCs),
         n_rates=len(rhs_ode.name_modeled_rates),
         n_modeled_VCs=len(rhs_ode.name_modeled_FVCs),
+        n_modeled_PVs=len(rhs_ode.name_modeled_PVs),
         controls=controls,
     )
 
@@ -518,3 +522,95 @@ def test_continuous_feed_transport_volume_and_dilution():
         max_steps=100_000, rtol=1e-8, atol=1e-10,
     )
     assert jnp.allclose(dup_states[:3], y0[None, :])
+
+
+def _make_modeled_pv_process() -> BioProcess:
+    """biomass RMC + one uncontrolled (modeled) process variable.
+
+    With no user biological_ode, auto-generation yields rates
+    ``(q_biomass, r_<pv>)`` and a PV derivative ``r_<pv>`` — i.e. the PV is an
+    MLP-predicted, integrated state alongside the RMCs.
+    """
+    return BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={}),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                ),
+            },
+        ),
+        process_variables={
+            "ratio": ProcessVariable(
+                name="ratio",
+                unit="-",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 2.0]),
+                    values=jnp.asarray([0.0, 1.0]),
+                ),
+            ),
+        },
+    )
+
+
+def test_wrapper_supports_modeled_pv():
+    from bp_train.physical_solve import solve_physical_states
+
+    process = _make_modeled_pv_process()
+    rhs_ode = build_rhs_ode(process)
+    # Auto-generated ODE: a biomass rate plus an r_<pv> rate; the PV is a state.
+    assert rhs_ode.name_modeled_PVs == ("ratio",)
+    assert rhs_ode.name_modeled_rates == ("q_biomass", "r_ratio")
+
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+
+    # q_biomass = 0 (biomass constant); r_ratio = 0.5 (PV grows 0.5 / h).
+    module = ConstantReactionModule(
+        specific_rates=jnp.asarray([0.0, 0.5], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, module)  # must NOT raise
+    assert wrapper.modeled_PV_names == ("ratio",)
+
+    # State layout is [biomass | ratio | V]; the PV slot is present.
+    n_state = (
+        len(rhs_ode.name_modeled_RMCs)
+        + len(rhs_ode.name_modeled_PVs)
+        + 1
+        + len(rhs_ode.name_modeled_FVCs)
+    )
+    assert n_state == 3
+    y0 = jnp.asarray([1.0, 0.0, 1.0], dtype=jnp.float32)  # biomass, ratio, V
+
+    # RHS at t=0: [d_biomass=0 | d_ratio=0.5 (biological-only) | d_V=0].
+    d0 = wrapper.physical_rhs(0.0, y0)
+    assert d0.shape == (3,)
+    assert jnp.allclose(d0, jnp.asarray([0.0, 0.5, 0.0]), atol=1e-6)
+
+    # Integrate: biomass + V constant (no feed), ratio(t) = 0.5 t.
+    t_eval = jnp.linspace(0.0, 2.0, 11)
+    states = solve_physical_states(
+        wrapper,
+        t_eval=t_eval,
+        n_measured=t_eval.shape[0],
+        RAW_y0=y0,
+        max_steps=100_000,
+        rtol=1e-8,
+        atol=1e-10,
+    )
+    biomass, ratio, volume = states[:, 0], states[:, 1], states[:, 2]
+    assert jnp.allclose(biomass, 1.0, atol=1e-4)
+    assert jnp.allclose(volume, 1.0, atol=1e-4)
+    assert jnp.allclose(ratio, 0.5 * t_eval, atol=1e-3)

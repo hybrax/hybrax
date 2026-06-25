@@ -25,6 +25,7 @@ from bp_train.model_api import (
 def _mock_rhs_ode_and_controls():
     rhs_ode = SimpleNamespace(
         name_modeled_RMCs=("biomass", "glucose", "acetate"),
+        name_modeled_PVs=("ratio",),
         name_modeled_FVCs=("feed_glc",),
         name_controlled_FVCs=("base", "antifoam"),
         name_controlled_PVs=("pH", "DO", "T"),
@@ -42,6 +43,7 @@ def test_format_reaction_schema_contains_all_axis_names():
 
     for axis in (
         "SCL_modeled_RMCs",
+        "SCL_modeled_PVs",
         "SCL_modeled_V",
         "SCL_modeled_FVCs_cumulative",
         "SCL_controlled_FVCs_cumulative",
@@ -86,6 +88,7 @@ def test_format_reaction_schema_cin_followups_render_rows_cols():
 def test_format_reaction_schema_handles_empty_axes():
     rhs_ode = SimpleNamespace(
         name_modeled_RMCs=("biomass",),
+        name_modeled_PVs=(),
         name_modeled_FVCs=(),
         name_controlled_FVCs=(),
         name_controlled_PVs=(),

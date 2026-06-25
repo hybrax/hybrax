@@ -89,6 +89,7 @@ class HybridOdeWrapper(eqx.Module):
     that lives on the attached ``UserReactionModule``):
 
         RAW_state = [modeled_RMCs (n_RMCs)
+                     | modeled_PVs (n_PVs)
                      | V_in_cumulative (1)
                      | modeled_FVCs_cumulative (n_FVCs)]
 
@@ -124,6 +125,7 @@ class HybridOdeWrapper(eqx.Module):
     min_V: float = eqx.field(static=True)
 
     modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
+    modeled_PV_names: tuple[str, ...] = eqx.field(static=True)
     modeled_FVC_names: tuple[str, ...] = eqx.field(static=True)
 
     # Cached slice sizes for the canonical controls vector; sourced from
@@ -160,11 +162,6 @@ class HybridOdeWrapper(eqx.Module):
         """
         rhs_ode = build_rhs_ode(process)
 
-        if rhs_ode.name_modeled_PVs:
-            raise NotImplementedError(
-                "HybridOdeWrapper does not support modeled PVs "
-                f"({rhs_ode.name_modeled_PVs}); extend the RhsOde input first."
-            )
         if rhs_ode.name_controlled_SVCs:
             raise NotImplementedError(
                 "HybridOdeWrapper does not support continuous controlled SVCs "
@@ -184,15 +181,16 @@ class HybridOdeWrapper(eqx.Module):
             )
 
         n_RMCs = len(rhs_ode.name_modeled_RMCs)
+        n_PVs = len(rhs_ode.name_modeled_PVs)
         n_FVCs = len(rhs_ode.name_modeled_FVCs)
         n_rates = len(rhs_ode.name_modeled_rates)
-        n_u = controls.n_u
 
         n_controlled_FVCs_count = len(controls.name_controlled_FVCs)
 
         # Validate reaction_module SCALE_* shapes match the layout we'll feed.
         _expected_shapes: dict[str, tuple[int, ...]] = {
             "SCALE_modeled_RMCs": (n_RMCs,),
+            "SCALE_modeled_PVs": (n_PVs,),
             "SCALE_modeled_FVCs_cumulative": (n_FVCs,),
             "SCALE_controlled_FVCs_cumulative": (n_controlled_FVCs_count,),
             "SCALE_controlled_FVCs_rates": (n_controlled_FVCs_count,),
@@ -206,7 +204,7 @@ class HybridOdeWrapper(eqx.Module):
             if not hasattr(reaction_module, field_name):
                 raise TypeError(
                     f"reaction_module is missing SCALE field {field_name!r}; "
-                    "subclass UserReactionModule and pass all 10 SCALE_* fields "
+                    "subclass UserReactionModule and pass all 11 SCALE_* fields "
                     "to super().__init__(...)."
                 )
             arr = getattr(reaction_module, field_name)
@@ -219,17 +217,19 @@ class HybridOdeWrapper(eqx.Module):
         if not hasattr(reaction_module, "SCALE_V_in_cumulative"):
             raise TypeError(
                 "reaction_module is missing SCALE_V_in_cumulative; subclass "
-                "UserReactionModule and pass all 10 SCALE_* fields to "
+                "UserReactionModule and pass all 11 SCALE_* fields to "
                 "super().__init__(...)."
             )
 
         n_modeled = n_FVCs + len(rhs_ode.name_modeled_SVCs)
 
-        # Default target_state_indices: species columns + modeled-cumulative columns
-        # (V_in_cumulative at index n_RMCs is in the state but not a loss target).
+        # Default target_state_indices: the [RMCs | PVs] leading block + the
+        # modeled-cumulative-feed columns. V_in_cumulative (at index
+        # n_RMCs + n_PVs) is in the state but not a loss target.
         if target_state_indices is None:
-            default_indices = list(range(n_RMCs)) + list(
-                range(n_RMCs + 1, n_RMCs + 1 + n_modeled)
+            n_leading = n_RMCs + n_PVs
+            default_indices = list(range(n_leading)) + list(
+                range(n_leading + 1, n_leading + 1 + n_modeled)
             )
             _target_state_indices = jnp.asarray(default_indices, dtype=jnp.int32)
         else:
@@ -241,6 +241,7 @@ class HybridOdeWrapper(eqx.Module):
             controls=controls,
             min_V=float(min_V),
             modeled_RMC_names=rhs_ode.name_modeled_RMCs,
+            modeled_PV_names=rhs_ode.name_modeled_PVs,
             modeled_FVC_names=rhs_ode.name_modeled_FVCs,
             n_controlled_FVCs=n_controlled_FVCs_count,
             n_controlled_PVs=len(controls.name_controlled_PVs),
@@ -250,7 +251,7 @@ class HybridOdeWrapper(eqx.Module):
 
     # ------ Physical-state RHS (continuous part of the diffrax_callbacks solve) ------
     #
-    # Integrates the *physical* state ``y = [RAW_RMCs | RAW_V | RAW_modeled_cum]``
+    # Integrates the *physical* state ``y = [RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum]``
     # directly; discrete bolus/sample events are applied as state jumps between
     # segments (``physical_solve.solve_physical_states``), not folded into the
     # vector field. Between events only continuous dynamics act
@@ -259,19 +260,23 @@ class HybridOdeWrapper(eqx.Module):
     # pseudobatch state, whose unbounded accumulator corrupted the gradient.)
 
     def physical_rhs(self, t: float | jax.Array, y_phys: jax.Array) -> jax.Array:
-        """d/dt of the physical state ``[RAW_RMCs | RAW_V | RAW_modeled_cum]``.
+        """d/dt of ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum]``.
 
         Continuous part only — discrete boluses/samples are handled as jumps.
         """
         module = self.reaction_module
         n_RMCs = len(self.modeled_RMC_names)
+        n_PVs = len(self.modeled_PV_names)
         n_FVCs = len(self.modeled_FVC_names)
         dtype = y_phys.dtype
         t_arr = jnp.asarray(t, dtype=dtype)
 
         RAW_RMCs = y_phys[:n_RMCs]
-        RAW_V = jnp.maximum(y_phys[n_RMCs], jnp.asarray(self.min_V, dtype=dtype))
-        RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+        RAW_PVs = y_phys[n_RMCs : n_RMCs + n_PVs]
+        RAW_V = jnp.maximum(
+            y_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
+        )
+        RAW_modeled_cum = y_phys[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
         n_FVC = self.n_controlled_FVCs
@@ -289,6 +294,7 @@ class HybridOdeWrapper(eqx.Module):
 
         inputs = ReactionInputs(
             SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
+            SCL_modeled_PVs=module.scale_modeled_PVs(RAW_PVs),
             SCL_modeled_V=module.scale_modeled_V(RAW_V),
             SCL_modeled_FVCs_cumulative=module.scale_modeled_FVCs_cumulative(
                 RAW_modeled_cum
@@ -313,9 +319,11 @@ class HybridOdeWrapper(eqx.Module):
             jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
         )
 
-        RAW_RMCs_V = jnp.concatenate([RAW_RMC_rhs, RAW_V[None]])
-        # RhsOde's u = [FVC_flows | SVC_flows | PV_values]; the wrapper zeroes the
-        # flows (it applies feed/dilution itself below) and forwards only the PVs.
+        # RhsOde state c = [RMCs | PVs | V]; PVs pass through unclipped (they need
+        # not be non-negative). RhsOde's u = [FVC_flows | SVC_flows | PV_values];
+        # the wrapper zeroes the flows (it applies feed/dilution itself below) and
+        # forwards only the controlled PVs.
+        RAW_RMCs_PVs_V = jnp.concatenate([RAW_RMC_rhs, RAW_PVs, RAW_V[None]])
         RAW_u_bio = jnp.concatenate(
             [jnp.zeros(n_FVC + n_SVC_ctrl, dtype=dtype), RAW_controlled_PVs]
         )
@@ -323,15 +331,17 @@ class HybridOdeWrapper(eqx.Module):
         RAW_modeled_SVCs_rates = jnp.zeros(
             (len(self.rhs_ode.name_modeled_SVCs),), dtype=dtype
         )
-        RAW_d_RMCs_V_dt = self.rhs_ode(
-            RAW_RMCs_V,
+        RAW_d_dt = self.rhs_ode(
+            RAW_RMCs_PVs_V,
             RAW_bio_rates,
             RAW_u_bio,
             RAW_zero_modeled_FVCs_rates,
             RAW_modeled_SVCs_rates,
         )
-        dC = RAW_d_RMCs_V_dt[:n_RMCs]
-        # Continuous-feed volume/dilution (zero for a bolus-only process).
+        dC = RAW_d_dt[:n_RMCs]
+        # Modeled PVs are biological-only — no feed/dilution term.
+        dPV = RAW_d_dt[n_RMCs : n_RMCs + n_PVs]
+        # Continuous-feed volume/dilution applies to RMCs only.
         controlled_addition = jnp.sum(
             RAW_controlled_FVCs_rates[:, None]
             * RAW_controlled_FVCs_Cin.astype(dtype),
@@ -345,14 +355,15 @@ class HybridOdeWrapper(eqx.Module):
         dilution = RAW_RMCs * (dV_cont / RAW_V)
         dC = dC + (controlled_addition + modeled_addition) / RAW_V - dilution
         return jnp.concatenate(
-            [dC, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
+            [dC, dPV, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
         )
 
     def initial_physical_state_from_raw(self, RAW_state: jax.Array) -> jax.Array:
         """Identity: the physical solve integrates the raw state layout directly."""
         n_RMCs = len(self.modeled_RMC_names)
+        n_PVs = len(self.modeled_PV_names)
         n_FVCs = len(self.modeled_FVC_names)
-        return RAW_state[: n_RMCs + 1 + n_FVCs]
+        return RAW_state[: n_RMCs + n_PVs + 1 + n_FVCs]
 
     def physical_save_outputs(
         self, t: float | jax.Array, y_phys: jax.Array
@@ -360,16 +371,20 @@ class HybridOdeWrapper(eqx.Module):
         """``SaveOutputs`` computed from the physical state (for loss/exports)."""
         module = self.reaction_module
         n_RMCs = len(self.modeled_RMC_names)
+        n_PVs = len(self.modeled_PV_names)
         n_FVCs = len(self.modeled_FVC_names)
         dtype = y_phys.dtype
         t_arr = jnp.asarray(t, dtype=dtype)
         RAW_RMCs = y_phys[:n_RMCs]
+        RAW_PVs = y_phys[n_RMCs : n_RMCs + n_PVs]
         # Clamped V feeds the reaction module (the concentration denominator can't
         # go <= 0); the *export* keeps the true (possibly <min_V) volume so the
         # human-facing v_real reflects the sampled volume directly.
-        RAW_V = jnp.maximum(y_phys[n_RMCs], jnp.asarray(self.min_V, dtype=dtype))
-        RAW_V_export = y_phys[n_RMCs]
-        RAW_modeled_cum = y_phys[n_RMCs + 1 : n_RMCs + 1 + n_FVCs]
+        RAW_V = jnp.maximum(
+            y_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
+        )
+        RAW_V_export = y_phys[n_RMCs + n_PVs]
+        RAW_modeled_cum = y_phys[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
 
         RAW_controlled_FVCs_cumulative = self.controls.eval_controlled_FVCs_cumulative(
             t_arr, y_phys
@@ -380,6 +395,7 @@ class HybridOdeWrapper(eqx.Module):
         RAW_controlled_PVs = self.controls.eval_controlled_PVs(t_arr, y_phys)
         inputs = ReactionInputs(
             SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
+            SCL_modeled_PVs=module.scale_modeled_PVs(RAW_PVs),
             SCL_modeled_V=module.scale_modeled_V(RAW_V),
             SCL_modeled_FVCs_cumulative=module.scale_modeled_FVCs_cumulative(
                 RAW_modeled_cum
@@ -406,7 +422,7 @@ class HybridOdeWrapper(eqx.Module):
             jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
         )
         RAW_state = jnp.concatenate(
-            [RAW_RMCs, RAW_V[None], RAW_modeled_cum]
+            [RAW_RMCs, RAW_PVs, RAW_V[None], RAW_modeled_cum]
         )
         return SaveOutputs(
             SCL_states=module.scale_state(RAW_state),

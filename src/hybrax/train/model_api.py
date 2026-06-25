@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import equinox as eqx
@@ -110,6 +110,8 @@ class ReactionInputs(eqx.Module):
     State-slice axes (from the integrated SCL state):
     - ``SCL_modeled_RMCs``: species concentrations, UNCLIPPED so MLP gradient flow
       survives transient negative excursions near depletion.
+    - ``SCL_modeled_PVs``: modeled (uncontrolled, dynamic) process-variable
+      states, integrated alongside the RMCs. Empty when the process has none.
     - ``SCL_modeled_V``: real reactor volume at time t (already includes the
       ``min_V`` floor applied by the wrapper).
     - ``SCL_modeled_FVCs_cumulative``: per-feed cumulative volume of each
@@ -127,6 +129,7 @@ class ReactionInputs(eqx.Module):
     """
 
     SCL_modeled_RMCs: jax.Array
+    SCL_modeled_PVs: jax.Array
     SCL_modeled_V: jax.Array
     SCL_modeled_FVCs_cumulative: jax.Array
     SCL_controlled_FVCs_cumulative: jax.Array
@@ -185,6 +188,11 @@ class EstimatedScales:
     SCALE_modeled_FVCs_Cin: jax.Array
     SCALE_modeled_BiologicalOde_rates: jax.Array
     SCALE_modeled_FVCs_rates: jax.Array
+    # Defaults to empty (no modeled PVs); processes with uncontrolled,
+    # dynamic process variables supply a real (n_modeled_PVs,) scale.
+    SCALE_modeled_PVs: jax.Array = field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
 
 
 class UserReactionModule(eqx.Module):
@@ -208,6 +216,9 @@ class UserReactionModule(eqx.Module):
     # real values via ``estimate_all_scales`` / ``super().__init__(**kwargs)``
     # is the production path.
     SCALE_modeled_RMCs: jax.Array = frozen_field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
+    SCALE_modeled_PVs: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
     SCALE_V_in_cumulative: jax.Array = frozen_field(
@@ -250,6 +261,11 @@ class UserReactionModule(eqx.Module):
         return int(self.SCALE_modeled_RMCs.shape[0])
 
     @property
+    def n_modeled_PVs(self) -> int:
+        """Number of modeled (uncontrolled, dynamic) process variables."""
+        return int(self.SCALE_modeled_PVs.shape[0])
+
+    @property
     def n_modeled_FVCs(self) -> int:
         """Number of modeled feed volume changes (per-feed state slice)."""
         return int(self.SCALE_modeled_FVCs_cumulative.shape[0])
@@ -271,10 +287,12 @@ class UserReactionModule(eqx.Module):
 
     @property
     def SCALE_state(self) -> jax.Array:
-        """Concatenated state-scale: ``[modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]``."""
+        """Concatenated state-scale:
+        ``[modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative]``."""
         return jnp.concatenate(
             [
                 self.SCALE_modeled_RMCs,
+                self.SCALE_modeled_PVs,
                 jnp.atleast_1d(self.SCALE_V_in_cumulative),
                 self.SCALE_modeled_FVCs_cumulative,
             ]
@@ -314,6 +332,12 @@ class UserReactionModule(eqx.Module):
 
     def unscale_modeled_RMCs(self, SCL_modeled_RMCs):
         return SCL_modeled_RMCs * self.SCALE_modeled_RMCs
+
+    def scale_modeled_PVs(self, RAW_modeled_PVs):
+        return RAW_modeled_PVs / self.SCALE_modeled_PVs
+
+    def unscale_modeled_PVs(self, SCL_modeled_PVs):
+        return SCL_modeled_PVs * self.SCALE_modeled_PVs
 
     def scale_modeled_V(self, RAW_modeled_V):
         return RAW_modeled_V / self.SCALE_modeled_V

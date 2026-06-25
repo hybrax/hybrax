@@ -64,15 +64,16 @@ def default_build_sample_acc_series(
 class DefaultReactionModule(UserReactionModule):
     """Minimal default reaction model for harness runs.
 
-    Predicts ``SCL_modeled_BiologicalOde_rates`` from the SCL species slice.
-    Ignores controls; emits zero-length modeled VC rates.
+    Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_<pv>``
+    PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
+    zero-length modeled VC rates.
     """
 
     model: eqx.nn.MLP = trainable_field()
 
     def __init__(self, *, key: jax.Array, **scale_kwargs):
         super().__init__(**scale_kwargs)
-        n_in = self.n_modeled_RMCs
+        n_in = self.n_modeled_RMCs + self.n_modeled_PVs
         n_out = self.n_modeled_BiologicalOde_rates
         self.model = eqx.nn.MLP(
             in_size=n_in,
@@ -84,15 +85,16 @@ class DefaultReactionModule(UserReactionModule):
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         del t
-        SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
+        dtype = inputs.SCL_modeled_RMCs.dtype
+        SCL_features = jnp.concatenate(
+            [inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
+        )
         SCL_modeled_BiologicalOde_rates = jnp.asarray(
-            self.model(SCL_modeled_RMCs), dtype=SCL_modeled_RMCs.dtype
+            self.model(SCL_features), dtype=dtype
         )
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=SCL_modeled_BiologicalOde_rates,
-            SCL_modeled_FVCs_rates=jnp.zeros(
-                (self.n_modeled_FVCs,), dtype=SCL_modeled_RMCs.dtype
-            ),
+            SCL_modeled_FVCs_rates=jnp.zeros((self.n_modeled_FVCs,), dtype=dtype),
         )
 
 
@@ -208,6 +210,9 @@ def _default_scale_kwargs(
     one = jnp.float32(1.0)
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=jnp.float32),
+        "SCALE_modeled_PVs": jnp.ones(
+            len(rhs_ode.name_modeled_PVs), dtype=jnp.float32
+        ),
         "SCALE_V_in_cumulative": one,
         "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(
