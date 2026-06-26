@@ -82,7 +82,6 @@ class SolverConfig(ConfigBase):
 class CheckpointConfig(ConfigBase):
     every: int = Field(100, ge=0)  # 0 disables; DISTINCT from logging.every
     keep: Literal["best+latest", "all"] = "all"
-    resume: Path | None = None
 
 
 class OutputConfig(ConfigBase):
@@ -91,7 +90,6 @@ class OutputConfig(ConfigBase):
 
 
 class LoggingConfig(ConfigBase):
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     every: int = Field(100, gt=0)
     decimals: int = Field(4, ge=0)
     # Re-emit the console table header every N rows so the column labels (loss +
@@ -105,7 +103,6 @@ class PrepareConfig(ConfigBase):
     strict_bp_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True
-    bolus_run_min_dt: float | None = Field(None, gt=0)
     initial_grid_points: int = Field(16, gt=0)
     max_rel_error: float = Field(1e-4, gt=0)
     max_refinement_rounds: int = Field(8, ge=0)
@@ -329,12 +326,6 @@ def _resolve_config_paths(config: RunConfig, *, base_dir: Path) -> RunConfig:
     updates["output"] = config.output.model_copy(
         update={"dir": _resolve_path(config.output.dir, base_dir=base_dir)}
     )
-    if config.checkpoint.resume is not None:
-        updates["checkpoint"] = config.checkpoint.model_copy(
-            update={
-                "resume": _resolve_path(config.checkpoint.resume, base_dir=base_dir)
-            }
-        )
     if not updates:
         return config
     return config.model_copy(update=updates)

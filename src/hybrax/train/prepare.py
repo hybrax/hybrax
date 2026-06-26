@@ -239,8 +239,6 @@ def _runtime_controls_config(prepare: PrepareConfig) -> dict[str, Any]:
         "max_rel_error": prepare.max_rel_error,
         "max_refinement_rounds": prepare.max_refinement_rounds,
     }
-    if prepare.bolus_run_min_dt is not None:
-        cfg[EVENT_RUN_MIN_DT_CONFIG_KEY] = prepare.bolus_run_min_dt
     return cfg
 
 
@@ -263,15 +261,7 @@ def _resolve_prepare_dynamic_defaults(
         if run_min_dt is not None:
             controls_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
 
-    bolus_run_min_dt = controls_config.get(EVENT_RUN_MIN_DT_CONFIG_KEY)
-    if bolus_run_min_dt is None or prepare.bolus_run_min_dt == bolus_run_min_dt:
-        return config, controls_config
-
-    effective_prepare = prepare.model_copy(
-        update={"bolus_run_min_dt": bolus_run_min_dt}
-    )
-    effective_config = config.model_copy(update={"prepare": effective_prepare})
-    return effective_config, controls_config
+    return config, controls_config
 
 
 def prepare_artifact(
