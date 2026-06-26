@@ -22,10 +22,10 @@ assembles batches from the prepared artifact.
   frozen into `prepared.json`. The artifact carries bp-train provenance
   (`metadata["bp-train"]`: bp-format validation report, source/custom hashes,
   environment versions, prepared semantics) so a run is reproducible.
-- **Controls are precomputed.** Discrete events (boluses, sampling) and
-  continuous feeds are converted into piecewise-linear control sources at
-  prepare time, on a refined dense grid, so the solver just evaluates them. See
-  [event semantics](#controls-and-event-semantics).
+- **Controls are precomputed.** Continuous feeds become piecewise-linear control
+  signals (a refined dense grid) the RHS evaluates at each `t`; discrete events
+  (boluses, sampling) become event arrays applied as **state jumps** during the
+  solve. See [event semantics](#controls-and-event-semantics).
 - **Scales are estimated at train setup**, not baked into the data, so the same
   `prepared.json` can be trained with different scaling strategies via
   `estimate_all_scales`.
@@ -87,27 +87,30 @@ through [`ReactionInputs`](04_reaction_and_loss.md#reactioninputs); modeled vs
 controlled membership comes from bp-format's `RhsOde` (`name_modeled_*` /
 `name_controlled_*`).
 
-The **control vector** (evaluated from the controls store at time `t`, not
-integrated): the continuous controlled feeds (`cumulative`, `rates`, `Cin`),
-controlled process variables, and the discrete "extras" — bolus dilution and the
-sample-accumulation signal.
+The **continuous controls** the reaction module reads at time `t` (in SCL
+space): the continuous controlled feeds (`cumulative`, `rates`, `Cin`),
+controlled process variables, and the modeled-feed composition (`modeled_FVCs_Cin`).
+Discrete bolus/sample events are **not** part of this vector — they are applied
+as state jumps during the solve (below).
 
 ### Controls and event semantics
 
 [`ControlsStore`](../bp_train/controls_store.py) /
 [`PerProcessControls`](../bp_train/controls_store.py) hold per-process control
-accessors built from the bp-format collection. At prepare time
-[`controls.py`](../bp_train/controls.py) turns the recorded signals into:
+accessors built from the bp-format collection, of two kinds:
 
-- **continuous feeds** → a refined piecewise-linear dense grid
-  (`build_dense_payload`),
-- **boluses** → finite-width triangles (`build_bolus_sources`),
-- **sampling** → a sample-accumulation ramp (`build_sample_acc_source_default`).
+- **Continuous controlled feeds** → a refined piecewise-linear dense signal
+  (`build_dense_payload`) the RHS evaluates at each `t` (rates / cumulative /
+  `Cin`).
+- **Discrete bolus & sample events** → event arrays
+  (`bolus_event_times/volumes/Cin`, `sample_event_times/volumes`) applied as
+  **differentiable state jumps** at their event times during the segmented solve
+  (`PresetTimeCallback`), sample-first-then-bolus.
 
-Events within `bolus_run_min_dt` overlap and stay simultaneously active; all
-boundaries merge into one per-process `step_ts` array, exposed at runtime as
-`controls.active_step_ts` and forwarded to the solver as `jump_ts`. See
-[01_design_rationale.md](01_design_rationale.md#7-event-overlap-semantics-v1).
+The discrete event times (bolus ∪ sample) are merged into a per-process
+`step_ts` (`controls.active_step_ts`) and forwarded to the solver as `jump_ts`
+hints. See
+[01_design_rationale.md](01_design_rationale.md#7-discrete-events-as-differentiable-state-jumps).
 
 ### Target selection
 

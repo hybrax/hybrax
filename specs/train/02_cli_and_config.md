@@ -29,8 +29,8 @@ run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
 predictions.csv / plots / losses.csv / loo summary
 ```
 
-`prepare` and `train` are config-driven (`--config run.json`). `forward` and
-`loo` accept a config or direct flags. See
+`prepare`, `train`, and `loo` are config-driven (`--config run.json`).
+`forward` accepts a config or direct flags. See
 [03_data_preparation.md](03_data_preparation.md) for prepare and
 [05_train_forward_loo.md](05_train_forward_loo.md) for train/forward/loo
 internals.
@@ -83,18 +83,30 @@ training); regenerates plots and prints a loss table.
 
 ### `bp-train loo`
 
-Leave-one-process-out cross-validation: train one fold per parent process group,
-evaluate each fold's holdout, aggregate. (`loo` is flag-driven.)
+Leave-one/some-process-out cross-validation. Config-driven: the run config is the
+same as `train` plus an optional `loo` section. Each fold trains as its own
+subprocess; you choose how many run at once and the cores are split across them.
+The run dir is self-contained (bundled config + `custom.py` + prepared), so
+`--resume` continues an interrupted run from the dir alone.
 
 | Flag | Meaning |
 |---|---|
-| `--input` | Prepared JSON (required). |
-| `--custom` | Optional `custom.py` exposing the hooks. |
-| `--config` | Optional JSON runtime config. |
-| `--holdouts` | Parent process names to hold out (repeatable/comma-separated); default all. One name → single fold (cluster-friendly). |
-| `--target` | Target variable name to train against (repeatable/comma-separated). |
-| `--target-source` | Target family (`auto`/`process_variables`/`reactor_components`/`combined`). |
-| `--steps`, `--batch-size`, `--batch-seed`, `--optimizer`, … | Per-fold training overrides. |
+| `--config` | Run config JSON (train schema + a `loo` section). Required unless `--resume`. |
+| `--resume` | Continue an interrupted run from its output dir; reloads the bundled `loo-config.json` verbatim and re-runs only folds missing a `losses.csv`. Mutually exclusive with `--config`. |
+| `--output-dir` | Override `output.dir` (the LOO run directory). |
+| `--overwrite` | Re-run into an output dir that already completed. |
+
+The `loo` config section:
+
+| Key | Meaning |
+|---|---|
+| `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
+| `parallel_folds` | How many folds to train concurrently (default `1`, sequential). The cores are split across them: `devices_per_fold = n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold can't expose more host devices than its `pmap` batch without deadlocking). You set it from what your RAM holds — there is no automatic RAM sizing. |
+| `monitor_every` | Cadence (in steps) for evaluating each fold's holdout (`test`) loss during that fold's training — a diagnostic, never an optimizer signal. `null` (default) → the `logging.every` cadence; `1` → every step (an extra holdout forward solve per step). |
+
+Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, `prepared.json`,
+`config.json`) + per-fold `folds/<slug>/` + top-level `loo_summary.csv` /
+`loo_aggregate.json`.
 
 ## Run directory layout
 
@@ -269,7 +281,7 @@ every N rows, 0 disables).
 | `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
 | `required_control_names` | () | Controls that must exist (tuple, or per-process dict). |
 | `require_consistent_controls` | true | All processes share the same controls. |
-| `bolus_run_min_dt` | null (>0) | Min event width for ramp/triangle construction. |
+| `bolus_run_min_dt` | null (>0) | Minimum spacing (`min_dt`) for resolving near-coincident bolus/sample events. |
 | `initial_grid_points` | 16 (>0) | Starting dense control-grid resolution. |
 | `max_rel_error` | 1e-4 (>0) | Control-grid refinement tolerance. |
 | `max_refinement_rounds` | 8 (≥0) | Refinement round cap. |

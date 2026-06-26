@@ -40,7 +40,7 @@ Read in this order:
 | Harness | `bp_train/harness.py` | [05](05_train_forward_loo.md) | Training orchestrator, forward, dense exports |
 | Trainer | `bp_train/trainer.py` | [05](05_train_forward_loo.md) | Single-sample / batched loss evaluation |
 | Postprocessing | `bp_train/postprocessing.py` | [05](05_train_forward_loo.md) | Plots + `predictions.csv` export |
-| LOO | `bp_train/loo.py`, `bp_train/loo_metrics.py` | [05](05_train_forward_loo.md) | Leave-one-process-out CV + metrics |
+| LOO | `bp_train/loo.py`, `bp_train/loo_metrics.py` | [05](05_train_forward_loo.md) | Leave-one/some-process-out cross-validation + metrics |
 | Checkpointing / logging | `bp_train/checkpointing.py`, `bp_train/logging.py` | [05](05_train_forward_loo.md) | Resumable snapshots + telemetry |
 | Serialization | `bp_train/serialization.py` | [06](06_serialization_inspect.md) | Save/load, reconstruction, provenance |
 | Inspection | `bp_train/inspect.py` | [06](06_serialization_inspect.md) | Trainable-structure + reaction-schema tables |
@@ -69,10 +69,11 @@ inputs) -> ReactionOutputs`, and `UserLossModule` (`loss_names`, `dense_grid_n`,
 
 ## State / Control layout
 
-The ODE integrates a **scaled (SCL)** state; the reaction module reads it via
-[`ReactionInputs`](04_reaction_and_loss.md#reactioninputs) and returns scaled
-rates. Controls are evaluated from the controls store at time `t` (not
-integrated). Layout (see [03](03_data_preparation.md#state-and-control-layout)):
+The ODE integrates a **scaled (SCL)** state; the reaction module reads it (and
+the continuous controls) via
+[`ReactionInputs`](04_reaction_and_loss.md#reactioninputs) — all in SCL space —
+and returns scaled rates. Layout (see
+[03](03_data_preparation.md#state-and-control-layout)):
 
 ```
 SCL_state (integrated)
@@ -81,14 +82,17 @@ SCL_state (integrated)
  ├─ V_in_cumulative          # scalar cumulative inflow volume    SCALE_V_in_cumulative
  └─ modeled_FVCs_cumulative  # per modeled feed                   SCALE_modeled_FVCs_cumulative
 
-controls (evaluated at t)
+SCL_controls (continuous, evaluated at t)
  ├─ controlled_FVCs: cumulative | rates | Cin                     SCALE_controlled_FVCs_*
  ├─ controlled_PVs           # pH, DO, T, …                       SCALE_controlled_PVs
- └─ extras                   # bolus dilution + sample-accumulation
+ └─ modeled_FVCs_Cin         # modeled-feed composition           SCALE_modeled_FVCs_Cin
 
-reaction outputs (scaled)
+SCL reaction outputs
  ├─ modeled_BiologicalOde_rates                                   SCALE_modeled_BiologicalOde_rates
  └─ modeled_FVCs_rates (≥ 0)                                      SCALE_modeled_FVCs_rates
+
+discrete events (applied as state jumps during the solve — not read by the module)
+ └─ boluses & samples        # mass-balance jumps at known event times
 ```
 
 ## Examples

@@ -106,16 +106,23 @@ step size large near the optimum → overshoot / divergence on stiff neural-ODE
 problems. For weighted-sum behavior, scale the individual terms inside
 `__call__` and retune `grad_clip_norm`.
 
-## 7. Event-overlap semantics (v1)
+## 7. Discrete events as differentiable state jumps
 
-Event-like controls are represented as finite-width **piecewise-linear
-segments** (sampling ramps, bolus triangles), not instantaneous jumps. If a
-sampling event and a bolus event fall within the same `min_dt` window, their
-support intervals overlap and both contributions are active over that overlap.
-All event boundaries are merged into one per-process `step_ts` sequence and
-forwarded to the solver as `jump_ts` hints. Training/evaluation loss is still
-sampled only at measurement timestamps, so a measurement strictly before a bolus
-(`t_sample < t_bolus`) is unaffected by that bolus.
+Boluses and samples are applied at their known event times as **discrete,
+differentiable state jumps** — not as continuous ramps in the ODE RHS. The
+bounded solve (§3) runs as a sequence of segment solves with the jumps applied
+*between* segments via `diffrax_callbacks` (`PresetTimeCallback`), so the adjoint
+stays standard and correct (a gradient through a preset jump matches the analytic
+value to ~9 digits).
+
+At a coincident timestamp the jump is ordered **sample first** (well-mixed
+removal: concentrations unchanged, volume drops) **then bolus** (dilute from the
+post-sample volume and add the fed mass). The discrete event times (bolus ∪
+sample) are also passed to the solver as `jump_ts` hints (toggle with
+`solver.jump_ts`). Training/evaluation loss is still sampled only at measurement
+timestamps, so a measurement strictly before a bolus (`t_sample < t_bolus`) is
+unaffected by it. Continuous controlled feeds are not events — they are
+piecewise-linear signals evaluated inside the RHS at each `t`.
 
 ## 8. Trainable-partition-only serialization
 

@@ -110,30 +110,66 @@ gradient steps; `step = -1`). Driven by the CLI `forward` subcommand with a
   bolus annotations), `export_predictions_csv` (`predictions.csv` /
   `--timeseries-csv` merged across processes), and a `losses.csv` loss table.
 
-## Leave-one-process-out cross-validation
+## Leave-one/some-process-out cross-validation
 
-```python
-run_loo_cv(collection, *, config: LOOConfig, custom_py=None,
-           runtime_config=None) -> LOOResult
+`loo` is **config-driven**, like `train`: it takes the same run config plus an
+optional [`loo`](../bp_train/run_config.py) section. The CLI is
+`bp-train loo --config loo-config.json` (`--output-dir` overrides `output.dir`);
+`bp-train loo --resume <run_dir>` continues an interrupted run.
+
+```jsonc
+"loo": {
+  // folds: each is a held-out `test` set + optional `train` set
+  // (train omitted -> every process not in test) + optional `name` (labels the
+  // fold dir / summary row). Omit per_fold_holdout_sets entirely for classic
+  // leave-one-out (one fold per process).
+  "per_fold_holdout_sets": [
+    {"name": "high feed",  "test": ["proc_1", "proc_1b"]},
+    {"name": "no feed",    "test": ["proc_2", "proc_3"], "train": ["proc_4"]}
+  ],
+  "parallel_folds": 4,  // how many folds to train at once (you own the RAM call)
+  "monitor_every": 50   // trace each fold's holdout (test) loss every N steps
+}
 ```
 
-[`LOOConfig`](../bp_train/loo.py) wraps a `base_train_config`, an `output_dir`,
-optional `selected_holdouts` (parent names; `None` = all), and plot/prediction
-toggles. The CLI `loo` subcommand drives it (`--holdouts` selects a subset; a
-single name runs one fold for cluster fan-out).
-
-- **Fold grouping:** each non-augmented `BioProcess` is a fold group; every
-  `AugmentedBioProcess` travels with its parent, so children are never held out
-  alone.
-- **Per fold** ([`run_loo_fold`](../bp_train/loo.py) → [`FoldResult`](../bp_train/loo.py)):
-  train on the other groups, forward on the holdout, write to
-  `<output_dir>/folds/<holdout_parent>/` (its own `checkpoints/`,
-  `trained_wrapper.eqx`, plots, predictions).
-- **Aggregation** ([`LOOResult`](../bp_train/loo.py)): a summary CSV + aggregate
-  JSON. Metrics come from
-  [`compute_per_process_metrics`](../bp_train/loo_metrics.py) and
-  [`compute_aggregated_metrics`](../bp_train/loo_metrics.py); `DEFAULT_METRICS`
-  is `{r2, nmae, mae, rmse}`.
+- **Folds** ([`resolve_folds`](../bp_train/loo.py)): explicit `per_fold_holdout_sets`
+  (each `name` becomes the fold's `folds/<slug>/` directory; without one the slug
+  is derived from the test process names), or — when omitted — one fold per
+  parent group. **Augmentation is respected everywhere**: holding out any member
+  of an augmentation group (a parent + its `AugmentedBioProcess` children)
+  excludes the whole group from train, so a synthetic child can't leak its parent
+  or siblings into the fold (a pinned `train` that does so fails fast).
+- **Parallel folds** ([`run_loo_cv`](../bp_train/loo.py) → per-fold
+  [`run_single_fold`](../bp_train/loo.py)): each fold trains as **its own
+  subprocess** (the JAX CPU device count is fixed per process). You set
+  `parallel_folds` (default `1`, sequential) from what your RAM can hold; the
+  orchestrator ([`compute_parallel_split`](../bp_train/loo.py)) splits the cores
+  across the concurrent folds — `devices_per_fold = n_cpu // parallel_folds`, so
+  `parallel_folds × devices_per_fold ≤ n_cpu` always, additionally capped at the
+  smallest fold's effective batch (`min(train size, train.batch_size)`) since a
+  fold can't expose more host devices than its `pmap` batch — and pins each
+  worker to a disjoint core block. There is deliberately **no automatic RAM
+  sizing**.
+- **Holdout monitoring** (`loo.monitor_every`): each fold automatically uses its
+  `test` set as a diagnostic monitor (`monitor_label="holdout"`), evaluated every
+  `monitor_every` steps during that fold's training (`null` → the `logging.every`
+  cadence). It never drives the optimizer — it just traces the holdout loss while
+  the fold trains.
+- **Self-contained run dir**: the orchestrator writes true copies of `custom.py`
+  and the prepared artifact into `<output_dir>/` plus a loadable
+  `loo-config.json` with paths relative to the run dir. Every worker (and
+  `--resume`) loads **only** from there, so editing or moving the source tree
+  mid-run can't desync folds.
+- **Resume** (`--resume <run_dir>`): reloads the bundled `loo-config.json`
+  verbatim (no overrides — `parallel_folds` etc. come from the run dir) and
+  re-runs only folds missing a `losses.csv`, then re-aggregates.
+- **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
+  set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
+  `checkpoints/`, `trained_wrapper.eqx`, `losses.csv`, predictions, plots).
+- **Aggregation** ([`LOOResult`](../bp_train/loo.py)): the orchestrator reads each
+  fold's `losses.csv` back from disk and writes `loo_summary.csv` +
+  `loo_aggregate.json` (holdout metrics averaged over each fold's `test` set;
+  a single-fold run reports `NaN` for the cross-fold std).
 
 ## Examples
 
@@ -142,7 +178,7 @@ single name runs one fold for cluster fan-out).
 bp-train train   --config examples/01_kittler_2022/vanilla/train-config.json
 bp-train forward --model examples/01_kittler_2022/vanilla/output \
                  --timeseries-csv predictions.csv
-bp-train loo     --input prepared.json --custom custom.py --holdouts batch_001
+bp-train loo     --config examples/01_kittler_2022/fba_hyb/loo-config.json
 ```
 
 The FBA-surrogate fold setup (`SRfba` reaction module + Kendall loss) is in
