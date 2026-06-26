@@ -1,9 +1,8 @@
-"""Tests for the Leave-One-Process-Out cross-validation orchestrator."""
+"""Tests for the config-driven Leave-one/some-process-out CV orchestrator."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,20 +23,25 @@ from bp_format.dataclasses import (
 )
 
 from bp_train import cli
-from bp_train.harness import (
-    ForwardConfig,
-    ForwardResult,
-    TrainHarnessConfig,
-    TrainHarnessResult,
-)
+from bp_train.harness import ForwardResult, TrainHarnessResult
+from bp_train import loo as loo_mod
 from bp_train.loo import (
+    Fold,
     FoldResult,
-    LOOConfig,
     LOOResult,
     _build_fold_groups,
-    _resolve_selected_folds,
+    compute_parallel_split,
+    resolve_folds,
     run_loo_cv,
-    run_loo_fold,
+    run_single_fold,
+    _write_summary_and_aggregate,
+)
+from bp_train.run_config import (
+    DataConfig,
+    HoldoutSet,
+    LooConfig,
+    RunConfig,
+    TrainConfig,
 )
 
 
@@ -119,28 +123,26 @@ def _augmented_collection() -> BioProcessCollection:
     )
 
 
+def _run_config(seed: int = 10) -> RunConfig:
+    return RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(steps=2, seed=seed),
+    )
+
+
 # ---------------------------------------------------------------------------
-# _build_fold_groups
+# _build_fold_groups (unchanged behaviour, drives the auto-LOO fallback)
 # ---------------------------------------------------------------------------
 
 
 def test_build_fold_groups_returns_one_group_per_parent():
-    collection = _three_parent_collection()
-    groups = _build_fold_groups(collection)
-    assert groups == (
-        ("p1", ("p1",)),
-        ("p2", ("p2",)),
-        ("p3", ("p3",)),
-    )
+    groups = _build_fold_groups(_three_parent_collection())
+    assert groups == (("p1", ("p1",)), ("p2", ("p2",)), ("p3", ("p3",)))
 
 
 def test_build_fold_groups_attaches_augmented_children_to_parent():
-    collection = _augmented_collection()
-    groups = _build_fold_groups(collection)
-    assert groups == (
-        ("P0", ("P0", "P0_aug")),
-        ("P1", ("P1",)),
-    )
+    groups = _build_fold_groups(_augmented_collection())
+    assert groups == (("P0", ("P0", "P0_aug")), ("P1", ("P1",)))
 
 
 def test_build_fold_groups_rejects_orphan_augmented_child():
@@ -156,47 +158,236 @@ def test_build_fold_groups_rejects_orphan_augmented_child():
 
 
 # ---------------------------------------------------------------------------
-# _resolve_selected_folds
+# resolve_folds — auto-LOO fallback
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_selected_folds_runs_all_when_none():
-    collection = _three_parent_collection()
-    groups = _build_fold_groups(collection)
-    resolved = _resolve_selected_folds(groups, None, collection)
-    assert tuple(idx for idx, _ in resolved) == (0, 1, 2)
+def test_resolve_folds_auto_one_per_parent():
+    folds = resolve_folds(_three_parent_collection(), None)
+    assert [f.slug for f in folds] == ["p1", "p2", "p3"]
+    assert folds[0].test == ("p1",)
+    assert folds[0].train == ("p2", "p3")
+    assert all(set(f.test).isdisjoint(f.train) for f in folds)
 
 
-def test_resolve_selected_folds_handles_subset():
-    collection = _three_parent_collection()
-    groups = _build_fold_groups(collection)
-    resolved = _resolve_selected_folds(groups, ("p3", "p1"), collection)
-    assert [idx for idx, _ in resolved] == [2, 0]
+def test_resolve_folds_auto_groups_augmented_with_parent():
+    folds = resolve_folds(_augmented_collection(), None)
+    assert [f.slug for f in folds] == ["P0", "P1"]
+    # Holding out P0 also holds out its augmented child; train is only P1.
+    assert folds[0].test == ("P0", "P0_aug")
+    assert folds[0].train == ("P1",)
+    # Holding out P1 keeps P0 + its augmented child together in train.
+    assert folds[1].test == ("P1",)
+    assert set(folds[1].train) == {"P0", "P0_aug"}
 
 
-def test_resolve_selected_folds_rejects_unknown():
-    collection = _three_parent_collection()
-    groups = _build_fold_groups(collection)
-    with pytest.raises(ValueError, match="unknown process name 'ghost'"):
-        _resolve_selected_folds(groups, ("ghost",), collection)
-
-
-def test_resolve_selected_folds_rejects_augmented_holdout():
-    collection = _augmented_collection()
-    groups = _build_fold_groups(collection)
-    with pytest.raises(ValueError, match="must reference parent processes"):
-        _resolve_selected_folds(groups, ("P0_aug",), collection)
-
-
-def test_resolve_selected_folds_rejects_duplicates():
-    collection = _three_parent_collection()
-    groups = _build_fold_groups(collection)
-    with pytest.raises(ValueError, match="duplicate entry"):
-        _resolve_selected_folds(groups, ("p1", "p1"), collection)
+def test_resolve_folds_auto_requires_two_parents():
+    collection = BioProcessCollection(processes={"only": _make_process("only")})
+    with pytest.raises(ValueError, match="requires >= 2 parent processes"):
+        resolve_folds(collection, None)
 
 
 # ---------------------------------------------------------------------------
-# run_loo_cv with mocked training/forward
+# resolve_folds — explicit per_fold_holdout_sets
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_folds_explicit_default_train():
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(HoldoutSet(test=("p1",)), HoldoutSet(test=("p2", "p3")))
+    )
+    folds = resolve_folds(_three_parent_collection(), loo_cfg)
+    assert folds[0].test == ("p1",)
+    assert folds[0].train == ("p2", "p3")
+    assert folds[1].test == ("p2", "p3")
+    assert folds[1].train == ("p1",)
+    assert folds[1].slug == "p2+p3"
+
+
+def test_resolve_folds_explicit_pinned_train():
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(HoldoutSet(test=("p2", "p3"), train=("p1",)),)
+    )
+    folds = resolve_folds(_three_parent_collection(), loo_cfg)
+    assert folds[0].train == ("p1",)
+
+
+def test_resolve_folds_explicit_default_train_excludes_augmented_child():
+    # test=[P0]; default train = everything not in test, but P0_aug must drop out
+    # because its parent P0 is held out (no leak).
+    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("P0",)),))
+    folds = resolve_folds(_augmented_collection(), loo_cfg)
+    assert folds[0].train == ("P1",)
+
+
+def test_resolve_folds_explicit_train_leak_raises():
+    # Pinning P0_aug into train while its parent P0 is held out is a leak.
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(HoldoutSet(test=("P0",), train=("P1", "P0_aug")),)
+    )
+    with pytest.raises(ValueError, match="leaks augmentation-group"):
+        resolve_folds(_augmented_collection(), loo_cfg)
+
+
+def _two_child_collection() -> BioProcessCollection:
+    return BioProcessCollection(
+        processes={
+            "P0": _make_process("P0"),
+            "C1": _make_augmented("C1", "P0"),
+            "C2": _make_augmented("C2", "P0"),
+            "P1": _make_process("P1", biomass_values=(0.5, 0.4, 0.32)),
+        },
+        metadata={},
+    )
+
+
+def test_resolve_folds_child_held_out_alone_excludes_whole_group():
+    # Holding out only the augmented child must exclude its parent AND siblings
+    # from train (the held-out child is a synthetic variant of P0).
+    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("C1",)),))
+    folds = resolve_folds(_two_child_collection(), loo_cfg)
+    assert folds[0].train == ("P1",)  # P0 and C2 excluded, not just C1
+
+
+def test_resolve_folds_explicit_train_parent_of_held_out_child_raises():
+    # test=child, train pins the parent -> parent leaks the held-out variant.
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(HoldoutSet(test=("C1",), train=("P0", "P1")),)
+    )
+    with pytest.raises(ValueError, match="leaks augmentation-group"):
+        resolve_folds(_two_child_collection(), loo_cfg)
+
+
+def test_resolve_folds_named_fold_slug():
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(
+            HoldoutSet(name="control, high S", test=("p1", "p2")),
+            HoldoutSet(name="1003 47µLS@5h", test=("p3",)),
+        )
+    )
+    folds = resolve_folds(_three_parent_collection(), loo_cfg)
+    assert folds[0].slug == "control_high_S"
+    assert folds[1].slug == "1003_47µLS_5h"
+
+
+def test_resolve_folds_duplicate_slug_raises():
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(
+            HoldoutSet(name="dup", test=("p1",)),
+            HoldoutSet(name="dup", test=("p2",)),
+        )
+    )
+    with pytest.raises(ValueError, match="same output directory slug"):
+        resolve_folds(_three_parent_collection(), loo_cfg)
+
+
+def test_resolve_folds_explicit_unknown_test_raises():
+    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("ghost",)),))
+    with pytest.raises(ValueError, match="unknown process name"):
+        resolve_folds(_three_parent_collection(), loo_cfg)
+
+
+def test_resolve_folds_explicit_overlap_raises():
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(HoldoutSet(test=("p1",), train=("p1", "p2")),)
+    )
+    with pytest.raises(ValueError, match="both test and train"):
+        resolve_folds(_three_parent_collection(), loo_cfg)
+
+
+# ---------------------------------------------------------------------------
+# compute_parallel_split
+# ---------------------------------------------------------------------------
+
+
+def test_split_user_picks_parallel_cores_divided():
+    # 4 folds at once on 16 cores -> 4 devices each; product == cores.
+    parallel, devices = compute_parallel_split(9, 16, 4)
+    assert (parallel, devices) == (4, 4)
+    assert parallel * devices <= 16
+
+
+def test_split_sequential_uses_all_cores():
+    parallel, devices = compute_parallel_split(12, 16, 1)
+    assert (parallel, devices) == (1, 16)
+
+
+def test_split_clamped_to_fold_and_cpu_count():
+    # asking for 20-wide with only 9 folds / 8 cpus -> 8 parallel.
+    parallel, devices = compute_parallel_split(9, 8, 20)
+    assert parallel == 8 and devices == 1
+
+
+def test_split_devices_capped_by_batch():
+    # 2 folds, 16 cores -> 8 devices each, but batch caps at 3.
+    parallel, devices = compute_parallel_split(2, 16, 2, max_devices_per_fold=3)
+    assert (parallel, devices) == (2, 3)
+
+
+def test_split_never_below_one():
+    parallel, devices = compute_parallel_split(0, 1, 1)
+    assert parallel == 1 and devices == 1
+
+
+# ---------------------------------------------------------------------------
+# _write_summary_and_aggregate (reads fold losses back from disk)
+# ---------------------------------------------------------------------------
+
+
+def _write_stub_fold(output_dir: Path, fold: Fold, *, target: str = "biomass") -> None:
+    fold_dir = output_dir / "folds" / fold.slug
+    fold_dir.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {"process": n, "total": 0.5, target: 0.5, "split": "holdout"}
+        for n in fold.test
+    ] + [
+        {"process": n, "total": 0.1, target: 0.1, "split": "train"}
+        for n in fold.train
+    ]
+    pd.DataFrame(rows).to_csv(fold_dir / "losses.csv", index=False)
+    (fold_dir / "trained_wrapper.meta.json").write_text(
+        json.dumps({"training": {"final_mean_loss": 0.2}})
+    )
+
+
+def test_summary_and_aggregate_from_disk(tmp_path):
+    folds = resolve_folds(_three_parent_collection(), None)
+    for fold in folds:
+        _write_stub_fold(tmp_path, fold)
+
+    aggregate = _write_summary_and_aggregate(
+        folds=folds,
+        output_dir=tmp_path,
+        summary_csv_path=tmp_path / "loo_summary.csv",
+        aggregate_json_path=tmp_path / "loo_aggregate.json",
+        base_seed=10,
+    )
+
+    df = pd.read_csv(tmp_path / "loo_summary.csv")
+    assert len(df) == len(folds) + 1  # one row per fold + mean row
+    assert set(df.columns) >= {
+        "fold_idx",
+        "fold_slug",
+        "test",
+        "fold_seed",
+        "holdout_total",
+        "holdout_biomass",
+        "train_mean_total",
+        "final_train_loss",
+    }
+    # Each fold's holdout loss is the stub 0.5; train mean is 0.1.
+    per_fold = df[df["fold_slug"] != "mean"]
+    assert (per_fold["holdout_total"] == 0.5).all()
+    assert (per_fold["train_mean_total"] == 0.1).all()
+    assert df.iloc[-1]["fold_slug"] == "mean"
+
+    assert aggregate["n_folds"] == 3
+    assert aggregate["base_seed"] == 10
+    assert aggregate["holdout_total_mean"] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# run_single_fold (worker) with mocked training/forward
 # ---------------------------------------------------------------------------
 
 
@@ -204,244 +395,209 @@ def _stub_train_result() -> TrainHarnessResult:
     return TrainHarnessResult(
         trained_wrapper=object(),
         mean_loss_by_step=(1.0, 0.5),
-        sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
-        batch_process_names_by_step=(("p1",),),
-        per_process_loss_by_step=((1.0,),),
+        sampled_loss_by_process_at_log_steps={},
+        batch_process_names_by_step=(),
+        per_process_loss_by_step=(),
         compile_warmup_seconds=0.0,
-        step_time_seconds=(0.0,),
+        step_time_seconds=(),
         train_step_input_signature=(),
         train_step_rebuild_count=0,
     )
 
 
-def _stub_forward_result_for_collection(
-    collection: BioProcessCollection,
-    training_processes: tuple[str, ...],
-) -> ForwardResult:
-    process_names = tuple(collection.processes.keys())
-    per_total = {name: 0.1 if name in training_processes else 0.5 for name in process_names}
-    per_target = {
-        name: (per_total[name],) for name in process_names
-    }
+def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
 
-    class _DummyStore:
-        process_order = process_names
-
-    return ForwardResult(
-        trained_wrapper=None,
-        store=_DummyStore(),
-        process_names=process_names,
-        target_names=("biomass",),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
-        training_process_names=training_processes,
-        per_process_total_loss=per_total,
-        per_process_per_target_loss=per_target,
-    )
-
-
-def _patch_loo_internals(monkeypatch, collection):
-    """Mock train_from_collection and _write_train_results for fast LOO tests."""
-    captured: dict[str, list[Any]] = {"train_calls": [], "fold_dirs": []}
-
-    def fake_train_from_collection(coll, *, config, custom_py, runtime_config):
-        captured["train_calls"].append(
-            {
-                "process_names": config.process_names,
-                "seed": config.seed,
-                "custom_py": custom_py,
-                "runtime_config": runtime_config,
-            }
-        )
+    def fake_train(coll, *, config, custom_module, run_config):
+        captured["process_names"] = config.process_names
+        captured["seed"] = config.seed
+        captured["monitor"] = config.monitor_processes
+        captured["monitor_every"] = config.monitor_every
         return _stub_train_result()
 
-    def fake_write_train_results(
-        *,
-        output_dir,
-        collection,
-        trained_wrapper,
-        train_result,
-        config,
-        runtime_config,
-        custom_py,
-        training_process_names,
-        render_plots,
-        eval_process_names=None,
-    ):
-        captured["fold_dirs"].append(Path(output_dir))
-        return _stub_forward_result_for_collection(
-            collection,
-            training_processes=training_process_names,
-        )
+    def fake_write(*, output_dir, training_process_names, eval_process_names=None, **_kw):
+        captured["fold_dir"] = Path(output_dir)
+        captured["training_process_names"] = training_process_names
+        captured["eval_process_names"] = eval_process_names
 
-    monkeypatch.setattr(
-        "bp_train.loo.train_from_collection",
-        fake_train_from_collection,
-    )
-    # _write_train_results is imported lazily inside _execute_fold;
-    # patch on cli where it lives.
-    monkeypatch.setattr(
-        "bp_train.cli._write_train_results",
-        fake_write_train_results,
-    )
-    monkeypatch.setattr(
-        "bp_train.loo.save_model",
-        lambda *_a, **_k: None,
-        raising=False,
-    )
-    # save_model lives in postprocessing; patch imported alias at use site:
-    import bp_train.postprocessing as postprocessing
+        class _Dummy:
+            pass
 
-    monkeypatch.setattr(postprocessing, "save_model", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        postprocessing, "save_model_metadata", lambda *_a, **_k: None
-    )
+        return _Dummy()
+
+    monkeypatch.setattr("bp_train.loo.train_from_collection", fake_train)
+    monkeypatch.setattr("bp_train.cli._write_train_results", fake_write)
+    import bp_train.postprocessing as pp
+
+    monkeypatch.setattr(pp, "save_model", lambda *_a, **_k: None)
+    monkeypatch.setattr(pp, "save_model_metadata", lambda *_a, **_k: None)
     return captured
 
 
-def _make_loo_config(tmp_path: Path, *, selected=None, render_plots=False) -> LOOConfig:
-    base = TrainHarnessConfig(
-        steps=2,
-        log_every=1,
-        seed=10,
-        checkpoint_dir=None,  # disable per-fold checkpoints in tests
-    )
-    return LOOConfig(
-        base_train_config=base,
-        output_dir=tmp_path,
-        selected_holdouts=selected,
-        render_plots=render_plots,
-    )
-
-
-def test_run_loo_cv_produces_one_fold_per_parent(monkeypatch, tmp_path):
+def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     collection = _three_parent_collection()
-    captured = _patch_loo_internals(monkeypatch, collection)
-    cfg = _make_loo_config(tmp_path)
+    captured = _patch_worker_internals(monkeypatch)
+    cfg = _run_config(seed=10)
 
-    result = run_loo_cv(collection, config=cfg)
+    result = run_single_fold(
+        collection,
+        cfg=cfg,
+        custom_module=None,
+        output_dir=tmp_path,
+        fold_idx=1,
+    )
+
+    assert isinstance(result, FoldResult)
+    assert result.fold.test == ("p2",)
+    assert captured["process_names"] == ("p1", "p3")
+    assert captured["monitor"] == ("p2",)
+    assert result.fold_seed == 10 + 1  # base seed + fold idx
+    assert result.fold_dir == tmp_path / "folds" / "p2"
+
+
+def test_holdout_is_test_set_only_not_all_nontrain(monkeypatch, tmp_path):
+    # 4 processes; explicit fold pins train=[p1], test=[p2]; p3 and p4 are in
+    # NEITHER. The holdout must be EXACTLY the test set, and the fold must only
+    # evaluate train ∪ test (p3/p4 are excluded, not silently labelled holdout).
+    collection = BioProcessCollection(
+        processes={
+            "p1": _make_process("p1"),
+            "p2": _make_process("p2"),
+            "p3": _make_process("p3"),
+            "p4": _make_process("p4"),
+        },
+        metadata={},
+    )
+    captured = _patch_worker_internals(monkeypatch)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(steps=2, seed=0),
+        loo=LooConfig(
+            per_fold_holdout_sets=(HoldoutSet(test=("p2",), train=("p1",)),),
+            monitor_every=1,
+        ),
+    )
+
+    result = run_single_fold(
+        collection, cfg=cfg, custom_module=None, output_dir=tmp_path, fold_idx=0
+    )
+
+    assert result.fold.train == ("p1",)
+    assert result.fold.test == ("p2",)
+    assert captured["training_process_names"] == ("p1",)
+    assert captured["monitor"] == ("p2",)  # holdout loss = TEST set only
+    assert set(captured["eval_process_names"]) == {"p1", "p2"}  # p3/p4 excluded
+    assert captured["monitor_every"] == 1  # loo.monitor_every wired through
+
+
+def test_run_single_fold_out_of_range(monkeypatch, tmp_path):
+    collection = _three_parent_collection()
+    _patch_worker_internals(monkeypatch)
+    with pytest.raises(ValueError, match="out of range"):
+        run_single_fold(
+            collection, cfg=_run_config(), custom_module=None,
+            output_dir=tmp_path, fold_idx=9,
+        )
+
+
+# ---------------------------------------------------------------------------
+# run_loo_cv (orchestrator) with mocked subprocess dispatch
+# ---------------------------------------------------------------------------
+
+
+def _patch_dispatch(monkeypatch) -> dict[str, Any]:
+    """Replace the subprocess pool with a stub-fold writer (no real training)."""
+    seen: dict[str, Any] = {}
+
+    def fake_pool(config_path, output_dir, folds, parallel, devices):
+        seen["pool_folds"] = [f.slug for f in folds]
+        seen["parallel"] = parallel
+        seen["devices"] = devices
+        for fold in folds:
+            _write_stub_fold(Path(output_dir), fold)
+
+    monkeypatch.setattr(loo_mod, "_dispatch_pool", fake_pool)
+    return seen
+
+
+def test_run_loo_cv_runs_all_folds_and_aggregates(monkeypatch, tmp_path):
+    collection = _three_parent_collection()
+    seen = _patch_dispatch(monkeypatch)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(steps=2, seed=10),
+        loo=LooConfig(parallel_folds=2),
+    )
+
+    result = run_loo_cv(
+        collection,
+        cfg=cfg,
+        config_path=tmp_path / "loo-config.json",
+        output_dir=tmp_path,
+    )
 
     assert isinstance(result, LOOResult)
-    assert len(result.folds) == 3
-    parents = [fold.holdout_parent for fold in result.folds]
-    assert parents == ["p1", "p2", "p3"]
-    for fold in result.folds:
-        assert fold.holdout_parent not in fold.train_processes
-        assert set(fold.train_processes).isdisjoint(fold.holdout_group)
-
-    # 3 train calls, each excluding the held-out parent
-    excluded = [
-        set(collection.processes) - set(call["process_names"])
-        for call in captured["train_calls"]
-    ]
-    assert excluded == [{"p1"}, {"p2"}, {"p3"}]
+    assert seen["pool_folds"] == ["p1", "p2", "p3"]  # all folds dispatched
+    assert seen["parallel"] == 2  # user-set parallel_folds
+    assert result.parallel_folds == 2
+    assert (tmp_path / "loo_summary.csv").exists()
+    assert result.aggregate["n_folds"] == 3
 
 
-def test_run_loo_cv_groups_augmented_children_with_parent(monkeypatch, tmp_path):
-    collection = _augmented_collection()
-    captured = _patch_loo_internals(monkeypatch, collection)
-    cfg = _make_loo_config(tmp_path)
-
-    result = run_loo_cv(collection, config=cfg)
-
-    assert [fold.holdout_parent for fold in result.folds] == ["P0", "P1"]
-    p0_fold = result.folds[0]
-    assert p0_fold.holdout_group == ("P0", "P0_aug")
-    assert p0_fold.train_processes == ("P1",)
-    # Anti-leakage: when P0 is held out, P0_aug must NOT train.
-    assert "P0_aug" not in p0_fold.train_processes
-    # When P1 is held out, P0 (and its augmented child P0_aug) train together.
-    p1_fold = result.folds[1]
-    assert p1_fold.holdout_group == ("P1",)
-    assert set(p1_fold.train_processes) == {"P0", "P0_aug"}
-
-
-def test_run_loo_fold_uses_seed_plus_fold_idx(monkeypatch, tmp_path):
+def test_run_loo_cv_resume_skips_completed_folds(monkeypatch, tmp_path):
     collection = _three_parent_collection()
-    captured = _patch_loo_internals(monkeypatch, collection)
-    cfg = _make_loo_config(tmp_path)
+    seen = _patch_dispatch(monkeypatch)
+    folds = resolve_folds(collection, None)
+    _write_stub_fold(tmp_path, folds[0])  # pretend fold "p1" already finished
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(steps=2, seed=10),
+        loo=LooConfig(parallel_folds=1),
+    )
 
-    fold = run_loo_fold(collection, holdout_parent="p2", config=cfg)
+    result = run_loo_cv(
+        collection,
+        cfg=cfg,
+        config_path=tmp_path / "loo-config.json",
+        output_dir=tmp_path,
+        resume=True,
+    )
 
-    assert fold.fold_idx == 1
-    assert fold.fold_seed == cfg.base_train_config.seed + 1
-    train_call = captured["train_calls"][0]
-    assert train_call["seed"] == cfg.base_train_config.seed + 1
-    assert train_call["process_names"] == ("p1", "p3")
+    assert seen["pool_folds"] == ["p2", "p3"]  # p1 skipped (already complete)
+    assert result.aggregate["n_folds"] == 3  # aggregate still spans all folds
 
 
-def test_run_loo_cv_writes_summary_and_aggregate(monkeypatch, tmp_path):
+def test_worker_env_strips_inherited_host_device_pin(monkeypatch):
+    monkeypatch.setenv(
+        "XLA_FLAGS", "--xla_force_host_platform_device_count=32 --xla_cpu_foo=1"
+    )
+    env = loo_mod._worker_env(3)
+    assert env["BP_TRAIN_DEVICES"] == "3"
+    assert "xla_force_host_platform_device_count" not in env.get("XLA_FLAGS", "")
+    assert "--xla_cpu_foo=1" in env["XLA_FLAGS"]
+
+
+def test_worker_env_drops_xla_flags_when_only_pin(monkeypatch):
+    monkeypatch.setenv("XLA_FLAGS", "--xla_force_host_platform_device_count=8")
+    env = loo_mod._worker_env(2)
+    assert "XLA_FLAGS" not in env
+
+
+def test_single_fold_std_is_nan(tmp_path):
+    import math
+
     collection = _three_parent_collection()
-    _patch_loo_internals(monkeypatch, collection)
-    cfg = _make_loo_config(tmp_path)
-
-    result = run_loo_cv(collection, config=cfg)
-
-    assert result.summary_csv_path is not None
-    assert result.summary_csv_path.exists()
-    assert result.aggregate_json_path is not None
-    df = pd.read_csv(result.summary_csv_path)
-    # one row per fold + one aggregate row at the end
-    assert len(df) == 4
-    assert set(df.columns) >= {
-        "fold_idx",
-        "holdout_parent",
-        "holdout_group",
-        "fold_seed",
-        "holdout_total",
-        "holdout_biomass",
-        "train_mean_total",
-        "final_train_loss",
-    }
-    # Last row is the mean aggregate
-    last = df.iloc[-1]
-    assert last["holdout_parent"] == "mean"
-
-    aggregate = json.loads(result.aggregate_json_path.read_text(encoding="utf-8"))
-    assert aggregate["n_folds"] == 3
-    assert aggregate["base_seed"] == cfg.base_train_config.seed
-    assert "holdout_total_mean" in aggregate
-    assert "holdout_total_std" in aggregate
-
-
-def test_run_loo_cv_skips_summary_for_subset(monkeypatch, tmp_path):
-    collection = _three_parent_collection()
-    _patch_loo_internals(monkeypatch, collection)
-    cfg = _make_loo_config(tmp_path, selected=("p2",))
-
-    result = run_loo_cv(collection, config=cfg)
-
-    assert len(result.folds) == 1
-    assert result.folds[0].holdout_parent == "p2"
-    assert result.summary_csv_path is None
-    assert result.aggregate_json_path is None
-    assert not (tmp_path / "loo_summary.csv").exists()
-
-
-def test_run_loo_cv_writes_fold_artifact_layout(monkeypatch, tmp_path):
-    collection = _three_parent_collection()
-    _patch_loo_internals(monkeypatch, collection)
-    cfg = _make_loo_config(tmp_path)
-
-    result = run_loo_cv(collection, config=cfg)
-
-    for fold in result.folds:
-        assert fold.fold_dir == tmp_path / "folds" / fold.holdout_parent
-        assert fold.fold_dir.exists()
-
-
-def test_run_loo_cv_fails_fast_on_single_parent(monkeypatch, tmp_path):
-    collection = BioProcessCollection(processes={"p1": _make_process("p1")})
-    cfg = _make_loo_config(tmp_path)
-    with pytest.raises(ValueError, match="LOO-CV requires at least 2 parent processes"):
-        run_loo_cv(collection, config=cfg)
-
-
-def test_run_loo_fold_rejects_augmented_holdout(monkeypatch, tmp_path):
-    collection = _augmented_collection()
-    cfg = _make_loo_config(tmp_path)
-    with pytest.raises(ValueError, match="AugmentedBioProcess"):
-        run_loo_fold(collection, holdout_parent="P0_aug", config=cfg)
+    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p1",)),))
+    folds = resolve_folds(collection, loo_cfg)
+    _write_stub_fold(tmp_path, folds[0])
+    agg = loo_mod._write_summary_and_aggregate(
+        folds=folds,
+        output_dir=tmp_path,
+        summary_csv_path=tmp_path / "s.csv",
+        aggregate_json_path=tmp_path / "a.json",
+        base_seed=0,
+    )
+    assert math.isnan(agg["holdout_total_std"])
 
 
 # ---------------------------------------------------------------------------
@@ -449,57 +605,124 @@ def test_run_loo_fold_rejects_augmented_holdout(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_loo_cli_dispatches_to_run_loo_cv(monkeypatch, tmp_path):
-    captured: dict[str, Any] = {}
-
-    sentinel_collection = _three_parent_collection()
-
-    def fake_load(json_path):
-        captured["loaded_path"] = Path(json_path)
-        return sentinel_collection
-
-    def fake_run_loo_cv(collection, *, config, custom_py, runtime_config):
-        captured["collection"] = collection
-        captured["config"] = config
-        captured["custom_py"] = custom_py
-        captured["runtime_config"] = runtime_config
-        return LOOResult(
-            folds=(),
-            summary_csv_path=None,
-            aggregate_json_path=None,
-            aggregate={},
+def _write_min_config(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "data": {"prepared": "prepared.json"},
+                "train": {"steps": 2, "seed": 7},
+                "loo": {"parallel_folds": 1},
+            }
         )
-
-    monkeypatch.setattr(cli, "load_process_collection_json", fake_load)
-    monkeypatch.setattr(cli, "run_loo_cv", fake_run_loo_cv)
-    monkeypatch.setattr(cli, "load_custom_module", lambda _path: object())
-    monkeypatch.setattr(cli, "resolve_config", lambda _module, _config: {})
-    monkeypatch.chdir(tmp_path)
-
-    exit_code = cli.main(
-        [
-            "loo",
-            "--input",
-            "prepared.json",
-            "--custom",
-            "custom.py",
-            "--holdouts",
-            "p1,p2",
-            "--steps",
-            "3",
-            "--seed",
-            "7",
-            "--output-dir",
-            "out_loo",
-            "--no-plot",
-        ]
     )
 
-    assert exit_code == 0
-    cfg = captured["config"]
-    assert isinstance(cfg, LOOConfig)
-    assert cfg.selected_holdouts == ("p1", "p2")
-    assert cfg.render_plots is False
-    assert cfg.output_dir == Path("out_loo")
-    assert cfg.base_train_config.seed == 7
-    assert cfg.base_train_config.steps == 3
+
+def test_loo_cli_worker_mode_calls_run_single_fold(monkeypatch, tmp_path):
+    captured: dict[str, Any] = {}
+    cfg_path = tmp_path / "config.json"
+    _write_min_config(cfg_path)
+
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+
+    def fake_single(collection, *, cfg, custom_module, output_dir, fold_idx, custom_py):
+        captured["fold_idx"] = fold_idx
+        captured["output_dir"] = Path(output_dir)
+        return None
+
+    monkeypatch.setattr(cli, "run_single_fold", fake_single)
+
+    rc = cli.main(
+        ["loo", "--config", str(cfg_path), "--output-dir", str(tmp_path / "out"), "--fold", "2"]
+    )
+    assert rc == 0
+    assert captured["fold_idx"] == 2
+    assert captured["output_dir"] == tmp_path / "out"
+
+
+def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
+    captured: dict[str, Any] = {}
+    cfg_path = tmp_path / "config.json"
+    _write_min_config(cfg_path)
+    (tmp_path / "prepared.json").write_text("{}")  # real file -> bundle copies it
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(cli, "content_hash", lambda _c: "sha256:stub")
+
+    def fake_cv(collection, *, cfg, config_path, output_dir, custom_py, resume=False):
+        captured["config_path"] = Path(config_path)
+        captured["output_dir"] = Path(output_dir)
+        captured["resume"] = resume
+        return LOOResult(
+            fold_dirs=(Path(output_dir) / "folds" / "p1",),
+            parallel_folds=1,
+            devices_per_fold=1,
+            summary_csv_path=Path(output_dir) / "loo_summary.csv",
+            aggregate_json_path=Path(output_dir) / "loo_aggregate.json",
+            aggregate={"n_folds": 1},
+        )
+
+    monkeypatch.setattr(cli, "run_loo_cv", fake_cv)
+
+    rc = cli.main(["loo", "--config", str(cfg_path), "--output-dir", str(out_dir)])
+    assert rc == 0
+    # Workers are pointed at the bundled, self-contained config — not the source.
+    assert captured["config_path"] == out_dir / "loo-config.json"
+    assert captured["resume"] is False
+    # The run dir is self-contained: bundled loadable config + copied prepared.
+    assert (out_dir / "loo-config.json").is_file()
+    assert (out_dir / "prepared.json").is_file()
+    bundled = json.loads((out_dir / "loo-config.json").read_text())
+    assert bundled["data"]["prepared"] == "prepared.json"  # relative -> local copy
+    assert bundled["output"]["dir"] == "."
+    document = json.loads((out_dir / "config.json").read_text())
+    assert document["status"] == "complete"
+    assert document["aggregate"] == {"n_folds": 1}
+
+
+def test_loo_cli_resume_reloads_bundle(monkeypatch, tmp_path):
+    captured: dict[str, Any] = {}
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "loo-config.json").write_text(
+        json.dumps(
+            {
+                "data": {"prepared": "prepared.json"},
+                "train": {"steps": 2, "seed": 7},
+                "output": {"dir": "."},
+                "loo": {"parallel_folds": 1},
+            }
+        )
+    )
+    (run_dir / "prepared.json").write_text("{}")
+    (run_dir / "config.json").write_text(json.dumps({"status": "running"}))
+
+    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+
+    def fake_cv(collection, *, cfg, config_path, output_dir, custom_py, resume=False):
+        captured["resume"] = resume
+        captured["config_path"] = Path(config_path)
+        captured["output_dir"] = Path(output_dir)
+        return LOOResult(
+            fold_dirs=(),
+            parallel_folds=1,
+            devices_per_fold=1,
+            summary_csv_path=run_dir / "loo_summary.csv",
+            aggregate_json_path=run_dir / "loo_aggregate.json",
+            aggregate={"n_folds": 2},
+        )
+
+    monkeypatch.setattr(cli, "run_loo_cv", fake_cv)
+
+    rc = cli.main(["loo", "--resume", str(run_dir)])
+    assert rc == 0
+    assert captured["resume"] is True
+    assert captured["config_path"] == run_dir / "loo-config.json"
+    assert captured["output_dir"] == run_dir
+    document = json.loads((run_dir / "config.json").read_text())
+    assert document["status"] == "complete"
+
+
+def test_loo_cli_rejects_config_and_resume_together(tmp_path):
+    rc = cli.main(["loo", "--config", "x.json", "--resume", str(tmp_path)])
+    assert rc == 1

@@ -1,13 +1,21 @@
-"""Leave-One-Process-Out cross-validation orchestration for ``bp-train``.
+"""Leave-one/some-process-out cross-validation for ``bp-train``.
 
-Given a prepared ``BioProcessCollection``, run one training fold per parent
-process group: train on N-1 groups, evaluate forward on every process so
-the held-out parent (and any of its augmented children) appear as
-``holdout`` in the per-fold loss table. Aggregate results across folds.
+Config-driven, mirroring ``train``: a ``loo`` section in the run config defines
+the folds (:class:`~bp_train.run_config.HoldoutSet` entries in
+``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the
+fold-level parallelism.
 
-This module is a thin orchestrator on top of
-:func:`bp_train.harness.train_from_collection` and
-:func:`bp_train.harness.forward_from_collection`. It does not reimplement
+Each fold trains as **its own subprocess** so it can own a private slice of the
+CPU device pool — the JAX host-device count is fixed per process at import, so
+concurrent in-process folds cannot get separate shards. The user picks how many
+folds run at once (``loo.parallel_folds``); the orchestrator splits the cores
+across them (``devices_per_fold = n_cpu // parallel_folds``), dispatches the
+workers pinned to disjoint core blocks, then aggregates their on-disk losses
+into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
+skips folds that already wrote ``losses.csv`` and re-runs only the rest.
+
+This module stays a thin orchestrator on top of
+:func:`bp_train.harness.train_from_collection`; it does not reimplement
 training, batching, or loss evaluation.
 """
 
@@ -17,25 +25,20 @@ import dataclasses
 import json
 import logging
 import os
+import queue
 import statistics
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import jax
 import pandas as pd
-from bp_format.dataclasses import (
-    AugmentedBioProcess,
-    BioProcessCollection,
-)
-from bp_format.serialization import load_process_collection_json
+from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
-from .harness import (
-    ForwardResult,
-    TrainHarnessConfig,
-    TrainHarnessResult,
-    train_from_collection,
-)
+from .harness import train_from_collection, train_harness_config_from_run_config
+from .run_config import LooConfig, RunConfig
 
 logger = logging.getLogger(__name__)
 
@@ -46,47 +49,45 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class LOOConfig:
-    """Configuration for a Leave-One-Process-Out cross-validation run."""
+class Fold:
+    """One resolved cross-validation fold.
 
-    base_train_config: TrainHarnessConfig
-    output_dir: Path
-    selected_holdouts: tuple[str, ...] | None = None
-    """Parent process names to run as holdouts. ``None`` runs all parents.
-
-    A single name selects exactly that fold (cluster-friendly). Multiple
-    names select a subset. Augmented child names are rejected.
+    ``test`` is the held-out evaluation set; ``train`` is the
+    (augmentation-corrected) set actually trained on; ``slug`` is the on-disk
+    directory name under ``<output>/folds/``.
     """
-    render_plots: bool = True
-    write_per_fold_predictions: bool = True
+
+    idx: int
+    test: tuple[str, ...]
+    train: tuple[str, ...]
+    slug: str
 
 
 @dataclass(frozen=True)
 class FoldResult:
-    """Outputs of a single LOO fold."""
+    """Outputs of a single executed fold (returned by :func:`run_single_fold`)."""
 
-    holdout_parent: str
-    holdout_group: tuple[str, ...]
-    fold_idx: int
+    fold: Fold
     fold_seed: int
-    train_processes: tuple[str, ...]
-    train_result: TrainHarnessResult
-    forward_result: ForwardResult
+    train_result: Any
+    forward_result: Any
     fold_dir: Path
 
 
 @dataclass(frozen=True)
 class LOOResult:
-    """Outputs of a full LOO sweep across all selected folds."""
+    """Outputs of a full LOO sweep (returned by :func:`run_loo_cv`)."""
 
-    folds: tuple[FoldResult, ...]
-    summary_csv_path: Path | None
-    aggregate_json_path: Path | None
+    fold_dirs: tuple[Path, ...]
+    parallel_folds: int
+    devices_per_fold: int
+    summary_csv_path: Path
+    aggregate_json_path: Path
     aggregate: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
-# Fold-group construction
+# Fold-group construction & resolution
 # ---------------------------------------------------------------------------
 
 
@@ -96,14 +97,10 @@ FoldGroup = tuple[str, tuple[str, ...]]
 def _build_fold_groups(collection: BioProcessCollection) -> tuple[FoldGroup, ...]:
     """Return ``(parent_name, group_member_names)`` tuples in canonical order.
 
-    Each non-augmented :class:`BioProcess` becomes a fold group; every
-    :class:`AugmentedBioProcess` is appended to its parent's group.
-    Augmented processes never form their own fold, so they are never
-    held out alone — they always travel with their parent.
-
-    Raises:
-        ValueError: if any augmented child references a parent that does
-            not exist in the collection.
+    Each non-augmented :class:`~bp_format.dataclasses.BioProcess` becomes a fold
+    group; every :class:`~bp_format.dataclasses.AugmentedBioProcess` is appended
+    to its parent's group. Augmented processes never form their own fold — they
+    always travel with their parent.
     """
     parent_groups: dict[str, list[str]] = {}
     augmented_children: list[tuple[str, str]] = []
@@ -127,160 +124,366 @@ def _build_fold_groups(collection: BioProcessCollection) -> tuple[FoldGroup, ...
     )
 
 
-def _resolve_selected_folds(
-    fold_groups: tuple[FoldGroup, ...],
-    selected_holdouts: tuple[str, ...] | None,
-    collection: BioProcessCollection,
-) -> tuple[tuple[int, FoldGroup], ...]:
-    """Resolve ``selected_holdouts`` to ``(fold_idx, group)`` pairs."""
-    parent_to_idx = {parent: idx for idx, (parent, _) in enumerate(fold_groups)}
-    if selected_holdouts is None:
-        return tuple(enumerate(fold_groups))
-
-    seen: set[str] = set()
-    resolved: list[tuple[int, FoldGroup]] = []
-    for name in selected_holdouts:
-        if name in seen:
-            raise ValueError(
-                f"--holdouts contains duplicate entry '{name}'"
-            )
-        seen.add(name)
-        if name in parent_to_idx:
-            idx = parent_to_idx[name]
-            resolved.append((idx, fold_groups[idx]))
-            continue
-
-        process = collection.processes.get(name)
+def _augmented_parent_map(collection: BioProcessCollection) -> dict[str, str]:
+    """Map every augmented process name -> its parent process name (validated)."""
+    parents = {
+        name
+        for name, p in collection.processes.items()
+        if not isinstance(p, AugmentedBioProcess)
+    }
+    out: dict[str, str] = {}
+    for name, process in collection.processes.items():
         if isinstance(process, AugmentedBioProcess):
-            raise ValueError(
-                f"--holdouts must reference parent processes; "
-                f"'{name}' is augmented (parent='{process.parent_process}')"
-            )
-        raise ValueError(
-            f"--holdouts contains unknown process name '{name}'; "
-            f"available parents={tuple(parent_to_idx)}"
-        )
-    return tuple(resolved)
+            if process.parent_process not in parents:
+                raise ValueError(
+                    f"AugmentedBioProcess '{name}' references parent_process "
+                    f"'{process.parent_process}', which is not a non-augmented "
+                    "BioProcess in the collection"
+                )
+            out[name] = process.parent_process
+    return out
 
 
-# ---------------------------------------------------------------------------
-# Per-fold execution
-# ---------------------------------------------------------------------------
-
-
-def run_loo_fold(
+def _augmentation_group_of(
     collection: BioProcessCollection,
-    *,
-    holdout_parent: str,
-    config: LOOConfig,
-    custom_py: str | Path | None = None,
-    runtime_config: dict[str, Any] | None = None,
-) -> FoldResult:
-    """Train one LOO fold (holdout = ``holdout_parent`` and its augmented children).
+) -> dict[str, frozenset[str]]:
+    """Map every process to its augmentation group's members.
 
-    The fold writes ``trained_wrapper.eqx``, sidecar metadata, ``losses.csv``,
-    ``predictions.csv``, optional plots, and (if ``checkpoint_dir`` is set
-    on the base train config) per-fold checkpoints under
-    ``<output_dir>/folds/<holdout_parent>/``.
+    A group is a non-augmented parent plus all of its augmented children; a
+    plain process with no children is a singleton. Holding out **any** member of
+    a group taints the whole group for train/eval splits, because each augmented
+    child is a synthetic variant of the same parent — so training on the parent
+    or a sibling would leak the held-out sample into the fold.
     """
-    fold_groups = _build_fold_groups(collection)
-    parent_to_idx = {parent: idx for idx, (parent, _) in enumerate(fold_groups)}
-    if holdout_parent not in parent_to_idx:
-        process = collection.processes.get(holdout_parent)
-        if isinstance(process, AugmentedBioProcess):
-            raise ValueError(
-                f"holdout_parent='{holdout_parent}' is an "
-                f"AugmentedBioProcess (parent='{process.parent_process}'); "
-                "only non-augmented parent processes can be held out"
-            )
+    parent_of = _augmented_parent_map(collection)  # child -> parent (validated)
+    children: dict[str, list[str]] = {}
+    for child, parent in parent_of.items():
+        children.setdefault(parent, []).append(child)
+    groups: dict[str, frozenset[str]] = {}
+    for name in collection.processes:
+        parent = parent_of.get(name, name)
+        groups[name] = frozenset({parent, *children.get(parent, [])})
+    return groups
+
+
+def _resolve_train(
+    group_of: dict[str, frozenset[str]],
+    process_order: tuple[str, ...],
+    test: tuple[str, ...],
+    explicit_train: tuple[str, ...] | None,
+    idx: int,
+) -> tuple[str, ...]:
+    """Resolve the train set, excluding the augmentation group of every held-out
+    process. Default train (``explicit_train is None``) = every process not in a
+    tainted group. A user-pinned ``train`` that lists a tainted group member of a
+    held-out process is a leak and raises.
+    """
+    test_set = set(test)
+    tainted: set[str] = set()
+    for t in test:
+        tainted |= group_of[t]
+    if explicit_train is None:
+        return tuple(p for p in process_order if p not in tainted)
+    leaks = sorted(p for p in explicit_train if p in tainted and p not in test_set)
+    if leaks:
         raise ValueError(
-            f"holdout_parent='{holdout_parent}' is not in the collection; "
-            f"available parents={tuple(parent_to_idx)}"
+            f"loo fold {idx}: 'train' leaks augmentation-group member(s) of a "
+            f"held-out process: {leaks}. Holding out a process holds out its "
+            "whole augmentation group (parent + all children); remove these "
+            "from train."
+        )
+    return tuple(explicit_train)
+
+
+def _slug_from_name(name: str, idx: int) -> str:
+    """Filesystem-safe fold directory name from a user-supplied fold name."""
+    safe = "".join(c if (c.isalnum() or c in "+-.") else "_" for c in name)
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return safe.strip("_") or f"fold_{idx:03d}"
+
+
+def _fold_slug(test: tuple[str, ...], idx: int) -> str:
+    """Filesystem-safe fold directory name derived from the test set."""
+    raw = "+".join(test)
+    safe = "".join(c if (c.isalnum() or c in "+-_.") else "_" for c in raw)
+    if not safe or len(safe) > 80:
+        return f"fold_{idx:03d}"
+    return safe
+
+
+def _check_unique_slugs(folds: list[Fold]) -> None:
+    seen: dict[str, int] = {}
+    for fold in folds:
+        if fold.slug in seen:
+            raise ValueError(
+                f"loo folds {seen[fold.slug]} and {fold.idx} resolve to the same "
+                f"output directory slug '{fold.slug}'; give them distinct `name`s "
+                "or test sets."
+            )
+        seen[fold.slug] = fold.idx
+
+
+def _require_known(
+    names: tuple[str, ...], known: set[str], *, what: str, idx: int
+) -> None:
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise ValueError(
+            f"loo fold {idx}: '{what}' contains unknown process name(s) "
+            f"{unknown}; available={sorted(known)}"
         )
 
-    fold_idx = parent_to_idx[holdout_parent]
-    holdout_group = fold_groups[fold_idx][1]
 
-    return _execute_fold(
-        collection=collection,
-        fold_idx=fold_idx,
-        holdout_parent=holdout_parent,
-        holdout_group=holdout_group,
-        config=config,
-        custom_py=custom_py,
-        runtime_config=runtime_config,
+def resolve_folds(
+    collection: BioProcessCollection, loo_cfg: LooConfig | None
+) -> tuple[Fold, ...]:
+    """Resolve config into concrete folds.
+
+    ``per_fold_holdout_sets is None`` → classic leave-one-out (one fold per
+    parent group). Otherwise each :class:`HoldoutSet` becomes a fold:
+    ``test = entry.test``; ``train = entry.train`` or everything not in ``test``.
+    Augmentation is corrected in both modes (see :func:`_apply_augmentation`).
+    """
+    process_order = tuple(collection.processes.keys())
+    known = set(process_order)
+    group_of = _augmentation_group_of(collection)
+    folds: list[Fold] = []
+
+    if loo_cfg is None or loo_cfg.per_fold_holdout_sets is None:
+        groups = _build_fold_groups(collection)
+        if len(groups) < 2:
+            raise ValueError(
+                f"leave-one-out requires >= 2 parent processes; got {len(groups)}"
+            )
+        for idx, (parent, members) in enumerate(groups):
+            train = _resolve_train(group_of, process_order, members, None, idx)
+            if not train:
+                raise ValueError(f"fold '{parent}' has no train processes")
+            folds.append(Fold(idx=idx, test=members, train=train, slug=parent))
+        _check_unique_slugs(folds)
+        return tuple(folds)
+
+    if not loo_cfg.per_fold_holdout_sets:
+        raise ValueError("loo.per_fold_holdout_sets is empty")
+
+    for idx, hs in enumerate(loo_cfg.per_fold_holdout_sets):
+        test = tuple(hs.test)
+        _require_known(test, known, what="test", idx=idx)
+        explicit_train = None
+        if hs.train is not None:
+            explicit_train = tuple(hs.train)
+            _require_known(explicit_train, known, what="train", idx=idx)
+            overlap = sorted(set(test) & set(explicit_train))
+            if overlap:
+                raise ValueError(
+                    f"loo fold {idx}: process(es) in both test and train: {overlap}"
+                )
+        train = _resolve_train(group_of, process_order, test, explicit_train, idx)
+        if not train:
+            raise ValueError(
+                f"loo fold {idx} (test={list(test)}) has no train processes"
+            )
+        slug = _slug_from_name(hs.name, idx) if hs.name else _fold_slug(test, idx)
+        folds.append(Fold(idx=idx, test=test, train=train, slug=slug))
+    _check_unique_slugs(folds)
+    return tuple(folds)
+
+
+# ---------------------------------------------------------------------------
+# Parallelism sizing
+# ---------------------------------------------------------------------------
+
+
+def compute_parallel_split(
+    n_folds: int,
+    n_cpu: int,
+    parallel_folds: int,
+    *,
+    max_devices_per_fold: int | None = None,
+) -> tuple[int, int]:
+    """Return ``(parallel_folds, devices_per_fold)`` for the fold pool.
+
+    ``parallel_folds`` is the user-chosen fold concurrency. The leftover cores
+    are split across the concurrent folds: ``devices_per_fold = n_cpu //
+    parallel`` (so a single fold soaks up the cores, many folds run one core
+    each), never exceeding ``max_devices_per_fold`` (the smallest fold's batch —
+    exposing more host devices than the batch only deadlocks the pmap
+    collective).
+
+    Invariant: ``parallel_folds * devices_per_fold <= n_cpu``. There is no RAM
+    sizing here — the user owns the memory call via ``parallel_folds``.
+    """
+    n_cpu = max(1, int(n_cpu))
+    n_folds = max(1, int(n_folds))
+    parallel = max(1, min(int(parallel_folds), n_folds, n_cpu))
+    devices = max(1, n_cpu // parallel)
+    if max_devices_per_fold is not None:
+        devices = max(1, min(devices, int(max_devices_per_fold)))
+    return parallel, devices
+
+
+# ---------------------------------------------------------------------------
+# Subprocess dispatch
+# ---------------------------------------------------------------------------
+
+
+def _worker_cmd(config_path: Path, output_dir: Path, fold_idx: int) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "bp_train.cli",
+        "loo",
+        "--config",
+        str(config_path),
+        "--output-dir",
+        str(output_dir),
+        "--fold",
+        str(fold_idx),
+    ]
+
+
+def _worker_env(devices: int) -> dict[str, str]:
+    env = dict(os.environ)
+    env["BP_TRAIN_DEVICES"] = str(int(devices))
+    env.setdefault("JAX_PLATFORMS", "cpu")
+    # Strip any inherited host-device pin so the worker's import-time bootstrap
+    # re-derives the device count from BP_TRAIN_DEVICES. Otherwise a pre-set
+    # XLA_FLAGS=--xla_force_host_platform_device_count=K silently overrides the
+    # per-fold count (every fold would expose K devices, reintroducing the
+    # over-exposure deadlock the device cap exists to prevent).
+    xla = env.get("XLA_FLAGS")
+    if xla and "xla_force_host_platform_device_count" in xla:
+        stripped = " ".join(
+            tok
+            for tok in xla.split()
+            if not tok.startswith("--xla_force_host_platform_device_count")
+        ).strip()
+        if stripped:
+            env["XLA_FLAGS"] = stripped
+        else:
+            env.pop("XLA_FLAGS", None)
+    return env
+
+
+def _set_affinity(pid: int, cores: list[int]) -> None:
+    if not cores:
+        return
+    try:
+        os.sched_setaffinity(pid, set(cores))
+    except (AttributeError, OSError):  # non-Linux / restricted: best-effort
+        pass
+
+
+def _dispatch_worker(
+    config_path: Path,
+    output_dir: Path,
+    fold_idx: int,
+    devices: int,
+    *,
+    cores: list[int] | None = None,
+) -> int:
+    """Run one fold subprocess, pinned to ``cores``. Returns its exit code."""
+    proc = subprocess.Popen(
+        _worker_cmd(config_path, output_dir, fold_idx), env=_worker_env(devices)
     )
+    if cores:
+        _set_affinity(proc.pid, cores)
+    return proc.wait()
+
+
+def _dispatch_pool(
+    config_path: Path,
+    output_dir: Path,
+    folds: list[Fold],
+    parallel: int,
+    devices: int,
+) -> None:
+    """Run ``folds`` in a pool of ``parallel`` workers pinned to disjoint cores."""
+    n_cpu = os.cpu_count() or 1
+    blocks: queue.Queue[list[int]] = queue.Queue()
+    for i in range(parallel):
+        lo = i * devices
+        blocks.put(list(range(lo, min(lo + devices, n_cpu))))
+
+    failures: list[tuple[str, str]] = []
+
+    def _run(fold: Fold) -> None:
+        block = blocks.get()
+        try:
+            rc = _dispatch_worker(
+                config_path, output_dir, fold.idx, devices, cores=block or None
+            )
+            if rc != 0:
+                failures.append((fold.slug, f"exit {rc}"))
+        except Exception as exc:  # noqa: BLE001 - record, don't abort other folds
+            failures.append((fold.slug, f"{type(exc).__name__}: {exc}"))
+        finally:
+            blocks.put(block)
+
+    with ThreadPoolExecutor(max_workers=parallel) as pool:
+        list(pool.map(_run, folds))
+
+    if failures:
+        detail = ", ".join(f"{slug} ({why})" for slug, why in failures)
+        raise RuntimeError(f"LOO fold(s) failed: {detail}")
+
+
+# ---------------------------------------------------------------------------
+# Per-fold execution (worker)
+# ---------------------------------------------------------------------------
 
 
 def _execute_fold(
     *,
     collection: BioProcessCollection,
-    fold_idx: int,
-    holdout_parent: str,
-    holdout_group: tuple[str, ...],
-    config: LOOConfig,
+    fold: Fold,
+    cfg: RunConfig,
+    custom_module: Any | None,
+    output_dir: Path,
     custom_py: str | Path | None,
-    runtime_config: dict[str, Any] | None,
 ) -> FoldResult:
-    # Local import: keeps loo.py free of cli.py at module-load time.
-    # _write_train_results owns: forward eval + losses.csv + predictions.csv
-    # + optional plots, exactly like the post-train block in _handle_train.
+    # Local import keeps loo.py free of cli.py at module-load time.
+    # _write_train_results owns: forward eval + losses.csv + predictions.csv +
+    # optional plots, exactly like the post-train block in _handle_train.
     from .cli import _write_train_results
+    from .postprocessing import save_model, save_model_metadata
 
-    base_cfg = config.base_train_config
-    process_order = tuple(collection.processes.keys())
-    train_processes = tuple(p for p in process_order if p not in holdout_group)
-    if not train_processes:
-        raise ValueError(
-            f"fold '{holdout_parent}' has no train processes after "
-            "removing the holdout group"
-        )
-
-    fold_dir = Path(config.output_dir) / "folds" / holdout_parent
+    base_seed = int(cfg.train.seed)
+    fold_seed = base_seed + fold.idx
+    fold_dir = Path(output_dir) / "folds" / fold.slug
     fold_dir.mkdir(parents=True, exist_ok=True)
 
-    fold_seed = int(base_cfg.seed) + fold_idx
-
-    if base_cfg.checkpoint_dir is None:
-        # base config disables checkpointing entirely; preserve.
-        fold_checkpoint_dir: Path | None = None
-    else:
-        fold_checkpoint_dir = fold_dir / "checkpoints"
-
-    fold_cfg = dataclasses.replace(
-        base_cfg,
-        process_names=train_processes,
+    harness_cfg = train_harness_config_from_run_config(cfg, run_dir=fold_dir)
+    harness_cfg = dataclasses.replace(
+        harness_cfg,
+        process_names=fold.train,
         seed=fold_seed,
-        checkpoint_dir=fold_checkpoint_dir,
-        # Monitor (validation) loss = holdout group, evaluated at log-step
-        # cadence. Diagnostic only — never drives optimizer updates.
-        monitor_processes=holdout_group,
+        # Monitor loss = the held-out TEST set only (never the full
+        # not-in-train set). Diagnostic — never drives optimizer updates.
+        # Evaluated at `loo.monitor_every` cadence (None -> the logging cadence).
+        monitor_processes=fold.test,
         monitor_label="holdout",
+        monitor_every=cfg.loo.monitor_every if cfg.loo is not None else None,
     )
 
     logger.info(
-        "LOO fold %d/%d: holdout_parent=%s holdout_group=%s "
-        "train_processes=%s seed=%d",
-        fold_idx + 1,
-        len(_build_fold_groups(collection)),
-        holdout_parent,
-        list(holdout_group),
-        list(train_processes),
+        "LOO fold %d: slug=%s test=%s n_train=%d seed=%d",
+        fold.idx,
+        fold.slug,
+        list(fold.test),
+        len(fold.train),
         fold_seed,
     )
 
     train_result = train_from_collection(
         collection,
-        config=fold_cfg,
-        custom_py=custom_py,
-        runtime_config=runtime_config,
+        config=harness_cfg,
+        custom_module=custom_module,
+        run_config=cfg,
     )
 
-    # Save trained wrapper + sidecar (mirrors _handle_train post-train block).
-    from .postprocessing import save_model, save_model_metadata
-
-    model_path = fold_dir / "trained_wrapper.eqx"
-    save_model(train_result.trained_wrapper, model_path)
+    save_model(train_result.trained_wrapper, fold_dir / "trained_wrapper.eqx")
 
     last_loss = float(train_result.mean_loss_by_step[-1])
     sidecar_dir = fold_dir.resolve()
@@ -290,235 +493,299 @@ def _execute_fold(
         else None
     )
     meta = {
-        "prepared_input": None,  # caller-known; LOO does not load from a path
         "custom_py": custom_py_rel,
-        "training_processes": list(train_processes),
-        "holdout_parent": holdout_parent,
-        "holdout_group": list(holdout_group),
-        "fold_idx": fold_idx,
+        "test": list(fold.test),
+        "train": list(fold.train),
+        "fold_idx": fold.idx,
         "fold_seed": fold_seed,
         "targets": (
-            list(fold_cfg.target_variable_order)
-            if fold_cfg.target_variable_order is not None
+            list(harness_cfg.target_variable_order)
+            if harness_cfg.target_variable_order is not None
             else None
         ),
-        "target_source": fold_cfg.target_source,
+        "target_source": harness_cfg.target_source,
         "solver": {
-            "max_steps": int(fold_cfg.solver_max_steps),
-            "rtol": float(fold_cfg.solver_rtol),
-            "atol": float(fold_cfg.solver_atol),
-            "use_jump_ts": bool(fold_cfg.solver_use_jump_ts),
+            "max_steps": int(harness_cfg.solver_max_steps),
+            "rtol": float(harness_cfg.solver_rtol),
+            "atol": float(harness_cfg.solver_atol),
+            "use_jump_ts": bool(harness_cfg.solver_use_jump_ts),
         },
         "training": {
-            "steps": int(fold_cfg.steps),
-            "batch_size": fold_cfg.batch_size,
+            "steps": int(harness_cfg.steps),
+            "batch_size": harness_cfg.batch_size,
             "seed": fold_seed,
             "final_mean_loss": last_loss,
         },
     }
     save_model_metadata(fold_dir / "trained_wrapper.meta.json", meta)
 
-    # Forward over the full collection so train/holdout split is recorded.
+    # Evaluate exactly this fold's processes: the train set (labelled "train")
+    # plus the held-out test set (labelled "holdout"). Restricting to train ∪
+    # test — rather than every process — keeps the per-fold losses.csv consistent
+    # with the orchestrator's loo_summary (which averages the holdout over
+    # `test`) and avoids labelling processes that are in neither set (e.g.
+    # augmentation siblings excluded from train) as misleading "holdout" rows.
+    eval_processes = tuple(dict.fromkeys((*fold.train, *fold.test)))
     forward_result = _write_train_results(
         output_dir=fold_dir,
         collection=collection,
         trained_wrapper=train_result.trained_wrapper,
         train_result=train_result,
-        config=fold_cfg,
-        runtime_config=runtime_config,
+        config=harness_cfg,
+        runtime_config=None,
         custom_py=str(custom_py) if custom_py is not None else None,
-        training_process_names=train_processes,
-        render_plots=config.render_plots,
-        eval_process_names=process_order,
+        training_process_names=fold.train,
+        render_plots=cfg.output.plots,
+        eval_process_names=eval_processes,
+        run_config=cfg,
+        custom_module=custom_module,
     )
 
     return FoldResult(
-        holdout_parent=holdout_parent,
-        holdout_group=holdout_group,
-        fold_idx=fold_idx,
+        fold=fold,
         fold_seed=fold_seed,
-        train_processes=train_processes,
         train_result=train_result,
         forward_result=forward_result,
         fold_dir=fold_dir,
     )
 
 
+def run_single_fold(
+    collection: BioProcessCollection,
+    *,
+    cfg: RunConfig,
+    custom_module: Any | None,
+    output_dir: str | Path,
+    fold_idx: int,
+    custom_py: str | Path | None = None,
+) -> FoldResult:
+    """Worker entry point: resolve folds and execute exactly one by index.
+
+    Writes ``<output_dir>/folds/<slug>/`` and does **not** aggregate (the
+    orchestrator does that after all workers finish).
+    """
+    folds = resolve_folds(collection, cfg.loo)
+    if not 0 <= fold_idx < len(folds):
+        raise ValueError(
+            f"--fold {fold_idx} out of range; {len(folds)} fold(s) resolved"
+        )
+    return _execute_fold(
+        collection=collection,
+        fold=folds[fold_idx],
+        cfg=cfg,
+        custom_module=custom_module,
+        output_dir=Path(output_dir),
+        custom_py=custom_py,
+    )
+
+
 # ---------------------------------------------------------------------------
-# Cross-fold orchestration & aggregation
+# Cross-fold orchestration (orchestrator)
 # ---------------------------------------------------------------------------
 
 
 def run_loo_cv(
     collection: BioProcessCollection,
     *,
-    config: LOOConfig,
+    cfg: RunConfig,
+    config_path: str | Path,
+    output_dir: str | Path,
     custom_py: str | Path | None = None,
-    runtime_config: dict[str, Any] | None = None,
+    resume: bool = False,
 ) -> LOOResult:
-    """Run all selected LOO folds and (when running >1 fold) aggregate.
+    """Resolve folds, size + dispatch the subprocess pool, then aggregate.
 
-    Single-fold invocations skip the top-level summary / aggregate so
-    cluster-parallel runs don't race. Aggregate artifacts are only
-    written when ``selected_holdouts is None`` (i.e. the full sweep).
+    ``config_path`` is the run-config JSON re-passed verbatim to each worker
+    subprocess (``loo --config <config_path> --fold <i>``). With ``resume=True``
+    folds that already wrote ``folds/<slug>/losses.csv`` are skipped and only the
+    missing/partial ones are re-run.
     """
-    fold_groups = _build_fold_groups(collection)
-    if len(fold_groups) < 2:
-        raise ValueError(
-            "LOO-CV requires at least 2 parent processes; "
-            f"got {len(fold_groups)}"
+    folds = resolve_folds(collection, cfg.loo)
+    n_folds = len(folds)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    config_path = Path(config_path).resolve()
+
+    loo_cfg = cfg.loo or LooConfig()
+    n_cpu = os.cpu_count() or 1
+
+    # A fold's effective batch is its train-set size, capped by an explicit
+    # train.batch_size. Exposing more host devices than the batch only deadlocks
+    # the pmap collective, so the per-fold device count is capped at the
+    # SMALLEST fold's effective batch.
+    batch_size = cfg.train.batch_size
+
+    def _eff_batch(fold: Fold) -> int:
+        return min(len(fold.train), batch_size) if batch_size else len(fold.train)
+
+    min_batch = min(_eff_batch(f) for f in folds)
+
+    parallel, devices = compute_parallel_split(
+        n_folds, n_cpu, loo_cfg.parallel_folds, max_devices_per_fold=min_batch
+    )
+    if loo_cfg.parallel_folds > n_folds:
+        logger.info(
+            "LOO: parallel_folds=%d exceeds the %d resolved fold(s); clamped to %d.",
+            loo_cfg.parallel_folds,
+            n_folds,
+            parallel,
         )
 
-    selected = _resolve_selected_folds(
-        fold_groups, config.selected_holdouts, collection
+    # On resume, skip folds whose losses.csv already exists (the artifact the
+    # aggregation reads); re-run the rest (overwriting any partial output).
+    if resume:
+        pending = [
+            f
+            for f in folds
+            if not (output_dir / "folds" / f.slug / "losses.csv").is_file()
+        ]
+        logger.info(
+            "LOO resume: %d/%d fold(s) already complete, running %d remaining",
+            n_folds - len(pending),
+            n_folds,
+            len(pending),
+        )
+    else:
+        pending = list(folds)
+
+    logger.info(
+        "LOO: %d fold(s), %d cpu(s) -> %d parallel fold(s) x %d device(s) each",
+        n_folds,
+        n_cpu,
+        parallel,
+        devices,
     )
 
-    output_dir = Path(config.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if pending:
+        _dispatch_pool(config_path, output_dir, pending, parallel, devices)
 
-    folds: list[FoldResult] = []
-    for fold_idx, (parent_name, holdout_group) in selected:
-        fold = _execute_fold(
-            collection=collection,
-            fold_idx=fold_idx,
-            holdout_parent=parent_name,
-            holdout_group=holdout_group,
-            config=config,
-            custom_py=custom_py,
-            runtime_config=runtime_config,
-        )
-        folds.append(fold)
-        # Vent the JIT cache: each fold builds a fresh `_step_fn` closure
-        # (harness.py:_make_batched_step), so XLA caches a new ~600 MiB of
-        # compiled programs every fold even though the (name, shapes)
-        # signature is identical across folds. Without this, RSS grows
-        # linearly with fold count (~620 MiB/fold on Kittler).
-        jax.clear_caches()
-
-    # Only write summary/aggregate for full sweeps. Subset/single-fold runs
-    # leave aggregation to a later --aggregate-only invocation.
-    write_summary = config.selected_holdouts is None
-    summary_csv_path: Path | None = None
-    aggregate_json_path: Path | None = None
-    aggregate: dict[str, Any] = {}
-    if write_summary:
-        summary_csv_path = output_dir / "loo_summary.csv"
-        aggregate_json_path = output_dir / "loo_aggregate.json"
-        aggregate = _write_summary_and_aggregate(
-            folds=tuple(folds),
-            summary_csv_path=summary_csv_path,
-            aggregate_json_path=aggregate_json_path,
-            base_seed=int(config.base_train_config.seed),
-        )
+    # --- aggregate on-disk fold losses ---
+    summary_csv_path = output_dir / "loo_summary.csv"
+    aggregate_json_path = output_dir / "loo_aggregate.json"
+    aggregate = _write_summary_and_aggregate(
+        folds=folds,
+        output_dir=output_dir,
+        summary_csv_path=summary_csv_path,
+        aggregate_json_path=aggregate_json_path,
+        base_seed=int(cfg.train.seed),
+    )
 
     return LOOResult(
-        folds=tuple(folds),
+        fold_dirs=tuple(output_dir / "folds" / f.slug for f in folds),
+        parallel_folds=parallel,
+        devices_per_fold=devices,
         summary_csv_path=summary_csv_path,
         aggregate_json_path=aggregate_json_path,
         aggregate=aggregate,
     )
 
 
-def run_loo_from_prepared_json(
-    prepared_json: str | Path,
-    *,
-    config: LOOConfig,
-    custom_py: str | Path | None = None,
-    runtime_config: dict[str, Any] | None = None,
-) -> LOOResult:
-    """Path-based wrapper around :func:`run_loo_cv`."""
-    collection = load_process_collection_json(Path(prepared_json))
-    return run_loo_cv(
-        collection,
-        config=config,
-        custom_py=custom_py,
-        runtime_config=runtime_config,
-    )
+# ---------------------------------------------------------------------------
+# Summary / aggregate (read fold losses back from disk)
+# ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Summary / aggregate helpers
-# ---------------------------------------------------------------------------
+def _read_fold_losses(
+    fold_dir: Path,
+) -> tuple[tuple[str, ...], dict[str, tuple[float, tuple[float, ...]]]]:
+    """Parse ``losses.csv`` into ``(target_names, {process: (total, per_target)})``.
+
+    Only real per-process rows are returned (the appended ``* (mean)`` summary
+    rows are looked up by process name and never collide with them).
+    """
+    df = pd.read_csv(fold_dir / "losses.csv")
+    target_names = tuple(c for c in df.columns if c not in ("process", "total", "split"))
+    out: dict[str, tuple[float, tuple[float, ...]]] = {}
+    for _, row in df.iterrows():
+        name = str(row["process"])
+        out[name] = (
+            float(row["total"]),
+            tuple(float(row[c]) for c in target_names),
+        )
+    return target_names, out
+
+
+def _read_final_train_loss(fold_dir: Path) -> float:
+    try:
+        meta = json.loads((fold_dir / "trained_wrapper.meta.json").read_text())
+        return float(meta["training"]["final_mean_loss"])
+    except (OSError, KeyError, ValueError, TypeError):
+        return float("nan")
 
 
 def _write_summary_and_aggregate(
     *,
-    folds: tuple[FoldResult, ...],
+    folds: tuple[Fold, ...],
+    output_dir: Path,
     summary_csv_path: Path,
     aggregate_json_path: Path,
     base_seed: int,
 ) -> dict[str, Any]:
-    """Write ``loo_summary.csv`` and ``loo_aggregate.json``.
+    """Write ``loo_summary.csv`` + ``loo_aggregate.json`` from on-disk fold losses.
 
-    Returns the aggregate dict so callers can attach it to ``LOOResult``.
+    Holdout metrics average over each fold's ``test`` set; train metrics average
+    over its ``train`` set.
     """
     if not folds:
         raise ValueError("cannot aggregate an empty list of folds")
 
-    target_names = folds[0].forward_result.target_names
-
+    target_names: tuple[str, ...] | None = None
     summary_rows: list[dict[str, Any]] = []
     holdout_totals: list[float] = []
-    holdout_per_target: dict[str, list[float]] = {n: [] for n in target_names}
+    holdout_per_target: dict[str, list[float]] = {}
 
     for fold in folds:
-        fwd = fold.forward_result
-        # Holdout numbers: averaged across the holdout group (parent + any
-        # augmented children) so single-process and augmented runs are
-        # comparable.
-        ht_values: list[float] = []
-        ht_per_target: dict[str, list[float]] = {n: [] for n in target_names}
-        train_totals: list[float] = []
-        train_per_target: dict[str, list[float]] = {n: [] for n in target_names}
-        for name in fwd.process_names:
-            total = fwd.per_process_total_loss[name]
-            per_target = fwd.per_process_per_target_loss[name]
-            if name in fold.holdout_group:
-                ht_values.append(total)
-                for tname, v in zip(target_names, per_target):
-                    ht_per_target[tname].append(v)
-            else:
-                train_totals.append(total)
-                for tname, v in zip(target_names, per_target):
-                    train_per_target[tname].append(v)
-
-        if not ht_values:
-            raise RuntimeError(
-                f"fold '{fold.holdout_parent}' produced no holdout losses"
+        fold_dir = output_dir / "folds" / fold.slug
+        loss_csv = fold_dir / "losses.csv"
+        if not loss_csv.is_file():
+            raise FileNotFoundError(
+                f"fold '{fold.slug}' did not write its losses: {loss_csv}"
             )
+        tnames, losses = _read_fold_losses(fold_dir)
+        if target_names is None:
+            target_names = tnames
+            holdout_per_target = {n: [] for n in target_names}
 
-        holdout_total = sum(ht_values) / len(ht_values)
+        def _avg(names: tuple[str, ...]) -> tuple[float, dict[str, float]]:
+            totals = [losses[n][0] for n in names if n in losses]
+            per_t: dict[str, float] = {}
+            for ti, tname in enumerate(target_names):
+                vals = [losses[n][1][ti] for n in names if n in losses]
+                per_t[tname] = sum(vals) / len(vals) if vals else float("nan")
+            total = sum(totals) / len(totals) if totals else float("nan")
+            return total, per_t
+
+        holdout_total, holdout_targets = _avg(fold.test)
+        train_total, train_targets = _avg(fold.train)
         holdout_totals.append(holdout_total)
 
         row: dict[str, Any] = {
-            "fold_idx": fold.fold_idx,
-            "holdout_parent": fold.holdout_parent,
-            "holdout_group": ";".join(fold.holdout_group),
-            "fold_seed": fold.fold_seed,
+            "fold_idx": fold.idx,
+            "fold_slug": fold.slug,
+            "test": ";".join(fold.test),
+            "fold_seed": base_seed + fold.idx,
             "holdout_total": holdout_total,
         }
         for tname in target_names:
-            mean_v = (
-                sum(ht_per_target[tname]) / len(ht_per_target[tname])
-                if ht_per_target[tname]
-                else float("nan")
-            )
-            row[f"holdout_{tname}"] = mean_v
-            holdout_per_target[tname].append(mean_v)
-
-        row["train_mean_total"] = (
-            sum(train_totals) / len(train_totals) if train_totals else float("nan")
-        )
+            row[f"holdout_{tname}"] = holdout_targets[tname]
+            holdout_per_target[tname].append(holdout_targets[tname])
+        row["train_mean_total"] = train_total
         for tname in target_names:
-            row[f"train_mean_{tname}"] = (
-                sum(train_per_target[tname]) / len(train_per_target[tname])
-                if train_per_target[tname]
-                else float("nan")
-            )
-        row["final_train_loss"] = float(fold.train_result.mean_loss_by_step[-1])
+            row[f"train_mean_{tname}"] = train_targets[tname]
+        row["final_train_loss"] = _read_final_train_loss(fold_dir)
         summary_rows.append(row)
 
-    # Append a final aggregate (mean across folds) row for human inspection.
+    assert target_names is not None
+    nan_folds = [
+        folds[i].slug for i, v in enumerate(holdout_totals) if v != v  # NaN
+    ]
+    if nan_folds:
+        logger.warning(
+            "LOO: %d fold(s) contributed no holdout loss and are excluded from "
+            "the aggregate (no test process found in losses.csv): %s",
+            len(nan_folds),
+            nan_folds,
+        )
     aggregate: dict[str, Any] = {
         "base_seed": base_seed,
         "n_folds": len(folds),
@@ -534,8 +801,8 @@ def _write_summary_and_aggregate(
 
     mean_row: dict[str, Any] = {
         "fold_idx": "mean",
-        "holdout_parent": "mean",
-        "holdout_group": "",
+        "fold_slug": "mean",
+        "test": "",
         "fold_seed": "",
         "holdout_total": aggregate["holdout_total_mean"],
     }
@@ -556,9 +823,7 @@ def _write_summary_and_aggregate(
     summary_csv_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(summary_rows).to_csv(summary_csv_path, index=False)
     aggregate_json_path.parent.mkdir(parents=True, exist_ok=True)
-    aggregate_json_path.write_text(
-        json.dumps(aggregate, indent=2), encoding="utf-8"
-    )
+    aggregate_json_path.write_text(json.dumps(aggregate, indent=2), encoding="utf-8")
     logger.info(
         "LOO summary saved to %s; aggregate to %s",
         summary_csv_path,
@@ -573,9 +838,11 @@ def _mean(values: list[float]) -> float:
 
 
 def _std(values: list[float]) -> float:
+    # Spread is undefined with fewer than two folds -> NaN (0.0 would read as
+    # "no variance" rather than "not enough folds").
     cleaned = [v for v in values if v == v]
     if len(cleaned) < 2:
-        return 0.0 if len(cleaned) == 1 else float("nan")
+        return float("nan")
     return float(statistics.stdev(cleaned))
 
 

@@ -35,16 +35,21 @@ def _bp_load_config():
 
 
 def _bp_resolve_devices():
+    _argv = _sys.argv
+    # The loo *orchestrator* (no --fold) trains nothing — it only dispatches
+    # per-fold worker subprocesses, each launched with its own BP_TRAIN_DEVICES.
+    # Force it onto a single device FIRST (before the env-var branch) so an
+    # exported BP_TRAIN_DEVICES — which is meant for the workers — does not make
+    # the idle orchestrator reserve the whole CPU pool. Workers (--fold present)
+    # fall through to the env-var branch and honour the count the orchestrator
+    # set for them.
+    _is_loo = len(_argv) > 1 and _argv[1] == "loo"
+    _has_fold = any(_a == "--fold" or _a.startswith("--fold=") for _a in _argv)
+    if _is_loo and not _has_fold:
+        return None
     _n = _os.environ.get("BP_TRAIN_DEVICES")
     if _n is not None:
         return _n
-    # legacy/ad-hoc --devices flag still honoured (e.g. the flag-based loo path)
-    _argv = _sys.argv
-    for _i, _a in enumerate(_argv):
-        if _a == "--devices" and _i + 1 < len(_argv):
-            return _argv[_i + 1]
-        if _a.startswith("--devices="):
-            return _a.split("=", 1)[1]
     # config-driven train: read train.devices from the --config JSON
     _loaded = _bp_load_config()
     if _loaded is not None:
@@ -111,10 +116,6 @@ if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""
             # threadpool and deadlock the pmap rendezvous (see _bp_count_processes).
             _cores = _os.cpu_count() or 1
             _nproc = _bp_count_processes()
-            # LOO leaves >=1 process out per fold, so the largest fold batch is
-            # n_processes - 1; don't expose an idle surplus device.
-            if _nproc and len(_sys.argv) > 1 and _sys.argv[1] == "loo":
-                _nproc = max(1, _nproc - 1)
             _bp_devices = min(_cores, _nproc) if _nproc else _cores
         else:
             try:
@@ -182,12 +183,13 @@ _EXPORTS = {
     "train_collection": "harness",
     "train_from_collection": "harness",
     "train_from_prepared_json": "harness",
+    "Fold": "loo",
     "FoldResult": "loo",
-    "LOOConfig": "loo",
     "LOOResult": "loo",
+    "resolve_folds": "loo",
+    "compute_parallel_split": "loo",
     "run_loo_cv": "loo",
-    "run_loo_fold": "loo",
-    "run_loo_from_prepared_json": "loo",
+    "run_single_fold": "loo",
     "DEFAULT_METRICS": "loo_metrics",
     "compute_aggregated_metrics": "loo_metrics",
     "compute_per_process_metrics": "loo_metrics",

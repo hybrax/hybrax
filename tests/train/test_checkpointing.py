@@ -56,6 +56,22 @@ def test_plot_loss_curve_accepts_empty(tmp_path: Path):
     assert out.exists()
 
 
+def test_plot_loss_curve_with_per_target_holdout(tmp_path: Path):
+    # total + 2 target panels, each with a per-target holdout (monitor) overlay.
+    out = tmp_path / "curve_holdout.png"
+    plot_loss_curve(
+        [1.0, 0.6, 0.3, 0.15],
+        out,
+        per_target_loss_by_step=[(0.7, 0.3), (0.4, 0.2), (0.2, 0.1), (0.1, 0.05)],
+        target_names=["biomass", "glucose"],
+        monitor_loss_by_step={2: 0.5, 4: 0.2},
+        monitor_per_target_by_step={2: (0.35, 0.15), 4: (0.12, 0.08)},
+        monitor_label="holdout",
+    )
+    assert out.exists()
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 # --------------------------------------------------------------------------
 # CheckpointWriter in isolation
 # --------------------------------------------------------------------------

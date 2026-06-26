@@ -185,6 +185,10 @@ class TrainHarnessConfig:
     # only — never drives optimizer updates. None disables the monitor.
     monitor_processes: tuple[str, ...] | None = None
     monitor_label: str = "validation"
+    # Cadence (in steps) for evaluating the monitor/holdout loss. None -> the
+    # logging cadence (`log_every`). Set to 1 to evaluate it every step (one
+    # extra forward solve over the monitor set per step).
+    monitor_every: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1358,6 +1362,8 @@ def train_collection(
     per_target_loss_so_far: list[tuple[float, ...]] = []
     grad_norm_so_far: list[float] = []
     monitor_loss_so_far: dict[int, float] = {}
+    monitor_per_target_so_far: dict[int, tuple[float, ...]] = {}
+    monitor_cadence = int(cfg.monitor_every or cfg.log_every)
     best_loss = float("inf")
     if start_step > 0 and cfg.metrics_csv is not None:
         prior_means, prior_grads = _read_metrics_history(cfg.metrics_csv)
@@ -1447,24 +1453,37 @@ def train_collection(
                 for i in np.asarray(batch.process_indices).tolist()
             )
 
-            # Monitor / validation loss at log-step cadence (cheap: one
-            # forward pass per `log_every` training steps).
+            # Monitor / holdout loss at `monitor_every` cadence (one extra
+            # forward pass per evaluated step; defaults to the `log_every`
+            # cadence, monitor_every=1 evaluates every step).
             monitor_loss_value: float | None = None
-            if monitor_batch is not None and (step_index + 1) % int(cfg.log_every) == 0:
-                m_total, _m_per_target, _m_per_sample, *_ = effective_batched_loss_fn(
-                    wrapper,
-                    monitor_batch,
-                    batch_controls,
-                    batched_Cin,
-                    batched_Cin_modeled,
-                    monitor_jump_ts_rows,
-                    max_solver_steps=int(cfg.solver_max_steps),
-                    solver_rtol=float(cfg.solver_rtol),
-                    solver_atol=float(cfg.solver_atol),
-                    step=jnp.asarray(step_index + 1, dtype=jnp.int32),
+            monitor_per_target_value: tuple[float, ...] | None = None
+            if monitor_batch is not None and (step_index + 1) % monitor_cadence == 0:
+                m_total, m_per_sample_per_target, _m_per_sample, *_ = (
+                    effective_batched_loss_fn(
+                        wrapper,
+                        monitor_batch,
+                        batch_controls,
+                        batched_Cin,
+                        batched_Cin_modeled,
+                        monitor_jump_ts_rows,
+                        max_solver_steps=int(cfg.solver_max_steps),
+                        solver_rtol=float(cfg.solver_rtol),
+                        solver_atol=float(cfg.solver_atol),
+                        step=jnp.asarray(step_index + 1, dtype=jnp.int32),
+                    )
                 )
                 jax.block_until_ready(m_total)
                 monitor_loss_value = float(m_total)
+                # Reduce per-sample-per-target -> per-target (mean over the
+                # holdout samples), exactly as the train step does for its own
+                # per-target loss.
+                monitor_per_target_value = tuple(
+                    float(v)
+                    for v in np.asarray(
+                        jnp.mean(m_per_sample_per_target, axis=0)
+                    ).tolist()
+                )
 
             run_log.record_step(
                 StepRecord(
@@ -1496,6 +1515,8 @@ def train_collection(
             grad_norm_so_far.append(float(grad_norm))
             if monitor_loss_value is not None:
                 monitor_loss_so_far[step_index + 1] = monitor_loss_value
+                if monitor_per_target_value is not None:
+                    monitor_per_target_so_far[step_index + 1] = monitor_per_target_value
             best_loss = min(best_loss, float(loss))
 
             def _render_predictions(path: Path, _wrapper=wrapper) -> None:
@@ -1531,6 +1552,9 @@ def train_collection(
                 target_names=tuple(_target_labels),
                 monitor_loss_by_step=(
                     monitor_loss_so_far if monitor_loss_so_far else None
+                ),
+                monitor_per_target_by_step=(
+                    monitor_per_target_so_far if monitor_per_target_so_far else None
                 ),
                 monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
                 process_names=selected_processes,
@@ -1592,6 +1616,11 @@ def train_collection(
                             monitor_loss_by_step=(
                                 dict(monitor_loss_so_far)
                                 if monitor_loss_so_far
+                                else None
+                            ),
+                            monitor_per_target_by_step=(
+                                dict(monitor_per_target_so_far)
+                                if monitor_per_target_so_far
                                 else None
                             ),
                             monitor_label=(

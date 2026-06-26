@@ -23,7 +23,7 @@ from .harness import (
     train_from_collection,
     train_harness_config_from_run_config,
 )
-from .loo import LOOConfig, run_loo_cv
+from .loo import run_loo_cv, run_single_fold
 from .loo_metrics import compute_loo_metrics
 from .postprocessing import (
     aggregate_dense_exports,
@@ -40,6 +40,7 @@ from .run_config import (
     LoadedRunConfig,
     RunConfig,
     load_forward_config,
+    load_loo_config,
     load_prepare_config,
     load_train_config,
 )
@@ -54,22 +55,13 @@ from .serialization import (
     update_run_config_status,
     write_json,
 )
-from .training_data import TARGET_SOURCES
-from .utils import load_custom_module, resolve_config
 
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
 
 
-def _load_config(config_path: str | None) -> dict[str, Any] | None:
-    if config_path is None:
-        return None
-    return json.loads(Path(config_path).read_text(encoding="utf-8"))
-
-
 def _build_parser() -> argparse.ArgumentParser:
-    train_cfg_defaults = TrainHarnessConfig()
     parser = argparse.ArgumentParser(prog="bp-train")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -236,178 +228,49 @@ def _build_parser() -> argparse.ArgumentParser:
     loo_parser = subparsers.add_parser(
         "loo",
         help=(
-            "Run leave-one-process-out cross-validation: train one fold per "
-            "parent process group, evaluate each fold's holdout, and "
-            "aggregate results."
+            "Run leave-one/some-process-out cross-validation from a run config: "
+            "resolve folds (loo.per_fold_holdout_sets, or classic leave-one-out "
+            "when omitted), train each fold in its own subprocess, and aggregate "
+            "holdout losses. The run dir is self-contained (bundled config + "
+            "custom.py + prepared); --resume continues an interrupted run."
         ),
-    )
-    loo_parser.add_argument(
-        "--input",
-        required=True,
-        help="Path to prepared JSON.",
-    )
-    loo_parser.add_argument(
-        "--custom",
-        help="Optional custom.py path exposing build_reaction_module hooks.",
     )
     loo_parser.add_argument(
         "--config",
-        help="Optional JSON runtime config.",
-    )
-    loo_parser.add_argument(
-        "--holdouts",
-        action="append",
-        default=[],
+        default=None,
         help=(
-            "Parent process names to use as holdouts. Repeatable or "
-            "comma-separated. Defaults to all parents. Pass exactly one "
-            "name to run a single fold (cluster-friendly)."
+            "Path to the run config JSON (same schema as `train`, plus an "
+            "optional `loo` section: per_fold_holdout_sets, parallel_folds). "
+            "Required unless --resume."
         ),
     )
     loo_parser.add_argument(
-        "--target",
-        action="append",
-        default=[],
+        "--resume",
+        default=None,
         help=(
-            "Target variable name to train against. Repeatable or "
-            "comma-separated."
+            "Resume an interrupted LOO run from its output directory. Reloads the "
+            "bundled loo-config.json verbatim (no overrides) and re-runs only the "
+            "folds missing a losses.csv. Mutually exclusive with --config."
         ),
-    )
-    loo_parser.add_argument(
-        "--target-source",
-        default=train_cfg_defaults.target_source,
-        choices=sorted(TARGET_SOURCES),
-        help="Source family for training targets.",
-    )
-    loo_parser.add_argument(
-        "--steps",
-        type=int,
-        default=train_cfg_defaults.steps,
-        help="Number of training steps per fold.",
-    )
-    loo_parser.add_argument(
-        "--batch-size",
-        type=int,
-        help="Batch size. Defaults to the number of training processes per fold.",
-    )
-    loo_parser.add_argument(
-        "--batch-seed",
-        type=int,
-        help="Seed used for batch index generation (per fold).",
-    )
-    loo_parser.add_argument(
-        "--optimizer",
-        default=train_cfg_defaults.optimizer_name,
-        choices=["adam", "sgd"],
-        help="Optimizer to use for batched updates.",
-    )
-    loo_shuffle_group = loo_parser.add_mutually_exclusive_group()
-    loo_shuffle_group.add_argument(
-        "--shuffle-batches",
-        dest="shuffle_batches",
-        action="store_true",
-        help="Shuffle selected processes when building batches.",
-    )
-    loo_shuffle_group.add_argument(
-        "--no-shuffle-batches",
-        dest="shuffle_batches",
-        action="store_false",
-        help="Keep batch construction deterministic and round-robin.",
-    )
-    loo_parser.set_defaults(shuffle_batches=train_cfg_defaults.shuffle_batches)
-    loo_parser.add_argument(
-        "--learning-rate",
-        type=float,
-        default=train_cfg_defaults.learning_rate,
-        help="Learning rate (overridden by build_learning_rate hook).",
-    )
-    loo_parser.add_argument(
-        "--grad-clip-norm",
-        type=float,
-        default=train_cfg_defaults.grad_clip_norm,
-        help="Global gradient-norm clipping threshold; 0 disables clipping.",
-    )
-    loo_parser.add_argument(
-        "--seed",
-        type=int,
-        default=train_cfg_defaults.seed,
-        help=(
-            "Base seed. Each fold uses seed = base + fold_idx so different "
-            "folds get distinct, deterministic initializations."
-        ),
-    )
-    loo_parser.add_argument(
-        "--log-every",
-        type=int,
-        default=train_cfg_defaults.log_every,
-        help="Emit progress log every N steps.",
-    )
-    loo_parser.add_argument(
-        "--solver-max-steps",
-        type=int,
-        default=train_cfg_defaults.solver_max_steps,
-    )
-    loo_parser.add_argument(
-        "--solver-rtol",
-        type=float,
-        default=train_cfg_defaults.solver_rtol,
-    )
-    loo_parser.add_argument(
-        "--solver-atol",
-        type=float,
-        default=train_cfg_defaults.solver_atol,
-    )
-    loo_parser.add_argument(
-        "--no-jump-ts",
-        action="store_true",
-        help="Disable passing control step boundaries as jump_ts to the solver.",
     )
     loo_parser.add_argument(
         "--output-dir",
-        default="output/loo",
-        help="Directory for fold artifacts (default: ./output/loo).",
-    )
-    loo_parser.add_argument(
-        "--checkpoint-dir",
         default=None,
-        help=(
-            "Per-fold checkpoint directory under each fold's output. "
-            "Defaults to <fold_dir>/checkpoints. Empty string disables."
-        ),
+        help="Override output.dir from the config (the LOO run directory).",
     )
-    loo_plot_group = loo_parser.add_mutually_exclusive_group()
-    loo_plot_group.add_argument(
-        "--plot",
-        dest="plot",
+    loo_parser.add_argument(
+        "--overwrite",
         action="store_true",
-        help="Generate per-fold result plots (default).",
+        help="Allow re-running into a LOO output dir that already completed.",
     )
-    loo_plot_group.add_argument(
-        "--no-plot",
-        dest="plot",
-        action="store_false",
-        help="Skip plot generation.",
-    )
-    loo_parser.set_defaults(plot=True)
-    loo_parser.add_argument(
-        "--log-process-losses",
-        action="store_true",
-        default=train_cfg_defaults.log_process_losses,
-    )
-    loo_parser.add_argument(
-        "--log-decimals",
-        type=int,
-        default=train_cfg_defaults.log_decimals,
-    )
-    loo_parser.add_argument(
-        "--log-header-every",
-        type=int,
-        default=train_cfg_defaults.log_header_every,
-    )
+    # Internal: dispatched by the orchestrator to run exactly one fold in-process
+    # (worker mode). Each worker gets its own BP_TRAIN_DEVICES + core affinity.
+    loo_parser.add_argument("--fold", type=int, default=None, help=argparse.SUPPRESS)
     loo_parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Python logging level.",
     )
     loo_parser.set_defaults(handler=_handle_loo)
 
@@ -1075,72 +938,206 @@ def _handle_loo(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger(__name__)
 
-    collection = load_process_collection_json(Path(args.input))
-    runtime_config = _load_config(args.config)
-    custom_module = load_custom_module(args.custom)
-    selected_holdouts_raw = _split_multi_values(args.holdouts)
-    selected_targets = _split_multi_values(args.target)
-    user_config = resolve_config(custom_module, None)
-    config_targets = user_config.get("target_variable_order")
-    if selected_targets:
-        effective_targets = selected_targets
-    elif config_targets:
-        effective_targets = tuple(config_targets)
-    else:
-        effective_targets = None
+    # ---- resume: reload the self-contained run dir, re-run only missing folds ----
+    if args.resume is not None:
+        if args.config is not None:
+            log.error("loo: --resume and --config are mutually exclusive")
+            return 1
+        resume_dir = Path(args.resume).resolve()
+        bundle = resume_dir / "loo-config.json"
+        if not bundle.is_file():
+            log.error(
+                "loo --resume: %s has no loo-config.json (not a LOO run dir)",
+                resume_dir,
+            )
+            return 1
+        loaded = load_loo_config(bundle)
+        cfg = loaded.config
+        if cfg.data is None:
+            raise ValueError("LOO run dir config is missing a data section")
+        collection = load_process_collection_json(cfg.data.prepared)
+        config_json = resume_dir / "config.json"
+        update_run_config_status(config_json, status="running", resumed_at=_now_iso())
+        try:
+            result = run_loo_cv(
+                collection,
+                cfg=cfg,
+                config_path=bundle,
+                output_dir=resume_dir,
+                custom_py=cfg.custom_py,
+                resume=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+            update_run_config_status(
+                config_json,
+                status="failed",
+                error={"type": type(exc).__name__, "message": str(exc)},
+                finished_at=_now_iso(),
+            )
+            raise
+        update_run_config_status(
+            config_json,
+            status="complete",
+            finished_at=_now_iso(),
+            n_folds=len(result.fold_dirs),
+            parallel_folds=result.parallel_folds,
+            devices_per_fold=result.devices_per_fold,
+            aggregate=result.aggregate,
+        )
+        log.info(
+            "LOO resume complete: %d fold(s); aggregate=%s",
+            len(result.fold_dirs),
+            result.aggregate,
+        )
+        return 0
 
-    output_dir = Path(args.output_dir)
-    if args.checkpoint_dir is None:
-        # default: per-fold <fold_dir>/checkpoints (resolved inside loo.py)
-        base_checkpoint_dir: Path | None = output_dir
-    elif str(args.checkpoint_dir) == "":
-        base_checkpoint_dir = None
-    else:
-        base_checkpoint_dir = Path(args.checkpoint_dir)
+    if args.config is None:
+        log.error("loo requires --config (or --resume <run_dir> to continue)")
+        return 1
 
-    base_train_config = TrainHarnessConfig(
-        process_names=None,  # set per-fold inside loo.py
-        target_variable_order=effective_targets,
-        target_source=args.target_source,
-        steps=args.steps,
-        batch_size=args.batch_size,
-        shuffle_batches=args.shuffle_batches,
-        batch_seed=args.batch_seed,
-        optimizer_name=args.optimizer,
-        learning_rate=args.learning_rate,
-        grad_clip_norm=args.grad_clip_norm,
-        seed=args.seed,
-        log_every=args.log_every,
-        solver_max_steps=args.solver_max_steps,
-        solver_rtol=args.solver_rtol,
-        solver_atol=args.solver_atol,
-        solver_use_jump_ts=not args.no_jump_ts,
-        log_process_losses=args.log_process_losses,
-        log_decimals=args.log_decimals,
-        log_header_every=args.log_header_every,
-        # Sentinel: loo.py overrides per fold (uses None to mean "disabled").
-        checkpoint_dir=base_checkpoint_dir,
+    loaded = load_loo_config(args.config)
+    cfg = loaded.config
+    if args.output_dir is not None:
+        cfg = cfg.model_copy(
+            update={
+                "output": cfg.output.model_copy(
+                    update={"dir": Path(args.output_dir).resolve()}
+                )
+            }
+        )
+    if cfg.data is None:
+        raise ValueError("loo command requires a data config section")
+    output_dir = Path(cfg.output.dir)
+    collection = load_process_collection_json(cfg.data.prepared)
+
+    # ---- worker mode: run exactly one fold, no top-level artifacts ----
+    if args.fold is not None:
+        run_single_fold(
+            collection,
+            cfg=cfg,
+            custom_module=loaded.custom_module,
+            output_dir=output_dir,
+            fold_idx=args.fold,
+            custom_py=cfg.custom_py,
+        )
+        return 0
+
+    # ---- orchestrator mode ----
+    config_json = output_dir / "config.json"
+    if config_json.is_file():
+        try:
+            _, prior = read_run_config_json(config_json)
+        except Exception:  # noqa: BLE001 - treat unparsable as overwritable
+            prior = {}
+        if prior.get("status") == "complete" and not args.overwrite:
+            log.error(
+                "LOO output dir %s already holds a completed run; pass "
+                "--overwrite to re-run (or --resume to continue)",
+                output_dir,
+            )
+            return 1
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # Bundle a self-contained run dir: true copies of custom.py + prepared, and a
+    # loadable loo-config.json that points at the local copies. Every worker (and
+    # --resume) loads ONLY from the run dir, so editing/moving the source tree
+    # mid-run can't desync folds.
+    bundle_path = _bundle_loo_run_dir(
+        raw_config_path=args.config, cfg=cfg, output_dir=output_dir
     )
-    loo_cfg = LOOConfig(
-        base_train_config=base_train_config,
-        output_dir=output_dir,
-        selected_holdouts=selected_holdouts_raw if selected_holdouts_raw else None,
-        render_plots=args.plot,
-    )
 
-    result = run_loo_cv(
-        collection,
-        config=loo_cfg,
-        custom_py=args.custom,
-        runtime_config=runtime_config,
-    )
+    document = {
+        "status": "running",
+        "started_at": _now_iso(),
+        "cli_argv": list(sys.argv),
+        "config": run_config_to_jsonable(cfg),
+        "inputs": {
+            "prepared_input": {
+                "path": str(cfg.data.prepared),
+                "content_hash": content_hash(collection),
+            },
+            "custom_py": {
+                "bundled": "custom.py" if cfg.custom_py is not None else None,
+                "file_hash": (
+                    f"sha256:{loaded.custom_py_sha256}"
+                    if loaded.custom_py_sha256
+                    else None
+                ),
+            },
+        },
+        "environment": _environment_versions(),
+    }
+    write_json(config_json, document)
 
+    try:
+        result = run_loo_cv(
+            collection,
+            cfg=cfg,
+            config_path=bundle_path,
+            output_dir=output_dir,
+            custom_py=cfg.custom_py,
+        )
+    except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+        update_run_config_status(
+            config_json,
+            status="failed",
+            error={"type": type(exc).__name__, "message": str(exc)},
+            finished_at=_now_iso(),
+        )
+        raise
+
+    update_run_config_status(
+        config_json,
+        status="complete",
+        finished_at=_now_iso(),
+        n_folds=len(result.fold_dirs),
+        parallel_folds=result.parallel_folds,
+        devices_per_fold=result.devices_per_fold,
+        aggregate=result.aggregate,
+    )
     log.info(
-        "LOO complete: %d folds; aggregate=%s",
-        len(result.folds),
+        "LOO complete: %d fold(s) (%d parallel x %d device(s) each); aggregate=%s",
+        len(result.fold_dirs),
+        result.parallel_folds,
+        result.devices_per_fold,
         result.aggregate,
     )
     return 0
+
+
+def _bundle_loo_run_dir(
+    *, raw_config_path: str, cfg: RunConfig, output_dir: Path
+) -> Path:
+    """Materialise a self-contained LOO run dir.
+
+    Copies ``custom.py`` and the prepared artifact (true byte copies) into
+    ``output_dir`` and writes a loadable ``loo-config.json`` whose ``custom_py``,
+    ``data.prepared`` and ``output.dir`` are RELATIVE to the run dir (so it stays
+    valid even if the whole dir is moved). Returns the bundled config path.
+    """
+    assert cfg.data is not None
+    src_prepared = Path(cfg.data.prepared)
+    prepared_name = (
+        "prepared.json.gz" if src_prepared.name.endswith(".gz") else "prepared.json"
+    )
+    shutil.copyfile(src_prepared, output_dir / prepared_name)
+
+    custom_name: str | None = None
+    if cfg.custom_py is not None:
+        shutil.copyfile(cfg.custom_py, output_dir / "custom.py")
+        custom_name = "custom.py"
+
+    raw = json.loads(Path(raw_config_path).read_text(encoding="utf-8"))
+    raw.setdefault("data", {})["prepared"] = prepared_name
+    if custom_name is not None:
+        raw["custom_py"] = custom_name
+    else:
+        raw.pop("custom_py", None)
+    raw.setdefault("output", {})["dir"] = "."
+
+    bundle_path = output_dir / "loo-config.json"
+    bundle_path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+    return bundle_path
 
 
 def main(argv: list[str] | None = None) -> int:

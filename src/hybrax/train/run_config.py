@@ -22,20 +22,26 @@ _ALLOWED_TOP_LEVEL = {
     "logging",
     "prepare",
     "custom",
+    "loo",
+}
+_TRAIN_SECTIONS = {
+    "data",
+    "train",
+    "solver",
+    "checkpoint",
+    "output",
+    "logging",
+    "custom_py",
+    "custom",
 }
 _COMMAND_SECTIONS = {
     "prepare": {"prepare", "custom_py", "custom"},
-    "train": {
-        "data",
-        "train",
-        "solver",
-        "checkpoint",
-        "output",
-        "logging",
-        "custom_py",
-        "custom",
-    },
+    "train": _TRAIN_SECTIONS,
+    # loo reuses every train section (each fold is a train run) plus its own
+    # `loo` block (holdout sets + fold-level parallelism).
+    "loo": _TRAIN_SECTIONS | {"loo"},
 }
+_Command = Literal["prepare", "train", "loo"]
 
 
 class ConfigBase(BaseModel):
@@ -106,6 +112,49 @@ class PrepareConfig(ConfigBase):
     process_rename_map: dict[str, str] = Field(default_factory=dict)
 
 
+class HoldoutSet(ConfigBase):
+    """One LOO fold.
+
+    ``test`` is the held-out process set; ``train`` (optional) pins the exact
+    processes to train on. ``train=None`` means "every process not in ``test``"
+    (augmentation-corrected: holding out any member of an augmentation group
+    excludes the whole group — parent + all children — from train; see
+    :func:`bp_train.loo.resolve_folds`). ``name`` (optional) labels the fold's
+    output directory and summary row; without it the directory is derived from
+    the test process names.
+    """
+
+    name: str | None = None
+    test: tuple[str, ...] = Field(min_length=1)
+    train: tuple[str, ...] | None = None
+
+
+class LooConfig(ConfigBase):
+    """Leave-one/some-process-out cross-validation settings.
+
+    ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per
+    parent process group. ``parallel_folds`` is how many folds train at once
+    (each fold is its own subprocess, because the JAX CPU device count is fixed
+    per process); the remaining cores are split across the concurrent folds so
+    that ``parallel_folds * devices_per_fold <= n_cpu``. Set it from what your
+    RAM can hold — there is deliberately no automatic RAM sizing.
+    """
+
+    per_fold_holdout_sets: tuple[HoldoutSet, ...] | None = None
+    parallel_folds: int = Field(1, gt=0)
+    # Cadence (in steps) for evaluating each fold's holdout loss. None -> the
+    # logging cadence (`logging.every`); set to 1 to evaluate it every step (one
+    # extra forward solve over the holdout per step — slower but a dense curve).
+    monitor_every: int | None = Field(None, gt=0)
+
+    @field_validator("parallel_folds", mode="before")
+    @classmethod
+    def _reject_bool(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("loo.parallel_folds must be an int >= 1")
+        return value
+
+
 class RunConfig(ConfigBase):
     data: DataConfig | None = None
     custom_py: Path | None = None
@@ -116,6 +165,7 @@ class RunConfig(ConfigBase):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     prepare: PrepareConfig | None = None
     custom: Any | None = None
+    loo: LooConfig | None = None
 
 
 class DefaultCustomConfig(BaseModel):
@@ -200,8 +250,12 @@ def load_train_config(config_path: str | Path) -> LoadedRunConfig:
     return load_run_config(config_path, command="train")
 
 
+def load_loo_config(config_path: str | Path) -> LoadedRunConfig:
+    return load_run_config(config_path, command="loo")
+
+
 def load_run_config(
-    config_path: str | Path, *, command: Literal["prepare", "train"]
+    config_path: str | Path, *, command: _Command
 ) -> LoadedRunConfig:
     path = Path(config_path)
     raw = _read_raw_config(path)
@@ -247,7 +301,7 @@ def _validate_raw_custom(raw_custom: Any) -> None:
 def _command_view(
     raw: dict[str, Any],
     *,
-    command: Literal["prepare", "train"],
+    command: _Command,
 ) -> dict[str, Any]:
     sections = _COMMAND_SECTIONS[command]
     view = {key: value for key, value in raw.items() if key in sections}
@@ -293,12 +347,12 @@ def _resolve_path(path: Path, *, base_dir: Path) -> Path:
 
 
 def _validate_required_sections(
-    config: RunConfig, *, command: Literal["prepare", "train"]
+    config: RunConfig, *, command: _Command
 ) -> None:
     if command == "prepare" and config.prepare is None:
         raise ValueError("prepare command requires a prepare config section")
-    if command == "train" and config.data is None:
-        raise ValueError("train command requires a data config section")
+    if command in ("train", "loo") and config.data is None:
+        raise ValueError(f"{command} command requires a data config section")
 
 
 def _load_custom_module_and_hash(

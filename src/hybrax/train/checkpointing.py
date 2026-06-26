@@ -95,6 +95,7 @@ class CheckpointWriter:
         per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
         target_names: Sequence[str] | None = None,
         monitor_loss_by_step: dict[int, float] | None = None,
+        monitor_per_target_by_step: dict[int, tuple[float, ...]] | None = None,
         monitor_label: str | None = None,
         process_names: tuple[str, ...] | None = None,
         training_process_names: tuple[str, ...] | None = None,
@@ -153,6 +154,11 @@ class CheckpointWriter:
                 target_names=tuple(target_names) if target_names else None,
                 monitor_loss_by_step=(
                     dict(monitor_loss_by_step) if monitor_loss_by_step else None
+                ),
+                monitor_per_target_by_step=(
+                    dict(monitor_per_target_by_step)
+                    if monitor_per_target_by_step
+                    else None
                 ),
                 monitor_label=monitor_label,
             )

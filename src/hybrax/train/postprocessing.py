@@ -272,15 +272,17 @@ def plot_loss_curve(
     per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
     target_names: Sequence[str] | None = None,
     monitor_loss_by_step: dict[int, float] | None = None,
+    monitor_per_target_by_step: dict[int, tuple[float, ...]] | None = None,
     monitor_label: str | None = None,
 ) -> None:
     """Draw loss-vs-step curves on a log-y axis and save as PNG.
 
     Layout: one subplot per loss. The first panel ("total") shows the
-    ``losses`` series and, if provided, the ``monitor_loss_by_step``
+    ``losses`` series and, if provided, the total ``monitor_loss_by_step``
     series overlaid as a dashed line. If ``per_target_loss_by_step`` is
-    provided, one additional panel is added per target. All panels share
-    the same y-axis (log scale) so curves are directly comparable.
+    provided, one additional panel is added per target — each also overlays the
+    matching ``monitor_per_target_by_step`` term (dashed) so the holdout loss is
+    broken down per target, not just in total.
     """
     import matplotlib.pyplot as plt
 
@@ -291,6 +293,9 @@ def plot_loss_curve(
     monitor_steps = sorted(monitor_loss_by_step.keys()) if monitor_loss_by_step else []
     monitor_values = (
         [monitor_loss_by_step[s] for s in monitor_steps] if monitor_loss_by_step else []
+    )
+    mpt_steps = (
+        sorted(monitor_per_target_by_step.keys()) if monitor_per_target_by_step else []
     )
 
     panels: list[tuple[str, list[float]]] = [("total", list(losses))]
@@ -320,7 +325,8 @@ def plot_loss_curve(
 
     total_series = panels[0][1] if panels and panels[0][0] == "total" else None
 
-    for ax, (panel_label, series) in zip(axes_flat, panels):
+    holdout_label = monitor_label or "validation"
+    for panel_idx, (ax, (panel_label, series)) in enumerate(zip(axes_flat, panels)):
         # On per-target panels, plot the total loss as a faint reference line
         # so the per-target curve can be read against the overall trajectory
         # despite the per-panel y-scale.
@@ -339,15 +345,30 @@ def plot_loss_curve(
             )
         if series:
             ax.plot(train_steps, series, color="C0", linewidth=1.2, label="train")
+        # Holdout (monitor) overlay: the total on the "total" panel, the matching
+        # per-target term on each target panel (panels[1:] map to targets 0..n-1).
         if panel_label == "total" and monitor_values:
             ax.plot(
                 monitor_steps,
                 monitor_values,
-                marker="o",
                 linestyle="--",
                 color="C3",
-                label=monitor_label or "validation",
+                label=holdout_label,
             )
+        elif panel_label != "total" and mpt_steps:
+            target_idx = panel_idx - 1
+            steps_i = [
+                s for s in mpt_steps if target_idx < len(monitor_per_target_by_step[s])
+            ]
+            values_i = [monitor_per_target_by_step[s][target_idx] for s in steps_i]
+            if values_i:
+                ax.plot(
+                    steps_i,
+                    values_i,
+                    linestyle="--",
+                    color="C3",
+                    label=holdout_label,
+                )
         if ax.get_legend_handles_labels()[1]:
             ax.legend(loc="best", fontsize="small")
         ax.set_title(panel_label, fontsize="small")
