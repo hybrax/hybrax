@@ -3,17 +3,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-import pandas as pd
+import numpy as np
 
 from bp_train.plotting_worker import BackgroundPlotter
-from bp_train.postprocessing import (
-    measured_points_records,
-    render_process_plots_from_csv,
-)
-from bp_train.training_data import TrainingDataStore
-
-# Reuse the tiny single-process collection fixture.
-from test_serialization import _collection
+from bp_train.postprocessing import ProcessPlotData, render_process_figures
 
 
 # Module-level (picklable) jobs for the spawned worker.
@@ -22,57 +15,59 @@ def _slow_write(path: str, seconds: float) -> None:
     Path(path).write_text("done", encoding="utf-8")
 
 
-def _make_prediction_csv(
-    tmp_path: Path,
-) -> tuple[Path, list[tuple[str, str, float, float]]]:
-    pred = pd.DataFrame(
-        {
-            "process": ["p1"] * 4,
-            "t": [0.0, 0.5, 1.0, 2.0],
-            "c_biomass": [1.0, 0.9, 0.8, 0.64],
-            "V_real": [1.0, 1.0, 0.9, 0.9],
-            "q_biomass": [-0.1, -0.1, -0.1, -0.1],
-        }
+def _plot_data(name: str = "p1") -> ProcessPlotData:
+    """A minimal picklable per-process plot payload (1 species, 1 rate, no feeds)."""
+    t = np.linspace(0.0, 2.0, 5)
+    return ProcessPlotData(
+        process_name=name,
+        is_train=True,
+        time_unit="h",
+        t_start=0.0,
+        t_end=2.0,
+        v_unit="L",
+        modeled_RMC_names=("biomass",),
+        modeled_PV_names=(),
+        modeled_FVC_names=(),
+        rate_names=("biomass",),
+        fvc_units=(),
+        t_dense=t,
+        c_dense=np.linspace(1.0, 0.6, 5).reshape(5, 1),
+        q_dense=np.full((5, 1), -0.1),
+        v_real_pred=np.ones(5),
+        b_modeled_pred=np.zeros((5, 0)),
+        c_std=None,
+        q_std=None,
+        v_std=None,
+        v_real_true_dense=np.ones(5),
+        b_modeled_true_dense=np.zeros((5, 0)),
+        measured_series=(
+            ("biomass", "g/L", np.array([0.0, 1.0, 2.0]), np.array([1.0, 0.8, 0.64])),
+        ),
+        volume_changes=(
+            ("sample_1", "sample", False, np.array([1.0]), np.array([-0.1])),
+        ),
+        named_losses={"biomass": 0.01},
+        total_loss=0.01,
     )
-    pred_path = tmp_path / "predictions.csv"
-    pred.to_csv(pred_path, index=False)
-    # measured overlay points handed to the worker as picklable records
-    records = [
-        ("p1", "biomass", 0.0, 1.0),
-        ("p1", "biomass", 1.0, 0.8),
-        ("p1", "biomass", 2.0, 0.64),
-    ]
-    return pred_path, records
 
 
-def test_render_process_plots_from_csv_direct(tmp_path: Path):
-    pred_path, records = _make_prediction_csv(tmp_path)
+def test_render_process_figures_direct(tmp_path: Path):
     out = tmp_path / "plots"
-    render_process_plots_from_csv(pred_path, records, out, process_names=("p1",))
+    render_process_figures([_plot_data()], out)
     png = out / "p1.png"
     assert png.is_file()
     assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
-def test_render_tolerates_missing_observations(tmp_path: Path):
-    pred_path, _ = _make_prediction_csv(tmp_path)
+def test_render_process_figures_in_background_worker(tmp_path: Path):
+    # The whole reason ProcessPlotData exists: render_process_figures is picklable
+    # (plain numpy, no JAX), so the SAME renderer used for run-root/forward plots
+    # also runs in the spawn BackgroundPlotter for per-checkpoint plots.
     out = tmp_path / "plots"
-    render_process_plots_from_csv(pred_path, None, out)
+    plotter = BackgroundPlotter()
+    plotter.submit(render_process_figures, [_plot_data()], out)
+    plotter.close()
     assert (out / "p1.png").is_file()
-
-
-def test_measured_points_records_long_format(tmp_path: Path):
-    collection = _collection()
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=["biomass"],
-        target_source="reactor_components",
-    )
-    records = measured_points_records(collection, store)
-    df = pd.DataFrame(records, columns=["process", "variable", "t", "value"])
-    assert set(df["variable"]) == {"biomass"}
-    assert (df["process"] == "p1").all()
-    assert len(df) == 3  # biomass measured at t in {0,1,2}
 
 
 def test_background_plotter_runs_and_drains(tmp_path: Path):

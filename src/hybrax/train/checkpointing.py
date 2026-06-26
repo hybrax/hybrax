@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from .postprocessing import (
+    ProcessPlotData,
     plot_grad_norm_curve,
     plot_loss_curve,
-    render_process_plots_from_csv,
+    render_process_figures,
 )
 from .run_config import CheckpointConfig
 from .serialization import save_model, save_opt_state
@@ -54,7 +55,6 @@ class CheckpointWriter:
         plotter: Any | None = None,
         plots_enabled: bool = True,
         prepared_src: Path | None = None,
-        measured_records: list[tuple[str, str, float, float]] | None = None,
     ) -> None:
         self._dir = Path(checkpoints_dir)
         self._cfg = cfg
@@ -64,9 +64,6 @@ class CheckpointWriter:
         # Resolved prepared.json(.gz) path; bundled into every checkpoint so each
         # folder is self-contained (config.json + custom.py come from the run dir).
         self._prepared_src = Path(prepared_src) if prepared_src is not None else None
-        # Picklable measured points for the background plot worker's overlays
-        # (extracted once in the main process; no observations.csv file).
-        self._measured_records = measured_records
         self._best_ckpt_loss = float("inf")
         if self._enabled:
             self._dir.mkdir(parents=True, exist_ok=True)
@@ -89,7 +86,7 @@ class CheckpointWriter:
         opt_state: Any,
         mean_loss: float,
         best_loss: float,
-        render_predictions_fn: Callable[[Path], None],
+        render_predictions_fn: Callable[[Path], list[ProcessPlotData] | None],
         loss_by_step: Sequence[float],
         grad_norm_by_step: Sequence[float] | None = None,
         per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
@@ -97,14 +94,14 @@ class CheckpointWriter:
         monitor_loss_by_step: dict[int, float] | None = None,
         monitor_per_target_by_step: dict[int, tuple[float, ...]] | None = None,
         monitor_label: str | None = None,
-        process_names: tuple[str, ...] | None = None,
-        training_process_names: tuple[str, ...] | None = None,
     ) -> Path | None:
         """Write a checkpoint if ``step`` is a positive multiple of ``every``.
 
-        Order: resumable state (sync) → predictions.csv (sync; may raise) →
-        plot jobs (background) → publish ``latest``/``best`` symlinks → prune.
-        If ``render_predictions_fn`` raises, the partial state remains but no
+        Order: resumable state (sync) → predictions.csv + per-process plot data
+        (sync; may raise) → plot jobs (background) → publish ``latest``/``best``
+        symlinks → prune. ``render_predictions_fn`` writes predictions.csv and
+        returns the picklable per-process :class:`ProcessPlotData` for the
+        background renderer. If it raises, the partial state remains but no
         symlink is published and no pruning happens (so a failed export never
         clobbers a good ``latest``/``best``).
         """
@@ -139,8 +136,9 @@ class CheckpointWriter:
         if self._prepared_src is not None and self._prepared_src.is_file():
             _bundle_prepared_gz(self._prepared_src, d / "prepared.json.gz")
 
-        # JAX forward sim, main process. Raising here aborts before publishing.
-        render_predictions_fn(d / "predictions.csv")
+        # JAX forward sim, main process. Writes predictions.csv and returns the
+        # picklable per-process plot data. Raising here aborts before publishing.
+        plot_data = render_predictions_fn(d / "predictions.csv")
 
         if self._plots_enabled and self._plotter is not None:
             self._plotter.submit(
@@ -169,14 +167,8 @@ class CheckpointWriter:
                     d / "grad_norm_curve.png",
                     title=f"Gradient norm (through step {step})",
                 )
-            self._plotter.submit(
-                render_process_plots_from_csv,
-                d / "predictions.csv",
-                self._measured_records,
-                d,
-                process_names=process_names,
-                training_process_names=training_process_names,
-            )
+            if plot_data:
+                self._plotter.submit(render_process_figures, plot_data, d)
 
         self._update_symlink("latest", d)
         if float(mean_loss) <= self._best_ckpt_loss:

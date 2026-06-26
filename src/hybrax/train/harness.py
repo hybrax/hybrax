@@ -53,9 +53,9 @@ from .utils import get_hook, load_custom_module, resolve_config
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
+    build_process_plot_data,
     dense_exports_from_save_outputs,
     export_predictions_csv,
-    measured_points_records,
     plot_grad_norm_curve,
     plot_loss_curve,
     plot_process_simulations,
@@ -1338,13 +1338,6 @@ def train_collection(
         if (checkpoint_enabled and bool(cfg.plots))
         else None
     )
-    # Measured overlay points for the background plot worker, extracted once here
-    # (main process) and handed over as picklable records — no observations.csv.
-    measured_records = (
-        measured_points_records(collection, store, selected_processes)
-        if plotter is not None
-        else None
-    )
     checkpoint_writer = CheckpointWriter(
         Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
         CheckpointConfig(
@@ -1354,7 +1347,6 @@ def train_collection(
         plotter=plotter,
         plots_enabled=bool(cfg.plots),
         prepared_src=cfg.prepared_path,
-        measured_records=measured_records,
     )
     # Cumulative plot history. On resume, pre-seed from the existing metrics.csv
     # so the per-checkpoint curves stay continuous across the restart.
@@ -1519,9 +1511,10 @@ def train_collection(
                     monitor_per_target_so_far[step_index + 1] = monitor_per_target_value
             best_loss = min(best_loss, float(loss))
 
-            def _render_predictions(path: Path, _wrapper=wrapper) -> None:
-                # Harvest predictions from the same loss solve (no second
-                # simulation), then write them via the dense-arg writer.
+            def _render_predictions(path: Path, _wrapper=wrapper):
+                # One dense solve serves predictions.csv AND the per-process plot
+                # data (built here in the main process, then rendered off-thread
+                # by the same renderer as the run-root/forward plots).
                 _, _, ckpt_dense_exports = compute_dense_exports(
                     _wrapper,
                     store,
@@ -1537,6 +1530,16 @@ def train_collection(
                     ckpt_dense_exports,
                     path,
                     process_names=selected_processes,
+                )
+                if not bool(cfg.plots):
+                    return None
+                return build_process_plot_data(
+                    _wrapper,
+                    collection,
+                    store,
+                    ckpt_dense_exports,
+                    selected_processes,
+                    training_process_names=selected_processes,
                 )
 
             checkpoint_writer.maybe_write(
@@ -1557,8 +1560,6 @@ def train_collection(
                     monitor_per_target_so_far if monitor_per_target_so_far else None
                 ),
                 monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
-                process_names=selected_processes,
-                training_process_names=selected_processes,
             )
 
         history = run_log.finalize()
