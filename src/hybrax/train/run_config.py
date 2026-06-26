@@ -80,7 +80,7 @@ class SolverConfig(ConfigBase):
 
 
 class CheckpointConfig(ConfigBase):
-    every: int = Field(10, ge=0)  # 0 disables; DISTINCT from logging.every
+    every: int = Field(100, ge=0)  # 0 disables; DISTINCT from logging.every
     keep: Literal["best+latest", "all"] = "all"
     resume: Path | None = None
 
@@ -92,7 +92,7 @@ class OutputConfig(ConfigBase):
 
 class LoggingConfig(ConfigBase):
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    every: int = Field(10, gt=0)
+    every: int = Field(100, gt=0)
     decimals: int = Field(4, ge=0)
     # Re-emit the console table header every N rows so the column labels (loss +
     # per-target names) stay visible on a long scroll; 0 disables.
