@@ -13,7 +13,14 @@ import sys as _sys
 
 
 def _bp_load_config():
-    """Best-effort load of the ``--config`` JSON (pre-JAX). Returns a dict or None."""
+    """Best-effort flat RunConfig dict (pre-JAX) from ``--config`` OR ``--resume``.
+
+    Returns ``(cfg_dict, source_path)`` or ``None``. A fresh ``--config`` file is
+    already a flat RunConfig dict. A ``--resume`` run-dir ``config.json`` is a FAIR
+    document wrapping the RunConfig under a top-level ``"config"`` key, so we unwrap
+    it — callers always receive a flat dict (``train``/``data``/... at the top
+    level). This is the single place that knows where the config lives pre-JAX, so
+    the device count is resolved identically on fresh and resumed runs."""
     _argv = _sys.argv
     _path = None
     for _i, _a in enumerate(_argv):
@@ -23,13 +30,40 @@ def _bp_load_config():
         if _a.startswith("--config="):
             _path = _a.split("=", 1)[1]
             break
+    if _path is None:
+        # Resume passes ``--resume <run_dir>`` and no ``--config``. Find the run dir
+        # by mirroring cli.py's forgiving resolution (accept the run dir itself OR a
+        # sub-path like checkpoints/latest): first candidate holding BOTH config.json
+        # and a checkpoints/ dir.
+        _resume = None
+        for _i, _a in enumerate(_argv):
+            if _a == "--resume" and _i + 1 < len(_argv):
+                _resume = _argv[_i + 1]
+                break
+            if _a.startswith("--resume="):
+                _resume = _a.split("=", 1)[1]
+                break
+        if _resume:
+            _r = _resume.rstrip("/")
+            for _cand in (_r, _os.path.dirname(_r), _os.path.dirname(_os.path.dirname(_r))):
+                if not _cand:
+                    continue
+                _cfg_json = _os.path.join(_cand, "config.json")
+                if _os.path.isfile(_cfg_json) and _os.path.isdir(
+                    _os.path.join(_cand, "checkpoints")
+                ):
+                    _path = _cfg_json
+                    break
     if not _path:
         return None
     try:
         import json as _json
 
         with open(_path) as _f:
-            return _json.load(_f), _path
+            _doc = _json.load(_f)
+        if isinstance(_doc, dict) and isinstance(_doc.get("config"), dict):
+            return _doc["config"], _path
+        return _doc, _path
     except Exception:
         return None
 
@@ -67,7 +101,11 @@ def _bp_count_processes():
     core: exposing more CPU devices than there are processes leaves them idle but still
     oversubscribes the XLA collective threadpool, which can starve the pmap rendezvous
     (~20 s) and deadlock mid-training. Returns ``None`` if it can't be determined (then
-    the caller falls back to ``cpu_count``)."""
+    the caller falls back to ``cpu_count``).
+
+    On ``--resume`` the stored ``data.prepared`` may be relative to the *original* cwd
+    and thus unresolvable from the run dir; ``devices: "max"`` then correctly degrades
+    to ``cpu_count`` via that fallback (an explicit integer ``devices`` is unaffected)."""
     _prepared = None
     _cfg_dir = None
     _loaded = _bp_load_config()

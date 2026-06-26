@@ -451,6 +451,22 @@ def _handle_train(args: argparse.Namespace) -> int:
 
     # ---- Resume: continue an existing run dir in place ----
     if args.resume:
+        # Resume replays the saved run config verbatim; only --steps may be
+        # overridden. Reject other overrides loudly instead of silently dropping
+        # them (the pre-JAX device count and output paths come from the saved
+        # config, so a passed --output-dir/--no-plot would have no effect).
+        rejected = []
+        if args.output_dir is not None:
+            rejected.append("--output-dir")
+        if not args.plot:  # --no-plot was given (dest="plot", default True)
+            rejected.append("--no-plot")
+        if rejected:
+            log.error(
+                "--resume replays the saved run config; only --steps may be "
+                "overridden. Remove %s.",
+                " and ".join(rejected),
+            )
+            return 1
         resume_arg = Path(args.resume)
         # Be forgiving: accept the run dir itself OR a sub-path inside it
         # (e.g. checkpoints/latest, checkpoints/step_00500, model/) and resolve

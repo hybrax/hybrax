@@ -125,6 +125,39 @@ def test_train_cli_resume_accepts_checkpoint_subdir(tmp_path: Path):
     assert json.loads((run_dir / "config.json").read_text())["steps_completed"] == 4
 
 
+def test_resume_rejects_output_dir(tmp_path: Path):
+    """Resume replays the saved config; --output-dir is rejected, not ignored."""
+    prepared = _write_prepared(tmp_path / "prepared.json")
+    run_dir = tmp_path / "run"
+    config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir, steps=2)
+    assert main(["train", "--config", str(config)]) == 0
+
+    assert main(["train", "--resume", str(run_dir), "--output-dir", str(tmp_path / "x")]) == 1
+    # The rejected run did not touch the completed run's state.
+    assert json.loads((run_dir / "config.json").read_text())["steps_completed"] == 2
+
+
+def test_resume_rejects_no_plot(tmp_path: Path):
+    """--no-plot is a fresh-run-only override; rejected on resume."""
+    prepared = _write_prepared(tmp_path / "prepared.json")
+    run_dir = tmp_path / "run"
+    config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir, steps=2)
+    assert main(["train", "--config", str(config)]) == 0
+
+    assert main(["train", "--resume", str(run_dir), "--no-plot"]) == 1
+
+
+def test_resume_allows_steps(tmp_path: Path):
+    """--steps remains the one legal override; the new guard must not block it."""
+    prepared = _write_prepared(tmp_path / "prepared.json")
+    run_dir = tmp_path / "run"
+    config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir, steps=2)
+    assert main(["train", "--config", str(config)]) == 0
+
+    assert main(["train", "--resume", str(run_dir), "--steps", "4"]) == 0
+    assert json.loads((run_dir / "config.json").read_text())["steps_completed"] == 4
+
+
 def test_load_params_refreshes_without_reading_prepared(tmp_path: Path, monkeypatch):
     prepared = _write_prepared(tmp_path / "prepared.json")
     run_dir = tmp_path / "run"
