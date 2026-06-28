@@ -91,6 +91,63 @@ def _make_source_from_xy(
     )
 
 
+def _eval_ppoly_numpy(
+    breaks: np.ndarray, coeffs: np.ndarray, side: str, ts: Any
+) -> np.ndarray:
+    """Pure-numpy cubic-PPoly eval (matches bp-format ``PPoly.__call__``).
+
+    Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with
+    ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. Numpy
+    (not JAX) so it is cheap inside ``build_dense_payload``'s refinement loop.
+    """
+    ts_arr = np.atleast_1d(_as_numpy(ts))
+    idx = np.clip(
+        np.searchsorted(breaks, ts_arr, side=side) - 1, 0, len(breaks) - 2
+    )
+    dt = ts_arr - breaks[idx]
+    p = coeffs[idx]
+    return p[:, 0] + dt * (p[:, 1] + dt * (p[:, 2] + dt * p[:, 3]))
+
+
+def _make_source_from_spline(
+    name: str,
+    kind: str,
+    series: TimeSeries,
+    metadata: dict[str, Any],
+) -> SignalSource:
+    """Build a control source from a spline-backed ``TimeSeries`` (breaks/coeffs).
+
+    The PPoly and its analytic derivative are evaluated in **pure numpy at prepare
+    time only** — ``build_dense_payload`` samples them onto the dense grid, so the
+    solver's ``jnp.interp`` eval path (and JIT graph) is unchanged. The spline's breaks
+    seed the grid; a smoothing spline has far fewer knots than the raw samples.
+    """
+    breaks = _as_numpy(series.breaks)
+    coeffs = _as_numpy(series.coeffs)
+    side = str(getattr(series, "continuity_side", "right"))
+
+    deriv = series.deriv()
+    d_breaks = _as_numpy(deriv.breaks)
+    d_coeffs = _as_numpy(deriv.coeffs)
+    d_side = str(getattr(deriv, "continuity_side", side))
+
+    def _eval(ts: Any) -> np.ndarray:
+        return _eval_ppoly_numpy(breaks, coeffs, side, ts)
+
+    def _deriv(ts: Any) -> np.ndarray:
+        return _eval_ppoly_numpy(d_breaks, d_coeffs, d_side, ts)
+
+    return SignalSource(
+        name=name,
+        kind=kind,
+        times=breaks,
+        values=_eval(breaks),
+        evaluator=_eval,
+        derivative=_deriv,
+        metadata=dict(metadata),
+    )
+
+
 def _make_source_from_process_variable(
     process: BioProcess,
     name: str,
@@ -98,9 +155,11 @@ def _make_source_from_process_variable(
 ) -> SignalSource:
     if isinstance(process_variable.values, TimeSeries):
         if process_variable.values.breaks is not None:
-            raise ValueError(
-                f"{name}: spline-backed TimeSeries controls are not supported; "
-                "sample the control to times/values during prepare"
+            return _make_source_from_spline(
+                name=name,
+                kind="process_variable",
+                series=process_variable.values,
+                metadata={"source": "spline"},
             )
         return _make_source_from_xy(
             name=name,
@@ -166,27 +225,30 @@ def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
 def _make_source_from_volume_change(
     name: str, volume_change: FeedVolumeChange
 ) -> SignalSource:
+    metadata = {
+        "source": "timeseries",
+        "source_kind": "control",
+        "signal_family": "feed",
+        "feed_name": name,
+        "inlet_feed_medium": (
+            _serialize_feed_medium(volume_change.feed_medium)
+            if volume_change.feed_medium is not None
+            else None
+        ),
+    }
     if volume_change.values.breaks is not None:
-        raise ValueError(
-            f"{name}: spline-backed TimeSeries controls are not supported; "
-            "sample the control to times/values during prepare"
+        return _make_source_from_spline(
+            name=name,
+            kind="volume_change",
+            series=volume_change.values,
+            metadata={**metadata, "source": "spline"},
         )
     return _make_source_from_xy(
         name=name,
         kind="volume_change",
         times=volume_change.values.times,
         values=volume_change.values.values,
-        metadata={
-            "source": "timeseries",
-            "source_kind": "control",
-            "signal_family": "feed",
-            "feed_name": name,
-            "inlet_feed_medium": (
-                _serialize_feed_medium(volume_change.feed_medium)
-                if volume_change.feed_medium is not None
-                else None
-            ),
-        },
+        metadata=metadata,
     )
 
 

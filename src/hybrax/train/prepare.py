@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -9,8 +10,11 @@ from pathlib import Path
 from typing import Any
 import warnings
 
+import numpy as np
 from bp_format.dataclasses import (
     BioProcessCollection,
+    StaticVariable,
+    TimeSeries,
 )
 from bp_format.serialization import (
     load_dataset,
@@ -30,6 +34,8 @@ from .validation import (
     summarize_process_semantics,
     validate_collection,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _read_bytes(path: str | Path | None) -> bytes | None:
@@ -375,4 +381,92 @@ def prepare_artifact(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     save_process_collection_json(collection, output_path)
+
+    if prepare.diagnostics:
+        try:
+            _render_control_diagnostics(collection, process_bundles, prepare, output_path)
+        except Exception as exc:  # noqa: BLE001 — diagnostics are auxiliary
+            logger.warning("control diagnostics rendering failed: %r", exc)
+
     return collection
+
+
+def _raw_control_samples(process: Any, name: str) -> tuple[np.ndarray, np.ndarray]:
+    """Raw measured samples for a control (TimeSeries knots or a static level)."""
+    if name in process.process_variables:
+        value = process.process_variables[name].values
+    else:
+        value = process.volume.volume_changes[name].values
+    if isinstance(value, TimeSeries) and value.times is not None:
+        return np.asarray(value.times, dtype=float), np.asarray(value.values, dtype=float)
+    if isinstance(value, StaticVariable):
+        t0, t1 = float(process.time_axis.start), float(process.time_axis.end)
+        return np.asarray([t0, t1]), np.asarray([float(value.value)] * 2)
+    return np.asarray([]), np.asarray([])
+
+
+def _control_unit(process: Any, name: str) -> str:
+    if name in process.process_variables:
+        return str(getattr(process.process_variables[name], "unit", ""))
+    vc = process.volume.volume_changes.get(name)
+    return str(getattr(vc, "unit", "")) if vc is not None else ""
+
+
+def _render_control_diagnostics(
+    collection: BioProcessCollection,
+    process_bundles: dict[str, Any],
+    prepare: PrepareConfig,
+    output_path: Path,
+) -> None:
+    """Build per-process control diagnostics and render them (prepare is one-shot)."""
+    from .controls_store import ControlsStore
+    from .postprocessing import (
+        ControlDiagnostic,
+        ProcessControlDiagnostics,
+        render_control_diagnostics,
+    )
+
+    diag_dir = prepare.diagnostics_dir or (
+        output_path.parent / f"{output_path.stem}_diagnostics"
+    )
+    store = ControlsStore.from_collection(collection)
+    for name, process in collection.processes.items():
+        bundle = process_bundles[name]
+        per = store.get_controls(name)
+        grid = np.asarray(per.active_dense_grid, dtype=float)
+        t0 = float(process.time_axis.start)
+        t1 = float(process.time_axis.end)
+        fine = np.linspace(t0, t1, 600)
+        diags = []
+        for cname in bundle.all_names:
+            src = bundle.sources_by_name[cname]
+            curve = np.asarray(src.evaluator(fine), dtype=float).reshape(-1)
+            raw_t, raw_v = _raw_control_samples(process, cname)
+            if raw_t.size:
+                ref = np.asarray(src.evaluator(raw_t), dtype=float).reshape(-1)
+                max_rel_dev = float(
+                    np.max(np.abs(ref - raw_v) / np.maximum(np.abs(raw_v), 1e-9))
+                )
+            else:
+                max_rel_dev = 0.0
+            diags.append(
+                ControlDiagnostic(
+                    name=cname,
+                    unit=_control_unit(process, cname),
+                    raw_times=raw_t,
+                    raw_values=raw_v,
+                    curve_t=fine,
+                    curve_values=curve,
+                    grid_t=grid,
+                    is_spline=src.metadata.get("source") == "spline",
+                    max_rel_dev=max_rel_dev,
+                )
+            )
+        render_control_diagnostics(
+            ProcessControlDiagnostics(
+                process_name=name,
+                time_unit=str(process.time_axis.unit),
+                controls=tuple(diags),
+            ),
+            diag_dir,
+        )

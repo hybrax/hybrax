@@ -107,6 +107,11 @@ class PrepareConfig(ConfigBase):
     max_rel_error: float = Field(1e-4, gt=0)
     max_refinement_rounds: int = Field(8, ge=0)
     process_rename_map: dict[str, str] = Field(default_factory=dict)
+    # Emit per-process control diagnostic plots (raw data vs stored control spline)
+    # at the end of prepare. ``diagnostics_dir`` defaults to
+    # ``<prepared_stem>_diagnostics/`` next to the output JSON.
+    diagnostics: bool = True
+    diagnostics_dir: Path | None = None
 
 
 class HoldoutSet(ConfigBase):

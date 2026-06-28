@@ -765,6 +765,79 @@ def build_process_plot_data(
     return out
 
 
+@dataclass(frozen=True)
+class ControlDiagnostic:
+    """One control's prepare-time diagnostic (picklable, plain numpy)."""
+
+    name: str
+    unit: str
+    raw_times: np.ndarray
+    raw_values: np.ndarray
+    curve_t: np.ndarray
+    curve_values: np.ndarray
+    grid_t: np.ndarray
+    is_spline: bool
+    max_rel_dev: float
+
+
+@dataclass(frozen=True)
+class ProcessControlDiagnostics:
+    """Per-process control diagnostics — fed to :func:`render_control_diagnostics`."""
+
+    process_name: str
+    time_unit: str
+    controls: tuple[ControlDiagnostic, ...]
+
+
+def render_control_diagnostics(
+    diagnostics: ProcessControlDiagnostics,
+    output_dir: str | Path,
+) -> None:
+    """Render one figure overlaying, per control: the raw measured samples, the
+    stored control curve the solver uses (fitted spline or linear interpolation),
+    and the dense-grid knot density. Pure numpy/matplotlib, picklable — safe in the
+    ``spawn`` background plot worker. Writes ``<process>_controls.png``.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    controls = diagnostics.controls
+    if not controls:
+        return
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    n = len(controls)
+    fig, axes = plt.subplots(n, 1, figsize=(11, 2.1 * n), squeeze=False)
+    for ax, c in zip(axes[:, 0], controls):
+        if c.raw_times.size:
+            ax.plot(
+                c.raw_times, c.raw_values, ".", ms=3, color="0.6",
+                label=f"raw ({c.raw_times.size})",
+            )
+        ax.plot(
+            c.curve_t, c.curve_values, "-", lw=1.4, color="C0",
+            label="spline" if c.is_spline else "linear",
+        )
+        y0 = ax.get_ylim()[0]
+        ax.plot(
+            c.grid_t, np.full(c.grid_t.size, y0), "|", color="C3", ms=6, alpha=0.4,
+        )
+        ax.set_ylabel(f"{c.name}\n[{c.unit}]", fontsize=8)
+        ax.legend(
+            loc="best", fontsize=7,
+            title=f"grid={c.grid_t.size}  maxΔ={c.max_rel_dev:.1e}",
+            title_fontsize=7,
+        )
+    axes[-1, 0].set_xlabel(f"time [{diagnostics.time_unit}]")
+    fig.suptitle(f"control splines vs data — {diagnostics.process_name}")
+    fig.tight_layout()
+    fig.savefig(output_dir / f"{diagnostics.process_name}_controls.png", dpi=110)
+    plt.close(fig)
+
+
 def render_process_figures(
     plot_data: Sequence[ProcessPlotData],
     output_dir: str | Path,

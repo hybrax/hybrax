@@ -127,17 +127,20 @@ def _spline_control_values() -> TimeSeries:
     )
 
 
-def test_select_control_sources_rejects_spline_process_variable_control():
+def test_select_control_sources_consumes_spline_process_variable_control():
+    # A spline-backed control is now USED directly (PPoly), not rejected.
     collection = _make_two_process_collection()
     process = collection.processes["p1"]
     process.process_variables["CF"].is_controlled = True
     process.process_variables["CF"].values = _spline_control_values()
 
-    with pytest.raises(ValueError, match="spline-backed TimeSeries controls"):
-        select_control_sources(process)
+    src = select_control_sources(process).sources_by_name["CF"]
+    assert src.metadata.get("source") == "spline"
+    # linear spline p(dt)=dt over [0, 1] -> value 0.5 at t=0.5
+    assert float(src.evaluator(np.asarray([0.5]))[0]) == pytest.approx(0.5, abs=1e-4)
 
 
-def test_select_control_sources_rejects_spline_feed_control():
+def test_select_control_sources_consumes_spline_feed_control():
     collection = _make_two_process_collection()
     process = collection.processes["p1"]
     process.volume.volume_changes["feed_A"] = FeedVolumeChange(
@@ -149,8 +152,9 @@ def test_select_control_sources_rejects_spline_feed_control():
         feed_medium=FeedMedium(name="feed", density=1.0, density_unit="kg/L"),
     )
 
-    with pytest.raises(ValueError, match="spline-backed TimeSeries controls"):
-        select_control_sources(process)
+    src = select_control_sources(process).sources_by_name["feed_A"]
+    assert src.metadata.get("source") == "spline"
+    assert float(src.evaluator(np.asarray([0.5]))[0]) == pytest.approx(0.5, abs=1e-4)
 
 
 def _write_control_custom_py(path: Path) -> None:
