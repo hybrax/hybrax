@@ -87,8 +87,8 @@ def compute_dense_exports(
     THE single source of dense prediction trajectories: forward evaluation and the
     training-checkpoint ``predictions.csv`` writer both call this instead of
     solving per process. The prediction grid is harvested from the same loss solve
-    (``BatchControls`` + event-times ``jump_ts``), so predictions match training
-    and there is no second simulation. Returns ``(per_sample_total,
+    (``BatchControls`` + ``discrete_events`` ``jump_ts``), so predictions match
+    training and there is no second simulation. Returns ``(per_sample_total,
     per_sample_per_target, dense_exports)`` (loss arrays are ``np``, aligned with
     ``process_names``)."""
     rhs_by_name = {
@@ -108,8 +108,8 @@ def compute_dense_exports(
     jump_ts_rows = None
     if solver_use_jump_ts:
         jump_ts_rows = clamp_padded_time_rows(
-            store.controls_store.step_ts[batch.process_indices],
-            store.controls_store.step_ts_lengths[batch.process_indices],
+            store.controls_store.jump_ts[batch.process_indices],
+            store.controls_store.jump_ts_lengths[batch.process_indices],
         )
     (
         _mean_total,
@@ -984,8 +984,8 @@ def train_collection(
             jump_ts_rows = None
             if cfg.solver_use_jump_ts:
                 jump_ts_rows = clamp_padded_time_rows(
-                    store.controls_store.step_ts[current_batch.process_indices],
-                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                    store.controls_store.jump_ts[current_batch.process_indices],
+                    store.controls_store.jump_ts_lengths[current_batch.process_indices],
                 )
 
             del current_wrapper  # whole-wrapper partition: combine reconstructs it
@@ -1107,8 +1107,8 @@ def train_collection(
             jump_ts_rows = None
             if use_jump:
                 jump_ts_rows = clamp_padded_time_rows(
-                    store.controls_store.step_ts[current_batch.process_indices],
-                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                    store.controls_store.jump_ts[current_batch.process_indices],
+                    store.controls_store.jump_ts_lengths[current_batch.process_indices],
                 )
             cin = batched_Cin[current_batch.process_indices]
             cinm = batched_Cin_modeled[current_batch.process_indices]
@@ -1226,8 +1226,8 @@ def train_collection(
             jump_ts_rows = None
             if use_jump:
                 jump_ts_rows = clamp_padded_time_rows(
-                    store.controls_store.step_ts[current_batch.process_indices],
-                    store.controls_store.step_ts_lengths[current_batch.process_indices],
+                    store.controls_store.jump_ts[current_batch.process_indices],
+                    store.controls_store.jump_ts_lengths[current_batch.process_indices],
                 )
             cin = batched_Cin[current_batch.process_indices]
             cinm = batched_Cin_modeled[current_batch.process_indices]
@@ -1385,8 +1385,8 @@ def train_collection(
         monitor_batch = store.gather_batch(monitor_indices)
         if cfg.solver_use_jump_ts:
             monitor_jump_ts_rows = clamp_padded_time_rows(
-                store.controls_store.step_ts[monitor_batch.process_indices],
-                store.controls_store.step_ts_lengths[monitor_batch.process_indices],
+                store.controls_store.jump_ts[monitor_batch.process_indices],
+                store.controls_store.jump_ts_lengths[monitor_batch.process_indices],
             )
 
     try:

@@ -53,7 +53,6 @@ def _column_index(controls, name: str) -> int:
         controls.name_controlled_FVCs
         + controls.name_controlled_SVCs
         + controls.name_controlled_PVs
-        + controls.name_extras
     )
     return canonical.index(name)
 
@@ -135,7 +134,7 @@ def test_select_control_sources_rejects_spline_process_variable_control():
     process.process_variables["CF"].values = _spline_control_values()
 
     with pytest.raises(ValueError, match="spline-backed TimeSeries controls"):
-        select_control_sources("p1", process, {})
+        select_control_sources(process)
 
 
 def test_select_control_sources_rejects_spline_feed_control():
@@ -151,7 +150,7 @@ def test_select_control_sources_rejects_spline_feed_control():
     )
 
     with pytest.raises(ValueError, match="spline-backed TimeSeries controls"):
-        select_control_sources("p1", process, {})
+        select_control_sources(process)
 
 
 def _write_control_custom_py(path: Path) -> None:
@@ -232,14 +231,11 @@ def test_controls_store_loads_by_process_name_and_index(tmp_path):
     assert by_name.name_controlled_FVCs == ()
     assert by_name.name_controlled_SVCs == ()
     assert by_name.name_controlled_PVs == ("CF", "T")
-    assert by_name.name_extras == ("V_sample_acc",)
-    assert by_name.sample_acc_name == "V_sample_acc"
-    assert by_name.sample_acc_global_index == 2
     assert np.array_equal(
         np.asarray(by_name.dense_grid), np.asarray(by_index.dense_grid)
     )
     assert _column_index(by_name, "CF") == 0
-    assert _column_index(by_name, "V_sample_acc") == 2
+    assert _column_index(by_name, "T") == 1
     assert tuple(store.control_values.shape) == (
         2,
         store.shape_metadata["max_grid_length"],
@@ -257,24 +253,18 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     store = ControlsStore.from_json(prepared_json)
     controls = store.get_controls("p1")
 
-    # CF and T are the two controlled PVs (this fixture has no controlled FVCs);
-    # sample_acc is the trailing extras column.
+    # CF and T are the two controlled PVs (this fixture has no controlled FVCs).
     pvs0 = controls.eval_controlled_PVs(0.25, None)
     assert pvs0.shape == (2,)
     assert pvs0[0] == pytest.approx(1.025)  # CF
     assert pvs0[1] == pytest.approx(30.25)  # T
-    assert float(controls.eval_sample_acc(0.25, None)) == pytest.approx(0.0)
 
     ts = np.asarray([0.25, 0.5, 1.0], dtype=float)
     pvs = controls.eval_controlled_PVs(ts, None)
-    sample_acc = controls.eval_sample_acc(ts, None)
 
     assert pvs.shape == (3, 2)
-    assert sample_acc.shape == (3,)
     assert pvs[:, 0] == pytest.approx([1.025, 1.05, 1.1])  # CF
     assert pvs[:, 1] == pytest.approx([30.25, 30.5, 31.0])  # T
-    assert sample_acc[0] == pytest.approx(0.0)
-    assert sample_acc[-1] == pytest.approx(0.1)
     # No controlled FVCs/SVCs in this fixture → the rate accessors are empty.
     assert controls.eval_controlled_FVCs_rates(ts, None).shape == (3, 0)
     assert controls.eval_controlled_SVCs_rates(ts, None).shape == (3, 0)
@@ -371,10 +361,11 @@ def test_controls_store_exposes_discrete_event_metadata():
     assert np.asarray(controls.bolus_event_volumes).tolist() == pytest.approx([0.4])
     assert np.asarray(controls.bolus_event_Cin).shape == (1, 1)
     assert float(controls.bolus_event_Cin[0, 0]) == pytest.approx(5.0)
-    # jump_ts is the discrete EVENT times only (sample 2.0, bolus 3.0) — the
-    # vestigial triangle-ramp breakpoints are no longer spliced into the store's
-    # step_ts (the pseudo solve applies events instantaneously).
-    assert set(np.asarray(controls.active_step_ts, dtype=float).tolist()) == {2.0, 3.0}
+    # jump_ts holds genuine vector-field discontinuity times from
+    # ``discrete_events`` (None for this process) — NOT the bolus/sample
+    # STATE-jump events, which live in the ``*_event_*`` arrays above and are
+    # applied by the callbacks solve. With no discrete_events, jump_ts is empty.
+    assert np.asarray(controls.active_jump_ts, dtype=float).tolist() == []
 
 
 def test_controls_store_rejects_unknown_process(tmp_path):
@@ -412,109 +403,6 @@ def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
 
     assert pvs[:, 0] == pytest.approx([1.0, 1.1])  # CF clamped to grid ends
     assert pvs[:, 1] == pytest.approx([30.0, 31.0])  # T clamped to grid ends
-
-
-def test_controls_store_uses_custom_sample_acc_from_prepared_metadata(tmp_path):
-    custom_py = tmp_path / "custom-sample.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "import numpy as np",
-                "from bp_train.controls import SignalSource",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        process.process_variables['CF'].is_controlled = True",
-                "        process.process_variables['T'].is_controlled = True",
-                "    return collection",
-                "",
-                "def build_sample_acc_series("
-                "process, process_name, collection_metadata, config):",
-                "    t0 = float(process.time_axis.start)",
-                "    t1 = float(process.time_axis.end)",
-                "    times = np.asarray([t0, t1], dtype=float)",
-                "    values = np.asarray([0.0, 0.2], dtype=float)",
-                "    return SignalSource(",
-                "        name='V_sample_acc',",
-                "        kind='derived_control',",
-                "        times=times,",
-                "        values=values,",
-                "        evaluator=lambda ts: np.interp("
-                "np.asarray(ts, dtype=float), times, values, "
-                "left=values[0], right=values[-1]),",
-                "        derivative=lambda ts: np.full_like("
-                "np.asarray(ts, dtype=float), 0.2, dtype=float),",
-                "        step_ts=[t0, t1],",
-                "        metadata={'source': 'custom_test'},",
-                "    )",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    output = tmp_path / "prepared-custom-sample.json"
-    _prepare_from_collection(
-        _make_two_process_collection(), tmp_path, output, custom_py=custom_py
-    )
-
-    store = ControlsStore.from_json(output)
-    controls = store.get_controls("p1")
-    end_value = controls.eval_sample_acc(1.0, None)
-    assert end_value == pytest.approx(0.2)
-
-
-def test_controls_store_skips_run_min_dt_when_prepared_sample_exists():
-    process = BioProcess(
-        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "sample_1": SampleVolumeChange(
-                    name="sample_1",
-                    unit="L",
-                    is_controlled=False,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([5.0]),
-                        values=jnp.asarray([-0.1]),
-                    ),
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={},
-    )
-    collection = BioProcessCollection(
-        processes={"p1": process},
-        metadata={
-            "bp-train": {
-                "process_order": ["p1"],
-                "processes": {
-                    "p1": {
-                        "name_controlled_FVCs": [],
-                        "name_controlled_SVCs": [],
-                        "name_controlled_PVs": [],
-                        "name_extras": ["V_sample_acc"],
-                        "sample_acc_source": {
-                            "times": [0.0, 10.0],
-                            "values": [0.0, 0.1],
-                            "step_ts": [5.0],
-                            "metadata": {"source": "prepared_test"},
-                        },
-                    }
-                },
-            }
-        },
-    )
-
-    controls = ControlsStore.from_collection(collection).get_controls("p1")
-    assert controls.name_extras == ("V_sample_acc",)
-    assert controls.name_controlled_FVCs == ()
-    assert controls.name_controlled_SVCs == ()
-    assert controls.name_controlled_PVs == ()
-    assert float(controls.eval_sample_acc(10.0, None)) == pytest.approx(0.1)
-
 
 def test_controls_store_rejects_not_consistent_controls_at_init():
     """ControlsStore must reject collections whose processes disagree on
@@ -566,8 +454,7 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
     ``PerProcessControls`` exposes per-process metadata as dynamic pytree
     leaves, the leaf order shifts with each process and
     ``eqx.tree_deserialise_leaves`` reads the wrong bytes into the wrong
-    slots — the failure surfaces as ``TreePathError`` at
-    ``controls.sample_acc_global_index``.
+    slots — the failure surfaces as a ``TreePathError``.
     """
     import equinox as eqx
 
@@ -585,7 +472,6 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
     # static fields are placeholders).
     assert loaded.process_name == template.process_name
     assert loaded.process_index == template.process_index
-    assert loaded.sample_acc_global_index == template.sample_acc_global_index
     # Dynamic arrays carry the saved process's values.
     assert np.array_equal(np.asarray(loaded.dense_grid), np.asarray(saved.dense_grid))
     assert np.array_equal(
@@ -620,183 +506,3 @@ def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_pa
         batch_controls.eval_controlled_FVCs_cumulative(2, jnp.asarray(0.25), None)
     with pytest.raises(IndexError, match="out of range"):
         batch_controls.eval_controlled_FVCs_cumulative(999, jnp.asarray(0.25), None)
-
-
-def test_controls_store_uses_min_of_per_process_min_dt_across_processes():
-    feed_medium = FeedMedium(
-        name="feed",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "biomass": FeedMediumComponent(
-                name="biomass",
-                unit="g/L",
-                concentration=StaticVariable(0.0),
-                is_controlled=False,
-            )
-        },
-    )
-
-    p1 = BioProcess(
-        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "bolus_feed": FeedVolumeChange(
-                    name="bolus_feed",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([1.0]),
-                        values=jnp.asarray([1.0]),
-                    ),
-                    feed_medium=feed_medium,
-                ),
-                "sample_1": SampleVolumeChange(
-                    name="sample_1",
-                    unit="L",
-                    is_controlled=False,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([5.0]),
-                        values=jnp.asarray([-0.1]),
-                    ),
-                ),
-            },
-        ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "biomass": ProcessVariable(
-                name="biomass",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 10.0]),
-                    values=jnp.asarray([1.0, 1.0]),
-                ),
-            )
-        },
-    )
-
-    p2 = BioProcess(
-        metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "bolus_feed": FeedVolumeChange(
-                    name="bolus_feed",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([], dtype=jnp.float32),
-                        values=jnp.asarray([], dtype=jnp.float32),
-                    ),
-                    feed_medium=feed_medium,
-                ),
-                "sample_1": SampleVolumeChange(
-                    name="sample_1",
-                    unit="L",
-                    is_controlled=False,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([5.0]),
-                        values=jnp.asarray([-0.1]),
-                    ),
-                ),
-            },
-        ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "biomass": ProcessVariable(
-                name="biomass",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.004, 10.0]),
-                    values=jnp.asarray([1.0, 1.0]),
-                ),
-            )
-        },
-    )
-
-    collection = BioProcessCollection(
-        metadata={"case_study": {"case_id": "run-min-dt"}},
-        processes={"p1": p1, "p2": p2},
-    )
-    store = ControlsStore.from_collection(collection)
-    p1_controls = store.get_controls("p1")
-    # p1 has within-process min_dt=1.0h (times 0,1,5,10). p2 contributes a
-    # near timestamp at 0.004h, which creates a 0.004h *cross-process* gap
-    # versus p1's 0.0h, but that must not define run_min_dt.
-    # With run_min_dt=1.0h and duration cap 10/1000=0.01h, effective min_dt is
-    # 0.01h for both bolus triangles and sampling ramps.
-    assert float(p1_controls.control_metadata["bolus_feed"]["triangle_min_dt"]) == (
-        pytest.approx(0.01)
-    )
-    assert float(p1_controls.control_metadata["V_sample_acc"]["ramp_duration"]) == (
-        pytest.approx(0.01)
-    )
-
-
-def test_controls_store_falls_back_to_duration_cap_when_no_positive_online_delta():
-    p1 = BioProcess(
-        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "sample_1": SampleVolumeChange(
-                    name="sample_1",
-                    unit="L",
-                    is_controlled=False,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([1.0]),
-                        values=jnp.asarray([-0.1]),
-                    ),
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={},
-    )
-    p2 = BioProcess(
-        metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "sample_1": SampleVolumeChange(
-                    name="sample_1",
-                    unit="L",
-                    is_controlled=False,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([1.0]),
-                        values=jnp.asarray([-0.1]),
-                    ),
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={},
-    )
-    collection = BioProcessCollection(
-        metadata={"case_study": {"case_id": "run-min-dt-fallback"}},
-        processes={"p1": p1, "p2": p2},
-    )
-    store = ControlsStore.from_collection(collection)
-    p1_controls = store.get_controls("p1")
-    # No positive within-process online delta exists in this fixture, so
-    # run_min_dt falls back to duration/1000 = 2.0/1000 = 0.002 h.
-    assert float(p1_controls.control_metadata["V_sample_acc"]["ramp_duration"]) == (
-        pytest.approx(0.002)
-    )

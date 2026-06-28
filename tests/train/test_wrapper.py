@@ -23,7 +23,6 @@ from bp_format.dataclasses import (
 )
 from bp_format.mechanistic import build_rhs_ode
 
-from bp_train.controls import EVENT_RUN_MIN_DT_CONFIG_KEY
 from bp_train.controls_store import ControlsStore
 from bp_train.model_api import (
     ReactionInputs,

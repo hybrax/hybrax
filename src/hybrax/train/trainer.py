@@ -36,6 +36,10 @@ class SingleSampleResult(eqx.Module):
 def clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
     """Right-clamp padded rows to avoid NaNs in padded tails."""
     max_length = times.shape[1]
+    if max_length == 0:
+        # No jump times anywhere (e.g. no discrete events) — nothing to clamp;
+        # the empty row reaches the solver as ``jump_ts=None`` (a plain solve).
+        return times
     last_index = jnp.clip(lengths - 1, 0, max_length - 1)
     last_values = times[jnp.arange(times.shape[0], dtype=jnp.int32), last_index]
     tail_mask = jnp.arange(max_length, dtype=jnp.int32)[None, :] >= lengths[:, None]
@@ -74,6 +78,7 @@ def _solve_measurement_save_outputs_on_grid(
         max_steps=max_steps,
         rtol=float(rtol),
         atol=float(atol),
+        jump_ts=jump_ts,
     )
     return jax.vmap(wrapper.physical_save_outputs)(t_eval, states)
 

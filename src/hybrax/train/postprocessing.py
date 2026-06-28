@@ -624,7 +624,7 @@ def build_process_plot_data(
     """Extract picklable per-process plotting data from precomputed dense exports.
 
     The JAX/bp_format-touching half of per-process plotting: computes the
-    ground-truth dense V_real (via ``controls.eval_sample_acc``) and the
+    ground-truth dense V_real (signed cumulative volume changes) and the
     cumulative modeled-feed truth, and pulls measured series + raw volume changes
     from the collection. Runs in the MAIN process; the result feeds the pure,
     picklable :func:`render_process_figures` (which may run in a spawn worker).
@@ -642,21 +642,21 @@ def build_process_plot_data(
     out: list[ProcessPlotData] = []
     for process_name in selected:
         process = collection.processes[process_name]
-        process_data = store.get_process(process_name)
         dense_export = dense_exports[process_name]
         std_export = std_exports.get(process_name) if std_exports else None
         t_dense = np.asarray(dense_export.t, dtype=float)
 
-        # Ground-truth V_real(t): V0 + cumulative inflows - V_sample_acc.
+        # Ground-truth V_real(t): V0 + signed cumulative volume changes.
+        # Continuous feeds add their cumulative inflow; discrete events (bolus
+        # adds, sample removals) step at each event time by the signed delta
+        # (bolus > 0, sample < 0) — the same arithmetic the callbacks solve uses.
         v0 = float(process.volume.initial_volume)
-        v_cont_true = np.full(t_dense.shape, v0, dtype=float)
+        v_real_true_dense = np.full(t_dense.shape, v0, dtype=float)
         for vc in process.volume.volume_changes.values():
-            if not isinstance(vc, FeedVolumeChange):
-                continue
             vc_t = np.asarray(vc.values.times, dtype=float)
             vc_v = np.asarray(vc.values.values, dtype=float)
-            if bool(vc.is_continuous):
-                v_cont_true += np.interp(
+            if isinstance(vc, FeedVolumeChange) and bool(vc.is_continuous):
+                v_real_true_dense += np.interp(
                     t_dense, vc_t, vc_v, left=float(vc_v[0]), right=float(vc_v[-1])
                 )
             else:
@@ -665,11 +665,7 @@ def build_process_plot_data(
                 contribution = np.zeros_like(t_dense, dtype=float)
                 valid = idx >= 0
                 contribution[valid] = cumulative[idx[valid]]
-                v_cont_true += contribution
-        v_sample_acc = np.asarray(
-            process_data.controls.eval_sample_acc(jnp.asarray(t_dense), None)
-        )
-        v_real_true_dense = v_cont_true - v_sample_acc
+                v_real_true_dense += contribution
 
         # Cumulative measured B_modeled per modeled flow on the dense grid.
         b_modeled_true_dense = np.zeros((len(t_dense), n_modeled), dtype=float)

@@ -38,6 +38,7 @@ def solve_physical_states(
     max_steps: int,
     rtol: float,
     atol: float,
+    jump_ts: jax.Array | None = None,
     max_steps_per_segment: int | None = None,
 ):
     """RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.
@@ -129,6 +130,14 @@ def solve_physical_states(
         # physical -> scaled; PVs pass through unchanged.
         return jnp.concatenate([C2, PVs, V_after[None], cum]) / SCALE
 
+    # ``jump_ts`` = genuine vector-field discontinuity times (from
+    # ``BioProcess.discrete_events``); ``None``/empty ⇒ the controller behaves
+    # exactly as a plain ``PIDController(rtol, atol)``. Bolus/sample STATE jumps
+    # are handled by ``affect_fn`` below, NOT here.
+    jump_ts_arg = (
+        jump_ts if jump_ts is not None and jump_ts.shape[0] > 0 else None
+    )
+
     cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
     # RHS evaluated on the unscaled state; the derivative is rescaled (scale_state is
@@ -144,7 +153,9 @@ def solve_physical_states(
         y0=y0 / SCALE,
         callbacks=cb,
         max_events=preset_times.shape[0],
-        stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
+        stepsize_controller=diffrax.PIDController(
+            rtol=rtol, atol=atol, jump_ts=jump_ts_arg
+        ),
         max_steps_per_segment=max_steps_per_segment,
         adjoint=diffrax.RecursiveCheckpointAdjoint(),
     )

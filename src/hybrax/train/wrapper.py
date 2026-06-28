@@ -12,30 +12,6 @@ from .controls_store import PerProcessControls
 from .model_api import ReactionInputs
 
 
-class WrapperEvaluation(eqx.Module):
-    """Shared wrapper evaluation results for RHS and save-time exports.
-
-    State is carried in SCL space (matches the solver's integration space);
-    rates are carried in RAW physical units (the form they take after the
-    module's ``unscale_*`` helpers). Plot/CSV exporters convert state to RAW
-    at write time via ``module.unscale_state(SCL_states)``.
-    """
-
-    SCL_states: jax.Array
-    RAW_RMC_rhs: jax.Array
-    RAW_V_export: jax.Array
-    RAW_V: jax.Array
-    RAW_u_rhs_full: jax.Array
-    RAW_controlled_FVCs_rates: jax.Array
-    RAW_controlled_FVCs_Cin: jax.Array
-    RAW_modeled_FVCs_Cin: jax.Array
-    ADF: jax.Array
-    RAW_state: jax.Array
-    RAW_modeled_BiologicalOde_rates: jax.Array
-    RAW_modeled_FVCs_rates: jax.Array
-    auxiliary: dict[str, jax.Array] | None = None
-
-
 class SaveOutputs(eqx.Module):
     """Diffrax-saveable wrapper outputs.
 

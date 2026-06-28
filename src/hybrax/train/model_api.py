@@ -456,7 +456,7 @@ class LossInputs(eqx.Module):
     step: jax.Array
 
     # Controls-discontinuity times for this sample (from
-    # ``controls.active_step_ts``). ``None`` when the trainer ran without
+    # ``controls.active_jump_ts``). ``None`` when the trainer ran without
     # jump-ts. Useful for masking dense points near discontinuities; passed
     # whether or not the dense grid is enabled.
     jump_ts: jax.Array | None = None

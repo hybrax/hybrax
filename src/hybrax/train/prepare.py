@@ -19,17 +19,9 @@ from bp_format.serialization import (
 )
 
 from .constants import METADATA_NAMESPACE
-from .controls import (
-    BP_TRAIN_SAMPLE_ACC_NAME,
-    EVENT_RUN_MIN_DT_CONFIG_KEY,
-    get_collection_event_min_dt_if_needed,
-    select_control_sources,
-)
-from .defaults import (
-    default_build_sample_acc_series,
-    default_transform_process_collection,
-)
-from .run_config import LoadedRunConfig, PrepareConfig, RunConfig
+from .controls import select_control_sources
+from .defaults import default_transform_process_collection
+from .run_config import LoadedRunConfig, PrepareConfig
 from .serialization import content_hash, environment_versions
 from .utils import get_hook
 from .validation import (
@@ -191,29 +183,18 @@ def _build_semantics_provenance(
 
 def _validate_prepared_control_contract(
     process_bundles: dict[str, Any],
-    sample_sources: dict[str, Any],
     *,
     require_consistent_controls: bool,
 ) -> None:
     reference_categorised: tuple[
-        tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]
+        tuple[str, ...], tuple[str, ...], tuple[str, ...]
     ] | None = None
 
     for process_name, bundle in process_bundles.items():
         control_names = list(bundle.all_names)
-        if BP_TRAIN_SAMPLE_ACC_NAME in control_names:
-            raise ValueError(
-                f"{process_name}: reserved control name {BP_TRAIN_SAMPLE_ACC_NAME} "
-                "may not be produced by transform_process_collection"
-            )
         if len(control_names) != len(set(control_names)):
             raise ValueError(
                 f"{process_name}: duplicate control names after transforms"
-            )
-        if sample_sources[process_name].name != BP_TRAIN_SAMPLE_ACC_NAME:
-            raise ValueError(
-                f"{process_name}: sample-acc source "
-                f"must be named {BP_TRAIN_SAMPLE_ACC_NAME}"
             )
 
         if require_consistent_controls:
@@ -221,7 +202,6 @@ def _validate_prepared_control_contract(
                 bundle.name_controlled_FVCs,
                 bundle.name_controlled_SVCs,
                 bundle.name_controlled_PVs,
-                bundle.name_extras_bolus,
             )
             if reference_categorised is None:
                 reference_categorised = categorised
@@ -240,28 +220,6 @@ def _runtime_controls_config(prepare: PrepareConfig) -> dict[str, Any]:
         "max_refinement_rounds": prepare.max_refinement_rounds,
     }
     return cfg
-
-
-def _resolve_prepare_dynamic_defaults(
-    config: RunConfig,
-    collection: BioProcessCollection,
-    *,
-    include_samples: bool,
-) -> tuple[RunConfig, dict[str, Any]]:
-    """Materialise prepare defaults that depend on the loaded collection."""
-    prepare = config.prepare
-    assert prepare is not None
-    controls_config = _runtime_controls_config(prepare)
-
-    if EVENT_RUN_MIN_DT_CONFIG_KEY not in controls_config:
-        run_min_dt = get_collection_event_min_dt_if_needed(
-            collection,
-            include_samples=include_samples,
-        )
-        if run_min_dt is not None:
-            controls_config[EVENT_RUN_MIN_DT_CONFIG_KEY] = run_min_dt
-
-    return config, controls_config
 
 
 def prepare_artifact(
@@ -292,11 +250,6 @@ def prepare_artifact(
         custom_module,
         "transform_process_collection",
         default_transform_process_collection,
-    )
-    build_sample_acc = get_hook(
-        custom_module,
-        "build_sample_acc_series",
-        default_build_sample_acc_series,
     )
     raw_semantics = {
         process_name: summarize_process_semantics(process)
@@ -329,7 +282,6 @@ def prepare_artifact(
     )
 
     process_bundles: dict[str, Any] = {}
-    sample_sources: dict[str, Any] = {}
 
     required_control_names = prepare.required_control_names
     if isinstance(required_control_names, dict):
@@ -339,18 +291,8 @@ def prepare_artifact(
             name: list(required_control_names) for name in collection.processes
         }
 
-    effective_config, controls_config = _resolve_prepare_dynamic_defaults(
-        config,
-        collection,
-        include_samples=build_sample_acc is default_build_sample_acc_series,
-    )
-
     for process_name, process in collection.processes.items():
-        bundle = select_control_sources(
-            process_name=process_name,
-            process=process,
-            config=controls_config,
-        )
+        bundle = select_control_sources(process)
         ensure_required_controls(
             process_name=process_name,
             available_control_names=list(bundle.all_names),
@@ -358,18 +300,10 @@ def prepare_artifact(
                 process_name, []
             ),
         )
-        sample_source = build_sample_acc(
-            process,
-            process_name,
-            collection.metadata or {},
-            effective_config,
-        )
         process_bundles[process_name] = bundle
-        sample_sources[process_name] = sample_source
 
     _validate_prepared_control_contract(
         process_bundles=process_bundles,
-        sample_sources=sample_sources,
         require_consistent_controls=prepare.require_consistent_controls,
     )
 
@@ -377,6 +311,7 @@ def prepare_artifact(
 
     source_hash = _sha256_hex(_read_bytes(input_path))
 
+    controls_config = _runtime_controls_config(prepare)
     existing_metadata = dict(collection.metadata or {})
     bp_train_metadata: dict[str, Any] = {
         "prepared_at": _utc_now_iso(),
@@ -388,9 +323,6 @@ def prepare_artifact(
                 transform_process_collection,
                 "__name__",
                 str(transform_process_collection),
-            ),
-            "build_sample_acc_series": getattr(
-                build_sample_acc, "__name__", str(build_sample_acc)
             ),
         },
         "dynamic_volume": True,
@@ -407,38 +339,18 @@ def prepare_artifact(
             "max_rel_error": float(controls_config["max_rel_error"]),
             "max_refinement_rounds": int(controls_config["max_refinement_rounds"]),
             "require_consistent_controls": bool(prepare.require_consistent_controls),
-            **(
-                {
-                    EVENT_RUN_MIN_DT_CONFIG_KEY: float(
-                        controls_config[EVENT_RUN_MIN_DT_CONFIG_KEY]
-                    )
-                }
-                if EVENT_RUN_MIN_DT_CONFIG_KEY in controls_config
-                else {}
-            ),
         },
         "processes": {},
     }
 
     for process_name, process in collection.processes.items():
         bundle = process_bundles[process_name]
-        sample_source = sample_sources[process_name]
-        name_extras = list(bundle.name_extras_bolus) + [sample_source.name]
         bp_train_metadata["processes"][process_name] = {
             "name_controlled_FVCs": list(bundle.name_controlled_FVCs),
             "name_controlled_SVCs": list(bundle.name_controlled_SVCs),
             "name_controlled_PVs": list(bundle.name_controlled_PVs),
-            "name_extras": name_extras,
             "control_metadata": {
-                source.name: source.metadata
-                for source in [*bundle.all_sources, sample_source]
-            },
-            "sample_acc_name": BP_TRAIN_SAMPLE_ACC_NAME,
-            "sample_acc_source": {
-                "times": [float(v) for v in sample_source.times.tolist()],
-                "values": [float(v) for v in sample_source.values.tolist()],
-                "step_ts": [float(v) for v in sample_source.step_ts],
-                "metadata": dict(sample_source.metadata),
+                source.name: source.metadata for source in bundle.all_sources
             },
         }
 

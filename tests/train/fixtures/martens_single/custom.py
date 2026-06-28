@@ -103,7 +103,6 @@ def estimate_all_scales(collection, target_names, config):
     n_FVC = len(controls_store.name_controlled_FVCs)
     n_SVC = len(controls_store.name_controlled_SVCs)
     n_PV = len(controls_store.name_controlled_PVs)
-    n_extras = len(controls_store.name_extras)
     n_modeled_VCs = len(ref_rhs_ode.name_modeled_FVCs)
     n_rates = len(ref_rhs_ode.name_modeled_rates)
 

@@ -8,7 +8,6 @@ import jax.numpy as jnp
 
 from bp_format.mechanistic import build_rhs_ode
 
-from .controls import build_sample_acc_source_default
 from .model_api import (
     LossInputs,
     LossOutputs,
@@ -43,22 +42,6 @@ def default_transform_process_collection(collection, config: RunConfig):
 
     collection.processes = renamed_processes
     return collection
-
-
-def default_build_sample_acc_series(
-    process,
-    process_name,
-    collection_metadata,
-    config: RunConfig,
-):
-    """Default prep hook for sampled-volume control construction."""
-    del process_name, collection_metadata
-    if config.prepare is None:
-        raise ValueError("prepare config section is required")
-    return build_sample_acc_source_default(
-        process,
-        run_min_dt=config.prepare.bolus_run_min_dt,
-    )
 
 
 class DefaultReactionModule(UserReactionModule):

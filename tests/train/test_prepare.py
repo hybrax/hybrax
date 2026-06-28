@@ -28,13 +28,7 @@ from bp_format.serialization import (
     save_process_collection_json,
 )
 
-from bp_train.controls import (
-    BOLUS_MIN_DT_DURATION_DENOMINATOR,
-    EVENT_RUN_MIN_DT_CONFIG_KEY,
-    build_bolus_sources,
-    get_collection_bolus_min_dt,
-    select_control_sources,
-)
+from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
 from bp_train.run_config import load_prepare_config
@@ -402,83 +396,6 @@ def _make_two_process_collection() -> BioProcessCollection:
     )
 
 
-def _make_bolus_collection() -> BioProcessCollection:
-    feed_medium = FeedMedium(
-        name="feed",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "X": FeedMediumComponent(
-                name="X",
-                unit="g/L",
-                concentration=StaticVariable(0.0),
-                is_controlled=False,
-            ),
-            "biomass": FeedMediumComponent(
-                name="biomass",
-                unit="g/L",
-                concentration=StaticVariable(0.0),
-                is_controlled=False,
-            ),
-        },
-    )
-    process = BioProcess(
-        metadata=BioProcessMetadata(name="bolus", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "feed_bolus": FeedVolumeChange(
-                    name="feed_bolus",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([5.0]),
-                        values=jnp.asarray([1.0]),
-                    ),
-                    feed_medium=feed_medium,
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(
-            name="rm",
-            density=1.0,
-            density_unit="kg/L",
-            components={
-                "X": ReactorMediumComponent(
-                    name="X",
-                    unit="g/L",
-                    concentration=StaticVariable(0.0),
-                ),
-                "biomass": ReactorMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=TimeSeries(
-                        times=jnp.asarray([0.0, 5.0, 10.0]),
-                        values=jnp.asarray([0.1, 0.5, 1.0]),
-                    ),
-                ),
-            },
-        ),
-        process_variables={
-            "pH": ProcessVariable(
-                name="pH",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 2.5, 5.0, 7.5, 10.0]),
-                    values=jnp.asarray([1.0, 1.0, 1.0, 1.0, 1.0]),
-                ),
-            )
-        },
-    )
-    return BioProcessCollection(
-        metadata={"case_study": {"case_id": "bolus"}}, processes={"bolus": process}
-    )
-
-
 def test_load_raw_collection_reads_input():
     collection = load_raw_collection(INPUT_JSON)
     assert len(collection.processes) == 12
@@ -609,9 +526,8 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
 
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
-    assert process_md["sample_acc_name"] == "V_sample_acc"
-    assert process_md["name_extras"][-1] == "V_sample_acc"
-    assert process_md["control_metadata"]["V_sample_acc"]["event_count"] >= 1
+    assert "sample_acc_name" not in process_md
+    assert "name_extras" not in process_md
     assert any(
         not entry["ok"] for entry in metadata["bp_format_validation_raw"].values()
     )
@@ -673,7 +589,6 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
     process_md = metadata["processes"][first_name]
 
     assert process_md["name_controlled_PVs"] == ["CF", "T"]
-    assert process_md["name_extras"][-1] == "V_sample_acc"
 
 
 def test_prepare_artifact_can_rename_processes(tmp_path):
@@ -802,7 +717,16 @@ def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):
     store = ControlsStore.from_json(output)
     controls = store.get_controls("invalid")
     end_t = _make_invalid_collection().processes["invalid"].time_axis.end
-    assert controls.eval_sample_acc(end_t, None) == pytest.approx(0.1)
+    # V_real cumulative sampled volume at end == sum of sample-event volumes
+    # (absolute SampleVolumeChange deltas) at/under end_t.
+    sample_times = np.asarray(controls.sample_event_times)[
+        np.asarray(controls.sample_event_mask)
+    ]
+    sample_volumes = np.asarray(controls.sample_event_volumes)[
+        np.asarray(controls.sample_event_mask)
+    ]
+    v_real_end = float(sample_volumes[sample_times <= float(end_t)].sum())
+    assert v_real_end == pytest.approx(0.1)
 
 
 def test_load_raw_collection_accepts_in_memory_collection():
@@ -827,7 +751,6 @@ def test_prepare_artifact_persists_feed_metadata(tmp_path):
     semantics = metadata["semantics_provenance"]["processes"]["p1"]
 
     assert process_md["name_controlled_FVCs"] == ["feed_A"]
-    assert process_md["name_extras"] == ["V_sample_acc"]
     assert feed_md["signal_family"] == "feed"
     assert feed_md["source_kind"] == "control"
     assert feed_md["inlet_feed_medium"]["components"]["glucose"]["unit"] == "g/L"
@@ -933,219 +856,6 @@ def test_prepare_artifact_fails_on_missing_required_control(tmp_path):
         )
 
 
-def test_build_bolus_sources_triangle_geometry_and_step_ts():
-    collection = _make_bolus_collection()
-    process = collection.processes["bolus"]
-    source = build_bolus_sources(process)[0]
-    min_dt = (10.0 - 0.0) / BOLUS_MIN_DT_DURATION_DENOMINATOR
-    triangle_peak = 5.0 + 0.5 * min_dt
-    triangle_end = 5.0 + min_dt
-
-    assert source.evaluator(jnp.asarray([2.5]))[0] == pytest.approx(0.0)
-    assert float(source.metadata["triangle_min_dt"]) == pytest.approx(min_dt)
-    assert float(source.metadata["triangle_width"]) == pytest.approx(min_dt)
-    assert source.step_ts == pytest.approx([5.0, triangle_peak, triangle_end])
-    assert source.evaluator(jnp.asarray([5.0]))[0] == pytest.approx(0.0)
-    assert source.evaluator(jnp.asarray([triangle_peak]))[0] == pytest.approx(
-        2.0 / min_dt,
-        rel=1e-3,
-    )
-    assert source.evaluator(jnp.asarray([triangle_end]))[0] == pytest.approx(
-        0.0, abs=1e-3
-    )
-
-    t_grid = np.asarray([5.0, triangle_peak, triangle_end], dtype=float)
-    rates = source.evaluator(t_grid)
-    assert float(np.trapezoid(rates, t_grid)) == pytest.approx(1.0, abs=1e-9)
-
-
-def _make_bolus_collection_with_events(
-    event_times: list[float], event_values: list[float]
-) -> BioProcessCollection:
-    """Return a bolus collection whose single feed has explicit event schedule."""
-    if len(event_times) != len(event_values):
-        raise ValueError("event_times and event_values must have equal length")
-
-    feed_medium = FeedMedium(
-        name="feed",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "X": FeedMediumComponent(
-                name="X",
-                unit="g/L",
-                concentration=StaticVariable(0.0),
-                is_controlled=False,
-            )
-        },
-    )
-    process = BioProcess(
-        metadata=BioProcessMetadata(name="bolus", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "feed_bolus": FeedVolumeChange(
-                    name="feed_bolus",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray(event_times),
-                        values=jnp.asarray(event_values),
-                    ),
-                    feed_medium=feed_medium,
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(
-            name="rm",
-            density=1.0,
-            density_unit="kg/L",
-            components={
-                "X": ReactorMediumComponent(
-                    name="X",
-                    unit="g/L",
-                    concentration=StaticVariable(0.0),
-                ),
-                "biomass": ReactorMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=StaticVariable(0.1),
-                ),
-            },
-        ),
-        process_variables={
-            "X": ProcessVariable(
-                name="X",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0]),
-                    values=jnp.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
-                ),
-            )
-        },
-    )
-    return BioProcessCollection(
-        metadata={"case_study": {"case_id": "bolus"}}, processes={"bolus": process}
-    )
-
-
-def test_build_bolus_sources_raises_when_triangle_cannot_fit_before_end():
-    collection = _make_bolus_collection_with_events([9.995], [0.5])
-    process = collection.processes["bolus"]
-    with pytest.raises(ValueError, match="cannot fit triangle width"):
-        build_bolus_sources(process, run_min_dt=0.01)
-
-
-def test_build_bolus_sources_superposes_overlapping_events():
-    collection = _make_bolus_collection_with_events([5.0, 5.01], [1.0, 1.0])
-    process = collection.processes["bolus"]
-    source = build_bolus_sources(process)[0]
-    min_dt = (10.0 - 0.0) / BOLUS_MIN_DT_DURATION_DENOMINATOR
-    assert float(source.metadata["triangle_min_dt"]) == pytest.approx(min_dt)
-    step_ts = np.asarray(source.step_ts, dtype=float)
-    assert np.any(np.isclose(step_ts, 5.0, atol=1e-6))
-    assert np.any(np.isclose(step_ts, 5.005, atol=1e-4))
-    assert np.any(np.isclose(step_ts, 5.01, atol=1e-4))
-    assert np.any(np.isclose(step_ts, 5.015, atol=1e-4))
-    assert np.any(np.isclose(step_ts, 5.02, atol=1e-4))
-    assert source.evaluator(jnp.asarray([5.015]))[0] == pytest.approx(200.0, rel=1e-3)
-
-    t_grid = np.asarray([5.0, 5.005, 5.01, 5.015, 5.02], dtype=float)
-    rates = source.evaluator(t_grid)
-    assert float(np.trapezoid(rates, t_grid)) == pytest.approx(2.0, abs=1e-4)
-
-
-def test_build_bolus_sources_rejects_event_at_process_end():
-    collection = _make_bolus_collection_with_events([5.0, 10.0], [0.5, 0.5])
-    process = collection.processes["bolus"]
-    with pytest.raises(ValueError, match="at/after process end"):
-        build_bolus_sources(process)
-
-
-def test_prepare_allows_custom_sample_hook_without_run_min_dt(tmp_path):
-    process = BioProcess(
-        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "sample_1": SampleVolumeChange(
-                    name="sample_1",
-                    unit="L",
-                    is_controlled=False,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([5.0]),
-                        values=jnp.asarray([-0.1]),
-                    ),
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(
-            name="rm",
-            density=1.0,
-            density_unit="kg/L",
-            components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=StaticVariable(0.1),
-                )
-            },
-        ),
-        process_variables={},
-    )
-    collection = BioProcessCollection(
-        metadata={"case_study": {"case_id": "custom-sample"}},
-        processes={"p1": process},
-    )
-
-    custom_py = tmp_path / "custom_sample_override.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "import numpy as np",
-                "from bp_train.controls import SignalSource",
-                "",
-                "def build_sample_acc_series("
-                "process, process_name, collection_metadata, config):",
-                "    del process_name, collection_metadata, config",
-                "    t0 = float(process.time_axis.start)",
-                "    t1 = float(process.time_axis.end)",
-                "    times = np.asarray([t0, t1], dtype=float)",
-                "    values = np.asarray([0.0, 0.1], dtype=float)",
-                "    return SignalSource(",
-                "        name='V_sample_acc',",
-                "        kind='derived_control',",
-                "        times=times,",
-                "        values=values,",
-                "        evaluator=lambda ts: np.interp("
-                "np.asarray(ts, dtype=float), times, values, "
-                "left=values[0], right=values[-1]),",
-                "        derivative=lambda ts: np.full_like("
-                "np.asarray(ts, dtype=float), 0.01, dtype=float),",
-                "        step_ts=[t0, t1],",
-                "        metadata={'source': 'custom_test'},",
-                "    )",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    output_json = tmp_path / "prepared_custom_sample.json"
-    prepared = _prepare_from_collection(
-        collection, tmp_path, output_json, custom_py=custom_py
-    )
-    process_md = prepared.metadata["bp-train"]["processes"]["p1"]
-    assert process_md["sample_acc_source"]["metadata"]["source"] == "custom_test"
-    assert process_md["sample_acc_source"]["values"][-1] == pytest.approx(0.1)
-
-
 def test_select_control_sources_handles_null_feed_medium():
     """select_control_sources must not crash with AttributeError when
     feed_medium is None; semantic validation handles the clear error."""
@@ -1186,209 +896,10 @@ def test_select_control_sources_handles_null_feed_medium():
             ),
         },
     )
-    bundle = select_control_sources("p1", process, {})
+    bundle = select_control_sources(process)
     sources = bundle.all_sources
     assert len(sources) == 1
     assert sources[0].name == "feed_A"
     assert sources[0].metadata["inlet_feed_medium"] is None
     assert bundle.name_controlled_FVCs == ("feed_A",)
 
-
-def test_build_bolus_sources_handles_null_feed_medium():
-    """build_bolus_sources must not crash with AttributeError when
-    feed_medium is None (bolus / is_continuous=False path)."""
-    process = BioProcess(
-        metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=10.0, time_reference="start"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "feed_bolus": FeedVolumeChange(
-                    name="feed_bolus",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=False,
-                    values=TimeSeries(
-                        times=jnp.asarray([5.0]),
-                        values=jnp.asarray([1.0]),
-                    ),
-                    feed_medium=None,  # type: ignore[arg-type]
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(name="rm", density=1.0, density_unit="kg/L"),
-        process_variables={
-            "X": ProcessVariable(
-                name="X",
-                unit="g/L",
-                is_controlled=False,
-                values=TimeSeries(
-                    times=jnp.asarray([0.0, 2.0, 4.0, 6.0, 8.0, 10.0]),
-                    values=jnp.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
-                ),
-            ),
-        },
-    )
-    sources = build_bolus_sources(process)
-    assert len(sources) == 1
-    assert sources[0].name == "feed_bolus"
-    assert sources[0].metadata["inlet_feed_medium"] is None
-
-
-def _write_bolus_biomass_custom_py(path: Path) -> None:
-    """Add a biomass component (reactor + feed) to the single-process bolus
-    fixture so it passes prepare's bp_format and semantics validations."""
-    path.write_text(
-        "\n".join(
-            [
-                "from bp_format.dataclasses import (",
-                "    FeedMediumComponent,",
-                "    ReactorMediumComponent,",
-                "    StaticVariable,",
-                "    TimeSeries,",
-                ")",
-                "import jax.numpy as jnp",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = "
-                "ReactorMediumComponent(",
-                "        name='biomass',",
-                "        unit='g/L',",
-                "        concentration=TimeSeries(",
-                "            times=jnp.asarray([0.0, 5.0, 10.0]),",
-                "            values=jnp.asarray([0.1, 0.5, 1.0]),",
-                "        ),",
-                "    )",
-                "    feed = process.volume.volume_changes['feed_bolus'].feed_medium",
-                "    feed.components['biomass'] = FeedMediumComponent(",
-                "        name='biomass',",
-                "        unit='g/L',",
-                "        concentration=StaticVariable(0.0),",
-                "        is_controlled=False,",
-                "    )",
-                "    return collection",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
-def _write_bolus_run_min_dt_custom_py(path: Path, value: float) -> None:
-    del value
-    path.write_text("", encoding="utf-8")
-
-
-def test_prepare_artifact_honors_user_bolus_run_min_dt(tmp_path):
-    """User-supplied ``bolus_run_min_dt`` must not be overwritten by auto-detection.
-
-    Regression for a bug where prepare unconditionally overwrote user config
-    with the collection-wide minimum online-timestamp delta, making the
-    documented override knob a no-op.
-    """
-    output = tmp_path / "prepared_bolus_min_dt.json"
-    custom_py = tmp_path / "custom_bolus.py"
-    _write_bolus_biomass_custom_py(custom_py)
-    # Pick user_value strictly below the duration cap (10 / 1000 = 0.01) so
-    # ``get_bolus_min_dt`` does not silently clamp it; otherwise we'd be
-    # asserting against the cap rather than the user setting.
-    user_value = 0.005
-    auto_value = 10.0 / BOLUS_MIN_DT_DURATION_DENOMINATOR
-    assert user_value != auto_value
-
-    prepared = _prepare_from_collection(
-        _make_bolus_collection(),
-        tmp_path,
-        output,
-        custom_py=custom_py,
-        prepare_config={EVENT_RUN_MIN_DT_CONFIG_KEY: user_value},
-    )
-
-    rcc = prepared.metadata["bp-train"]["runtime_controls_config"]
-    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
-
-    on_disk = load_process_collection_json(output)
-    on_disk_rcc = on_disk.metadata["bp-train"]["runtime_controls_config"]
-    assert on_disk_rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
-
-
-def test_prepare_artifact_honors_custom_py_bolus_run_min_dt(tmp_path):
-    """Custom prepare.bolus_run_min_dt overrides auto-detected min_dt."""
-    output = tmp_path / "prepared_custom_bolus_min_dt.json"
-    custom_py = tmp_path / "custom.py"
-    user_value = 0.005
-    _write_bolus_run_min_dt_custom_py(custom_py, user_value)
-
-    raw = _make_bolus_collection()
-    raw.processes["bolus"].volume.volume_changes["sample_1"] = SampleVolumeChange(
-        name="sample_1",
-        unit="L",
-        is_controlled=False,
-        is_continuous=False,
-        values=TimeSeries(
-            times=jnp.asarray([6.0]),
-            values=jnp.asarray([-0.1]),
-        ),
-    )
-    auto_value = get_collection_bolus_min_dt(raw)
-    assert auto_value == pytest.approx(1.0)
-
-    prepared = _prepare_from_collection(
-        raw,
-        tmp_path,
-        output,
-        custom_py=custom_py,
-        prepare_config={EVENT_RUN_MIN_DT_CONFIG_KEY: user_value},
-    )
-    rcc = prepared.metadata["bp-train"]["runtime_controls_config"]
-    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(user_value)
-
-    prepared_md = prepared.metadata["bp-train"]["processes"]["bolus"]
-    feed_md = prepared_md["control_metadata"]["feed_bolus"]
-    sample_md = prepared_md["control_metadata"]["V_sample_acc"]
-    assert float(feed_md["triangle_min_dt"]) == pytest.approx(user_value)
-    assert float(sample_md["ramp_duration"]) == pytest.approx(user_value)
-
-    on_disk = load_process_collection_json(output)
-    store = ControlsStore.from_collection(on_disk)
-    triangle_md = store.get_controls("bolus").control_metadata["feed_bolus"]
-    assert float(triangle_md["triangle_min_dt"]) == pytest.approx(user_value)
-
-
-def test_prepare_artifact_auto_detects_bolus_run_min_dt_when_unset(tmp_path):
-    """Auto-detection still fires when the user did not supply a value."""
-    output = tmp_path / "prepared_bolus_min_dt_auto.json"
-    custom_py = tmp_path / "custom_bolus.py"
-    _write_bolus_biomass_custom_py(custom_py)
-    raw = _make_bolus_collection()
-    expected = get_collection_bolus_min_dt(raw)
-    prepared = _prepare_from_collection(raw, tmp_path, output, custom_py=custom_py)
-
-    rcc = prepared.metadata["bp-train"]["runtime_controls_config"]
-    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] == pytest.approx(expected)
-    assert rcc[EVENT_RUN_MIN_DT_CONFIG_KEY] > 0
-
-
-def test_controls_store_honors_prepared_bolus_run_min_dt(tmp_path):
-    """ControlsStore must reuse the prepared ``bolus_run_min_dt`` instead of
-    recomputing it from the collection at training time.
-
-    Regression for a second overwrite site in ``ControlsStore.from_collection``.
-    """
-    output = tmp_path / "prepared_bolus_for_store.json"
-    custom_py = tmp_path / "custom_bolus.py"
-    _write_bolus_biomass_custom_py(custom_py)
-    user_value = 0.005
-    _prepare_from_collection(
-        _make_bolus_collection(),
-        tmp_path,
-        output,
-        custom_py=custom_py,
-        prepare_config={EVENT_RUN_MIN_DT_CONFIG_KEY: user_value},
-    )
-
-    prepared = load_process_collection_json(output)
-    store = ControlsStore.from_collection(prepared)
-    triangle_md = store.get_controls("bolus").control_metadata["feed_bolus"]
-    assert float(triangle_md["triangle_min_dt"]) == pytest.approx(user_value)

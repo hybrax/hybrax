@@ -31,9 +31,7 @@ def _mock_rhs_ode_and_controls():
         name_controlled_PVs=("pH", "DO", "T"),
         name_modeled_rates=("q_biomass", "q_glucose", "q_acetate"),
     )
-    controls = SimpleNamespace(
-        name_extras=("inducer_bolus", "V_sample_acc"),
-    )
+    controls = SimpleNamespace()
     return rhs_ode, controls
 
 
@@ -94,7 +92,7 @@ def test_format_reaction_schema_handles_empty_axes():
         name_controlled_PVs=(),
         name_modeled_rates=("q_biomass",),
     )
-    controls = SimpleNamespace(name_extras=("V_sample_acc",))
+    controls = SimpleNamespace()
     text = format_reaction_schema(rhs_ode, controls)
 
     # The (0,) shape signals an empty axis; the names cell stays blank

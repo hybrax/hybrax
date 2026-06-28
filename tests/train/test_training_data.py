@@ -357,7 +357,6 @@ def test_training_data_store_exposes_per_process_active_views(tmp_path):
         [0.25, 0.35]
     )
     assert np.asarray(process_data.active_mask_measured).tolist() == [[True], [True]]
-    assert process_data.controls.sample_acc_name == "V_sample_acc"
 
 
 def test_training_data_store_builds_y0_with_vcont_last(tmp_path):
