@@ -824,6 +824,7 @@ def render_control_diagnostics(
         y0 = ax.get_ylim()[0]
         ax.plot(
             c.grid_t, np.full(c.grid_t.size, y0), "|", color="C3", ms=6, alpha=0.4,
+            label=f"dense-grid knots ({c.grid_t.size})",
         )
         ax.set_ylabel(f"{c.name}\n[{c.unit}]", fontsize=8)
         ax.legend(
