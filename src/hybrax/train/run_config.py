@@ -189,7 +189,6 @@ class ModelRef(ConfigBase):
 class ForwardOutputConfig(ConfigBase):
     dir: Path | None = None  # None -> <first model>/forward
     plots: bool = True
-    timeseries_csv: Path | None = None
 
 
 class ForwardRunConfig(ConfigBase):
@@ -230,10 +229,6 @@ def load_forward_config(config_path: str | Path) -> ForwardRunConfig:
     output_updates: dict[str, Any] = {}
     if cfg.output.dir is not None:
         output_updates["dir"] = _resolve_path(cfg.output.dir, base_dir=base_dir)
-    if cfg.output.timeseries_csv is not None:
-        output_updates["timeseries_csv"] = _resolve_path(
-            cfg.output.timeseries_csv, base_dir=base_dir
-        )
     if output_updates:
         updates["output"] = cfg.output.model_copy(update=output_updates)
     return cfg.model_copy(update=updates)
@@ -354,7 +349,7 @@ def resolve_prepared_path(path: Path) -> Path:
     ``bp-train prepare`` writes its output into a *directory* (``<dir>/prepared.json``).
     Accept either that directory (resolve the bundled ``prepared.json[.gz]`` inside) or a
     plain prepared.json file, so ``train`` / ``forward`` / ``loo`` can point at the prepare
-    output-dir directly (symmetric with ``forward --model <run-dir>``).
+    output-dir directly.
     """
     path = Path(path)
     if path.is_dir():

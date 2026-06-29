@@ -335,6 +335,34 @@ def _build_single_process_runtime(
     return collection, store, wrapper
 
 
+def _write_forward_config(
+    tmp_path: Path,
+    model_dirs,
+    *,
+    processes=None,
+    output_dir=None,
+    prepared=None,
+    plots=False,
+    name="forward-config.json",
+) -> Path:
+    """Write a forward_config.json for the `--config`-only forward CLI."""
+    cfg: dict = {"models": [str(m) for m in model_dirs]}
+    data: dict = {}
+    if prepared is not None:
+        data["prepared"] = str(prepared)
+    if processes is not None:
+        data["processes"] = list(processes)
+    if data:
+        cfg["data"] = data
+    output: dict = {"plots": plots}
+    if output_dir is not None:
+        output["dir"] = str(output_dir)
+    cfg["output"] = output
+    path = tmp_path / name
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+    return path
+
+
 def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
     run_dir = _make_forward_run_dir(
@@ -358,17 +386,9 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     output_dir = tmp_path / "fwd"
+    fwd_config = _write_forward_config(tmp_path, [run_dir], processes=("p1", "p2"))
     exit_code = cli.main(
-        [
-            "forward",
-            "--model",
-            str(run_dir),
-            "--process",
-            "p1,p2",
-            "--output-dir",
-            str(output_dir),
-            "--no-plot",
-        ]
+        ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
     )
     assert exit_code == 0
 
@@ -391,6 +411,30 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
 
 
+def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
+    """A second forward into a populated --output-dir is refused unless --overwrite."""
+    run_dir = _make_forward_run_dir(tmp_path, processes=("p1", "p2"))
+    monkeypatch.setattr(
+        cli, "load_process_collection_json", lambda p: _make_fake_collection()
+    )
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda collection, **k: _stub_forward_result()
+    )
+    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
+
+    output_dir = tmp_path / "fwd"
+    fwd_config = _write_forward_config(tmp_path, [run_dir])
+    base = ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
+
+    assert cli.main(base) == 0
+    assert (output_dir / "losses.csv").is_file()
+    # a second run without --overwrite is blocked
+    assert cli.main(base) == 1
+    # ...and allowed with it
+    assert cli.main(base + ["--overwrite"]) == 0
+
+
 def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
     """All solver settings (max_steps/rtol/atol/jump_ts) are replayed read-only
     from the model's config.json — there are no CLI override flags."""
@@ -411,9 +455,9 @@ def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
+    fwd_config = _write_forward_config(tmp_path, [run_dir])
     cli.main(
-        ["forward", "--model", str(run_dir), "--output-dir", str(tmp_path / "fwd"),
-         "--no-plot"]
+        ["forward", "--config", str(fwd_config), "--output-dir", str(tmp_path / "fwd")]
     )
     cfg = captured_cfg["cfg"]
     assert cfg.solver_rtol == 1e-5
@@ -422,26 +466,40 @@ def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
     assert cfg.solver_max_steps == 10  # straight from the model's config.json
 
 
-def test_forward_cli_removed_solver_flags_are_rejected(tmp_path: Path):
+def test_forward_cli_removed_flags_are_rejected(tmp_path: Path):
+    """The old per-run flags are gone — everything lives in the forward config now."""
     run_dir = _make_forward_run_dir(tmp_path)
-    for flag in ("--solver-rtol", "--solver-atol", "--solver-max-steps"):
+    fwd_config = _write_forward_config(tmp_path, [run_dir])
+    base = ["forward", "--config", str(fwd_config)]
+    for extra in (
+        ["--solver-rtol", "1"],
+        ["--solver-atol", "1"],
+        ["--solver-max-steps", "1"],
+        ["--no-jump-ts"],
+        ["--model", str(run_dir)],
+        ["--input", str(run_dir)],
+        ["--process", "p1"],
+        ["--no-plot"],
+        ["--loss-csv", str(tmp_path / "l.csv")],
+        ["--timeseries-csv", str(tmp_path / "t.csv")],
+    ):
         with pytest.raises(SystemExit):
-            cli.main(["forward", "--model", str(run_dir), flag, "1"])
-    with pytest.raises(SystemExit):
-        cli.main(["forward", "--model", str(run_dir), "--no-jump-ts"])
+            cli.main(base + extra)
 
 
 def test_forward_cli_bare_model_without_run_dir_errors(tmp_path: Path):
     # A bare .eqx with no config.json at/above it is not a valid model bundle.
     model_path = tmp_path / "m.eqx"
     model_path.write_bytes(b"")
+    fwd_config = _write_forward_config(tmp_path, [model_path])
     with pytest.raises(SystemExit, match="config.json"):
-        cli.main(["forward", "--model", str(model_path)])
+        cli.main(["forward", "--config", str(fwd_config)])
 
 
 def test_forward_cli_missing_model_errors(tmp_path: Path):
+    fwd_config = _write_forward_config(tmp_path, [tmp_path / "nope.eqx"])
     with pytest.raises(SystemExit, match="does not exist"):
-        cli.main(["forward", "--model", str(tmp_path / "nope.eqx")])
+        cli.main(["forward", "--config", str(fwd_config)])
 
 
 def test_forward_cli_no_configured_processes_evaluates_all(
@@ -464,15 +522,9 @@ def test_forward_cli_no_configured_processes_evaluates_all(
     monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
+    fwd_config = _write_forward_config(tmp_path, [run_dir])
     cli.main(
-        [
-            "forward",
-            "--model",
-            str(run_dir),
-            "--output-dir",
-            str(tmp_path / "fwd"),
-            "--no-plot",
-        ]
+        ["forward", "--config", str(fwd_config), "--output-dir", str(tmp_path / "fwd")]
     )
     assert captured_tpn["tpn"] == ("p1", "p2", "p3")
 
@@ -566,23 +618,17 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
 
     fwd_dir = out_dir / "forward"
     # forward consumes the run dir directly (solver/prepared/custom from config.json).
-    assert (
-        cli.main(
-            [
-                "forward",
-                "--model",
-                str(out_dir),
-                "--process",
-                "run_1",
-                "--output-dir",
-                str(fwd_dir),
-                "--no-plot",
-                "--timeseries-csv",
-                str(fwd_dir / "ts.csv"),
-            ]
+    fwd_config = tmp_path / "forward-config.json"
+    fwd_config.write_text(
+        json.dumps(
+            {
+                "models": [str(out_dir)],
+                "data": {"processes": ["run_1"]},
+                "output": {"dir": str(fwd_dir), "plots": False},
+            }
         )
-        == 0
     )
+    assert cli.main(["forward", "--config", str(fwd_config)]) == 0
     losses_csv = fwd_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
@@ -595,9 +641,7 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
     # curvature/<rate> columns — proves the dense_grid_n opt-in path runs
     # end-to-end through train -> checkpoint -> forward -> losses.csv.
     assert any(str(c).startswith("curvature/") for c in rows.columns)
-    # F2: --timeseries-csv is honoured even under --no-plot; predictions are
-    # written too (no longer gated behind plotting).
-    assert (fwd_dir / "ts.csv").exists()
+    # predictions.csv (the dense timeseries) is always written, even with plots off.
     assert (fwd_dir / "predictions.csv").exists()
 
 

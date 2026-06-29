@@ -36,7 +36,6 @@ from .postprocessing import (
 )
 from .prepare import prepare_artifact
 from .run_config import (
-    ForwardRunConfig,
     LoadedRunConfig,
     RunConfig,
     load_forward_config,
@@ -160,67 +159,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     forward_parser.add_argument(
         "--config",
+        required=True,
         help=(
             "forward_config.json: a `models` list of self-contained run/checkpoint "
-            "dirs (len 1 = single, >1 = ensemble) + optional `data`/`output`. "
-            "Mutually exclusive with --model."
-        ),
-    )
-    forward_parser.add_argument(
-        "--model",
-        help=(
-            "Shorthand for a 1-model config: a trained run directory, or a "
-            "checkpoint dir / params.eqx inside it (resolved up to the run's "
-            "config.json like `train --resume`)."
-        ),
-    )
-    forward_parser.add_argument(
-        "--input",
-        help=(
-            "Optional prepared.json file OR a prepare output-dir to forward on (new "
-            "data + controls); defaults to each model's own bundled prepared.json."
-        ),
-    )
-    forward_parser.add_argument(
-        "--process",
-        action="append",
-        default=[],
-        help=(
-            "Process name to evaluate (repeatable or comma-separated). "
-            "Defaults to every process in the data."
+            "dirs (len 1 = single, >1 = ensemble), plus optional `data` "
+            "(prepared / processes) and `output` (dir / plots)."
         ),
     )
     forward_parser.add_argument(
         "--output-dir",
         default=None,
-        help="Directory for forward outputs. Defaults to <first model>/forward.",
-    )
-    fwd_plot_group = forward_parser.add_mutually_exclusive_group()
-    fwd_plot_group.add_argument(
-        "--plot",
-        dest="plot",
-        action="store_true",
-        help="Generate per-process plots (default).",
-    )
-    fwd_plot_group.add_argument(
-        "--no-plot",
-        dest="plot",
-        action="store_false",
-        help="Skip plot generation.",
-    )
-    forward_parser.set_defaults(plot=True)
-    forward_parser.add_argument(
-        "--loss-csv",
-        default=None,
-        help="Write the loss table to this CSV. Default: <output-dir>/losses.csv.",
-    )
-    forward_parser.add_argument(
-        "--timeseries-csv",
-        default=None,
         help=(
-            "Write a single merged CSV of dense simulated trajectories with a "
-            "`process` column."
+            "Directory for forward outputs (overrides output.dir). Defaults to "
+            "<first model>/forward."
         ),
+    )
+    forward_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow re-running into a forward output dir that already has results.",
     )
     forward_parser.add_argument(
         "--log-level",
@@ -298,13 +255,6 @@ def _handle_prepare(args: argparse.Namespace) -> int:
         overwrite=args.overwrite,
     )
     return 0
-
-
-def _split_multi_values(raw_values: list[str]) -> tuple[str, ...]:
-    values: list[str] = []
-    for value in raw_values:
-        values.extend([part.strip() for part in value.split(",") if part.strip() != ""])
-    return tuple(values)
 
 
 def _write_train_results(
@@ -786,25 +736,12 @@ def _handle_forward(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger(__name__)
 
-    # --- Build the forward config (full file, or --model/--input shorthand) ---
-    if args.config and args.model:
-        log.error("forward: pass either --config or --model, not both")
-        return 1
-    if args.config:
-        fcfg = load_forward_config(args.config)
-    elif args.model:
-        raw: dict[str, Any] = {"models": [args.model]}
-        if args.input:
-            raw["data"] = {"prepared": args.input}
-        fcfg = ForwardRunConfig.model_validate(raw)  # paths relative to cwd
-    else:
-        log.error("forward requires --config <forward_config.json> or --model <dir>")
-        return 1
+    # --- Build the forward config (models + data + output all from the file) ---
+    fcfg = load_forward_config(args.config)
 
     models = fcfg.models
     shared_prepared = fcfg.data.prepared if fcfg.data is not None else None
     config_processes = fcfg.data.processes if fcfg.data is not None else None
-    cli_processes = _split_multi_values(args.process)
 
     if len(models) > 1 and shared_prepared is None:
         log.error(
@@ -814,6 +751,23 @@ def _handle_forward(args: argparse.Namespace) -> int:
         return 1
 
     names = _resolve_model_names(models)
+
+    # --- Output directory (resolved up-front so the re-run guard fails fast) ---
+    if args.output_dir is not None:
+        output_dir = Path(args.output_dir)
+    elif fcfg.output.dir is not None:
+        output_dir = Path(fcfg.output.dir)
+    else:
+        first_run_dir, *_ = _resolve_model_bundle(models[0].path)
+        output_dir = first_run_dir / "forward"
+    if (output_dir / "losses.csv").is_file() and not args.overwrite:
+        log.error(
+            "forward output dir %s already holds results; pass --overwrite to "
+            "replace them",
+            output_dir,
+        )
+        return 1
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Forward each model on its data ---
     per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
@@ -839,13 +793,9 @@ def _handle_forward(args: argparse.Namespace) -> int:
             custom_py = None
         collection = load_process_collection_json(resolve_prepared_path(Path(prepared)))
         eval_processes = (
-            tuple(cli_processes)
-            if cli_processes
-            else (
-                tuple(config_processes)
-                if config_processes
-                else tuple(collection.processes.keys())
-            )
+            tuple(config_processes)
+            if config_processes
+            else tuple(collection.processes.keys())
         )
         model_targets = model_cfg.data.targets if model_cfg.data is not None else None
         model_source = (
@@ -876,16 +826,6 @@ def _handle_forward(args: argparse.Namespace) -> int:
         per_model.append((name, result))
         overlay_collection = collection
         overlay_store = result.store
-
-    # --- Output directory ---
-    if args.output_dir is not None:
-        output_dir = Path(args.output_dir)
-    elif fcfg.output.dir is not None:
-        output_dir = Path(fcfg.output.dir)
-    else:
-        first_run_dir, *_ = _resolve_model_bundle(models[0].path)
-        output_dir = first_run_dir / "forward"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     wrapper0 = per_model[0][1].trained_wrapper
 
@@ -926,18 +866,10 @@ def _handle_forward(args: argparse.Namespace) -> int:
     # --- Loss table (representative = first model; per-model in models/<name>/) ---
     table_str, csv_rows = _format_loss_table(per_model[0][1])
     log.info("\n%s", table_str)
-    loss_csv_path = Path(args.loss_csv) if args.loss_csv else output_dir / "losses.csv"
-    _write_loss_csv(csv_rows, loss_csv_path)
-
-    # --- Optional merged timeseries CSV (mean) ---
-    ts_path = args.timeseries_csv or fcfg.output.timeseries_csv
-    if ts_path is not None:
-        export_predictions_csv(
-            wrapper0, mean_exports, ts_path, process_names=eval_processes
-        )
+    _write_loss_csv(csv_rows, output_dir / "losses.csv")
 
     # --- Plots: mean line + ±std band + measured overlay ---
-    if args.plot and fcfg.output.plots:
+    if fcfg.output.plots:
         named_losses, total_losses = forward_plot_losses(per_model[0][1])
         plot_process_simulations(
             wrapper0,
