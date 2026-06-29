@@ -31,7 +31,7 @@ from bp_format.serialization import (
 from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
-from bp_train.run_config import load_prepare_config
+from bp_train.run_config import load_prepare_config, resolve_prepared_path
 
 INPUT_JSON = Path(__file__).resolve().parent.parent / "input.json"
 
@@ -39,13 +39,13 @@ INPUT_JSON = Path(__file__).resolve().parent.parent / "input.json"
 def _prepare_from_collection(
     collection: BioProcessCollection,
     tmp_path: Path,
-    output_json: Path,
+    output_dir: Path,
     *,
     custom_py: Path | None = None,
     prepare_config: dict[str, object] | None = None,
 ) -> BioProcessCollection:
-    raw_json = tmp_path / f"{output_json.stem}-raw.json"
-    config_json = tmp_path / f"{output_json.stem}-config.json"
+    raw_json = tmp_path / f"{output_dir.name}-raw.json"
+    config_json = tmp_path / f"{output_dir.name}-config.json"
     save_process_collection_json(collection, raw_json)
     prepare: dict[str, object] = {"raw_input": str(raw_json)}
     if prepare_config is not None:
@@ -54,7 +54,7 @@ def _prepare_from_collection(
     if custom_py is not None:
         config["custom_py"] = str(custom_py)
     config_json.write_text(json.dumps(config), encoding="utf-8")
-    return prepare_artifact(load_prepare_config(config_json), output_json)
+    return prepare_artifact(load_prepare_config(config_json), output_dir)
 
 
 def _make_feed_collection() -> BioProcessCollection:
@@ -406,15 +406,16 @@ def test_prepare_artifact_preserves_valid_user_biological_ode(tmp_path):
     collection = _make_explicit_ode_collection()
     expected_ode = collection.processes["p1"].biological_ode
 
+    output_dir = tmp_path / "prepared-explicit-ode"
     prepared = _prepare_from_collection(
         collection,
         tmp_path,
-        tmp_path / "prepared-explicit-ode.json",
+        output_dir,
     )
 
     prepared_ode = prepared.processes["p1"].biological_ode
     assert prepared_ode == expected_ode
-    reloaded = load_process_collection_json(tmp_path / "prepared-explicit-ode.json")
+    reloaded = load_process_collection_json(output_dir / "prepared.json")
     assert reloaded.processes["p1"].biological_ode == expected_ode
 
 
@@ -438,7 +439,7 @@ def test_prepare_artifact_rejects_missing_biological_ode_after_transform(
         _prepare_from_collection(
             collection,
             tmp_path,
-            tmp_path / "prepared-missing-ode.json",
+            tmp_path / "prepared-missing-ode",
             custom_py=custom_py,
         )
 
@@ -469,7 +470,7 @@ def test_prepare_artifact_rejects_invalid_stale_biological_ode_after_transform(
         _prepare_from_collection(
             collection,
             tmp_path,
-            tmp_path / "prepared-regenerated-ode.json",
+            tmp_path / "prepared-regenerated-ode",
             custom_py=custom_py,
         )
 
@@ -499,7 +500,7 @@ def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
     prepared = _prepare_from_collection(
         collection,
         tmp_path,
-        tmp_path / "prepared-regenerated-ode.json",
+        tmp_path / "prepared-regenerated-ode",
         custom_py=custom_py,
     )
 
@@ -509,20 +510,22 @@ def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
 
 
 def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
-    output = tmp_path / "prepared.json"
+    output_dir = tmp_path / "prepared"
     custom_py = tmp_path / "custom.py"
     _write_sample_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning, match="bp_format validation reported non-OK status"):
         _prepare_from_collection(
-            _make_invalid_collection(), tmp_path, output, custom_py=custom_py
+            _make_invalid_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     metadata = prepared.metadata["bp-train"]
 
     assert metadata["process_order"] == list(prepared.processes.keys())
     assert metadata["runtime_controls_config"]["initial_grid_points"] >= 2
-    assert metadata["source_input_path"] == "prepared-raw.json"
+    # The raw input lives one level above the output dir (tmp_path/prepared-raw.json
+    # vs tmp_path/prepared/), so the portable path is recorded relative to output_dir.
+    assert metadata["source_input_path"] == "../prepared-raw.json"
 
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
@@ -542,15 +545,15 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
 
 
 def test_prepare_artifact_does_not_persist_padded_control_arrays(tmp_path):
-    output = tmp_path / "prepared-minimal.json"
+    output_dir = tmp_path / "prepared-minimal"
     custom_py = tmp_path / "custom.py"
     _write_sample_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning):
         _prepare_from_collection(
-            _make_invalid_collection(), tmp_path, output, custom_py=custom_py
+            _make_invalid_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     process_md = prepared.metadata["bp-train"]["processes"]["invalid"]
 
     assert "dense_grid" not in process_md
@@ -578,12 +581,12 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
         encoding="utf-8",
     )
 
-    output = tmp_path / "prepared-custom.json"
+    output_dir = tmp_path / "prepared-custom"
     _prepare_from_collection(
-        _make_two_process_collection(), tmp_path, output, custom_py=custom_py
+        _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
     )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     metadata = prepared.metadata["bp-train"]
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
@@ -592,17 +595,17 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
 
 
 def test_prepare_artifact_can_rename_processes(tmp_path):
-    output = tmp_path / "prepared-renamed.json"
+    output_dir = tmp_path / "prepared-renamed"
     _prepare_from_collection(
         _make_two_process_collection(),
         tmp_path,
-        output,
+        output_dir,
         prepare_config={
             "process_rename_map": {"p1": "process=p1", "p2": "process=p2"}
         },
     )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["process=p1", "process=p2"]
     assert prepared.processes["process=p1"].metadata.name == "process=p1"
     assert prepared.metadata["bp-train"]["process_order"] == [
@@ -613,11 +616,11 @@ def test_prepare_artifact_can_rename_processes(tmp_path):
 
 def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
     """Provenance must detect changes even when processes are renamed."""
-    output = tmp_path / "prepared-renamed-provenance.json"
+    output_dir = tmp_path / "prepared-renamed-provenance"
     _prepare_from_collection(
         _make_two_process_collection(),
         tmp_path,
-        output,
+        output_dir,
         prepare_config={
             "process_rename_map": {
                 "p1": "process=p1",
@@ -626,7 +629,7 @@ def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
         },
     )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     prov = prepared.metadata["bp-train"]["semantics_provenance"]["processes"]
     for new_name in ["process=p1", "process=p2"]:
         entry = prov[new_name]
@@ -643,7 +646,7 @@ def test_prepare_artifact_rejects_duplicate_process_renames(tmp_path):
         _prepare_from_collection(
             _make_two_process_collection(),
             tmp_path,
-            tmp_path / "prepared-duplicate-renames.json",
+            tmp_path / "prepared-duplicate-renames",
             prepare_config={"process_rename_map": {"p1": "same", "p2": "same"}},
         )
 
@@ -658,15 +661,15 @@ def test_prepare_artifact_partial_process_rename_preserves_unmapped_metadata_nam
     }
     assert collection.processes["key_p2"].metadata.name == "p2"
 
-    output = tmp_path / "prepared-partial-rename.json"
+    output_dir = tmp_path / "prepared-partial-rename"
     _prepare_from_collection(
         collection,
         tmp_path,
-        output,
+        output_dir,
         prepare_config={"process_rename_map": {"key_p1": "renamed_p1"}},
     )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["renamed_p1", "key_p2"]
     assert prepared.processes["renamed_p1"].metadata.name == "renamed_p1"
     assert prepared.processes["key_p2"].metadata.name == "p2"
@@ -691,12 +694,12 @@ def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
         ),
         encoding="utf-8",
     )
-    output = tmp_path / "prepared-transform-collection.json"
+    output_dir = tmp_path / "prepared-transform-collection"
     _prepare_from_collection(
-        _make_two_process_collection(), tmp_path, output, custom_py=custom_py
+        _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
     )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["proc::p1", "proc::p2"]
     assert prepared.metadata["collection_transform_marker"] == "applied"
     assert (
@@ -706,15 +709,15 @@ def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
 
 
 def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):
-    output = tmp_path / "prepared-sample.json"
+    output_dir = tmp_path / "prepared-sample"
     custom_py = tmp_path / "custom.py"
     _write_sample_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning):
         _prepare_from_collection(
-            _make_invalid_collection(), tmp_path, output, custom_py=custom_py
+            _make_invalid_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    store = ControlsStore.from_json(output)
+    store = ControlsStore.from_json(output_dir / "prepared.json")
     controls = store.get_controls("invalid")
     end_t = _make_invalid_collection().processes["invalid"].time_axis.end
     # V_real cumulative sampled volume at end == sum of sample-event volumes
@@ -736,15 +739,15 @@ def test_load_raw_collection_accepts_in_memory_collection():
 
 
 def test_prepare_artifact_persists_feed_metadata(tmp_path):
-    output = tmp_path / "prepared-feed.json"
+    output_dir = tmp_path / "prepared-feed"
     custom_py = tmp_path / "custom-feed.py"
     _write_feed_semantics_custom_py(custom_py)
     with pytest.warns(UserWarning):
         _prepare_from_collection(
-            _make_feed_collection(), tmp_path, output, custom_py=custom_py
+            _make_feed_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    prepared = load_process_collection_json(output)
+    prepared = load_process_collection_json(output_dir / "prepared.json")
     metadata = prepared.metadata["bp-train"]
     process_md = metadata["processes"]["p1"]
     feed_md = process_md["control_metadata"]["feed_A"]
@@ -770,7 +773,7 @@ def test_prepare_artifact_fails_without_required_medium_enrichment(tmp_path):
         _prepare_from_collection(
             _make_invalid_collection(),
             tmp_path,
-            tmp_path / "prepared-missing-medium.json",
+            tmp_path / "prepared-missing-medium",
         )
 
 
@@ -788,7 +791,7 @@ def test_prepare_artifact_fails_strict_post_transform_bp_format_validation(tmp_p
         _prepare_from_collection(
             _make_feed_collection(),
             tmp_path,
-            tmp_path / "prepared-incomplete-feed.json",
+            tmp_path / "prepared-incomplete-feed",
             custom_py=custom_py,
         )
 
@@ -814,7 +817,7 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
         match="feed 'feed_A' has no feed-medium component metadata after prep",
     ):
         _prepare_from_collection(
-            collection, tmp_path, tmp_path / "prepared-zero-feed.json"
+            collection, tmp_path, tmp_path / "prepared-zero-feed"
         )
 
 
@@ -841,7 +844,7 @@ def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
         _prepare_from_collection(
             _make_two_process_collection(),
             tmp_path,
-            tmp_path / "prepared-bad.json",
+            tmp_path / "prepared-bad",
             custom_py=custom_py,
         )
 
@@ -851,9 +854,51 @@ def test_prepare_artifact_fails_on_missing_required_control(tmp_path):
         _prepare_from_collection(
             _make_two_process_collection(),
             tmp_path,
-            tmp_path / "prepared-missing.json",
+            tmp_path / "prepared-missing",
             prepare_config={"required_control_names": ["CF"]},
         )
+
+
+def _write_control_custom_py(path: Path) -> None:
+    """Mark CF/T controlled so prepare emits a control-diagnostics plot."""
+    path.write_text(
+        "\n".join(
+            [
+                "def transform_process_collection(collection, config):",
+                "    for process in collection.processes.values():",
+                "        process.process_variables['CF'].is_controlled = True",
+                "        process.process_variables['T'].is_controlled = True",
+                "        process.biological_ode = None",
+                "        process.__post_init__()",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_prepare_artifact_writes_output_dir_layout(tmp_path):
+    output_dir = tmp_path / "prepared-layout"
+    custom_py = tmp_path / "control.py"
+    _write_control_custom_py(custom_py)
+    _prepare_from_collection(
+        _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
+    )
+
+    assert (output_dir / "prepared.json").is_file()
+    assert (output_dir / "prepare_config.json").is_file()
+    assert (output_dir / "prepare_diagnostics").is_dir()
+
+
+def test_resolve_prepared_path_dir_vs_file(tmp_path):
+    output_dir = tmp_path / "prepared-resolve"
+    _prepare_from_collection(_make_two_process_collection(), tmp_path, output_dir)
+
+    # A directory resolves to the bundled prepared.json inside it.
+    assert resolve_prepared_path(output_dir) == output_dir / "prepared.json"
+    # A plain prepared.json file path passes through unchanged.
+    prepared_file = output_dir / "prepared.json"
+    assert resolve_prepared_path(prepared_file) == prepared_file
 
 
 def test_select_control_sources_handles_null_feed_medium():

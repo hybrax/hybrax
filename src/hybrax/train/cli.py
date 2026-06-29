@@ -43,6 +43,7 @@ from .run_config import (
     load_loo_config,
     load_prepare_config,
     load_train_config,
+    resolve_prepared_path,
 )
 from .serialization import (
     content_hash,
@@ -75,11 +76,16 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Path to prepare run config JSON.",
     )
-    prepare_parser.add_argument("--output", required=True, help="Path to output JSON.")
+    prepare_parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Output directory for the prepare artifacts "
+        "(prepared.json, prepare_config.json, prepare_diagnostics/).",
+    )
     prepare_parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Overwrite an existing prepared.json at --output.",
+        help="Overwrite an existing prepared.json in --output-dir.",
     )
     prepare_parser.set_defaults(handler=_handle_prepare)
 
@@ -171,8 +177,8 @@ def _build_parser() -> argparse.ArgumentParser:
     forward_parser.add_argument(
         "--input",
         help=(
-            "Optional prepared.json to forward on (new data + controls); defaults "
-            "to each model's own bundled prepared.json."
+            "Optional prepared.json file OR a prepare output-dir to forward on (new "
+            "data + controls); defaults to each model's own bundled prepared.json."
         ),
     )
     forward_parser.add_argument(
@@ -278,16 +284,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _handle_prepare(args: argparse.Namespace) -> int:
-    output = Path(args.output)
-    if output.exists() and not args.overwrite:
+    output_dir = Path(args.output_dir)
+    prepared = output_dir / "prepared.json"
+    if prepared.exists() and not args.overwrite:
         logging.getLogger(__name__).error(
             "prepared artifact already exists at %s; pass --overwrite to replace it",
-            output,
+            prepared,
         )
         return 1
     prepare_artifact(
         load_prepare_config(args.config),
-        output_json=args.output,
+        output_dir=args.output_dir,
+        overwrite=args.overwrite,
     )
     return 0
 
@@ -829,7 +837,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             custom_py = str(_run_dir / "custom.py")
         else:
             custom_py = None
-        collection = load_process_collection_json(Path(prepared))
+        collection = load_process_collection_json(resolve_prepared_path(Path(prepared)))
         eval_processes = (
             tuple(cli_processes)
             if cli_processes

@@ -29,8 +29,9 @@ pip install -e ".[dev]"
 ### CLI pipeline
 
 ```bash
-# 1. transform a raw bp-format collection into a prepared artifact
-bp-train prepare --config prepare-config.json --output prepared.json
+# 1. transform a raw bp-format collection into a prepared dir
+#    (writes prepared.json + prepare_config.json + prepare_diagnostics/ into it)
+bp-train prepare --config prepare-config.json --output-dir prepared
 
 # 2. fit reaction + loss modules into a run directory
 bp-train train   --config train-config.json
@@ -39,7 +40,7 @@ bp-train train   --config train-config.json
 bp-train forward --model output --timeseries-csv predictions.csv
 
 # 4. (optional) leave-one-process-out cross-validation
-bp-train loo     --input prepared.json --custom custom.py
+bp-train loo     --config loo-config.json
 ```
 
 A `custom.py` next to the config supplies the hooks (`build_reaction_module`,

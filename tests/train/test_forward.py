@@ -497,7 +497,8 @@ FIXTURE_CUSTOM = FIXTURE_DIR / "custom.py"
 )
 def test_forward_end_to_end_on_fixture(tmp_path: Path):
     """Full round-trip on the tests/ fixture: prepare -> train 3 -> forward."""
-    prepared = tmp_path / "prepared.json"
+    prepared_dir = tmp_path / "prepared"
+    prepared = prepared_dir / "prepared.json"
     prepare_config = tmp_path / "prepare-config.json"
     prepare_config.write_text(
         json.dumps(
@@ -513,8 +514,8 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
                 "prepare",
                 "--config",
                 str(prepare_config),
-                "--output",
-                str(prepared),
+                "--output-dir",
+                str(prepared_dir),
             ]
         )
         == 0
@@ -526,7 +527,7 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
         json.dumps(
             {
                 "data": {
-                    "prepared": str(prepared),
+                    "prepared": str(prepared_dir),
                     "target_source": "reactor_components",
                 },
                 "custom_py": str(FIXTURE_CUSTOM),
@@ -608,7 +609,8 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
 def test_forward_ensemble_on_fixture(tmp_path: Path):
     """Two self-contained checkpoints forwarded as an ensemble -> per-model
     predictions + mean (predictions.csv) + std (predictions_std.csv)."""
-    prepared = tmp_path / "prepared.json"
+    prepared_dir = tmp_path / "prepared"
+    prepared = prepared_dir / "prepared.json"
     prepare_config = tmp_path / "prepare-config.json"
     prepare_config.write_text(
         json.dumps(
@@ -619,7 +621,7 @@ def test_forward_ensemble_on_fixture(tmp_path: Path):
         )
     )
     assert cli.main(
-        ["prepare", "--config", str(prepare_config), "--output", str(prepared)]
+        ["prepare", "--config", str(prepare_config), "--output-dir", str(prepared_dir)]
     ) == 0
 
     out_dir = tmp_path / "run"
@@ -627,7 +629,7 @@ def test_forward_ensemble_on_fixture(tmp_path: Path):
     train_config.write_text(
         json.dumps(
             {
-                "data": {"prepared": str(prepared), "target_source": "reactor_components"},
+                "data": {"prepared": str(prepared_dir), "target_source": "reactor_components"},
                 "custom_py": str(FIXTURE_CUSTOM),
                 "train": {"steps": 2, "seed": 42},
                 "solver": {"max_steps": 2048, "rtol": 1e-3, "atol": 1e-5},
@@ -682,21 +684,21 @@ def test_prepare_content_hash_stable_across_reprepare(tmp_path: Path):
             }
         )
     )
-    first = tmp_path / "first.json"
-    second = tmp_path / "second.json"
-    assert cli.main(["prepare", "--config", str(prepare_config), "--output", str(first)]) == 0
-    assert cli.main(["prepare", "--config", str(prepare_config), "--output", str(second)]) == 0
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    assert cli.main(["prepare", "--config", str(prepare_config), "--output-dir", str(first)]) == 0
+    assert cli.main(["prepare", "--config", str(prepare_config), "--output-dir", str(second)]) == 0
 
-    p1 = json.loads(first.read_text())["metadata"]["bp-train"]["provenance"]
-    p2 = json.loads(second.read_text())["metadata"]["bp-train"]["provenance"]
+    p1 = json.loads((first / "prepared.json").read_text())["metadata"]["bp-train"]["provenance"]
+    p2 = json.loads((second / "prepared.json").read_text())["metadata"]["bp-train"]["provenance"]
     assert p1["content_hash"] == p2["content_hash"]  # stable science
     assert p1["prepared_at"] != p2["prepared_at"] or True  # timestamps may tie
 
     # The re-run guard blocks overwriting without --overwrite.
-    assert cli.main(["prepare", "--config", str(prepare_config), "--output", str(first)]) == 1
+    assert cli.main(["prepare", "--config", str(prepare_config), "--output-dir", str(first)]) == 1
     assert (
         cli.main(
-            ["prepare", "--config", str(prepare_config), "--output", str(first), "--overwrite"]
+            ["prepare", "--config", str(prepare_config), "--output-dir", str(first), "--overwrite"]
         )
         == 0
     )

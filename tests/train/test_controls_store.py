@@ -33,18 +33,18 @@ from bp_train.run_config import load_prepare_config
 def _prepare_from_collection(
     collection: BioProcessCollection,
     tmp_path: Path,
-    output_json: Path,
+    output_dir: Path,
     *,
     custom_py: Path | None = None,
 ) -> None:
-    raw_json = tmp_path / f"{output_json.stem}-raw.json"
-    config_json = tmp_path / f"{output_json.stem}-config.json"
+    raw_json = tmp_path / f"{output_dir.name}-raw.json"
+    config_json = tmp_path / f"{output_dir.name}-config.json"
     save_process_collection_json(collection, raw_json)
     config: dict[str, object] = {"prepare": {"raw_input": str(raw_json)}}
     if custom_py is not None:
         config["custom_py"] = str(custom_py)
     config_json.write_text(json.dumps(config), encoding="utf-8")
-    prepare_artifact(load_prepare_config(config_json), output_json)
+    prepare_artifact(load_prepare_config(config_json), output_dir)
 
 
 def _column_index(controls, name: str) -> int:
@@ -182,9 +182,9 @@ def _prepare_two_process(tmp_path: Path) -> Path:
         json.dumps({"custom_py": str(custom_py), "prepare": {"raw_input": str(raw)}}),
         encoding="utf-8",
     )
-    output = tmp_path / "prepared.json"
-    prepare_artifact(load_prepare_config(config_path), output)
-    return output
+    output_dir = tmp_path / "prepared"
+    prepare_artifact(load_prepare_config(config_path), output_dir)
+    return output_dir / "prepared.json"
 
 
 def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
@@ -217,9 +217,9 @@ def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    output = tmp_path / "prepared-inconsistent.json"
-    prepare_artifact(load_prepare_config(config_path), output)
-    return output
+    output_dir = tmp_path / "prepared-inconsistent"
+    prepare_artifact(load_prepare_config(config_path), output_dir)
+    return output_dir / "prepared.json"
 
 
 def test_controls_store_loads_by_process_name_and_index(tmp_path):

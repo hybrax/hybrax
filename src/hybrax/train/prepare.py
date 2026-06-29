@@ -230,7 +230,9 @@ def _runtime_controls_config(prepare: PrepareConfig) -> dict[str, Any]:
 
 def prepare_artifact(
     loaded_config: LoadedRunConfig,
-    output_json: str | Path,
+    output_dir: str | Path,
+    *,
+    overwrite: bool = False,
 ) -> BioProcessCollection:
     config = loaded_config.config
     custom_module = loaded_config.custom_module
@@ -240,7 +242,11 @@ def prepare_artifact(
         raise ValueError("prepare_artifact requires a prepare config section")
 
     input_path = prepare.raw_input
-    output_path = Path(output_json)
+    # `--output-dir` holds the prepare-owned files (clash-free with a train/forward run
+    # that may share the dir): prepared.json + prepare_config.json + prepare_diagnostics/.
+    output_dir = Path(output_dir)
+    del overwrite  # the CLI guards prepared.json; prepare only (re)writes its own files
+    output_path = output_dir / "prepared.json"
 
     raw_collection = load_raw_collection(input_path, case_study=prepare.case_study)
     validation_report = validate_collection(
@@ -379,12 +385,17 @@ def prepare_artifact(
     # provenance block excluded, so it is self-consistent and re-prepare-stable).
     bp_train_metadata["provenance"]["content_hash"] = content_hash(collection)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     save_process_collection_json(collection, output_path)
+    # Standalone, inspectable record of how this prepare ran (clash-free with train's
+    # config.json) — the bp_train provenance/metadata block, without the bulk collection.
+    (output_dir / "prepare_config.json").write_text(
+        json.dumps(bp_train_metadata, indent=2, default=str), encoding="utf-8"
+    )
 
     if prepare.diagnostics:
         try:
-            _render_control_diagnostics(collection, process_bundles, prepare, output_path)
+            _render_control_diagnostics(collection, process_bundles, output_dir)
         except Exception as exc:  # noqa: BLE001 — diagnostics are auxiliary
             logger.warning("control diagnostics rendering failed: %r", exc)
 
@@ -415,10 +426,11 @@ def _control_unit(process: Any, name: str) -> str:
 def _render_control_diagnostics(
     collection: BioProcessCollection,
     process_bundles: dict[str, Any],
-    prepare: PrepareConfig,
-    output_path: Path,
+    output_dir: Path,
 ) -> None:
     """Build per-process control diagnostics and render them (prepare is one-shot)."""
+    import shutil
+
     from .controls_store import ControlsStore
     from .postprocessing import (
         ControlDiagnostic,
@@ -426,9 +438,11 @@ def _render_control_diagnostics(
         render_control_diagnostics,
     )
 
-    diag_dir = prepare.diagnostics_dir or (
-        output_path.parent / f"{output_path.stem}_diagnostics"
-    )
+    # prepare-owned plot dir: clear stale plots (e.g. fewer processes on re-prepare),
+    # but never touch the rest of a possibly-shared train/forward run dir.
+    diag_dir = output_dir / "prepare_diagnostics"
+    if diag_dir.exists():
+        shutil.rmtree(diag_dir)
     store = ControlsStore.from_collection(collection)
     for name, process in collection.processes.items():
         bundle = process_bundles[name]

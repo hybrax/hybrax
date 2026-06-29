@@ -55,25 +55,26 @@ def test_prepare_cli_dispatches_loaded_config(monkeypatch, tmp_path: Path):
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"prepare": {"raw_input": "raw.json"}}))
 
-    def fake_prepare_artifact(loaded_config, *, output_json):
+    def fake_prepare_artifact(loaded_config, *, output_dir, overwrite=False):
         captured["loaded_config"] = loaded_config
-        captured["output_json"] = output_json
+        captured["output_dir"] = output_dir
+        captured["overwrite"] = overwrite
 
     monkeypatch.setattr(cli, "prepare_artifact", fake_prepare_artifact)
 
     exit_code = cli.main(
-        ["prepare", "--config", str(config_path), "--output", "prepared.json"]
+        ["prepare", "--config", str(config_path), "--output-dir", "prepared"]
     )
 
     assert exit_code == 0
     loaded = captured["loaded_config"]
     assert loaded.config.prepare.raw_input == tmp_path / "raw.json"
-    assert captured["output_json"] == "prepared.json"
+    assert captured["output_dir"] == "prepared"
 
 
 @pytest.mark.parametrize("flag", ["--input", "--custom", "--case-study"])
 def test_prepare_cli_rejects_legacy_experiment_flags(flag: str) -> None:
-    args = ["prepare", "--config", "config.json", "--output", "prepared.json"]
+    args = ["prepare", "--config", "config.json", "--output-dir", "prepared"]
     args.extend([flag, "value"])
 
     with pytest.raises(SystemExit):

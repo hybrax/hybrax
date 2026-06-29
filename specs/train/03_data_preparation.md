@@ -36,7 +36,7 @@ assembles batches from the prepared artifact.
 
 ```python
 load_raw_collection(input_json, *, case_study=None) -> BioProcessCollection
-prepare_artifact(loaded_config: LoadedRunConfig, output_json) -> BioProcessCollection
+prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False) -> BioProcessCollection
 ```
 
 - `load_raw_collection` accepts a bp-format collection file, an in-memory
@@ -142,8 +142,16 @@ loss fits whichever targets `target_source` selects (`TARGET_SOURCES`):
 ## Examples
 
 ```bash
-bp-train prepare --config prepare-config.json --output prepared.json
+bp-train prepare --config prepare-config.json --output-dir prepared
 ```
+
+`prepare` writes standard-named files into `--output-dir`: `prepared.json` (the
+artifact downstream consumes), `prepare_config.json` (resolved config +
+provenance), and `prepare_diagnostics/<process>_controls.png` (when
+`prepare.diagnostics`). `--overwrite` rewrites only those prepare-owned files, so
+the dir can be shared with a `train`/`forward` run. Downstream `data.prepared` /
+`forward --input` accept either this dir (resolving `prepared.json[.gz]` inside)
+or a plain `prepared.json` file.
 
 ```jsonc
 // prepare-config.json

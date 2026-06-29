@@ -19,7 +19,7 @@ list of every hook with its signature.
 raw bp_format collection
    │  bp-train prepare   (transform + estimate scales + build controls)
    ▼
-prepared.json
+prepare dir (prepared.json, prepare_config.json, prepare_diagnostics/)
    │  bp-train train     (fit reaction + loss modules → run directory)
    ▼
 run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
@@ -44,8 +44,8 @@ Transform a raw bp-format process collection into a prepared artifact.
 | Flag | Required | Meaning |
 |---|---|---|
 | `--config` | yes | Path to a prepare run config JSON (needs a `prepare` section). |
-| `--output` | yes | Path to the output `prepared.json`. |
-| `--overwrite` | no | Overwrite an existing `prepared.json` at `--output`. |
+| `--output-dir` | yes | Output directory; prepare writes `prepared.json`, `prepare_config.json`, and `prepare_diagnostics/` into it. |
+| `--overwrite` | no | Overwrite an existing `prepared.json` in `--output-dir` (rewrites only prepare's own files; leaves any train/forward artifacts in the dir untouched). |
 
 ### `bp-train train`
 
@@ -73,7 +73,7 @@ training); regenerates plots and prints a loss table.
 |---|---|
 | `--config` | `forward_config.json`: a `models` list of self-contained run/checkpoint dirs (len 1 = single, >1 = ensemble) + optional `data`/`output`. Mutually exclusive with `--model`. |
 | `--model` | Shorthand for a 1-model config: a run dir, or a checkpoint dir / `params.eqx` inside it. |
-| `--input` | Optional `prepared.json` to forward on (new data + controls); defaults to each model's bundled one. |
+| `--input` | Optional prepared collection to forward on (new data + controls): a `prepared.json[.gz]` file or a prepare `--output-dir` (resolves `prepared.json` inside); defaults to each model's bundled one. |
 | `--process` | Process name to evaluate (repeatable or comma-separated); default all. |
 | `--output-dir` | Forward outputs dir; default `<first model>/forward`. |
 | `--plot` / `--no-plot` | Per-process plots (default on). |
@@ -229,7 +229,7 @@ Top-level keys (unknown keys are rejected):
 
 | Field | Type / default | Meaning |
 |---|---|---|
-| `prepared` | path (required) | The `prepared.json` to train on. |
+| `prepared` | path (required) | The prepared collection to train on: a `prepared.json[.gz]` file or a prepare `--output-dir` (resolves `prepared.json` inside). |
 | `processes` | tuple\|null = null | Subset of process names; null = all. |
 | `targets` | tuple\|null = null | Explicit target names; null = derived. |
 | `target_source` | `auto` | `auto`/`process_variables`/`reactor_components`/`combined`. |
@@ -305,7 +305,7 @@ From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config
 
 ```jsonc
 {
-  "data":   { "prepared": "prepared.json", "target_source": "combined" },
+  "data":   { "prepared": "prepared", "target_source": "combined" },  // dir or prepared.json[.gz]
   "custom_py": "custom.py",          // build_reaction_module / estimate_all_scales / …
   "train":  { "steps": 1000, "seed": 0, "devices": "max" },
   "logging":{ "every": 100 },
@@ -315,7 +315,7 @@ From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config
 ```
 Run it with:
 ```bash
-bp-train prepare --config prepare-config.json --output prepared.json
+bp-train prepare --config prepare-config.json --output-dir prepared
 bp-train train   --config train-config.json
 bp-train forward --model output
 ```

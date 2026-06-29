@@ -29,18 +29,18 @@ from bp_train.training_data import TrainingDataStore
 def _prepare_from_collection(
     collection: BioProcessCollection,
     tmp_path: Path,
-    output_json: Path,
+    output_dir: Path,
     *,
     custom_py: Path | None = None,
 ) -> None:
-    raw_json = tmp_path / f"{output_json.stem}-raw.json"
-    config_json = tmp_path / f"{output_json.stem}-config.json"
+    raw_json = tmp_path / f"{output_dir.name}-raw.json"
+    config_json = tmp_path / f"{output_dir.name}-config.json"
     save_process_collection_json(collection, raw_json)
     config: dict[str, object] = {"prepare": {"raw_input": str(raw_json)}}
     if custom_py is not None:
         config["custom_py"] = str(custom_py)
     config_json.write_text(json.dumps(config), encoding="utf-8")
-    prepare_artifact(load_prepare_config(config_json), output_json)
+    prepare_artifact(load_prepare_config(config_json), output_dir)
 
 
 def _make_two_process_collection() -> BioProcessCollection:
@@ -195,11 +195,11 @@ def _write_custom(path: Path) -> None:
 def _prepare_collection(tmp_path: Path) -> Path:
     custom_py = tmp_path / "custom.py"
     _write_custom(custom_py)
-    output = tmp_path / "prepared.json"
+    output_dir = tmp_path / "prepared"
     _prepare_from_collection(
-        _make_two_process_collection(), tmp_path, output, custom_py=custom_py
+        _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
     )
-    return output
+    return output_dir / "prepared.json"
 
 
 def _make_reactor_target_collection() -> BioProcessCollection:
@@ -373,14 +373,14 @@ def test_training_data_store_rejects_inconsistent_target_set(tmp_path):
 
     custom_py = tmp_path / "custom.py"
     _write_custom(custom_py)
-    prepared_json = tmp_path / "prepared.json"
-    _prepare_from_collection(collection, tmp_path, prepared_json, custom_py=custom_py)
+    output_dir = tmp_path / "prepared"
+    _prepare_from_collection(collection, tmp_path, output_dir, custom_py=custom_py)
 
     with pytest.raises(
         ValueError,
         match="identical measured target names/order across processes",
     ):
-        TrainingDataStore.from_json(prepared_json)
+        TrainingDataStore.from_json(output_dir / "prepared.json")
 
 
 def test_training_data_store_rejects_inconsistent_target_order(tmp_path):
@@ -404,14 +404,14 @@ def test_training_data_store_rejects_inconsistent_target_order(tmp_path):
         ),
         encoding="utf-8",
     )
-    prepared_json = tmp_path / "prepared.json"
-    _prepare_from_collection(collection, tmp_path, prepared_json, custom_py=custom_py)
+    output_dir = tmp_path / "prepared"
+    _prepare_from_collection(collection, tmp_path, output_dir, custom_py=custom_py)
 
     with pytest.raises(
         ValueError,
         match="identical measured target names/order across processes",
     ):
-        TrainingDataStore.from_json(prepared_json)
+        TrainingDataStore.from_json(output_dir / "prepared.json")
 
 
 def test_training_data_store_rejects_controlled_target_in_configured_order(tmp_path):
@@ -693,10 +693,10 @@ def _make_combined_collection() -> BioProcessCollection:
 
 
 def test_training_data_combined_fits_rmcs_and_pvs(tmp_path):
-    output = tmp_path / "prepared.json"
-    _prepare_from_collection(_make_combined_collection(), tmp_path, output)
+    output_dir = tmp_path / "prepared"
+    _prepare_from_collection(_make_combined_collection(), tmp_path, output_dir)
 
-    store = TrainingDataStore.from_json(output, target_source="combined")
+    store = TrainingDataStore.from_json(output_dir / "prepared.json", target_source="combined")
 
     # Both source families populate their tuple; name_measured is the ordered
     # [RMCs | PVs] leading state block.

@@ -3,6 +3,8 @@ reference/
 *.log
 *.log.*
 checkpoints/
+# prepare control-diagnostic plots (regenerated on every `prepare`)
+prepare_diagnostics/
 
 # no local dev stuff
 *-local/

@@ -107,11 +107,9 @@ class PrepareConfig(ConfigBase):
     max_rel_error: float = Field(1e-4, gt=0)
     max_refinement_rounds: int = Field(8, ge=0)
     process_rename_map: dict[str, str] = Field(default_factory=dict)
-    # Emit per-process control diagnostic plots (raw data vs stored control spline)
-    # at the end of prepare. ``diagnostics_dir`` defaults to
-    # ``<prepared_stem>_diagnostics/`` next to the output JSON.
+    # Emit per-process control diagnostic plots (raw data vs stored control spline) into
+    # ``<output-dir>/prepare_diagnostics/`` at the end of prepare.
     diagnostics: bool = True
-    diagnostics_dir: Path | None = None
 
 
 class HoldoutSet(ConfigBase):
@@ -223,7 +221,11 @@ def load_forward_config(config_path: str | Path) -> ForwardRunConfig:
     }
     if cfg.data is not None and cfg.data.prepared is not None:
         updates["data"] = cfg.data.model_copy(
-            update={"prepared": _resolve_path(cfg.data.prepared, base_dir=base_dir)}
+            update={
+                "prepared": resolve_prepared_path(
+                    _resolve_path(cfg.data.prepared, base_dir=base_dir)
+                )
+            }
         )
     output_updates: dict[str, Any] = {}
     if cfg.output.dir is not None:
@@ -317,7 +319,11 @@ def _resolve_config_paths(config: RunConfig, *, base_dir: Path) -> RunConfig:
         updates["custom_py"] = _resolve_path(config.custom_py, base_dir=base_dir)
     if config.data is not None:
         updates["data"] = config.data.model_copy(
-            update={"prepared": _resolve_path(config.data.prepared, base_dir=base_dir)}
+            update={
+                "prepared": resolve_prepared_path(
+                    _resolve_path(config.data.prepared, base_dir=base_dir)
+                )
+            }
         )
     if config.prepare is not None:
         updates["prepare"] = config.prepare.model_copy(
@@ -340,6 +346,21 @@ def _resolve_path(path: Path, *, base_dir: Path) -> Path:
     if path.is_absolute():
         return path
     return (base_dir / path).resolve()
+
+
+def resolve_prepared_path(path: Path) -> Path:
+    """Resolve a prepared-data reference to the prepared.json file.
+
+    ``bp-train prepare`` writes its output into a *directory* (``<dir>/prepared.json``).
+    Accept either that directory (resolve the bundled ``prepared.json[.gz]`` inside) or a
+    plain prepared.json file, so ``train`` / ``forward`` / ``loo`` can point at the prepare
+    output-dir directly (symmetric with ``forward --model <run-dir>``).
+    """
+    path = Path(path)
+    if path.is_dir():
+        gz = path / "prepared.json.gz"
+        return gz if gz.is_file() else path / "prepared.json"
+    return path
 
 
 def _validate_required_sections(
