@@ -7,20 +7,16 @@ import numpy as np
 
 SIM_1_DIR = Path(__file__).resolve().parent
 SIM_RESULTS_DIR = SIM_1_DIR / "sim_results"
-SIMULATION_PLOTS_DIR = SIM_1_DIR / "sim_plots"
 DIAGNOSTIC_PLOTS_DIR = SIM_1_DIR / "diagnostic_plots"
 SIMULATION_DENSE_OUTPUT = SIM_RESULTS_DIR / "simulation_dense_output.csv"
 EVENTS_OUTPUT = SIM_RESULTS_DIR / "simulation_events.csv"
+# Canonical CSV artifacts compared numerically (with tolerance) against a fresh
+# simulation run. Plot PNGs are intentionally NOT compared: their bytes are not
+# reproducible across matplotlib/freetype versions, and `write_simulation_plots`
+# already exercises the plotting path.
 CANONICAL_ARTIFACTS = {
     Path("simulation_dense_output.csv"): SIMULATION_DENSE_OUTPUT,
     Path("simulation_events.csv"): EVENTS_OUTPUT,
-    Path("sim_plots/process_variables.png"): (
-        SIMULATION_PLOTS_DIR / "process_variables.png"
-    ),
-    Path("sim_plots/rates.png"): SIMULATION_PLOTS_DIR / "rates.png",
-    Path("sim_plots/reactor_states_and_volumes.png"): (
-        SIMULATION_PLOTS_DIR / "reactor_states_and_volumes.png"
-    ),
 }
 EXPECTED_PROCESS_IDS = {"sim_1_run_1", "sim_1_run_2"}
 EXPECTED_REACTOR_COMPONENT_ORDER = (
