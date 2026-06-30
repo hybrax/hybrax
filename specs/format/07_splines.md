@@ -212,8 +212,8 @@ that has `pseudobatch_transform` and component-level `c_star_concentration`.
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-process = dataset.case_studies["kittler_2022"].processes["batch_001"]
+case_study = bp.serialization.load_case_study("data.json")
+process = case_study.processes["batch_001"]
 
 events = bp.splines.detect_discrete_state_events(process)
 print(events.times)   # array of event times
@@ -225,8 +225,8 @@ print(events.labels)  # optional labels
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-process = dataset.case_studies["martens_2025_f"].processes["run_1"]
+case_study = bp.serialization.load_case_study("data.json")
+process = case_study.processes["run_1"]
 
 # Build JSON-facing pseudobatch storage for one species
 transform = bp.splines.build_pseudobatch_transform(process, ["glucose"])

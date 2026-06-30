@@ -421,17 +421,3 @@ class CaseStudy:
     organism: str
     citation: str
     processes: Dict[str, BioProcess] = field(default_factory=dict)
-
-
-# ============================================================
-# Benchmark Dataset Level
-# ============================================================
-
-
-@dataclass
-class BenchmarkDataset:
-    """Top-level benchmarking dataset"""
-
-    metadata: Dict[str, str] = field(default_factory=dict)
-    # metadata should include: name, version, description, preprocessing_version
-    case_studies: Dict[str, CaseStudy] = field(default_factory=dict)

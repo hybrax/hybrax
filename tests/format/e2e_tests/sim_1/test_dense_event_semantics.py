@@ -13,7 +13,7 @@ os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 import bp_format as bp  # noqa: E402
 import numpy as np  # noqa: E402
-from bp_format.serialization import load_process_collection_json  # noqa: E402
+from bp_format.serialization import load_process_collection  # noqa: E402
 
 from .cstar_helpers import (  # noqa: E402
     EXPECTED_PROCESS_IDS,
@@ -98,7 +98,7 @@ def test_sim_1_json_carries_tracer_components():
     both tracers are reactor-medium components with a concentration TimeSeries on the
     same sparse measurement grid as the real species, and a zero biological derivative.
     """
-    collection = load_process_collection_json(DATA_JSON)
+    collection = load_process_collection(DATA_JSON)
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
     for process in collection.processes.values():
         components = process.reactor_medium.components

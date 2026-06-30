@@ -34,7 +34,7 @@ def generate_all_processes_output(output_dir: Path) -> bp.BioProcessCollection:
     stale_duplicate_csv = output_dir / "dense_truth.csv"
     if stale_duplicate_csv.exists():
         stale_duplicate_csv.unlink()
-    bp.serialization.save_process_collection_json(collection, output_dir / "data.json")
+    bp.serialization.save_process_collection(collection, output_dir / "data.json")
     return collection
 
 

@@ -19,19 +19,24 @@ bp-format is built on [JAX](https://github.com/google/jax) and [Equinox](https:/
 
 ## 2. Hierarchical Data Model
 
-Bioprocess experiments are organized in a four-level hierarchy:
+Bioprocess experiments are organized in a three-level hierarchy. The top-level
+artifact — one file on disk — is either a strict `CaseStudy` or a loose
+`BioProcessCollection`:
 
 ```
-BenchmarkDataset
-  -> CaseStudy        (one publication / experimental campaign)
-    -> BioProcess     (one experimental run)
-      -> Components   (reactor medium, volume, process variables)
+CaseStudy             (one publication / experimental campaign — strict metadata)
+  -> BioProcess       (one experimental run)
+    -> Components      (reactor medium, volume, process variables)
+
+BioProcessCollection  (raw / intermediate processes — no strict metadata)
+  -> BioProcess
+    -> Components
 ```
 
 **Why this hierarchy?**
 
-- **BenchmarkDataset** groups multiple case studies for cross-study benchmarking. Metadata (name, version) tracks dataset identity.
-- **CaseStudy** corresponds to one publication or experimental campaign. It carries `organism`, `citation`, and a `case_id`, which is the natural grouping for leave-one-process-out cross-validation.
+- **CaseStudy** corresponds to one publication or experimental campaign. It carries `organism`, `citation`, and a `case_id`, which is the natural grouping for leave-one-process-out cross-validation. Each case study is its own file.
+- **BioProcessCollection** is the loose counterpart: a dict of processes plus optional free-form metadata, for raw or intermediate data that is not yet a full-fledged case study.
 - **BioProcess** is a single fermentation run. It contains everything needed to simulate or analyze that run: time axis, volume operations, reactor medium concentrations, and process variables.
 - **Components** within a process are organized by their physical role:
   - `ReactorMedium` holds concentration time series (biomass, substrates, products).

@@ -22,11 +22,10 @@ from bp_format import (
     AugmentedBioProcess,
     BioProcessCollection,
     CaseStudy,
-    BenchmarkDataset,
 )
 from bp_format.serialization import (
-    save_process_collection_json,
-    load_process_collection_json,
+    save_process_collection,
+    load_process_collection,
 )
 
 
@@ -342,9 +341,17 @@ def test_case_study_creation():
     assert "p1" in cs.processes
 
 
-def test_benchmark_dataset_creation():
-    process = BioProcess(
+def test_case_study_multiple_processes():
+    process_a = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
+    )
+    process_b = BioProcess(
+        metadata=BioProcessMetadata(name="p2", process_type="fed_batch"),
         time_axis=TimeAxis(
             unit="hours", start=0.0, end=24.0, time_reference="inoculation"
         ),
@@ -355,21 +362,11 @@ def test_benchmark_dataset_creation():
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
-        processes={"p1": process},
+        processes={"p1": process_a, "p2": process_b},
     )
-    dataset = BenchmarkDataset(
-        metadata={"name": "Test Dataset", "version": "0.1.0"},
-        case_studies={"ecoli": cs},
-    )
-    assert dataset.metadata["name"] == "Test Dataset"
-    assert "ecoli" in dataset.case_studies
-    assert len(dataset.case_studies) == 1
-
-
-def test_benchmark_dataset_empty():
-    dataset = BenchmarkDataset()
-    assert dataset.metadata == {}
-    assert dataset.case_studies == {}
+    assert cs.case_id == "ecoli_study"
+    assert "p1" in cs.processes
+    assert len(cs.processes) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -432,8 +429,8 @@ def test_augmented_bioprocess_serialization_roundtrip(tmp_path):
     )
     collection = BioProcessCollection(processes={"P0": parent, "P0_aug": child})
     out = tmp_path / "data.json"
-    save_process_collection_json(collection, out)
-    loaded = load_process_collection_json(out)
+    save_process_collection(collection, out)
+    loaded = load_process_collection(out)
 
     assert isinstance(loaded.processes["P0"], BioProcess)
     assert not isinstance(loaded.processes["P0"], AugmentedBioProcess)

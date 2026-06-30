@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from .dataclasses import (
     AugmentedBioProcess,
-    BenchmarkDataset,
     BiologicalOde,
     BioProcessCollection,
     CaseStudy,
@@ -120,156 +119,71 @@ def _open_json_file(path: Path, mode: str):
     return open(path, mode, encoding="utf-8")
 
 
-def save_dataset(dataset: BenchmarkDataset, path: Path) -> None:
-    """Save a dataset as JSON.
+def _save_json(data_dict: Dict, json_path: Path) -> None:
+    """Write a serialized data dict to a `.json` / `.json.gz` file."""
+    json_path = Path(json_path)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with _open_json_file(json_path, "wt") as f:
+        json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
+    print(f"✓ Saved to {json_path}")
+
+
+def _restore_arrays(obj):
+    """Recursively rebuild JAX arrays from the `__ndarray__` JSON encoding."""
+    if isinstance(obj, dict):
+        if "__ndarray__" in obj:
+            return jnp.array(obj["__ndarray__"], dtype=obj["dtype"])
+        return {k: _restore_arrays(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_restore_arrays(item) for item in obj]
+    return obj
+
+
+def _load_json(json_path: Path) -> Dict:
+    """Read a `.json` / `.json.gz` file and restore JAX arrays."""
+    json_path = Path(json_path)
+    with _open_json_file(json_path, "rt") as f:
+        data_dict = json.load(f)
+    return _restore_arrays(data_dict)
+
+
+def save_case_study(case_study: CaseStudy, path: Path) -> None:
+    """Save a CaseStudy as JSON.
 
     `path` may be a JSON file path or a directory, in which case `data.json`
     is written inside it.
     """
-    save_dataset_json(dataset, _resolve_json_path(path))
+    _save_json(_case_study_to_dict(case_study), _resolve_json_path(path))
+
+
+def load_case_study(path: Path) -> CaseStudy:
+    """Load a CaseStudy from JSON.
+
+    `path` may be a JSON file path or a directory containing `data.json`.
+    """
+    return _dict_to_case_study(_load_json(_resolve_existing_json_path(path)))
 
 
 def save_process_collection(collection: BioProcessCollection, path: Path) -> None:
-    """Save a process collection as JSON.
+    """Save a BioProcessCollection as JSON.
 
     `path` may be a JSON file path or a directory, in which case `data.json`
     is written inside it.
     """
-    save_process_collection_json(collection, _resolve_json_path(path))
-
-
-def load_dataset(path: Path) -> BenchmarkDataset:
-    """Load a dataset from JSON.
-
-    `path` may be a JSON file path or a directory containing `data.json`.
-    """
-    return load_dataset_json(_resolve_existing_json_path(path))
+    _save_json(_process_collection_to_dict(collection), _resolve_json_path(path))
 
 
 def load_process_collection(path: Path) -> BioProcessCollection:
-    """Load a process collection from JSON.
+    """Load a BioProcessCollection from JSON.
 
     `path` may be a JSON file path or a directory containing `data.json`.
     """
-    return load_process_collection_json(_resolve_existing_json_path(path))
-
-
-def save_dataset_json(dataset: BenchmarkDataset, json_path: Path) -> None:
-    """
-    Save dataset as single JSON file (human-readable but larger)
-
-    Args:
-        dataset: BenchmarkDataset to save
-        json_path: File path where JSON will be saved
-    """
-    json_path = Path(json_path)
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-
-    data_dict = _dataset_to_dict(dataset)
-
-    with _open_json_file(json_path, "wt") as f:
-        json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
-
-    print(f"✓ Dataset saved to {json_path}")
-
-
-def save_process_collection_json(
-    collection: BioProcessCollection, json_path: Path
-) -> None:
-    """
-    Save a BioProcessCollection as a single JSON file.
-
-    Args:
-        collection: BioProcessCollection to save
-        json_path: File path where JSON will be saved
-    """
-    json_path = Path(json_path)
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-
-    data_dict = _process_collection_to_dict(collection)
-
-    with _open_json_file(json_path, "wt") as f:
-        json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
-
-    print(f"✓ Process collection saved to {json_path}")
-
-
-def load_dataset_json(json_path: Path) -> BenchmarkDataset:
-    """
-    Load dataset from JSON
-
-    Args:
-        json_path: Path to JSON file
-
-    Returns:
-        Reconstructed BenchmarkDataset
-    """
-    json_path = Path(json_path)
-
-    with _open_json_file(json_path, "rt") as f:
-        data_dict = json.load(f)
-
-    # Restore arrays
-    def restore_arrays(obj):
-        if isinstance(obj, dict):
-            if "__ndarray__" in obj:
-                return jnp.array(obj["__ndarray__"], dtype=obj["dtype"])
-            return {k: restore_arrays(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [restore_arrays(item) for item in obj]
-        return obj
-
-    data_dict = restore_arrays(data_dict)
-    dataset = _dict_to_dataset(data_dict)
-
-    print(f"✓ Dataset loaded from {json_path}")
-    return dataset
-
-
-def load_process_collection_json(json_path: Path) -> BioProcessCollection:
-    """
-    Load a BioProcessCollection from JSON.
-
-    Args:
-        json_path: Path to JSON file
-
-    Returns:
-        Reconstructed BioProcessCollection
-    """
-    json_path = Path(json_path)
-
-    with _open_json_file(json_path, "rt") as f:
-        data_dict = json.load(f)
-
-    def restore_arrays(obj):
-        if isinstance(obj, dict):
-            if "__ndarray__" in obj:
-                return jnp.array(obj["__ndarray__"], dtype=obj["dtype"])
-            return {k: restore_arrays(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [restore_arrays(item) for item in obj]
-        return obj
-
-    data_dict = restore_arrays(data_dict)
-    collection = _dict_to_process_collection(data_dict)
-
-    print(f"✓ Process collection loaded from {json_path}")
-    return collection
+    return _dict_to_process_collection(_load_json(_resolve_existing_json_path(path)))
 
 
 # ============================================================
 # Helper Functions
 # ============================================================
-
-
-def _dataset_to_dict(dataset: BenchmarkDataset) -> Dict:
-    """Convert dataset to nested dictionary"""
-    return {
-        "metadata": dataset.metadata,
-        "case_studies": {
-            cs_id: _case_study_to_dict(cs) for cs_id, cs in dataset.case_studies.items()
-        },
-    }
 
 
 def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
@@ -526,18 +440,6 @@ def _feed_component_to_dict(comp: FeedMediumComponent) -> Dict:
         "is_controlled": comp.is_controlled,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
     }
-
-
-def _dict_to_dataset(data: Dict) -> BenchmarkDataset:
-    """Reconstruct BenchmarkDataset from dictionary"""
-    case_studies = {}
-
-    for cs_id, cs_data in data.get("case_studies", {}).items():
-        case_studies[cs_id] = _dict_to_case_study(cs_data)
-
-    return BenchmarkDataset(
-        metadata=data.get("metadata", {}), case_studies=case_studies
-    )
 
 
 def _dict_to_process_collection(data: Dict) -> BioProcessCollection:

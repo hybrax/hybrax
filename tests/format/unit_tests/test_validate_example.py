@@ -20,7 +20,7 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import save_process_collection_json
+from bp_format.serialization import save_process_collection
 from examples import validate_example
 
 
@@ -58,7 +58,7 @@ def _make_process(name="process_1", *, valid=True, component_names=("biomass",))
 
 def _write_collection(path: Path, processes):
     collection = BioProcessCollection(metadata=None, processes=processes)
-    save_process_collection_json(collection, path)
+    save_process_collection(collection, path)
 
 
 def _make_example(

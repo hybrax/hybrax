@@ -21,9 +21,8 @@ from bp_format import (
     SampleVolumeChange,
     Volume,
     CaseStudy,
-    BenchmarkDataset,
     print_process_structure,
-    print_dataset_structure,
+    print_case_study_structure,
     plot_process,
     plot_case_study,
 )
@@ -322,7 +321,7 @@ def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
 
 
 # ---------------------------------------------------------------------------
-# print_dataset_structure tests
+# print_case_study_structure tests
 # ---------------------------------------------------------------------------
 
 
@@ -343,70 +342,59 @@ def _make_minimal_process(name):
 
 
 @pytest.fixture
-def sample_dataset():
+def sample_case_study():
     p1 = _make_minimal_process("p1")
     p2 = _make_minimal_process("p2")
-    cs = CaseStudy(
+    return CaseStudy(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe 2024",
         processes={"p1": p1, "p2": p2},
     )
-    return BenchmarkDataset(
-        metadata={"name": "TestDataset", "version": "0.1.0"},
-        case_studies={"ecoli": cs},
-    )
 
 
-def test_print_dataset_structure_header(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset)
+def test_print_case_study_structure_header(sample_case_study, capsys):
+    print_case_study_structure(sample_case_study)
     captured = capsys.readouterr()
-    assert "Benchmark Dataset Structure" in captured.out
+    assert "Case Study Structure" in captured.out
 
 
-def test_print_dataset_structure_metadata(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset)
+def test_print_case_study_structure_identity(sample_case_study, capsys):
+    print_case_study_structure(sample_case_study)
     captured = capsys.readouterr()
-    assert "TestDataset" in captured.out
-    assert "0.1.0" in captured.out
-
-
-def test_print_dataset_structure_case_study(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset)
-    captured = capsys.readouterr()
-    assert "ecoli" in captured.out
+    assert "ecoli_study" in captured.out
     assert "Escherichia coli" in captured.out
     assert "Doe 2024" in captured.out
 
 
-def test_print_dataset_structure_processes(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset)
+def test_print_case_study_structure_processes(sample_case_study, capsys):
+    print_case_study_structure(sample_case_study)
     captured = capsys.readouterr()
     assert "p1" in captured.out
     assert "p2" in captured.out
     assert "Processes: 2" in captured.out
 
 
-def test_print_dataset_structure_total_datapoints(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset)
+def test_print_case_study_structure_total_datapoints(sample_case_study, capsys):
+    print_case_study_structure(sample_case_study)
     captured = capsys.readouterr()
     # Each process has 1 biomass TimeSeries with 2 points => 2 processes * 2 = 4 total
-    assert "Total datapoints in dataset: 4" in captured.out
+    assert "Total datapoints in case study: 4" in captured.out
 
 
-def test_print_dataset_structure_empty(capsys):
-    dataset = BenchmarkDataset()
-    print_dataset_structure(dataset)
+def test_print_case_study_structure_empty(capsys):
+    case_study = CaseStudy(case_id="empty_study", organism="Unknown", citation="n/a")
+    print_case_study_structure(case_study)
     captured = capsys.readouterr()
-    assert "Benchmark Dataset Structure" in captured.out
-    assert "(no case studies)" in captured.out
+    assert "Case Study Structure" in captured.out
+    assert "(no processes)" in captured.out
 
 
-def test_print_dataset_structure_verbosity2(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset, verbosity=2)
+def test_print_case_study_structure_verbosity2(sample_case_study, capsys):
+    print_case_study_structure(sample_case_study, verbosity=2)
     captured = capsys.readouterr()
-    assert "Benchmark Dataset Structure" in captured.out
-    assert "ecoli" in captured.out
+    assert "Case Study Structure" in captured.out
+    assert "ecoli_study" in captured.out
     assert "Escherichia coli" in captured.out
     assert "p1" in captured.out
     # Citation and datapoints should NOT appear
@@ -414,7 +402,7 @@ def test_print_dataset_structure_verbosity2(sample_dataset, capsys):
     assert "datapoints:" not in captured.out
 
 
-def test_print_dataset_structure_handles_process_without_metadata(capsys):
+def test_print_case_study_structure_handles_process_without_metadata(capsys):
     process = BioProcess(
         metadata=None,
         time_axis=TimeAxis(
@@ -423,35 +411,34 @@ def test_print_dataset_structure_handles_process_without_metadata(capsys):
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
-    cs = CaseStudy(
+    case_study = CaseStudy(
         case_id="raw_data",
         organism="Unknown",
         citation="n/a",
         processes={"p1": process},
     )
-    dataset = BenchmarkDataset(case_studies={"raw": cs})
-    print_dataset_structure(dataset, verbosity=2)
+    print_case_study_structure(case_study, verbosity=2)
     captured = capsys.readouterr()
     assert "p1: <unnamed process>" in captured.out
 
 
-def test_print_dataset_structure_verbosity1(sample_dataset, capsys):
-    print_dataset_structure(sample_dataset, verbosity=1)
+def test_print_case_study_structure_verbosity1(sample_case_study, capsys):
+    print_case_study_structure(sample_case_study, verbosity=1)
     captured = capsys.readouterr()
-    assert "Benchmark Dataset Structure" in captured.out
-    assert "ecoli" in captured.out
+    assert "Case Study Structure" in captured.out
+    assert "ecoli_study" in captured.out
     # Organism, citation and process names should NOT appear at verbosity 1
     assert "Escherichia coli" not in captured.out
     assert "Doe 2024" not in captured.out
     assert "p1" not in captured.out
 
 
-def test_print_dataset_structure_empty_verbosity1(capsys):
-    dataset = BenchmarkDataset()
-    print_dataset_structure(dataset, verbosity=1)
+def test_print_case_study_structure_empty_verbosity1(capsys):
+    case_study = CaseStudy(case_id="empty_study", organism="Unknown", citation="n/a")
+    print_case_study_structure(case_study, verbosity=1)
     captured = capsys.readouterr()
-    assert "Benchmark Dataset Structure" in captured.out
-    assert "(no case studies)" in captured.out
+    assert "Case Study Structure" in captured.out
+    assert "(0 processes)" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -777,13 +764,12 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
 # ---------------------------------------------------------------------------
 
 
-def test_plot_case_study_returns_figure(sample_dataset):
+def test_plot_case_study_returns_figure(sample_case_study):
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    cs = list(sample_dataset.case_studies.values())[0]
-    fig = plot_case_study(cs)
+    fig = plot_case_study(sample_case_study)
     assert fig is not None
     plt.close(fig)
 

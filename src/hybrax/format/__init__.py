@@ -36,7 +36,6 @@ from .dataclasses import (
     AugmentedBioProcess,
     BioProcessCollection,
     CaseStudy,
-    BenchmarkDataset,
 )
 
 # Import simulation helpers
@@ -46,7 +45,7 @@ from .simulation import Simulation, SimulationEvent, SimulationResult
 # Import inspect
 from .inspect import (
     print_process_structure,
-    print_dataset_structure,
+    print_case_study_structure,
     print_rhs_ode,
     plot_process,
     plot_case_study,
@@ -95,7 +94,6 @@ __all__ = [
     "AugmentedBioProcess",
     "BioProcessCollection",
     "CaseStudy",
-    "BenchmarkDataset",
     "Bounds",
     "BiologicalOde",
     "ProcessOrdering",
@@ -104,7 +102,7 @@ __all__ = [
     "SimulationResult",
     # Utils
     "print_process_structure",
-    "print_dataset_structure",
+    "print_case_study_structure",
     "print_rhs_ode",
     "plot_process",
     "plot_case_study",

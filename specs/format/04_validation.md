@@ -82,8 +82,8 @@ one summary line. This is invoked automatically from
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-process = dataset.case_studies["kittler_2022"].processes["batch_001"]
+case_study = bp.serialization.load_case_study("data.json")
+process = case_study.processes["batch_001"]
 
 is_valid, messages = bp.validate_process(process)
 if not is_valid:
@@ -99,8 +99,7 @@ else:
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-case_study = dataset.case_studies["kittler_2022"]
+case_study = bp.serialization.load_case_study("data.json")
 
 is_valid, report = bp.validate_case_study(case_study)
 if not is_valid:
@@ -111,24 +110,21 @@ if not is_valid:
                 print(f"  - {msg}")
 ```
 
-### Validating All Processes in a Dataset
+### Validating All Processes in a Case Study
 
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
+case_study = bp.serialization.load_case_study("data.json")
 
-all_valid = True
-for case_id, cs in dataset.case_studies.items():
-    is_valid, report = bp.validate_case_study(cs)
-    if not is_valid:
-        all_valid = False
-        print(f"\nCase study '{case_id}' has issues:")
-        for pid, msgs in report.items():
-            for msg in msgs:
-                print(f"  [{pid}] {msg}")
-
-if all_valid:
+cs = case_study
+is_valid, report = bp.validate_case_study(cs)
+if not is_valid:
+    print(f"\nCase study '{cs.case_id}' has issues:")
+    for pid, msgs in report.items():
+        for msg in msgs:
+            print(f"  [{pid}] {msg}")
+else:
     print("All processes valid.")
 ```
 

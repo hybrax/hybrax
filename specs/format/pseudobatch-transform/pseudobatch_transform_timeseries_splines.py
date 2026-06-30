@@ -81,10 +81,10 @@ import bp_format as bp  # noqa: E402
 # from bp_format.dataclasses import FeedVolumeChange  # noqa: E402
 # from bp_format.dataclasses import PseudobatchTransform  # noqa: E402
 # from bp_format.dataclasses import SampleVolumeChange  # noqa: E402
-from bp_format.serialization import load_process_collection_json  # noqa: E402
+from bp_format.serialization import load_process_collection  # noqa: E402
 
 
-collection = load_process_collection_json(COLLECTION_JSON)
+collection = load_process_collection(COLLECTION_JSON)
 # %% ###################################################################################
 
 
@@ -549,7 +549,7 @@ def populate_pseudobatch_transform_TimeSeries_splines_noisy(
     )
 
 
-noisy_collection = load_process_collection_json(COLLECTION_JSON)
+noisy_collection = load_process_collection(COLLECTION_JSON)
 np.random.seed(14)
 for process_id, process in noisy_collection.processes.items():
     # This mutates the process in-place: continuous feed volume traces become noisy

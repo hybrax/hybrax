@@ -20,9 +20,9 @@ Prints a hierarchical tree view of a BioProcess. The `verbosity` parameter contr
 | 2 | Level 1 + component names and units |
 | 3 | Level 2 + data point counts, value ranges, spline status |
 
-#### `print_dataset_structure(dataset, verbosity=3)`
+#### `print_case_study_structure(case_study, verbosity=3)`
 
-Prints an overview of a full BenchmarkDataset: metadata, case studies, organisms, process counts, and per-process details (controlled by verbosity).
+Prints an overview of a CaseStudy: case_id, organism, citation, process count, and per-process datapoint counts (controlled by verbosity).
 
 #### `print_rhs_ode(target, ordering=None)`
 
@@ -58,8 +58,8 @@ Returns the matplotlib figure object.
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-process = dataset.case_studies["kittler_2022"].processes["batch_001"]
+case_study = bp.serialization.load_case_study("data.json")
+process = case_study.processes["batch_001"]
 
 # Quick overview
 bp.print_process_structure(process, verbosity=1)
@@ -77,18 +77,15 @@ bp.print_process_structure(process, verbosity=3)
 #   ...
 ```
 
-### Printing Dataset Structure
+### Printing Case Study Structure
 
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-bp.print_dataset_structure(dataset, verbosity=1)
+case_study = bp.serialization.load_case_study("data.json")
+bp.print_case_study_structure(case_study, verbosity=1)
 # Output:
-#   bp-format Dataset: 3 case studies
-#     kittler_2022 (Escherichia coli): 4 processes
-#     gotsmy_2023 (Escherichia coli): 3 processes
-#     bayer_2020_a (Escherichia coli HMS174(DE3)): 5 processes
+#   kittler_2022 (Escherichia coli): 4 processes
 ```
 
 ### Plotting a Single Process
@@ -96,8 +93,8 @@ bp.print_dataset_structure(dataset, verbosity=1)
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-process = dataset.case_studies["kittler_2022"].processes["batch_001"]
+case_study = bp.serialization.load_case_study("data.json")
+process = case_study.processes["batch_001"]
 
 fig = bp.plot_process(process)
 fig.savefig("batch_001.png", dpi=150, bbox_inches="tight")
@@ -108,8 +105,7 @@ fig.savefig("batch_001.png", dpi=150, bbox_inches="tight")
 ```python
 import bp_format as bp
 
-dataset = bp.serialization.load_dataset("data.json")
-case_study = dataset.case_studies["kittler_2022"]
+case_study = bp.serialization.load_case_study("data.json")
 
 fig = bp.plot_case_study(case_study, figsize_per_panel=(4, 2.5))
 fig.savefig("kittler_overview.png", dpi=150, bbox_inches="tight")

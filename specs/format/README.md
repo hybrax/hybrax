@@ -37,10 +37,6 @@
 ### Hierarchy
 
 ```
-BenchmarkDataset
- ├─ case_studies: Dict[str, CaseStudy]
- └─ metadata: Dict[str, str]
-
 CaseStudy
  ├─ case_id: str
  ├─ organism: str
@@ -135,7 +131,6 @@ Focused simulation/verification examples, such as `13_volume_integration/` and
 instead of the full case-study layout.
 
 The `00_combined/` directory contains cross-study workflows:
-- `01_combined_dataset/` -- merging all case studies into one BenchmarkDataset
 - `02_validation/` -- running validation across the full dataset
 - `03_pseudobatch_splines/` -- fitting splines to all processes
 - `04_spline_serialization/` -- saving spline-augmented data

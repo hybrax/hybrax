@@ -34,7 +34,7 @@ def generate_single_process_output(output_dir: Path) -> bp.BioProcessCollection:
         collection_name="sim_1_intracellular_single_process",
         process_ids=(SINGLE_PROCESS_ID,),
     )
-    bp.serialization.save_process_collection_json(
+    bp.serialization.save_process_collection(
         collection,
         output_dir / "data.json",
     )

@@ -7,7 +7,6 @@ from pathlib import Path
 import tempfile
 
 from bp_format import (
-    BenchmarkDataset,
     BiologicalOde,
     BioProcessCollection,
     CaseStudy,
@@ -25,14 +24,10 @@ from bp_format import (
     Volume,
 )
 from bp_format.serialization import (
-    save_dataset,
+    save_case_study,
     save_process_collection,
-    load_dataset,
+    load_case_study,
     load_process_collection,
-    save_dataset_json,
-    save_process_collection_json,
-    load_dataset_json,
-    load_process_collection_json,
 )
 
 
@@ -140,22 +135,13 @@ def sample_collection_with_metadata(sample_process):
 
 
 @pytest.fixture
-def sample_dataset(sample_process):
-    """Build a minimal but realistic BenchmarkDataset for serialization tests."""
-    case_study = CaseStudy(
+def sample_case_study(sample_process):
+    """Build a minimal but realistic CaseStudy for serialization tests."""
+    return CaseStudy(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
         processes={"fed_batch_001": sample_process},
-    )
-
-    return BenchmarkDataset(
-        metadata={
-            "name": "Test Dataset",
-            "version": "0.1.0",
-            "description": "Test dataset for serialization",
-        },
-        case_studies={"ecoli": case_study},
     )
 
 
@@ -206,54 +192,53 @@ def test_save_load_process_collection_metadata_roundtrip(
         assert loaded.metadata == {"source": "raw_lab_export", "instrument": "ambr250"}
 
 
-def test_save_creates_data_json_in_directory(sample_dataset):
+def test_save_creates_data_json_in_directory(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
         assert (save_path / "data.json").exists()
 
 
-def test_save_load_roundtrip_metadata(sample_dataset):
+def test_save_load_roundtrip_identity(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        assert loaded.metadata["name"] == "Test Dataset"
-        assert loaded.metadata["version"] == "0.1.0"
+        assert loaded.case_id == "ecoli_study"
+        assert loaded.organism == "Escherichia coli"
+        assert loaded.citation == "Doe et al. 2024"
 
 
-def test_save_load_roundtrip_structure(sample_dataset):
+def test_save_load_roundtrip_structure(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        assert "ecoli" in loaded.case_studies
-        cs = loaded.case_studies["ecoli"]
-        assert cs.case_id == "ecoli_study"
-        assert cs.organism == "Escherichia coli"
-        assert "fed_batch_001" in cs.processes
+        assert loaded.case_id == "ecoli_study"
+        assert loaded.organism == "Escherichia coli"
+        assert "fed_batch_001" in loaded.processes
 
 
-def test_save_load_roundtrip_process_metadata(sample_dataset):
+def test_save_load_roundtrip_process_metadata(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        proc = loaded.processes["fed_batch_001"]
         assert proc.metadata.name == "fed_batch_001"
         assert proc.metadata.process_type == "fed_batch"
 
 
-def test_save_load_roundtrip_timeseries(sample_dataset):
+def test_save_load_roundtrip_timeseries(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        proc = loaded.processes["fed_batch_001"]
         biomass = proc.reactor_medium.components["biomass"]
         assert hasattr(biomass.concentration, "times")
         assert biomass.concentration.times.shape == (5,)
@@ -263,25 +248,25 @@ def test_save_load_roundtrip_timeseries(sample_dataset):
         )
 
 
-def test_save_load_roundtrip_static_variable(sample_dataset):
+def test_save_load_roundtrip_static_variable(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        proc = loaded.processes["fed_batch_001"]
         ph = proc.process_variables["pH"]
         assert isinstance(ph.values, StaticVariable)
         assert ph.values.value == pytest.approx(7.0)
 
 
-def test_save_load_roundtrip_volume(sample_dataset):
+def test_save_load_roundtrip_volume(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        proc = loaded.processes["fed_batch_001"]
         assert proc.volume.initial_volume == pytest.approx(1.0)
         assert "glucose_feed" in proc.volume.volume_changes
         vc = proc.volume.volume_changes["glucose_feed"]
@@ -289,13 +274,13 @@ def test_save_load_roundtrip_volume(sample_dataset):
         assert vc.values.times.shape == (5,)
 
 
-def test_save_load_roundtrip_feed_medium(sample_dataset):
+def test_save_load_roundtrip_feed_medium(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        proc = loaded.processes["fed_batch_001"]
         vc = proc.volume.volume_changes["glucose_feed"]
         assert vc.feed_medium is not None
         assert vc.feed_medium.name == "glucose_feed"
@@ -313,15 +298,15 @@ def test_save_load_roundtrip_feed_medium(sample_dataset):
 def test_json_save_process_collection_creates_file(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_collection.json"
-        save_process_collection_json(sample_collection, save_path)
+        save_process_collection(sample_collection, save_path)
         assert save_path.exists()
 
 
 def test_json_process_collection_roundtrip(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_collection.json"
-        save_process_collection_json(sample_collection, save_path)
-        loaded = load_process_collection_json(save_path)
+        save_process_collection(sample_collection, save_path)
+        loaded = load_process_collection(save_path)
 
         assert loaded.metadata is None
         assert "fed_batch_001" in loaded.processes
@@ -339,37 +324,36 @@ def test_json_process_with_optional_metadata_roundtrip(sample_process):
             process_variables=sample_process.process_variables,
         )
         collection = BioProcessCollection(processes={"fed_batch_001": process})
-        save_process_collection_json(collection, save_path)
-        loaded = load_process_collection_json(save_path)
+        save_process_collection(collection, save_path)
+        loaded = load_process_collection(save_path)
 
         assert loaded.processes["fed_batch_001"].metadata is None
 
 
-def test_json_save_creates_file(sample_dataset):
+def test_json_save_creates_file(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset.json"
-        save_dataset_json(sample_dataset, save_path)
+        save_path = Path(tmpdir) / "test_case_study.json"
+        save_case_study(sample_case_study, save_path)
         assert save_path.exists()
 
 
-def test_json_roundtrip_metadata(sample_dataset):
+def test_json_roundtrip_identity(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset.json"
-        save_dataset_json(sample_dataset, save_path)
-        loaded = load_dataset_json(save_path)
+        save_path = Path(tmpdir) / "test_case_study.json"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        assert loaded.metadata["name"] == "Test Dataset"
-        assert "ecoli" in loaded.case_studies
-        assert loaded.case_studies["ecoli"].organism == "Escherichia coli"
+        assert loaded.case_id == "ecoli_study"
+        assert loaded.organism == "Escherichia coli"
 
 
-def test_json_roundtrip_timeseries(sample_dataset):
+def test_json_roundtrip_timeseries(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset.json"
-        save_dataset_json(sample_dataset, save_path)
-        loaded = load_dataset_json(save_path)
+        save_path = Path(tmpdir) / "test_case_study.json"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        proc = loaded.case_studies["ecoli"].processes["fed_batch_001"]
+        proc = loaded.processes["fed_batch_001"]
         biomass = proc.reactor_medium.components["biomass"]
         assert biomass.concentration.times.shape == (5,)
         assert jnp.allclose(
@@ -378,57 +362,57 @@ def test_json_roundtrip_timeseries(sample_dataset):
         )
 
 
-def test_default_api_accepts_explicit_json_paths(sample_dataset):
+def test_default_api_accepts_explicit_json_paths(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset.json"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study.json"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
         assert save_path.exists()
-        assert loaded.metadata["name"] == "Test Dataset"
+        assert loaded.case_id == "ecoli_study"
 
 
-def test_default_api_accepts_explicit_json_gz_paths(sample_dataset):
+def test_default_api_accepts_explicit_json_gz_paths(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset.json.gz"
-        save_dataset(sample_dataset, save_path)
-        loaded = load_dataset(save_path)
+        save_path = Path(tmpdir) / "test_case_study.json.gz"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
         assert save_path.exists()
         assert save_path.is_file()
-        assert loaded.metadata["name"] == "Test Dataset"
+        assert loaded.case_id == "ecoli_study"
 
 
-def test_json_gz_roundtrip_dataset(sample_dataset):
+def test_json_gz_roundtrip_case_study(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset.json.gz"
-        save_dataset_json(sample_dataset, save_path)
-        loaded = load_dataset_json(save_path)
+        save_path = Path(tmpdir) / "test_case_study.json.gz"
+        save_case_study(sample_case_study, save_path)
+        loaded = load_case_study(save_path)
 
-        assert loaded.metadata["name"] == "Test Dataset"
+        assert loaded.case_id == "ecoli_study"
         with gzip.open(save_path, "rt", encoding="utf-8") as f:
-            assert '"case_studies"' in f.read()
+            assert '"case_id"' in f.read()
 
 
 def test_json_gz_roundtrip_process_collection(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_collection.json.gz"
-        save_process_collection_json(sample_collection, save_path)
-        loaded = load_process_collection_json(save_path)
+        save_process_collection(sample_collection, save_path)
+        loaded = load_process_collection(save_path)
 
         assert save_path.is_file()
         assert "fed_batch_001" in loaded.processes
         assert loaded.processes["fed_batch_001"].metadata.process_type == "fed_batch"
 
 
-def test_default_load_from_directory_accepts_data_json_gz(sample_dataset):
+def test_default_load_from_directory_accepts_data_json_gz(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_path = Path(tmpdir) / "test_dataset"
-        save_dataset_json(sample_dataset, save_path / "data.json.gz")
+        save_path = Path(tmpdir) / "test_case_study"
+        save_case_study(sample_case_study, save_path / "data.json.gz")
 
-        loaded = load_dataset(save_path)
+        loaded = load_case_study(save_path)
 
-        assert loaded.metadata["name"] == "Test Dataset"
+        assert loaded.case_id == "ecoli_study"
 
 
 def test_default_load_process_collection_from_directory_accepts_data_json_gz(
@@ -436,7 +420,7 @@ def test_default_load_process_collection_from_directory_accepts_data_json_gz(
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_collection"
-        save_process_collection_json(sample_collection, save_path / "data.json.gz")
+        save_process_collection(sample_collection, save_path / "data.json.gz")
 
         loaded = load_process_collection(save_path)
 
@@ -451,7 +435,7 @@ def test_default_load_rejects_non_json_file_path():
         with pytest.raises(
             FileNotFoundError, match="Only JSON serialization is supported"
         ):
-            load_dataset(save_path)
+            load_case_study(save_path)
 
 
 # ---------------------------------------------------------------------------
@@ -494,13 +478,12 @@ def test_json_roundtrip_bounds_on_every_slot(sample_process):
         citation="c",
         processes={"fed_batch_001": sample_process},
     )
-    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_dataset_json(ds, Path(tmpdir) / "d.json")
-        loaded = load_dataset_json(Path(tmpdir) / "d.json")
+        save_case_study(cs, Path(tmpdir) / "d.json")
+        loaded = load_case_study(Path(tmpdir) / "d.json")
 
-    p2 = loaded.case_studies["b"].processes["fed_batch_001"]
+    p2 = loaded.processes["fed_batch_001"]
     assert p2.volume.bounds == (0.0, 5.0)
     assert p2.reactor_medium.components["biomass"].bounds == (0.0, None)
     assert p2.reactor_medium.components["glucose"].bounds == (0.0, 500.0)
@@ -521,13 +504,12 @@ def test_json_roundtrip_biological_ode(sample_process):
         citation="c",
         processes={"fed_batch_001": sample_process},
     )
-    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_dataset_json(ds, Path(tmpdir) / "d.json")
-        loaded = load_dataset_json(Path(tmpdir) / "d.json")
+        save_case_study(cs, Path(tmpdir) / "d.json")
+        loaded = load_case_study(Path(tmpdir) / "d.json")
 
-    p2 = loaded.case_studies["b"].processes["fed_batch_001"]
+    p2 = loaded.processes["fed_batch_001"]
     assert p2.biological_ode is not None
     assert p2.biological_ode.algebraic == {"X_active": "biomass"}
     assert p2.biological_ode.derivatives == {
@@ -548,11 +530,10 @@ def test_default_unbounded_is_omitted_from_json(sample_process):
         citation="c",
         processes={"fed_batch_001": sample_process},
     )
-    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "d.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         text = path.read_text()
         assert '"bounds"' not in text
 
@@ -566,13 +547,12 @@ def test_auto_generated_biological_ode_roundtrips(sample_process):
         citation="c",
         processes={"fed_batch_001": sample_process},
     )
-    ds = BenchmarkDataset(metadata={"name": "B"}, case_studies={"b": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        save_dataset_json(ds, Path(tmpdir) / "d.json")
-        loaded = load_dataset_json(Path(tmpdir) / "d.json")
+        save_case_study(cs, Path(tmpdir) / "d.json")
+        loaded = load_case_study(Path(tmpdir) / "d.json")
 
-    p2 = loaded.case_studies["b"].processes["fed_batch_001"]
+    p2 = loaded.processes["fed_batch_001"]
     assert p2.biological_ode is not None
     assert sample_process.biological_ode is not None
     assert list(p2.biological_ode.rates.keys()) == list(

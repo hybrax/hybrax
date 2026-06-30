@@ -433,8 +433,8 @@ same per-species and combined-RMS bounds.
 
 For each fixture directory, the helper performed:
 
-1. Load via `bp_format.serialization.load_dataset_json(fixture_dir / "data.json")`.
-2. Pull the single (case-study, process) pair out of the dataset.
+1. Load via `bp_format.serialization.load_case_study(fixture_dir / "data.json")`.
+2. Pull the single process out of the case study.
 3. If `mutator is not None`, invoke `mutator(process)` (intracellular
    variants attached a custom `BiologicalOde` to a previously
    intracellular-flagged fixture).

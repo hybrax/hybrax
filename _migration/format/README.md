@@ -22,14 +22,13 @@ pip install -e ".[dev]"
 ```python
 import bp_format as bp
 
-# Load a benchmark dataset from JSON
-dataset = bp.serialization.load_dataset("examples/00_combined/01_combined_dataset/data.json")
+# Load a case study from JSON
+case_study = bp.serialization.load_case_study("examples/01_kittler_2022/02_bp_format_data_all/data.json")
 
-# Explore the dataset
-bp.print_dataset_structure(dataset, verbosity=1)
+# Explore the case study
+bp.print_case_study_structure(case_study, verbosity=1)
 
 # Access a specific process
-case_study = dataset.case_studies["kittler_2022"]
 process = case_study.processes["batch_001"]
 
 # Validate data integrity
@@ -46,7 +45,7 @@ fig = bp.plot_process(process)
 
 | Module | Description |
 |--------|-------------|
-| [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (BenchmarkDataset, CaseStudy, BioProcess, etc.) |
+| [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (CaseStudy, BioProcessCollection, BioProcess, etc.) |
 | [`time_series`](documentation/06_time_series.md) | Time-series container with optional fitted spline coefficients (JAX pytree) |
 | [`splines`](documentation/07_splines.md) | Pseudobatch transformation and segmented spline fitting |
 | [`mechanistic`](documentation/08_mechanistic.md) | Auto-generated ODE RHS, control splines, integration |
@@ -59,10 +58,6 @@ fig = bp.plot_process(process)
 ### Hierarchy
 
 ```
-BenchmarkDataset
- ├─ case_studies: Dict[str, CaseStudy]
- └─ metadata: Dict[str, str]
-
 CaseStudy
  ├─ case_id: str
  ├─ organism: str

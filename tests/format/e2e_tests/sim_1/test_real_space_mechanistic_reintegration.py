@@ -16,7 +16,7 @@ from bp_format.mechanistic import build_rhs_ode  # noqa: E402
 from bp_format.mechanistic import build_state_splines  # noqa: E402
 from bp_format.mechanistic import get_control_splines  # noqa: E402
 from bp_format.mechanistic import get_process_ordering  # noqa: E402
-from bp_format.serialization import load_process_collection_json  # noqa: E402
+from bp_format.serialization import load_process_collection  # noqa: E402
 from bp_format.splines import build_pseudobatch_transform  # noqa: E402
 from bp_format.splines import make_cubic_ppoly  # noqa: E402
 from bp_format.time_series import PPoly  # noqa: E402
@@ -479,7 +479,7 @@ def _assert_modeled_fvc_splines_match_dense_rows(
 
 
 def test_sim_1_real_space_mechanistic_rhs_reintegration():
-    collection = load_process_collection_json(DATA_JSON)
+    collection = load_process_collection(DATA_JSON)
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
     rows_by_process = dense_rows_by_process(
         SIMULATION_DENSE_OUTPUT,

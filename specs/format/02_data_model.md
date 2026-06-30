@@ -311,8 +311,8 @@ consumers discover the parent → children grouping deterministically.
 
 **Serialization.** Augmented processes are tagged in JSON with
 `"__type__": "AugmentedBioProcess"` plus the `parent_process` field;
-loaders reconstruct them via `load_process_collection_json` /
-`load_dataset_json`. Plain `BioProcess` payloads are unchanged.
+loaders reconstruct them via `load_process_collection` /
+`load_case_study`. Plain `BioProcess` payloads are unchanged.
 
 ### Mechanistic Ordering
 
@@ -359,20 +359,15 @@ non-controlled PVs carry a `TimeSeries` (static PVs must be
 `is_controlled=True`); `BiologicalOde.algebraic` is acyclic; no name
 collisions across groups.
 
-### Collection Level
+### Top-Level Containers
 
-#### `BioProcessCollection`
-A lightweight wrapper for multiple processes without full case-study metadata.
-
-```python
-@dataclass
-class BioProcessCollection:
-    metadata: Optional[Dict]
-    processes: Dict[str, BioProcess]
-```
+The top-level artifact — one file on disk — is one of these two. `CaseStudy`
+is the strict, publication-linked form; `BioProcessCollection` is the loose
+form for raw or intermediate data.
 
 #### `CaseStudy`
-Processes from one publication or experimental campaign.
+Processes from one publication or experimental campaign. Strict: requires
+`case_id`, `organism`, and `citation`. Each case study is its own file.
 
 ```python
 @dataclass
@@ -383,14 +378,14 @@ class CaseStudy:
     processes: Dict[str, BioProcess]
 ```
 
-#### `BenchmarkDataset`
-Top-level container for cross-study benchmarking.
+#### `BioProcessCollection`
+A lightweight wrapper for multiple processes without full case-study metadata.
 
 ```python
 @dataclass
-class BenchmarkDataset:
-    metadata: Dict[str, str]                    # name, version, description, etc.
-    case_studies: Dict[str, CaseStudy]
+class BioProcessCollection:
+    metadata: Optional[Dict]
+    processes: Dict[str, BioProcess]
 ```
 
 ## Examples

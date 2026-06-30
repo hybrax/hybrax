@@ -9,8 +9,8 @@ import equinox as eqx  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-from bp_format.serialization import load_process_collection_json  # noqa: E402
-from bp_format.serialization import save_process_collection_json  # noqa: E402
+from bp_format.serialization import load_process_collection  # noqa: E402
+from bp_format.serialization import save_process_collection  # noqa: E402
 from bp_format.splines import build_pseudobatch_transform  # noqa: E402
 from bp_format.splines import evaluate_pseudobatch_transform  # noqa: E402
 
@@ -808,10 +808,10 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
         dense_csv=simulation_dir / "simulation_dense_output.csv",
         events_csv=simulation_dir / "simulation_events.csv",
     )
-    save_process_collection_json(parsed_collection, parsed_json)
+    save_process_collection(parsed_collection, parsed_json)
     assert _sha256(parsed_json) == _sha256(DATA_JSON)
 
-    collection = load_process_collection_json(DATA_JSON)
+    collection = load_process_collection(DATA_JSON)
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
     _clear_local_diagnostic_plots()
 
@@ -822,8 +822,8 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
     # pseudobatch transform and fitted c* splines. Reloading it verifies that
     # the enrichment survives JSON serialization before reintegration uses it.
     enriched_json = tmp_path / "process_collection_with_cstar.json"
-    save_process_collection_json(collection, enriched_json)
-    collection = load_process_collection_json(enriched_json)
+    save_process_collection(collection, enriched_json)
+    collection = load_process_collection(enriched_json)
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
 
     for process_name, process in collection.processes.items():
@@ -953,7 +953,7 @@ def test_sim_1_direct_cstar_reintegration(tmp_path):
 
 
 def test_sim_1_dense_cstar_oracle_reintegration():
-    collection = load_process_collection_json(DATA_JSON)
+    collection = load_process_collection(DATA_JSON)
     assert set(collection.processes) == EXPECTED_PROCESS_IDS
 
     for process_name, process in collection.processes.items():

@@ -21,8 +21,8 @@ import numpy as np  # noqa: E402
 from scipy.integrate import solve_ivp  # noqa: E402
 from scipy.interpolate import CubicSpline  # noqa: E402
 from bp_format.serialization import (  # noqa: E402
-    load_process_collection_json,
-    save_process_collection_json,
+    load_process_collection,
+    save_process_collection,
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "sim_1" / "fixture"
@@ -2101,8 +2101,8 @@ def test_ex14_lab_like_csv_parse_roundtrips_basic_json(tmp_path):
         assert all(value > 0.0 for value in _series_values(bolus))
 
     output_path = tmp_path / "parsed_collection.json"
-    save_process_collection_json(collection, output_path)
-    reloaded = load_process_collection_json(output_path)
+    save_process_collection(collection, output_path)
+    reloaded = load_process_collection(output_path)
     _assert_reloaded_collection_matches_parsed(collection, reloaded)
 
 
@@ -2116,8 +2116,8 @@ def test_ex14_exact_pseudobatch_transform_is_sane_and_roundtrips(tmp_path):
             assert component.c_star_concentration is None
 
     output_path = tmp_path / "transformed_collection.json"
-    save_process_collection_json(collection, output_path)
-    reloaded = load_process_collection_json(output_path)
+    save_process_collection(collection, output_path)
+    reloaded = load_process_collection(output_path)
     _assert_reloaded_collection_matches_parsed(collection, reloaded)
 
 
@@ -2131,8 +2131,8 @@ def test_ex14_cstar_splines_survive_json_roundtrip(tmp_path):
         _assert_cstar_splines_sane(process)
 
     output_path = tmp_path / "cstar_fitted_collection.json"
-    save_process_collection_json(collection, output_path)
-    reloaded = load_process_collection_json(output_path)
+    save_process_collection(collection, output_path)
+    reloaded = load_process_collection(output_path)
     _assert_reloaded_collection_matches_parsed(collection, reloaded)
     for process in reloaded.processes.values():
         _assert_cstar_splines_sane(process)
@@ -2146,8 +2146,8 @@ def test_ex14_infers_finite_rates_from_reloaded_cstar_splines(tmp_path):
         _populate_cstar_splines(process)
 
     output_path = tmp_path / "cstar_fitted_collection.json"
-    save_process_collection_json(collection, output_path)
-    reloaded = load_process_collection_json(output_path)
+    save_process_collection(collection, output_path)
+    reloaded = load_process_collection(output_path)
 
     times = np.asarray(EXPECTED_CONCENTRATION_TIMES, dtype=float)
     for process in reloaded.processes.values():
@@ -2167,8 +2167,8 @@ def test_ex14_reintegrates_and_backtransforms_sparse_real_space_concentrations(
         _populate_cstar_splines(process)
 
     output_path = tmp_path / "cstar_fitted_collection.json"
-    save_process_collection_json(collection, output_path)
-    reloaded = load_process_collection_json(output_path)
+    save_process_collection(collection, output_path)
+    reloaded = load_process_collection(output_path)
 
     times = np.asarray(EXPECTED_CONCENTRATION_TIMES, dtype=float)
     diagnostics_dir = tmp_path / "ex14_sparse_reintegration_diagnostics"
@@ -2244,8 +2244,8 @@ def test_ex14_dense_observations_tightly_reintegrate_pseudobatch_real_space(
         _assert_cstar_splines_sane(process)
 
     output_path = tmp_path / "dense_cstar_fitted_collection.json"
-    save_process_collection_json(collection, output_path)
-    reloaded = load_process_collection_json(output_path)
+    save_process_collection(collection, output_path)
+    reloaded = load_process_collection(output_path)
 
     diagnostics_dir = tmp_path / "ex14_dense_reintegration_diagnostics"
     plot_paths = []

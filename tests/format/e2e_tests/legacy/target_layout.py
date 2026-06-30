@@ -14,7 +14,7 @@ from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
-from bp_format.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection
 from tests.e2e_tests.legacy.loader_helpers import load_module
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "ex14_fixture"
@@ -97,8 +97,8 @@ def test_ex14_visible_loaders_regenerate_reloadable_outputs(tmp_path):
         single = single_loader.generate_single_process_output(single_output_dir)
         all_processes = all_loader.generate_all_processes_output(all_output_dir)
 
-        reloaded_single = load_process_collection_json(single_output_dir / "data.json")
-        reloaded_all = load_process_collection_json(all_output_dir / "data.json")
+        reloaded_single = load_process_collection(single_output_dir / "data.json")
+        reloaded_all = load_process_collection(all_output_dir / "data.json")
         assert set(single.processes) == {"ex14_run_1"}
         assert set(reloaded_single.processes) == {"ex14_run_1"}
         assert set(all_processes.processes) == EXPECTED_PROCESS_IDS
@@ -140,7 +140,7 @@ def test_ex14_loaders_consume_existing_simulation_artifacts(tmp_path):
 
 
 def test_ex14_simulation_dense_output_contract_matches_all_process_json():
-    collection = load_process_collection_json(ALL_PROCESS_OUTPUT / "data.json")
+    collection = load_process_collection(ALL_PROCESS_OUTPUT / "data.json")
     json_process_ids = set(collection.processes)
 
     with SIMULATION_DENSE_OUTPUT.open(newline="") as handle:

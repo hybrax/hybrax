@@ -6,7 +6,6 @@ from .dataclasses import (
     BioProcess,
     BioProcessCollection,
     CaseStudy,
-    BenchmarkDataset,
     FeedVolumeChange,
     ProcessOrdering,
     SampleVolumeChange,
@@ -382,67 +381,55 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
     return total
 
 
-def print_dataset_structure(dataset: BenchmarkDataset, verbosity: int = 3) -> None:
+def print_case_study_structure(case_study: CaseStudy, verbosity: int = 3) -> None:
     """
-    Print a hierarchical view of the BenchmarkDataset.
+    Print a hierarchical view of a CaseStudy.
 
     Args:
-        dataset: BenchmarkDataset object to inspect
+        case_study: CaseStudy object to inspect
         verbosity: Detail level (1=minimal, 2=medium, 3=full)
 
-            - Level 3 (most verbose): metadata, all case-study details
-              (organism, citation), per-process datapoint counts, and total datapoints
-            - Level 2 (mid verbose): metadata, case-study names with
-              organism and process names listed (no citations, no datapoint counts)
-            - Level 1 (least verbose): metadata, case-study names and process count only
+            - Level 3 (most verbose): organism, citation, per-process datapoint
+              counts, and total datapoints
+            - Level 2 (mid verbose): organism and process names listed
+              (no citation, no datapoint counts)
+            - Level 1 (least verbose): case_id and process count only
     """
     print("=" * 80)
-    print("Benchmark Dataset Structure")
+    print("Case Study Structure")
     print("=" * 80)
 
-    # Metadata – shown at all verbosity levels
-    print("Metadata:")
-    if dataset.metadata:
-        for k, v in dataset.metadata.items():
-            print(f"  {k}: {v}")
-    else:
-        print("  (no metadata)")
+    n_procs = len(case_study.processes) if case_study.processes else 0
 
-    print("\nCase Studies:")
-    if not dataset.case_studies:
-        print("  (no case studies)")
-    elif verbosity == 1:
-        for cs_key, cs in dataset.case_studies.items():
-            n_procs = len(cs.processes) if cs.processes else 0
-            print(f"  - {cs_key}  ({n_procs} processes)")
-    elif verbosity == 2:
-        for cs_key, cs in dataset.case_studies.items():
-            n_procs = len(cs.processes) if cs.processes else 0
-            print(f"  - {cs_key}  |  Organism: {cs.organism}  |  Processes: {n_procs}")
-            if cs.processes:
-                for p_key, proc in cs.processes.items():
-                    name = _get_process_name(proc)
-                    print(f"      * {p_key}: {name}")
+    if verbosity == 1:
+        print(f"{case_study.case_id}  ({n_procs} processes)")
+        print("=" * 80)
+        return
+
+    print(f"Case ID:  {case_study.case_id}")
+    print(f"Organism: {case_study.organism}")
+    if verbosity == 3:
+        print(f"Citation: {case_study.citation}")
+    print(f"Processes: {n_procs}")
+
+    if not case_study.processes:
+        print("  (no processes)")
+        print("=" * 80)
+        return
 
     total_datapoints = 0
-    for cs_key, cs in dataset.case_studies.items():
-        cs_header = f"{cs_key}  (case_id: {cs.case_id})"
-        if verbosity == 3:
-            print(f"  - {cs_header}")
-            print(f"      Organism: {cs.organism}")
-            print(f"      Citation: {cs.citation}")
-        n_procs = len(cs.processes) if cs.processes else 0
-        if verbosity == 3:
-            print(f"      Processes: {n_procs}")
-        if cs.processes:
-            for p_key, proc in cs.processes.items():
-                name = _get_process_name(proc)
-                proc_dp = _count_datapoints_in_process(proc)
-                total_datapoints += proc_dp
-                if verbosity == 3:
-                    print(f"        * {p_key}: {name}  (datapoints: {proc_dp})")
-    print("\n" + "-" * 80)
-    print(f"Total datapoints in dataset: {total_datapoints}")
+    for p_key, proc in case_study.processes.items():
+        name = _get_process_name(proc)
+        if verbosity == 2:
+            print(f"  * {p_key}: {name}")
+        else:
+            proc_dp = _count_datapoints_in_process(proc)
+            total_datapoints += proc_dp
+            print(f"  * {p_key}: {name}  (datapoints: {proc_dp})")
+
+    if verbosity == 3:
+        print("\n" + "-" * 80)
+        print(f"Total datapoints in case study: {total_datapoints}")
 
     print("=" * 80)
 

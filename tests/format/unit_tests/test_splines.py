@@ -48,10 +48,10 @@ from bp_format.splines import (
     _inverse_pseudobatch_derivative,
 )
 from bp_format.serialization import (
-    save_dataset_json,
-    load_dataset_json,
+    save_case_study,
+    load_case_study,
 )
-from bp_format import BenchmarkDataset, CaseStudy
+from bp_format import CaseStudy
 from bp_format.time_series import PPoly
 
 
@@ -351,18 +351,17 @@ def test_spline_json_roundtrip():
     cs = CaseStudy(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
-    ds = BenchmarkDataset(metadata={"name": "test"}, case_studies={"cs": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         payload = path.read_text()
-        loaded = load_dataset_json(path)
+        loaded = load_case_study(path)
 
     assert '"interpolator"' not in payload
     assert '"breaks"' in payload
     assert '"coeffs"' in payload
-    loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["test_var"]
+    loaded_pv = loaded.processes["p"].process_variables["test_var"]
     assert isinstance(loaded_pv.values, TimeSeries)
     np.testing.assert_allclose(loaded_pv.values.breaks, rep.breaks)
     np.testing.assert_allclose(loaded_pv.values.coeffs, rep.coeffs)
@@ -393,14 +392,13 @@ def test_discrete_events_json_roundtrip():
     cs = CaseStudy(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
-    ds = BenchmarkDataset(metadata={"name": "test"}, case_studies={"cs": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
-        save_dataset_json(ds, path)
-        loaded = load_dataset_json(path)
+        save_case_study(cs, path)
+        loaded = load_case_study(path)
 
-    loaded_proc = loaded.case_studies["cs"].processes["p"]
+    loaded_proc = loaded.processes["p"]
     assert loaded_proc.discrete_events is not None
     assert jnp.allclose(loaded_proc.discrete_events.times, jnp.array([3.0, 12.0]))
     assert loaded_proc.discrete_events.labels == ["a", "b"]
@@ -422,15 +420,14 @@ def test_no_interpolator_field():
     cs = CaseStudy(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
-    ds = BenchmarkDataset(metadata={"name": "test"}, case_studies={"cs": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         payload = path.read_text()
-        loaded = load_dataset_json(path)
+        loaded = load_case_study(path)
 
-    loaded_pv = loaded.case_studies["cs"].processes["p"].process_variables["x"]
+    loaded_pv = loaded.processes["p"].process_variables["x"]
     assert '"interpolator"' not in payload
     np.testing.assert_allclose(loaded_pv.values.times, pv.values.times)
     np.testing.assert_allclose(loaded_pv.values.values, pv.values.values)
@@ -664,15 +661,12 @@ def test_smoothing_spline_metadata_round_trips_through_serialization():
     case_study = CaseStudy(
         case_id="cs", organism="test", citation="test", processes={"p": process}
     )
-    dataset = BenchmarkDataset(case_studies={"cs": case_study})
 
     with tempfile.NamedTemporaryFile(suffix=".json", mode="w+", delete=False) as f:
-        save_dataset_json(dataset, f.name)
-        loaded = load_dataset_json(f.name)
+        save_case_study(case_study, f.name)
+        loaded = load_case_study(f.name)
 
-    reloaded = (
-        loaded.case_studies["cs"].processes["p"].process_variables["temperature"].values
-    )
+    reloaded = loaded.processes["p"].process_variables["temperature"].values
     assert reloaded.metadata["fit_strategy"] == "smoothing_bspline"
     assert reloaded.metadata["smoothing_s"] == 2.0
 
@@ -1478,19 +1472,16 @@ def test_pseudobatch_spline_json_roundtrip():
     proc.pseudobatch_transform = transform
 
     cs = CaseStudy(case_id="cs", organism="CHO", citation="test", processes={"p": proc})
-    ds = BenchmarkDataset(metadata={"name": "test"}, case_studies={"cs": cs})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test_pb.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         payload = path.read_text()
-        loaded = load_dataset_json(path)
+        loaded = load_case_study(path)
 
     assert '"interpolator"' not in payload
-    loaded_comp = (
-        loaded.case_studies["cs"].processes["p"].reactor_medium.components["glucose"]
-    )
-    loaded_transform = loaded.case_studies["cs"].processes["p"].pseudobatch_transform
+    loaded_comp = loaded.processes["p"].reactor_medium.components["glucose"]
+    loaded_transform = loaded.processes["p"].pseudobatch_transform
     loaded_cstar = loaded_comp.c_star_concentration
     loaded_tr = loaded_cstar.metadata["transform"]
     assert loaded_tr["name"] == "pseudo_batch"
@@ -1498,7 +1489,7 @@ def test_pseudobatch_spline_json_roundtrip():
     assert loaded_transform is not None
 
     bt_orig = build_backtransform_spline(proc, "glucose")
-    loaded_proc = loaded.case_studies["cs"].processes["p"]
+    loaded_proc = loaded.processes["p"]
     bt_loaded = build_backtransform_spline(loaded_proc, "glucose")
     for t_val in [0.0, 25.0, 75.0]:
         orig = float(bt_orig(jnp.array(t_val)))
@@ -1580,18 +1571,13 @@ def test_load_rejects_legacy_process_variable_interpolator_payload():
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
         process_variables={"linear_var": pv},
     )
-    ds = BenchmarkDataset(
-        metadata={"name": "test"},
-        case_studies={
-            "cs": CaseStudy(
-                case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
-            )
-        },
+    cs = CaseStudy(
+        case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "legacy-pv.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         payload = path.read_text()
         mutated = payload.replace(
             '"values": {',
@@ -1600,7 +1586,7 @@ def test_load_rejects_legacy_process_variable_interpolator_payload():
         )
         path.write_text(mutated)
         with pytest.raises(ValueError, match="Legacy sibling 'interpolator' payloads"):
-            load_dataset_json(path)
+            load_case_study(path)
 
 
 def test_load_rejects_legacy_reactor_component_interpolator_payload():
@@ -1629,18 +1615,13 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
-    ds = BenchmarkDataset(
-        metadata={"name": "test"},
-        case_studies={
-            "cs": CaseStudy(
-                case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
-            )
-        },
+    cs = CaseStudy(
+        case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "legacy-comp.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         payload = path.read_text()
         mutated = payload.replace(
             '"concentration": {',
@@ -1650,7 +1631,7 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
         )
         path.write_text(mutated)
         with pytest.raises(ValueError, match="Legacy sibling 'interpolator' payloads"):
-            load_dataset_json(path)
+            load_case_study(path)
 
 
 def test_load_rejects_legacy_volume_change_interpolator_payload():
@@ -1669,18 +1650,13 @@ def test_load_rejects_legacy_volume_change_interpolator_payload():
         volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": feed}),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
-    ds = BenchmarkDataset(
-        metadata={"name": "test"},
-        case_studies={
-            "cs": CaseStudy(
-                case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
-            )
-        },
+    cs = CaseStudy(
+        case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "legacy-vc.json"
-        save_dataset_json(ds, path)
+        save_case_study(cs, path)
         payload = path.read_text()
         mutated = payload.replace(
             '"values": {',
@@ -1689,7 +1665,7 @@ def test_load_rejects_legacy_volume_change_interpolator_payload():
         )
         path.write_text(mutated)
         with pytest.raises(ValueError, match="Legacy sibling 'interpolator' payloads"):
-            load_dataset_json(path)
+            load_case_study(path)
 
 
 # ---------------------------------------------------------------------------
