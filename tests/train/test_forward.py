@@ -370,7 +370,7 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     )
 
     fake_collection = _make_fake_collection()
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda p: fake_collection)
+    monkeypatch.setattr(cli, "load_process_collection", lambda p: fake_collection)
 
     def fake_forward(collection, **kwargs):
         captured["collection"] = collection
@@ -415,7 +415,7 @@ def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
     """A second forward into a populated --output-dir is refused unless --overwrite."""
     run_dir = _make_forward_run_dir(tmp_path, processes=("p1", "p2"))
     monkeypatch.setattr(
-        cli, "load_process_collection_json", lambda p: _make_fake_collection()
+        cli, "load_process_collection", lambda p: _make_fake_collection()
     )
     monkeypatch.setattr(
         cli, "forward_from_collection", lambda collection, **k: _stub_forward_result()
@@ -443,7 +443,7 @@ def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
         solver={"max_steps": 10, "rtol": 1e-5, "atol": 1e-7, "jump_ts": True},
     )
     monkeypatch.setattr(
-        cli, "load_process_collection_json", lambda p: _make_fake_collection()
+        cli, "load_process_collection", lambda p: _make_fake_collection()
     )
     captured_cfg: dict[str, ForwardConfig] = {}
 
@@ -509,7 +509,7 @@ def test_forward_cli_no_configured_processes_evaluates_all(
     run_dir = _make_forward_run_dir(tmp_path, processes=None)
 
     monkeypatch.setattr(
-        cli, "load_process_collection_json", lambda p: _make_fake_collection()
+        cli, "load_process_collection", lambda p: _make_fake_collection()
     )
 
     captured_tpn: dict[str, object] = {}

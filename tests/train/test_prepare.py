@@ -24,8 +24,8 @@ from bp_format.dataclasses import (
     Volume,
 )
 from bp_format.serialization import (
-    load_process_collection_json,
-    save_process_collection_json,
+    load_process_collection,
+    save_process_collection,
 )
 
 from bp_train.controls import select_control_sources
@@ -46,7 +46,7 @@ def _prepare_from_collection(
 ) -> BioProcessCollection:
     raw_json = tmp_path / f"{output_dir.name}-raw.json"
     config_json = tmp_path / f"{output_dir.name}-config.json"
-    save_process_collection_json(collection, raw_json)
+    save_process_collection(collection, raw_json)
     prepare: dict[str, object] = {"raw_input": str(raw_json)}
     if prepare_config is not None:
         prepare.update(prepare_config)
@@ -415,7 +415,7 @@ def test_prepare_artifact_preserves_valid_user_biological_ode(tmp_path):
 
     prepared_ode = prepared.processes["p1"].biological_ode
     assert prepared_ode == expected_ode
-    reloaded = load_process_collection_json(output_dir / "prepared.json")
+    reloaded = load_process_collection(output_dir / "prepared.json")
     assert reloaded.processes["p1"].biological_ode == expected_ode
 
 
@@ -518,7 +518,7 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
             _make_invalid_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     metadata = prepared.metadata["bp-train"]
 
     assert metadata["process_order"] == list(prepared.processes.keys())
@@ -553,7 +553,7 @@ def test_prepare_artifact_does_not_persist_padded_control_arrays(tmp_path):
             _make_invalid_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     process_md = prepared.metadata["bp-train"]["processes"]["invalid"]
 
     assert "dense_grid" not in process_md
@@ -586,7 +586,7 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
         _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
     )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     metadata = prepared.metadata["bp-train"]
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
@@ -605,7 +605,7 @@ def test_prepare_artifact_can_rename_processes(tmp_path):
         },
     )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["process=p1", "process=p2"]
     assert prepared.processes["process=p1"].metadata.name == "process=p1"
     assert prepared.metadata["bp-train"]["process_order"] == [
@@ -629,7 +629,7 @@ def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
         },
     )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     prov = prepared.metadata["bp-train"]["semantics_provenance"]["processes"]
     for new_name in ["process=p1", "process=p2"]:
         entry = prov[new_name]
@@ -669,7 +669,7 @@ def test_prepare_artifact_partial_process_rename_preserves_unmapped_metadata_nam
         prepare_config={"process_rename_map": {"key_p1": "renamed_p1"}},
     )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["renamed_p1", "key_p2"]
     assert prepared.processes["renamed_p1"].metadata.name == "renamed_p1"
     assert prepared.processes["key_p2"].metadata.name == "p2"
@@ -699,7 +699,7 @@ def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
         _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
     )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["proc::p1", "proc::p2"]
     assert prepared.metadata["collection_transform_marker"] == "applied"
     assert (
@@ -747,7 +747,7 @@ def test_prepare_artifact_persists_feed_metadata(tmp_path):
             _make_feed_collection(), tmp_path, output_dir, custom_py=custom_py
         )
 
-    prepared = load_process_collection_json(output_dir / "prepared.json")
+    prepared = load_process_collection(output_dir / "prepared.json")
     metadata = prepared.metadata["bp-train"]
     process_md = metadata["processes"]["p1"]
     feed_md = process_md["control_metadata"]["feed_A"]

@@ -22,7 +22,7 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import save_process_collection_json
+from bp_format.serialization import save_process_collection
 
 from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
@@ -39,7 +39,7 @@ def _prepare_from_collection(
 ) -> None:
     raw_json = tmp_path / f"{output_dir.name}-raw.json"
     config_json = tmp_path / f"{output_dir.name}-config.json"
-    save_process_collection_json(collection, raw_json)
+    save_process_collection(collection, raw_json)
     config: dict[str, object] = {"prepare": {"raw_input": str(raw_json)}}
     if custom_py is not None:
         config["custom_py"] = str(custom_py)
@@ -176,7 +176,7 @@ def _prepare_two_process(tmp_path: Path) -> Path:
     custom_py = tmp_path / "custom.py"
     _write_control_custom_py(custom_py)
     raw = tmp_path / "raw.json"
-    save_process_collection_json(_make_two_process_collection(), raw)
+    save_process_collection(_make_two_process_collection(), raw)
     config_path = tmp_path / "prepare-config.json"
     config_path.write_text(
         json.dumps({"custom_py": str(custom_py), "prepare": {"raw_input": str(raw)}}),
@@ -203,7 +203,7 @@ def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     raw = tmp_path / "raw-inconsistent.json"
-    save_process_collection_json(_make_two_process_collection(), raw)
+    save_process_collection(_make_two_process_collection(), raw)
     config_path = tmp_path / "prepare-inconsistent-config.json"
     config_path.write_text(
         json.dumps(

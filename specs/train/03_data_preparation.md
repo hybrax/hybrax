@@ -35,13 +35,13 @@ assembles batches from the prepared artifact.
 ### Loading and preparing
 
 ```python
-load_raw_collection(input_json, *, case_study=None) -> BioProcessCollection
+load_raw_collection(input_json) -> BioProcessCollection
 prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False) -> BioProcessCollection
 ```
 
-- `load_raw_collection` accepts a bp-format collection file, an in-memory
-  `BioProcessCollection`, or a `BenchmarkDataset` (extracts `case_study`, or the
-  first one when `None`).
+- `load_raw_collection` accepts a bp-format `BioProcessCollection` (file or
+  in-memory) or a `CaseStudy` (file or in-memory); a `CaseStudy`'s processes
+  are wrapped into a collection, with the case identity kept in `metadata`.
 - `prepare_artifact` runs the prepare hooks
   ([`transform_process_collection`](02_cli_and_config.md#transform_process_collection),
   [`build_sample_acc_series`](02_cli_and_config.md#build_sample_acc_series)),
@@ -158,7 +158,6 @@ or a plain `prepared.json` file.
 {
   "prepare": {
     "raw_input": "../../bp-format/examples/01_kittler_2022/02_bp_format_data_all/data.json",
-    "case_study": "kittler_2022",
     "required_control_names": ["glucose_feed"],
     "bolus_run_min_dt": 0.05
   },

@@ -37,7 +37,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from bp_format.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +341,7 @@ def compute_loo_metrics(
     if isinstance(prepared_json, BioProcessCollection):
         collection = prepared_json
     else:
-        collection = load_process_collection_json(Path(prepared_json))
+        collection = load_process_collection(Path(prepared_json))
 
     target_override = tuple(target_names) if target_names is not None else None
 
@@ -445,7 +445,7 @@ def compute_metrics_from_predictions_csv(
     if isinstance(prepared_json, BioProcessCollection):
         collection = prepared_json
     else:
-        collection = load_process_collection_json(Path(prepared_json))
+        collection = load_process_collection(Path(prepared_json))
     pred_df = pd.read_csv(predictions_csv)
     targets = _resolve_target_names({}, pred_df, tuple(target_names) if target_names else None)
     selected_processes = (
@@ -936,7 +936,7 @@ def _load_collection(
 ) -> BioProcessCollection:
     if isinstance(prepared_json, BioProcessCollection):
         return prepared_json
-    return load_process_collection_json(Path(prepared_json))
+    return load_process_collection(Path(prepared_json))
 
 
 def _filter_finite(

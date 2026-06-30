@@ -22,7 +22,7 @@ These transformations should handle both the interpolators and the raw data (tak
 Overall, I think it's best if `bp-fmt` itself is very permissive and doesn't enforce anything.
 
 It's purpose is to simply:
-- provide data structures to represent all layers of the bioprocess data hierarchy (from `TimeSeries` to `BenchmarkDataset`)
+- provide data structures to represent all layers of the bioprocess data hierarchy (from `TimeSeries` to `CaseStudy`)
 - encode extra structural information on how these dataclasses relate to each other (but this should be permissive, we should be able to represent partial data or data with partial connectivity).
     - With no extra metadata:
         - A `bp_fmt.BioProcess` is simply a container for (optional) metadata and a collection of `TimeSeries`s.

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import build_rhs_ode
-from bp_format.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection
 
 from .controls_store import ControlsStore, PerProcessControls
 
@@ -672,7 +672,7 @@ class TrainingDataStore(eqx.Module):
         target_source: str = TARGET_SOURCE_PROCESS_VARIABLES,
     ) -> TrainingDataStore:
         """Load a prepared JSON artifact and construct a training-data store."""
-        collection = load_process_collection_json(Path(prepared_json))
+        collection = load_process_collection(Path(prepared_json))
         return cls.from_collection(
             collection,
             target_variable_order=target_variable_order,

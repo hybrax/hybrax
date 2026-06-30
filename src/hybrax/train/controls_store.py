@@ -11,7 +11,7 @@ from bp_format.dataclasses import (
     BioProcessCollection,
 )
 from bp_format.mechanistic import build_rhs_ode
-from bp_format.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection
 
 from .constants import METADATA_NAMESPACE
 from .controls import (
@@ -635,7 +635,7 @@ class ControlsStore(eqx.Module):
         prepared_json: str | Path,
     ) -> ControlsStore:
         """Load a prepared JSON artifact and construct a `ControlsStore`."""
-        collection = load_process_collection_json(Path(prepared_json))
+        collection = load_process_collection(Path(prepared_json))
         return cls.from_collection(collection)
 
     def get_controls(self, process: str | int) -> PerProcessControls:

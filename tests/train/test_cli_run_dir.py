@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from bp_format.serialization import save_process_collection_json
+from bp_format.serialization import save_process_collection
 
 import bp_train
 from bp_train.cli import main
@@ -15,7 +15,7 @@ from test_serialization import _collection
 
 
 def _write_prepared(path: Path, biomass_values=(1.0, 0.8, 0.64)) -> Path:
-    save_process_collection_json(_collection(biomass_values), path)
+    save_process_collection(_collection(biomass_values), path)
     return path
 
 
@@ -172,7 +172,7 @@ def test_load_params_refreshes_without_reading_prepared(tmp_path: Path, monkeypa
     def _boom(*_a, **_k):
         raise AssertionError("load_params must not load the collection")
 
-    monkeypatch.setattr(S, "load_process_collection_json", _boom)
+    monkeypatch.setattr(S, "load_process_collection", _boom)
     refreshed = bp_train.load_params(run_dir, into=run.wrapper, checkpoint="latest")
     assert refreshed is not None
     run.reload("latest")  # LoadedRun.reload uses the same lightweight path

@@ -622,7 +622,7 @@ def test_loo_cli_worker_mode_calls_run_single_fold(monkeypatch, tmp_path):
     cfg_path = tmp_path / "config.json"
     _write_min_config(cfg_path)
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
 
     def fake_single(collection, *, cfg, custom_module, output_dir, fold_idx, custom_py):
         captured["fold_idx"] = fold_idx
@@ -646,7 +646,7 @@ def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
     (tmp_path / "prepared.json").write_text("{}")  # real file -> bundle copies it
     out_dir = tmp_path / "out"
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
     monkeypatch.setattr(cli, "content_hash", lambda _c: "sha256:stub")
 
     def fake_cv(collection, *, cfg, config_path, output_dir, custom_py, resume=False):
@@ -697,7 +697,7 @@ def test_loo_cli_resume_reloads_bundle(monkeypatch, tmp_path):
     (run_dir / "prepared.json").write_text("{}")
     (run_dir / "config.json").write_text(json.dumps({"status": "running"}))
 
-    monkeypatch.setattr(cli, "load_process_collection_json", lambda _p: object())
+    monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
 
     def fake_cv(collection, *, cfg, config_path, output_dir, custom_py, resume=False):
         captured["resume"] = resume

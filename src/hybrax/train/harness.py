@@ -21,7 +21,7 @@ import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.inspect import print_rhs_ode
 from bp_format.mechanistic import build_rhs_ode
-from bp_format.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection
 
 from .checkpointing import CheckpointConfig, CheckpointWriter
 from .plotting_worker import BackgroundPlotter
@@ -1882,7 +1882,7 @@ def train_from_prepared_json(
     invoke ``train_from_collection`` directly to avoid loading the
     prepared JSON twice.
     """
-    collection = load_process_collection_json(Path(prepared_json))
+    collection = load_process_collection(Path(prepared_json))
     return train_from_collection(
         collection,
         config=config,

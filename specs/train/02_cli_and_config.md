@@ -276,8 +276,7 @@ every N rows, 0 disables).
 
 | Field | Default | Meaning |
 |---|---|---|
-| `raw_input` | path (required) | Raw bp-format collection / BenchmarkDataset. |
-| `case_study` | null | Case study to extract (null = first). |
+| `raw_input` | path (required) | Raw bp-format `BioProcessCollection` or `CaseStudy` JSON. |
 | `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
 | `required_control_names` | () | Controls that must exist (tuple, or per-process dict). |
 | `require_consistent_controls` | true | All processes share the same controls. |

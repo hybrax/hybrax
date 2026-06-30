@@ -32,9 +32,10 @@ ergonomic improvements.
 
 ### Current State
 
-`bp-train` intentionally works with `BioProcessCollection` artifacts rather
-than full `BenchmarkDataset` wrappers in V1. This keeps the data path aligned
-with `hybrax-prep` outputs and reduces avoidable complexity.
+`bp-train` works with `BioProcessCollection` artifacts internally. A raw input
+may also be a `CaseStudy` (its processes are wrapped into a collection on load).
+This keeps the data path aligned with `hybrax-prep` outputs and reduces
+avoidable complexity.
 
 ### Requested Direction
 

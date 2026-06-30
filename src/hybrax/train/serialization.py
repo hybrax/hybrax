@@ -30,7 +30,7 @@ from bp_format.dataclasses import BioProcessCollection
 from bp_format.serialization import (
     NumpyEncoder,
     _process_collection_to_dict,
-    load_process_collection_json,
+    load_process_collection,
 )
 
 from .constants import METADATA_NAMESPACE
@@ -275,7 +275,7 @@ def reconstruct_run(
         _, document = read_run_config_json(run_dir / "config.json")
 
     prepared = _resolve_prepared(run_dir, config)
-    collection = load_process_collection_json(prepared)
+    collection = load_process_collection(prepared)
     _check_content_hash(collection, document, where=run_dir)
 
     bundled_custom = run_dir / "custom.py"

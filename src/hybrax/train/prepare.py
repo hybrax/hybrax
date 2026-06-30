@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import os
@@ -13,13 +14,14 @@ import warnings
 import numpy as np
 from bp_format.dataclasses import (
     BioProcessCollection,
+    CaseStudy,
     StaticVariable,
     TimeSeries,
 )
 from bp_format.serialization import (
-    load_dataset,
-    load_process_collection_json,
-    save_process_collection_json,
+    load_case_study,
+    load_process_collection,
+    save_process_collection,
 )
 
 from .constants import METADATA_NAMESPACE
@@ -63,39 +65,52 @@ def _portable_input_path(input_path: Path | None, output_path: Path) -> str | No
     return os.path.relpath(input_path, output_dir)
 
 
-def load_raw_collection(
-    input_json: str | Path | BioProcessCollection,
-    *,
-    case_study: str | None = None,
-) -> BioProcessCollection:
-    """Load a BioProcessCollection from a file, object, or BenchmarkDataset.
+def _case_study_to_collection(case_study: CaseStudy) -> BioProcessCollection:
+    """Wrap a CaseStudy's processes into a BioProcessCollection, preserving the
+    case identity in the collection metadata."""
+    return BioProcessCollection(
+        processes=case_study.processes,
+        metadata={
+            "case_study": {
+                "case_id": case_study.case_id,
+                "organism": case_study.organism,
+                "citation": case_study.citation,
+            }
+        },
+    )
 
-    If the input is a BenchmarkDataset (contains ``case_studies``), the named
-    case study is extracted.  When *case_study* is ``None`` the first case
-    study is used.
+
+def _raw_input_is_case_study(path: Path) -> bool:
+    """Peek a raw-input JSON file: ``True`` for a CaseStudy (top-level
+    ``case_id``), ``False`` for a BioProcessCollection."""
+    if path.is_dir():
+        for name in ("data.json", "data.json.gz"):
+            if (path / name).exists():
+                path = path / name
+                break
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8") as f:
+        return "case_id" in json.load(f)
+
+
+def load_raw_collection(
+    input_json: str | Path | BioProcessCollection | CaseStudy,
+) -> BioProcessCollection:
+    """Load a BioProcessCollection from a file or object.
+
+    Accepts a ``BioProcessCollection`` (returned as-is), a ``CaseStudy`` (its
+    processes are wrapped into a collection, with the case identity preserved in
+    ``metadata``), or a path to a JSON file holding either.
     """
     if isinstance(input_json, BioProcessCollection):
         return input_json
+    if isinstance(input_json, CaseStudy):
+        return _case_study_to_collection(input_json)
 
     path = Path(input_json)
-    collection = load_process_collection_json(path)
-    if collection.processes:
-        return collection
-
-    # Try as BenchmarkDataset
-    dataset = load_dataset(path)
-    if not dataset.case_studies:
-        raise ValueError(f"No processes or case studies found in {path}")
-
-    name = case_study or next(iter(dataset.case_studies))
-    if name not in dataset.case_studies:
-        available = list(dataset.case_studies.keys())
-        raise ValueError(f"Case study {name!r} not found; available: {available}")
-    cs = dataset.case_studies[name]
-    return BioProcessCollection(
-        processes=cs.processes,
-        metadata=dataset.metadata,
-    )
+    if _raw_input_is_case_study(path):
+        return _case_study_to_collection(load_case_study(path))
+    return load_process_collection(path)
 
 
 def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) -> None:
@@ -248,7 +263,7 @@ def prepare_artifact(
     del overwrite  # the CLI guards prepared.json; prepare only (re)writes its own files
     output_path = output_dir / "prepared.json"
 
-    raw_collection = load_raw_collection(input_path, case_study=prepare.case_study)
+    raw_collection = load_raw_collection(input_path)
     validation_report = validate_collection(
         raw_collection,
         strict=prepare.strict_bp_format_validation,
@@ -386,7 +401,7 @@ def prepare_artifact(
     bp_train_metadata["provenance"]["content_hash"] = content_hash(collection)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    save_process_collection_json(collection, output_path)
+    save_process_collection(collection, output_path)
     # Standalone, inspectable record of how this prepare ran (clash-free with train's
     # config.json) — the bp_train provenance/metadata block, without the bulk collection.
     (output_dir / "prepare_config.json").write_text(

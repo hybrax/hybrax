@@ -19,7 +19,7 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import save_process_collection_json
+from bp_format.serialization import save_process_collection
 
 from bp_train.prepare import prepare_artifact
 from bp_train.run_config import load_prepare_config
@@ -35,7 +35,7 @@ def _prepare_from_collection(
 ) -> None:
     raw_json = tmp_path / f"{output_dir.name}-raw.json"
     config_json = tmp_path / f"{output_dir.name}-config.json"
-    save_process_collection_json(collection, raw_json)
+    save_process_collection(collection, raw_json)
     config: dict[str, object] = {"prepare": {"raw_input": str(raw_json)}}
     if custom_py is not None:
         config["custom_py"] = str(custom_py)

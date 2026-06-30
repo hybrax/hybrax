@@ -99,7 +99,6 @@ class LoggingConfig(ConfigBase):
 
 class PrepareConfig(ConfigBase):
     raw_input: Path
-    case_study: str | None = None
     strict_bp_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True

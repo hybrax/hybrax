@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from bp_format.serialization import load_process_collection_json
+from bp_format.serialization import load_process_collection
 import pandas as pd
 
 from .harness import (
@@ -496,7 +496,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             )
             return 1
 
-    collection = load_process_collection_json(cfg.data.prepared)
+    collection = load_process_collection(cfg.data.prepared)
 
     # Assemble the FAIR run directory.
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -791,7 +791,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             custom_py = str(_run_dir / "custom.py")
         else:
             custom_py = None
-        collection = load_process_collection_json(resolve_prepared_path(Path(prepared)))
+        collection = load_process_collection(resolve_prepared_path(Path(prepared)))
         eval_processes = (
             tuple(config_processes)
             if config_processes
@@ -911,7 +911,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
         cfg = loaded.config
         if cfg.data is None:
             raise ValueError("LOO run dir config is missing a data section")
-        collection = load_process_collection_json(cfg.data.prepared)
+        collection = load_process_collection(cfg.data.prepared)
         config_json = resume_dir / "config.json"
         update_run_config_status(config_json, status="running", resumed_at=_now_iso())
         try:
@@ -964,7 +964,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
     if cfg.data is None:
         raise ValueError("loo command requires a data config section")
     output_dir = Path(cfg.output.dir)
-    collection = load_process_collection_json(cfg.data.prepared)
+    collection = load_process_collection(cfg.data.prepared)
 
     # ---- worker mode: run exactly one fold, no top-level artifacts ----
     if args.fold is not None:

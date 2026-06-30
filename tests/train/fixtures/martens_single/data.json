@@ -1,665 +1,655 @@
 {
-  "metadata": {
-    "name": "martens_2025_f_single",
-    "version": "1.0",
-    "description": "Single CHO fed-batch process (run_1) from Martens et al. 2025. Synthetic dataset of recombinant protein production simulated with a bioprocess simulator.",
-    "preprocessing_version": "1.0"
-  },
-  "case_studies": {
-    "martens_2025_f": {
-      "case_id": "martens_2025_f",
-      "organism": "Chinese Hamster Ovary (CHO)",
-      "citation": "Martens, A., Neufang, M., Butt\u00e9, A., von Stosch, M., Chanona, A. D. R., & Helleckes, L. M. (2025). Holistic Bioprocess Development Across Scales Using Multi-Fidelity Batch Bayesian Optimization. arXiv preprint arXiv:2508.10970.",
-      "processes": {
-        "run_1": {
-          "metadata": {
-            "name": "run_1",
-            "process_type": "fedbatch",
-            "notes": null
-          },
-          "time_axis": {
-            "unit": "h",
-            "start": 0.0,
-            "end": 319.95995995996,
-            "time_reference": "batch_start"
-          },
-          "reactor_medium": {
-            "name": "reactor_medium",
-            "density": 1.0,
-            "density_unit": "kg/L",
-            "components": {
-              "biomass": {
-                "name": "biomass",
-                "unit": "cells/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      1000000.0,
-                      2906608.75,
-                      9310392.0,
-                      39307076.0,
-                      138047296.0,
-                      401299136.0,
-                      872289664.0,
-                      1193385856.0,
-                      1058061824.0
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
+  "case_id": "martens_2025_f",
+  "organism": "Chinese Hamster Ovary (CHO)",
+  "citation": "Martens, A., Neufang, M., Butt\u00e9, A., von Stosch, M., Chanona, A. D. R., & Helleckes, L. M. (2025). Holistic Bioprocess Development Across Scales Using Multi-Fidelity Batch Bayesian Optimization. arXiv preprint arXiv:2508.10970.",
+  "processes": {
+    "run_1": {
+      "metadata": {
+        "name": "run_1",
+        "process_type": "fedbatch",
+        "notes": null
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 319.95995995996,
+        "time_reference": "batch_start"
+      },
+      "reactor_medium": {
+        "name": "reactor_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "cells/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
               },
-              "product": {
-                "name": "product",
-                "unit": "mg/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      0.0,
-                      164.5221710205078,
-                      288.74114990234375,
-                      544.5711059570312,
-                      1148.774169921875,
-                      2830.982421875,
-                      6667.337890625,
-                      11550.8076171875,
-                      15439.607421875
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
+              "values": {
+                "__ndarray__": [
+                  1000000.0,
+                  2906608.75,
+                  9310392.0,
+                  39307076.0,
+                  138047296.0,
+                  401299136.0,
+                  872289664.0,
+                  1193385856.0,
+                  1058061824.0
+                ],
+                "dtype": "float32"
               },
-              "total_cells": {
-                "name": "total_cells",
-                "unit": "cells/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      150000000.0,
-                      135057600.0,
-                      114860984.0,
-                      143655088.0,
-                      254882224.0,
-                      594979968.0,
-                      1273011968.0,
-                      1829637504.0,
-                      1825763456.0
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
               },
-              "dead_cells": {
-                "name": "dead_cells",
-                "unit": "cells/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      0.0,
-                      350183.375,
-                      942249.8125,
-                      3803560.25,
-                      13860741.0,
-                      47950216.0,
-                      152877952.0,
-                      317280672.0,
-                      482642112.0
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
-              },
-              "glucose": {
-                "name": "glucose",
-                "unit": "mmol/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      10.0,
-                      8.729302406311035,
-                      65.18819427490234,
-                      57.800865173339844,
-                      96.1209716796875,
-                      123.22067260742188,
-                      85.23997497558594,
-                      39.43552017211914,
-                      0.26367372274398804
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
-              },
-              "glutamine": {
-                "name": "glutamine",
-                "unit": "mmol/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      2.0,
-                      1.6907531023025513,
-                      4.732873916625977,
-                      4.087525367736816,
-                      6.2461113929748535,
-                      8.036654472351074,
-                      6.631904602050781,
-                      5.276595592498779,
-                      4.232104778289795
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
-              },
-              "lactate": {
-                "name": "lactate",
-                "unit": "mmol/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      0.0,
-                      0.2403598576784134,
-                      0.9529120922088623,
-                      4.151972770690918,
-                      14.998208045959473,
-                      46.53002166748047,
-                      118.98248291015625,
-                      213.38475036621094,
-                      293.00225830078125
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
-              },
-              "ammonia": {
-                "name": "ammonia",
-                "unit": "mmol/L",
-                "concentration": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      39.9599609375,
-                      79.989990234375,
-                      119.9599609375,
-                      159.97998046875,
-                      199.97998046875,
-                      239.9599609375,
-                      279.9599609375,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      3.0,
-                      2.7212302684783936,
-                      2.2466018199920654,
-                      2.2362027168273926,
-                      2.1035027503967285,
-                      2.2344260215759277,
-                      2.8785042762756348,
-                      3.525153636932373,
-                      3.948233127593994
-                    ],
-                    "dtype": "float32"
-                  },
-                  "type": "TimeSeries",
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                }
-              }
+              "continuity_side": "right"
             }
           },
-          "process_variables": {
-            "pH": {
-              "name": "pH",
-              "unit": "-",
-              "is_controlled": true,
+          "product": {
+            "name": "product",
+            "unit": "mg/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
               "values": {
-                "type": "StaticVariable",
-                "value": 7.7
-              }
-            },
-            "temperature": {
-              "name": "Temperature",
-              "unit": "\u00b0C",
-              "is_controlled": true,
-              "values": {
-                "type": "StaticVariable",
-                "value": 31.8
-              }
+                "__ndarray__": [
+                  0.0,
+                  164.5221710205078,
+                  288.74114990234375,
+                  544.5711059570312,
+                  1148.774169921875,
+                  2830.982421875,
+                  6667.337890625,
+                  11550.8076171875,
+                  15439.607421875
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
             }
           },
-          "volume": {
-            "initial_volume": 3.0,
+          "total_cells": {
+            "name": "total_cells",
+            "unit": "cells/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  150000000.0,
+                  135057600.0,
+                  114860984.0,
+                  143655088.0,
+                  254882224.0,
+                  594979968.0,
+                  1273011968.0,
+                  1829637504.0,
+                  1825763456.0
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "dead_cells": {
+            "name": "dead_cells",
+            "unit": "cells/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  350183.375,
+                  942249.8125,
+                  3803560.25,
+                  13860741.0,
+                  47950216.0,
+                  152877952.0,
+                  317280672.0,
+                  482642112.0
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "mmol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  10.0,
+                  8.729302406311035,
+                  65.18819427490234,
+                  57.800865173339844,
+                  96.1209716796875,
+                  123.22067260742188,
+                  85.23997497558594,
+                  39.43552017211914,
+                  0.26367372274398804
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glutamine": {
+            "name": "glutamine",
+            "unit": "mmol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  2.0,
+                  1.6907531023025513,
+                  4.732873916625977,
+                  4.087525367736816,
+                  6.2461113929748535,
+                  8.036654472351074,
+                  6.631904602050781,
+                  5.276595592498779,
+                  4.232104778289795
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "lactate": {
+            "name": "lactate",
+            "unit": "mmol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.2403598576784134,
+                  0.9529120922088623,
+                  4.151972770690918,
+                  14.998208045959473,
+                  46.53002166748047,
+                  118.98248291015625,
+                  213.38475036621094,
+                  293.00225830078125
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "ammonia": {
+            "name": "ammonia",
+            "unit": "mmol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  39.9599609375,
+                  79.989990234375,
+                  119.9599609375,
+                  159.97998046875,
+                  199.97998046875,
+                  239.9599609375,
+                  279.9599609375,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  3.0,
+                  2.7212302684783936,
+                  2.2466018199920654,
+                  2.2362027168273926,
+                  2.1035027503967285,
+                  2.2344260215759277,
+                  2.8785042762756348,
+                  3.525153636932373,
+                  3.948233127593994
+                ],
+                "dtype": "float32"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {
+        "pH": {
+          "name": "pH",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 7.7
+          }
+        },
+        "temperature": {
+          "name": "Temperature",
+          "unit": "\u00b0C",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 31.8
+          }
+        }
+      },
+      "volume": {
+        "initial_volume": 3.0,
+        "unit": "L",
+        "volume_changes": {
+          "base_feed": {
+            "name": "base_feed",
             "unit": "L",
-            "volume_changes": {
-              "base_feed": {
-                "name": "base_feed",
-                "unit": "L",
-                "is_controlled": false,
-                "is_continuous": true,
-                "values": {
-                  "times": {
-                    "__ndarray__": [
-                      0.0,
-                      31.995996475219727,
-                      63.99199295043945,
-                      95.98799133300781,
-                      127.9839859008789,
-                      159.97998046875,
-                      191.97598266601562,
-                      223.9719696044922,
-                      255.9679718017578,
-                      287.9639587402344,
-                      319.9599609375
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      0.0,
-                      0.31995996832847595,
-                      0.6399199366569519,
-                      0.9598798751831055,
-                      1.2798398733139038,
-                      1.5997997522354126,
-                      1.919759750366211,
-                      2.2397196292877197,
-                      2.5596797466278076,
-                      2.8796396255493164,
-                      3.199599504470825
-                    ],
-                    "dtype": "float32"
-                  },
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
+            "is_controlled": false,
+            "is_continuous": true,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  31.995996475219727,
+                  63.99199295043945,
+                  95.98799133300781,
+                  127.9839859008789,
+                  159.97998046875,
+                  191.97598266601562,
+                  223.9719696044922,
+                  255.9679718017578,
+                  287.9639587402344,
+                  319.9599609375
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.31995996832847595,
+                  0.6399199366569519,
+                  0.9598798751831055,
+                  1.2798398733139038,
+                  1.5997997522354126,
+                  1.919759750366211,
+                  2.2397196292877197,
+                  2.5596797466278076,
+                  2.8796396255493164,
+                  3.199599504470825
+                ],
+                "dtype": "float32"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            },
+            "type": "FeedVolumeChange",
+            "feed_medium": {
+              "name": "base_feed_medium",
+              "density": 1.0,
+              "density_unit": "kg/L",
+              "components": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "cells/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
                 },
-                "type": "FeedVolumeChange",
-                "feed_medium": {
-                  "name": "base_feed_medium",
-                  "density": 1.0,
-                  "density_unit": "kg/L",
-                  "components": {
-                    "biomass": {
-                      "name": "biomass",
-                      "unit": "cells/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "product": {
-                      "name": "product",
-                      "unit": "mg/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "total_cells": {
-                      "name": "total_cells",
-                      "unit": "cells/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "dead_cells": {
-                      "name": "dead_cells",
-                      "unit": "cells/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "glucose": {
-                      "name": "glucose",
-                      "unit": "mmol/L",
-                      "is_controlled": true,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "glutamine": {
-                      "name": "glutamine",
-                      "unit": "mmol/L",
-                      "is_controlled": true,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "lactate": {
-                      "name": "lactate",
-                      "unit": "mmol/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "ammonia": {
-                      "name": "ammonia",
-                      "unit": "mmol/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    }
+                "product": {
+                  "name": "product",
+                  "unit": "mg/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "total_cells": {
+                  "name": "total_cells",
+                  "unit": "cells/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "dead_cells": {
+                  "name": "dead_cells",
+                  "unit": "cells/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "glucose": {
+                  "name": "glucose",
+                  "unit": "mmol/L",
+                  "is_controlled": true,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "glutamine": {
+                  "name": "glutamine",
+                  "unit": "mmol/L",
+                  "is_controlled": true,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "lactate": {
+                  "name": "lactate",
+                  "unit": "mmol/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "ammonia": {
+                  "name": "ammonia",
+                  "unit": "mmol/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
                   }
                 }
-              },
-              "bolus_feed": {
-                "name": "bolus_feed",
-                "unit": "L",
-                "is_controlled": true,
-                "is_continuous": false,
-                "values": {
-                  "times": {
-                    "__ndarray__": [
-                      40.0,
-                      70.0,
-                      140.0,
-                      180.0
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      0.07174723595380783,
-                      0.4129699468612671,
-                      0.5404841303825378,
-                      0.6916437149047852
-                    ],
-                    "dtype": "float32"
-                  },
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                },
-                "type": "FeedVolumeChange",
-                "feed_medium": {
-                  "name": "bolus_feed_medium",
-                  "density": 1.0,
-                  "density_unit": "kg/L",
-                  "components": {
-                    "biomass": {
-                      "name": "biomass",
-                      "unit": "cells/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "product": {
-                      "name": "product",
-                      "unit": "mg/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "total_cells": {
-                      "name": "total_cells",
-                      "unit": "cells/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "dead_cells": {
-                      "name": "dead_cells",
-                      "unit": "cells/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "glucose": {
-                      "name": "glucose",
-                      "unit": "mmol/L",
-                      "is_controlled": true,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 500.0
-                      }
-                    },
-                    "glutamine": {
-                      "name": "glutamine",
-                      "unit": "mmol/L",
-                      "is_controlled": true,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 30.0
-                      }
-                    },
-                    "lactate": {
-                      "name": "lactate",
-                      "unit": "mmol/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    },
-                    "ammonia": {
-                      "name": "ammonia",
-                      "unit": "mmol/L",
-                      "is_controlled": false,
-                      "concentration": {
-                        "type": "StaticVariable",
-                        "value": 0.0
-                      }
-                    }
-                  }
-                }
-              },
-              "sampling": {
-                "name": "sampling",
-                "unit": "L",
-                "is_controlled": true,
-                "is_continuous": false,
-                "values": {
-                  "times": {
-                    "__ndarray__": [
-                      40.0,
-                      80.0,
-                      120.0,
-                      160.0,
-                      200.0,
-                      240.0,
-                      280.0
-                    ],
-                    "dtype": "float32"
-                  },
-                  "values": {
-                    "__ndarray__": [
-                      -0.20000000298023224,
-                      -0.20000000298023224,
-                      -0.20000000298023224,
-                      -0.20000000298023224,
-                      -0.20000000298023224,
-                      -0.20000000298023224,
-                      -0.20000000298023224
-                    ],
-                    "dtype": "float32"
-                  },
-                  "derived": false,
-                  "jump_times": {
-                    "__ndarray__": [],
-                    "dtype": "float32"
-                  },
-                  "continuity_side": "right"
-                },
-                "type": "SampleVolumeChange"
               }
             }
+          },
+          "bolus_feed": {
+            "name": "bolus_feed",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  40.0,
+                  70.0,
+                  140.0,
+                  180.0
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.07174723595380783,
+                  0.4129699468612671,
+                  0.5404841303825378,
+                  0.6916437149047852
+                ],
+                "dtype": "float32"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            },
+            "type": "FeedVolumeChange",
+            "feed_medium": {
+              "name": "bolus_feed_medium",
+              "density": 1.0,
+              "density_unit": "kg/L",
+              "components": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "cells/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "product": {
+                  "name": "product",
+                  "unit": "mg/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "total_cells": {
+                  "name": "total_cells",
+                  "unit": "cells/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "dead_cells": {
+                  "name": "dead_cells",
+                  "unit": "cells/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "glucose": {
+                  "name": "glucose",
+                  "unit": "mmol/L",
+                  "is_controlled": true,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
+                  }
+                },
+                "glutamine": {
+                  "name": "glutamine",
+                  "unit": "mmol/L",
+                  "is_controlled": true,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 30.0
+                  }
+                },
+                "lactate": {
+                  "name": "lactate",
+                  "unit": "mmol/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                },
+                "ammonia": {
+                  "name": "ammonia",
+                  "unit": "mmol/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                }
+              }
+            }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  40.0,
+                  80.0,
+                  120.0,
+                  160.0,
+                  200.0,
+                  240.0,
+                  280.0
+                ],
+                "dtype": "float32"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.20000000298023224,
+                  -0.20000000298023224,
+                  -0.20000000298023224,
+                  -0.20000000298023224,
+                  -0.20000000298023224,
+                  -0.20000000298023224,
+                  -0.20000000298023224
+                ],
+                "dtype": "float32"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float32"
+              },
+              "continuity_side": "right"
+            },
+            "type": "SampleVolumeChange"
           }
         }
       }
