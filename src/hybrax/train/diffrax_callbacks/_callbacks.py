@@ -29,6 +29,7 @@ import optimistix as optx
 # ContinuousCallback
 # ================================================================
 
+
 class ContinuousCallback(eqx.Module):
     """Triggers when a continuous condition function crosses zero.
 
@@ -51,6 +52,7 @@ class ContinuousCallback(eqx.Module):
             direction="down",
         )
     """
+
     condition_fn: Callable
     affect_fn: Callable
     direction: str = "both"
@@ -76,6 +78,7 @@ class ContinuousCallback(eqx.Module):
 # DiscreteCallback
 # ================================================================
 
+
 class DiscreteCallback(eqx.Module):
     """Evaluated at each segment boundary (between events).
 
@@ -94,6 +97,7 @@ class DiscreteCallback(eqx.Module):
             affect_fn=lambda y, t, args: y.at[0].set(100.0),
         )
     """
+
     condition_fn: Callable
     affect_fn: Callable
 
@@ -101,6 +105,7 @@ class DiscreteCallback(eqx.Module):
 # ================================================================
 # PresetTimeCallback
 # ================================================================
+
 
 class PresetTimeCallback(eqx.Module):
     """Triggers at predetermined times.
@@ -117,6 +122,7 @@ class PresetTimeCallback(eqx.Module):
             affect_fn=lambda y, t, args: take_sample(y),
         )
     """
+
     times: jnp.ndarray
     affect_fn: Callable
 
@@ -124,6 +130,7 @@ class PresetTimeCallback(eqx.Module):
 # ================================================================
 # PeriodicCallback
 # ================================================================
+
 
 class PeriodicCallback(eqx.Module):
     """Triggers every Δt time units.
@@ -140,6 +147,7 @@ class PeriodicCallback(eqx.Module):
         # Log state every 2 hours over a 48h fermentation
         cb = PeriodicCallback(dt=2.0, affect_fn=log_fn, t_end=48.0)
     """
+
     dt: float
     affect_fn: Callable
     t_start: float = 0.0
@@ -155,6 +163,7 @@ class PeriodicCallback(eqx.Module):
 # ================================================================
 # ManifoldProjection
 # ================================================================
+
 
 class ManifoldProjection(eqx.Module):
     """Projects the state onto a manifold after each event.
@@ -181,6 +190,7 @@ class ManifoldProjection(eqx.Module):
             return y.at[0].add(correction).at[1].add(correction / 0.5)
         cb = ManifoldProjection(project_fn=conserve_mass)
     """
+
     project_fn: Callable
 
     def to_discrete(self) -> DiscreteCallback:
@@ -194,6 +204,7 @@ class ManifoldProjection(eqx.Module):
 # ================================================================
 # CallbackSet
 # ================================================================
+
 
 class CallbackSet(eqx.Module):
     """Combines multiple callbacks with priority handling.
@@ -216,6 +227,7 @@ class CallbackSet(eqx.Module):
             ManifoldProjection(...),   # enforce non-negative concentrations
         )
     """
+
     continuous_callbacks: tuple[ContinuousCallback, ...]
     preset_callbacks: tuple[PresetTimeCallback, ...]
     discrete_callbacks: tuple[DiscreteCallback, ...]
@@ -223,8 +235,12 @@ class CallbackSet(eqx.Module):
     def __init__(
         self,
         *callbacks: Union[
-            ContinuousCallback, DiscreteCallback, PresetTimeCallback,
-            PeriodicCallback, ManifoldProjection, "CallbackSet",
+            ContinuousCallback,
+            DiscreteCallback,
+            PresetTimeCallback,
+            PeriodicCallback,
+            ManifoldProjection,
+            "CallbackSet",
         ],
     ):
         continuous = []

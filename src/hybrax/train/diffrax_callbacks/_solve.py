@@ -16,11 +16,14 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import diffrax
-import equinox as eqx
 
 from ._callbacks import (
-    ContinuousCallback, DiscreteCallback, PresetTimeCallback,
-    PeriodicCallback, ManifoldProjection, CallbackSet,
+    ContinuousCallback,
+    DiscreteCallback,
+    PresetTimeCallback,
+    PeriodicCallback,
+    ManifoldProjection,
+    CallbackSet,
 )
 from ._solution import CallbackSolution
 
@@ -40,8 +43,10 @@ def _build_diffrax_event(callback_set: CallbackSet):
 
     if len(ccs) == 1:
         cc = ccs[0]
+
         def cond_fn(t, y, args, **kwargs):
             return cc.condition_fn(y, t, args)
+
         return diffrax.Event(
             cond_fn=cond_fn,
             root_finder=cc.root_finder,
@@ -52,10 +57,13 @@ def _build_diffrax_event(callback_set: CallbackSet):
         directions = []
         root_finder = ccs[0].root_finder
         for cc in ccs:
+
             def _make_cond(cc_captured):
                 def cond_fn(t, y, args, **kwargs):
                     return cc_captured.condition_fn(y, t, args)
+
                 return cond_fn
+
             cond_fns.append(_make_cond(cc))
             directions.append(cc._diffrax_direction)
         return diffrax.Event(
@@ -67,13 +75,16 @@ def _build_diffrax_event(callback_set: CallbackSet):
 
 # Event/segment time comparisons are magnitude-relative *and* dtype-aware: the tolerance
 # is ``factor * eps(dtype) * (1 + |t|)`` rather than a fixed constant. A fixed constant
-# (e.g. 1e-10) sits below float32 ULP at t~15 (~1e-6), so in float32 events silently fail
-# to fire and the solve freezes; in float64 it would be needlessly loose. Deriving from
+# (e.g. 1e-10) sits below float32 ULP at t~15 (~1e-6), so in float32
+# events silently fail to fire and the solve freezes; in float64 it would be
+# needlessly loose. Deriving from
 # ``jnp.finfo(dtype).eps`` makes both precisions correct automatically:
 #   float32 eps ~1.2e-7 -> EVENT ~1.9e-4, STEP ~3.8e-6  at t~15
 #   float64 eps ~2.2e-16 -> EVENT ~3.5e-13, STEP ~7e-15  at t~15
-_EVENT_TOL_FACTOR = 1e2  # "did the solver land on the preset?" — loose (solver stop error)
-_STEP_TOL_FACTOR = 2.0   # "strictly future / positive-length segment" — tight (above ULP)
+# "did the solver land on the preset?" — loose (solver stop error)
+_EVENT_TOL_FACTOR = 1e2
+# "strictly future / positive-length segment" — tight (above ULP)
+_STEP_TOL_FACTOR = 2.0
 
 
 def _dtype_tol(t, factor):
@@ -94,6 +105,7 @@ def _find_next_preset_time(preset_times, t_current, t_end):
 # Main solver
 # ================================================================
 
+
 def diffeqsolve_with_callbacks(
     terms: diffrax.AbstractTerm,
     solver: diffrax.AbstractSolver,
@@ -103,8 +115,12 @@ def diffeqsolve_with_callbacks(
     y0: jnp.ndarray,
     args=None,
     *,
-    callbacks: ContinuousCallback | DiscreteCallback | PresetTimeCallback
-              | PeriodicCallback | ManifoldProjection | CallbackSet,
+    callbacks: ContinuousCallback
+    | DiscreteCallback
+    | PresetTimeCallback
+    | PeriodicCallback
+    | ManifoldProjection
+    | CallbackSet,
     max_events: int = 20,
     stepsize_controller: diffrax.AbstractStepSizeController = diffrax.PIDController(
         rtol=1e-6, atol=1e-8
@@ -141,12 +157,12 @@ def diffeqsolve_with_callbacks(
     callback_set = _wrap_single_callback(callbacks)
     diffrax_event = _build_diffrax_event(callback_set)
 
-    # Working time precision: match the state/time inputs (>= float32). Replaces the
-    # previous hardcoded float64 casts, which truncated to float32 under x64-disabled
-    # (emitting a UserWarning) and made the dtype-aware tolerances above dishonest.
-    time_dtype = jnp.result_type(
-        jnp.asarray(y0).dtype, jnp.asarray(t0).dtype, jnp.float32
-    )
+    # Keep solver time in the state dtype. Diffrax stage buffers are allocated from
+    # y0; letting float64 times promote the vector field output breaks float32 states.
+    time_dtype = jnp.asarray(y0).dtype
+    t0 = jnp.asarray(t0, dtype=time_dtype)
+    t1 = jnp.asarray(t1, dtype=time_dtype)
+    dt0 = jnp.asarray(dt0, dtype=time_dtype)
 
     n_continuous = callback_set.n_continuous
     n_preset = callback_set.n_preset
@@ -156,14 +172,12 @@ def diffeqsolve_with_callbacks(
     has_discrete = n_discrete > 0
     repeat_nudge = callback_set.get_max_repeat_nudge()
 
-    state_dim = y0.shape[0]
-
     # Merge preset times
     if has_presets:
-        all_preset_times = callback_set.get_all_preset_times()
+        all_preset_times = callback_set.get_all_preset_times().astype(time_dtype)
         preset_affect_indices = callback_set.get_preset_affect_indices()
     else:
-        all_preset_times = jnp.array([t1 + 1.0])
+        all_preset_times = jnp.asarray([t1 + jnp.asarray(1.0, dtype=time_dtype)])
         preset_affect_indices = jnp.array([0], dtype=jnp.int32)
 
     # ---- Affect dispatchers (built at trace time) ----
@@ -204,12 +218,15 @@ def diffeqsolve_with_callbacks(
             )
             segment_t1 = jnp.minimum(next_preset_time, t1)
         else:
-            segment_t1 = jnp.asarray(t1, dtype=time_dtype)
-            next_preset_time = jnp.asarray(t1 + 1.0, dtype=time_dtype)
+            segment_t1 = t1
+            next_preset_time = t1 + jnp.asarray(1.0, dtype=time_dtype)
             next_preset_idx = jnp.int32(-1)
 
         # Ensure segment_t1 >= t_current (can be violated by repeat_nudge or when done)
-        segment_t1 = jnp.maximum(segment_t1, t_current + _dtype_tol(t_current, _STEP_TOL_FACTOR))
+        segment_t1 = jnp.maximum(
+            segment_t1,
+            t_current + _dtype_tol(t_current, _STEP_TOL_FACTOR),
+        )
 
         # Solve the segment
         dt = jnp.minimum(dt0, segment_t1 - t_current)
@@ -240,9 +257,11 @@ def diffeqsolve_with_callbacks(
             if n_continuous == 1:
                 continuous_triggered = sol.event_mask & (~done) & (~terminated)
             else:
-                continuous_triggered = jax.tree.reduce(
-                    lambda a, b: a | b, sol.event_mask
-                ) & (~done) & (~terminated)
+                continuous_triggered = (
+                    jax.tree.reduce(lambda a, b: a | b, sol.event_mask)
+                    & (~done)
+                    & (~terminated)
+                )
         else:
             continuous_triggered = jnp.bool_(False)
 
@@ -252,7 +271,10 @@ def diffeqsolve_with_callbacks(
                 & (~continuous_triggered)
                 & (~done)
                 & (~terminated)
-                & (jnp.abs(t_at_stop - next_preset_time) < _dtype_tol(next_preset_time, _EVENT_TOL_FACTOR))
+                & (
+                    jnp.abs(t_at_stop - next_preset_time)
+                    < _dtype_tol(next_preset_time, _EVENT_TOL_FACTOR)
+                )
             )
         else:
             preset_triggered = jnp.bool_(False)
@@ -266,12 +288,15 @@ def diffeqsolve_with_callbacks(
                 y_at_stop, t_at_stop, args, sol.event_mask
             )
             y_pres = _dispatch_preset_affect(
-                y_at_stop, t_at_stop, args,
+                y_at_stop,
+                t_at_stop,
+                args,
                 preset_affect_indices[jnp.clip(next_preset_idx, 0)],
             )
             y_after = jnp.where(
-                continuous_triggered, y_cont,
-                jnp.where(preset_triggered, y_pres, y_at_stop)
+                continuous_triggered,
+                y_cont,
+                jnp.where(preset_triggered, y_pres, y_at_stop),
             )
         elif has_continuous:
             y_cont = _dispatch_continuous_affect(
@@ -280,7 +305,9 @@ def diffeqsolve_with_callbacks(
             y_after = jnp.where(continuous_triggered, y_cont, y_at_stop)
         elif has_presets:
             y_pres = _dispatch_preset_affect(
-                y_at_stop, t_at_stop, args,
+                y_at_stop,
+                t_at_stop,
+                args,
                 preset_affect_indices[jnp.clip(next_preset_idx, 0)],
             )
             y_after = jnp.where(preset_triggered, y_pres, y_at_stop)
@@ -320,8 +347,9 @@ def diffeqsolve_with_callbacks(
             preset_type_idx = jnp.int32(-1)
 
         event_type = jnp.where(
-            continuous_triggered, continuous_idx,
-            jnp.where(preset_triggered, preset_type_idx, jnp.int32(-1))
+            continuous_triggered,
+            continuous_idx,
+            jnp.where(preset_triggered, preset_type_idx, jnp.int32(-1)),
         )
 
         # ---- repeat_nudge: advance time slightly after continuous events ----
@@ -350,13 +378,11 @@ def diffeqsolve_with_callbacks(
     # ---- Run the scan ----
     init_carry = (
         y0,
-        jnp.asarray(t0, dtype=time_dtype),
+        t0,
         jnp.bool_(False),
         jnp.bool_(False),
     )
-    final_carry, outputs = jax.lax.scan(
-        scan_fn, init_carry, None, length=max_events
-    )
+    final_carry, outputs = jax.lax.scan(scan_fn, init_carry, None, length=max_events)
     y_final, t_final, _, _ = final_carry
     event_times, event_types, states_before, states_after = outputs
 
@@ -448,8 +474,10 @@ def evaluate_trajectory(
             continue
 
         seg_sol = diffrax.diffeqsolve(
-            terms, solver,
-            seg_t0, seg_t1,
+            terms,
+            solver,
+            seg_t0,
+            seg_t1,
             dt0=min(dt0, seg_t1 - seg_t0),
             y0=seg_y0,
             args=args,

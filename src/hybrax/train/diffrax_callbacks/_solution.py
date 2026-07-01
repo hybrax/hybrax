@@ -25,6 +25,7 @@ class CallbackSolution(eqx.Module):
         event_states_after: (max_events, state_dim) states just after each affect.
         event_count: Total number of events that triggered.
     """
+
     y_final: jnp.ndarray
     t_final: jnp.ndarray
 
@@ -89,6 +90,5 @@ class CallbackSolution(eqx.Module):
                 before_str = ", ".join(f"{v:.3f}" for v in before)
                 after_str = ", ".join(f"{v:.3f}" for v in after)
             print(
-                f"{i+1:3d}  {t:10.4f}  {type_str:>8}  "
-                f"[{before_str}] → [{after_str}]"
+                f"{i + 1:3d}  {t:10.4f}  {type_str:>8}  [{before_str}] → [{after_str}]"
             )

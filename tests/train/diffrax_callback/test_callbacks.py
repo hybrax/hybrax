@@ -31,7 +31,7 @@ CTRL = diffrax.PIDController(rtol=1e-6, atol=1e-8)
 
 def bioreactor_ode(t, y, args):
     """Monod + substrate inhibition. State: [X, S, P, V]."""
-    X, S, P, V = y[0], y[1], y[2], y[3]
+    X, S = y[0], y[1]
     mu = 0.4 * S / (2.0 + S + S**2 / 50.0)
     return jnp.array([mu * X, -mu * X / 0.5, 0.1 * mu * X, 0.0])
 
@@ -43,8 +43,15 @@ T_END = 48.0
 
 def run(cb, max_events=20):
     return diffeqsolve_with_callbacks(
-        TERMS, SOLVER, 0.0, T_END, 0.01, Y0, None,
-        callbacks=cb, max_events=max_events,
+        TERMS,
+        SOLVER,
+        0.0,
+        T_END,
+        0.01,
+        Y0,
+        None,
+        callbacks=cb,
+        max_events=max_events,
         stepsize_controller=CTRL,
     )
 
@@ -52,15 +59,47 @@ def run(cb, max_events=20):
 def feed_affect(y, t, args):
     X, S, P, V = y[0], y[1], y[2], y[3]
     V_new = V + 0.1
-    return jnp.array([
-        X * V / V_new,
-        (S * V + 100.0 * 0.1) / V_new,
-        P * V / V_new,
-        V_new,
-    ])
+    return jnp.array(
+        [
+            X * V / V_new,
+            (S * V + 100.0 * 0.1) / V_new,
+            P * V / V_new,
+            V_new,
+        ]
+    )
 
 
 # ---- Tests ----
+
+
+def test_float32_state_with_float64_times_keeps_state_dtype():
+    """Regression: float64 times must not promote a float32 state solve."""
+
+    def ode_uses_time(t, y, args):
+        del y, args
+        return jnp.asarray([t, t])
+
+    def noop_affect(y, t, args):
+        del t, args
+        return y
+
+    sol = diffeqsolve_with_callbacks(
+        diffrax.ODETerm(ode_uses_time),
+        SOLVER,
+        t0=jnp.asarray(0.0, dtype=jnp.float64),
+        t1=jnp.asarray(1.0, dtype=jnp.float64),
+        dt0=jnp.asarray(0.1, dtype=jnp.float64),
+        y0=jnp.asarray([0.0, 0.0], dtype=jnp.float32),
+        callbacks=PresetTimeCallback(
+            times=jnp.asarray([0.5], dtype=jnp.float64),
+            affect_fn=noop_affect,
+        ),
+        max_events=3,
+        stepsize_controller=CTRL,
+    )
+
+    assert sol.y_final.dtype == jnp.float32
+    assert jnp.allclose(sol.y_final, jnp.asarray([0.5, 0.5], dtype=jnp.float32))
 
 
 class TestContinuousCallback:
@@ -136,8 +175,7 @@ class TestRepeatNudge:
         ]
         if len(bleed_times) >= 2:
             min_gap = min(
-                bleed_times[i + 1] - bleed_times[i]
-                for i in range(len(bleed_times) - 1)
+                bleed_times[i + 1] - bleed_times[i] for i in range(len(bleed_times) - 1)
             )
             assert min_gap >= 0.49  # nudge = 0.5
 
@@ -171,9 +209,7 @@ class TestPresetTimeCallback:
         n = int(sol.event_count)
         assert n == 5
         for i in range(n):
-            assert sol.event_times[i] == pytest.approx(
-                float(preset_times[i]), abs=1e-8
-            )
+            assert sol.event_times[i] == pytest.approx(float(preset_times[i]), abs=1e-8)
 
     def test_volume_change(self):
         cb = PresetTimeCallback(
@@ -272,18 +308,21 @@ class TestCallbackSet:
 class TestGradients:
     def test_gradient_through_continuous(self):
         """Gradient of final product w.r.t. feed parameters."""
+
         def objective(params):
             feed_vol, feed_conc = params
 
             def affect(y, t, args):
                 X, S, P, V = y[0], y[1], y[2], y[3]
                 V_new = V + feed_vol
-                return jnp.array([
-                    X * V / V_new,
-                    (S * V + feed_conc * feed_vol) / V_new,
-                    P * V / V_new,
-                    V_new,
-                ])
+                return jnp.array(
+                    [
+                        X * V / V_new,
+                        (S * V + feed_conc * feed_vol) / V_new,
+                        P * V / V_new,
+                        V_new,
+                    ]
+                )
 
             cb = ContinuousCallback(
                 condition_fn=lambda y, t, args: y[1] - 1.0,
@@ -291,8 +330,15 @@ class TestGradients:
                 direction="down",
             )
             sol = diffeqsolve_with_callbacks(
-                TERMS, SOLVER, 0.0, T_END, 0.01, Y0, None,
-                callbacks=cb, max_events=20,
+                TERMS,
+                SOLVER,
+                0.0,
+                T_END,
+                0.01,
+                Y0,
+                None,
+                callbacks=cb,
+                max_events=20,
                 stepsize_controller=CTRL,
             )
             return sol.y_final[2] * sol.y_final[3]
@@ -307,10 +353,13 @@ class TestGradients:
             p_minus = params.at[i].set(params[i] - eps)
             fd = (objective(p_plus) - objective(p_minus)) / (2 * eps)
             rel_err = abs(grads[i] - fd) / (abs(fd) + 1e-10)
-            assert rel_err < 1e-3, f"Gradient {i}: ad={grads[i]}, fd={fd}, err={rel_err}"
+            assert rel_err < 1e-3, (
+                f"Gradient {i}: ad={grads[i]}, fd={fd}, err={rel_err}"
+            )
 
     def test_gradient_through_threshold(self):
         """Gradient w.r.t. the event threshold itself."""
+
         def objective(threshold):
             cb = ContinuousCallback(
                 condition_fn=lambda y, t, args: y[1] - threshold,
@@ -318,8 +367,15 @@ class TestGradients:
                 direction="down",
             )
             sol = diffeqsolve_with_callbacks(
-                TERMS, SOLVER, 0.0, T_END, 0.01, Y0, None,
-                callbacks=cb, max_events=20,
+                TERMS,
+                SOLVER,
+                0.0,
+                T_END,
+                0.01,
+                Y0,
+                None,
+                callbacks=cb,
+                max_events=20,
                 stepsize_controller=CTRL,
             )
             return sol.y_final[2] * sol.y_final[3]
@@ -334,16 +390,19 @@ class TestGradients:
 
     def test_gradient_through_manifold(self):
         """Gradient flows through ManifoldProjection."""
+
         def objective(feed_vol):
             cb = CallbackSet(
                 ContinuousCallback(
                     condition_fn=lambda y, t, args: y[1] - 1.0,
-                    affect_fn=lambda y, t, args: jnp.array([
-                        y[0] * y[3] / (y[3] + feed_vol),
-                        (y[1] * y[3] + 100.0 * feed_vol) / (y[3] + feed_vol),
-                        y[2] * y[3] / (y[3] + feed_vol),
-                        y[3] + feed_vol,
-                    ]),
+                    affect_fn=lambda y, t, args: jnp.array(
+                        [
+                            y[0] * y[3] / (y[3] + feed_vol),
+                            (y[1] * y[3] + 100.0 * feed_vol) / (y[3] + feed_vol),
+                            y[2] * y[3] / (y[3] + feed_vol),
+                            y[3] + feed_vol,
+                        ]
+                    ),
                     direction="down",
                 ),
                 ManifoldProjection(
@@ -351,8 +410,15 @@ class TestGradients:
                 ),
             )
             sol = diffeqsolve_with_callbacks(
-                TERMS, SOLVER, 0.0, T_END, 0.01, Y0, None,
-                callbacks=cb, max_events=20,
+                TERMS,
+                SOLVER,
+                0.0,
+                T_END,
+                0.01,
+                Y0,
+                None,
+                callbacks=cb,
+                max_events=20,
                 stepsize_controller=CTRL,
             )
             return sol.y_final[2] * sol.y_final[3]
@@ -416,8 +482,16 @@ class TestSolution:
 
         ts_eval = jnp.linspace(0.0, T_END, 100)
         ts_out, ys_out = evaluate_trajectory(
-            sol, TERMS, SOLVER, 0.0, T_END, 0.01, Y0, None,
-            ts=ts_eval, stepsize_controller=CTRL,
+            sol,
+            TERMS,
+            SOLVER,
+            0.0,
+            T_END,
+            0.01,
+            Y0,
+            None,
+            ts=ts_eval,
+            stepsize_controller=CTRL,
         )
         # Should have ~100 points
         assert len(ts_out) >= 95
