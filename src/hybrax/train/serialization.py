@@ -79,7 +79,7 @@ def save_opt_state(opt_state: Any, path: str | Path) -> None:
 
 
 def load_opt_state(path: str | Path, *, template: Any) -> Any:
-    """Deserialise optimizer state into ``template`` (= ``optimizer.init(trainable)``)."""
+    """Deserialise optimizer state into an optimizer-state ``template``."""
     return eqx.tree_deserialise_leaves(Path(path), like=template)
 
 
@@ -236,9 +236,7 @@ def _check_content_hash(
 ) -> None:
     """Hard-error if the prepared collection's content_hash disagrees with the
     value recorded in ``config.json`` (skips silently if none was recorded)."""
-    recorded = (
-        document.get("inputs", {}).get("prepared_input", {}).get("content_hash")
-    )
+    recorded = document.get("inputs", {}).get("prepared_input", {}).get("content_hash")
     if not recorded:
         return
     actual = content_hash(collection)
@@ -289,9 +287,7 @@ def reconstruct_run(
     config = reresolve_custom(config, custom_module)
 
     targets = config.data.targets if config.data is not None else None
-    target_source = (
-        config.data.target_source if config.data is not None else "auto"
-    )
+    target_source = config.data.target_source if config.data is not None else "auto"
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=targets,
@@ -303,6 +299,7 @@ def reconstruct_run(
         target_variable_order=targets,
         target_source=target_source,
         seed=int(config.train.seed),
+        allow_stateful_models=config.train.allow_stateful_models,
     )
     scale_kwargs = _resolve_estimated_scales(
         custom_module=custom_module,
@@ -406,6 +403,7 @@ def load_run(
             optimizer_name=config.train.optimizer,
             learning_rate=config.train.learning_rate,
             grad_clip_norm=config.train.grad_clip_norm,
+            allow_stateful_models=config.train.allow_stateful_models,
         )
         optimizer, _train_cfg = build_optimizer_for_run(
             custom_module=custom_module,
@@ -414,7 +412,9 @@ def load_run(
         )
         trainable_params, _ = partition_trainable(wrapper)
         opt_template = optimizer.init(trainable_params)
-        opt_state = load_opt_state(
+        # The bool parameter `load_opt_state` shadows the module-level function
+        # of the same name here, so reach the function through the module globals.
+        opt_state = globals()["load_opt_state"](
             params_path.with_name("opt_state.eqx"), template=opt_template
         )
 
@@ -428,9 +428,7 @@ def load_run(
     )
 
 
-def load_params(
-    run_dir: str | Path, *, into: Any, checkpoint: str = "latest"
-) -> Any:
+def load_params(run_dir: str | Path, *, into: Any, checkpoint: str = "latest") -> Any:
     """Refresh weights into an **already-built** wrapper (no dataset/custom.py reload).
 
     ``into`` must be structurally identical to the trained wrapper; eqx raises on

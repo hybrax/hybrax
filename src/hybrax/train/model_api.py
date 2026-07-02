@@ -129,14 +129,21 @@ class ReactionInputs(eqx.Module):
     """
 
     SCL_modeled_RMCs: jax.Array
-    SCL_modeled_PVs: jax.Array
     SCL_modeled_V: jax.Array
     SCL_modeled_FVCs_cumulative: jax.Array
     SCL_controlled_FVCs_cumulative: jax.Array
     SCL_controlled_FVCs_rates: jax.Array
     SCL_controlled_FVCs_Cin: jax.Array
-    SCL_controlled_PVs: jax.Array
     SCL_modeled_FVCs_Cin: jax.Array
+    SCL_modeled_PVs: jax.Array = eqx.field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
+    SCL_controlled_PVs: jax.Array = eqx.field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
+    SCL_latent: jax.Array = eqx.field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
 
 
 class ReactionOutputs(eqx.Module):
@@ -158,6 +165,8 @@ class ReactionOutputs(eqx.Module):
         ``rhs_ode.name_modeled_FVCs``. Must be non-negative — the module
         applies its own positivity transform (typically softplus) before
         scaling.
+    SCL_latent_derivative:
+        Continuous latent-state derivative, aligned with ``SCL_latent``.
     auxiliary:
         Optional model-defined observables that follow the solver-time save
         path. ``None`` or ``dict[str, array]`` with scalar or 1D-array leaves
@@ -166,6 +175,9 @@ class ReactionOutputs(eqx.Module):
 
     SCL_modeled_BiologicalOde_rates: jax.Array
     SCL_modeled_FVCs_rates: jax.Array
+    SCL_latent_derivative: jax.Array = eqx.field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
     auxiliary: dict[str, jax.Array] | None = None
 
 
@@ -248,6 +260,9 @@ class UserReactionModule(eqx.Module):
     SCALE_modeled_FVCs_rates: jax.Array = frozen_field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
     )
+    SCALE_latent: jax.Array = frozen_field(
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+    )
 
     # ------------------------------------------------------------------
     # Axis-dimension properties. Subclass authors size their MLPs /
@@ -286,9 +301,16 @@ class UserReactionModule(eqx.Module):
         return int(self.SCALE_controlled_PVs.shape[0])
 
     @property
+    def n_latent(self) -> int:
+        """Number of integrated latent-state dimensions."""
+        return int(self.SCALE_latent.shape[0])
+
+    @property
     def SCALE_state(self) -> jax.Array:
-        """Concatenated state-scale:
-        ``[modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative]``."""
+        """Concatenated physical state-scale.
+
+        Layout: ``[modeled_RMCs | modeled_PVs | V | modeled_FVCs_cumulative]``.
+        """
         return jnp.concatenate(
             [
                 self.SCALE_modeled_RMCs,
@@ -303,6 +325,11 @@ class UserReactionModule(eqx.Module):
         """Real-volume scale shares the V_in_cumulative scale (same units, L)."""
         return self.SCALE_V_in_cumulative
 
+    @property
+    def SCALE_integrated_state(self) -> jax.Array:
+        """State scale used by the ODE solver, including trailing latent state."""
+        return jnp.concatenate([self.SCALE_state, self.SCALE_latent])
+
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         """Override. Inputs in SCL space; return rates in SCL space.
 
@@ -312,9 +339,18 @@ class UserReactionModule(eqx.Module):
         """
         raise NotImplementedError
 
+    @property
+    def latent_observables(self) -> tuple[str, ...]:
+        """Names of observables that require live latent state during the solve."""
+        return ()
+
     def observe(self, states: jax.Array) -> jax.Array:
-        """Optional observation map; default identity."""
+        """Optional post-hoc observation map; default identity on physical state."""
         return states
+
+    def initial_latent(self, RAW_phys_y0: jax.Array) -> jax.Array:
+        """Initial RAW latent state appended to the physical initial state."""
+        return jnp.zeros(self.n_latent, dtype=jnp.asarray(RAW_phys_y0).dtype)
 
     # ------------------------------------------------------------------
     # Linear scale/unscale helpers. Argument-name suffix matches method name.
@@ -326,6 +362,12 @@ class UserReactionModule(eqx.Module):
 
     def unscale_state(self, SCL_state):
         return SCL_state * self.SCALE_state
+
+    def scale_latent(self, RAW_latent):
+        return RAW_latent / self.SCALE_latent
+
+    def unscale_latent(self, SCL_latent):
+        return SCL_latent * self.SCALE_latent
 
     def scale_modeled_RMCs(self, RAW_modeled_RMCs):
         return RAW_modeled_RMCs / self.SCALE_modeled_RMCs

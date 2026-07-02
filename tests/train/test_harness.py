@@ -16,6 +16,7 @@ from bp_format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
+    ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
     SampleVolumeChange,
@@ -24,18 +25,20 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
+from bp_format.mechanistic import build_rhs_ode
 
+from bp_train.controls_store import ControlsStore
 from bp_train.harness import (
-    ForwardConfig,
     TrainHarnessConfig,
     _build_batch_index_stream,
+    _build_reaction_module,
     _ensure_process_names,
+    _target_state_indices,
     _validate_batching_config,
-    forward_from_collection,
     train_from_collection,
     train_collection,
 )
-from bp_train.defaults import DefaultLossModule
+from bp_train.defaults import DefaultLossModule, default_build_reaction_module
 from bp_train.model_api import (
     ReactionOutputs,
     UserReactionModule,
@@ -63,7 +66,26 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
     "SCALE_modeled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_latent": jnp.zeros(0, dtype=jnp.float32),
 }
+
+
+class _StatefulHarnessModule(UserReactionModule):
+    def __init__(self, **scale_kwargs):
+        merged = {
+            **_DEFAULT_LINEAR_SCALES,
+            "SCALE_latent": jnp.ones(1, dtype=jnp.float32),
+            **scale_kwargs,
+        }
+        super().__init__(**merged)
+
+    def __call__(self, t, inputs):
+        del t
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=jnp.float32),
+            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=jnp.float32),
+            SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
+        )
 
 
 class _LinearReactionModule(UserReactionModule):
@@ -90,12 +112,8 @@ class _LinearReactionModule(UserReactionModule):
 
 def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.ndarray]:
     """Build unit SCALE_* kwargs sized to a process / its controls."""
-    from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
-
-    rhs_ode = _build_rhs_ode(collection.processes[process_name])
-    from bp_train.controls_store import ControlsStore as _ControlsStore
-
-    controls = _ControlsStore.from_collection(collection).get_controls(process_name)
+    rhs_ode = build_rhs_ode(collection.processes[process_name])
+    controls = ControlsStore.from_collection(collection).get_controls(process_name)
     f32 = jnp.float32
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_FVCs = len(rhs_ode.name_modeled_FVCs)
@@ -114,6 +132,96 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
         "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs, dtype=f32),
     }
+
+
+class _StatefulCustomModule:
+    @staticmethod
+    def build_reaction_module(
+        *, target_names, process_names, config, seed, collection, **scale_kwargs
+    ):
+        del target_names, process_names, config, seed, collection
+        return _StatefulHarnessModule(**scale_kwargs)
+
+
+def test_build_reaction_module_rejects_stateful_without_opt_in():
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    with pytest.raises(ValueError, match="allow_stateful_models"):
+        _build_reaction_module(
+            store=store,
+            config=TrainHarnessConfig(),
+            custom_module=_StatefulCustomModule,
+            custom_config={},
+            collection=collection,
+            scale_kwargs={},
+        )
+
+
+def test_build_reaction_module_accepts_stateful_with_opt_in():
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    module = _build_reaction_module(
+        store=store,
+        config=TrainHarnessConfig(allow_stateful_models=True),
+        custom_module=_StatefulCustomModule,
+        custom_config={},
+        collection=collection,
+        scale_kwargs={},
+    )
+
+    assert module.n_latent == 1
+
+
+def test_train_collection_rejects_direct_stateful_without_opt_in():
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    with pytest.raises(ValueError, match="allow_stateful_models"):
+        train_collection(
+            store,
+            reaction_module=_StatefulHarnessModule(),
+            loss_module=_biomass_loss(),
+            collection=collection,
+            config=TrainHarnessConfig(steps=1),
+        )
+
+
+def test_train_collection_accepts_direct_stateful_with_opt_in():
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    result = train_collection(
+        store,
+        reaction_module=_StatefulHarnessModule(),
+        loss_module=_biomass_loss(),
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=("p1",),
+            steps=1,
+            batch_size=1,
+            allow_stateful_models=True,
+        ),
+    )
+
+    assert len(result.mean_loss_by_step) == 1
 
 
 def _make_collection() -> BioProcessCollection:
@@ -269,6 +377,94 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
         },
         metadata={},
     )
+
+
+def _make_combined_target_collection() -> BioProcessCollection:
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p1", process_type="batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={}),
+        reactor_medium=ReactorMedium(
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]),
+                        values=jnp.asarray([1.0, 1.0]),
+                    ),
+                ),
+            },
+        ),
+        process_variables={
+            "ratio": ProcessVariable(
+                name="ratio",
+                unit="-",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 2.0]),
+                    values=jnp.asarray([0.0, 1.0]),
+                ),
+            ),
+        },
+    )
+    return BioProcessCollection(processes={"p1": process}, metadata={})
+
+
+def test_target_state_indices_map_pv_only_targets_to_pv_state_column():
+    collection = _make_combined_target_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_source="process_variables",
+    )
+    rhs_ode = build_rhs_ode(collection.processes["p1"])
+
+    indices = _target_state_indices(store, rhs_ode)
+
+    assert jnp.array_equal(indices, jnp.asarray([1], dtype=jnp.int32))
+
+
+def test_default_reaction_module_scales_rmc_axis_not_combined_targets():
+    collection = _make_combined_target_collection()
+
+    module = default_build_reaction_module(
+        target_names=["biomass", "ratio"],
+        process_names=["p1"],
+        config=TrainHarnessConfig(),
+        seed=0,
+        collection=collection,
+    )
+
+    assert module.SCALE_modeled_RMCs.shape == (1,)
+    assert module.SCALE_modeled_PVs.shape == (1,)
+
+
+def test_train_collection_process_variable_target_uses_full_initial_state():
+    collection = _make_combined_target_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_source="process_variables",
+    )
+    module = default_build_reaction_module(
+        target_names=list(store.name_measured),
+        process_names=list(store.process_order),
+        config=TrainHarnessConfig(),
+        seed=0,
+        collection=collection,
+    )
+
+    result = train_collection(
+        store,
+        reaction_module=module,
+        loss_module=DefaultLossModule(target_names=["ratio"]),
+        collection=collection,
+        config=TrainHarnessConfig(process_names=("p1",), steps=1, batch_size=1),
+    )
+
+    assert len(result.mean_loss_by_step) == 1
 
 
 def test_train_collection_single_process_loss_decreases():
@@ -651,9 +847,7 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
     monkeypatch.setattr(
         "bp_train.harness._build_reaction_module", lambda **_kw: object()
     )
-    monkeypatch.setattr(
-        "bp_train.harness._build_loss_module", lambda **_kw: object()
-    )
+    monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
     monkeypatch.setattr(
         "bp_train.harness.train_collection",
         lambda *args, **kwargs: "train-result",
@@ -704,9 +898,7 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
     monkeypatch.setattr(
         "bp_train.harness._build_reaction_module", lambda **_kw: object()
     )
-    monkeypatch.setattr(
-        "bp_train.harness._build_loss_module", lambda **_kw: object()
-    )
+    monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
     monkeypatch.setattr(
         "bp_train.harness.train_collection",
         lambda *args, **kwargs: "train-result",
@@ -756,9 +948,7 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
     monkeypatch.setattr(
         "bp_train.harness._build_reaction_module", lambda **_kw: object()
     )
-    monkeypatch.setattr(
-        "bp_train.harness._build_loss_module", lambda **_kw: object()
-    )
+    monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
 
     def fake_train_collection(*args, **kwargs):
         del args
@@ -866,4 +1056,3 @@ def test_build_loss_module_defaults_when_no_hook():
     )
     assert isinstance(module, DefaultLossModule)
     assert tuple(module.loss_names) == ("biomass",)
-

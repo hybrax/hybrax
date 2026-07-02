@@ -70,6 +70,7 @@ class TrainConfig(ConfigBase):
     shuffle: bool = True
     batch_seed: int | None = None
     devices: int | Literal["max"] = 1
+    allow_stateful_models: bool = False
 
 
 class SolverConfig(ConfigBase):
@@ -388,9 +389,7 @@ def _resolve_custom(
     return DefaultCustomConfig.model_validate(raw_custom)
 
 
-def reresolve_custom(
-    config: RunConfig, custom_module: ModuleType | None
-) -> RunConfig:
+def reresolve_custom(config: RunConfig, custom_module: ModuleType | None) -> RunConfig:
     """Re-resolve ``config.custom`` (a raw dict loaded from a run's config.json)
     into the typed object the custom hooks expect.
 

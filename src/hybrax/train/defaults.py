@@ -44,6 +44,89 @@ def default_transform_process_collection(collection, config: RunConfig):
     return collection
 
 
+class DefaultStatefulReactionModule(UserReactionModule):
+    """Minimal GRU latent-ODE reaction model.
+
+    Uses ``dh/dt = GRUCell(x, h) - h`` and reads ``h`` for rate heads.
+    """
+
+    gru_cell: eqx.nn.GRUCell = trainable_field()
+    rate_head: eqx.nn.Linear = trainable_field()
+    feed_head: eqx.nn.Linear | None = trainable_field()
+
+    def __init__(self, *, key: jax.Array, n_latent: int, **scale_kwargs):
+        if n_latent <= 0:
+            raise ValueError("DefaultStatefulReactionModule requires n_latent > 0")
+        if "SCALE_latent" in scale_kwargs:
+            raise ValueError(
+                "DefaultStatefulReactionModule sizes SCALE_latent from n_latent"
+            )
+        scale_kwargs = {
+            **scale_kwargs,
+            "SCALE_latent": jnp.ones(n_latent, dtype=jnp.float32),
+        }
+        super().__init__(**scale_kwargs)
+        key_gru, key_rate, key_feed = jax.random.split(key, 3)
+        n_input = (
+            self.n_modeled_RMCs
+            + self.n_modeled_PVs
+            + 1  # V
+            + self.n_modeled_FVCs
+            + self.n_controlled_FVCs  # controlled-FVC cumulatives
+            + self.n_controlled_FVCs  # controlled-FVC rates
+            + self.n_controlled_PVs
+            + self.n_latent
+        )
+        self.gru_cell = eqx.nn.GRUCell(
+            input_size=n_input,
+            hidden_size=self.n_latent,
+            key=key_gru,
+        )
+        n_readout = self.n_latent + self.n_modeled_RMCs + self.n_modeled_PVs
+        self.rate_head = eqx.nn.Linear(
+            in_features=n_readout,
+            out_features=self.n_modeled_BiologicalOde_rates,
+            key=key_rate,
+        )
+        self.feed_head = (
+            eqx.nn.Linear(
+                in_features=n_readout,
+                out_features=self.n_modeled_FVCs,
+                key=key_feed,
+            )
+            if self.n_modeled_FVCs
+            else None
+        )
+
+    def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
+        del t
+        h = inputs.SCL_latent
+        cell_input = jnp.concatenate(
+            [
+                inputs.SCL_modeled_RMCs,
+                inputs.SCL_modeled_PVs,
+                jnp.atleast_1d(inputs.SCL_modeled_V),
+                inputs.SCL_modeled_FVCs_cumulative,
+                inputs.SCL_controlled_FVCs_cumulative,
+                inputs.SCL_controlled_FVCs_rates,
+                inputs.SCL_controlled_PVs,
+                h,
+            ]
+        )
+        dh_dt = self.gru_cell(cell_input, h) - h
+        readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
+        bio_rates = jnp.asarray(self.rate_head(readout), dtype=h.dtype)
+        if self.feed_head is None:
+            feed_rates = jnp.zeros((0,), dtype=h.dtype)
+        else:
+            feed_rates = jax.nn.softplus(self.feed_head(readout)).astype(h.dtype)
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=bio_rates,
+            SCL_modeled_FVCs_rates=feed_rates,
+            SCL_latent_derivative=dh_dt,
+        )
+
+
 class DefaultReactionModule(UserReactionModule):
     """Minimal default reaction model for harness runs.
 
@@ -98,28 +181,25 @@ def default_build_reaction_module(
 
     If the optional ``estimate_all_scales`` hook supplied SCALE_* values, they
     arrive via ``scale_kwargs`` and are stored on the module. Otherwise the
-    13 axes default to ones (no scaling).
+    scale axes default to unit scales (no scaling).
     """
-    del config
+    del config, target_names
     if not process_names:
         raise ValueError("default_build_reaction_module requires at least one process")
     first_process = collection.processes[process_names[0]]
     rhs_ode = build_rhs_ode(first_process)
-    # Scales are sized by the *modeled* state layout (RMC slice), not by the measured targets:
-    # under target_source="combined"/"process_variables" the measured set differs from the RMC
-    # state slice (it includes/consists of modeled PVs), which have their own SCALE_modeled_PVs axis.
-    del target_names
-    n_species = len(rhs_ode.name_modeled_RMCs)
+    # Scales are sized by the modeled RMC state slice, not by measured targets:
+    # combined/PV target sets have their own SCALE_modeled_PVs axis.
+    n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_rates = len(rhs_ode.name_modeled_rates)
     n_modeled_FVCs = len(rhs_ode.name_modeled_FVCs)
     n_controlled_FVCs = len(rhs_ode.name_controlled_FVCs)
 
-    # If no scales provided, fall back to all-ones for every axis so the wrapper
-    # constructor (which validates shapes) still accepts the module.
+    # If no scales provided, fall back to unit scales so the wrapper constructor
+    # (which validates shapes) still accepts the module.
     if not scale_kwargs:
-        _proc = collection.processes[process_names[0]]
         scale_kwargs = _default_scale_kwargs(
-            n_species=n_species,
+            n_RMCs=n_RMCs,
             n_rates=n_rates,
             n_modeled_FVCs=n_modeled_FVCs,
             n_controlled_FVCs=n_controlled_FVCs,
@@ -187,19 +267,20 @@ def default_build_loss_module(
 
 def _default_scale_kwargs(
     *,
-    n_species: int,
+    n_RMCs: int,
     n_rates: int,
     n_modeled_FVCs: int,
     n_controlled_FVCs: int,
     rhs_ode: Any,
 ) -> dict[str, jnp.ndarray]:
-    """All-ones defaults for every SCALE_* axis. Used when no estimate hook is supplied."""
+    """All-ones defaults for every SCALE_* axis.
+
+    Used when no estimate hook is supplied.
+    """
     one = jnp.float32(1.0)
     return {
-        "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=jnp.float32),
-        "SCALE_modeled_PVs": jnp.ones(
-            len(rhs_ode.name_modeled_PVs), dtype=jnp.float32
-        ),
+        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=jnp.float32),
+        "SCALE_modeled_PVs": jnp.ones(len(rhs_ode.name_modeled_PVs), dtype=jnp.float32),
         "SCALE_V_in_cumulative": one,
         "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(
@@ -207,14 +288,13 @@ def _default_scale_kwargs(
         ),
         "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=jnp.float32),
         "SCALE_controlled_FVCs_Cin": jnp.ones(
-            (n_controlled_FVCs, n_species), dtype=jnp.float32
+            (n_controlled_FVCs, n_RMCs), dtype=jnp.float32
         ),
         "SCALE_controlled_PVs": jnp.ones(
             len(rhs_ode.name_controlled_PVs), dtype=jnp.float32
         ),
-        "SCALE_modeled_FVCs_Cin": jnp.ones(
-            (n_modeled_FVCs, n_species), dtype=jnp.float32
-        ),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_FVCs, n_RMCs), dtype=jnp.float32),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=jnp.float32),
         "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
+        "SCALE_latent": jnp.zeros(0, dtype=jnp.float32),
     }

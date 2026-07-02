@@ -100,6 +100,10 @@ def simulate_measurement_states(
     ``[modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]`` at each (padded)
     measurement time. (Replaces the pre-callbacks single-solve of the same name;
     no ``jump_ts`` argument — the callbacks solve lands segment ends on the events.)
+
+    For a stateful model the returned width is the full integrated ``n_state``
+    (physical columns followed by the trailing latent block); slice physical
+    columns by index rather than assuming the physical-only width.
     """
     from .physical_solve import solve_physical_states
 
@@ -140,9 +144,7 @@ class _BatchIndexedControls(eqx.Module):
         )
 
     def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_PVs(
-            self.process_idx, t_arr, states
-        )
+        return self.batch_controls.eval_controlled_PVs(self.process_idx, t_arr, states)
 
     @property
     def sample_event_times(self) -> jax.Array:
@@ -376,9 +378,16 @@ def evaluate_one_sample_loss(
     """One process -> ``(total_loss, per_target_loss)``. Shared by the vmap
     batched loss and the device-sharded (pmap) step. ``y0`` stays RAW physical;
     the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""
-    controls = _BatchIndexedControls(batch_controls=batch_controls, process_idx=process_idx)
+    controls = _BatchIndexedControls(
+        batch_controls=batch_controls,
+        process_idx=process_idx,
+    )
     sample_wrapper = eqx.tree_at(
-        lambda w: (w.controls, w.rhs_ode.Cin_controlled_FVCs, w.rhs_ode.Cin_modeled_FVCs),
+        lambda w: (
+            w.controls,
+            w.rhs_ode.Cin_controlled_FVCs,
+            w.rhs_ode.Cin_modeled_FVCs,
+        ),
         wrapper,
         (controls, cin, cin_modeled),
     )

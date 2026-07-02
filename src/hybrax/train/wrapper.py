@@ -9,7 +9,7 @@ from bp_format.dataclasses import BioProcess
 from bp_format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
-from .model_api import ReactionInputs
+from .model_api import ReactionInputs, UserReactionModule
 
 
 class SaveOutputs(eqx.Module):
@@ -58,38 +58,20 @@ def _normalize_auxiliary_outputs(
 
 
 class HybridOdeWrapper(eqx.Module):
-    """ODE wrapper integrating in **scaled state space**.
+    """RAW physical-state wrapper around a user reaction module.
 
-    The integration state ``SCL_state`` is the SCL-space view of the physical
-    state ``RAW_state`` (= ``SCL_state * SCALE_state`` using the scale vector
-    that lives on the attached ``UserReactionModule``):
-
-        RAW_state = [modeled_RMCs (n_RMCs)
-                     | modeled_PVs (n_PVs)
-                     | V_in_cumulative (1)
-                     | modeled_FVCs_cumulative (n_FVCs)]
+    ``physical_solve`` owns the scaled ODE reparameterization. This wrapper sees
+    RAW integrated state ``[RMCs | PVs | V | modeled_cum | latent]``, builds
+    scaled ``ReactionInputs`` for the module, and returns RAW derivatives/save
+    outputs. Save-time ``SCL_states`` stay physical-only; latent-derived
+    observables must use ``ReactionOutputs.auxiliary``.
 
     The wrapper holds **no scale fields of its own** — every scale comes from
     ``self.reaction_module.SCALE_*``.
 
-    Inside each RHS evaluation:
-
-    1. Unscale ``SCL_state`` → ``RAW_state`` via the module.
-    2. Read each control axis via the controls' per-axis accessors
-       (``eval_controlled_FVCs_cumulative`` / ``eval_controlled_FVCs_rates`` /
-       ``eval_controlled_PVs``), which return RAW values.
-    3. Scale every per-axis input via the module's ``scale_*`` helpers and
-       build a ``ReactionInputs`` instance.
-    5. Call ``reaction_module(t, inputs) → ReactionOutputs`` (SCL rates).
-    6. Unscale rates via the module to RAW for the physical ``RhsOde`` call.
-    7. ``RhsOde`` yields ``RAW_d_RMCs_V_dt`` of shape ``(n_RMCs + 1,)``.
-    8. Append the cumulative-modeled-feed derivatives (= ``RAW_modeled_FVCs_rates``)
-       to form the full ``RAW_d_state_dt``.
-    9. Rescale via the module to return ``SCL_d_state_dt``.
-
-    The wrapper applies one safety clip — ``RAW_RMC_rhs = max(RAW_state[:n_RMCs], 0)``
-    — only on the path into ``RhsOde``. The module receives the **unclipped**
-    SCL slice so MLP gradient flow survives transient negative excursions.
+    The wrapper applies one safety clip — ``RAW_RMC_rhs = max(RAW_RMCs, 0)`` —
+    only on the path into ``RhsOde``. The module receives the **unclipped** SCL
+    slice so MLP gradient flow survives transient negative excursions.
 
     Modeled PVs and continuous SVCs are not supported (the constructor raises).
     """
@@ -180,7 +162,7 @@ class HybridOdeWrapper(eqx.Module):
             if not hasattr(reaction_module, field_name):
                 raise TypeError(
                     f"reaction_module is missing SCALE field {field_name!r}; "
-                    "subclass UserReactionModule and pass all 11 SCALE_* fields "
+                    "subclass UserReactionModule and pass all SCALE_* fields "
                     "to super().__init__(...)."
                 )
             arr = getattr(reaction_module, field_name)
@@ -189,11 +171,22 @@ class HybridOdeWrapper(eqx.Module):
                     f"reaction_module.{field_name} has shape {tuple(arr.shape)}, "
                     f"expected {expected}"
                 )
+        if (
+            reaction_module.n_latent > 0
+            and reaction_module.latent_observables
+            and type(reaction_module).observe is UserReactionModule.observe
+        ):
+            names = ", ".join(reaction_module.latent_observables)
+            raise ValueError(
+                "Stateful latent observables must be emitted via "
+                f"ReactionOutputs.auxiliary during the solve: {names}"
+            )
+
         # V_in_cumulative is a scalar — accept any ndim-0 array.
         if not hasattr(reaction_module, "SCALE_V_in_cumulative"):
             raise TypeError(
                 "reaction_module is missing SCALE_V_in_cumulative; subclass "
-                "UserReactionModule and pass all 11 SCALE_* fields to "
+                "UserReactionModule and pass all SCALE_* fields to "
                 "super().__init__(...)."
             )
 
@@ -227,8 +220,10 @@ class HybridOdeWrapper(eqx.Module):
 
     # ------ Physical-state RHS (continuous part of the diffrax_callbacks solve) ------
     #
-    # Integrates the *physical* state ``y = [RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum]``
-    # directly; discrete bolus/sample events are applied as state jumps between
+    # Integrates the *physical* state
+    # ``y = [RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum | RAW_latent]``;
+    # save/loss state remains ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum]``.
+    # Bolus/sample events are applied as state jumps between
     # segments (``physical_solve.solve_physical_states``), not folded into the
     # vector field. Between events only continuous dynamics act
     # (biology, plus continuous feeds/dilution if any), so the integrated state stays
@@ -236,7 +231,7 @@ class HybridOdeWrapper(eqx.Module):
     # pseudobatch state, whose unbounded accumulator corrupted the gradient.)
 
     def physical_rhs(self, t: float | jax.Array, y_phys: jax.Array) -> jax.Array:
-        """d/dt of ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum]``.
+        """d/dt of ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum | RAW_latent]``.
 
         Continuous part only — discrete boluses/samples are handled as jumps.
         """
@@ -244,15 +239,18 @@ class HybridOdeWrapper(eqx.Module):
         n_RMCs = len(self.modeled_RMC_names)
         n_PVs = len(self.modeled_PV_names)
         n_FVCs = len(self.modeled_FVC_names)
+        n_phys = n_RMCs + n_PVs + 1 + n_FVCs
         dtype = y_phys.dtype
         t_arr = jnp.asarray(t, dtype=dtype)
 
-        RAW_RMCs = y_phys[:n_RMCs]
-        RAW_PVs = y_phys[n_RMCs : n_RMCs + n_PVs]
+        RAW_phys = y_phys[:n_phys]
+        RAW_RMCs = RAW_phys[:n_RMCs]
+        RAW_PVs = RAW_phys[n_RMCs : n_RMCs + n_PVs]
         RAW_V = jnp.maximum(
-            y_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
+            RAW_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
         )
-        RAW_modeled_cum = y_phys[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
+        RAW_modeled_cum = RAW_phys[n_RMCs + n_PVs + 1 : n_phys]
+        RAW_latent = y_phys[n_phys:]
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
         n_FVC = self.n_controlled_FVCs
@@ -286,6 +284,7 @@ class HybridOdeWrapper(eqx.Module):
             ),
             SCL_controlled_PVs=module.scale_controlled_PVs(RAW_controlled_PVs),
             SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(RAW_modeled_FVCs_Cin),
+            SCL_latent=module.scale_latent(RAW_latent),
         )
         outputs = module(t_arr, inputs)
         RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
@@ -319,8 +318,7 @@ class HybridOdeWrapper(eqx.Module):
         dPV = RAW_d_dt[n_RMCs : n_RMCs + n_PVs]
         # Continuous-feed volume/dilution applies to RMCs only.
         controlled_addition = jnp.sum(
-            RAW_controlled_FVCs_rates[:, None]
-            * RAW_controlled_FVCs_Cin.astype(dtype),
+            RAW_controlled_FVCs_rates[:, None] * RAW_controlled_FVCs_Cin.astype(dtype),
             axis=0,
         )
         modeled_addition = jnp.sum(
@@ -330,16 +328,23 @@ class HybridOdeWrapper(eqx.Module):
         dV_cont = jnp.sum(RAW_controlled_FVCs_rates) + jnp.sum(RAW_modeled_FVCs_rates)
         dilution = RAW_RMCs * (dV_cont / RAW_V)
         dC = dC + (controlled_addition + modeled_addition) / RAW_V - dilution
-        return jnp.concatenate(
+        RAW_d_phys_dt = jnp.concatenate(
             [dC, dPV, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
         )
+        RAW_d_latent_dt = module.unscale_latent(
+            jnp.asarray(outputs.SCL_latent_derivative, dtype=dtype)
+        )
+        return jnp.concatenate([RAW_d_phys_dt, RAW_d_latent_dt])
 
     def initial_physical_state_from_raw(self, RAW_state: jax.Array) -> jax.Array:
-        """Identity: the physical solve integrates the raw state layout directly."""
+        """Append the module's RAW latent initial state to the physical state."""
         n_RMCs = len(self.modeled_RMC_names)
         n_PVs = len(self.modeled_PV_names)
         n_FVCs = len(self.modeled_FVC_names)
-        return RAW_state[: n_RMCs + n_PVs + 1 + n_FVCs]
+        RAW_phys = RAW_state[: n_RMCs + n_PVs + 1 + n_FVCs]
+        return jnp.concatenate(
+            [RAW_phys, self.reaction_module.initial_latent(RAW_phys)]
+        )
 
     def physical_save_outputs(
         self, t: float | jax.Array, y_phys: jax.Array
@@ -349,18 +354,21 @@ class HybridOdeWrapper(eqx.Module):
         n_RMCs = len(self.modeled_RMC_names)
         n_PVs = len(self.modeled_PV_names)
         n_FVCs = len(self.modeled_FVC_names)
+        n_phys = n_RMCs + n_PVs + 1 + n_FVCs
         dtype = y_phys.dtype
         t_arr = jnp.asarray(t, dtype=dtype)
-        RAW_RMCs = y_phys[:n_RMCs]
-        RAW_PVs = y_phys[n_RMCs : n_RMCs + n_PVs]
+        RAW_phys = y_phys[:n_phys]
+        RAW_RMCs = RAW_phys[:n_RMCs]
+        RAW_PVs = RAW_phys[n_RMCs : n_RMCs + n_PVs]
         # Clamped V feeds the reaction module (the concentration denominator can't
         # go <= 0); the *export* keeps the true (possibly <min_V) volume so the
         # human-facing v_real reflects the sampled volume directly.
         RAW_V = jnp.maximum(
-            y_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
+            RAW_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
         )
-        RAW_V_export = y_phys[n_RMCs + n_PVs]
-        RAW_modeled_cum = y_phys[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
+        RAW_V_export = RAW_phys[n_RMCs + n_PVs]
+        RAW_modeled_cum = RAW_phys[n_RMCs + n_PVs + 1 : n_phys]
+        RAW_latent = y_phys[n_phys:]
 
         RAW_controlled_FVCs_cumulative = self.controls.eval_controlled_FVCs_cumulative(
             t_arr, y_phys
@@ -389,6 +397,7 @@ class HybridOdeWrapper(eqx.Module):
             SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(
                 self.rhs_ode.Cin_modeled_FVCs
             ),
+            SCL_latent=module.scale_latent(RAW_latent),
         )
         outputs = module(t_arr, inputs)
         RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
@@ -397,16 +406,27 @@ class HybridOdeWrapper(eqx.Module):
         RAW_modeled_FVCs_rates = module.unscale_modeled_FVCs_rates(
             jnp.asarray(outputs.SCL_modeled_FVCs_rates, dtype=dtype)
         )
-        RAW_state = jnp.concatenate(
-            [RAW_RMCs, RAW_PVs, RAW_V[None], RAW_modeled_cum]
-        )
+        RAW_state = jnp.concatenate([RAW_RMCs, RAW_PVs, RAW_V[None], RAW_modeled_cum])
+        auxiliary = _normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None))
+        if module.n_latent > 0 and module.latent_observables:
+            missing = [
+                name
+                for name in module.latent_observables
+                if auxiliary is None or name not in auxiliary
+            ]
+            if missing:
+                raise ValueError(
+                    "Latent observables must be emitted via "
+                    "ReactionOutputs.auxiliary during the solve; missing: "
+                    f"{missing}"
+                )
         return SaveOutputs(
             SCL_states=module.scale_state(RAW_state),
             RAW_V_export=RAW_V_export,
             RAW_V=RAW_V,
             RAW_modeled_BiologicalOde_rates=RAW_bio_rates,
             RAW_modeled_FVCs_rates=RAW_modeled_FVCs_rates,
-            auxiliary=_normalize_auxiliary_outputs(getattr(outputs, "auxiliary", None)),
+            auxiliary=auxiliary,
         )
 
 

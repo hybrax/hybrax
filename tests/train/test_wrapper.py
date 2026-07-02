@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import diffrax
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import pytest
 from bp_format.dataclasses import (
@@ -81,6 +79,7 @@ _PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
     "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0, dtype=jnp.float32),
     "SCALE_modeled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_latent": jnp.zeros(0, dtype=jnp.float32),
 }
 
 
@@ -131,6 +130,29 @@ class InvalidReactionShapeModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray([[0.1]], dtype=jnp.float32),
             SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=jnp.float32),
         )
+
+
+class LatentEchoReactionModule(UserReactionModule):
+    initial_h0: jnp.ndarray
+
+    def __init__(self, *, initial_h0, **scale_kwargs):
+        scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
+        super().__init__(**scale_kwargs)
+        self.initial_h0 = jnp.asarray(initial_h0, dtype=jnp.float32)
+
+    def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
+        del t
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=jnp.float32),
+            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=jnp.float32),
+            SCL_latent_derivative=inputs.SCL_latent
+            + jnp.asarray([1.0, 2.0], dtype=inputs.SCL_latent.dtype),
+            auxiliary={"SCL_latent": inputs.SCL_latent},
+        )
+
+    def initial_latent(self, RAW_phys_y0):
+        del RAW_phys_y0
+        return self.initial_h0
 
 
 class VolumeFeatureEchoReactionModule(UserReactionModule):
@@ -440,6 +462,68 @@ def _make_bolus_ramp_process(*, bolus_time: float = 10.0) -> BioProcess:
     return process
 
 
+def test_wrapper_appends_initial_latent_to_physical_state():
+    process = _make_single_species_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = LatentEchoReactionModule(
+        initial_h0=jnp.asarray([7.0, 8.0], dtype=jnp.float32),
+        SCALE_latent=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    y0 = jnp.asarray([1.0, 2.0], dtype=jnp.float32)
+
+    assert jnp.array_equal(
+        wrapper.initial_physical_state_from_raw(y0),
+        jnp.asarray([1.0, 2.0, 7.0, 8.0], dtype=jnp.float32),
+    )
+
+
+def test_wrapper_rhs_appends_latent_derivative_without_physical_transport():
+    process = _make_single_species_process(feed_rate=0.2)
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = LatentEchoReactionModule(
+        initial_h0=jnp.zeros(2, dtype=jnp.float32),
+        SCALE_latent=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    y = jnp.asarray([1.0, 1.0, 6.0, 20.0], dtype=jnp.float32)
+    dy = wrapper.physical_rhs(0.5, y)
+
+    assert dy.shape == y.shape
+    # `LatentEchoReactionModule` returns SCL dh/dt = [6/2, 20/4] + [1, 2].
+    # The wrapper unscales that derivative and does not apply dilution/clamping.
+    assert jnp.array_equal(dy[-2:], jnp.asarray([8.0, 28.0], dtype=jnp.float32))
+
+
+def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
+    process = _make_single_species_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = LatentEchoReactionModule(
+        initial_h0=jnp.zeros(2, dtype=jnp.float32),
+        SCALE_latent=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    outputs = wrapper.physical_save_outputs(
+        0.5, jnp.asarray([1.0, 1.0, 6.0, 20.0], dtype=jnp.float32)
+    )
+
+    assert outputs.SCL_states.shape == (2,)
+    assert jnp.array_equal(outputs.SCL_states, jnp.asarray([1.0, 1.0]))
+    assert outputs.auxiliary is not None
+    assert jnp.array_equal(
+        outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0], dtype=jnp.float32)
+    )
+
+
 def test_continuous_feed_transport_volume_and_dilution():
     """Self-contained continuous-feed volume regression (no ``examples/`` dependency).
 
@@ -458,36 +542,66 @@ def test_continuous_feed_transport_volume_and_dilution():
     # 0.2 L/h) plus a 0.1 L sample at t=1; built inline so the feed is a real flow (a
     # constant-rate fixture reads as a constant cumulative, i.e. zero flow).
     feed_medium = FeedMedium(
-        name="feed", density=1.0, density_unit="kg/L",
-        components={"biomass": FeedMediumComponent(
-            name="biomass", unit="g/L",
-            concentration=StaticVariable(0.0), is_controlled=False)},
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            )
+        },
     )
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
         time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
-        volume=Volume(initial_volume=1.0, unit="L", volume_changes={
-            "feed_A": FeedVolumeChange(
-                name="feed_A", unit="L", is_controlled=True, is_continuous=True,
-                values=TimeSeries(times=jnp.asarray([0.0, 2.0]),
-                                  values=jnp.asarray([0.0, 0.4])),
-                feed_medium=feed_medium),
-            "sample_1": SampleVolumeChange(
-                name="sample_1", unit="L", is_controlled=False, is_continuous=False,
-                values=TimeSeries(times=jnp.asarray([1.0]), values=jnp.asarray([-0.1]))),
-        }),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "feed_A": FeedVolumeChange(
+                    name="feed_A",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]), values=jnp.asarray([0.0, 0.4])
+                    ),
+                    feed_medium=feed_medium,
+                ),
+                "sample_1": SampleVolumeChange(
+                    name="sample_1",
+                    unit="L",
+                    is_controlled=False,
+                    is_continuous=False,
+                    values=TimeSeries(
+                        times=jnp.asarray([1.0]), values=jnp.asarray([-0.1])
+                    ),
+                ),
+            },
+        ),
         reactor_medium=ReactorMedium(
-            name="rm", density=1.0, density_unit="kg/L",
-            components={"biomass": ReactorMediumComponent(
-                name="biomass", unit="g/L",
-                concentration=TimeSeries(times=jnp.asarray([0.0, 2.0]),
-                                         values=jnp.asarray([1.0, 1.0])))}),
+            name="rm",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.asarray([0.0, 2.0]), values=jnp.asarray([1.0, 1.0])
+                    ),
+                )
+            },
+        ),
         process_variables={},
     )
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,), dtype=jnp.float32),       # zero reaction
+        specific_rates=jnp.zeros((1,), dtype=jnp.float32),  # zero reaction
         modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
     )
     wrapper = _build_wrapper(process, controls, module)
@@ -496,8 +610,13 @@ def test_continuous_feed_transport_volume_and_dilution():
     y0 = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
     t_eval = jnp.linspace(0.0, 2.0, 21)
     states = solve_physical_states(
-        wrapper, t_eval=t_eval, n_measured=t_eval.shape[0], RAW_y0=y0,
-        max_steps=100_000, rtol=1e-8, atol=1e-10,
+        wrapper,
+        t_eval=t_eval,
+        n_measured=t_eval.shape[0],
+        RAW_y0=y0,
+        max_steps=100_000,
+        rtol=1e-8,
+        atol=1e-10,
     )
     biomass, volume = states[:, 0], states[:, 1]
 
@@ -517,8 +636,13 @@ def test_continuous_feed_transport_volume_and_dilution():
     # boundary value with the first feed interval already integrated in).
     dup = jnp.asarray([0.0, 0.0, 0.0, 1.0, 2.0], dtype=jnp.float32)
     dup_states = solve_physical_states(
-        wrapper, t_eval=dup, n_measured=dup.shape[0], RAW_y0=y0,
-        max_steps=100_000, rtol=1e-8, atol=1e-10,
+        wrapper,
+        t_eval=dup,
+        n_measured=dup.shape[0],
+        RAW_y0=y0,
+        max_steps=100_000,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert jnp.allclose(dup_states[:3], y0[None, :])
 

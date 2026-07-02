@@ -256,6 +256,7 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
                 "batch_size": 4,
                 "shuffle": False,
                 "batch_seed": 99,
+                "allow_stateful_models": True,
             },
             "solver": {
                 "max_steps": 250000,
@@ -282,6 +283,7 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
     assert config.train.batch_size == 4
     assert config.train.shuffle is False
     assert config.train.batch_seed == 99
+    assert config.train.allow_stateful_models is True
     assert config.solver.max_steps == 250000
     assert config.solver.rtol == 1e-4
     assert config.solver.atol == 1e-6

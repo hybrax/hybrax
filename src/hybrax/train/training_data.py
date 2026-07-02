@@ -251,19 +251,47 @@ def _measurement_targets(
     raise ValueError(f"unsupported target_source: {target_source!r}")
 
 
+def _target_values(process, target_name: str, target_source: str):
+    """Raw variable object for one target, dispatched by source group."""
+    if target_source == TARGET_SOURCE_PROCESS_VARIABLES:
+        return process.process_variables[target_name].values
+    if target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
+        return process.reactor_medium.components[target_name].concentration
+    raise ValueError(f"unsupported target_source: {target_source!r}")
+
+
+def _initial_value_numpy(
+    process,
+    target_name: str,
+    target_source: str,
+    t0: float,
+) -> float:
+    values = _target_values(process, target_name, target_source)
+    if hasattr(values, "times") and hasattr(values, "values"):
+        ts = np.asarray(values.times, dtype=float)
+        ys = np.asarray(values.values, dtype=float)
+        matches = np.flatnonzero(np.isclose(ts, t0, atol=1e-9))
+        if matches.size == 0:
+            raise ValueError(
+                f"{process.metadata.name}: state {target_name!r} has no "
+                f"initial value at t={t0:.6g}"
+            )
+        return float(ys[int(matches[0])])
+    if hasattr(values, "value"):
+        return float(values.value)
+    raise ValueError(
+        f"{process.metadata.name}: state {target_name!r} must be a time-series "
+        "or static variable"
+    )
+
+
 def _timeseries_numpy(
     process,
     target_name: str,
     target_source: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract measurement time/value arrays from one target source."""
-    if target_source == TARGET_SOURCE_PROCESS_VARIABLES:
-        values = process.process_variables[target_name].values
-    elif target_source == TARGET_SOURCE_REACTOR_COMPONENTS:
-        values = process.reactor_medium.components[target_name].concentration
-    else:
-        raise ValueError(f"unsupported target_source: {target_source!r}")
-
+    values = _target_values(process, target_name, target_source)
     if not hasattr(values, "times") or not hasattr(values, "values"):
         raise ValueError(
             f"{process.metadata.name}: target {target_name!r} must be a "
@@ -290,9 +318,8 @@ class PerProcessTrainingData(eqx.Module):
     process_name: str
     # Integer row index into collection-level stacked arrays.
     process_index: int
-    # Measured-target names. Exactly one of ``name_measured_RMCs`` /
-    # ``name_measured_PVs`` is non-empty depending on which BioProcess group
-    # the prepared collection chose to measure.
+    # Measured-target names split by BioProcess group. Either or both may be
+    # populated depending on target_source.
     name_measured_RMCs: tuple[str, ...]
     name_measured_PVs: tuple[str, ...]
     # Modeled volume-change names (mirrored from store for JIT-friendly
@@ -304,15 +331,15 @@ class PerProcessTrainingData(eqx.Module):
     # Padded measurement times for this process.
     t_measured: jax.Array
     # Padded measurement values for this process, columns follow
-    # ``name_measured`` (whichever of RMCs/PVs is populated) then the
-    # cumulative-volume tail for ``name_modeled_FVCs + name_modeled_SVCs``.
+    # ``name_measured`` (RMC targets, PV targets, or both) then the cumulative
+    # volume tail for ``name_modeled_FVCs + name_modeled_SVCs``.
     y_measured: jax.Array
     # Padded per-cell boolean mask `[max_n_meas, n_y_cols]`. True iff the
     # corresponding (timestamp, target) pair is a real measurement; False
     # for rows beyond ``n_measured`` and for cells where a target has no
     # measurement at that timestamp on the union grid.
     mask_measured: jax.Array
-    # Initial state `[targets..., V_in_cumulative]`, sourced from measurements at t=0.
+    # Full physical initial state `[all_RMCs..., all_PVs..., V, modeled_cum...]`.
     y0_measured: jax.Array
     # Per-process controls view from ControlsStore.
     controls: PerProcessControls
@@ -346,34 +373,33 @@ class BatchTrainingData(eqx.Module):
     process_indices: jax.Array
     # Gathered measurement times `[batch_size, max_n_meas]`.
     t_measured: jax.Array
-    # Gathered measurement values `[batch_size, max_n_meas, n_targets]`.
+    # Gathered measurement values `[batch_size, max_n_meas, n_y_cols]`.
     y_measured: jax.Array
     # Gathered per-cell measurement masks `[batch_size, max_n_meas, n_y_cols]`.
     mask_measured: jax.Array
     # Gathered active measurement counts `[batch_size]`.
     n_measured: jax.Array
-    # Gathered initial state vectors `[batch_size, n_targets + 1]`, sourced
-    # from measurements at t=0.
+    # Gathered full physical initial state vectors
+    # `[batch_size, n_RMC + n_PV + 1 + n_modeled_feeds]`.
     y0_measured: jax.Array
 
 
 class TrainingDataStore(eqx.Module):
     """Collection-level training-data store built from a prepared collection.
 
-    The y_measured columns are ``[species..., B_modeled_cum_per_modeled_feed...]``
-    (NOT V_in_cumulative — V_in_cumulative is in the ODE *state* but not in the *loss targets*).
+    The y_measured columns are ``[targets..., B_modeled_cum_per_modeled_feed...]``
+    where targets may be RMCs, PVs, or both. V is in the ODE state but not in
+    the loss targets.
 
     The y0 vector has layout
-    ``[species_0..., V_in_cumulative(0), B_modeled_cum_0(0), ...]`` matching the ODE
-    state shape that the wrapper expects.
+    ``[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`` matching
+    the physical ODE state shape that the wrapper expects.
     """
 
     # Stable process order across all stacked arrays.
     process_order: list[str]
-    # Measured-target names, split by which BioProcess group is being
-    # measured. Exactly one is non-empty. ``__post_init__`` enforces the
-    # invariant; ``name_measured`` (property) returns whichever one carries
-    # the names for code that doesn't care about the kind.
+    # Measured-target names split by BioProcess group. Either or both may be
+    # non-empty; ``name_measured`` returns the loss/target column labels.
     name_measured_RMCs: tuple[str, ...]
     name_measured_PVs: tuple[str, ...]
     # Ordered modeled-FVC names (shared across processes). Each contributes
@@ -389,7 +415,7 @@ class TrainingDataStore(eqx.Module):
     # Padded measurement times `[n_processes, max_n_meas]`.
     t_measured: jax.Array
     # Padded measurement values
-    # `[n_processes, max_n_meas, n_species + n_modeled_feeds]`.
+    # `[n_processes, max_n_meas, n_targets + n_modeled_feeds]`.
     y_measured: jax.Array
     # Padded per-cell measurement mask `[n_processes, max_n_meas, n_y_cols]`.
     # True iff the corresponding (timestamp, target) pair is a real
@@ -398,9 +424,8 @@ class TrainingDataStore(eqx.Module):
     mask_measured: jax.Array
     # Active measurement counts per process.
     n_measured: jax.Array
-    # Initial state matrix `[n_processes, n_species + 1 + n_modeled_feeds]`
-    # where layout is `[species_0..., V_in_cumulative(0), B_modeled_cum_0(0), ...]`,
-    # sourced from measurements at t=0.
+    # Initial state matrix `[n_processes, n_RMC + n_PV + 1 + n_modeled_feeds]`
+    # where layout is `[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.
     y0_measured: jax.Array
 
     def __check_init__(self) -> None:
@@ -414,10 +439,7 @@ class TrainingDataStore(eqx.Module):
 
     @property
     def name_measured(self) -> tuple[str, ...]:
-        """Combined measured-target names in state order
-        ``[name_measured_RMCs | name_measured_PVs]`` — the loss/target column
-        labels and the leading state block that ``target_state_indices`` maps
-        onto."""
+        """Loss/target column labels in ``[RMC targets | PV targets]`` order."""
         return tuple(self.name_measured_RMCs) + tuple(self.name_measured_PVs)
 
     @classmethod
@@ -558,15 +580,15 @@ class TrainingDataStore(eqx.Module):
                 raise ValueError(f"{process_name}: no measurement data for targets")
 
             # Union grid across all per-target measurement times.
-            union_ts = np.unique(
-                np.concatenate(per_target_times).astype(np.float32)
-            )
+            union_ts = np.unique(np.concatenate(per_target_times).astype(np.float32))
             t0_union = float(union_ts[0])
 
             # Strict t[0] requirement: every target must have a measurement
             # at union_ts[0]. Otherwise y0 is undefined.
             for tname, t_arr in zip(process_targets, per_target_times, strict=True):
-                if t_arr.size == 0 or not np.any(np.isclose(t_arr, t0_union, atol=1e-9)):
+                if t_arr.size == 0 or not np.any(
+                    np.isclose(t_arr, t0_union, atol=1e-9)
+                ):
                     raise ValueError(
                         f"Process {process_name!r}: target {tname!r} has no "
                         f"measurement at union_grid t[0] = {t0_union:.6g}. "
@@ -611,13 +633,37 @@ class TrainingDataStore(eqx.Module):
                 y_matrix[:, col_idx] = b_col
                 mask_matrix[:, col_idx] = True
 
-            # y0 = [species(0)..., V_in_cumulative(0)=v0, B_modeled_cum_k(0)=0...]
-            # Strict t[0] check above guarantees y_matrix[0, :n_targets] are
-            # all real measurements.
-            y0_species = y_matrix[0, :n_targets]
+            # Full physical initial state:
+            # [all modeled RMCs | all modeled PVs | V | modeled_cum...].
+            # Loss targets may be a subset (e.g. PV-only), but the solver still
+            # needs every modeled physical state axis.
+            process_rhs_ode = build_rhs_ode(process)
+            y0_state = np.asarray(
+                [
+                    *(
+                        _initial_value_numpy(
+                            process,
+                            name,
+                            TARGET_SOURCE_REACTOR_COMPONENTS,
+                            t0_union,
+                        )
+                        for name in process_rhs_ode.name_modeled_RMCs
+                    ),
+                    *(
+                        _initial_value_numpy(
+                            process,
+                            name,
+                            TARGET_SOURCE_PROCESS_VARIABLES,
+                            t0_union,
+                        )
+                        for name in process_rhs_ode.name_modeled_PVs
+                    ),
+                ],
+                dtype=np.float32,
+            )
             y0 = np.concatenate(
                 [
-                    y0_species,
+                    y0_state,
                     np.asarray([v0], dtype=np.float32),
                     np.zeros(n_modeled, dtype=np.float32),
                 ],

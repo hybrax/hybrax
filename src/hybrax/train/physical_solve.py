@@ -1,7 +1,8 @@
 """Bounded physical-state ODE solve with discrete bolus/sample jumps.
 
-Integrates the physical state ``[RAW_RMCs | RAW_V | RAW_modeled_cum]`` in **scaled**
-space (each component divided by the reaction module's characteristic ``SCALE_state``,
+Integrates ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum | RAW_latent]`` in
+**scaled** space (each component divided by its characteristic
+``SCALE_integrated_state``),
 so one rtol/atol controls every species uniformly and the adjoint stays O(1) — better
 float32 conditioning across a wide dynamic range) and applies boluses/samples as
 discrete state jumps at their (known) event times, using
@@ -13,9 +14,10 @@ diffrax adjoint).
 
 RAM: the segments run in a sequential ``lax.scan`` (one segment's solve live at a time)
 and ``RecursiveCheckpointAdjoint`` keeps only ~``O(log max_steps_per_segment)``
-checkpoints, so RAM is **flat in the number of events** — *not* ``max_steps × #segments``
-(measured ~2.34 GB for a full 37-way step). The per-segment cap is therefore a cheap
-*safety* ceiling, not a budget that must be rationed across segments.
+checkpoints, so RAM is **flat in the number of events** — *not*
+``max_steps × #segments`` (measured ~2.34 GB for a full 37-way step). The
+per-segment cap is therefore a cheap *safety* ceiling, not a budget that must be
+rationed across segments.
 """
 
 from __future__ import annotations
@@ -43,8 +45,8 @@ def solve_physical_states(
 ):
     """RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.
 
-    ``max_steps`` (from ``--solver-max-steps``) sets the per-segment step ceiling, but it
-    is **clamped to a barrier-safe maximum** (512). This matters under multi-device pmap:
+    ``max_steps`` (from ``--solver-max-steps``) sets the per-segment step ceiling,
+    but it is **clamped to a barrier-safe maximum** (512). This matters under pmap:
     a *high* per-segment cap lets one stiff process (e.g. under a too-hot lr) spin for
     many seconds inside its solve while the other devices finish and block on the
     ``all_gather``; once one device lags >~20 s the XLA collective rendezvous times out
@@ -60,15 +62,17 @@ def solve_physical_states(
     n_RMCs = len(wrapper.modeled_RMC_names)
     n_PVs = len(wrapper.modeled_PV_names)
     n_FVCs = len(wrapper.modeled_FVC_names)
-    n_state = n_RMCs + n_PVs + 1 + n_FVCs
+    n_latent = wrapper.reaction_module.n_latent
+    n_state = n_RMCs + n_PVs + 1 + n_FVCs + n_latent
     dtype = RAW_y0.dtype
     controls = wrapper.controls
     min_V = jnp.asarray(wrapper.min_V, dtype=dtype)
     # Per-state characteristic scale (the user-definable ``SCALE_*`` hook). Integrate
-    # ``SCL = RAW / SCALE`` so a single rtol/atol is uniformly meaningful and the adjoint
-    # stays O(1). Pure linear reparametrization applied only at the solve boundary: the
-    # RHS, jumps and gather stay physical; states are unscaled back before returning.
-    SCALE = jnp.asarray(wrapper.reaction_module.SCALE_state, dtype=dtype)
+    # ``SCL = RAW / SCALE`` so a single rtol/atol is uniformly meaningful and the
+    # adjoint stays O(1). Pure linear reparametrization applied only at the solve
+    # boundary: the RHS, jumps and gather stay physical; states are unscaled back
+    # before returning.
+    SCALE = jnp.asarray(wrapper.reaction_module.SCALE_integrated_state, dtype=dtype)
     assert SCALE.shape == (n_state,), (SCALE.shape, n_state)
 
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
@@ -101,20 +105,21 @@ def solve_physical_states(
     # feed). The event log still has the feed/sample node, so the gather below recovers
     # the state at that measurement time. On the measurement grid (the loss) no point
     # coincides with a feed, so this is a no-op there.
-    near_event = (
-        jnp.any((jnp.abs(t_eval[:, None] - bt[None, :]) < eps) & bmask[None, :], axis=1)
-        | jnp.any((jnp.abs(t_eval[:, None] - st[None, :]) < eps) & smask[None, :], axis=1)
-    )
+    near_event = jnp.any(
+        (jnp.abs(t_eval[:, None] - bt[None, :]) < eps) & bmask[None, :], axis=1
+    ) | jnp.any((jnp.abs(t_eval[:, None] - st[None, :]) < eps) & smask[None, :], axis=1)
     meas_times = jnp.where(meas_active & ~near_event, t_eval, BIG)
     preset_times = jnp.concatenate([bolus_times, sample_times, meas_times])
 
     def affect_fn(y_scl, t, args):
         y = y_scl * SCALE  # scaled -> physical (the jump is a physical mass balance)
         C = y[:n_RMCs]
-        # Modeled PVs are intensive (ratios/observables) — volume jumps don't touch them.
+        # Modeled PVs are intensive (ratios/observables), so volume jumps
+        # don't touch them.
         PVs = y[n_RMCs : n_RMCs + n_PVs]
         V = y[n_RMCs + n_PVs]
         cum = y[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
+        h = y[n_RMCs + n_PVs + 1 + n_FVCs :]
         s_on = (jnp.abs(t - st) < eps) & smask
         sample_dv = jnp.sum(jnp.where(s_on, sv, 0.0))
         b_on = (jnp.abs(t - bt) < eps) & bmask
@@ -127,16 +132,14 @@ def solve_physical_states(
         V_after_sample = V - sample_dv
         V_after = V_after_sample + bolus_dv
         C2 = (C * V_after_sample + bolus_mass) / jnp.maximum(V_after, min_V)
-        # physical -> scaled; PVs pass through unchanged.
-        return jnp.concatenate([C2, PVs, V_after[None], cum]) / SCALE
+        # physical -> scaled; PVs and latent pass through unchanged.
+        return jnp.concatenate([C2, PVs, V_after[None], cum, h]) / SCALE
 
     # ``jump_ts`` = genuine vector-field discontinuity times (from
     # ``BioProcess.discrete_events``); ``None``/empty ⇒ the controller behaves
     # exactly as a plain ``PIDController(rtol, atol)``. Bolus/sample STATE jumps
     # are handled by ``affect_fn`` below, NOT here.
-    jump_ts_arg = (
-        jump_ts if jump_ts is not None and jump_ts.shape[0] > 0 else None
-    )
+    jump_ts_arg = jump_ts if jump_ts is not None and jump_ts.shape[0] > 0 else None
 
     cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
@@ -164,7 +167,7 @@ def solve_physical_states(
     # Gather the state at each measurement time (closest *real* event in the log;
     # unused/padded slots are parked past t1 so they never win the argmin).
     ev_t = jnp.where(sol.event_types >= 0, sol.event_times, BIG)  # [max_events]
-    ev_y = sol.event_states_before                          # [max_events, n_state] (scaled)
+    ev_y = sol.event_states_before  # [max_events, n_state] (scaled)
 
     def _gather(tm):
         i = jnp.argmin(jnp.abs(ev_t - tm))
@@ -173,12 +176,12 @@ def solve_physical_states(
         # sample leaves concentrations unchanged and only removes volume, so subtract
         # any sample volume scheduled at ``tm`` from V. Boluses stay pre-bolus (the
         # offline measurement is taken before feeding). This makes the reported V
-        # honour ``v0 + Σfeeds − Σsamples`` at the final sample, matching the pmap solve.
+        # honour ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap.
         s_here = (jnp.abs(tm - st) < eps) & smask
         sample_dv_here = jnp.sum(jnp.where(s_here, sv, 0.0))
         return y.at[n_RMCs + n_PVs].add(-sample_dv_here)
 
-    states = jax.vmap(_gather)(t_eval)            # [M, n_state]
+    states = jax.vmap(_gather)(t_eval)  # [M, n_state]
     # Every grid point at t0 is the initial state (no event precedes t0). The dense /
     # prediction export solves on a union grid that can carry t0 at *several* indices
     # (measurement-t0, dense-t0, prediction-t0), not only index 0 — so patch all of

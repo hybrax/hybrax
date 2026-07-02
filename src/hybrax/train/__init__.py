@@ -179,8 +179,8 @@ if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""
             ).strip()
 
 
-from importlib import import_module
-from typing import Any
+from importlib import import_module  # noqa: E402
+from typing import Any  # noqa: E402
 
 _EXPORTS = {
     "ControlsStore": "controls_store",

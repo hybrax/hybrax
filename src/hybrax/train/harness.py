@@ -41,7 +41,6 @@ from .trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
     evaluate_one_sample_loss,
-    BatchedLossFn,
 )
 from .logging import RunLogger, StepRecord
 from .training_data import (
@@ -163,6 +162,7 @@ class TrainHarnessConfig:
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
     solver_use_jump_ts: bool = True
+    allow_stateful_models: bool = False
     # Logging / telemetry options (additive; all optional).
     log_process_losses: bool = False
     metrics_csv: str | None = None
@@ -426,6 +426,15 @@ def _build_batch_index_stream(
     return jnp.asarray(flattened.reshape((int(steps), int(batch_size))))
 
 
+def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> None:
+    """Reject a stateful (``n_latent > 0``) module unless opt-in is set."""
+    if reaction_module.n_latent > 0 and not allow_stateful_models:
+        raise ValueError(
+            "Stateful reaction modules (n_latent > 0) require explicit opt-in: "
+            "set train.allow_stateful_models=true."
+        )
+
+
 def _build_reaction_module(
     *,
     store: TrainingDataStore,
@@ -452,6 +461,7 @@ def _build_reaction_module(
         raise TypeError(
             "build_reaction_module(...) must return a UserReactionModule instance"
         )
+    _require_stateful_opt_in(module, config.allow_stateful_models)
     return module
 
 
@@ -462,8 +472,7 @@ def _loss_target_labels(store: TrainingDataStore) -> list[str]:
     so ``DefaultLossModule`` emits exactly one term per label.
     """
     return list(store.name_measured) + [
-        f"B_{name}_cum"
-        for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
+        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
     ]
 
 
@@ -484,9 +493,7 @@ def _build_loss_module(
         collection=collection,
     )
     if not isinstance(module, UserLossModule):
-        raise TypeError(
-            "build_loss_module(...) must return a UserLossModule instance"
-        )
+        raise TypeError("build_loss_module(...) must return a UserLossModule instance")
     return module
 
 
@@ -500,8 +507,8 @@ def _resolve_estimated_scales(
     """Call the optional ``estimate_all_scales`` hook and unpack into kwargs.
 
     The hook returns an ``EstimatedScales`` dataclass (or a falsy result if no
-    hook is configured). The output flattens into 13 ``SCALE_*`` kwargs that
-    feed ``build_reaction_module``.
+    hook is configured). The output flattens into ``SCALE_*`` kwargs that feed
+    ``build_reaction_module``.
     """
     hook = get_hook(custom_module, "estimate_all_scales", None)
     if hook is None:
@@ -522,9 +529,27 @@ def _resolve_estimated_scales(
         "SCALE_controlled_FVCs_Cin": estimated.SCALE_controlled_FVCs_Cin,
         "SCALE_controlled_PVs": estimated.SCALE_controlled_PVs,
         "SCALE_modeled_FVCs_Cin": estimated.SCALE_modeled_FVCs_Cin,
-        "SCALE_modeled_BiologicalOde_rates": estimated.SCALE_modeled_BiologicalOde_rates,
+        "SCALE_modeled_BiologicalOde_rates": (
+            estimated.SCALE_modeled_BiologicalOde_rates
+        ),
         "SCALE_modeled_FVCs_rates": estimated.SCALE_modeled_FVCs_rates,
     }
+
+
+def _target_state_indices(store: TrainingDataStore, rhs_ode: Any) -> jax.Array:
+    """Map measured target columns to physical state columns."""
+    n_RMCs = len(rhs_ode.name_modeled_RMCs)
+    n_PVs = len(rhs_ode.name_modeled_PVs)
+    indices: list[int] = []
+    for name in store.name_measured_RMCs:
+        indices.append(rhs_ode.name_modeled_RMCs.index(name))
+    for name in store.name_measured_PVs:
+        indices.append(n_RMCs + rhs_ode.name_modeled_PVs.index(name))
+
+    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
+    feed_start = n_RMCs + n_PVs + 1
+    indices.extend(range(feed_start, feed_start + n_modeled_feeds))
+    return jnp.asarray(indices, dtype=jnp.int32)
 
 
 def _validate_batched_loss_outputs(
@@ -595,13 +620,7 @@ def _build_template_wrapper(
             per_process_rhs_ode[process_name],
         )
 
-    n_species = len(store.name_measured)
-    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
-    target_state_indices = jnp.asarray(
-        list(range(n_species))
-        + list(range(n_species + 1, n_species + 1 + n_modeled_feeds)),
-        dtype=jnp.int32,
-    )
+    target_state_indices = _target_state_indices(store, reference_rhs_ode)
 
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=reaction_module,
@@ -713,9 +732,12 @@ def forward_from_collection(
         target_variable_order=effective_target_order,
         target_source=cfg.target_source,
         seed=run_config.train.seed if run_config is not None else 0,
+        allow_stateful_models=bool(
+            run_config is not None and run_config.train.allow_stateful_models
+        ),
     )
     # `estimate_all_scales` runs FIRST: its output is plumbed into the
-    # reaction-module constructor as 13 SCALE_* kwargs (the module is the
+    # reaction-module constructor as SCALE_* kwargs (the module is the
     # single source of truth for scales).
     scale_kwargs = _resolve_estimated_scales(
         custom_module=custom_module,
@@ -849,6 +871,7 @@ def train_collection(
     used.
     """
     cfg = config or TrainHarnessConfig()
+    _require_stateful_opt_in(reaction_module, cfg.allow_stateful_models)
     if loss_module is None:
         loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
     effective_batched_loss_fn = _BATCHED_LOSS_FN
@@ -900,16 +923,10 @@ def train_collection(
             per_process_rhs_ode[process_name],
         )
 
-    # Build target_state_indices: species columns + cumulative-modeled-feed
-    # columns. State layout is [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]
-    # so V_in_cumulative (at index n_species) is in the state but NOT a loss target.
-    n_species = len(store.name_measured)
-    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
-    target_state_indices = jnp.asarray(
-        list(range(n_species))
-        + list(range(n_species + 1, n_species + 1 + n_modeled_feeds)),
-        dtype=jnp.int32,
-    )
+    # Loss target columns map into the save/loss physical state
+    # [modeled_RMCs | modeled_PVs | V | modeled_FVCs_cumulative].
+    # V is in the state but not a loss target.
+    target_state_indices = _target_state_indices(store, reference_rhs_ode)
 
     # Per-target labels come straight from the loss module — one panel/column
     # per named loss term, in declared order.
@@ -992,17 +1009,19 @@ def train_collection(
 
             def _loss_fn(trainable_params: Any) -> jax.Array:
                 candidate_wrapper = eqx.combine(trainable_params, trainable_static)
-                total_loss, per_sample_per_target, per_sample, *_ = effective_batched_loss_fn(
-                    candidate_wrapper,
-                    current_batch,
-                    batch_controls,
-                    batched_Cin,
-                    batched_Cin_modeled,
-                    jump_ts_rows,
-                    max_solver_steps=int(cfg.solver_max_steps),
-                    solver_rtol=float(cfg.solver_rtol),
-                    solver_atol=float(cfg.solver_atol),
-                    step=step,
+                total_loss, per_sample_per_target, per_sample, *_ = (
+                    effective_batched_loss_fn(
+                        candidate_wrapper,
+                        current_batch,
+                        batch_controls,
+                        batched_Cin,
+                        batched_Cin_modeled,
+                        jump_ts_rows,
+                        max_solver_steps=int(cfg.solver_max_steps),
+                        solver_rtol=float(cfg.solver_rtol),
+                        solver_atol=float(cfg.solver_atol),
+                        step=step,
+                    )
                 )
                 per_target = jnp.mean(per_sample_per_target, axis=0)
                 total_loss, per_target, per_sample = _validate_batched_loss_outputs(
@@ -1058,7 +1077,11 @@ def train_collection(
         )
 
         def _pad(x):
-            return x if pad_n == 0 else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+            return (
+                x
+                if pad_n == 0
+                else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+            )
 
         def _shard(x):
             return x.reshape((n_dev, per_dev) + x.shape[1:])
@@ -1085,9 +1108,21 @@ def train_collection(
 
                 def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
                     return evaluate_one_sample_loss(
-                        wrapper, batch_controls, pidx, t_row, scl_ym, mask, n_meas, raw_y0,
-                        ci, cim, jts, max_solver_steps=max_steps, solver_rtol=rtol,
-                        solver_atol=atol, step=step,
+                        wrapper,
+                        batch_controls,
+                        pidx,
+                        t_row,
+                        scl_ym,
+                        mask,
+                        n_meas,
+                        raw_y0,
+                        ci,
+                        cim,
+                        jts,
+                        max_solver_steps=max_steps,
+                        solver_rtol=rtol,
+                        solver_atol=atol,
+                        step=step,
                     )
 
                 totl, pert = jax.vmap(
@@ -1095,14 +1130,26 @@ def train_collection(
                 )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
                 return jnp.sum(totl * wt), (pert, totl)
 
-            (_l, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(params)
+            (_l, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(
+                params
+            )
             loss = jax.lax.psum(_l, "bp_dev") / bs
-            grads = jax.tree_util.tree_map(lambda g: jax.lax.psum(g, "bp_dev") / bs, grads)
-            per_target = jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "bp_dev") / bs
+            grads = jax.tree_util.tree_map(
+                lambda g: jax.lax.psum(g, "bp_dev") / bs, grads
+            )
+            per_target = (
+                jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "bp_dev") / bs
+            )
             per_sample = jax.lax.all_gather(totl, "bp_dev")
             return loss, grads, per_target, per_sample
 
-        def _step_fn(current_wrapper, current_trainable_params, current_optimizer_state, current_batch, step):
+        def _step_fn(
+            current_wrapper,
+            current_trainable_params,
+            current_optimizer_state,
+            current_batch,
+            step,
+        ):
             del current_wrapper
             jump_ts_rows = None
             if use_jump:
@@ -1115,15 +1162,30 @@ def train_collection(
             ins = [
                 _shard(_pad(a))
                 for a in (
-                    current_batch.process_indices, current_batch.t_measured,
-                    current_batch.y_measured, current_batch.mask_measured,
-                    current_batch.n_measured, current_batch.y0_measured, cin, cinm,
+                    current_batch.process_indices,
+                    current_batch.t_measured,
+                    current_batch.y_measured,
+                    current_batch.mask_measured,
+                    current_batch.n_measured,
+                    current_batch.y0_measured,
+                    cin,
+                    cinm,
                 )
             ]
             jt = _shard(_pad(jump_ts_rows)) if jump_ts_rows is not None else None
             loss, grads, per_target, per_sample = _pgrad(
-                current_trainable_params, ins[0], ins[1], ins[2], ins[3], ins[4],
-                ins[5], ins[6], ins[7], weight_sharded, jt, step,
+                current_trainable_params,
+                ins[0],
+                ins[1],
+                ins[2],
+                ins[3],
+                ins[4],
+                ins[5],
+                ins[6],
+                ins[7],
+                weight_sharded,
+                jt,
+                step,
             )
             loss = loss[0]
             grads = jax.tree_util.tree_map(lambda g: g[0], grads)
@@ -1136,8 +1198,13 @@ def train_collection(
             trainable_updated = eqx.apply_updates(current_trainable_params, updates)
             wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
-                wrapper_updated, trainable_updated, loss, per_target_loss,
-                per_sample_loss, next_optimizer_state, grad_norm,
+                wrapper_updated,
+                trainable_updated,
+                loss,
+                per_target_loss,
+                per_sample_loss,
+                next_optimizer_state,
+                grad_norm,
             )
 
         return _step_fn
@@ -1151,27 +1218,35 @@ def train_collection(
         per-sample solves across devices and inserts the all-reduce for the
         batch-mean loss/grad automatically — no manual ``psum``/``all_gather``.
 
-        Why GSPMD and not ``jax.shard_map``: on jax>=0.10 ``shard_map`` runs the body in
-        *manual* sharding mode, which trips ``assert not hlo_sharding.is_manual()`` inside
-        diffrax's nested ``eqx.filter_eval_shape`` solver loop; Explicit-sharding ``jit``
-        likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD keeps shardings
-        out of the per-op type system, so the diffrax adjoint composes cleanly — and it
-        needs **no** equinox/diffrax monkeypatch (unlike the pmap path)."""
+        Why GSPMD and not ``jax.shard_map``: on jax>=0.10 ``shard_map`` runs
+        the body in *manual* sharding mode, which trips
+        ``assert not hlo_sharding.is_manual()`` inside diffrax's nested
+        ``eqx.filter_eval_shape`` solver loop; explicit-sharding ``jit``
+        likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD
+        keeps shardings out of the per-op type system, so the diffrax adjoint
+        composes cleanly — and it needs **no** equinox/diffrax monkeypatch
+        (unlike the pmap path)."""
         from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 
         bs = int(effective_batch_size)
         n_dev = min(jax.local_device_count(), bs)
         devices = jax.local_devices()[:n_dev]
-        mesh = jax.make_mesh((n_dev,), ("bp_dev",), axis_types=(AxisType.Auto,), devices=devices)
-        S_batch = NamedSharding(mesh, P("bp_dev"))   # shard the leading batch axis
-        S_repl = NamedSharding(mesh, P())            # replicated
+        mesh = jax.make_mesh(
+            (n_dev,), ("bp_dev",), axis_types=(AxisType.Auto,), devices=devices
+        )
+        S_batch = NamedSharding(mesh, P("bp_dev"))  # shard the leading batch axis
+        S_repl = NamedSharding(mesh, P())  # replicated
         pad_n = (-bs) % n_dev
         weight_full = jnp.concatenate(
             [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
         )
 
         def _pad(x):
-            return x if pad_n == 0 else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+            return (
+                x
+                if pad_n == 0
+                else jnp.concatenate([x, jnp.repeat(x[-1:], pad_n, axis=0)], axis=0)
+            )
 
         use_jump = bool(cfg.solver_use_jump_ts)
         max_steps = int(cfg.solver_max_steps)
@@ -1179,10 +1254,13 @@ def train_collection(
         atol = float(cfg.solver_atol)
 
         @eqx.filter_jit
-        def _full_step(params, opt_state, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
-            # Inside-jit sharding constraints (per the equinox autoparallelism tutorial):
-            # emits jax.lax.with_sharding_constraint so XLA keeps params/opt replicated and
-            # the batch axis sharded *through* the computation, rather than replicating it.
+        def _full_step(
+            params, opt_state, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step
+        ):
+            # Inside-jit sharding constraints (per the equinox autoparallelism
+            # tutorial): emits jax.lax.with_sharding_constraint so XLA keeps
+            # params/opt replicated and the batch axis sharded *through* the
+            # computation, rather than replicating it.
             params, opt_state = eqx.filter_shard((params, opt_state), S_repl)
             pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
                 (pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
@@ -1197,9 +1275,21 @@ def train_collection(
 
                 def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
                     return evaluate_one_sample_loss(
-                        wrapper, batch_controls, pidx, t_row, scl_ym, mask, n_meas, raw_y0,
-                        ci, cim, jts, max_solver_steps=max_steps, solver_rtol=rtol,
-                        solver_atol=atol, step=step,
+                        wrapper,
+                        batch_controls,
+                        pidx,
+                        t_row,
+                        scl_ym,
+                        mask,
+                        n_meas,
+                        raw_y0,
+                        ci,
+                        cim,
+                        jts,
+                        max_solver_steps=max_steps,
+                        solver_rtol=rtol,
+                        solver_atol=atol,
+                        step=step,
                     )
 
                 totl, pert = jax.vmap(
@@ -1207,21 +1297,33 @@ def train_collection(
                 )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
                 # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
                 # measured to NOT help — even with this hint XLA still replicates the
-                # data-dependent diffrax while_loops rather than partitioning the vmap, so
+                # data-dependent diffrax while_loops rather than partitioning the
+                # vmap, so
                 # the GSPMD path stays ~60x slower than pmap. Kept as correct practice.
                 totl, pert = eqx.filter_shard((totl, pert), S_batch)
-                # weighted mean: padding rows carry weight 0; XLA all-reduces it (and grad).
+                # weighted mean: padding rows carry weight 0; XLA all-reduces it
+                # (and grad).
                 return jnp.sum(totl * wt) / bs, (pert, totl)
 
-            (loss, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(params)
+            (loss, (pert, totl)), grads = eqx.filter_value_and_grad(
+                _local, has_aux=True
+            )(params)
             per_target = jnp.sum(pert * wt[:, None], axis=0) / bs
             updates, next_opt_state = optimizer.update(grads, opt_state, params=params)
             params_next = eqx.apply_updates(params, updates)
             grad_norm = optax.tree.norm(grads)
-            params_next, next_opt_state = eqx.filter_shard((params_next, next_opt_state), S_repl)
+            params_next, next_opt_state = eqx.filter_shard(
+                (params_next, next_opt_state), S_repl
+            )
             return params_next, next_opt_state, loss, per_target, totl, grad_norm
 
-        def _step_fn(current_wrapper, current_trainable_params, current_optimizer_state, current_batch, step):
+        def _step_fn(
+            current_wrapper,
+            current_trainable_params,
+            current_optimizer_state,
+            current_batch,
+            step,
+        ):
             del current_wrapper
             jump_ts_rows = None
             if use_jump:
@@ -1231,32 +1333,63 @@ def train_collection(
                 )
             cin = batched_Cin[current_batch.process_indices]
             cinm = batched_Cin_modeled[current_batch.process_indices]
-            with jax.set_mesh(mesh):  # jax>=0.10 needs an active mesh for the sharded jit
+            with jax.set_mesh(
+                mesh
+            ):  # jax>=0.10 needs an active mesh for the sharded jit
                 sharded = [
                     jax.device_put(_pad(a), S_batch)
                     for a in (
-                        current_batch.process_indices, current_batch.t_measured,
-                        current_batch.y_measured, current_batch.mask_measured,
-                        current_batch.n_measured, current_batch.y0_measured, cin, cinm,
+                        current_batch.process_indices,
+                        current_batch.t_measured,
+                        current_batch.y_measured,
+                        current_batch.mask_measured,
+                        current_batch.n_measured,
+                        current_batch.y0_measured,
+                        cin,
+                        cinm,
                     )
                 ]
                 wt = jax.device_put(weight_full, S_batch)
-                jt = jax.device_put(_pad(jump_ts_rows), S_batch) if jump_ts_rows is not None else None
+                jt = (
+                    jax.device_put(_pad(jump_ts_rows), S_batch)
+                    if jump_ts_rows is not None
+                    else None
+                )
                 params_r = jax.device_put(current_trainable_params, S_repl)
                 opt_r = jax.device_put(current_optimizer_state, S_repl)
                 step_r = jax.device_put(jnp.asarray(step), S_repl)
                 (
-                    trainable_updated, next_optimizer_state, loss, per_target_loss,
-                    per_sample, grad_norm,
+                    trainable_updated,
+                    next_optimizer_state,
+                    loss,
+                    per_target_loss,
+                    per_sample,
+                    grad_norm,
                 ) = _full_step(
-                    params_r, opt_r, sharded[0], sharded[1], sharded[2], sharded[3],
-                    sharded[4], sharded[5], sharded[6], sharded[7], wt, jt, step_r,
+                    params_r,
+                    opt_r,
+                    sharded[0],
+                    sharded[1],
+                    sharded[2],
+                    sharded[3],
+                    sharded[4],
+                    sharded[5],
+                    sharded[6],
+                    sharded[7],
+                    wt,
+                    jt,
+                    step_r,
                 )
             per_sample_loss = per_sample.reshape(-1)[:bs]
             wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
-                wrapper_updated, trainable_updated, loss, per_target_loss,
-                per_sample_loss, next_optimizer_state, grad_norm,
+                wrapper_updated,
+                trainable_updated,
+                loss,
+                per_target_loss,
+                per_sample_loss,
+                next_optimizer_state,
+                grad_norm,
             )
 
         return _step_fn
@@ -1280,7 +1413,8 @@ def train_collection(
     if _use_sharded:
         logger.info(
             "training sharded across %d local devices (batch=%d) via %s",
-            _n_shard, int(effective_batch_size),
+            _n_shard,
+            int(effective_batch_size),
             "gspmd" if _use_gspmd else "pmap",
         )
     step_fn = _make_step()
@@ -1333,11 +1467,7 @@ def train_collection(
     checkpoint_enabled = (
         cfg.checkpoint_dir is not None and int(cfg.checkpoint_every) > 0
     )
-    plotter = (
-        BackgroundPlotter()
-        if (checkpoint_enabled and bool(cfg.plots))
-        else None
-    )
+    plotter = BackgroundPlotter() if (checkpoint_enabled and bool(cfg.plots)) else None
     checkpoint_writer = CheckpointWriter(
         Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
         CheckpointConfig(
@@ -1390,252 +1520,260 @@ def train_collection(
             )
 
     try:
-      with RunLogger(
-        log_every=int(cfg.log_every),
-        log_process_losses=bool(cfg.log_process_losses),
-        metrics_csv=cfg.metrics_csv,
-        metrics_jsonl=cfg.metrics_jsonl,
-        log_decimals=int(cfg.log_decimals),
-        log_header_every=int(cfg.log_header_every),
-        resume=start_step > 0,
-      ) as run_log:
-        run_log.start(
-            target_names=_target_labels,
-            process_names=selected_processes,
-            total_steps=int(cfg.steps),
-            compile_warmup_seconds=float(warmup_compile_seconds),
-        )
-
-        for step_index in range(start_step, cfg.steps):
-            batch_indices = batch_index_stream[step_index]
-            batch = store.gather_batch(batch_indices)
-            current_signature = summarize_train_step_input_signature(
-                wrapper,
-                trainable_params,
-                optimizer_state,
-                batch,
-                jnp.asarray(step_index + 1, dtype=jnp.int32),
-            )
-            if current_signature != train_step_input_signature:
-                step_fn = _make_step()
-                rebuild_count += 1
-                run_log.record_rebuild(step_index + 1)
-
-            t0 = time.perf_counter()
-            (
-                wrapper,
-                trainable_params,
-                loss,
-                per_target_loss,
-                per_sample_loss,
-                optimizer_state,
-                grad_norm,
-            ) = step_fn(
-                wrapper,
-                trainable_params,
-                optimizer_state,
-                batch,
-                jnp.asarray(step_index + 1, dtype=jnp.int32),
-            )
-            jax.block_until_ready(loss)
-            step_dt = time.perf_counter() - t0
-
-            batch_names = tuple(
-                store.process_order[int(i)]
-                for i in np.asarray(batch.process_indices).tolist()
+        with RunLogger(
+            log_every=int(cfg.log_every),
+            log_process_losses=bool(cfg.log_process_losses),
+            metrics_csv=cfg.metrics_csv,
+            metrics_jsonl=cfg.metrics_jsonl,
+            log_decimals=int(cfg.log_decimals),
+            log_header_every=int(cfg.log_header_every),
+            resume=start_step > 0,
+        ) as run_log:
+            run_log.start(
+                target_names=_target_labels,
+                process_names=selected_processes,
+                total_steps=int(cfg.steps),
+                compile_warmup_seconds=float(warmup_compile_seconds),
             )
 
-            # Monitor / holdout loss at `monitor_every` cadence (one extra
-            # forward pass per evaluated step; defaults to the `log_every`
-            # cadence, monitor_every=1 evaluates every step).
-            monitor_loss_value: float | None = None
-            monitor_per_target_value: tuple[float, ...] | None = None
-            if monitor_batch is not None and (step_index + 1) % monitor_cadence == 0:
-                m_total, m_per_sample_per_target, _m_per_sample, *_ = (
-                    effective_batched_loss_fn(
-                        wrapper,
-                        monitor_batch,
-                        batch_controls,
-                        batched_Cin,
-                        batched_Cin_modeled,
-                        monitor_jump_ts_rows,
-                        max_solver_steps=int(cfg.solver_max_steps),
+            for step_index in range(start_step, cfg.steps):
+                batch_indices = batch_index_stream[step_index]
+                batch = store.gather_batch(batch_indices)
+                current_signature = summarize_train_step_input_signature(
+                    wrapper,
+                    trainable_params,
+                    optimizer_state,
+                    batch,
+                    jnp.asarray(step_index + 1, dtype=jnp.int32),
+                )
+                if current_signature != train_step_input_signature:
+                    step_fn = _make_step()
+                    rebuild_count += 1
+                    run_log.record_rebuild(step_index + 1)
+
+                t0 = time.perf_counter()
+                (
+                    wrapper,
+                    trainable_params,
+                    loss,
+                    per_target_loss,
+                    per_sample_loss,
+                    optimizer_state,
+                    grad_norm,
+                ) = step_fn(
+                    wrapper,
+                    trainable_params,
+                    optimizer_state,
+                    batch,
+                    jnp.asarray(step_index + 1, dtype=jnp.int32),
+                )
+                jax.block_until_ready(loss)
+                step_dt = time.perf_counter() - t0
+
+                batch_names = tuple(
+                    store.process_order[int(i)]
+                    for i in np.asarray(batch.process_indices).tolist()
+                )
+
+                # Monitor / holdout loss at `monitor_every` cadence (one extra
+                # forward pass per evaluated step; defaults to the `log_every`
+                # cadence, monitor_every=1 evaluates every step).
+                monitor_loss_value: float | None = None
+                monitor_per_target_value: tuple[float, ...] | None = None
+                if (
+                    monitor_batch is not None
+                    and (step_index + 1) % monitor_cadence == 0
+                ):
+                    m_total, m_per_sample_per_target, _m_per_sample, *_ = (
+                        effective_batched_loss_fn(
+                            wrapper,
+                            monitor_batch,
+                            batch_controls,
+                            batched_Cin,
+                            batched_Cin_modeled,
+                            monitor_jump_ts_rows,
+                            max_solver_steps=int(cfg.solver_max_steps),
+                            solver_rtol=float(cfg.solver_rtol),
+                            solver_atol=float(cfg.solver_atol),
+                            step=jnp.asarray(step_index + 1, dtype=jnp.int32),
+                        )
+                    )
+                    jax.block_until_ready(m_total)
+                    monitor_loss_value = float(m_total)
+                    # Reduce per-sample-per-target -> per-target (mean over the
+                    # holdout samples), exactly as the train step does for its own
+                    # per-target loss.
+                    monitor_per_target_value = tuple(
+                        float(v)
+                        for v in np.asarray(
+                            jnp.mean(m_per_sample_per_target, axis=0)
+                        ).tolist()
+                    )
+
+                run_log.record_step(
+                    StepRecord(
+                        step=step_index + 1,
+                        total_steps=int(cfg.steps),
+                        mean_loss=float(loss),
+                        per_target_loss=tuple(
+                            float(v) for v in np.asarray(per_target_loss).tolist()
+                        ),
+                        per_process_loss=tuple(
+                            float(v) for v in np.asarray(per_sample_loss).tolist()
+                        ),
+                        target_names=tuple(_target_labels),
+                        process_names=batch_names,
+                        step_dt=float(step_dt),
+                        rebuild_count=int(rebuild_count),
+                        monitor_loss=monitor_loss_value,
+                        monitor_label=cfg.monitor_label
+                        if monitor_loss_value is not None
+                        else None,
+                        grad_norm=float(grad_norm),
+                    )
+                )
+
+                loss_so_far.append(float(loss))
+                per_target_loss_so_far.append(
+                    tuple(float(v) for v in np.asarray(per_target_loss).tolist())
+                )
+                grad_norm_so_far.append(float(grad_norm))
+                if monitor_loss_value is not None:
+                    monitor_loss_so_far[step_index + 1] = monitor_loss_value
+                    if monitor_per_target_value is not None:
+                        monitor_per_target_so_far[step_index + 1] = (
+                            monitor_per_target_value
+                        )
+                best_loss = min(best_loss, float(loss))
+
+                def _render_predictions(path: Path, _wrapper=wrapper):
+                    # One dense solve serves predictions.csv AND the per-process plot
+                    # data (built here in the main process, then rendered off-thread
+                    # by the same renderer as the run-root/forward plots).
+                    _, _, ckpt_dense_exports = compute_dense_exports(
+                        _wrapper,
+                        store,
+                        collection,
+                        selected_processes,
+                        solver_max_steps=int(cfg.solver_max_steps),
                         solver_rtol=float(cfg.solver_rtol),
                         solver_atol=float(cfg.solver_atol),
-                        step=jnp.asarray(step_index + 1, dtype=jnp.int32),
+                        solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
                     )
-                )
-                jax.block_until_ready(m_total)
-                monitor_loss_value = float(m_total)
-                # Reduce per-sample-per-target -> per-target (mean over the
-                # holdout samples), exactly as the train step does for its own
-                # per-target loss.
-                monitor_per_target_value = tuple(
-                    float(v)
-                    for v in np.asarray(
-                        jnp.mean(m_per_sample_per_target, axis=0)
-                    ).tolist()
-                )
-
-            run_log.record_step(
-                StepRecord(
-                    step=step_index + 1,
-                    total_steps=int(cfg.steps),
-                    mean_loss=float(loss),
-                    per_target_loss=tuple(
-                        float(v) for v in np.asarray(per_target_loss).tolist()
-                    ),
-                    per_process_loss=tuple(
-                        float(v) for v in np.asarray(per_sample_loss).tolist()
-                    ),
-                    target_names=tuple(_target_labels),
-                    process_names=batch_names,
-                    step_dt=float(step_dt),
-                    rebuild_count=int(rebuild_count),
-                    monitor_loss=monitor_loss_value,
-                    monitor_label=cfg.monitor_label
-                    if monitor_loss_value is not None
-                    else None,
-                    grad_norm=float(grad_norm),
-                )
-            )
-
-            loss_so_far.append(float(loss))
-            per_target_loss_so_far.append(
-                tuple(float(v) for v in np.asarray(per_target_loss).tolist())
-            )
-            grad_norm_so_far.append(float(grad_norm))
-            if monitor_loss_value is not None:
-                monitor_loss_so_far[step_index + 1] = monitor_loss_value
-                if monitor_per_target_value is not None:
-                    monitor_per_target_so_far[step_index + 1] = monitor_per_target_value
-            best_loss = min(best_loss, float(loss))
-
-            def _render_predictions(path: Path, _wrapper=wrapper):
-                # One dense solve serves predictions.csv AND the per-process plot
-                # data (built here in the main process, then rendered off-thread
-                # by the same renderer as the run-root/forward plots).
-                _, _, ckpt_dense_exports = compute_dense_exports(
-                    _wrapper,
-                    store,
-                    collection,
-                    selected_processes,
-                    solver_max_steps=int(cfg.solver_max_steps),
-                    solver_rtol=float(cfg.solver_rtol),
-                    solver_atol=float(cfg.solver_atol),
-                    solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-                )
-                export_predictions_csv(
-                    _wrapper,
-                    ckpt_dense_exports,
-                    path,
-                    process_names=selected_processes,
-                )
-                if not bool(cfg.plots):
-                    return None
-                return build_process_plot_data(
-                    _wrapper,
-                    collection,
-                    store,
-                    ckpt_dense_exports,
-                    selected_processes,
-                    training_process_names=selected_processes,
-                )
-
-            checkpoint_writer.maybe_write(
-                step=step_index + 1,
-                wrapper=wrapper,
-                opt_state=optimizer_state,
-                mean_loss=float(loss),
-                best_loss=best_loss,
-                render_predictions_fn=_render_predictions,
-                loss_by_step=loss_so_far,
-                grad_norm_by_step=grad_norm_so_far,
-                per_target_loss_by_step=per_target_loss_so_far,
-                target_names=tuple(_target_labels),
-                monitor_loss_by_step=(
-                    monitor_loss_so_far if monitor_loss_so_far else None
-                ),
-                monitor_per_target_by_step=(
-                    monitor_per_target_so_far if monitor_per_target_so_far else None
-                ),
-                monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
-            )
-
-        history = run_log.finalize()
-
-        # Run-root final-model outputs: predictions.csv + the complete final plot
-        # set (per-process simulations, loss curve, grad-norm curve) written
-        # directly to the run dir — synchronously, so they are reliable and not
-        # subject to the per-checkpoint background renderer.
-        if cfg.checkpoint_dir is not None:
-            run_dir = Path(cfg.checkpoint_dir).parent
-            try:
-                _final_total, _final_per_target, _final_dense = compute_dense_exports(
-                    wrapper,
-                    store,
-                    collection,
-                    selected_processes,
-                    solver_max_steps=int(cfg.solver_max_steps),
-                    solver_rtol=float(cfg.solver_rtol),
-                    solver_atol=float(cfg.solver_atol),
-                    solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-                )
-                export_predictions_csv(
-                    wrapper,
-                    _final_dense,
-                    run_dir / "predictions.csv",
-                    process_names=selected_processes,
-                )
-                if bool(cfg.plots):
-                    named = {
-                        p: dict(zip(_target_labels, _final_per_target[i]))
-                        for i, p in enumerate(selected_processes)
-                    }
-                    total = {
-                        p: float(sum(_final_per_target[i]))
-                        for i, p in enumerate(selected_processes)
-                    }
-                    plot_process_simulations(
-                        wrapper,
+                    export_predictions_csv(
+                        _wrapper,
+                        ckpt_dense_exports,
+                        path,
+                        process_names=selected_processes,
+                    )
+                    if not bool(cfg.plots):
+                        return None
+                    return build_process_plot_data(
+                        _wrapper,
                         collection,
                         store,
-                        run_dir,
-                        _final_dense,
-                        process_names=selected_processes,
+                        ckpt_dense_exports,
+                        selected_processes,
                         training_process_names=selected_processes,
-                        per_process_named_losses=named,
-                        per_process_total_loss=total,
                     )
-                    if loss_so_far:
-                        plot_loss_curve(
-                            list(loss_so_far),
-                            run_dir / "loss_curve.png",
-                            title=f"Training loss (through step {int(cfg.steps)})",
-                            per_target_loss_by_step=list(per_target_loss_so_far),
-                            target_names=tuple(_target_labels),
-                            monitor_loss_by_step=(
-                                dict(monitor_loss_so_far)
-                                if monitor_loss_so_far
-                                else None
-                            ),
-                            monitor_per_target_by_step=(
-                                dict(monitor_per_target_so_far)
-                                if monitor_per_target_so_far
-                                else None
-                            ),
-                            monitor_label=(
-                                cfg.monitor_label if monitor_loss_so_far else None
-                            ),
+
+                checkpoint_writer.maybe_write(
+                    step=step_index + 1,
+                    wrapper=wrapper,
+                    opt_state=optimizer_state,
+                    mean_loss=float(loss),
+                    best_loss=best_loss,
+                    render_predictions_fn=_render_predictions,
+                    loss_by_step=loss_so_far,
+                    grad_norm_by_step=grad_norm_so_far,
+                    per_target_loss_by_step=per_target_loss_so_far,
+                    target_names=tuple(_target_labels),
+                    monitor_loss_by_step=(
+                        monitor_loss_so_far if monitor_loss_so_far else None
+                    ),
+                    monitor_per_target_by_step=(
+                        monitor_per_target_so_far if monitor_per_target_so_far else None
+                    ),
+                    monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
+                )
+
+            history = run_log.finalize()
+
+            # Run-root final-model outputs: predictions.csv + the complete final plot
+            # set (per-process simulations, loss curve, grad-norm curve) written
+            # directly to the run dir — synchronously, so they are reliable and not
+            # subject to the per-checkpoint background renderer.
+            if cfg.checkpoint_dir is not None:
+                run_dir = Path(cfg.checkpoint_dir).parent
+                try:
+                    _final_total, _final_per_target, _final_dense = (
+                        compute_dense_exports(
+                            wrapper,
+                            store,
+                            collection,
+                            selected_processes,
+                            solver_max_steps=int(cfg.solver_max_steps),
+                            solver_rtol=float(cfg.solver_rtol),
+                            solver_atol=float(cfg.solver_atol),
+                            solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
                         )
-                    if grad_norm_so_far:
-                        plot_grad_norm_curve(
-                            list(grad_norm_so_far),
-                            run_dir / "grad_norm_curve.png",
-                            title=f"Gradient norm (through step {int(cfg.steps)})",
+                    )
+                    export_predictions_csv(
+                        wrapper,
+                        _final_dense,
+                        run_dir / "predictions.csv",
+                        process_names=selected_processes,
+                    )
+                    if bool(cfg.plots):
+                        named = {
+                            p: dict(zip(_target_labels, _final_per_target[i]))
+                            for i, p in enumerate(selected_processes)
+                        }
+                        total = {
+                            p: float(sum(_final_per_target[i]))
+                            for i, p in enumerate(selected_processes)
+                        }
+                        plot_process_simulations(
+                            wrapper,
+                            collection,
+                            store,
+                            run_dir,
+                            _final_dense,
+                            process_names=selected_processes,
+                            training_process_names=selected_processes,
+                            per_process_named_losses=named,
+                            per_process_total_loss=total,
                         )
-            except Exception:  # noqa: BLE001 - the trained model is already saved
-                logger.exception("failed to write run-root final outputs")
+                        if loss_so_far:
+                            plot_loss_curve(
+                                list(loss_so_far),
+                                run_dir / "loss_curve.png",
+                                title=f"Training loss (through step {int(cfg.steps)})",
+                                per_target_loss_by_step=list(per_target_loss_so_far),
+                                target_names=tuple(_target_labels),
+                                monitor_loss_by_step=(
+                                    dict(monitor_loss_so_far)
+                                    if monitor_loss_so_far
+                                    else None
+                                ),
+                                monitor_per_target_by_step=(
+                                    dict(monitor_per_target_so_far)
+                                    if monitor_per_target_so_far
+                                    else None
+                                ),
+                                monitor_label=(
+                                    cfg.monitor_label if monitor_loss_so_far else None
+                                ),
+                            )
+                        if grad_norm_so_far:
+                            plot_grad_norm_curve(
+                                list(grad_norm_so_far),
+                                run_dir / "grad_norm_curve.png",
+                                title=f"Gradient norm (through step {int(cfg.steps)})",
+                            )
+                except Exception:  # noqa: BLE001 - the trained model is already saved
+                    logger.exception("failed to write run-root final outputs")
+
     finally:
         if plotter is not None:
             plotter.close()
@@ -1713,8 +1851,8 @@ def train_from_collection(
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
-    # estimate_all_scales runs FIRST: its return flattens into 13 SCALE_*
-    # kwargs feeding build_reaction_module (the module is the single source of
+    # estimate_all_scales runs FIRST: its return flattens into SCALE_* kwargs
+    # feeding build_reaction_module (the module is the single source of
     # truth for scales).
     scale_kwargs = _resolve_estimated_scales(
         custom_module=custom_module,
@@ -1793,6 +1931,7 @@ def train_harness_config_from_run_config(
         checkpoint_keep=cfg.checkpoint.keep,
         plots=cfg.output.plots,
         prepared_path=cfg.data.prepared if cfg.data is not None else None,
+        allow_stateful_models=cfg.train.allow_stateful_models,
     )
 
 

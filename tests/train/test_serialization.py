@@ -5,6 +5,7 @@ from pathlib import Path
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import optax
 import pytest
 from bp_format.dataclasses import (
     BioProcess,
@@ -18,12 +19,16 @@ from bp_format.dataclasses import (
     Volume,
 )
 
+import bp_train.harness as harness
+import bp_train.serialization as serialization
 from bp_train.harness import _build_optimizer, _build_template_wrapper
 from bp_train.model_api import partition_trainable
+from bp_train.run_config import DataConfig, RunConfig, TrainConfig
 from bp_train.serialization import (
     content_hash,
     load_opt_state,
     load_trained_wrapper,
+    reconstruct_run,
     save_model,
     save_opt_state,
 )
@@ -108,6 +113,87 @@ def _trainable_arrays(module):
     ]
 
 
+def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
+    collection = _collection()
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text("{}", encoding="utf-8")
+    config = RunConfig(
+        data=DataConfig(prepared=prepared, targets=("biomass",)),
+        train=TrainConfig(allow_stateful_models=True),
+    )
+    document = {}
+    seen = {}
+
+    monkeypatch.setattr(
+        serialization, "load_process_collection", lambda _path: collection
+    )
+
+    def fake_build_reaction_module(**kwargs):
+        seen["allow_stateful_models"] = kwargs["config"].allow_stateful_models
+        return object()
+
+    monkeypatch.setattr(harness, "_build_reaction_module", fake_build_reaction_module)
+    monkeypatch.setattr(harness, "_build_loss_module", lambda **_kwargs: object())
+
+    reconstruct_run(tmp_path, config, document)
+
+    assert seen["allow_stateful_models"] is True
+
+
+def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
+    monkeypatch, tmp_path: Path
+):
+    collection = _collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    wrapper = _build_wrapper(collection)
+    config = RunConfig(
+        data=DataConfig(prepared=tmp_path / "prepared.json", targets=("biomass",)),
+        train=TrainConfig(allow_stateful_models=True),
+    )
+    seen = {}
+
+    monkeypatch.setattr(
+        serialization, "read_run_config_json", lambda _path: (config, {})
+    )
+    monkeypatch.setattr(
+        serialization,
+        "reconstruct_run",
+        lambda *_args: (
+            wrapper.reaction_module,
+            wrapper.loss_module,
+            store,
+            collection,
+        ),
+    )
+    monkeypatch.setattr(
+        harness, "_build_template_wrapper", lambda *_args, **_kwargs: (wrapper, {})
+    )
+    monkeypatch.setattr(
+        serialization, "load_trained_wrapper", lambda *_args, **_kwargs: wrapper
+    )
+    monkeypatch.setattr(
+        serialization, "load_opt_state", lambda *_args, **_kwargs: "opt-state"
+    )
+
+    def fake_build_optimizer_for_run(*, custom_module, custom_cfg, train_cfg):
+        del custom_module, custom_cfg
+        seen["allow_stateful_models"] = train_cfg.allow_stateful_models
+        return optax.sgd(0.1), train_cfg
+
+    monkeypatch.setattr(
+        harness, "build_optimizer_for_run", fake_build_optimizer_for_run
+    )
+
+    loaded = serialization.load_run(tmp_path, load_opt_state=True)
+
+    assert seen["allow_stateful_models"] is True
+    assert loaded.opt_state == "opt-state"
+
+
 def test_save_model_excludes_controls_and_roundtrips(tmp_path: Path):
     """save_model writes the trainable partition only; controls are not in it."""
     wrapper = _build_wrapper(_collection())
@@ -146,7 +232,9 @@ def test_load_into_structurally_different_controls_template(tmp_path: Path):
     path = tmp_path / "params.eqx"
     save_model(wrapper, path)
     loaded = load_trained_wrapper(path, template=different_template)
-    assert loaded.controls.dense_grid.shape == different_template.controls.dense_grid.shape
+    assert (
+        loaded.controls.dense_grid.shape == different_template.controls.dense_grid.shape
+    )
     src = _trainable_arrays(wrapper)
     dst = _trainable_arrays(loaded)
     for a, b in zip(src, dst):
@@ -182,7 +270,9 @@ def test_content_hash_stable_and_provenance_excluded():
     assert content_hash(_collection()) == h1
     # A provenance block under the bp-train namespace must NOT change the hash.
     with_prov = _collection()
-    with_prov.metadata["bp-train"] = {"provenance": {"timestamp": "2026-06-22T00:00:00"}}
+    with_prov.metadata["bp-train"] = {
+        "provenance": {"timestamp": "2026-06-22T00:00:00"}
+    }
     assert content_hash(with_prov) == h1
     # A genuine content change DOES change the hash.
     assert content_hash(_collection(biomass_values=(1.0, 0.5, 0.25))) != h1

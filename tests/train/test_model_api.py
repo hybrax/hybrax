@@ -7,11 +7,11 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import optax
-import pytest
 
 from bp_train.inspect import format_trainable_structure
 from bp_train.model_api import (
     TRAINABLE_METADATA_KEY,
+    ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
     frozen_field,
@@ -304,7 +304,9 @@ def test_format_trainable_structure_color_on_wraps_trainable_rows():
     text = format_trainable_structure(module, color=True)
 
     ansi_strip = re.compile(r"\x1b\[[0-9;]*m")
-    rows = [line for line in text.splitlines() if ansi_strip.sub("", line).startswith("|")]
+    rows = [
+        line for line in text.splitlines() if ansi_strip.sub("", line).startswith("|")
+    ]
 
     has_red_trainable = any(
         "\x1b[31m" in row and "trainable" in ansi_strip.sub("", row) for row in rows
@@ -312,7 +314,8 @@ def test_format_trainable_structure_color_on_wraps_trainable_rows():
     no_red_on_frozen = all(
         "\x1b[31m" not in row
         for row in rows
-        if "frozen" in ansi_strip.sub("", row) and "trainable" not in ansi_strip.sub("", row)
+        if "frozen" in ansi_strip.sub("", row)
+        and "trainable" not in ansi_strip.sub("", row)
     )
     assert has_red_trainable
     assert no_red_on_frozen
@@ -329,3 +332,100 @@ def test_user_reaction_module_default_observe_is_identity():
     y = jnp.asarray([1.0, 2.0], dtype=jnp.float32)
 
     assert jnp.array_equal(module.observe(y), y)
+
+
+# ---------------------------------------------------------------------------
+# Latent-state contract
+# ---------------------------------------------------------------------------
+
+
+def test_reaction_inputs_default_to_zero_width_latent():
+    inputs = ReactionInputs(
+        SCL_modeled_RMCs=jnp.ones(2, dtype=jnp.float32),
+        SCL_modeled_V=jnp.asarray(1.0, dtype=jnp.float32),
+        SCL_modeled_FVCs_cumulative=jnp.zeros(1, dtype=jnp.float32),
+        SCL_controlled_FVCs_cumulative=jnp.zeros(0, dtype=jnp.float32),
+        SCL_controlled_FVCs_rates=jnp.zeros(0, dtype=jnp.float32),
+        SCL_controlled_FVCs_Cin=jnp.zeros((0, 2), dtype=jnp.float32),
+        SCL_controlled_PVs=jnp.zeros(0, dtype=jnp.float32),
+        SCL_modeled_FVCs_Cin=jnp.zeros((1, 2), dtype=jnp.float32),
+    )
+
+    assert inputs.SCL_latent.shape == (0,)
+    assert inputs.SCL_latent.dtype == jnp.float32
+
+
+def test_reaction_outputs_default_to_zero_width_latent_derivative():
+    outputs = ReactionOutputs(
+        SCL_modeled_BiologicalOde_rates=jnp.zeros(2, dtype=jnp.float32),
+        SCL_modeled_FVCs_rates=jnp.zeros(1, dtype=jnp.float32),
+    )
+
+    assert outputs.SCL_latent_derivative.shape == (0,)
+    assert outputs.SCL_latent_derivative.dtype == jnp.float32
+
+
+class _LatentScaleModule(UserReactionModule):
+    def __init__(self):
+        super().__init__()
+        self.SCALE_modeled_RMCs = jnp.asarray([2.0, 4.0], dtype=jnp.float32)
+        self.SCALE_V_in_cumulative = jnp.asarray(10.0, dtype=jnp.float32)
+        self.SCALE_modeled_FVCs_cumulative = jnp.asarray([5.0], dtype=jnp.float32)
+        self.SCALE_latent = jnp.asarray([3.0, 6.0], dtype=jnp.float32)
+
+    def __call__(self, t, inputs) -> ReactionOutputs:
+        del t, inputs
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.zeros(0, dtype=jnp.float32),
+            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=jnp.float32),
+        )
+
+
+def test_user_reaction_module_latent_scales_are_separate_from_state_scales():
+    module = _LatentScaleModule()
+
+    assert module.n_latent == 2
+    assert jnp.array_equal(module.SCALE_state, jnp.asarray([2.0, 4.0, 10.0, 5.0]))
+    assert jnp.array_equal(
+        module.SCALE_integrated_state,
+        jnp.asarray([2.0, 4.0, 10.0, 5.0, 3.0, 6.0]),
+    )
+
+
+def test_user_reaction_module_latent_helpers_are_linear():
+    module = _LatentScaleModule()
+    raw = jnp.asarray([9.0, 24.0], dtype=jnp.float32)
+    scl = jnp.asarray([3.0, 4.0], dtype=jnp.float32)
+
+    assert jnp.array_equal(module.scale_latent(raw), jnp.asarray([3.0, 4.0]))
+    assert jnp.array_equal(module.unscale_latent(scl), raw)
+
+
+def test_user_reaction_module_default_initial_latent_matches_width_and_dtype():
+    module = _LatentScaleModule()
+    y0 = jnp.asarray([1.0, 2.0], dtype=jnp.float16)
+
+    h0 = module.initial_latent(y0)
+
+    assert h0.shape == (2,)
+    assert h0.dtype == y0.dtype
+    assert jnp.array_equal(h0, jnp.zeros(2, dtype=y0.dtype))
+
+
+def test_user_reaction_module_defaults_are_stateless():
+    module = _UntaggedArrayModule()
+    y0 = jnp.asarray([1.0], dtype=jnp.float32)
+
+    assert module.n_latent == 0
+    assert module.SCALE_latent.shape == (0,)
+    assert jnp.array_equal(module.SCALE_integrated_state, module.SCALE_state)
+    assert module.initial_latent(y0).shape == (0,)
+
+
+def test_scale_latent_is_frozen_by_default():
+    module = _LatentScaleModule()
+
+    trainable, static = partition_trainable(module)
+
+    assert trainable.SCALE_latent is None
+    assert static.SCALE_latent is not None
