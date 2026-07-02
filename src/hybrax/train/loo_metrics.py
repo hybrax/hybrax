@@ -348,12 +348,12 @@ def compute_loo_metrics(
     rows: list[dict[str, Any]] = []
     for fold_dir in _iter_fold_dirs(loo_dir):
         sidecar = _read_fold_sidecar(fold_dir)
-        holdout_group = tuple(sidecar.get("holdout_group") or ())
-        holdout_parent = sidecar.get("holdout_parent") or fold_dir.name
+        holdout_group = tuple(sidecar.get("test") or ())
+        holdout_parent = fold_dir.name
         fold_idx = int(sidecar.get("fold_idx", -1))
         if not holdout_group:
             logger.warning(
-                "fold '%s' has no holdout_group in sidecar; skipping",
+                "fold '%s' has no test set in sidecar; skipping",
                 fold_dir,
             )
             continue
