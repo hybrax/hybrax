@@ -23,7 +23,7 @@ from bp_format.dataclasses import (
 )
 
 from bp_train import cli
-from bp_train.harness import ForwardResult, TrainHarnessResult
+from bp_train.harness import TrainHarnessResult
 from bp_train import loo as loo_mod
 from bp_train.loo import (
     Fold,
@@ -324,6 +324,16 @@ def test_split_devices_capped_by_batch():
     assert (parallel, devices) == (2, 3)
 
 
+def test_split_uses_configured_devices_per_fold():
+    parallel, devices = compute_parallel_split(9, 16, 4, devices_per_fold=2)
+    assert (parallel, devices) == (4, 2)
+
+
+def test_split_configured_devices_clamps_parallel_to_cpu_count():
+    parallel, devices = compute_parallel_split(9, 16, 9, devices_per_fold=4)
+    assert (parallel, devices) == (4, 4)
+
+
 def test_split_never_below_one():
     parallel, devices = compute_parallel_split(0, 1, 1)
     assert parallel == 1 and devices == 1
@@ -338,11 +348,9 @@ def _write_stub_fold(output_dir: Path, fold: Fold, *, target: str = "biomass") -
     fold_dir = output_dir / "folds" / fold.slug
     fold_dir.mkdir(parents=True, exist_ok=True)
     rows = [
-        {"process": n, "total": 0.5, target: 0.5, "split": "holdout"}
-        for n in fold.test
+        {"process": n, "total": 0.5, target: 0.5, "split": "holdout"} for n in fold.test
     ] + [
-        {"process": n, "total": 0.1, target: 0.1, "split": "train"}
-        for n in fold.train
+        {"process": n, "total": 0.1, target: 0.1, "split": "train"} for n in fold.train
     ]
     pd.DataFrame(rows).to_csv(fold_dir / "losses.csv", index=False)
     (fold_dir / "trained_wrapper.meta.json").write_text(
@@ -415,7 +423,9 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
         captured["monitor_every"] = config.monitor_every
         return _stub_train_result()
 
-    def fake_write(*, output_dir, training_process_names, eval_process_names=None, **_kw):
+    def fake_write(
+        *, output_dir, training_process_names, eval_process_names=None, **_kw
+    ):
         captured["fold_dir"] = Path(output_dir)
         captured["training_process_names"] = training_process_names
         captured["eval_process_names"] = eval_process_names
@@ -495,8 +505,11 @@ def test_run_single_fold_out_of_range(monkeypatch, tmp_path):
     _patch_worker_internals(monkeypatch)
     with pytest.raises(ValueError, match="out of range"):
         run_single_fold(
-            collection, cfg=_run_config(), custom_module=None,
-            output_dir=tmp_path, fold_idx=9,
+            collection,
+            cfg=_run_config(),
+            custom_module=None,
+            output_dir=tmp_path,
+            fold_idx=9,
         )
 
 
@@ -542,6 +555,28 @@ def test_run_loo_cv_runs_all_folds_and_aggregates(monkeypatch, tmp_path):
     assert result.parallel_folds == 2
     assert (tmp_path / "loo_summary.csv").exists()
     assert result.aggregate["n_folds"] == 3
+
+
+def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
+    monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 16)
+    collection = _three_parent_collection()
+    seen = _patch_dispatch(monkeypatch)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(steps=2, seed=10),
+        loo=LooConfig(parallel_folds=2, devices_per_fold=2),
+    )
+
+    result = run_loo_cv(
+        collection,
+        cfg=cfg,
+        config_path=tmp_path / "loo-config.json",
+        output_dir=tmp_path,
+    )
+
+    assert seen["parallel"] == 2
+    assert seen["devices"] == 2
+    assert result.devices_per_fold == 2
 
 
 def test_run_loo_cv_resume_skips_completed_folds(monkeypatch, tmp_path):
@@ -632,7 +667,15 @@ def test_loo_cli_worker_mode_calls_run_single_fold(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "run_single_fold", fake_single)
 
     rc = cli.main(
-        ["loo", "--config", str(cfg_path), "--output-dir", str(tmp_path / "out"), "--fold", "2"]
+        [
+            "loo",
+            "--config",
+            str(cfg_path),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--fold",
+            "2",
+        ]
     )
     assert rc == 0
     assert captured["fold_idx"] == 2

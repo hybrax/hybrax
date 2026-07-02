@@ -135,23 +135,25 @@ class LooConfig(ConfigBase):
     ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per
     parent process group. ``parallel_folds`` is how many folds train at once
     (each fold is its own subprocess, because the JAX CPU device count is fixed
-    per process); the remaining cores are split across the concurrent folds so
-    that ``parallel_folds * devices_per_fold <= n_cpu``. Set it from what your
-    RAM can hold — there is deliberately no automatic RAM sizing.
+    per process). ``devices_per_fold`` can pin each fold to a fixed JAX CPU
+    device count; otherwise the remaining cores are split across concurrent
+    folds so that ``parallel_folds * devices_per_fold <= n_cpu``. Set these from
+    what your RAM can hold — there is deliberately no automatic RAM sizing.
     """
 
     per_fold_holdout_sets: tuple[HoldoutSet, ...] | None = None
     parallel_folds: int = Field(1, gt=0)
+    devices_per_fold: int | None = Field(None, gt=0)
     # Cadence (in steps) for evaluating each fold's holdout loss. None -> the
     # logging cadence (`logging.every`); set to 1 to evaluate it every step (one
     # extra forward solve over the holdout per step — slower but a dense curve).
     monitor_every: int | None = Field(None, gt=0)
 
-    @field_validator("parallel_folds", mode="before")
+    @field_validator("parallel_folds", "devices_per_fold", mode="before")
     @classmethod
     def _reject_bool(cls, value: Any) -> Any:
         if isinstance(value, bool):
-            raise ValueError("loo.parallel_folds must be an int >= 1")
+            raise ValueError("loo parallel/device counts must be int >= 1")
         return value
 
 
@@ -253,9 +255,7 @@ def load_loo_config(config_path: str | Path) -> LoadedRunConfig:
     return load_run_config(config_path, command="loo")
 
 
-def load_run_config(
-    config_path: str | Path, *, command: _Command
-) -> LoadedRunConfig:
+def load_run_config(config_path: str | Path, *, command: _Command) -> LoadedRunConfig:
     path = Path(config_path)
     raw = _read_raw_config(path)
     raw_custom = raw.get("custom")
@@ -346,10 +346,10 @@ def _resolve_path(path: Path, *, base_dir: Path) -> Path:
 def resolve_prepared_path(path: Path) -> Path:
     """Resolve a prepared-data reference to the prepared.json file.
 
-    ``bp-train prepare`` writes its output into a *directory* (``<dir>/prepared.json``).
-    Accept either that directory (resolve the bundled ``prepared.json[.gz]`` inside) or a
-    plain prepared.json file, so ``train`` / ``forward`` / ``loo`` can point at the prepare
-    output-dir directly.
+    ``bp-train prepare`` writes its output into a directory
+    (``<dir>/prepared.json``). Accept either that directory (resolve the bundled
+    ``prepared.json[.gz]`` inside) or a plain prepared.json file, so ``train`` /
+    ``forward`` / ``loo`` can point at the prepare output-dir directly.
     """
     path = Path(path)
     if path.is_dir():
@@ -358,9 +358,7 @@ def resolve_prepared_path(path: Path) -> Path:
     return path
 
 
-def _validate_required_sections(
-    config: RunConfig, *, command: _Command
-) -> None:
+def _validate_required_sections(config: RunConfig, *, command: _Command) -> None:
     if command == "prepare" and config.prepare is None:
         raise ValueError("prepare command requires a prepare config section")
     if command in ("train", "loo") and config.data is None:

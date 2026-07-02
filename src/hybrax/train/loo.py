@@ -119,9 +119,7 @@ def _build_fold_groups(collection: BioProcessCollection) -> tuple[FoldGroup, ...
             )
         parent_groups[parent_name].append(child_name)
 
-    return tuple(
-        (parent, tuple(members)) for parent, members in parent_groups.items()
-    )
+    return tuple((parent, tuple(members)) for parent, members in parent_groups.items())
 
 
 def _augmented_parent_map(collection: BioProcessCollection) -> dict[str, str]:
@@ -300,27 +298,33 @@ def compute_parallel_split(
     n_cpu: int,
     parallel_folds: int,
     *,
+    devices_per_fold: int | None = None,
     max_devices_per_fold: int | None = None,
 ) -> tuple[int, int]:
     """Return ``(parallel_folds, devices_per_fold)`` for the fold pool.
 
-    ``parallel_folds`` is the user-chosen fold concurrency. The leftover cores
-    are split across the concurrent folds: ``devices_per_fold = n_cpu //
-    parallel`` (so a single fold soaks up the cores, many folds run one core
-    each), never exceeding ``max_devices_per_fold`` (the smallest fold's batch —
-    exposing more host devices than the batch only deadlocks the pmap
-    collective).
+    ``parallel_folds`` is the user-chosen fold concurrency. If
+    ``devices_per_fold`` is omitted, leftover cores are split across concurrent
+    folds: ``devices_per_fold = n_cpu // parallel`` (so a single fold soaks up
+    the cores, many folds run one core each). Devices never exceed
+    ``max_devices_per_fold`` (the smallest fold's batch — exposing more host
+    devices than the batch only deadlocks the pmap collective).
 
     Invariant: ``parallel_folds * devices_per_fold <= n_cpu``. There is no RAM
     sizing here — the user owns the memory call via ``parallel_folds``.
     """
     n_cpu = max(1, int(n_cpu))
     n_folds = max(1, int(n_folds))
-    parallel = max(1, min(int(parallel_folds), n_folds, n_cpu))
-    devices = max(1, n_cpu // parallel)
+    requested_parallel = max(1, min(int(parallel_folds), n_folds, n_cpu))
+    if devices_per_fold is None:
+        devices = max(1, n_cpu // requested_parallel)
+    else:
+        devices = max(1, int(devices_per_fold))
+    devices = min(devices, n_cpu)
     if max_devices_per_fold is not None:
         devices = max(1, min(devices, int(max_devices_per_fold)))
-    return parallel, devices
+    effective_parallel = max(1, min(requested_parallel, n_cpu // devices))
+    return effective_parallel, devices
 
 
 # ---------------------------------------------------------------------------
@@ -621,7 +625,11 @@ def run_loo_cv(
     min_batch = min(_eff_batch(f) for f in folds)
 
     parallel, devices = compute_parallel_split(
-        n_folds, n_cpu, loo_cfg.parallel_folds, max_devices_per_fold=min_batch
+        n_folds,
+        n_cpu,
+        loo_cfg.parallel_folds,
+        devices_per_fold=loo_cfg.devices_per_fold,
+        max_devices_per_fold=min_batch,
     )
     if loo_cfg.parallel_folds > n_folds:
         logger.info(
@@ -694,7 +702,9 @@ def _read_fold_losses(
     rows are looked up by process name and never collide with them).
     """
     df = pd.read_csv(fold_dir / "losses.csv")
-    target_names = tuple(c for c in df.columns if c not in ("process", "total", "split"))
+    target_names = tuple(
+        c for c in df.columns if c not in ("process", "total", "split")
+    )
     out: dict[str, tuple[float, tuple[float, ...]]] = {}
     for _, row in df.iterrows():
         name = str(row["process"])
@@ -777,7 +787,9 @@ def _write_summary_and_aggregate(
 
     assert target_names is not None
     nan_folds = [
-        folds[i].slug for i, v in enumerate(holdout_totals) if v != v  # NaN
+        folds[i].slug
+        for i, v in enumerate(holdout_totals)
+        if v != v  # NaN
     ]
     if nan_folds:
         logger.warning(
@@ -808,16 +820,12 @@ def _write_summary_and_aggregate(
     }
     for tname in target_names:
         mean_row[f"holdout_{tname}"] = aggregate[f"holdout_{tname}_mean"]
-    mean_row["train_mean_total"] = _mean(
-        [r["train_mean_total"] for r in summary_rows]
-    )
+    mean_row["train_mean_total"] = _mean([r["train_mean_total"] for r in summary_rows])
     for tname in target_names:
         mean_row[f"train_mean_{tname}"] = _mean(
             [r[f"train_mean_{tname}"] for r in summary_rows]
         )
-    mean_row["final_train_loss"] = _mean(
-        [r["final_train_loss"] for r in summary_rows]
-    )
+    mean_row["final_train_loss"] = _mean([r["final_train_loss"] for r in summary_rows])
     summary_rows.append(mean_row)
 
     summary_csv_path.parent.mkdir(parents=True, exist_ok=True)
