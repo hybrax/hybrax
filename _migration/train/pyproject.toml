@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["bp_train"]
+packages = ["bp_train", "diffrax_callbacks"]
 
 [tool.pytest.ini_options]
 testpaths = [
