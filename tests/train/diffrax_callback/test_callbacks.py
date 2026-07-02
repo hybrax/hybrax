@@ -102,6 +102,124 @@ def test_float32_state_with_float64_times_keeps_state_dtype():
     assert jnp.allclose(sol.y_final, jnp.asarray([0.5, 0.5], dtype=jnp.float32))
 
 
+def test_float32_state_with_float64_rhs_keeps_state_dtype():
+    """Regression: float64 vector-field outputs must fit float32 solver buffers."""
+
+    def ode_returns_float64(t, y, args):
+        del t, args
+        return jnp.asarray([1.0, 1.0], dtype=jnp.float64) * y
+
+    def noop_affect(y, t, args):
+        del t, args
+        return y.astype(jnp.float64)
+
+    sol = diffeqsolve_with_callbacks(
+        diffrax.ODETerm(ode_returns_float64),
+        SOLVER,
+        t0=jnp.asarray(0.0, dtype=jnp.float32),
+        t1=jnp.asarray(1.0, dtype=jnp.float32),
+        dt0=jnp.asarray(0.1, dtype=jnp.float32),
+        y0=jnp.asarray([1.0, 1.0], dtype=jnp.float32),
+        callbacks=PresetTimeCallback(
+            times=jnp.asarray([0.5], dtype=jnp.float32),
+            affect_fn=noop_affect,
+        ),
+        max_events=3,
+        stepsize_controller=CTRL,
+    )
+
+    assert sol.y_final.dtype == jnp.float32
+    assert int(sol.event_count) == 1
+    assert sol.event_states_after.dtype == jnp.float32
+    assert jnp.all(jnp.isfinite(sol.y_final))
+
+
+def test_mixed_dtype_preset_affect_branches_cast_before_switch():
+    """Regression: lax.switch branches must have matching dtypes."""
+
+    def zero_ode(t, y, args):
+        del t, args
+        return jnp.zeros_like(y)
+
+    def add_float32(y, t, args):
+        del t, args
+        return y + jnp.asarray([1.0], dtype=jnp.float32)
+
+    def add_float64(y, t, args):
+        del t, args
+        return y.astype(jnp.float64) + jnp.asarray([2.0], dtype=jnp.float64)
+
+    sol = diffeqsolve_with_callbacks(
+        diffrax.ODETerm(zero_ode),
+        SOLVER,
+        t0=jnp.asarray(0.0, dtype=jnp.float32),
+        t1=jnp.asarray(1.0, dtype=jnp.float32),
+        dt0=jnp.asarray(0.1, dtype=jnp.float32),
+        y0=jnp.asarray([0.0], dtype=jnp.float32),
+        callbacks=CallbackSet(
+            PresetTimeCallback(
+                times=jnp.asarray([0.25], dtype=jnp.float32),
+                affect_fn=add_float32,
+            ),
+            PresetTimeCallback(
+                times=jnp.asarray([0.5], dtype=jnp.float32),
+                affect_fn=add_float64,
+            ),
+        ),
+        max_events=4,
+        stepsize_controller=CTRL,
+    )
+
+    assert sol.y_final.dtype == jnp.float32
+    assert int(sol.event_count) == 2
+    assert jnp.allclose(sol.y_final, jnp.asarray([3.0], dtype=jnp.float32))
+
+
+def test_evaluate_trajectory_uses_state_dtype_boundary():
+    """Regression: trajectory reconstruction must mirror solve dtype handling."""
+
+    def ode_returns_float64(t, y, args):
+        del t, args
+        return jnp.asarray([1.0], dtype=jnp.float64) * y
+
+    def noop_affect(y, t, args):
+        del t, args
+        return y
+
+    terms = diffrax.ODETerm(ode_returns_float64)
+    y0 = jnp.asarray([1.0], dtype=jnp.float32)
+    sol = diffeqsolve_with_callbacks(
+        terms,
+        SOLVER,
+        t0=jnp.asarray(0.0, dtype=jnp.float32),
+        t1=jnp.asarray(1.0, dtype=jnp.float32),
+        dt0=jnp.asarray(0.1, dtype=jnp.float32),
+        y0=y0,
+        callbacks=PresetTimeCallback(
+            times=jnp.asarray([0.5], dtype=jnp.float32),
+            affect_fn=noop_affect,
+        ),
+        max_events=3,
+        stepsize_controller=CTRL,
+    )
+
+    ts, ys = evaluate_trajectory(
+        sol,
+        terms,
+        SOLVER,
+        t0=jnp.asarray(0.0, dtype=jnp.float64),
+        t1=jnp.asarray(1.0, dtype=jnp.float64),
+        dt0=jnp.asarray(0.1, dtype=jnp.float64),
+        y0=y0,
+        ts=jnp.asarray([0.25, 0.75], dtype=jnp.float64),
+        stepsize_controller=CTRL,
+    )
+
+    assert ts.dtype == jnp.float32
+    assert ys.dtype == jnp.float32
+    assert ys.shape == (2, 1)
+
+
 class TestContinuousCallback:
     def test_basic_triggering(self):
         """Feed when S < 1.0. Should trigger multiple times."""

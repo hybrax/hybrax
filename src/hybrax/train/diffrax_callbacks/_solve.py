@@ -101,6 +101,29 @@ def _find_next_preset_time(preset_times, t_current, t_end):
     return jnp.where(is_valid, next_time, t_end), jnp.where(is_valid, idx, -1)
 
 
+def _cast_like(value, like):
+    return jax.tree.map(
+        lambda x, ref: jnp.asarray(x, dtype=jnp.asarray(ref).dtype), value, like
+    )
+
+
+def _wrap_ode_term_dtype(terms):
+    if not isinstance(terms, diffrax.ODETerm):
+        return terms
+
+    def vector_field(t, y, args):
+        return _cast_like(terms.vector_field(t, y, args), y)
+
+    return diffrax.ODETerm(vector_field)
+
+
+def _wrap_affect_dtype(affect_fn):
+    def wrapped(y, t, args):
+        return _cast_like(affect_fn(y, t, args), y)
+
+    return wrapped
+
+
 # ================================================================
 # Main solver
 # ================================================================
@@ -164,6 +187,8 @@ def diffeqsolve_with_callbacks(
     t1 = jnp.asarray(t1, dtype=time_dtype)
     dt0 = jnp.asarray(dt0, dtype=time_dtype)
 
+    solve_terms = _wrap_ode_term_dtype(terms)
+
     n_continuous = callback_set.n_continuous
     n_preset = callback_set.n_preset
     n_discrete = callback_set.n_discrete
@@ -184,25 +209,34 @@ def diffeqsolve_with_callbacks(
 
     def _dispatch_continuous_affect(y, t, args, event_mask):
         if n_continuous == 1:
-            return callback_set.continuous_callbacks[0].affect_fn(y, t, args)
+            return _wrap_affect_dtype(callback_set.continuous_callbacks[0].affect_fn)(
+                y, t, args
+            )
         else:
             mask_array = jnp.array(jax.tree.leaves(event_mask))
             idx = jnp.argmax(mask_array)
-            branches = [cc.affect_fn for cc in callback_set.continuous_callbacks]
+            branches = [
+                _wrap_affect_dtype(cc.affect_fn)
+                for cc in callback_set.continuous_callbacks
+            ]
             return jax.lax.switch(idx, branches, y, t, args)
 
     def _dispatch_preset_affect(y, t, args, preset_cb_idx):
         if n_preset == 1:
-            return callback_set.preset_callbacks[0].affect_fn(y, t, args)
+            return _wrap_affect_dtype(callback_set.preset_callbacks[0].affect_fn)(
+                y, t, args
+            )
         else:
-            branches = [cb.affect_fn for cb in callback_set.preset_callbacks]
+            branches = [
+                _wrap_affect_dtype(cb.affect_fn) for cb in callback_set.preset_callbacks
+            ]
             return jax.lax.switch(preset_cb_idx, branches, y, t, args)
 
     def _apply_discrete_callbacks(y, t, args):
         """Apply all discrete callbacks in order."""
         for dc in callback_set.discrete_callbacks:
             cond = dc.condition_fn(y, t, args)
-            y_new = dc.affect_fn(y, t, args)
+            y_new = _cast_like(dc.affect_fn(y, t, args), y)
             y = jnp.where(cond, y_new, y)
         return y
 
@@ -234,7 +268,7 @@ def diffeqsolve_with_callbacks(
         saveat = diffrax.SaveAt(t1=True)
 
         sol = diffrax.diffeqsolve(
-            terms,
+            solve_terms,
             solver,
             t0=t_current,
             t1=segment_t1,
@@ -439,6 +473,13 @@ def evaluate_trajectory(
     Returns:
         (ts_out, ys_out): Arrays of times and states at the requested points.
     """
+    state_dtype = jnp.asarray(y0).dtype
+    t0 = jnp.asarray(t0, dtype=state_dtype)
+    t1 = jnp.asarray(t1, dtype=state_dtype)
+    dt0 = jnp.asarray(dt0, dtype=state_dtype)
+    ts = jnp.asarray(ts, dtype=state_dtype)
+    solve_terms = _wrap_ode_term_dtype(terms)
+
     n_events = int(sol.event_count)
 
     # Build segment boundaries: [t0, event_1, event_2, ..., t1]
@@ -458,7 +499,7 @@ def evaluate_trajectory(
     for seg_idx in range(len(boundaries) - 1):
         seg_t0 = boundaries[seg_idx]
         seg_t1 = boundaries[seg_idx + 1]
-        seg_y0 = segment_y0s[seg_idx]
+        seg_y0 = jnp.asarray(segment_y0s[seg_idx], dtype=state_dtype)
 
         if seg_t1 <= seg_t0 + 1e-12:
             continue
@@ -474,11 +515,11 @@ def evaluate_trajectory(
             continue
 
         seg_sol = diffrax.diffeqsolve(
-            terms,
+            solve_terms,
             solver,
-            seg_t0,
-            seg_t1,
-            dt0=min(dt0, seg_t1 - seg_t0),
+            jnp.asarray(seg_t0, dtype=state_dtype),
+            jnp.asarray(seg_t1, dtype=state_dtype),
+            dt0=jnp.minimum(dt0, jnp.asarray(seg_t1 - seg_t0, dtype=state_dtype)),
             y0=seg_y0,
             args=args,
             saveat=diffrax.SaveAt(ts=seg_ts),
@@ -491,4 +532,6 @@ def evaluate_trajectory(
     if all_ts:
         return jnp.concatenate(all_ts), jnp.concatenate(all_ys)
     else:
-        return jnp.array([]), jnp.zeros((0, y0.shape[0]))
+        return jnp.array([], dtype=state_dtype), jnp.zeros(
+            (0, y0.shape[0]), dtype=state_dtype
+        )
