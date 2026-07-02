@@ -105,7 +105,11 @@ def default_build_reaction_module(
         raise ValueError("default_build_reaction_module requires at least one process")
     first_process = collection.processes[process_names[0]]
     rhs_ode = build_rhs_ode(first_process)
-    n_species = len(target_names)
+    # Scales are sized by the *modeled* state layout (RMC slice), not by the measured targets:
+    # under target_source="combined"/"process_variables" the measured set differs from the RMC
+    # state slice (it includes/consists of modeled PVs), which have their own SCALE_modeled_PVs axis.
+    del target_names
+    n_species = len(rhs_ode.name_modeled_RMCs)
     n_rates = len(rhs_ode.name_modeled_rates)
     n_modeled_FVCs = len(rhs_ode.name_modeled_FVCs)
     n_controlled_FVCs = len(rhs_ode.name_controlled_FVCs)
