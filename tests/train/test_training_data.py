@@ -330,8 +330,8 @@ def test_training_data_store_builds_padded_measurement_arrays(tmp_path):
     assert tuple(store.y_measured.shape) == (2, 3, 1)
     # Per-cell mask: (n_processes, max_n_meas, n_y_cols).
     assert tuple(store.mask_measured.shape) == (2, 3, 1)
-    # y0 has n_species + 1 + n_modeled_feeds = 2 elements
-    assert tuple(store.y0_measured.shape) == (2, 2)
+    # y0 is the full physical state: [biomass, X, V].
+    assert tuple(store.y0_measured.shape) == (2, 3)
 
     assert np.asarray(store.t_measured[0]).tolist() == pytest.approx([0.0, 2.0, 4.0])
     p2_t = np.asarray(store.t_measured[1])
@@ -352,7 +352,9 @@ def test_training_data_store_exposes_per_process_active_views(tmp_path):
     assert process_data.process_name == "p2"
     assert process_data.n_measured == 2
     assert process_data.name_measured == ("X",)
-    assert np.asarray(process_data.active_t_measured).tolist() == pytest.approx([0.0, 1.0])
+    assert np.asarray(process_data.active_t_measured).tolist() == pytest.approx(
+        [0.0, 1.0]
+    )
     assert np.asarray(process_data.active_y_measured[:, 0]).tolist() == pytest.approx(
         [0.25, 0.35]
     )
@@ -363,8 +365,8 @@ def test_training_data_store_builds_y0_with_vcont_last(tmp_path):
     prepared_json = _prepare_collection(tmp_path)
     store = TrainingDataStore.from_json(prepared_json, target_variable_order=["X"])
 
-    assert np.asarray(store.y0_measured[0]).tolist() == pytest.approx([0.2, 1.0])
-    assert np.asarray(store.y0_measured[1]).tolist() == pytest.approx([0.25, 1.5])
+    assert np.asarray(store.y0_measured[0]).tolist() == pytest.approx([0.1, 0.2, 1.0])
+    assert np.asarray(store.y0_measured[1]).tolist() == pytest.approx([0.1, 0.25, 1.5])
 
 
 def test_training_data_store_rejects_inconsistent_target_set(tmp_path):
@@ -490,8 +492,8 @@ def test_training_data_store_gather_batch_by_process_indices(tmp_path):
     assert tuple(batch.y_measured.shape) == (3, 3, 1)
     assert tuple(batch.mask_measured.shape) == (3, 3, 1)
     assert np.asarray(batch.n_measured).tolist() == [2, 3, 2]
-    assert np.asarray(batch.y0_measured[0]).tolist() == pytest.approx([0.25, 1.5])
-    assert np.asarray(batch.y0_measured[1]).tolist() == pytest.approx([0.2, 1.0])
+    assert np.asarray(batch.y0_measured[0]).tolist() == pytest.approx([0.1, 0.25, 1.5])
+    assert np.asarray(batch.y0_measured[1]).tolist() == pytest.approx([0.1, 0.2, 1.0])
 
 
 def test_training_data_store_gather_batch_rejects_invalid_indices(tmp_path):
@@ -568,7 +570,9 @@ def test_training_data_store_builds_union_grid_with_per_cell_mask():
 
     # Union of biomass times {0,1,2,4} and product times {0,4} = {0,1,2,4}.
     assert tuple(store.t_measured.shape) == (1, 4)
-    assert np.asarray(store.t_measured[0]).tolist() == pytest.approx([0.0, 1.0, 2.0, 4.0])
+    assert np.asarray(store.t_measured[0]).tolist() == pytest.approx(
+        [0.0, 1.0, 2.0, 4.0]
+    )
 
     # 2 RMC targets, no modeled feeds → 2 columns.
     assert tuple(store.y_measured.shape) == (1, 4, 2)
@@ -577,7 +581,12 @@ def test_training_data_store_builds_union_grid_with_per_cell_mask():
     # biomass column: every cell is a real measurement.
     assert np.asarray(store.mask_measured[0, :, 0]).tolist() == [True, True, True, True]
     # product column: only t=0 and t=4 are real.
-    assert np.asarray(store.mask_measured[0, :, 1]).tolist() == [True, False, False, True]
+    assert np.asarray(store.mask_measured[0, :, 1]).tolist() == [
+        True,
+        False,
+        False,
+        True,
+    ]
 
     # Real biomass values match input.
     assert np.asarray(store.y_measured[0, :, 0]).tolist() == pytest.approx(
@@ -696,7 +705,9 @@ def test_training_data_combined_fits_rmcs_and_pvs(tmp_path):
     output_dir = tmp_path / "prepared"
     _prepare_from_collection(_make_combined_collection(), tmp_path, output_dir)
 
-    store = TrainingDataStore.from_json(output_dir / "prepared.json", target_source="combined")
+    store = TrainingDataStore.from_json(
+        output_dir / "prepared.json", target_source="combined"
+    )
 
     # Both source families populate their tuple; name_measured is the ordered
     # [RMCs | PVs] leading state block.
