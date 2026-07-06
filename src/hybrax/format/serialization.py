@@ -132,7 +132,11 @@ def _restore_arrays(obj):
     """Recursively rebuild JAX arrays from the `__ndarray__` JSON encoding."""
     if isinstance(obj, dict):
         if "__ndarray__" in obj:
-            return jnp.array(obj["__ndarray__"], dtype=obj["dtype"])
+            # Floating data is float64 (x64 pipeline). Legacy payloads may store
+            # float32; load them straight as float64 (int/bool dtypes preserved).
+            stored = np.dtype(obj["dtype"])
+            dtype = jnp.float64 if np.issubdtype(stored, np.floating) else stored
+            return jnp.array(obj["__ndarray__"], dtype=dtype)
         return {k: _restore_arrays(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_restore_arrays(item) for item in obj]
@@ -357,8 +361,6 @@ def _timeseries_to_dict_payload(
         payload["continuity_side"] = value.continuity_side
     if getattr(value, "metadata", None) is not None:
         payload["metadata"] = value.metadata
-    if getattr(value, "dtype", None) is not None:
-        payload["dtype"] = str(np.dtype(value.dtype))
     return payload
 
 
@@ -694,8 +696,6 @@ def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
         kwargs["continuity_side"] = value_data["continuity_side"]
     if "metadata" in value_data:
         kwargs["metadata"] = metadata
-    if "dtype" in value_data:
-        kwargs["dtype"] = value_data["dtype"]
 
     return TimeSeries(**kwargs)
 

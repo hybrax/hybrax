@@ -5,6 +5,12 @@ A JAX-compatible framework for standardized bioprocess data management
 and benchmarking across multiple case studies.
 """
 
+# Enable float64 (JAX x64) for the whole bp-format pipeline. Must run before any
+# array is created — i.e. before the submodule imports below.
+import jax
+
+jax.config.update("jax_enable_x64", True)
+
 __version__ = "0.1.0"
 
 # Import core dataclasses

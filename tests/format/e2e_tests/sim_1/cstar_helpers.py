@@ -74,7 +74,6 @@ def fit_cstar_timeseries_from_values(
         segment_start_piece_idx=fitted.segment_start_piece_idx,
         continuity_side=fitted.continuity_side,
         metadata=metadata,
-        dtype=fitted.dtype,
     )
 
 

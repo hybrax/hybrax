@@ -28,24 +28,16 @@ def timeseries_to_dict(series: Any) -> dict[str, Any]:
         "coeffs": _array_to_list(series.coeffs),
         "segment_start_piece_idx": _array_to_list(series.segment_start_piece_idx),
         "continuity_side": series.continuity_side,
-        "dtype": str(np.dtype(series.dtype)),
         "metadata": series.metadata,
     }
 
 
-def timeseries_from_dict(cls: Any, data: Mapping[str, Any], *, dtype=None) -> Any:
+def timeseries_from_dict(cls: Any, data: Mapping[str, Any]) -> Any:
     """Construct a TimeSeries from canonical dict form.
 
-    Resolution order for `dtype`:
-    1. Explicit `dtype` arg — use it.
-    2. `data["dtype"]` field — forward raw value to TimeSeries constructor.
-    3. Neither present — let TimeSeries default kick in (float64).
-
-    The TimeSeries constructor is the single canonicalizer (calls `jnp.dtype`
-    internally), so no pre-conversion is needed here.
+    All floating-point fields are float64 (x64 enabled package-wide). A legacy
+    ``"dtype"`` key in older serialized payloads is ignored.
     """
-    resolved_dtype = dtype if dtype is not None else data.get("dtype")
-
     kwargs = dict(
         times=data.get("times"),
         values=data.get("values"),
@@ -57,8 +49,6 @@ def timeseries_from_dict(cls: Any, data: Mapping[str, Any], *, dtype=None) -> An
         continuity_side=data.get("continuity_side", "right"),
         metadata=data.get("metadata"),
     )
-    if resolved_dtype is not None:
-        kwargs["dtype"] = resolved_dtype
     return cls(**kwargs)
 
 

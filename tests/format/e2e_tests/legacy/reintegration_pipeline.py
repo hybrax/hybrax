@@ -415,7 +415,6 @@ def _fit_cstar_timeseries(
         segment_start_piece_idx=fitted.segment_start_piece_idx,
         continuity_side=fitted.continuity_side,
         metadata=metadata,
-        dtype=fitted.dtype,
     )
 
 

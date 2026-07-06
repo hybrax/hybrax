@@ -70,13 +70,9 @@ def _is_strictly_increasing(arr: jnp.ndarray) -> bool:
 class TimeSeries(eqx.Module):
     """Scalar-valued time series with optional samples and/or spline state.
 
-    The `dtype` field governs all floating-point array fields (`times`,
-    `values`, `jump_times`, `breaks`, `coeffs`). It defaults to requested
-    `jnp.float64`.
-
-    Note: if `jax_enable_x64` is off, `jnp.float64` will silently be
-    downgraded by JAX to float32. In that case, `dtype` records the actual
-    dtype JAX can represent.
+    All floating-point array fields (`times`, `values`, `jump_times`, `breaks`,
+    `coeffs`) are float64 (JAX x64 is enabled package-wide). The read-only
+    `dtype` property reports that dtype.
     """
 
     times: jnp.ndarray | None = None
@@ -88,7 +84,6 @@ class TimeSeries(eqx.Module):
     derived: bool = eqx.field(static=True, default=False)
     continuity_side: str = eqx.field(static=True, default="right")
     metadata: Any = eqx.field(static=True, default=None)
-    dtype: jnp.dtype = eqx.field(static=True, default=jnp.dtype(jnp.float64))
 
     def __init__(
         self,
@@ -103,14 +98,9 @@ class TimeSeries(eqx.Module):
         segment_start_piece_idx: Any | None = None,
         continuity_side: str = "right",
         metadata: Any | None = None,
-        dtype: Any | None = None,
     ) -> None:
-        # Resolve dtype first so all field setup can use it.
-        dtype_requested = (
-            jnp.dtype(dtype) if dtype is not None else jnp.dtype(jnp.float64)
-        )
-        dtype_resolved = jnp.asarray(0.0, dtype=dtype_requested).dtype
-        object.__setattr__(self, "dtype", dtype_resolved)
+        # All floating-point fields are float64 (x64 enabled package-wide).
+        dtype_resolved = jnp.dtype(jnp.float64)
 
         has_discrete = times is not None or values is not None
         has_spline = (
@@ -236,11 +226,20 @@ class TimeSeries(eqx.Module):
             object.__setattr__(self, "coeffs", None)
             object.__setattr__(self, "segment_start_piece_idx", None)
 
+    @property
+    def dtype(self):
+        """Floating-point dtype of the series arrays (float64 under x64)."""
+        if self.values is not None:
+            return self.values.dtype
+        if self.breaks is not None:
+            return self.breaks.dtype
+        return self.jump_times.dtype
+
     @classmethod
-    def from_dict(cls, data, *, dtype=None):
+    def from_dict(cls, data):
         from .io import timeseries_from_dict
 
-        return timeseries_from_dict(cls, data, dtype=dtype)
+        return timeseries_from_dict(cls, data)
 
     @classmethod
     def from_process_state(cls, process_state, variable):
@@ -305,7 +304,6 @@ class TimeSeries(eqx.Module):
             segment_start_piece_idx=self.segment_start_piece_idx,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
-            dtype=self.dtype,
         )
 
     def integrate(self, a, b):
@@ -352,7 +350,6 @@ class TimeSeries(eqx.Module):
                 segment_start_piece_idx=self.segment_start_piece_idx,
                 continuity_side=self.continuity_side,
                 metadata=self.metadata,
-                dtype=self.dtype,
             )
         if self.times is None or self.values is None:
             raise ValueError(
@@ -365,7 +362,6 @@ class TimeSeries(eqx.Module):
             jump_times=self.jump_times,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
-            dtype=self.dtype,
         )
 
     def __truediv__(self, other):
@@ -389,7 +385,6 @@ class TimeSeries(eqx.Module):
                 segment_start_piece_idx=self.segment_start_piece_idx,
                 continuity_side=self.continuity_side,
                 metadata=self.metadata,
-                dtype=self.dtype,
             )
         if self.times is None or self.values is None:
             raise ValueError(
@@ -402,7 +397,6 @@ class TimeSeries(eqx.Module):
             jump_times=self.jump_times,
             continuity_side=self.continuity_side,
             metadata=self.metadata,
-            dtype=self.dtype,
         )
 
     def _binary_discrete(self, other: "TimeSeries", op: str) -> "TimeSeries":
@@ -455,7 +449,6 @@ class TimeSeries(eqx.Module):
             jump_times=jnp.asarray(out_jumps, dtype=self.dtype),
             continuity_side=self.continuity_side,
             metadata={"source": "discrete_binary_op", "op": op},
-            dtype=self.dtype,
         )
 
     def _binary_exact(self, other: "TimeSeries", op: str) -> "TimeSeries":
@@ -516,7 +509,6 @@ class TimeSeries(eqx.Module):
             segment_start_piece_idx=out_starts,
             continuity_side=self.continuity_side,
             metadata={"source": "exact_binary_op", "op": op},
-            dtype=self.dtype,
         )
 
     def _binary_approx(self, other: "TimeSeries", op: str) -> "TimeSeries":
@@ -601,7 +593,6 @@ class TimeSeries(eqx.Module):
             segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
             continuity_side=self.continuity_side,
             metadata={"source": "approx_binary_op", "op": op},
-            dtype=self.dtype,
         )
 
     def _fit_cubic_power_basis(
@@ -629,7 +620,6 @@ class TimeSeries(eqx.Module):
                 coeffs=coeffs,
                 segment_start_piece_idx=[0],
                 continuity_side=self.continuity_side,
-                dtype=self.dtype,
             )
             y_fit = np.asarray(probe.evaluate_many(x_arr), dtype=np.dtype(self.dtype))
             rel_err = float(np.mean(np.abs(y_fit - y_arr)) / scale)
