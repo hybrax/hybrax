@@ -879,6 +879,37 @@ def test_dense_export_grid_includes_measurement_times():
     assert export.q_rates.shape[0] == export.t.shape[0]
 
 
+def test_loo_scored_value_equals_training_framework_solve():
+    """The value the LOO scorer reads at a measurement must equal the model's exact
+    ODE solution there -- i.e. what the training framework evaluates the loss
+    against -- not a straight line interpolated across the coarse prediction grid.
+
+    Coarse prediction grid (nodes at 0, 1, 2) plus an off-grid measurement at 0.7.
+    Biomass grows exponentially, so the old linspace-only interpolation lands ~6%
+    off the true value; splicing the measurement in as a node makes np.interp exact.
+    """
+    collection, store, wrapper = _build_single_process_runtime(
+        q_scaled=0.8, biomass_times=[0.0, 0.7, 2.0]
+    )
+    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=3)
+    c = export.c_species[:, 0]
+
+    node_mask = np.isclose(export.t, 0.7, atol=1e-9)
+    assert node_mask.sum() == 1
+    # training-framework value == the exact solve at the measurement time; the
+    # export now carries it as a node (same sample-grid value the loss module uses).
+    train_val = float(c[node_mask][0])
+    # LOO-metric value == np.interp over the exported grid (what bp_train.loo_metrics
+    # and bp_bench.metrics do). Identical, because the measurement is now a node.
+    loo_val = float(np.interp(0.7, export.t, c))
+    assert loo_val == pytest.approx(train_val, rel=1e-6)
+    # the pre-fix behaviour (interpolating the uniform grid only) is materially off.
+    lin_t = np.linspace(0.0, 2.0, 3)
+    lin_c = np.interp(lin_t, export.t, c)
+    ramp_val = float(np.interp(0.7, lin_t, lin_c))
+    assert abs(ramp_val - train_val) > 0.01 * abs(train_val)
+
+
 def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(
     monkeypatch, tmp_path: Path
 ):
