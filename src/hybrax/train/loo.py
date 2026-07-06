@@ -451,7 +451,8 @@ def _execute_fold(
     # _write_train_results owns: forward eval + losses.csv + predictions.csv +
     # optional plots, exactly like the post-train block in _handle_train.
     from .cli import _write_train_results
-    from .postprocessing import save_model, save_model_metadata
+    from .postprocessing import save_model_metadata
+    from .serialization import save_model
 
     base_seed = int(cfg.train.seed)
     fold_seed = base_seed + fold.idx
@@ -678,6 +679,9 @@ def run_loo_cv(
         base_seed=int(cfg.train.seed),
     )
 
+    if cfg.output.plots:
+        _plot_cross_fold_losses(folds=folds, output_dir=output_dir)
+
     return LOOResult(
         fold_dirs=tuple(output_dir / "folds" / f.slug for f in folds),
         parallel_folds=parallel,
@@ -721,6 +725,54 @@ def _read_final_train_loss(fold_dir: Path) -> float:
         return float(meta["training"]["final_mean_loss"])
     except (OSError, KeyError, ValueError, TypeError):
         return float("nan")
+
+
+def _read_fold_loss_history(
+    fold_dir: Path,
+) -> tuple[list[float], list[float], list[float], list[float]]:
+    """Read per-step train and monitor loss from a fold's ``metrics.csv``.
+
+    Returns `(train_steps, train_loss, monitor_steps, monitor_loss)`. The
+    monitor (holdout) series is sparse -- only steps where it was evaluated are
+    kept. Missing/unreadable files yield empty lists.
+    """
+    try:
+        df = pd.read_csv(fold_dir / "metrics.csv")
+        tr = df[["step", "mean_loss"]].dropna()
+        train_steps = tr["step"].tolist()
+        train_loss = tr["mean_loss"].tolist()
+        if "monitor_loss" in df.columns:
+            mon = df[["step", "monitor_loss"]].dropna()
+            monitor_steps = mon["step"].tolist()
+            monitor_loss = mon["monitor_loss"].tolist()
+        else:
+            monitor_steps, monitor_loss = [], []
+    except (OSError, KeyError, ValueError, pd.errors.EmptyDataError) as exc:
+        # An optional end-of-run plot must never sink a completed LOO run, so a
+        # missing or malformed metrics.csv just drops that fold from the figure.
+        logger.warning("skipping loss history for %s: %s", fold_dir, exc)
+        return [], [], [], []
+    return train_steps, train_loss, monitor_steps, monitor_loss
+
+
+def _plot_cross_fold_losses(*, folds: tuple[Fold, ...], output_dir: Path) -> None:
+    """Render one figure overlaying every fold's train + holdout loss curves."""
+    # Deferred like the other postprocessing uses here, to keep loo.py's
+    # module import free of matplotlib/jax-heavy postprocessing.
+    from .postprocessing import plot_cross_fold_loss_curves
+
+    fold_curves = []
+    for f in folds:
+        tr_steps, tr_loss, mon_steps, mon_loss = _read_fold_loss_history(
+            output_dir / "folds" / f.slug
+        )
+        if tr_loss or mon_loss:
+            fold_curves.append((f.slug, tr_steps, tr_loss, mon_steps, mon_loss))
+
+    if not fold_curves:
+        logger.warning("no fold loss history found; skipping cross-fold loss plot")
+        return
+    plot_cross_fold_loss_curves(fold_curves, output_dir / "loo_loss_curves.png")
 
 
 def _write_summary_and_aggregate(

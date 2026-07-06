@@ -682,7 +682,7 @@ def forward_from_collection(
     so that ``eqx.tree_deserialise_leaves`` has a structurally identical
     template to deserialise into.
     """
-    from .postprocessing import load_trained_wrapper
+    from .serialization import load_trained_wrapper
 
     cfg = config or ForwardConfig()
     if custom_module is None:

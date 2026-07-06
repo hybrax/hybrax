@@ -8,7 +8,6 @@ import logging
 from pathlib import Path
 from typing import Any, Sequence
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -16,14 +15,8 @@ import pandas as pd
 
 from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
 
-from .serialization import (  # re-exported: canonical home is serialization.py
-    load_trained_wrapper,
-    save_model,
-)
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
-
-__all_serialization__ = ["save_model", "load_trained_wrapper"]
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +420,68 @@ def plot_grad_norm_curve(
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
     logger.info("grad-norm curve saved to %s", output_path)
+
+
+def plot_cross_fold_loss_curves(
+    fold_curves: Sequence[
+        tuple[str, Sequence[float], Sequence[float], Sequence[float], Sequence[float]]
+    ],
+    output_path: str | Path,
+    *,
+    title: str = "Cross-fold loss",
+    monitor_label: str = "holdout",
+) -> None:
+    """Overlay every fold's train and monitor loss on shared log-y axes.
+
+    Each entry in `fold_curves` is
+    `(label, train_steps, train_loss, monitor_steps, monitor_loss)`. Train
+    curves are drawn solid and monitor (holdout) curves dashed in the same
+    per-fold colour; folds with no usable history are skipped.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # tab20's discrete colours stay distinct up to 20 folds; beyond that, sample
+    # a continuous map so colours never silently wrap onto each other.
+    n = len(fold_curves)
+    if n <= 20:
+        tab20 = plt.get_cmap("tab20")
+        colors = [tab20(i) for i in range(n)]
+    else:
+        viridis = plt.get_cmap("viridis")
+        colors = [viridis(i / (n - 1)) for i in range(n)]
+
+    fig, ax = plt.subplots(figsize=(8.0, 5.0))
+    drawn = False
+    for i, (label, tr_steps, tr_loss, mon_steps, mon_loss) in enumerate(fold_curves):
+        color = colors[i]
+        if len(tr_loss):
+            ax.plot(tr_steps, tr_loss, color=color, linewidth=1.0, label=label)
+            drawn = True
+        if len(mon_loss):
+            ax.plot(mon_steps, mon_loss, color=color, linewidth=1.0, linestyle="--")
+            drawn = True
+
+    ax.set_yscale("log")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Loss")
+    ax.grid(True, alpha=0.3)
+    if drawn:
+        fold_legend = ax.legend(loc="upper right", fontsize="small", title="fold")
+        ax.add_artist(fold_legend)
+        style_handles = [
+            Line2D([0], [0], color="black", linestyle="-", label="train"),
+            Line2D([0], [0], color="black", linestyle="--", label=monitor_label),
+        ]
+        ax.legend(handles=style_handles, loc="lower left", fontsize="small")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    logger.info("cross-fold loss curves saved to %s", output_path)
 
 
 def plot_training_results(

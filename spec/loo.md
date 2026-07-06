@@ -374,7 +374,7 @@ output/loo/
   custom losses work transparently.
 - `cli._write_train_results`, `cli._format_loss_table`,
   `cli._write_loss_csv` — per-fold loss table and forward artifacts.
-- `postprocessing.save_model`, `save_model_metadata`,
+- `serialization.save_model`; `postprocessing.save_model_metadata`,
   `plot_training_results`, `plot_process_simulations`,
   `export_predictions_csv` — per-fold artifacts.
 - `checkpointing.CheckpointConfig` / `CheckpointWriter` — per-fold

@@ -438,8 +438,9 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
     monkeypatch.setattr("bp_train.loo.train_from_collection", fake_train)
     monkeypatch.setattr("bp_train.cli._write_train_results", fake_write)
     import bp_train.postprocessing as pp
+    import bp_train.serialization as ser
 
-    monkeypatch.setattr(pp, "save_model", lambda *_a, **_k: None)
+    monkeypatch.setattr(ser, "save_model", lambda *_a, **_k: None)
     monkeypatch.setattr(pp, "save_model_metadata", lambda *_a, **_k: None)
     return captured
 
