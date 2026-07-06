@@ -63,7 +63,7 @@ class DefaultStatefulReactionModule(UserReactionModule):
             )
         scale_kwargs = {
             **scale_kwargs,
-            "SCALE_latent": jnp.ones(n_latent, dtype=jnp.float32),
+            "SCALE_latent": jnp.ones(n_latent, dtype=jnp.float64),
         }
         super().__init__(**scale_kwargs)
         key_gru, key_rate, key_feed = jax.random.split(key, 3)
@@ -277,24 +277,24 @@ def _default_scale_kwargs(
 
     Used when no estimate hook is supplied.
     """
-    one = jnp.float32(1.0)
+    one = jnp.float64(1.0)
     return {
-        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=jnp.float32),
-        "SCALE_modeled_PVs": jnp.ones(len(rhs_ode.name_modeled_PVs), dtype=jnp.float32),
+        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=jnp.float64),
+        "SCALE_modeled_PVs": jnp.ones(len(rhs_ode.name_modeled_PVs), dtype=jnp.float64),
         "SCALE_V_in_cumulative": one,
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float64),
         "SCALE_controlled_FVCs_cumulative": jnp.ones(
-            n_controlled_FVCs, dtype=jnp.float32
+            n_controlled_FVCs, dtype=jnp.float64
         ),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=jnp.float32),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=jnp.float64),
         "SCALE_controlled_FVCs_Cin": jnp.ones(
-            (n_controlled_FVCs, n_RMCs), dtype=jnp.float32
+            (n_controlled_FVCs, n_RMCs), dtype=jnp.float64
         ),
         "SCALE_controlled_PVs": jnp.ones(
-            len(rhs_ode.name_controlled_PVs), dtype=jnp.float32
+            len(rhs_ode.name_controlled_PVs), dtype=jnp.float64
         ),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_FVCs, n_RMCs), dtype=jnp.float32),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=jnp.float32),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_FVCs, dtype=jnp.float32),
-        "SCALE_latent": jnp.zeros(0, dtype=jnp.float32),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_FVCs, n_RMCs), dtype=jnp.float64),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=jnp.float64),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_FVCs, dtype=jnp.float64),
+        "SCALE_latent": jnp.zeros(0, dtype=jnp.float64),
     }

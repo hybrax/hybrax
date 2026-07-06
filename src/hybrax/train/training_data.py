@@ -573,14 +573,14 @@ class TrainingDataStore(eqx.Module):
                     target_name,
                     col_source,
                 )
-                per_target_times.append(np.asarray(ts, dtype=np.float32))
-                per_target_values.append(np.asarray(ys, dtype=np.float32))
+                per_target_times.append(np.asarray(ts, dtype=np.float64))
+                per_target_values.append(np.asarray(ys, dtype=np.float64))
 
             if not per_target_times:
                 raise ValueError(f"{process_name}: no measurement data for targets")
 
             # Union grid across all per-target measurement times.
-            union_ts = np.unique(np.concatenate(per_target_times).astype(np.float32))
+            union_ts = np.unique(np.concatenate(per_target_times).astype(np.float64))
             t0_union = float(union_ts[0])
 
             # Strict t[0] requirement: every target must have a measurement
@@ -599,7 +599,7 @@ class TrainingDataStore(eqx.Module):
 
             # Build (n_measured, n_y_cols) value + mask matrices on the union grid.
             n_measured = int(union_ts.size)
-            y_matrix = np.zeros((n_measured, n_y_cols), dtype=np.float32)
+            y_matrix = np.zeros((n_measured, n_y_cols), dtype=np.float64)
             mask_matrix = np.zeros((n_measured, n_y_cols), dtype=bool)
 
             for col_idx, (t_arr, v_arr) in enumerate(
@@ -610,7 +610,7 @@ class TrainingDataStore(eqx.Module):
                 positions = np.searchsorted(union_ts, t_arr)
                 # Clamp pathological out-of-range positions defensively.
                 positions = np.clip(positions, 0, n_measured - 1)
-                y_matrix[positions, col_idx] = v_arr.astype(np.float32)
+                y_matrix[positions, col_idx] = v_arr.astype(np.float64)
                 mask_matrix[positions, col_idx] = True
 
             # Modeled-VC cumulative columns: dense by construction, fill the
@@ -629,7 +629,7 @@ class TrainingDataStore(eqx.Module):
                     vc_v,
                     left=float(vc_v[0]),
                     right=float(vc_v[-1]),
-                ).astype(np.float32)
+                ).astype(np.float64)
                 y_matrix[:, col_idx] = b_col
                 mask_matrix[:, col_idx] = True
 
@@ -659,13 +659,13 @@ class TrainingDataStore(eqx.Module):
                         for name in process_rhs_ode.name_modeled_PVs
                     ),
                 ],
-                dtype=np.float32,
+                dtype=np.float64,
             )
             y0 = np.concatenate(
                 [
                     y0_state,
-                    np.asarray([v0], dtype=np.float32),
-                    np.zeros(n_modeled, dtype=np.float32),
+                    np.asarray([v0], dtype=np.float64),
+                    np.zeros(n_modeled, dtype=np.float64),
                 ],
                 axis=0,
             )
@@ -678,8 +678,8 @@ class TrainingDataStore(eqx.Module):
             n_meas_list.append(n_measured)
 
         n_processes = len(process_order)
-        t_measured = np.zeros((n_processes, max_n_meas), dtype=np.float32)
-        y_measured = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=np.float32)
+        t_measured = np.zeros((n_processes, max_n_meas), dtype=np.float64)
+        y_measured = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=np.float64)
         mask_measured = np.zeros((n_processes, max_n_meas, n_y_cols), dtype=bool)
 
         for index, (ts, ys, mk) in enumerate(
@@ -691,8 +691,8 @@ class TrainingDataStore(eqx.Module):
             )
         ):
             n_measured = n_meas_list[index]
-            t_measured[index, :n_measured] = ts.astype(np.float32)
-            y_measured[index, :n_measured, :] = ys.astype(np.float32)
+            t_measured[index, :n_measured] = ts.astype(np.float64)
+            y_measured[index, :n_measured, :] = ys.astype(np.float64)
             mask_measured[index, :n_measured, :] = mk
 
         return cls(
@@ -706,7 +706,7 @@ class TrainingDataStore(eqx.Module):
             y_measured=jnp.asarray(y_measured),
             mask_measured=jnp.asarray(mask_measured),
             n_measured=jnp.asarray(n_meas_list, dtype=jnp.int32),
-            y0_measured=jnp.asarray(np.asarray(per_process_y0, dtype=np.float32)),
+            y0_measured=jnp.asarray(np.asarray(per_process_y0, dtype=np.float64)),
         )
 
     @classmethod

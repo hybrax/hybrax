@@ -1073,7 +1073,7 @@ def train_collection(
         padded = bs + pad_n
         per_dev = padded // n_dev
         weight_full = jnp.concatenate(
-            [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
+            [jnp.ones(bs, dtype=jnp.float64), jnp.zeros(pad_n, dtype=jnp.float64)]
         )
 
         def _pad(x):
@@ -1238,7 +1238,7 @@ def train_collection(
         S_repl = NamedSharding(mesh, P())  # replicated
         pad_n = (-bs) % n_dev
         weight_full = jnp.concatenate(
-            [jnp.ones(bs, dtype=jnp.float32), jnp.zeros(pad_n, dtype=jnp.float32)]
+            [jnp.ones(bs, dtype=jnp.float64), jnp.zeros(pad_n, dtype=jnp.float64)]
         )
 
         def _pad(x):

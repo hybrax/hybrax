@@ -28,7 +28,7 @@ import jax.numpy as jnp
 
 from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
 
-_EVENT_EPS = 1e-4  # << ~0.08 h event spacing; > float32 ULP at t~15
+_EVENT_EPS = 1e-4  # << ~0.08 h event spacing; ample headroom over float64 ULP at t~15
 
 
 def solve_physical_states(

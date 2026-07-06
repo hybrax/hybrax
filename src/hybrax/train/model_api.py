@@ -136,13 +136,13 @@ class ReactionInputs(eqx.Module):
     SCL_controlled_FVCs_Cin: jax.Array
     SCL_modeled_FVCs_Cin: jax.Array
     SCL_modeled_PVs: jax.Array = eqx.field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCL_controlled_PVs: jax.Array = eqx.field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCL_latent: jax.Array = eqx.field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
 
 
@@ -176,7 +176,7 @@ class ReactionOutputs(eqx.Module):
     SCL_modeled_BiologicalOde_rates: jax.Array
     SCL_modeled_FVCs_rates: jax.Array
     SCL_latent_derivative: jax.Array = eqx.field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     auxiliary: dict[str, jax.Array] | None = None
 
@@ -203,7 +203,7 @@ class EstimatedScales:
     # Defaults to empty (no modeled PVs); processes with uncontrolled,
     # dynamic process variables supply a real (n_modeled_PVs,) scale.
     SCALE_modeled_PVs: jax.Array = field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
 
 
@@ -228,40 +228,40 @@ class UserReactionModule(eqx.Module):
     # real values via ``estimate_all_scales`` / ``super().__init__(**kwargs)``
     # is the production path.
     SCALE_modeled_RMCs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_modeled_PVs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_V_in_cumulative: jax.Array = frozen_field(
-        default_factory=lambda: jnp.asarray(1.0, dtype=jnp.float32)
+        default_factory=lambda: jnp.asarray(1.0, dtype=jnp.float64)
     )
     SCALE_modeled_FVCs_cumulative: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_controlled_FVCs_cumulative: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_controlled_FVCs_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_controlled_FVCs_Cin: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float64)
     )
     SCALE_controlled_PVs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_modeled_FVCs_Cin: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float64)
     )
     SCALE_modeled_BiologicalOde_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_modeled_FVCs_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
     SCALE_latent: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float32)
+        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
 
     # ------------------------------------------------------------------

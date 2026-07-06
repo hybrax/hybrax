@@ -352,7 +352,7 @@ def test_reaction_inputs_default_to_zero_width_latent():
     )
 
     assert inputs.SCL_latent.shape == (0,)
-    assert inputs.SCL_latent.dtype == jnp.float32
+    assert inputs.SCL_latent.dtype == jnp.float64
 
 
 def test_reaction_outputs_default_to_zero_width_latent_derivative():
@@ -362,7 +362,7 @@ def test_reaction_outputs_default_to_zero_width_latent_derivative():
     )
 
     assert outputs.SCL_latent_derivative.shape == (0,)
-    assert outputs.SCL_latent_derivative.dtype == jnp.float32
+    assert outputs.SCL_latent_derivative.dtype == jnp.float64
 
 
 class _LatentScaleModule(UserReactionModule):

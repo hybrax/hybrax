@@ -30,7 +30,7 @@ DEFAULT_RUNTIME_CONTROLS_CONFIG: dict[str, Any] = {
 }
 
 
-def _as_jax_array(values: Any, *, dtype: Any = jnp.float32) -> jax.Array:
+def _as_jax_array(values: Any, *, dtype: Any = jnp.float64) -> jax.Array:
     """Convert JSON-loaded values into a JAX array."""
     return jnp.asarray(values, dtype=dtype)
 
@@ -620,7 +620,7 @@ class ControlsStore(eqx.Module):
             bolus_event_Cin=(
                 jnp.zeros(
                     (len(process_order), 0, n_species),
-                    dtype=jnp.float32,
+                    dtype=jnp.float64,
                 )
                 if max_bolus_events == 0
                 else _as_jax_array(bolus_event_Cin_rows)

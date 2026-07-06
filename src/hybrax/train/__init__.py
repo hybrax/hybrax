@@ -179,6 +179,13 @@ if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""
             ).strip()
 
 
+# Enable float64 (JAX x64) for the whole bp-train pipeline. Set after the XLA
+# device-count env above and before any array is created downstream.
+import jax as _jax  # noqa: E402
+
+_jax.config.update("jax_enable_x64", True)
+
+
 from importlib import import_module  # noqa: E402
 from typing import Any  # noqa: E402
 
