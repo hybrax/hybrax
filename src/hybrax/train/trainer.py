@@ -295,8 +295,16 @@ def evaluate_sample_with_loss_module(
         if prediction_grid_n is None:
             prediction_save_outputs = None
         else:
+            # Splice the exact measurement grid into the forward export grid so
+            # predictions.csv carries a node at every measurement time (padded
+            # repeats + shared t0/t1 endpoints are collapsed by
+            # dense_exports_from_save_outputs). Scoring then reads exact values at
+            # the measurements instead of interpolating a straight ramp across
+            # bolus/feed discontinuities.
+            export_idx = jnp.concatenate([sample_idx, prediction_idx])
+            prediction_t = t_eval[export_idx]
             prediction_save_outputs = jtu.tree_map(
-                lambda leaf: leaf[prediction_idx], save_outputs
+                lambda leaf: leaf[export_idx], save_outputs
             )
 
     SCL_states = meas_views["SCL_states"]

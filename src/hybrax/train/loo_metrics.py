@@ -230,21 +230,91 @@ def _compute_metrics(
 # ---------------------------------------------------------------------------
 
 
+def _require_measurement_nodes(
+    pred_t: np.ndarray,
+    meas_t: np.ndarray,
+    *,
+    process: str,
+    target: str,
+    rtol: float = 1e-4,
+    atol: float = 1e-6,
+) -> None:
+    """Fail-fast: every measurement time must be an exact node of the (sorted)
+    prediction grid ``pred_t``.
+
+    Otherwise ``np.interp`` would silently draw a straight ramp across any
+    bolus/feed discontinuity that falls between two grid points. bp-train's export
+    splices the measurement grid into predictions.csv, so a violation means the file
+    was produced by an older bp-train and must be regenerated.
+    """
+    pred_t = np.asarray(pred_t, dtype=float)
+    meas_t = np.asarray(meas_t, dtype=float)
+    if meas_t.size == 0:
+        return
+    if pred_t.size == 0:
+        raise ValueError(
+            f"empty prediction grid for process {process!r} target {target!r}"
+        )
+    idx = np.clip(np.searchsorted(pred_t, meas_t), 0, pred_t.size - 1)
+    left = np.clip(idx - 1, 0, pred_t.size - 1)
+    nearest = np.where(
+        np.abs(pred_t[idx] - meas_t) <= np.abs(pred_t[left] - meas_t),
+        pred_t[idx],
+        pred_t[left],
+    )
+    off = ~np.isclose(nearest, meas_t, rtol=rtol, atol=atol)
+    if np.any(off):
+        raise ValueError(
+            f"predictions.csv has no grid node at measurement time(s) "
+            f"{meas_t[off].tolist()} for process {process!r} target {target!r}; "
+            f"regenerate predictions.csv with the current bp-train (its export grid "
+            f"must include the measurement times)."
+        )
+
+
+def _prediction_unscoreable(
+    pred_t: np.ndarray, pred_y: np.ndarray, meas_t: np.ndarray
+) -> bool:
+    """A diverged / truncated prediction that must be scored NaN — NOT interpolated or node-guarded.
+
+    True iff the prediction has any non-finite value, or a measurement time falls outside the
+    prediction grid's range (a solve that blew up and stopped early). Such a fold cannot be scored,
+    so it becomes NaN and is skipped (never a crash, and never a clamped-``np.interp`` endpoint that
+    would read as a misleading finite score). A finite, full-range prediction returns ``False`` so
+    :func:`_require_measurement_nodes` still fails loudly on a genuinely-old node-omitting file.
+    """
+    pred_t = np.asarray(pred_t, dtype=float)
+    pred_y = np.asarray(pred_y, dtype=float)
+    meas_t = np.asarray(meas_t, dtype=float)
+    if pred_t.size == 0 or not bool(np.all(np.isfinite(pred_y))):
+        return True
+    if meas_t.size and (meas_t.min() < pred_t.min() or meas_t.max() > pred_t.max()):
+        return True
+    return False
+
+
 def _evaluate_predictions_for_process(
     *,
     pred_t: np.ndarray,
     pred_columns: dict[str, np.ndarray],
     measurements: dict[str, tuple[np.ndarray, np.ndarray]],
+    process: str = "?",
 ) -> dict[str, dict[str, float]]:
-    """Interpolate predictions to measurement times and compute metrics."""
+    """Read predictions at measurement times (exact nodes) and compute metrics.
+
+    A diverged/truncated prediction (see :func:`_prediction_unscoreable`) scores NaN and is skipped.
+    """
     out: dict[str, dict[str, float]] = {}
+    empty = np.asarray([], dtype=float)
     for target, (meas_t, meas_y) in measurements.items():
         col_name = f"c_{target}"
         pred_y = pred_columns.get(col_name)
         if pred_y is None:
             continue
-        # numpy.interp clamps to first/last sample for out-of-range times,
-        # which matches the solver's behaviour at t < t0 and t > t_end.
+        if _prediction_unscoreable(pred_t, pred_y, meas_t):
+            out[target] = _compute_metrics(empty, empty)  # all-NaN, n_measured=0
+            continue
+        _require_measurement_nodes(pred_t, meas_t, process=process, target=target)
         pred_at_meas = np.interp(meas_t, pred_t, pred_y)
         out[target] = _compute_metrics(meas_y, pred_at_meas)
     return out
@@ -357,7 +427,13 @@ def compute_loo_metrics(
                 fold_dir,
             )
             continue
-        pred_df = _read_predictions_csv(fold_dir)
+        try:
+            pred_df = _read_predictions_csv(fold_dir)
+        except FileNotFoundError as exc:
+            # A diverged fold whose forward produced no predictions.csv: skip it (its rows become
+            # absent → NaN in the aggregate), never abort the whole dataset. Unexpected errors still raise.
+            logger.warning("fold '%s': %s; skipping", holdout_parent, exc)
+            continue
         targets = _resolve_target_names(sidecar, pred_df, target_override)
         for proc_name in holdout_group:
             process = collection.processes.get(proc_name)
@@ -386,6 +462,7 @@ def compute_loo_metrics(
                 pred_t=pred_t,
                 pred_columns=pred_columns,
                 measurements=measurements,
+                process=proc_name,
             )
             for target, m in metrics_per_target.items():
                 rows.append(
@@ -664,7 +741,13 @@ def _gather_paired_arrays(
                     pred_y = pred_columns.get(f"c_{tname}")
                     if pred_y is None:
                         continue
-                    pred_at_meas = np.interp(meas_t, pred_t, pred_y)
+                    if _prediction_unscoreable(pred_t, pred_y, meas_t):
+                        pred_at_meas = np.full(np.asarray(meas_t).shape, np.nan)
+                    else:
+                        _require_measurement_nodes(
+                            pred_t, meas_t, process=proc_name, target=tname
+                        )
+                        pred_at_meas = np.interp(meas_t, pred_t, pred_y)
                     records.append(
                         _PairedRecord(
                             run_dir=run_key,
@@ -686,7 +769,13 @@ def _gather_paired_arrays(
                         pred_y = pred_columns.get(pred_col)
                         if pred_y is None:
                             continue
-                        pred_at_meas = np.interp(meas_t, pred_t, pred_y)
+                        if _prediction_unscoreable(pred_t, pred_y, meas_t):
+                            pred_at_meas = np.full(np.asarray(meas_t).shape, np.nan)
+                        else:
+                            _require_measurement_nodes(
+                                pred_t, meas_t, process=proc_name, target=vc_name
+                            )
+                            pred_at_meas = np.interp(meas_t, pred_t, pred_y)
                         records.append(
                             _PairedRecord(
                                 run_dir=run_key,

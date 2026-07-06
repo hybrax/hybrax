@@ -260,7 +260,11 @@ def _make_one_species_process(
     *,
     initial_volume: float = 1.0,
     sample_delta: float = -0.1,
+    biomass_times: jnp.ndarray | None = None,
 ) -> BioProcess:
+    biomass_times = (
+        jnp.asarray([0.0, 2.0]) if biomass_times is None else jnp.asarray(biomass_times)
+    )
     return BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
         time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
@@ -289,8 +293,8 @@ def _make_one_species_process(
                     name="biomass",
                     unit="g/L",
                     concentration=TimeSeries(
-                        times=jnp.asarray([0.0, 2.0]),
-                        values=jnp.asarray([1.0, 1.0]),
+                        times=biomass_times,
+                        values=jnp.ones_like(biomass_times),
                     ),
                 ),
             },
@@ -306,10 +310,12 @@ def _build_single_process_runtime(
     q_scaled: float = 0.0,
     q_scale: float = 1.0,
     auxiliary: dict[str, jnp.ndarray] | None = None,
+    biomass_times: jnp.ndarray | None = None,
 ):
     process = _make_one_species_process(
         initial_volume=initial_volume,
         sample_delta=sample_delta,
+        biomass_times=biomass_times,
     )
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
@@ -844,6 +850,64 @@ def test_dense_export_returns_physical_q_values():
 
     assert export.q_rates.shape == (9, 1)
     assert np.allclose(export.q_rates[:, 0], 3.0)
+
+
+def test_dense_export_grid_includes_measurement_times():
+    """Measurement times must be exact nodes in the exported grid.
+
+    The holdout scorers (``bp_train.loo_metrics``, ``bp_bench.metrics``) evaluate
+    predictions by ``np.interp(meas_t, pred_t, pred_y)``. If a measurement falls
+    between two uniform grid points that straddle a bolus/feed discontinuity, the
+    interpolant is a straight ramp across the jump. Splicing the measurement grid
+    into the export makes each measurement an exact node, so np.interp returns the
+    exact solve value there.
+    """
+    # 0.7 is interior and lands strictly between linspace(0, 2, 11) nodes, so it can
+    # only appear as a node because the measurement grid was spliced in.
+    collection, store, wrapper = _build_single_process_runtime(
+        q_scaled=0.5, biomass_times=[0.0, 0.7, 2.0]
+    )
+    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=11)
+
+    assert np.all(np.diff(export.t) > 0)  # sorted + de-duplicated
+    for tm in (0.0, 0.7, 2.0):
+        assert np.any(np.isclose(export.t, tm, atol=1e-9)), f"missing node {tm}"
+    assert not np.any(np.isclose(np.linspace(0.0, 2.0, 11), 0.7, atol=1e-9))
+    # every exported array is aligned with the (grown) grid
+    assert export.c_species.shape[0] == export.t.shape[0]
+    assert export.v_real.shape == export.t.shape
+    assert export.q_rates.shape[0] == export.t.shape[0]
+
+
+def test_loo_scored_value_equals_training_framework_solve():
+    """The value the LOO scorer reads at a measurement must equal the model's exact
+    ODE solution there -- i.e. what the training framework evaluates the loss
+    against -- not a straight line interpolated across the coarse prediction grid.
+
+    Coarse prediction grid (nodes at 0, 1, 2) plus an off-grid measurement at 0.7.
+    Biomass grows exponentially, so the old linspace-only interpolation lands ~6%
+    off the true value; splicing the measurement in as a node makes np.interp exact.
+    """
+    collection, store, wrapper = _build_single_process_runtime(
+        q_scaled=0.8, biomass_times=[0.0, 0.7, 2.0]
+    )
+    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=3)
+    c = export.c_species[:, 0]
+
+    node_mask = np.isclose(export.t, 0.7, atol=1e-9)
+    assert node_mask.sum() == 1
+    # training-framework value == the exact solve at the measurement time; the
+    # export now carries it as a node (same sample-grid value the loss module uses).
+    train_val = float(c[node_mask][0])
+    # LOO-metric value == np.interp over the exported grid (what bp_train.loo_metrics
+    # and bp_bench.metrics do). Identical, because the measurement is now a node.
+    loo_val = float(np.interp(0.7, export.t, c))
+    assert loo_val == pytest.approx(train_val, rel=1e-6)
+    # the pre-fix behaviour (interpolating the uniform grid only) is materially off.
+    lin_t = np.linspace(0.0, 2.0, 3)
+    lin_c = np.interp(lin_t, export.t, c)
+    ramp_val = float(np.interp(0.7, lin_t, lin_c))
+    assert abs(ramp_val - train_val) > 0.01 * abs(train_val)
 
 
 def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(

@@ -118,17 +118,26 @@ def dense_exports_from_save_outputs(
 
     exports: dict[str, DenseProcessExport] = {}
     for i, name in enumerate(process_names):
+        # The export grid splices the measurement grid into the prediction
+        # linspace so every measurement time is an exact node (for jump-correct
+        # scoring). Sort by time and drop duplicate times to collapse the padded
+        # measurement repeats at t1 and the shared t0/t1 endpoints into one node.
+        t_i = t_np[i]
+        order = np.argsort(t_i, kind="stable")
+        t_sorted = t_i[order]
+        keep = np.concatenate(([True], np.diff(t_sorted) > 0))
+        sel = order[keep]
         aux_i = (
             None
             if auxiliary is None
-            else {key: np.asarray(values[i]) for key, values in auxiliary.items()}
+            else {key: np.asarray(values[i])[sel] for key, values in auxiliary.items()}
         )
         exports[name] = DenseProcessExport(
-            t=t_np[i],
-            c_species=RAW_states[i, :, :n_species],
-            v_real=v_real_np[i],
-            b_modeled_cum=RAW_states[i, :, n_species + 1 : n_species + 1 + n_modeled],
-            q_rates=q_np[i],
+            t=t_i[sel],
+            c_species=RAW_states[i, sel, :n_species],
+            v_real=v_real_np[i][sel],
+            b_modeled_cum=RAW_states[i, sel, n_species + 1 : n_species + 1 + n_modeled],
+            q_rates=q_np[i][sel],
             auxiliary=aux_i,
         )
     return exports

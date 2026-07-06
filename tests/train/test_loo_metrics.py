@@ -605,3 +605,22 @@ def test_equal_comparison_noop_for_single_dir(tmp_path):
     assert df.attrs["dropped_for_equal_comparison"] == {}
     # Single-dir intersection is a no-op; provenance reflects no trimming.
     assert df.attrs["intersection_holdout_processes"] == ()
+
+
+def test_require_measurement_nodes_fail_fast():
+    """The scorer must refuse to silently interpolate: a measurement time that is
+    not an exact node of the prediction grid raises (guards the jump-blind bug).
+    """
+    from bp_train.loo_metrics import _require_measurement_nodes
+
+    uniform = np.linspace(0.0, 2.0, 11)  # no node at 0.7
+    with pytest.raises(ValueError, match="no grid node"):
+        _require_measurement_nodes(
+            uniform, np.array([0.0, 0.7, 2.0]), process="p1", target="biomass"
+        )
+    # a measurement-inclusive grid passes (float32 round-trip tolerated)
+    inclusive = np.unique(np.concatenate([uniform, [0.7]]))
+    _require_measurement_nodes(
+        inclusive, np.array([0.0, 0.7, 2.0], dtype=np.float32).astype(float),
+        process="p1", target="biomass",
+    )
