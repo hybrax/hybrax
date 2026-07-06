@@ -230,21 +230,63 @@ def _compute_metrics(
 # ---------------------------------------------------------------------------
 
 
+def _require_measurement_nodes(
+    pred_t: np.ndarray,
+    meas_t: np.ndarray,
+    *,
+    process: str,
+    target: str,
+    rtol: float = 1e-4,
+    atol: float = 1e-6,
+) -> None:
+    """Fail-fast: every measurement time must be an exact node of the (sorted)
+    prediction grid ``pred_t``.
+
+    Otherwise ``np.interp`` would silently draw a straight ramp across any
+    bolus/feed discontinuity that falls between two grid points. bp-train's export
+    splices the measurement grid into predictions.csv, so a violation means the file
+    was produced by an older bp-train and must be regenerated.
+    """
+    pred_t = np.asarray(pred_t, dtype=float)
+    meas_t = np.asarray(meas_t, dtype=float)
+    if meas_t.size == 0:
+        return
+    if pred_t.size == 0:
+        raise ValueError(
+            f"empty prediction grid for process {process!r} target {target!r}"
+        )
+    idx = np.clip(np.searchsorted(pred_t, meas_t), 0, pred_t.size - 1)
+    left = np.clip(idx - 1, 0, pred_t.size - 1)
+    nearest = np.where(
+        np.abs(pred_t[idx] - meas_t) <= np.abs(pred_t[left] - meas_t),
+        pred_t[idx],
+        pred_t[left],
+    )
+    off = ~np.isclose(nearest, meas_t, rtol=rtol, atol=atol)
+    if np.any(off):
+        raise ValueError(
+            f"predictions.csv has no grid node at measurement time(s) "
+            f"{meas_t[off].tolist()} for process {process!r} target {target!r}; "
+            f"regenerate predictions.csv with the current bp-train (its export grid "
+            f"must include the measurement times)."
+        )
+
+
 def _evaluate_predictions_for_process(
     *,
     pred_t: np.ndarray,
     pred_columns: dict[str, np.ndarray],
     measurements: dict[str, tuple[np.ndarray, np.ndarray]],
+    process: str = "?",
 ) -> dict[str, dict[str, float]]:
-    """Interpolate predictions to measurement times and compute metrics."""
+    """Read predictions at measurement times (exact nodes) and compute metrics."""
     out: dict[str, dict[str, float]] = {}
     for target, (meas_t, meas_y) in measurements.items():
         col_name = f"c_{target}"
         pred_y = pred_columns.get(col_name)
         if pred_y is None:
             continue
-        # numpy.interp clamps to first/last sample for out-of-range times,
-        # which matches the solver's behaviour at t < t0 and t > t_end.
+        _require_measurement_nodes(pred_t, meas_t, process=process, target=target)
         pred_at_meas = np.interp(meas_t, pred_t, pred_y)
         out[target] = _compute_metrics(meas_y, pred_at_meas)
     return out
@@ -386,6 +428,7 @@ def compute_loo_metrics(
                 pred_t=pred_t,
                 pred_columns=pred_columns,
                 measurements=measurements,
+                process=proc_name,
             )
             for target, m in metrics_per_target.items():
                 rows.append(
@@ -664,6 +707,9 @@ def _gather_paired_arrays(
                     pred_y = pred_columns.get(f"c_{tname}")
                     if pred_y is None:
                         continue
+                    _require_measurement_nodes(
+                        pred_t, meas_t, process=proc_name, target=tname
+                    )
                     pred_at_meas = np.interp(meas_t, pred_t, pred_y)
                     records.append(
                         _PairedRecord(
@@ -686,6 +732,9 @@ def _gather_paired_arrays(
                         pred_y = pred_columns.get(pred_col)
                         if pred_y is None:
                             continue
+                        _require_measurement_nodes(
+                            pred_t, meas_t, process=proc_name, target=vc_name
+                        )
                         pred_at_meas = np.interp(meas_t, pred_t, pred_y)
                         records.append(
                             _PairedRecord(
