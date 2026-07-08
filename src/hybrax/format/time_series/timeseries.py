@@ -26,9 +26,9 @@ from .constants import DIVISION_NEAR_ZERO_THRESHOLD
 def _as_float_array(name: str, value: Any, dtype: Any, *, ndim: int) -> jnp.ndarray:
     arr_in = jnp.asarray(value)
     if jnp.issubdtype(arr_in.dtype, jnp.floating) and arr_in.dtype != dtype:
-        warnings.warn(
-            f"TimeSeries: casting {name} from {arr_in.dtype} to {dtype}",
-            stacklevel=3,
+        raise TypeError(
+            f"TimeSeries: {name} has dtype {arr_in.dtype}; pass float64 "
+            f"(x64 is enabled package-wide) — narrower floats lose precision"
         )
     arr = jnp.asarray(value, dtype=dtype)
     if arr.ndim != ndim:

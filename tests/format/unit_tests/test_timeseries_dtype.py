@@ -6,6 +6,7 @@ The whole pipeline is float64: JAX x64 is enabled in ``bp_format/__init__``.
 import warnings
 
 import jax.numpy as jnp
+import pytest
 
 from bp_format.time_series.timeseries import TimeSeries
 from bp_format.splines import fit_timeseries_spline
@@ -37,19 +38,16 @@ def test_default_dtype_float64_spline_fields():
 
 
 # ---------------------------------------------------------------------------
-# 2. Casting warning fires when a float input is upcast to float64
+# 2. A narrower-than-float64 float input is rejected (fail-fast)
 # ---------------------------------------------------------------------------
 
 
-def test_casting_warning_fires_on_float_mismatch():
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+def test_float32_input_raises_on_float_mismatch():
+    with pytest.raises(TypeError, match="float64"):
         TimeSeries(
             times=jnp.asarray([1.0, 2.0], dtype=jnp.float32),
             values=[1.0, 2.0],
         )
-    messages = [str(w.message) for w in caught if "casting" in str(w.message)]
-    assert any("times" in m for m in messages)
 
 
 def test_no_casting_warning_for_python_list_input():
