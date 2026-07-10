@@ -135,10 +135,11 @@ class LooConfig(ConfigBase):
     ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per
     parent process group. ``parallel_folds`` is how many folds train at once
     (each fold is its own subprocess, because the JAX CPU device count is fixed
-    per process). ``devices_per_fold`` can pin each fold to a fixed JAX CPU
-    device count; otherwise the remaining cores are split across concurrent
-    folds so that ``parallel_folds * devices_per_fold <= n_cpu``. Set these from
-    what your RAM can hold — there is deliberately no automatic RAM sizing.
+    per process). ``devices_per_fold`` can set each fold's JAX CPU device
+    count; otherwise the available JAX CPU device budget is split across
+    concurrent folds so that ``parallel_folds * devices_per_fold <= n_cpu``.
+    Set these from what your RAM can hold — there is deliberately no automatic
+    RAM sizing.
     """
 
     per_fold_holdout_sets: tuple[HoldoutSet, ...] | None = None

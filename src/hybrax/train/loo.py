@@ -5,12 +5,12 @@ the folds (:class:`~bp_train.run_config.HoldoutSet` entries in
 ``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the
 fold-level parallelism.
 
-Each fold trains as **its own subprocess** so it can own a private slice of the
-CPU device pool — the JAX host-device count is fixed per process at import, so
+Each fold trains as **its own subprocess** so it can expose a private JAX CPU
+device count — the JAX host-device count is fixed per process at import, so
 concurrent in-process folds cannot get separate shards. The user picks how many
-folds run at once (``loo.parallel_folds``); the orchestrator splits the cores
-across them (``devices_per_fold = n_cpu // parallel_folds``), dispatches the
-workers pinned to disjoint core blocks, then aggregates their on-disk losses
+folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold
+JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
+lets the OS schedule the worker processes, then aggregates their on-disk losses
 into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
 skips folds that already wrote ``losses.csv`` and re-runs only the rest.
 
@@ -25,7 +25,6 @@ import dataclasses
 import json
 import logging
 import os
-import queue
 import statistics
 import subprocess
 import sys
@@ -304,11 +303,11 @@ def compute_parallel_split(
     """Return ``(parallel_folds, devices_per_fold)`` for the fold pool.
 
     ``parallel_folds`` is the user-chosen fold concurrency. If
-    ``devices_per_fold`` is omitted, leftover cores are split across concurrent
-    folds: ``devices_per_fold = n_cpu // parallel`` (so a single fold soaks up
-    the cores, many folds run one core each). Devices never exceed
-    ``max_devices_per_fold`` (the smallest fold's batch — exposing more host
-    devices than the batch only deadlocks the pmap collective).
+    ``devices_per_fold`` is omitted, the per-fold JAX CPU device budget is split
+    across concurrent folds: ``devices_per_fold = n_cpu // parallel`` (so a
+    single fold exposes many devices, many folds expose one device each).
+    Devices never exceed ``max_devices_per_fold`` (the smallest fold's batch —
+    exposing more host devices than the batch only deadlocks the pmap collective).
 
     Invariant: ``parallel_folds * devices_per_fold <= n_cpu``. There is no RAM
     sizing here — the user owns the memory call via ``parallel_folds``.
@@ -370,29 +369,16 @@ def _worker_env(devices: int) -> dict[str, str]:
     return env
 
 
-def _set_affinity(pid: int, cores: list[int]) -> None:
-    if not cores:
-        return
-    try:
-        os.sched_setaffinity(pid, set(cores))
-    except (AttributeError, OSError):  # non-Linux / restricted: best-effort
-        pass
-
-
 def _dispatch_worker(
     config_path: Path,
     output_dir: Path,
     fold_idx: int,
     devices: int,
-    *,
-    cores: list[int] | None = None,
 ) -> int:
-    """Run one fold subprocess, pinned to ``cores``. Returns its exit code."""
+    """Run one fold subprocess. Returns its exit code."""
     proc = subprocess.Popen(
         _worker_cmd(config_path, output_dir, fold_idx), env=_worker_env(devices)
     )
-    if cores:
-        _set_affinity(proc.pid, cores)
     return proc.wait()
 
 
@@ -403,27 +389,16 @@ def _dispatch_pool(
     parallel: int,
     devices: int,
 ) -> None:
-    """Run ``folds`` in a pool of ``parallel`` workers pinned to disjoint cores."""
-    n_cpu = os.cpu_count() or 1
-    blocks: queue.Queue[list[int]] = queue.Queue()
-    for i in range(parallel):
-        lo = i * devices
-        blocks.put(list(range(lo, min(lo + devices, n_cpu))))
-
+    """Run ``folds`` in a pool of ``parallel`` worker subprocesses."""
     failures: list[tuple[str, str]] = []
 
     def _run(fold: Fold) -> None:
-        block = blocks.get()
         try:
-            rc = _dispatch_worker(
-                config_path, output_dir, fold.idx, devices, cores=block or None
-            )
+            rc = _dispatch_worker(config_path, output_dir, fold.idx, devices)
             if rc != 0:
                 failures.append((fold.slug, f"exit {rc}"))
         except Exception as exc:  # noqa: BLE001 - record, don't abort other folds
             failures.append((fold.slug, f"{type(exc).__name__}: {exc}"))
-        finally:
-            blocks.put(block)
 
     with ThreadPoolExecutor(max_workers=parallel) as pool:
         list(pool.map(_run, folds))

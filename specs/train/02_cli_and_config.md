@@ -83,9 +83,9 @@ training); regenerates plots and prints a loss table.
 
 ### `bp-train loo`
 
-Leave-one/some-process-out cross-validation. Config-driven: the run config is the
-same as `train` plus an optional `loo` section. Each fold trains as its own
-subprocess; you choose how many run at once and the cores are split across them.
+Leave-one/some-process-out cross-validation.
+Config-driven: the run config is the same as `train` plus an optional `loo` section.
+Each fold trains as its own subprocess; you choose how many run at once and how many JAX CPU devices each fold exposes.
 The run dir is self-contained (bundled config + `custom.py` + prepared), so
 `--resume` continues an interrupted run from the dir alone.
 
@@ -101,7 +101,8 @@ The `loo` config section:
 | Key | Meaning |
 |---|---|
 | `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
-| `parallel_folds` | How many folds to train concurrently (default `1`, sequential). The cores are split across them: `devices_per_fold = n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold can't expose more host devices than its `pmap` batch without deadlocking). You set it from what your RAM holds — there is no automatic RAM sizing. |
+| `parallel_folds` | How many folds to train concurrently (default `1`, sequential). Worker processes are not CPU-pinned; the OS scheduler owns core placement. You set concurrency from what your RAM holds — there is no automatic RAM sizing. |
+| `devices_per_fold` | Optional JAX CPU device count per fold. Omitted → `n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold can't expose more host devices than its `pmap` batch without deadlocking). |
 | `monitor_every` | Cadence (in steps) for evaluating each fold's holdout (`test`) loss during that fold's training — a diagnostic, never an optimizer signal. `null` (default) → the `logging.every` cadence; `1` → every step (an extra holdout forward solve per step). |
 
 Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, `prepared.json`,

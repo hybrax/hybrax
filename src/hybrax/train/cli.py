@@ -221,7 +221,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Allow re-running into a LOO output dir that already completed.",
     )
     # Internal: dispatched by the orchestrator to run exactly one fold in-process
-    # (worker mode). Each worker gets its own BP_TRAIN_DEVICES + core affinity.
+    # (worker mode). Each worker gets its own BP_TRAIN_DEVICES value.
     loo_parser.add_argument("--fold", type=int, default=None, help=argparse.SUPPRESS)
     loo_parser.add_argument(
         "--log-level",
@@ -341,9 +341,7 @@ def _write_train_results(
     return fwd_result
 
 
-def _apply_train_cli_overrides(
-    cfg: RunConfig, args: argparse.Namespace
-) -> RunConfig:
+def _apply_train_cli_overrides(cfg: RunConfig, args: argparse.Namespace) -> RunConfig:
     """Apply the few CLI flags that override the config file (CLI wins)."""
     updates: dict[str, Any] = {}
     if args.output_dir is not None:
@@ -631,7 +629,7 @@ def _format_loss_table(result: ForwardResult) -> tuple[str, list[list[str]]]:
     def _fmt_row(row: list[str]) -> str:
         return " | ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
 
-    # Number of summary rows: total (mean) + optional train (mean) + optional holdout (mean)
+    # Summary rows: total (mean) + optional train (mean) + optional holdout (mean).
     n_summary = 1 + (1 if n_train else 0) + (1 if n_holdout else 0)
     n_data = len(data_rows) - n_summary
 

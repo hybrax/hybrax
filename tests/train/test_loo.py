@@ -300,14 +300,14 @@ def test_resolve_folds_explicit_overlap_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_split_user_picks_parallel_cores_divided():
-    # 4 folds at once on 16 cores -> 4 devices each; product == cores.
+def test_split_user_picks_parallel_device_budget():
+    # 4 folds at once on 16 CPUs -> 4 JAX devices each; product <= CPUs.
     parallel, devices = compute_parallel_split(9, 16, 4)
     assert (parallel, devices) == (4, 4)
     assert parallel * devices <= 16
 
 
-def test_split_sequential_uses_all_cores():
+def test_split_sequential_uses_all_device_budget():
     parallel, devices = compute_parallel_split(12, 16, 1)
     assert (parallel, devices) == (1, 16)
 
