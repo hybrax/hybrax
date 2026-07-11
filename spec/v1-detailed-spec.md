@@ -242,7 +242,11 @@ def build_batched_loss_fn(*, default_loss_fn, store, collection, train_cfg, conf
     return default_loss_fn
 ```
 
-Data augmentation hooks are intentionally deferred.
+Data augmentation hooks are intentionally deferred. When augmentation lands,
+augmented samples must be persisted in the prepared `data.json` /
+`prepared.json` as `bp_format.AugmentedBioProcess` records, not generated
+only ephemerally inside training, so model-training provenance captures the
+exact synthetic traces used.
 
 `transform_process_collection(...)` is called once and receives the raw
 `BioProcessCollection`; it returns the updated collection used for the rest of
@@ -1174,8 +1178,9 @@ Status as of March 28, 2026:
 These are explicitly deferred beyond V1:
 
 - data augmentation (the `bp_format.AugmentedBioProcess` placeholder is in
-  place but no augmentation hook in `bp-train prepare` produces these
-  records yet — see `spec/loo.md`),
+  place, and augmented samples are intended to be persisted as full prepared
+  process records for model-training provenance, but no augmentation hook in
+  `bp-train prepare` produces these records yet — see `spec/loo.md`),
 - stateful models,
 - pseudo-batch dynamics,
 - alternative runtime contracts where the user manually handles dilution,

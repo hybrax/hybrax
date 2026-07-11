@@ -1,6 +1,7 @@
 # Data Preparation
 
 Source: [`bp_train/prepare.py`](../bp_train/prepare.py),
+[`bp_train/augmentation.py`](../bp_train/augmentation.py),
 [`bp_train/training_data.py`](../bp_train/training_data.py),
 [`bp_train/controls_store.py`](../bp_train/controls_store.py),
 [`bp_train/controls.py`](../bp_train/controls.py),
@@ -26,6 +27,7 @@ assembles batches from the prepared artifact.
   signals (a refined dense grid) the RHS evaluates at each `t`; discrete events
   (boluses, sampling) become event arrays applied as **state jumps** during the
   solve. See [event semantics](#controls-and-event-semantics).
+- **Augmentation is persisted.** Each configured synthetic variant is stored as a complete `AugmentedBioProcess` child, so repeated training uses the same observations and provenance.
 - **Scales are estimated at train setup**, not baked into the data, so the same
   `prepared.json` can be trained with different scaling strategies via
   `estimate_all_scales`.
@@ -44,10 +46,29 @@ prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False)
   are wrapped into a collection, with the case identity kept in `metadata`.
 - `prepare_artifact` runs the prepare hooks
   ([`transform_process_collection`](02_cli_and_config.md#transform_process_collection),
-  [`build_sample_acc_series`](02_cli_and_config.md#build_sample_acc_series)),
+  [`augment_state_values`](02_cli_and_config.md#augment_state_values)),
   validates, enforces the control contract (the reserved sample-accumulation
   control name `BP_TRAIN_SAMPLE_ACC_NAME` must be present and not user-supplied),
   and writes the artifact. Normally invoked via `bp-train prepare`.
+
+### Prepared augmentation
+
+Set `prepare.augmentation` to generate deterministic synthetic children after `transform_process_collection` and before final validation.
+Each child is named `{parent}__aug_{index:03d}` and keeps its parent's controls, volume, events, and other process structure.
+It receives an independently sampled, sorted measurement grid with the exact parent start and end times.
+
+Modeled states follow three rules.
+
+1. Listed spline-backed states are evaluated on the child grid and noised.
+2. Unlisted spline-backed states are evaluated on the same grid without noise.
+3. Unlisted states without splines keep their original observations and grid.
+
+The second rule also replaces the raw initial observation with `spline(t0)`.
+A state used as a training target should normally be listed, otherwise the children supervise repeated noise-free spline trajectories for that target.
+Mixed state grids remain valid because training constructs a union grid and a per-target measurement mask.
+
+These resampled points are synthetic training observations.
+They are not claims of new physical offline samples, and augmentation does not add sample-removal events or change the reactor volume.
 
 ### Scale estimation
 

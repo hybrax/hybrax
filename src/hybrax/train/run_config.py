@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -98,8 +99,33 @@ class LoggingConfig(ConfigBase):
     header_every: int = Field(10, ge=0)
 
 
+class AugmentationConfig(ConfigBase):
+    seed: int = 0
+    n_children_per_process: int = Field(gt=0)
+    n_time_points: int = Field(ge=2)
+    variable_names: tuple[str, ...] = Field(min_length=1)
+    noise_scale: dict[str, float] = Field(default_factory=dict)
+    noise_model: Literal["mult", "add"] = "mult"
+    min_relative_residual_rms: float = Field(1e-6, gt=0)
+
+    @field_validator("noise_scale")
+    @classmethod
+    def _validate_noise_scale(cls, value: dict[str, float]) -> dict[str, float]:
+        invalid = [
+            name
+            for name, scale in value.items()
+            if not math.isfinite(scale) or scale <= 0.0
+        ]
+        if invalid:
+            raise ValueError(
+                "noise_scale values must be finite and positive: " + ", ".join(invalid)
+            )
+        return value
+
+
 class PrepareConfig(ConfigBase):
     raw_input: Path
+    augmentation: AugmentationConfig | None = None
     strict_bp_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True

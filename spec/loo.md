@@ -49,7 +49,10 @@ Files: `bp-format/bp_format/dataclasses.py`,
 This phase ships only a placeholder; no augmentation logic is implemented
 in this round. The goal is to lock down the data shape so downstream
 packages (`bp-train`'s LOO orchestrator, future `bp-train prepare`
-augmentation hooks) can rely on it.
+augmentation hooks) can rely on it. Future augmentation must persist each
+synthetic sample as a full `AugmentedBioProcess` record in the prepared
+collection (rather than applying random training-time-only transforms) so
+model-training provenance captures the exact augmented arrays/traces used.
 
 ### 1. New dataclass `AugmentedBioProcess`
 

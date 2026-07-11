@@ -141,11 +141,12 @@ module is imported with `load_custom_module`. A custom typed config object is
 produced by an optional `get_custom_config(raw_custom, config)` and reaches every
 hook as `config.custom`.
 
-There are **7 hooks**. Stage = when it fires (`prepare` vs `train`).
+There are **8 hooks**. Stage = when it fires (`prepare` vs `train`).
 
 | Hook | Stage | Default |
 |---|---|---|
 | [`transform_process_collection`](#transform_process_collection) | prepare | `default_transform_process_collection` |
+| [`augment_state_values`](#augment_state_values) | prepare | none (built-in residual-scaled noise) |
 | [`build_sample_acc_series`](#build_sample_acc_series) | prepare | `default_build_sample_acc_series` |
 | [`estimate_all_scales`](#estimate_all_scales) | train | none (no scaling) |
 | [`build_reaction_module`](#build_reaction_module) | train | `default_build_reaction_module` |
@@ -161,6 +162,44 @@ def transform_process_collection(collection, config: RunConfig) -> collection
 Mutate/replace the collection before scales and controls are built — e.g. swap a
 fixed `biological_ode` derivative for an `r_<pv>` rate so the reaction module
 learns it. Default applies `prepare.process_rename_map`.
+
+### `augment_state_values`
+
+```python
+import numpy as np
+
+
+def augment_state_values(
+    *,
+    parent_name,
+    child_name,
+    state_name,
+    times,
+    base_values,
+    residual_rms,
+    observed_rms,
+    standard_normal,
+    config,
+):
+    ...
+```
+
+Override the generated values for one explicitly listed state on one augmented child.
+Return a one-dimensional array with the same shape as `times`, or return `None` to use the configured residual-scaled noise model.
+`standard_normal` is the deterministic random vector assigned to that child and state.
+For an effectively zero trace, custom code can return clipped additive values using an absolute standard deviation in the state's physical units.
+
+```python
+def augment_state_values(
+    *, parent_name, state_name, base_values, standard_normal, config, **_
+):
+    absolute_std = config.custom.absolute_noise_std.get(parent_name, {}).get(
+        state_name
+    )
+    if absolute_std is None:
+        return None
+    return np.clip(base_values + absolute_std * standard_normal, 0, None)
+```
 
 ### `build_sample_acc_series`
 
@@ -277,6 +316,7 @@ every N rows, 0 disables).
 | Field | Default | Meaning |
 |---|---|---|
 | `raw_input` | path (required) | Raw bp-format `BioProcessCollection` or `CaseStudy` JSON. |
+| `augmentation` | null | Persist deterministic synthetic `AugmentedBioProcess` children; see below. |
 | `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
 | `required_control_names` | () | Controls that must exist (tuple, or per-process dict). |
 | `require_consistent_controls` | true | All processes share the same controls. |
@@ -285,6 +325,18 @@ every N rows, 0 disables).
 | `max_rel_error` | 1e-4 (>0) | Control-grid refinement tolerance. |
 | `max_refinement_rounds` | 8 (≥0) | Refinement round cap. |
 | `process_rename_map` | {} | Old→new process-name map (used by the default transform). |
+
+The `prepare.augmentation` object has these fields.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `seed` | 0 | Deterministic child-grid and value seed. |
+| `n_children_per_process` | required (>0) | Number of children per non-augmented parent. |
+| `n_time_points` | required (>=2) | Points on each child grid, including exact endpoints. |
+| `variable_names` | required, nonempty | Modeled states to noise. |
+| `noise_scale` | {} | Per-state multiplier on the parent spline-residual RMS, required when the built-in path handles that state. |
+| `noise_model` | `mult` | Mean-preserving log-normal `mult` or clipped Gaussian `add`. |
+| `min_relative_residual_rms` | 1e-6 (>0) | Reject effectively interpolating splines on the built-in path. |
 
 **`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to
 hooks as `config.custom` (typed via `get_custom_config` or a permissive default).

@@ -1,0 +1,248 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import replace
+from hashlib import sha256
+from typing import Any, Callable
+
+import numpy as np
+from bp_format.dataclasses import (
+    AugmentedBioProcess,
+    BioProcessCollection,
+    TimeSeries,
+)
+from bp_format.mechanistic import get_process_ordering
+
+from .run_config import AugmentationConfig, RunConfig
+
+
+AugmentStateValues = Callable[..., Any]
+
+
+def _rng(seed: int, *identity: object) -> np.random.Generator:
+    text = "\0".join([str(seed), *(str(part) for part in identity)])
+    stable_seed = int.from_bytes(sha256(text.encode()).digest()[:8], "little")
+    return np.random.default_rng(stable_seed)
+
+
+def _child_grid(
+    config: AugmentationConfig,
+    parent_name: str,
+    child_index: int,
+    t0: float,
+    t_end: float,
+) -> np.ndarray:
+    if t0 == t_end:
+        raise ValueError(f"{parent_name}: cannot augment a degenerate time range")
+    interior = _rng(config.seed, parent_name, child_index, "grid").uniform(
+        t0,
+        t_end,
+        config.n_time_points - 2,
+    )
+    return np.concatenate(([t0], np.sort(interior), [t_end]))
+
+
+def _state_series(process, state_name: str) -> Any:
+    if state_name in process.reactor_medium.components:
+        return process.reactor_medium.components[state_name].concentration
+    return process.process_variables[state_name].values
+
+
+def _set_state_series(process, state_name: str, series: TimeSeries) -> None:
+    if state_name in process.reactor_medium.components:
+        process.reactor_medium.components[state_name].concentration = series
+    else:
+        process.process_variables[state_name].values = series
+
+
+def _validate_requested_states(
+    parent_name: str,
+    process,
+    config: AugmentationConfig,
+) -> tuple[str, ...]:
+    ordering = get_process_ordering(process)
+    modeled_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs
+    for state_name in config.variable_names:
+        if state_name in ordering.name_controlled_PVs:
+            raise ValueError(
+                f"{parent_name}: controlled process variable {state_name!r} "
+                "cannot be augmented"
+            )
+        if state_name not in modeled_names:
+            raise ValueError(f"{parent_name}: {state_name!r} is not a modeled state")
+        series = _state_series(process, state_name)
+        if not isinstance(series, TimeSeries) or series.poly is None:
+            raise ValueError(
+                f"{parent_name}: modeled state {state_name!r} requires a spline"
+            )
+    return modeled_names
+
+
+def _built_in_values(
+    *,
+    parent_name: str,
+    state_name: str,
+    base_values: np.ndarray,
+    residual_rms: float,
+    observed_rms: float,
+    standard_normal: np.ndarray,
+    config: AugmentationConfig,
+) -> np.ndarray:
+    relative_residual_rms = residual_rms / observed_rms if observed_rms else 0.0
+    if observed_rms == 0.0 or (
+        relative_residual_rms <= config.min_relative_residual_rms
+    ):
+        raise ValueError(
+            f"{parent_name}: modeled state {state_name!r} has an effectively "
+            "zero spline residual; augment_state_values can supply an absolute "
+            "noise level"
+        )
+    if state_name not in config.noise_scale:
+        raise ValueError(f"{parent_name}: noise_scale is missing {state_name!r}")
+
+    err_std = config.noise_scale[state_name] * residual_rms
+    if config.noise_model == "add":
+        return np.clip(base_values + standard_normal * err_std, 0.0, None)
+
+    positive = base_values[base_values > 0.0]
+    mean_positive = float(np.mean(positive)) if positive.size else 0.0
+    rel_std = err_std / max(mean_positive, 1e-8)
+    sigma = np.sqrt(np.log1p(rel_std**2))
+    return base_values * np.exp(-0.5 * sigma**2 + sigma * standard_normal)
+
+
+def _augment_values(
+    *,
+    parent_name: str,
+    child_name: str,
+    child_index: int,
+    state_name: str,
+    series: TimeSeries,
+    times: np.ndarray,
+    config: AugmentationConfig,
+    run_config: RunConfig,
+    augment_state_values: AugmentStateValues | None,
+) -> np.ndarray:
+    if series.times is None or series.values is None:
+        raise ValueError(
+            f"{parent_name}: modeled state {state_name!r} requires observations "
+            "to compute spline residuals"
+        )
+    observed = np.asarray(series.values, dtype=float)
+    fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
+    residual_rms = float(np.sqrt(np.mean((observed - fitted) ** 2)))
+    observed_rms = float(np.sqrt(np.mean(observed**2)))
+    base_values = np.asarray(series.evaluate_many(times), dtype=float)
+    standard_normal = _rng(
+        config.seed,
+        parent_name,
+        child_index,
+        state_name,
+        "values",
+    ).standard_normal(times.shape)
+
+    values = None
+    if augment_state_values is not None:
+        values = augment_state_values(
+            parent_name=parent_name,
+            child_name=child_name,
+            state_name=state_name,
+            times=times.copy(),
+            base_values=base_values.copy(),
+            residual_rms=residual_rms,
+            observed_rms=observed_rms,
+            standard_normal=standard_normal.copy(),
+            config=run_config,
+        )
+    if values is None:
+        values = _built_in_values(
+            parent_name=parent_name,
+            state_name=state_name,
+            base_values=base_values,
+            residual_rms=residual_rms,
+            observed_rms=observed_rms,
+            standard_normal=standard_normal,
+            config=config,
+        )
+
+    values = np.asarray(values, dtype=float)
+    if values.shape != times.shape:
+        raise ValueError(
+            f"{child_name}: augment_state_values returned shape {values.shape} "
+            f"for {state_name!r}; expected {times.shape}"
+        )
+    if not np.all(np.isfinite(values)):
+        raise ValueError(
+            f"{child_name}: augment_state_values returned non-finite values for "
+            f"{state_name!r}"
+        )
+    return values
+
+
+def augment_process_collection(
+    collection: BioProcessCollection,
+    run_config: RunConfig,
+    augment_state_values: AugmentStateValues | None = None,
+) -> BioProcessCollection:
+    prepare = run_config.prepare
+    if prepare is None or prepare.augmentation is None:
+        return collection
+    config = prepare.augmentation
+    parents = [
+        (name, process)
+        for name, process in collection.processes.items()
+        if not isinstance(process, AugmentedBioProcess)
+    ]
+
+    child_names = [
+        f"{parent_name}__aug_{child_index:03d}"
+        for parent_name, _ in parents
+        for child_index in range(config.n_children_per_process)
+    ]
+    collisions = [name for name in child_names if name in collection.processes]
+    if collisions:
+        raise ValueError(f"generated augmented process already exists: {collisions[0]}")
+
+    for parent_name, parent in parents:
+        modeled_names = _validate_requested_states(parent_name, parent, config)
+        t0 = float(parent.time_axis.start)
+        t_end = float(parent.time_axis.end)
+        for child_index in range(config.n_children_per_process):
+            child_name = f"{parent_name}__aug_{child_index:03d}"
+            parent_copy = deepcopy(parent)
+            child = AugmentedBioProcess(
+                **vars(parent_copy),
+                parent_process=parent_name,
+            )
+            child.metadata.name = child_name
+            if hasattr(child.metadata, "_pre_transform_key"):
+                del child.metadata._pre_transform_key
+            times = _child_grid(config, parent_name, child_index, t0, t_end)
+
+            for state_name in modeled_names:
+                series = _state_series(child, state_name)
+                if not isinstance(series, TimeSeries) or series.poly is None:
+                    continue
+                if state_name in config.variable_names:
+                    values = _augment_values(
+                        parent_name=parent_name,
+                        child_name=child_name,
+                        child_index=child_index,
+                        state_name=state_name,
+                        series=series,
+                        times=times,
+                        config=config,
+                        run_config=run_config,
+                        augment_state_values=augment_state_values,
+                    )
+                else:
+                    values = np.asarray(series.evaluate_many(times), dtype=float)
+                _set_state_series(
+                    child,
+                    state_name,
+                    replace(series, times=times, values=values),
+                )
+
+            collection.processes[child_name] = child
+
+    return collection
