@@ -24,6 +24,7 @@ from bp_format.splines import fit_timeseries_spline
 from bp_format.serialization import load_process_collection, save_process_collection
 from pydantic import ValidationError
 
+import bp_train.augmentation as augmentation_module
 from bp_train.augmentation import augment_process_collection
 from bp_train.loo import _build_fold_groups
 from bp_train.prepare import prepare_artifact
@@ -622,6 +623,21 @@ def test_residual_scaled_noise_matches_formula(noise_model):
         sigma = np.sqrt(np.log1p(rel_std**2))
         expected = base * np.exp(-0.5 * sigma**2 + sigma * z)
     np.testing.assert_allclose(actual, expected)
+
+
+def test_residual_statistics_are_computed_once_per_parent_state(monkeypatch):
+    calls = []
+    original = augmentation_module._residual_statistics
+
+    def track_call(parent_name, state_name, series):
+        calls.append((parent_name, state_name))
+        return original(parent_name, state_name, series)
+
+    monkeypatch.setattr(augmentation_module, "_residual_statistics", track_call)
+
+    augment_process_collection(_collection(), _config(n_children=4))
+
+    assert calls == [("p1", "biomass")]
 
 
 def test_built_in_noise_rejects_effectively_zero_relative_residual():

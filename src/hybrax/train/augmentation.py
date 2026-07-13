@@ -107,6 +107,23 @@ def _spline_dips_below_zero(series: TimeSeries, t0: float, t_end: float) -> bool
     return False
 
 
+def _residual_statistics(
+    parent_name: str,
+    state_name: str,
+    series: TimeSeries,
+) -> tuple[float, float]:
+    if series.times is None or series.values is None:
+        raise ValueError(
+            f"{parent_name}: modeled state {state_name!r} requires observations "
+            "to compute spline residuals"
+        )
+    observed = np.asarray(series.values, dtype=float)
+    fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
+    residual_rms = float(np.sqrt(np.mean((observed - fitted) ** 2)))
+    observed_rms = float(np.sqrt(np.mean(observed**2)))
+    return residual_rms, observed_rms
+
+
 def _validate_requested_states(
     parent_name: str,
     process,
@@ -169,22 +186,14 @@ def _augment_values(
     child_name: str,
     child_index: int,
     state_name: str,
-    series: TimeSeries,
     times: np.ndarray,
     base_values: np.ndarray,
+    residual_rms: float,
+    observed_rms: float,
     config: AugmentationConfig,
     run_config: RunConfig,
     augment_state_values: AugmentStateValues | None,
 ) -> np.ndarray:
-    if series.times is None or series.values is None:
-        raise ValueError(
-            f"{parent_name}: modeled state {state_name!r} requires observations "
-            "to compute spline residuals"
-        )
-    observed = np.asarray(series.values, dtype=float)
-    fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
-    residual_rms = float(np.sqrt(np.mean((observed - fitted) ** 2)))
-    observed_rms = float(np.sqrt(np.mean(observed**2)))
     standard_normal = _rng(
         config.seed,
         parent_name,
@@ -255,6 +264,7 @@ def augment_process_collection(
     if collisions:
         raise ValueError(f"generated augmented process already exists: {collisions[0]}")
 
+    residual_statistics = {}
     validated_parents = []
     for parent_name, parent in parents:
         modeled_names = _validate_requested_states(parent_name, parent, config)
@@ -272,6 +282,12 @@ def augment_process_collection(
             for state_name in config.variable_names
             if _initial_value_source(config, state_name) == "measured"
         }
+        for state_name in config.variable_names:
+            residual_statistics[parent_name, state_name] = _residual_statistics(
+                parent_name,
+                state_name,
+                _state_series(parent, state_name),
+            )
         validated_parents.append(
             (
                 parent_name,
@@ -347,14 +363,18 @@ def augment_process_collection(
                 is_rmc = state_name in child.reactor_medium.components
                 base_values = np.asarray(series.evaluate_many(times), dtype=float)
                 if state_name in config.variable_names:
+                    residual_rms, observed_rms = residual_statistics[
+                        parent_name, state_name
+                    ]
                     values = _augment_values(
                         parent_name=parent_name,
                         child_name=child_name,
                         child_index=child_index,
                         state_name=state_name,
-                        series=series,
                         times=times,
                         base_values=base_values,
+                        residual_rms=residual_rms,
+                        observed_rms=observed_rms,
                         config=config,
                         run_config=run_config,
                         augment_state_values=augment_state_values,
