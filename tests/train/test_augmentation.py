@@ -56,6 +56,16 @@ def _dipping_spline() -> TimeSeries:
     )
 
 
+def _late_spline(values: list[float]) -> TimeSeries:
+    return fit_timeseries_spline(
+        TimeSeries(
+            times=np.linspace(1.0, 4.0, len(values)),
+            values=np.asarray(values),
+        ),
+        smoothing_s=0.08,
+    )
+
+
 def _collection(*, zero_trace: bool = False) -> BioProcessCollection:
     biomass_values = [0.0] * 7 if zero_trace else [0.4, 0.7, 0.8, 1.4, 1.3, 2.0, 2.2]
     process = BioProcess(
@@ -107,6 +117,7 @@ def _config(
     n_children: int = 1,
     n_time_points: int = 6,
     noise_scale: dict[str, float] | None = None,
+    initial_value_source: str | dict[str, str] = "measured",
     min_relative_residual_rms: float = 1e-6,
 ) -> RunConfig:
     augmentation = AugmentationConfig(
@@ -118,6 +129,7 @@ def _config(
         if noise_scale is not None
         else {name: 0.7 for name in variable_names},
         noise_model=noise_model,
+        initial_value_source=initial_value_source,
         min_relative_residual_rms=min_relative_residual_rms,
     )
     return RunConfig(
@@ -217,11 +229,35 @@ def test_no_config_leaves_collection_unchanged():
             "variable_names": ["biomass"],
             "noise_scale": {"biomass": float("nan")},
         },
+        {
+            "n_children_per_process": 1,
+            "n_time_points": 2,
+            "variable_names": ["biomass"],
+            "initial_value_source": "other",
+        },
+        {
+            "n_children_per_process": 1,
+            "n_time_points": 2,
+            "variable_names": ["biomass", "ratio"],
+            "initial_value_source": {"biomass": "measured"},
+        },
     ],
 )
 def test_invalid_config_fails_fast(config):
     with pytest.raises(ValidationError):
         AugmentationConfig.model_validate(config)
+
+
+def test_initial_value_source_defaults_to_measured():
+    config = AugmentationConfig.model_validate(
+        {
+            "n_children_per_process": 1,
+            "n_time_points": 2,
+            "variable_names": ["biomass"],
+        }
+    )
+
+    assert config.initial_value_source == "measured"
 
 
 def test_degenerate_parent_time_range_fails_fast():
@@ -230,6 +266,170 @@ def test_degenerate_parent_time_range_fails_fast():
 
     with pytest.raises(ValueError, match="p1: cannot augment a degenerate time range"):
         augment_process_collection(collection, _config())
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("measured", "measured"),
+        ("spline", "spline"),
+        ("augmented", "augmented"),
+    ],
+)
+def test_initial_value_source_controls_augmented_t0(source, expected):
+    collection = _collection()
+    parent_series = _state_series(collection.processes["p1"], "biomass")
+    measured = float(parent_series.values[0])
+    spline = float(parent_series.evaluate(0.0))
+
+    child = augment_process_collection(
+        collection,
+        _config(initial_value_source=source),
+        lambda *, base_values, **_: base_values + 10.0,
+    ).processes["p1__aug_000"]
+
+    expected_value = {
+        "measured": measured,
+        "spline": spline,
+        "augmented": spline + 10.0,
+    }[expected]
+    assert _state_series(child, "biomass").values[0] == pytest.approx(expected_value)
+
+
+def test_initial_value_source_mapping_controls_each_listed_state():
+    collection = _collection()
+    parent = collection.processes["p1"]
+    biomass = _state_series(parent, "biomass")
+    ratio = _state_series(parent, "ratio")
+
+    child = augment_process_collection(
+        collection,
+        _config(
+            variable_names=("biomass", "ratio"),
+            initial_value_source={"biomass": "measured", "ratio": "spline"},
+        ),
+        lambda *, base_values, **_: base_values + 10.0,
+    ).processes["p1__aug_000"]
+
+    assert _state_series(child, "biomass").values[0] == pytest.approx(biomass.values[0])
+    assert _state_series(child, "ratio").values[0] == pytest.approx(ratio.evaluate(0.0))
+
+
+@pytest.mark.parametrize("source", ["measured", "spline"])
+def test_initial_value_overwrite_accepts_read_only_hook_values(source):
+    collection = _collection()
+    parent_series = _state_series(collection.processes["p1"], "biomass")
+
+    child = augment_process_collection(
+        collection,
+        _config(initial_value_source=source),
+        lambda *, base_values, **_: np.broadcast_to(base_values[0], base_values.shape),
+    ).processes["p1__aug_000"]
+
+    expected = (
+        parent_series.values[0] if source == "measured" else parent_series.evaluate(0.0)
+    )
+    assert _state_series(child, "biomass").values[0] == pytest.approx(expected)
+
+
+def test_measured_initial_value_requires_observation_at_process_start():
+    collection = _collection()
+    collection.processes["p1"].process_variables["ratio"].values = _late_spline(
+        [0.8, 0.9, 0.85, 1.1, 1.0, 1.2, 1.3]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="initial_value_source='measured'.*ratio.*observation at process start",
+    ):
+        augment_process_collection(
+            collection,
+            _config(
+                variable_names=("ratio",),
+                initial_value_source="measured",
+            ),
+        )
+
+
+def test_measured_initial_value_failure_does_not_add_children():
+    collection = _collection()
+    second = deepcopy(collection.processes["p1"])
+    second.metadata.name = "p2"
+    second.process_variables["ratio"].values = _late_spline(
+        [0.8, 0.9, 0.85, 1.1, 1.0, 1.2, 1.3]
+    )
+    collection.processes["p2"] = second
+
+    with pytest.raises(ValueError, match="p2.*observation at process start"):
+        augment_process_collection(
+            collection,
+            _config(
+                variable_names=("ratio",),
+                initial_value_source="measured",
+            ),
+        )
+
+    assert list(collection.processes) == ["p1", "p2"]
+
+
+def test_measured_initial_value_match_has_no_relative_time_tolerance():
+    collection = _collection()
+    process = collection.processes["p1"]
+    t0 = 1_000_000.0
+    process.time_axis.start = t0
+    process.time_axis.end = t0 + 4.0
+    process.reactor_medium.components["biomass"].concentration = fit_timeseries_spline(
+        TimeSeries(
+            times=np.linspace(t0 + 1.0, t0 + 4.0, 7),
+            values=np.asarray([0.4, 0.7, 0.8, 1.4, 1.3, 2.0, 2.2]),
+        ),
+        smoothing_s=0.08,
+    )
+
+    with pytest.raises(ValueError, match="requires an observation at process start"):
+        augment_process_collection(collection, _config())
+
+
+@pytest.mark.parametrize("source", ["spline", "augmented"])
+def test_late_listed_trace_warns_when_initial_value_uses_spline(source):
+    collection = _collection()
+    collection.processes["p1"].process_variables["ratio"].values = _late_spline(
+        [0.8, 0.9, 0.85, 1.1, 1.0, 1.2, 1.3]
+    )
+
+    with pytest.warns(
+        UserWarning,
+        match="spline for 'ratio' is extrapolated before its first observation",
+    ) as caught:
+        augment_process_collection(
+            collection,
+            _config(
+                variable_names=("ratio",),
+                initial_value_source=source,
+                n_children=3,
+            ),
+        )
+
+    assert (
+        sum("spline for 'ratio' is extrapolated" in str(w.message) for w in caught) == 1
+    )
+
+
+def test_late_unlisted_spline_trace_warns_about_implicit_extrapolation():
+    collection = _collection()
+    collection.processes["p1"].process_variables["ratio"].values = _late_spline(
+        [0.8, 0.9, 0.85, 1.1, 1.0, 1.2, 1.3]
+    )
+
+    with pytest.warns(
+        UserWarning,
+        match="spline for 'ratio' is extrapolated before its first observation",
+    ) as caught:
+        augment_process_collection(collection, _config(n_children=3))
+
+    assert (
+        sum("spline for 'ratio' is extrapolated" in str(w.message) for w in caught) == 1
+    )
 
 
 def test_children_have_independent_deterministic_common_endpoint_grids():
@@ -310,7 +510,10 @@ def test_listed_noise_includes_t0_and_unlisted_states_follow_three_way_rule():
     collection = _collection()
     parent = collection.processes["p1"]
     parent_product = deepcopy(_state_series(parent, "product"))
-    child = augment_process_collection(collection, _config()).processes["p1__aug_000"]
+    child = augment_process_collection(
+        collection,
+        _config(initial_value_source="augmented"),
+    ).processes["p1__aug_000"]
     child_grid = np.asarray(_state_series(child, "biomass").times)
 
     biomass_base = np.asarray(
@@ -397,7 +600,11 @@ def test_residual_scaled_noise_matches_formula(noise_model):
     scale = 1.4
     collection = augment_process_collection(
         _collection(),
-        _config(noise_model=noise_model, noise_scale={"biomass": scale}),
+        _config(
+            noise_model=noise_model,
+            noise_scale={"biomass": scale},
+            initial_value_source="augmented",
+        ),
         capture,
     )
     actual = np.asarray(
@@ -441,6 +648,7 @@ def test_hook_can_override_zero_trace_with_absolute_noise():
         _config(
             variable_names=("biomass", "ratio"),
             noise_scale={"ratio": 0.7},
+            initial_value_source="augmented",
         ),
         absolute_noise,
     )
@@ -500,7 +708,7 @@ def test_reactor_medium_spline_warns_and_augmented_values_are_clipped():
 def test_custom_negative_reactor_medium_values_are_clipped():
     child = augment_process_collection(
         _collection(),
-        _config(),
+        _config(initial_value_source="augmented"),
         lambda *, base_values, **_: np.full_like(base_values, -1.0),
     ).processes["p1__aug_000"]
 

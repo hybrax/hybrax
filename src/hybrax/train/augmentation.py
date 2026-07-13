@@ -3,8 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
-from typing import Any, Callable
 import warnings
+from typing import Any, Callable
 
 import numpy as np
 from bp_format.dataclasses import (
@@ -14,10 +14,15 @@ from bp_format.dataclasses import (
 )
 from bp_format.mechanistic import get_process_ordering
 
-from .run_config import AugmentationConfig, RunConfig
+from .run_config import AugmentationConfig, InitialValueSource, RunConfig
 
 
 AugmentStateValues = Callable[..., Any]
+_TIME_ATOL = 1e-9
+
+
+def _times_match(left, right):
+    return np.isclose(left, right, atol=_TIME_ATOL, rtol=0.0)
 
 
 def _rng(seed: int, *identity: object) -> np.random.Generator:
@@ -33,8 +38,6 @@ def _child_grid(
     t0: float,
     t_end: float,
 ) -> np.ndarray:
-    if t0 == t_end:
-        raise ValueError(f"{parent_name}: cannot augment a degenerate time range")
     interior = _rng(config.seed, parent_name, child_index, "grid").uniform(
         t0,
         t_end,
@@ -54,6 +57,30 @@ def _set_state_series(process, state_name: str, series: TimeSeries) -> None:
         process.reactor_medium.components[state_name].concentration = series
     else:
         process.process_variables[state_name].values = series
+
+
+def _initial_value_source(
+    config: AugmentationConfig,
+    state_name: str,
+) -> InitialValueSource:
+    source = config.initial_value_source
+    return source[state_name] if isinstance(source, dict) else source
+
+
+def _measured_initial_value(
+    parent_name: str,
+    state_name: str,
+    series: TimeSeries,
+    t0: float,
+) -> float:
+    times = np.asarray(series.times, dtype=float)
+    matches = np.flatnonzero(_times_match(times, t0))
+    if matches.size == 0:
+        raise ValueError(
+            f"{parent_name}: initial_value_source='measured' for {state_name!r} "
+            f"requires an observation at process start t={t0:.6g}"
+        )
+    return float(np.asarray(series.values, dtype=float)[matches[0]])
 
 
 def _spline_dips_below_zero(series: TimeSeries, t0: float, t_end: float) -> bool:
@@ -190,7 +217,7 @@ def _augment_values(
             config=config,
         )
 
-    values = np.asarray(values, dtype=float)
+    values = np.array(values, dtype=float, copy=True)
     if values.shape != times.shape:
         raise ValueError(
             f"{child_name}: augment_state_values returned shape {values.shape} "
@@ -228,14 +255,63 @@ def augment_process_collection(
     if collisions:
         raise ValueError(f"generated augmented process already exists: {collisions[0]}")
 
+    validated_parents = []
     for parent_name, parent in parents:
         modeled_names = _validate_requested_states(parent_name, parent, config)
         t0 = float(parent.time_axis.start)
         t_end = float(parent.time_axis.end)
+        if t0 == t_end:
+            raise ValueError(f"{parent_name}: cannot augment a degenerate time range")
+        measured_initial_values = {
+            state_name: _measured_initial_value(
+                parent_name,
+                state_name,
+                _state_series(parent, state_name),
+                t0,
+            )
+            for state_name in config.variable_names
+            if _initial_value_source(config, state_name) == "measured"
+        }
+        validated_parents.append(
+            (
+                parent_name,
+                parent,
+                modeled_names,
+                t0,
+                t_end,
+                measured_initial_values,
+            )
+        )
+
+    for (
+        parent_name,
+        parent,
+        modeled_names,
+        t0,
+        t_end,
+        measured_initial_values,
+    ) in validated_parents:
         for state_name in modeled_names:
             series = _state_series(parent, state_name)
             if not isinstance(series, TimeSeries) or series.poly is None:
                 continue
+            source = (
+                _initial_value_source(config, state_name)
+                if state_name in config.variable_names
+                else "spline"
+            )
+            if source != "measured" and series.times is not None:
+                first_observation = float(np.asarray(series.times)[0])
+                extrapolates_to_t0 = first_observation > t0 and not _times_match(
+                    first_observation, t0
+                )
+                if extrapolates_to_t0:
+                    warnings.warn(
+                        f"{parent_name}: spline for {state_name!r} is extrapolated "
+                        f"before its first observation to construct the augmented "
+                        f"initial value at t={t0:.6g}",
+                        stacklevel=2,
+                    )
             is_rmc = state_name in parent.reactor_medium.components
             mostly_nonnegative = series.values is not None and (
                 np.mean(np.asarray(series.values) >= 0.0) > 0.5
@@ -283,6 +359,11 @@ def augment_process_collection(
                         run_config=run_config,
                         augment_state_values=augment_state_values,
                     )
+                    source = _initial_value_source(config, state_name)
+                    if source == "measured":
+                        values[0] = measured_initial_values[state_name]
+                    elif source == "spline":
+                        values[0] = base_values[0]
                 else:
                     values = base_values
                 if is_rmc:

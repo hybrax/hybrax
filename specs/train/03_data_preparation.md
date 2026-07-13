@@ -63,9 +63,22 @@ Modeled states follow three rules.
 2. Unlisted spline-backed states are evaluated on the same grid without noise.
 3. Unlisted states without splines keep their original observations and grid.
 
-The second rule also replaces the raw initial observation with `spline(t0)`.
+For listed states, `initial_value_source` selects the child's initial value.
+`measured` preserves the parent's real observation at the process start and fails when none exists.
+`spline` uses `spline(t0)`, while `augmented` also applies augmentation noise at `t0`.
+The setting may be one value for every listed state or an exact per-state mapping.
+When `spline` or `augmented` extrapolates before a trace's first observation, augmentation emits a warning.
+
+The second rule implicitly uses `spline(t0)` and emits the same extrapolation warning when its first observation is later.
 A state used as a training target should normally be listed, otherwise the children supervise repeated noise-free spline trajectories for that target.
 Mixed state grids remain valid because training constructs a union grid and a per-target measurement mask.
+
+Reactor-medium component values are clipped at zero after built-in or custom augmentation.
+Augmentation warns when a reactor-medium component spline dips below zero over the process interval, or when this happens for a process variable whose observations are mostly nonnegative.
+Process-variable values are not clipped by the final reactor-medium safeguard.
+The built-in `add` model nevertheless clips every listed state at zero; use `mult` or a custom hook for variables that may legitimately be negative.
+Resampled modeled states are stored on children as observation-only series, while their generating splines remain available on the parent.
+Controlled-variable splines remain on each child because simulation still needs them.
 
 These resampled points are synthetic training observations.
 They are not claims of new physical offline samples, and augmentation does not add sample-removal events or change the reactor volume.

@@ -40,7 +40,6 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 - Pseudo-batch integration.
 - Stateful models such as RNNs or LSTMs.
 - Full resumption (optimizer state + RNG) and warmstart from a prior run. Periodic parameter snapshots during training are supported: every `--log-every` steps, `bp-train train` writes `<output-dir>/checkpoints/step_NNNNN/{trained_wrapper.eqx, trained_wrapper.meta.json, loss_curve.png, predictions.csv}` plus a `latest` symlink. Checkpoint directories do not include per-process prediction plot PNGs. Loading a checkpoint as a warmstart init, and restoring optimizer state, are deferred.
-- Data augmentation. (Note: a structural placeholder for augmented bioprocesses lives in `bp_format.AugmentedBioProcess`; LOO-CV groups augmented children with their parent so train/holdout splits cannot leak. See `spec/loo.md`.)
 - A fully general segmented runtime controls API.
 - Wrapper modes where the user partially handles dilution and the library
   handles the rest.
@@ -242,11 +241,9 @@ def build_batched_loss_fn(*, default_loss_fn, store, collection, train_cfg, conf
     return default_loss_fn
 ```
 
-Data augmentation hooks are intentionally deferred. When augmentation lands,
-augmented samples must be persisted in the prepared `data.json` /
-`prepared.json` as `bp_format.AugmentedBioProcess` records, not generated
-only ephemerally inside training, so model-training provenance captures the
-exact synthetic traces used.
+Prepare-time augmentation persists synthetic samples in `prepared.json` as `bp_format.AugmentedBioProcess` records rather than generating them ephemerally inside training.
+This captures the exact synthetic observations and their parent relationship in model-training provenance.
+The optional `augment_state_values(...)` hook overrides generated values for an explicitly listed state and child.
 
 `transform_process_collection(...)` is called once and receives the raw
 `BioProcessCollection`; it returns the updated collection used for the rest of
@@ -1177,10 +1174,6 @@ Status as of March 28, 2026:
 
 These are explicitly deferred beyond V1:
 
-- data augmentation (the `bp_format.AugmentedBioProcess` placeholder is in
-  place, and augmented samples are intended to be persisted as full prepared
-  process records for model-training provenance, but no augmentation hook in
-  `bp-train prepare` produces these records yet — see `spec/loo.md`),
 - stateful models,
 - pseudo-batch dynamics,
 - alternative runtime contracts where the user manually handles dilution,
@@ -1195,6 +1188,7 @@ contract and CLI/artifact details live in `spec/loo.md`.
 
 Current limitations:
 
+- Open data-grid question: should modeled reactor-medium component and process-variable traces continue to support different measurement grids and first-measurement times, or should all modeled traces within a process be required to share one grid?
 - `Cin` is currently constant at runtime; processes requiring time-varying feed
   composition are not supported in this implementation.
 - `bp-train` currently delegates mechanistic RHS evaluation to

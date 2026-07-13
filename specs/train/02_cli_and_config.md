@@ -188,6 +188,7 @@ Override the generated values for one explicitly listed state on one augmented c
 Return a one-dimensional array with the same shape as `times`, or return `None` to use the configured residual-scaled noise model.
 `standard_normal` is the deterministic random vector assigned to that child and state.
 For an effectively zero trace, custom code can return clipped additive values using an absolute standard deviation in the state's physical units.
+For reactor-medium components, core augmentation clips the final returned values at zero.
 
 ```python
 def augment_state_values(
@@ -336,6 +337,7 @@ The `prepare.augmentation` object has these fields.
 | `variable_names` | required, nonempty | Modeled states to noise. |
 | `noise_scale` | {} | Per-state multiplier on the parent spline-residual RMS, required when the built-in path handles that state. |
 | `noise_model` | `mult` | Mean-preserving log-normal `mult` or clipped Gaussian `add`. |
+| `initial_value_source` | `measured` | `measured`, `spline`, or `augmented`, applied to every listed state; alternatively, an exact per-state mapping for all `variable_names`. |
 | `min_relative_residual_rms` | 1e-6 (>0) | Reject effectively interpolating splines on the built-in path. |
 
 **`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to

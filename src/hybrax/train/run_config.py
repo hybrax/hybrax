@@ -8,7 +8,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bp_train.utils import load_custom_module
 
@@ -43,6 +43,7 @@ _COMMAND_SECTIONS = {
     "loo": _TRAIN_SECTIONS | {"loo"},
 }
 _Command = Literal["prepare", "train", "loo"]
+InitialValueSource = Literal["measured", "spline", "augmented"]
 
 
 class ConfigBase(BaseModel):
@@ -106,6 +107,9 @@ class AugmentationConfig(ConfigBase):
     variable_names: tuple[str, ...] = Field(min_length=1)
     noise_scale: dict[str, float] = Field(default_factory=dict)
     noise_model: Literal["mult", "add"] = "mult"
+    initial_value_source: InitialValueSource | dict[str, InitialValueSource] = (
+        "measured"
+    )
     min_relative_residual_rms: float = Field(1e-6, gt=0)
 
     @field_validator("noise_scale")
@@ -121,6 +125,20 @@ class AugmentationConfig(ConfigBase):
                 "noise_scale values must be finite and positive: " + ", ".join(invalid)
             )
         return value
+
+    @model_validator(mode="after")
+    def _validate_initial_value_source(self) -> AugmentationConfig:
+        if not isinstance(self.initial_value_source, dict):
+            return self
+        configured = set(self.variable_names)
+        specified = set(self.initial_value_source)
+        if configured != specified:
+            raise ValueError(
+                "initial_value_source keys must match variable_names; "
+                f"missing={sorted(configured - specified)}, "
+                f"unexpected={sorted(specified - configured)}"
+            )
+        return self
 
 
 class PrepareConfig(ConfigBase):
