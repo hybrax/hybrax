@@ -14,7 +14,6 @@ import warnings
 import numpy as np
 from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import (
-    AugmentedBioProcess,
     BioProcessCollection,
     CaseStudy,
     StaticVariable,
@@ -145,7 +144,7 @@ def _build_semantics_provenance(
     raw_snapshots: dict[str, dict[str, object]],
     prepared_snapshots: dict[str, dict[str, object]],
     reverse_rename_map: dict[str, str],
-    prepared_processes: dict[str, Any],
+    augmentation_created_names: set[str],
 ) -> dict[str, dict[str, object]]:
     provenance: dict[str, dict[str, object]] = {}
 
@@ -153,10 +152,9 @@ def _build_semantics_provenance(
         old_name = reverse_rename_map.get(process_name, process_name)
         raw_summary = raw_snapshots.get(old_name)
         if raw_summary is None:
-            process = prepared_processes[process_name]
             changed_by_hooks = [
                 "augmentation"
-                if isinstance(process, AugmentedBioProcess)
+                if process_name in augmentation_created_names
                 else "transform_process_collection"
             ]
             provenance[process_name] = {
@@ -309,12 +307,14 @@ def prepare_artifact(
     for process_name, process in collection.processes.items():
         process.metadata._pre_transform_key = process_name
     collection = transform_process_collection(collection, config)
+    transformed_process_names = set(collection.processes)
     augment_state_values = get_hook(custom_module, "augment_state_values", None)
     collection = augment_process_collection(
         collection,
         config,
         augment_state_values,
     )
+    augmentation_created_names = set(collection.processes) - transformed_process_names
     tagged_processes: list[tuple[str, str]] = []
     for process_name, process in collection.processes.items():
         old_name = getattr(process.metadata, "_pre_transform_key", None)
@@ -365,7 +365,7 @@ def prepare_artifact(
         raw_snapshots=raw_semantics,
         prepared_snapshots=prepared_semantics,
         reverse_rename_map=reverse_rename_map,
-        prepared_processes=collection.processes,
+        augmentation_created_names=augmentation_created_names,
     )
 
     process_bundles: dict[str, Any] = {}

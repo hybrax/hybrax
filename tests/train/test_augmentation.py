@@ -577,6 +577,39 @@ def test_prepare_handles_transform_added_process_provenance(tmp_path):
     assert provenance["changed_by_hooks"] == ["transform_process_collection"]
 
 
+def test_transform_created_augmented_process_is_attributed_to_transform(tmp_path):
+    custom_py = tmp_path / "custom-add-augmented-process.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "from copy import deepcopy",
+                "from bp_format.dataclasses import AugmentedBioProcess",
+                "",
+                "def transform_process_collection(collection, config):",
+                "    parent = collection.processes['p1']",
+                "    copied = deepcopy(parent)",
+                "    copied.metadata.name = 'transform_child'",
+                "    collection.processes['transform_child'] = AugmentedBioProcess(",
+                "        **vars(copied), parent_process='p1'",
+                "    )",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    prepared = _prepare_collection(
+        tmp_path,
+        "prepared-transform-augmented-process",
+        custom_py=custom_py,
+    )
+    provenance = prepared.metadata["bp-train"]["semantics_provenance"]["processes"][
+        "transform_child"
+    ]
+
+    assert provenance["raw"] is None
+    assert provenance["changed_by_hooks"] == ["transform_process_collection"]
+
+
 def test_prepare_rejects_ambiguous_copied_rename_tags(tmp_path):
     custom_py = tmp_path / "custom-ambiguous-tags.py"
     custom_py.write_text(
