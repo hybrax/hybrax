@@ -290,7 +290,14 @@ def augment_process_collection(
                 _set_state_series(
                     child,
                     state_name,
-                    replace(series, times=times, values=values),
+                    replace(
+                        series,
+                        times=times,
+                        values=values,
+                        breaks=None,
+                        coeffs=None,
+                        segment_start_piece_idx=None,
+                    ),
                 )
 
             collection.processes[child_name] = child

@@ -354,15 +354,19 @@ def test_mixed_grid_child_round_trips_and_is_accepted_by_training_data_store(tmp
     assert np.all(np.asarray(store.mask_measured[child_index, 0, :3]))
 
 
-def test_modeled_reactor_component_and_uncontrolled_pv_are_accepted():
+def test_resampled_modeled_states_drop_splines_but_controls_keep_them():
     collection = augment_process_collection(
         _collection(),
-        _config(variable_names=("biomass", "ratio")),
+        _config(variable_names=("biomass",)),
     )
 
     child = collection.processes["p1__aug_000"]
     assert len(_state_series(child, "biomass").times) == 6
     assert len(_state_series(child, "ratio").times) == 6
+    assert _state_series(child, "biomass").poly is None
+    assert _state_series(child, "ratio").poly is None
+    assert _state_series(child, "temperature").poly is not None
+    assert _state_series(collection.processes["p1"], "biomass").poly is not None
 
 
 @pytest.mark.parametrize(
