@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from typing import Any, Callable
+import warnings
 
 import numpy as np
 from bp_format.dataclasses import (
@@ -53,6 +54,30 @@ def _set_state_series(process, state_name: str, series: TimeSeries) -> None:
         process.reactor_medium.components[state_name].concentration = series
     else:
         process.process_variables[state_name].values = series
+
+
+def _spline_dips_below_zero(series: TimeSeries, t0: float, t_end: float) -> bool:
+    breaks = np.asarray(series.breaks, dtype=float)
+    coeffs = np.asarray(series.coeffs, dtype=float)
+    last_piece = len(coeffs) - 1
+
+    for index, (a, b, c, d) in enumerate(coeffs):
+        left = t0 if index == 0 else max(t0, breaks[index])
+        right = t_end if index == last_piece else min(t_end, breaks[index + 1])
+        if left > right:
+            continue
+
+        local_left = left - breaks[index]
+        local_right = right - breaks[index]
+        candidates = [local_left, local_right]
+        for root in np.roots([3.0 * d, 2.0 * c, b]):
+            if abs(root.imag) <= 1e-12 and local_left <= root.real <= local_right:
+                candidates.append(float(root.real))
+        values = [a + x * (b + x * (c + x * d)) for x in candidates]
+        if min(values) < 0.0:
+            return True
+
+    return False
 
 
 def _validate_requested_states(
@@ -119,6 +144,7 @@ def _augment_values(
     state_name: str,
     series: TimeSeries,
     times: np.ndarray,
+    base_values: np.ndarray,
     config: AugmentationConfig,
     run_config: RunConfig,
     augment_state_values: AugmentStateValues | None,
@@ -132,7 +158,6 @@ def _augment_values(
     fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
     residual_rms = float(np.sqrt(np.mean((observed - fitted) ** 2)))
     observed_rms = float(np.sqrt(np.mean(observed**2)))
-    base_values = np.asarray(series.evaluate_many(times), dtype=float)
     standard_normal = _rng(
         config.seed,
         parent_name,
@@ -207,6 +232,26 @@ def augment_process_collection(
         modeled_names = _validate_requested_states(parent_name, parent, config)
         t0 = float(parent.time_axis.start)
         t_end = float(parent.time_axis.end)
+        for state_name in modeled_names:
+            series = _state_series(parent, state_name)
+            if not isinstance(series, TimeSeries) or series.poly is None:
+                continue
+            is_rmc = state_name in parent.reactor_medium.components
+            mostly_nonnegative = series.values is not None and (
+                np.mean(np.asarray(series.values) >= 0.0) > 0.5
+            )
+            if _spline_dips_below_zero(series, t0, t_end) and (
+                is_rmc or mostly_nonnegative
+            ):
+                state_kind = (
+                    "reactor-medium component" if is_rmc else "process variable"
+                )
+                warnings.warn(
+                    f"{parent_name}: spline for {state_kind} {state_name!r} "
+                    "evaluated below zero during augmentation",
+                    stacklevel=2,
+                )
+
         for child_index in range(config.n_children_per_process):
             child_name = f"{parent_name}__aug_{child_index:03d}"
             parent_copy = deepcopy(parent)
@@ -223,6 +268,8 @@ def augment_process_collection(
                 series = _state_series(child, state_name)
                 if not isinstance(series, TimeSeries) or series.poly is None:
                     continue
+                is_rmc = state_name in child.reactor_medium.components
+                base_values = np.asarray(series.evaluate_many(times), dtype=float)
                 if state_name in config.variable_names:
                     values = _augment_values(
                         parent_name=parent_name,
@@ -231,12 +278,15 @@ def augment_process_collection(
                         state_name=state_name,
                         series=series,
                         times=times,
+                        base_values=base_values,
                         config=config,
                         run_config=run_config,
                         augment_state_values=augment_state_values,
                     )
                 else:
-                    values = np.asarray(series.evaluate_many(times), dtype=float)
+                    values = base_values
+                if is_rmc:
+                    values = np.clip(values, 0.0, None)
                 _set_state_series(
                     child,
                     state_name,

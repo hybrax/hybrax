@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pytest
@@ -42,6 +43,16 @@ def _spline(values: list[float], *, smoothing_s: float = 0.08) -> TimeSeries:
             values=np.asarray(values),
         ),
         smoothing_s=smoothing_s,
+    )
+
+
+def _dipping_spline() -> TimeSeries:
+    return fit_timeseries_spline(
+        TimeSeries(
+            times=np.arange(5.0),
+            values=np.asarray([0.1, 0.11, 1.0, 0.11, 0.1]),
+        ),
+        smoothing_s=0.0,
     )
 
 
@@ -461,6 +472,63 @@ def test_additive_noise_clips_at_zero():
     ).processes["p1__aug_000"]
 
     assert np.any(np.asarray(_state_series(child, "biomass").values) == 0.0)
+
+
+def test_reactor_medium_spline_warns_and_augmented_values_are_clipped():
+    collection = _collection()
+    collection.processes["p1"].reactor_medium.components[
+        "biomass"
+    ].concentration = _dipping_spline()
+
+    with pytest.warns(
+        UserWarning,
+        match="spline for reactor-medium component 'biomass' evaluated below zero",
+    ):
+        child = augment_process_collection(
+            collection,
+            _config(variable_names=("ratio",), n_time_points=2),
+        ).processes["p1__aug_000"]
+
+    values = np.asarray(_state_series(child, "biomass").values)
+    assert np.all(values >= 0.0)
+
+
+def test_custom_negative_reactor_medium_values_are_clipped():
+    child = augment_process_collection(
+        _collection(),
+        _config(),
+        lambda *, base_values, **_: np.full_like(base_values, -1.0),
+    ).processes["p1__aug_000"]
+
+    assert np.all(np.asarray(_state_series(child, "biomass").values) == 0.0)
+
+
+def test_mostly_nonnegative_process_variable_warns_but_is_not_clipped():
+    collection = _collection()
+    collection.processes["p1"].process_variables["ratio"].values = _dipping_spline()
+
+    with pytest.warns(
+        UserWarning,
+        match="spline for process variable 'ratio' evaluated below zero",
+    ):
+        child = augment_process_collection(collection, _config()).processes[
+            "p1__aug_000"
+        ]
+
+    assert np.any(np.asarray(_state_series(child, "ratio").values) < 0.0)
+
+
+def test_process_variable_with_half_nonnegative_observations_does_not_warn():
+    collection = _collection()
+    collection.processes["p1"].process_variables["ratio"].values = _spline(
+        [-1.0, -1.0, 1.0, 1.0],
+        smoothing_s=0.0,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        augment_process_collection(collection, _config())
+
+    assert not caught
 
 
 def test_generated_child_name_collision_fails_fast():
