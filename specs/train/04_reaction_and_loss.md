@@ -55,12 +55,12 @@ def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
   when you need RAW physical values (chemistry / FBA / kinetic laws), then
   `self.scale_*` on the way back out — the helpers are linear and work for values
   and derivatives identically.
-- The 11 stored `SCALE_*` fields are inherited frozen fields; **do not
-  redeclare** them — pass values to `super().__init__()`. Axis dimensions are
-  available as properties (`n_modeled_RMCs`, `n_modeled_PVs`,
+- The 12 stored `SCALE_*` fields (including `SCALE_latent`) are inherited frozen
+  fields; **do not redeclare** them — pass values to `super().__init__()`. Axis
+  dimensions are available as properties (`n_modeled_RMCs`, `n_modeled_PVs`,
   `n_modeled_BiologicalOde_rates`, `n_modeled_FVCs`, `n_controlled_FVCs`,
-  `n_controlled_PVs`) so you size MLPs after `super().__init__()` without
-  threading `n_*` kwargs.
+  `n_controlled_PVs`, `n_latent`) so you size MLPs after `super().__init__()`
+  without threading `n_*` kwargs.
 
 ### `ReactionInputs`
 
@@ -78,6 +78,7 @@ axes you need — unused fields cost nothing under JIT.
 | `SCL_controlled_FVCs_Cin` | `(n_ctrl_FVC, n_RMC)` | controlled-feed composition |
 | `SCL_controlled_PVs` | `(n_ctrl_PV,)` | controlled PV signals (pH, DO, T, …) |
 | `SCL_modeled_FVCs_Cin` | `(n_modeled_FVC, n_RMC)` | modeled-feed composition |
+| `SCL_latent` | `(n_latent,)` | integrated latent state (empty for stateless modules) |
 
 ### `ReactionOutputs`
 
@@ -85,6 +86,7 @@ axes you need — unused fields cost nothing under JIT.
 |---|---|---|
 | `SCL_modeled_BiologicalOde_rates` | `(n_rates,)` | rates aligned with `rhs_ode.name_modeled_rates`; **not** 1:1 with RMCs (algebraic rates like `q_X_active` live here) |
 | `SCL_modeled_FVCs_rates` | `(n_modeled_FVC,)` | modeled-feed flow rates; **must be ≥ 0** — apply your own positivity transform (e.g. softplus) before scaling |
+| `SCL_latent_derivative` | `(n_latent,)` | derivative aligned with `SCL_latent` (empty for stateless modules) |
 | `auxiliary` | `dict[str, array] \| None` | optional model-defined observables saved at solver times (see [Using auxiliary](#using-auxiliary)) |
 
 ### `DefaultReactionModule`
@@ -166,7 +168,7 @@ whichever you need.
 | `n_measured` | scalar | unpadded row count |
 | `reaction_module` | — | the `UserReactionModule` (single source of `SCALE_*`) |
 | `step` | scalar | training step (−1 in forward eval) |
-| `jump_ts` | `(n_step_ts,)` or `None` | controls-discontinuity times (`controls.active_step_ts`); use to mask dense points / triples near jumps |
+| `jump_ts` | `(n_jump_ts,)` or `None` | genuine vector-field discontinuity times (`controls.active_jump_ts`, sourced from `BioProcess.discrete_events`); use to mask dense points / triples near jumps |
 
 **Dense-grid view** — populated iff the loss module declares
 `dense_grid_n: int` (see [Dense-grid losses](#dense-grid-losses)); otherwise all

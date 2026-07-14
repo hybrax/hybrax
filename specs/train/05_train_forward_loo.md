@@ -127,8 +127,9 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
     {"name": "high feed",  "test": ["proc_1", "proc_1b"]},
     {"name": "no feed",    "test": ["proc_2", "proc_3"], "train": ["proc_4"]}
   ],
-  "parallel_folds": 4,  // how many folds to train at once (you own the RAM call)
-  "monitor_every": 50   // trace each fold's holdout (test) loss every N steps
+  "parallel_folds": 4,     // how many folds to train at once (you own the RAM call)
+  "devices_per_fold": null, // null derives a per-fold CPU-device count
+  "monitor_every": 50      // trace each fold's holdout (test) loss every N steps
 }
 ```
 
@@ -142,14 +143,14 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 - **Parallel folds** ([`run_loo_cv`](../bp_train/loo.py) → per-fold
   [`run_single_fold`](../bp_train/loo.py)): each fold trains as **its own
   subprocess** (the JAX CPU device count is fixed per process). You set
-  `parallel_folds` (default `1`, sequential) from what your RAM can hold; the
-  orchestrator ([`compute_parallel_split`](../bp_train/loo.py)) splits the cores
-  across the concurrent folds — `devices_per_fold = n_cpu // parallel_folds`, so
-  `parallel_folds × devices_per_fold ≤ n_cpu` always, additionally capped at the
-  smallest fold's effective batch (`min(train size, train.batch_size)`) since a
-  fold can't expose more host devices than its `pmap` batch — and pins each
-  worker to a disjoint core block. There is deliberately **no automatic RAM
-  sizing**.
+  `parallel_folds` (default `1`, sequential) from what your RAM can hold. With
+  `devices_per_fold=null`, the orchestrator
+  ([`compute_parallel_split`](../bp_train/loo.py)) derives it as
+  `n_cpu // parallel_folds`, capped at the smallest fold's effective batch
+  (`min(train size, train.batch_size)`) since a fold cannot expose more host
+  devices than its `pmap` batch. Set `devices_per_fold` to a positive integer to
+  override that derived count. Workers are pinned to disjoint core blocks; there
+  is deliberately **no automatic RAM sizing**.
 - **Holdout monitoring** (`loo.monitor_every`): each fold automatically uses its
   `test` set as a diagnostic monitor (`monitor_label="holdout"`), evaluated every
   `monitor_every` steps during that fold's training (`null` → the `logging.every`

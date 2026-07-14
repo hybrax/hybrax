@@ -17,7 +17,7 @@ list of every hook with its signature.
 
 ```
 raw bp_format collection
-   │  bp-train prepare   (transform + estimate scales + build controls)
+   │  bp-train prepare   (transform + validate + persist)
    ▼
 prepare dir (prepared.json, prepare_config.json, prepare_diagnostics/)
    │  bp-train train     (fit reaction + loss modules → run directory)
@@ -101,7 +101,8 @@ The `loo` config section:
 | Key | Meaning |
 |---|---|
 | `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
-| `parallel_folds` | How many folds to train concurrently (default `1`, sequential). The cores are split across them: `devices_per_fold = n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold can't expose more host devices than its `pmap` batch without deadlocking). You set it from what your RAM holds — there is no automatic RAM sizing. |
+| `parallel_folds` | How many folds to train concurrently (default `1`, sequential). With `devices_per_fold=null`, cores are split as `n_cpu // parallel_folds`, capped at the smallest fold's effective batch (a fold cannot expose more host devices than its `pmap` batch without deadlocking). You set it from what RAM holds — there is no automatic RAM sizing. |
+| `devices_per_fold` | `null` — positive integer CPU-device count per fold. `null` derives the split from `parallel_folds`. |
 | `monitor_every` | Cadence (in steps) for evaluating each fold's holdout (`test`) loss during that fold's training — a diagnostic, never an optimizer signal. `null` (default) → the `logging.every` cadence; `1` → every step (an extra holdout forward solve per step). |
 
 Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, `prepared.json`,
@@ -141,13 +142,14 @@ module is imported with `load_custom_module`. A custom typed config object is
 produced by an optional `get_custom_config(raw_custom, config)` and reaches every
 hook as `config.custom`.
 
-There are **8 hooks**. Stage = when it fires (`prepare` vs `train`).
+There are **7 `get_hook` hooks**. The optional `get_custom_config` setup adapter
+is invoked separately before them. Stage = when a hook fires (`prepare` vs
+`train`).
 
 | Hook | Stage | Default |
 |---|---|---|
 | [`transform_process_collection`](#transform_process_collection) | prepare | `default_transform_process_collection` |
 | [`augment_state_values`](#augment_state_values) | prepare | none (built-in residual-scaled noise) |
-| [`build_sample_acc_series`](#build_sample_acc_series) | prepare | `default_build_sample_acc_series` |
 | [`estimate_all_scales`](#estimate_all_scales) | train | none (no scaling) |
 | [`build_reaction_module`](#build_reaction_module) | train | `default_build_reaction_module` |
 | [`build_loss_module`](#build_loss_module) | train | `default_build_loss_module` |
@@ -202,15 +204,6 @@ def augment_state_values(
     return np.clip(base_values + absolute_std * standard_normal, 0, None)
 ```
 
-### `build_sample_acc_series`
-
-```python
-def build_sample_acc_series(process, process_name, collection_metadata, config: RunConfig)
-```
-Construct the sampled-volume (sample-accumulation) control source for one
-process. Default delegates to `build_sample_acc_source_default(process,
-run_min_dt=config.prepare.bolus_run_min_dt)`.
-
 ### `estimate_all_scales`
 
 ```python
@@ -262,8 +255,9 @@ for per-leaf control (e.g. freezing some MLP layers). No default — the standar
 
 Top-level keys (unknown keys are rejected):
 `data`, `custom_py`, `train`, `solver`, `checkpoint`, `output`, `logging`,
-`prepare`, `custom`. `prepare` needs the `prepare` section; `train` needs the
-`data` section. All paths resolve relative to the config file's directory.
+`prepare`, `custom`, `loo`. `prepare` needs the `prepare` section; `train`
+needs the `data` section. All paths resolve relative to the config file's
+directory.
 
 **`data`** — [`DataConfig`](../bp_train/run_config.py)
 
@@ -287,6 +281,7 @@ Top-level keys (unknown keys are rejected):
 | `shuffle` | true | Shuffle batches. |
 | `batch_seed` | null | Batch-index seed. |
 | `devices` | 1 | CPU devices to shard over; `"max"` = `min(n_proc, n_cpu)`. |
+| `allow_stateful_models` | false | Allow reaction modules with latent state (`n_latent > 0`); otherwise they fail fast. |
 
 **`solver`** — [`SolverConfig`](../bp_train/run_config.py)
 
@@ -295,22 +290,21 @@ Top-level keys (unknown keys are rejected):
 | `max_steps` | 2048 (>0) | Max solver steps per solve. |
 | `rtol` | 1e-5 (>0) | Relative tolerance. |
 | `atol` | 1e-7 (>0) | Absolute tolerance. |
-| `jump_ts` | true | Pass merged event times as `jump_ts` hints. |
+| `jump_ts` | true | Pass `BioProcess.discrete_events` vector-field discontinuities as `jump_ts` hints. |
 
 **`checkpoint`** — [`CheckpointConfig`](../bp_train/run_config.py)
 
 | Field | Default | Meaning |
 |---|---|---|
-| `every` | 10 (0 disables) | Snapshot cadence (distinct from `logging.every`). |
-| `keep` | `best+latest` | `best+latest` (prune step dirs) or `all`. |
-| `resume` | null | Resume-from path. |
+| `every` | 100 (0 disables) | Snapshot cadence (distinct from `logging.every`). |
+| `keep` | `all` | `best+latest` (prune step dirs) or `all`. |
 
 **`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
 `output`), `plots` (default true).
 
-**`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `level` (`INFO`),
-`every` (10, >0), `decimals` (4), `header_every` (10; re-emit the table header
-every N rows, 0 disables).
+**`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `every` (100, >0),
+`decimals` (4), `header_every` (10; re-emit the table header every N rows, 0
+disables).
 
 **`prepare`** — [`PrepareConfig`](../bp_train/run_config.py)
 
@@ -319,13 +313,13 @@ every N rows, 0 disables).
 | `raw_input` | path (required) | Raw bp-format `BioProcessCollection` or `CaseStudy` JSON. |
 | `augmentation` | null | Persist deterministic synthetic `AugmentedBioProcess` children; see below. |
 | `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
-| `required_control_names` | () | Controls that must exist (tuple, or per-process dict). |
-| `require_consistent_controls` | true | All processes share the same controls. |
-| `bolus_run_min_dt` | null (>0) | Minimum spacing (`min_dt`) for resolving near-coincident bolus/sample events. |
+| `required_control_names` | () | Continuous controlled-feed/PV names that must exist (tuple, or per-process dict). |
+| `require_consistent_controls` | true | All processes share the same continuous controlled-feed/PV names. |
 | `initial_grid_points` | 16 (>0) | Starting dense control-grid resolution. |
 | `max_rel_error` | 1e-4 (>0) | Control-grid refinement tolerance. |
 | `max_refinement_rounds` | 8 (≥0) | Refinement round cap. |
 | `process_rename_map` | {} | Old→new process-name map (used by the default transform). |
+| `diagnostics` | true | Write per-process control diagnostic plots into `prepare_diagnostics/`; rendering failures only warn. |
 
 The `prepare.augmentation` object has these fields.
 
@@ -334,7 +328,7 @@ The `prepare.augmentation` object has these fields.
 | `seed` | 0 | Deterministic child-grid and value seed. |
 | `n_children_per_process` | required (>0) | Number of children per non-augmented parent. |
 | `n_time_points` | required (>=2) | Points on each child grid, including exact endpoints. |
-| `min_spacing_fraction` | `0.1` (0 < value <= 1) | Fraction of the nominal interval `(end - start) / (n_time_points - 1)` reserved for each child-grid gap before floating-point rounding; `1` gives an even grid. |
+| `min_spacing_fraction` | `0.1` (0 < value <= 1) | Fraction of the nominal interval `(end - start) / (n_time_points - 1)` reserved for each child-grid gap; `1` gives an even grid. Requests within four timestamp-resolution steps fail; stored gaps use a small relative rounding tolerance. |
 | `variable_names` | required, nonempty | Modeled states to noise. |
 | `noise_scale` | {} | Per-state multiplier on the parent spline-residual RMS, required when the built-in path handles that state. |
 | `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute spline value, or clipped Gaussian `add`. |

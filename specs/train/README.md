@@ -47,15 +47,16 @@ Read in this order:
 
 ## `custom.py` hooks at a glance
 
-The single list of every hook you can define in `custom.py`. All are discovered
-via `get_hook(custom_module, "<name>", <default>)`; a missing hook falls back to
-its default. Full per-hook write-ups (signature, behavior, defaults) are in
+The seven `get_hook` hooks you can define in `custom.py`. A missing hook falls
+back to its default. The optional `get_custom_config(raw_custom, config)` setup
+adapter is invoked separately before the hooks. Full per-hook write-ups
+(signature, behavior, defaults) are in
 [02_cli_and_config.md](02_cli_and_config.md#custompy-hooks-reference).
 
 | Hook | Stage | Signature | Default |
 |---|---|---|---|
 | [`transform_process_collection`](02_cli_and_config.md#transform_process_collection) | prepare | `(collection, config) -> collection` | rename map |
-| [`build_sample_acc_series`](02_cli_and_config.md#build_sample_acc_series) | prepare | `(process, process_name, collection_metadata, config)` | sample-acc source |
+| [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(...) -> ndarray | None` | built-in residual-scaled noise |
 | [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(collection, target_names, config) -> EstimatedScales` | none (ones) |
 | [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, collection, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
 | [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, collection) -> UserLossModule` | `DefaultLossModule` |
@@ -76,11 +77,15 @@ and returns scaled rates. Layout (see
 [03](03_data_preparation.md#state-and-control-layout)):
 
 ```
-SCL_state (integrated)
+SCL_state (physical)
  ├─ modeled_RMCs              # species concentrations            SCALE_modeled_RMCs
  ├─ modeled_PVs              # dynamic process-variable states    SCALE_modeled_PVs
  ├─ V_in_cumulative          # scalar cumulative inflow volume    SCALE_V_in_cumulative
  └─ modeled_FVCs_cumulative  # per modeled feed                   SCALE_modeled_FVCs_cumulative
+
+SCL_integrated_state (solver)
+ ├─ SCL_state
+ └─ SCL_latent               # optional module state              SCALE_latent
 
 SCL_controls (continuous, evaluated at t)
  ├─ controlled_FVCs: cumulative | rates | Cin                     SCALE_controlled_FVCs_*
@@ -89,10 +94,11 @@ SCL_controls (continuous, evaluated at t)
 
 SCL reaction outputs
  ├─ modeled_BiologicalOde_rates                                   SCALE_modeled_BiologicalOde_rates
- └─ modeled_FVCs_rates (≥ 0)                                      SCALE_modeled_FVCs_rates
+ ├─ modeled_FVCs_rates (≥ 0)                                      SCALE_modeled_FVCs_rates
+ └─ latent_derivative                                               SCL_latent_derivative
 
 discrete events (applied as state jumps during the solve — not read by the module)
- └─ boluses & samples        # mass-balance jumps at known event times
+ └─ controlled boluses & samples # mass-balance jumps at known event times
 ```
 
 ## Examples
