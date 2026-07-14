@@ -23,6 +23,11 @@ _SPLINE_ROOT_IMAG_ATOL = 1e-12
 _MULTIPLICATIVE_SCALE_FLOOR = 1e-8
 _MOSTLY_NONNEGATIVE_FRACTION = 0.5
 _MIN_RELATIVE_RESIDUAL_RMS = 1e-6
+# Grid-coordinate roundoff grows with the requested spacing, so gap validation
+# needs relative slack. The requested minimum must still clear the coarsest
+# timestamp step by several ULP, or the grid cannot meaningfully honor it.
+_MIN_SPACING_REL_TOL = 1e-6
+_MIN_SPACING_MIN_ULPS = 4
 
 
 def _times_match(left, right):
@@ -59,7 +64,13 @@ def _child_grid(
     )
     interior = t0 + np.arange(1, n_intervals) * min_spacing + cuts
     grid = np.concatenate(([t0], interior, [t_end]))
-    if np.any(np.diff(grid) <= 0.0):
+    diffs = np.diff(grid)
+    resolution = np.spacing(max(abs(t0), abs(t_end)))
+    if (
+        np.any(diffs <= 0.0)
+        or min_spacing <= _MIN_SPACING_MIN_ULPS * resolution
+        or np.any(diffs < min_spacing * (1.0 - _MIN_SPACING_REL_TOL))
+    ):
         raise ValueError(
             f"{_child_name(parent_name, child_index)}: cannot represent the "
             "requested minimum child-grid spacing"
@@ -321,6 +332,14 @@ def augment_process_collection(
             )
         )
 
+    child_times = {
+        (parent_name, child_index): _child_grid(
+            augmentation, parent_name, child_index, t0, t_end
+        )
+        for parent_name, _, _, t0, t_end, _ in validated_parents
+        for child_index in range(augmentation.n_children_per_process)
+    }
+
     for (
         parent_name,
         parent,
@@ -376,7 +395,7 @@ def augment_process_collection(
             child.metadata.name = child_name
             if hasattr(child.metadata, "_pre_transform_key"):
                 del child.metadata._pre_transform_key
-            times = _child_grid(augmentation, parent_name, child_index, t0, t_end)
+            times = child_times[parent_name, child_index]
 
             for state_name in modeled_names:
                 series = _state_series(child, state_name)

@@ -511,17 +511,45 @@ def test_full_min_spacing_fraction_makes_child_grid_evenly_spaced(n_time_points,
     )
 
 
+def test_even_grid_allows_relative_rounding_at_nonzero_origin():
+    augmentation = _config(
+        n_time_points=20, min_spacing_fraction=1.0
+    ).prepare.augmentation
+    assert augmentation is not None
+
+    grid = augmentation_module._child_grid(
+        augmentation,
+        parent_name="p1",
+        child_index=0,
+        t0=24.0,
+        t_end=192.0,
+    )
+
+    np.testing.assert_array_equal(grid, np.linspace(24.0, 192.0, 20))
+
+
 @pytest.mark.parametrize(
-    ("n_time_points", "t0", "t_end"),
+    ("n_time_points", "min_spacing_fraction", "t0", "t_end"),
     [
-        (20, 1e16, 1e16 + 16.0),
-        (3, 0.0, np.nextafter(0.0, 1.0)),
+        # Points collapse onto identical timestamps (non-strict grid).
+        (20, 0.1, 1e16, 1e16 + 16.0),
+        (3, 0.1, 0.0, np.nextafter(0.0, 1.0)),
+        # Points stay strictly increasing (11 distinct floats) yet the smallest
+        # gap (2.0) falls below the requested minimum spacing (30/10 = 3.0): a
+        # large origin cannot represent the even grid, so this must still fail.
+        (11, 1.0, 1e16, 1e16 + 30.0),
+        # Gaps are ~= the requested minimum (2.000001), but that minimum sits at
+        # the timestamp resolution floor (~1 ULP at this origin), so the request
+        # is not representable and must fail rather than emit ~1-ULP spacing.
+        (11, 0.666667, 1e16, 1e16 + 30.0),
     ],
 )
 def test_unrepresentable_minimum_child_grid_spacing_fails_fast(
-    n_time_points, t0, t_end
+    n_time_points, min_spacing_fraction, t0, t_end
 ):
-    augmentation = _config(n_time_points=n_time_points).prepare.augmentation
+    augmentation = _config(
+        n_time_points=n_time_points, min_spacing_fraction=min_spacing_fraction
+    ).prepare.augmentation
     assert augmentation is not None
 
     with pytest.raises(
@@ -535,6 +563,25 @@ def test_unrepresentable_minimum_child_grid_spacing_fails_fast(
             t0=t0,
             t_end=t_end,
         )
+
+
+def test_child_grid_failure_leaves_collection_unchanged(monkeypatch):
+    collection = _collection()
+
+    def build_grid(augmentation, parent_name, child_index, t0, t_end):
+        del parent_name
+        if child_index == 2:
+            raise ValueError(
+                "cannot represent the requested minimum child-grid spacing"
+            )
+        return np.linspace(t0, t_end, augmentation.n_time_points)
+
+    monkeypatch.setattr(augmentation_module, "_child_grid", build_grid)
+
+    with pytest.raises(ValueError, match="cannot represent the requested"):
+        augment_process_collection(collection, _config(n_children=5))
+
+    assert list(collection.processes) == ["p1"]
 
 
 def test_children_preserve_physical_structure_without_sharing_objects():
