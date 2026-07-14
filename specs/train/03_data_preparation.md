@@ -55,7 +55,7 @@ prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False)
 
 Set `prepare.augmentation` to generate deterministic synthetic children after `transform_process_collection` and before final validation.
 Each child is named `{parent}__aug_{index:03d}` and keeps its parent's controls, volume, events, and other process structure.
-It receives an independently sampled, sorted measurement grid with the exact parent start and end times.
+It receives an independently sampled measurement grid with the exact parent start and end times. The grid reserves `min_spacing_fraction` (default `0.1`) of the nominal grid interval as its target minimum gap before floating-point rounding, then randomly allocates the remaining duration across the gaps. Preparation fails rather than emitting a non-strict grid when floating-point timestamps cannot represent that spacing.
 
 Modeled states follow three rules.
 

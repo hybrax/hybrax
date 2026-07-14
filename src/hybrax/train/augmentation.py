@@ -46,12 +46,25 @@ def _child_grid(
     t0: float,
     t_end: float,
 ) -> np.ndarray:
-    interior = _rng(augmentation.seed, parent_name, child_index, "grid").uniform(
-        t0,
-        t_end,
-        augmentation.n_time_points - 2,
+    n_intervals = augmentation.n_time_points - 1
+    duration = t_end - t0
+    min_spacing = augmentation.min_spacing_fraction * duration / n_intervals
+    remaining_duration = duration * (1.0 - augmentation.min_spacing_fraction)
+    cuts = np.sort(
+        _rng(augmentation.seed, parent_name, child_index, "grid").uniform(
+            0.0,
+            remaining_duration,
+            augmentation.n_time_points - 2,
+        )
     )
-    return np.concatenate(([t0], np.sort(interior), [t_end]))
+    interior = t0 + np.arange(1, n_intervals) * min_spacing + cuts
+    grid = np.concatenate(([t0], interior, [t_end]))
+    if np.any(np.diff(grid) <= 0.0):
+        raise ValueError(
+            f"{_child_name(parent_name, child_index)}: cannot represent the "
+            "requested minimum child-grid spacing"
+        )
+    return grid
 
 
 def _state_series(process, state_name: str) -> Any:

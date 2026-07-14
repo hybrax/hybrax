@@ -104,6 +104,7 @@ class AugmentationConfig(ConfigBase):
     seed: int = 0
     n_children_per_process: int = Field(gt=0)
     n_time_points: int = Field(ge=2)
+    min_spacing_fraction: float = Field(0.1, gt=0.0, le=1.0, strict=True)
     variable_names: tuple[str, ...] = Field(min_length=1)
     noise_scale: dict[str, float] = Field(default_factory=dict)
     noise_model: Literal["mult", "add"] = "mult"

@@ -334,6 +334,7 @@ The `prepare.augmentation` object has these fields.
 | `seed` | 0 | Deterministic child-grid and value seed. |
 | `n_children_per_process` | required (>0) | Number of children per non-augmented parent. |
 | `n_time_points` | required (>=2) | Points on each child grid, including exact endpoints. |
+| `min_spacing_fraction` | `0.1` (0 < value <= 1) | Fraction of the nominal interval `(end - start) / (n_time_points - 1)` reserved for each child-grid gap before floating-point rounding; `1` gives an even grid. |
 | `variable_names` | required, nonempty | Modeled states to noise. |
 | `noise_scale` | {} | Per-state multiplier on the parent spline-residual RMS, required when the built-in path handles that state. |
 | `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute spline value, or clipped Gaussian `add`. |

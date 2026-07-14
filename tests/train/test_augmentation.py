@@ -117,6 +117,7 @@ def _config(
     noise_model: str = "add",
     n_children: int = 1,
     n_time_points: int = 6,
+    min_spacing_fraction: float = 0.1,
     noise_scale: dict[str, float] | None = None,
     initial_value_source: str | dict[str, str] = "measured",
 ) -> RunConfig:
@@ -124,6 +125,7 @@ def _config(
         seed=12,
         n_children_per_process=n_children,
         n_time_points=n_time_points,
+        min_spacing_fraction=min_spacing_fraction,
         variable_names=variable_names,
         noise_scale=noise_scale
         if noise_scale is not None
@@ -225,6 +227,24 @@ def test_no_config_leaves_collection_unchanged():
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
+            "min_spacing_fraction": 0.0,
+            "variable_names": ["biomass"],
+        },
+        {
+            "n_children_per_process": 1,
+            "n_time_points": 2,
+            "min_spacing_fraction": True,
+            "variable_names": ["biomass"],
+        },
+        {
+            "n_children_per_process": 1,
+            "n_time_points": 2,
+            "min_spacing_fraction": 1.1,
+            "variable_names": ["biomass"],
+        },
+        {
+            "n_children_per_process": 1,
+            "n_time_points": 2,
             "variable_names": ["biomass"],
             "noise_scale": {"biomass": 0.0},
         },
@@ -253,7 +273,7 @@ def test_invalid_config_fails_fast(config):
         AugmentationConfig.model_validate(config)
 
 
-def test_initial_value_source_defaults_to_measured():
+def test_augmentation_defaults():
     config = AugmentationConfig.model_validate(
         {
             "n_children_per_process": 1,
@@ -263,6 +283,7 @@ def test_initial_value_source_defaults_to_measured():
     )
 
     assert config.initial_value_source == "measured"
+    assert config.min_spacing_fraction == 0.1
 
 
 def test_degenerate_parent_time_range_fails_fast():
@@ -460,7 +481,7 @@ def test_children_have_independent_deterministic_common_endpoint_grids():
         assert len(biomass.times) == 7
         assert biomass.times[0] == 0.0
         assert biomass.times[-1] == 4.0
-        assert np.all(np.diff(biomass.times) > 0.0)
+        assert np.all(np.diff(biomass.times) >= 0.1 * 4.0 / 6.0)
         np.testing.assert_array_equal(biomass.times, ratio.times)
         np.testing.assert_array_equal(
             biomass.times, _state_series(other, "biomass").times
@@ -470,6 +491,50 @@ def test_children_have_independent_deterministic_common_endpoint_grids():
         )
 
     assert not np.array_equal(grids[0], grids[1])
+
+
+@pytest.mark.parametrize(
+    ("n_time_points", "t_end"),
+    [(2, 4.0), (7, 0.007), (100, 4.0)],
+)
+def test_full_min_spacing_fraction_makes_child_grid_evenly_spaced(n_time_points, t_end):
+    collection = _collection()
+    collection.processes["p1"].time_axis.end = t_end
+    child = augment_process_collection(
+        collection,
+        _config(n_time_points=n_time_points, min_spacing_fraction=1.0),
+    ).processes["p1__aug_000"]
+
+    np.testing.assert_array_equal(
+        _state_series(child, "biomass").times,
+        np.linspace(0.0, t_end, n_time_points),
+    )
+
+
+@pytest.mark.parametrize(
+    ("n_time_points", "t0", "t_end"),
+    [
+        (20, 1e16, 1e16 + 16.0),
+        (3, 0.0, np.nextafter(0.0, 1.0)),
+    ],
+)
+def test_unrepresentable_minimum_child_grid_spacing_fails_fast(
+    n_time_points, t0, t_end
+):
+    augmentation = _config(n_time_points=n_time_points).prepare.augmentation
+    assert augmentation is not None
+
+    with pytest.raises(
+        ValueError,
+        match="p1__aug_000: cannot represent the requested minimum child-grid spacing",
+    ):
+        augmentation_module._child_grid(
+            augmentation,
+            parent_name="p1",
+            child_index=0,
+            t0=t0,
+            t_end=t_end,
+        )
 
 
 def test_children_preserve_physical_structure_without_sharing_objects():
