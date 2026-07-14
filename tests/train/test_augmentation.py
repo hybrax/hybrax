@@ -771,7 +771,17 @@ def test_custom_negative_reactor_medium_values_are_clipped():
     assert np.all(np.asarray(_state_series(child, "biomass").values) == 0.0)
 
 
-def test_mostly_nonnegative_process_variable_warns_but_is_not_clipped():
+def test_custom_negative_process_variable_values_are_not_clipped():
+    child = augment_process_collection(
+        _collection(),
+        _config(variable_names=("ratio",), initial_value_source="augmented"),
+        lambda *, base_values, **_: np.full_like(base_values, -1.0),
+    ).processes["p1__aug_000"]
+
+    assert np.all(np.asarray(_state_series(child, "ratio").values) == -1.0)
+
+
+def test_mostly_nonnegative_process_variable_spline_dip_warns():
     collection = _collection()
     collection.processes["p1"].process_variables["ratio"].values = _dipping_spline()
 
@@ -779,11 +789,7 @@ def test_mostly_nonnegative_process_variable_warns_but_is_not_clipped():
         UserWarning,
         match="spline for process variable 'ratio' evaluated below zero",
     ):
-        child = augment_process_collection(collection, _config()).processes[
-            "p1__aug_000"
-        ]
-
-    assert np.any(np.asarray(_state_series(child, "ratio").values) < 0.0)
+        augment_process_collection(collection, _config())
 
 
 def test_process_variable_with_half_nonnegative_observations_does_not_warn():
