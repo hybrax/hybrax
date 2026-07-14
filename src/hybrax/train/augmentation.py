@@ -19,6 +19,10 @@ from .run_config import AugmentationConfig, InitialValueSource, RunConfig
 
 AugmentStateValues = Callable[..., Any]
 _TIME_ATOL = 1e-9
+_SPLINE_ROOT_IMAG_ATOL = 1e-12
+_MULTIPLICATIVE_SCALE_FLOOR = 1e-8
+_MOSTLY_NONNEGATIVE_FRACTION = 0.5
+_MIN_RELATIVE_RESIDUAL_RMS = 1e-6
 
 
 def _times_match(left, right):
@@ -31,17 +35,21 @@ def _rng(seed: int, *identity: object) -> np.random.Generator:
     return np.random.default_rng(stable_seed)
 
 
+def _child_name(parent_name: str, child_index: int) -> str:
+    return f"{parent_name}__aug_{child_index:03d}"
+
+
 def _child_grid(
-    config: AugmentationConfig,
+    augmentation: AugmentationConfig,
     parent_name: str,
     child_index: int,
     t0: float,
     t_end: float,
 ) -> np.ndarray:
-    interior = _rng(config.seed, parent_name, child_index, "grid").uniform(
+    interior = _rng(augmentation.seed, parent_name, child_index, "grid").uniform(
         t0,
         t_end,
-        config.n_time_points - 2,
+        augmentation.n_time_points - 2,
     )
     return np.concatenate(([t0], np.sort(interior), [t_end]))
 
@@ -60,10 +68,10 @@ def _set_state_series(process, state_name: str, series: TimeSeries) -> None:
 
 
 def _initial_value_source(
-    config: AugmentationConfig,
+    augmentation: AugmentationConfig,
     state_name: str,
 ) -> InitialValueSource:
-    source = config.initial_value_source
+    source = augmentation.initial_value_source
     return source[state_name] if isinstance(source, dict) else source
 
 
@@ -98,7 +106,10 @@ def _spline_dips_below_zero(series: TimeSeries, t0: float, t_end: float) -> bool
         local_right = right - breaks[index]
         candidates = [local_left, local_right]
         for root in np.roots([3.0 * d, 2.0 * c, b]):
-            if abs(root.imag) <= 1e-12 and local_left <= root.real <= local_right:
+            if (
+                abs(root.imag) <= _SPLINE_ROOT_IMAG_ATOL
+                and local_left <= root.real <= local_right
+            ):
                 candidates.append(float(root.real))
         values = [a + x * (b + x * (c + x * d)) for x in candidates]
         if min(values) < 0.0:
@@ -127,11 +138,11 @@ def _residual_statistics(
 def _validate_requested_states(
     parent_name: str,
     process,
-    config: AugmentationConfig,
+    augmentation: AugmentationConfig,
 ) -> tuple[str, ...]:
     ordering = get_process_ordering(process)
     modeled_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs
-    for state_name in config.variable_names:
+    for state_name in augmentation.variable_names:
         if state_name in ordering.name_controlled_PVs:
             raise ValueError(
                 f"{parent_name}: controlled process variable {state_name!r} "
@@ -155,27 +166,25 @@ def _built_in_values(
     residual_rms: float,
     observed_rms: float,
     standard_normal: np.ndarray,
-    config: AugmentationConfig,
+    augmentation: AugmentationConfig,
 ) -> np.ndarray:
     relative_residual_rms = residual_rms / observed_rms if observed_rms else 0.0
-    if observed_rms == 0.0 or (
-        relative_residual_rms <= config.min_relative_residual_rms
-    ):
+    if relative_residual_rms <= _MIN_RELATIVE_RESIDUAL_RMS:
         raise ValueError(
             f"{parent_name}: modeled state {state_name!r} has an effectively "
             "zero spline residual; augment_state_values can supply an absolute "
             "noise level"
         )
-    if state_name not in config.noise_scale:
+    if state_name not in augmentation.noise_scale:
         raise ValueError(f"{parent_name}: noise_scale is missing {state_name!r}")
 
-    err_std = config.noise_scale[state_name] * residual_rms
-    if config.noise_model == "add":
+    err_std = augmentation.noise_scale[state_name] * residual_rms
+    if augmentation.noise_model == "add":
         return np.clip(base_values + standard_normal * err_std, 0.0, None)
 
     magnitudes = np.abs(base_values[base_values != 0.0])
     mean_magnitude = float(np.mean(magnitudes)) if magnitudes.size else 0.0
-    rel_std = err_std / max(mean_magnitude, 1e-8)
+    rel_std = err_std / max(mean_magnitude, _MULTIPLICATIVE_SCALE_FLOOR)
     sigma = np.sqrt(np.log1p(rel_std**2))
     return base_values * np.exp(-0.5 * sigma**2 + sigma * standard_normal)
 
@@ -190,12 +199,12 @@ def _augment_values(
     base_values: np.ndarray,
     residual_rms: float,
     observed_rms: float,
-    config: AugmentationConfig,
+    augmentation: AugmentationConfig,
     run_config: RunConfig,
     augment_state_values: AugmentStateValues | None,
 ) -> np.ndarray:
     standard_normal = _rng(
-        config.seed,
+        augmentation.seed,
         parent_name,
         child_index,
         state_name,
@@ -223,7 +232,7 @@ def _augment_values(
             residual_rms=residual_rms,
             observed_rms=observed_rms,
             standard_normal=standard_normal,
-            config=config,
+            augmentation=augmentation,
         )
 
     values = np.array(values, dtype=float, copy=True)
@@ -248,7 +257,7 @@ def augment_process_collection(
     prepare = run_config.prepare
     if prepare is None or prepare.augmentation is None:
         return collection
-    config = prepare.augmentation
+    augmentation = prepare.augmentation
     parents = [
         (name, process)
         for name, process in collection.processes.items()
@@ -256,9 +265,9 @@ def augment_process_collection(
     ]
 
     child_names = [
-        f"{parent_name}__aug_{child_index:03d}"
+        _child_name(parent_name, child_index)
         for parent_name, _ in parents
-        for child_index in range(config.n_children_per_process)
+        for child_index in range(augmentation.n_children_per_process)
     ]
     collisions = [name for name in child_names if name in collection.processes]
     if collisions:
@@ -267,7 +276,7 @@ def augment_process_collection(
     residual_statistics = {}
     validated_parents = []
     for parent_name, parent in parents:
-        modeled_names = _validate_requested_states(parent_name, parent, config)
+        modeled_names = _validate_requested_states(parent_name, parent, augmentation)
         t0 = float(parent.time_axis.start)
         t_end = float(parent.time_axis.end)
         if t0 == t_end:
@@ -279,10 +288,10 @@ def augment_process_collection(
                 _state_series(parent, state_name),
                 t0,
             )
-            for state_name in config.variable_names
-            if _initial_value_source(config, state_name) == "measured"
+            for state_name in augmentation.variable_names
+            if _initial_value_source(augmentation, state_name) == "measured"
         }
-        for state_name in config.variable_names:
+        for state_name in augmentation.variable_names:
             residual_statistics[parent_name, state_name] = _residual_statistics(
                 parent_name,
                 state_name,
@@ -312,8 +321,8 @@ def augment_process_collection(
             if not isinstance(series, TimeSeries) or series.poly is None:
                 continue
             source = (
-                _initial_value_source(config, state_name)
-                if state_name in config.variable_names
+                _initial_value_source(augmentation, state_name)
+                if state_name in augmentation.variable_names
                 else "spline"
             )
             if source != "measured" and series.times is not None:
@@ -330,7 +339,7 @@ def augment_process_collection(
                     )
             is_rmc = state_name in parent.reactor_medium.components
             mostly_nonnegative = series.values is not None and (
-                np.mean(np.asarray(series.values) >= 0.0) > 0.5
+                np.mean(np.asarray(series.values) >= 0.0) > _MOSTLY_NONNEGATIVE_FRACTION
             )
             if _spline_dips_below_zero(series, t0, t_end) and (
                 is_rmc or mostly_nonnegative
@@ -344,8 +353,8 @@ def augment_process_collection(
                     stacklevel=2,
                 )
 
-        for child_index in range(config.n_children_per_process):
-            child_name = f"{parent_name}__aug_{child_index:03d}"
+        for child_index in range(augmentation.n_children_per_process):
+            child_name = _child_name(parent_name, child_index)
             parent_copy = deepcopy(parent)
             child = AugmentedBioProcess(
                 **vars(parent_copy),
@@ -354,7 +363,7 @@ def augment_process_collection(
             child.metadata.name = child_name
             if hasattr(child.metadata, "_pre_transform_key"):
                 del child.metadata._pre_transform_key
-            times = _child_grid(config, parent_name, child_index, t0, t_end)
+            times = _child_grid(augmentation, parent_name, child_index, t0, t_end)
 
             for state_name in modeled_names:
                 series = _state_series(child, state_name)
@@ -362,7 +371,7 @@ def augment_process_collection(
                     continue
                 is_rmc = state_name in child.reactor_medium.components
                 base_values = np.asarray(series.evaluate_many(times), dtype=float)
-                if state_name in config.variable_names:
+                if state_name in augmentation.variable_names:
                     residual_rms, observed_rms = residual_statistics[
                         parent_name, state_name
                     ]
@@ -375,11 +384,11 @@ def augment_process_collection(
                         base_values=base_values,
                         residual_rms=residual_rms,
                         observed_rms=observed_rms,
-                        config=config,
+                        augmentation=augmentation,
                         run_config=run_config,
                         augment_state_values=augment_state_values,
                     )
-                    source = _initial_value_source(config, state_name)
+                    source = _initial_value_source(augmentation, state_name)
                     if source == "measured":
                         values[0] = measured_initial_values[state_name]
                     elif source == "spline":

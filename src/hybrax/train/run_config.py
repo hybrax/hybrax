@@ -110,7 +110,6 @@ class AugmentationConfig(ConfigBase):
     initial_value_source: InitialValueSource | dict[str, InitialValueSource] = (
         "measured"
     )
-    min_relative_residual_rms: float = Field(1e-6, gt=0)
 
     @field_validator("noise_scale")
     @classmethod

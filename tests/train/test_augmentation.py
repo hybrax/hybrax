@@ -119,7 +119,6 @@ def _config(
     n_time_points: int = 6,
     noise_scale: dict[str, float] | None = None,
     initial_value_source: str | dict[str, str] = "measured",
-    min_relative_residual_rms: float = 1e-6,
 ) -> RunConfig:
     augmentation = AugmentationConfig(
         seed=12,
@@ -131,7 +130,6 @@ def _config(
         else {name: 0.7 for name in variable_names},
         noise_model=noise_model,
         initial_value_source=initial_value_source,
-        min_relative_residual_rms=min_relative_residual_rms,
     )
     return RunConfig(
         prepare=PrepareConfig(raw_input=Path("unused.json"), augmentation=augmentation)
@@ -169,6 +167,12 @@ def _prepare_collection(
         load_prepare_config(config_path),
         tmp_path / output_name,
     )
+
+
+def _write_custom_module(tmp_path: Path, name: str, *lines: str) -> Path:
+    path = tmp_path / f"custom-{name}.py"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
 
 
 def _augmentation_dict(**updates) -> dict:
@@ -649,7 +653,7 @@ def test_multiplicative_noise_is_well_scaled_for_signed_values(levels):
         residual_rms=0.75,
         observed_rms=1.5,
         standard_normal=standard_normal,
-        config=config,
+        augmentation=config,
     )
 
     np.testing.assert_array_equal(np.sign(actual), np.sign(base))
@@ -681,13 +685,45 @@ def test_residual_statistics_are_computed_once_per_parent_state(monkeypatch):
 
 
 def test_built_in_noise_rejects_effectively_zero_relative_residual():
+    collection = _collection()
+    collection.processes["p1"].reactor_medium.components[
+        "biomass"
+    ].concentration = _spline(
+        [0.4, 0.7, 0.8, 1.4, 1.3, 2.0, 2.2],
+        smoothing_s=0.0,
+    )
+
     with pytest.raises(
         ValueError, match="p1.*biomass.*effectively zero spline residual"
     ):
-        augment_process_collection(
-            _collection(),
-            _config(min_relative_residual_rms=0.9),
-        )
+        augment_process_collection(collection, _config())
+
+
+def test_built_in_noise_rejects_zero_observed_trace():
+    with pytest.raises(
+        ValueError, match="p1.*biomass.*effectively zero spline residual"
+    ):
+        augment_process_collection(_collection(zero_trace=True), _config())
+
+
+def test_built_in_noise_uses_fixed_relative_residual_boundary():
+    augmentation = _config().prepare.augmentation
+    arguments = {
+        "parent_name": "p1",
+        "state_name": "biomass",
+        "base_values": np.ones(1),
+        "observed_rms": 1.0,
+        "standard_normal": np.zeros(1),
+        "augmentation": augmentation,
+    }
+
+    with pytest.raises(ValueError, match="effectively zero spline residual"):
+        augmentation_module._built_in_values(residual_rms=1e-6, **arguments)
+
+    augmentation_module._built_in_values(
+        residual_rms=np.nextafter(1e-6, np.inf),
+        **arguments,
+    )
 
 
 def test_hook_can_override_zero_trace_with_absolute_noise():
@@ -855,17 +891,13 @@ def test_prepare_records_augmented_provenance_and_hook_metadata(tmp_path):
 
 
 def test_prepare_accepts_custom_absolute_noise_hook_for_zero_trace(tmp_path):
-    custom_py = tmp_path / "custom-absolute-noise.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "import numpy as np",
-                "",
-                "def augment_state_values(*, base_values, standard_normal, **_):",
-                "    return np.clip(base_values + 0.2 * standard_normal, 0, None)",
-            ]
-        ),
-        encoding="utf-8",
+    custom_py = _write_custom_module(
+        tmp_path,
+        "absolute-noise",
+        "import numpy as np",
+        "",
+        "def augment_state_values(*, base_values, standard_normal, **_):",
+        "    return np.clip(base_values + 0.2 * standard_normal, 0, None)",
     )
     prepared = _prepare_collection(
         tmp_path,
@@ -889,22 +921,18 @@ def test_prepare_accepts_custom_absolute_noise_hook_for_zero_trace(tmp_path):
 
 
 def test_prepare_handles_transform_added_process_provenance(tmp_path):
-    custom_py = tmp_path / "custom-add-process.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "from copy import deepcopy",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    added = deepcopy(collection.processes['p1'])",
-                "    added.metadata.name = 'added'",
-                "    collection.processes = {",
-                "        'added': added, **collection.processes",
-                "    }",
-                "    return collection",
-            ]
-        ),
-        encoding="utf-8",
+    custom_py = _write_custom_module(
+        tmp_path,
+        "add-process",
+        "from copy import deepcopy",
+        "",
+        "def transform_process_collection(collection, config):",
+        "    added = deepcopy(collection.processes['p1'])",
+        "    added.metadata.name = 'added'",
+        "    collection.processes = {",
+        "        'added': added, **collection.processes",
+        "    }",
+        "    return collection",
     )
     prepared = _prepare_collection(
         tmp_path,
@@ -920,24 +948,20 @@ def test_prepare_handles_transform_added_process_provenance(tmp_path):
 
 
 def test_transform_created_augmented_process_is_attributed_to_transform(tmp_path):
-    custom_py = tmp_path / "custom-add-augmented-process.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "from copy import deepcopy",
-                "from bp_format.dataclasses import AugmentedBioProcess",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    parent = collection.processes['p1']",
-                "    copied = deepcopy(parent)",
-                "    copied.metadata.name = 'transform_child'",
-                "    collection.processes['transform_child'] = AugmentedBioProcess(",
-                "        **vars(copied), parent_process='p1'",
-                "    )",
-                "    return collection",
-            ]
-        ),
-        encoding="utf-8",
+    custom_py = _write_custom_module(
+        tmp_path,
+        "add-augmented-process",
+        "from copy import deepcopy",
+        "from bp_format.dataclasses import AugmentedBioProcess",
+        "",
+        "def transform_process_collection(collection, config):",
+        "    parent = collection.processes['p1']",
+        "    copied = deepcopy(parent)",
+        "    copied.metadata.name = 'transform_child'",
+        "    collection.processes['transform_child'] = AugmentedBioProcess(",
+        "        **vars(copied), parent_process='p1'",
+        "    )",
+        "    return collection",
     )
     prepared = _prepare_collection(
         tmp_path,
@@ -953,22 +977,18 @@ def test_transform_created_augmented_process_is_attributed_to_transform(tmp_path
 
 
 def test_prepare_rejects_ambiguous_copied_rename_tags(tmp_path):
-    custom_py = tmp_path / "custom-ambiguous-tags.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "from copy import deepcopy",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    process = collection.processes.pop('p1')",
-                "    first = deepcopy(process)",
-                "    first.metadata.name = 'first'",
-                "    process.metadata.name = 'second'",
-                "    collection.processes = {'first': first, 'second': process}",
-                "    return collection",
-            ]
-        ),
-        encoding="utf-8",
+    custom_py = _write_custom_module(
+        tmp_path,
+        "ambiguous-tags",
+        "from copy import deepcopy",
+        "",
+        "def transform_process_collection(collection, config):",
+        "    process = collection.processes.pop('p1')",
+        "    first = deepcopy(process)",
+        "    first.metadata.name = 'first'",
+        "    process.metadata.name = 'second'",
+        "    collection.processes = {'first': first, 'second': process}",
+        "    return collection",
     )
 
     with pytest.raises(ValueError, match="ambiguous pre-transform provenance tag"):
@@ -980,22 +1000,18 @@ def test_prepare_rejects_ambiguous_copied_rename_tags(tmp_path):
 
 
 def test_prepare_rejects_invalid_augmented_parent_reference(tmp_path):
-    custom_py = tmp_path / "custom-invalid-parent.py"
-    custom_py.write_text(
-        "\n".join(
-            [
-                "from bp_format.dataclasses import AugmentedBioProcess",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    process = collection.processes.pop('p1')",
-                "    process.metadata.name = 'child'",
-                "    collection.processes['child'] = AugmentedBioProcess(",
-                "        **vars(process), parent_process='missing'",
-                "    )",
-                "    return collection",
-            ]
-        ),
-        encoding="utf-8",
+    custom_py = _write_custom_module(
+        tmp_path,
+        "invalid-parent",
+        "from bp_format.dataclasses import AugmentedBioProcess",
+        "",
+        "def transform_process_collection(collection, config):",
+        "    process = collection.processes.pop('p1')",
+        "    process.metadata.name = 'child'",
+        "    collection.processes['child'] = AugmentedBioProcess(",
+        "        **vars(process), parent_process='missing'",
+        "    )",
+        "    return collection",
     )
 
     with pytest.raises(ValueError, match="augmented parent validation failed"):

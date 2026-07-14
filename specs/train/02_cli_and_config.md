@@ -338,7 +338,6 @@ The `prepare.augmentation` object has these fields.
 | `noise_scale` | {} | Per-state multiplier on the parent spline-residual RMS, required when the built-in path handles that state. |
 | `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute spline value, or clipped Gaussian `add`. |
 | `initial_value_source` | `measured` | `measured`, `spline`, or `augmented`, applied to every listed state; alternatively, an exact per-state mapping for all `variable_names`. |
-| `min_relative_residual_rms` | 1e-6 (>0) | Reject effectively interpolating splines on the built-in path. |
 
 **`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to
 hooks as `config.custom` (typed via `get_custom_config` or a permissive default).
