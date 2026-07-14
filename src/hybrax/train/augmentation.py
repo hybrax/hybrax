@@ -173,9 +173,9 @@ def _built_in_values(
     if config.noise_model == "add":
         return np.clip(base_values + standard_normal * err_std, 0.0, None)
 
-    positive = base_values[base_values > 0.0]
-    mean_positive = float(np.mean(positive)) if positive.size else 0.0
-    rel_std = err_std / max(mean_positive, 1e-8)
+    magnitudes = np.abs(base_values[base_values != 0.0])
+    mean_magnitude = float(np.mean(magnitudes)) if magnitudes.size else 0.0
+    rel_std = err_std / max(mean_magnitude, 1e-8)
     sigma = np.sqrt(np.log1p(rel_std**2))
     return base_values * np.exp(-0.5 * sigma**2 + sigma * standard_normal)
 

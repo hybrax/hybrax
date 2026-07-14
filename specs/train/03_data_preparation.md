@@ -77,6 +77,7 @@ Reactor-medium component values are clipped at zero after built-in or custom aug
 Augmentation warns when a reactor-medium component spline dips below zero over the process interval, or when this happens for a process variable whose observations are mostly nonnegative.
 Process-variable values are not clipped by the final reactor-medium safeguard.
 The built-in `add` model nevertheless clips every listed state at zero; use `mult` or a custom hook for variables that may legitimately be negative.
+The `mult` model scales noise by the mean nonzero absolute spline value and preserves each value's sign.
 Resampled modeled states are stored on children as observation-only series, while their generating splines remain available on the parent.
 Controlled-variable splines remain on each child because simulation still needs them.
 

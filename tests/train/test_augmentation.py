@@ -619,10 +619,50 @@ def test_residual_scaled_noise_matches_formula(noise_model):
     if noise_model == "add":
         expected = np.clip(base + z * err_std, 0.0, None)
     else:
-        rel_std = err_std / max(np.mean(base[base > 0.0]), 1e-8)
+        rel_std = err_std / max(np.mean(np.abs(base[base != 0.0])), 1e-8)
         sigma = np.sqrt(np.log1p(rel_std**2))
         expected = base * np.exp(-0.5 * sigma**2 + sigma * z)
     np.testing.assert_allclose(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "levels",
+    [
+        np.asarray([-1.5]),
+        np.asarray([-2.0, -0.5, 0.0, 0.2, 1.0]),
+    ],
+)
+def test_multiplicative_noise_is_well_scaled_for_signed_values(levels):
+    config = _config(
+        variable_names=("signed_pv",),
+        noise_model="mult",
+        noise_scale={"signed_pv": 1.0},
+    ).prepare.augmentation
+    draws_per_level = 25_000
+    base = np.repeat(levels, draws_per_level)
+    standard_normal = np.random.default_rng(123).standard_normal(base.shape)
+
+    actual = augmentation_module._built_in_values(
+        parent_name="p1",
+        state_name="signed_pv",
+        base_values=base,
+        residual_rms=0.75,
+        observed_rms=1.5,
+        standard_normal=standard_normal,
+        config=config,
+    )
+
+    np.testing.assert_array_equal(np.sign(actual), np.sign(base))
+    for level in levels:
+        np.testing.assert_allclose(
+            np.mean(actual[base == level]),
+            level,
+            rtol=0.02,
+            atol=1e-12,
+        )
+    factors = actual[base != 0.0] / base[base != 0.0]
+    assert np.quantile(factors, 0.01) > 0.1
+    assert np.quantile(factors, 0.99) < 10.0
 
 
 def test_residual_statistics_are_computed_once_per_parent_state(monkeypatch):
