@@ -22,9 +22,12 @@ from bp_format.dataclasses import (
 )
 from bp_format.splines import fit_timeseries_spline
 from bp_format.serialization import load_process_collection, save_process_collection
+from matplotlib.figure import Figure
 from pydantic import ValidationError
 
 import bp_train.augmentation as augmentation_module
+import bp_train.augmentation_plot as augmentation_plot_module
+import bp_train.prepare as prepare_module
 from bp_train.augmentation import augment_process_collection
 from bp_train.loo import _build_fold_groups
 from bp_train.prepare import prepare_artifact
@@ -196,6 +199,61 @@ def test_no_config_leaves_collection_unchanged():
 
     assert augment_process_collection(collection, config) is collection
     assert list(collection.processes) == ["p1"]
+
+
+def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
+    rendered_variable_names = []
+    rendered_process_names = []
+    requested_state_names = []
+    rendered_ylabels = []
+    render_augmentation_plot = prepare_module.render_augmentation_plot
+    state_series = augmentation_plot_module._state_series
+    save_figure = Figure.savefig
+
+    def track_render(collection, variable_names, output_path):
+        rendered_variable_names.append(variable_names)
+        rendered_process_names.append(tuple(collection.processes))
+        render_augmentation_plot(collection, variable_names, output_path)
+
+    def track_state_series(process, state_name):
+        requested_state_names.append(state_name)
+        return state_series(process, state_name)
+
+    def track_save_figure(figure, *args, **kwargs):
+        rendered_ylabels.append(tuple(axis.get_ylabel() for axis in figure.axes))
+        return save_figure(figure, *args, **kwargs)
+
+    monkeypatch.setattr(prepare_module, "render_augmentation_plot", track_render)
+    monkeypatch.setattr(augmentation_plot_module, "_state_series", track_state_series)
+    monkeypatch.setattr(Figure, "savefig", track_save_figure)
+    _prepare_collection(
+        tmp_path,
+        "with-augmentation-plot",
+        augmentation=_augmentation_dict(
+            n_children_per_process=1,
+            variable_names=["biomass", "ratio"],
+            noise_scale={"biomass": 0.7, "ratio": 0.7},
+        ),
+    )
+
+    plot_path = tmp_path / "with-augmentation-plot" / "augmented-data.png"
+    assert plot_path.is_file()
+    assert plot_path.stat().st_size > 0
+    assert rendered_variable_names == [("biomass", "ratio")]
+    assert rendered_process_names == [("p1", "p1__aug_000")]
+    assert set(requested_state_names) == {"biomass", "ratio"}
+    assert rendered_ylabels == [("p1\n[g/L]", "[-]")]
+
+
+def test_prepare_without_augmentation_removes_stale_plot(tmp_path):
+    output_name = "removed-augmentation-plot"
+    plot_path = tmp_path / output_name / "augmented-data.png"
+    plot_path.parent.mkdir()
+    plot_path.write_bytes(b"stale plot")
+
+    _prepare_collection(tmp_path, output_name)
+
+    assert not plot_path.exists()
 
 
 @pytest.mark.parametrize(

@@ -73,7 +73,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         required=True,
         help="Output directory for the prepare artifacts "
-        "(prepared.json, prepare_config.json, prepare_diagnostics/).",
+        "(prepared.json, prepare_config.json, optional augmented-data.png, "
+        "prepare_diagnostics/).",
     )
     prepare_parser.add_argument(
         "--overwrite",
@@ -341,9 +342,7 @@ def _write_train_results(
     return fwd_result
 
 
-def _apply_train_cli_overrides(
-    cfg: RunConfig, args: argparse.Namespace
-) -> RunConfig:
+def _apply_train_cli_overrides(cfg: RunConfig, args: argparse.Namespace) -> RunConfig:
     """Apply the few CLI flags that override the config file (CLI wins)."""
     updates: dict[str, Any] = {}
     if args.output_dir is not None:

@@ -26,6 +26,7 @@ from bp_format.serialization import (
 )
 
 from .augmentation import augment_process_collection
+from .augmentation_plot import AUGMENTATION_PLOT_FILENAME, render_augmentation_plot
 from .constants import METADATA_NAMESPACE
 from .controls import select_control_sources
 from .defaults import default_transform_process_collection
@@ -279,8 +280,8 @@ def prepare_artifact(
 
     input_path = prepare.raw_input
     # `--output-dir` holds the prepare-owned files (clash-free with a train/forward
-    # run that may share the dir): prepared.json + prepare_config.json +
-    # prepare_diagnostics/.
+    # run that may share the dir): prepared.json + prepare_config.json + optional
+    # augmented-data.png + prepare_diagnostics/.
     output_dir = Path(output_dir)
     del overwrite  # the CLI guards prepared.json; prepare only (re)writes its own files
     output_path = output_dir / "prepared.json"
@@ -477,6 +478,16 @@ def prepare_artifact(
     (output_dir / "prepare_config.json").write_text(
         json.dumps(bp_train_metadata, indent=2, default=str), encoding="utf-8"
     )
+
+    augmentation_plot_path = output_dir / AUGMENTATION_PLOT_FILENAME
+    if prepare.augmentation is not None:
+        render_augmentation_plot(
+            collection,
+            prepare.augmentation.variable_names,
+            augmentation_plot_path,
+        )
+    elif augmentation_plot_path.exists():
+        augmentation_plot_path.unlink()
 
     if prepare.diagnostics:
         try:
