@@ -77,6 +77,9 @@ Augmentation warns when a reactor-medium component spline dips below zero over t
 Process-variable values are not clipped by the final reactor-medium safeguard.
 The built-in `add` model nevertheless clips every listed state at zero; use `mult` or a custom hook for variables that may legitimately be negative.
 The `mult` model scales noise by the mean nonzero absolute spline value and preserves each value's sign.
+With `residual_scope: process`, each parent supplies its own spline-residual RMS.
+With `residual_scope: variable`, residual squares are pooled across parent observations of a state before taking one shared RMS.
+Identically zero observed traces are excluded from that pool because they require a custom augmentation rule rather than built-in residual-scaled noise.
 Resampled modeled states are stored on children as observation-only series, while their generating splines remain available on the parent.
 Controlled-variable splines remain on each child because simulation still needs them.
 

@@ -159,6 +159,47 @@ def _residual_statistics(
     return residual_rms, observed_rms
 
 
+def _effective_residual_statistics(
+    parents: list[tuple[str, Any]],
+    augmentation: AugmentationConfig,
+) -> dict[tuple[str, str], tuple[float, float]]:
+    statistics = {
+        (parent_name, state_name): _residual_statistics(
+            parent_name,
+            state_name,
+            _state_series(parent, state_name),
+        )
+        for parent_name, parent in parents
+        for state_name in augmentation.variable_names
+    }
+    if augmentation.residual_scope == "process":
+        return statistics
+
+    for state_name in augmentation.variable_names:
+        weighted_squared_residuals = 0.0
+        observation_count = 0
+        for parent_name, parent in parents:
+            series = _state_series(parent, state_name)
+            count = len(series.values)
+            residual_rms, observed_rms = statistics[parent_name, state_name]
+            if observed_rms == 0.0:
+                continue
+            weighted_squared_residuals += count * residual_rms**2
+            observation_count += count
+        pooled_residual_rms = (
+            np.sqrt(weighted_squared_residuals / observation_count)
+            if observation_count
+            else 0.0
+        )
+        for parent_name, _ in parents:
+            _, observed_rms = statistics[parent_name, state_name]
+            statistics[parent_name, state_name] = (
+                float(pooled_residual_rms),
+                observed_rms,
+            )
+    return statistics
+
+
 def _validate_requested_states(
     parent_name: str,
     process,
@@ -297,7 +338,6 @@ def augment_process_collection(
     if collisions:
         raise ValueError(f"generated augmented process already exists: {collisions[0]}")
 
-    residual_statistics = {}
     validated_parents = []
     for parent_name, parent in parents:
         modeled_names = _validate_requested_states(parent_name, parent, augmentation)
@@ -315,12 +355,6 @@ def augment_process_collection(
             for state_name in augmentation.variable_names
             if _initial_value_source(augmentation, state_name) == "measured"
         }
-        for state_name in augmentation.variable_names:
-            residual_statistics[parent_name, state_name] = _residual_statistics(
-                parent_name,
-                state_name,
-                _state_series(parent, state_name),
-            )
         validated_parents.append(
             (
                 parent_name,
@@ -331,6 +365,8 @@ def augment_process_collection(
                 measured_initial_values,
             )
         )
+
+    residual_statistics = _effective_residual_statistics(parents, augmentation)
 
     child_times = {
         (parent_name, child_index): _child_grid(

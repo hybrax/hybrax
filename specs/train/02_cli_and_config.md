@@ -330,8 +330,9 @@ The `prepare.augmentation` object has these fields.
 | `n_time_points` | required (>=2) | Points on each child grid, including exact endpoints. |
 | `min_spacing_fraction` | `0.1` (0 < value <= 1) | Fraction of the nominal interval `(end - start) / (n_time_points - 1)` reserved for each child-grid gap; `1` gives an even grid. Requests within four timestamp-resolution steps fail; stored gaps use a small relative rounding tolerance. |
 | `variable_names` | required, nonempty | Modeled states to noise. |
-| `noise_scale` | {} | Per-state multiplier on the parent spline-residual RMS, required when the built-in path handles that state. |
+| `noise_scale` | {} | Per-state multiplier on the effective spline-residual RMS, required when the built-in path handles that state. |
 | `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute spline value, or clipped Gaussian `add`. |
+| `residual_scope` | `process` | `process` uses each parent's residual RMS; `variable` uses one observation-weighted pooled residual RMS per state across parents with nonzero observed traces. |
 | `initial_value_source` | `measured` | `measured`, `spline`, or `augmented`, applied to every listed state; alternatively, an exact per-state mapping for all `variable_names`. |
 
 **`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to

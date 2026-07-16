@@ -108,6 +108,7 @@ class AugmentationConfig(ConfigBase):
     variable_names: tuple[str, ...] = Field(min_length=1)
     noise_scale: dict[str, float] = Field(default_factory=dict)
     noise_model: Literal["mult", "add"] = "mult"
+    residual_scope: Literal["process", "variable"] = "process"
     initial_value_source: InitialValueSource | dict[str, InitialValueSource] = (
         "measured"
     )

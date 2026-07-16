@@ -483,7 +483,7 @@ def prepare_artifact(
     if prepare.augmentation is not None:
         render_augmentation_plot(
             collection,
-            prepare.augmentation.variable_names,
+            prepare.augmentation,
             augmentation_plot_path,
         )
     elif augmentation_plot_path.exists():

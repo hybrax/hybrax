@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
-from .augmentation import _residual_statistics, _state_series
+from .augmentation import _effective_residual_statistics, _state_series
+from .run_config import AugmentationConfig
 
 
 AUGMENTATION_PLOT_FILENAME = "augmented-data.png"
@@ -23,7 +24,7 @@ def _state_unit(process, state_name: str) -> str:
 
 def render_augmentation_plot(
     collection: BioProcessCollection,
-    variable_names: tuple[str, ...],
+    augmentation: AugmentationConfig,
     output_path: Path,
 ) -> None:
     """Plot parent spline fit quality, data, and augmented observations."""
@@ -35,6 +36,11 @@ def render_augmentation_plot(
         for name, process in collection.processes.items()
         if not isinstance(process, AugmentedBioProcess)
     }
+    variable_names = augmentation.variable_names
+    residual_statistics = _effective_residual_statistics(
+        list(parents.items()),
+        augmentation,
+    )
     children_by_parent = {name: [] for name in parents}
     for process in collection.processes.values():
         if isinstance(process, AugmentedBioProcess):
@@ -77,21 +83,18 @@ def render_augmentation_plot(
                 parent_series.evaluate_many(smooth_times),
                 dtype=float,
             )
-            residual_rms, _ = _residual_statistics(
-                parent_name,
-                state_name,
-                parent_series,
-            )
-
-            axis.fill_between(
-                smooth_times,
-                spline_values - residual_rms,
-                spline_values + residual_rms,
-                color="#A23B72",
-                alpha=0.2,
-                label="Spline fit +/- residual RMS",
-                zorder=2,
-            )
+            residual_rms, observed_rms = residual_statistics[parent_name, state_name]
+            if state_name in augmentation.noise_scale and observed_rms > 0.0:
+                noise_std = augmentation.noise_scale[state_name] * residual_rms
+                axis.fill_between(
+                    smooth_times,
+                    spline_values - noise_std,
+                    spline_values + noise_std,
+                    color="#A23B72",
+                    alpha=0.2,
+                    label="Spline fit +/- noise STD",
+                    zorder=2,
+                )
             axis.plot(
                 smooth_times,
                 spline_values,
