@@ -73,13 +73,16 @@ A state used as a training target should normally be listed, otherwise the child
 Mixed state grids remain valid because training constructs a union grid and a per-target measurement mask.
 
 Reactor-medium component values are clipped at zero after built-in or custom augmentation.
+For additive noise, the plot band shows the nominal Gaussian standard deviation before this clipping, so it can extend below zero.
+At the initial time, the band collapses to zero when `initial_value_source` preserves the measured or spline value.
 Augmentation warns when a reactor-medium component spline dips below zero over the process interval, or when this happens for a process variable whose observations are mostly nonnegative.
 Process-variable values are not clipped by the final reactor-medium safeguard.
 The built-in `add` model nevertheless clips every listed state at zero; use `mult` or a custom hook for variables that may legitimately be negative.
 The `mult` model scales noise by the mean nonzero absolute spline value and preserves each value's sign.
 With `residual_scope: process`, each parent supplies its own spline-residual RMS.
 With `residual_scope: variable`, residual squares are pooled across parent observations of a state before taking one shared RMS.
-Identically zero observed traces are excluded from that pool because they require a custom augmentation rule rather than built-in residual-scaled noise.
+Identically zero observed traces are excluded from that estimate so they do not dilute the error scale, but the resulting shared RMS is still applied to them.
+The `mult` model uses a deterministic reference magnitude from the parent spline at its observation times, so every child and the augmentation plot use the same relative noise scale.
 Resampled modeled states are stored on children as observation-only series, while their generating splines remain available on the parent.
 Controlled-variable splines remain on each child because simulation still needs them.
 

@@ -5,7 +5,14 @@ from pathlib import Path
 import numpy as np
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
-from .augmentation import _effective_residual_statistics, _state_series
+from .augmentation import (
+    _effective_residual_statistics,
+    _initial_value_source,
+    _multiplicative_reference_magnitude,
+    _multiplicative_relative_std,
+    _parent_processes,
+    _state_series,
+)
 from .run_config import AugmentationConfig
 
 
@@ -31,14 +38,11 @@ def render_augmentation_plot(
     # Keep non-plotting CLI commands from paying matplotlib's import cost.
     from matplotlib.figure import Figure
 
-    parents = {
-        name: process
-        for name, process in collection.processes.items()
-        if not isinstance(process, AugmentedBioProcess)
-    }
+    parent_items = _parent_processes(collection)
+    parents = dict(parent_items)
     variable_names = augmentation.variable_names
     residual_statistics = _effective_residual_statistics(
-        list(parents.items()),
+        parent_items,
         augmentation,
     )
     children_by_parent = {name: [] for name in parents}
@@ -83,16 +87,29 @@ def render_augmentation_plot(
                 parent_series.evaluate_many(smooth_times),
                 dtype=float,
             )
-            residual_rms, observed_rms = residual_statistics[parent_name, state_name]
-            if state_name in augmentation.noise_scale and observed_rms > 0.0:
-                noise_std = augmentation.noise_scale[state_name] * residual_rms
+            residual_rms, _, _ = residual_statistics[parent_name, state_name]
+            if state_name in augmentation.noise_scale:
+                err_std = augmentation.noise_scale[state_name] * residual_rms
+                if augmentation.noise_model == "add":
+                    noise_std = np.full_like(spline_values, err_std)
+                else:
+                    reference_magnitude = _multiplicative_reference_magnitude(
+                        parent_series
+                    )
+                    rel_std = _multiplicative_relative_std(
+                        err_std,
+                        reference_magnitude,
+                    )
+                    noise_std = np.abs(spline_values) * rel_std
+                if _initial_value_source(augmentation, state_name) != "augmented":
+                    noise_std[0] = 0.0
                 axis.fill_between(
                     smooth_times,
                     spline_values - noise_std,
                     spline_values + noise_std,
                     color="#A23B72",
                     alpha=0.2,
-                    label="Spline fit +/- noise STD",
+                    label="Spline fit +/- nominal noise STD",
                     zorder=2,
                 )
             axis.plot(

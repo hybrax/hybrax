@@ -189,7 +189,8 @@ def augment_state_values(
 Override the generated values for one explicitly listed state on one augmented child.
 Return a one-dimensional array with the same shape as `times`, or return `None` to use the configured residual-scaled noise model.
 `standard_normal` is the deterministic random vector assigned to that child and state.
-For an effectively zero trace, custom code can return clipped additive values using an absolute standard deviation in the state's physical units.
+For a process-scoped trace with an effectively zero spline residual, custom code can return clipped additive values using an absolute standard deviation in the state's physical units.
+Variable scope instead applies the pooled residual RMS to every trace, including an identically zero trace.
 For reactor-medium components, core augmentation clips the final returned values at zero.
 
 ```python
@@ -331,7 +332,7 @@ The `prepare.augmentation` object has these fields.
 | `min_spacing_fraction` | `0.1` (0 < value <= 1) | Fraction of the nominal interval `(end - start) / (n_time_points - 1)` reserved for each child-grid gap; `1` gives an even grid. Requests within four timestamp-resolution steps fail; stored gaps use a small relative rounding tolerance. |
 | `variable_names` | required, nonempty | Modeled states to noise. |
 | `noise_scale` | {} | Per-state multiplier on the effective spline-residual RMS, required when the built-in path handles that state. |
-| `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute spline value, or clipped Gaussian `add`. |
+| `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute parent-spline value at observation times, or clipped Gaussian `add`. |
 | `residual_scope` | `process` | `process` uses each parent's residual RMS; `variable` uses one observation-weighted pooled residual RMS per state across parents with nonzero observed traces. |
 | `initial_value_source` | `measured` | `measured`, `spline`, or `augmented`, applied to every listed state; alternatively, an exact per-state mapping for all `variable_names`. |
 

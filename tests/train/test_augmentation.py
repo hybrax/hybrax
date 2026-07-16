@@ -280,7 +280,8 @@ def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
         expected_noise_stds,
         strict=True,
     ):
-        np.testing.assert_allclose(band_width, 2.0 * expected_noise_std)
+        np.testing.assert_allclose(band_width[0], 0.0)
+        np.testing.assert_allclose(band_width[1:], 2.0 * expected_noise_std)
 
 
 def test_prepare_without_augmentation_removes_stale_plot(tmp_path):
@@ -838,7 +839,8 @@ def test_residual_scaled_noise_matches_formula(noise_model):
     if noise_model == "add":
         expected = np.clip(base + z * err_std, 0.0, None)
     else:
-        rel_std = err_std / max(np.mean(np.abs(base[base != 0.0])), 1e-8)
+        fitted = np.asarray(parent_series.evaluate_many(parent_series.times))
+        rel_std = err_std / max(np.mean(np.abs(fitted[fitted != 0.0])), 1e-8)
         sigma = np.sqrt(np.log1p(rel_std**2))
         expected = base * np.exp(-0.5 * sigma**2 + sigma * z)
     np.testing.assert_allclose(actual, expected)
@@ -864,8 +866,6 @@ def test_variable_residual_scope_uses_observation_weighted_pooled_rms():
 
     def capture(**kwargs):
         captured[kwargs["parent_name"]] = kwargs
-        if kwargs["observed_rms"] == 0.0:
-            return kwargs["base_values"]
         return None
 
     scale = 1.4
@@ -888,9 +888,6 @@ def test_variable_residual_scope_uses_observation_weighted_pooled_rms():
                 "biomass",
             ).values
         )
-        if parent_name == "p3":
-            np.testing.assert_array_equal(actual, values["base_values"])
-            continue
         expected = np.clip(
             values["base_values"]
             + scale * pooled_residual_rms * values["standard_normal"],
@@ -956,7 +953,57 @@ def test_variable_residual_scope_plot_uses_one_configured_noise_std(
 
     assert len(band_noise_stds) == 2
     for noise_std in band_noise_stds:
-        np.testing.assert_allclose(noise_std, scale * pooled_residual_rms)
+        np.testing.assert_allclose(noise_std[0], 0.0)
+        np.testing.assert_allclose(noise_std[1:], scale * pooled_residual_rms)
+
+
+@pytest.mark.parametrize(
+    ("initial_value_source", "fixed_initial_value"),
+    [("measured", True), ("spline", True), ("augmented", False)],
+)
+def test_multiplicative_plot_band_matches_pointwise_noise_std(
+    tmp_path,
+    monkeypatch,
+    initial_value_source,
+    fixed_initial_value,
+):
+    collection = _collection()
+    config = _config(
+        noise_model="mult",
+        initial_value_source=initial_value_source,
+    )
+    parent_series = _state_series(collection.processes["p1"], "biomass")
+    residual_rms, _ = augmentation_module._residual_statistics(
+        "p1",
+        "biomass",
+        parent_series,
+    )
+    fitted = np.asarray(parent_series.evaluate_many(parent_series.times))
+    reference_magnitude = np.mean(np.abs(fitted[fitted != 0.0]))
+    rel_std = 0.7 * residual_rms / reference_magnitude
+    augment_process_collection(collection, config)
+    bands = []
+    fill_between = Axes.fill_between
+
+    def track_fill_between(axis, x, y1, y2, *args, **kwargs):
+        bands.append((np.asarray(x), np.asarray(y1), np.asarray(y2)))
+        return fill_between(axis, x, y1, y2, *args, **kwargs)
+
+    monkeypatch.setattr(Axes, "fill_between", track_fill_between)
+    augmentation_plot_module.render_augmentation_plot(
+        collection,
+        config.prepare.augmentation,
+        tmp_path / "multiplicative-noise.png",
+    )
+
+    assert len(bands) == 1
+    times, lower, upper = bands[0]
+    spline_values = np.asarray(parent_series.evaluate_many(times))
+    expected_std = np.abs(spline_values) * rel_std
+    if fixed_initial_value:
+        expected_std[0] = 0.0
+    np.testing.assert_allclose((upper - lower) / 2.0, expected_std)
+    assert expected_std[np.argmax(spline_values)] > expected_std[0]
 
 
 @pytest.mark.parametrize(
@@ -981,7 +1028,8 @@ def test_multiplicative_noise_is_well_scaled_for_signed_values(levels):
         state_name="signed_pv",
         base_values=base,
         residual_rms=0.75,
-        observed_rms=1.5,
+        observed_scale_rms=1.5,
+        multiplicative_reference_magnitude=1.5,
         standard_normal=standard_normal,
         augmentation=config,
     )
@@ -1042,7 +1090,8 @@ def test_built_in_noise_uses_fixed_relative_residual_boundary():
         "parent_name": "p1",
         "state_name": "biomass",
         "base_values": np.ones(1),
-        "observed_rms": 1.0,
+        "observed_scale_rms": 1.0,
+        "multiplicative_reference_magnitude": 1.0,
         "standard_normal": np.zeros(1),
         "augmentation": augmentation,
     }

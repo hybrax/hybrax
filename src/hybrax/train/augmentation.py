@@ -84,6 +84,14 @@ def _state_series(process, state_name: str) -> Any:
     return process.process_variables[state_name].values
 
 
+def _parent_processes(collection: BioProcessCollection) -> list[tuple[str, Any]]:
+    return [
+        (name, process)
+        for name, process in collection.processes.items()
+        if not isinstance(process, AugmentedBioProcess)
+    ]
+
+
 def _set_state_series(process, state_name: str, series: TimeSeries) -> None:
     if state_name in process.reactor_medium.components:
         process.reactor_medium.components[state_name].concentration = series
@@ -162,42 +170,64 @@ def _residual_statistics(
 def _effective_residual_statistics(
     parents: list[tuple[str, Any]],
     augmentation: AugmentationConfig,
-) -> dict[tuple[str, str], tuple[float, float]]:
-    statistics = {
-        (parent_name, state_name): _residual_statistics(
-            parent_name,
-            state_name,
-            _state_series(parent, state_name),
-        )
-        for parent_name, parent in parents
-        for state_name in augmentation.variable_names
-    }
+) -> dict[tuple[str, str], tuple[float, float, float]]:
+    statistics = {}
+    for parent_name, parent in parents:
+        for state_name in augmentation.variable_names:
+            residual_rms, observed_rms = _residual_statistics(
+                parent_name,
+                state_name,
+                _state_series(parent, state_name),
+            )
+            statistics[parent_name, state_name] = (
+                residual_rms,
+                observed_rms,
+                observed_rms,
+            )
     if augmentation.residual_scope == "process":
         return statistics
 
     for state_name in augmentation.variable_names:
         weighted_squared_residuals = 0.0
+        weighted_squared_observations = 0.0
         observation_count = 0
         for parent_name, parent in parents:
             series = _state_series(parent, state_name)
             count = len(series.values)
-            residual_rms, observed_rms = statistics[parent_name, state_name]
+            residual_rms, observed_rms, _ = statistics[parent_name, state_name]
             if observed_rms == 0.0:
                 continue
             weighted_squared_residuals += count * residual_rms**2
+            weighted_squared_observations += count * observed_rms**2
             observation_count += count
         pooled_residual_rms = (
             np.sqrt(weighted_squared_residuals / observation_count)
             if observation_count
             else 0.0
         )
+        pooled_observed_rms = (
+            np.sqrt(weighted_squared_observations / observation_count)
+            if observation_count
+            else 0.0
+        )
         for parent_name, _ in parents:
-            _, observed_rms = statistics[parent_name, state_name]
+            _, observed_rms, _ = statistics[parent_name, state_name]
             statistics[parent_name, state_name] = (
                 float(pooled_residual_rms),
                 observed_rms,
+                float(pooled_observed_rms),
             )
     return statistics
+
+
+def _multiplicative_reference_magnitude(series: TimeSeries) -> float:
+    fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
+    magnitudes = np.abs(fitted[fitted != 0.0])
+    return float(np.mean(magnitudes)) if magnitudes.size else 0.0
+
+
+def _multiplicative_relative_std(err_std: float, reference_magnitude: float) -> float:
+    return err_std / max(reference_magnitude, _MULTIPLICATIVE_SCALE_FLOOR)
 
 
 def _validate_requested_states(
@@ -229,11 +259,14 @@ def _built_in_values(
     state_name: str,
     base_values: np.ndarray,
     residual_rms: float,
-    observed_rms: float,
+    observed_scale_rms: float,
+    multiplicative_reference_magnitude: float,
     standard_normal: np.ndarray,
     augmentation: AugmentationConfig,
 ) -> np.ndarray:
-    relative_residual_rms = residual_rms / observed_rms if observed_rms else 0.0
+    relative_residual_rms = (
+        residual_rms / observed_scale_rms if observed_scale_rms else 0.0
+    )
     if relative_residual_rms <= _MIN_RELATIVE_RESIDUAL_RMS:
         raise ValueError(
             f"{parent_name}: modeled state {state_name!r} has an effectively "
@@ -247,9 +280,10 @@ def _built_in_values(
     if augmentation.noise_model == "add":
         return np.clip(base_values + standard_normal * err_std, 0.0, None)
 
-    magnitudes = np.abs(base_values[base_values != 0.0])
-    mean_magnitude = float(np.mean(magnitudes)) if magnitudes.size else 0.0
-    rel_std = err_std / max(mean_magnitude, _MULTIPLICATIVE_SCALE_FLOOR)
+    rel_std = _multiplicative_relative_std(
+        err_std,
+        multiplicative_reference_magnitude,
+    )
     sigma = np.sqrt(np.log1p(rel_std**2))
     return base_values * np.exp(-0.5 * sigma**2 + sigma * standard_normal)
 
@@ -264,6 +298,8 @@ def _augment_values(
     base_values: np.ndarray,
     residual_rms: float,
     observed_rms: float,
+    observed_scale_rms: float,
+    multiplicative_reference_magnitude: float,
     augmentation: AugmentationConfig,
     run_config: RunConfig,
     augment_state_values: AugmentStateValues | None,
@@ -295,7 +331,8 @@ def _augment_values(
             state_name=state_name,
             base_values=base_values,
             residual_rms=residual_rms,
-            observed_rms=observed_rms,
+            observed_scale_rms=observed_scale_rms,
+            multiplicative_reference_magnitude=(multiplicative_reference_magnitude),
             standard_normal=standard_normal,
             augmentation=augmentation,
         )
@@ -323,11 +360,7 @@ def augment_process_collection(
     if prepare is None or prepare.augmentation is None:
         return collection
     augmentation = prepare.augmentation
-    parents = [
-        (name, process)
-        for name, process in collection.processes.items()
-        if not isinstance(process, AugmentedBioProcess)
-    ]
+    parents = _parent_processes(collection)
 
     child_names = [
         _child_name(parent_name, child_index)
@@ -367,6 +400,13 @@ def augment_process_collection(
         )
 
     residual_statistics = _effective_residual_statistics(parents, augmentation)
+    multiplicative_reference_magnitudes = {
+        (parent_name, state_name): _multiplicative_reference_magnitude(
+            _state_series(parent, state_name)
+        )
+        for parent_name, parent in parents
+        for state_name in augmentation.variable_names
+    }
 
     child_times = {
         (parent_name, child_index): _child_grid(
@@ -440,9 +480,12 @@ def augment_process_collection(
                 is_rmc = state_name in child.reactor_medium.components
                 base_values = np.asarray(series.evaluate_many(times), dtype=float)
                 if state_name in augmentation.variable_names:
-                    residual_rms, observed_rms = residual_statistics[
-                        parent_name, state_name
-                    ]
+                    residual_rms, observed_rms, observed_scale_rms = (
+                        residual_statistics[parent_name, state_name]
+                    )
+                    multiplicative_reference_magnitude = (
+                        multiplicative_reference_magnitudes[parent_name, state_name]
+                    )
                     values = _augment_values(
                         parent_name=parent_name,
                         child_name=child_name,
@@ -452,6 +495,10 @@ def augment_process_collection(
                         base_values=base_values,
                         residual_rms=residual_rms,
                         observed_rms=observed_rms,
+                        observed_scale_rms=observed_scale_rms,
+                        multiplicative_reference_magnitude=(
+                            multiplicative_reference_magnitude
+                        ),
                         augmentation=augmentation,
                         run_config=run_config,
                         augment_state_values=augment_state_values,
