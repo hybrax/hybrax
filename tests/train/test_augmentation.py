@@ -897,6 +897,51 @@ def test_variable_residual_scope_uses_observation_weighted_pooled_rms():
         np.testing.assert_allclose(actual, expected)
 
 
+def test_variable_scope_pools_observed_scale_rms_excluding_zero_traces():
+    collection = _two_process_collection()
+    zero_process = deepcopy(collection.processes["p1"])
+    zero_process.metadata.name = "p3"
+    zero_process.reactor_medium.components["biomass"].concentration = _spline(
+        [0.0] * 5,
+        smoothing_s=0.0,
+    )
+    collection.processes["p3"] = zero_process
+
+    augmentation = _config(residual_scope="variable").prepare.augmentation
+    parents = augmentation_module._parent_processes(collection)
+    statistics = augmentation_module._effective_residual_statistics(
+        parents,
+        augmentation,
+    )
+
+    weighted_squares = 0.0
+    observation_count = 0
+    per_parent_observed = {}
+    for parent_name, process in parents:
+        series = _state_series(process, "biomass")
+        # Recompute from the fixture observations rather than reusing
+        # _residual_statistics, so a bug in that helper cannot cancel out.
+        observed = np.asarray(series.values, dtype=float)
+        observed_rms = float(np.sqrt(np.mean(observed**2)))
+        per_parent_observed[parent_name] = observed_rms
+        if observed_rms == 0.0:
+            continue
+        weighted_squares += len(series.values) * observed_rms**2
+        observation_count += len(series.values)
+    expected_pooled_observed = np.sqrt(weighted_squares / observation_count)
+
+    # The zero trace is excluded from the pool but must still be assigned it.
+    assert per_parent_observed["p3"] == 0.0
+    assert expected_pooled_observed > 0.0
+    assert expected_pooled_observed != pytest.approx(per_parent_observed["p1"])
+    for parent_name, _ in parents:
+        _, observed_rms, observed_scale_rms = statistics[parent_name, "biomass"]
+        # Middle slot keeps each parent's own observed RMS for the hook contract.
+        assert observed_rms == pytest.approx(per_parent_observed[parent_name])
+        # Third slot is the shared observation-weighted pool.
+        assert observed_scale_rms == pytest.approx(expected_pooled_observed)
+
+
 def test_process_residual_scope_keeps_parent_specific_rms():
     collection = _two_process_collection()
     expected = {
