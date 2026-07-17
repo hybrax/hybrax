@@ -688,6 +688,24 @@ def test_child_grid_failure_leaves_collection_unchanged(monkeypatch):
     assert list(collection.processes) == ["p1"]
 
 
+def test_late_child_failure_leaves_collection_unchanged():
+    collection = _collection()
+
+    def fail_second_child(*, child_name, base_values, **_):
+        if child_name == "p1__aug_001":
+            raise ValueError("failed to augment child")
+        return base_values
+
+    with pytest.raises(ValueError, match="failed to augment child"):
+        augment_process_collection(
+            collection,
+            _config(n_children=2),
+            fail_second_child,
+        )
+
+    assert list(collection.processes) == ["p1"]
+
+
 def test_children_preserve_physical_structure_without_sharing_objects():
     collection = _collection()
     parent = collection.processes["p1"]

@@ -415,6 +415,7 @@ def augment_process_collection(
         for parent_name, _, _, t0, t_end, _ in validated_parents
         for child_index in range(augmentation.n_children_per_process)
     }
+    children = {}
 
     for (
         parent_name,
@@ -463,9 +464,8 @@ def augment_process_collection(
 
         for child_index in range(augmentation.n_children_per_process):
             child_name = _child_name(parent_name, child_index)
-            parent_copy = deepcopy(parent)
             child = AugmentedBioProcess(
-                **vars(parent_copy),
+                **vars(deepcopy(parent)),
                 parent_process=parent_name,
             )
             child.metadata.name = child_name
@@ -525,6 +525,7 @@ def augment_process_collection(
                     ),
                 )
 
-            collection.processes[child_name] = child
+            children[child_name] = child
 
+    collection.processes.update(children)
     return collection
