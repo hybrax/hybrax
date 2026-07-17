@@ -258,9 +258,12 @@ def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
         ),
     )
 
-    plot_path = tmp_path / "with-augmentation-plot" / "augmented-data.png"
+    output_dir = tmp_path / "with-augmentation-plot"
+    plot_path = output_dir / "augmented-data.png"
     assert plot_path.is_file()
     assert plot_path.stat().st_size > 0
+    assert (output_dir / "prepared.json").is_file()
+    assert (output_dir / "prepare_config.json").is_file()
     assert rendered_variable_names == [("biomass", "ratio")]
     assert rendered_process_names == [("p1", "p1__aug_000")]
     assert set(requested_state_names) == {"biomass", "ratio"}
@@ -282,6 +285,25 @@ def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
     ):
         np.testing.assert_allclose(band_width[0], 0.0)
         np.testing.assert_allclose(band_width[1:], 2.0 * expected_noise_std)
+
+
+def test_prepare_plot_failure_does_not_write_json(tmp_path, monkeypatch):
+    output_dir = tmp_path / "failed-augmentation-plot"
+
+    def fail_plot(*_):
+        raise RuntimeError("failed to render augmentation plot")
+
+    monkeypatch.setattr(prepare_module, "render_augmentation_plot", fail_plot)
+
+    with pytest.raises(RuntimeError, match="failed to render augmentation plot"):
+        _prepare_collection(
+            tmp_path,
+            output_dir.name,
+            augmentation=_augmentation_dict(),
+        )
+
+    assert not (output_dir / "prepared.json").exists()
+    assert not (output_dir / "prepare_config.json").exists()
 
 
 def test_prepare_without_augmentation_removes_stale_plot(tmp_path):

@@ -471,14 +471,6 @@ def prepare_artifact(
     bp_train_metadata["provenance"]["content_hash"] = content_hash(collection)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    save_process_collection(collection, output_path)
-    # Standalone, inspectable record of how this prepare ran (clash-free with
-    # train's config.json) — the bp_train provenance/metadata block, without the
-    # bulk collection.
-    (output_dir / "prepare_config.json").write_text(
-        json.dumps(bp_train_metadata, indent=2, default=str), encoding="utf-8"
-    )
-
     augmentation_plot_path = output_dir / AUGMENTATION_PLOT_FILENAME
     if prepare.augmentation is not None:
         render_augmentation_plot(
@@ -488,6 +480,14 @@ def prepare_artifact(
         )
     elif augmentation_plot_path.exists():
         augmentation_plot_path.unlink()
+
+    save_process_collection(collection, output_path)
+    # Standalone, inspectable record of how this prepare ran (clash-free with
+    # train's config.json) — the bp_train provenance/metadata block, without the
+    # bulk collection.
+    (output_dir / "prepare_config.json").write_text(
+        json.dumps(bp_train_metadata, indent=2, default=str), encoding="utf-8"
+    )
 
     if prepare.diagnostics:
         try:
