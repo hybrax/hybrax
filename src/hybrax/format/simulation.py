@@ -180,7 +180,7 @@ class Simulation:
         }
         process_events = [event for event in events if event.process == process]
         row_columns = (
-            "process",
+            "process_id",
             "time",
             "row_type",
             *state_names,
@@ -335,7 +335,7 @@ class Simulation:
         for key in sorted(grouped_events):
             for event_order, event in enumerate(grouped_events[key]):
                 row: dict[str, Any] = {
-                    "process": event.process,
+                    "process_id": event.process,
                     "time": float(event.time),
                     "event_order": event_order,
                     "event_type": event.event_type,
@@ -353,7 +353,7 @@ class Simulation:
     def event_columns(self, reactor_state_names: Sequence[str]) -> tuple[str, ...]:
         """Return events.csv columns for given reactor state order."""
         return (
-            "process",
+            "process_id",
             "time",
             "event_order",
             "event_type",
@@ -373,7 +373,7 @@ class Simulation:
         extras: Mapping[str, float],
     ) -> dict[str, Any]:
         row: dict[str, Any] = {
-            "process": process,
+            "process_id": process,
             "time": float(time),
             "row_type": row_type,
         }

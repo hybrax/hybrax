@@ -211,8 +211,9 @@ def test_events_table_schema_order():
     )
 
     assert isinstance(result, SimulationResult)
+    assert result.row_columns[0] == "process_id"
     assert result.event_columns == (
-        "process",
+        "process_id",
         "time",
         "event_order",
         "event_type",
@@ -244,8 +245,9 @@ def test_build_result_scopes_event_rows_to_process():
         ],
     )
 
-    assert {row["process"] for row in result.dense_rows} == {"run_1"}
-    assert {row["process"] for row in result.event_rows} == {"run_1"}
+    assert result.process == "run_1"
+    assert {row["process_id"] for row in result.dense_rows} == {"run_1"}
+    assert {row["process_id"] for row in result.event_rows} == {"run_1"}
     assert [row["time"] for row in result.event_rows] == [2.0]
 
 

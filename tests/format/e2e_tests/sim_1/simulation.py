@@ -538,9 +538,7 @@ class Sim1Simulation(Simulation):
         dense_rows = []
         rate_rows = self._build_rate_rows(result)
         for row, rate_row in zip(result.dense_rows, rate_rows, strict=True):
-            dense_row = self._normalize_process_id_row(
-                row, leading_keys=("time", "row_type")
-            )
+            dense_row = dict(row)
             dense_row.update({name: rate_row[name] for name in RATE_COLUMNS})
             dense_rows.append(dense_row)
 
@@ -551,37 +549,10 @@ class Sim1Simulation(Simulation):
             state_names=result.state_names,
             reactor_state_names=result.reactor_state_names,
             dense_rows=dense_rows,
-            event_rows=[
-                self._normalize_process_id_row(row) for row in result.event_rows
-            ],
-            row_columns=(
-                "process_id",
-                *result.row_columns[1:],
-                *RATE_COLUMNS,
-            ),
-            event_columns=("process_id", *result.event_columns[1:]),
+            event_rows=result.event_rows,
+            row_columns=(*result.row_columns, *RATE_COLUMNS),
+            event_columns=result.event_columns,
         )
-
-    @staticmethod
-    def _normalize_process_id_row(
-        row: dict,
-        *,
-        leading_keys: tuple[str, ...] = (),
-    ) -> dict:
-        process_id = row.get("process_id", row.get("process"))
-        if process_id is None:
-            raise KeyError("row must contain process_id")
-        normalized = {"process_id": process_id}
-        for key in leading_keys:
-            normalized[key] = row[key]
-        normalized.update(
-            {
-                name: value
-                for name, value in row.items()
-                if name not in {"process", "process_id", *leading_keys}
-            }
-        )
-        return normalized
 
     def _build_rate_rows(self, result: SimulationResult) -> list[dict]:
         n_reactor = len(KINETIC_REACTOR_NAMES)
