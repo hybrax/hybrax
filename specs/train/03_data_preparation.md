@@ -44,9 +44,10 @@ prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False)
 - `load_raw_collection` accepts a bp-format `BioProcessCollection` (file or
   in-memory) or a `CaseStudy` (file or in-memory); a `CaseStudy`'s processes
   are wrapped into a collection, with the case identity kept in `metadata`.
-- `prepare_artifact` runs the prepare hooks
-  ([`transform_process_collection`](02_cli_and_config.md#transform_process_collection),
-  [`augment_state_values`](02_cli_and_config.md#augment_state_values)),
+- `prepare_artifact` runs
+  [`transform_process_collection`](02_cli_and_config.md#transform_process_collection)
+  and the optional
+  [`augment_state_values`](02_cli_and_config.md#augment_state_values) hook,
   validates, enforces the required and consistent continuous-control contract,
   and writes the artifact. Normally invoked via `bp-train prepare`.
 
@@ -58,11 +59,16 @@ It receives an independently sampled measurement grid with the exact parent star
 
 Modeled states follow three rules.
 
-1. Listed spline-backed states are evaluated on the child grid and noised.
-2. Unlisted spline-backed states are evaluated on the same grid without noise.
-3. Unlisted states without splines keep their original observations and grid.
+1. States configured in `noise_std` are evaluated on the child grid and receive
+   additive Gaussian noise with that absolute standard deviation.
+2. Other spline-backed states are evaluated on the same grid without noise.
+3. Other states without splines keep their original observations and grid.
 
-For listed states, `initial_value_source` selects the child's initial value.
+A `noise_std` value of zero performs time resampling without adding target noise.
+Configured noise applies equally to identically-zero and nonzero parent traces.
+Use `augment_state_values` when domain knowledge requires preserving selected
+structural-zero traces.
+For configured states, `initial_value_source` selects the child's initial value.
 `measured` preserves the parent's real observation at the process start and fails when none exists.
 `spline` uses `spline(t0)`, while `augmented` also applies augmentation noise at `t0`.
 The setting may be one value for every listed state or an exact per-state mapping.
@@ -72,17 +78,15 @@ The second rule implicitly uses `spline(t0)` and emits the same extrapolation wa
 A state used as a training target should normally be listed, otherwise the children supervise repeated noise-free spline trajectories for that target.
 Mixed state grids remain valid because training constructs a union grid and a per-target measurement mask.
 
-Reactor-medium component values are clipped at zero after built-in or custom augmentation.
-For additive noise, the plot band shows the nominal Gaussian standard deviation before this clipping, so it can extend below zero.
-At the initial time, the band collapses to zero when `initial_value_source` preserves the measured or spline value.
-Augmentation warns when a reactor-medium component spline dips below zero over the process interval, or when this happens for a process variable whose observations are mostly nonnegative.
-Process-variable values are not clipped by the final reactor-medium safeguard.
-The built-in `add` model nevertheless clips every listed state at zero; use `mult` or a custom hook for variables that may legitimately be negative.
-The `mult` model scales noise by the mean nonzero absolute spline value and preserves each value's sign.
-With `residual_scope: process`, each parent supplies its own spline-residual RMS.
-With `residual_scope: variable`, residual squares are pooled across parent observations of a state before taking one shared RMS.
-Identically zero observed traces are excluded from that estimate so they do not dilute the error scale, but the resulting shared RMS is still applied to them.
-The `mult` model uses a deterministic reference magnitude from the parent spline at its observation times, so every child and the augmentation plot use the same relative noise scale.
+Reactor-medium component values are clipped at zero after additive noise.
+Plots show the central 95% Gaussian interval (`spline ± 1.96 * noise_std`).
+Reactor-medium band bounds are clipped at zero; process-variable bands remain
+signed. At the initial time, the band collapses to zero width when
+`initial_value_source` preserves the measured or spline value.
+Augmentation warns when a reactor-medium component spline dips below zero over the
+process interval, or when this happens for a process variable whose observations
+are mostly nonnegative. Process-variable values are not clipped, so signed variables
+remain signed.
 Resampled modeled states are stored on children as observation-only series, while their generating splines remain available on the parent.
 Controlled-variable splines remain on each child because simulation still needs them.
 

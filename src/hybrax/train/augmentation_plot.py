@@ -6,10 +6,8 @@ import numpy as np
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
 from .augmentation import (
-    _effective_residual_statistics,
     _initial_value_source,
-    _multiplicative_reference_magnitude,
-    _multiplicative_relative_std,
+    _measured_initial_value,
     _parent_processes,
     _state_series,
 )
@@ -21,6 +19,7 @@ _SPLINE_GRID_POINTS = 200
 _PANEL_WIDTH = 4
 _PANEL_HEIGHT = 3
 _OUTPUT_DPI = 200
+_NORMAL_95_INTERVAL_Z = 1.96
 
 
 def _state_unit(process, state_name: str) -> str:
@@ -40,11 +39,7 @@ def render_augmentation_plot(
 
     parent_items = _parent_processes(collection)
     parents = dict(parent_items)
-    variable_names = augmentation.variable_names
-    residual_statistics = _effective_residual_statistics(
-        parent_items,
-        augmentation,
-    )
+    state_names = tuple(augmentation.noise_std)
     children_by_parent = {name: [] for name in parents}
     for process in collection.processes.values():
         if isinstance(process, AugmentedBioProcess):
@@ -52,17 +47,18 @@ def render_augmentation_plot(
 
     figure = Figure(
         figsize=(
-            _PANEL_WIDTH * len(variable_names),
+            _PANEL_WIDTH * len(state_names),
             _PANEL_HEIGHT * len(parents),
         )
     )
     axes = figure.subplots(
         len(parents),
-        len(variable_names),
+        len(state_names),
         squeeze=False,
+        sharey="col",
     )
     for row, (parent_name, parent) in enumerate(parents.items()):
-        for column, state_name in enumerate(variable_names):
+        for column, state_name in enumerate(state_names):
             axis = axes[row, column]
             parent_series = _state_series(parent, state_name)
             for child_index, child in enumerate(children_by_parent[parent_name]):
@@ -87,31 +83,35 @@ def render_augmentation_plot(
                 parent_series.evaluate_many(smooth_times),
                 dtype=float,
             )
-            residual_rms, _, _ = residual_statistics[parent_name, state_name]
-            if state_name in augmentation.noise_scale:
-                err_std = augmentation.noise_scale[state_name] * residual_rms
-                if augmentation.noise_model == "add":
-                    noise_std = np.full_like(spline_values, err_std)
-                else:
-                    reference_magnitude = _multiplicative_reference_magnitude(
-                        parent_series
-                    )
-                    rel_std = _multiplicative_relative_std(
-                        err_std,
-                        reference_magnitude,
-                    )
-                    noise_std = np.abs(spline_values) * rel_std
-                if _initial_value_source(augmentation, state_name) != "augmented":
-                    noise_std[0] = 0.0
-                axis.fill_between(
-                    smooth_times,
-                    spline_values - noise_std,
-                    spline_values + noise_std,
-                    color="#A23B72",
-                    alpha=0.2,
-                    label="Spline fit +/- nominal noise STD",
-                    zorder=2,
+            noise_std = np.full_like(
+                spline_values,
+                augmentation.noise_std[state_name],
+            )
+            band_center = spline_values.copy()
+            initial_value_source = _initial_value_source(augmentation, state_name)
+            if initial_value_source != "augmented":
+                noise_std[0] = 0.0
+            if initial_value_source == "measured":
+                band_center[0] = _measured_initial_value(
+                    parent_name,
+                    state_name,
+                    parent_series,
+                    float(parent.time_axis.start),
                 )
+            lower = band_center - _NORMAL_95_INTERVAL_Z * noise_std
+            upper = band_center + _NORMAL_95_INTERVAL_Z * noise_std
+            if state_name in parent.reactor_medium.components:
+                lower = np.clip(lower, 0.0, None)
+                upper = np.clip(upper, 0.0, None)
+            axis.fill_between(
+                smooth_times,
+                lower,
+                upper,
+                color="#A23B72",
+                alpha=0.2,
+                label="Spline fit 95% noise interval",
+                zorder=2,
+            )
             axis.plot(
                 smooth_times,
                 spline_values,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 from pathlib import Path
 import warnings
@@ -115,27 +116,12 @@ def _collection(*, zero_trace: bool = False) -> BioProcessCollection:
     return BioProcessCollection(processes={"p1": process}, metadata={})
 
 
-def _two_process_collection() -> BioProcessCollection:
-    collection = _collection()
-    second = deepcopy(collection.processes["p1"])
-    second.metadata.name = "p2"
-    second.reactor_medium.components["biomass"].concentration = _spline(
-        [0.2, 0.9, 1.0, 1.8],
-        smoothing_s=0.2,
-    )
-    collection.processes["p2"] = second
-    return collection
-
-
 def _config(
     *,
-    variable_names: tuple[str, ...] = ("biomass",),
-    noise_model: str = "add",
+    noise_std: dict[str, float] | None = None,
     n_children: int = 1,
     n_time_points: int = 6,
     min_spacing_fraction: float = 0.1,
-    noise_scale: dict[str, float] | None = None,
-    residual_scope: str = "process",
     initial_value_source: str | dict[str, str] = "measured",
 ) -> RunConfig:
     augmentation = AugmentationConfig(
@@ -143,12 +129,7 @@ def _config(
         n_children_per_process=n_children,
         n_time_points=n_time_points,
         min_spacing_fraction=min_spacing_fraction,
-        variable_names=variable_names,
-        noise_scale=noise_scale
-        if noise_scale is not None
-        else {name: 0.7 for name in variable_names},
-        noise_model=noise_model,
-        residual_scope=residual_scope,
+        noise_std=noise_std if noise_std is not None else {"biomass": 0.7},
         initial_value_source=initial_value_source,
     )
     return RunConfig(
@@ -200,9 +181,7 @@ def _augmentation_dict(**updates) -> dict:
         "seed": 12,
         "n_children_per_process": 2,
         "n_time_points": 6,
-        "variable_names": ["biomass"],
-        "noise_scale": {"biomass": 0.7},
-        "noise_model": "add",
+        "noise_std": {"biomass": 0.7},
     }
     config.update(updates)
     return config
@@ -217,18 +196,19 @@ def test_no_config_leaves_collection_unchanged():
 
 
 def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
-    rendered_variable_names = []
+    rendered_state_names = []
     rendered_process_names = []
     requested_state_names = []
     rendered_ylabels = []
-    rendered_noise_stds = []
+    rendered_band_bounds = []
+    rendered_initial_band_bounds = []
     render_augmentation_plot = prepare_module.render_augmentation_plot
     state_series = augmentation_plot_module._state_series
     fill_between = Axes.fill_between
     save_figure = Figure.savefig
 
     def track_render(collection, augmentation, output_path):
-        rendered_variable_names.append(augmentation.variable_names)
+        rendered_state_names.append(tuple(augmentation.noise_std))
         rendered_process_names.append(tuple(collection.processes))
         render_augmentation_plot(collection, augmentation, output_path)
 
@@ -241,7 +221,8 @@ def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
         return save_figure(figure, *args, **kwargs)
 
     def track_fill_between(axis, x, y1, y2, *args, **kwargs):
-        rendered_noise_stds.append(np.asarray(y2) - np.asarray(y1))
+        rendered_band_bounds.append((np.asarray(y1), np.asarray(y2)))
+        rendered_initial_band_bounds.append((y1[0], y2[0]))
         return fill_between(axis, x, y1, y2, *args, **kwargs)
 
     monkeypatch.setattr(prepare_module, "render_augmentation_plot", track_render)
@@ -253,8 +234,7 @@ def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
         "with-augmentation-plot",
         augmentation=_augmentation_dict(
             n_children_per_process=1,
-            variable_names=["biomass", "ratio"],
-            noise_scale={"biomass": 0.7, "ratio": 0.7},
+            noise_std={"biomass": 0.7, "ratio": 0.4},
         ),
     )
 
@@ -264,27 +244,45 @@ def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
     assert plot_path.stat().st_size > 0
     assert (output_dir / "prepared.json").is_file()
     assert (output_dir / "prepare_config.json").is_file()
-    assert rendered_variable_names == [("biomass", "ratio")]
+    assert rendered_state_names == [("biomass", "ratio")]
     assert rendered_process_names == [("p1", "p1__aug_000")]
     assert set(requested_state_names) == {"biomass", "ratio"}
     assert rendered_ylabels == [("p1\n[g/L]", "[-]")]
-    parent = _collection().processes["p1"]
-    expected_noise_stds = [
-        0.7
-        * augmentation_module._residual_statistics(
-            "p1",
-            state_name,
-            _state_series(parent, state_name),
-        )[0]
-        for state_name in ("biomass", "ratio")
-    ]
-    for band_width, expected_noise_std in zip(
-        rendered_noise_stds,
-        expected_noise_stds,
-        strict=True,
-    ):
-        np.testing.assert_allclose(band_width[0], 0.0)
-        np.testing.assert_allclose(band_width[1:], 2.0 * expected_noise_std)
+    np.testing.assert_allclose(
+        rendered_initial_band_bounds,
+        [(0.4, 0.4), (0.8, 0.8)],
+    )
+    biomass_lower, biomass_upper = rendered_band_bounds[0]
+    ratio_lower, ratio_upper = rendered_band_bounds[1]
+    assert np.all(biomass_lower >= 0.0)
+    assert np.all(biomass_upper >= 0.0)
+    np.testing.assert_allclose(ratio_upper[1:] - ratio_lower[1:], 1.568)
+
+
+def test_augmentation_plot_shares_y_axis_by_state_column(tmp_path, monkeypatch):
+    collection = _collection()
+    second = deepcopy(collection.processes["p1"])
+    second.metadata.name = "p2"
+    collection.processes["p2"] = second
+    augmentation = _config(
+        noise_std={"biomass": 0.7, "ratio": 0.4}
+    ).prepare.augmentation
+    shared = {}
+
+    def inspect_axes(figure, *_args, **_kwargs):
+        axes = figure.axes
+        siblings = axes[0].get_shared_y_axes()
+        shared["column"] = siblings.joined(axes[0], axes[2])
+        shared["row"] = siblings.joined(axes[0], axes[1])
+
+    monkeypatch.setattr(Figure, "savefig", inspect_axes)
+    augmentation_plot_module.render_augmentation_plot(
+        collection,
+        augmentation,
+        tmp_path / "unused.png",
+    )
+
+    assert shared == {"column": True, "row": False}
 
 
 def test_prepare_plot_failure_does_not_write_json(tmp_path, monkeypatch):
@@ -325,70 +323,62 @@ def test_prepare_without_augmentation_removes_stale_plot(tmp_path):
         {
             "n_children_per_process": 0,
             "n_time_points": 2,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.1},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 1,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.1},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": [],
+            "noise_std": {},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": ["biomass"],
-            "noise_model": "other",
-        },
-        {
-            "n_children_per_process": 1,
-            "n_time_points": 2,
-            "variable_names": ["biomass"],
-            "residual_scope": "other",
+            "noise_std": {"biomass": 0.1},
+            "noise_model": "add",
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
             "min_spacing_fraction": 0.0,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.1},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
             "min_spacing_fraction": True,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.1},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
             "min_spacing_fraction": 1.1,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.1},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": ["biomass"],
-            "noise_scale": {"biomass": 0.0},
+            "noise_std": {"biomass": -0.1},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": ["biomass"],
-            "noise_scale": {"biomass": float("nan")},
+            "noise_std": {"biomass": float("nan")},
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.1},
             "initial_value_source": "other",
         },
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": ["biomass", "ratio"],
+            "noise_std": {"biomass": 0.1, "ratio": 0.2},
             "initial_value_source": {"biomass": "measured"},
         },
     ],
@@ -398,18 +388,18 @@ def test_invalid_config_fails_fast(config):
         AugmentationConfig.model_validate(config)
 
 
-def test_augmentation_defaults():
+def test_augmentation_defaults_allow_zero_noise():
     config = AugmentationConfig.model_validate(
         {
             "n_children_per_process": 1,
             "n_time_points": 2,
-            "variable_names": ["biomass"],
+            "noise_std": {"biomass": 0.0},
         }
     )
 
     assert config.initial_value_source == "measured"
     assert config.min_spacing_fraction == 0.1
-    assert config.residual_scope == "process"
+    assert config.noise_std == {"biomass": 0.0}
 
 
 def test_degenerate_parent_time_range_fails_fast():
@@ -437,15 +427,14 @@ def test_initial_value_source_controls_augmented_t0(source, expected):
     child = augment_process_collection(
         collection,
         _config(initial_value_source=source),
-        lambda *, base_values, **_: base_values + 10.0,
     ).processes["p1__aug_000"]
 
-    expected_value = {
-        "measured": measured,
-        "spline": spline,
-        "augmented": spline + 10.0,
-    }[expected]
-    assert _state_series(child, "biomass").values[0] == pytest.approx(expected_value)
+    actual = _state_series(child, "biomass").values[0]
+    if expected == "augmented":
+        assert actual != pytest.approx(spline)
+    else:
+        expected_value = {"measured": measured, "spline": spline}[expected]
+        assert actual == pytest.approx(expected_value)
 
 
 def test_initial_value_source_mapping_controls_each_listed_state():
@@ -457,31 +446,13 @@ def test_initial_value_source_mapping_controls_each_listed_state():
     child = augment_process_collection(
         collection,
         _config(
-            variable_names=("biomass", "ratio"),
+            noise_std={"biomass": 10.0, "ratio": 10.0},
             initial_value_source={"biomass": "measured", "ratio": "spline"},
         ),
-        lambda *, base_values, **_: base_values + 10.0,
     ).processes["p1__aug_000"]
 
     assert _state_series(child, "biomass").values[0] == pytest.approx(biomass.values[0])
     assert _state_series(child, "ratio").values[0] == pytest.approx(ratio.evaluate(0.0))
-
-
-@pytest.mark.parametrize("source", ["measured", "spline"])
-def test_initial_value_overwrite_accepts_read_only_hook_values(source):
-    collection = _collection()
-    parent_series = _state_series(collection.processes["p1"], "biomass")
-
-    child = augment_process_collection(
-        collection,
-        _config(initial_value_source=source),
-        lambda *, base_values, **_: np.broadcast_to(base_values[0], base_values.shape),
-    ).processes["p1__aug_000"]
-
-    expected = (
-        parent_series.values[0] if source == "measured" else parent_series.evaluate(0.0)
-    )
-    assert _state_series(child, "biomass").values[0] == pytest.approx(expected)
 
 
 def test_measured_initial_value_requires_observation_at_process_start():
@@ -497,7 +468,7 @@ def test_measured_initial_value_requires_observation_at_process_start():
         augment_process_collection(
             collection,
             _config(
-                variable_names=("ratio",),
+                noise_std={"ratio": 0.7},
                 initial_value_source="measured",
             ),
         )
@@ -516,7 +487,7 @@ def test_measured_initial_value_failure_does_not_add_children():
         augment_process_collection(
             collection,
             _config(
-                variable_names=("ratio",),
+                noise_std={"ratio": 0.7},
                 initial_value_source="measured",
             ),
         )
@@ -556,7 +527,7 @@ def test_late_listed_trace_warns_when_initial_value_uses_spline(source):
         augment_process_collection(
             collection,
             _config(
-                variable_names=("ratio",),
+                noise_std={"ratio": 0.7},
                 initial_value_source=source,
                 n_children=3,
             ),
@@ -710,20 +681,19 @@ def test_child_grid_failure_leaves_collection_unchanged(monkeypatch):
     assert list(collection.processes) == ["p1"]
 
 
-def test_late_child_failure_leaves_collection_unchanged():
+def test_late_child_failure_leaves_collection_unchanged(monkeypatch):
     collection = _collection()
+    set_state_series = augmentation_module._set_state_series
 
-    def fail_second_child(*, child_name, base_values, **_):
-        if child_name == "p1__aug_001":
+    def fail_second_child(process, state_name, series):
+        if process.metadata.name == "p1__aug_001":
             raise ValueError("failed to augment child")
-        return base_values
+        set_state_series(process, state_name, series)
+
+    monkeypatch.setattr(augmentation_module, "_set_state_series", fail_second_child)
 
     with pytest.raises(ValueError, match="failed to augment child"):
-        augment_process_collection(
-            collection,
-            _config(n_children=2),
-            fail_second_child,
-        )
+        augment_process_collection(collection, _config(n_children=2))
 
     assert list(collection.processes) == ["p1"]
 
@@ -819,10 +789,7 @@ def test_mixed_grid_child_round_trips_and_is_accepted_by_training_data_store(tmp
 
 
 def test_resampled_modeled_states_drop_splines_but_controls_keep_them():
-    collection = augment_process_collection(
-        _collection(),
-        _config(variable_names=("biomass",)),
-    )
+    collection = augment_process_collection(_collection(), _config())
 
     child = collection.processes["p1__aug_000"]
     assert len(_state_series(child, "biomass").times) == 6
@@ -843,400 +810,188 @@ def test_resampled_modeled_states_drop_splines_but_controls_keep_them():
 )
 def test_invalid_requested_state_fails_fast(state_name, message):
     with pytest.raises(ValueError, match=message):
-        augment_process_collection(_collection(), _config(variable_names=(state_name,)))
-
-
-@pytest.mark.parametrize("noise_model", ["add", "mult"])
-def test_residual_scaled_noise_matches_formula(noise_model):
-    captured = {}
-    parent_series = _state_series(_collection().processes["p1"], "biomass")
-    observed = np.asarray(parent_series.values)
-    fitted = np.asarray(parent_series.evaluate_many(parent_series.times))
-    residual_rms = np.sqrt(np.mean((observed - fitted) ** 2))
-
-    def capture(**kwargs):
-        captured.update(kwargs)
-        return None
-
-    scale = 1.4
-    collection = augment_process_collection(
-        _collection(),
-        _config(
-            noise_model=noise_model,
-            noise_scale={"biomass": scale},
-            initial_value_source="augmented",
-        ),
-        capture,
-    )
-    actual = np.asarray(
-        _state_series(collection.processes["p1__aug_000"], "biomass").values
-    )
-    base = captured["base_values"]
-    z = captured["standard_normal"]
-    assert captured["residual_rms"] == pytest.approx(residual_rms)
-    err_std = scale * residual_rms
-
-    if noise_model == "add":
-        expected = np.clip(base + z * err_std, 0.0, None)
-    else:
-        fitted = np.asarray(parent_series.evaluate_many(parent_series.times))
-        rel_std = err_std / max(np.mean(np.abs(fitted[fitted != 0.0])), 1e-8)
-        sigma = np.sqrt(np.log1p(rel_std**2))
-        expected = base * np.exp(-0.5 * sigma**2 + sigma * z)
-    np.testing.assert_allclose(actual, expected)
-
-
-def test_variable_residual_scope_uses_observation_weighted_pooled_rms():
-    collection = _two_process_collection()
-    residuals = []
-    for process in collection.processes.values():
-        series = _state_series(process, "biomass")
-        observed = np.asarray(series.values)
-        fitted = np.asarray(series.evaluate_many(series.times))
-        residuals.extend(observed - fitted)
-    zero_process = deepcopy(collection.processes["p1"])
-    zero_process.metadata.name = "p3"
-    zero_process.reactor_medium.components["biomass"].concentration = _spline(
-        [0.0] * 5,
-        smoothing_s=0.0,
-    )
-    collection.processes["p3"] = zero_process
-    pooled_residual_rms = np.sqrt(np.mean(np.asarray(residuals) ** 2))
-    captured = {}
-
-    def capture(**kwargs):
-        captured[kwargs["parent_name"]] = kwargs
-        return None
-
-    scale = 1.4
-    augmented = augment_process_collection(
-        collection,
-        _config(
-            noise_scale={"biomass": scale},
-            residual_scope="variable",
-            initial_value_source="augmented",
-        ),
-        capture,
-    )
-
-    assert set(captured) == {"p1", "p2", "p3"}
-    for parent_name, values in captured.items():
-        assert values["residual_rms"] == pytest.approx(pooled_residual_rms)
-        actual = np.asarray(
-            _state_series(
-                augmented.processes[f"{parent_name}__aug_000"],
-                "biomass",
-            ).values
+        augment_process_collection(
+            _collection(),
+            _config(noise_std={state_name: 0.7}),
         )
-        expected = np.clip(
-            values["base_values"]
-            + scale * pooled_residual_rms * values["standard_normal"],
-            0.0,
-            None,
-        )
-        np.testing.assert_allclose(actual, expected)
 
 
-def test_variable_scope_pools_observed_scale_rms_excluding_zero_traces():
-    collection = _two_process_collection()
-    zero_process = deepcopy(collection.processes["p1"])
-    zero_process.metadata.name = "p3"
-    zero_process.reactor_medium.components["biomass"].concentration = _spline(
-        [0.0] * 5,
-        smoothing_s=0.0,
-    )
-    collection.processes["p3"] = zero_process
-
-    augmentation = _config(residual_scope="variable").prepare.augmentation
-    parents = augmentation_module._parent_processes(collection)
-    statistics = augmentation_module._effective_residual_statistics(
-        parents,
-        augmentation,
-    )
-
-    weighted_squares = 0.0
-    observation_count = 0
-    per_parent_observed = {}
-    for parent_name, process in parents:
-        series = _state_series(process, "biomass")
-        # Recompute from the fixture observations rather than reusing
-        # _residual_statistics, so a bug in that helper cannot cancel out.
-        observed = np.asarray(series.values, dtype=float)
-        observed_rms = float(np.sqrt(np.mean(observed**2)))
-        per_parent_observed[parent_name] = observed_rms
-        if observed_rms == 0.0:
-            continue
-        weighted_squares += len(series.values) * observed_rms**2
-        observation_count += len(series.values)
-    expected_pooled_observed = np.sqrt(weighted_squares / observation_count)
-
-    # The zero trace is excluded from the pool but must still be assigned it.
-    assert per_parent_observed["p3"] == 0.0
-    assert expected_pooled_observed > 0.0
-    assert expected_pooled_observed != pytest.approx(per_parent_observed["p1"])
-    for parent_name, _ in parents:
-        _, observed_rms, observed_scale_rms = statistics[parent_name, "biomass"]
-        # Middle slot keeps each parent's own observed RMS for the hook contract.
-        assert observed_rms == pytest.approx(per_parent_observed[parent_name])
-        # Third slot is the shared observation-weighted pool.
-        assert observed_scale_rms == pytest.approx(expected_pooled_observed)
-
-
-def test_process_residual_scope_keeps_parent_specific_rms():
-    collection = _two_process_collection()
-    expected = {
-        parent_name: augmentation_module._residual_statistics(
-            parent_name,
-            "biomass",
-            _state_series(process, "biomass"),
-        )[0]
-        for parent_name, process in collection.processes.items()
-    }
-    captured = {}
-
-    def capture(**kwargs):
-        captured[kwargs["parent_name"]] = kwargs["residual_rms"]
-        return kwargs["base_values"]
-
-    augment_process_collection(collection, _config(), capture)
-
-    assert captured == pytest.approx(expected)
-    assert captured["p1"] != pytest.approx(captured["p2"])
-
-
-def test_variable_residual_scope_plot_uses_one_configured_noise_std(
-    tmp_path,
-    monkeypatch,
-):
-    collection = _two_process_collection()
-    residuals = []
-    for process in collection.processes.values():
-        series = _state_series(process, "biomass")
-        residuals.extend(
-            np.asarray(series.values) - np.asarray(series.evaluate_many(series.times))
-        )
-    pooled_residual_rms = np.sqrt(np.mean(np.asarray(residuals) ** 2))
-    scale = 2.5
-    config = _config(
-        noise_scale={"biomass": scale},
-        residual_scope="variable",
-    )
-    augment_process_collection(collection, config)
-    band_noise_stds = []
-    fill_between = Axes.fill_between
-
-    def track_fill_between(axis, x, y1, y2, *args, **kwargs):
-        band_noise_stds.append((np.asarray(y2) - np.asarray(y1)) / 2.0)
-        return fill_between(axis, x, y1, y2, *args, **kwargs)
-
-    monkeypatch.setattr(Axes, "fill_between", track_fill_between)
-    augmentation_plot_module.render_augmentation_plot(
-        collection,
-        config.prepare.augmentation,
-        tmp_path / "shared-rms.png",
-    )
-
-    assert len(band_noise_stds) == 2
-    for noise_std in band_noise_stds:
-        np.testing.assert_allclose(noise_std[0], 0.0)
-        np.testing.assert_allclose(noise_std[1:], scale * pooled_residual_rms)
-
-
-@pytest.mark.parametrize(
-    ("initial_value_source", "fixed_initial_value"),
-    [("measured", True), ("spline", True), ("augmented", False)],
-)
-def test_multiplicative_plot_band_matches_pointwise_noise_std(
-    tmp_path,
-    monkeypatch,
-    initial_value_source,
-    fixed_initial_value,
-):
+def test_absolute_noise_std_matches_formula():
     collection = _collection()
-    config = _config(
-        noise_model="mult",
-        initial_value_source=initial_value_source,
-    )
-    parent_series = _state_series(collection.processes["p1"], "biomass")
-    residual_rms, _ = augmentation_module._residual_statistics(
+    parent_series = _state_series(collection.processes["p1"], "ratio")
+    noise_std = 0.4
+    child = augment_process_collection(
+        collection,
+        _config(
+            noise_std={"ratio": noise_std},
+            initial_value_source="augmented",
+        ),
+    ).processes["p1__aug_000"]
+    child_series = _state_series(child, "ratio")
+    base_values = np.asarray(parent_series.evaluate_many(child_series.times))
+    standard_normal = augmentation_module._rng(
+        12,
         "p1",
-        "biomass",
-        parent_series,
-    )
-    fitted = np.asarray(parent_series.evaluate_many(parent_series.times))
-    reference_magnitude = np.mean(np.abs(fitted[fitted != 0.0]))
-    rel_std = 0.7 * residual_rms / reference_magnitude
-    augment_process_collection(collection, config)
-    bands = []
-    fill_between = Axes.fill_between
+        0,
+        "ratio",
+        "values",
+    ).standard_normal(np.asarray(child_series.times).shape)
 
-    def track_fill_between(axis, x, y1, y2, *args, **kwargs):
-        bands.append((np.asarray(x), np.asarray(y1), np.asarray(y2)))
-        return fill_between(axis, x, y1, y2, *args, **kwargs)
-
-    monkeypatch.setattr(Axes, "fill_between", track_fill_between)
-    augmentation_plot_module.render_augmentation_plot(
-        collection,
-        config.prepare.augmentation,
-        tmp_path / "multiplicative-noise.png",
+    np.testing.assert_allclose(
+        child_series.values,
+        base_values + noise_std * standard_normal,
     )
 
-    assert len(bands) == 1
-    times, lower, upper = bands[0]
-    spline_values = np.asarray(parent_series.evaluate_many(times))
-    expected_std = np.abs(spline_values) * rel_std
-    if fixed_initial_value:
-        expected_std[0] = 0.0
-    np.testing.assert_allclose((upper - lower) / 2.0, expected_std)
-    assert expected_std[np.argmax(spline_values)] > expected_std[0]
 
-
-@pytest.mark.parametrize(
-    "levels",
-    [
-        np.asarray([-1.5]),
-        np.asarray([-2.0, -0.5, 0.0, 0.2, 1.0]),
-    ],
-)
-def test_multiplicative_noise_is_well_scaled_for_signed_values(levels):
-    config = _config(
-        variable_names=("signed_pv",),
-        noise_model="mult",
-        noise_scale={"signed_pv": 1.0},
-    ).prepare.augmentation
-    draws_per_level = 25_000
-    base = np.repeat(levels, draws_per_level)
-    standard_normal = np.random.default_rng(123).standard_normal(base.shape)
-
-    actual = augmentation_module._built_in_values(
-        parent_name="p1",
-        state_name="signed_pv",
-        base_values=base,
-        residual_rms=0.75,
-        observed_scale_rms=1.5,
-        multiplicative_reference_magnitude=1.5,
-        standard_normal=standard_normal,
-        augmentation=config,
-    )
-
-    np.testing.assert_array_equal(np.sign(actual), np.sign(base))
-    for level in levels:
-        np.testing.assert_allclose(
-            np.mean(actual[base == level]),
-            level,
-            rtol=0.02,
-            atol=1e-12,
-        )
-    factors = actual[base != 0.0] / base[base != 0.0]
-    assert np.quantile(factors, 0.01) > 0.1
-    assert np.quantile(factors, 0.99) < 10.0
-
-
-def test_residual_statistics_are_computed_once_per_parent_state(monkeypatch):
-    calls = []
-    original = augmentation_module._residual_statistics
-
-    def track_call(parent_name, state_name, series):
-        calls.append((parent_name, state_name))
-        return original(parent_name, state_name, series)
-
-    monkeypatch.setattr(augmentation_module, "_residual_statistics", track_call)
-
-    augment_process_collection(_collection(), _config(n_children=4))
-
-    assert calls == [("p1", "biomass")]
-
-
-def test_built_in_noise_rejects_effectively_zero_relative_residual():
+def test_zero_noise_std_only_resamples_time():
     collection = _collection()
-    collection.processes["p1"].reactor_medium.components[
-        "biomass"
-    ].concentration = _spline(
-        [0.4, 0.7, 0.8, 1.4, 1.3, 2.0, 2.2],
-        smoothing_s=0.0,
-    )
+    parent_series = _state_series(collection.processes["p1"], "biomass")
+    child = augment_process_collection(
+        collection,
+        _config(
+            noise_std={"biomass": 0.0},
+            initial_value_source="spline",
+        ),
+    ).processes["p1__aug_000"]
+    child_series = _state_series(child, "biomass")
 
-    with pytest.raises(
-        ValueError, match="p1.*biomass.*effectively zero spline residual"
-    ):
-        augment_process_collection(collection, _config())
-
-
-def test_built_in_noise_rejects_zero_observed_trace():
-    with pytest.raises(
-        ValueError, match="p1.*biomass.*effectively zero spline residual"
-    ):
-        augment_process_collection(_collection(zero_trace=True), _config())
-
-
-def test_built_in_noise_uses_fixed_relative_residual_boundary():
-    augmentation = _config().prepare.augmentation
-    arguments = {
-        "parent_name": "p1",
-        "state_name": "biomass",
-        "base_values": np.ones(1),
-        "observed_scale_rms": 1.0,
-        "multiplicative_reference_magnitude": 1.0,
-        "standard_normal": np.zeros(1),
-        "augmentation": augmentation,
-    }
-
-    with pytest.raises(ValueError, match="effectively zero spline residual"):
-        augmentation_module._built_in_values(residual_rms=1e-6, **arguments)
-
-    augmentation_module._built_in_values(
-        residual_rms=np.nextafter(1e-6, np.inf),
-        **arguments,
+    np.testing.assert_allclose(
+        child_series.values,
+        parent_series.evaluate_many(child_series.times),
     )
 
 
-def test_hook_can_override_zero_trace_with_absolute_noise():
-    hook_inputs = {}
-
-    def absolute_noise(*, state_name, base_values, standard_normal, **_):
-        hook_inputs[state_name] = (base_values, standard_normal)
-        if state_name == "biomass":
-            return np.clip(base_values + 0.2 * standard_normal, 0.0, None)
-        return None
-
-    collection = augment_process_collection(
+def test_identically_zero_parent_trace_receives_noise():
+    child = augment_process_collection(
         _collection(zero_trace=True),
         _config(
-            variable_names=("biomass", "ratio"),
-            noise_scale={"ratio": 0.7},
+            noise_std={"biomass": 10.0},
             initial_value_source="augmented",
         ),
-        absolute_noise,
-    )
-    values = np.asarray(
-        _state_series(collection.processes["p1__aug_000"], "biomass").values
-    )
+    ).processes["p1__aug_000"]
 
-    base, standard_normal = hook_inputs["biomass"]
-    np.testing.assert_allclose(
-        values,
-        np.clip(base + 0.2 * standard_normal, 0.0, None),
-    )
-    assert set(hook_inputs) == {"biomass", "ratio"}
+    assert np.any(np.asarray(_state_series(child, "biomass").values) > 0.0)
 
 
-@pytest.mark.parametrize(
-    ("returned", "message"),
-    [
-        (np.ones(2), "returned shape"),
-        (np.asarray([np.nan] * 6), "returned non-finite values"),
-    ],
-)
-def test_hook_result_shape_and_finiteness_are_validated(returned, message):
-    with pytest.raises(ValueError, match=message):
-        augment_process_collection(_collection(), _config(), lambda **_: returned)
+def test_spline_only_identically_zero_parent_trace_receives_noise():
+    collection = _collection(zero_trace=True)
+    component = collection.processes["p1"].reactor_medium.components["biomass"]
+    component.concentration = replace(
+        component.concentration,
+        times=None,
+        values=None,
+    )
+
+    child = augment_process_collection(
+        collection,
+        _config(
+            noise_std={"biomass": 10.0},
+            initial_value_source="augmented",
+        ),
+    ).processes["p1__aug_000"]
+
+    assert np.any(np.asarray(_state_series(child, "biomass").values) > 0.0)
+
+
+def test_custom_hook_can_preserve_zero_trace_after_builtin_clipping(tmp_path):
+    custom_py = _write_custom_module(
+        tmp_path,
+        "preserve-zero-trace",
+        "import numpy as np",
+        "",
+        "def augment_state_values(*, base_values, augmented_values, **_):",
+        "    assert np.all(augmented_values >= 0.0)",
+        "    if np.all(base_values == 0.0):",
+        "        return base_values",
+        "    return augmented_values",
+    )
+    prepared = _prepare_collection(
+        tmp_path,
+        "preserved-zero-trace",
+        collection=_collection(zero_trace=True),
+        augmentation=_augmentation_dict(n_children_per_process=1),
+        custom_py=custom_py,
+    )
+
+    child = prepared.processes["p1__aug_000"]
+    np.testing.assert_array_equal(_state_series(child, "biomass").values, 0.0)
+    assert (
+        prepared.metadata["bp-train"]["transform_hooks"]["augment_state_values"]
+        == "augment_state_values"
+    )
+
+
+def test_custom_hook_receives_unmodified_spline_base_values():
+    collection = _collection()
+    parent_series = _state_series(collection.processes["p1"], "biomass")
+    captured = {}
+
+    def capture_values(*, base_values, augmented_values, **_):
+        captured["base"] = base_values
+        captured["augmented"] = augmented_values
+        return augmented_values
+
+    child = augment_process_collection(
+        collection,
+        _config(noise_std={"biomass": 0.0}),
+        capture_values,
+    ).processes["p1__aug_000"]
+    child_times = _state_series(child, "biomass").times
+
+    np.testing.assert_array_equal(
+        captured["base"],
+        parent_series.evaluate_many(child_times),
+    )
+    assert captured["augmented"][0] == parent_series.values[0]
+    assert captured["base"][0] != pytest.approx(captured["augmented"][0])
+
+
+def test_custom_hook_shape_failure_does_not_add_children():
+    collection = _collection()
+
+    def wrong_shape(**_):
+        return np.zeros(1)
+
+    with pytest.raises(ValueError, match="returned shape.*expected"):
+        augment_process_collection(collection, _config(), wrong_shape)
+
+    assert list(collection.processes) == ["p1"]
+
+
+@pytest.mark.parametrize("nonfinite", [np.nan, np.inf])
+def test_custom_hook_nonfinite_failure_does_not_add_children(nonfinite):
+    collection = _collection()
+
+    def return_nonfinite(*, augmented_values, **_):
+        return np.full_like(augmented_values, nonfinite)
+
+    with pytest.raises(ValueError, match="returned non-finite values"):
+        augment_process_collection(collection, _config(), return_nonfinite)
+
+    assert list(collection.processes) == ["p1"]
+
+
+def test_additive_noise_preserves_signed_process_variables():
+    collection = _collection()
+    collection.processes["p1"].process_variables["ratio"].values = _spline(
+        [-1.5, -1.2, -0.9, -0.6, -0.3, -0.1, -0.05]
+    )
+    child = augment_process_collection(
+        collection,
+        _config(
+            noise_std={"ratio": 0.2},
+            initial_value_source="augmented",
+        ),
+    ).processes["p1__aug_000"]
+
+    assert np.any(np.asarray(_state_series(child, "ratio").values) < 0.0)
 
 
 def test_additive_noise_clips_at_zero():
     collection = _collection()
     child = augment_process_collection(
         collection,
-        _config(noise_model="add", noise_scale={"biomass": 1_000.0}),
+        _config(noise_std={"biomass": 1_000.0}),
     ).processes["p1__aug_000"]
 
     assert np.any(np.asarray(_state_series(child, "biomass").values) == 0.0)
@@ -1254,31 +1009,11 @@ def test_reactor_medium_spline_warns_and_augmented_values_are_clipped():
     ):
         child = augment_process_collection(
             collection,
-            _config(variable_names=("ratio",), n_time_points=2),
+            _config(noise_std={"ratio": 0.7}, n_time_points=2),
         ).processes["p1__aug_000"]
 
     values = np.asarray(_state_series(child, "biomass").values)
     assert np.all(values >= 0.0)
-
-
-def test_custom_negative_reactor_medium_values_are_clipped():
-    child = augment_process_collection(
-        _collection(),
-        _config(initial_value_source="augmented"),
-        lambda *, base_values, **_: np.full_like(base_values, -1.0),
-    ).processes["p1__aug_000"]
-
-    assert np.all(np.asarray(_state_series(child, "biomass").values) == 0.0)
-
-
-def test_custom_negative_process_variable_values_are_not_clipped():
-    child = augment_process_collection(
-        _collection(),
-        _config(variable_names=("ratio",), initial_value_source="augmented"),
-        lambda *, base_values, **_: np.full_like(base_values, -1.0),
-    ).processes["p1__aug_000"]
-
-    assert np.all(np.asarray(_state_series(child, "ratio").values) == -1.0)
 
 
 def test_mostly_nonnegative_process_variable_spline_dip_warns():
@@ -1339,7 +1074,7 @@ def test_prepared_children_round_trip_with_stable_values_and_content_hash(tmp_pa
     )
 
 
-def test_prepare_records_augmented_provenance_and_hook_metadata(tmp_path):
+def test_prepare_records_augmented_provenance(tmp_path):
     prepared = _prepare_collection(
         tmp_path,
         "prepared-provenance",
@@ -1350,38 +1085,8 @@ def test_prepare_records_augmented_provenance_and_hook_metadata(tmp_path):
 
     assert child_provenance["raw"] is None
     assert child_provenance["changed_by_hooks"] == ["augmentation"]
-    assert metadata["transform_hooks"]["augment_state_values"] is None
+    assert set(metadata["transform_hooks"]) == {"transform_process_collection"}
     assert _build_fold_groups(prepared) == (("p1", ("p1", "p1__aug_000")),)
-
-
-def test_prepare_accepts_custom_absolute_noise_hook_for_zero_trace(tmp_path):
-    custom_py = _write_custom_module(
-        tmp_path,
-        "absolute-noise",
-        "import numpy as np",
-        "",
-        "def augment_state_values(*, base_values, standard_normal, **_):",
-        "    return np.clip(base_values + 0.2 * standard_normal, 0, None)",
-    )
-    prepared = _prepare_collection(
-        tmp_path,
-        "prepared-custom-noise",
-        collection=_collection(zero_trace=True),
-        augmentation=_augmentation_dict(
-            n_children_per_process=1,
-            noise_scale={},
-        ),
-        custom_py=custom_py,
-    )
-
-    values = np.asarray(
-        _state_series(prepared.processes["p1__aug_000"], "biomass").values
-    )
-    assert np.any(values > 0.0)
-    assert (
-        prepared.metadata["bp-train"]["transform_hooks"]["augment_state_values"]
-        == "augment_state_values"
-    )
 
 
 def test_prepare_handles_transform_added_process_provenance(tmp_path):

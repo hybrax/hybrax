@@ -56,7 +56,7 @@ adapter is invoked separately before the hooks. Full per-hook write-ups
 | Hook | Stage | Signature | Default |
 |---|---|---|---|
 | [`transform_process_collection`](02_cli_and_config.md#transform_process_collection) | prepare | `(collection, config) -> collection` | rename map |
-| [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(...) -> ndarray | None` | built-in residual-scaled noise |
+| [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(*, parent_name, child_name, state_name, times, base_values, augmented_values, config) -> ndarray` | none |
 | [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(collection, target_names, config) -> EstimatedScales` | none (ones) |
 | [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, collection, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
 | [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, collection) -> UserLossModule` | `DefaultLossModule` |

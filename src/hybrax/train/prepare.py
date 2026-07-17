@@ -301,6 +301,7 @@ def prepare_artifact(
         "transform_process_collection",
         default_transform_process_collection,
     )
+    augment_state_values = get_hook(custom_module, "augment_state_values", None)
     raw_semantics = {
         process_name: summarize_process_semantics(process)
         for process_name, process in collection.processes.items()
@@ -309,7 +310,6 @@ def prepare_artifact(
         process.metadata._pre_transform_key = process_name
     collection = transform_process_collection(collection, config)
     transformed_process_names = set(collection.processes)
-    augment_state_values = get_hook(custom_module, "augment_state_values", None)
     collection = augment_process_collection(
         collection,
         config,
@@ -401,27 +401,26 @@ def prepare_artifact(
 
     controls_config = _runtime_controls_config(prepare)
     existing_metadata = dict(collection.metadata or {})
+    transform_hooks = {
+        "transform_process_collection": getattr(
+            transform_process_collection,
+            "__name__",
+            str(transform_process_collection),
+        ),
+    }
+    if augment_state_values is not None:
+        transform_hooks["augment_state_values"] = getattr(
+            augment_state_values,
+            "__name__",
+            str(augment_state_values),
+        )
+
     bp_train_metadata: dict[str, Any] = {
         "prepared_at": _utc_now_iso(),
         "source_input_path": _portable_input_path(input_path, output_path),
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
-        "transform_hooks": {
-            "transform_process_collection": getattr(
-                transform_process_collection,
-                "__name__",
-                str(transform_process_collection),
-            ),
-            "augment_state_values": (
-                getattr(
-                    augment_state_values,
-                    "__name__",
-                    str(augment_state_values),
-                )
-                if augment_state_values is not None
-                else None
-            ),
-        },
+        "transform_hooks": transform_hooks,
         "dynamic_volume": True,
         "bp_format_validation": prepared_validation_report,
         "bp_format_validation_raw": validation_report,

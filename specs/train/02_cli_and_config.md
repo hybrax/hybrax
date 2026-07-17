@@ -149,7 +149,7 @@ is invoked separately before them. Stage = when a hook fires (`prepare` vs
 | Hook | Stage | Default |
 |---|---|---|
 | [`transform_process_collection`](#transform_process_collection) | prepare | `default_transform_process_collection` |
-| [`augment_state_values`](#augment_state_values) | prepare | none (built-in residual-scaled noise) |
+| [`augment_state_values`](#augment_state_values) | prepare | none |
 | [`estimate_all_scales`](#estimate_all_scales) | train | none (no scaling) |
 | [`build_reaction_module`](#build_reaction_module) | train | `default_build_reaction_module` |
 | [`build_loss_module`](#build_loss_module) | train | `default_build_loss_module` |
@@ -168,9 +168,6 @@ learns it. Default applies `prepare.process_rename_map`.
 ### `augment_state_values`
 
 ```python
-import numpy as np
-
-
 def augment_state_values(
     *,
     parent_name,
@@ -178,31 +175,31 @@ def augment_state_values(
     state_name,
     times,
     base_values,
-    residual_rms,
-    observed_rms,
-    standard_normal,
+    augmented_values,
     config,
 ):
-    ...
+    return augmented_values
 ```
 
-Override the generated values for one explicitly listed state on one augmented child.
-Return a one-dimensional array with the same shape as `times`, or return `None` to use the configured residual-scaled noise model.
-`standard_normal` is the deterministic random vector assigned to that child and state.
-For a process-scoped trace with an effectively zero spline residual, custom code can return clipped additive values using an absolute standard deviation in the state's physical units.
-Variable scope instead applies the pooled residual RMS to every trace, including an identically zero trace.
-For reactor-medium components, core augmentation clips the final returned values at zero.
+Optionally replace one configured state's generated child values. The hook runs
+once per configured state and child after additive noise, initial-value handling,
+and built-in reactor-medium nonnegative clipping. It must return a finite,
+one-dimensional array with the same shape as `times`; its result is final and may intentionally
+override those built-in constraints. `base_values` contains the parent spline on
+the child grid, while `augmented_values` contains the fully processed built-in
+values. The hook runs only when defined in `custom.py`.
+
+For example, preserve exact-zero parent traces while retaining built-in behavior
+for every other trace:
 
 ```python
-def augment_state_values(
-    *, parent_name, state_name, base_values, standard_normal, config, **_
-):
-    absolute_std = config.custom.absolute_noise_std.get(parent_name, {}).get(
-        state_name
-    )
-    if absolute_std is None:
-        return None
-    return np.clip(base_values + absolute_std * standard_normal, 0, None)
+import numpy as np
+
+
+def augment_state_values(*, base_values, augmented_values, **_):
+    if np.all(base_values == 0):
+        return base_values
+    return augmented_values
 ```
 
 ### `estimate_all_scales`
@@ -330,11 +327,8 @@ The `prepare.augmentation` object has these fields.
 | `n_children_per_process` | required (>0) | Number of children per non-augmented parent. |
 | `n_time_points` | required (>=2) | Points on each child grid, including exact endpoints. |
 | `min_spacing_fraction` | `0.1` (0 < value <= 1) | Fraction of the nominal interval `(end - start) / (n_time_points - 1)` reserved for each child-grid gap; `1` gives an even grid. Requests within four timestamp-resolution steps fail; stored gaps use a small relative rounding tolerance. |
-| `variable_names` | required, nonempty | Modeled states to noise. |
-| `noise_scale` | {} | Per-state multiplier on the effective spline-residual RMS, required when the built-in path handles that state. |
-| `noise_model` | `mult` | Mean-preserving log-normal `mult`, scaled by the mean nonzero absolute parent-spline value at observation times, or clipped Gaussian `add`. |
-| `residual_scope` | `process` | `process` uses each parent's residual RMS; `variable` uses one observation-weighted pooled residual RMS per state across parents with nonzero observed traces. |
-| `initial_value_source` | `measured` | `measured`, `spline`, or `augmented`, applied to every listed state; alternatively, an exact per-state mapping for all `variable_names`. |
+| `noise_std` | required, nonempty mapping | Absolute additive-noise standard deviation per modeled state, in that state's physical units. Values must be finite and nonnegative; `0` performs time resampling without target noise. Mapping order controls plot column order. |
+| `initial_value_source` | `measured` | `measured`, `spline`, or `augmented`, applied to every `noise_std` state; alternatively, an exact per-state mapping with the same keys. |
 
 **`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to
 hooks as `config.custom` (typed via `get_custom_config` or a permissive default).

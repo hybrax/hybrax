@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 import warnings
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from bp_format.dataclasses import (
@@ -17,12 +17,9 @@ from bp_format.mechanistic import get_process_ordering
 from .run_config import AugmentationConfig, InitialValueSource, RunConfig
 
 
-AugmentStateValues = Callable[..., Any]
 _TIME_ATOL = 1e-9
 _SPLINE_ROOT_IMAG_ATOL = 1e-12
-_MULTIPLICATIVE_SCALE_FLOOR = 1e-8
 _MOSTLY_NONNEGATIVE_FRACTION = 0.5
-_MIN_RELATIVE_RESIDUAL_RMS = 1e-6
 # Grid-coordinate roundoff grows with the requested spacing, so gap validation
 # needs relative slack. The requested minimum must still clear the coarsest
 # timestamp step by several ULP, or the grid cannot meaningfully honor it.
@@ -150,86 +147,6 @@ def _spline_dips_below_zero(series: TimeSeries, t0: float, t_end: float) -> bool
     return False
 
 
-def _residual_statistics(
-    parent_name: str,
-    state_name: str,
-    series: TimeSeries,
-) -> tuple[float, float]:
-    if series.times is None or series.values is None:
-        raise ValueError(
-            f"{parent_name}: modeled state {state_name!r} requires observations "
-            "to compute spline residuals"
-        )
-    observed = np.asarray(series.values, dtype=float)
-    fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
-    residual_rms = float(np.sqrt(np.mean((observed - fitted) ** 2)))
-    observed_rms = float(np.sqrt(np.mean(observed**2)))
-    return residual_rms, observed_rms
-
-
-def _effective_residual_statistics(
-    parents: list[tuple[str, Any]],
-    augmentation: AugmentationConfig,
-) -> dict[tuple[str, str], tuple[float, float, float]]:
-    statistics = {}
-    for parent_name, parent in parents:
-        for state_name in augmentation.variable_names:
-            residual_rms, observed_rms = _residual_statistics(
-                parent_name,
-                state_name,
-                _state_series(parent, state_name),
-            )
-            statistics[parent_name, state_name] = (
-                residual_rms,
-                observed_rms,
-                observed_rms,
-            )
-    if augmentation.residual_scope == "process":
-        return statistics
-
-    for state_name in augmentation.variable_names:
-        weighted_squared_residuals = 0.0
-        weighted_squared_observations = 0.0
-        observation_count = 0
-        for parent_name, parent in parents:
-            series = _state_series(parent, state_name)
-            count = len(series.values)
-            residual_rms, observed_rms, _ = statistics[parent_name, state_name]
-            if observed_rms == 0.0:
-                continue
-            weighted_squared_residuals += count * residual_rms**2
-            weighted_squared_observations += count * observed_rms**2
-            observation_count += count
-        pooled_residual_rms = (
-            np.sqrt(weighted_squared_residuals / observation_count)
-            if observation_count
-            else 0.0
-        )
-        pooled_observed_rms = (
-            np.sqrt(weighted_squared_observations / observation_count)
-            if observation_count
-            else 0.0
-        )
-        for parent_name, _ in parents:
-            _, observed_rms, _ = statistics[parent_name, state_name]
-            statistics[parent_name, state_name] = (
-                float(pooled_residual_rms),
-                observed_rms,
-                float(pooled_observed_rms),
-            )
-    return statistics
-
-
-def _multiplicative_reference_magnitude(series: TimeSeries) -> float:
-    fitted = np.asarray(series.evaluate_many(series.times), dtype=float)
-    magnitudes = np.abs(fitted[fitted != 0.0])
-    return float(np.mean(magnitudes)) if magnitudes.size else 0.0
-
-
-def _multiplicative_relative_std(err_std: float, reference_magnitude: float) -> float:
-    return err_std / max(reference_magnitude, _MULTIPLICATIVE_SCALE_FLOOR)
-
-
 def _validate_requested_states(
     parent_name: str,
     process,
@@ -237,7 +154,7 @@ def _validate_requested_states(
 ) -> tuple[str, ...]:
     ordering = get_process_ordering(process)
     modeled_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs
-    for state_name in augmentation.variable_names:
+    for state_name in augmentation.noise_std:
         if state_name in ordering.name_controlled_PVs:
             raise ValueError(
                 f"{parent_name}: controlled process variable {state_name!r} "
@@ -253,108 +170,10 @@ def _validate_requested_states(
     return modeled_names
 
 
-def _built_in_values(
-    *,
-    parent_name: str,
-    state_name: str,
-    base_values: np.ndarray,
-    residual_rms: float,
-    observed_scale_rms: float,
-    multiplicative_reference_magnitude: float,
-    standard_normal: np.ndarray,
-    augmentation: AugmentationConfig,
-) -> np.ndarray:
-    relative_residual_rms = (
-        residual_rms / observed_scale_rms if observed_scale_rms else 0.0
-    )
-    if relative_residual_rms <= _MIN_RELATIVE_RESIDUAL_RMS:
-        raise ValueError(
-            f"{parent_name}: modeled state {state_name!r} has an effectively "
-            "zero spline residual; augment_state_values can supply an absolute "
-            "noise level"
-        )
-    if state_name not in augmentation.noise_scale:
-        raise ValueError(f"{parent_name}: noise_scale is missing {state_name!r}")
-
-    err_std = augmentation.noise_scale[state_name] * residual_rms
-    if augmentation.noise_model == "add":
-        return np.clip(base_values + standard_normal * err_std, 0.0, None)
-
-    rel_std = _multiplicative_relative_std(
-        err_std,
-        multiplicative_reference_magnitude,
-    )
-    sigma = np.sqrt(np.log1p(rel_std**2))
-    return base_values * np.exp(-0.5 * sigma**2 + sigma * standard_normal)
-
-
-def _augment_values(
-    *,
-    parent_name: str,
-    child_name: str,
-    child_index: int,
-    state_name: str,
-    times: np.ndarray,
-    base_values: np.ndarray,
-    residual_rms: float,
-    observed_rms: float,
-    observed_scale_rms: float,
-    multiplicative_reference_magnitude: float,
-    augmentation: AugmentationConfig,
-    run_config: RunConfig,
-    augment_state_values: AugmentStateValues | None,
-) -> np.ndarray:
-    standard_normal = _rng(
-        augmentation.seed,
-        parent_name,
-        child_index,
-        state_name,
-        "values",
-    ).standard_normal(times.shape)
-
-    values = None
-    if augment_state_values is not None:
-        values = augment_state_values(
-            parent_name=parent_name,
-            child_name=child_name,
-            state_name=state_name,
-            times=times.copy(),
-            base_values=base_values.copy(),
-            residual_rms=residual_rms,
-            observed_rms=observed_rms,
-            standard_normal=standard_normal.copy(),
-            config=run_config,
-        )
-    if values is None:
-        values = _built_in_values(
-            parent_name=parent_name,
-            state_name=state_name,
-            base_values=base_values,
-            residual_rms=residual_rms,
-            observed_scale_rms=observed_scale_rms,
-            multiplicative_reference_magnitude=(multiplicative_reference_magnitude),
-            standard_normal=standard_normal,
-            augmentation=augmentation,
-        )
-
-    values = np.array(values, dtype=float, copy=True)
-    if values.shape != times.shape:
-        raise ValueError(
-            f"{child_name}: augment_state_values returned shape {values.shape} "
-            f"for {state_name!r}; expected {times.shape}"
-        )
-    if not np.all(np.isfinite(values)):
-        raise ValueError(
-            f"{child_name}: augment_state_values returned non-finite values for "
-            f"{state_name!r}"
-        )
-    return values
-
-
 def augment_process_collection(
     collection: BioProcessCollection,
     run_config: RunConfig,
-    augment_state_values: AugmentStateValues | None = None,
+    augment_state_values: Any = None,
 ) -> BioProcessCollection:
     prepare = run_config.prepare
     if prepare is None or prepare.augmentation is None:
@@ -385,7 +204,7 @@ def augment_process_collection(
                 _state_series(parent, state_name),
                 t0,
             )
-            for state_name in augmentation.variable_names
+            for state_name in augmentation.noise_std
             if _initial_value_source(augmentation, state_name) == "measured"
         }
         validated_parents.append(
@@ -398,15 +217,6 @@ def augment_process_collection(
                 measured_initial_values,
             )
         )
-
-    residual_statistics = _effective_residual_statistics(parents, augmentation)
-    multiplicative_reference_magnitudes = {
-        (parent_name, state_name): _multiplicative_reference_magnitude(
-            _state_series(parent, state_name)
-        )
-        for parent_name, parent in parents
-        for state_name in augmentation.variable_names
-    }
 
     child_times = {
         (parent_name, child_index): _child_grid(
@@ -431,7 +241,7 @@ def augment_process_collection(
                 continue
             source = (
                 _initial_value_source(augmentation, state_name)
-                if state_name in augmentation.variable_names
+                if state_name in augmentation.noise_std
                 else "spline"
             )
             if source != "measured" and series.times is not None:
@@ -478,31 +288,24 @@ def augment_process_collection(
                 if not isinstance(series, TimeSeries) or series.poly is None:
                     continue
                 is_rmc = state_name in child.reactor_medium.components
-                base_values = np.asarray(series.evaluate_many(times), dtype=float)
-                if state_name in augmentation.variable_names:
-                    residual_rms, observed_rms, observed_scale_rms = (
-                        residual_statistics[parent_name, state_name]
-                    )
-                    multiplicative_reference_magnitude = (
-                        multiplicative_reference_magnitudes[parent_name, state_name]
-                    )
-                    values = _augment_values(
-                        parent_name=parent_name,
-                        child_name=child_name,
-                        child_index=child_index,
-                        state_name=state_name,
-                        times=times,
-                        base_values=base_values,
-                        residual_rms=residual_rms,
-                        observed_rms=observed_rms,
-                        observed_scale_rms=observed_scale_rms,
-                        multiplicative_reference_magnitude=(
-                            multiplicative_reference_magnitude
-                        ),
-                        augmentation=augmentation,
-                        run_config=run_config,
-                        augment_state_values=augment_state_values,
-                    )
+                base_values = np.array(
+                    series.evaluate_many(times),
+                    dtype=float,
+                    copy=True,
+                )
+                if state_name in augmentation.noise_std:
+                    noise_std = augmentation.noise_std[state_name]
+                    if noise_std == 0.0:
+                        values = base_values.copy()
+                    else:
+                        standard_normal = _rng(
+                            augmentation.seed,
+                            parent_name,
+                            child_index,
+                            state_name,
+                            "values",
+                        ).standard_normal(times.shape)
+                        values = base_values + noise_std * standard_normal
                     source = _initial_value_source(augmentation, state_name)
                     if source == "measured":
                         values[0] = measured_initial_values[state_name]
@@ -512,6 +315,34 @@ def augment_process_collection(
                     values = base_values
                 if is_rmc:
                     values = np.clip(values, 0.0, None)
+                if (
+                    state_name in augmentation.noise_std
+                    and augment_state_values is not None
+                ):
+                    custom_values = np.asarray(
+                        augment_state_values(
+                            parent_name=parent_name,
+                            child_name=child_name,
+                            state_name=state_name,
+                            times=times.copy(),
+                            base_values=base_values.copy(),
+                            augmented_values=values.copy(),
+                            config=run_config,
+                        ),
+                        dtype=float,
+                    )
+                    if custom_values.shape != values.shape:
+                        raise ValueError(
+                            f"{child_name}: augment_state_values returned shape "
+                            f"{custom_values.shape} for {state_name!r}; expected "
+                            f"{values.shape}"
+                        )
+                    if not np.all(np.isfinite(custom_values)):
+                        raise ValueError(
+                            f"{child_name}: augment_state_values returned non-finite "
+                            f"values for {state_name!r}"
+                        )
+                    values = custom_values
                 _set_state_series(
                     child,
                     state_name,

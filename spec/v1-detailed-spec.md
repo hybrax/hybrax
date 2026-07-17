@@ -217,6 +217,13 @@ def transform_process_collection(collection, config):
     return collection
 
 
+def augment_state_values(
+    *, parent_name, child_name, state_name, times, base_values,
+    augmented_values, config
+):
+    return augmented_values
+
+
 def build_reaction_module(
     *, target_names, process_names, config, seed, collection
 ):
@@ -243,7 +250,8 @@ def build_batched_loss_fn(*, default_loss_fn, store, collection, train_cfg, conf
 
 Prepare-time augmentation persists synthetic samples in `prepared.json` as `bp_format.AugmentedBioProcess` records rather than generating them ephemerally inside training.
 This captures the exact synthetic observations and their parent relationship in model-training provenance.
-The optional `augment_state_values(...)` hook overrides generated values for an explicitly listed state and child.
+Configured states receive deterministic additive Gaussian noise from explicit absolute `noise_std` values in their physical units, including identically-zero traces.
+An optional `augment_state_values(...)` prepare hook may replace the final generated values after initial-value handling and reactor-medium clipping.
 
 `transform_process_collection(...)` is called once and receives the raw
 `BioProcessCollection`; it returns the updated collection used for the rest of

@@ -105,25 +105,22 @@ class AugmentationConfig(ConfigBase):
     n_children_per_process: int = Field(gt=0)
     n_time_points: int = Field(ge=2)
     min_spacing_fraction: float = Field(0.1, gt=0.0, le=1.0, strict=True)
-    variable_names: tuple[str, ...] = Field(min_length=1)
-    noise_scale: dict[str, float] = Field(default_factory=dict)
-    noise_model: Literal["mult", "add"] = "mult"
-    residual_scope: Literal["process", "variable"] = "process"
+    noise_std: dict[str, float] = Field(min_length=1)
     initial_value_source: InitialValueSource | dict[str, InitialValueSource] = (
         "measured"
     )
 
-    @field_validator("noise_scale")
+    @field_validator("noise_std")
     @classmethod
-    def _validate_noise_scale(cls, value: dict[str, float]) -> dict[str, float]:
+    def _validate_noise_std(cls, value: dict[str, float]) -> dict[str, float]:
         invalid = [
             name
-            for name, scale in value.items()
-            if not math.isfinite(scale) or scale <= 0.0
+            for name, noise_std in value.items()
+            if not math.isfinite(noise_std) or noise_std < 0.0
         ]
         if invalid:
             raise ValueError(
-                "noise_scale values must be finite and positive: " + ", ".join(invalid)
+                "noise_std values must be finite and nonnegative: " + ", ".join(invalid)
             )
         return value
 
@@ -131,11 +128,11 @@ class AugmentationConfig(ConfigBase):
     def _validate_initial_value_source(self) -> AugmentationConfig:
         if not isinstance(self.initial_value_source, dict):
             return self
-        configured = set(self.variable_names)
+        configured = set(self.noise_std)
         specified = set(self.initial_value_source)
         if configured != specified:
             raise ValueError(
-                "initial_value_source keys must match variable_names; "
+                "initial_value_source keys must match noise_std; "
                 f"missing={sorted(configured - specified)}, "
                 f"unexpected={sorted(specified - configured)}"
             )
