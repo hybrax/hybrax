@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
     "jax>=0.4.30,<0.10.1",
+    "matplotlib>=3.10.8",
     "pydantic>=2",
 ]
 
@@ -16,7 +17,6 @@ bp-train = "bp_train.cli:main"
 [project.optional-dependencies]
 dev = [
     "ipdb>=0.13.13",
-    "matplotlib>=3.10.8",
     "pip>=26.0.1",
     "plotly>=6.6.0",
     "pytest>=8.0",

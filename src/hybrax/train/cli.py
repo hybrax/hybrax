@@ -73,7 +73,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         required=True,
         help="Output directory for the prepare artifacts "
-        "(prepared.json, prepare_config.json, prepare_diagnostics/).",
+        "(prepared.json, prepare_config.json, optional augmented-data.png, "
+        "prepare_diagnostics/).",
     )
     prepare_parser.add_argument(
         "--overwrite",

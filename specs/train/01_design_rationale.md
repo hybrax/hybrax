@@ -34,16 +34,17 @@ ODE in **scaled space (SCL)** so every axis is O(1), which keeps gradients
 well-conditioned, then converts to **physical space (RAW)** only where the
 chemistry needs real units.
 
-Scaling is a single linear factor per semantic axis. There are **13 `SCALE_*`
-axes** (see [`EstimatedScales`](../bp_train/model_api.py)), covering states,
-rates, cumulative volumes, feed compositions, and process variables. The
-integrated SCL state vector is
+Scaling is a single linear factor per semantic axis. The 11 data-derived
+`SCALE_*` axes (see [`EstimatedScales`](../bp_train/model_api.py)) cover states,
+rates, cumulative volumes, feed compositions, and process variables. Stateful
+reaction modules additionally own `SCALE_latent`. The physical SCL state is
 
 ```
 SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative ]
+SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 
-with `SCALE_state` the matching concatenation (see
+with `SCALE_state` and `SCALE_integrated_state` the matching concatenations (see
 [`UserReactionModule.SCALE_state`](../bp_train/model_api.py)). Because scaling is
 linear, the same factor converts both a value and its time-derivative
 (`d(x/k)/dt = (dx/dt)/k`), so the `scale_*` / `unscale_*` helpers work for states
@@ -108,17 +109,18 @@ problems. For weighted-sum behavior, scale the individual terms inside
 
 ## 7. Discrete events as differentiable state jumps
 
-Boluses and samples are applied at their known event times as **discrete,
-differentiable state jumps** — not as continuous ramps in the ODE RHS. The
-bounded solve (§3) runs as a sequence of segment solves with the jumps applied
-*between* segments via `diffrax_callbacks` (`PresetTimeCallback`), so the adjoint
-stays standard and correct (a gradient through a preset jump matches the analytic
-value to ~9 digits).
+Controlled boluses and samples are applied at their known event times as
+discrete, differentiable **state jumps** — not as continuous ramps in the ODE
+RHS. The bounded solve (§3) runs as a sequence of segment solves with the jumps
+applied *between* segments via `diffrax_callbacks` (`PresetTimeCallback`), so the
+adjoint stays standard and correct (a gradient through a preset jump matches the
+analytic value to ~9 digits).
 
 At a coincident timestamp the jump is ordered **sample first** (well-mixed
 removal: concentrations unchanged, volume drops) **then bolus** (dilute from the
-post-sample volume and add the fed mass). The discrete event times (bolus ∪
-sample) are also passed to the solver as `jump_ts` hints (toggle with
+post-sample volume and add the fed mass). These state jumps are handled by the
+callback, not solver `jump_ts` hints. `jump_ts` instead contains genuine
+vector-field discontinuities from `BioProcess.discrete_events` (toggle with
 `solver.jump_ts`). Training/evaluation loss is still sampled only at measurement
 timestamps, so a measurement strictly before a bolus (`t_sample < t_bolus`) is
 unaffected by it. Continuous controlled feeds are not events — they are

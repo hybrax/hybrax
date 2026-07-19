@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bp_train.utils import load_custom_module
 
@@ -42,6 +43,7 @@ _COMMAND_SECTIONS = {
     "loo": _TRAIN_SECTIONS | {"loo"},
 }
 _Command = Literal["prepare", "train", "loo"]
+InitialValueSource = Literal["measured", "spline", "augmented"]
 
 
 class ConfigBase(BaseModel):
@@ -98,8 +100,48 @@ class LoggingConfig(ConfigBase):
     header_every: int = Field(10, ge=0)
 
 
+class AugmentationConfig(ConfigBase):
+    seed: int = 0
+    n_children_per_process: int = Field(gt=0)
+    n_time_points: int = Field(ge=2)
+    min_spacing_fraction: float = Field(0.1, gt=0.0, le=1.0, strict=True)
+    noise_std: dict[str, float] = Field(min_length=1)
+    initial_value_source: InitialValueSource | dict[str, InitialValueSource] = (
+        "measured"
+    )
+
+    @field_validator("noise_std")
+    @classmethod
+    def _validate_noise_std(cls, value: dict[str, float]) -> dict[str, float]:
+        invalid = [
+            name
+            for name, noise_std in value.items()
+            if not math.isfinite(noise_std) or noise_std < 0.0
+        ]
+        if invalid:
+            raise ValueError(
+                "noise_std values must be finite and nonnegative: " + ", ".join(invalid)
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _validate_initial_value_source(self) -> AugmentationConfig:
+        if not isinstance(self.initial_value_source, dict):
+            return self
+        configured = set(self.noise_std)
+        specified = set(self.initial_value_source)
+        if configured != specified:
+            raise ValueError(
+                "initial_value_source keys must match noise_std; "
+                f"missing={sorted(configured - specified)}, "
+                f"unexpected={sorted(specified - configured)}"
+            )
+        return self
+
+
 class PrepareConfig(ConfigBase):
     raw_input: Path
+    augmentation: AugmentationConfig | None = None
     strict_bp_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True

@@ -12,6 +12,7 @@ from typing import Any
 import warnings
 
 import numpy as np
+from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import (
     BioProcessCollection,
     CaseStudy,
@@ -24,6 +25,8 @@ from bp_format.serialization import (
     save_process_collection,
 )
 
+from .augmentation import augment_process_collection
+from .augmentation_plot import AUGMENTATION_PLOT_FILENAME, render_augmentation_plot
 from .constants import METADATA_NAMESPACE
 from .controls import select_control_sources
 from .defaults import default_transform_process_collection
@@ -142,12 +145,31 @@ def _build_semantics_provenance(
     raw_snapshots: dict[str, dict[str, object]],
     prepared_snapshots: dict[str, dict[str, object]],
     reverse_rename_map: dict[str, str],
+    augmentation_created_names: set[str],
 ) -> dict[str, dict[str, object]]:
     provenance: dict[str, dict[str, object]] = {}
 
     for process_name, prepared_summary in prepared_snapshots.items():
         old_name = reverse_rename_map.get(process_name, process_name)
-        raw_summary = raw_snapshots.get(old_name, prepared_summary)
+        raw_summary = raw_snapshots.get(old_name)
+        if raw_summary is None:
+            changed_by_hooks = [
+                "augmentation"
+                if process_name in augmentation_created_names
+                else "transform_process_collection"
+            ]
+            provenance[process_name] = {
+                "raw": None,
+                "prepared": prepared_summary,
+                "changed_by_hooks": changed_by_hooks,
+                "reactor_components_added": prepared_summary["reactor_component_names"],
+                "reactor_components_modified": [],
+                "feed_components_added": prepared_summary[
+                    "feed_component_names_by_change"
+                ],
+                "feed_components_modified": {},
+            }
+            continue
         changed_by_hooks: list[str] = []
         # A pure rename (no semantic changes) should still be flagged.
         was_renamed = process_name in reverse_rename_map
@@ -207,9 +229,9 @@ def _validate_prepared_control_contract(
     *,
     require_consistent_controls: bool,
 ) -> None:
-    reference_categorised: tuple[
-        tuple[str, ...], tuple[str, ...], tuple[str, ...]
-    ] | None = None
+    reference_categorised: (
+        tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] | None
+    ) = None
 
     for process_name, bundle in process_bundles.items():
         control_names = list(bundle.all_names)
@@ -257,8 +279,9 @@ def prepare_artifact(
         raise ValueError("prepare_artifact requires a prepare config section")
 
     input_path = prepare.raw_input
-    # `--output-dir` holds the prepare-owned files (clash-free with a train/forward run
-    # that may share the dir): prepared.json + prepare_config.json + prepare_diagnostics/.
+    # `--output-dir` holds the prepare-owned files (clash-free with a train/forward
+    # run that may share the dir): prepared.json + prepare_config.json + optional
+    # augmented-data.png + prepare_diagnostics/.
     output_dir = Path(output_dir)
     del overwrite  # the CLI guards prepared.json; prepare only (re)writes its own files
     output_path = output_dir / "prepared.json"
@@ -278,6 +301,7 @@ def prepare_artifact(
         "transform_process_collection",
         default_transform_process_collection,
     )
+    augment_state_values = get_hook(custom_module, "augment_state_values", None)
     raw_semantics = {
         process_name: summarize_process_semantics(process)
         for process_name, process in collection.processes.items()
@@ -285,18 +309,54 @@ def prepare_artifact(
     for process_name, process in collection.processes.items():
         process.metadata._pre_transform_key = process_name
     collection = transform_process_collection(collection, config)
-    reverse_rename_map = {}
+    transformed_process_names = set(collection.processes)
+    collection = augment_process_collection(
+        collection,
+        config,
+        augment_state_values,
+    )
+    augmentation_created_names = set(collection.processes) - transformed_process_names
+    tagged_processes: list[tuple[str, str]] = []
     for process_name, process in collection.processes.items():
-        old_name = process.metadata._pre_transform_key
-        del process.metadata._pre_transform_key
-        if old_name != process_name:
-            reverse_rename_map[process_name] = old_name
+        old_name = getattr(process.metadata, "_pre_transform_key", None)
+        if old_name is not None:
+            del process.metadata._pre_transform_key
+            tagged_processes.append((process_name, old_name))
+
+    tag_claims_by_old_name: dict[str, list[str]] = {}
+    for process_name, old_name in tagged_processes:
+        tag_claims_by_old_name.setdefault(old_name, []).append(process_name)
+
+    tag_owner_by_old_name: dict[str, str] = {}
+    for old_name, process_names in tag_claims_by_old_name.items():
+        if old_name in process_names:
+            tag_owner_by_old_name[old_name] = old_name
+        elif len(process_names) == 1:
+            tag_owner_by_old_name[old_name] = process_names[0]
+        else:
+            raise ValueError(
+                f"ambiguous pre-transform provenance tag {old_name!r}: "
+                f"claimed by {process_names}"
+            )
+    reverse_rename_map = {
+        process_name: old_name
+        for old_name, process_name in tag_owner_by_old_name.items()
+        if old_name != process_name
+    }
 
     prepared_semantics: dict[str, dict[str, object]] = {}
     for process_name, process in collection.processes.items():
         prepared_semantics[process_name] = summarize_process_semantics(process)
 
     semantics_validation_report = ensure_prepared_training_semantics(collection)
+    augmented_parents_ok, augmented_parent_messages = validate_augmented_parent_refs(
+        collection
+    )
+    if not augmented_parents_ok:
+        raise ValueError(
+            "augmented parent validation failed:\n"
+            + "\n".join(augmented_parent_messages)
+        )
     prepared_validation_report = validate_collection(
         collection,
         strict=True,
@@ -306,6 +366,7 @@ def prepare_artifact(
         raw_snapshots=raw_semantics,
         prepared_snapshots=prepared_semantics,
         reverse_rename_map=reverse_rename_map,
+        augmentation_created_names=augmentation_created_names,
     )
 
     process_bundles: dict[str, Any] = {}
@@ -340,18 +401,26 @@ def prepare_artifact(
 
     controls_config = _runtime_controls_config(prepare)
     existing_metadata = dict(collection.metadata or {})
+    transform_hooks = {
+        "transform_process_collection": getattr(
+            transform_process_collection,
+            "__name__",
+            str(transform_process_collection),
+        ),
+    }
+    if augment_state_values is not None:
+        transform_hooks["augment_state_values"] = getattr(
+            augment_state_values,
+            "__name__",
+            str(augment_state_values),
+        )
+
     bp_train_metadata: dict[str, Any] = {
         "prepared_at": _utc_now_iso(),
         "source_input_path": _portable_input_path(input_path, output_path),
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
-        "transform_hooks": {
-            "transform_process_collection": getattr(
-                transform_process_collection,
-                "__name__",
-                str(transform_process_collection),
-            ),
-        },
+        "transform_hooks": transform_hooks,
         "dynamic_volume": True,
         "bp_format_validation": prepared_validation_report,
         "bp_format_validation_raw": validation_report,
@@ -401,9 +470,20 @@ def prepare_artifact(
     bp_train_metadata["provenance"]["content_hash"] = content_hash(collection)
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    augmentation_plot_path = output_dir / AUGMENTATION_PLOT_FILENAME
+    if prepare.augmentation is not None:
+        render_augmentation_plot(
+            collection,
+            prepare.augmentation,
+            augmentation_plot_path,
+        )
+    elif augmentation_plot_path.exists():
+        augmentation_plot_path.unlink()
+
     save_process_collection(collection, output_path)
-    # Standalone, inspectable record of how this prepare ran (clash-free with train's
-    # config.json) — the bp_train provenance/metadata block, without the bulk collection.
+    # Standalone, inspectable record of how this prepare ran (clash-free with
+    # train's config.json) — the bp_train provenance/metadata block, without the
+    # bulk collection.
     (output_dir / "prepare_config.json").write_text(
         json.dumps(bp_train_metadata, indent=2, default=str), encoding="utf-8"
     )
@@ -424,7 +504,9 @@ def _raw_control_samples(process: Any, name: str) -> tuple[np.ndarray, np.ndarra
     else:
         value = process.volume.volume_changes[name].values
     if isinstance(value, TimeSeries) and value.times is not None:
-        return np.asarray(value.times, dtype=float), np.asarray(value.values, dtype=float)
+        return np.asarray(value.times, dtype=float), np.asarray(
+            value.values, dtype=float
+        )
     if isinstance(value, StaticVariable):
         t0, t1 = float(process.time_axis.start), float(process.time_axis.end)
         return np.asarray([t0, t1]), np.asarray([float(value.value)] * 2)

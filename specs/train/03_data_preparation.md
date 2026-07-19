@@ -1,6 +1,7 @@
 # Data Preparation
 
 Source: [`bp_train/prepare.py`](../bp_train/prepare.py),
+[`bp_train/augmentation.py`](../bp_train/augmentation.py),
 [`bp_train/training_data.py`](../bp_train/training_data.py),
 [`bp_train/controls_store.py`](../bp_train/controls_store.py),
 [`bp_train/controls.py`](../bp_train/controls.py),
@@ -10,22 +11,23 @@ Source: [`bp_train/prepare.py`](../bp_train/prepare.py),
 ## Purpose
 
 Turn a raw bp-format collection into a `prepared.json` artifact that training can
-consume directly, and define the vector layouts that everything downstream uses:
-the scaled state vector, the control vector, and the measured-target selection.
-`prepare` does the data-side work once; `train` then estimates scales and
-assembles batches from the prepared artifact.
+consume directly, and define the state, control, and measured-target layouts that
+everything downstream uses. `prepare` does the data-side work once; `train` then
+estimates scales, builds runtime controls, and assembles batches from the
+prepared artifact.
 
 ## Design Rationale
 
 - **Prepare once, train many.** Validation, process renaming, and control-source
-  construction are deterministic and data-only, so they run in `prepare` and are
+  selection are deterministic and data-only, so they run in `prepare` and are
   frozen into `prepared.json`. The artifact carries bp-train provenance
   (`metadata["bp-train"]`: bp-format validation report, source/custom hashes,
   environment versions, prepared semantics) so a run is reproducible.
-- **Controls are precomputed.** Continuous feeds become piecewise-linear control
-  signals (a refined dense grid) the RHS evaluates at each `t`; discrete events
-  (boluses, sampling) become event arrays applied as **state jumps** during the
-  solve. See [event semantics](#controls-and-event-semantics).
+- **Controls are built at runtime.** `ControlsStore` refines continuous feeds
+  into piecewise-linear dense signals the RHS evaluates at each `t`; discrete
+  events (controlled boluses, sampling) become event arrays applied as **state
+  jumps** during the solve. See [event semantics](#controls-and-event-semantics).
+- **Augmentation is persisted.** Each configured synthetic variant is stored as a complete `AugmentedBioProcess` child, so repeated training uses the same observations and provenance.
 - **Scales are estimated at train setup**, not baked into the data, so the same
   `prepared.json` can be trained with different scaling strategies via
   `estimate_all_scales`.
@@ -42,22 +44,65 @@ prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False)
 - `load_raw_collection` accepts a bp-format `BioProcessCollection` (file or
   in-memory) or a `CaseStudy` (file or in-memory); a `CaseStudy`'s processes
   are wrapped into a collection, with the case identity kept in `metadata`.
-- `prepare_artifact` runs the prepare hooks
-  ([`transform_process_collection`](02_cli_and_config.md#transform_process_collection),
-  [`build_sample_acc_series`](02_cli_and_config.md#build_sample_acc_series)),
-  validates, enforces the control contract (the reserved sample-accumulation
-  control name `BP_TRAIN_SAMPLE_ACC_NAME` must be present and not user-supplied),
+- `prepare_artifact` runs
+  [`transform_process_collection`](02_cli_and_config.md#transform_process_collection)
+  and the optional
+  [`augment_state_values`](02_cli_and_config.md#augment_state_values) hook,
+  validates, enforces the required and consistent continuous-control contract,
   and writes the artifact. Normally invoked via `bp-train prepare`.
+
+### Prepared augmentation
+
+Set `prepare.augmentation` to generate deterministic synthetic children after `transform_process_collection` and before final validation.
+Each child is named `{parent}__aug_{index:03d}` and keeps its parent's controls, volume, events, and other process structure.
+It receives an independently sampled measurement grid with the exact parent start and end times. The grid reserves `min_spacing_fraction` (default `0.1`) of the nominal grid interval as the minimum gap between adjacent points, then randomly allocates the remaining duration across the gaps. Preparation fails if the requested minimum is within four coarsest timestamp-resolution steps; stored gaps use a small relative rounding tolerance.
+
+Modeled states follow three rules.
+
+1. States configured in `noise_std` are evaluated on the child grid and receive
+   additive Gaussian noise with that absolute standard deviation.
+2. Other spline-backed states are evaluated on the same grid without noise.
+3. Other states without splines keep their original observations and grid.
+
+A `noise_std` value of zero performs time resampling without adding target noise.
+Configured noise applies equally to identically-zero and nonzero parent traces.
+Use `augment_state_values` when domain knowledge requires preserving selected
+structural-zero traces.
+For configured states, `initial_value_source` selects the child's initial value.
+`measured` preserves the parent's real observation at the process start and fails when none exists.
+`spline` uses `spline(t0)`, while `augmented` also applies augmentation noise at `t0`.
+The setting may be one value for every listed state or an exact per-state mapping.
+When `spline` or `augmented` extrapolates before a trace's first observation, augmentation emits a warning.
+
+The second rule implicitly uses `spline(t0)` and emits the same extrapolation warning when its first observation is later.
+A state used as a training target should normally be listed, otherwise the children supervise repeated noise-free spline trajectories for that target.
+Mixed state grids remain valid because training constructs a union grid and a per-target measurement mask.
+
+Reactor-medium component values are clipped at zero after additive noise.
+Plots show the central 95% Gaussian interval (`spline ± 1.96 * noise_std`).
+Reactor-medium band bounds are clipped at zero; process-variable bands remain
+signed. At the initial time, the band collapses to zero width when
+`initial_value_source` preserves the measured or spline value.
+Augmentation warns when a reactor-medium component spline dips below zero over the
+process interval, or when this happens for a process variable whose observations
+are mostly nonnegative. Process-variable values are not clipped, so signed variables
+remain signed.
+Resampled modeled states are stored on children as observation-only series, while their generating splines remain available on the parent.
+Controlled-variable splines remain on each child because simulation still needs them.
+
+These resampled points are synthetic training observations.
+They are not claims of new physical offline samples, and augmentation does not add sample-removal events or change the reactor volume.
 
 ### Scale estimation
 
-The 13 `SCALE_*` axes (11 stored on the reaction module, plus the derived
-`SCALE_state` and `SCALE_modeled_V` properties) normalize every vector so the
-ODE integrates in O(1) space. The [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales)
+The 11 data-derived `SCALE_*` axes normalize physical vectors so the ODE
+integrates in O(1) space. The [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales)
 hook returns them as an [`EstimatedScales`](../bp_train/model_api.py); they are
 stored as frozen fields on the reaction module (the single source of truth — see
 [01_design_rationale.md](01_design_rationale.md#2-scaled-scl-vs-physical-raw-space)).
-Without the hook, every axis defaults to ones (no scaling).
+A stateful reaction module also supplies `SCALE_latent`; `SCALE_state`,
+`SCALE_modeled_V`, and `SCALE_integrated_state` are derived properties. Without
+the hook, every data-derived axis defaults to ones (no scaling).
 
 | `SCALE_*` axis | Shape | Scales |
 |---|---|---|
@@ -72,17 +117,21 @@ Without the hook, every axis defaults to ones (no scaling).
 | `SCALE_modeled_FVCs_Cin` | `(n_modeled_FVC, n_RMC)` | modeled-feed composition |
 | `SCALE_modeled_BiologicalOde_rates` | `(n_rates,)` | reaction rates |
 | `SCALE_modeled_FVCs_rates` | `(n_modeled_FVC,)` | modeled-feed flow rates |
+| `SCALE_latent` | `(n_latent,)` | integrated latent state (set by a stateful module) |
 
 ### State and control layout
 
-The integrated **SCL state vector** (what the solver advances):
+The physical **SCL state vector**:
 
 ```
 SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative ]
             └ species ─────┘└ dyn. PVs ──┘└ scalar ───────┘└ per modeled feed ─────┘
+SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 
-`SCALE_state` is the matching concatenation. The reaction module reads each slice
+The solver advances `SCL_integrated_state`; stateless modules have an empty
+`SCL_latent`. `SCALE_state` and `SCALE_integrated_state` are the matching
+concatenations. The reaction module reads each slice
 through [`ReactionInputs`](04_reaction_and_loss.md#reactioninputs); modeled vs
 controlled membership comes from bp-format's `RhsOde` (`name_modeled_*` /
 `name_controlled_*`).
@@ -102,14 +151,14 @@ accessors built from the bp-format collection, of two kinds:
 - **Continuous controlled feeds** → a refined piecewise-linear dense signal
   (`build_dense_payload`) the RHS evaluates at each `t` (rates / cumulative /
   `Cin`).
-- **Discrete bolus & sample events** → event arrays
+- **Discrete controlled bolus & sample events** → event arrays
   (`bolus_event_times/volumes/Cin`, `sample_event_times/volumes`) applied as
   **differentiable state jumps** at their event times during the segmented solve
   (`PresetTimeCallback`), sample-first-then-bolus.
 
-The discrete event times (bolus ∪ sample) are merged into a per-process
-`step_ts` (`controls.active_step_ts`) and forwarded to the solver as `jump_ts`
-hints. See
+`controls.active_jump_ts` comes only from `BioProcess.discrete_events`: genuine
+vector-field discontinuities passed to the solver as `jump_ts` hints. Bolus and
+sample state jumps are handled by the callback itself. See
 [01_design_rationale.md](01_design_rationale.md#7-discrete-events-as-differentiable-state-jumps).
 
 ### Target selection
@@ -158,10 +207,9 @@ or a plain `prepared.json` file.
 {
   "prepare": {
     "raw_input": "../../bp-format/examples/01_kittler_2022/02_bp_format_data_all/data.json",
-    "required_control_names": ["glucose_feed"],
-    "bolus_run_min_dt": 0.05
+    "required_control_names": ["glucose_feed"]
   },
-  "custom_py": "custom.py"   // transform_process_collection / build_sample_acc_series
+  "custom_py": "custom.py"   // transform_process_collection / augment_state_values
 }
 ```
 
