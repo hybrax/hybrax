@@ -14,6 +14,9 @@ class CallbackSolution(eqx.Module):
     Attributes:
         y_final: Final state after all events and integration.
         t_final: Final time reached.
+        fail_time: Time of the first segment failure (max_steps / dt_min / etc.);
+            ``inf`` if the lane never failed. Measurements at ``t > fail_time`` are
+            past a failed solve and should be masked out of the loss.
 
         event_times: (max_events,) times when events triggered.
             Padded with t1 for unused slots.
@@ -28,6 +31,7 @@ class CallbackSolution(eqx.Module):
 
     y_final: jnp.ndarray
     t_final: jnp.ndarray
+    fail_time: jnp.ndarray
 
     event_times: jnp.ndarray
     event_types: jnp.ndarray

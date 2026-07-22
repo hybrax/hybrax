@@ -33,6 +33,7 @@ from bp_train import (
     trainable_field,
 )
 from bp_train.controls_store import ControlsStore
+from bp_train.dense import all_triple
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +102,6 @@ def estimate_all_scales(collection, target_names, config):
     controls_store = ControlsStore.from_collection(collection)
 
     n_FVC = len(controls_store.name_controlled_FVCs)
-    n_SVC = len(controls_store.name_controlled_SVCs)
     n_PV = len(controls_store.name_controlled_PVs)
     n_modeled_VCs = len(ref_rhs_ode.name_modeled_FVCs)
     n_rates = len(ref_rhs_ode.name_modeled_rates)
@@ -121,7 +121,9 @@ def estimate_all_scales(collection, target_names, config):
         RAW_species_rms[i] = float(np.sqrt(np.mean(pooled**2)))
     SCALE_modeled_RMCs = np.maximum(RAW_species_rms, 1e-6)
 
-    RAW_volumes = [float(p.volume.initial_volume) for p in collection.processes.values()]
+    RAW_volumes = [
+        float(p.volume.initial_volume) for p in collection.processes.values()
+    ]
     SCALE_V_in_cumulative = float(max(np.max(RAW_volumes), 1e-6))
 
     SCALE_modeled_FVCs_cumulative = np.zeros(n_modeled_VCs, dtype=float)
@@ -130,7 +132,8 @@ def estimate_all_scales(collection, target_names, config):
         for p in collection.processes.values():
             vc = p.volume.volume_changes[flow_name]
             max_cum = max(
-                max_cum, float(np.max(np.abs(np.asarray(vc.values.values, dtype=float))))
+                max_cum,
+                float(np.max(np.abs(np.asarray(vc.values.values, dtype=float)))),
             )
         SCALE_modeled_FVCs_cumulative[k] = max(max_cum, 1.0)
 
@@ -164,17 +167,22 @@ def estimate_all_scales(collection, target_names, config):
     SCALE_controlled_FVCs_Cin = np.maximum(np.abs(RAW_controlled_FVCs_Cin), 1.0)
     SCALE_modeled_FVCs_Cin = np.maximum(np.abs(RAW_modeled_FVCs_Cin), 1.0)
 
+    f32 = jnp.float32
     return EstimatedScales(
-        SCALE_modeled_RMCs=jnp.asarray(SCALE_modeled_RMCs, dtype=jnp.float32),
-        SCALE_V_in_cumulative=jnp.asarray(SCALE_V_in_cumulative, dtype=jnp.float32),
-        SCALE_modeled_FVCs_cumulative=jnp.asarray(SCALE_modeled_FVCs_cumulative, dtype=jnp.float32),
-        SCALE_controlled_FVCs_cumulative=jnp.asarray(SCALE_controlled_FVCs_cumulative, dtype=jnp.float32),
-        SCALE_controlled_FVCs_rates=jnp.asarray(SCALE_controlled_FVCs_rates, dtype=jnp.float32),
-        SCALE_controlled_FVCs_Cin=jnp.asarray(SCALE_controlled_FVCs_Cin, dtype=jnp.float32),
-        SCALE_controlled_PVs=jnp.asarray(SCALE_controlled_PVs, dtype=jnp.float32),
-        SCALE_modeled_FVCs_Cin=jnp.asarray(SCALE_modeled_FVCs_Cin, dtype=jnp.float32),
-        SCALE_modeled_BiologicalOde_rates=jnp.ones(n_rates, dtype=jnp.float32),
-        SCALE_modeled_FVCs_rates=jnp.ones(n_modeled_VCs, dtype=jnp.float32),
+        SCALE_modeled_RMCs=jnp.asarray(SCALE_modeled_RMCs, dtype=f32),
+        SCALE_V_in_cumulative=jnp.asarray(SCALE_V_in_cumulative, dtype=f32),
+        SCALE_modeled_FVCs_cumulative=jnp.asarray(
+            SCALE_modeled_FVCs_cumulative, dtype=f32
+        ),
+        SCALE_controlled_FVCs_cumulative=jnp.asarray(
+            SCALE_controlled_FVCs_cumulative, dtype=f32
+        ),
+        SCALE_controlled_FVCs_rates=jnp.asarray(SCALE_controlled_FVCs_rates, dtype=f32),
+        SCALE_controlled_FVCs_Cin=jnp.asarray(SCALE_controlled_FVCs_Cin, dtype=f32),
+        SCALE_controlled_PVs=jnp.asarray(SCALE_controlled_PVs, dtype=f32),
+        SCALE_modeled_FVCs_Cin=jnp.asarray(SCALE_modeled_FVCs_Cin, dtype=f32),
+        SCALE_modeled_BiologicalOde_rates=jnp.ones(n_rates, dtype=f32),
+        SCALE_modeled_FVCs_rates=jnp.ones(n_modeled_VCs, dtype=f32),
     )
 
 
@@ -253,6 +261,14 @@ class NonNegLossModule(DefaultLossModule):
         triple_mask = dense_triple_mask_away_from_jumps(
             dense_t, inputs.jump_ts, self._jump_epsilon_h
         ).astype(dense_rates.dtype)
+        # Also exclude dense points past a solve failure. A second-difference stencil at
+        # j spans dense rows j, j+1, j+2, so keep it only if all three are pre-failure
+        # (post-failure dense states are a finite fallback, not real predictions).
+        dense_valid = inputs.dense_valid_time
+        if dense_valid is not None:
+            triple_mask = triple_mask * all_triple(dense_valid).astype(
+                dense_rates.dtype
+            )
         dt = jnp.maximum(dense_t[1:] - dense_t[:-1], 1e-6)
         slopes = (dense_rates[1:] - dense_rates[:-1]) / dt[:, None]
         mid_dt = jnp.maximum(0.5 * (dt[1:] + dt[:-1]), 1e-6)

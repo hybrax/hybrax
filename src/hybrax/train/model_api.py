@@ -468,6 +468,15 @@ class LossInputs(eqx.Module):
       float — per-row "is this timestep real". Multiply trajectory-wide
       penalties (e.g. bounds hinges) by this.
     - ``n_measured``: the unpadded row count for this sample.
+
+    Failure handling: if the ODE solve bailed partway (a stiff segment hit the
+    step cap), every point past the failure time is dropped BEFORE this struct is
+    built — ``mask_measured`` / ``mask_measured_any`` are already zeroed on those
+    rows, and ``dense_valid_time`` (below) marks the valid dense rows. All predicted
+    trajectories here (measurement AND dense) are guaranteed finite: post-failure
+    rows carry a finite fallback, never ``inf``/``nan``. So the ``penalty * mask``
+    idiom is safe (no ``0 * inf``); just remember to gate DENSE penalties by
+    ``dense_valid_time`` (the dense grid has no other failure mask).
     """
 
     # Predictions over measurement times (n_meas, ...)
@@ -518,6 +527,12 @@ class LossInputs(eqx.Module):
     dense_SCL_V: jax.Array | None = None
     dense_RAW_V: jax.Array | None = None
     dense_auxiliary: dict[str, jax.Array] | None = None
+    # (dense_grid_n,) bool: True for dense rows at/before the solve's failure time,
+    # False for post-failure rows (whose trajectory values are a finite fallback, not
+    # real predictions). All-True when the solve succeeded. Gate dense penalties
+    # (smoothness, curvature, bounds over the dense grid) by this the way measurement
+    # terms use ``mask_measured``. ``None`` when the dense grid is disabled.
+    dense_valid_time: jax.Array | None = None
 
 
 class LossOutputs(eqx.Module):

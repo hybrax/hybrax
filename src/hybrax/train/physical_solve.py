@@ -31,6 +31,16 @@ from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
 _EVENT_EPS = 1e-4  # << ~0.08 h event spacing; ample headroom over float64 ULP at t~15
 
 
+def within_fail_time(t, fail_time):
+    """True where time ``t`` is at/before a solve's failure cutoff (all-True when
+    ``fail_time`` is ``inf``, i.e. no failure). Post-failure points are the complement,
+    ``~within_fail_time``. Centralizes the ``fail_time + _EVENT_EPS`` tolerance (the eps
+    keeps a measurement landing exactly on the last reached node) so the measurement
+    mask, the dense mask, the loss-facing finiteness fallback and the export sentinel
+    all use one identical cutoff."""
+    return t <= fail_time + jnp.asarray(_EVENT_EPS, jnp.asarray(t).dtype)
+
+
 def solve_physical_states(
     wrapper,
     *,
@@ -42,8 +52,19 @@ def solve_physical_states(
     atol: float,
     jump_ts: jax.Array | None = None,
     max_steps_per_segment: int | None = None,
+    return_fail_time: bool = False,
 ):
     """RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.
+
+    ``fail_time`` is the scalar time of the first segment failure on this solve (``inf``
+    if none). Post-failure rows (``t > fail_time``) are overwritten from ``fail_time``
+    either way — the raw gather is NOT trusted there, since on a mid-trajectory bail the
+    argmin falls back to the last reached node and yields a stale FINITE value:
+    - ``return_fail_time=True`` (loss path) returns ``(states, fail_time)`` with those
+      rows set to a finite ``y0`` placeholder, so the ``penalty(state) * mask`` idiom
+      stays safe; the caller must still mask them out via ``fail_time``.
+    - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
+      to ``inf``, so a failed forward is detectable and never reads back a stale value.
 
     ``max_steps`` (from ``--solver-max-steps``) sets the per-segment step ceiling,
     but it is **clamped to a barrier-safe maximum** (512). This matters under pmap:
@@ -147,12 +168,22 @@ def solve_physical_states(
     # linear, so d(SCL)/dt == d(RAW)/dt / SCALE).
     term = diffrax.ODETerm(lambda t, yy, a: wrapper.physical_rhs(t, yy * SCALE) / SCALE)
 
+    # ``dt0`` must be strictly positive. For a degenerate window (``t1 == t0``: a single
+    # active measurement, or all measurements at t0) ``(t1 - t0) * 1e-3`` is exactly 0,
+    # and a zero initial step makes diffrax bail on the tol-floored micro-segment inside
+    # the callback loop; that bail is then flagged as a failure and poisoned to inf.
+    # Only the exact zero-span case needs a fallback (any positive value works there, as
+    # the adaptive controller adjusts immediately), so a genuinely short run keeps its
+    # usual ``span * 1e-3`` untouched.
+    span = t1 - t0
+    dt0 = jnp.where(span > 0, span * 1e-3, jnp.asarray(_EVENT_EPS, dtype))
+
     sol = diffeqsolve_with_callbacks(
         term,
         diffrax.Tsit5(),
         t0=t0,
         t1=t1,
-        dt0=(t1 - t0) * 1e-3,  # small initial step; adaptive controller adapts
+        dt0=dt0,
         y0=y0 / SCALE,
         callbacks=cb,
         max_events=preset_times.shape[0],
@@ -191,4 +222,25 @@ def solve_physical_states(
     # processes.
     at_t0 = (jnp.abs(t_eval - t0) < eps) & meas_active
     states = jnp.where(at_t0[:, None], y0[None, :], states)
+
+    # Overwrite every post-failure row (``t > fail_time``) from ``fail_time`` — do NOT
+    # trust the raw gather to carry a marker there. On a MID-trajectory bail the
+    # post-failure nodes are parked (``event_type == -1``), so the argmin lands on the
+    # last successfully-reached node and returns a stale FINITE value (the inf sentinel
+    # only survives for a first-segment bail, where the argmin defaults to the poisoned
+    # index 0). Healthy solve: ``fail_time == inf`` -> no-op.
+    fail_time = sol.fail_time
+    post_fail = ~within_fail_time(t_eval, fail_time)
+    if return_fail_time:
+        # LOSS-FACING path: replace post-failure rows with a finite ``y0`` placeholder
+        # so the ``penalty(state) * mask`` idiom stays safe (an inf left in makes
+        # ``0 * inf = nan`` poison the loss/gradient even for a masked row). The caller
+        # still EXCLUDES these rows via ``fail_time`` (measurement mask +
+        # ``dense_valid_time``); the placeholder only guarantees finiteness.
+        states = jnp.where(post_fail[:, None], y0[None, :], states)
+        return states, fail_time
+    # FORWARD/EXPORT path (``simulate_measurement_states``, plotting): write an explicit
+    # non-finite sentinel so a failed forward is detectable and never reads back as a
+    # stale finite value silently presented as a real prediction.
+    states = jnp.where(post_fail[:, None], jnp.asarray(jnp.inf, states.dtype), states)
     return states

@@ -130,3 +130,15 @@ def dense_triple_mask_away_from_jumps(
         axis=1,
     )
     return ~crosses_jump
+
+
+def all_triple(point_mask: jax.Array) -> jax.Array:
+    """Return which consecutive three-point windows contain only valid points.
+
+    Curvature penalties use three neighboring trajectory points. If any point is
+    invalid—for example, because the solver failed before reaching it—the curvature
+    term involving that point must also be excluded.
+
+    Converts a point mask of length N into a three-point-window mask of length N - 2.
+    """
+    return point_mask[:-2] & point_mask[1:-1] & point_mask[2:]

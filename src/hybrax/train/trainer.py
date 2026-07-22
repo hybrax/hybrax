@@ -8,6 +8,7 @@ import jax.tree_util as jtu
 
 from .controls_store import BatchControls
 from .model_api import LossInputs
+from .physical_solve import within_fail_time
 from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
@@ -56,12 +57,15 @@ def _solve_measurement_save_outputs_on_grid(
     rtol: float,
     atol: float,
     jump_ts: jax.Array | None,
-) -> SaveOutputs:
-    """Solve measurement grid once and return stacked save-time observables.
+) -> tuple[SaveOutputs, jax.Array]:
+    """Solve measurement grid once; return save-time observables and ``fail_time``.
 
     ``RAW_y0`` is the physical-layout initial state. The wrapper builds the
     internal pseudobatch solver state. ``SaveOutputs.SCL_states`` stays in
-    physical public layout; rate fields are RAW.
+    physical public layout; rate fields are RAW. ``fail_time`` is the scalar time of
+    the first segment failure (``inf`` if the solve never bailed); the caller masks
+    measurements at ``t > fail_time`` out of the loss. Those rows carry a finite ``y0``
+    placeholder here (the loss-facing solve is sanitized), not a real prediction.
     """
     # Bounded physical-state solve (manual jumps at events) — well-conditioned
     # gradient. Replaces the pseudobatch single-solve whose unbounded accumulator
@@ -70,7 +74,7 @@ def _solve_measurement_save_outputs_on_grid(
 
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
     t_eval = clamp_padded_time_rows(t_eval[None, :], n_meas_arr[None])[0]
-    states = solve_physical_states(
+    states, fail_time = solve_physical_states(
         wrapper,
         t_eval=t_eval,
         n_measured=n_meas_arr,
@@ -79,8 +83,9 @@ def _solve_measurement_save_outputs_on_grid(
         rtol=float(rtol),
         atol=float(atol),
         jump_ts=jump_ts,
+        return_fail_time=True,
     )
-    return jax.vmap(wrapper.physical_save_outputs)(t_eval, states)
+    return jax.vmap(wrapper.physical_save_outputs)(t_eval, states), fail_time
 
 
 def simulate_measurement_states(
@@ -232,7 +237,7 @@ def evaluate_sample_with_loss_module(
 
     if dense_grid_n is None and prediction_grid_n is None:
         # Measurement-grid-only path (unchanged behavior).
-        save_outputs = _solve_measurement_save_outputs_on_grid(
+        save_outputs, fail_time = _solve_measurement_save_outputs_on_grid(
             wrapper,
             t_eval=t_measured,
             n_measured=n_measured,
@@ -253,8 +258,11 @@ def evaluate_sample_with_loss_module(
         # Dense/prediction path: solve ONCE on the union of the measurement grid,
         # the loss module's dense grid, and the forward prediction grid, then
         # index-split. Loss reads the dense block; forward reads the prediction
-        # block. SaveAt just records at more points, so the loss value is
-        # unchanged.
+        # block. SaveAt just records at more points, so the loss value is unchanged
+        # for a solve that SUCCEEDS. Caveat: ``max_steps`` is a per-SEGMENT budget, so
+        # a finer union grid subdivides into more/shorter segments; a sample that bails
+        # can therefore reach a different ``fail_time`` (hence a different post-failure
+        # mask) than at measurement resolution. Only bailing samples are affected.
         from .dense import build_union_time_grid
 
         (
@@ -272,7 +280,7 @@ def evaluate_sample_with_loss_module(
                 None if prediction_grid_n is None else int(prediction_grid_n)
             ),
         )
-        save_outputs = _solve_measurement_save_outputs_on_grid(
+        save_outputs, fail_time = _solve_measurement_save_outputs_on_grid(
             wrapper,
             t_eval=t_eval,
             n_measured=t_eval.shape[0],
@@ -306,11 +314,43 @@ def evaluate_sample_with_loss_module(
             prediction_save_outputs = jtu.tree_map(
                 lambda leaf: leaf[export_idx], save_outputs
             )
+            # Re-mark post-failure export rows as non-finite. The union solve was
+            # sanitized to a finite ``y0`` fallback for the loss (fail_time path), so a
+            # failed forward would otherwise present that fallback as a real prediction.
+            # ``inf`` keeps a failed export detectable in predictions.csv / plots / LOO.
+            # Done here (AFTER ``physical_save_outputs`` ran the model on finite states)
+            # so no ``inf`` is ever fed into the reaction module. No-op on a healthy
+            # solve (fail_time == inf); ``prediction_t`` is finite, so the cutoff holds.
+            pred_post_fail = ~within_fail_time(prediction_t, fail_time)
+            prediction_save_outputs = jtu.tree_map(
+                lambda leaf: jnp.where(
+                    pred_post_fail.reshape((-1,) + (1,) * (leaf.ndim - 1)),
+                    jnp.asarray(jnp.inf, leaf.dtype),
+                    leaf,
+                ),
+                prediction_save_outputs,
+            )
 
     SCL_states = meas_views["SCL_states"]
     # State layout: [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative].
     # target_state_indices selects modeled_RMCs + modeled_FVCs_cumulative.
     SCL_target_pred = SCL_states[:, wrapper.target_state_indices]
+
+    # Drop measurement points past a segment failure: the loss-facing solve replaced
+    # those rows with a finite ``y0`` placeholder (not a real prediction), so without
+    # this mask they would enter the loss as bogus targets. Earlier good points are kept
+    # (their signal is valuable, esp. early in training). No-op on a healthy solve
+    # (``fail_time == inf``). ``within_fail_time`` owns the boundary tolerance.
+    valid_time = within_fail_time(t_measured, fail_time)
+    mask_measured = mask_measured & valid_time[:, None]
+
+    # Same failure cutoff for the dense grid, which has no other failure mask. ``None``
+    # when the dense grid is disabled; all-True on a healthy solve (fail_time == inf).
+    dense_valid_time = (
+        None
+        if dense_t is None or dense_views["SCL_states"] is None
+        else within_fail_time(dense_t, fail_time)
+    )
 
     mask_any = jnp.any(mask_measured, axis=1).astype(SCL_states.dtype)
     step_arr = jnp.asarray(step if step is not None else -1, dtype=jnp.int32)
@@ -348,6 +388,7 @@ def evaluate_sample_with_loss_module(
         dense_SCL_V=dense_views["SCL_V"],
         dense_RAW_V=dense_views["RAW_V"],
         dense_auxiliary=dense_views["auxiliary"],
+        dense_valid_time=dense_valid_time,
     )
 
     outputs = loss_module(inputs)

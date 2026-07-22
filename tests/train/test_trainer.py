@@ -20,9 +20,12 @@ from bp_format.mechanistic import build_rhs_ode
 import bp_train.trainer as trainer_module
 from bp_train.physical_solve import solve_physical_states
 from bp_train.model_api import (
+    LossInputs,
+    LossOutputs,
     ReactionOutputs,
     UserReactionModule,
     frozen_field,
+    partition_trainable,
     trainable_field,
 )
 from bp_train.defaults import DefaultLossModule
@@ -31,6 +34,7 @@ from bp_train.trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
     evaluate_sample_with_loss_module,
+    simulate_measurement_states,
 )
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
@@ -79,6 +83,26 @@ class _AuxReactionModule(UserReactionModule):
                     [t, SCL_modeled_RMCs[0]], dtype=SCL_modeled_RMCs.dtype
                 ),
             },
+        )
+
+
+class _BlowUpReactionModule(UserReactionModule):
+    """Biomass rate is 0 until t=1, then explosively stiff. Over measurement nodes
+    [0, 1, 2] the segment [0, 1] succeeds and [1, 2] bails -> a genuine MID-trajectory
+    failure (fail_time == 1.0), unlike ``max_steps=1`` which bails on the very first
+    (t0) segment."""
+
+    def __init__(self, **scale_kwargs):
+        super().__init__(**scale_kwargs)
+
+    def __call__(self, t, inputs):
+        SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
+        rate = jnp.where(t > 1.0, 1.0e4 * SCL_modeled_RMCs[0], 0.0)
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+                [rate], dtype=SCL_modeled_RMCs.dtype
+            ),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
 
 
@@ -179,7 +203,7 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     }
 
 
-def _build_wrapper_and_process(module_cls=_LinearReactionModule):
+def _build_wrapper_and_process(module_cls=_LinearReactionModule, process_name="p2"):
     from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
 
     collection = _make_two_process_collection()
@@ -188,12 +212,12 @@ def _build_wrapper_and_process(module_cls=_LinearReactionModule):
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    process_data = store.get_process("p2")
-    rhs_ode = _build_rhs_ode(collection.processes["p2"])
+    process_data = store.get_process(process_name)
+    rhs_ode = _build_rhs_ode(collection.processes[process_name])
     scale_kwargs = _unit_scale_kwargs_for(rhs_ode, process_data.controls)
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=module_cls(**scale_kwargs),
-        process=collection.processes["p2"],
+        process=collection.processes[process_name],
         controls=process_data.controls,
         loss_module=DefaultLossModule(target_names=["biomass"]),
     )
@@ -296,7 +320,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         captured["jump_ts"] = jump_ts
         n_rows = t_eval.shape[0]
         states = jnp.repeat(RAW_y0[None, :], repeats=n_rows, axis=0)
-        return SaveOutputs(
+        save_outputs = SaveOutputs(
             SCL_states=states,
             RAW_V_export=states[:, len(wrapper_arg.modeled_RMC_names)],
             RAW_V=states[:, len(wrapper_arg.modeled_RMC_names)],
@@ -310,6 +334,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
             ),
             auxiliary=None,
         )
+        return save_outputs, jnp.asarray(jnp.inf, states.dtype)
 
     monkeypatch.setattr(
         trainer_module,
@@ -651,3 +676,239 @@ def test_dense_triple_mask_excludes_triples_straddling_a_jump():
     # so the False region is indices 1..4 inclusive.
     expected = jnp.asarray([True, False, False, False, False, True, True, True, True])
     assert bool(jnp.all(triple == expected))
+
+
+def test_all_triple_reduces_point_mask_to_triple_stencil():
+    from bp_train.dense import all_triple
+
+    # Length n -> n-2; a triple (i-1,i,i+1) is True iff all three points are True.
+    point = jnp.asarray([True, True, False, True, True])
+    out = all_triple(point)
+    assert out.shape == (3,)
+    # (0,1,2) has a False -> F; (1,2,3) has a False -> F; (2,3,4) has a False -> F
+    assert bool(jnp.all(out == jnp.asarray([False, False, False])))
+    assert bool(jnp.all(all_triple(jnp.ones(5, dtype=bool))))
+
+
+# ---------------------------------------------------------------------------
+# fail_time per-point masking (piece 2): the loss must drop post-failure points
+# and stay finite/differentiable even for the ``value * mask`` idiom that every
+# repo custom bounds/nonneg/hinge module uses (``0 * inf = nan`` otherwise).
+# ``max_solver_steps=1`` forces the first segment (from t0) to bail, so
+# ``fail_time == t0`` and every point after t0 is post-failure.
+# ---------------------------------------------------------------------------
+
+
+class _MeasHingeLoss(DefaultLossModule):
+    """DefaultLossModule + a measurement-grid nonneg hinge built with the
+    ``penalty * mask_measured_any`` multiply idiom (the same shape the tub/kittler/
+    fixture custom modules use). If a post-failure predicted state were left as inf,
+    ``0 * inf`` would make this nan even though the row's mask is 0."""
+
+    @property
+    def loss_names(self):
+        return tuple(self.target_names) + ("hinge",)
+
+    def __call__(self, inputs: LossInputs) -> LossOutputs:
+        base = super().__call__(inputs).named_losses
+        mask = inputs.mask_measured_any
+        violation = jax.nn.relu(inputs.SCL_target_pred[:, 0])
+        hinge = jnp.sum(jnp.square(violation) * mask) / jnp.maximum(jnp.sum(mask), 1.0)
+        return LossOutputs(named_losses={**base, "hinge": hinge})
+
+
+class _DenseFailLoss(DefaultLossModule):
+    """DefaultLossModule + dense terms that consume ``dense_valid_time``: a validity
+    count (to pin that the mask is populated with the right cutoff) and a
+    ``value * dense_valid_time`` dense hinge (to pin dense states finite)."""
+
+    _dense_grid_n: int = eqx.field(static=True)
+
+    def __init__(self, *, target_names, dense_grid_n=16):
+        super().__init__(target_names=target_names)
+        self._dense_grid_n = int(dense_grid_n)
+
+    @property
+    def dense_grid_n(self):
+        return self._dense_grid_n
+
+    @property
+    def loss_names(self):
+        return tuple(self.target_names) + ("dense_valid_count", "dense_hinge")
+
+    def __call__(self, inputs: LossInputs) -> LossOutputs:
+        base = super().__call__(inputs).named_losses
+        valid = inputs.dense_valid_time.astype(inputs.dense_SCL_states.dtype)
+        count = jnp.sum(valid)
+        hinge = jnp.sum(jnp.square(inputs.dense_SCL_states[:, 0]) * valid)
+        return LossOutputs(
+            named_losses={**base, "dense_valid_count": count, "dense_hinge": hinge}
+        )
+
+
+def _fail_time_kwargs(process_data, **overrides):
+    kw = dict(
+        t_measured=process_data.t_measured,
+        SCL_target_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        RAW_y0_measured=process_data.y0_measured,
+        jump_ts=process_data.controls.active_jump_ts,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+    kw.update(overrides)
+    return kw
+
+
+def test_fail_time_measurement_mask_excludes_post_failure_points():
+    """Post-failure measurement targets must not affect the loss (the cutoff mask has
+    teeth): perturbing every target after the (early) failure time leaves the loss
+    unchanged, because those rows are masked out."""
+    wrapper, pd = _build_wrapper_and_process()
+    kw = _fail_time_kwargs(pd, max_solver_steps=1)  # forces an early bail
+
+    y = pd.y_measured
+    del kw["SCL_target_measured"]
+    L1 = evaluate_sample_with_loss_module(
+        wrapper, SCL_target_measured=y, **kw
+    ).total_loss
+    # Perturb every target strictly after t0 (all post-failure for an early bail).
+    post = (pd.t_measured > pd.t_measured[0] + 1e-6)[:, None]
+    y2 = jnp.where(post, y + 1000.0, y)
+    L2 = evaluate_sample_with_loss_module(
+        wrapper, SCL_target_measured=y2, **kw
+    ).total_loss
+
+    assert bool(jnp.isfinite(L1)) and bool(jnp.isfinite(L2))
+    assert float(L1) == pytest.approx(float(L2), rel=1e-6, abs=1e-6), (
+        "post-failure measurement targets must not affect the loss"
+    )
+
+
+def test_fail_time_custom_value_times_mask_loss_is_finite_on_failure():
+    """A ``penalty * mask`` custom loss stays finite AND differentiable on a failed
+    solve — proving loss-facing states are finite (no ``0 * inf = nan``)."""
+    wrapper, pd = _build_wrapper_and_process()
+    wrapper = eqx.tree_at(
+        lambda w: w.loss_module, wrapper, _MeasHingeLoss(target_names=["biomass"])
+    )
+    kw = _fail_time_kwargs(pd, max_solver_steps=1)
+    trainable, static = partition_trainable(wrapper)
+
+    def loss(m):
+        return evaluate_sample_with_loss_module(
+            eqx.combine(m, static), **kw
+        ).total_loss
+
+    val, grad = eqx.filter_value_and_grad(loss)(trainable)
+    assert bool(jnp.isfinite(val)), "value*mask custom loss must be finite on a bail"
+    leaves = [g for g in jax.tree_util.tree_leaves(grad) if eqx.is_inexact_array(g)]
+    assert leaves and all(bool(jnp.all(jnp.isfinite(g))) for g in leaves), (
+        "gradient must be finite (no 0*inf=nan from post-failure states)"
+    )
+
+
+def test_fail_time_dense_valid_time_populated_and_finite_on_failure():
+    """``dense_valid_time`` is populated with the correct cutoff (all dense rows valid
+    on a healthy solve; only pre-failure rows on a bail), and a dense ``value * mask``
+    term stays finite + differentiable on a bail."""
+    wrapper, pd = _build_wrapper_and_process()
+    wrapper = eqx.tree_at(
+        lambda w: w.loss_module,
+        wrapper,
+        _DenseFailLoss(target_names=["biomass"], dense_grid_n=16),
+    )
+    names = wrapper.loss_module.loss_names
+    ci = names.index("dense_valid_count")
+
+    healthy = evaluate_sample_with_loss_module(
+        wrapper, **_fail_time_kwargs(pd, max_solver_steps=100_000)
+    )
+    failed = evaluate_sample_with_loss_module(
+        wrapper, **_fail_time_kwargs(pd, max_solver_steps=1)
+    )
+    healthy_count = float(healthy.per_target_loss[ci])
+    failed_count = float(failed.per_target_loss[ci])
+    assert healthy_count == pytest.approx(16.0), "healthy solve: every dense row valid"
+    assert failed_count < healthy_count, (
+        "an early failure must invalidate the post-failure dense rows"
+    )
+
+    trainable, static = partition_trainable(wrapper)
+
+    def loss(m):
+        return evaluate_sample_with_loss_module(
+            eqx.combine(m, static), **_fail_time_kwargs(pd, max_solver_steps=1)
+        ).total_loss
+
+    val, grad = eqx.filter_value_and_grad(loss)(trainable)
+    assert bool(jnp.isfinite(val)), "dense value*mask term must be finite on a bail"
+    leaves = [g for g in jax.tree_util.tree_leaves(grad) if eqx.is_inexact_array(g)]
+    assert leaves and all(bool(jnp.all(jnp.isfinite(g))) for g in leaves)
+
+
+def test_fail_time_prediction_export_marks_post_failure_rows_nonfinite():
+    """A failed forward must not present the finite y0 fallback as a real prediction:
+    post-failure export rows are re-marked non-finite (detectable), while the loss the
+    same call computes stays finite (loss-facing states remain sanitized)."""
+    wrapper, pd = _build_wrapper_and_process()
+    result = evaluate_sample_with_loss_module(
+        wrapper, **_fail_time_kwargs(pd, max_solver_steps=1, prediction_grid_n=8)
+    )
+    assert bool(jnp.isfinite(result.total_loss)), "loss stays finite on a bail"
+
+    pred_t = result.prediction_t
+    pred_states = result.prediction_save_outputs.SCL_states
+    post = pred_t > (jnp.min(pred_t) + 1e-4)  # early bail -> fail_time == t0
+    assert bool(jnp.all(jnp.isinf(pred_states[post]))), (
+        "post-failure export rows must be non-finite (not a silent y0 fallback)"
+    )
+    assert bool(jnp.all(jnp.isfinite(pred_states[~post]))), (
+        "pre-failure export rows (t0) stay finite"
+    )
+
+
+def test_simulate_measurement_states_preserves_failure_sentinel_on_bail():
+    """Forward/export callers (which do not request ``fail_time``) keep the diagnostic
+    non-finite sentinel on a failed solve, rather than silently reading back as ``y0``
+    (the finiteness fallback is gated to the loss path)."""
+    wrapper, pd = _build_wrapper_and_process()
+    states = simulate_measurement_states(wrapper, pd, max_steps=1)
+    assert bool(jnp.any(jnp.isinf(states))), (
+        "a failed forward solve must leave a detectable non-finite sentinel"
+    )
+
+
+def test_fail_time_export_marks_mid_trajectory_failure_nonfinite():
+    """A MID-trajectory bail (not a t0 bail) must leave a detectable non-finite marker
+    on the forward/export path. The raw argmin gather returns a STALE FINITE value for
+    post-failure nodes (it falls back to the last reached node), so the marker must be
+    written from ``fail_time`` — trusting the gather (as a first-segment-only test would
+    never catch) silently presents a stale value as a real prediction."""
+    wrapper, pd = _build_wrapper_and_process(_BlowUpReactionModule, process_name="p1")
+    t = pd.active_t_measured  # nodes [0, 1, 2]; rate explodes for t>1 -> fail_time == 1
+    pre = t <= 1.0 + 1e-4
+
+    # Forward/export path: post-failure rows non-finite, pre-failure rows finite.
+    export_states = simulate_measurement_states(wrapper, pd, max_steps=512)
+    assert bool(jnp.all(jnp.isfinite(export_states[pre]))), "pre-failure rows finite"
+    assert bool(jnp.all(~jnp.isfinite(export_states[~pre]))), (
+        "post-failure export rows must be non-finite, not a stale finite value"
+    )
+
+    # Loss-facing path: fail_time is the last good node, and states stay finite (y0).
+    loss_states, fail_time = solve_physical_states(
+        wrapper,
+        t_eval=t,
+        n_measured=pd.n_measured,
+        RAW_y0=pd.y0_measured,
+        max_steps=512,
+        rtol=1e-5,
+        atol=1e-7,
+        return_fail_time=True,
+    )
+    assert float(fail_time) == pytest.approx(1.0, abs=1e-3), (
+        "fail_time is the last successfully-reached node"
+    )
+    assert bool(jnp.all(jnp.isfinite(loss_states))), "loss-facing states stay finite"

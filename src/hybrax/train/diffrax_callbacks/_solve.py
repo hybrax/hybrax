@@ -243,7 +243,7 @@ def diffeqsolve_with_callbacks(
     # ---- Scan body ----
 
     def scan_fn(carry, _):
-        y, t_current, done, terminated = carry
+        y, t_current, done, terminated, fail_time = carry
 
         # Determine segment end time
         if has_presets:
@@ -262,7 +262,18 @@ def diffeqsolve_with_callbacks(
             t_current + _dtype_tol(t_current, _STEP_TOL_FACTOR),
         )
 
-        # Solve the segment
+        # Once a lane has ``terminated`` (a prior segment bailed — e.g. hit
+        # ``max_steps_per_segment`` on a stiff blow-up), collapse every later segment to
+        # zero length so the batched solve does ~0 steps for it. This is the vmap-safe
+        # analogue of "skip the rest of the trajectory": under ``vmap`` the per-segment
+        # ``diffeqsolve`` while-loop is paced by the slowest *live* lane, so a
+        # zero-length lane satisfies ``t >= t1`` at entry, takes no steps and stops
+        # driving the loop — whereas a ``lax.cond`` skip would vectorise to running both
+        # branches. A strict no-op when ``terminated`` is all-False (the common case):
+        # ``segment_t1`` is unchanged, so a failure-free solve is bit-identical.
+        segment_t1 = jnp.where(terminated, t_current, segment_t1)
+
+        # Solve the segment (dt == 0 for a collapsed lane; diffrax handles t0 == t1)
         dt = jnp.minimum(dt0, segment_t1 - t_current)
 
         saveat = diffrax.SaveAt(t1=True)
@@ -285,6 +296,45 @@ def diffeqsolve_with_callbacks(
 
         y_at_stop = sol.ys[-1]
         t_at_stop = sol.ts[-1]
+
+        # A segment "fails" when diffrax bails before reaching segment_t1. Treat every
+        # result EXCEPT the two legitimate stops as failure: ``successful`` (reached the
+        # segment end) and ``event_occurred`` (a continuous-callback zero-crossing — the
+        # inner solve's ``event`` is built only from continuous callbacks, so that is
+        # the sole valid non-``successful`` code). This covers ``max_steps_reached``,
+        # ``dt_min_reached``, nonlinear-solve failures, etc.; a naive ``!= successful``
+        # would instead wrongly poison legitimate event stops.
+        #
+        # diffrax returns a *finite* last-reached state on such a bail (not inf), so we
+        # force the lane's state to inf ourselves: a detectable non-finite SENTINEL on
+        # the DIAGNOSTIC ``CallbackSolution`` outputs (``y_final``/``event_states_*``).
+        # ``terminated`` (below) then collapses the lane's later segments, and
+        # ``fail_time`` (below) records WHEN the lane first failed.
+        #
+        # NB: this inf is a forward-side diagnostic marker only, and makes NO promise
+        # about the reverse-mode gradient of a failed lane (that is slot/loss-dependent
+        # and unstable). The EXPLICIT, stable failure signal for callers is
+        # ``fail_time``: ``bp_train`` uses it to drop post-failure measurement/dense
+        # points from the loss AND to replace their predicted states with a finite
+        # fallback, so no inf reaches a loss (see
+        # ``physical_solve.solve_physical_states`` and
+        # ``trainer.evaluate_sample_with_loss_module``). Callers must not rely on the
+        # raw inf sentinel surviving into loss-facing state — only on ``fail_time``.
+        R = diffrax.RESULTS
+        seg_failed = (sol.result != R.successful) & (sol.result != R.event_occurred)
+        y_at_stop = jnp.where(
+            seg_failed, jnp.asarray(jnp.inf, y_at_stop.dtype), y_at_stop
+        )
+
+        # Record the time of the FIRST failure on this lane. ``terminated`` is the
+        # INCOMING carry value (a prior segment already bailed), so ``first_failure``
+        # is true only on the segment that fails first. ``t_current`` is the start of
+        # that segment == the last preset/output node the lane successfully reached (a
+        # segment boundary, not an internal adaptive step), i.e. the correct
+        # conservative cutoff: measurements at ``t > fail_time`` are past the failed
+        # solve. Stays ``inf`` for a lane that never fails.
+        first_failure = seg_failed & (~terminated)
+        new_fail_time = jnp.where(first_failure, t_current, fail_time)
 
         # ---- Determine what happened ----
         if has_continuous:
@@ -356,6 +406,14 @@ def diffeqsolve_with_callbacks(
                 y_after,
             )
 
+        # Re-assert the inf sentinel AFTER the affect/discrete-callback block. On the
+        # segment that first bails, ``terminated`` is still False, so a sanitising
+        # callback here (e.g. an upper-clamping DiscreteCallback, or a
+        # ManifoldProjection) would otherwise turn the inf back into a finite value and
+        # hide the failure from downstream detection. Later (already ``terminated``)
+        # segments are collapsed and skip the callbacks, so ``seg_failed`` is enough.
+        y_after = jnp.where(seg_failed, jnp.asarray(jnp.inf, y_after.dtype), y_after)
+
         # ---- Check for termination signal ----
         # Termination is signaled by the affect returning NaN in the
         # last state element and Inf in the second-to-last.
@@ -396,7 +454,7 @@ def diffeqsolve_with_callbacks(
 
         # ---- Update done/terminated ----
         new_done = done | (~any_event)
-        new_terminated = terminated
+        new_terminated = terminated | seg_failed
 
         event_time = jnp.where(any_event & (~done) & (~terminated), t_at_stop, t1)
 
@@ -407,7 +465,7 @@ def diffeqsolve_with_callbacks(
             y_after,
         )
 
-        return (y_after, t_next, new_done, new_terminated), output
+        return (y_after, t_next, new_done, new_terminated, new_fail_time), output
 
     # ---- Run the scan ----
     init_carry = (
@@ -415,9 +473,10 @@ def diffeqsolve_with_callbacks(
         t0,
         jnp.bool_(False),
         jnp.bool_(False),
+        jnp.asarray(jnp.inf, dtype=time_dtype),
     )
     final_carry, outputs = jax.lax.scan(scan_fn, init_carry, None, length=max_events)
-    y_final, t_final, _, _ = final_carry
+    y_final, t_final, _, _, fail_time = final_carry
     event_times, event_types, states_before, states_after = outputs
 
     event_count = jnp.sum((event_types >= 0).astype(jnp.int32))
@@ -425,6 +484,7 @@ def diffeqsolve_with_callbacks(
     return CallbackSolution(
         y_final=y_final,
         t_final=t_final,
+        fail_time=fail_time,
         event_times=event_times,
         event_types=event_types,
         event_states_before=states_before,
