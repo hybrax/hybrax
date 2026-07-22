@@ -143,7 +143,9 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 - **Parallel folds** ([`run_loo_cv`](../bp_train/loo.py) → per-fold
   [`run_single_fold`](../bp_train/loo.py)): each fold trains as **its own
   subprocess** (the JAX CPU device count is fixed per process). You set
-  `parallel_folds` (default `1`, sequential) from what your RAM can hold. With
+  `parallel_folds` (default `1`, sequential) from what your RAM and CPU budget
+  can hold. A JAX CPU device is not one CPU core: XLA may use several threads per
+  device, so lower `parallel_folds` to reduce aggregate CPU use. With
   `devices_per_fold=null`, the orchestrator
   ([`compute_parallel_split`](../bp_train/loo.py)) derives it as
   `n_cpu // parallel_folds`, capped at the smallest fold's effective batch
