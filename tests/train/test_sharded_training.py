@@ -6,6 +6,7 @@ The device count is fixed at JAX initialisation, so we exercise the sharded
 device). The two must train identically up to float32 cross-device reduction
 order. Reuses the ``p1``/``p2`` fixture from ``test_harness``.
 """
+
 import json
 import os
 import subprocess
@@ -40,9 +41,51 @@ result = train_collection(
         shuffle_batches=False,
     ),
 )
-print("RESULT_JSON " + json.dumps(
-    {{"devices": int(jax.device_count()), "losses": [float(x) for x in result.mean_loss_by_step]}}
-))
+print("RESULT_JSON " + json.dumps({{
+    "devices": int(jax.device_count()),
+    "losses": [float(x) for x in result.mean_loss_by_step],
+}}))
+"""
+
+_TELEMETRY_SCRIPT = """
+import json, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, {tests_dir!r})
+import jax
+import jax.numpy as jnp
+from test_harness import _make_collection, _LinearReactionModule, _biomass_loss
+from bp_train.harness import train_collection, TrainHarnessConfig
+from bp_train.model_api import ReactionOutputs
+from bp_train.training_data import TrainingDataStore
+
+class P2OnlyBlowUp(_LinearReactionModule):
+    def __call__(self, t, inputs):
+        state = inputs.SCL_modeled_RMCs[0]
+        is_p2 = inputs.SCL_modeled_V > 0.95
+        rate = jnp.where((t > 1.0) & is_p2, 1.0e4 * state, 0.0)
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([rate], dtype=state.dtype),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=state.dtype),
+        )
+
+collection = _make_collection()
+store = TrainingDataStore.from_collection(
+    collection, target_variable_order=["biomass"], target_source="reactor_components"
+)
+with tempfile.TemporaryDirectory() as tmp:
+    metrics = Path(tmp) / "metrics.jsonl"
+    train_collection(
+        store,
+        reaction_module=P2OnlyBlowUp(),
+        loss_module=_biomass_loss(),
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=("p2", "p1"), steps=1, batch_size=3,
+            shuffle_batches=False, solver_max_steps=512, metrics_jsonl=metrics,
+        ),
+    )
+    row = json.loads(metrics.read_text())
+print("RESULT_JSON " + json.dumps({{"devices": jax.device_count(), "row": row}}))
 """
 
 
@@ -51,11 +94,37 @@ def _run(devices: str) -> dict:
     env.pop("XLA_FLAGS", None)  # let the bootstrap set the device count cleanly
     proc = subprocess.run(
         [sys.executable, "-c", _SCRIPT.format(tests_dir=_TESTS_DIR)],
-        env=env, capture_output=True, text=True, timeout=300,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
-    assert proc.returncode == 0, f"subprocess (devices={devices}) failed:\n{proc.stderr[-3000:]}"
+    assert proc.returncode == 0, (
+        f"subprocess (devices={devices}) failed:\n{proc.stderr[-3000:]}"
+    )
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT_JSON "))
-    return json.loads(line[len("RESULT_JSON "):])
+    return json.loads(line[len("RESULT_JSON ") :])
+
+
+def _run_telemetry(mode: str) -> dict:
+    assert mode in ("vmap", "pmap", "gspmd")
+    devices = "1" if mode == "vmap" else "2"
+    env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": devices}
+    env.pop("XLA_FLAGS", None)
+    if mode == "gspmd":
+        env["BP_GSPMD"] = "1"
+    else:
+        env.pop("BP_GSPMD", None)
+    proc = subprocess.run(
+        [sys.executable, "-c", _TELEMETRY_SCRIPT.format(tests_dir=_TESTS_DIR)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT_JSON "))
+    return json.loads(line[len("RESULT_JSON ") :])
 
 
 def test_sharded_training_matches_vmap():
@@ -69,6 +138,17 @@ def test_sharded_training_matches_vmap():
     # ... and match the single-device run up to float32 reduction order.
     for a, b in zip(vmap["losses"], sharded["losses"]):
         assert abs(a - b) <= 1e-4 + 1e-4 * abs(a), (vmap["losses"], sharded["losses"])
+
+
+@pytest.mark.parametrize("mode", ["vmap", "pmap", "gspmd"])
+def test_failed_sample_telemetry_end_to_end(mode):
+    result = _run_telemetry(mode)
+    row = result["row"]
+
+    assert result["devices"] == (1 if mode == "vmap" else 2)
+    assert row["process_names"] == ["p2", "p1", "p2"]
+    assert row["n_failed_samples"] == 2
+    assert row["failed_processes"] == ["p2", "p2"]
 
 
 def test_devices_exceeding_processes_shards_over_processes():
@@ -91,12 +171,21 @@ def test_device_count_capped_at_cpu_count():
     env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "9999"}
     env.pop("XLA_FLAGS", None)
     proc = subprocess.run(
-        [sys.executable, "-c",
-         "import bp_train, jax, os; print('CAP', jax.device_count(), os.cpu_count())"],
-        env=env, capture_output=True, text=True, timeout=180,
+        [
+            sys.executable,
+            "-c",
+            "import bp_train, jax, os; "
+            "print('CAP', jax.device_count(), os.cpu_count())",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("CAP"))
     _, devcount, cpu = line.split()
-    assert int(devcount) == int(cpu), f"device count {devcount} not capped to cpu_count {cpu}"
+    assert int(devcount) == int(cpu), (
+        f"device count {devcount} not capped to cpu_count {cpu}"
+    )
     assert int(devcount) < 9999

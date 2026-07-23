@@ -538,7 +538,11 @@ def test_evaluate_sample_from_arrays_forwards_step_to_result():
     assert jnp.issubdtype(result.step.dtype, jnp.integer)
 
 
-def _build_batched_setup(module_cls=_LinearReactionModule, process_name="p2"):
+def _build_batched_setup(
+    module_cls=_LinearReactionModule,
+    process_name="p2",
+    batch_process_names=None,
+):
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
@@ -555,8 +559,9 @@ def _build_batched_setup(module_cls=_LinearReactionModule, process_name="p2"):
         controls=process_data.controls,
         loss_module=DefaultLossModule(target_names=["biomass"]),
     )
-    proc_idx = list(store.process_order).index(process_name)
-    batch = store.gather_batch(jnp.asarray([proc_idx], dtype=jnp.int32))
+    process_names = batch_process_names or (process_name,)
+    process_indices = [list(store.process_order).index(name) for name in process_names]
+    batch = store.gather_batch(jnp.asarray(process_indices, dtype=jnp.int32))
     batch_controls = store.controls_store.as_batch_controls()
     rhs_by_process = [
         build_rhs_ode(collection.processes[name]) for name in store.process_order
@@ -655,6 +660,19 @@ def test_batched_loss_fn_surfaces_per_sample_fail_time():
     assert blown_fail.shape == (1,)
     assert bool(jnp.all(jnp.isfinite(blown_fail))), "bailing sample -> finite fail_time"
     assert float(blown_fail[0]) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_batched_loss_fn_keeps_fail_times_independent_per_lane():
+    setup = _build_batched_setup(
+        _BlowUpReactionModule,
+        process_name="p1",
+        batch_process_names=("p1", "p2"),
+    )
+    *_, fail_times = _run_batched(*setup)
+
+    assert fail_times.shape == (2,)
+    assert float(fail_times[0]) == pytest.approx(1.0, abs=1e-3)
+    assert bool(jnp.isinf(fail_times[1])), "healthy p2 lane"
 
 
 def test_evaluate_one_sample_loss_returns_fail_time():
@@ -864,9 +882,7 @@ def test_fail_time_custom_value_times_mask_loss_is_finite_on_failure():
     trainable, static = partition_trainable(wrapper)
 
     def loss(m):
-        return evaluate_sample_with_loss_module(
-            eqx.combine(m, static), **kw
-        ).total_loss
+        return evaluate_sample_with_loss_module(eqx.combine(m, static), **kw).total_loss
 
     val, grad = eqx.filter_value_and_grad(loss)(trainable)
     assert bool(jnp.isfinite(val)), "value*mask custom loss must be finite on a bail"

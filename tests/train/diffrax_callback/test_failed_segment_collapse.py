@@ -6,6 +6,7 @@ length. These tests pin only the STABLE forward contract:
   1. a failed lane's final state is the inf sentinel; healthy lanes are unchanged;
   2. a failure on an early segment stays poisoned through later slots;
   2b. the production-consumed ``event_states_before``/``after`` are poisoned;
+  2c. every segment after a failure takes zero solver steps;
   3. a finite ``dt_min_reached`` bail is also detected and poisoned;
   4. a legitimate continuous ``event_occurred`` stop is NOT treated as a failure;
   5. a sanitising DiscreteCallback cannot hide the failure;
@@ -42,8 +43,10 @@ def _solve_lane(freq, *, callbacks=None, controller=None, max_steps=64, max_even
     def rhs(t, y, args):
         return -0.3 * y + freq * jnp.sin(freq * t) * y
 
-    cb = callbacks if callbacks is not None else PresetTimeCallback(
-        times=_EVENTS, affect_fn=lambda y, t, args: y
+    cb = (
+        callbacks
+        if callbacks is not None
+        else PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y)
     )
     sol = diffeqsolve_with_callbacks(
         diffrax.ODETerm(rhs),
@@ -54,8 +57,7 @@ def _solve_lane(freq, *, callbacks=None, controller=None, max_steps=64, max_even
         y0=jnp.ones(2, dtype=jnp.float64),
         callbacks=cb,
         max_events=max_events,
-        stepsize_controller=controller
-        or diffrax.PIDController(rtol=1e-8, atol=1e-11),
+        stepsize_controller=controller or diffrax.PIDController(rtol=1e-8, atol=1e-11),
         max_steps_per_segment=max_steps,
     )
     return sol.y_final
@@ -72,24 +74,47 @@ def test_failed_lane_poisoned_healthy_lanes_unchanged():
     assert bool(jnp.all(jnp.isinf(out[1]))), "failed lane must be the inf sentinel"
     healthy = jnp.array([0, 2, 3])
     assert bool(jnp.all(jnp.isfinite(out[healthy]))), "healthy lanes must stay finite"
-    assert bool(
-        jnp.array_equal(out[healthy], ref[healthy])
-    ), "healthy lanes must be bit-identical to the all-healthy batch (isolation)"
+    assert bool(jnp.array_equal(out[healthy], ref[healthy])), (
+        "healthy lanes must be bit-identical to the all-healthy batch (isolation)"
+    )
 
 
 def test_early_failure_remains_poisoned():
     """(2) A lane that fails on an early segment is still inf at the final state, with
     several event slots after the failure.
 
-    NB: this pins that the failure *remains* poisoned to the end — it does NOT prove the
-    zero-length collapse or the terminated-latch. Removing either the collapse or the
-    latch leaves this test green, because later segments re-poison the already-inf
-    carry (verified by fault injection). No stable black-box value in CallbackSolution
-    distinguishes a zero-length retry from a repeated failed retry; the collapse's
-    effect is a perf property (evidenced by benchmarks in the task dir), not asserted.
+    NB: this test alone pins only that the failure *remains* poisoned. The next test
+    independently verifies the zero-length collapse through ``segment_num_steps``.
     """
     out = jax.jit(_solve_lane)(jnp.asarray(2.0e4, jnp.float64))
     assert bool(jnp.all(jnp.isinf(out))), "failure must remain poisoned to the end"
+
+
+def test_post_failure_segments_take_zero_steps():
+    """The performance fix: after an early bail, every remaining segment is a
+    zero-length solve and must take no adaptive solver steps."""
+    max_steps = 64
+
+    def rhs(t, y, args):
+        return 2.0e4 * jnp.sin(2.0e4 * t) * y
+
+    sol = diffeqsolve_with_callbacks(
+        diffrax.ODETerm(rhs),
+        diffrax.Tsit5(),
+        t0=0.0,
+        t1=2.0,
+        dt0=1e-3,
+        y0=jnp.ones(2, dtype=jnp.float64),
+        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y),
+        max_events=5,
+        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
+        max_steps_per_segment=max_steps,
+    )
+
+    steps = sol.segment_num_steps.tolist()
+    assert float(sol.fail_time) == 0.0
+    assert steps[0] > 0
+    assert steps[1:] == [0, 0, 0, 0]
 
 
 def test_event_states_before_and_after_are_poisoned():
@@ -102,6 +127,7 @@ def test_event_states_before_and_after_are_poisoned():
     ``event_states_before`` finite (caught here) even though ``y_final`` stays inf;
     removing the post-block re-assert leaves ``event_states_after`` sanitisable.
     """
+
     def rhs(t, y, args):
         # blows max_steps immediately (from t0), so no measurement node is ever reached
         return 3.0e4 * jnp.sin(3.0e4 * t) * y
@@ -129,6 +155,7 @@ def test_event_states_before_and_after_are_poisoned():
 def test_dt_min_reached_is_detected():
     """(3) A finite ``dt_min_reached`` bail (not max_steps) is also poisoned — pins the
     broadened result predicate, not just == max_steps_reached."""
+
     # RHS goes non-finite past t=0.5; with force_dtmin=False the controller bails with
     # ``dt_min_reached`` and a finite last-reached state (i.e. NOT caught by a
     # max_steps-only or isfinite check).
@@ -196,6 +223,7 @@ def test_fail_time_marks_the_last_good_node():
     """(7) A mid-trajectory bail sets ``fail_time`` to the start of the failing segment
     == the last successfully-reached node, so ``t_meas <= fail_time`` keeps the good
     early nodes and drops the post-failure ones."""
+
     # Smooth until t=0.5, then non-finite: the segment leaving the t=0.25 node crosses
     # 0.5 and bails (dt_min). The node at 0.25 was reached; 0.75 and 1.0 are post-fail.
     def rhs(t, y, args):
@@ -240,6 +268,6 @@ def test_clamping_callback_cannot_hide_failure():
     freqs = jnp.array([0.0, 2.0e4, 0.0], dtype=jnp.float64)
     out = jax.jit(jax.vmap(lambda f: _solve_lane(f, callbacks=cbset)))(freqs)
     assert bool(jnp.all(jnp.isinf(out[1]))), "clamp must not sanitise the failed lane"
-    assert bool(
-        jnp.all(jnp.isfinite(out[jnp.array([0, 2])]))
-    ), "healthy lanes stay finite"
+    assert bool(jnp.all(jnp.isfinite(out[jnp.array([0, 2])]))), (
+        "healthy lanes stay finite"
+    )

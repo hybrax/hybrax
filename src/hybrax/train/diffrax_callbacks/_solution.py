@@ -27,6 +27,8 @@ class CallbackSolution(eqx.Module):
         event_states_before: (max_events, state_dim) states just before each event.
         event_states_after: (max_events, state_dim) states just after each affect.
         event_count: Total number of events that triggered.
+        segment_num_steps: (max_events,) solver steps taken by each segment. Collapsed
+            post-failure segments take zero steps.
     """
 
     y_final: jnp.ndarray
@@ -38,6 +40,7 @@ class CallbackSolution(eqx.Module):
     event_states_before: jnp.ndarray
     event_states_after: jnp.ndarray
     event_count: jnp.ndarray
+    segment_num_steps: jnp.ndarray
 
     def get_events(self, callback_index: int = None):
         """Get event times and states, optionally filtered by callback index.

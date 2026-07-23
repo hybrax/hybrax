@@ -463,6 +463,7 @@ def diffeqsolve_with_callbacks(
             jnp.where(done | terminated, jnp.int32(-1), event_type),
             y_before_event,
             y_after,
+            jnp.asarray(sol.stats["num_steps"], dtype=jnp.int32),
         )
 
         return (y_after, t_next, new_done, new_terminated, new_fail_time), output
@@ -477,7 +478,7 @@ def diffeqsolve_with_callbacks(
     )
     final_carry, outputs = jax.lax.scan(scan_fn, init_carry, None, length=max_events)
     y_final, t_final, _, _, fail_time = final_carry
-    event_times, event_types, states_before, states_after = outputs
+    event_times, event_types, states_before, states_after, segment_num_steps = outputs
 
     event_count = jnp.sum((event_types >= 0).astype(jnp.int32))
 
@@ -490,6 +491,7 @@ def diffeqsolve_with_callbacks(
         event_states_before=states_before,
         event_states_after=states_after,
         event_count=event_count,
+        segment_num_steps=segment_num_steps,
     )
 
 
