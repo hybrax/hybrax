@@ -116,6 +116,7 @@ def compute_dense_exports(
         per_sample_total,
         prediction_t,
         prediction_save_outputs,
+        *_,  # trailing per-sample fail_time (unused on the forward/export path)
     ) = _BATCHED_LOSS_FN_JIT(
         trained_wrapper,
         batch,
@@ -1009,7 +1010,16 @@ def train_collection(
 
             def _loss_fn(trainable_params: Any) -> jax.Array:
                 candidate_wrapper = eqx.combine(trainable_params, trainable_static)
-                total_loss, per_sample_per_target, per_sample, *_ = (
+                # `*_pred` swallows the prediction outputs (unused in training);
+                # the trailing element is the per-sample fail_time (see
+                # build_batched_loss_fn).
+                (
+                    total_loss,
+                    per_sample_per_target,
+                    per_sample,
+                    *_pred,
+                    per_sample_fail,
+                ) = (
                     effective_batched_loss_fn(
                         candidate_wrapper,
                         current_batch,
@@ -1031,9 +1041,9 @@ def train_collection(
                     n_targets=len(loss_module.loss_names),
                     batch_size=int(current_batch.process_indices.shape[0]),
                 )
-                return total_loss, (per_target, per_sample)
+                return total_loss, (per_target, per_sample, per_sample_fail)
 
-            (loss, (per_target_loss, per_sample_loss)), grads = (
+            (loss, (per_target_loss, per_sample_loss, per_sample_fail)), grads = (
                 eqx.filter_value_and_grad(
                     _loss_fn,
                     has_aux=True,
@@ -1055,6 +1065,7 @@ def train_collection(
                 per_sample_loss,
                 next_optimizer_state,
                 grad_norm,
+                per_sample_fail,
             )
 
         return eqx.filter_jit(_step_fn)
@@ -1125,14 +1136,14 @@ def train_collection(
                         step=step,
                     )
 
-                totl, pert = jax.vmap(
+                totl, pert, faild = jax.vmap(
                     _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
                 )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
-                return jnp.sum(totl * wt), (pert, totl)
+                return jnp.sum(totl * wt), (pert, totl, faild)
 
-            (_l, (pert, totl)), grads = eqx.filter_value_and_grad(_local, has_aux=True)(
-                params
-            )
+            (_l, (pert, totl, faild)), grads = eqx.filter_value_and_grad(
+                _local, has_aux=True
+            )(params)
             loss = jax.lax.psum(_l, "bp_dev") / bs
             grads = jax.tree_util.tree_map(
                 lambda g: jax.lax.psum(g, "bp_dev") / bs, grads
@@ -1141,7 +1152,8 @@ def train_collection(
                 jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "bp_dev") / bs
             )
             per_sample = jax.lax.all_gather(totl, "bp_dev")
-            return loss, grads, per_target, per_sample
+            per_sample_fail = jax.lax.all_gather(faild, "bp_dev")
+            return loss, grads, per_target, per_sample, per_sample_fail
 
         def _step_fn(
             current_wrapper,
@@ -1173,7 +1185,7 @@ def train_collection(
                 )
             ]
             jt = _shard(_pad(jump_ts_rows)) if jump_ts_rows is not None else None
-            loss, grads, per_target, per_sample = _pgrad(
+            loss, grads, per_target, per_sample, per_sample_fail = _pgrad(
                 current_trainable_params,
                 ins[0],
                 ins[1],
@@ -1191,6 +1203,7 @@ def train_collection(
             grads = jax.tree_util.tree_map(lambda g: g[0], grads)
             per_target_loss = per_target[0]
             per_sample_loss = per_sample[0].reshape(-1)[:bs]
+            per_sample_fail = per_sample_fail[0].reshape(-1)[:bs]
             grad_norm = optax.tree.norm(grads)
             updates, next_optimizer_state = optimizer.update(
                 grads, current_optimizer_state, params=current_trainable_params
@@ -1205,6 +1218,7 @@ def train_collection(
                 per_sample_loss,
                 next_optimizer_state,
                 grad_norm,
+                per_sample_fail,
             )
 
         return _step_fn
@@ -1292,7 +1306,7 @@ def train_collection(
                         step=step,
                     )
 
-                totl, pert = jax.vmap(
+                totl, pert, faild = jax.vmap(
                     _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
                 )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
                 # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
@@ -1300,12 +1314,12 @@ def train_collection(
                 # data-dependent diffrax while_loops rather than partitioning the
                 # vmap, so
                 # the GSPMD path stays ~60x slower than pmap. Kept as correct practice.
-                totl, pert = eqx.filter_shard((totl, pert), S_batch)
+                totl, pert, faild = eqx.filter_shard((totl, pert, faild), S_batch)
                 # weighted mean: padding rows carry weight 0; XLA all-reduces it
                 # (and grad).
-                return jnp.sum(totl * wt) / bs, (pert, totl)
+                return jnp.sum(totl * wt) / bs, (pert, totl, faild)
 
-            (loss, (pert, totl)), grads = eqx.filter_value_and_grad(
+            (loss, (pert, totl, faild)), grads = eqx.filter_value_and_grad(
                 _local, has_aux=True
             )(params)
             per_target = jnp.sum(pert * wt[:, None], axis=0) / bs
@@ -1315,7 +1329,15 @@ def train_collection(
             params_next, next_opt_state = eqx.filter_shard(
                 (params_next, next_opt_state), S_repl
             )
-            return params_next, next_opt_state, loss, per_target, totl, grad_norm
+            return (
+                params_next,
+                next_opt_state,
+                loss,
+                per_target,
+                totl,
+                grad_norm,
+                faild,
+            )
 
         def _step_fn(
             current_wrapper,
@@ -1365,6 +1387,7 @@ def train_collection(
                     per_target_loss,
                     per_sample,
                     grad_norm,
+                    per_sample_fail,
                 ) = _full_step(
                     params_r,
                     opt_r,
@@ -1381,6 +1404,7 @@ def train_collection(
                     step_r,
                 )
             per_sample_loss = per_sample.reshape(-1)[:bs]
+            per_sample_fail = per_sample_fail.reshape(-1)[:bs]
             wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
                 wrapper_updated,
@@ -1390,6 +1414,7 @@ def train_collection(
                 per_sample_loss,
                 next_optimizer_state,
                 grad_norm,
+                per_sample_fail,
             )
 
         return _step_fn
@@ -1449,6 +1474,7 @@ def train_collection(
         _warmup_ps,
         _warmup_opt_state,
         _warmup_grad_norm,
+        _warmup_fail,
     ) = step_fn(
         wrapper,
         trainable_params,
@@ -1560,6 +1586,7 @@ def train_collection(
                     per_sample_loss,
                     optimizer_state,
                     grad_norm,
+                    per_sample_fail,
                 ) = step_fn(
                     wrapper,
                     trainable_params,
@@ -1573,6 +1600,16 @@ def train_collection(
                 batch_names = tuple(
                     store.process_order[int(i)]
                     for i in np.asarray(batch.process_indices).tolist()
+                )
+                # A finite fail_time flags a sample whose ODE solve bailed mid-
+                # trajectory (post-failure points were dropped from the loss). Name
+                # the affected processes so the logger can report how often it happens.
+                failed_process_names = tuple(
+                    name
+                    for name, ft in zip(
+                        batch_names, np.asarray(per_sample_fail).reshape(-1).tolist()
+                    )
+                    if np.isfinite(ft)
                 )
 
                 # Monitor / holdout loss at `monitor_every` cadence (one extra
@@ -1630,6 +1667,7 @@ def train_collection(
                         if monitor_loss_value is not None
                         else None,
                         grad_norm=float(grad_norm),
+                        failed_process_names=failed_process_names,
                     )
                 )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
 
 import equinox as eqx
 import jax
@@ -13,9 +14,6 @@ from .training_data import BatchTrainingData, PerProcessTrainingData
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 
-BatchedLossFn = Callable[..., tuple[jax.Array, jax.Array, jax.Array]]
-
-
 class SingleSampleResult(eqx.Module):
     """Single-sample default-loss evaluation plus solver-time observables."""
 
@@ -23,6 +21,11 @@ class SingleSampleResult(eqx.Module):
     per_target_loss: jax.Array
     states: jax.Array
     save_outputs: SaveOutputs
+    # Time of this sample's first failed ODE segment (``+inf`` if the solve
+    # never bailed). A finite value flags a partially-failed lane; the harness
+    # counts finite entries per step to report how often segments fail. Always
+    # produced by the solve, so it is required (no silent clean-solve default).
+    fail_time: jax.Array
     # -1 means no training step was supplied, e.g. forward evaluation.
     step: jax.Array = eqx.field(
         default_factory=lambda: jnp.asarray(-1, dtype=jnp.int32)
@@ -403,6 +406,7 @@ def evaluate_sample_with_loss_module(
         step=step_arr,
         prediction_t=prediction_t,
         prediction_save_outputs=prediction_save_outputs,
+        fail_time=fail_time,
     )
 
 
@@ -424,8 +428,9 @@ def evaluate_one_sample_loss(
     solver_atol: float,
     step: int | jax.Array | None = None,
 ):
-    """One process -> ``(total_loss, per_target_loss)``. Shared by the vmap
-    batched loss and the device-sharded (pmap) step. ``y0`` stays RAW physical;
+    """One process -> ``(total_loss, per_target_loss, fail_time)``. Shared by the
+    vmap batched loss and the device-sharded (pmap) step. ``fail_time`` is ``+inf``
+    for a clean solve, finite when a segment bailed. ``y0`` stays RAW physical;
     the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""
     controls = _BatchIndexedControls(
         batch_controls=batch_controls,
@@ -453,10 +458,10 @@ def evaluate_one_sample_loss(
         solver_atol=solver_atol,
         step=step,
     )
-    return result.total_loss, result.per_target_loss
+    return result.total_loss, result.per_target_loss, result.fail_time
 
 
-def build_batched_loss_fn() -> BatchedLossFn:
+def build_batched_loss_fn() -> Callable[..., tuple]:
     """Build the batched loss fn that evaluates ``wrapper.loss_module``.
 
     The returned fn receives RAW measurements (``batch.y_measured`` /
@@ -530,6 +535,7 @@ def build_batched_loss_fn() -> BatchedLossFn:
                 result.per_target_loss,
                 result.prediction_t,
                 result.prediction_save_outputs,
+                result.fail_time,
             )
 
         (
@@ -537,6 +543,7 @@ def build_batched_loss_fn() -> BatchedLossFn:
             per_sample_per_target,
             prediction_t,
             prediction_save_outputs,
+            per_sample_fail_time,
         ) = jax.vmap(
             _sample_loss,
             # when `jump_ts_rows` is `None` we also have to pass `None` to vmap so that
@@ -556,14 +563,17 @@ def build_batched_loss_fn() -> BatchedLossFn:
         mean_total = jnp.mean(per_sample_total)
         # 2nd element is PER-SAMPLE per-target (one row per process), matching the
         # forward harvest path (compute_dense_exports); the vmap training step
-        # means it. Last two are non-None only when forward requested
-        # `prediction_grid_n`; training ignores them.
+        # means it. `prediction_*` are non-None only when forward requested
+        # `prediction_grid_n`; training ignores them. `per_sample_fail_time` is the
+        # per-sample first-failed-segment time (``+inf`` for clean solves) and is
+        # appended LAST so positional callers (all of which use `*_`) are unaffected.
         return (
             mean_total,
             per_sample_per_target,
             per_sample_total,
             prediction_t,
             prediction_save_outputs,
+            per_sample_fail_time,
         )
 
     return _batched_loss_fn

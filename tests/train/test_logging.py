@@ -13,6 +13,8 @@ from bp_train.logging import (
     RunLogger,
     StepRecord,
     _ConsoleTableFormatter,
+    _csv_row_dict,
+    _DUMMY_RECORD,
 )
 
 
@@ -27,6 +29,7 @@ def _make_record(
     per_process: tuple[float, ...] = (1.2, 1.8),
     step_dt: float = 0.05,
     rebuild_count: int = 0,
+    failed_process_names: tuple[str, ...] = (),
 ) -> StepRecord:
     return StepRecord(
         step=step,
@@ -38,6 +41,7 @@ def _make_record(
         process_names=process_names,
         step_dt=step_dt,
         rebuild_count=rebuild_count,
+        failed_process_names=failed_process_names,
     )
 
 
@@ -316,6 +320,8 @@ def test_runlogger_csv_sink_writes_header_for_zero_step_run(tmp_path):
         "monitor_loss",
         "monitor_label",
         "grad_norm",
+        "n_failed_samples",
+        "failed_processes",
     ]
     assert rows.empty
 
@@ -343,6 +349,146 @@ def test_runlogger_jsonl_sink_round_trips_records(tmp_path):
     assert records[1]["step"] == 2
     assert records[0]["per_process_loss"] == [1.2, 1.8]
     assert records[0]["target_names"] == ["biomass"]
+
+
+def test_runlogger_reports_failed_segments(caplog):
+    """A step whose batch had a bailing ODE solve emits a warning naming the failed
+    processes with the per-step k/B count; clean steps emit no warning."""
+    with RunLogger(log_every=100, log_header_every=0) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1", "p2"),
+            total_steps=3,
+            compile_warmup_seconds=0.0,
+        )
+        with caplog.at_level(logging.WARNING):
+            run.record_step(
+                _make_record(1, target_names=("biomass",), per_target=(1.0,))
+            )
+            run.record_step(
+                _make_record(
+                    2,
+                    target_names=("biomass",),
+                    per_target=(1.0,),
+                    failed_process_names=("p2",),
+                )
+            )
+            run.record_step(
+                _make_record(
+                    3,
+                    target_names=("biomass",),
+                    per_target=(1.0,),
+                    failed_process_names=("p1", "p2"),
+                )
+            )
+        run.finalize()
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    fail_warnings = [w for w in warnings if "failed ODE segment" in w]
+    assert len(fail_warnings) == 2  # only the two steps with failures
+    assert "p2" in fail_warnings[0] and "1/2" in fail_warnings[0]
+    assert "2/2" in fail_warnings[1]
+
+
+def test_runlogger_csv_and_jsonl_carry_failed_segment_columns(tmp_path):
+    """The failed-segment count + names surface in both file sinks so the failure
+    rate is analyzable after the run."""
+    csv_path = tmp_path / "metrics.csv"
+    jsonl_path = tmp_path / "metrics.jsonl"
+    with RunLogger(
+        log_every=100,
+        metrics_csv=csv_path,
+        metrics_jsonl=jsonl_path,
+        log_header_every=0,
+    ) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1", "p2"),
+            total_steps=2,
+            compile_warmup_seconds=0.0,
+        )
+        run.record_step(_make_record(1, target_names=("biomass",), per_target=(1.0,)))
+        run.record_step(
+            _make_record(
+                2,
+                target_names=("biomass",),
+                per_target=(1.0,),
+                failed_process_names=("p2",),
+            )
+        )
+        run.finalize()
+
+    df = pd.read_csv(csv_path)
+    assert list(df["n_failed_samples"]) == [0, 1]
+    # Empty on the clean step; the failed process name on the second.
+    failed_col = df["failed_processes"].fillna("").astype(str).tolist()
+    assert failed_col[0] in ("", "nan")
+    assert failed_col[1] == "p2"
+
+    records = [json.loads(x) for x in jsonl_path.read_text().strip().splitlines()]
+    assert records[0]["n_failed_samples"] == 0
+    assert records[0]["failed_processes"] == []
+    assert records[1]["n_failed_samples"] == 1
+    assert records[1]["failed_processes"] == ["p2"]
+
+
+def test_runlogger_resume_rejects_metrics_csv_schema_mismatch(tmp_path):
+    """Resuming against a metrics.csv written with an older, narrower schema (e.g. one
+    predating the failed-segment columns) must fail loudly, not silently append
+    misaligned columns."""
+    csv_path = tmp_path / "metrics.csv"
+    old_cols = [
+        c
+        for c in _csv_row_dict(_DUMMY_RECORD)
+        if c not in ("n_failed_samples", "failed_processes")
+    ]
+    pd.DataFrame(columns=old_cols).to_csv(csv_path, index=False)
+    run = RunLogger(log_every=1, metrics_csv=csv_path, resume=True, log_header_every=0)
+    with pytest.raises(ValueError, match="schema mismatch"):
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_steps=1,
+            compile_warmup_seconds=0.0,
+        )
+
+
+def test_runlogger_resume_appends_when_schema_matches(tmp_path):
+    """A current-schema resume appends cleanly (the guard does not over-fire) and the
+    columns stay aligned across the restart."""
+    csv_path = tmp_path / "metrics.csv"
+    with RunLogger(log_every=1, metrics_csv=csv_path, log_header_every=0) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_steps=2,
+            compile_warmup_seconds=0.0,
+        )
+        run.record_step(
+            _make_record(1, target_names=("biomass",), per_target=(1.0,))
+        )
+        run.finalize()
+    with RunLogger(
+        log_every=1, metrics_csv=csv_path, resume=True, log_header_every=0
+    ) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_steps=2,
+            compile_warmup_seconds=0.0,
+        )
+        run.record_step(
+            _make_record(
+                2,
+                target_names=("biomass",),
+                per_target=(1.0,),
+                failed_process_names=("p1",),
+            )
+        )
+        run.finalize()
+    df = pd.read_csv(csv_path)
+    assert list(df["step"]) == [1, 2]
+    assert "n_failed_samples" in df.columns
+    assert list(df["n_failed_samples"]) == [0, 1]
 
 
 def test_runlogger_close_is_idempotent(tmp_path):

@@ -50,12 +50,17 @@ class StepRecord:
     process_names: tuple[str, ...]  # batch composition for this step
     step_dt: float  # wall time (seconds)
     rebuild_count: int  # cumulative
-    # Optional monitor / validation-loss column (see TrainHarnessConfig.monitor_processes).
+    # Optional monitor / validation-loss column (see
+    # TrainHarnessConfig.monitor_processes).
     # Populated only at log-step cadence; None on intermediate steps.
     monitor_loss: float | None = None
     monitor_label: str | None = None
     # Global L2 norm of the gradient pytree at this step (pre-clipping).
     grad_norm: float | None = None
+    # Names of processes in this batch whose ODE solve bailed mid-trajectory
+    # (post-failure measurement points were dropped from the loss). Empty when the
+    # whole batch solved cleanly; its length is the per-step failed-segment count.
+    failed_process_names: tuple[str, ...] = ()
 
 
 class _ConsoleTableFormatter:
@@ -180,6 +185,8 @@ def _csv_row_dict(record: StepRecord) -> dict[str, Any]:
         "grad_norm": (
             f"{record.grad_norm:.10g}" if record.grad_norm is not None else ""
         ),
+        "n_failed_samples": len(record.failed_process_names),
+        "failed_processes": ";".join(record.failed_process_names),
     }
 
 
@@ -198,6 +205,8 @@ def _jsonl_row_dict(record: StepRecord) -> dict[str, Any]:
         "monitor_loss": record.monitor_loss,
         "monitor_label": record.monitor_label,
         "grad_norm": record.grad_norm,
+        "n_failed_samples": len(record.failed_process_names),
+        "failed_processes": list(record.failed_process_names),
     }
 
 
@@ -295,11 +304,24 @@ class RunLogger:
 
         if self._metrics_csv_path is not None:
             self._metrics_csv_path.parent.mkdir(parents=True, exist_ok=True)
-            if self._resume and self._metrics_csv_path.is_file():
-                # Resume: append to the existing metrics.csv (keep prior rows).
+            fieldnames = list(_csv_row_dict(_DUMMY_RECORD).keys())
+            if (
+                self._resume
+                and self._metrics_csv_path.is_file()
+                and self._metrics_csv_path.stat().st_size > 0
+            ):
+                # Resume: append to the existing metrics.csv (keep prior rows). Guard
+                # against schema drift first -- appending current-schema rows under an
+                # older, narrower header silently misaligns every column on read.
+                existing = list(pd.read_csv(self._metrics_csv_path, nrows=0).columns)
+                if existing != fieldnames:
+                    raise ValueError(
+                        "metrics.csv schema mismatch on resume: existing columns "
+                        f"{existing} != current {fieldnames}. Archive or remove the "
+                        "old metrics file before resuming."
+                    )
                 self._csv_header_written = True
             else:
-                fieldnames = list(_csv_row_dict(_DUMMY_RECORD).keys())
                 pd.DataFrame(columns=fieldnames).to_csv(
                     self._metrics_csv_path, index=False
                 )
@@ -338,6 +360,18 @@ class RunLogger:
         self._step_time_seconds.append(float(record.step_dt))
         self._batch_process_names_by_step.append(tuple(record.process_names))
         self._per_process_loss_by_step.append(tuple(record.per_process_loss))
+
+        # Failed-segment warning: a finite fail_time means a sample's ODE solve
+        # bailed mid-trajectory and its post-failure points were dropped from the
+        # loss. Surface it every time it happens so the rate is visible.
+        if record.failed_process_names:
+            self._logger.warning(
+                "step %d: %d/%d samples hit a failed ODE segment: [%s]",
+                record.step,
+                len(record.failed_process_names),
+                len(record.process_names),
+                ", ".join(record.failed_process_names),
+            )
 
         # Console row
         clock = time.strftime("%H:%M:%S")

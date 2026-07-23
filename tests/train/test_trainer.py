@@ -33,6 +33,7 @@ from bp_train.harness import summarize_train_step_input_signature
 from bp_train.trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
+    evaluate_one_sample_loss,
     evaluate_sample_with_loss_module,
     simulate_measurement_states,
 )
@@ -537,24 +538,25 @@ def test_evaluate_sample_from_arrays_forwards_step_to_result():
     assert jnp.issubdtype(result.step.dtype, jnp.integer)
 
 
-def _build_batched_setup():
+def _build_batched_setup(module_cls=_LinearReactionModule, process_name="p2"):
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    process_data = store.get_process("p2")
-    rhs_p2 = build_rhs_ode(collection.processes["p2"])
+    process_data = store.get_process(process_name)
+    rhs = build_rhs_ode(collection.processes[process_name])
     wrapper = HybridOdeWrapper.from_process(
-        reaction_module=_LinearReactionModule(
-            **_unit_scale_kwargs_for(rhs_p2, process_data.controls)
+        reaction_module=module_cls(
+            **_unit_scale_kwargs_for(rhs, process_data.controls)
         ),
-        process=collection.processes["p2"],
+        process=collection.processes[process_name],
         controls=process_data.controls,
         loss_module=DefaultLossModule(target_names=["biomass"]),
     )
-    batch = store.gather_batch(jnp.asarray([1], dtype=jnp.int32))
+    proc_idx = list(store.process_order).index(process_name)
+    batch = store.gather_batch(jnp.asarray([proc_idx], dtype=jnp.int32))
     batch_controls = store.controls_store.as_batch_controls()
     rhs_by_process = [
         build_rhs_ode(collection.processes[name]) for name in store.process_order
@@ -620,6 +622,71 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
     )
     assert jnp.isfinite(mean_total_none)
     assert jnp.isfinite(mean_total_present)
+
+
+def _run_batched(wrapper, batch, batch_controls, batched_cin, batched_cin_modeled):
+    batched_loss_fn = build_batched_loss_fn()
+    return batched_loss_fn(
+        wrapper,
+        batch,
+        batch_controls,
+        batched_cin,
+        batched_cin_modeled,
+        None,
+        max_solver_steps=512,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+        step=1,
+    )
+
+
+def test_batched_loss_fn_surfaces_per_sample_fail_time():
+    """The batched loss fn appends a per-sample fail_time as its LAST element: ``+inf``
+    for a clean solve, finite when a sample's ODE segment bailed. This is what the
+    harness reduces per step to report how often segments fail."""
+    healthy = _build_batched_setup()  # p2 + linear rate: never bails
+    *_, healthy_fail = _run_batched(*healthy)
+    assert healthy_fail.shape == (1,)
+    assert bool(jnp.all(jnp.isinf(healthy_fail))), "clean solve -> fail_time == inf"
+
+    # p1 + blow-up rate: segment [1, 2] bails -> finite fail_time == 1.0.
+    blown = _build_batched_setup(_BlowUpReactionModule, process_name="p1")
+    *_, blown_fail = _run_batched(*blown)
+    assert blown_fail.shape == (1,)
+    assert bool(jnp.all(jnp.isfinite(blown_fail))), "bailing sample -> finite fail_time"
+    assert float(blown_fail[0]) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_evaluate_one_sample_loss_returns_fail_time():
+    """The pmap/gspmd shared per-sample entry point returns fail_time as its 3rd
+    value (``+inf`` clean, finite on a bail) so the sharded paths can gather it.
+    Inputs mirror the pmap ``_one`` preprocessing (clamp times, pre-scale targets)."""
+    wrapper, batch, batch_controls, batched_cin, batched_cin_modeled = (
+        _build_batched_setup(_BlowUpReactionModule, process_name="p1")
+    )
+    scale_targets = wrapper.reaction_module.SCALE_state[wrapper.target_state_indices]
+    pidx = batch.process_indices[0]
+    t_row = clamp_padded_time_rows(batch.t_measured, batch.n_measured)[0]
+    out = evaluate_one_sample_loss(
+        wrapper,
+        batch_controls,
+        pidx,
+        t_row,
+        batch.y_measured[0] / scale_targets[None, :],
+        batch.mask_measured[0],
+        batch.n_measured[0],
+        batch.y0_measured[0],
+        batched_cin[pidx],
+        batched_cin_modeled[pidx],
+        None,
+        max_solver_steps=512,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+    assert len(out) == 3, "returns (total_loss, per_target_loss, fail_time)"
+    total_loss, _per_target, fail_time = out
+    assert bool(jnp.isfinite(total_loss)), "loss stays finite despite the bail"
+    assert float(fail_time) == pytest.approx(1.0, abs=1e-3)
 
 
 # ---------------------------------------------------------------------------
