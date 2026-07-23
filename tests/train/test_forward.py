@@ -39,11 +39,7 @@ from bp_format.dataclasses import (
 
 from bp_train import cli, postprocessing
 from bp_train.controls_store import ControlsStore
-from bp_train.harness import (
-    ForwardConfig,
-    ForwardResult,
-    TrainHarnessResult,
-)
+from bp_train.harness import ForwardConfig, ForwardResult
 from bp_train.defaults import DefaultLossModule
 from bp_train.harness import compute_dense_exports
 from bp_train.model_api import ReactionOutputs, UserReactionModule
@@ -329,9 +325,7 @@ def _build_single_process_runtime(
             specific_rates=jnp.asarray([q_scaled], dtype=jnp.float32),
             modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
             auxiliary=auxiliary,
-            SCALE_modeled_BiologicalOde_rates=jnp.asarray(
-                [q_scale], dtype=jnp.float32
-            ),
+            SCALE_modeled_BiologicalOde_rates=jnp.asarray([q_scale], dtype=jnp.float32),
         ),
         process=process,
         controls=controls,
@@ -508,9 +502,7 @@ def test_forward_cli_missing_model_errors(tmp_path: Path):
         cli.main(["forward", "--config", str(fwd_config)])
 
 
-def test_forward_cli_no_configured_processes_evaluates_all(
-    monkeypatch, tmp_path: Path
-):
+def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path: Path):
     """A run with no data.processes evaluates (and labels train) every process."""
     run_dir = _make_forward_run_dir(tmp_path, processes=None)
 
@@ -589,7 +581,7 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
                     "target_source": "reactor_components",
                 },
                 "custom_py": str(FIXTURE_CUSTOM),
-                "train": {"steps": 3, "seed": 42},
+                "train": {"epochs": 1, "seed": 42},
                 "solver": {"max_steps": 2048, "rtol": 1e-3, "atol": 1e-5},
             }
         )
@@ -670,26 +662,48 @@ def test_forward_ensemble_on_fixture(tmp_path: Path):
             }
         )
     )
-    assert cli.main(
-        ["prepare", "--config", str(prepare_config), "--output-dir", str(prepared_dir)]
-    ) == 0
+    assert (
+        cli.main(
+            [
+                "prepare",
+                "--config",
+                str(prepare_config),
+                "--output-dir",
+                str(prepared_dir),
+            ]
+        )
+        == 0
+    )
 
     out_dir = tmp_path / "run"
     train_config = tmp_path / "train-config.json"
     train_config.write_text(
         json.dumps(
             {
-                "data": {"prepared": str(prepared_dir), "target_source": "reactor_components"},
+                "data": {
+                    "prepared": str(prepared_dir),
+                    "target_source": "reactor_components",
+                },
                 "custom_py": str(FIXTURE_CUSTOM),
-                "train": {"steps": 2, "seed": 42},
+                "train": {"epochs": 2, "seed": 42},
                 "solver": {"max_steps": 2048, "rtol": 1e-3, "atol": 1e-5},
-                "checkpoint": {"every": 1, "keep": "all"},
+                "checkpoint": {"every": 1.0},
             }
         )
     )
-    assert cli.main(
-        ["train", "--config", str(train_config), "--output-dir", str(out_dir), "--no-plot"]
-    ) == 0
+    assert (
+        cli.main(
+            [
+                "train",
+                "--config",
+                str(train_config),
+                "--output-dir",
+                str(out_dir),
+                "--no-plot",
+            ]
+        )
+        == 0
+    )
 
     ckpt1 = out_dir / "checkpoints" / "step_00001"
     ckpt2 = out_dir / "checkpoints" / "step_00002"
@@ -736,19 +750,45 @@ def test_prepare_content_hash_stable_across_reprepare(tmp_path: Path):
     )
     first = tmp_path / "first"
     second = tmp_path / "second"
-    assert cli.main(["prepare", "--config", str(prepare_config), "--output-dir", str(first)]) == 0
-    assert cli.main(["prepare", "--config", str(prepare_config), "--output-dir", str(second)]) == 0
+    assert (
+        cli.main(
+            ["prepare", "--config", str(prepare_config), "--output-dir", str(first)]
+        )
+        == 0
+    )
+    assert (
+        cli.main(
+            ["prepare", "--config", str(prepare_config), "--output-dir", str(second)]
+        )
+        == 0
+    )
 
-    p1 = json.loads((first / "prepared.json").read_text())["metadata"]["bp-train"]["provenance"]
-    p2 = json.loads((second / "prepared.json").read_text())["metadata"]["bp-train"]["provenance"]
+    p1 = json.loads((first / "prepared.json").read_text())["metadata"]["bp-train"][
+        "provenance"
+    ]
+    p2 = json.loads((second / "prepared.json").read_text())["metadata"]["bp-train"][
+        "provenance"
+    ]
     assert p1["content_hash"] == p2["content_hash"]  # stable science
     assert p1["prepared_at"] != p2["prepared_at"] or True  # timestamps may tie
 
     # The re-run guard blocks overwriting without --overwrite.
-    assert cli.main(["prepare", "--config", str(prepare_config), "--output-dir", str(first)]) == 1
     assert (
         cli.main(
-            ["prepare", "--config", str(prepare_config), "--output-dir", str(first), "--overwrite"]
+            ["prepare", "--config", str(prepare_config), "--output-dir", str(first)]
+        )
+        == 1
+    )
+    assert (
+        cli.main(
+            [
+                "prepare",
+                "--config",
+                str(prepare_config),
+                "--output-dir",
+                str(first),
+                "--overwrite",
+            ]
         )
         == 0
     )

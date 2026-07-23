@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from bp_train import cli
-from bp_train.harness import ForwardResult, TrainHarnessConfig, TrainHarnessResult
+from bp_train.harness import ForwardResult, TrainHarnessResult
 
 
 class _DummyCollection:
@@ -35,7 +35,6 @@ def _stub_train_result() -> TrainHarnessResult:
     return TrainHarnessResult(
         trained_wrapper=None,
         mean_loss_by_step=(1.0, 0.5),
-        sampled_loss_by_process_at_log_steps={1: (("p1", 1.0),)},
         batch_process_names_by_step=(("p1",), ("p1",)),
         per_process_loss_by_step=((1.0,), (0.5,)),
         compile_warmup_seconds=0.1,
@@ -99,7 +98,7 @@ def test_train_harness_config_from_run_config_maps_sections():
                 "target_source": "reactor_components",
             },
             "train": {
-                "steps": 7,
+                "epochs": 7,
                 "seed": 12,
                 "optimizer": "sgd",
                 "learning_rate": 0.02,
@@ -108,10 +107,15 @@ def test_train_harness_config_from_run_config_maps_sections():
                 "shuffle": False,
                 "batch_seed": 99,
             },
-            "solver": {"max_steps": 250000, "rtol": 1e-4, "atol": 1e-6, "jump_ts": False},
-            "checkpoint": {"every": 5, "keep": "all"},
+            "solver": {
+                "max_steps": 250000,
+                "rtol": 1e-4,
+                "atol": 1e-6,
+                "jump_ts": False,
+            },
+            "checkpoint": {"every": 0.5},
             "output": {"plots": False},
-            "logging": {"every": 3},
+            "logging": {"decimals": 3},
         }
     )
     run_dir = Path("/tmp/run")
@@ -120,7 +124,7 @@ def test_train_harness_config_from_run_config_maps_sections():
     assert h.process_names == ("p1", "p2")
     assert h.target_variable_order == ("X", "P")
     assert h.target_source == "reactor_components"
-    assert h.steps == 7
+    assert h.epochs == 7
     assert h.batch_size == 4
     assert h.batch_seed == 99
     assert h.shuffle_batches is False
@@ -128,13 +132,12 @@ def test_train_harness_config_from_run_config_maps_sections():
     assert h.learning_rate == 0.02
     assert h.grad_clip_norm == 3.0
     assert h.seed == 12
-    assert h.log_every == 3  # from logging.every, not a CLI flag
+    assert h.log_decimals == 3
     assert h.solver_max_steps == 250000
     assert h.solver_rtol == 1e-4
     assert h.solver_atol == 1e-6
     assert h.solver_use_jump_ts is False
-    assert h.checkpoint_every == 5
-    assert h.checkpoint_keep == "all"
+    assert h.checkpoint_every == 0.5
     assert h.plots is False
     assert h.checkpoint_dir == run_dir / "checkpoints"
     assert str(h.metrics_csv).endswith("metrics.csv")
@@ -142,7 +145,7 @@ def test_train_harness_config_from_run_config_maps_sections():
 
 
 # The old custom.py-sha256 sidecar is replaced by config.json
-# inputs.custom_py.file_hash; see tests/test_forward.py::test_forward_end_to_end_on_fixture
+# inputs.custom_py.file_hash; see test_forward_end_to_end_on_fixture
 # and tests/test_cli_run_dir.py.
 
 

@@ -18,7 +18,6 @@ from .harness import (
     TrainHarnessConfig,
     forward_from_collection,
     forward_plot_losses,
-    resume_run,
     train_from_collection,
     train_harness_config_from_run_config,
 )
@@ -41,11 +40,8 @@ from .run_config import (
 from .serialization import (
     content_hash,
     environment_versions as _environment_versions,
-    read_json,
     read_run_config_json,
     run_config_to_jsonable,
-    save_model as save_params_model,
-    save_opt_state,
     update_run_config_status,
     write_json,
 )
@@ -91,7 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--config",
         default=None,
-        help="Path to train run config JSON (required unless --resume).",
+        help="Path to train run config JSON.",
     )
     train_parser.add_argument(
         "--output-dir",
@@ -99,24 +95,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Override output.dir from the config (the FAIR run directory).",
     )
     train_parser.add_argument(
-        "--resume",
-        default=None,
-        help=(
-            "Resume training in place from an existing run directory "
-            "(continues from checkpoints/latest, appending to metrics.csv). "
-            "Combine with --steps to extend the original target."
-        ),
-    )
-    train_parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Allow re-running into a run dir that already completed.",
     )
     train_parser.add_argument(
-        "--steps",
+        "--epochs",
         type=int,
         default=None,
-        help="Override optim.steps (with --resume, may extend the target).",
+        help="Override train.epochs.",
     )
     plot_group = train_parser.add_mutually_exclusive_group()
     plot_group.add_argument(
@@ -132,9 +119,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip plot generation.",
     )
     train_parser.set_defaults(plot=True)
-    # Cadence / console-table formatting are config-only now (the `logging`
-    # section: every, decimals, header_every; metrics.csv is always written to
-    # the run dir). The old --log-every / --metrics-csv / --metrics-jsonl /
+    # Console numeric formatting is config-only (`logging.decimals`), and
+    # metrics.csv is always written to the run dir. The old --log-every /
+    # --metrics-csv / --metrics-jsonl /
     # --log-process-losses / --log-decimals / --log-header-every flags are gone.
     train_parser.add_argument(
         "--log-level",
@@ -352,34 +339,48 @@ def _apply_train_cli_overrides(cfg: RunConfig, args: argparse.Namespace) -> RunC
     if not args.plot:  # --no-plot
         base = updates.get("output", cfg.output)
         updates["output"] = base.model_copy(update={"plots": False})
-    if args.steps is not None:
-        updates["train"] = cfg.train.model_copy(update={"steps": int(args.steps)})
+    if args.epochs is not None:
+        updates["train"] = cfg.train.model_copy(update={"epochs": int(args.epochs)})
     return cfg.model_copy(update=updates) if updates else cfg
 
 
+def _clear_output_dir_for_overwrite(
+    output_dir: Path,
+    *,
+    input_paths: tuple[str | Path | None, ...],
+) -> None:
+    """Remove an old run without deleting inputs needed by the new run."""
+    root = output_dir.resolve()
+    nested_inputs = [
+        Path(path)
+        for path in input_paths
+        if path is not None and Path(path).resolve().is_relative_to(root)
+    ]
+    if nested_inputs:
+        paths = ", ".join(str(path) for path in nested_inputs)
+        raise ValueError(
+            f"cannot overwrite output directory {output_dir}: "
+            f"it contains input file(s): {paths}"
+        )
+    if not output_dir.exists():
+        return
+    for child in output_dir.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def _finalize_run_dir(run_dir: Path, result: Any, config_json: Path) -> None:
-    """Copy best→model/, then mark the run complete in config.json."""
+    """Copy the mandatory latest checkpoint to model/, then mark complete."""
     model_dir = run_dir / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
-    best = run_dir / "checkpoints" / "best"
-    best_info: dict[str, Any] | None = None
-    if best.is_symlink() and (best / "params.eqx").is_file():
-        shutil.copyfile(best / "params.eqx", model_dir / "params.eqx")
-        if (best / "opt_state.eqx").is_file():
-            shutil.copyfile(best / "opt_state.eqx", model_dir / "opt_state.eqx")
-        try:
-            best_state = read_json(best / "train_state.json")
-            best_info = {
-                "step": best_state.get("step"),
-                "mean_loss": best_state.get("mean_loss"),
-            }
-        except OSError:
-            best_info = None
-    else:
-        # No checkpoints written — persist the final state directly.
-        save_params_model(result.trained_wrapper, model_dir / "params.eqx")
-        if result.optimizer_state is not None:
-            save_opt_state(result.optimizer_state, model_dir / "opt_state.eqx")
+    latest = run_dir / "checkpoints" / "latest"
+    if not (latest / "params.eqx").is_file():
+        raise RuntimeError("training completed without a final checkpoint")
+    shutil.copyfile(latest / "params.eqx", model_dir / "params.eqx")
+    if (latest / "opt_state.eqx").is_file():
+        shutil.copyfile(latest / "opt_state.eqx", model_dir / "opt_state.eqx")
     final_mean = (
         float(result.mean_loss_by_step[-1]) if result.mean_loss_by_step else None
     )
@@ -387,8 +388,7 @@ def _finalize_run_dir(run_dir: Path, result: Any, config_json: Path) -> None:
         config_json,
         status="complete",
         finished_at=_now_iso(),
-        steps_completed=int(getattr(result, "steps_completed", 0)),
-        best=best_info,
+        updates_completed=int(getattr(result, "updates_completed", 0)),
         final_mean_loss=final_mean,
     )
 
@@ -400,73 +400,9 @@ def _handle_train(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger(__name__)
 
-    # ---- Resume: continue an existing run dir in place ----
-    if args.resume:
-        # Resume replays the saved run config verbatim; only --steps may be
-        # overridden. Reject other overrides loudly instead of silently dropping
-        # them (the pre-JAX device count and output paths come from the saved
-        # config, so a passed --output-dir/--no-plot would have no effect).
-        rejected = []
-        if args.output_dir is not None:
-            rejected.append("--output-dir")
-        if not args.plot:  # --no-plot was given (dest="plot", default True)
-            rejected.append("--no-plot")
-        if rejected:
-            log.error(
-                "--resume replays the saved run config; only --steps may be "
-                "overridden. Remove %s.",
-                " and ".join(rejected),
-            )
-            return 1
-        resume_arg = Path(args.resume)
-        # Be forgiving: accept the run dir itself OR a sub-path inside it
-        # (e.g. checkpoints/latest, checkpoints/step_00500, model/) and resolve
-        # up to the directory that actually holds config.json. Resume always
-        # continues from checkpoints/latest regardless.
-        # The run dir holds config.json AND a checkpoints/ subdir. Require both so
-        # we skip self-contained checkpoint dirs (which also carry a config.json)
-        # and land on the actual run directory.
-        run_dir = next(
-            (
-                cand
-                for cand in (resume_arg, resume_arg.parent, resume_arg.parent.parent)
-                if (cand / "config.json").is_file() and (cand / "checkpoints").is_dir()
-            ),
-            None,
-        )
-        if run_dir is None:
-            log.error(
-                "--resume: no config.json found at %s or its parent run "
-                "directory; pass the RUN directory (e.g. output_single), not a "
-                "checkpoint sub-directory",
-                resume_arg,
-            )
-            return 1
-        if run_dir != resume_arg:
-            log.info(
-                "--resume: resolved run directory %s (continuing from latest "
-                "checkpoint)",
-                run_dir,
-            )
-        config_json = run_dir / "config.json"
-        update_run_config_status(config_json, status="running", resumed_at=_now_iso())
-        try:
-            result = resume_run(run_dir, steps_override=args.steps)
-        except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
-            update_run_config_status(
-                config_json,
-                status="failed",
-                error={"type": type(exc).__name__, "message": str(exc)},
-                finished_at=_now_iso(),
-            )
-            raise
-        _finalize_run_dir(run_dir, result, config_json)
-        log.info("resume complete: %s", run_dir)
-        return 0
-
     # ---- Fresh run ----
     if args.config is None:
-        log.error("train requires --config (or --resume <run_dir> to continue)")
+        log.error("train requires --config")
         return 1
     loaded = load_train_config(args.config)
     cfg = _apply_train_cli_overrides(loaded.config, args)
@@ -483,13 +419,18 @@ def _handle_train(args: argparse.Namespace) -> int:
             prior = {}
         if prior.get("status") == "complete" and not args.overwrite:
             log.error(
-                "run dir %s already holds a completed run; pass --overwrite to "
-                "re-run or --resume to continue",
+                "run dir %s already holds a completed run; pass --overwrite to re-run",
                 run_dir,
             )
             return 1
 
     collection = load_process_collection(cfg.data.prepared)
+
+    if args.overwrite:
+        _clear_output_dir_for_overwrite(
+            run_dir,
+            input_paths=(args.config, cfg.data.prepared, cfg.custom_py),
+        )
 
     # Assemble the FAIR run directory.
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -985,6 +926,12 @@ def _handle_loo(args: argparse.Namespace) -> int:
                 output_dir,
             )
             return 1
+
+    if args.overwrite:
+        _clear_output_dir_for_overwrite(
+            output_dir,
+            input_paths=(args.config, cfg.data.prepared, cfg.custom_py),
+        )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     # Bundle a self-contained run dir: true copies of custom.py + prepared, and a

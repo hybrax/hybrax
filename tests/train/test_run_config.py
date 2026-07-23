@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from bp_train.run_config import (
     DefaultCustomConfig,
+    RunConfig,
     load_prepare_config,
     load_train_config,
 )
@@ -248,7 +249,7 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
                 "target_source": "reactor_components",
             },
             "train": {
-                "steps": 7,
+                "epochs": 7,
                 "seed": 12,
                 "optimizer": "sgd",
                 "learning_rate": 0.02,
@@ -275,7 +276,7 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
     assert config.data.processes == ("p1", "p2")
     assert config.data.targets == ("X", "P")
     assert config.data.target_source == "reactor_components"
-    assert config.train.steps == 7
+    assert config.train.epochs == 7
     assert config.train.seed == 12
     assert config.train.optimizer == "sgd"
     assert config.train.learning_rate == 0.02
@@ -288,6 +289,33 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
     assert config.solver.rtol == 1e-4
     assert config.solver.atol == 1e-6
     assert config.solver.jump_ts is False
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        {"train": {"steps": 1}},
+        {"logging": {"every": 1}},
+        {"logging": {"header_every": 1}},
+        {"checkpoint": {"keep": "all"}},
+        {"loo": {"monitor_every": 1}},
+    ],
+)
+def test_removed_training_cadence_fields_are_rejected(section):
+    with pytest.raises(ValueError):
+        RunConfig.model_validate(section)
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -0.1])
+def test_checkpoint_every_must_be_finite_and_nonnegative(value):
+    with pytest.raises(ValueError, match="checkpoint"):
+        RunConfig.model_validate({"checkpoint": {"every": value}})
+
+
+@pytest.mark.parametrize("value", [0, -3])
+def test_epochs_must_be_positive(value):
+    with pytest.raises(ValidationError):
+        RunConfig.model_validate({"train": {"epochs": value}})
 
 
 def test_train_requires_data(tmp_path: Path) -> None:

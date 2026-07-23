@@ -359,9 +359,9 @@ output/loo/
 | **`bp-format/tests/test_validate.py`** | edit | 4 tests (parent refs ok, unknown parent, augmented-of-augmented, integration with `validate_case_study`). |
 | **`bp-train/bp_train/loo.py`** | **new** | `LOOConfig`, `FoldResult`, `LOOResult`, `run_loo_cv`, `run_loo_fold`, `_build_fold_groups`, summary aggregation. |
 | **`bp-train/bp_train/cli.py`** | edit | Add `loo` subparser + `_handle_loo`. Per-fold artifacts are produced by the existing [`_write_train_results`](../bp_train/cli.py#L395-L461) helper (already shared with `_handle_train`); the post-train block at [cli.py:533-581](../bp_train/cli.py#L533-L581) is the structural template for `_handle_loo`. |
-| **`bp-train/bp_train/__init__.py`** | edit | Export `LOOConfig`, `FoldResult`, `LOOResult`, `run_loo_cv`, `run_loo_fold`. Also export the existing `train_from_collection` (currently missing — flagged in [roadmap-status-2026-04-09.md Appendix A.5](roadmap-status-2026-04-09.md#L694-L700)). |
+| **`bp-train/bp_train/__init__.py`** | edit | Export `LOOConfig`, `FoldResult`, `LOOResult`, `run_loo_cv`, `run_loo_fold`. Also export the existing `train_from_collection` (currently missing — flagged in [roadmap-status-2026-07-23.md Appendix A.5](roadmap-status-2026-07-23.md#L694-L700)). |
 | **`bp-train/spec/v1-detailed-spec.md`** | edit | Move LOO out of §3/§21 deferred lists; add a short LOO section describing the CLI + artifact contract and the augmented-group rule. |
-| **`bp-train/spec/roadmap-status-2026-04-09.md`** | edit | Strike LOO from "remaining items". |
+| **`bp-train/spec/roadmap-status-2026-07-23.md`** | edit | Strike LOO from "remaining items". |
 | **`bp-train/tests/test_loo.py`** | **new** | See "Tests" below. |
 | **`bp-train/examples/01_kittler_2022/run_loo.sh`** | **new** | Demo script wrapping `bp-train loo`. |
 

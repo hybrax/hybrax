@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import json
 from pathlib import Path
 
@@ -22,7 +21,6 @@ from bp_format.dataclasses import (
 )
 
 from bp_train.checkpointing import CheckpointWriter
-import bp_train.harness as harness_module
 from bp_train.harness import TrainHarnessConfig, train_collection
 from bp_train.model_api import (
     ReactionOutputs,
@@ -32,7 +30,6 @@ from bp_train.model_api import (
     trainable_field,
 )
 from bp_train.postprocessing import plot_loss_curve
-from bp_train.run_config import CheckpointConfig
 from bp_train.serialization import load_trained_wrapper
 from bp_train.training_data import TrainingDataStore
 
@@ -95,129 +92,76 @@ def _dummy_predictions(path: Path) -> None:
     Path(path).write_text("process,t,c_x\np1,0.0,1.0\n", encoding="utf-8")
 
 
-def _writer(tmp_path: Path, *, every: int, keep: str = "best+latest") -> CheckpointWriter:
-    return CheckpointWriter(
-        tmp_path / "checkpoints",
-        CheckpointConfig(every=every, keep=keep),
-        plotter=None,
-        plots_enabled=False,
-    )
+def test_fractional_checkpoint_boundaries_are_exact_and_distinct():
+    from bp_train.harness import _checkpoint_update_boundaries
+
+    assert _checkpoint_update_boundaries(
+        0.25, batches_per_epoch=10, total_updates=10
+    ) == frozenset({3, 5, 8, 10})
+    assert _checkpoint_update_boundaries(
+        0.1, batches_per_epoch=10, total_updates=10
+    ) == frozenset(range(1, 11))
+    assert _checkpoint_update_boundaries(
+        0.01, batches_per_epoch=2, total_updates=2
+    ) == frozenset({1, 2})
+    assert _checkpoint_update_boundaries(
+        0, batches_per_epoch=10, total_updates=10
+    ) == frozenset({10})
 
 
-def test_checkpoint_writer_disabled_when_every_zero(tmp_path: Path):
-    writer = _writer(tmp_path, every=0)
-    assert not writer.enabled
-    out = writer.maybe_write(
-        step=5,
-        wrapper=_TrainableModule(),
-        opt_state=_opt_state_for(_TrainableModule()),
-        mean_loss=1.0,
-        best_loss=1.0,
-        render_predictions_fn=_dummy_predictions,
-        loss_by_step=[1.0],
-    )
-    assert out is None
-    assert not (tmp_path / "checkpoints").exists()
-
-
-def test_checkpoint_writer_cadence_and_latest(tmp_path: Path):
+def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
     module = _TrainableModule()
-    opt_state = _opt_state_for(module)
-    writer = _writer(tmp_path, every=3, keep="all")
-    for step in range(1, 11):
-        writer.maybe_write(
+    writer = CheckpointWriter(
+        tmp_path / "checkpoints", plotter=None, plots_enabled=False
+    )
+    for step in (2, 4):
+        writer.write(
             step=step,
+            samples_seen=step * 3,
             wrapper=module,
-            opt_state=opt_state,
-            mean_loss=float(step),
-            best_loss=float(step),
+            opt_state=_opt_state_for(module),
+            mean_loss=1.0 / step,
+            holdout_loss=0.25 if step == 4 else None,
             render_predictions_fn=_dummy_predictions,
-            loss_by_step=[float(step)],
+            loss_by_step=[1.0],
         )
-    ckpt = tmp_path / "checkpoints"
-    step_dirs = {p.name for p in ckpt.iterdir() if p.is_dir() and not p.is_symlink()}
-    assert step_dirs == {"step_00003", "step_00006", "step_00009"}
-    assert (ckpt / "latest").resolve().name == "step_00009"
-
-
-def test_checkpoint_writer_writes_resumable_state_and_roundtrips(tmp_path: Path):
-    module = _TrainableModule()
-    opt_state = _opt_state_for(module)
-    writer = _writer(tmp_path, every=1)
-    d = writer.maybe_write(
-        step=7,
-        wrapper=module,
-        opt_state=opt_state,
-        mean_loss=0.12345,
-        best_loss=0.1,
-        render_predictions_fn=_dummy_predictions,
-        loss_by_step=[0.9, 0.5, 0.12345],
+    checkpoints = tmp_path / "checkpoints"
+    assert {p.name for p in checkpoints.glob("step_*")} == {
+        "step_00002",
+        "step_00004",
+    }
+    assert (checkpoints / "latest").resolve().name == "step_00004"
+    assert not (checkpoints / "best").exists()
+    state = json.loads((checkpoints / "latest" / "train_state.json").read_text())
+    assert state["samples_seen"] == 12
+    assert state["holdout_loss"] == pytest.approx(0.25)
+    reloaded = load_trained_wrapper(
+        checkpoints / "latest" / "params.eqx", template=_TrainableModule()
     )
-    assert d == tmp_path / "checkpoints" / "step_00007"
-    assert (d / "params.eqx").is_file()
-    assert (d / "opt_state.eqx").is_file()
-    assert (d / "train_state.json").is_file()
-    assert (d / "predictions.csv").is_file()
-
-    state = json.loads((d / "train_state.json").read_text())
-    assert state["step"] == 7
-    assert state["mean_loss"] == pytest.approx(0.12345)
-    assert state["best_loss"] == pytest.approx(0.1)
-    assert "timestamp" in state
-
-    reloaded = load_trained_wrapper(d / "params.eqx", template=_TrainableModule())
     assert jnp.allclose(reloaded.w, module.w)
-
-
-def test_checkpoint_writer_best_latest_pruning(tmp_path: Path):
-    module = _TrainableModule()
-    opt_state = _opt_state_for(module)
-    writer = _writer(tmp_path, every=1, keep="best+latest")
-    # loss: step1=1.0, step2=0.2 (best), step3=0.5, step4=0.8 (latest)
-    losses = {1: 1.0, 2: 0.2, 3: 0.5, 4: 0.8}
-    for step, loss in losses.items():
-        writer.maybe_write(
-            step=step,
-            wrapper=module,
-            opt_state=opt_state,
-            mean_loss=loss,
-            best_loss=min(list(losses.values())[:step]),
-            render_predictions_fn=_dummy_predictions,
-            loss_by_step=[loss],
-        )
-    ckpt = tmp_path / "checkpoints"
-    surviving = {p.name for p in ckpt.iterdir() if p.is_dir() and not p.is_symlink()}
-    assert surviving == {"step_00002", "step_00004"}  # best + latest
-    assert (ckpt / "best").resolve().name == "step_00002"
-    assert (ckpt / "latest").resolve().name == "step_00004"
 
 
 def test_checkpoint_writer_export_failure_does_not_publish(tmp_path: Path):
     module = _TrainableModule()
-    opt_state = _opt_state_for(module)
-    writer = _writer(tmp_path, every=1)
+    writer = CheckpointWriter(
+        tmp_path / "checkpoints", plotter=None, plots_enabled=False
+    )
 
-    def _boom(_path):
+    def boom(_path):
         raise RuntimeError("export failed")
 
     with pytest.raises(RuntimeError, match="export failed"):
-        writer.maybe_write(
+        writer.write(
             step=1,
+            samples_seen=1,
             wrapper=module,
-            opt_state=opt_state,
+            opt_state=_opt_state_for(module),
             mean_loss=1.0,
-            best_loss=1.0,
-            render_predictions_fn=_boom,
+            holdout_loss=None,
+            render_predictions_fn=boom,
             loss_by_step=[1.0],
         )
-    ckpt = tmp_path / "checkpoints"
-    d = ckpt / "step_00001"
-    assert (d / "params.eqx").is_file()
-    assert (d / "opt_state.eqx").is_file()
-    assert (d / "train_state.json").is_file()
-    assert not (d / "predictions.csv").exists()
-    assert not (ckpt / "latest").exists()
-    assert not (ckpt / "best").exists()
+    assert not (tmp_path / "checkpoints" / "latest").exists()
 
 
 # --------------------------------------------------------------------------
@@ -303,14 +247,10 @@ def _make_collection() -> BioProcessCollection:
 def _run_train(
     *,
     checkpoint_dir: Path | None,
-    checkpoint_every: int,
-    steps: int,
-    checkpoint_keep: str = "best+latest",
+    checkpoint_every: float,
+    epochs: int,
     plots: bool = False,
     metrics_csv: str | None = None,
-    start_step: int = 0,
-    initial_trainable_params=None,
-    initial_optimizer_state=None,
 ):
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -324,123 +264,54 @@ def _run_train(
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
-            steps=steps,
+            epochs=epochs,
             batch_size=1,
             optimizer_name="adam",
             learning_rate=5e-2,
-            log_every=1,
             checkpoint_dir=checkpoint_dir,
             checkpoint_every=checkpoint_every,
-            checkpoint_keep=checkpoint_keep,
             plots=plots,
             metrics_csv=metrics_csv,
         ),
-        start_step=start_step,
-        initial_trainable_params=initial_trainable_params,
-        initial_optimizer_state=initial_optimizer_state,
     )
 
 
-def test_train_collection_disabled_when_checkpoint_dir_is_none(tmp_path: Path):
-    result = _run_train(checkpoint_dir=None, checkpoint_every=1, steps=3)
-    assert result.trained_wrapper is not None
+def test_train_collection_with_no_checkpoint_dir_is_artifact_free(tmp_path: Path):
+    result = _run_train(checkpoint_dir=None, checkpoint_every=1, epochs=2)
+    assert result.updates_completed == 2
     assert not (tmp_path / "checkpoints").exists()
 
 
-def test_train_collection_writes_resumable_checkpoints(tmp_path: Path):
-    ckpt_dir = tmp_path / "checkpoints"
+def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
+    checkpoints = tmp_path / "checkpoints"
     result = _run_train(
-        checkpoint_dir=ckpt_dir, checkpoint_every=2, steps=6, plots=False
+        checkpoint_dir=checkpoints, checkpoint_every=2, epochs=5, plots=False
     )
-    assert result.optimizer_state is not None
-    assert result.steps_completed == 6
-
-    # best+latest retention: only the best/latest step dirs survive (they may
-    # coincide when loss decreases monotonically — then a single dir remains).
-    step_dirs = {
-        p.name for p in ckpt_dir.iterdir() if p.is_dir() and not p.is_symlink()
-    }
-    assert (ckpt_dir / "latest").resolve().name == "step_00006"
-    assert (ckpt_dir / "best").is_symlink()
-    expected = {
-        (ckpt_dir / "latest").resolve().name,
-        (ckpt_dir / "best").resolve().name,
-    }
-    assert step_dirs == expected
-    assert 1 <= len(step_dirs) <= 2
-
-    latest = ckpt_dir / "latest"
-    assert sorted(p.name for p in latest.resolve().iterdir()) == [
-        "opt_state.eqx",
-        "params.eqx",
-        "predictions.csv",
-        "train_state.json",
+    assert result.updates_completed == 5
+    assert sorted(p.name for p in checkpoints.glob("step_*")) == [
+        "step_00002",
+        "step_00004",
+        "step_00005",
     ]
-    with (latest / "predictions.csv").open(encoding="utf-8", newline="") as handle:
-        header = next(csv.reader(handle))
-    assert header == ["process", "t", "c_biomass", "V_real", "q_biomass"]
+    assert (checkpoints / "latest").resolve().name == "step_00005"
+    assert not (checkpoints / "best").exists()
 
 
-def test_train_collection_keep_all_retains_every_checkpoint(tmp_path: Path):
-    ckpt_dir = tmp_path / "checkpoints"
-    _run_train(
-        checkpoint_dir=ckpt_dir,
-        checkpoint_every=2,
-        steps=6,
-        checkpoint_keep="all",
-        plots=False,
-    )
-    step_dirs = sorted(
-        p.name for p in ckpt_dir.iterdir() if p.is_dir() and not p.is_symlink()
-    )
-    assert step_dirs == ["step_00002", "step_00004", "step_00006"]
-
-
-def test_resume_continues_bit_identically(tmp_path: Path):
-    # Reference: a single 6-step run.
-    full = _run_train(
-        checkpoint_dir=None,
-        checkpoint_every=0,
-        steps=6,
-        metrics_csv=str(tmp_path / "full.csv"),
-    )
-    # Split: train 3 steps, then resume to 6 reusing trainable params + opt state.
-    metrics_split = tmp_path / "split.csv"
-    run1 = _run_train(
-        checkpoint_dir=None,
-        checkpoint_every=0,
-        steps=3,
-        metrics_csv=str(metrics_split),
-    )
-    trainable1, _ = partition_trainable(run1.trained_wrapper)
-    resumed = _run_train(
-        checkpoint_dir=None,
-        checkpoint_every=0,
-        steps=6,
-        metrics_csv=str(metrics_split),  # same file → appended on resume
-        start_step=3,
-        initial_trainable_params=trainable1,
-        initial_optimizer_state=run1.optimizer_state,
-    )
-    # The resumed session covers exactly steps 4..6 ...
-    assert len(resumed.mean_loss_by_step) == 3
-    # ... and those losses match the single-run trajectory bit-for-bit.
-    assert resumed.mean_loss_by_step == pytest.approx(
-        full.mean_loss_by_step[3:], rel=1e-6, abs=1e-8
-    )
-    # metrics.csv was appended (3 + 3 = 6 rows).
-    import pandas as pd
-
-    assert len(pd.read_csv(metrics_split)) == 6
+def test_checkpoint_every_zero_still_writes_final(tmp_path: Path):
+    checkpoints = tmp_path / "checkpoints"
+    _run_train(checkpoint_dir=checkpoints, checkpoint_every=0, epochs=3)
+    assert [p.name for p in checkpoints.glob("step_*")] == ["step_00003"]
+    state = json.loads((checkpoints / "latest" / "train_state.json").read_text())
+    assert state["samples_seen"] == 3
 
 
 def test_train_collection_checkpoint_params_reload(tmp_path: Path):
-    ckpt_dir = tmp_path / "checkpoints"
+    checkpoints = tmp_path / "checkpoints"
     result = _run_train(
-        checkpoint_dir=ckpt_dir, checkpoint_every=2, steps=4, plots=False
+        checkpoint_dir=checkpoints, checkpoint_every=2, epochs=2, plots=False
     )
     reloaded = load_trained_wrapper(
-        ckpt_dir / "latest" / "params.eqx", template=result.trained_wrapper
+        checkpoints / "latest" / "params.eqx", template=result.trained_wrapper
     )
     trained = jax.tree_util.tree_leaves(
         eqx.filter(result.trained_wrapper.reaction_module, eqx.is_inexact_array)
@@ -449,5 +320,6 @@ def test_train_collection_checkpoint_params_reload(tmp_path: Path):
         eqx.filter(reloaded.reaction_module, eqx.is_inexact_array)
     )
     assert len(trained) == len(got) and len(trained) > 0
-    for a, b in zip(trained, got):
-        assert a.shape == b.shape and jnp.allclose(a, b)
+    for expected, actual in zip(trained, got):
+        assert expected.shape == actual.shape
+        assert jnp.allclose(expected, actual)

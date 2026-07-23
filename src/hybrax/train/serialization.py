@@ -13,7 +13,7 @@ Mirrors ``bp_format/serialization.py``. This module owns:
 - ``content_hash`` / ``file_hash`` — stable data integrity hashing.
 - ``write_run_config_json`` / ``read_run_config_json`` — the run-dir ``config.json``.
 - ``reconstruct_run`` / ``load_run`` / ``load_params`` / ``LoadedRun`` — the
-  single model-reconstruction path shared by forward, resume, and notebooks.
+  single model-reconstruction path shared by forward and notebooks.
 """
 
 from __future__ import annotations
@@ -218,6 +218,9 @@ def update_run_config_status(path: str | Path, **fields: Any) -> dict[str, Any]:
 def _resolve_prepared(run_dir: Path, config: RunConfig) -> Path:
     """Locate ``prepared.json``: a bundled copy in the run dir, else the
     recorded ``data.prepared`` path."""
+    bundled = run_dir / "prepared.json.gz"
+    if bundled.is_file():
+        return bundled
     bundled = run_dir / "prepared.json"
     if bundled.is_file():
         return bundled
@@ -295,7 +298,11 @@ def reconstruct_run(
     )
 
     train_like_cfg = TrainHarnessConfig(
-        process_names=tuple(store.process_order),
+        process_names=(
+            config.data.processes
+            if config.data is not None and config.data.processes is not None
+            else tuple(store.process_order)
+        ),
         target_variable_order=targets,
         target_source=target_source,
         seed=int(config.train.seed),
@@ -342,41 +349,42 @@ class LoadedRun:
 
 
 def checkpoint_params_path(run_dir: str | Path, checkpoint: str = "latest") -> Path:
-    """Resolve the ``params.eqx`` path for a checkpoint name.
-
-    ``"final"`` → ``model/params.eqx`` (the copy of best); otherwise
-    ``checkpoints/<checkpoint>/params.eqx`` (``"best"``/``"latest"`` are symlinks).
-    """
-    run_dir = Path(run_dir)
-    if checkpoint == "final":
-        return run_dir / "model" / "params.eqx"
-    return run_dir / "checkpoints" / checkpoint / "params.eqx"
+    """Resolve ``checkpoints/<checkpoint>/params.eqx``."""
+    return Path(run_dir) / "checkpoints" / checkpoint / "params.eqx"
 
 
 def load_run(
     run_dir: str | Path,
     *,
-    checkpoint: str = "best",
+    checkpoint: str = "latest",
     load_opt_state: bool = False,
 ) -> LoadedRun:
     """Reconstruct a trained model from a run directory **alone**.
 
-    ``checkpoint``: ``"best"`` | ``"latest"`` | ``"step_00300"`` resolve under
-    ``checkpoints/``; ``"final"`` uses the run-root ``model/`` copy.
+    ``checkpoint`` names ``latest`` or a ``step_XXXXX`` directory.
     """
-    from .harness import _build_template_wrapper, build_optimizer_for_run
-    from .harness import TrainHarnessConfig
+    from .harness import (
+        TrainHarnessConfig,
+        _build_template_wrapper,
+        build_optimizer_for_run,
+        derive_update_budget,
+    )
 
     run_dir = Path(run_dir)
     config, document = read_run_config_json(run_dir / "config.json")
     reaction_module, loss_module, store, collection = reconstruct_run(
         run_dir, config, document
     )
+    selected_processes = (
+        config.data.processes
+        if config.data is not None and config.data.processes is not None
+        else tuple(store.process_order)
+    )
     template, _extras = _build_template_wrapper(
         store,
         reaction_module=reaction_module,
         collection=collection,
-        selected_processes=tuple(store.process_order),
+        selected_processes=selected_processes,
         loss_module=loss_module,
     )
 
@@ -392,23 +400,31 @@ def load_run(
             load_custom_module(bundled_custom) if bundled_custom.is_file() else None
         )
         train_like_cfg = TrainHarnessConfig(
-            process_names=tuple(store.process_order),
+            process_names=selected_processes,
             target_variable_order=(
                 config.data.targets if config.data is not None else None
             ),
             target_source=(
                 config.data.target_source if config.data is not None else "auto"
             ),
+            epochs=config.train.epochs,
+            batch_size=config.train.batch_size,
+            shuffle_batches=config.train.shuffle,
+            batch_seed=config.train.batch_seed,
             seed=int(config.train.seed),
             optimizer_name=config.train.optimizer,
             learning_rate=config.train.learning_rate,
             grad_clip_norm=config.train.grad_clip_norm,
             allow_stateful_models=config.train.allow_stateful_models,
         )
+        _, _, total_updates = derive_update_budget(
+            train_like_cfg, selected_process_count=len(selected_processes)
+        )
         optimizer, _train_cfg = build_optimizer_for_run(
             custom_module=custom_module,
             custom_cfg=config,
             train_cfg=train_like_cfg,
+            total_updates=total_updates,
         )
         trainable_params, _ = partition_trainable(wrapper)
         opt_template = optimizer.init(trainable_params)

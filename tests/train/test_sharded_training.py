@@ -36,15 +36,17 @@ result = train_collection(
     loss_module=_biomass_loss(),
     collection=collection,
     config=TrainHarnessConfig(
-        process_names=("p1", "p2"), steps=4, batch_size=2,
-        optimizer_name="adam", learning_rate=2e-2, log_every=1,
+        process_names=("p1", "p2"), epochs=4, batch_size=2,
+        optimizer_name="adam", learning_rate=2e-2,
         shuffle_batches=False,
     ),
 )
-print("RESULT_JSON " + json.dumps({{
-    "devices": int(jax.device_count()),
-    "losses": [float(x) for x in result.mean_loss_by_step],
-}}))
+print("RESULT_JSON " + json.dumps(
+    {{
+        "devices": int(jax.device_count()),
+        "losses": [float(x) for x in result.mean_loss_by_step],
+    }}
+))
 """
 
 _TELEMETRY_SCRIPT = """
@@ -80,7 +82,7 @@ with tempfile.TemporaryDirectory() as tmp:
         loss_module=_biomass_loss(),
         collection=collection,
         config=TrainHarnessConfig(
-            process_names=("p2", "p1"), steps=1, batch_size=3,
+            process_names=("p2", "p1"), epochs=1, batch_size=2,
             shuffle_batches=False, solver_max_steps=512, metrics_jsonl=metrics,
         ),
     )
@@ -146,9 +148,9 @@ def test_failed_sample_telemetry_end_to_end(mode):
     row = result["row"]
 
     assert result["devices"] == (1 if mode == "vmap" else 2)
-    assert row["process_names"] == ["p2", "p1", "p2"]
-    assert row["n_failed_samples"] == 2
-    assert row["failed_processes"] == ["p2", "p2"]
+    assert row["process_names"] == ["p2", "p1"]
+    assert row["n_failed_samples"] == 1
+    assert row["failed_processes"] == ["p2"]
 
 
 def test_devices_exceeding_processes_shards_over_processes():
@@ -168,7 +170,11 @@ def test_device_count_capped_at_cpu_count():
     """The package bootstrap caps requested devices at ``cpu_count``:
     over-subscribed XLA CPU collectives can starve the AllReduce rendezvous and
     deadlock mid-training (and extra devices never speed up a core-bound run)."""
-    env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "9999"}
+    env = {
+        **os.environ,
+        "JAX_PLATFORMS": "cpu",
+        "BP_TRAIN_DEVICES": "9999",
+    }
     env.pop("XLA_FLAGS", None)
     proc = subprocess.run(
         [

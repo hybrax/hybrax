@@ -39,7 +39,7 @@ augmentation, checkpointing, LOO-CV, and stateful models.
 
 - Pseudo-batch integration.
 - Stateful models such as RNNs or LSTMs.
-- Full resumption (optimizer state + RNG) and warmstart from a prior run. Periodic parameter snapshots during training are supported: every `--log-every` steps, `bp-train train` writes `<output-dir>/checkpoints/step_NNNNN/{trained_wrapper.eqx, trained_wrapper.meta.json, loss_curve.png, predictions.csv}` plus a `latest` symlink. Checkpoint directories do not include per-process prediction plot PNGs. Loading a checkpoint as a warmstart init, and restoring optimizer state, are deferred.
+- Checkpoint-origin continuation and warmstart are deferred. Training writes self-contained periodic and mandatory final checkpoints, retains every `step_NNNNN` directory, and updates a `latest` symlink.
 - A fully general segmented runtime controls API.
 - Wrapper modes where the user partially handles dilution and the library
   handles the rest.
@@ -230,7 +230,7 @@ def build_reaction_module(
     ...
 
 
-def build_learning_rate(config, train_cfg):
+def build_learning_rate(config, train_cfg, total_updates):
     ...
 
 
@@ -907,110 +907,64 @@ For V1, prefer one stacked JAX array per payload kind plus lightweight
 per-process index metadata over Python containers of per-process arrays. This
 is the better default for both compile-time stability and runtime batching.
 
-### 16.4 Batched Train-Step Contract
+### 16.4 Epoch Train-Step Contract
 
-V1 training-harness batching semantics are:
+Training is configured by positive `epochs`. One epoch independently permutes
+selected process indices when `shuffle_batches=True`, preserves selected order
+otherwise, truncates the epoch to a whole number of batches, and presents every
+remaining process exactly once. `batch_size=None` means all selected processes;
+an explicit batch larger than the selected set is invalid.
 
-- `steps` means number of optimizer updates,
-- each update consumes exactly one full batch,
-- total sampled process indices per run is always `steps * batch_size`,
-- `batch_size=None` resolves at runtime to `len(selected_processes)`,
-- no `drop_last_batch` behavior in V1.
-- if `process_names=None`, selected processes are exactly `store.process_order`,
-- if `process_names` is provided, names must be unique and known in the store;
-  otherwise fail fast.
+`batches_per_epoch = len(selected_processes) // batch_size` and the run-local
+optimizer budget is `epochs * batches_per_epoch`. Optimizer update `step` remains
+a 1-based run-local counter for schedules, plots, and checkpoint names. The
+derived total update count is passed explicitly to learning-rate hooks before
+optimizer construction.
 
-Batch index-stream behavior:
+The same prepared artifact, selected process order, seeds, and effective config
+must produce the same per-epoch permutations. A stable full-batch shape and one
+train-step JIT signature are required throughout the run.
 
-- base mode is deterministic round-robin across selected processes,
-- `shuffle_batches=True` shuffles each round-robin cycle,
-- `batch_seed` controls all batch-index randomness.
+Optimization uses Optax (`adam` or `sgd`), positive learning rate, optional
+global gradient clipping, and mean batch loss. Custom loss hooks retain the
+same decomposition requirements as forward evaluation.
 
-Determinism contract:
+### 16.5 Epoch Config And Validation Contract
 
-- if `batch_seed is None`, batching randomness falls back to `seed`,
-- with same prepared artifact, selected process set/order, and effective config,
-  the index stream and update order must be identical.
+Canonical training fields are:
 
-Canonical index-stream algorithm:
-
-1. Build canonical selected index vector in selected process order.
-2. Repeatedly append one cycle until stream length >= `steps * batch_size`:
-   - if `shuffle_batches=False`, cycle = selected index vector as-is,
-   - if `shuffle_batches=True`, cycle = deterministic permutation of selected
-     index vector using the active RNG stream.
-3. Truncate stream to exactly `steps * batch_size`.
-4. Reshape to `[steps, batch_size]`.
-
-Optimization and loss behavior:
-
-- optimizer backend is Optax,
-- V1 exposes `optimizer_name in {"adam", "sgd"}` and `learning_rate`,
-- default optimizer is `adam`,
-- `learning_rate` must be strictly positive,
-- batch loss is mean of per-sample process losses in the current batch.
-- users may override training loss via
-  `custom.py::build_sample_loss_fn(...)` (preferred) or
-  `custom.py::build_batched_loss_fn(...)` (advanced),
-- if no custom loss hook is provided, runtime falls back to default measurement
-  loss,
-- forward loss reporting uses default/sample-loss objective contract and rejects
-  advanced batched hooks that are not guaranteed to decompose per process.
-
-Compile/shape stability behavior:
-
-- one batched train-step JIT boundary should be built per run under stable
-  config and shapes,
-- runtime should record the JIT input-signature summary in logs/results,
-- runtime should record how often the train-step function was rebuilt in Python
-  as a practical proxy for recompile risk.
-
-Logging behavior:
-
-- `log_every` controls step-based logging cadence,
-- per-process losses logged at each logging step are for sampled batch members
-  only.
-
-### 16.5 Batching Config And Validation Contract
-
-Canonical batching config for V1 training harness:
-
-- `steps: int` (optimizer updates),
+- `epochs: int = 5` (positive),
 - `batch_size: int | None = None`,
 - `shuffle_batches: bool = True`,
 - `batch_seed: int | None = None`,
-- `optimizer_name: str = "adam"` with allowed values `{"adam", "sgd"}`,
-- `learning_rate: float`.
+- `optimizer_name in {"adam", "sgd"}`,
+- positive `learning_rate`.
 
-Runtime resolution rules:
+Unknown, duplicate, or empty process selections fail. Nonpositive epochs or
+batch size, oversized batches, nonpositive learning rate, and unsupported
+optimizers fail explicitly.
 
-- effective `batch_size = len(selected_processes)` if config value is `None`,
-- effective RNG seed for batching = `batch_seed` when provided, else `seed`.
-
-Fail-fast runtime validation:
-
-- `steps <= 0` is invalid,
-- effective `batch_size <= 0` is invalid,
-- `learning_rate <= 0` is invalid,
-- unknown process names in `process_names` are invalid,
-- duplicate entries in explicit `process_names` are invalid,
-- empty selected process set is invalid,
-- unsupported `optimizer_name` is invalid.
-
-Validation errors should be explicit `ValueError` messages naming the offending
-field/condition.
+`checkpoint.every` is a finite nonnegative float measured in epochs. Periodic
+checkpoint ordinal `k` triggers after update
+`ceil(k * checkpoint.every * batches_per_epoch)`, with exact decimal intent and
+duplicate boundaries removed. Zero disables periodic writes only. Every
+artifact-producing run writes a mandatory final checkpoint; all checkpoint
+directories are retained and `checkpoints/latest` points to the last one.
 
 ### 16.6 Batch Telemetry Contract
 
-V1 batch-oriented training results/logs should include at minimum:
+Every optimizer update emits one console row and one persisted metrics row with:
 
-- batch mean loss by step,
-- sampled per-process losses at logging steps,
-- batch composition by step (process names or indices),
-- first compile/warmup time for the train-step JIT boundary,
-- per-step runtime timings,
-- JIT input-signature summary,
-- train-step rebuild count in Python (practical proxy for recompile risk).
+- 1-based run-local `step`, `epoch`, and `batch_in_epoch`,
+- derived `total_updates`,
+- cumulative exact `samples_seen`,
+- batch mean, per-target, and per-process losses,
+- batch composition, gradient norm, update duration, and rebuild count.
+
+Only each epoch's final batch row carries `epoch_mean_loss` and
+`epoch_time_seconds`; duration covers training batches only. LOO holdout loss is
+nullable and appears only on checkpoint rows. Holdout evaluation occurs whenever
+a checkpoint is written, including final, and is diagnostic only.
 
 ## 17. Metadata in `prepared.json`
 

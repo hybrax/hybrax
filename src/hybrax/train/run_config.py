@@ -63,7 +63,7 @@ class DataConfig(ConfigBase):
 
 
 class TrainConfig(ConfigBase):
-    steps: int = Field(50, gt=0)
+    epochs: int = Field(5, gt=0)
     seed: int = 0
     optimizer: Literal["adam", "sgd"] = "adam"
     learning_rate: float = Field(1e-3, gt=0)
@@ -83,8 +83,14 @@ class SolverConfig(ConfigBase):
 
 
 class CheckpointConfig(ConfigBase):
-    every: int = Field(100, ge=0)  # 0 disables; DISTINCT from logging.every
-    keep: Literal["best+latest", "all"] = "all"
+    every: float = Field(1.0, ge=0)
+
+    @field_validator("every")
+    @classmethod
+    def _validate_every(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("checkpoint.every must be finite")
+        return value
 
 
 class OutputConfig(ConfigBase):
@@ -93,11 +99,7 @@ class OutputConfig(ConfigBase):
 
 
 class LoggingConfig(ConfigBase):
-    every: int = Field(100, gt=0)
     decimals: int = Field(4, ge=0)
-    # Re-emit the console table header every N rows so the column labels (loss +
-    # per-target names) stay visible on a long scroll; 0 disables.
-    header_every: int = Field(10, ge=0)
 
 
 class AugmentationConfig(ConfigBase):
@@ -187,10 +189,6 @@ class LooConfig(ConfigBase):
     per_fold_holdout_sets: tuple[HoldoutSet, ...] | None = None
     parallel_folds: int = Field(1, gt=0)
     devices_per_fold: int | None = Field(None, gt=0)
-    # Cadence (in steps) for evaluating each fold's holdout loss. None -> the
-    # logging cadence (`logging.every`); set to 1 to evaluate it every step (one
-    # extra forward solve over the holdout per step — slower but a dense curve).
-    monitor_every: int | None = Field(None, gt=0)
 
     @field_validator("parallel_folds", "devices_per_fold", mode="before")
     @classmethod

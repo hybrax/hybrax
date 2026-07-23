@@ -53,16 +53,15 @@ Train one or more processes from a prepared artifact into a FAIR run directory.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--config` | — | Train run config JSON (required unless `--resume`). |
+| `--config` | — | Train run config JSON (required). |
 | `--output-dir` | config's `output.dir` | Override the run directory. |
-| `--resume` | — | Resume in place from an existing run dir (`checkpoints/latest`, appends to `metrics.csv`). |
 | `--overwrite` | off | Allow re-running into a completed run dir. |
-| `--steps` | config's `train.steps` | Override step count (with `--resume`, may extend the target). |
+| `--epochs` | config's `train.epochs` | Override the epoch count. |
 | `--plot` / `--no-plot` | `--plot` | Per-process result plots. |
 | `--log-level` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR`. |
 
-Logging cadence and console-table formatting are **config-only** (the `logging`
-section). `metrics.csv` is always written to the run dir.
+Console numeric formatting is config-only. `metrics.csv` records every optimizer
+update.
 
 ### `bp-train forward`
 
@@ -103,7 +102,7 @@ The `loo` config section:
 | `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
 | `parallel_folds` | How many folds to train concurrently (default `1`, sequential). Worker processes are not CPU-pinned; the OS scheduler owns core placement. You set concurrency from what your RAM holds — there is no automatic RAM sizing. |
 | `devices_per_fold` | Optional positive JAX CPU-device count per fold. Omitted (`null`) → `n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold cannot expose more host devices than its `pmap` batch without deadlocking). |
-| `monitor_every` | Cadence (in steps) for evaluating each fold's holdout (`test`) loss during that fold's training — a diagnostic, never an optimizer signal. `null` (default) → the `logging.every` cadence; `1` → every step (an extra holdout forward solve per step). |
+Each fold's holdout loss is evaluated whenever a checkpoint is written, including the mandatory final checkpoint.
 
 Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, `prepared.json`,
 `config.json`) + per-fold `folds/<slug>/` + top-level `loo_summary.csv` /
@@ -117,12 +116,12 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
 <output.dir>/
   config.json            # the resolved RunConfig (provenance)
   custom.py              # copied custom hooks (provenance)
-  metrics.csv            # per-step loss + grad-norm history
+  metrics.csv            # per-update loss, epoch, sample, and grad-norm history
   model/                 # final trained bundle
   checkpoints/
-    latest/  best/  step_00100/ …
+    latest/  step_00100/ …
         params.eqx          # trainable partition only
-        opt_state.eqx       # optimizer state (for resume)
+        opt_state.eqx       # optimizer state
         train_state.json    # step counter etc.
         config.json         # resolved config
         prepared.json.gz    # bundled data → self-contained
@@ -235,7 +234,7 @@ Construct the loss module. Default is `DefaultLossModule` (per-target MSE). See
 ### `build_learning_rate`
 
 ```python
-def build_learning_rate(custom_cfg, train_cfg) -> float | optax.Schedule
+def build_learning_rate(custom_cfg, train_cfg, total_updates) -> float | optax.Schedule
 ```
 Override the learning rate (e.g. a decay schedule). No default — `train.learning_rate`
 is used as-is.
@@ -270,13 +269,13 @@ directory.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `steps` | 50 (>0) | Optimizer steps. |
+| `epochs` | 5 (>0) | Full shuffled traversals of selected processes, dropping each epoch's incomplete final batch. |
 | `seed` | 0 | Init seed. |
 | `optimizer` | `adam` | `adam`/`sgd`. |
 | `learning_rate` | 1e-3 (>0) | Base LR. |
 | `grad_clip_norm` | 1000.0 (≥0) | `clip_by_global_norm` threshold. |
-| `batch_size` | null | Processes per step; null = all. |
-| `shuffle` | true | Shuffle batches. |
+| `batch_size` | null | Processes per update; null = all. Values larger than the selected process count are invalid. |
+| `shuffle` | true | Independently shuffle each epoch. |
 | `batch_seed` | null | Batch-index seed. |
 | `devices` | 1 | CPU devices to shard over; `"max"` = `min(n_proc, n_cpu)`. |
 | `allow_stateful_models` | false | Allow reaction modules with latent state (`n_latent > 0`); otherwise they fail fast. |
@@ -294,15 +293,12 @@ directory.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `every` | 100 (0 disables) | Snapshot cadence (distinct from `logging.every`). |
-| `keep` | `all` | `best+latest` (prune step dirs) or `all`. |
+| `every` | 1.0 (>=0) | Periodic checkpoint cadence in epochs. Fractional values are supported; 0 disables periodic writes, not the mandatory final checkpoint. |
 
 **`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
 `output`), `plots` (default true).
 
-**`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `every` (100, >0),
-`decimals` (4), `header_every` (10; re-emit the table header every N rows, 0
-disables).
+**`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `decimals` (4).
 
 **`prepare`** — [`PrepareConfig`](../bp_train/run_config.py)
 
@@ -350,10 +346,10 @@ From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config
 {
   "data":   { "prepared": "prepared", "target_source": "combined" },  // dir or prepared.json[.gz]
   "custom_py": "custom.py",          // build_reaction_module / estimate_all_scales / …
-  "train":  { "steps": 1000, "seed": 0, "devices": "max" },
-  "logging":{ "every": 100 },
+  "train":  { "epochs": 5, "seed": 0, "devices": "max" },
+  "logging":{ "decimals": 4 },
   "solver": { "max_steps": 4096, "rtol": 1e-5, "atol": 1e-7 },
-  "checkpoint": { "every": 100, "keep": "all" }
+  "checkpoint": { "every": 1.0 }
 }
 ```
 Run it with:

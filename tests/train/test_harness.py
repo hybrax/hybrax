@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import warnings
@@ -7,6 +8,7 @@ import warnings
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import pytest
 from bp_format.dataclasses import (
@@ -196,7 +198,7 @@ def test_train_collection_rejects_direct_stateful_without_opt_in():
             reaction_module=_StatefulHarnessModule(),
             loss_module=_biomass_loss(),
             collection=collection,
-            config=TrainHarnessConfig(steps=1),
+            config=TrainHarnessConfig(epochs=1),
         )
 
 
@@ -215,7 +217,7 @@ def test_train_collection_accepts_direct_stateful_with_opt_in():
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
-            steps=1,
+            epochs=1,
             batch_size=1,
             allow_stateful_models=True,
         ),
@@ -298,6 +300,53 @@ def _make_collection() -> BioProcessCollection:
         process_variables={},
     )
     return BioProcessCollection(processes={"p1": p1, "p2": p2}, metadata={})
+
+
+def _make_multi_process_collection(n: int) -> BioProcessCollection:
+    """``n`` processes sharing ``_make_collection``'s layout (single biomass
+    species, one sample event, no feeds/PVs) but with distinct biomass curves.
+    """
+    processes = {}
+    for i in range(1, n + 1):
+        name = f"p{i}"
+        base = 1.0 + 0.05 * i
+        processes[name] = BioProcess(
+            metadata=BioProcessMetadata(name=name, process_type="fed_batch"),
+            time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+            volume=Volume(
+                initial_volume=1.0,
+                unit="L",
+                volume_changes={
+                    "sample_1": SampleVolumeChange(
+                        name="sample_1",
+                        unit="L",
+                        is_controlled=False,
+                        is_continuous=False,
+                        values=TimeSeries(
+                            times=jnp.asarray([1.0]),
+                            values=jnp.asarray([-0.1]),
+                        ),
+                    )
+                },
+            ),
+            reactor_medium=ReactorMedium(
+                name="rm",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0, 2.0]),
+                            values=jnp.asarray([base, base * 0.8, base * 0.64]),
+                        ),
+                    ),
+                },
+            ),
+            process_variables={},
+        )
+    return BioProcessCollection(processes=processes, metadata={})
 
 
 def _make_feed_mismatch_collection() -> BioProcessCollection:
@@ -461,7 +510,7 @@ def test_train_collection_process_variable_target_uses_full_initial_state():
         reaction_module=module,
         loss_module=DefaultLossModule(target_names=["ratio"]),
         collection=collection,
-        config=TrainHarnessConfig(process_names=("p1",), steps=1, batch_size=1),
+        config=TrainHarnessConfig(process_names=("p1",), epochs=1, batch_size=1),
     )
 
     assert len(result.mean_loss_by_step) == 1
@@ -481,11 +530,10 @@ def test_train_collection_single_process_loss_decreases():
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
-            steps=8,
-            batch_size=2,
+            epochs=8,
+            batch_size=1,
             optimizer_name="adam",
             learning_rate=5e-2,
-            log_every=1,
         ),
     )
 
@@ -495,12 +543,7 @@ def test_train_collection_single_process_loss_decreases():
     assert len(result.step_time_seconds) == 8
     assert all(dt > 0.0 for dt in result.step_time_seconds)
     assert len(result.batch_process_names_by_step) == 8
-    assert all(names == ("p1", "p1") for names in result.batch_process_names_by_step)
-    assert set(result.sampled_loss_by_process_at_log_steps.keys()) == set(range(1, 9))
-    assert all(
-        len(sampled) == 2 and all(name == "p1" for name, _loss in sampled)
-        for sampled in result.sampled_loss_by_process_at_log_steps.values()
-    )
+    assert all(names == ("p1",) for names in result.batch_process_names_by_step)
     assert result.train_step_rebuild_count == 0
     assert len(result.train_step_input_signature) > 0
 
@@ -519,10 +562,9 @@ def test_train_collection_multi_process_tracks_per_process_histories():
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
-            steps=5,
+            epochs=5,
             optimizer_name="sgd",
             learning_rate=2e-2,
-            log_every=1,
         ),
     )
 
@@ -531,12 +573,70 @@ def test_train_collection_multi_process_tracks_per_process_histories():
     assert len(result.batch_process_names_by_step) == 5
     assert result.compile_warmup_seconds > 0.0
     assert len(result.step_time_seconds) == 5
-    assert set(result.sampled_loss_by_process_at_log_steps.keys()) == {1, 2, 3, 4, 5}
-    for step, sampled in result.sampled_loss_by_process_at_log_steps.items():
-        assert step >= 1
-        assert len(sampled) == 2
-        assert all(name in {"p1", "p2"} for name, _loss in sampled)
+    assert all(
+        set(names) == {"p1", "p2"} for names in result.batch_process_names_by_step
+    )
     assert result.train_step_rebuild_count == 0
+
+
+def test_train_collection_cycles_batches_across_multiple_batches_per_epoch():
+    """5 selected processes with batch_size=2 gives batches_per_epoch=2 (one
+    process dropped per epoch as the incomplete tail), exercising per-epoch
+    batch cycling that batches_per_epoch == 1 fixtures never touch.
+    """
+    n_selected = 5
+    batch_size = 2
+    epochs = 3
+    batches_per_epoch = n_selected // batch_size  # 2
+    total_updates = epochs * batches_per_epoch  # 6
+
+    collection = _make_multi_process_collection(n_selected)
+    process_names = tuple(f"p{i}" for i in range(1, n_selected + 1))
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(),
+        loss_module=_biomass_loss(),
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=process_names,
+            epochs=epochs,
+            batch_size=batch_size,
+            shuffle_batches=False,
+            optimizer_name="adam",
+            learning_rate=5e-2,
+        ),
+    )
+
+    assert total_updates == epochs * batches_per_epoch
+    assert result.updates_completed == total_updates
+    assert len(result.mean_loss_by_step) == total_updates
+    assert len(result.batch_process_names_by_step) == total_updates
+
+    # Every batch is full (batch_size processes); the dropped tail process
+    # never appears in any batch.
+    used_names = {
+        name
+        for batch in result.batch_process_names_by_step
+        for name in batch
+    }
+    assert all(len(batch) == batch_size for batch in result.batch_process_names_by_step)
+    assert used_names == set(process_names[: batches_per_epoch * batch_size])
+    assert process_names[-1] not in used_names
+
+    # With shuffling disabled, batch_in_epoch cycles 1..batches_per_epoch and
+    # the exact same batch grouping repeats identically every epoch.
+    per_epoch_batches = [
+        result.batch_process_names_by_step[
+            epoch * batches_per_epoch : (epoch + 1) * batches_per_epoch
+        ]
+        for epoch in range(epochs)
+    ]
+    assert all(batches == per_epoch_batches[0] for batches in per_epoch_batches)
 
 
 def test_train_collection_with_different_cin_per_process():
@@ -556,11 +656,10 @@ def test_train_collection_with_different_cin_per_process():
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
-            steps=4,
+            epochs=4,
             batch_size=2,
             optimizer_name="adam",
             learning_rate=2e-2,
-            log_every=2,
         ),
     )
 
@@ -580,7 +679,7 @@ def test_train_collection_rejects_unknown_process_selection():
             store,
             reaction_module=_LinearReactionModule(),
             collection=collection,
-            config=TrainHarnessConfig(process_names=("unknown",), steps=2),
+            config=TrainHarnessConfig(process_names=("unknown",), epochs=2),
         )
 
 
@@ -598,7 +697,7 @@ def test_train_collection_rejects_nonpositive_solver_max_steps():
             collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
-                steps=2,
+                epochs=2,
                 solver_max_steps=0,
             ),
         )
@@ -618,7 +717,7 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
             collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
-                steps=2,
+                epochs=2,
                 solver_rtol=0.0,
             ),
         )
@@ -629,7 +728,7 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
             collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
-                steps=2,
+                epochs=2,
                 solver_atol=0.0,
             ),
         )
@@ -649,7 +748,7 @@ def test_train_collection_rejects_unsupported_optimizer_name():
             collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
-                steps=2,
+                epochs=2,
                 optimizer_name="rmsprop",
             ),
         )
@@ -670,62 +769,62 @@ def test_harness_process_name_validation_rejects_duplicates_and_empty():
 
 def test_harness_phase1_batching_validation_checks_basics():
     cfg = TrainHarnessConfig(
-        steps=3,
+        epochs=3,
         batch_size=None,
         optimizer_name="adam",
         learning_rate=1e-3,
     )
     assert _validate_batching_config(cfg, selected_process_count=2) == 2
 
-    with pytest.raises(ValueError, match="steps"):
+    with pytest.raises(ValueError, match="epochs"):
         _validate_batching_config(
-            TrainHarnessConfig(steps=0),
+            TrainHarnessConfig(epochs=0),
             selected_process_count=2,
         )
     with pytest.raises(ValueError, match="learning_rate"):
         _validate_batching_config(
-            TrainHarnessConfig(steps=1, learning_rate=0.0),
+            TrainHarnessConfig(epochs=1, learning_rate=0.0),
             selected_process_count=2,
         )
-    with pytest.raises(ValueError, match="log_every"):
+    with pytest.raises(ValueError, match="cannot exceed"):
         _validate_batching_config(
-            TrainHarnessConfig(steps=1, log_every=0),
+            TrainHarnessConfig(epochs=1, batch_size=3),
             selected_process_count=2,
         )
     with pytest.raises(ValueError, match="optimizer_name"):
         _validate_batching_config(
-            TrainHarnessConfig(steps=1, learning_rate=1e-3, optimizer_name="rmsprop"),
+            TrainHarnessConfig(epochs=1, learning_rate=1e-3, optimizer_name="rmsprop"),
             selected_process_count=2,
         )
     with pytest.raises(ValueError, match="effective batch_size"):
         _validate_batching_config(
-            TrainHarnessConfig(steps=1, batch_size=0),
+            TrainHarnessConfig(epochs=1, batch_size=0),
             selected_process_count=2,
         )
     with pytest.raises(ValueError, match="effective batch_size"):
         _validate_batching_config(
-            TrainHarnessConfig(steps=1, batch_size=-1),
+            TrainHarnessConfig(epochs=1, batch_size=-1),
             selected_process_count=2,
         )
 
 
-def test_harness_batch_stream_round_robin_without_shuffle():
+def test_harness_batch_stream_preserves_order_and_drops_each_epoch_tail():
     stream = _build_batch_index_stream(
-        selected_process_indices=jnp.asarray([5, 7], dtype=jnp.int32),
-        steps=3,
-        batch_size=3,
+        selected_process_indices=jnp.asarray([5, 7, 9, 11, 13], dtype=jnp.int32),
+        epochs=2,
+        batch_size=2,
         shuffle_batches=False,
         batch_seed=None,
         seed=123,
     )
-    assert tuple(stream.shape) == (3, 3)
-    assert stream.tolist() == [[5, 7, 5], [7, 5, 7], [5, 7, 5]]
+    assert tuple(stream.shape) == (4, 2)
+    assert stream.tolist() == [[5, 7], [9, 11], [5, 7], [9, 11]]
 
 
 def test_harness_batch_stream_shuffle_is_deterministic_and_seeded():
     kwargs = dict(
         selected_process_indices=jnp.asarray([0, 1, 2], dtype=jnp.int32),
-        steps=4,
+        epochs=4,
         batch_size=2,
         shuffle_batches=True,
     )
@@ -734,12 +833,14 @@ def test_harness_batch_stream_shuffle_is_deterministic_and_seeded():
     s3 = _build_batch_index_stream(batch_seed=1000, seed=123, **kwargs)
     assert s1.tolist() == s2.tolist()
     assert s1.tolist() != s3.tolist()
+    for epoch in np.asarray(s1).reshape(4, -1):
+        assert len(set(epoch.tolist())) == 2
 
 
 def test_harness_batch_stream_falls_back_to_seed_when_batch_seed_none():
     kwargs = dict(
         selected_process_indices=jnp.asarray([0, 1, 2], dtype=jnp.int32),
-        steps=3,
+        epochs=3,
         batch_size=3,
         shuffle_batches=True,
         batch_seed=None,
@@ -768,17 +869,16 @@ def test_train_collection_signature_is_stable_and_no_rebuilds():
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
-            steps=4,
+            epochs=4,
             batch_size=2,
             optimizer_name="adam",
             learning_rate=2e-2,
-            log_every=2,
         ),
     )
 
     assert len(result.train_step_input_signature) > 0
     assert result.train_step_rebuild_count == 0
-    assert set(result.sampled_loss_by_process_at_log_steps.keys()) == {2, 4}
+    assert result.updates_completed == 4
 
 
 def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
@@ -795,15 +895,14 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
         collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
-            steps=4,
+            epochs=4,
             batch_size=2,
             optimizer_name="adam",
             learning_rate=2e-2,
-            log_every=2,
         ),
     )
 
-    # The new tabular layout emits one row per step in the form
+    # The tabular layout emits one row per update.
     # " HH:MM:SS | <step> | <loss> | <tgt> | <dt> ", surrounded by an
     # initial header (column-name row + separator row) that re-prints every
     # `header_every` steps. Filter to data rows by matching the leading
@@ -813,13 +912,41 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
         record.message for record in caplog.records if row_re.match(record.message)
     ]
     assert len(step_rows) == 4
-    # Per-process indented line is emitted only at log_every cadence.
     sampled_logs = [
         record.message for record in caplog.records if "per-process:" in record.message
     ]
-    assert len(sampled_logs) == 2
-    # Sampled-loss history dict still tracks the same log-step keys.
-    # (Verified above by the previous test; here we only re-check the count.)
+    assert sampled_logs == []
+
+
+def test_holdout_runs_once_at_periodic_final_collision(tmp_path):
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(),
+        loss_module=_biomass_loss(),
+        collection=collection,
+        config=TrainHarnessConfig(
+            process_names=("p1",),
+            holdout_processes=("p2",),
+            epochs=2,
+            batch_size=1,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=2.0,
+            plots=False,
+        ),
+    )
+
+    assert set(result.holdout_loss_by_step) == {2}
+    assert [p.name for p in (tmp_path / "checkpoints").glob("step_*")] == ["step_00002"]
+    state = json.loads(
+        (tmp_path / "checkpoints" / "latest" / "train_state.json").read_text()
+    )
+    assert state["holdout_loss"] == pytest.approx(result.holdout_loss_by_step[2])
 
 
 def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, caplog):
@@ -857,7 +984,7 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
     with pytest.warns(UserWarning, match="No training targets specified"):
         result = train_from_collection(
             collection,
-            config=TrainHarnessConfig(target_variable_order=None, steps=1),
+            config=TrainHarnessConfig(target_variable_order=None, epochs=1),
             custom_py=None,
             runtime_config=None,
         )
@@ -909,7 +1036,7 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         warnings.simplefilter("always")
         result = train_from_collection(
             collection,
-            config=TrainHarnessConfig(target_variable_order=None, steps=1),
+            config=TrainHarnessConfig(target_variable_order=None, epochs=1),
             custom_py="custom.py",
             runtime_config=None,
         )
@@ -974,13 +1101,41 @@ def test_train_from_collection_wires_build_optimizer_hook(monkeypatch):
 
     result = train_from_collection(
         collection,
-        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+        config=TrainHarnessConfig(target_variable_order=("biomass",), epochs=1),
         custom_py="custom.py",
         runtime_config=None,
     )
 
     assert result == "train-result"
     assert captured["optimizer"] is sentinel
+
+
+def test_learning_rate_hook_receives_derived_update_budget(monkeypatch):
+    collection = _make_collection()
+    captured: dict[str, object] = {}
+    seen: dict[str, int] = {}
+
+    class _CustomModule:
+        @staticmethod
+        def build_learning_rate(config, train_cfg, total_updates):
+            del config, train_cfg
+            seen["total_updates"] = total_updates
+            return 1e-3
+
+    _patch_train_from_collection_deps(monkeypatch, _CustomModule(), captured)
+    monkeypatch.setattr(
+        "bp_train.harness._ensure_process_names", lambda _store, _names: ("p1", "p2")
+    )
+
+    train_from_collection(
+        collection,
+        config=TrainHarnessConfig(
+            target_variable_order=("biomass",), epochs=3, batch_size=1
+        ),
+        custom_py="custom.py",
+    )
+
+    assert seen["total_updates"] == 6
 
 
 def test_train_from_collection_uses_default_optimizer_when_no_hook(monkeypatch):
@@ -994,7 +1149,7 @@ def test_train_from_collection_uses_default_optimizer_when_no_hook(monkeypatch):
 
     result = train_from_collection(
         collection,
-        config=TrainHarnessConfig(target_variable_order=("biomass",), steps=1),
+        config=TrainHarnessConfig(target_variable_order=("biomass",), epochs=1),
         custom_py="custom.py",
         runtime_config=None,
     )
@@ -1029,7 +1184,7 @@ def test_build_loss_module_discovers_custom_hook():
 
     module = _build_loss_module(
         store=store,
-        config=TrainHarnessConfig(steps=1),
+        config=TrainHarnessConfig(epochs=1),
         custom_module=_CustomModule(),
         custom_config={},
         collection=collection,
@@ -1049,7 +1204,7 @@ def test_build_loss_module_defaults_when_no_hook():
     )
     module = _build_loss_module(
         store=store,
-        config=TrainHarnessConfig(steps=1),
+        config=TrainHarnessConfig(epochs=1),
         custom_module=None,
         custom_config={},
         collection=collection,

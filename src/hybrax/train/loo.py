@@ -25,6 +25,7 @@ import dataclasses
 import json
 import logging
 import os
+import shutil
 import statistics
 import subprocess
 import sys
@@ -38,6 +39,7 @@ from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
 from .harness import train_from_collection, train_harness_config_from_run_config
 from .run_config import LooConfig, RunConfig
+from .serialization import run_config_to_jsonable, write_json
 
 logger = logging.getLogger(__name__)
 
@@ -433,18 +435,28 @@ def _execute_fold(
     fold_seed = base_seed + fold.idx
     fold_dir = Path(output_dir) / "folds" / fold.slug
     fold_dir.mkdir(parents=True, exist_ok=True)
+    fold_custom = None
+    if custom_py is not None:
+        fold_custom = fold_dir / "custom.py"
+        shutil.copyfile(custom_py, fold_custom)
+    effective_cfg = cfg.model_copy(
+        update={
+            "data": cfg.data.model_copy(update={"processes": fold.train}),
+            "train": cfg.train.model_copy(update={"seed": fold_seed}),
+            "output": cfg.output.model_copy(update={"dir": fold_dir.resolve()}),
+            "custom_py": fold_custom,
+        }
+    )
+    write_json(
+        fold_dir / "config.json",
+        {"status": "running", "config": run_config_to_jsonable(effective_cfg)},
+    )
 
-    harness_cfg = train_harness_config_from_run_config(cfg, run_dir=fold_dir)
+    harness_cfg = train_harness_config_from_run_config(effective_cfg, run_dir=fold_dir)
     harness_cfg = dataclasses.replace(
         harness_cfg,
-        process_names=fold.train,
-        seed=fold_seed,
-        # Monitor loss = the held-out TEST set only (never the full
-        # not-in-train set). Diagnostic — never drives optimizer updates.
-        # Evaluated at `loo.monitor_every` cadence (None -> the logging cadence).
-        monitor_processes=fold.test,
-        monitor_label="holdout",
-        monitor_every=cfg.loo.monitor_every if cfg.loo is not None else None,
+        holdout_processes=fold.test,
+        holdout_label="holdout",
     )
 
     logger.info(
@@ -460,18 +472,13 @@ def _execute_fold(
         collection,
         config=harness_cfg,
         custom_module=custom_module,
-        run_config=cfg,
+        run_config=effective_cfg,
     )
 
     save_model(train_result.trained_wrapper, fold_dir / "trained_wrapper.eqx")
 
     last_loss = float(train_result.mean_loss_by_step[-1])
-    sidecar_dir = fold_dir.resolve()
-    custom_py_rel = (
-        os.path.relpath(Path(custom_py).resolve(), sidecar_dir)
-        if custom_py is not None
-        else None
-    )
+    custom_py_rel = "custom.py" if fold_custom is not None else None
     meta = {
         "custom_py": custom_py_rel,
         "test": list(fold.test),
@@ -491,7 +498,7 @@ def _execute_fold(
             "use_jump_ts": bool(harness_cfg.solver_use_jump_ts),
         },
         "training": {
-            "steps": int(harness_cfg.steps),
+            "epochs": int(harness_cfg.epochs),
             "batch_size": harness_cfg.batch_size,
             "seed": fold_seed,
             "final_mean_loss": last_loss,
@@ -517,7 +524,7 @@ def _execute_fold(
         training_process_names=fold.train,
         render_plots=cfg.output.plots,
         eval_process_names=eval_processes,
-        run_config=cfg,
+        run_config=effective_cfg,
         custom_module=custom_module,
     )
 
@@ -705,10 +712,10 @@ def _read_final_train_loss(fold_dir: Path) -> float:
 def _read_fold_loss_history(
     fold_dir: Path,
 ) -> tuple[list[float], list[float], list[float], list[float]]:
-    """Read per-step train and monitor loss from a fold's ``metrics.csv``.
+    """Read per-step train and holdout loss from a fold's ``metrics.csv``.
 
-    Returns `(train_steps, train_loss, monitor_steps, monitor_loss)`. The
-    monitor (holdout) series is sparse -- only steps where it was evaluated are
+    Returns `(train_steps, train_loss, holdout_steps, holdout_loss)`. The
+    holdout series is sparse -- only checkpoint steps are
     kept. Missing/unreadable files yield empty lists.
     """
     try:
@@ -716,18 +723,18 @@ def _read_fold_loss_history(
         tr = df[["step", "mean_loss"]].dropna()
         train_steps = tr["step"].tolist()
         train_loss = tr["mean_loss"].tolist()
-        if "monitor_loss" in df.columns:
-            mon = df[["step", "monitor_loss"]].dropna()
-            monitor_steps = mon["step"].tolist()
-            monitor_loss = mon["monitor_loss"].tolist()
+        if "holdout_loss" in df.columns:
+            holdout = df[["step", "holdout_loss"]].dropna()
+            holdout_steps = holdout["step"].tolist()
+            holdout_loss = holdout["holdout_loss"].tolist()
         else:
-            monitor_steps, monitor_loss = [], []
+            holdout_steps, holdout_loss = [], []
     except (OSError, KeyError, ValueError, pd.errors.EmptyDataError) as exc:
         # An optional end-of-run plot must never sink a completed LOO run, so a
         # missing or malformed metrics.csv just drops that fold from the figure.
         logger.warning("skipping loss history for %s: %s", fold_dir, exc)
         return [], [], [], []
-    return train_steps, train_loss, monitor_steps, monitor_loss
+    return train_steps, train_loss, holdout_steps, holdout_loss
 
 
 def _plot_cross_fold_losses(*, folds: tuple[Fold, ...], output_dir: Path) -> None:

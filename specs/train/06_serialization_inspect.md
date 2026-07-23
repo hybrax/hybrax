@@ -36,18 +36,18 @@ load_opt_state(path, *, template) -> opt_state
 `template` (eqx raises on a pytree mismatch) — the template comes from
 rebuilding the static half.
 
-### Reconstruction & resumption
+### Reconstruction
 
 ```python
-load_run(run_dir, *, checkpoint="best", load_opt_state=False) -> LoadedRun
+load_run(run_dir, *, checkpoint="latest", load_opt_state=False) -> LoadedRun
 load_params(run_dir, *, into, checkpoint="latest") -> wrapper
 reconstruct_run(run_dir, config, document=None) -> (reaction_module, loss_module, store, collection)
 ```
 
 - `load_run` reconstructs a trained model from a run directory **alone** — the
-  one call notebooks/forward/resume use. `checkpoint` is `"best"` | `"latest"` |
-  `"step_00300"` (under `checkpoints/`) or `"final"` (the run-root `model/`
-  copy). Returns a [`LoadedRun`](../bp_train/serialization.py):
+  one call notebooks and forward evaluation use. `checkpoint` is `"latest"` or
+  a `"step_00300"` directory under `checkpoints/`. Returns a
+  [`LoadedRun`](../bp_train/serialization.py):
 
   | Field | Meaning |
   |---|---|

@@ -41,16 +41,16 @@ train_from_prepared_json(prepared_json, *, config=None, custom_py=None,
 ```
 
 `config` is a [`TrainHarnessConfig`](../bp_train/harness.py) — the flat,
-harness-level mirror of the config sections (steps, batch, optimizer, solver
-tolerances, checkpoint cadence/retention, logging cadence, monitor processes).
+harness-level mirror of the config sections (epochs, batch, optimizer, solver
+tolerances, checkpoint cadence, logging format, and optional holdout processes).
 Build it from a `RunConfig` with `train_harness_config_from_run_config(...)`, or
 let the CLI do it. The CLI path (`bp-train train --config …`) is the normal way
 in.
 
 ### What the loop does
 
-- **Batching:** `batch_size` processes per step (default all), shuffled when
-  `shuffle_batches` is set; ragged samples are padded per batch and masked.
+- **Batching:** each epoch independently shuffles the selected processes, drops
+  its incomplete final batch, and trains every full `batch_size` batch once.
 - **Optimizer:** `adam`/`sgd` + `clip_by_global_norm(grad_clip_norm)`, built by
   `build_optimizer_for_run`. Override the LR with
   [`build_learning_rate`](02_cli_and_config.md#build_learning_rate) or the whole
@@ -58,32 +58,22 @@ in.
 - **Gradient clipping** is applied to the **raw** gradient before Adam — this is
   why the loss is mean-aggregated (see
   [01_design_rationale.md](01_design_rationale.md#6-mean-loss-aggregation)).
-- **Checkpointing** ([`checkpointing.py`](../bp_train/checkpointing.py)): every
-  `checkpoint_every` steps writes a self-contained checkpoint dir; retention is
-  `best+latest` (prune step dirs) or `all`. Plots render on a background worker
-  so they don't block training.
-- **Logging** ([`logging.py`](../bp_train/logging.py), `RunLogger`): a per-step
-  console table (header re-emitted every `header_every` rows) plus `metrics.csv`
-  in the run dir; an optional `metrics_jsonl`. Each named loss term is its own
-  column (see [04_reaction_and_loss.md](04_reaction_and_loss.md#where-terms-show-up)).
-- **Monitor set (optional):** `monitor_processes` are evaluated every
-  `log_every` steps as a diagnostic validation loss — never drives updates.
+- **Checkpointing** ([`checkpointing.py`](../bp_train/checkpointing.py)):
+  `checkpoint_every` is measured in epochs and may be fractional. All periodic
+  checkpoints are retained, and a final checkpoint is mandatory. Plots render
+  on a background worker.
+- **Logging** ([`logging.py`](../bp_train/logging.py), `RunLogger`): every update
+  writes a console row and `metrics.csv` row with epoch, batch, and sample
+  counters. Epoch mean loss and training-only duration appear on epoch-end rows.
+- **Holdout set (LOO only):** evaluated whenever a checkpoint is written. It is
+  diagnostic and never drives optimizer updates.
 
 ### Result
 
 [`TrainHarnessResult`](../bp_train/harness.py) carries the `trained_wrapper`,
 `mean_loss_by_step`, per-process / per-target loss series, the batch composition
-per step, and timing (`compile_warmup_seconds`, `step_time_seconds`).
-
-### Resuming
-
-```bash
-bp-train train --resume output --steps 2000
-```
-`resume_run` reloads `checkpoints/latest` (params + `opt_state.eqx` +
-`train_state.json`), appends to `metrics.csv`, and continues; `--steps` may
-extend the original target. The optimizer is rebuilt structurally identically via
-the shared `build_optimizer_for_run` so the loaded `opt_state` matches.
+per update, `updates_completed`, and timing (`compile_warmup_seconds`,
+`step_time_seconds`).
 
 ## Forward evaluation
 
@@ -127,9 +117,8 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
     {"name": "high feed",  "test": ["proc_1", "proc_1b"]},
     {"name": "no feed",    "test": ["proc_2", "proc_3"], "train": ["proc_4"]}
   ],
-  "parallel_folds": 4,     // how many folds to train at once (you own the RAM call)
-  "devices_per_fold": null, // null derives a per-fold CPU-device count
-  "monitor_every": 50      // trace each fold's holdout (test) loss every N steps
+  "parallel_folds": 4,      // how many folds to train at once (you own the RAM call)
+  "devices_per_fold": null  // null derives a per-fold CPU-device count
 }
 ```
 
@@ -154,11 +143,9 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
   override that derived count. Worker processes are not CPU-pinned; the OS
   scheduler owns core placement. There is deliberately **no automatic RAM
   sizing**.
-- **Holdout monitoring** (`loo.monitor_every`): each fold automatically uses its
-  `test` set as a diagnostic monitor (`monitor_label="holdout"`), evaluated every
-  `monitor_every` steps during that fold's training (`null` → the `logging.every`
-  cadence). It never drives the optimizer — it just traces the holdout loss while
-  the fold trains.
+- **Holdout evaluation:** each fold uses its `test` set as a diagnostic holdout,
+  evaluated at every periodic checkpoint and at the mandatory final checkpoint.
+  It never drives the optimizer.
 - **Self-contained run dir**: the orchestrator writes true copies of `custom.py`
   and the prepared artifact into `<output_dir>/` plus a loadable
   `loo-config.json` with paths relative to the run dir. Every worker (and

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import equinox as eqx
@@ -38,7 +39,9 @@ from bp_train.training_data import TrainingDataStore
 from test_checkpointing import _LinearReactionModule
 
 
-def _collection(biomass_values=(1.0, 0.8, 0.64)) -> BioProcessCollection:
+def _collection(
+    biomass_values=(1.0, 0.8, 0.64), *, n_processes: int = 1
+) -> BioProcessCollection:
     p1 = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
         time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
@@ -75,7 +78,11 @@ def _collection(biomass_values=(1.0, 0.8, 0.64)) -> BioProcessCollection:
         ),
         process_variables={},
     )
-    return BioProcessCollection(processes={"p1": p1}, metadata={})
+    processes = {
+        f"p{i}": replace(p1, metadata=replace(p1.metadata, name=f"p{i}"))
+        for i in range(1, n_processes + 1)
+    }
+    return BioProcessCollection(processes=processes, metadata={})
 
 
 def _build_wrapper(collection: BioProcessCollection):
@@ -143,16 +150,26 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
 def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
     monkeypatch, tmp_path: Path
 ):
-    collection = _collection()
+    collection = _collection(n_processes=4)
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
     wrapper = _build_wrapper(collection)
+    # Four selected processes with batch_size=2 give batches_per_epoch=2, so
+    # total_updates (= epochs * batches_per_epoch = 5 * 2 = 10) differs from
+    # the raw epochs (5). This lets the test catch a regression that passes
+    # raw epochs instead of the derived total_updates through to optimizer/LR
+    # reconstruction, which the previous single-process fixture could not
+    # (there batches_per_epoch was 1, so total_updates == epochs == 5).
     config = RunConfig(
-        data=DataConfig(prepared=tmp_path / "prepared.json", targets=("biomass",)),
-        train=TrainConfig(allow_stateful_models=True),
+        data=DataConfig(
+            prepared=tmp_path / "prepared.json",
+            targets=("biomass",),
+            processes=("p1", "p2", "p3", "p4"),
+        ),
+        train=TrainConfig(allow_stateful_models=True, batch_size=2),
     )
     seen = {}
 
@@ -179,9 +196,12 @@ def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
         serialization, "load_opt_state", lambda *_args, **_kwargs: "opt-state"
     )
 
-    def fake_build_optimizer_for_run(*, custom_module, custom_cfg, train_cfg):
+    def fake_build_optimizer_for_run(
+        *, custom_module, custom_cfg, train_cfg, total_updates
+    ):
         del custom_module, custom_cfg
         seen["allow_stateful_models"] = train_cfg.allow_stateful_models
+        seen["total_updates"] = total_updates
         return optax.sgd(0.1), train_cfg
 
     monkeypatch.setattr(
@@ -190,7 +210,11 @@ def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
 
     loaded = serialization.load_run(tmp_path, load_opt_state=True)
 
-    assert seen["allow_stateful_models"] is True
+    # 4 selected processes // batch_size=2 => batches_per_epoch=2; derived
+    # total_updates = epochs * batches_per_epoch = 5 * 2 = 10, distinct from
+    # raw epochs (5). Pinning 10 here fails if the code regresses to passing
+    # raw epochs.
+    assert seen == {"allow_stateful_models": True, "total_updates": 10}
     assert loaded.opt_state == "opt-state"
 
 

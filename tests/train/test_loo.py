@@ -126,7 +126,7 @@ def _augmented_collection() -> BioProcessCollection:
 def _run_config(seed: int = 10) -> RunConfig:
     return RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        train=TrainConfig(steps=2, seed=seed),
+        train=TrainConfig(epochs=2, seed=seed),
     )
 
 
@@ -403,7 +403,6 @@ def _stub_train_result() -> TrainHarnessResult:
     return TrainHarnessResult(
         trained_wrapper=object(),
         mean_loss_by_step=(1.0, 0.5),
-        sampled_loss_by_process_at_log_steps={},
         batch_process_names_by_step=(),
         per_process_loss_by_step=(),
         compile_warmup_seconds=0.0,
@@ -419,8 +418,8 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
     def fake_train(coll, *, config, custom_module, run_config):
         captured["process_names"] = config.process_names
         captured["seed"] = config.seed
-        captured["monitor"] = config.monitor_processes
-        captured["monitor_every"] = config.monitor_every
+        captured["holdout"] = config.holdout_processes
+        captured["run_config"] = run_config
         return _stub_train_result()
 
     def fake_write(
@@ -449,6 +448,8 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     collection = _three_parent_collection()
     captured = _patch_worker_internals(monkeypatch)
     cfg = _run_config(seed=10)
+    custom_py = tmp_path / "shared-custom.py"
+    custom_py.write_text("VALUE = 1\n")
 
     result = run_single_fold(
         collection,
@@ -456,14 +457,24 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
         custom_module=None,
         output_dir=tmp_path,
         fold_idx=1,
+        custom_py=custom_py,
     )
 
     assert isinstance(result, FoldResult)
     assert result.fold.test == ("p2",)
     assert captured["process_names"] == ("p1", "p3")
-    assert captured["monitor"] == ("p2",)
+    assert captured["holdout"] == ("p2",)
     assert result.fold_seed == 10 + 1  # base seed + fold idx
     assert result.fold_dir == tmp_path / "folds" / "p2"
+    effective = captured["run_config"]
+    assert effective.data.processes == ("p1", "p3")
+    assert effective.train.seed == 11
+    assert effective.output.dir == result.fold_dir.resolve()
+    bundled = json.loads((result.fold_dir / "config.json").read_text())["config"]
+    assert bundled["data"]["processes"] == ["p1", "p3"]
+    assert bundled["train"]["seed"] == 11
+    assert bundled["custom_py"] == str(result.fold_dir / "custom.py")
+    assert (result.fold_dir / "custom.py").read_text() == "VALUE = 1\n"
 
 
 def test_holdout_is_test_set_only_not_all_nontrain(monkeypatch, tmp_path):
@@ -482,10 +493,9 @@ def test_holdout_is_test_set_only_not_all_nontrain(monkeypatch, tmp_path):
     captured = _patch_worker_internals(monkeypatch)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        train=TrainConfig(steps=2, seed=0),
+        train=TrainConfig(epochs=2, seed=0),
         loo=LooConfig(
             per_fold_holdout_sets=(HoldoutSet(test=("p2",), train=("p1",)),),
-            monitor_every=1,
         ),
     )
 
@@ -496,9 +506,8 @@ def test_holdout_is_test_set_only_not_all_nontrain(monkeypatch, tmp_path):
     assert result.fold.train == ("p1",)
     assert result.fold.test == ("p2",)
     assert captured["training_process_names"] == ("p1",)
-    assert captured["monitor"] == ("p2",)  # holdout loss = TEST set only
+    assert captured["holdout"] == ("p2",)  # holdout loss = TEST set only
     assert set(captured["eval_process_names"]) == {"p1", "p2"}  # p3/p4 excluded
-    assert captured["monitor_every"] == 1  # loo.monitor_every wired through
 
 
 def test_run_single_fold_out_of_range(monkeypatch, tmp_path):
@@ -539,7 +548,7 @@ def test_run_loo_cv_runs_all_folds_and_aggregates(monkeypatch, tmp_path):
     seen = _patch_dispatch(monkeypatch)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        train=TrainConfig(steps=2, seed=10),
+        train=TrainConfig(epochs=2, seed=10),
         loo=LooConfig(parallel_folds=2),
     )
 
@@ -564,7 +573,7 @@ def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     seen = _patch_dispatch(monkeypatch)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        train=TrainConfig(steps=2, seed=10),
+        train=TrainConfig(epochs=2, seed=10),
         loo=LooConfig(parallel_folds=2, devices_per_fold=2),
     )
 
@@ -587,7 +596,7 @@ def test_run_loo_cv_resume_skips_completed_folds(monkeypatch, tmp_path):
     _write_stub_fold(tmp_path, folds[0])  # pretend fold "p1" already finished
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        train=TrainConfig(steps=2, seed=10),
+        train=TrainConfig(epochs=2, seed=10),
         loo=LooConfig(parallel_folds=1),
     )
 
@@ -646,7 +655,7 @@ def _write_min_config(path: Path) -> None:
         json.dumps(
             {
                 "data": {"prepared": "prepared.json"},
-                "train": {"steps": 2, "seed": 7},
+                "train": {"epochs": 2, "seed": 7},
                 "loo": {"parallel_folds": 1},
             }
         )
@@ -689,6 +698,10 @@ def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
     _write_min_config(cfg_path)
     (tmp_path / "prepared.json").write_text("{}")  # real file -> bundle copies it
     out_dir = tmp_path / "out"
+    stale_fold = out_dir / "folds" / "old-fold"
+    stale_fold.mkdir(parents=True)
+    (stale_fold / "checkpoint.eqx").write_text("stale", encoding="utf-8")
+    (out_dir / "obsolete.txt").write_text("old run", encoding="utf-8")
 
     monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
     monkeypatch.setattr(cli, "content_hash", lambda _c: "sha256:stub")
@@ -708,8 +721,19 @@ def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli, "run_loo_cv", fake_cv)
 
-    rc = cli.main(["loo", "--config", str(cfg_path), "--output-dir", str(out_dir)])
+    rc = cli.main(
+        [
+            "loo",
+            "--config",
+            str(cfg_path),
+            "--output-dir",
+            str(out_dir),
+            "--overwrite",
+        ]
+    )
     assert rc == 0
+    assert not (out_dir / "obsolete.txt").exists()
+    assert not stale_fold.exists()
     # Workers are pointed at the bundled, self-contained config — not the source.
     assert captured["config_path"] == out_dir / "loo-config.json"
     assert captured["resume"] is False
@@ -732,7 +756,7 @@ def test_loo_cli_resume_reloads_bundle(monkeypatch, tmp_path):
         json.dumps(
             {
                 "data": {"prepared": "prepared.json"},
-                "train": {"steps": 2, "seed": 7},
+                "train": {"epochs": 2, "seed": 7},
                 "output": {"dir": "."},
                 "loo": {"parallel_folds": 1},
             }

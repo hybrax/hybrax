@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import sys
 import os
 import time
@@ -8,6 +9,7 @@ import warnings
 from collections import Counter
 import dataclasses
 from dataclasses import dataclass
+from fractions import Fraction
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -23,7 +25,7 @@ from bp_format.inspect import print_rhs_ode
 from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection
 
-from .checkpointing import CheckpointConfig, CheckpointWriter
+from .checkpointing import CheckpointWriter
 from .plotting_worker import BackgroundPlotter
 from .defaults import (
     DefaultLossModule,
@@ -150,7 +152,7 @@ class TrainHarnessConfig:
     process_names: tuple[str, ...] | None = None
     target_variable_order: tuple[str, ...] | None = None
     target_source: str = TARGET_SOURCE_AUTO
-    steps: int = 50
+    epochs: int = 5
     batch_size: int | None = None
     shuffle_batches: bool = True
     batch_seed: int | None = None
@@ -158,7 +160,6 @@ class TrainHarnessConfig:
     learning_rate: Any = 1e-3
     grad_clip_norm: float = 1000.0
     seed: int = 0
-    log_every: int = 10
     solver_max_steps: int = 2048
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
@@ -169,27 +170,18 @@ class TrainHarnessConfig:
     metrics_csv: str | None = None
     metrics_jsonl: str | None = None
     log_decimals: int = 4
-    log_header_every: int = 10
-    # Checkpointing. ``checkpoint_dir`` is the ``checkpoints/`` directory;
-    # ``checkpoint_every`` is the snapshot cadence (distinct from ``log_every``);
-    # ``checkpoint_keep`` is the retention policy ("best+latest"|"all").
+    # Checkpointing. ``checkpoint_every`` is measured in epochs; zero disables
+    # periodic writes, while a final checkpoint remains mandatory when configured.
     # ``plots`` gates background plot rendering; ``prepared_path`` is the resolved
     # prepared.json(.gz) bundled into every checkpoint (so each is self-contained)
     # and the source of measured-point overlays for per-checkpoint process plots.
     checkpoint_dir: Path | None = None
-    checkpoint_every: int = 0
-    checkpoint_keep: str = "best+latest"
+    checkpoint_every: float = 1.0
     plots: bool = True
     prepared_path: Path | None = None
-    # Optional monitor / validation set: a tuple of process names whose loss
-    # is evaluated every `log_every` steps with the current wrapper. Diagnostic
-    # only — never drives optimizer updates. None disables the monitor.
-    monitor_processes: tuple[str, ...] | None = None
-    monitor_label: str = "validation"
-    # Cadence (in steps) for evaluating the monitor/holdout loss. None -> the
-    # logging cadence (`log_every`). Set to 1 to evaluate it every step (one
-    # extra forward solve over the monitor set per step).
-    monitor_every: int | None = None
+    # Optional LOO holdout set, evaluated whenever a checkpoint is written.
+    holdout_processes: tuple[str, ...] | None = None
+    holdout_label: str = "holdout"
 
 
 @dataclass(frozen=True)
@@ -198,7 +190,6 @@ class TrainHarnessResult:
 
     trained_wrapper: Any
     mean_loss_by_step: tuple[float, ...]
-    sampled_loss_by_process_at_log_steps: dict[int, tuple[tuple[str, float], ...]]
     batch_process_names_by_step: tuple[tuple[str, ...], ...]
     per_process_loss_by_step: tuple[tuple[float, ...], ...]
     compile_warmup_seconds: float
@@ -208,17 +199,10 @@ class TrainHarnessResult:
     # Per-target training-loss breakdown: tuple of length n_targets per step.
     per_target_loss_by_step: tuple[tuple[float, ...], ...] = ()
     target_names: tuple[str, ...] = ()
-    # Optional monitor (validation) loss series, populated only when
-    # `TrainHarnessConfig.monitor_processes` is set. Maps step -> loss.
-    monitor_loss_by_log_step: dict[int, float] = dataclasses.field(default_factory=dict)
-    monitor_label: str | None = None
+    holdout_loss_by_step: dict[int, float] = dataclasses.field(default_factory=dict)
+    holdout_label: str | None = None
     grad_norm_by_step: tuple[float, ...] = ()
-    # Final optimizer state — used by the CLI to write model/opt_state.eqx when
-    # checkpointing is disabled, and available for programmatic resume.
-    optimizer_state: Any = None
-    # Total steps completed (== config.steps for a full run; the absolute step
-    # index reached when resuming).
-    steps_completed: int = 0
+    updates_completed: int = 0
 
 
 def _ensure_process_names(
@@ -302,19 +286,21 @@ def build_optimizer_for_run(
     custom_module,
     custom_cfg: Any,
     train_cfg: TrainHarnessConfig,
+    total_updates: int,
 ) -> tuple[optax.GradientTransformation, TrainHarnessConfig]:
     """Resolve the optimizer exactly as :func:`train_from_collection` does.
 
     Applies the optional ``build_learning_rate`` + ``build_optimizer`` hooks,
     falling back to the default chain. Returns ``(optimizer, train_cfg)`` where
     ``train_cfg`` carries any hook-overridden learning rate. Shared with
-    ``serialization.load_run`` so a resumed run rebuilds a byte-for-structure
-    identical optimizer state template.
+    ``serialization.load_run`` so optimizer-state loading uses an identical
+    template.
     """
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
     if lr_hook is not None:
         train_cfg = dataclasses.replace(
-            train_cfg, learning_rate=lr_hook(custom_cfg, train_cfg)
+            train_cfg,
+            learning_rate=lr_hook(custom_cfg, train_cfg, total_updates),
         )
     optimizer_hook = get_hook(custom_module, "build_optimizer", None)
     if optimizer_hook is not None:
@@ -326,36 +312,6 @@ def build_optimizer_for_run(
             grad_clip_norm=train_cfg.grad_clip_norm,
         )
     return optimizer, train_cfg
-
-
-def _read_metrics_history(
-    metrics_csv: str | Path,
-) -> tuple[list[float], list[float]]:
-    """Read prior ``(mean_loss, grad_norm)`` series from an existing metrics.csv.
-
-    Used to pre-seed the cumulative plot curves on resume so they stay
-    continuous. Returns ``([], [])`` when the file is absent or unreadable.
-    """
-    import pandas as pd
-
-    path = Path(metrics_csv)
-    if not path.is_file():
-        return [], []
-    try:
-        df = pd.read_csv(path)
-    except Exception:  # noqa: BLE001 - pre-seed is best-effort
-        return [], []
-    means = (
-        [float(v) for v in df["mean_loss"].tolist()]
-        if "mean_loss" in df.columns
-        else []
-    )
-    grads = (
-        [float(v) for v in df["grad_norm"].dropna().tolist()]
-        if "grad_norm" in df.columns
-        else []
-    )
-    return means, grads
 
 
 def _resolve_effective_batch_size(
@@ -371,14 +327,12 @@ def _validate_batching_config(
     *,
     selected_process_count: int,
 ) -> int:
-    if config.steps <= 0:
-        raise ValueError("steps must be positive")
+    if config.epochs <= 0:
+        raise ValueError("epochs must be positive")
     if isinstance(config.learning_rate, (int, float)) and config.learning_rate <= 0.0:
         raise ValueError("learning_rate must be positive")
     if config.grad_clip_norm < 0.0:
         raise ValueError("grad_clip_norm must be non-negative")
-    if config.log_every <= 0:
-        raise ValueError("log_every must be positive")
     if str(config.optimizer_name) not in {"adam", "sgd"}:
         raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
     effective_batch_size = _resolve_effective_batch_size(
@@ -387,44 +341,73 @@ def _validate_batching_config(
     )
     if effective_batch_size <= 0:
         raise ValueError("effective batch_size must be positive")
+    if effective_batch_size > selected_process_count:
+        raise ValueError("batch_size cannot exceed the selected process count")
     return effective_batch_size
+
+
+def derive_update_budget(
+    config: TrainHarnessConfig, *, selected_process_count: int
+) -> tuple[int, int, int]:
+    batch_size = _validate_batching_config(
+        config, selected_process_count=selected_process_count
+    )
+    batches_per_epoch = selected_process_count // batch_size
+    return batch_size, batches_per_epoch, config.epochs * batches_per_epoch
 
 
 def _build_batch_index_stream(
     *,
     selected_process_indices: jax.Array | np.ndarray,
-    steps: int,
+    epochs: int,
     batch_size: int,
     shuffle_batches: bool,
     batch_seed: int | None,
     seed: int,
 ) -> jax.Array:
     selected_indices = np.asarray(selected_process_indices, dtype=np.int32)
-    if selected_indices.ndim != 1:
-        raise ValueError("selected_process_indices must be a 1D array")
-    if selected_indices.size == 0:
-        raise ValueError("selected_process_indices must be non-empty")
-    if steps <= 0:
-        raise ValueError("steps must be positive")
-    if batch_size <= 0:
-        raise ValueError("batch_size must be positive")
+    if selected_indices.ndim != 1 or selected_indices.size == 0:
+        raise ValueError("selected_process_indices must be a non-empty 1D array")
+    if epochs <= 0 or batch_size <= 0:
+        raise ValueError("epochs and batch_size must be positive")
+    if batch_size > selected_indices.size:
+        raise ValueError("batch_size cannot exceed the selected process count")
+    batches_per_epoch = selected_indices.size // batch_size
+    used = batches_per_epoch * batch_size
+    rng = np.random.default_rng(int(seed) if batch_seed is None else int(batch_seed))
+    epochs_indices = []
+    for _ in range(epochs):
+        indices = (
+            rng.permutation(selected_indices)
+            if shuffle_batches
+            else np.array(selected_indices, copy=True)
+        )
+        epochs_indices.append(indices[:used].reshape(batches_per_epoch, batch_size))
+    return jnp.asarray(np.stack(epochs_indices).reshape(-1, batch_size))
 
-    target_length = int(steps) * int(batch_size)
-    if target_length <= 0:
-        raise ValueError("steps * batch_size must be positive")
 
-    effective_seed = int(seed) if batch_seed is None else int(batch_seed)
-    rng = np.random.default_rng(effective_seed)
-
-    stream: list[int] = []
-    while len(stream) < target_length:
-        cycle = np.array(selected_indices, copy=True)
-        if shuffle_batches:
-            cycle = rng.permutation(cycle)
-        stream.extend(int(v) for v in cycle.tolist())
-
-    flattened = np.asarray(stream[:target_length], dtype=np.int32)
-    return jnp.asarray(flattened.reshape((int(steps), int(batch_size))))
+def _checkpoint_update_boundaries(
+    every: float, *, batches_per_epoch: int, total_updates: int
+) -> frozenset[int]:
+    boundaries = {total_updates}
+    if not math.isfinite(every) or every < 0:
+        raise ValueError("checkpoint_every must be finite and nonnegative")
+    cadence = Fraction(str(every))
+    if cadence == 0:
+        return frozenset(boundaries)
+    interval = cadence * batches_per_epoch
+    k = 1
+    while True:
+        threshold = interval * k
+        update = (
+            threshold.numerator + threshold.denominator - 1
+        ) // threshold.denominator
+        boundaries.add(min(update, total_updates))
+        if update >= total_updates:
+            return frozenset(boundaries)
+        # Skip periodic ordinals that round to the same update boundary.
+        quotient = Fraction(update, 1) / interval
+        k = max(k + 1, quotient.numerator // quotient.denominator + 1)
 
 
 def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> None:
@@ -858,9 +841,6 @@ def train_collection(
     collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
     optimizer: optax.GradientTransformation | None = None,
-    start_step: int = 0,
-    initial_trainable_params: Any = None,
-    initial_optimizer_state: Any = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
 
@@ -878,9 +858,8 @@ def train_collection(
     effective_batched_loss_fn = _BATCHED_LOSS_FN
     selected_processes = _ensure_process_names(store, cfg.process_names)
 
-    effective_batch_size = _validate_batching_config(
-        cfg,
-        selected_process_count=len(selected_processes),
+    effective_batch_size, batches_per_epoch, total_updates = derive_update_budget(
+        cfg, selected_process_count=len(selected_processes)
     )
     selected_process_indices = jnp.asarray(
         [store.process_order.index(name) for name in selected_processes],
@@ -888,7 +867,7 @@ def train_collection(
     )
     batch_index_stream = _build_batch_index_stream(
         selected_process_indices=selected_process_indices,
-        steps=int(cfg.steps),
+        epochs=int(cfg.epochs),
         batch_size=effective_batch_size,
         shuffle_batches=bool(cfg.shuffle_batches),
         batch_seed=cfg.batch_seed,
@@ -969,20 +948,7 @@ def train_collection(
             cfg.learning_rate,
             grad_clip_norm=float(cfg.grad_clip_norm),
         )
-    # Resume: graft saved leaves onto the freshly-built pytree structures. We
-    # transplant array leaves (not the source pytrees) so static aux carried in
-    # the treedef — e.g. RhsOde's rebuilt lambdas — comes from THIS build and
-    # avoids treedef-identity mismatches across separate reconstructions.
-    if initial_trainable_params is not None:
-        _, fresh_treedef = jtu.tree_flatten(trainable_params)
-        init_leaves, _ = jtu.tree_flatten(initial_trainable_params)
-        trainable_params = jtu.tree_unflatten(fresh_treedef, init_leaves)
-        wrapper = eqx.combine(trainable_params, trainable_static)
     optimizer_state = optimizer.init(trainable_params)
-    if initial_optimizer_state is not None:
-        _, fresh_os_treedef = jtu.tree_flatten(optimizer_state)
-        init_os_leaves, _ = jtu.tree_flatten(initial_optimizer_state)
-        optimizer_state = jtu.tree_unflatten(fresh_os_treedef, init_os_leaves)
     train_step_input_signature = summarize_train_step_input_signature(
         wrapper,
         trainable_params,
@@ -1446,7 +1412,7 @@ def train_collection(
     rebuild_count = 0
 
     logger.info(
-        "train harness setup: processes=%s, targets=%s source=%s steps=%d "
+        "train harness setup: processes=%s, targets=%s source=%s epochs=%d "
         "batch_size=%d optimizer=%s lr=%s grad_clip=%s",
         list(selected_processes),
         list(store.name_measured),
@@ -1457,7 +1423,7 @@ def train_collection(
             if store.name_measured_RMCs
             else "process_variables"
         ),
-        cfg.steps,
+        cfg.epochs,
         effective_batch_size,
         cfg.optimizer_name,
         cfg.learning_rate,
@@ -1490,92 +1456,140 @@ def train_collection(
         float(warmup_loss),
     )
 
-    checkpoint_enabled = (
-        cfg.checkpoint_dir is not None and int(cfg.checkpoint_every) > 0
+    checkpoint_enabled = cfg.checkpoint_dir is not None
+    checkpoint_boundaries = (
+        _checkpoint_update_boundaries(
+            cfg.checkpoint_every,
+            batches_per_epoch=batches_per_epoch,
+            total_updates=total_updates,
+        )
+        if checkpoint_enabled
+        else frozenset()
     )
-    plotter = BackgroundPlotter() if (checkpoint_enabled and bool(cfg.plots)) else None
-    checkpoint_writer = CheckpointWriter(
-        Path(cfg.checkpoint_dir) if cfg.checkpoint_dir is not None else Path("."),
-        CheckpointConfig(
-            every=int(cfg.checkpoint_every) if checkpoint_enabled else 0,
-            keep=str(cfg.checkpoint_keep),
-        ),
-        plotter=plotter,
-        plots_enabled=bool(cfg.plots),
-        prepared_src=cfg.prepared_path,
+    plotter = BackgroundPlotter() if (checkpoint_enabled and cfg.plots) else None
+    checkpoint_writer = (
+        CheckpointWriter(
+            Path(cfg.checkpoint_dir),
+            plotter=plotter,
+            plots_enabled=cfg.plots,
+            prepared_src=cfg.prepared_path,
+        )
+        if cfg.checkpoint_dir is not None
+        else None
     )
-    # Cumulative plot history. On resume, pre-seed from the existing metrics.csv
-    # so the per-checkpoint curves stay continuous across the restart.
     loss_so_far: list[float] = []
     per_target_loss_so_far: list[tuple[float, ...]] = []
     grad_norm_so_far: list[float] = []
-    monitor_loss_so_far: dict[int, float] = {}
-    monitor_per_target_so_far: dict[int, tuple[float, ...]] = {}
-    monitor_cadence = int(cfg.monitor_every or cfg.log_every)
-    best_loss = float("inf")
-    if start_step > 0 and cfg.metrics_csv is not None:
-        prior_means, prior_grads = _read_metrics_history(cfg.metrics_csv)
-        loss_so_far.extend(prior_means)
-        grad_norm_so_far.extend(prior_grads)
-        if prior_means:
-            best_loss = min(prior_means)
+    holdout_loss_so_far: dict[int, float] = {}
+    holdout_per_target_so_far: dict[int, tuple[float, ...]] = {}
 
-    # Optional monitor (validation) batch — diagnostic only, recomputed at
-    # log-step cadence with the current wrapper. JIT compiles once on first
-    # use because the batch shape is stable across log steps.
-    monitor_batch = None
-    monitor_jump_ts_rows = None
-    if cfg.monitor_processes:
-        monitor_unknown = [
-            n for n in cfg.monitor_processes if n not in store.process_order
-        ]
-        if monitor_unknown:
+    holdout_batch = None
+    holdout_jump_ts_rows = None
+    if cfg.holdout_processes:
+        unknown = [n for n in cfg.holdout_processes if n not in store.process_order]
+        if unknown:
             raise ValueError(
-                f"monitor_processes contains unknown names: {monitor_unknown}; "
+                f"holdout_processes contains unknown names: {unknown}; "
                 f"available={tuple(store.process_order)}"
             )
-        monitor_indices = jnp.asarray(
-            [store.process_order.index(name) for name in cfg.monitor_processes],
+        holdout_indices = jnp.asarray(
+            [store.process_order.index(name) for name in cfg.holdout_processes],
             dtype=jnp.int32,
         )
-        monitor_batch = store.gather_batch(monitor_indices)
+        holdout_batch = store.gather_batch(holdout_indices)
         if cfg.solver_use_jump_ts:
-            monitor_jump_ts_rows = clamp_padded_time_rows(
-                store.controls_store.jump_ts[monitor_batch.process_indices],
-                store.controls_store.jump_ts_lengths[monitor_batch.process_indices],
+            holdout_jump_ts_rows = clamp_padded_time_rows(
+                store.controls_store.jump_ts[holdout_batch.process_indices],
+                store.controls_store.jump_ts_lengths[holdout_batch.process_indices],
             )
+
+    def _evaluate_holdout(step: int):
+        if holdout_batch is None:
+            return None, None
+        total, per_sample_per_target, _per_sample, *_ = effective_batched_loss_fn(
+            wrapper,
+            holdout_batch,
+            batch_controls,
+            batched_Cin,
+            batched_Cin_modeled,
+            holdout_jump_ts_rows,
+            max_solver_steps=int(cfg.solver_max_steps),
+            solver_rtol=float(cfg.solver_rtol),
+            solver_atol=float(cfg.solver_atol),
+            step=jnp.asarray(step, dtype=jnp.int32),
+        )
+        jax.block_until_ready(total)
+        per_target = tuple(
+            float(value)
+            for value in np.asarray(jnp.mean(per_sample_per_target, axis=0)).tolist()
+        )
+        return float(total), per_target
+
+    checkpoint_per_target_losses = None
+    checkpoint_dense_exports = None
+
+    def _render_predictions(path: Path):
+        nonlocal checkpoint_per_target_losses, checkpoint_dense_exports
+        _, checkpoint_per_target_losses, checkpoint_dense_exports = (
+            compute_dense_exports(
+                wrapper,
+                store,
+                collection,
+                selected_processes,
+                solver_max_steps=int(cfg.solver_max_steps),
+                solver_rtol=float(cfg.solver_rtol),
+                solver_atol=float(cfg.solver_atol),
+                solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
+            )
+        )
+        export_predictions_csv(
+            wrapper,
+            checkpoint_dense_exports,
+            path,
+            process_names=selected_processes,
+        )
+        if not cfg.plots:
+            return None
+        return build_process_plot_data(
+            wrapper,
+            collection,
+            store,
+            checkpoint_dense_exports,
+            selected_processes,
+            training_process_names=selected_processes,
+        )
 
     try:
         with RunLogger(
-            log_every=int(cfg.log_every),
-            log_process_losses=bool(cfg.log_process_losses),
+            log_process_losses=cfg.log_process_losses,
             metrics_csv=cfg.metrics_csv,
             metrics_jsonl=cfg.metrics_jsonl,
-            log_decimals=int(cfg.log_decimals),
-            log_header_every=int(cfg.log_header_every),
-            resume=start_step > 0,
+            log_decimals=cfg.log_decimals,
         ) as run_log:
             run_log.start(
                 target_names=_target_labels,
                 process_names=selected_processes,
-                total_steps=int(cfg.steps),
-                compile_warmup_seconds=float(warmup_compile_seconds),
+                total_updates=total_updates,
+                compile_warmup_seconds=warmup_compile_seconds,
             )
-
-            for step_index in range(start_step, cfg.steps):
-                batch_indices = batch_index_stream[step_index]
-                batch = store.gather_batch(batch_indices)
+            epoch_losses: list[float] = []
+            epoch_training_seconds = 0.0
+            for step_index in range(total_updates):
+                step = step_index + 1
+                epoch = step_index // batches_per_epoch + 1
+                batch_in_epoch = step_index % batches_per_epoch + 1
+                batch = store.gather_batch(batch_index_stream[step_index])
                 current_signature = summarize_train_step_input_signature(
                     wrapper,
                     trainable_params,
                     optimizer_state,
                     batch,
-                    jnp.asarray(step_index + 1, dtype=jnp.int32),
+                    jnp.asarray(step, dtype=jnp.int32),
                 )
                 if current_signature != train_step_input_signature:
                     step_fn = _make_step()
                     rebuild_count += 1
-                    run_log.record_rebuild(step_index + 1)
+                    run_log.record_rebuild(step)
 
                 t0 = time.perf_counter()
                 (
@@ -1592,14 +1606,22 @@ def train_collection(
                     trainable_params,
                     optimizer_state,
                     batch,
-                    jnp.asarray(step_index + 1, dtype=jnp.int32),
+                    jnp.asarray(step, dtype=jnp.int32),
                 )
                 jax.block_until_ready(loss)
                 step_dt = time.perf_counter() - t0
+                epoch_training_seconds += step_dt
+                epoch_losses.append(float(loss))
 
+                per_target_values = tuple(
+                    float(value) for value in np.asarray(per_target_loss).tolist()
+                )
+                per_process_values = tuple(
+                    float(value) for value in np.asarray(per_sample_loss).tolist()
+                )
                 batch_names = tuple(
-                    store.process_order[int(i)]
-                    for i in np.asarray(batch.process_indices).tolist()
+                    store.process_order[int(index)]
+                    for index in np.asarray(batch.process_indices).tolist()
                 )
                 # A finite fail_time flags a sample whose ODE solve bailed mid-
                 # trajectory (post-failure points were dropped from the loss). Name
@@ -1611,129 +1633,69 @@ def train_collection(
                     )
                     if np.isfinite(ft)
                 )
+                loss_so_far.append(float(loss))
+                per_target_loss_so_far.append(per_target_values)
+                grad_norm_so_far.append(float(grad_norm))
 
-                # Monitor / holdout loss at `monitor_every` cadence (one extra
-                # forward pass per evaluated step; defaults to the `log_every`
-                # cadence, monitor_every=1 evaluates every step).
-                monitor_loss_value: float | None = None
-                monitor_per_target_value: tuple[float, ...] | None = None
-                if (
-                    monitor_batch is not None
-                    and (step_index + 1) % monitor_cadence == 0
-                ):
-                    m_total, m_per_sample_per_target, _m_per_sample, *_ = (
-                        effective_batched_loss_fn(
-                            wrapper,
-                            monitor_batch,
-                            batch_controls,
-                            batched_Cin,
-                            batched_Cin_modeled,
-                            monitor_jump_ts_rows,
-                            max_solver_steps=int(cfg.solver_max_steps),
-                            solver_rtol=float(cfg.solver_rtol),
-                            solver_atol=float(cfg.solver_atol),
-                            step=jnp.asarray(step_index + 1, dtype=jnp.int32),
-                        )
-                    )
-                    jax.block_until_ready(m_total)
-                    monitor_loss_value = float(m_total)
-                    # Reduce per-sample-per-target -> per-target (mean over the
-                    # holdout samples), exactly as the train step does for its own
-                    # per-target loss.
-                    monitor_per_target_value = tuple(
-                        float(v)
-                        for v in np.asarray(
-                            jnp.mean(m_per_sample_per_target, axis=0)
-                        ).tolist()
-                    )
+                holdout_loss, holdout_per_target = (None, None)
+                if step in checkpoint_boundaries:
+                    holdout_loss, holdout_per_target = _evaluate_holdout(step)
+                    if holdout_loss is not None:
+                        holdout_loss_so_far[step] = holdout_loss
+                        holdout_per_target_so_far[step] = holdout_per_target
 
+                epoch_end = batch_in_epoch == batches_per_epoch
+                epoch_mean_loss = (
+                    sum(epoch_losses) / len(epoch_losses) if epoch_end else None
+                )
+                epoch_time_seconds = epoch_training_seconds if epoch_end else None
                 run_log.record_step(
                     StepRecord(
-                        step=step_index + 1,
-                        total_steps=int(cfg.steps),
+                        step=step,
+                        total_updates=total_updates,
+                        epoch=epoch,
+                        batch_in_epoch=batch_in_epoch,
+                        samples_seen=step * effective_batch_size,
                         mean_loss=float(loss),
-                        per_target_loss=tuple(
-                            float(v) for v in np.asarray(per_target_loss).tolist()
-                        ),
-                        per_process_loss=tuple(
-                            float(v) for v in np.asarray(per_sample_loss).tolist()
-                        ),
+                        per_target_loss=per_target_values,
+                        per_process_loss=per_process_values,
                         target_names=tuple(_target_labels),
                         process_names=batch_names,
-                        step_dt=float(step_dt),
-                        rebuild_count=int(rebuild_count),
-                        monitor_loss=monitor_loss_value,
-                        monitor_label=cfg.monitor_label
-                        if monitor_loss_value is not None
-                        else None,
+                        step_dt=step_dt,
+                        rebuild_count=rebuild_count,
+                        holdout_loss=holdout_loss,
+                        holdout_label=(
+                            cfg.holdout_label if holdout_loss is not None else None
+                        ),
+                        epoch_mean_loss=epoch_mean_loss,
+                        epoch_time_seconds=epoch_time_seconds,
                         grad_norm=float(grad_norm),
                         failed_process_names=failed_process_names,
                     )
                 )
+                if epoch_end:
+                    epoch_losses = []
+                    epoch_training_seconds = 0.0
 
-                loss_so_far.append(float(loss))
-                per_target_loss_so_far.append(
-                    tuple(float(v) for v in np.asarray(per_target_loss).tolist())
-                )
-                grad_norm_so_far.append(float(grad_norm))
-                if monitor_loss_value is not None:
-                    monitor_loss_so_far[step_index + 1] = monitor_loss_value
-                    if monitor_per_target_value is not None:
-                        monitor_per_target_so_far[step_index + 1] = (
-                            monitor_per_target_value
-                        )
-                best_loss = min(best_loss, float(loss))
-
-                def _render_predictions(path: Path, _wrapper=wrapper):
-                    # One dense solve serves predictions.csv AND the per-process plot
-                    # data (built here in the main process, then rendered off-thread
-                    # by the same renderer as the run-root/forward plots).
-                    _, _, ckpt_dense_exports = compute_dense_exports(
-                        _wrapper,
-                        store,
-                        collection,
-                        selected_processes,
-                        solver_max_steps=int(cfg.solver_max_steps),
-                        solver_rtol=float(cfg.solver_rtol),
-                        solver_atol=float(cfg.solver_atol),
-                        solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
+                if checkpoint_writer is not None and step in checkpoint_boundaries:
+                    checkpoint_writer.write(
+                        step=step,
+                        samples_seen=step * effective_batch_size,
+                        wrapper=wrapper,
+                        opt_state=optimizer_state,
+                        mean_loss=float(loss),
+                        holdout_loss=holdout_loss,
+                        render_predictions_fn=_render_predictions,
+                        loss_by_step=loss_so_far,
+                        grad_norm_by_step=grad_norm_so_far,
+                        per_target_loss_by_step=per_target_loss_so_far,
+                        target_names=tuple(_target_labels),
+                        holdout_loss_by_step=holdout_loss_so_far or None,
+                        holdout_per_target_by_step=holdout_per_target_so_far or None,
+                        holdout_label=(
+                            cfg.holdout_label if holdout_loss_so_far else None
+                        ),
                     )
-                    export_predictions_csv(
-                        _wrapper,
-                        ckpt_dense_exports,
-                        path,
-                        process_names=selected_processes,
-                    )
-                    if not bool(cfg.plots):
-                        return None
-                    return build_process_plot_data(
-                        _wrapper,
-                        collection,
-                        store,
-                        ckpt_dense_exports,
-                        selected_processes,
-                        training_process_names=selected_processes,
-                    )
-
-                checkpoint_writer.maybe_write(
-                    step=step_index + 1,
-                    wrapper=wrapper,
-                    opt_state=optimizer_state,
-                    mean_loss=float(loss),
-                    best_loss=best_loss,
-                    render_predictions_fn=_render_predictions,
-                    loss_by_step=loss_so_far,
-                    grad_norm_by_step=grad_norm_so_far,
-                    per_target_loss_by_step=per_target_loss_so_far,
-                    target_names=tuple(_target_labels),
-                    monitor_loss_by_step=(
-                        monitor_loss_so_far if monitor_loss_so_far else None
-                    ),
-                    monitor_per_target_by_step=(
-                        monitor_per_target_so_far if monitor_per_target_so_far else None
-                    ),
-                    monitor_label=cfg.monitor_label if monitor_loss_so_far else None,
-                )
 
             history = run_log.finalize()
 
@@ -1744,18 +1706,13 @@ def train_collection(
             if cfg.checkpoint_dir is not None:
                 run_dir = Path(cfg.checkpoint_dir).parent
                 try:
-                    _final_total, _final_per_target, _final_dense = (
-                        compute_dense_exports(
-                            wrapper,
-                            store,
-                            collection,
-                            selected_processes,
-                            solver_max_steps=int(cfg.solver_max_steps),
-                            solver_rtol=float(cfg.solver_rtol),
-                            solver_atol=float(cfg.solver_atol),
-                            solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-                        )
-                    )
+                    if (
+                        checkpoint_per_target_losses is None
+                        or checkpoint_dense_exports is None
+                    ):
+                        raise RuntimeError("final checkpoint exports are unavailable")
+                    _final_per_target = checkpoint_per_target_losses
+                    _final_dense = checkpoint_dense_exports
                     export_predictions_csv(
                         wrapper,
                         _final_dense,
@@ -1786,28 +1743,28 @@ def train_collection(
                             plot_loss_curve(
                                 list(loss_so_far),
                                 run_dir / "loss_curve.png",
-                                title=f"Training loss (through step {int(cfg.steps)})",
+                                title=f"Training loss (through step {total_updates})",
                                 per_target_loss_by_step=list(per_target_loss_so_far),
                                 target_names=tuple(_target_labels),
                                 monitor_loss_by_step=(
-                                    dict(monitor_loss_so_far)
-                                    if monitor_loss_so_far
+                                    dict(holdout_loss_so_far)
+                                    if holdout_loss_so_far
                                     else None
                                 ),
                                 monitor_per_target_by_step=(
-                                    dict(monitor_per_target_so_far)
-                                    if monitor_per_target_so_far
+                                    dict(holdout_per_target_so_far)
+                                    if holdout_per_target_so_far
                                     else None
                                 ),
                                 monitor_label=(
-                                    cfg.monitor_label if monitor_loss_so_far else None
+                                    cfg.holdout_label if holdout_loss_so_far else None
                                 ),
                             )
                         if grad_norm_so_far:
                             plot_grad_norm_curve(
                                 list(grad_norm_so_far),
                                 run_dir / "grad_norm_curve.png",
-                                title=f"Gradient norm (through step {int(cfg.steps)})",
+                                title=f"Gradient norm (through step {total_updates})",
                             )
                 except Exception:  # noqa: BLE001 - the trained model is already saved
                     logger.exception("failed to write run-root final outputs")
@@ -1820,8 +1777,7 @@ def train_collection(
         trained_wrapper=wrapper,
         compile_warmup_seconds=float(warmup_compile_seconds),
         train_step_input_signature=train_step_input_signature,
-        optimizer_state=optimizer_state,
-        steps_completed=int(cfg.steps),
+        updates_completed=total_updates,
         **history,
     )
 
@@ -1906,12 +1862,14 @@ def train_from_collection(
         collection=collection,
         scale_kwargs=scale_kwargs,
     )
-    # Resolve the optimizer (build_learning_rate + build_optimizer hooks, else
-    # the default chain). Shared with serialization.load_run for resume.
+    _, _, total_updates = derive_update_budget(
+        train_cfg, selected_process_count=len(selected_processes)
+    )
     optimizer, train_cfg = build_optimizer_for_run(
         custom_module=custom_module,
         custom_cfg=custom_cfg,
         train_cfg=train_cfg,
+        total_updates=total_updates,
     )
 
     loss_module = _build_loss_module(
@@ -1936,19 +1894,18 @@ def train_harness_config_from_run_config(
     cfg: RunConfig,
     *,
     run_dir: Path,
-    steps: int | None = None,
 ) -> TrainHarnessConfig:
     """Map a typed :class:`RunConfig` + run-directory layout to the harness
     config, wiring the FAIR run-dir artifact paths (metrics.csv, checkpoints/,
     observations.csv) and the checkpoint/output/logging sections. Shared by the
-    CLI train path and :func:`resume_run`.
+    CLI train and LOO paths.
     """
     data = cfg.data
     return TrainHarnessConfig(
         process_names=data.processes if data is not None else None,
         target_variable_order=data.targets if data is not None else None,
         target_source=data.target_source if data is not None else TARGET_SOURCE_AUTO,
-        steps=int(steps if steps is not None else cfg.train.steps),
+        epochs=cfg.train.epochs,
         batch_size=cfg.train.batch_size,
         shuffle_batches=cfg.train.shuffle,
         batch_seed=cfg.train.batch_seed,
@@ -1956,91 +1913,17 @@ def train_harness_config_from_run_config(
         learning_rate=cfg.train.learning_rate,
         grad_clip_norm=cfg.train.grad_clip_norm,
         seed=cfg.train.seed,
-        log_every=cfg.logging.every,
         solver_max_steps=cfg.solver.max_steps,
         solver_rtol=cfg.solver.rtol,
         solver_atol=cfg.solver.atol,
         solver_use_jump_ts=cfg.solver.jump_ts,
         log_decimals=cfg.logging.decimals,
-        log_header_every=cfg.logging.header_every,
         metrics_csv=str(Path(run_dir) / "metrics.csv"),
         checkpoint_dir=Path(run_dir) / "checkpoints",
         checkpoint_every=cfg.checkpoint.every,
-        checkpoint_keep=cfg.checkpoint.keep,
         plots=cfg.output.plots,
         prepared_path=cfg.data.prepared if cfg.data is not None else None,
         allow_stateful_models=cfg.train.allow_stateful_models,
-    )
-
-
-def resume_run(
-    run_dir: str | Path,
-    *,
-    steps_override: int | None = None,
-) -> TrainHarnessResult:
-    """Resume training in place from a run directory.
-
-    Delegates reconstruction to the single ``serialization`` path (integrity
-    guarded), restores trainable params + optimizer state from ``checkpoints/
-    latest``, and continues from the recorded step, appending to metrics.csv.
-    ``steps_override`` may extend the original target.
-    """
-    from .serialization import (
-        checkpoint_params_path,
-        load_opt_state,
-        load_trained_wrapper,
-        read_json,
-        read_run_config_json,
-        reconstruct_run,
-    )
-
-    run_dir = Path(run_dir)
-    cfg, _document = read_run_config_json(run_dir / "config.json")
-    reaction_module, loss_module, store, collection = reconstruct_run(run_dir, cfg)
-    template, _extras = _build_template_wrapper(
-        store,
-        reaction_module=reaction_module,
-        collection=collection,
-        selected_processes=tuple(store.process_order),
-        loss_module=loss_module,
-    )
-    params_path = checkpoint_params_path(run_dir, "latest")
-    wrapper = load_trained_wrapper(params_path, template=template)
-    trainable_params, _static = partition_trainable(wrapper)
-
-    steps = int(steps_override) if steps_override is not None else int(cfg.train.steps)
-    train_cfg = train_harness_config_from_run_config(cfg, run_dir=run_dir, steps=steps)
-
-    bundled_custom = run_dir / "custom.py"
-    custom_module = (
-        load_custom_module(bundled_custom) if bundled_custom.is_file() else None
-    )
-    # Re-wrap cfg.custom (a raw dict from config.json) so a build_optimizer hook
-    # sees the same typed config object a fresh run would.
-    from .run_config import reresolve_custom
-
-    cfg = reresolve_custom(cfg, custom_module)
-    optimizer, train_cfg = build_optimizer_for_run(
-        custom_module=custom_module, custom_cfg=cfg, train_cfg=train_cfg
-    )
-    opt_template = optimizer.init(trainable_params)
-    opt_state = load_opt_state(
-        params_path.with_name("opt_state.eqx"), template=opt_template
-    )
-
-    start_step = int(
-        read_json(run_dir / "checkpoints" / "latest" / "train_state.json")["step"]
-    )
-    return train_collection(
-        store,
-        reaction_module=reaction_module,
-        loss_module=loss_module,
-        collection=collection,
-        config=train_cfg,
-        optimizer=optimizer,
-        start_step=start_step,
-        initial_trainable_params=trainable_params,
-        initial_optimizer_state=opt_state,
     )
 
 

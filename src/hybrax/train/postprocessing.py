@@ -67,14 +67,12 @@ def aggregate_dense_exports(
         b_m, b_s = _mean_std("b_modeled_cum")
         q_m, q_s = _mean_std("q_rates")
         aux_keys = list(exports[0].auxiliary or {})
-        aux_m = (
-            {k: np.stack([e.auxiliary[k] for e in exports]).mean(0) for k in aux_keys}
-            or None
-        )
-        aux_s = (
-            {k: np.stack([e.auxiliary[k] for e in exports]).std(0) for k in aux_keys}
-            or None
-        )
+        aux_m = {
+            k: np.stack([e.auxiliary[k] for e in exports]).mean(0) for k in aux_keys
+        } or None
+        aux_s = {
+            k: np.stack([e.auxiliary[k] for e in exports]).std(0) for k in aux_keys
+        } or None
         t = exports[0].t
         mean_out[proc] = DenseProcessExport(t, c_m, v_m, b_m, q_m, aux_m)
         std_out[proc] = DenseProcessExport(t, c_s, v_s, b_s, q_s, aux_s)
@@ -303,7 +301,9 @@ def plot_loss_curve(
     panels: list[tuple[str, list[float]]] = [("total", list(losses))]
     if per_target_loss_by_step:
         n_targets = max(len(row) for row in per_target_loss_by_step)
-        names = list(target_names) if target_names else [f"t{i}" for i in range(n_targets)]
+        names = (
+            list(target_names) if target_names else [f"t{i}" for i in range(n_targets)]
+        )
         names = (names + [f"t{i}" for i in range(n_targets)])[:n_targets]
         for i, name in enumerate(names):
             series = [
@@ -506,10 +506,11 @@ def plot_training_results(
     plot_loss_curve(
         result.mean_loss_by_step,
         output_dir / "loss_curve.png",
-        per_target_loss_by_step=getattr(result, "per_target_loss_by_step", None) or None,
+        per_target_loss_by_step=getattr(result, "per_target_loss_by_step", None)
+        or None,
         target_names=getattr(result, "target_names", None) or None,
-        monitor_loss_by_step=getattr(result, "monitor_loss_by_log_step", None) or None,
-        monitor_label=getattr(result, "monitor_label", None),
+        monitor_loss_by_step=(getattr(result, "holdout_loss_by_step", None) or None),
+        monitor_label=getattr(result, "holdout_label", None),
     )
 
     grad_norm_by_step = getattr(result, "grad_norm_by_step", None) or None
@@ -785,9 +786,7 @@ def build_process_plot_data(
             ProcessPlotData(
                 process_name=process_name,
                 is_train=(
-                    (process_name in training_set)
-                    if training_set is not None
-                    else None
+                    (process_name in training_set) if training_set is not None else None
                 ),
                 time_unit=process.time_axis.unit,
                 t_start=float(process.time_axis.start),
@@ -878,21 +877,35 @@ def render_control_diagnostics(
     for ax, c in zip(axes[:, 0], controls):
         if c.raw_times.size:
             ax.plot(
-                c.raw_times, c.raw_values, ".", ms=3, color="0.6",
+                c.raw_times,
+                c.raw_values,
+                ".",
+                ms=3,
+                color="0.6",
                 label=f"raw ({c.raw_times.size})",
             )
         ax.plot(
-            c.curve_t, c.curve_values, "-", lw=1.4, color="C0",
+            c.curve_t,
+            c.curve_values,
+            "-",
+            lw=1.4,
+            color="C0",
             label="spline" if c.is_spline else "linear",
         )
         y0 = ax.get_ylim()[0]
         ax.plot(
-            c.grid_t, np.full(c.grid_t.size, y0), "|", color="C3", ms=6, alpha=0.4,
+            c.grid_t,
+            np.full(c.grid_t.size, y0),
+            "|",
+            color="C3",
+            ms=6,
+            alpha=0.4,
             label=f"dense-grid knots ({c.grid_t.size})",
         )
         ax.set_ylabel(f"{c.name}\n[{c.unit}]", fontsize=8)
         ax.legend(
-            loc="best", fontsize=7,
+            loc="best",
+            fontsize=7,
             title=f"grid={c.grid_t.size}  maxΔ={c.max_rel_dev:.1e}",
             title_fontsize=7,
         )
@@ -942,8 +955,12 @@ def render_process_figures(
 
         for i, (sp_name, sp_unit, t_meas, v_meas) in enumerate(pdat.measured_series):
             ax_c = axes[i, 0]
-            ax_c.scatter(t_meas, v_meas, s=16, zorder=5, color="black", label="measured")
-            ax_c.plot(t_dense, c_dense[:, i], "-", lw=1.5, color="C0", label="integrated")
+            ax_c.scatter(
+                t_meas, v_meas, s=16, zorder=5, color="black", label="measured"
+            )
+            ax_c.plot(
+                t_dense, c_dense[:, i], "-", lw=1.5, color="C0", label="integrated"
+            )
             if c_std is not None:
                 ax_c.fill_between(
                     t_dense,
@@ -987,9 +1004,16 @@ def render_process_figures(
         # ---- Volume row: true vs integrated V_real + raw volume_changes ----
         ax_v = axes[n_species, 0]
         ax_v.plot(
-            t_dense, pdat.v_real_true_dense, "-", lw=1.5, color="black", label="measured"
+            t_dense,
+            pdat.v_real_true_dense,
+            "-",
+            lw=1.5,
+            color="black",
+            label="measured",
         )
-        ax_v.plot(t_dense, pdat.v_real_pred, "--", lw=1.5, color="C0", label="integrated")
+        ax_v.plot(
+            t_dense, pdat.v_real_pred, "--", lw=1.5, color="C0", label="integrated"
+        )
         if v_std is not None:
             ax_v.fill_between(
                 t_dense,
@@ -1073,9 +1097,11 @@ def render_process_figures(
         suptitle = f"{pdat.process_name}{split_tag}"
         if pdat.total_loss is not None:
             suptitle += f" — total loss {pdat.total_loss:.4g}"
-            shown = set(pdat.modeled_RMC_names) | set(pdat.modeled_PV_names) | {
-                f"B_{fn}_cum" for fn in pdat.modeled_FVC_names
-            }
+            shown = (
+                set(pdat.modeled_RMC_names)
+                | set(pdat.modeled_PV_names)
+                | {f"B_{fn}_cum" for fn in pdat.modeled_FVC_names}
+            )
             extras = [
                 f"{name}={value:.3g}"
                 for name, value in (named_losses or {}).items()
