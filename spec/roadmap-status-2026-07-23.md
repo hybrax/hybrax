@@ -1,4 +1,4 @@
-# BP-Train Roadmap & Code Review (as of 2026-04-09)
+# BP-Train Roadmap & Code Review (as of 2026-07-23)
 
 This document is a section-by-section walk through `spec/v1-detailed-spec.md`,
 checking what is actually implemented in the current package, what is partial,
@@ -424,61 +424,31 @@ see NaN/zero times. Loss uses `meas_mask` to ignore padded rows.
 ### 16.3 Expected runtime objects
 ✅ One stacked array per payload kind, lightweight per-process index metadata.
 
-### 16.4 Batched train-step contract
+### 16.4 Epoch train-step contract
 
-| Requirement | Status |
-|---|---|
-| `steps` = number of optimizer updates | ✅ |
-| Each update consumes one full batch | ✅ |
-| Total sampled indices = `steps * batch_size` | ✅ — `harness._build_batch_index_stream` |
-| `batch_size=None` resolves to `len(selected_processes)` | ✅ — `_resolve_effective_batch_size` |
-| No `drop_last_batch` | ✅ — explicitly tested by `test_harness_config_has_no_drop_last_batch_field` |
-| `process_names=None` → all of `store.process_order` | ✅ — `_ensure_process_names` |
-| Unique-and-known process names | ✅ |
-| Round-robin base mode | ✅ |
-| `shuffle_batches=True` shuffles each cycle | ✅ |
-| `batch_seed` controls all batch randomness | ✅ |
-| Determinism (`batch_seed is None` → fall back to `seed`) | ✅ — `test_harness_batch_stream_falls_back_to_seed_when_batch_seed_none` |
-| Optax backend, `{adam, sgd}`, default adam, lr > 0 | ✅ — `trainer._build_optimizer` |
-| Batch loss = mean of per-sample losses | ✅ — `_batched_measurement_loss_from_batch` returns `jnp.mean(per_sample_total)` |
-| One JIT step per run under stable shapes | ✅ — `_make_batched_step` builds it once |
-| Record JIT input-signature summary | ✅ — `summarize_train_step_input_signature` is on `TrainHarnessResult.train_step_input_signature` |
-| Record rebuild count | ✅ — `TrainHarnessResult.train_step_rebuild_count`, also surfaced in `RunLogger.record_rebuild` warnings |
-| `log_every` controls cadence | ✅ |
-| Per-process losses logged at log steps are for sampled batch members only | ✅ — Today they are read directly from the JIT step's per-sample vector (post-redesign) — no extra solve. |
+✅ Training uses positive `epochs`. Each epoch independently shuffles selected
+processes, drops its incomplete final batch, and consumes every remaining
+process exactly once. `batch_size=None` means all selected processes and
+oversized explicit batches fail. The derived optimizer budget is
+`epochs * floor(n_selected / batch_size)` and is passed to LR hooks.
 
-### 16.5 Batching config and validation contract
+✅ Batch shape and the train-step JIT signature remain stable. Seeded shuffle and
+non-shuffle order are covered by focused harness tests.
 
-The dataclass [`harness.TrainHarnessConfig`](../bp_train/harness.py) has all
-required fields plus solver tolerances and the new logging knobs. Fail-fast
-errors:
+### 16.5 Epoch config and checkpoint contract
 
-| Rule | Code |
-|---|---|
-| `steps <= 0` | `_validate_batching_config` ✅ |
-| Effective `batch_size <= 0` | `_validate_batching_config` ✅ |
-| `learning_rate <= 0` | `_validate_batching_config` ✅ (also enforced in `_build_optimizer`) |
-| Unknown process names | `_ensure_process_names` ✅ |
-| Duplicate process names | `_ensure_process_names` ✅ |
-| Empty selected set | `_ensure_process_names` ✅ |
-| Unsupported optimizer | `_validate_batching_config` ✅ |
+✅ `checkpoint.every` is a finite nonnegative float in epoch units. Exact
+fractional thresholds are deduplicated, all checkpoints are retained, and every
+artifact run writes a mandatory final checkpoint and updates `latest`. Separate
+logging/holdout cadence, best selection, pruning, and individual train resume
+were removed.
 
-### 16.6 Batch Telemetry Contract
+### 16.6 Batch telemetry contract
 
-| Required field | Provided as |
-|---|---|
-| Batch mean loss by step | `TrainHarnessResult.mean_loss_by_step` ✅ |
-| Sampled per-process losses at logging steps | `TrainHarnessResult.sampled_loss_by_process_at_log_steps` ✅ |
-| Batch composition by step | `TrainHarnessResult.batch_process_names_by_step` ✅ |
-| First compile/warmup time | `TrainHarnessResult.compile_warmup_seconds` ✅ |
-| Per-step runtime timings | `TrainHarnessResult.step_time_seconds` ✅ |
-| JIT input-signature summary | `TrainHarnessResult.train_step_input_signature` ✅ |
-| Train-step rebuild count | `TrainHarnessResult.train_step_rebuild_count` ✅ |
-| (extra) Per-process loss by step | `TrainHarnessResult.per_process_loss_by_step` — added in the logging redesign, free because the JIT step already produces it. |
-
-The `RunLogger` redesign also adds optional CSV / JSONL persistence and a
-fixed-width tabular console formatter. Tested in `tests/test_logging.py`
-(11 tests).
+✅ Every update persists `step`, `total_updates`, `epoch`, `batch_in_epoch`,
+`samples_seen`, losses, batch composition, gradient norm, timing, and rebuild
+count. Epoch mean/duration appear only on epoch-end rows. LOO holdout loss appears
+on checkpoint rows and in checkpoint metadata.
 
 ---
 
@@ -878,7 +848,7 @@ state.
 ## B.9 — `cli` end-to-end with real prepared JSON
 
 `tests/test_cli.py` only mocks `train_from_collection`. A small end-to-end
-test that runs `bp-train prepare` then `bp-train train --steps 2 --no-plot`
+test that runs `bp-train prepare` then `bp-train train --epochs 1 --no-plot`
 on a synthetic prepared collection (no Kittler dependency) would catch
 import/wiring regressions like the recent CLI/harness signature changes.
 This is the biggest "we have no end-to-end test" gap.
@@ -940,3 +910,20 @@ before LOO-CV" doc, but updated):
 5. Then resume the LOO-CV roadmap from the prior status doc, which is still
    the right next milestone — train/eval boundary, fold orchestration,
    per-fold model re-init, result aggregation.
+6. Design nested process-level LOO for checkpoint selection and ensemble uncertainty
+   calibration: keep one outer process untouched, select each ensemble member's
+   checkpoint using only its inner holdout, predict the outer process with the inner
+   ensemble, repeat for every outer process, and evaluate interval calibration from
+   the resulting out-of-sample predictions. Keep augmented children grouped with
+   their parent process. Cache runs by unordered excluded-process pair: for `n`
+   processes, the naive `n * (n - 1)` inner runs contain only `C(n, 2)` unique
+   training sets. One checkpoint series trained without `{A, B}` can be evaluated in
+   both directions (validate on A and predict B, or validate on B and predict A),
+   halving the 12-process case from 132 to 66 training runs.
+7. Replace individual training's in-place run resume with a checkpoint-origin API:
+   `bp-train train --resume CHECKPOINT_DIR [--config UPDATED_CONFIG.json]`. Start a
+   new run, load the checkpoint's self-contained data/code/config plus weights and
+   compatible optimizer state, reset the LR schedule and local metrics, and record
+   parent-checkpoint provenance. Separately decide whether LOO's coarse fold-level
+   `--resume` should become `--continue` and resume partial folds from their latest
+   checkpoints rather than rerunning them.
