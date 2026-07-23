@@ -287,12 +287,13 @@ class ControlsStore(eqx.Module):
     name_controlled_PVs: tuple[str, ...]
     # Shape metadata persisted in `prepared.json`.
     shape_metadata: dict[str, Any]
-    # Stacked padded dense grids, shape `[n_processes, max_grid_length]`.
+    # Stacked right-clamped dense grids, shape
+    # `[n_processes, max_grid_length]`.
     dense_grid: jax.Array
-    # Stacked padded control values, shape
+    # Stacked right-clamped control values, shape
     # `[n_processes, max_grid_length, max_controls]`.
     control_values: jax.Array
-    # Stacked padded control derivatives, same shape as `control_values`.
+    # Stacked right-clamped control derivatives, same shape as `control_values`.
     control_derivatives: jax.Array
     # Stacked padded jump-time arrays, shape `[n_processes, max_jump_ts_length]`.
     jump_ts: jax.Array
@@ -376,7 +377,8 @@ class ControlsStore(eqx.Module):
         max_controls = len(canonical_names)
         canonical_index = {name: idx for idx, name in enumerate(canonical_names)}
 
-        dense_grid = grid + [0.0] * (max_grid_length - grid_length)
+        padding = max_grid_length - grid_length
+        dense_grid = grid + [grid[-1]] * padding
 
         control_values = []
         control_derivatives = []
@@ -390,10 +392,9 @@ class ControlsStore(eqx.Module):
             control_values.append(canonical_row)
             control_derivatives.append(canonical_deriv)
 
-        zero_row = [0.0] * max_controls
-        for _ in range(max_grid_length - grid_length):
-            control_values.append(list(zero_row))
-            control_derivatives.append(list(zero_row))
+        for _ in range(padding):
+            control_values.append(list(control_values[-1]))
+            control_derivatives.append(list(control_derivatives[-1]))
 
         jump_ts_padded = jump_ts + [0.0] * (max_jump_ts_length - jump_ts_length)
         return (
@@ -667,42 +668,10 @@ class ControlsStore(eqx.Module):
 
     def as_batch_controls(self) -> BatchControls:
         """Build a minimal index-based controls evaluator for batch training."""
-        max_grid_length = self.dense_grid.shape[1]
-        tail_mask = (
-            jnp.arange(max_grid_length, dtype=jnp.int32)[None, :]
-            >= self.grid_lengths[:, None]
-        )
-        last_index = jnp.clip(self.grid_lengths - 1, 0, max_grid_length - 1)
-        last_grid = self.dense_grid[
-            jnp.arange(self.dense_grid.shape[0], dtype=jnp.int32),
-            last_index,
-        ]
-        last_values = self.control_values[
-            jnp.arange(self.control_values.shape[0], dtype=jnp.int32),
-            last_index,
-            :,
-        ]
-        # Clamp derivatives in the padded tail to the last active value as well.
-        last_derivatives = self.control_derivatives[
-            jnp.arange(self.control_derivatives.shape[0], dtype=jnp.int32),
-            last_index,
-            :,
-        ]
-        grid_clamped = jnp.where(tail_mask, last_grid[:, None], self.dense_grid)
-        values_clamped = jnp.where(
-            tail_mask[:, :, None],
-            last_values[:, None, :],
-            self.control_values,
-        )
-        derivatives_clamped = jnp.where(
-            tail_mask[:, :, None],
-            last_derivatives[:, None, :],
-            self.control_derivatives,
-        )
         return BatchControls(
-            dense_grid=grid_clamped,
-            control_values=values_clamped,
-            control_derivatives=derivatives_clamped,
+            dense_grid=self.dense_grid,
+            control_values=self.control_values,
+            control_derivatives=self.control_derivatives,
             name_controlled_FVCs=self.name_controlled_FVCs,
             name_controlled_SVCs=self.name_controlled_SVCs,
             name_controlled_PVs=self.name_controlled_PVs,

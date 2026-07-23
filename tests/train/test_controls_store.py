@@ -370,6 +370,14 @@ def test_controls_store_exposes_discrete_event_metadata():
     # STATE-jump events, which live in the ``*_event_*`` arrays above and are
     # applied by the callbacks solve. With no discrete_events, jump_ts is empty.
     assert np.asarray(controls.active_jump_ts, dtype=float).tolist() == []
+    batch_controls = store.as_batch_controls()
+    assert batch_controls.control_values.shape == (
+        1,
+        store.shape_metadata["max_grid_length"],
+        0,
+    )
+    empty_pvs = batch_controls.eval_controlled_PVs(0, jnp.asarray([0.0, 5.0]), None)
+    assert empty_pvs.shape == (2, 0)
 
 
 def test_controls_store_rejects_unknown_process(tmp_path):
@@ -407,6 +415,7 @@ def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
 
     assert pvs[:, 0] == pytest.approx([1.0, 1.1])  # CF clamped to grid ends
     assert pvs[:, 1] == pytest.approx([30.0, 31.0])  # T clamped to grid ends
+
 
 def test_controls_store_rejects_not_consistent_controls_at_init():
     """ControlsStore must reject collections whose processes disagree on
@@ -483,22 +492,46 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
     )
 
 
-def test_controls_store_batch_controls_eval_by_index(tmp_path):
-    prepared_json = _prepare_two_process(tmp_path)
-    store = ControlsStore.from_json(prepared_json)
+def test_controls_store_pads_control_rows_with_last_active_values():
+    grid, values, derivatives, _, grid_length, _ = ControlsStore._pad_payload(
+        payload={
+            "grid": [0.0, 1.0],
+            "values": [[1.0], [2.0]],
+            "derivatives": [[3.0], [4.0]],
+            "jump_ts": [],
+        },
+        payload_source_names=["u"],
+        canonical_names=["u"],
+        max_grid_length=4,
+        max_jump_ts_length=0,
+    )
+
+    assert grid_length == 2
+    assert grid == [0.0, 1.0, 1.0, 1.0]
+    assert values == [[1.0], [2.0], [2.0], [2.0]]
+    assert derivatives == [[3.0], [4.0], [4.0], [4.0]]
+
+
+def test_controls_store_batch_controls_eval_by_index():
+    collection = _make_two_process_collection()
+    collection.processes["p2"].process_variables["CF"].values = TimeSeries(
+        times=jnp.asarray([0.0, 0.3, 1.0]),
+        values=jnp.asarray([1.0, 1.03, 1.1]),
+    )
+    store = ControlsStore.from_collection(collection)
     batch_controls = store.as_batch_controls()
 
-    pvs = batch_controls.eval_controlled_PVs(0, jnp.asarray(0.25), None)
-    assert pvs.shape == (2,)
-    assert pvs[0] == pytest.approx(1.025)  # CF
-    assert pvs[1] == pytest.approx(30.25)  # T
+    assert store.grid_lengths.tolist() == [16, 17]
+    assert batch_controls.dense_grid is store.dense_grid
+    assert batch_controls.control_values is store.control_values
+    assert batch_controls.control_derivatives is store.control_derivatives
 
-    pvs_ts = batch_controls.eval_controlled_PVs(
-        0, jnp.asarray([0.25, 1.5], dtype=jnp.float32), None
-    )
-    assert pvs_ts.shape == (2, 2)
-    assert pvs_ts[0, 0] == pytest.approx(1.025)  # CF at t=0.25
-    assert pvs_ts[1, 0] == pytest.approx(1.1)  # CF clamped at t=1.5
+    ts = jnp.asarray([0.25, 1.5])
+    pvs = batch_controls.eval_controlled_PVs(0, ts, None)
+    per_process_pvs = store.get_controls("p1").eval_controlled_PVs(ts, None)
+    assert pvs == pytest.approx(per_process_pvs)
+    assert pvs[:, 0] == pytest.approx([1.025, 1.1])
+    assert pvs[:, 1] == pytest.approx([30.25, 31.0])
 
 
 def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_path):
