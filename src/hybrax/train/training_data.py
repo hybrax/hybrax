@@ -10,7 +10,7 @@ from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection
 
-from .controls_store import ControlsStore, PerProcessControls
+from .controls_store import BatchControls, ControlsStore, PerProcessControls
 
 
 TARGET_SOURCE_AUTO = "auto"
@@ -367,10 +367,12 @@ class PerProcessTrainingData(eqx.Module):
 
 
 class BatchTrainingData(eqx.Module):
-    """Batch view over stacked training tensors for process-index batches."""
+    """Aligned measurement and control rows for a process-index batch."""
 
-    # Process indices used to gather this batch view.
+    # Global process indices used to gather this batch view.
     process_indices: jax.Array
+    # Controls gathered in the same row order as the measurements.
+    controls: BatchControls
     # Gathered measurement times `[batch_size, max_n_meas]`.
     t_measured: jax.Array
     # Gathered measurement values `[batch_size, max_n_meas, n_y_cols]`.
@@ -759,6 +761,7 @@ class TrainingDataStore(eqx.Module):
 
         return BatchTrainingData(
             process_indices=indices,
+            controls=self.controls_store._gather_batch_rows(indices),
             t_measured=self.t_measured[indices],
             y_measured=self.y_measured[indices],
             mask_measured=self.mask_measured[indices],

@@ -134,53 +134,53 @@ class _BatchIndexedControls(eqx.Module):
     """Lightweight per-sample controls adapter for batched loss evaluation."""
 
     batch_controls: BatchControls
-    process_idx: jax.Array
+    row_idx: jax.Array
 
     def eval_controlled_FVCs_cumulative(self, t_arr, states) -> jax.Array:
         return self.batch_controls.eval_controlled_FVCs_cumulative(
-            self.process_idx, t_arr, states
+            self.row_idx, t_arr, states
         )
 
     def eval_controlled_FVCs_rates(self, t_arr, states) -> jax.Array:
         return self.batch_controls.eval_controlled_FVCs_rates(
-            self.process_idx, t_arr, states
+            self.row_idx, t_arr, states
         )
 
     def eval_controlled_SVCs_rates(self, t_arr, states) -> jax.Array:
         return self.batch_controls.eval_controlled_SVCs_rates(
-            self.process_idx, t_arr, states
+            self.row_idx, t_arr, states
         )
 
     def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_PVs(self.process_idx, t_arr, states)
+        return self.batch_controls.eval_controlled_PVs(self.row_idx, t_arr, states)
 
     @property
     def sample_event_times(self) -> jax.Array:
-        return self.batch_controls.sample_event_times[self.process_idx]
+        return self.batch_controls.sample_event_times[self.row_idx]
 
     @property
     def sample_event_volumes(self) -> jax.Array:
-        return self.batch_controls.sample_event_volumes[self.process_idx]
+        return self.batch_controls.sample_event_volumes[self.row_idx]
 
     @property
     def sample_event_mask(self) -> jax.Array:
-        return self.batch_controls.sample_event_mask[self.process_idx]
+        return self.batch_controls.sample_event_mask[self.row_idx]
 
     @property
     def bolus_event_times(self) -> jax.Array:
-        return self.batch_controls.bolus_event_times[self.process_idx]
+        return self.batch_controls.bolus_event_times[self.row_idx]
 
     @property
     def bolus_event_volumes(self) -> jax.Array:
-        return self.batch_controls.bolus_event_volumes[self.process_idx]
+        return self.batch_controls.bolus_event_volumes[self.row_idx]
 
     @property
     def bolus_event_Cin(self) -> jax.Array:
-        return self.batch_controls.bolus_event_Cin[self.process_idx]
+        return self.batch_controls.bolus_event_Cin[self.row_idx]
 
     @property
     def bolus_event_mask(self) -> jax.Array:
-        return self.batch_controls.bolus_event_mask[self.process_idx]
+        return self.batch_controls.bolus_event_mask[self.row_idx]
 
 
 def evaluate_sample_with_loss_module(
@@ -413,7 +413,7 @@ def evaluate_sample_with_loss_module(
 def evaluate_one_sample_loss(
     wrapper: HybridOdeWrapper,
     batch_controls: BatchControls,
-    process_idx: jax.Array,
+    row_idx: jax.Array,
     t_measured: jax.Array,
     SCL_target_measured: jax.Array,
     mask_measured: jax.Array,
@@ -434,7 +434,7 @@ def evaluate_one_sample_loss(
     the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""
     controls = _BatchIndexedControls(
         batch_controls=batch_controls,
-        process_idx=process_idx,
+        row_idx=row_idx,
     )
     sample_wrapper = eqx.tree_at(
         lambda w: (
@@ -474,7 +474,6 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
     def _batched_loss_fn(
         wrapper: HybridOdeWrapper,
         batch: BatchTrainingData,
-        batch_controls: BatchControls,
         batched_Cin: jax.Array,
         batched_Cin_modeled: jax.Array,
         jump_ts_rows: jax.Array | None,
@@ -493,7 +492,7 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
         SCL_y_measured = batch.y_measured / SCALE_state_for_targets[None, None, :]
 
         def _sample_loss(
-            process_idx: jax.Array,
+            row_idx: jax.Array,
             t_measured: jax.Array,
             SCL_target_measured: jax.Array,
             mask_measured: jax.Array,
@@ -504,8 +503,8 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             jump_ts: jax.Array | None,
         ) -> tuple:
             controls = _BatchIndexedControls(
-                batch_controls=batch_controls,
-                process_idx=process_idx,
+                batch_controls=batch.controls,
+                row_idx=row_idx,
             )
             sample_wrapper = eqx.tree_at(
                 lambda w: (
@@ -550,7 +549,7 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             # it's not iterated over
             in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None if jump_ts_rows is None else 0),
         )(
-            batch.process_indices,
+            jnp.arange(batch.process_indices.shape[0], dtype=jnp.int32),
             batch_t_meas,
             SCL_y_measured,
             batch.mask_measured,

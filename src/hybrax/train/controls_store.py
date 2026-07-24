@@ -192,16 +192,16 @@ class PerProcessControls(eqx.Module):
 
 
 class BatchControls(eqx.Module):
-    """All-process controls evaluator with index-based runtime lookup.
+    """Batch-row controls evaluator with index-based runtime lookup.
 
     Column axis follows the same canonical
     ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]``
     order as :class:`PerProcessControls`.
     """
 
-    # Padded dense grids `[n_processes, max_grid_length]` with right-clamped tail.
+    # Padded dense grids `[batch_size, max_grid_length]` with right-clamped tail.
     dense_grid: jax.Array
-    # Padded control values `[n_processes, max_grid_length, max_controls]`.
+    # Padded control values `[batch_size, max_grid_length, max_controls]`.
     control_values: jax.Array
     # Padded control derivatives, same shape as control_values.
     control_derivatives: jax.Array
@@ -216,17 +216,17 @@ class BatchControls(eqx.Module):
     bolus_event_Cin: jax.Array
     bolus_event_mask: jax.Array
 
-    def _eval_values(self, process_idx: int, t: jax.Array) -> jax.Array:
-        """Interpolate all control VALUES for one process index, canonical order.
+    def _eval_values(self, row_idx: int, t: jax.Array) -> jax.Array:
+        """Interpolate all control VALUES for one batch row, canonical order.
         Private — sliced by the per-axis ``eval_controlled_*`` accessors."""
-        if isinstance(process_idx, (int, np.integer)):
-            idx = int(process_idx)
-            n_processes = int(self.dense_grid.shape[0])
-            if idx < 0 or idx >= n_processes:
-                raise IndexError(f"process index out of range: {idx}")
+        if isinstance(row_idx, (int, np.integer)):
+            idx = int(row_idx)
+            batch_size = int(self.dense_grid.shape[0])
+            if idx < 0 or idx >= batch_size:
+                raise IndexError(f"batch row out of range: {idx}")
 
-        grid = self.dense_grid[process_idx]
-        values = self.control_values[process_idx]
+        grid = self.dense_grid[row_idx]
+        values = self.control_values[row_idx]
 
         query = jnp.asarray(t, dtype=grid.dtype)
         scalar_input = query.ndim == 0
@@ -234,11 +234,11 @@ class BatchControls(eqx.Module):
         out = _interp_columns(query_1d, grid, values)
         return out[0] if scalar_input else out
 
-    def _eval_derivatives(self, process_idx: int, t: jax.Array) -> jax.Array:
-        """Interpolate all control DERIVATIVES for one process index, canonical
+    def _eval_derivatives(self, row_idx: int, t: jax.Array) -> jax.Array:
+        """Interpolate all control DERIVATIVES for one batch row, canonical
         order. Private — sliced by the ``eval_controlled_*_rates`` accessors."""
-        grid = self.dense_grid[process_idx]
-        derivatives = self.control_derivatives[process_idx]
+        grid = self.dense_grid[row_idx]
+        derivatives = self.control_derivatives[row_idx]
 
         query = jnp.asarray(t, dtype=grid.dtype)
         scalar_input = query.ndim == 0
@@ -248,24 +248,24 @@ class BatchControls(eqx.Module):
 
     # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
     # placeholder for future state-dependent controls and is currently unused.
-    def eval_controlled_FVCs_cumulative(self, process_idx, t_arr, states) -> jax.Array:
+    def eval_controlled_FVCs_cumulative(self, row_idx, t_arr, states) -> jax.Array:
         n_fvc = len(self.name_controlled_FVCs)
-        return self._eval_values(process_idx, t_arr)[..., :n_fvc]
+        return self._eval_values(row_idx, t_arr)[..., :n_fvc]
 
-    def eval_controlled_FVCs_rates(self, process_idx, t_arr, states) -> jax.Array:
+    def eval_controlled_FVCs_rates(self, row_idx, t_arr, states) -> jax.Array:
         n_fvc = len(self.name_controlled_FVCs)
-        return self._eval_derivatives(process_idx, t_arr)[..., :n_fvc]
+        return self._eval_derivatives(row_idx, t_arr)[..., :n_fvc]
 
-    def eval_controlled_SVCs_rates(self, process_idx, t_arr, states) -> jax.Array:
+    def eval_controlled_SVCs_rates(self, row_idx, t_arr, states) -> jax.Array:
         n_fvc = len(self.name_controlled_FVCs)
         n_svc = len(self.name_controlled_SVCs)
-        return self._eval_derivatives(process_idx, t_arr)[..., n_fvc : n_fvc + n_svc]
+        return self._eval_derivatives(row_idx, t_arr)[..., n_fvc : n_fvc + n_svc]
 
-    def eval_controlled_PVs(self, process_idx, t_arr, states) -> jax.Array:
+    def eval_controlled_PVs(self, row_idx, t_arr, states) -> jax.Array:
         n_fvc = len(self.name_controlled_FVCs)
         n_svc = len(self.name_controlled_SVCs)
         n_pv = len(self.name_controlled_PVs)
-        return self._eval_values(process_idx, t_arr)[
+        return self._eval_values(row_idx, t_arr)[
             ..., n_fvc + n_svc : n_fvc + n_svc + n_pv
         ]
 
@@ -666,20 +666,34 @@ class ControlsStore(eqx.Module):
             bolus_event_mask=self.bolus_event_mask[process_index],
         )
 
-    def as_batch_controls(self) -> BatchControls:
-        """Build a minimal index-based controls evaluator for batch training."""
+    def gather_batch(self, process_indices: jax.Array | np.ndarray) -> BatchControls:
+        """Gather control and event rows in the requested order."""
+        indices = jnp.asarray(process_indices, dtype=jnp.int32)
+        if indices.ndim != 1:
+            raise ValueError("process_indices must be a 1D array")
+        if indices.size == 0:
+            raise ValueError("process_indices must be non-empty")
+        if bool(jnp.any(indices < 0)) or bool(
+            jnp.any(indices >= len(self.process_order))
+        ):
+            raise IndexError("process index out of range in process_indices")
+
+        return self._gather_batch_rows(indices)
+
+    def _gather_batch_rows(self, indices: jax.Array) -> BatchControls:
+        """Gather already-validated, int32 process-index rows."""
         return BatchControls(
-            dense_grid=self.dense_grid,
-            control_values=self.control_values,
-            control_derivatives=self.control_derivatives,
+            dense_grid=self.dense_grid[indices],
+            control_values=self.control_values[indices],
+            control_derivatives=self.control_derivatives[indices],
             name_controlled_FVCs=self.name_controlled_FVCs,
             name_controlled_SVCs=self.name_controlled_SVCs,
             name_controlled_PVs=self.name_controlled_PVs,
-            sample_event_times=self.sample_event_times,
-            sample_event_volumes=self.sample_event_volumes,
-            sample_event_mask=self.sample_event_mask,
-            bolus_event_times=self.bolus_event_times,
-            bolus_event_volumes=self.bolus_event_volumes,
-            bolus_event_Cin=self.bolus_event_Cin,
-            bolus_event_mask=self.bolus_event_mask,
+            sample_event_times=self.sample_event_times[indices],
+            sample_event_volumes=self.sample_event_volumes[indices],
+            sample_event_mask=self.sample_event_mask[indices],
+            bolus_event_times=self.bolus_event_times[indices],
+            bolus_event_volumes=self.bolus_event_volumes[indices],
+            bolus_event_Cin=self.bolus_event_Cin[indices],
+            bolus_event_mask=self.bolus_event_mask[indices],
         )

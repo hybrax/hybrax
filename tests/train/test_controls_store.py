@@ -370,13 +370,14 @@ def test_controls_store_exposes_discrete_event_metadata():
     # STATE-jump events, which live in the ``*_event_*`` arrays above and are
     # applied by the callbacks solve. With no discrete_events, jump_ts is empty.
     assert np.asarray(controls.active_jump_ts, dtype=float).tolist() == []
-    batch_controls = store.as_batch_controls()
-    assert batch_controls.control_values.shape == (
-        1,
+    gathered_controls = store.gather_batch(jnp.asarray([0, 0], dtype=jnp.int32))
+    assert gathered_controls.control_values.shape == (
+        2,
         store.shape_metadata["max_grid_length"],
         0,
     )
-    empty_pvs = batch_controls.eval_controlled_PVs(0, jnp.asarray([0.0, 5.0]), None)
+    assert gathered_controls.bolus_event_Cin.shape == (2, 1, 1)
+    empty_pvs = gathered_controls.eval_controlled_PVs(0, jnp.asarray([0.0, 5.0]), None)
     assert empty_pvs.shape == (2, 0)
 
 
@@ -512,6 +513,70 @@ def test_controls_store_pads_control_rows_with_last_active_values():
     assert derivatives == [[3.0], [4.0], [4.0], [4.0]]
 
 
+def test_controls_store_gather_batch_preserves_order_duplicates_and_events():
+    collection = _make_two_process_collection()
+    p2 = collection.processes["p2"]
+    p2.process_variables["CF"].values = TimeSeries(
+        times=jnp.asarray([0.0, 1.0]),
+        values=jnp.asarray([2.0, 2.2]),
+    )
+    p2.volume.volume_changes["sample_1"].values = TimeSeries(
+        times=jnp.asarray([0.75]),
+        values=jnp.asarray([-0.2]),
+    )
+    for index, process in enumerate(collection.processes.values(), start=1):
+        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+            name="bolus",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=TimeSeries(
+                times=jnp.asarray([0.2 * index]),
+                values=jnp.asarray([0.1 * index]),
+            ),
+            feed_medium=FeedMedium(
+                name="feed",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": FeedMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=StaticVariable(3.0 * index),
+                        is_controlled=False,
+                    )
+                },
+            ),
+        )
+
+    store = ControlsStore.from_collection(collection)
+    indices = jnp.asarray([1, 0, 1], dtype=jnp.int32)
+    gathered = store.gather_batch(indices)
+
+    for field in (
+        "dense_grid",
+        "control_values",
+        "control_derivatives",
+        "sample_event_times",
+        "sample_event_volumes",
+        "sample_event_mask",
+        "bolus_event_times",
+        "bolus_event_volumes",
+        "bolus_event_Cin",
+        "bolus_event_mask",
+    ):
+        np.testing.assert_array_equal(
+            np.asarray(getattr(gathered, field)),
+            np.asarray(getattr(store, field))[[1, 0, 1]],
+        )
+
+    ts = jnp.asarray([0.25, 1.0])
+    np.testing.assert_allclose(
+        gathered.eval_controlled_PVs(0, ts, None),
+        store.get_controls(1).eval_controlled_PVs(ts, None),
+    )
+
+
 def test_controls_store_batch_controls_eval_by_index():
     collection = _make_two_process_collection()
     collection.processes["p2"].process_variables["CF"].values = TimeSeries(
@@ -519,12 +584,9 @@ def test_controls_store_batch_controls_eval_by_index():
         values=jnp.asarray([1.0, 1.03, 1.1]),
     )
     store = ControlsStore.from_collection(collection)
-    batch_controls = store.as_batch_controls()
+    batch_controls = store.gather_batch(jnp.asarray([0, 1], dtype=jnp.int32))
 
     assert store.grid_lengths.tolist() == [16, 17]
-    assert batch_controls.dense_grid is store.dense_grid
-    assert batch_controls.control_values is store.control_values
-    assert batch_controls.control_derivatives is store.control_derivatives
 
     ts = jnp.asarray([0.25, 1.5])
     pvs = batch_controls.eval_controlled_PVs(0, ts, None)
@@ -534,10 +596,10 @@ def test_controls_store_batch_controls_eval_by_index():
     assert pvs[:, 1] == pytest.approx([30.25, 31.0])
 
 
-def test_controls_store_batch_controls_rejects_out_of_range_process_index(tmp_path):
+def test_controls_store_batch_controls_rejects_out_of_range_row(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
     store = ControlsStore.from_json(prepared_json)
-    batch_controls = store.as_batch_controls()
+    batch_controls = store.gather_batch(jnp.asarray([0, 1], dtype=jnp.int32))
 
     with pytest.raises(IndexError, match="out of range"):
         batch_controls.eval_controlled_FVCs_cumulative(2, jnp.asarray(0.25), None)

@@ -2,9 +2,9 @@
 
 The device count is fixed at JAX initialisation, so we exercise the sharded
 (pmap) step vs the single-device (vmap) step in subprocesses: one with
-``BP_TRAIN_DEVICES=1`` (vmap) and one with ``=2`` (sharded, one process per
-device). The two must train identically up to float32 cross-device reduction
-order. Reuses the ``p1``/``p2`` fixture from ``test_harness``.
+``BP_TRAIN_DEVICES=1`` and one with ``=2``. A reordered three-process batch with
+distinct sample events forces one padded sharded row. The runs must train
+identically up to float32 cross-device reduction order.
 """
 
 import json
@@ -19,14 +19,59 @@ _TESTS_DIR = str(Path(__file__).resolve().parent)
 
 # Runs in a fresh interpreter so BP_TRAIN_DEVICES is honoured before JAX inits.
 _SCRIPT = """
-import json, sys
+import copy, dataclasses, json, sys
 sys.path.insert(0, {tests_dir!r})
 import jax
+import jax.numpy as jnp
 from test_harness import _make_collection, _LinearReactionModule, _biomass_loss
+from bp_format.dataclasses import (
+    FeedMedium, FeedMediumComponent, FeedVolumeChange, StaticVariable, TimeSeries
+)
 from bp_train.training_data import TrainingDataStore
 from bp_train.harness import train_collection, TrainHarnessConfig
 
+def with_events(process, name, sample_value, bolus_concentration):
+    process = copy.deepcopy(process)
+    sample = process.volume.volume_changes["sample_1"]
+    sample = dataclasses.replace(
+        sample,
+        values=dataclasses.replace(sample.values, values=jnp.asarray([sample_value])),
+    )
+    bolus = FeedVolumeChange(
+        name="bolus",
+        unit="L",
+        is_controlled=True,
+        is_continuous=False,
+        values=TimeSeries(times=jnp.asarray([0.5]), values=jnp.asarray([0.1])),
+        feed_medium=FeedMedium(
+            name="feed",
+            density=1.0,
+            density_unit="kg/L",
+            components={{
+                "biomass": FeedMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(bolus_concentration),
+                    is_controlled=False,
+                )
+            }},
+        ),
+    )
+    volume = dataclasses.replace(
+        process.volume,
+        volume_changes={{
+            **process.volume.volume_changes,
+            "sample_1": sample,
+            "bolus": bolus,
+        }},
+    )
+    metadata = dataclasses.replace(process.metadata, name=name)
+    return dataclasses.replace(process, metadata=metadata, volume=volume)
+
 collection = _make_collection()
+collection.processes["p1"] = with_events(collection.processes["p1"], "p1", -0.1, 2.0)
+collection.processes["p2"] = with_events(collection.processes["p2"], "p2", -0.2, 4.0)
+collection.processes["p3"] = with_events(collection.processes["p1"], "p3", -0.3, 6.0)
 store = TrainingDataStore.from_collection(
     collection, target_variable_order=["biomass"], target_source="reactor_components"
 )
@@ -36,7 +81,7 @@ result = train_collection(
     loss_module=_biomass_loss(),
     collection=collection,
     config=TrainHarnessConfig(
-        process_names=("p1", "p2"), epochs=4, batch_size=2,
+        process_names=("p3", "p1", "p2"), epochs=4, batch_size=3,
         optimizer_name="adam", learning_rate=2e-2,
         shuffle_batches=False,
     ),
@@ -91,9 +136,13 @@ print("RESULT_JSON " + json.dumps({{"devices": jax.device_count(), "row": row}})
 """
 
 
-def _run(devices: str) -> dict:
+def _run(devices: str, *, gspmd: bool = False) -> dict:
     env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": devices}
     env.pop("XLA_FLAGS", None)  # let the bootstrap set the device count cleanly
+    if gspmd:
+        env["BP_GSPMD"] = "1"
+    else:
+        env.pop("BP_GSPMD", None)
     proc = subprocess.run(
         [sys.executable, "-c", _SCRIPT.format(tests_dir=_TESTS_DIR)],
         env=env,
@@ -131,15 +180,18 @@ def _run_telemetry(mode: str) -> dict:
 
 def test_sharded_training_matches_vmap():
     vmap = _run("1")
-    sharded = _run("2")
     assert vmap["devices"] == 1
-    assert sharded["devices"] == 2, "BP_TRAIN_DEVICES=2 should expose 2 CPU devices"
-    assert len(vmap["losses"]) == len(sharded["losses"]) == 4
-    # loss should decrease (sanity) ...
-    assert sharded["losses"][-1] < sharded["losses"][0]
-    # ... and match the single-device run up to float32 reduction order.
-    for a, b in zip(vmap["losses"], sharded["losses"]):
-        assert abs(a - b) <= 1e-4 + 1e-4 * abs(a), (vmap["losses"], sharded["losses"])
+
+    for gspmd in (False, True):
+        sharded = _run("2", gspmd=gspmd)
+        assert sharded["devices"] == 2
+        assert len(vmap["losses"]) == len(sharded["losses"]) == 4
+        assert sharded["losses"][-1] < sharded["losses"][0]
+        for a, b in zip(vmap["losses"], sharded["losses"]):
+            assert abs(a - b) <= 1e-4 + 1e-4 * abs(a), (
+                vmap["losses"],
+                sharded["losses"],
+            )
 
 
 @pytest.mark.parametrize("mode", ["vmap", "pmap", "gspmd"])
@@ -156,7 +208,7 @@ def test_failed_sample_telemetry_end_to_end(mode):
 def test_devices_exceeding_processes_shards_over_processes():
     """``--devices`` larger than the process count must shard across
     ``min(devices, batch)`` — not collapse to a single device. Here 4 devices on
-    a 2-process batch shard over 2, and must match the vmap run."""
+    a 3-process batch shard over 3, and must match the vmap run."""
     vmap = _run("1")
     over = _run("4")
     assert over["devices"] == 4, "bootstrap should expose 4 CPU devices"

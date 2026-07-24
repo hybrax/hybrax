@@ -101,7 +101,6 @@ def compute_dense_exports(
     batched_Cin_modeled = jnp.stack(
         [rhs_by_name[name].Cin_modeled_FVCs for name in store.process_order]
     )
-    batch_controls = store.controls_store.as_batch_controls()
     eval_indices = jnp.asarray(
         [store.process_order.index(name) for name in process_names], dtype=jnp.int32
     )
@@ -122,7 +121,6 @@ def compute_dense_exports(
     ) = _BATCHED_LOSS_FN_JIT(
         trained_wrapper,
         batch,
-        batch_controls,
         batched_Cin,
         batched_Cin_modeled,
         jump_ts_rows,
@@ -880,7 +878,6 @@ def train_collection(
     if cfg.solver_atol <= 0.0:
         raise ValueError("solver_atol must be positive")
 
-    batch_controls = store.controls_store.as_batch_controls()
     warmup_batch = store.gather_batch(batch_index_stream[0])
 
     # Build per-process RhsOde and validate structural compatibility
@@ -985,19 +982,16 @@ def train_collection(
                     per_sample,
                     *_pred,
                     per_sample_fail,
-                ) = (
-                    effective_batched_loss_fn(
-                        candidate_wrapper,
-                        current_batch,
-                        batch_controls,
-                        batched_Cin,
-                        batched_Cin_modeled,
-                        jump_ts_rows,
-                        max_solver_steps=int(cfg.solver_max_steps),
-                        solver_rtol=float(cfg.solver_rtol),
-                        solver_atol=float(cfg.solver_atol),
-                        step=step,
-                    )
+                ) = effective_batched_loss_fn(
+                    candidate_wrapper,
+                    current_batch,
+                    batched_Cin,
+                    batched_Cin_modeled,
+                    jump_ts_rows,
+                    max_solver_steps=int(cfg.solver_max_steps),
+                    solver_rtol=float(cfg.solver_rtol),
+                    solver_atol=float(cfg.solver_atol),
+                    step=step,
                 )
                 per_target = jnp.mean(per_sample_per_target, axis=0)
                 total_loss, per_target, per_sample = _validate_batched_loss_outputs(
@@ -1075,7 +1069,7 @@ def train_collection(
             devices=devices,
             in_axes=(None, 0, 0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None), None),
         )
-        def _pgrad(params, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+        def _pgrad(params, controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
             def _local(p):
                 wrapper = eqx.combine(p, trainable_static)
                 module = wrapper.reaction_module
@@ -1086,7 +1080,7 @@ def train_collection(
                 def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
                     return evaluate_one_sample_loss(
                         wrapper,
-                        batch_controls,
+                        controls,
                         pidx,
                         t_row,
                         scl_ym,
@@ -1104,7 +1098,17 @@ def train_collection(
 
                 totl, pert, faild = jax.vmap(
                     _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
-                )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
+                )(
+                    jnp.arange(tm.shape[0], dtype=jnp.int32),
+                    tmc,
+                    SCL_ym,
+                    mk,
+                    nm,
+                    y0,
+                    cin,
+                    cinm,
+                    jt,
+                )
                 return jnp.sum(totl * wt), (pert, totl, faild)
 
             (_l, (pert, totl, faild)), grads = eqx.filter_value_and_grad(
@@ -1140,7 +1144,6 @@ def train_collection(
             ins = [
                 _shard(_pad(a))
                 for a in (
-                    current_batch.process_indices,
                     current_batch.t_measured,
                     current_batch.y_measured,
                     current_batch.mask_measured,
@@ -1150,9 +1153,11 @@ def train_collection(
                     cinm,
                 )
             ]
+            controls = jtu.tree_map(_shard, jtu.tree_map(_pad, current_batch.controls))
             jt = _shard(_pad(jump_ts_rows)) if jump_ts_rows is not None else None
             loss, grads, per_target, per_sample, per_sample_fail = _pgrad(
                 current_trainable_params,
+                controls,
                 ins[0],
                 ins[1],
                 ins[2],
@@ -1160,7 +1165,6 @@ def train_collection(
                 ins[4],
                 ins[5],
                 ins[6],
-                ins[7],
                 weight_sharded,
                 jt,
                 step,
@@ -1235,15 +1239,15 @@ def train_collection(
 
         @eqx.filter_jit
         def _full_step(
-            params, opt_state, pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step
+            params, opt_state, controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step
         ):
             # Inside-jit sharding constraints (per the equinox autoparallelism
             # tutorial): emits jax.lax.with_sharding_constraint so XLA keeps
             # params/opt replicated and the batch axis sharded *through* the
             # computation, rather than replicating it.
             params, opt_state = eqx.filter_shard((params, opt_state), S_repl)
-            pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
-                (pi, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
+            controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
+                (controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
             )
 
             def _local(p):
@@ -1256,7 +1260,7 @@ def train_collection(
                 def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
                     return evaluate_one_sample_loss(
                         wrapper,
-                        batch_controls,
+                        controls,
                         pidx,
                         t_row,
                         scl_ym,
@@ -1274,7 +1278,17 @@ def train_collection(
 
                 totl, pert, faild = jax.vmap(
                     _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
-                )(pi, tmc, SCL_ym, mk, nm, y0, cin, cinm, jt)
+                )(
+                    jnp.arange(tm.shape[0], dtype=jnp.int32),
+                    tmc,
+                    SCL_ym,
+                    mk,
+                    nm,
+                    y0,
+                    cin,
+                    cinm,
+                    jt,
+                )
                 # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
                 # measured to NOT help — even with this hint XLA still replicates the
                 # data-dependent diffrax while_loops rather than partitioning the
@@ -1327,7 +1341,6 @@ def train_collection(
                 sharded = [
                     jax.device_put(_pad(a), S_batch)
                     for a in (
-                        current_batch.process_indices,
                         current_batch.t_measured,
                         current_batch.y_measured,
                         current_batch.mask_measured,
@@ -1337,6 +1350,9 @@ def train_collection(
                         cinm,
                     )
                 ]
+                controls = jtu.tree_map(
+                    lambda x: jax.device_put(_pad(x), S_batch), current_batch.controls
+                )
                 wt = jax.device_put(weight_full, S_batch)
                 jt = (
                     jax.device_put(_pad(jump_ts_rows), S_batch)
@@ -1357,6 +1373,7 @@ def train_collection(
                 ) = _full_step(
                     params_r,
                     opt_r,
+                    controls,
                     sharded[0],
                     sharded[1],
                     sharded[2],
@@ -1364,7 +1381,6 @@ def train_collection(
                     sharded[4],
                     sharded[5],
                     sharded[6],
-                    sharded[7],
                     wt,
                     jt,
                     step_r,
@@ -1509,7 +1525,6 @@ def train_collection(
         total, per_sample_per_target, _per_sample, *_ = effective_batched_loss_fn(
             wrapper,
             holdout_batch,
-            batch_controls,
             batched_Cin,
             batched_Cin_modeled,
             holdout_jump_ts_rows,

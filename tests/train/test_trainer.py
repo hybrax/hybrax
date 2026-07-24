@@ -3,6 +3,7 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from bp_format.dataclasses import (
     BioProcess,
@@ -158,7 +159,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                     is_continuous=False,
                     values=TimeSeries(
                         times=jnp.asarray([1.0]),
-                        values=jnp.asarray([-0.1]),
+                        values=jnp.asarray([-0.2]),
                     ),
                 )
             },
@@ -561,8 +562,9 @@ def _build_batched_setup(
     )
     process_names = batch_process_names or (process_name,)
     process_indices = [list(store.process_order).index(name) for name in process_names]
-    batch = store.gather_batch(jnp.asarray(process_indices, dtype=jnp.int32))
-    batch_controls = store.controls_store.as_batch_controls()
+    indices = jnp.asarray(process_indices, dtype=jnp.int32)
+    batch = store.gather_batch(indices)
+    batch_controls = batch.controls
     rhs_by_process = [
         build_rhs_ode(collection.processes[name]) for name in store.process_order
     ]
@@ -581,7 +583,6 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
     mean_total, per_sample_per_target, per_sample, *_ = batched_loss_fn(
         wrapper,
         batch,
-        batch_controls,
         batched_cin,
         batched_cin_modeled,
         None,
@@ -605,7 +606,6 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
     mean_total_none, *_ = batched_loss_fn(
         wrapper,
         batch,
-        batch_controls,
         batched_cin,
         batched_cin_modeled,
         None,
@@ -617,7 +617,6 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
     mean_total_present, *_ = batched_loss_fn(
         wrapper,
         batch,
-        batch_controls,
         batched_cin,
         batched_cin_modeled,
         jump_ts_rows,
@@ -634,7 +633,6 @@ def _run_batched(wrapper, batch, batch_controls, batched_cin, batched_cin_modele
     return batched_loss_fn(
         wrapper,
         batch,
-        batch_controls,
         batched_cin,
         batched_cin_modeled,
         None,
@@ -643,6 +641,51 @@ def _run_batched(wrapper, batch, batch_controls, batched_cin, batched_cin_modele
         solver_atol=1e-7,
         step=1,
     )
+
+
+def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypatch):
+    wrapper, reversed_batch, _controls, _cin, cin_modeled = _build_batched_setup(
+        batch_process_names=("p2", "p1")
+    )
+    _, forward_batch, *_ = _build_batched_setup(batch_process_names=("p1", "p2"))
+    cin = jnp.asarray([[[10.0]], [[20.0]]])
+
+    def _fake_evaluate(sample_wrapper, **_kwargs):
+        signal = (
+            sample_wrapper.controls.sample_event_volumes[0]
+            + sample_wrapper.rhs_ode.Cin_controlled_FVCs.reshape(-1)[0]
+        )
+        return type(
+            "Result",
+            (),
+            {
+                "total_loss": signal,
+                "per_target_loss": jnp.asarray([signal]),
+                "prediction_t": None,
+                "prediction_save_outputs": None,
+                "fail_time": jnp.asarray(jnp.inf),
+            },
+        )()
+
+    monkeypatch.setattr(
+        trainer_module, "evaluate_sample_with_loss_module", _fake_evaluate
+    )
+    loss_fn = eqx.filter_jit(build_batched_loss_fn())
+
+    def run(batch):
+        return loss_fn(
+            wrapper,
+            batch,
+            cin,
+            cin_modeled,
+            None,
+            max_solver_steps=1,
+            solver_rtol=1e-5,
+            solver_atol=1e-7,
+        )[2]
+
+    np.testing.assert_allclose(run(forward_batch), jnp.asarray([10.1, 20.2]))
+    np.testing.assert_allclose(run(reversed_batch), jnp.asarray([20.2, 10.1]))
 
 
 def test_batched_loss_fn_surfaces_per_sample_fail_time():
