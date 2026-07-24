@@ -112,14 +112,33 @@ class HybridOdeWrapper(eqx.Module):
         min_V: float = 1e-8,
         loss_module: Any = None,
     ) -> HybridOdeWrapper:
-        """Build a wrapper from a BioProcess and per-process controls.
+        """Build a wrapper from a BioProcess and per-process controls."""
+        return cls.from_rhs_ode(
+            reaction_module=reaction_module,
+            rhs_ode=build_rhs_ode(process),
+            controls=controls,
+            target_state_indices=target_state_indices,
+            min_V=min_V,
+            loss_module=loss_module,
+        )
+
+    @classmethod
+    def from_rhs_ode(
+        cls,
+        *,
+        reaction_module: Any,
+        rhs_ode: RhsOde,
+        controls: PerProcessControls,
+        target_state_indices: jax.Array | None = None,
+        min_V: float = 1e-8,
+        loss_module: Any = None,
+    ) -> HybridOdeWrapper:
+        """Build a wrapper from an existing RhsOde runtime template.
 
         Scales are read from ``reaction_module`` (a ``UserReactionModule``
         subclass with ``SCALE_*`` fields). The constructor validates each
         ``SCALE_*`` shape against the RhsOde / controls layout.
         """
-        rhs_ode = build_rhs_ode(process)
-
         if rhs_ode.name_controlled_SVCs:
             raise NotImplementedError(
                 "HybridOdeWrapper does not support continuous controlled SVCs "
@@ -436,26 +455,26 @@ def validate_rhs_ode_compatibility(
     candidate_name: str,
     candidate_rhs_ode: RhsOde,
 ) -> None:
-    """Validate that two RhsOde instances have compatible structure."""
-    if reference_rhs_ode.name_modeled_RMCs != candidate_rhs_ode.name_modeled_RMCs:
-        raise ValueError(
-            f"RhsOde name_modeled_RMCs differ between "
-            f"{reference_name!r} and {candidate_name!r}: "
-            f"{reference_rhs_ode.name_modeled_RMCs} vs "
-            f"{candidate_rhs_ode.name_modeled_RMCs}"
-        )
-    if reference_rhs_ode.name_controlled_FVCs != candidate_rhs_ode.name_controlled_FVCs:
-        raise ValueError(
-            f"RhsOde name_controlled_FVCs differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs_ode.name_controlled_FVCs} vs "
-            f"{candidate_rhs_ode.name_controlled_FVCs}"
-        )
-    if reference_rhs_ode.name_modeled_FVCs != candidate_rhs_ode.name_modeled_FVCs:
-        raise ValueError(
-            f"RhsOde name_modeled_FVCs differ between {reference_name!r} and "
-            f"{candidate_name!r}: {reference_rhs_ode.name_modeled_FVCs} vs "
-            f"{candidate_rhs_ode.name_modeled_FVCs}"
-        )
+    """Validate that two RhsOde instances have compatible runtime axes."""
+    name_fields = (
+        "name_modeled_RMCs",
+        "name_modeled_PVs",
+        "name_modeled_FVCs",
+        "name_modeled_SVCs",
+        "name_controlled_PVs",
+        "name_controlled_FVCs",
+        "name_controlled_SVCs",
+        "name_modeled_rates",
+        "name_modeled_algebraic",
+    )
+    for field_name in name_fields:
+        reference_value = getattr(reference_rhs_ode, field_name)
+        candidate_value = getattr(candidate_rhs_ode, field_name)
+        if reference_value != candidate_value:
+            raise ValueError(
+                f"RhsOde {field_name} differ between {reference_name!r} and "
+                f"{candidate_name!r}: {reference_value} vs {candidate_value}"
+            )
     if (
         reference_rhs_ode.Cin_controlled_FVCs.shape
         != candidate_rhs_ode.Cin_controlled_FVCs.shape

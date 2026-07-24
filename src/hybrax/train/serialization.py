@@ -380,10 +380,9 @@ def load_run(
         if config.data is not None and config.data.processes is not None
         else tuple(store.process_order)
     )
-    template, _extras = _build_template_wrapper(
+    template = _build_template_wrapper(
         store,
         reaction_module=reaction_module,
-        collection=collection,
         selected_processes=selected_processes,
         loss_module=loss_module,
     )

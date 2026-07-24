@@ -79,7 +79,6 @@ result = train_collection(
     store,
     reaction_module=_LinearReactionModule(),
     loss_module=_biomass_loss(),
-    collection=collection,
     config=TrainHarnessConfig(
         process_names=("p3", "p1", "p2"), epochs=4, batch_size=3,
         optimizer_name="adam", learning_rate=2e-2,
@@ -125,7 +124,6 @@ with tempfile.TemporaryDirectory() as tmp:
         store,
         reaction_module=P2OnlyBlowUp(),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p2", "p1"), epochs=1, batch_size=2,
             shuffle_batches=False, solver_max_steps=512, metrics_jsonl=metrics,

@@ -7,10 +7,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from bp_format.dataclasses import BioProcessCollection
-from bp_format.mechanistic import build_rhs_ode
+from bp_format.mechanistic import RhsOde, build_rhs_ode
 from bp_format.serialization import load_process_collection
+from bp_format.validate import validate_biological_ode_equivalence
 
 from .controls_store import BatchControls, ControlsStore, PerProcessControls
+from .wrapper import validate_rhs_ode_compatibility
 
 
 TARGET_SOURCE_AUTO = "auto"
@@ -414,6 +416,10 @@ class TrainingDataStore(eqx.Module):
     name_modeled_SVCs: tuple[str, ...]
     # Shared controls store for this prepared artifact.
     controls_store: ControlsStore
+    # Canonical ODE structure plus process-aligned feed-composition arrays.
+    rhs_ode: RhsOde
+    Cin_controlled_FVCs: jax.Array
+    Cin_modeled_FVCs: jax.Array
     # Padded measurement times `[n_processes, max_n_meas]`.
     t_measured: jax.Array
     # Padded measurement values
@@ -455,6 +461,10 @@ class TrainingDataStore(eqx.Module):
         """Build training-data tensors from a prepared process collection."""
         controls_store = ControlsStore.from_collection(collection)
         process_order = list(controls_store.process_order)
+        if not process_order:
+            raise ValueError("process collection is empty")
+        rhs_odes = [build_rhs_ode(collection.processes[name]) for name in process_order]
+        ref_rhs_ode = rhs_odes[0]
 
         target_order = list(target_variable_order) if target_variable_order else None
         resolved_target_source = _resolve_target_source(
@@ -469,12 +479,10 @@ class TrainingDataStore(eqx.Module):
         # aligned with ``reference_targets``. ``combined`` mixes both.
         reference_target_sources: list[str] | None = None
 
-        for process_name in process_order:
+        for process_name, rhs_ode in zip(process_order, rhs_odes, strict=True):
             process = collection.processes[process_name]
             if resolved_target_source == TARGET_SOURCE_COMBINED:
-                rmc_targets, pv_targets = _combined_measured_targets(
-                    process, build_rhs_ode(process)
-                )
+                rmc_targets, pv_targets = _combined_measured_targets(process, rhs_ode)
                 current_targets = rmc_targets + pv_targets
                 current_sources = [TARGET_SOURCE_REACTOR_COMPONENTS] * len(
                     rmc_targets
@@ -498,8 +506,19 @@ class TrainingDataStore(eqx.Module):
                     f"but expected {reference_targets!r}"
                 )
 
+        biological_ode_ok, biological_ode_message = validate_biological_ode_equivalence(
+            collection
+        )
+        if not biological_ode_ok:
+            raise ValueError(biological_ode_message)
+
+        for process_name, rhs_ode in zip(process_order[1:], rhs_odes[1:], strict=True):
+            validate_rhs_ode_compatibility(
+                process_order[0], ref_rhs_ode, process_name, rhs_ode
+            )
+
         if reference_targets is None:
-            raise ValueError("process collection is empty")
+            raise AssertionError("non-empty process order produced no targets")
         if len(reference_targets) == 0:
             raise ValueError("no measured target variables found in process collection")
 
@@ -525,24 +544,8 @@ class TrainingDataStore(eqx.Module):
                 f"{TARGET_SOURCE_COMBINED!r}, got {resolved_target_source!r}"
             )
 
-        ref_process = collection.processes[process_order[0]]
-        ref_rhs_ode = build_rhs_ode(ref_process)
         name_modeled_FVCs = tuple(ref_rhs_ode.name_modeled_FVCs)
         name_modeled_SVCs = tuple(ref_rhs_ode.name_modeled_SVCs)
-        for _pn in process_order[1:]:
-            _other_rhs_ode = build_rhs_ode(collection.processes[_pn])
-            if tuple(_other_rhs_ode.name_modeled_FVCs) != name_modeled_FVCs:
-                raise ValueError(
-                    f"name_modeled_FVCs differs across processes: "
-                    f"{process_order[0]!r} has {name_modeled_FVCs!r} but "
-                    f"{_pn!r} has {tuple(_other_rhs_ode.name_modeled_FVCs)!r}"
-                )
-            if tuple(_other_rhs_ode.name_modeled_SVCs) != name_modeled_SVCs:
-                raise ValueError(
-                    f"name_modeled_SVCs differs across processes: "
-                    f"{process_order[0]!r} has {name_modeled_SVCs!r} but "
-                    f"{_pn!r} has {tuple(_other_rhs_ode.name_modeled_SVCs)!r}"
-                )
         n_modeled = len(name_modeled_FVCs) + len(name_modeled_SVCs)
 
         per_process_times: list[np.ndarray] = []
@@ -558,7 +561,7 @@ class TrainingDataStore(eqx.Module):
         # there for future use.
         n_y_cols = n_targets + n_modeled
 
-        for process_name in process_order:
+        for process_name, process_rhs_ode in zip(process_order, rhs_odes, strict=True):
             process = collection.processes[process_name]
             process_targets = per_process_targets[process_name]
 
@@ -639,7 +642,6 @@ class TrainingDataStore(eqx.Module):
             # [all modeled RMCs | all modeled PVs | V | modeled_cum...].
             # Loss targets may be a subset (e.g. PV-only), but the solver still
             # needs every modeled physical state axis.
-            process_rhs_ode = build_rhs_ode(process)
             y0_state = np.asarray(
                 [
                     *(
@@ -704,6 +706,13 @@ class TrainingDataStore(eqx.Module):
             name_modeled_FVCs=name_modeled_FVCs,
             name_modeled_SVCs=name_modeled_SVCs,
             controls_store=controls_store,
+            rhs_ode=ref_rhs_ode,
+            Cin_controlled_FVCs=jnp.stack(
+                [rhs_ode.Cin_controlled_FVCs for rhs_ode in rhs_odes]
+            ),
+            Cin_modeled_FVCs=jnp.stack(
+                [rhs_ode.Cin_modeled_FVCs for rhs_ode in rhs_odes]
+            ),
             t_measured=jnp.asarray(t_measured),
             y_measured=jnp.asarray(y_measured),
             mask_measured=jnp.asarray(mask_measured),

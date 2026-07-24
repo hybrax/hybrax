@@ -18,13 +18,15 @@ from .harness import (
     TrainHarnessConfig,
     forward_from_collection,
     forward_plot_losses,
-    train_from_collection,
+    prepare_training,
+    train_collection,
     train_harness_config_from_run_config,
 )
 from .loo import run_loo_cv, run_single_fold
 from .postprocessing import (
     aggregate_dense_exports,
     export_predictions_csv,
+    extract_process_plot_sources,
     plot_process_simulations,
     plot_training_results,
 )
@@ -295,11 +297,14 @@ def _write_train_results(
     log.info("loss table saved to %s", loss_csv_path)
 
     predictions_csv_path = output_dir / "predictions.csv"
-    named_losses, total_losses = forward_plot_losses(fwd_result)
     if render_plots:
+        named_losses, total_losses = forward_plot_losses(fwd_result)
+        plot_sources = extract_process_plot_sources(
+            collection, fwd_result.store.rhs_ode, eval_processes
+        )
         plot_training_results(
             train_result,
-            collection,
+            plot_sources,
             fwd_result.store,
             output_dir,
             fwd_result.dense_exports,
@@ -313,18 +318,11 @@ def _write_train_results(
         )
         return fwd_result
 
-    plot_process_simulations(
+    export_predictions_csv(
         trained_wrapper,
-        collection,
-        fwd_result.store,
-        output_dir,
         fwd_result.dense_exports,
+        predictions_csv_path,
         process_names=eval_processes,
-        training_process_names=training_process_names,
-        per_process_named_losses=named_losses,
-        per_process_total_loss=total_losses,
-        timeseries_csv_path=predictions_csv_path,
-        render_plots=False,
     )
     return fwd_result
 
@@ -466,11 +464,20 @@ def _handle_train(args: argparse.Namespace) -> int:
 
     config = train_harness_config_from_run_config(cfg, run_dir=run_dir)
     try:
-        result = train_from_collection(
+        prepared = prepare_training(
             collection,
             config=config,
             custom_module=loaded.custom_module,
             run_config=cfg,
+        )
+        del collection
+        result = train_collection(
+            prepared.store,
+            reaction_module=prepared.reaction_module,
+            loss_module=prepared.loss_module,
+            config=prepared.config,
+            optimizer=prepared.optimizer,
+            plot_sources=prepared.plot_sources,
         )
     except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
         update_run_config_status(
@@ -805,9 +812,13 @@ def _handle_forward(args: argparse.Namespace) -> int:
     # --- Plots: mean line + ±std band + measured overlay ---
     if fcfg.output.plots:
         named_losses, total_losses = forward_plot_losses(per_model[0][1])
+        assert overlay_collection is not None
+        plot_sources = extract_process_plot_sources(
+            overlay_collection, overlay_store.rhs_ode, eval_processes
+        )
         plot_process_simulations(
             wrapper0,
-            overlay_collection,
+            plot_sources,
             overlay_store,
             output_dir,
             mean_exports,

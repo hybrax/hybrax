@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import re
 import warnings
+import weakref
 
 import equinox as eqx
 import jax
@@ -197,7 +199,6 @@ def test_train_collection_rejects_direct_stateful_without_opt_in():
             store,
             reaction_module=_StatefulHarnessModule(),
             loss_module=_biomass_loss(),
-            collection=collection,
             config=TrainHarnessConfig(epochs=1),
         )
 
@@ -214,7 +215,6 @@ def test_train_collection_accepts_direct_stateful_with_opt_in():
         store,
         reaction_module=_StatefulHarnessModule(),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
             epochs=1,
@@ -509,7 +509,6 @@ def test_train_collection_process_variable_target_uses_full_initial_state():
         store,
         reaction_module=module,
         loss_module=DefaultLossModule(target_names=["ratio"]),
-        collection=collection,
         config=TrainHarnessConfig(process_names=("p1",), epochs=1, batch_size=1),
     )
 
@@ -527,7 +526,6 @@ def test_train_collection_single_process_loss_decreases():
         store,
         reaction_module=_LinearReactionModule(),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
             epochs=8,
@@ -559,7 +557,6 @@ def test_train_collection_multi_process_tracks_per_process_histories():
         store,
         reaction_module=_LinearReactionModule(),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             epochs=5,
@@ -577,6 +574,76 @@ def test_train_collection_multi_process_tracks_per_process_histories():
         set(names) == {"p1", "p2"} for names in result.batch_process_names_by_step
     )
     assert result.train_step_rebuild_count == 0
+
+
+def test_store_rejects_different_biological_equations():
+    collection = _make_collection()
+    collection.processes["p2"].biological_ode.derivatives["biomass"] = (
+        "2 * q_biomass * biomass"
+    )
+    collection.processes["p2"].__post_init__()
+
+    with pytest.raises(ValueError, match="biological_ode.derivatives differs"):
+        TrainingDataStore.from_collection(
+            collection,
+            target_variable_order=["biomass"],
+            target_source="reactor_components",
+        )
+
+
+def test_store_retains_batched_cin_without_retaining_collection():
+    collection = _make_feed_mismatch_collection()
+    expected = jnp.stack(
+        [
+            build_rhs_ode(collection.processes[name]).Cin_controlled_FVCs
+            for name in ("p1", "p2")
+        ]
+    )
+    collection_ref = weakref.ref(collection)
+
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    del collection
+    gc.collect()
+
+    assert collection_ref() is None
+    assert store.rhs_ode.name_modeled_RMCs == ("biomass",)
+    assert jnp.array_equal(store.Cin_controlled_FVCs, expected)
+
+
+def test_subset_wrapper_uses_selected_process_cin_and_controls():
+    collection = _make_feed_mismatch_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(
+            **_harness_unit_scale_kwargs(collection, "p1")
+        ),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p2",),
+            epochs=1,
+            batch_size=1,
+        ),
+    )
+
+    assert result.trained_wrapper.controls.process_name == "p2"
+    assert jnp.array_equal(
+        result.trained_wrapper.rhs_ode.Cin_controlled_FVCs,
+        store.Cin_controlled_FVCs[1],
+    )
+    assert jnp.array_equal(
+        result.trained_wrapper.rhs_ode.Cin_modeled_FVCs,
+        store.Cin_modeled_FVCs[1],
+    )
 
 
 def test_train_collection_cycles_batches_across_multiple_batches_per_epoch():
@@ -601,7 +668,6 @@ def test_train_collection_cycles_batches_across_multiple_batches_per_epoch():
         store,
         reaction_module=_LinearReactionModule(),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=process_names,
             epochs=epochs,
@@ -620,9 +686,7 @@ def test_train_collection_cycles_batches_across_multiple_batches_per_epoch():
     # Every batch is full (batch_size processes); the dropped tail process
     # never appears in any batch.
     used_names = {
-        name
-        for batch in result.batch_process_names_by_step
-        for name in batch
+        name for batch in result.batch_process_names_by_step for name in batch
     }
     assert all(len(batch) == batch_size for batch in result.batch_process_names_by_step)
     assert used_names == set(process_names[: batches_per_epoch * batch_size])
@@ -653,7 +717,6 @@ def test_train_collection_with_different_cin_per_process():
             **_harness_unit_scale_kwargs(collection, "p1")
         ),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             epochs=4,
@@ -678,7 +741,6 @@ def test_train_collection_rejects_unknown_process_selection():
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
-            collection=collection,
             config=TrainHarnessConfig(process_names=("unknown",), epochs=2),
         )
 
@@ -694,7 +756,6 @@ def test_train_collection_rejects_nonpositive_solver_max_steps():
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
-            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 epochs=2,
@@ -714,7 +775,6 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
-            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 epochs=2,
@@ -725,7 +785,6 @@ def test_train_collection_rejects_nonpositive_solver_tolerances():
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
-            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 epochs=2,
@@ -745,7 +804,6 @@ def test_train_collection_rejects_unsupported_optimizer_name():
         train_collection(
             store,
             reaction_module=_LinearReactionModule(),
-            collection=collection,
             config=TrainHarnessConfig(
                 process_names=("p1",),
                 epochs=2,
@@ -866,7 +924,6 @@ def test_train_collection_signature_is_stable_and_no_rebuilds():
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             epochs=4,
@@ -892,7 +949,6 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     train_collection(
         store,
         reaction_module=_LinearReactionModule(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1", "p2"),
             epochs=4,
@@ -929,7 +985,6 @@ def test_holdout_runs_once_at_periodic_final_collision(tmp_path):
         store,
         reaction_module=_LinearReactionModule(),
         loss_module=_biomass_loss(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
             holdout_processes=("p2",),

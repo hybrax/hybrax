@@ -22,7 +22,6 @@ import numpy as np
 import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.inspect import print_rhs_ode
-from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
@@ -51,10 +50,12 @@ from .training_data import (
 )
 from .run_config import RunConfig
 from .utils import get_hook, load_custom_module, resolve_config
-from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
+from .wrapper import HybridOdeWrapper
 from .postprocessing import (
     DenseProcessExport,
+    ProcessPlotSource,
     build_process_plot_data,
+    extract_process_plot_sources,
     dense_exports_from_save_outputs,
     export_predictions_csv,
     plot_grad_norm_curve,
@@ -74,7 +75,6 @@ logger = logging.getLogger(__name__)
 def compute_dense_exports(
     trained_wrapper: HybridOdeWrapper,
     store: TrainingDataStore,
-    collection: BioProcessCollection,
     process_names: tuple[str, ...],
     *,
     solver_max_steps: int,
@@ -92,15 +92,6 @@ def compute_dense_exports(
     training and there is no second simulation. Returns ``(per_sample_total,
     per_sample_per_target, dense_exports)`` (loss arrays are ``np``, aligned with
     ``process_names``)."""
-    rhs_by_name = {
-        name: build_rhs_ode(collection.processes[name]) for name in store.process_order
-    }
-    batched_Cin = jnp.stack(
-        [rhs_by_name[name].Cin_controlled_FVCs for name in store.process_order]
-    )
-    batched_Cin_modeled = jnp.stack(
-        [rhs_by_name[name].Cin_modeled_FVCs for name in store.process_order]
-    )
     eval_indices = jnp.asarray(
         [store.process_order.index(name) for name in process_names], dtype=jnp.int32
     )
@@ -121,8 +112,8 @@ def compute_dense_exports(
     ) = _BATCHED_LOSS_FN_JIT(
         trained_wrapper,
         batch,
-        batched_Cin,
-        batched_Cin_modeled,
+        store.Cin_controlled_FVCs,
+        store.Cin_modeled_FVCs,
         jump_ts_rows,
         max_solver_steps=int(solver_max_steps),
         solver_rtol=float(solver_rtol),
@@ -569,49 +560,33 @@ def _build_template_wrapper(
     store: TrainingDataStore,
     *,
     reaction_module: UserReactionModule,
-    collection: BioProcessCollection,
     selected_processes: tuple[str, ...],
     loss_module: UserLossModule | None = None,
-) -> tuple[HybridOdeWrapper, dict[str, Any]]:
-    """Build a HybridOdeWrapper with the same structure train_collection produces.
-
-    Returns the wrapper plus a dict with the per-process RhsOde map under
-    ``per_process_rhs_ode`` so callers can reuse it for evaluation.
-
-    Scales now live on ``reaction_module``; the wrapper validates the shapes
-    in its constructor.
-    """
+) -> HybridOdeWrapper:
+    """Build the wrapper structure shared by training and deserialization."""
     if len(selected_processes) == 0:
         raise ValueError("selected_processes must be non-empty")
 
-    per_process_rhs_ode: dict[str, Any] = {}
-    reference_rhs_ode = None
-    reference_process_name = selected_processes[0]
-    for process_name in store.process_order:
-        process = collection.processes[process_name]
-        rhs_ode = build_rhs_ode(process)
-        per_process_rhs_ode[process_name] = rhs_ode
-        if process_name == reference_process_name:
-            reference_rhs_ode = rhs_ode
-    assert reference_rhs_ode is not None
-    for process_name in selected_processes[1:]:
-        validate_rhs_ode_compatibility(
-            reference_process_name,
-            reference_rhs_ode,
-            process_name,
-            per_process_rhs_ode[process_name],
-        )
-
+    reference_index = store.process_order.index(selected_processes[0])
+    reference_rhs_ode = eqx.tree_at(
+        lambda rhs_ode: (
+            rhs_ode.Cin_controlled_FVCs,
+            rhs_ode.Cin_modeled_FVCs,
+        ),
+        store.rhs_ode,
+        (
+            store.Cin_controlled_FVCs[reference_index],
+            store.Cin_modeled_FVCs[reference_index],
+        ),
+    )
     target_state_indices = _target_state_indices(store, reference_rhs_ode)
-
-    wrapper = HybridOdeWrapper.from_process(
+    return HybridOdeWrapper.from_rhs_ode(
         reaction_module=reaction_module,
-        process=collection.processes[reference_process_name],
-        controls=store.get_process(reference_process_name).controls,
+        rhs_ode=reference_rhs_ode,
+        controls=store.get_process(selected_processes[0]).controls,
         target_state_indices=target_state_indices,
         loss_module=loss_module,
     )
-    return wrapper, {"per_process_rhs_ode": per_process_rhs_ode}
 
 
 @dataclass(frozen=True)
@@ -744,10 +719,9 @@ def forward_from_collection(
         collection=collection,
     )
 
-    template_wrapper, _extras = _build_template_wrapper(
+    template_wrapper = _build_template_wrapper(
         store,
         reaction_module=reaction_module,
-        collection=collection,
         selected_processes=template_processes,
         loss_module=loss_module,
     )
@@ -777,7 +751,6 @@ def forward_from_collection(
     per_sample_total, per_sample_per_target, dense_exports = compute_dense_exports(
         trained_wrapper,
         store,
-        collection,
         eval_processes,
         solver_max_steps=int(cfg.solver_max_steps),
         solver_rtol=float(cfg.solver_rtol),
@@ -836,8 +809,8 @@ def train_collection(
     *,
     reaction_module: UserReactionModule,
     loss_module: UserLossModule | None = None,
-    collection: BioProcessCollection,
     config: TrainHarnessConfig | None = None,
+    plot_sources: dict[str, ProcessPlotSource] | None = None,
     optimizer: optax.GradientTransformation | None = None,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
@@ -880,62 +853,23 @@ def train_collection(
 
     warmup_batch = store.gather_batch(batch_index_stream[0])
 
-    # Build per-process RhsOde and validate structural compatibility
-    per_process_rhs_ode = {}
-    reference_rhs_ode = None
-    reference_process_name = selected_processes[0]
-    for process_name in store.process_order:
-        process = collection.processes[process_name]
-        rhs_ode = build_rhs_ode(process)
-        per_process_rhs_ode[process_name] = rhs_ode
-        if process_name == reference_process_name:
-            reference_rhs_ode = rhs_ode
-
-    assert reference_rhs_ode is not None
-    for process_name in selected_processes[1:]:
-        validate_rhs_ode_compatibility(
-            reference_process_name,
-            reference_rhs_ode,
-            process_name,
-            per_process_rhs_ode[process_name],
-        )
-
-    # Loss target columns map into the save/loss physical state
-    # [modeled_RMCs | modeled_PVs | V | modeled_FVCs_cumulative].
-    # V is in the state but not a loss target.
-    target_state_indices = _target_state_indices(store, reference_rhs_ode)
-
     # Per-target labels come straight from the loss module — one panel/column
     # per named loss term, in declared order.
     _target_labels = list(loss_module.loss_names)
 
-    # Build wrapper from reference process. Scales now live on
-    # ``reaction_module``; the wrapper validates SCALE_* shapes in its
-    # constructor. The loss module rides along (partitioned with the wrapper).
-    wrapper = HybridOdeWrapper.from_process(
+    wrapper = _build_template_wrapper(
+        store,
         reaction_module=reaction_module,
-        process=collection.processes[reference_process_name],
-        controls=store.get_process(reference_process_name).controls,
-        target_state_indices=target_state_indices,
+        selected_processes=selected_processes,
         loss_module=loss_module,
     )
-
-    # Stack per-process Cin arrays: [n_store_processes, n_feeds, n_species]
-    all_Cin = []
-    all_Cin_modeled = []
-    for process_name in store.process_order:
-        rhs_ode = per_process_rhs_ode[process_name]
-        all_Cin.append(rhs_ode.Cin_controlled_FVCs)
-        all_Cin_modeled.append(rhs_ode.Cin_modeled_FVCs)
-    batched_Cin = jnp.stack(all_Cin)
-    batched_Cin_modeled = jnp.stack(all_Cin_modeled)
+    batched_Cin = store.Cin_controlled_FVCs
+    batched_Cin_modeled = store.Cin_modeled_FVCs
 
     # Partition the WHOLE wrapper so the loss module's trainable_field() leaves
     # are optimized alongside the reaction module's. Untagged leaves (controls,
     # rhs_ode Cin, indices) stay frozen exactly as before.
     trainable_params, trainable_static = partition_trainable(wrapper)
-    print_rhs_ode(collection)
-    sys.stdout.flush()
     print_trainable_structure(reaction_module)
     print_trainable_structure(loss_module, title="UserLossModule")
     print_reaction_schema(wrapper)
@@ -1549,7 +1483,6 @@ def train_collection(
             compute_dense_exports(
                 wrapper,
                 store,
-                collection,
                 selected_processes,
                 solver_max_steps=int(cfg.solver_max_steps),
                 solver_rtol=float(cfg.solver_rtol),
@@ -1565,9 +1498,11 @@ def train_collection(
         )
         if not cfg.plots:
             return None
+        if plot_sources is None:
+            raise ValueError("plot sources were not prepared")
         return build_process_plot_data(
             wrapper,
-            collection,
+            plot_sources,
             store,
             checkpoint_dense_exports,
             selected_processes,
@@ -1745,7 +1680,7 @@ def train_collection(
                         }
                         plot_process_simulations(
                             wrapper,
-                            collection,
+                            plot_sources,
                             store,
                             run_dir,
                             _final_dense,
@@ -1797,7 +1732,19 @@ def train_collection(
     )
 
 
-def train_from_collection(
+@dataclass(frozen=True)
+class PreparedTraining:
+    """Collection-free inputs for :func:`train_collection`."""
+
+    store: TrainingDataStore
+    reaction_module: UserReactionModule
+    loss_module: UserLossModule
+    config: TrainHarnessConfig
+    optimizer: optax.GradientTransformation
+    plot_sources: dict[str, ProcessPlotSource] | None
+
+
+def prepare_training(
     collection: BioProcessCollection,
     *,
     config: TrainHarnessConfig | None = None,
@@ -1805,15 +1752,8 @@ def train_from_collection(
     runtime_config: dict[str, Any] | None = None,
     run_config: RunConfig | None = None,
     custom_module: Any | None = None,
-) -> TrainHarnessResult:
-    """Train from an already-loaded process collection with optional custom hooks.
-
-    Use this entry point when the caller has already deserialized the
-    prepared JSON (e.g. the CLI, which also needs the collection for
-    post-training plotting). For path-based callers,
-    :func:`train_from_prepared_json` is a thin wrapper that loads the
-    collection and delegates here.
-    """
+) -> PreparedTraining:
+    """Build runtime inputs while borrowing, but never retaining, collection."""
     cfg = config or TrainHarnessConfig()
     if custom_module is None:
         custom_module = load_custom_module(custom_py)
@@ -1853,6 +1793,8 @@ def train_from_collection(
             stacklevel=2,
         )
     logger.info("Training targets: %s", tuple(store.name_measured))
+    print_rhs_ode(collection)
+    sys.stdout.flush()
 
     selected_processes = _ensure_process_names(store, cfg.process_names)
     train_cfg = dataclasses.replace(
@@ -1895,13 +1837,47 @@ def train_from_collection(
         collection=collection,
     )
 
-    return train_collection(
-        store,
+    plot_sources = (
+        extract_process_plot_sources(collection, store.rhs_ode, selected_processes)
+        if train_cfg.plots and train_cfg.checkpoint_dir is not None
+        else None
+    )
+    return PreparedTraining(
+        store=store,
         reaction_module=reaction_module,
         loss_module=loss_module,
-        collection=collection,
         config=train_cfg,
         optimizer=optimizer,
+        plot_sources=plot_sources,
+    )
+
+
+def train_from_collection(
+    collection: BioProcessCollection,
+    *,
+    config: TrainHarnessConfig | None = None,
+    custom_py: str | Path | None = None,
+    runtime_config: dict[str, Any] | None = None,
+    run_config: RunConfig | None = None,
+    custom_module: Any | None = None,
+) -> TrainHarnessResult:
+    """Prepare and train; external collection references remain caller-owned."""
+    prepared = prepare_training(
+        collection,
+        config=config,
+        custom_py=custom_py,
+        runtime_config=runtime_config,
+        run_config=run_config,
+        custom_module=custom_module,
+    )
+    del collection
+    return train_collection(
+        prepared.store,
+        reaction_module=prepared.reaction_module,
+        loss_module=prepared.loss_module,
+        config=prepared.config,
+        optimizer=prepared.optimizer,
+        plot_sources=prepared.plot_sources,
     )
 
 
@@ -1953,8 +1929,7 @@ def train_from_prepared_json(
 
     Thin wrapper around :func:`train_from_collection` for callers that
     only have a path. Callers that already hold a deserialized collection
-    (e.g. the CLI, which reuses it for post-training plotting) should
-    invoke ``train_from_collection`` directly to avoid loading the
+    should invoke ``train_from_collection`` directly to avoid loading the
     prepared JSON twice.
     """
     collection = load_process_collection(Path(prepared_json))

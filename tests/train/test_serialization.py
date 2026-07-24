@@ -92,10 +92,9 @@ def _build_wrapper(collection: BioProcessCollection):
         target_source="reactor_components",
     )
     reaction = _LinearReactionModule()
-    wrapper, _ = _build_template_wrapper(
+    wrapper = _build_template_wrapper(
         store,
         reaction_module=reaction,
-        collection=collection,
         selected_processes=("p1",),
         loss_module=None,
     )

@@ -261,7 +261,6 @@ def _run_train(
     return train_collection(
         store,
         reaction_module=_LinearReactionModule(),
-        collection=collection,
         config=TrainHarnessConfig(
             process_names=("p1",),
             epochs=epochs,

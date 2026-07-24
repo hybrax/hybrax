@@ -486,7 +486,7 @@ def plot_cross_fold_loss_curves(
 
 def plot_training_results(
     result: Any,
-    collection: BioProcessCollection,
+    plot_sources: dict[str, ProcessPlotSource],
     store: TrainingDataStore,
     output_dir: str | Path,
     dense_exports: dict[str, DenseProcessExport],
@@ -522,7 +522,7 @@ def plot_training_results(
 
     plot_process_simulations(
         result.trained_wrapper,
-        collection,
+        plot_sources,
         store,
         output_dir,
         dense_exports,
@@ -626,6 +626,19 @@ def export_predictions_csv(
 
 
 @dataclass(frozen=True)
+class ProcessPlotSource:
+    """Raw, collection-independent inputs needed to materialize one plot."""
+
+    time_unit: str
+    t_start: float
+    t_end: float
+    v_unit: str
+    initial_volume: float
+    measured_series: tuple[tuple[str, str, np.ndarray, np.ndarray], ...]
+    volume_changes: tuple[tuple[str, str, bool, str, np.ndarray, np.ndarray], ...]
+
+
+@dataclass(frozen=True)
 class ProcessPlotData:
     """Picklable per-process plotting inputs — plain numpy + str, no JAX/bp_format.
 
@@ -674,9 +687,76 @@ def _resolve_selected_processes(
     return tuple(process_names)
 
 
+def extract_process_plot_sources(
+    collection: BioProcessCollection,
+    rhs_ode: Any,
+    process_names: tuple[str, ...],
+) -> dict[str, ProcessPlotSource]:
+    """Copy the raw plot inputs needed after the collection is released."""
+    modeled_RMC_names = tuple(rhs_ode.name_modeled_RMCs)
+    modeled_PV_names = tuple(rhs_ode.name_modeled_PVs)
+    sources: dict[str, ProcessPlotSource] = {}
+    for process_name in process_names:
+        process = collection.processes[process_name]
+        measured_series = tuple(
+            (
+                name,
+                process.reactor_medium.components[name].unit,
+                np.array(
+                    process.reactor_medium.components[name].concentration.times,
+                    dtype=float,
+                    copy=True,
+                ),
+                np.array(
+                    process.reactor_medium.components[name].concentration.values,
+                    dtype=float,
+                    copy=True,
+                ),
+            )
+            for name in modeled_RMC_names
+        ) + tuple(
+            (
+                name,
+                process.process_variables[name].unit,
+                np.array(
+                    process.process_variables[name].values.times,
+                    dtype=float,
+                    copy=True,
+                ),
+                np.array(
+                    process.process_variables[name].values.values,
+                    dtype=float,
+                    copy=True,
+                ),
+            )
+            for name in modeled_PV_names
+        )
+        volume_changes = tuple(
+            (
+                name,
+                "feed" if isinstance(change, FeedVolumeChange) else "sample",
+                bool(change.is_continuous),
+                change.unit,
+                np.array(change.values.times, dtype=float, copy=True),
+                np.array(change.values.values, dtype=float, copy=True),
+            )
+            for name, change in process.volume.volume_changes.items()
+        )
+        sources[process_name] = ProcessPlotSource(
+            time_unit=process.time_axis.unit,
+            t_start=float(process.time_axis.start),
+            t_end=float(process.time_axis.end),
+            v_unit=process.volume.unit,
+            initial_volume=float(process.volume.initial_volume),
+            measured_series=measured_series,
+            volume_changes=volume_changes,
+        )
+    return sources
+
+
 def build_process_plot_data(
     trained_wrapper: HybridOdeWrapper,
-    collection: BioProcessCollection,
+    plot_sources: dict[str, ProcessPlotSource],
     store: TrainingDataStore,
     dense_exports: dict[str, DenseProcessExport],
     process_names: tuple[str, ...] | None = None,
@@ -686,14 +766,7 @@ def build_process_plot_data(
     per_process_named_losses: dict[str, dict[str, float]] | None = None,
     per_process_total_loss: dict[str, float] | None = None,
 ) -> list[ProcessPlotData]:
-    """Extract picklable per-process plotting data from precomputed dense exports.
-
-    The JAX/bp_format-touching half of per-process plotting: computes the
-    ground-truth dense V_real (signed cumulative volume changes) and the
-    cumulative modeled-feed truth, and pulls measured series + raw volume changes
-    from the collection. Runs in the MAIN process; the result feeds the pure,
-    picklable :func:`render_process_figures` (which may run in a spawn worker).
-    """
+    """Materialize picklable plots from runtime exports and raw plot sources."""
     modeled_RMC_names = tuple(trained_wrapper.modeled_RMC_names)
     modeled_PV_names = tuple(trained_wrapper.modeled_PV_names)
     modeled_FVC_names = tuple(trained_wrapper.modeled_FVC_names)
@@ -706,7 +779,7 @@ def build_process_plot_data(
 
     out: list[ProcessPlotData] = []
     for process_name in selected:
-        process = collection.processes[process_name]
+        source = plot_sources[process_name]
         dense_export = dense_exports[process_name]
         std_export = std_exports.get(process_name) if std_exports else None
         t_dense = np.asarray(dense_export.t, dtype=float)
@@ -715,12 +788,9 @@ def build_process_plot_data(
         # Continuous feeds add their cumulative inflow; discrete events (bolus
         # adds, sample removals) step at each event time by the signed delta
         # (bolus > 0, sample < 0) — the same arithmetic the callbacks solve uses.
-        v0 = float(process.volume.initial_volume)
-        v_real_true_dense = np.full(t_dense.shape, v0, dtype=float)
-        for vc in process.volume.volume_changes.values():
-            vc_t = np.asarray(vc.values.times, dtype=float)
-            vc_v = np.asarray(vc.values.values, dtype=float)
-            if isinstance(vc, FeedVolumeChange) and bool(vc.is_continuous):
+        v_real_true_dense = np.full(t_dense.shape, source.initial_volume, dtype=float)
+        for _name, kind, is_continuous, _unit, vc_t, vc_v in source.volume_changes:
+            if kind == "feed" and is_continuous:
                 v_real_true_dense += np.interp(
                     t_dense, vc_t, vc_v, left=float(vc_v[0]), right=float(vc_v[-1])
                 )
@@ -734,53 +804,21 @@ def build_process_plot_data(
 
         # Cumulative measured B_modeled per modeled flow on the dense grid.
         b_modeled_true_dense = np.zeros((len(t_dense), n_modeled), dtype=float)
+        changes_by_name = {
+            name: (unit, times, values)
+            for name, _kind, _continuous, unit, times, values in source.volume_changes
+        }
         for k, fn in enumerate(modeled_FVC_names):
-            vc = process.volume.volume_changes[fn]
-            vc_t = np.asarray(vc.values.times, dtype=float)
-            vc_v = np.asarray(vc.values.values, dtype=float)
+            _unit, vc_t, vc_v = changes_by_name[fn]
             b_modeled_true_dense[:, k] = np.interp(
                 t_dense, vc_t, vc_v, left=float(vc_v[0]), right=float(vc_v[-1])
             )
 
-        # Measured overlays: RMCs from reactor_medium, modeled PVs from
-        # process_variables (c_dense columns are [RMCs | PVs]).
-        measured_series = tuple(
-            (
-                name,
-                process.reactor_medium.components[name].unit,
-                np.asarray(
-                    process.reactor_medium.components[name].concentration.times,
-                    dtype=float,
-                ),
-                np.asarray(
-                    process.reactor_medium.components[name].concentration.values,
-                    dtype=float,
-                ),
-            )
-            for name in modeled_RMC_names
-        ) + tuple(
-            (
-                name,
-                process.process_variables[name].unit,
-                np.asarray(process.process_variables[name].values.times, dtype=float),
-                np.asarray(process.process_variables[name].values.values, dtype=float),
-            )
-            for name in modeled_PV_names
-        )
-
         volume_changes = tuple(
-            (
-                vc_name,
-                "feed" if isinstance(vc, FeedVolumeChange) else "sample",
-                bool(vc.is_continuous),
-                np.asarray(vc.values.times, dtype=float),
-                np.asarray(vc.values.values, dtype=float),
-            )
-            for vc_name, vc in process.volume.volume_changes.items()
+            (name, kind, is_continuous, times, values)
+            for name, kind, is_continuous, _unit, times, values in source.volume_changes
         )
-        fvc_units = tuple(
-            process.volume.volume_changes[fn].unit for fn in modeled_FVC_names
-        )
+        fvc_units = tuple(changes_by_name[name][0] for name in modeled_FVC_names)
 
         out.append(
             ProcessPlotData(
@@ -788,10 +826,10 @@ def build_process_plot_data(
                 is_train=(
                     (process_name in training_set) if training_set is not None else None
                 ),
-                time_unit=process.time_axis.unit,
-                t_start=float(process.time_axis.start),
-                t_end=float(process.time_axis.end),
-                v_unit=process.volume.unit,
+                time_unit=source.time_unit,
+                t_start=source.t_start,
+                t_end=source.t_end,
+                v_unit=source.v_unit,
                 modeled_RMC_names=modeled_RMC_names,
                 modeled_PV_names=modeled_PV_names,
                 modeled_FVC_names=modeled_FVC_names,
@@ -819,7 +857,7 @@ def build_process_plot_data(
                 ),
                 v_real_true_dense=v_real_true_dense,
                 b_modeled_true_dense=b_modeled_true_dense,
-                measured_series=measured_series,
+                measured_series=source.measured_series,
                 volume_changes=volume_changes,
                 named_losses=(per_process_named_losses or {}).get(process_name),
                 total_loss=(per_process_total_loss or {}).get(process_name),
@@ -1123,7 +1161,7 @@ def render_process_figures(
 
 def plot_process_simulations(
     trained_wrapper: HybridOdeWrapper,
-    collection: BioProcessCollection,
+    plot_sources: dict[str, ProcessPlotSource],
     store: TrainingDataStore,
     output_dir: str | Path,
     dense_exports: dict[str, DenseProcessExport],
@@ -1135,7 +1173,6 @@ def plot_process_simulations(
     per_process_total_loss: dict[str, float] | None = None,
     timeseries_csv_path: str | Path | None = None,
     filename_suffix: str = "",
-    render_plots: bool = True,
 ) -> None:
     """Write predictions.csv and/or render per-process plots from precomputed
     dense exports — no ODE solve here.
@@ -1155,12 +1192,12 @@ def plot_process_simulations(
         export_predictions_csv(
             trained_wrapper, dense_exports, timeseries_csv_path, selected_processes
         )
-    if not render_plots:
+    if not selected_processes:
         return
 
     plot_data = build_process_plot_data(
         trained_wrapper,
-        collection,
+        plot_sources,
         store,
         dense_exports,
         selected_processes,

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import gc
 import json
 from pathlib import Path
+from types import SimpleNamespace
+import weakref
 
 import pytest
 from bp_format.serialization import save_process_collection
@@ -40,6 +43,35 @@ def _write_config(
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
     return config_path
+
+
+def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypatch):
+    prepared_path = _write_prepared(tmp_path / "prepared.json")
+    config = _write_config(
+        tmp_path / "config.json",
+        prepared=prepared_path,
+        run_dir=tmp_path / "run",
+        epochs=1,
+    )
+    collection_ref = None
+
+    def load_collection(_path):
+        nonlocal collection_ref
+        collection = _collection()
+        collection_ref = weakref.ref(collection)
+        return collection
+
+    def execute(*_args, **_kwargs):
+        gc.collect()
+        assert collection_ref is not None
+        assert collection_ref() is None
+        return SimpleNamespace(mean_loss_by_step=(1.0,), updates_completed=1)
+
+    monkeypatch.setattr("bp_train.cli.load_process_collection", load_collection)
+    monkeypatch.setattr("bp_train.cli.train_collection", execute)
+    monkeypatch.setattr("bp_train.cli._finalize_run_dir", lambda *_args: None)
+
+    assert main(["train", "--config", str(config)]) == 0
 
 
 def test_train_cli_produces_fair_run_dir_and_load_run(tmp_path: Path):

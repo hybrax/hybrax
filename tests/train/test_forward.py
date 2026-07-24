@@ -17,9 +17,11 @@ available. It is marked ``integration`` so it can be skipped in fast suites.
 
 from __future__ import annotations
 
+import gc
 import inspect
 import json
 from pathlib import Path
+import weakref
 
 import jax.numpy as jnp
 import numpy as np
@@ -808,7 +810,6 @@ def test_plot_process_simulations_is_exported_with_new_kwargs():
     assert "per_process_total_loss" in sig.parameters
     assert "timeseries_csv_path" in sig.parameters
     assert "filename_suffix" in sig.parameters
-    assert "render_plots" in sig.parameters
 
 
 def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection(
@@ -823,21 +824,12 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
         modeled_FVC_names = ("F",)
         rhs_ode = _RhsOde()
 
-    class _Store:
-        process_order = ("p1",)
-
-    class _Collection:
-        processes: dict[str, object] = {}
-
     ts_path = tmp_path / "timeseries.csv"
-    postprocessing.plot_process_simulations(
-        trained_wrapper=_Wrapper(),
-        collection=_Collection(),
-        store=_Store(),
-        output_dir=tmp_path / "plots",
-        dense_exports={},
+    postprocessing.export_predictions_csv(
+        _Wrapper(),
+        {},
+        ts_path,
         process_names=(),
-        timeseries_csv_path=ts_path,
     )
     rows = pd.read_csv(ts_path)
     assert rows.columns.tolist() == [
@@ -853,11 +845,10 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
     assert rows.empty
 
 
-def _single_dense_export(collection, store, wrapper, *, prediction_grid_n):
+def _single_dense_export(store, wrapper, *, prediction_grid_n):
     _, _, dense_exports = compute_dense_exports(
         wrapper,
         store,
-        collection,
         ("p1",),
         solver_max_steps=256,
         solver_rtol=1e-4,
@@ -873,7 +864,7 @@ def test_dense_export_uses_export_v_real_semantics():
         initial_volume=0.05,
         sample_delta=-0.1,
     )
-    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=11)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=11)
 
     assert export.v_real.shape == (11,)
     # Human-facing export should reflect the sampled volume directly, not the
@@ -881,12 +872,51 @@ def test_dense_export_uses_export_v_real_semantics():
     assert float(export.v_real[-1]) == pytest.approx(-0.05, abs=5e-4)
 
 
+def test_plot_sources_survive_collection_release():
+    collection, store, wrapper = _build_single_process_runtime(
+        initial_volume=1.0,
+        sample_delta=-0.2,
+    )
+    dense = _single_dense_export(store, wrapper, prediction_grid_n=5)
+    original_values = (
+        collection.processes["p1"]
+        .reactor_medium.components["biomass"]
+        .concentration.values
+    )
+    original_values_ref = weakref.ref(original_values)
+    sources = postprocessing.extract_process_plot_sources(
+        collection, store.rhs_ode, ("p1",)
+    )
+    del collection.processes["p1"]
+    del original_values
+    gc.collect()
+
+    assert original_values_ref() is None
+    assert sources["p1"].measured_series[0][3].flags.owndata
+
+    [plot_data] = postprocessing.build_process_plot_data(
+        wrapper,
+        sources,
+        store,
+        {"p1": dense},
+        ("p1",),
+    )
+
+    assert plot_data.time_unit == "h"
+    assert plot_data.v_unit == "L"
+    assert plot_data.measured_series[0][0:2] == ("biomass", "g/L")
+    assert np.array_equal(plot_data.measured_series[0][2], np.array([0.0, 2.0]))
+    assert plot_data.volume_changes[0][0:3] == ("sample_1", "sample", False)
+    assert plot_data.v_real_true_dense[0] == pytest.approx(1.0)
+    assert plot_data.v_real_true_dense[-1] == pytest.approx(0.8)
+
+
 def test_dense_export_returns_physical_q_values():
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
         q_scale=2.0,
     )
-    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=9)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=9)
 
     assert export.q_rates.shape == (9, 1)
     assert np.allclose(export.q_rates[:, 0], 3.0)
@@ -907,7 +937,7 @@ def test_dense_export_grid_includes_measurement_times():
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=0.5, biomass_times=[0.0, 0.7, 2.0]
     )
-    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=11)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=11)
 
     assert np.all(np.diff(export.t) > 0)  # sorted + de-duplicated
     for tm in (0.0, 0.7, 2.0):
@@ -931,7 +961,7 @@ def test_loo_scored_value_equals_training_framework_solve():
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=0.8, biomass_times=[0.0, 0.7, 2.0]
     )
-    export = _single_dense_export(collection, store, wrapper, prediction_grid_n=3)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=3)
     c = export.c_species[:, 0]
 
     node_mask = np.isclose(export.t, 0.7, atol=1e-9)
@@ -966,7 +996,6 @@ def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(
     _, _, dense_exports = compute_dense_exports(
         wrapper,
         store,
-        collection,
         ("p1",),
         solver_max_steps=256,
         solver_rtol=1e-4,
@@ -1002,7 +1031,6 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
     _, _, dense_exports = compute_dense_exports(
         wrapper,
         store,
-        collection,
         ("p1",),
         solver_max_steps=256,
         solver_rtol=1e-4,
@@ -1069,39 +1097,4 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(tmp_path: P
             _Wrapper(),
             _mismatched_aux_exports(),
             tmp_path / "predictions.csv",
-        )
-
-
-def test_plot_process_simulations_rejects_mismatched_auxiliary_columns(tmp_path: Path):
-    class _RhsOde:
-        name_modeled_rates = ("q_biomass",)
-
-    class _Wrapper:
-        modeled_RMC_names = ("biomass",)
-        modeled_PV_names = ()
-        rhs_ode = _RhsOde()
-        modeled_FVC_names = ()
-
-    class _Store:
-        process_order = ("p1", "p2")
-
-        def get_process(self, process_name):
-            del process_name
-            return object()
-
-    class _Collection:
-        processes = {"p1": object(), "p2": object()}
-
-    with pytest.raises(
-        ValueError,
-        match="predictions.csv auxiliary columns differ across processes",
-    ):
-        postprocessing.plot_process_simulations(
-            trained_wrapper=_Wrapper(),
-            collection=_Collection(),
-            store=_Store(),
-            output_dir=tmp_path / "plots",
-            dense_exports=_mismatched_aux_exports(),
-            timeseries_csv_path=tmp_path / "timeseries.csv",
-            render_plots=False,
         )
