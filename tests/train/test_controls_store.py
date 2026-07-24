@@ -494,15 +494,13 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
 
 
 def test_controls_store_pads_control_rows_with_last_active_values():
-    grid, values, derivatives, _, grid_length, _ = ControlsStore._pad_payload(
+    grid, values, derivatives, _, grid_length, _ = ControlsStore._pad_dense_payload(
         payload={
             "grid": [0.0, 1.0],
             "values": [[1.0], [2.0]],
             "derivatives": [[3.0], [4.0]],
             "jump_ts": [],
         },
-        payload_source_names=["u"],
-        canonical_names=["u"],
         max_grid_length=4,
         max_jump_ts_length=0,
     )
@@ -554,6 +552,8 @@ def test_controls_store_gather_batch_preserves_order_duplicates_and_events():
     gathered = store.gather_batch(indices)
 
     for field in (
+        "spline_breaks",
+        "spline_coeffs",
         "dense_grid",
         "control_values",
         "control_derivatives",

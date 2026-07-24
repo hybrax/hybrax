@@ -14,6 +14,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
+from bp_format.time_series.spline_ops import rebase_to_breaks
 
 
 @dataclass
@@ -25,6 +26,9 @@ class SignalSource:
     evaluator: Callable[[np.ndarray], np.ndarray]
     derivative: Callable[[np.ndarray], np.ndarray]
     metadata: dict[str, Any]
+    spline_breaks: np.ndarray | None = None
+    spline_coeffs: np.ndarray | None = None
+    continuity_side: str | None = None
 
 
 def _as_numpy(values: Any) -> np.ndarray:
@@ -97,13 +101,11 @@ def _eval_ppoly_numpy(
     """Pure-numpy cubic-PPoly eval (matches bp-format ``PPoly.__call__``).
 
     Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with
-    ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. Numpy
-    (not JAX) so it is cheap inside ``build_dense_payload``'s refinement loop.
+    ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. This
+    NumPy evaluator is used during preparation and by dense-fallback splines.
     """
     ts_arr = np.atleast_1d(_as_numpy(ts))
-    idx = np.clip(
-        np.searchsorted(breaks, ts_arr, side=side) - 1, 0, len(breaks) - 2
-    )
+    idx = np.clip(np.searchsorted(breaks, ts_arr, side=side) - 1, 0, len(breaks) - 2)
     dt = ts_arr - breaks[idx]
     p = coeffs[idx]
     return p[:, 0] + dt * (p[:, 1] + dt * (p[:, 2] + dt * p[:, 3]))
@@ -115,13 +117,7 @@ def _make_source_from_spline(
     series: TimeSeries,
     metadata: dict[str, Any],
 ) -> SignalSource:
-    """Build a control source from a spline-backed ``TimeSeries`` (breaks/coeffs).
-
-    The PPoly and its analytic derivative are evaluated in **pure numpy at prepare
-    time only** — ``build_dense_payload`` samples them onto the dense grid, so the
-    solver's ``jnp.interp`` eval path (and JIT graph) is unchanged. The spline's breaks
-    seed the grid; a smoothing spline has far fewer knots than the raw samples.
-    """
+    """Build a source retaining a spline's direct runtime representation."""
     breaks = _as_numpy(series.breaks)
     coeffs = _as_numpy(series.coeffs)
     side = str(getattr(series, "continuity_side", "right"))
@@ -145,6 +141,9 @@ def _make_source_from_spline(
         evaluator=_eval,
         derivative=_deriv,
         metadata=dict(metadata),
+        spline_breaks=breaks,
+        spline_coeffs=coeffs,
+        continuity_side=side,
     )
 
 
@@ -455,6 +454,36 @@ def _linear_interp_from_grid(
     for idx in range(values.shape[1]):
         out[:, idx] = _safe_interp(ts, grid, values[:, idx])
     return out
+
+
+def build_spline_payload(sources: list[SignalSource]) -> dict[str, Any]:
+    """Rebase spline sources onto one union break grid."""
+    if not sources:
+        return {"breaks": [], "coeffs": []}
+
+    breaks = np.unique(
+        np.concatenate(
+            [
+                source.spline_breaks
+                for source in sources
+                if source.spline_breaks is not None
+            ]
+        )
+    )
+    coeffs = np.stack(
+        [
+            np.asarray(
+                rebase_to_breaks(
+                    source.spline_breaks,
+                    source.spline_coeffs,
+                    breaks,
+                )
+            )
+            for source in sources
+        ],
+        axis=1,
+    )
+    return {"breaks": breaks.tolist(), "coeffs": coeffs.tolist()}
 
 
 def build_dense_payload(

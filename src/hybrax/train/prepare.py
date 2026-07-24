@@ -544,7 +544,15 @@ def _render_control_diagnostics(
     for name, process in collection.processes.items():
         bundle = process_bundles[name]
         per = store.get_controls(name)
-        grid = np.asarray(per.active_dense_grid, dtype=float)
+        spline_grid = np.asarray(per.spline_breaks, dtype=float)
+        grid = np.unique(
+            np.concatenate(
+                [
+                    spline_grid[np.isfinite(spline_grid)],
+                    np.asarray(per.active_dense_grid, dtype=float),
+                ]
+            )
+        )
         t0 = float(process.time_axis.start)
         t1 = float(process.time_axis.end)
         fine = np.linspace(t0, t1, 600)

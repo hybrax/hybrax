@@ -12,11 +12,13 @@ from bp_format.dataclasses import (
 )
 from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection
+from bp_format.time_series.spline_ops import rebase_piece
 
 from .constants import METADATA_NAMESPACE
 from .controls import (
     ControlSourceBundle,
     build_dense_payload,
+    build_spline_payload,
     collect_discrete_event_metadata,
     compute_signal_spreads,
     select_control_sources,
@@ -78,8 +80,59 @@ def _interp_columns(
     return jax.vmap(_interp_column, in_axes=1, out_axes=1)(values)
 
 
+def _eval_spline_columns(
+    ts: jax.Array,
+    breaks: jax.Array,
+    coeffs: jax.Array,
+    side: str,
+) -> tuple[jax.Array, jax.Array]:
+    """Evaluate shared-grid cubic values and analytic first derivatives."""
+    indices = jnp.clip(
+        jnp.searchsorted(breaks, ts, side=side) - 1,
+        0,
+        coeffs.shape[0] - 1,
+    )
+    dt = ts - breaks[indices]
+    pieces = coeffs[indices]
+    dt = dt[:, None]
+    a, b, c, d = (pieces[..., index] for index in range(4))
+    values = a + dt * (b + dt * (c + dt * d))
+    derivatives = b + dt * (2.0 * c + dt * 3.0 * d)
+    return values, derivatives
+
+
+def _eval_hybrid_columns(
+    ts: jax.Array,
+    spline_breaks: jax.Array,
+    spline_coeffs: jax.Array,
+    dense_grid: jax.Array,
+    control_values: jax.Array,
+    control_derivatives: jax.Array,
+    spline_indices: tuple[int, ...],
+    fallback_indices: tuple[int, ...],
+    spline_side: str,
+    n_controls: int,
+) -> tuple[jax.Array, jax.Array]:
+    values = jnp.zeros((ts.shape[0], n_controls), dtype=dense_grid.dtype)
+    derivatives = jnp.zeros_like(values)
+    if spline_indices:
+        spline_values, spline_derivatives = _eval_spline_columns(
+            ts, spline_breaks, spline_coeffs, spline_side
+        )
+        values = values.at[:, spline_indices].set(spline_values)
+        derivatives = derivatives.at[:, spline_indices].set(spline_derivatives)
+    if fallback_indices:
+        values = values.at[:, fallback_indices].set(
+            _interp_columns(ts, dense_grid, control_values)
+        )
+        derivatives = derivatives.at[:, fallback_indices].set(
+            _interp_columns(ts, dense_grid, control_derivatives)
+        )
+    return values, derivatives
+
+
 class PerProcessControls(eqx.Module):
-    """Per-process runtime view over padded, canonical-axis dense-grid controls.
+    """Per-process hybrid runtime view over direct and fallback controls.
 
     Column axis follows
     ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]``
@@ -98,9 +151,14 @@ class PerProcessControls(eqx.Module):
     name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
+    spline_breaks: jax.Array
+    spline_coeffs: jax.Array
     dense_grid: jax.Array
     control_values: jax.Array
     control_derivatives: jax.Array
+    spline_indices: tuple[int, ...] = eqx.field(static=True)
+    fallback_indices: tuple[int, ...] = eqx.field(static=True)
+    spline_side: str = eqx.field(static=True)
     jump_ts: jax.Array
     grid_length: int = eqx.field(static=True)
     jump_ts_length: int = eqx.field(static=True)
@@ -144,10 +202,17 @@ class PerProcessControls(eqx.Module):
         query = jnp.asarray(ts, dtype=self.dense_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
-        values = _interp_columns(
+        values, _ = _eval_hybrid_columns(
             query_1d,
+            self.spline_breaks,
+            self.spline_coeffs,
             self.active_dense_grid,
             self.active_control_values,
+            self.active_control_derivatives,
+            self.spline_indices,
+            self.fallback_indices,
+            self.spline_side,
+            self.n_u,
         )
         return values[0] if scalar_input else values
 
@@ -157,12 +222,19 @@ class PerProcessControls(eqx.Module):
         query = jnp.asarray(ts, dtype=self.dense_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
-        values = _interp_columns(
+        _, derivatives = _eval_hybrid_columns(
             query_1d,
+            self.spline_breaks,
+            self.spline_coeffs,
             self.active_dense_grid,
+            self.active_control_values,
             self.active_control_derivatives,
+            self.spline_indices,
+            self.fallback_indices,
+            self.spline_side,
+            self.n_u,
         )
-        return values[0] if scalar_input else values
+        return derivatives[0] if scalar_input else derivatives
 
     # ------------------------------------------------------------------
     # Semantic, non-overlapping per-axis accessors. Each returns RAW
@@ -199,12 +271,17 @@ class BatchControls(eqx.Module):
     order as :class:`PerProcessControls`.
     """
 
+    spline_breaks: jax.Array
+    spline_coeffs: jax.Array
     # Padded dense grids `[batch_size, max_grid_length]` with right-clamped tail.
     dense_grid: jax.Array
-    # Padded control values `[batch_size, max_grid_length, max_controls]`.
+    # Padded fallback values `[batch_size, max_grid_length, n_fallback]`.
     control_values: jax.Array
-    # Padded control derivatives, same shape as control_values.
+    # Padded fallback derivatives, same shape as control_values.
     control_derivatives: jax.Array
+    spline_indices: tuple[int, ...] = eqx.field(static=True)
+    fallback_indices: tuple[int, ...] = eqx.field(static=True)
+    spline_side: str = eqx.field(static=True)
     name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
@@ -226,24 +303,42 @@ class BatchControls(eqx.Module):
                 raise IndexError(f"batch row out of range: {idx}")
 
         grid = self.dense_grid[row_idx]
-        values = self.control_values[row_idx]
-
         query = jnp.asarray(t, dtype=grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
-        out = _interp_columns(query_1d, grid, values)
+        out, _ = _eval_hybrid_columns(
+            query_1d,
+            self.spline_breaks[row_idx],
+            self.spline_coeffs[row_idx],
+            grid,
+            self.control_values[row_idx],
+            self.control_derivatives[row_idx],
+            self.spline_indices,
+            self.fallback_indices,
+            self.spline_side,
+            len(self.spline_indices) + len(self.fallback_indices),
+        )
         return out[0] if scalar_input else out
 
     def _eval_derivatives(self, row_idx: int, t: jax.Array) -> jax.Array:
         """Interpolate all control DERIVATIVES for one batch row, canonical
         order. Private — sliced by the ``eval_controlled_*_rates`` accessors."""
         grid = self.dense_grid[row_idx]
-        derivatives = self.control_derivatives[row_idx]
-
         query = jnp.asarray(t, dtype=grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
-        out = _interp_columns(query_1d, grid, derivatives)
+        _, out = _eval_hybrid_columns(
+            query_1d,
+            self.spline_breaks[row_idx],
+            self.spline_coeffs[row_idx],
+            grid,
+            self.control_values[row_idx],
+            self.control_derivatives[row_idx],
+            self.spline_indices,
+            self.fallback_indices,
+            self.spline_side,
+            len(self.spline_indices) + len(self.fallback_indices),
+        )
         return out[0] if scalar_input else out
 
     # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
@@ -287,11 +382,17 @@ class ControlsStore(eqx.Module):
     name_controlled_PVs: tuple[str, ...]
     # Shape metadata persisted in `prepared.json`.
     shape_metadata: dict[str, Any]
+    spline_indices: tuple[int, ...] = eqx.field(static=True)
+    fallback_indices: tuple[int, ...] = eqx.field(static=True)
+    spline_side: str = eqx.field(static=True)
+    # Shared spline grids and coefficients, padded across processes.
+    spline_breaks: jax.Array
+    spline_coeffs: jax.Array
     # Stacked right-clamped dense grids, shape
     # `[n_processes, max_grid_length]`.
     dense_grid: jax.Array
-    # Stacked right-clamped control values, shape
-    # `[n_processes, max_grid_length, max_controls]`.
+    # Stacked right-clamped fallback values, shape
+    # `[n_processes, max_grid_length, max_fallback_controls]`.
     control_values: jax.Array
     # Stacked right-clamped control derivatives, same shape as `control_values`.
     control_derivatives: jax.Array
@@ -356,17 +457,15 @@ class ControlsStore(eqx.Module):
                 )
 
     @staticmethod
-    def _pad_payload(
+    def _pad_dense_payload(
         *,
         payload: dict[str, Any],
-        payload_source_names: list[str],
-        canonical_names: list[str],
         max_grid_length: int,
         max_jump_ts_length: int,
     ) -> tuple[
         list[float], list[list[float]], list[list[float]], list[float], int, int
     ]:
-        """Reorder payload columns from build order to canonical order, then pad."""
+        """Pad a fallback payload whose columns are already canonical."""
         grid = list(payload["grid"])
         values = [list(row) for row in payload["values"]]
         derivatives = [list(row) for row in payload["derivatives"]]
@@ -374,27 +473,12 @@ class ControlsStore(eqx.Module):
 
         grid_length = len(grid)
         jump_ts_length = len(jump_ts)
-        max_controls = len(canonical_names)
-        canonical_index = {name: idx for idx, name in enumerate(canonical_names)}
-
         padding = max_grid_length - grid_length
         dense_grid = grid + [grid[-1]] * padding
-
-        control_values = []
-        control_derivatives = []
-        for row, deriv_row in zip(values, derivatives, strict=False):
-            canonical_row = [0.0] * max_controls
-            canonical_deriv = [0.0] * max_controls
-            for local_idx, control_name in enumerate(payload_source_names):
-                idx = canonical_index[control_name]
-                canonical_row[idx] = row[local_idx]
-                canonical_deriv[idx] = deriv_row[local_idx]
-            control_values.append(canonical_row)
-            control_derivatives.append(canonical_deriv)
-
-        for _ in range(padding):
-            control_values.append(list(control_values[-1]))
-            control_derivatives.append(list(control_derivatives[-1]))
+        control_values = values + [list(values[-1]) for _ in range(padding)]
+        control_derivatives = derivatives + [
+            list(derivatives[-1]) for _ in range(padding)
+        ]
 
         jump_ts_padded = jump_ts + [0.0] * (max_jump_ts_length - jump_ts_length)
         return (
@@ -405,6 +489,28 @@ class ControlsStore(eqx.Module):
             grid_length,
             jump_ts_length,
         )
+
+    @staticmethod
+    def _pad_spline_payload(
+        payload: dict[str, Any],
+        max_breaks: int,
+    ) -> tuple[list[float], list[list[list[float]]]]:
+        breaks = list(payload["breaks"])
+        coeffs = [list(map(list, row)) for row in payload["coeffs"]]
+        if not breaks:
+            return [], []
+
+        padding = max_breaks - len(breaks)
+        if padding:
+            endpoint = breaks[-1]
+            shift = endpoint - breaks[-2]
+            final_row = [
+                rebase_piece(np.asarray(source_coeffs), shift).tolist()
+                for source_coeffs in coeffs[-1]
+            ]
+            coeffs.extend([final_row] * padding)
+            breaks.extend([float("inf")] * padding)
+        return breaks, coeffs
 
     @classmethod
     def from_collection(
@@ -465,8 +571,39 @@ class ControlsStore(eqx.Module):
             name_controlled_FVCs + name_controlled_SVCs + name_controlled_PVs
         )
 
+        direct_by_side: dict[str, list[str]] = {"left": [], "right": []}
+        for control_name in canonical_names:
+            sources = [
+                process_bundles[process_name].sources_by_name[control_name]
+                for process_name in process_order
+            ]
+            sides = {source.continuity_side for source in sources}
+            if (
+                all(source.spline_coeffs is not None for source in sources)
+                and len(sides) == 1
+            ):
+                side = sides.pop()
+                assert side is not None
+                direct_by_side[side].append(control_name)
+
+        spline_side = max(
+            ("right", "left"),
+            key=lambda side: len(direct_by_side[side]),
+        )
+        spline_names = direct_by_side[spline_side]
+        spline_name_set = set(spline_names)
+        fallback_names = [
+            name for name in canonical_names if name not in spline_name_set
+        ]
+        canonical_index = {name: index for index, name in enumerate(canonical_names)}
+        spline_indices = tuple(canonical_index[name] for name in spline_names)
+        fallback_indices = tuple(canonical_index[name] for name in fallback_names)
+
         spread_inputs = {
-            process_name: list(process_bundles[process_name].all_sources)
+            process_name: [
+                process_bundles[process_name].sources_by_name[name]
+                for name in fallback_names
+            ]
             for process_name in process_order
         }
         spreads = compute_signal_spreads(spread_inputs)
@@ -492,22 +629,22 @@ class ControlsStore(eqx.Module):
             max_bolus_events = max(max_bolus_events, len(event_md["bolus_times"]))
 
         payloads_by_process: dict[str, dict[str, Any]] = {}
-        payload_source_names_by_process: dict[str, list[str]] = {}
+        spline_payloads_by_process: dict[str, dict[str, Any]] = {}
         max_grid_length = 0
+        max_spline_breaks = 0
         max_jump_ts_length = 0
         for process_name in process_order:
             process = collection.processes[process_name]
             bundle = process_bundles[process_name]
-            sources = list(bundle.all_sources)
-            payload_source_names_by_process[process_name] = [
-                source.name for source in sources
-            ]
+            fallback_sources = [bundle.sources_by_name[name] for name in fallback_names]
+            spline_sources = [bundle.sources_by_name[name] for name in spline_names]
             payload = build_dense_payload(
                 process=process,
-                sources=sources,
+                sources=fallback_sources,
                 spreads=spreads,
                 config=cfg,
             )
+            spline_payload = build_spline_payload(spline_sources)
             # jump_ts = genuine vector-field discontinuity times from
             # ``BioProcess.discrete_events`` (e.g. discrete steps in controlled
             # process variables). State-jump events (bolus/sample) are NOT here —
@@ -516,9 +653,13 @@ class ControlsStore(eqx.Module):
             # re-inits its step across the discontinuity.
             payload["jump_ts"] = _discrete_event_jump_ts(process)
             payloads_by_process[process_name] = payload
+            spline_payloads_by_process[process_name] = spline_payload
             max_grid_length = max(max_grid_length, len(payload["grid"]))
+            max_spline_breaks = max(max_spline_breaks, len(spline_payload["breaks"]))
             max_jump_ts_length = max(max_jump_ts_length, len(payload["jump_ts"]))
 
+        spline_break_rows = []
+        spline_coeff_rows = []
         dense_grid_rows = []
         control_value_rows = []
         control_derivative_rows = []
@@ -537,7 +678,10 @@ class ControlsStore(eqx.Module):
 
         for process_name in process_order:
             payload = payloads_by_process[process_name]
-            payload_source_names = payload_source_names_by_process[process_name]
+            spline_breaks, spline_coeffs = cls._pad_spline_payload(
+                spline_payloads_by_process[process_name],
+                max_spline_breaks,
+            )
             (
                 dense_grid,
                 control_values,
@@ -545,14 +689,14 @@ class ControlsStore(eqx.Module):
                 jump_ts,
                 grid_length,
                 jump_ts_length,
-            ) = cls._pad_payload(
+            ) = cls._pad_dense_payload(
                 payload=payload,
-                payload_source_names=payload_source_names,
-                canonical_names=canonical_names,
                 max_grid_length=max_grid_length,
                 max_jump_ts_length=max_jump_ts_length,
             )
 
+            spline_break_rows.append(spline_breaks)
+            spline_coeff_rows.append(spline_coeffs)
             dense_grid_rows.append(dense_grid)
             control_value_rows.append(control_values)
             control_derivative_rows.append(control_derivatives)
@@ -595,6 +739,7 @@ class ControlsStore(eqx.Module):
         shape_metadata = {
             "n_processes": len(process_order),
             "max_grid_length": max_grid_length,
+            "max_spline_breaks": max_spline_breaks,
             "max_controls": len(canonical_names),
             "max_jump_ts_length": max_jump_ts_length,
             "max_sample_events": max_sample_events,
@@ -607,6 +752,19 @@ class ControlsStore(eqx.Module):
             name_controlled_SVCs=name_controlled_SVCs,
             name_controlled_PVs=name_controlled_PVs,
             shape_metadata=shape_metadata,
+            spline_indices=spline_indices,
+            fallback_indices=fallback_indices,
+            spline_side=spline_side,
+            spline_breaks=(
+                jnp.zeros((len(process_order), 0), dtype=jnp.float64)
+                if not spline_names
+                else _as_jax_array(spline_break_rows)
+            ),
+            spline_coeffs=(
+                jnp.zeros((len(process_order), 0, 0, 4), dtype=jnp.float64)
+                if not spline_names
+                else _as_jax_array(spline_coeff_rows)
+            ),
             dense_grid=_as_jax_array(dense_grid_rows),
             control_values=_as_jax_array(control_value_rows),
             control_derivatives=_as_jax_array(control_derivative_rows),
@@ -650,9 +808,14 @@ class ControlsStore(eqx.Module):
             name_controlled_FVCs=self.name_controlled_FVCs,
             name_controlled_SVCs=self.name_controlled_SVCs,
             name_controlled_PVs=self.name_controlled_PVs,
+            spline_breaks=self.spline_breaks[process_index],
+            spline_coeffs=self.spline_coeffs[process_index],
             dense_grid=self.dense_grid[process_index],
             control_values=self.control_values[process_index],
             control_derivatives=self.control_derivatives[process_index],
+            spline_indices=self.spline_indices,
+            fallback_indices=self.fallback_indices,
+            spline_side=self.spline_side,
             jump_ts=self.jump_ts[process_index],
             grid_length=int(self.grid_lengths[process_index]),
             jump_ts_length=int(self.jump_ts_lengths[process_index]),
@@ -683,9 +846,14 @@ class ControlsStore(eqx.Module):
     def _gather_batch_rows(self, indices: jax.Array) -> BatchControls:
         """Gather already-validated, int32 process-index rows."""
         return BatchControls(
+            spline_breaks=self.spline_breaks[indices],
+            spline_coeffs=self.spline_coeffs[indices],
             dense_grid=self.dense_grid[indices],
             control_values=self.control_values[indices],
             control_derivatives=self.control_derivatives[indices],
+            spline_indices=self.spline_indices,
+            fallback_indices=self.fallback_indices,
+            spline_side=self.spline_side,
             name_controlled_FVCs=self.name_controlled_FVCs,
             name_controlled_SVCs=self.name_controlled_SVCs,
             name_controlled_PVs=self.name_controlled_PVs,
