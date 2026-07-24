@@ -470,7 +470,11 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert effective.data.processes == ("p1", "p3")
     assert effective.train.seed == 11
     assert effective.output.dir == result.fold_dir.resolve()
-    bundled = json.loads((result.fold_dir / "config.json").read_text())["config"]
+    document = json.loads((result.fold_dir / "config.json").read_text())
+    assert document["status"] == "complete"
+    assert document["updates_completed"] == 0
+    assert document["final_mean_loss"] == 0.5
+    bundled = document["config"]
     assert bundled["data"]["processes"] == ["p1", "p3"]
     assert bundled["train"]["seed"] == 11
     assert bundled["custom_py"] == str(result.fold_dir / "custom.py")

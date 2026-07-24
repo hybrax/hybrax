@@ -147,7 +147,7 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
     assert seen["allow_stateful_models"] is True
 
 
-def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
+def test_load_run_optimizer_rebuild_uses_derived_budget_and_resolved_custom(
     monkeypatch, tmp_path: Path
 ):
     collection = _collection(n_processes=4)
@@ -170,6 +170,12 @@ def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
             processes=("p1", "p2", "p3", "p4"),
         ),
         train=TrainConfig(allow_stateful_models=True, batch_size=2),
+        custom={"factor": 0.5},
+    )
+    (tmp_path / "custom.py").write_text(
+        "from types import SimpleNamespace\n\n"
+        "def get_custom_config(raw_custom, config):\n"
+        "    return SimpleNamespace(**raw_custom)\n"
     )
     seen = {}
 
@@ -199,9 +205,10 @@ def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
     def fake_build_optimizer_for_run(
         *, custom_module, custom_cfg, train_cfg, total_updates
     ):
-        del custom_module, custom_cfg
+        del custom_module
         seen["allow_stateful_models"] = train_cfg.allow_stateful_models
         seen["total_updates"] = total_updates
+        seen["custom_factor"] = custom_cfg.custom.factor
         return optax.sgd(0.1), train_cfg
 
     monkeypatch.setattr(
@@ -214,7 +221,11 @@ def test_load_run_optimizer_rebuild_preserves_stateful_opt_in(
     # total_updates = epochs * batches_per_epoch = 5 * 2 = 10, distinct from
     # raw epochs (5). Pinning 10 here fails if the code regresses to passing
     # raw epochs.
-    assert seen == {"allow_stateful_models": True, "total_updates": 10}
+    assert seen == {
+        "allow_stateful_models": True,
+        "total_updates": 10,
+        "custom_factor": 0.5,
+    }
     assert loaded.opt_state == "opt-state"
 
 

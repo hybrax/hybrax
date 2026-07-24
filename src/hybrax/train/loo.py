@@ -39,7 +39,11 @@ from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
 from .harness import train_from_collection, train_harness_config_from_run_config
 from .run_config import LooConfig, RunConfig
-from .serialization import run_config_to_jsonable, write_json
+from .serialization import (
+    run_config_to_jsonable,
+    update_run_config_status,
+    write_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -427,7 +431,7 @@ def _execute_fold(
     # Local import keeps loo.py free of cli.py at module-load time.
     # _write_train_results owns: forward eval + losses.csv + predictions.csv +
     # optional plots, exactly like the post-train block in _handle_train.
-    from .cli import _write_train_results
+    from .cli import _now_iso, _write_train_results
     from .postprocessing import save_model_metadata
     from .serialization import save_model
 
@@ -447,8 +451,9 @@ def _execute_fold(
             "custom_py": fold_custom,
         }
     )
+    config_json = fold_dir / "config.json"
     write_json(
-        fold_dir / "config.json",
+        config_json,
         {"status": "running", "config": run_config_to_jsonable(effective_cfg)},
     )
 
@@ -526,6 +531,13 @@ def _execute_fold(
         eval_process_names=eval_processes,
         run_config=effective_cfg,
         custom_module=custom_module,
+    )
+    update_run_config_status(
+        config_json,
+        status="complete",
+        finished_at=_now_iso(),
+        updates_completed=train_result.updates_completed,
+        final_mean_loss=last_loss,
     )
 
     return FoldResult(

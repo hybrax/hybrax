@@ -399,6 +399,9 @@ def load_run(
         custom_module = (
             load_custom_module(bundled_custom) if bundled_custom.is_file() else None
         )
+        from .run_config import reresolve_custom
+
+        hook_config = reresolve_custom(config, custom_module)
         train_like_cfg = TrainHarnessConfig(
             process_names=selected_processes,
             target_variable_order=(
@@ -422,7 +425,7 @@ def load_run(
         )
         optimizer, _train_cfg = build_optimizer_for_run(
             custom_module=custom_module,
-            custom_cfg=config,
+            custom_cfg=hook_config,
             train_cfg=train_like_cfg,
             total_updates=total_updates,
         )
