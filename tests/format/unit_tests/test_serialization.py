@@ -168,6 +168,32 @@ def test_save_load_process_collection_roundtrip(sample_collection):
         assert loaded.processes["fed_batch_001"].metadata.name == "fed_batch_001"
 
 
+def test_load_process_collection_accepts_whole_line_comments(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "collection.json"
+        separator_value = "before\u2028//must-stay\u2028after"
+        sample_collection.metadata = {
+            "source": "https://example.com/data",
+            "note": separator_value,
+        }
+        save_process_collection(sample_collection, path)
+        serialized = path.read_text(encoding="utf-8").replace("\\u2028", "\u2028")
+        path.write_text(
+            "// collection\n  // source URL follows\n"
+            + serialized
+            + "\n// final comment",
+            encoding="utf-8",
+        )
+
+        loaded = load_process_collection(path)
+
+        assert loaded.metadata == {
+            "source": "https://example.com/data",
+            "note": separator_value,
+        }
+        assert "fed_batch_001" in loaded.processes
+
+
 def test_default_api_accepts_explicit_process_collection_json_gz_paths(
     sample_collection,
 ):

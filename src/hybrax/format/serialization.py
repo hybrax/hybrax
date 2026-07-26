@@ -28,6 +28,7 @@ from .dataclasses import (
     ReactorMediumComponent,
     ProcessVariable,
 )
+from .json_io import loads_json
 
 
 def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
@@ -147,7 +148,7 @@ def _load_json(json_path: Path) -> Dict:
     """Read a `.json` / `.json.gz` file and restore JAX arrays."""
     json_path = Path(json_path)
     with _open_json_file(json_path, "rt") as f:
-        data_dict = json.load(f)
+        data_dict = loads_json(f.read())
     return _restore_arrays(data_dict)
 
 
