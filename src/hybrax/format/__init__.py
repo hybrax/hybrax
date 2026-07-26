@@ -1,133 +1,143 @@
-"""
-bp-format: Bioprocess Benchmarking Dataset Structure
+"""Bioprocess benchmarking data structures and utilities."""
 
-A JAX-compatible framework for standardized bioprocess data management
-and benchmarking across multiple case studies.
-"""
+import importlib
+import os
+import sys
+from typing import TYPE_CHECKING, Any
 
-# Enable float64 (JAX x64) for the whole bp-format pipeline. Must run before any
-# array is created — i.e. before the submodule imports below.
-import jax
-
-jax.config.update("jax_enable_x64", True)
+# bp-format requires float64 throughout. Configure future JAX imports without
+# importing JAX just to initialize this package.
+os.environ["JAX_ENABLE_X64"] = "true"
+if "jax" in sys.modules:
+    importlib.import_module("jax").config.update("jax_enable_x64", True)
 
 __version__ = "0.1.0"
 
-# Import core dataclasses
-from .dataclasses import (
-    # Low-level structures
-    TimeAxis,
-    DiscreteEvents,
-    TimeSeries,
-    StaticVariable,
-    BioProcessMetadata,
-    # Process and medium components
-    ProcessVariable,
-    FeedMediumComponent,
-    ReactorMediumComponent,
-    # Volume-related structures
-    VolumeChange,
-    FeedVolumeChange,
-    SampleVolumeChange,
-    Volume,
-    FeedMedium,
-    ReactorMedium,
-    # User-defined biological ODE
-    Bounds,
-    BiologicalOde,
-    ProcessOrdering,
-    PseudobatchTransform,
-    # Higher-level structures
-    BioProcess,
-    AugmentedBioProcess,
-    BioProcessCollection,
-    CaseStudy,
+if TYPE_CHECKING:
+    from . import mechanistic, serialization, splines, validate  # noqa: F401
+    from .dataclasses import (  # noqa: F401
+        AugmentedBioProcess,
+        BiologicalOde,
+        BioProcess,
+        BioProcessCollection,
+        BioProcessMetadata,
+        Bounds,
+        CaseStudy,
+        DiscreteEvents,
+        FeedMedium,
+        FeedMediumComponent,
+        FeedVolumeChange,
+        ProcessOrdering,
+        ProcessVariable,
+        PseudobatchTransform,
+        ReactorMedium,
+        ReactorMediumComponent,
+        SampleVolumeChange,
+        StaticVariable,
+        TimeAxis,
+        TimeSeries,
+        Volume,
+        VolumeChange,
+    )
+    from .inspect import (  # noqa: F401
+        plot_case_study,
+        plot_process,
+        print_case_study_structure,
+        print_process_structure,
+        print_rhs_ode,
+    )
+    from .simulation import Simulation, SimulationEvent, SimulationResult  # noqa: F401
+    from .validate import (  # noqa: F401
+        validate_augmented_parent_refs,
+        validate_biological_ode,
+        validate_biological_ode_equivalence,
+        validate_biomass_in_reactor_medium,
+        validate_bounds,
+        validate_case_study,
+        validate_measurement_sampling_alignment,
+        validate_process,
+        validate_timeseries_shape,
+        validate_volume_change_sign,
+        validate_volume_change_states,
+        validate_volume_consistency,
+    )
+
+_EXPORT_MODULES = {
+    ".dataclasses": (
+        "TimeAxis",
+        "DiscreteEvents",
+        "TimeSeries",
+        "StaticVariable",
+        "BioProcessMetadata",
+        "ProcessVariable",
+        "FeedMediumComponent",
+        "ReactorMediumComponent",
+        "VolumeChange",
+        "FeedVolumeChange",
+        "SampleVolumeChange",
+        "Volume",
+        "FeedMedium",
+        "ReactorMedium",
+        "Bounds",
+        "BiologicalOde",
+        "ProcessOrdering",
+        "PseudobatchTransform",
+        "BioProcess",
+        "AugmentedBioProcess",
+        "BioProcessCollection",
+        "CaseStudy",
+    ),
+    ".simulation": ("Simulation", "SimulationEvent", "SimulationResult"),
+    ".inspect": (
+        "print_process_structure",
+        "print_case_study_structure",
+        "print_rhs_ode",
+        "plot_process",
+        "plot_case_study",
+    ),
+    ".validate": (
+        "validate_timeseries_shape",
+        "validate_volume_change_sign",
+        "validate_volume_change_states",
+        "validate_biomass_in_reactor_medium",
+        "validate_measurement_sampling_alignment",
+        "validate_process",
+        "validate_volume_consistency",
+        "validate_case_study",
+        "validate_augmented_parent_refs",
+        "validate_biological_ode",
+        "validate_biological_ode_equivalence",
+        "validate_bounds",
+    ),
+}
+_EXPORTS = {
+    name: module_name
+    for module_name, names in _EXPORT_MODULES.items()
+    for name in names
+}
+_EXPORTS.update(
+    {
+        "serialization": ".serialization",
+        "validate": ".validate",
+        "mechanistic": ".mechanistic",
+        "splines": ".splines",
+    }
 )
 
-# Import simulation helpers
-from .simulation import Simulation, SimulationEvent, SimulationResult
+__all__ = ["__version__", *_EXPORTS]
 
 
-# Import inspect
-from .inspect import (
-    print_process_structure,
-    print_case_study_structure,
-    print_rhs_ode,
-    plot_process,
-    plot_case_study,
-)
+def __getattr__(name: str) -> Any:
+    """Load public objects only when accessed."""
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = importlib.import_module(module_name, __name__)
+    value = module if name == module_name.removeprefix(".") else getattr(module, name)
+    globals()[name] = value
+    return value
 
-# Import serialization functions
-from . import serialization
-from . import validate
-from . import mechanistic
-from . import splines
-from .validate import (
-    validate_timeseries_shape,
-    validate_volume_change_sign,
-    validate_volume_change_states,
-    validate_biomass_in_reactor_medium,
-    validate_measurement_sampling_alignment,
-    validate_process,
-    validate_volume_consistency,
-    validate_case_study,
-    validate_augmented_parent_refs,
-    validate_biological_ode,
-    validate_biological_ode_equivalence,
-    validate_bounds,
-)
 
-__all__ = [
-    # Version
-    "__version__",
-    # Dataclasses
-    "TimeAxis",
-    "DiscreteEvents",
-    "TimeSeries",
-    "StaticVariable",
-    "BioProcessMetadata",
-    "ProcessVariable",
-    "FeedMediumComponent",
-    "ReactorMediumComponent",
-    "FeedMedium",
-    "ReactorMedium",
-    "PseudobatchTransform",
-    "VolumeChange",
-    "FeedVolumeChange",
-    "SampleVolumeChange",
-    "Volume",
-    "BioProcess",
-    "AugmentedBioProcess",
-    "BioProcessCollection",
-    "CaseStudy",
-    "Bounds",
-    "BiologicalOde",
-    "ProcessOrdering",
-    "Simulation",
-    "SimulationEvent",
-    "SimulationResult",
-    # Utils
-    "print_process_structure",
-    "print_case_study_structure",
-    "print_rhs_ode",
-    "plot_process",
-    "plot_case_study",
-    # Validate
-    "validate_timeseries_shape",
-    "validate_volume_change_sign",
-    "validate_volume_change_states",
-    "validate_biomass_in_reactor_medium",
-    "validate_measurement_sampling_alignment",
-    "validate_process",
-    "validate_volume_consistency",
-    "validate_case_study",
-    "validate_augmented_parent_refs",
-    "validate_biological_ode",
-    "validate_biological_ode_equivalence",
-    "validate_bounds",
-    # Modules
-    "serialization",
-    "validate",
-    "mechanistic",
-    "splines",
-]
+def __dir__() -> list[str]:
+    """Include lazy exports in interactive discovery."""
+    return sorted(set(globals()) | set(__all__))
