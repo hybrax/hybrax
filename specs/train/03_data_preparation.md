@@ -200,7 +200,10 @@ provenance), and `prepare_diagnostics/<process>_controls.png` (when
 `prepare.diagnostics`). `--overwrite` rewrites only those prepare-owned files, so
 the dir can be shared with a `train`/`forward` run. Downstream `data.prepared` /
 `forward --input` accept either this dir (resolving `prepared.json[.gz]` inside)
-or a plain `prepared.json` file.
+or a plain `prepared.json` file. Raw and prepared JSON inputs may contain
+whole-line `//` comments after optional indentation. Generated artifacts use the
+stdlib JSON encoder, including its `NaN`/`Infinity` extensions for non-finite
+floats.
 
 ```jsonc
 // prepare-config.json
@@ -209,7 +212,8 @@ or a plain `prepared.json` file.
     "raw_input": "../../bp-format/examples/01_kittler_2022/02_bp_format_data_all/data.json",
     "required_control_names": ["glucose_feed"]
   },
-  "custom_py": "custom.py"   // transform_process_collection / augment_state_values
+  // Defines transform_process_collection / augment_state_values.
+  "custom_py": "custom.py"
 }
 ```
 

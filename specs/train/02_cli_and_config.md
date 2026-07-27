@@ -329,27 +329,47 @@ The `prepare.augmentation` object has these fields.
 **`custom_py`** — path to `custom.py`. **`custom`** — free-form object passed to
 hooks as `config.custom` (typed via `get_custom_config` or a permissive default).
 
+## JSON comments
+
+Config inputs accept whole lines whose first non-whitespace characters are `//`.
+Inline comments, block comments, trailing commas, and other JSON5-only syntax
+remain invalid. The stdlib parser and generated files retain its
+`NaN`/`Infinity` extensions for non-finite floats.
+
 ## Device pooling
 
-```jsonc
-{ "train": { "devices": "max" } }      // or an integer N
+```json
+{ "train": { "devices": "max" } }
 ```
-or `BP_TRAIN_DEVICES=8 bp-train train --config …` (env var wins). Resolved
+Use an integer instead of `"max"` to request a fixed device count, or set
+`BP_TRAIN_DEVICES=8 bp-train train --config …` (the environment wins). Resolved
 before JAX initializes; default 1. See
 [01_design_rationale.md](01_design_rationale.md#9-opt-in-multi-core-device-pooling).
 
-## Example: annotated `train-config.json`
+## Example: `train-config.json`
 
 From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config.json):
 
-```jsonc
+```json
 {
-  "data":   { "prepared": "prepared", "target_source": "combined" },  // dir or prepared.json[.gz]
-  "custom_py": "custom.py",          // build_reaction_module / estimate_all_scales / …
-  "train":  { "epochs": 5, "seed": 0, "devices": "max" },
-  "logging":{ "decimals": 4 },
-  "solver": { "max_steps": 4096, "rtol": 1e-5, "atol": 1e-7 },
-  "checkpoint": { "every": 1.0 }
+  "data": {
+    "prepared": "prepared",
+    "target_source": "combined"
+  },
+  "custom_py": "custom.py",
+  "train": {
+    "epochs": 1,
+    "seed": 0,
+    "devices": "max"
+  },
+  "solver": {
+    "max_steps": 4096,
+    "rtol": 1e-05,
+    "atol": 1e-07
+  },
+  "checkpoint": {
+    "every": 1.0
+  }
 }
 ```
 Run it with:

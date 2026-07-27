@@ -8,8 +8,12 @@ from __future__ import annotations
 #     from argv here, since the device count must be fixed before JAX initialises)
 #   * the env var: BP_TRAIN_DEVICES=8  (always wins)
 # Pick <= number of free cores. No effect on GPU (host-device flag is CPU-only).
+import gzip as _gzip
 import os as _os
 import sys as _sys
+
+from bp_format.json_io import load_json as _load_json
+from bp_format.json_io import loads_json as _loads_json
 
 
 def _bp_load_config():
@@ -26,10 +30,7 @@ def _bp_load_config():
     if not _path:
         return None
     try:
-        import json as _json
-
-        with open(_path) as _f:
-            _doc = _json.load(_f)
+        _doc = _load_json(_path)
         if isinstance(_doc, dict) and isinstance(_doc.get("config"), dict):
             return _doc["config"], _path
         return _doc, _path
@@ -63,6 +64,19 @@ def _bp_resolve_devices():
     return None
 
 
+def _bp_read_prepared_json(_path):
+    """Read a prepared JSON file or prepare-output directory."""
+    if _os.path.isdir(_path):
+        for _name in ("prepared.json.gz", "prepared.json"):
+            _candidate = _os.path.join(_path, _name)
+            if _os.path.isfile(_candidate):
+                _path = _candidate
+                break
+    _opener = _gzip.open if str(_path).endswith(".gz") else open
+    with _opener(_path, "rt", encoding="utf-8") as _f:
+        return _loads_json(_f.read())
+
+
 def _bp_count_processes():
     """Best-effort process count from the prepared JSON (pre-JAX).
 
@@ -74,6 +88,7 @@ def _bp_count_processes():
 
     Returns ``None`` when the prepared artifact cannot be resolved."""
     _prepared = None
+    _prepared_from_config = False
     _cfg_dir = None
     _loaded = _bp_load_config()
     if _loaded is not None:
@@ -82,6 +97,7 @@ def _bp_count_processes():
         _data = _cfg.get("data") if isinstance(_cfg, dict) else None
         if isinstance(_data, dict):
             _prepared = _data.get("prepared")
+            _prepared_from_config = bool(_prepared)
     if not _prepared:
         # legacy flag-based path (e.g. loo --input)
         _argv = _sys.argv
@@ -94,16 +110,15 @@ def _bp_count_processes():
                 break
     if not _prepared:
         return None
-    # the prepared path may be relative to cwd or to the config-file directory
-    _candidates = [_prepared]
-    if _cfg_dir and not _os.path.isabs(_prepared):
-        _candidates.append(_os.path.join(_cfg_dir, _prepared))
+    # Config paths resolve from the config directory. Legacy --input paths
+    # retain their historical cwd-relative behavior.
+    if _prepared_from_config and _cfg_dir and not _os.path.isabs(_prepared):
+        _candidates = [_os.path.join(_cfg_dir, _prepared)]
+    else:
+        _candidates = [_prepared]
     for _path in _candidates:
         try:
-            import json as _json
-
-            with open(_path) as _f:
-                _d = _json.load(_f)
+            _d = _bp_read_prepared_json(_path)
             for _k in ("processes", "process_order", "case_studies"):
                 if isinstance(_d, dict) and isinstance(_d.get(_k), (dict, list)):
                     return len(_d[_k]) or None

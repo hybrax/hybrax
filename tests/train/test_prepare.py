@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import jax.numpy as jnp
@@ -11,6 +12,7 @@ from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    CaseStudy,
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
@@ -25,9 +27,11 @@ from bp_format.dataclasses import (
 )
 from bp_format.serialization import (
     load_process_collection,
+    save_case_study,
     save_process_collection,
 )
 
+from bp_train.constants import METADATA_NAMESPACE
 from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
@@ -110,6 +114,27 @@ def _make_feed_collection() -> BioProcessCollection:
     return BioProcessCollection(
         metadata={"case_study": {"case_id": "synthetic"}}, processes={"p1": process}
     )
+
+
+def test_load_raw_collection_accepts_commented_case_study(tmp_path: Path):
+    collection = _make_feed_collection()
+    case_study = CaseStudy(
+        case_id="commented",
+        organism="test",
+        citation="test",
+        processes=collection.processes,
+    )
+    path = tmp_path / "case-study.json"
+    save_case_study(case_study, path)
+    path.write_text(
+        "  // raw case study\n" + path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    loaded = load_raw_collection(path)
+
+    assert loaded.metadata["case_study"]["case_id"] == "commented"
+    assert set(loaded.processes) == set(collection.processes)
 
 
 def _make_explicit_ode_collection() -> BioProcessCollection:
@@ -600,9 +625,7 @@ def test_prepare_artifact_can_rename_processes(tmp_path):
         _make_two_process_collection(),
         tmp_path,
         output_dir,
-        prepare_config={
-            "process_rename_map": {"p1": "process=p1", "p2": "process=p2"}
-        },
+        prepare_config={"process_rename_map": {"p1": "process=p1", "p2": "process=p2"}},
     )
 
     prepared = load_process_collection(output_dir / "prepared.json")
@@ -816,9 +839,7 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
         ValueError,
         match="feed 'feed_A' has no feed-medium component metadata after prep",
     ):
-        _prepare_from_collection(
-            collection, tmp_path, tmp_path / "prepared-zero-feed"
-        )
+        _prepare_from_collection(collection, tmp_path, tmp_path / "prepared-zero-feed")
 
 
 def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
@@ -890,6 +911,23 @@ def test_prepare_artifact_writes_output_dir_layout(tmp_path):
     assert (output_dir / "prepare_diagnostics").is_dir()
 
 
+def test_prepare_provenance_preserves_nonfinite_values(tmp_path):
+    output_dir = tmp_path / "prepared-nonfinite"
+    prepared = _prepare_from_collection(
+        _make_two_process_collection(),
+        tmp_path,
+        output_dir,
+        prepare_config={"diagnostics": False, "max_rel_error": float("inf")},
+    )
+
+    provenance = prepared.metadata[METADATA_NAMESPACE]["provenance"]
+    assert math.isinf(provenance["prepare_config"]["max_rel_error"])
+    standalone = json.loads(
+        (output_dir / "prepare_config.json").read_text(encoding="utf-8")
+    )
+    assert math.isinf(standalone["provenance"]["prepare_config"]["max_rel_error"])
+
+
 def test_resolve_prepared_path_dir_vs_file(tmp_path):
     output_dir = tmp_path / "prepared-resolve"
     _prepare_from_collection(_make_two_process_collection(), tmp_path, output_dir)
@@ -947,4 +985,3 @@ def test_select_control_sources_handles_null_feed_medium():
     assert sources[0].name == "feed_A"
     assert sources[0].metadata["inlet_feed_medium"] is None
     assert bundle.name_controlled_FVCs == ("feed_A",)
-

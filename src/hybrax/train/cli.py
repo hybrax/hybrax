@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from bp_format.json_io import load_json
 from bp_format.serialization import load_process_collection
 import pandas as pd
 
@@ -1034,7 +1035,7 @@ def _bundle_loo_run_dir(
         shutil.copyfile(cfg.custom_py, output_dir / "custom.py")
         custom_name = "custom.py"
 
-    raw = json.loads(Path(raw_config_path).read_text(encoding="utf-8"))
+    raw = load_json(raw_config_path)
     raw.setdefault("data", {})["prepared"] = prepared_name
     if custom_name is not None:
         raw["custom_py"] = custom_name

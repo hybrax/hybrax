@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+import math
 from pathlib import Path
 
 import equinox as eqx
@@ -24,7 +26,13 @@ import bp_train.harness as harness
 import bp_train.serialization as serialization
 from bp_train.harness import _build_optimizer, _build_template_wrapper
 from bp_train.model_api import partition_trainable
-from bp_train.run_config import DataConfig, RunConfig, TrainConfig
+from bp_train.run_config import (
+    DataConfig,
+    RunConfig,
+    TrainConfig,
+    load_train_config,
+    reresolve_custom,
+)
 from bp_train.serialization import (
     content_hash,
     load_opt_state,
@@ -117,6 +125,67 @@ def _trainable_arrays(module):
         for leaf in jax.tree_util.tree_leaves(trainable)
         if eqx.is_inexact_array(leaf)
     ]
+
+
+def test_write_json_uses_stdlib_json(tmp_path: Path):
+    path = tmp_path / "config.json"
+
+    serialization.write_json(path, {"status": "complete"})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"status": "complete"}
+
+
+def test_read_json_accepts_whole_line_comments(tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('// run state\n{"status": "complete"}', encoding="utf-8")
+
+    assert serialization.read_json(path) == {"status": "complete"}
+
+
+@pytest.mark.parametrize("typed_custom", [False, True])
+def test_run_config_roundtrip_preserves_nonfinite_values(
+    tmp_path: Path, typed_custom: bool
+):
+    custom_py = ""
+    if typed_custom:
+        (tmp_path / "custom.py").write_text(
+            "from pydantic import BaseModel\n"
+            "class CustomConfig(BaseModel):\n"
+            "    value: float\n"
+            "    negative: float\n"
+            "def get_custom_config(raw_custom, config):\n"
+            "    return CustomConfig.model_validate(raw_custom)\n",
+            encoding="utf-8",
+        )
+        custom_py = '"custom_py": "custom.py",\n'
+    learning_rate = "1e-3" if typed_custom else "Infinity"
+    source_path = tmp_path / "source.json"
+    source_path.write_text(
+        "// non-finite stdlib JSON extensions\n"
+        "{\n"
+        '  "data": {"prepared": "prepared.json"},\n'
+        f'  "train": {{"learning_rate": {learning_rate}}},\n'
+        f"  {custom_py}"
+        '  "custom": {"value": NaN, "negative": -Infinity}\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    loaded = load_train_config(source_path)
+    snapshot_path = tmp_path / "config.json"
+    serialization.write_json(
+        snapshot_path,
+        {"config": serialization.run_config_to_jsonable(loaded.config)},
+    )
+
+    reconstructed, _ = serialization.read_run_config_json(snapshot_path)
+    reconstructed = reresolve_custom(reconstructed, loaded.custom_module)
+
+    if typed_custom:
+        assert reconstructed.train.learning_rate == pytest.approx(1e-3)
+    else:
+        assert math.isinf(reconstructed.train.learning_rate)
+    assert math.isnan(reconstructed.custom.value)
+    assert reconstructed.custom.negative == -float("inf")
 
 
 def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):

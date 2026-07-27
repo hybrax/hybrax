@@ -37,6 +37,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
+from bp_format.json_io import load_json
 from bp_format.serialization import load_process_collection
 
 logger = logging.getLogger(__name__)
@@ -106,8 +107,11 @@ _RESERVED_COLUMN_NAMES = frozenset(
 class LOOMetricsResult:
     """Outputs of :func:`compute_loo_metrics`."""
 
-    per_fold_target: pd.DataFrame  # columns: fold_idx, holdout_parent, holdout_process, target, n_measured, r2, nmae, mae, rmse
-    aggregate: dict[str, Any]      # per-target mean/std/median across folds + overall summary
+    # Columns: fold_idx, holdout_parent, holdout_process, target, n_measured,
+    # r2, nmae, mae, rmse.
+    per_fold_target: pd.DataFrame
+    # Per-target mean/std/median across folds plus the overall summary.
+    aggregate: dict[str, Any]
     metrics_csv_path: Path | None
     aggregate_json_path: Path | None
 
@@ -275,13 +279,14 @@ def _require_measurement_nodes(
 def _prediction_unscoreable(
     pred_t: np.ndarray, pred_y: np.ndarray, meas_t: np.ndarray
 ) -> bool:
-    """A diverged / truncated prediction that must be scored NaN — NOT interpolated or node-guarded.
+    """Identify diverged or truncated predictions that must be scored NaN.
 
-    True iff the prediction has any non-finite value, or a measurement time falls outside the
-    prediction grid's range (a solve that blew up and stopped early). Such a fold cannot be scored,
-    so it becomes NaN and is skipped (never a crash, and never a clamped-``np.interp`` endpoint that
-    would read as a misleading finite score). A finite, full-range prediction returns ``False`` so
-    :func:`_require_measurement_nodes` still fails loudly on a genuinely-old node-omitting file.
+    Returns true when the prediction has a non-finite value or a measurement
+    time falls outside the prediction grid (a solve that stopped early). Such a
+    fold becomes NaN and is skipped, rather than crashing or allowing
+    ``np.interp`` to clamp to a misleading finite endpoint. A finite,
+    full-range prediction returns false so :func:`_require_measurement_nodes`
+    still rejects genuinely old files that omit measurement nodes.
     """
     pred_t = np.asarray(pred_t, dtype=float)
     pred_y = np.asarray(pred_y, dtype=float)
@@ -302,7 +307,8 @@ def _evaluate_predictions_for_process(
 ) -> dict[str, dict[str, float]]:
     """Read predictions at measurement times (exact nodes) and compute metrics.
 
-    A diverged/truncated prediction (see :func:`_prediction_unscoreable`) scores NaN and is skipped.
+    A diverged or truncated prediction (see
+    :func:`_prediction_unscoreable`) scores NaN and is skipped.
     """
     out: dict[str, dict[str, float]] = {}
     empty = np.asarray([], dtype=float)
@@ -326,15 +332,13 @@ def _read_fold_sidecar(fold_dir: Path) -> dict[str, Any]:
         raise FileNotFoundError(
             f"missing sidecar at {sidecar}; cannot identify holdout group"
         )
-    return json.loads(sidecar.read_text(encoding="utf-8"))
+    return load_json(sidecar)
 
 
 def _read_predictions_csv(fold_dir: Path) -> pd.DataFrame:
     pred_path = fold_dir / "predictions.csv"
     if not pred_path.exists():
-        raise FileNotFoundError(
-            f"missing predictions.csv at {pred_path}"
-        )
+        raise FileNotFoundError(f"missing predictions.csv at {pred_path}")
     return pd.read_csv(pred_path)
 
 
@@ -363,7 +367,7 @@ def _resolve_target_names(
         return tuple(sidecar_targets)
     # Fall back to any "c_<name>" column in predictions.csv.
     return tuple(
-        col[len("c_"):]
+        col[len("c_") :]
         for col in pred_df.columns
         if col.startswith("c_") and col != "c_modeled"
     )
@@ -430,8 +434,9 @@ def compute_loo_metrics(
         try:
             pred_df = _read_predictions_csv(fold_dir)
         except FileNotFoundError as exc:
-            # A diverged fold whose forward produced no predictions.csv: skip it (its rows become
-            # absent → NaN in the aggregate), never abort the whole dataset. Unexpected errors still raise.
+            # Skip a diverged fold whose forward produced no predictions.csv.
+            # Its absent rows become NaN in the aggregate. Unexpected errors
+            # still raise rather than aborting silently.
             logger.warning("fold '%s': %s; skipping", holdout_parent, exc)
             continue
         targets = _resolve_target_names(sidecar, pred_df, target_override)
@@ -439,8 +444,7 @@ def compute_loo_metrics(
             process = collection.processes.get(proc_name)
             if process is None:
                 logger.warning(
-                    "holdout process '%s' not found in collection; "
-                    "skipping fold %s",
+                    "holdout process '%s' not found in collection; skipping fold %s",
                     proc_name,
                     holdout_parent,
                 )
@@ -524,7 +528,9 @@ def compute_metrics_from_predictions_csv(
     else:
         collection = load_process_collection(Path(prepared_json))
     pred_df = pd.read_csv(predictions_csv)
-    targets = _resolve_target_names({}, pred_df, tuple(target_names) if target_names else None)
+    targets = _resolve_target_names(
+        {}, pred_df, tuple(target_names) if target_names else None
+    )
     selected_processes = (
         tuple(process_names)
         if process_names is not None
@@ -924,9 +930,7 @@ def compute_per_process_metrics(
             "n_measured": int(y_true.size),
         }
         for metric_name, metric_fn in metric_registry.items():
-            row[metric_name] = _safe_call_metric(
-                metric_fn, metric_name, y_true, y_pred
-            )
+            row[metric_name] = _safe_call_metric(metric_fn, metric_name, y_true, y_pred)
         rows.append(row)
 
     df = pd.DataFrame(rows)

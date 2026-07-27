@@ -36,6 +36,7 @@ from typing import Any
 
 import pandas as pd
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
+from bp_format.json_io import load_json
 
 from .harness import train_from_collection, train_harness_config_from_run_config
 from .run_config import LooConfig, RunConfig
@@ -715,7 +716,7 @@ def _read_fold_losses(
 
 def _read_final_train_loss(fold_dir: Path) -> float:
     try:
-        meta = json.loads((fold_dir / "trained_wrapper.meta.json").read_text())
+        meta = load_json(fold_dir / "trained_wrapper.meta.json")
         return float(meta["training"]["final_mean_loss"])
     except (OSError, KeyError, ValueError, TypeError):
         return float("nan")

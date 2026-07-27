@@ -20,6 +20,44 @@ def _write_json(path: Path, data: object) -> Path:
     return path
 
 
+def test_config_accepts_only_whole_line_comments(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        "// training input\n"
+        "{\n"
+        "  // paths are resolved from this file\n"
+        '  "data": {"prepared": "prepared.json"},\n'
+        '  "custom": {"url": "https://example.com/data",\n'
+        '             "note": "before\u2028//must-stay\u2028after"}\n'
+        "}\n"
+        "// final comment",
+        encoding="utf-8",
+    )
+
+    loaded = load_train_config(config_path)
+
+    assert loaded.config.data is not None
+    assert loaded.config.custom.url == "https://example.com/data"
+    assert loaded.config.custom.note == "before\u2028//must-stay\u2028after"
+
+
+@pytest.mark.parametrize(
+    "invalid_comment",
+    [
+        '  "data": {"prepared": "prepared.json"} // inline\n',
+        "  /* block comment */\n",
+    ],
+)
+def test_config_rejects_non_whole_line_comments(
+    tmp_path: Path, invalid_comment: str
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{\n" + invalid_comment + "}\n", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        load_train_config(config_path)
+
+
 def test_unknown_top_level_keys_fail(tmp_path: Path) -> None:
     config_path = _write_json(
         tmp_path / "config.json",

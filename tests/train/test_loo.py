@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -633,8 +634,6 @@ def test_worker_env_drops_xla_flags_when_only_pin(monkeypatch):
 
 
 def test_single_fold_std_is_nan(tmp_path):
-    import math
-
     collection = _three_parent_collection()
     loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p1",)),))
     folds = resolve_folds(collection, loo_cfg)
@@ -647,6 +646,18 @@ def test_single_fold_std_is_nan(tmp_path):
         base_seed=0,
     )
     assert math.isnan(agg["holdout_total_std"])
+
+
+def test_read_final_train_loss_accepts_comments_and_malformed_is_nan(tmp_path):
+    sidecar = tmp_path / "trained_wrapper.meta.json"
+    sidecar.write_text(
+        '// fit result\n{"training": {"final_mean_loss": 1.25}}',
+        encoding="utf-8",
+    )
+    assert loo_mod._read_final_train_loss(tmp_path) == pytest.approx(1.25)
+
+    sidecar.write_text("// comment only", encoding="utf-8")
+    assert math.isnan(loo_mod._read_final_train_loss(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +711,10 @@ def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
     captured: dict[str, Any] = {}
     cfg_path = tmp_path / "config.json"
     _write_min_config(cfg_path)
+    cfg_path.write_text(
+        "// source config comment\n" + cfg_path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     (tmp_path / "prepared.json").write_text("{}")  # real file -> bundle copies it
     out_dir = tmp_path / "out"
     stale_fold = out_dir / "folds" / "old-fold"

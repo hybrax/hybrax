@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
+from bp_format.json_io import load_json
 
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
@@ -215,7 +216,7 @@ def load_model_metadata(path: str | Path) -> dict[str, Any]:
     path = Path(path)
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return load_json(path)
 
 
 def _mse_and_r2(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, float]:

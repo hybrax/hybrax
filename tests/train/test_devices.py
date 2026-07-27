@@ -7,6 +7,8 @@ in ``bp_train/__init__.py``), so we exercise it in fresh subprocesses: each
 child sets ``sys.argv`` *before* ``import bp_train`` and reports
 ``jax.device_count()``.
 """
+
+import gzip
 import json
 import os
 import subprocess
@@ -30,7 +32,9 @@ print("RESULT_JSON " + json.dumps({{"devices": int(jax.device_count())}}))
 """
 
 
-def _device_count(argv: list[str], env_extra: dict | None = None) -> int:
+def _device_count(
+    argv: list[str], env_extra: dict | None = None, *, cwd: Path | None = None
+) -> int:
     env = {**os.environ, "JAX_PLATFORMS": "cpu"}
     env.pop("XLA_FLAGS", None)  # let the bootstrap set the device count cleanly
     env.pop("BP_TRAIN_DEVICES", None)
@@ -38,13 +42,17 @@ def _device_count(argv: list[str], env_extra: dict | None = None) -> int:
         env.update(env_extra)
     proc = subprocess.run(
         [sys.executable, "-c", _SCRIPT.format(argv=list(argv))],
-        env=env, capture_output=True, text=True, timeout=300,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=cwd,
     )
     assert proc.returncode == 0, (
         f"subprocess failed (argv={argv}):\n{proc.stderr[-3000:]}"
     )
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT_JSON "))
-    return json.loads(line[len("RESULT_JSON "):])["devices"]
+    return json.loads(line[len("RESULT_JSON ") :])["devices"]
 
 
 def _make_config(tmp_path: Path, *, devices, prepared: str = "prepared.json") -> Path:
@@ -52,7 +60,7 @@ def _make_config(tmp_path: Path, *, devices, prepared: str = "prepared.json") ->
     wrapper, unlike a run dir's config.json which the resume path unwraps)."""
     config_path = tmp_path / "config.json"
     doc = {"train": {"devices": devices, "epochs": 4}, "data": {"prepared": prepared}}
-    config_path.write_text(json.dumps(doc), encoding="utf-8")
+    config_path.write_text("// device config\n" + json.dumps(doc), encoding="utf-8")
     return config_path
 
 
@@ -65,19 +73,50 @@ def test_config_devices_absolute_int(tmp_path: Path):
 
 
 @_needs_2
-def test_devices_max_absolute_prepared(tmp_path: Path):
-    """devices: "max" with an absolute, resolvable data.prepared resolves to
-    min(n_processes, cpu_count) (_bp_count_processes finds process_order)."""
-    prepared = tmp_path / "prepared.json"
-    prepared.write_text(json.dumps({"process_order": ["p1", "p2"]}), encoding="utf-8")
-    config_path = _make_config(tmp_path, devices="max", prepared=str(prepared))
+@pytest.mark.parametrize("artifact_form", ["plain", "gzip", "directory"])
+def test_devices_max_resolves_commented_prepared_forms(
+    tmp_path: Path, artifact_form: str
+):
+    """The pre-JAX count supports config-relative files and prepare dirs."""
+    document = '// artifact\n{"process_order": ["p1", "p2"]}'
+    if artifact_form == "plain":
+        prepared = tmp_path / "prepared.json"
+        prepared.write_text(document, encoding="utf-8")
+    elif artifact_form == "gzip":
+        prepared = tmp_path / "prepared.json.gz"
+        with gzip.open(prepared, "wt", encoding="utf-8") as f:
+            f.write(document)
+    else:
+        prepared = tmp_path / "prepared"
+        prepared.mkdir()
+        with gzip.open(prepared / "prepared.json.gz", "wt", encoding="utf-8") as f:
+            f.write(document)
+
+    config_path = _make_config(tmp_path, devices="max", prepared=prepared.name)
     argv = ["bp-train", "train", "--config", str(config_path)]
     assert _device_count(argv) == min(2, _CPU)
 
 
+@_needs_2
+def test_devices_config_relative_path_wins_over_cwd_collision(tmp_path: Path):
+    config_dir = tmp_path / "config-dir"
+    config_dir.mkdir()
+    (tmp_path / "prepared.json").write_text(
+        json.dumps({"process_order": ["wrong-1", "wrong-2"]}),
+        encoding="utf-8",
+    )
+    (config_dir / "prepared.json").write_text(
+        json.dumps({"process_order": ["p1"]}), encoding="utf-8"
+    )
+    config_path = _make_config(config_dir, devices="max", prepared="prepared.json")
+
+    argv = ["bp-train", "train", "--config", str(config_path)]
+    assert _device_count(argv, cwd=tmp_path) == 1
+
+
 @pytest.mark.parametrize("alias", ["all", "auto"])
 def test_devices_alias_absolute_prepared(tmp_path: Path, alias: str):
-    """"all" and "auto" are accepted aliases for "max"."""
+    """ "all" and "auto" are accepted aliases for "max"."""
     prepared = tmp_path / "prepared.json"
     prepared.write_text(json.dumps({"process_order": ["p1", "p2"]}), encoding="utf-8")
     config_path = _make_config(tmp_path, devices=alias, prepared=str(prepared))

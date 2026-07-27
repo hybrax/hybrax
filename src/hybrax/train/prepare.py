@@ -19,6 +19,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
+from bp_format.json_io import loads_json
 from bp_format.serialization import (
     load_case_study,
     load_process_collection,
@@ -93,7 +94,7 @@ def _raw_input_is_case_study(path: Path) -> bool:
                 break
     opener = gzip.open if str(path).endswith(".gz") else open
     with opener(path, "rt", encoding="utf-8") as f:
-        return "case_id" in json.load(f)
+        return "case_id" in loads_json(f.read())
 
 
 def load_raw_collection(
@@ -456,7 +457,7 @@ def prepare_artifact(
     # file hash, the raw-input hash, package versions, and a timestamp.
     bp_train_metadata["provenance"] = {
         "prepared_at": _utc_now_iso(),
-        "prepare_config": json.loads(prepare.model_dump_json()),
+        "prepare_config": prepare.model_dump(mode="json"),
         "custom_py_file_hash": (f"sha256:{custom_hash}" if custom_hash else None),
         "raw_input_sha256": (f"sha256:{source_hash}" if source_hash else None),
         "environment": environment_versions(),

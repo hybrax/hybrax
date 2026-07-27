@@ -35,7 +35,10 @@ execution, not experiment identity.
 - Typed library-owned sections reject unknown keys.
 - The top-level `custom` section is intentionally free-form. bp-train only
   checks that it is a JSON object or `null` before passing it to `custom.py`.
-- YAML/comments are out of scope.
+- Inputs may contain whole-line `//` comments after optional indentation. Inline
+  comments, block comments, trailing commas, and other JSON5-only syntax are
+  invalid. The stdlib parser and generated files retain its `NaN`/`Infinity`
+  extensions for non-finite floats. YAML is out of scope.
 
 ## User mental model
 
@@ -286,7 +289,9 @@ Sketch:
 
 ```python
 class DefaultCustomConfig(BaseModel):
-    model_config = ConfigDict(extra="allow", frozen=True)
+    model_config = ConfigDict(
+        extra="allow", frozen=True, ser_json_inf_nan="constants"
+    )
 ```
 
 ## What `custom.py` receives

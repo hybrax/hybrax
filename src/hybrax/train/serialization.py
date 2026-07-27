@@ -27,6 +27,7 @@ from typing import Any
 
 import equinox as eqx
 from bp_format.dataclasses import BioProcessCollection
+from bp_format.json_io import load_json
 from bp_format.serialization import (
     NumpyEncoder,
     _process_collection_to_dict,
@@ -180,7 +181,7 @@ def content_hash(collection: BioProcessCollection) -> str:
 
 def run_config_to_jsonable(config: RunConfig) -> dict[str, Any]:
     """RunConfig → JSON-native dict (Paths → str, tuples → lists)."""
-    return json.loads(config.model_dump_json())
+    return config.model_dump(mode="json")
 
 
 def write_json(path: str | Path, document: dict[str, Any]) -> None:
@@ -190,7 +191,7 @@ def write_json(path: str | Path, document: dict[str, Any]) -> None:
 
 
 def read_json(path: str | Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return load_json(path)
 
 
 def read_run_config_json(path: str | Path) -> tuple[RunConfig, dict[str, Any]]:

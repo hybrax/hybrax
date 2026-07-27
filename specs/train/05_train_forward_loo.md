@@ -117,8 +117,10 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
     {"name": "high feed",  "test": ["proc_1", "proc_1b"]},
     {"name": "no feed",    "test": ["proc_2", "proc_3"], "train": ["proc_4"]}
   ],
-  "parallel_folds": 4,      // how many folds to train at once (you own the RAM call)
-  "devices_per_fold": null  // null derives a per-fold CPU-device count
+  // How many folds to train at once (you own the RAM call).
+  "parallel_folds": 4,
+  // null derives a per-fold CPU-device count.
+  "devices_per_fold": null
 }
 ```
 

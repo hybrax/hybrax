@@ -62,6 +62,9 @@ def test_save_and_load_model_metadata_roundtrip(tmp_path: Path):
     }
     path = tmp_path / "trained_wrapper.meta.json"
     postprocessing.save_model_metadata(path, meta)
+    strict_output = path.read_text(encoding="utf-8")
+    assert json.loads(strict_output) == meta
+    path.write_text("// model metadata\n" + strict_output, encoding="utf-8")
 
     loaded = postprocessing.load_model_metadata(path)
     assert loaded == meta

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from bp_format.json_io import load_json
 from bp_train.utils import load_custom_module
 
 _FROZEN = ConfigDict(extra="forbid", frozen=True)
@@ -212,7 +212,7 @@ class RunConfig(ConfigBase):
 
 
 class DefaultCustomConfig(BaseModel):
-    model_config = ConfigDict(extra="allow", frozen=True)
+    model_config = ConfigDict(extra="allow", frozen=True, ser_json_inf_nan="constants")
 
 
 # --- forward config: a list of self-contained model dirs + optional data override ---
@@ -320,7 +320,7 @@ def load_run_config(config_path: str | Path, *, command: _Command) -> LoadedRunC
 
 
 def _read_raw_config(path: Path) -> dict[str, Any]:
-    raw = json.loads(path.read_text())
+    raw = load_json(path)
     if not isinstance(raw, dict):
         raise TypeError("run config must be a JSON object")
     return raw

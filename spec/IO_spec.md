@@ -67,8 +67,10 @@ overlay, library knobs in `CONFIG`) and the old layout (`trained_wrapper.eqx`,
   Typed validation, `extra="forbid"` fail-fast on unknown keys, native JSON round-trip,
   bounds/choices via `Field`/`Literal`, path-pointed errors, auto knob reference via
   `model_json_schema()`.
-- **JSON canonical** (pydantic-native, no new dep). PyYAML is **not** installed; YAML is a
-  deferred 3-line follow-up if comments-in-config are wanted later.
+- **JSON canonical** (pydantic-native, no new dep). Inputs accept whole-line `//`
+  comments after optional indentation; inline/block comments and other JSON5-only
+  syntax remain invalid. The stdlib parser and generated files retain its
+  `NaN`/`Infinity` extensions for non-finite floats. PyYAML is **not** installed.
 - **CLI = a few common flags only; `config.json` carries the full surface.** A knob without
   a flag is set in the config file — **no** generic `--set`/dotted-path mechanism
   (considered and rejected: hard to read). Full list discoverable via `bp-train config
@@ -191,7 +193,7 @@ One function does all layering; pydantic enforces types/unknown-keys at each `mo
 ```python
 def resolve_run_config(cli_args, *, config_file: Path | None, custom_module) -> RunConfig:
     # 1. file layer (full structured config, all sections optional → defaults fill in)
-    file_dict = json.loads(config_file.read_text()) if config_file else {}
+    file_dict = load_json(config_file) if config_file else {}
     # 2. model-dict layer: custom.py CONFIG < file["model"]["config"]
     file_dict.setdefault("model", {}).setdefault("config", {})
     file_dict["model"]["config"] = {**resolve_config(custom_module, None),
@@ -445,25 +447,28 @@ data prep to the raw collection.
 ```json
 {
   "status": "running | complete | failed",
-  "error": null,                              // {type, message, step} when status=="failed"
+  "error": null,
   "started_at": "2026-06-03T14:57:13+0200",
   "finished_at": "2026-06-03T15:40:02+0200",
   "steps_completed": 1500,
   "best": {"step": 300, "mean_loss": 0.71},
   "final_mean_loss": 0.74,
   "cli_argv": ["bp_train", "train", "--config", "config.json"],
-  "config": { /* the ENTIRE resolved RunConfig serialised as JSON — every knob, defaults
-                 filled (data/model/optim/solver/checkpoint/output/logging[/prepare/loo]).
-                 This block alone fully specifies the run; targets/seed/processes live under
-                 config.data and config.model, not duplicated at top level. */ },
+  "config": {},
   "inputs": {
-    "prepared_input": {"path": "prepared.json", "content_hash": "sha256:ab12…"},  // stable data hash
-    "custom_py":      {"bundled": "custom.py",  "file_hash":    "sha256:cd34…"}   // exact-bytes hash
+    "prepared_input": {"path": "prepared.json", "content_hash": "sha256:ab12…"},
+    "custom_py": {"bundled": "custom.py", "file_hash": "sha256:cd34…"}
   },
   "environment": {"python": "3.13.x", "bp_train": "…", "bp_format": "…",
                   "jax": "…", "optax": "…", "equinox": "…", "diffrax": "…"}
 }
 ```
+
+The `error` object contains `type`, `message`, and `step` when status is
+`"failed"`. The `config` object contains the entire resolved `RunConfig`, with
+all defaults filled. Its data/model sections own targets, seeds, and processes;
+these are not duplicated at the top level. `content_hash` is the stable data
+hash, while `file_hash` covers the exact `custom.py` bytes.
 
 `load_run`/`forward`/resume parse the `config` block back into a `RunConfig`; the rest
 (`status`, `error`, timestamps, `best`, `cli_argv`, `inputs`, `environment`) is read-only
@@ -674,7 +679,7 @@ def resume_run(run_dir: Path, *, steps_override: int | None = None) -> TrainHarn
     cfg = loaded.config
     if steps_override is not None:                       # --steps may extend the target
         cfg = cfg.model_copy(update={"optim": cfg.optim.model_copy(update={"steps": steps_override})})
-    start = json.loads((run_dir/"checkpoints"/"latest"/"train_state.json").read_text())["step"]
+    start = load_json(run_dir / "checkpoints" / "latest" / "train_state.json")["step"]
     return train_collection(..., config=from_run_config(cfg), start_step=start,
                             initial_trainable_params=partition_trainable(loaded.wrapper)[0],
                             initial_optimizer_state=loaded.opt_state)
@@ -765,7 +770,7 @@ def load_run(run_dir, *, checkpoint: str = "best", load_opt_state: bool = False)
     the run-root model/ is used when checkpoint="final" (the default copy of best).
     """
     run_dir = Path(run_dir)
-    cfg = RunConfig.model_validate(json.loads((run_dir / "config.json").read_text())["config"])
+    cfg, _ = read_run_config_json(run_dir / "config.json")
     reaction, loss, store, collection = reconstruct_run(run_dir, cfg)
     template, template_opt = _build_template_wrapper(store, reaction_module=reaction,
                                  loss_module=loss, collection=collection,

@@ -34,10 +34,20 @@ from bp_format.dataclasses import (
 
 from bp_train.loo_metrics import (
     DEFAULT_METRICS,
+    _read_fold_sidecar,
     compute_aggregated_metrics,
     compute_per_process_metrics,
     format_incompleteness_banner,
 )
+
+
+def test_read_fold_sidecar_accepts_whole_line_comments(tmp_path: Path):
+    (tmp_path / "trained_wrapper.meta.json").write_text(
+        '// fold identity\n{"holdout_processes": ["p1"]}',
+        encoding="utf-8",
+    )
+
+    assert _read_fold_sidecar(tmp_path)["holdout_processes"] == ["p1"]
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +216,9 @@ def _perfect_pred_for(process: BioProcess) -> dict[str, np.ndarray]:
     return cols
 
 
-def _perfect_loo_dir(root: Path, name: str = "output_loo") -> tuple[Path, BioProcessCollection]:
+def _perfect_loo_dir(
+    root: Path, name: str = "output_loo"
+) -> tuple[Path, BioProcessCollection]:
     collection = _two_process_collection()
     folds = []
     for fold_idx, parent in enumerate(("p1", "p2")):
@@ -301,19 +313,27 @@ def test_pooled_vs_per_process_differ_when_unbalanced(tmp_path):
         train_proc = next(p for p in collection.processes if p != parent)
         # p1 prediction is wildly wrong; p2 prediction is perfect.
         p1_truth = np.asarray(
-            collection.processes["p1"].reactor_medium.components["biomass"].concentration.values,
+            collection.processes["p1"]
+            .reactor_medium.components["biomass"]
+            .concentration.values,
             dtype=float,
         )
         p2_truth = np.asarray(
-            collection.processes["p2"].reactor_medium.components["biomass"].concentration.values,
+            collection.processes["p2"]
+            .reactor_medium.components["biomass"]
+            .concentration.values,
             dtype=float,
         )
         p1_times = np.asarray(
-            collection.processes["p1"].reactor_medium.components["biomass"].concentration.times,
+            collection.processes["p1"]
+            .reactor_medium.components["biomass"]
+            .concentration.times,
             dtype=float,
         )
         p2_times = np.asarray(
-            collection.processes["p2"].reactor_medium.components["biomass"].concentration.times,
+            collection.processes["p2"]
+            .reactor_medium.components["biomass"]
+            .concentration.times,
             dtype=float,
         )
         process_preds = {
@@ -589,9 +609,7 @@ def test_equal_comparison_false_keeps_per_dir_full(tmp_path):
     dir_a = make_dir("run_a", ("p1", "p2", "p3"))
     dir_b = make_dir("run_b", ("p2", "p3", "p4"))
 
-    df = compute_per_process_metrics(
-        [dir_a, dir_b], collection, equal_comparison=False
-    )
+    df = compute_per_process_metrics([dir_a, dir_b], collection, equal_comparison=False)
     # 4 distinct holdout parents observed across the two dirs.
     holdouts = set(df["holdout_parent"].tolist())
     assert holdouts == {"p1", "p2", "p3", "p4"}
@@ -621,6 +639,8 @@ def test_require_measurement_nodes_fail_fast():
     # a measurement-inclusive grid passes (float32 round-trip tolerated)
     inclusive = np.unique(np.concatenate([uniform, [0.7]]))
     _require_measurement_nodes(
-        inclusive, np.array([0.0, 0.7, 2.0], dtype=np.float32).astype(float),
-        process="p1", target="biomass",
+        inclusive,
+        np.array([0.0, 0.7, 2.0], dtype=np.float32).astype(float),
+        process="p1",
+        target="biomass",
     )
