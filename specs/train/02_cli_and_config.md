@@ -204,13 +204,22 @@ def augment_state_values(*, base_values, augmented_values, **_):
 ### `estimate_all_scales`
 
 ```python
-def estimate_all_scales(collection, target_names: list[str], config) -> EstimatedScales | dict
+def estimate_all_scales(collection, target_names: list[str], config,
+                        *, controls_store) -> EstimatedScales | dict
 ```
 Return the `SCALE_*` axes (as an [`EstimatedScales`](../bp_train/model_api.py))
 used to normalize state/rate/control vectors. Runs once at train setup; the
 values are baked into the reaction module. No default — when absent, every axis
 is ones (no scaling). See
 [03_data_preparation.md](03_data_preparation.md#scale-estimation).
+
+`controls_store` is **optional**: it is passed only to hooks that declare it, so
+the three-argument form above remains valid and existing `custom.py` modules —
+including the frozen copies inside run directories, which are reloaded verbatim
+on resume and forward — keep working unchanged. Declare it to receive the
+already-built [`ControlsStore`](../bp_train/controls_store.py) instead of
+calling `ControlsStore.from_collection(collection)` yourself, which duplicates
+work the harness has already done.
 
 ### `build_reaction_module`
 

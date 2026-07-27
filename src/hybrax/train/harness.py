@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 import math
 import sys
@@ -470,6 +471,32 @@ def _build_loss_module(
     return module
 
 
+_BY_KEYWORD = (
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+)
+
+
+def _accepted_hook_kwargs(hook: Any, **candidates: Any) -> dict[str, Any]:
+    """Filter `candidates` down to the keyword arguments `hook` can receive.
+
+    Lets the hook contract grow optional inputs without a coordinated edit to
+    every `custom.py`, including frozen copies in run directories that
+    `reconstruct_run` loads verbatim. A `**kwargs` hook absorbs everything;
+    otherwise a candidate must be named by a parameter that is actually
+    bindable by keyword — matching the name alone would forward a
+    positional-only parameter and make the call raise.
+    """
+    parameters = inspect.signature(hook).parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+        return dict(candidates)
+    return {
+        name: value
+        for name, value in candidates.items()
+        if name in parameters and parameters[name].kind in _BY_KEYWORD
+    }
+
+
 def _resolve_estimated_scales(
     *,
     custom_module,
@@ -481,12 +508,14 @@ def _resolve_estimated_scales(
 
     The hook returns an ``EstimatedScales`` dataclass (or a falsy result if no
     hook is configured). The output flattens into ``SCALE_*`` kwargs that feed
-    ``build_reaction_module``.
+    ``build_reaction_module``. `controls_store` reaches only hooks that declare
+    it; see `_accepted_hook_kwargs`.
     """
     hook = get_hook(custom_module, "estimate_all_scales", None)
     if hook is None:
         return {}
-    estimated = hook(collection, list(store.name_measured), custom_cfg)
+    optional = _accepted_hook_kwargs(hook, controls_store=store.controls_store)
+    estimated = hook(collection, list(store.name_measured), custom_cfg, **optional)
     if not isinstance(estimated, EstimatedScales):
         raise TypeError(
             "estimate_all_scales(...) must return an EstimatedScales dataclass; "

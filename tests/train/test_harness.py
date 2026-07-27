@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
 import gc
 import json
 import logging
 import re
 import warnings
 import weakref
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -44,6 +46,7 @@ from bp_train.harness import (
 )
 from bp_train.defaults import DefaultLossModule, default_build_reaction_module
 from bp_train.model_api import (
+    EstimatedScales,
     ReactionOutputs,
     UserReactionModule,
     frozen_field,
@@ -1266,3 +1269,78 @@ def test_build_loss_module_defaults_when_no_hook():
     )
     assert isinstance(module, DefaultLossModule)
     assert tuple(module.loss_names) == ("biomass",)
+
+
+def test_accepted_hook_kwargs_filters_to_declared_parameters():
+    from bp_train.harness import _accepted_hook_kwargs
+
+    def legacy(collection, target_names, config):
+        raise AssertionError("not called")
+
+    def modern(collection, target_names, config, *, controls_store):
+        raise AssertionError("not called")
+
+    def catch_all(collection, target_names, config, **kwargs):
+        raise AssertionError("not called")
+
+    def positional_only(collection, target_names, config, controls_store=None, /):
+        return controls_store
+
+    sentinel = object()
+    # A frozen output_*/custom.py predating the parameter must still be callable.
+    assert _accepted_hook_kwargs(legacy, controls_store=sentinel) == {}
+    assert _accepted_hook_kwargs(modern, controls_store=sentinel) == {
+        "controls_store": sentinel
+    }
+    assert _accepted_hook_kwargs(catch_all, controls_store=sentinel) == {
+        "controls_store": sentinel
+    }
+    # Named but not bindable by keyword: forwarding it would raise at the call.
+    accepted = _accepted_hook_kwargs(positional_only, controls_store=sentinel)
+    assert accepted == {}
+    assert positional_only(None, None, None, **accepted) is None
+
+
+def test_resolve_estimated_scales_passes_controls_store_only_when_declared():
+    """The wiring itself, not just the filter: removing it must fail here."""
+    from bp_train.harness import _resolve_estimated_scales
+
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    scales = EstimatedScales(
+        **{field.name: jnp.zeros(()) for field in dataclasses.fields(EstimatedScales)}
+    )
+    seen: dict[str, Any] = {}
+
+    class LegacyModule:
+        @staticmethod
+        def estimate_all_scales(collection, target_names, config):
+            seen["legacy"] = True
+            return scales
+
+    class ModernModule:
+        @staticmethod
+        def estimate_all_scales(collection, target_names, config, *, controls_store):
+            seen["controls_store"] = controls_store
+            return scales
+
+    kwargs = _resolve_estimated_scales(
+        custom_module=LegacyModule,
+        collection=collection,
+        store=store,
+        custom_cfg={},
+    )
+    assert seen == {"legacy": True}
+    assert "SCALE_modeled_RMCs" in kwargs
+
+    _resolve_estimated_scales(
+        custom_module=ModernModule,
+        collection=collection,
+        store=store,
+        custom_cfg={},
+    )
+    assert seen["controls_store"] is store.controls_store
