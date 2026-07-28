@@ -380,8 +380,10 @@ class ControlsStore(eqx.Module):
     name_controlled_FVCs: tuple[str, ...]
     name_controlled_SVCs: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
-    # Shape metadata persisted in `prepared.json`.
-    shape_metadata: dict[str, Any]
+    # Padded max shapes. No runtime consumer today (only tests assert on it);
+    # kept because it may be wanted again. Static so that a pytree traversal of
+    # the store cannot silently rewrite the values, as it would for a leaf.
+    shape_metadata: dict[str, Any] = eqx.field(static=True)
     spline_indices: tuple[int, ...] = eqx.field(static=True)
     fallback_indices: tuple[int, ...] = eqx.field(static=True)
     spline_side: str = eqx.field(static=True)
