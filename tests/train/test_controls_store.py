@@ -274,6 +274,33 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     assert controls.eval_controlled_SVCs_rates(ts, None).shape == (3, 0)
 
 
+def test_controls_store_preserves_partial_spline_fallback_column_order():
+    collection = _make_two_process_collection()
+    for process in collection.processes.values():
+        process.process_variables["CF"].values = _spline_control_values()
+        process.process_variables["Z"] = ProcessVariable(
+            name="Z",
+            unit="C",
+            is_controlled=True,
+            values=TimeSeries(
+                times=jnp.asarray([0.0, 1.0]),
+                values=jnp.asarray([100.0, 200.0]),
+            ),
+        )
+
+    store = ControlsStore.from_collection(collection)
+    controls = store.get_controls("p1")
+
+    assert controls.name_controlled_PVs == ("CF", "T", "Z")
+    assert controls.spline_indices == (0,)
+    assert controls.fallback_indices == (1, 2)
+    np.testing.assert_allclose(
+        np.asarray(controls.active_control_values)[[0, -1]],
+        [[30.0, 100.0], [31.0, 200.0]],
+    )
+    assert controls.eval_controlled_PVs(0.5, None) == pytest.approx([0.5, 30.5, 150.0])
+
+
 def test_controls_store_exposes_discrete_event_metadata():
     feed_medium = FeedMedium(
         name="feed",
@@ -491,24 +518,6 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
     assert np.array_equal(
         np.asarray(loaded.control_values), np.asarray(saved.control_values)
     )
-
-
-def test_controls_store_pads_control_rows_with_last_active_values():
-    grid, values, derivatives, _, grid_length, _ = ControlsStore._pad_dense_payload(
-        payload={
-            "grid": [0.0, 1.0],
-            "values": [[1.0], [2.0]],
-            "derivatives": [[3.0], [4.0]],
-            "jump_ts": [],
-        },
-        max_grid_length=4,
-        max_jump_ts_length=0,
-    )
-
-    assert grid_length == 2
-    assert grid == [0.0, 1.0, 1.0, 1.0]
-    assert values == [[1.0], [2.0], [2.0], [2.0]]
-    assert derivatives == [[3.0], [4.0], [4.0], [4.0]]
 
 
 def test_controls_store_gather_batch_preserves_order_duplicates_and_events():

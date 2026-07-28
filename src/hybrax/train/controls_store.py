@@ -34,7 +34,7 @@ DEFAULT_RUNTIME_CONTROLS_CONFIG: dict[str, Any] = {
 
 def _as_jax_array(values: Any, *, dtype: Any = jnp.float64) -> jax.Array:
     """Convert JSON-loaded values into a JAX array."""
-    return jnp.asarray(values, dtype=dtype)
+    return jnp.asarray(np.asarray(values, dtype=dtype))
 
 
 def _discrete_event_jump_ts(process: Any) -> list[float]:
@@ -459,40 +459,6 @@ class ControlsStore(eqx.Module):
                 )
 
     @staticmethod
-    def _pad_dense_payload(
-        *,
-        payload: dict[str, Any],
-        max_grid_length: int,
-        max_jump_ts_length: int,
-    ) -> tuple[
-        list[float], list[list[float]], list[list[float]], list[float], int, int
-    ]:
-        """Pad a fallback payload whose columns are already canonical."""
-        grid = list(payload["grid"])
-        values = [list(row) for row in payload["values"]]
-        derivatives = [list(row) for row in payload["derivatives"]]
-        jump_ts = list(payload["jump_ts"])
-
-        grid_length = len(grid)
-        jump_ts_length = len(jump_ts)
-        padding = max_grid_length - grid_length
-        dense_grid = grid + [grid[-1]] * padding
-        control_values = values + [list(values[-1]) for _ in range(padding)]
-        control_derivatives = derivatives + [
-            list(derivatives[-1]) for _ in range(padding)
-        ]
-
-        jump_ts_padded = jump_ts + [0.0] * (max_jump_ts_length - jump_ts_length)
-        return (
-            dense_grid,
-            control_values,
-            control_derivatives,
-            jump_ts_padded,
-            grid_length,
-            jump_ts_length,
-        )
-
-    @staticmethod
     def _pad_spline_payload(
         payload: dict[str, Any],
         max_breaks: int,
@@ -610,12 +576,15 @@ class ControlsStore(eqx.Module):
         }
         spreads = compute_signal_spreads(spread_inputs)
 
-        event_metadata_by_process: dict[str, dict[str, Any]] = {}
         reference_species: tuple[str, ...] | None = None
+        max_grid_length = 0
+        max_spline_breaks = 0
+        max_jump_ts_length = 0
         max_sample_events = 0
         max_bolus_events = 0
         for process_name in process_order:
             process = collection.processes[process_name]
+            bundle = process_bundles[process_name]
             species_names = tuple(build_rhs_ode(process).name_modeled_RMCs)
             if reference_species is None:
                 reference_species = species_names
@@ -626,110 +595,103 @@ class ControlsStore(eqx.Module):
                     f"{species_names!r} but expected {reference_species!r}"
                 )
             event_md = collect_discrete_event_metadata(process, species_names)
-            event_metadata_by_process[process_name] = event_md
-            max_sample_events = max(max_sample_events, len(event_md["sample_times"]))
-            max_bolus_events = max(max_bolus_events, len(event_md["bolus_times"]))
-
-        payloads_by_process: dict[str, dict[str, Any]] = {}
-        spline_payloads_by_process: dict[str, dict[str, Any]] = {}
-        max_grid_length = 0
-        max_spline_breaks = 0
-        max_jump_ts_length = 0
-        for process_name in process_order:
-            process = collection.processes[process_name]
-            bundle = process_bundles[process_name]
-            fallback_sources = [bundle.sources_by_name[name] for name in fallback_names]
-            spline_sources = [bundle.sources_by_name[name] for name in spline_names]
             payload = build_dense_payload(
                 process=process,
-                sources=fallback_sources,
+                sources=[bundle.sources_by_name[name] for name in fallback_names],
                 spreads=spreads,
                 config=cfg,
             )
-            spline_payload = build_spline_payload(spline_sources)
-            # jump_ts = genuine vector-field discontinuity times from
-            # ``BioProcess.discrete_events`` (e.g. discrete steps in controlled
-            # process variables). State-jump events (bolus/sample) are NOT here —
-            # the callbacks solve already segments the solve at them. Passed to
-            # ``diffrax.PIDController(jump_ts=...)`` so the adaptive controller
-            # re-inits its step across the discontinuity.
-            payload["jump_ts"] = _discrete_event_jump_ts(process)
-            payloads_by_process[process_name] = payload
-            spline_payloads_by_process[process_name] = spline_payload
+            spline_payload = build_spline_payload(
+                [bundle.sources_by_name[name] for name in spline_names]
+            )
             max_grid_length = max(max_grid_length, len(payload["grid"]))
             max_spline_breaks = max(max_spline_breaks, len(spline_payload["breaks"]))
-            max_jump_ts_length = max(max_jump_ts_length, len(payload["jump_ts"]))
+            max_jump_ts_length = max(
+                max_jump_ts_length, len(_discrete_event_jump_ts(process))
+            )
+            max_sample_events = max(max_sample_events, len(event_md["sample_times"]))
+            max_bolus_events = max(max_bolus_events, len(event_md["bolus_times"]))
 
-        spline_break_rows = []
-        spline_coeff_rows = []
-        dense_grid_rows = []
-        control_value_rows = []
-        control_derivative_rows = []
-        jump_ts_rows = []
-        grid_lengths = []
-        jump_ts_lengths = []
-        processes_metadata: dict[str, dict[str, Any]] = {}
-        sample_event_time_rows = []
-        sample_event_volume_rows = []
-        sample_event_mask_rows = []
-        bolus_event_time_rows = []
-        bolus_event_volume_rows = []
-        bolus_event_Cin_rows = []
-        bolus_event_mask_rows = []
+        n_processes = len(process_order)
+        n_fallback = len(fallback_names)
+        n_splines = len(spline_names)
         n_species = 0 if reference_species is None else len(reference_species)
+        spline_break_rows = np.empty((n_processes, max_spline_breaks), dtype=np.float64)
+        spline_coeff_rows = np.empty(
+            (n_processes, max(0, max_spline_breaks - 1), n_splines, 4),
+            dtype=np.float64,
+        )
+        dense_grid_rows = np.empty((n_processes, max_grid_length), dtype=np.float64)
+        control_value_rows = np.empty(
+            (n_processes, max_grid_length, n_fallback), dtype=np.float64
+        )
+        control_derivative_rows = np.empty_like(control_value_rows)
+        jump_ts_rows = np.zeros((n_processes, max_jump_ts_length), dtype=np.float64)
+        grid_lengths = np.empty(n_processes, dtype=np.int32)
+        jump_ts_lengths = np.empty(n_processes, dtype=np.int32)
+        sample_event_time_rows = np.zeros(
+            (n_processes, max_sample_events), dtype=np.float64
+        )
+        sample_event_volume_rows = np.zeros_like(sample_event_time_rows)
+        sample_event_mask_rows = np.zeros((n_processes, max_sample_events), dtype=bool)
+        bolus_event_time_rows = np.zeros(
+            (n_processes, max_bolus_events), dtype=np.float64
+        )
+        bolus_event_volume_rows = np.zeros_like(bolus_event_time_rows)
+        bolus_event_Cin_rows = np.zeros(
+            (n_processes, max_bolus_events, n_species), dtype=np.float64
+        )
+        bolus_event_mask_rows = np.zeros((n_processes, max_bolus_events), dtype=bool)
+        processes_metadata: dict[str, dict[str, Any]] = {}
 
-        for process_name in process_order:
-            payload = payloads_by_process[process_name]
+        for process_index, process_name in enumerate(process_order):
+            process = collection.processes[process_name]
+            bundle = process_bundles[process_name]
+            payload = build_dense_payload(
+                process=process,
+                sources=[bundle.sources_by_name[name] for name in fallback_names],
+                spreads=spreads,
+                config=cfg,
+            )
+            jump_ts = _discrete_event_jump_ts(process)
             spline_breaks, spline_coeffs = cls._pad_spline_payload(
-                spline_payloads_by_process[process_name],
+                build_spline_payload(
+                    [bundle.sources_by_name[name] for name in spline_names]
+                ),
                 max_spline_breaks,
             )
-            (
-                dense_grid,
-                control_values,
-                control_derivatives,
-                jump_ts,
-                grid_length,
-                jump_ts_length,
-            ) = cls._pad_dense_payload(
-                payload=payload,
-                max_grid_length=max_grid_length,
-                max_jump_ts_length=max_jump_ts_length,
-            )
+            grid_length = len(payload["grid"])
+            jump_ts_length = len(jump_ts)
+            grid = np.asarray(payload["grid"], dtype=np.float64)
+            values = np.asarray(payload["values"], dtype=np.float64)
+            derivatives = np.asarray(payload["derivatives"], dtype=np.float64)
 
-            spline_break_rows.append(spline_breaks)
-            spline_coeff_rows.append(spline_coeffs)
-            dense_grid_rows.append(dense_grid)
-            control_value_rows.append(control_values)
-            control_derivative_rows.append(control_derivatives)
-            jump_ts_rows.append(jump_ts)
-            grid_lengths.append(grid_length)
-            jump_ts_lengths.append(jump_ts_length)
-            event_md = event_metadata_by_process[process_name]
+            if n_splines:
+                spline_break_rows[process_index] = spline_breaks
+                spline_coeff_rows[process_index] = spline_coeffs
+            dense_grid_rows[process_index, :grid_length] = grid
+            dense_grid_rows[process_index, grid_length:] = grid[-1]
+            control_value_rows[process_index, :grid_length] = values
+            control_value_rows[process_index, grid_length:] = values[-1]
+            control_derivative_rows[process_index, :grid_length] = derivatives
+            control_derivative_rows[process_index, grid_length:] = derivatives[-1]
+            jump_ts_rows[process_index, :jump_ts_length] = jump_ts
+            grid_lengths[process_index] = grid_length
+            jump_ts_lengths[process_index] = jump_ts_length
+
+            event_md = collect_discrete_event_metadata(process, reference_species)
             n_samples = len(event_md["sample_times"])
             n_bolus = len(event_md["bolus_times"])
-            sample_event_time_rows.append(
-                event_md["sample_times"] + [0.0] * (max_sample_events - n_samples)
-            )
-            sample_event_volume_rows.append(
-                event_md["sample_volumes"] + [0.0] * (max_sample_events - n_samples)
-            )
-            sample_event_mask_rows.append(
-                [True] * n_samples + [False] * (max_sample_events - n_samples)
-            )
-            bolus_event_time_rows.append(
-                event_md["bolus_times"] + [0.0] * (max_bolus_events - n_bolus)
-            )
-            bolus_event_volume_rows.append(
-                event_md["bolus_volumes"] + [0.0] * (max_bolus_events - n_bolus)
-            )
-            bolus_event_Cin_rows.append(
-                event_md["bolus_Cin"]
-                + [[0.0] * n_species for _ in range(max_bolus_events - n_bolus)]
-            )
-            bolus_event_mask_rows.append(
-                [True] * n_bolus + [False] * (max_bolus_events - n_bolus)
-            )
+            sample_event_time_rows[process_index, :n_samples] = event_md["sample_times"]
+            sample_event_volume_rows[process_index, :n_samples] = event_md[
+                "sample_volumes"
+            ]
+            sample_event_mask_rows[process_index, :n_samples] = True
+            bolus_event_time_rows[process_index, :n_bolus] = event_md["bolus_times"]
+            bolus_event_volume_rows[process_index, :n_bolus] = event_md["bolus_volumes"]
+            if n_bolus:
+                bolus_event_Cin_rows[process_index, :n_bolus] = event_md["bolus_Cin"]
+            bolus_event_mask_rows[process_index, :n_bolus] = True
 
             processes_metadata[process_name] = {
                 "name_controlled_FVCs": list(name_controlled_FVCs),
