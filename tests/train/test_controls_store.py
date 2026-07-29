@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -274,7 +275,8 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     assert controls.eval_controlled_SVCs_rates(ts, None).shape == (3, 0)
 
 
-def test_controls_store_preserves_partial_spline_fallback_column_order():
+def _partial_split_store() -> ControlsStore:
+    """A store with a real split: spline at column 0, fallbacks at columns 1-2."""
     collection = _make_two_process_collection()
     for process in collection.processes.values():
         process.process_variables["CF"].values = _spline_control_values()
@@ -287,8 +289,11 @@ def test_controls_store_preserves_partial_spline_fallback_column_order():
                 values=jnp.asarray([100.0, 200.0]),
             ),
         )
+    return ControlsStore.from_collection(collection)
 
-    store = ControlsStore.from_collection(collection)
+
+def test_controls_store_preserves_partial_spline_fallback_column_order():
+    store = _partial_split_store()
     controls = store.get_controls("p1")
 
     assert controls.name_controlled_PVs == ("CF", "T", "Z")
@@ -299,6 +304,60 @@ def test_controls_store_preserves_partial_spline_fallback_column_order():
         [[30.0, 100.0], [31.0, 200.0]],
     )
     assert controls.eval_controlled_PVs(0.5, None) == pytest.approx([0.5, 30.5, 150.0])
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        # The canonical reproduction: move the spline to another column. Every
+        # array shape is unchanged, so shape validation cannot see it.
+        ({"spline_indices": (1,)}, "partition"),
+        # A float or bool index compares equal to an int and would otherwise
+        # fail far away, at JAX indexing time.
+        ({"spline_indices": (0.0,)}, "exact ints"),
+        ({"fallback_indices": (True, 2)}, "exact ints"),
+        # A permutation keeps the partition intact but decouples the indices
+        # from the column order their arrays were built in.
+        ({"fallback_indices": (2, 1)}, "ascending"),
+        ({"spline_side": "middle"}, "spline_side"),
+        ({"fallback_indices": (1,)}, "partition"),
+        # A list is mutable, so it could be edited after construction; it also
+        # changes the treedef, and mixing list with tuple fails obscurely later.
+        ({"spline_indices": [0]}, "must be a tuple"),
+        ({"fallback_indices": [1, 2]}, "must be a tuple"),
+    ],
+)
+def test_controls_store_rejects_corrupt_dispatch_split(overrides, match):
+    store = _partial_split_store()
+    with pytest.raises((TypeError, ValueError), match=match):
+        dataclasses.replace(store, **overrides)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["control_values", "control_derivatives", "spline_coeffs"],
+)
+def test_controls_store_rejects_payload_width_disagreeing_with_indices(field_name):
+    # Every dispatch payload must stay as wide as the index tuple addressing it;
+    # a static-metadata/array desync is what a non-deriving construction path
+    # (a future deserializer) would plausibly get wrong.
+    store = _partial_split_store()
+    # Slice the addressed axis to width 0: the fixture has 1 spline and 2 fallback
+    # columns, so a narrower-but-nonzero slice would not move the spline width.
+    array = getattr(store, field_name)
+    narrowed = array[..., :0, :] if field_name == "spline_coeffs" else array[..., :0]
+    with pytest.raises(ValueError, match="columns wide but its index tuple names"):
+        dataclasses.replace(store, **{field_name: narrowed})
+
+
+def test_controls_store_dispatch_validation_accepts_a_valid_store():
+    # Guards against the validator being so strict that a legitimate rebuild of
+    # an unmodified store fails.
+    store = _partial_split_store()
+    rebuilt = dataclasses.replace(store)
+    assert rebuilt.spline_indices == store.spline_indices
+    assert rebuilt.fallback_indices == store.fallback_indices
+    assert rebuilt.spline_side == store.spline_side
 
 
 def test_controls_store_exposes_discrete_event_metadata():

@@ -414,6 +414,72 @@ class ControlsStore(eqx.Module):
     # Runtime-built per-process metadata entries needed to construct thin views.
     _process_md_by_name: dict[str, dict[str, Any]]
 
+    def __post_init__(self) -> None:
+        """Structurally validate the dispatch split on explicit construction.
+
+        `spline_indices` and `fallback_indices` must be ascending `tuple`s of exact
+        `int` partitioning the canonical column range, `spline_side` must be a
+        known value, and each dispatch payload must be as wide as the index tuple
+        addressing it. Motivating bug class: a cardinality-preserving error leaves
+        every array shape unchanged, and for single-control collections the FVC and
+        PV axes are both width 1, so nothing downstream notices.
+
+        **Structural only** — it cannot tell that a split is the one
+        `prepared.json` implies. A paired swap (moving a spline to another column
+        while adjusting the complement) and a legal-but-wrong `spline_side` both
+        pass; either would need the split re-derived from prepared. It also runs on
+        explicit construction only: equinox rebuilds through `tree_unflatten`, so
+        JAX transforms and leaf-level deserialization bypass it and must invoke
+        this validation themselves.
+        """
+        n_columns = (
+            len(self.name_controlled_FVCs)
+            + len(self.name_controlled_SVCs)
+            + len(self.name_controlled_PVs)
+        )
+        for name, indices in (
+            ("spline_indices", self.spline_indices),
+            ("fallback_indices", self.fallback_indices),
+        ):
+            # A list is mutable, so its contents could be edited after this check
+            # ran, defeating a construction-time invariant. It also changes the
+            # treedef, so an otherwise-identical store retraces instead of hitting
+            # the jit cache, and mixing a list with a tuple fails obscurely later
+            # at concatenation rather than here.
+            if not isinstance(indices, tuple):
+                raise TypeError(f"{name} must be a tuple; got {type(indices).__name__}")
+            # `bool` is an `int` subclass and `0.0 == 0`; both pass a looser test
+            # and then fail at JAX indexing, far from the cause.
+            if any(type(index) is not int for index in indices):
+                raise TypeError(f"{name} must hold exact ints; got {indices!r}")
+            if list(indices) != sorted(indices):
+                raise ValueError(
+                    f"{name} must be ascending to match the column order its "
+                    f"arrays were built in; got {indices!r}"
+                )
+        if sorted(self.spline_indices + self.fallback_indices) != list(
+            range(n_columns)
+        ):
+            raise ValueError(
+                f"spline_indices {self.spline_indices!r} and fallback_indices "
+                f"{self.fallback_indices!r} must partition range({n_columns})"
+            )
+        if self.spline_side not in ("left", "right"):
+            raise ValueError(
+                f"spline_side must be 'left' or 'right'; got {self.spline_side!r}"
+            )
+        n_fallback = len(self.fallback_indices)
+        for name, width, expected in (
+            ("control_values", self.control_values.shape[-1], n_fallback),
+            ("control_derivatives", self.control_derivatives.shape[-1], n_fallback),
+            ("spline_coeffs", self.spline_coeffs.shape[-2], len(self.spline_indices)),
+        ):
+            if width != expected:
+                raise ValueError(
+                    f"{name} is {width} columns wide but its index tuple names "
+                    f"{expected}"
+                )
+
     @staticmethod
     def _runtime_controls_config(
         metadata: dict[str, Any],
