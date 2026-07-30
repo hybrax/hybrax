@@ -190,6 +190,20 @@ class HybridOdeWrapper(eqx.Module):
                     f"reaction_module.{field_name} has shape {tuple(arr.shape)}, "
                     f"expected {expected}"
                 )
+        # Rate derivatives are offset-free. This boundary catches the common
+        # built-in AffineScaler mistake; custom scalers may omit offset metadata.
+        for field_name in (
+            "SCALE_controlled_FVCs_rates",
+            "SCALE_modeled_BiologicalOde_rates",
+            "SCALE_modeled_FVCs_rates",
+        ):
+            scaler = getattr(reaction_module, field_name)
+            offset = getattr(scaler, "offset", None)
+            if offset is not None and bool(jnp.any(offset != 0)):
+                raise ValueError(
+                    f"{field_name} is a rate axis and cannot have a non-zero "
+                    "offset; rate scaling is offset-free"
+                )
         if (
             reaction_module.n_latent > 0
             and reaction_module.latent_observables
@@ -350,7 +364,7 @@ class HybridOdeWrapper(eqx.Module):
         RAW_d_phys_dt = jnp.concatenate(
             [dC, dPV, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
         )
-        RAW_d_latent_dt = module.unscale_latent(
+        RAW_d_latent_dt = module.SCALE_latent.unscale_derivative(
             jnp.asarray(outputs.SCL_latent_derivative, dtype=dtype)
         )
         return jnp.concatenate([RAW_d_phys_dt, RAW_d_latent_dt])

@@ -23,7 +23,10 @@ from bp_format.mechanistic import build_rhs_ode
 
 from bp_train.controls_store import ControlsStore
 from bp_train.model_api import (
+    AffineScaler,
+    LinearScaler,
     ReactionInputs,
+    Scaler,
     ReactionOutputs,
     UserReactionModule,
 )
@@ -375,11 +378,18 @@ def _derive_unit_scale_kwargs(process, controls) -> dict[str, jnp.ndarray]:
 def _inject_scales(
     reaction_module: UserReactionModule, scale_kwargs: dict[str, jnp.ndarray]
 ) -> UserReactionModule:
-    """Replace placeholder SCALE_* fields with correctly-sized values."""
+    """Replace placeholder SCALE_* fields with correctly-sized values.
+
+    Wraps bare arrays in ``LinearScaler`` to match the scaler-typed fields
+    (``tree_at`` bypasses the module ``__init__`` promotion).
+    """
     return eqx.tree_at(
         lambda m: tuple(getattr(m, name) for name in scale_kwargs.keys()),
         reaction_module,
-        tuple(scale_kwargs.values()),
+        tuple(
+            v if isinstance(v, Scaler) else LinearScaler(v)
+            for v in scale_kwargs.values()
+        ),
     )
 
 
@@ -394,6 +404,141 @@ def _build_wrapper(process, controls, reaction_module, **kwargs):
         controls=controls,
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    ("rate_field", "modeled_feed"),
+    [
+        ("SCALE_controlled_FVCs_rates", False),
+        ("SCALE_modeled_BiologicalOde_rates", False),
+        ("SCALE_modeled_FVCs_rates", True),
+    ],
+)
+def test_wrapper_rejects_nonzero_rate_offset_for_direct_module(
+    rate_field, modeled_feed
+):
+    # Common wrapper boundary must catch direct/custom module construction,
+    # not only the estimate_all_scales hook resolver.
+    process = _make_single_species_process()
+    if modeled_feed:
+        process.volume.volume_changes["feed_A"].is_controlled = False
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    n_modeled_feeds = 1 if modeled_feed else 0
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros(1, dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros(n_modeled_feeds, dtype=jnp.float32),
+    )
+    scales = _derive_unit_scale_kwargs(process, controls)
+    scales[rate_field] = AffineScaler(
+        jnp.ones(1, dtype=jnp.float32),
+        jnp.ones(1, dtype=jnp.float32),
+    )
+    module = _inject_scales(module, scales)
+    with pytest.raises(ValueError, match=f"{rate_field} is a rate axis"):
+        HybridOdeWrapper.from_process(
+            reaction_module=module,
+            process=process,
+            controls=controls,
+        )
+
+
+def test_physical_rhs_uses_custom_rate_derivative_semantics():
+    class DivergentRateScaler(Scaler):
+        scale: jnp.ndarray
+
+        def __init__(self):
+            self.scale = jnp.ones(1, dtype=jnp.float32)
+
+        def __rtruediv__(self, raw):
+            return raw * 10.0
+
+        def __rmul__(self, scl):
+            return scl * 10.0
+
+        def scale_derivative(self, rate):
+            return rate / 3.0
+
+        def unscale_derivative(self, rate):
+            return rate * 3.0
+
+        @property
+        def shape(self):
+            return self.scale.shape
+
+        def astype(self, dtype):
+            return self
+
+        def __getitem__(self, idx):
+            return self
+
+    process = _make_single_species_process(feed_rate=0.0)
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.asarray([2.0], dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros(0, dtype=jnp.float32),
+    )
+    scales = _derive_unit_scale_kwargs(process, controls)
+    scales["SCALE_modeled_BiologicalOde_rates"] = DivergentRateScaler()
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=_inject_scales(module, scales),
+        process=process,
+        controls=controls,
+    )
+
+    derivative = wrapper.physical_rhs(0.0, jnp.asarray([1.0, 1.0]))
+
+    assert jnp.array_equal(derivative, jnp.asarray([6.0, 0.0]))
+
+
+def test_wrapper_accepts_custom_offset_free_rate_scaler_without_offset_metadata():
+    class UnitRateScaler(Scaler):
+        scale: jnp.ndarray
+
+        def __init__(self, scale):
+            self.scale = scale
+
+        def __rtruediv__(self, raw):
+            return raw / self.scale
+
+        def __rmul__(self, scl):
+            return scl * self.scale
+
+        def scale_derivative(self, rate):
+            return rate / self.scale
+
+        def unscale_derivative(self, rate):
+            return rate * self.scale
+
+        @property
+        def shape(self):
+            return self.scale.shape
+
+        def astype(self, dtype):
+            return UnitRateScaler(self.scale.astype(dtype))
+
+        def __getitem__(self, idx):
+            return UnitRateScaler(self.scale[idx])
+
+    process = _make_single_species_process()
+    collection = BioProcessCollection(processes={"p1": process}, metadata={})
+    controls = ControlsStore.from_collection(collection).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros(1, dtype=jnp.float32),
+        modeled_feed_rates=jnp.zeros(0, dtype=jnp.float32),
+    )
+    scales = _derive_unit_scale_kwargs(process, controls)
+    scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(
+        jnp.ones(1, dtype=jnp.float32)
+    )
+    module = _inject_scales(module, scales)
+    wrapper = HybridOdeWrapper.from_process(
+        reaction_module=module,
+        process=process,
+        controls=controls,
+    )
+    assert wrapper.reaction_module is module
 
 
 def test_validate_rhs_ode_compatibility_rejects_different_species():

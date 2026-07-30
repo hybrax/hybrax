@@ -2,18 +2,27 @@ from __future__ import annotations
 
 import re
 
+import numpy as np
+import pytest
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import optax
 
+import bp_train.model_api as model_api
 from bp_train.inspect import format_trainable_structure
 from bp_train.model_api import (
     TRAINABLE_METADATA_KEY,
+    AffineScaler,
+    LinearScaler,
     ReactionInputs,
     ReactionOutputs,
+    Scaler,
     UserReactionModule,
+    _ConcatScaler,
+    _as_scaler,
     frozen_field,
     partition_trainable,
     trainable_field,
@@ -367,11 +376,12 @@ def test_reaction_outputs_default_to_zero_width_latent_derivative():
 
 class _LatentScaleModule(UserReactionModule):
     def __init__(self):
-        super().__init__()
-        self.SCALE_modeled_RMCs = jnp.asarray([2.0, 4.0], dtype=jnp.float32)
-        self.SCALE_V_in_cumulative = jnp.asarray(10.0, dtype=jnp.float32)
-        self.SCALE_modeled_FVCs_cumulative = jnp.asarray([5.0], dtype=jnp.float32)
-        self.SCALE_latent = jnp.asarray([3.0, 6.0], dtype=jnp.float32)
+        super().__init__(
+            SCALE_modeled_RMCs=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+            SCALE_V_in_cumulative=jnp.asarray(10.0, dtype=jnp.float32),
+            SCALE_modeled_FVCs_cumulative=jnp.asarray([5.0], dtype=jnp.float32),
+            SCALE_latent=jnp.asarray([3.0, 6.0], dtype=jnp.float32),
+        )
 
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
@@ -385,9 +395,9 @@ def test_user_reaction_module_latent_scales_are_separate_from_state_scales():
     module = _LatentScaleModule()
 
     assert module.n_latent == 2
-    assert jnp.array_equal(module.SCALE_state, jnp.asarray([2.0, 4.0, 10.0, 5.0]))
+    assert jnp.array_equal(module.SCALE_state.scale, jnp.asarray([2.0, 4.0, 10.0, 5.0]))
     assert jnp.array_equal(
-        module.SCALE_integrated_state,
+        module.SCALE_integrated_state.scale,
         jnp.asarray([2.0, 4.0, 10.0, 5.0, 3.0, 6.0]),
     )
 
@@ -418,7 +428,9 @@ def test_user_reaction_module_defaults_are_stateless():
 
     assert module.n_latent == 0
     assert module.SCALE_latent.shape == (0,)
-    assert jnp.array_equal(module.SCALE_integrated_state, module.SCALE_state)
+    assert jnp.array_equal(
+        module.SCALE_integrated_state.scale, module.SCALE_state.scale
+    )
     assert module.initial_latent(y0).shape == (0,)
 
 
@@ -427,5 +439,410 @@ def test_scale_latent_is_frozen_by_default():
 
     trainable, static = partition_trainable(module)
 
-    assert trainable.SCALE_latent is None
-    assert static.SCALE_latent is not None
+    assert trainable.SCALE_latent.scale is None
+    assert static.SCALE_latent.scale is not None
+
+
+# ---------------------------------------------------------------------------
+# Scaler abstraction (OP12 Phase B). Pure-division default is bit-identical to
+# the pre-scaler RAW/SCALE code; affine diverges value vs derivative (§0).
+# ---------------------------------------------------------------------------
+
+
+def test_linear_scaler_is_pure_division_bit_identical():
+    # Test 1: LinearScaler is exactly x/s and x*s, bit-for-bit.
+    s = jnp.asarray([2.0, 4.0, 8.0], dtype=jnp.float32)
+    raw = jnp.asarray([4.0, 8.0, 16.0], dtype=jnp.float32)
+    scaler = LinearScaler(s)
+    assert jnp.array_equal(raw / scaler, raw / s)
+    assert jnp.array_equal(raw * scaler, raw * s)
+    # round-trip
+    assert jnp.array_equal((raw * scaler) / scaler, raw)
+    # derivative ops match value ops for pure division
+    assert jnp.array_equal(scaler.scale_derivative(raw), raw / s)
+    assert jnp.array_equal(scaler.unscale_derivative(raw), raw * s)
+
+
+@pytest.mark.parametrize(
+    "scaler",
+    [
+        LinearScaler(jnp.ones(3, dtype=jnp.float32)),
+        AffineScaler(jnp.ones(3, dtype=jnp.float32), jnp.zeros(3, dtype=jnp.float32)),
+    ],
+)
+def test_scaler_not_silently_array_coercible(scaler):
+    # Test 10: every array coercion raises rather than producing object arrays.
+    with pytest.raises(TypeError):
+        jnp.asarray(scaler)
+    with pytest.raises(TypeError):
+        jnp.concatenate([scaler, jnp.ones(3)])
+    with pytest.raises(TypeError):
+        np.ones(3) / scaler
+    with pytest.raises(TypeError):
+        np.asarray(scaler)
+
+
+@pytest.mark.parametrize(
+    "scaler",
+    [
+        LinearScaler(jnp.asarray([2.0, 4.0], dtype=jnp.float32)),
+        AffineScaler(
+            jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+            jnp.asarray([1.0, 2.0], dtype=jnp.float32),
+        ),
+    ],
+)
+def test_value_helpers_accept_numpy_arrays(scaler):
+    module = UserReactionModule(SCALE_modeled_RMCs=scaler)
+    raw = np.asarray([4.0, 8.0], dtype=np.float32)
+
+    scaled = module.scale_modeled_RMCs(raw)
+    unscaled = module.unscale_modeled_RMCs(np.asarray(scaled))
+
+    assert scaled.dtype == jnp.float32
+    assert unscaled.dtype == jnp.float32
+    assert np.array_equal(np.asarray(unscaled), raw)
+
+
+def test_scaler_reversed_arithmetic_raises_loudly():
+    # Test 9 (part): scaler * x and scaler / x have no dunder and raise,
+    # so a reversed order cannot silently pick a value transform.
+    scaler = LinearScaler(jnp.ones(3, dtype=jnp.float32))
+    x = jnp.ones(3, dtype=jnp.float32)
+    with pytest.raises(TypeError):
+        scaler * x
+    with pytest.raises(TypeError):
+        scaler / x
+
+
+def test_concat_scaler_preserves_zero_width_dtype_promotion():
+    # Test 8: a zero-width float64 axis (the empty-PV default in 9/10 examples)
+    # drives the composed state dtype to float64 — lock the promotion in
+    # deliberately, do NOT filter empties.
+    parts = [
+        LinearScaler(jnp.asarray([2.0, 4.0], dtype=jnp.float32)),
+        LinearScaler(jnp.zeros(0, dtype=jnp.float64)),  # zero-width f64
+        LinearScaler(jnp.asarray(10.0, dtype=jnp.float32)),
+        LinearScaler(jnp.asarray([5.0], dtype=jnp.float32)),
+    ]
+    composed = _ConcatScaler(*parts)
+    assert composed.shape == (4,)
+    # The composed scale array is float64 because the empty f64 part promotes it.
+    assert composed.scale.dtype == jnp.float64
+    # Dropping the empty part would make it float32 — guard against that tidy-up.
+    without_empty = _ConcatScaler(parts[0], parts[2], parts[3])
+    assert without_empty.scale.dtype == jnp.float32
+
+
+def test_concat_scaler_getitem_and_value_ops():
+    parts = [
+        LinearScaler(jnp.asarray([2.0, 4.0], dtype=jnp.float32)),
+        LinearScaler(jnp.asarray([10.0], dtype=jnp.float32)),
+    ]
+    composed = _ConcatScaler(*parts)
+    sub = composed[jnp.asarray([0, 1])]
+    assert isinstance(sub, LinearScaler)
+    assert jnp.array_equal(sub.scale, jnp.asarray([2.0, 4.0]))
+    raw = jnp.asarray([4.0, 8.0, 20.0], dtype=jnp.float32)
+    assert jnp.array_equal(raw / composed, jnp.asarray([2.0, 2.0, 2.0]))
+    assert jnp.array_equal(raw * composed, jnp.asarray([8.0, 32.0, 200.0]))
+
+
+def test_rate_helpers_use_derivative_semantics():
+    class DivergentRateScaler(Scaler):
+        scale: jax.Array
+
+        def __init__(self):
+            self.scale = jnp.ones(1, dtype=jnp.float32)
+
+        def __rtruediv__(self, raw):
+            return raw / 10.0
+
+        def __rmul__(self, scl):
+            return scl * 10.0
+
+        def scale_derivative(self, rate):
+            return rate / 3.0
+
+        def unscale_derivative(self, rate):
+            return rate * 3.0
+
+        @property
+        def shape(self):
+            return self.scale.shape
+
+        def astype(self, dtype):
+            return self
+
+        def __getitem__(self, idx):
+            return self
+
+    module = UserReactionModule(
+        SCALE_controlled_FVCs_rates=DivergentRateScaler(),
+        SCALE_modeled_BiologicalOde_rates=DivergentRateScaler(),
+        SCALE_modeled_FVCs_rates=DivergentRateScaler(),
+    )
+    raw = jnp.asarray([6.0], dtype=jnp.float32)
+    scl = jnp.asarray([2.0], dtype=jnp.float32)
+    helpers = (
+        (module.scale_controlled_FVCs_rates, module.unscale_controlled_FVCs_rates),
+        (
+            module.scale_modeled_BiologicalOde_rates,
+            module.unscale_modeled_BiologicalOde_rates,
+        ),
+        (module.scale_modeled_FVCs_rates, module.unscale_modeled_FVCs_rates),
+    )
+
+    for scale, unscale in helpers:
+        assert jnp.array_equal(scale(raw), scl)
+        assert jnp.array_equal(unscale(scl), raw)
+
+
+def test_zero_offset_affine_state_scaler_preserves_negative_zero():
+    module = UserReactionModule(
+        SCALE_modeled_RMCs=AffineScaler(
+            jnp.asarray([2.0], dtype=jnp.float32),
+            jnp.asarray([0.0], dtype=jnp.float32),
+        )
+    )
+    scl = jnp.asarray([-0.0, -0.0], dtype=jnp.float64)
+
+    eager = module.unscale_state(scl)
+    jitted = jax.jit(lambda m, x: m.unscale_state(x))(module, scl)
+    cast_jitted = jax.jit(
+        lambda m, x: m.SCALE_integrated_state.astype(jnp.float32).unscale_value(x)
+    )(module, scl.astype(jnp.float32))
+
+    assert bool(jnp.signbit(eager[0]))
+    assert bool(jnp.signbit(jitted[0]))
+    assert bool(jnp.signbit(cast_jitted[0]))
+
+
+def test_concat_scaler_materializes_arrays_once(monkeypatch):
+    calls = 0
+    concatenate = model_api.jnp.concatenate
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return concatenate(*args, **kwargs)
+
+    monkeypatch.setattr(model_api.jnp, "concatenate", counted)
+    scaler = _ConcatScaler(
+        LinearScaler(jnp.asarray([2.0], dtype=jnp.float32)),
+        AffineScaler(
+            jnp.asarray([4.0], dtype=jnp.float32),
+            jnp.asarray([1.0], dtype=jnp.float32),
+        ),
+    )
+    raw = jnp.asarray([2.0, 9.0], dtype=jnp.float32)
+
+    raw / scaler
+    raw * scaler
+    scaler.scale_derivative(raw)
+    scaler.unscale_derivative(raw)
+
+    assert calls == 2
+
+
+def test_all_linear_concat_is_op_for_op_and_preserves_negative_zero():
+    # Test 12: the default path must not re-express LinearScaler composition as
+    # affine with b=0. In particular, SCL*s + 0 flips -0.0 to +0.0.
+    scales = [
+        jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+        jnp.zeros(0, dtype=jnp.float64),
+        jnp.asarray(10.0, dtype=jnp.float32),
+        jnp.asarray([5.0], dtype=jnp.float32),
+    ]
+    composed = _ConcatScaler(*(LinearScaler(scale) for scale in scales))
+    concat_scale = jnp.concatenate([jnp.atleast_1d(scale) for scale in scales])
+    raw = jnp.asarray([-0.0, 8.0, 10.0, 5.0], dtype=concat_scale.dtype)
+    scl = jnp.asarray([-0.0, 2.0, 1.0, 1.0], dtype=concat_scale.dtype)
+    expected_scale = raw / concat_scale
+    expected_unscale = scl * concat_scale
+    actual_scale = raw / composed
+    actual_unscale = scl * composed
+    assert jnp.array_equal(actual_scale, expected_scale)
+    assert jnp.array_equal(actual_unscale, expected_unscale)
+    assert bool(jnp.signbit(actual_unscale[0]))
+    assert bool(jnp.signbit(expected_unscale[0]))
+
+
+def test_as_scaler_promotes_array_passes_scaler():
+    arr = jnp.ones(3, dtype=jnp.float32)
+    assert isinstance(_as_scaler(arr), LinearScaler)
+    scaler = LinearScaler(arr)
+    assert _as_scaler(scaler) is scaler
+
+
+def test_user_reaction_module_promotes_bare_scale_arrays():
+    # Modules constructed with bare arrays (tests, user modules) get
+    # LinearScaler via __init__ promotion.
+    module = UserReactionModule(
+        SCALE_modeled_RMCs=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+        SCALE_V_in_cumulative=jnp.asarray(10.0, dtype=jnp.float32),
+    )
+    assert isinstance(module.SCALE_modeled_RMCs, LinearScaler)
+    assert isinstance(module.SCALE_V_in_cumulative, LinearScaler)
+    assert module.n_modeled_RMCs == 2
+    # composed state scaler
+    assert isinstance(module.SCALE_state, _ConcatScaler)
+    assert module.SCALE_state.shape == (3,)
+
+
+def test_scaler_constructors_reject_non_array_inputs_immediately():
+    with pytest.raises(TypeError, match="LinearScaler.scale"):
+        LinearScaler([1.0])
+    with pytest.raises(TypeError, match="AffineScaler.scale"):
+        AffineScaler(1.0, jnp.asarray(0.0))
+    with pytest.raises(TypeError, match="AffineScaler.offset"):
+        AffineScaler(jnp.asarray(1.0), 0.0)
+
+
+def test_user_reaction_module_rejects_unknown_scale_keyword():
+    with pytest.raises(TypeError, match="SCALE_V_in_cumulativ"):
+        UserReactionModule(SCALE_V_in_cumulativ=jnp.asarray(7.0))
+
+
+def test_affine_value_and_derivative_ops_diverge():
+    # Test 2 core (§0): value scale subtracts b; derivative scale must NOT.
+    scaler = AffineScaler(
+        scale=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+        offset=jnp.asarray([10.0, 100.0], dtype=jnp.float32),
+    )
+    raw = jnp.asarray([12.0, 104.0], dtype=jnp.float32)
+    assert jnp.array_equal(raw / scaler, jnp.asarray([1.0, 1.0]))
+    assert jnp.array_equal(scaler.scale_derivative(raw), jnp.asarray([6.0, 26.0]))
+    assert jnp.array_equal(
+        scaler.unscale_derivative(jnp.asarray([1.0, 1.0])),
+        jnp.asarray([2.0, 4.0]),
+    )
+
+
+def test_affine_dunders_apply_offset_and_reversed_order_raises():
+    # Test 9: dunders route to VALUE semantics, not a bare scale array.
+    scaler = AffineScaler(
+        scale=jnp.asarray([2.0, 4.0]),
+        offset=jnp.asarray([10.0, 100.0]),
+    )
+    raw = jnp.asarray([12.0, 104.0])
+    scl = jnp.asarray([1.0, 1.0])
+    assert jnp.array_equal(raw / scaler, scl)
+    assert jnp.array_equal(scl * scaler, raw)
+    with pytest.raises(TypeError):
+        scaler * scl
+    with pytest.raises(TypeError):
+        scaler / raw
+
+
+def test_affine_roundtrip_scalar_zero_width_and_2d():
+    # Test 5: all legitimate axis shapes round-trip through value ops.
+    cases = [
+        AffineScaler(jnp.asarray(2.0), jnp.asarray(10.0)),
+        AffineScaler(jnp.zeros(0), jnp.zeros(0)),
+        AffineScaler(
+            jnp.asarray([[2.0, 4.0], [5.0, 10.0]]),
+            jnp.asarray([[1.0, 2.0], [3.0, 4.0]]),
+        ),
+    ]
+    for scaler in cases:
+        raw = scaler.offset + 2.0 * scaler.scale
+        assert jnp.array_equal((raw / scaler) * scaler, raw)
+        assert scaler.shape == scaler.scale.shape
+
+
+def test_concat_scaler_preserves_offset_layout_and_getitem():
+    # Tests 4 + 11: distinguishable values and non-width-1 state axes catch a
+    # semantic permutation; composed value op and [idx] both preserve offsets.
+    rmcs = AffineScaler(
+        jnp.asarray([2.0, 3.0]),
+        jnp.asarray([10.0, 20.0]),
+    )
+    pvs = LinearScaler(jnp.zeros(0))
+    volume = AffineScaler(jnp.asarray(4.0), jnp.asarray(30.0))
+    cumulative = AffineScaler(
+        jnp.asarray([5.0, 6.0]),
+        jnp.asarray([40.0, 50.0]),
+    )
+    state = _ConcatScaler(rmcs, pvs, volume, cumulative)
+    assert jnp.array_equal(state.scale, jnp.asarray([2.0, 3.0, 4.0, 5.0, 6.0]))
+    assert jnp.array_equal(state.offset, jnp.asarray([10.0, 20.0, 30.0, 40.0, 50.0]))
+    raw = state.offset + state.scale
+    assert jnp.array_equal(raw / state, jnp.ones(5))
+    sub = state[jnp.asarray([0, 3])]
+    assert isinstance(sub, AffineScaler)
+    assert jnp.array_equal(sub.offset, jnp.asarray([10.0, 40.0]))
+    assert jnp.array_equal(jnp.asarray([12.0, 45.0]) / sub, jnp.ones(2))
+
+
+def test_affine_scaler_leaves_are_frozen_by_partition():
+    # Test 7: both affine leaves belong to the static partition.
+    module = UserReactionModule(
+        SCALE_modeled_RMCs=AffineScaler(
+            jnp.asarray([2.0, 4.0]), jnp.asarray([10.0, 20.0])
+        )
+    )
+    trainable, static = partition_trainable(module)
+    assert trainable.SCALE_modeled_RMCs.scale is None
+    assert trainable.SCALE_modeled_RMCs.offset is None
+    assert jnp.array_equal(static.SCALE_modeled_RMCs.scale, jnp.asarray([2.0, 4.0]))
+    assert jnp.array_equal(static.SCALE_modeled_RMCs.offset, jnp.asarray([10.0, 20.0]))
+
+
+def test_concat_rejects_builtin_subclasses_with_custom_semantics():
+    class LogLinearScaler(LinearScaler):
+        def __rtruediv__(self, raw):
+            return jnp.log(raw)
+
+        def __rmul__(self, scl):
+            return jnp.exp(scl)
+
+    class LogAffineScaler(AffineScaler):
+        def __rtruediv__(self, raw):
+            return jnp.log(raw)
+
+        def __rmul__(self, scl):
+            return jnp.exp(scl)
+
+    with pytest.raises(TypeError, match="exact LinearScaler"):
+        _ConcatScaler(LogLinearScaler(jnp.ones(1)))
+    with pytest.raises(TypeError, match="exact LinearScaler"):
+        _ConcatScaler(LogAffineScaler(jnp.ones(1), jnp.zeros(1)))
+
+
+def test_concat_rejects_custom_non_affine_state_scaler():
+    # State-axis restriction: even a custom scaler exposing scale/offset metadata
+    # must be rejected — composition would reinterpret its actual value ops as
+    # affine and silently corrupt the solver coordinate system.
+    class LogScaler(Scaler):
+        scale: jax.Array
+        offset: jax.Array
+
+        def __init__(self):
+            self.scale = jnp.ones(1)
+            self.offset = jnp.zeros(1)
+
+        def __rtruediv__(self, raw):
+            return jnp.log(raw)
+
+        def __rmul__(self, scl):
+            return jnp.exp(scl)
+
+        def scale_derivative(self, rate):
+            return rate
+
+        def unscale_derivative(self, rate):
+            return rate
+
+        @property
+        def shape(self):
+            return self.scale.shape
+
+        def astype(self, dtype):
+            return LogScaler()
+
+        def __getitem__(self, idx):
+            return self
+
+    with pytest.raises(TypeError, match="exact LinearScaler"):
+        _ConcatScaler(LogScaler())

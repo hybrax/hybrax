@@ -36,7 +36,7 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
 
     cell_input = jnp.concatenate([jnp.asarray([1.0, 1.0], dtype=jnp.float32), h])
     assert module.n_latent == 2
-    assert jnp.array_equal(module.SCALE_latent, jnp.ones(2, dtype=jnp.float32))
+    assert jnp.array_equal(module.SCALE_latent.scale, jnp.ones(2, dtype=jnp.float32))
     assert jnp.allclose(
         outputs.SCL_latent_derivative, module.gru_cell(cell_input, h) - h
     )

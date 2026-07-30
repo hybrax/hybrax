@@ -37,9 +37,11 @@ def build_reaction_module(*, target_names, process_names, config, seed,
     return MyReactionModule(key=jax.random.key(seed), **scale_kwargs)
 ```
 
-`scale_kwargs` carries the `SCALE_*` arrays from
+`scale_kwargs` carries the promoted `SCALE_*` scalers from
 [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales); pass them to
-`super().__init__(**scale_kwargs)`. The hook is discovered the same way as the
+`super().__init__(**scale_kwargs)`. Bare hook arrays become `LinearScaler`;
+`AffineScaler(scale, offset)` opts one value axis into affine scaling. The hook
+is discovered the same way as the
 loss hook ([`get_hook`](02_cli_and_config.md#custompy-hooks-reference), falling
 back to `default_build_reaction_module`).
 
@@ -52,11 +54,17 @@ def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
 ```
 
 - Inputs arrive in SCL space; return rates in SCL space. Use `self.unscale_*`
-  when you need RAW physical values (chemistry / FBA / kinetic laws), then
-  `self.scale_*` on the way back out — the helpers are linear and work for values
-  and derivatives identically.
+  when you need RAW physical **values** (chemistry / FBA / kinetic laws), then
+  `self.scale_*` on the way back out. All helpers except the three `*_rates`
+  pairs have value semantics, so an affine value transform subtracts/adds the
+  offset. The rate pairs use offset-free derivative semantics
+  (`d((RAW-b)/s)/dt = dRAW/dt/s`); call the scaler's explicit
+  `scale_derivative` / `unscale_derivative` for any other derivative. In
+  particular, `ReactionOutputs.SCL_latent_derivative` is a derivative, not a
+  value.
 - The 12 stored `SCALE_*` fields (including `SCALE_latent`) are inherited frozen
-  fields; **do not redeclare** them — pass values to `super().__init__()`. Axis
+  `Scaler` fields; **do not redeclare** them — pass values to
+  `super().__init__()`. Rate-axis scalers cannot have non-zero offsets. Axis
   dimensions are available as properties (`n_modeled_RMCs`, `n_modeled_PVs`,
   `n_modeled_BiologicalOde_rates`, `n_modeled_FVCs`, `n_controlled_FVCs`,
   `n_controlled_PVs`, `n_latent`) so you size MLPs after `super().__init__()`

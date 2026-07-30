@@ -487,6 +487,9 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
         batch_t_meas = clamp_padded_time_rows(batch.t_measured, batch.n_measured)
 
         # Pre-scale measurements to SCL once per batch. Initial states stay RAW.
+        # This MUST be the same target scaler the solver applies to predictions:
+        # only then does an affine offset cancel in the residual. Diverging
+        # scalers silently shift every residual by b/s.
         SCALE_state = wrapper.reaction_module.SCALE_state
         SCALE_state_for_targets = SCALE_state[wrapper.target_state_indices]
         SCL_y_measured = batch.y_measured / SCALE_state_for_targets[None, None, :]

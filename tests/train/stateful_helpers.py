@@ -23,6 +23,7 @@ from bp_format.mechanistic import build_rhs_ode
 from bp_train.controls_store import ControlsStore
 from bp_train.defaults import DefaultStatefulReactionModule
 from bp_train.model_api import (
+    LinearScaler,
     ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
@@ -213,7 +214,7 @@ def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
     module = eqx.tree_at(
         lambda m: tuple(getattr(m, name) for name in scale_kwargs),
         module,
-        tuple(scale_kwargs.values()),
+        tuple(LinearScaler(v) for v in scale_kwargs.values()),
     )
     return HybridOdeWrapper.from_process(
         reaction_module=module,

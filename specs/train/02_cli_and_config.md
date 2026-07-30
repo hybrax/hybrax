@@ -205,13 +205,27 @@ def augment_state_values(*, base_values, augmented_values, **_):
 
 ```python
 def estimate_all_scales(collection, target_names: list[str], config,
-                        *, controls_store) -> EstimatedScales | dict
+                        *, controls_store) -> EstimatedScales
 ```
 Return the `SCALE_*` axes (as an [`EstimatedScales`](../bp_train/model_api.py))
-used to normalize state/rate/control vectors. Runs once at train setup; the
-values are baked into the reaction module. No default — when absent, every axis
-is ones (no scaling). See
-[03_data_preparation.md](03_data_preparation.md#scale-estimation).
+used to normalize state/rate/control vectors. Bare arrays are promoted to
+`LinearScaler` (`SCL = RAW / scale`, the default). Opt into affine scaling for
+one value axis by returning `AffineScaler(scale, offset)` for that field:
+
+```python
+from bp_train import AffineScaler, EstimatedScales
+
+return EstimatedScales(
+    ...,
+    SCALE_controlled_PVs=AffineScaler(pv_scale, pv_offset),
+)
+```
+
+Rate axes (`SCALE_controlled_FVCs_rates`,
+`SCALE_modeled_BiologicalOde_rates`, `SCALE_modeled_FVCs_rates`) reject non-zero
+offsets. Runs once at train setup; the scalers are baked into the reaction
+module. No default hook — when absent, every axis is a unit `LinearScaler` (no
+scaling). See [03_data_preparation.md](03_data_preparation.md#scale-estimation).
 
 `controls_store` is **optional**: it is passed only to hooks that declare it, so
 the three-argument form above remains valid and existing `custom.py` modules —
@@ -227,8 +241,10 @@ work the harness has already done.
 def build_reaction_module(*, target_names, process_names, config, seed,
                           collection, **scale_kwargs) -> UserReactionModule
 ```
-Construct the reaction module. `scale_kwargs` carries the `SCALE_*` values from
-`estimate_all_scales`. Default is `DefaultReactionModule` (a 2-layer MLP). See
+Construct the reaction module. `scale_kwargs` carries the promoted `SCALE_*`
+scalers from `estimate_all_scales`. Pass them unchanged to
+`super().__init__(**scale_kwargs)`. Default is `DefaultReactionModule` (a
+2-layer MLP). See
 [04_reaction_and_loss.md](04_reaction_and_loss.md#the-reaction-module).
 
 ### `build_loss_module`

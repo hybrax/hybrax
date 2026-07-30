@@ -97,12 +97,24 @@ They are not claims of new physical offline samples, and augmentation does not a
 
 The 11 data-derived `SCALE_*` axes normalize physical vectors so the ODE
 integrates in O(1) space. The [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales)
-hook returns them as an [`EstimatedScales`](../bp_train/model_api.py); they are
-stored as frozen fields on the reaction module (the single source of truth — see
+hook returns them as an [`EstimatedScales`](../bp_train/model_api.py). Bare
+arrays become frozen `LinearScaler` fields (`SCL = RAW / scale`, the default);
+a hook may return `AffineScaler(scale, offset)` for a value axis to opt into
+`SCL = (RAW - offset) / scale`. The reaction module is the single source of
+truth (see
 [01_design_rationale.md](01_design_rationale.md#2-scaled-scl-vs-physical-raw-space)).
 A stateful reaction module also supplies `SCALE_latent`; `SCALE_state`,
-`SCALE_modeled_V`, and `SCALE_integrated_state` are derived properties. Without
-the hook, every data-derived axis defaults to ones (no scaling).
+`SCALE_modeled_V`, and `SCALE_integrated_state` are derived scaler properties.
+Without the hook, every data-derived axis is a unit `LinearScaler` (no scaling).
+
+Offsets are prohibited on the three rate axes: controlled-FVC rates, modeled
+biological rates, and modeled-FVC rates. Derivatives are always transformed
+offset-free (`dSCL/dt = dRAW/dt / scale`); using a value transform on a
+derivative would spuriously subtract the offset. Integrated-state axes must use the built-in elementwise `LinearScaler` or
+`AffineScaler`, because the state scaler composes their scale/offset arrays in
+the exact state layout below. Custom non-affine scalers are supported only on
+non-state axes; accepting one on a state axis would silently reinterpret its
+transform as affine.
 
 | `SCALE_*` axis | Shape | Scales |
 |---|---|---|
@@ -130,8 +142,9 @@ SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 
 The solver advances `SCL_integrated_state`; stateless modules have an empty
-`SCL_latent`. `SCALE_state` and `SCALE_integrated_state` are the matching
-concatenations. The reaction module reads each slice
+`SCL_latent`. `SCALE_state` and `SCALE_integrated_state` concatenate both the
+per-axis scales and offsets (including zero-width parts). The reaction module
+reads each slice
 through [`ReactionInputs`](04_reaction_and_loss.md#reactioninputs); modeled vs
 controlled membership comes from bp-format's `RhsOde` (`name_modeled_*` /
 `name_controlled_*`).

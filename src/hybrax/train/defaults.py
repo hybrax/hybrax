@@ -9,10 +9,12 @@ import jax.numpy as jnp
 from bp_format.mechanistic import build_rhs_ode
 
 from .model_api import (
+    LinearScaler,
     LossInputs,
     LossOutputs,
     ReactionInputs,
     ReactionOutputs,
+    Scaler,
     UserLossModule,
     UserReactionModule,
     trainable_field,
@@ -272,29 +274,42 @@ def _default_scale_kwargs(
     n_modeled_FVCs: int,
     n_controlled_FVCs: int,
     rhs_ode: Any,
-) -> dict[str, jnp.ndarray]:
-    """All-ones defaults for every SCALE_* axis.
+) -> dict[str, Scaler]:
+    """All-ones defaults for every SCALE_* axis, as ``LinearScaler``.
 
-    Used when no estimate hook is supplied.
+    Used when no estimate hook is supplied. Returns scalers (not bare arrays)
+    so the no-hook path matches the hook path's promotion.
     """
     one = jnp.float64(1.0)
     return {
-        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=jnp.float64),
-        "SCALE_modeled_PVs": jnp.ones(len(rhs_ode.name_modeled_PVs), dtype=jnp.float64),
-        "SCALE_V_in_cumulative": one,
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_FVCs, dtype=jnp.float64),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(
-            n_controlled_FVCs, dtype=jnp.float64
+        "SCALE_modeled_RMCs": LinearScaler(jnp.ones(n_RMCs, dtype=jnp.float64)),
+        "SCALE_modeled_PVs": LinearScaler(
+            jnp.ones(len(rhs_ode.name_modeled_PVs), dtype=jnp.float64)
         ),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=jnp.float64),
-        "SCALE_controlled_FVCs_Cin": jnp.ones(
-            (n_controlled_FVCs, n_RMCs), dtype=jnp.float64
+        "SCALE_V_in_cumulative": LinearScaler(one),
+        "SCALE_modeled_FVCs_cumulative": LinearScaler(
+            jnp.ones(n_modeled_FVCs, dtype=jnp.float64)
         ),
-        "SCALE_controlled_PVs": jnp.ones(
-            len(rhs_ode.name_controlled_PVs), dtype=jnp.float64
+        "SCALE_controlled_FVCs_cumulative": LinearScaler(
+            jnp.ones(n_controlled_FVCs, dtype=jnp.float64)
         ),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_FVCs, n_RMCs), dtype=jnp.float64),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=jnp.float64),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_FVCs, dtype=jnp.float64),
-        "SCALE_latent": jnp.zeros(0, dtype=jnp.float64),
+        "SCALE_controlled_FVCs_rates": LinearScaler(
+            jnp.ones(n_controlled_FVCs, dtype=jnp.float64)
+        ),
+        "SCALE_controlled_FVCs_Cin": LinearScaler(
+            jnp.ones((n_controlled_FVCs, n_RMCs), dtype=jnp.float64)
+        ),
+        "SCALE_controlled_PVs": LinearScaler(
+            jnp.ones(len(rhs_ode.name_controlled_PVs), dtype=jnp.float64)
+        ),
+        "SCALE_modeled_FVCs_Cin": LinearScaler(
+            jnp.ones((n_modeled_FVCs, n_RMCs), dtype=jnp.float64)
+        ),
+        "SCALE_modeled_BiologicalOde_rates": LinearScaler(
+            jnp.ones(n_rates, dtype=jnp.float64)
+        ),
+        "SCALE_modeled_FVCs_rates": LinearScaler(
+            jnp.ones(n_modeled_FVCs, dtype=jnp.float64)
+        ),
+        "SCALE_latent": LinearScaler(jnp.zeros(0, dtype=jnp.float64)),
     }

@@ -39,6 +39,7 @@ from bp_train.harness import (
     _build_batch_index_stream,
     _build_reaction_module,
     _ensure_process_names,
+    _resolve_estimated_scales,
     _target_state_indices,
     _validate_batching_config,
     train_from_collection,
@@ -46,6 +47,7 @@ from bp_train.harness import (
 )
 from bp_train.defaults import DefaultLossModule, default_build_reaction_module
 from bp_train.model_api import (
+    AffineScaler,
     EstimatedScales,
     ReactionOutputs,
     UserReactionModule,
@@ -547,6 +549,40 @@ def test_train_collection_single_process_loss_decreases():
     assert all(names == ("p1",) for names in result.batch_process_names_by_step)
     assert result.train_step_rebuild_count == 0
     assert len(result.train_step_input_signature) > 0
+
+
+def test_train_collection_runs_with_nonzero_affine_state_offset():
+    # End-to-end training arm for OP12. Offset=1 centers the initial biomass at
+    # SCL=0; the solver, targets, loss, optimizer and trained wrapper all carry
+    # the affine scaler through a real update loop.
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    scaler = AffineScaler(
+        jnp.asarray([1.0], dtype=jnp.float32),
+        jnp.asarray([1.0], dtype=jnp.float32),
+    )
+    assert jnp.array_equal(jnp.asarray([1.0]) / scaler, jnp.asarray([0.0]))
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(SCALE_modeled_RMCs=scaler),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p1",),
+            epochs=3,
+            batch_size=1,
+            optimizer_name="adam",
+            learning_rate=5e-2,
+        ),
+    )
+    trained_scaler = result.trained_wrapper.reaction_module.SCALE_modeled_RMCs
+    assert isinstance(trained_scaler, AffineScaler)
+    assert jnp.array_equal(trained_scaler.offset, jnp.asarray([1.0]))
+    assert result.updates_completed == 3
+    assert np.all(np.isfinite(result.mean_loss_by_step))
 
 
 def test_train_collection_multi_process_tracks_per_process_histories():
@@ -1303,8 +1339,6 @@ def test_accepted_hook_kwargs_filters_to_declared_parameters():
 
 def test_resolve_estimated_scales_passes_controls_store_only_when_declared():
     """The wiring itself, not just the filter: removing it must fail here."""
-    from bp_train.harness import _resolve_estimated_scales
-
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,

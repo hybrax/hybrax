@@ -1,9 +1,9 @@
 """Bounded physical-state ODE solve with discrete bolus/sample jumps.
 
 Integrates ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum | RAW_latent]`` in
-**scaled** space (each component divided by its characteristic
-``SCALE_integrated_state``),
-so one rtol/atol controls every species uniformly and the adjoint stays O(1) — better
+**scaled** space (each value transformed by its composed
+``SCALE_integrated_state`` scaler: ``(RAW - offset) / scale``), so one
+rtol/atol controls every species uniformly and the adjoint stays O(1) — better
 float32 conditioning across a wide dynamic range) and applies boluses/samples as
 discrete state jumps at their (known) event times, using
 ``diffrax_callbacks`` (a differentiable discrete-event layer for diffrax). The jumps
@@ -89,11 +89,13 @@ def solve_physical_states(
     controls = wrapper.controls
     min_V = jnp.asarray(wrapper.min_V, dtype=dtype)
     # Per-state characteristic scale (the user-definable ``SCALE_*`` hook). Integrate
-    # ``SCL = RAW / SCALE`` so a single rtol/atol is uniformly meaningful and the
-    # adjoint stays O(1). Pure linear reparametrization applied only at the solve
+    # ``SCL = (RAW - b) / s`` so a single rtol/atol is uniformly meaningful and the
+    # adjoint stays O(1). Pure reparametrisation applied only at the solve
     # boundary: the RHS, jumps and gather stay physical; states are unscaled back
-    # before returning.
-    SCALE = jnp.asarray(wrapper.reaction_module.SCALE_integrated_state, dtype=dtype)
+    # before returning. NB the ODE RHS derivative is scaled via
+    # ``scale_derivative`` (offset-free) — NOT the value ``/`` path — so an affine
+    # state offset is not spuriously subtracted from the derivative.
+    SCALE = wrapper.reaction_module.SCALE_integrated_state.astype(dtype)
     assert SCALE.shape == (n_state,), (SCALE.shape, n_state)
 
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
@@ -164,9 +166,13 @@ def solve_physical_states(
 
     cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
-    # RHS evaluated on the unscaled state; the derivative is rescaled (scale_state is
-    # linear, so d(SCL)/dt == d(RAW)/dt / SCALE).
-    term = diffrax.ODETerm(lambda t, yy, a: wrapper.physical_rhs(t, yy * SCALE) / SCALE)
+    # RHS evaluated on the unscaled state (value unscale, ``yy * SCALE``); the
+    # RAW derivative is rescaled via ``scale_derivative`` (offset-free: under an
+    # affine scaler ``d((RAW-b)/s)/dt = (dRAW/dt)/s``, so the offset must NOT be
+    # subtracted here — the value ``/`` path would subtract it).
+    term = diffrax.ODETerm(
+        lambda t, yy, a: SCALE.scale_derivative(wrapper.physical_rhs(t, yy * SCALE))
+    )
 
     # ``dt0`` must be strictly positive. For a degenerate window (``t1 == t0``: a single
     # active measurement, or all measurements at t0) ``(t1 - t0) * 1e-3`` is exactly 0,
