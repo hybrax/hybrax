@@ -76,6 +76,29 @@ def test_io_round_trip_preserves_canonical_fields() -> None:
     assert rebuilt.metadata == {"source": "api-test"}
 
 
+def test_process_state_adapter_uses_segment_samples_without_aggregates() -> None:
+    process_state = {
+        "spline_results": {
+            "X": {
+                "segments": [
+                    {
+                        "knots": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+                        "coeffs": [0.0, 1.0, 2.0, 3.0],
+                        "degree": 3,
+                        "smoothed_times": [0.0, 0.5, 1.0],
+                        "smoothed_values": [0.0, 1.5, 3.0],
+                    }
+                ]
+            }
+        }
+    }
+
+    series = TimeSeries.from_process_state(process_state, "X")
+
+    np.testing.assert_allclose(np.asarray(series.times), [0.0, 0.5, 1.0])
+    np.testing.assert_allclose(np.asarray(series.values), [0.0, 1.5, 3.0])
+
+
 def test_exact_add_matches_pointwise_eval() -> None:
     a = TimeSeries(
         times=[0.0, 1.0, 2.0],
@@ -109,7 +132,9 @@ def test_exact_add_matches_pointwise_eval() -> None:
 def test_public_bp_format_timeseries_rejects_legacy_timepoints_constructor() -> None:
     assert bp_format.TimeSeries is TimeSeries
     with pytest.raises(TypeError):
-        bp_format.TimeSeries(timepoints=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
+        bp_format.TimeSeries(
+            timepoints=np.array([0.0, 1.0]), values=np.array([1.0, 2.0])
+        )
 
 
 def test_canonical_times_mode_keeps_strict_invariants() -> None:

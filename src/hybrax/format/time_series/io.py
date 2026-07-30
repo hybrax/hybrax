@@ -121,9 +121,13 @@ def timeseries_from_process_state(
     detected_jumps = process_state.get("detected_jumps", {})
     jumps = _extract_jump_times(detected_jumps, variable)
 
+    segments = spline_results.get("segments", [])
     times = spline_results.get("smoothed_times")
     values = spline_results.get("smoothed_values")
-    segments = spline_results.get("segments", [])
+    if times is None and segments:
+        times = [time for segment in segments for time in segment["smoothed_times"]]
+    if values is None and segments:
+        values = [value for segment in segments for value in segment["smoothed_values"]]
     breaks = None
     coeffs = None
     segment_start_piece_idx = None
