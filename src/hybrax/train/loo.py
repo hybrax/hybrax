@@ -14,9 +14,9 @@ lets the OS schedule the worker processes, then aggregates their on-disk losses
 into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
 skips folds that already wrote ``losses.csv`` and re-runs only the rest.
 
-This module stays a thin orchestrator on top of
-:func:`bp_train.harness.train_from_collection`; it does not reimplement
-training, batching, or loss evaluation.
+This module stays a thin orchestrator on top of the harness preparation,
+training, and evaluation entry points; it does not reimplement batching or loss
+calculation.
 """
 
 from __future__ import annotations
@@ -38,10 +38,20 @@ import pandas as pd
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from bp_format.json_io import load_json
 
-from .harness import train_from_collection, train_harness_config_from_run_config
+from .harness import (
+    ForwardConfig,
+    PreparedTraining,
+    evaluate_trained_wrapper,
+    prepare_training,
+    train_collection,
+    train_harness_config_from_run_config,
+)
+from .postprocessing import extract_process_plot_sources, save_model_metadata
 from .run_config import LooConfig, RunConfig
 from .serialization import (
+    load_trained_wrapper,
     run_config_to_jsonable,
+    save_model,
     update_run_config_status,
     write_json,
 )
@@ -420,24 +430,52 @@ def _dispatch_pool(
 # ---------------------------------------------------------------------------
 
 
-def _execute_fold(
-    *,
+@dataclass(frozen=True)
+class PreparedFold:
+    """Collection-free inputs for one fold's training."""
+
+    fold: Fold
+    fold_seed: int
+    fold_dir: Path
+    fold_custom: Path | None
+    config_json: Path
+    effective_cfg: RunConfig
+    training: PreparedTraining
+
+
+@dataclass(frozen=True)
+class TrainedFold:
+    """Lean inputs retained for one fold's final evaluation."""
+
+    fold: Fold
+    fold_seed: int
+    fold_dir: Path
+    config_json: Path
+    config: Any
+    store: Any
+    plot_sources: dict[str, Any] | None
+    target_names: tuple[str, ...]
+    render_plots: bool
+    train_result: Any
+
+
+def prepare_single_fold(
     collection: BioProcessCollection,
-    fold: Fold,
+    *,
     cfg: RunConfig,
     custom_module: Any | None,
-    output_dir: Path,
-    custom_py: str | Path | None,
-) -> FoldResult:
-    # Local import keeps loo.py free of cli.py at module-load time.
-    # _write_train_results owns: forward eval + losses.csv + predictions.csv +
-    # optional plots, exactly like the post-train block in _handle_train.
-    from .cli import _now_iso, _write_train_results
-    from .postprocessing import save_model_metadata
-    from .serialization import save_model
-
-    base_seed = int(cfg.train.seed)
-    fold_seed = base_seed + fold.idx
+    output_dir: str | Path,
+    fold_idx: int,
+    custom_py: str | Path | None = None,
+) -> PreparedFold:
+    """Resolve and prepare one fold without starting its training."""
+    folds = resolve_folds(collection, cfg.loo)
+    if not 0 <= fold_idx < len(folds):
+        raise ValueError(
+            f"--fold {fold_idx} out of range; {len(folds)} fold(s) resolved"
+        )
+    fold = folds[fold_idx]
+    fold_seed = int(cfg.train.seed) + fold.idx
     fold_dir = Path(output_dir) / "folds" / fold.slug
     fold_dir.mkdir(parents=True, exist_ok=True)
     fold_custom = None
@@ -457,14 +495,11 @@ def _execute_fold(
         config_json,
         {"status": "running", "config": run_config_to_jsonable(effective_cfg)},
     )
-
-    harness_cfg = train_harness_config_from_run_config(effective_cfg, run_dir=fold_dir)
     harness_cfg = dataclasses.replace(
-        harness_cfg,
+        train_harness_config_from_run_config(effective_cfg, run_dir=fold_dir),
         holdout_processes=fold.test,
         holdout_label="holdout",
     )
-
     logger.info(
         "LOO fold %d: slug=%s test=%s n_train=%d seed=%d",
         fold.idx,
@@ -473,20 +508,65 @@ def _execute_fold(
         len(fold.train),
         fold_seed,
     )
-
-    train_result = train_from_collection(
+    training = prepare_training(
         collection,
         config=harness_cfg,
         custom_module=custom_module,
         run_config=effective_cfg,
     )
+    if training.plot_sources is not None:
+        missing_holdouts = tuple(
+            name for name in fold.test if name not in training.plot_sources
+        )
+        if missing_holdouts:
+            holdout_sources = extract_process_plot_sources(
+                collection, training.store.rhs_ode, missing_holdouts
+            )
+            training = dataclasses.replace(
+                training,
+                plot_sources={**training.plot_sources, **holdout_sources},
+            )
+    return PreparedFold(
+        fold=fold,
+        fold_seed=fold_seed,
+        fold_dir=fold_dir,
+        fold_custom=fold_custom,
+        config_json=config_json,
+        effective_cfg=effective_cfg,
+        training=training,
+    )
 
-    save_model(train_result.trained_wrapper, fold_dir / "trained_wrapper.eqx")
 
+def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
+    """Train one prepared fold and retain only final-evaluation inputs."""
+    fold = prepared.fold
+    fold_seed = prepared.fold_seed
+    fold_dir = prepared.fold_dir
+    harness_cfg = prepared.training.config
+    store = prepared.training.store
+    plot_sources = prepared.training.plot_sources
+    target_names = tuple(prepared.training.loss_module.loss_names)
+    train_result = train_collection(
+        store,
+        reaction_module=prepared.training.reaction_module,
+        loss_module=prepared.training.loss_module,
+        config=harness_cfg,
+        optimizer=prepared.training.optimizer,
+        plot_sources=plot_sources,
+    )
+
+    model_path = fold_dir / "trained_wrapper.eqx"
+    save_model(train_result.trained_wrapper, model_path)
+    train_result = dataclasses.replace(
+        train_result,
+        trained_wrapper=load_trained_wrapper(
+            model_path,
+            template=train_result.trained_wrapper,
+        ),
+    )
     last_loss = float(train_result.mean_loss_by_step[-1])
-    custom_py_rel = "custom.py" if fold_custom is not None else None
     meta = {
-        "custom_py": custom_py_rel,
+        "custom_py": "custom.py" if prepared.fold_custom is not None else None,
         "test": list(fold.test),
         "train": list(fold.train),
         "fold_idx": fold.idx,
@@ -511,42 +591,63 @@ def _execute_fold(
         },
     }
     save_model_metadata(fold_dir / "trained_wrapper.meta.json", meta)
-
-    # Evaluate exactly this fold's processes: the train set (labelled "train")
-    # plus the held-out test set (labelled "holdout"). Restricting to train ∪
-    # test — rather than every process — keeps the per-fold losses.csv consistent
-    # with the orchestrator's loo_summary (which averages the holdout over
-    # `test`) and avoids labelling processes that are in neither set (e.g.
-    # augmentation siblings excluded from train) as misleading "holdout" rows.
-    eval_processes = tuple(dict.fromkeys((*fold.train, *fold.test)))
-    forward_result = _write_train_results(
-        output_dir=fold_dir,
-        collection=collection,
-        trained_wrapper=train_result.trained_wrapper,
-        train_result=train_result,
-        config=harness_cfg,
-        runtime_config=None,
-        custom_py=str(custom_py) if custom_py is not None else None,
-        training_process_names=fold.train,
-        render_plots=cfg.output.plots,
-        eval_process_names=eval_processes,
-        run_config=effective_cfg,
-        custom_module=custom_module,
-    )
-    update_run_config_status(
-        config_json,
-        status="complete",
-        finished_at=_now_iso(),
-        updates_completed=train_result.updates_completed,
-        final_mean_loss=last_loss,
-    )
-
-    return FoldResult(
+    return TrainedFold(
         fold=fold,
         fold_seed=fold_seed,
-        train_result=train_result,
-        forward_result=forward_result,
         fold_dir=fold_dir,
+        config_json=prepared.config_json,
+        config=harness_cfg,
+        store=store,
+        plot_sources=plot_sources,
+        target_names=target_names,
+        render_plots=prepared.effective_cfg.output.plots,
+        train_result=train_result,
+    )
+
+
+def execute_trained_fold(trained: TrainedFold) -> FoldResult:
+    """Evaluate and write one trained fold from its lean runtime inputs."""
+    from .cli import _now_iso, _write_train_results
+
+    fold = trained.fold
+    config = trained.config
+    eval_processes = tuple(dict.fromkeys((*fold.train, *fold.test)))
+    forward_result = evaluate_trained_wrapper(
+        trained.train_result.trained_wrapper,
+        trained.store,
+        config=ForwardConfig(
+            process_names=eval_processes,
+            target_variable_order=config.target_variable_order,
+            target_source=config.target_source,
+            solver_max_steps=config.solver_max_steps,
+            solver_rtol=config.solver_rtol,
+            solver_atol=config.solver_atol,
+            solver_use_jump_ts=config.solver_use_jump_ts,
+        ),
+        target_names=trained.target_names,
+        training_process_names=fold.train,
+    )
+    _write_train_results(
+        output_dir=trained.fold_dir,
+        forward_result=forward_result,
+        train_result=trained.train_result,
+        plot_sources=trained.plot_sources,
+        render_plots=trained.render_plots,
+    )
+    last_loss = float(trained.train_result.mean_loss_by_step[-1])
+    update_run_config_status(
+        trained.config_json,
+        status="complete",
+        finished_at=_now_iso(),
+        updates_completed=trained.train_result.updates_completed,
+        final_mean_loss=last_loss,
+    )
+    return FoldResult(
+        fold=fold,
+        fold_seed=trained.fold_seed,
+        train_result=trained.train_result,
+        forward_result=forward_result,
+        fold_dir=trained.fold_dir,
     )
 
 
@@ -559,24 +660,23 @@ def run_single_fold(
     fold_idx: int,
     custom_py: str | Path | None = None,
 ) -> FoldResult:
-    """Worker entry point: resolve folds and execute exactly one by index.
+    """Prepare and execute one fold for direct Python callers.
 
-    Writes ``<output_dir>/folds/<slug>/`` and does **not** aggregate (the
-    orchestrator does that after all workers finish).
+    The CLI uses the two-stage entry points directly so its collection-owning
+    frame returns to collection-free execution before training starts.
     """
-    folds = resolve_folds(collection, cfg.loo)
-    if not 0 <= fold_idx < len(folds):
-        raise ValueError(
-            f"--fold {fold_idx} out of range; {len(folds)} fold(s) resolved"
-        )
-    return _execute_fold(
-        collection=collection,
-        fold=folds[fold_idx],
+    prepared = prepare_single_fold(
+        collection,
         cfg=cfg,
         custom_module=custom_module,
-        output_dir=Path(output_dir),
+        output_dir=output_dir,
+        fold_idx=fold_idx,
         custom_py=custom_py,
     )
+    del collection
+    trained = train_prepared_fold(prepared)
+    del prepared
+    return execute_trained_fold(trained)
 
 
 # ---------------------------------------------------------------------------

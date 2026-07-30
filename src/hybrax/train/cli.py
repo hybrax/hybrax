@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import shutil
 import sys
 import time
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -16,14 +18,18 @@ import pandas as pd
 from .harness import (
     ForwardConfig,
     ForwardResult,
-    TrainHarnessConfig,
     forward_from_collection,
     forward_plot_losses,
     prepare_training,
     train_collection,
     train_harness_config_from_run_config,
 )
-from .loo import run_loo_cv, run_single_fold
+from .loo import (
+    execute_trained_fold,
+    prepare_single_fold,
+    run_loo_cv,
+    train_prepared_fold,
+)
 from .postprocessing import (
     aggregate_dense_exports,
     export_predictions_csv,
@@ -245,87 +251,42 @@ def _handle_prepare(args: argparse.Namespace) -> int:
 def _write_train_results(
     *,
     output_dir: Path,
-    collection: Any,
-    trained_wrapper: Any,
+    forward_result: ForwardResult,
     train_result: Any,
-    config: TrainHarnessConfig,
-    runtime_config: dict[str, Any] | None,
-    custom_py: str | Path | None,
-    training_process_names: tuple[str, ...],
+    plot_sources: dict[str, Any] | None,
     render_plots: bool,
-    eval_process_names: tuple[str, ...] | None = None,
-    run_config: Any | None = None,
-    custom_module: Any | None = None,
-) -> ForwardResult:
-    """Write per-run forward artifacts (losses.csv, predictions.csv, plots).
-
-    By default forward runs on ``training_process_names``. Pass
-    ``eval_process_names`` (e.g. for LOO, where holdout processes also need
-    losses) to evaluate a different set; the train/holdout split label in
-    ``losses.csv`` is always derived from ``training_process_names``.
-
-    Returns the :class:`ForwardResult` so callers can reuse per-process
-    losses without rerunning the forward pass.
-    """
+) -> None:
+    """Write losses, predictions, and optional plots for an evaluated model."""
     log = logging.getLogger(__name__)
-    eval_processes = (
-        eval_process_names if eval_process_names is not None else training_process_names
-    )
-
-    fwd_cfg = ForwardConfig(
-        process_names=eval_processes,
-        target_variable_order=config.target_variable_order,
-        target_source=config.target_source,
-        solver_max_steps=config.solver_max_steps,
-        solver_rtol=config.solver_rtol,
-        solver_atol=config.solver_atol,
-        solver_use_jump_ts=config.solver_use_jump_ts,
-    )
-    fwd_result = forward_from_collection(
-        collection,
-        model_path=output_dir / "trained_wrapper.eqx",
-        config=fwd_cfg,
-        custom_py=custom_py,
-        runtime_config=runtime_config,
-        training_process_names=training_process_names,
-        run_config=run_config,
-        custom_module=custom_module,
-    )
-
-    _table, csv_rows = _format_loss_table(fwd_result)
+    _table, csv_rows = _format_loss_table(forward_result)
     loss_csv_path = output_dir / "losses.csv"
     _write_loss_csv(csv_rows, loss_csv_path)
     log.info("loss table saved to %s", loss_csv_path)
 
     predictions_csv_path = output_dir / "predictions.csv"
     if render_plots:
-        named_losses, total_losses = forward_plot_losses(fwd_result)
-        plot_sources = extract_process_plot_sources(
-            collection, fwd_result.store.rhs_ode, eval_processes
-        )
+        if plot_sources is None:
+            raise ValueError("plot sources are required when plots are enabled")
+        named_losses, total_losses = forward_plot_losses(forward_result)
         plot_training_results(
             train_result,
             plot_sources,
-            fwd_result.store,
+            forward_result.store,
             output_dir,
-            fwd_result.dense_exports,
-            # Use eval_processes (full set including holdouts in LOO) so the
-            # predictions.csv has rows for every evaluated process. Per-process
-            # plots are rendered for the same set.
-            process_names=eval_processes,
+            forward_result.dense_exports,
+            process_names=forward_result.process_names,
             per_process_named_losses=named_losses,
             per_process_total_loss=total_losses,
             timeseries_csv_path=predictions_csv_path,
         )
-        return fwd_result
+        return
 
     export_predictions_csv(
-        trained_wrapper,
-        fwd_result.dense_exports,
+        forward_result.trained_wrapper,
+        forward_result.dense_exports,
         predictions_csv_path,
-        process_names=eval_processes,
+        process_names=forward_result.process_names,
     )
-    return fwd_result
 
 
 def _apply_train_cli_overrides(cfg: RunConfig, args: argparse.Namespace) -> RunConfig:
@@ -912,9 +873,10 @@ def _handle_loo(args: argparse.Namespace) -> int:
     output_dir = Path(cfg.output.dir)
     collection = load_process_collection(cfg.data.prepared)
 
-    # ---- worker mode: run exactly one fold, no top-level artifacts ----
+    # ---- worker mode: prepare, release collection, then train one fold ----
     if args.fold is not None:
-        run_single_fold(
+        collection_ref = weakref.ref(collection)
+        prepared_fold = prepare_single_fold(
             collection,
             cfg=cfg,
             custom_module=loaded.custom_module,
@@ -922,6 +884,19 @@ def _handle_loo(args: argparse.Namespace) -> int:
             fold_idx=args.fold,
             custom_py=cfg.custom_py,
         )
+        del collection
+        gc.collect()
+        if collection_ref() is not None:
+            raise RuntimeError(
+                "LOO fold preparation retained the process collection. "
+                "Custom hooks such as build_reaction_module and build_loss_module "
+                "must keep only the data they need, not the full BioProcessCollection. "
+                "Delete any retained collection references after extracting that data."
+            )
+        trained_fold = train_prepared_fold(prepared_fold)
+        del prepared_fold
+        gc.collect()
+        execute_trained_fold(trained_fold)
         return 0
 
     # ---- orchestrator mode ----

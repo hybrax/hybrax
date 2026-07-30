@@ -21,6 +21,7 @@ import gc
 import inspect
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import weakref
 
 import jax.numpy as jnp
@@ -43,10 +44,51 @@ from bp_train import cli, postprocessing
 from bp_train.controls_store import ControlsStore
 from bp_train.harness import ForwardConfig, ForwardResult
 from bp_train.defaults import DefaultLossModule
-from bp_train.harness import compute_dense_exports
+from bp_train.harness import compute_dense_exports, evaluate_trained_wrapper
 from bp_train.model_api import ReactionOutputs, UserReactionModule
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper
+
+
+def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypatch):
+    store = SimpleNamespace(
+        process_order=("train", "holdout"),
+        name_modeled_FVCs=("F",),
+        name_modeled_SVCs=("S",),
+    )
+    wrapper = object()
+
+    def fake_dense(trained_wrapper, received_store, process_names, **kwargs):
+        assert trained_wrapper is wrapper
+        assert received_store is store
+        assert process_names == ("holdout", "train")
+        assert kwargs["solver_use_jump_ts"] is False
+        return (
+            np.asarray([2.0, 1.0]),
+            np.asarray([[20.0, 21.0], [10.0, 11.0]]),
+            {"holdout": object(), "train": object()},
+        )
+
+    monkeypatch.setattr("bp_train.harness.compute_dense_exports", fake_dense)
+    result = evaluate_trained_wrapper(
+        wrapper,
+        store,
+        config=ForwardConfig(
+            process_names=("holdout", "train"), solver_use_jump_ts=False
+        ),
+        target_names=("loss-b", "loss-a"),
+        training_process_names=("train",),
+    )
+
+    assert result.process_names == ("holdout", "train")
+    assert result.target_names == ("loss-b", "loss-a")
+    assert result.training_process_names == ("train",)
+    assert list(result.per_process_total_loss) == ["holdout", "train"]
+    assert result.per_process_per_target_loss == {
+        "holdout": (20.0, 21.0),
+        "train": (10.0, 11.0),
+    }
+    assert list(result.dense_exports) == ["holdout", "train"]
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +179,42 @@ def test_format_loss_table_all_holdout_when_training_empty():
         if "(mean)" in row[0]:
             continue
         assert row[-1] == "holdout"
+
+
+def test_write_train_results_consumes_forward_result_without_reconstruction(
+    monkeypatch, tmp_path
+):
+    result = _make_forward_result()
+    exported = {}
+    monkeypatch.setattr(
+        cli,
+        "forward_from_collection",
+        lambda *_a, **_k: pytest.fail("redundant forward reconstruction called"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "export_predictions_csv",
+        lambda wrapper, dense, path, *, process_names: exported.update(
+            wrapper=wrapper,
+            dense=dense,
+            path=path,
+            process_names=process_names,
+        ),
+    )
+
+    cli._write_train_results(
+        output_dir=tmp_path,
+        forward_result=result,
+        train_result=object(),
+        plot_sources=None,
+        render_plots=False,
+    )
+
+    assert pd.read_csv(tmp_path / "losses.csv")["process"].iloc[:2].tolist() == [
+        "p1",
+        "p2",
+    ]
+    assert exported["process_names"] == ("p1", "p2")
 
 
 # ---------------------------------------------------------------------------

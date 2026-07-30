@@ -633,7 +633,7 @@ class ForwardConfig:
 
 @dataclass
 class ForwardResult:
-    """Outputs of :func:`forward_from_collection`."""
+    """Outputs of a trained-wrapper forward evaluation."""
 
     trained_wrapper: HybridOdeWrapper
     store: TrainingDataStore
@@ -757,34 +757,52 @@ def forward_from_collection(
     loss_names = tuple(loss_module.loss_names)
 
     trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
+    return evaluate_trained_wrapper(
+        trained_wrapper,
+        store,
+        config=cfg,
+        target_names=loss_names,
+        training_process_names=training_process_names or (),
+        prediction_grid_n=prediction_grid_n,
+    )
 
-    # Resolve which processes to evaluate
-    if cfg.process_names is not None:
-        missing = [n for n in cfg.process_names if n not in store.process_order]
+
+def evaluate_trained_wrapper(
+    trained_wrapper: HybridOdeWrapper,
+    store: TrainingDataStore,
+    *,
+    config: ForwardConfig,
+    target_names: tuple[str, ...],
+    training_process_names: tuple[str, ...] = (),
+    prediction_grid_n: int = 200,
+) -> ForwardResult:
+    """Evaluate an existing store and trained wrapper without reconstruction."""
+    if config.process_names is not None:
+        missing = [n for n in config.process_names if n not in store.process_order]
         if missing:
             raise ValueError(
                 f"forward: unknown process names {missing}; "
                 f"available={tuple(store.process_order)}"
             )
-        eval_processes = tuple(cfg.process_names)
+        eval_processes = tuple(config.process_names)
     else:
         eval_processes = tuple(store.process_order)
 
-    if cfg.solver_max_steps <= 0:
+    if config.solver_max_steps <= 0:
         raise ValueError("solver_max_steps must be positive")
-    if cfg.solver_rtol <= 0.0:
+    if config.solver_rtol <= 0.0:
         raise ValueError("solver_rtol must be positive")
-    if cfg.solver_atol <= 0.0:
+    if config.solver_atol <= 0.0:
         raise ValueError("solver_atol must be positive")
 
     per_sample_total, per_sample_per_target, dense_exports = compute_dense_exports(
         trained_wrapper,
         store,
         eval_processes,
-        solver_max_steps=int(cfg.solver_max_steps),
-        solver_rtol=float(cfg.solver_rtol),
-        solver_atol=float(cfg.solver_atol),
-        solver_use_jump_ts=cfg.solver_use_jump_ts,
+        solver_max_steps=int(config.solver_max_steps),
+        solver_rtol=float(config.solver_rtol),
+        solver_atol=float(config.solver_atol),
+        solver_use_jump_ts=config.solver_use_jump_ts,
         prediction_grid_n=int(prediction_grid_n),
     )
     per_process_total = {
@@ -795,18 +813,14 @@ def forward_from_collection(
         for i, name in enumerate(eval_processes)
     }
 
-    target_column_labels = loss_names
-
     return ForwardResult(
         trained_wrapper=trained_wrapper,
         store=store,
         process_names=eval_processes,
-        target_names=target_column_labels,
+        target_names=target_names,
         name_modeled_FVCs=tuple(store.name_modeled_FVCs),
         name_modeled_SVCs=tuple(store.name_modeled_SVCs),
-        training_process_names=tuple(training_process_names)
-        if training_process_names is not None
-        else (),
+        training_process_names=tuple(training_process_names),
         per_process_total_loss=per_process_total,
         per_process_per_target_loss=per_process_per_target,
         dense_exports=dense_exports,

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+import weakref
 
 import jax.numpy as jnp
 import pandas as pd
@@ -24,7 +27,7 @@ from bp_format.dataclasses import (
 )
 
 from bp_train import cli
-from bp_train.harness import TrainHarnessResult
+from bp_train.harness import PreparedTraining, TrainHarnessResult
 from bp_train import loo as loo_mod
 from bp_train.loo import (
     Fold,
@@ -415,33 +418,47 @@ def _stub_train_result() -> TrainHarnessResult:
 
 def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
     captured: dict[str, Any] = {}
+    reloaded_wrapper = object()
 
-    def fake_train(coll, *, config, custom_module, run_config):
+    def fake_prepare(coll, *, config, custom_module, run_config):
         captured["process_names"] = config.process_names
         captured["seed"] = config.seed
         captured["holdout"] = config.holdout_processes
         captured["run_config"] = run_config
-        return _stub_train_result()
+        return PreparedTraining(
+            store=object(),
+            reaction_module=object(),
+            loss_module=SimpleNamespace(loss_names=("X",)),
+            config=config,
+            optimizer=object(),
+            plot_sources=None,
+        )
 
-    def fake_write(
-        *, output_dir, training_process_names, eval_process_names=None, **_kw
-    ):
-        captured["fold_dir"] = Path(output_dir)
+    def fake_evaluate(wrapper, store, *, config, training_process_names, **_kw):
+        captured["evaluation_wrapper"] = wrapper
         captured["training_process_names"] = training_process_names
-        captured["eval_process_names"] = eval_process_names
+        captured["eval_process_names"] = config.process_names
+        return SimpleNamespace()
 
-        class _Dummy:
-            pass
+    def fake_write(*, output_dir, **_kw):
+        captured["fold_dir"] = Path(output_dir)
 
-        return _Dummy()
-
-    monkeypatch.setattr("bp_train.loo.train_from_collection", fake_train)
+    monkeypatch.setattr("bp_train.loo.prepare_training", fake_prepare)
+    monkeypatch.setattr(
+        "bp_train.loo.train_collection", lambda *_a, **_k: _stub_train_result()
+    )
+    monkeypatch.setattr("bp_train.loo.evaluate_trained_wrapper", fake_evaluate)
     monkeypatch.setattr("bp_train.cli._write_train_results", fake_write)
-    import bp_train.postprocessing as pp
-    import bp_train.serialization as ser
-
-    monkeypatch.setattr(ser, "save_model", lambda *_a, **_k: None)
-    monkeypatch.setattr(pp, "save_model_metadata", lambda *_a, **_k: None)
+    monkeypatch.setattr(loo_mod, "save_model", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        loo_mod,
+        "load_trained_wrapper",
+        lambda _path, *, template: (
+            captured.update(reload_template=template) or reloaded_wrapper
+        ),
+    )
+    monkeypatch.setattr(loo_mod, "save_model_metadata", lambda *_a, **_k: None)
+    captured["reloaded_wrapper"] = reloaded_wrapper
     return captured
 
 
@@ -465,6 +482,9 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert result.fold.test == ("p2",)
     assert captured["process_names"] == ("p1", "p3")
     assert captured["holdout"] == ("p2",)
+    assert captured["evaluation_wrapper"] is captured["reloaded_wrapper"]
+    assert result.train_result.trained_wrapper is captured["reloaded_wrapper"]
+    assert captured["reload_template"] is not result.train_result.trained_wrapper
     assert result.fold_seed == 10 + 1  # base seed + fold idx
     assert result.fold_dir == tmp_path / "folds" / "p2"
     effective = captured["run_config"]
@@ -526,6 +546,80 @@ def test_run_single_fold_out_of_range(monkeypatch, tmp_path):
             output_dir=tmp_path,
             fold_idx=9,
         )
+
+
+def test_prepare_single_fold_merges_only_missing_holdout_plot_sources(
+    monkeypatch, tmp_path
+):
+    collection = _three_parent_collection()
+    extracted = []
+
+    def fake_prepare(*_args, config, **_kwargs):
+        assert config.plots is True
+        return PreparedTraining(
+            store=SimpleNamespace(rhs_ode=object()),
+            reaction_module=object(),
+            loss_module=SimpleNamespace(loss_names=("X",)),
+            config=config,
+            optimizer=object(),
+            plot_sources={"p1": "train-1", "p3": "train-3"},
+        )
+
+    def fake_extract(_collection, _rhs, process_names):
+        extracted.append(process_names)
+        return {name: f"holdout-{name}" for name in process_names}
+
+    monkeypatch.setattr(loo_mod, "prepare_training", fake_prepare)
+    monkeypatch.setattr(loo_mod, "extract_process_plot_sources", fake_extract)
+    prepared = loo_mod.prepare_single_fold(
+        collection,
+        cfg=_run_config(),
+        custom_module=None,
+        output_dir=tmp_path,
+        fold_idx=1,
+    )
+
+    assert extracted == [("p2",)]
+    assert prepared.training.plot_sources == {
+        "p1": "train-1",
+        "p3": "train-3",
+        "p2": "holdout-p2",
+    }
+
+
+def test_prepare_single_fold_skips_holdout_sources_when_plots_are_off(
+    monkeypatch, tmp_path
+):
+    def fake_prepare(*_args, config, **_kwargs):
+        assert config.plots is False
+        return PreparedTraining(
+            store=object(),
+            reaction_module=object(),
+            loss_module=SimpleNamespace(loss_names=("X",)),
+            config=config,
+            optimizer=object(),
+            plot_sources=None,
+        )
+
+    monkeypatch.setattr(loo_mod, "prepare_training", fake_prepare)
+    monkeypatch.setattr(
+        loo_mod,
+        "extract_process_plot_sources",
+        lambda *_a, **_k: pytest.fail("holdout sources extracted with plots off"),
+    )
+    cfg = _run_config()
+    cfg = cfg.model_copy(
+        update={"output": cfg.output.model_copy(update={"plots": False})}
+    )
+    prepared = loo_mod.prepare_single_fold(
+        _three_parent_collection(),
+        cfg=cfg,
+        custom_module=None,
+        output_dir=tmp_path,
+        fold_idx=1,
+    )
+
+    assert prepared.training.plot_sources is None
 
 
 # ---------------------------------------------------------------------------
@@ -677,19 +771,50 @@ def _write_min_config(path: Path) -> None:
     )
 
 
-def test_loo_cli_worker_mode_calls_run_single_fold(monkeypatch, tmp_path):
+def test_loo_cli_worker_releases_own_collection_before_training(monkeypatch, tmp_path):
     captured: dict[str, Any] = {}
     cfg_path = tmp_path / "config.json"
     _write_min_config(cfg_path)
+    collection_ref = None
+    prepared_ref = None
 
-    monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
+    def fake_load(_path):
+        nonlocal collection_ref
 
-    def fake_single(collection, *, cfg, custom_module, output_dir, fold_idx, custom_py):
-        captured["fold_idx"] = fold_idx
-        captured["output_dir"] = Path(output_dir)
-        return None
+        class Collection:
+            pass
 
-    monkeypatch.setattr(cli, "run_single_fold", fake_single)
+        collection = Collection()
+        collection_ref = weakref.ref(collection)
+        return collection
+
+    def fake_prepare(collection, **kwargs):
+        nonlocal prepared_ref
+
+        class Prepared:
+            pass
+
+        captured["fold_idx"] = kwargs["fold_idx"]
+        captured["output_dir"] = Path(kwargs["output_dir"])
+        prepared = Prepared()
+        prepared_ref = weakref.ref(prepared)
+        return prepared
+
+    def fake_train(_prepared):
+        gc.collect()
+        assert collection_ref is not None
+        assert collection_ref() is None
+        return object()
+
+    def fake_execute(_trained):
+        gc.collect()
+        assert prepared_ref is not None
+        assert prepared_ref() is None
+
+    monkeypatch.setattr(cli, "load_process_collection", fake_load)
+    monkeypatch.setattr(cli, "prepare_single_fold", fake_prepare)
+    monkeypatch.setattr(cli, "train_prepared_fold", fake_train)
+    monkeypatch.setattr(cli, "execute_trained_fold", fake_execute)
 
     rc = cli.main(
         [
@@ -705,6 +830,41 @@ def test_loo_cli_worker_mode_calls_run_single_fold(monkeypatch, tmp_path):
     assert rc == 0
     assert captured["fold_idx"] == 2
     assert captured["output_dir"] == tmp_path / "out"
+
+
+def test_loo_cli_worker_rejects_prepared_runtime_retaining_collection(
+    monkeypatch, tmp_path
+):
+    cfg_path = tmp_path / "config.json"
+    _write_min_config(cfg_path)
+
+    class Collection:
+        pass
+
+    monkeypatch.setattr(cli, "load_process_collection", lambda _path: Collection())
+    monkeypatch.setattr(
+        cli,
+        "prepare_single_fold",
+        lambda collection, **_kwargs: SimpleNamespace(collection=collection),
+    )
+    monkeypatch.setattr(
+        cli,
+        "train_prepared_fold",
+        lambda _prepared: pytest.fail("training started with retained collection"),
+    )
+
+    with pytest.raises(RuntimeError, match="must keep only the data they need"):
+        cli.main(
+            [
+                "loo",
+                "--config",
+                str(cfg_path),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--fold",
+                "0",
+            ]
+        )
 
 
 def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
