@@ -598,6 +598,92 @@ def test_rate_helpers_use_derivative_semantics():
         assert jnp.array_equal(unscale(scl), raw)
 
 
+def test_tree_at_affine_offset_zero_to_nonzero_updates_value_and_state():
+    scaler = AffineScaler(jnp.asarray([2.0]), jnp.asarray([0.0]))
+    scaler = eqx.tree_at(lambda x: x.offset, scaler, jnp.asarray([10.0]))
+
+    assert jnp.array_equal(
+        scaler.unscale_value(jnp.asarray([1.0])), jnp.asarray([12.0])
+    )
+
+    module = UserReactionModule(SCALE_modeled_RMCs=scaler)
+    state = jnp.asarray([1.0, 1.0])
+    expected = jnp.asarray([12.0, 1.0])
+    assert jnp.array_equal(module.unscale_state(state), expected)
+    assert jnp.array_equal(
+        jax.jit(lambda m, x: m.unscale_state(x))(module, state), expected
+    )
+    cast = jax.jit(
+        lambda x: module.SCALE_integrated_state.astype(jnp.float64).unscale_value(x)
+    )(state.astype(jnp.float64))
+    assert jnp.array_equal(cast, expected.astype(jnp.float64))
+
+
+def test_tree_at_affine_offset_nonzero_to_zero_preserves_negative_zero():
+    scaler = AffineScaler(jnp.asarray([2.0]), jnp.asarray([10.0]))
+    scaler = eqx.tree_at(lambda x: x.offset, scaler, jnp.asarray([0.0]))
+
+    bare = scaler.unscale_value(jnp.asarray([-0.0]))
+    assert bool(jnp.signbit(bare[0]))
+
+    module = UserReactionModule(SCALE_modeled_RMCs=scaler)
+    state = jnp.asarray([-0.0, -0.0])
+    assert bool(jnp.signbit(module.unscale_state(state)[0]))
+    jitted = jax.jit(lambda m, x: m.unscale_state(x))(module, state)
+    cast = jax.jit(
+        lambda x: module.SCALE_integrated_state.astype(jnp.float64).unscale_value(x)
+    )(state.astype(jnp.float64))
+    assert bool(jnp.signbit(jitted[0]))
+    assert bool(jnp.signbit(cast[0]))
+
+
+def test_dynamic_negative_zero_affine_offset_preserves_negative_zero_value():
+    scaler = AffineScaler(
+        jnp.asarray([2.0], dtype=jnp.float32),
+        jnp.asarray([-0.0], dtype=jnp.float32),
+    )
+    raw = jnp.asarray([-0.0], dtype=jnp.float32)
+
+    scaled = jax.jit(lambda dynamic_scaler, x: dynamic_scaler.scale_value(x))(
+        scaler, raw
+    )
+
+    assert bool(jnp.signbit(scaled[0]))
+
+
+def test_closed_over_zero_offset_affine_gradient_preserves_negative_zero():
+    module = UserReactionModule(
+        SCALE_modeled_RMCs=AffineScaler(
+            jnp.asarray([2.0], dtype=jnp.float32),
+            jnp.asarray([0.0], dtype=jnp.float32),
+        )
+    )
+    state = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    negative_zero = jnp.asarray(-0.0, dtype=jnp.float32)
+
+    scale_grad = jax.jit(
+        jax.grad(lambda raw: jnp.sum(module.scale_state(raw) * negative_zero))
+    )(state)
+    unscale_grad = jax.jit(
+        jax.grad(lambda scl: jnp.sum(module.unscale_state(scl) * negative_zero))
+    )(state)
+
+    cast_state = state.astype(jnp.float64)
+    cast_negative_zero = negative_zero.astype(jnp.float64)
+    cast_unscale_grad = jax.jit(
+        jax.grad(
+            lambda scl: jnp.sum(
+                module.SCALE_integrated_state.astype(scl.dtype).unscale_value(scl)
+                * cast_negative_zero
+            )
+        )
+    )(cast_state)
+
+    assert bool(jnp.all(jnp.signbit(scale_grad)))
+    assert bool(jnp.all(jnp.signbit(unscale_grad)))
+    assert bool(jnp.all(jnp.signbit(cast_unscale_grad)))
+
+
 def test_zero_offset_affine_state_scaler_preserves_negative_zero():
     module = UserReactionModule(
         SCALE_modeled_RMCs=AffineScaler(
@@ -702,6 +788,19 @@ def test_scaler_constructors_reject_non_array_inputs_immediately():
 def test_user_reaction_module_rejects_unknown_scale_keyword():
     with pytest.raises(TypeError, match="SCALE_V_in_cumulativ"):
         UserReactionModule(SCALE_V_in_cumulativ=jnp.asarray(7.0))
+
+
+def test_user_reaction_module_initializes_defaulted_subclass_fields():
+    class Child(UserReactionModule):
+        w: jax.Array = trainable_field(default_factory=lambda: jnp.ones(1))
+
+    supplied = jnp.asarray([2.0], dtype=jnp.float32)
+    defaulted = Child()
+    explicit = Child(w=supplied)
+
+    assert jnp.array_equal(defaulted.w, jnp.ones(1))
+    assert explicit.w is supplied
+    assert explicit.w.dtype == jnp.float32
 
 
 def test_affine_value_and_derivative_ops_diverge():

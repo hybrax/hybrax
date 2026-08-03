@@ -102,21 +102,56 @@ def partition_trainable(module: eqx.Module) -> tuple[eqx.Module, eqx.Module]:
 # ---------------------------------------------------------------------------
 
 
-def _offset_is_nonzero(offset: jax.Array, *, type_says_offset: bool) -> bool:
-    """Whether an offset needs an addition in a value transform.
+def _offset_is_nonzero(offset: jax.Array) -> bool | None:
+    """Return a concrete offset predicate, or ``None`` for a traced offset.
 
-    The type check keeps the all-linear default path host-readback-free and
-    traceable. A traced affine offset cannot be converted to ``bool``; it must
-    conservatively take the offset-carrying branch. That is correct, although
-    an all-zero affine offset created from traced arrays cannot preserve the
-    signed-zero bit identity of ``LinearScaler``.
+    NumPy is intentional: JAX operations stage even on a concrete array closed
+    over by ``jit``, while ``np.asarray`` yields a Python decision for that
+    normal library path. A genuinely dynamic offset rejects NumPy conversion;
+    callers then use a runtime ``jnp.where`` so one compiled function handles
+    both zero and non-zero replacements.
     """
-    if not type_says_offset:
-        return False
     try:
-        return bool(jnp.any(offset != 0))
-    except jax.errors.TracerBoolConversionError:
-        return True
+        return bool(np.any(np.asarray(offset) != 0))
+    except jax.errors.TracerArrayConversionError:
+        return None
+
+
+def _scale_with_optional_offset(
+    RAW: jax.Array,
+    scale: jax.Array,
+    offset: jax.Array,
+    *,
+    offset_flag: bool | None,
+) -> jax.Array:
+    """Subtract a concrete offset branch, or select for a traced offset."""
+    # Do not touch `offset` on the false branch: a wider zero offset would
+    # promote the result dtype despite being numerically inactive.
+    if offset_flag is False:
+        return RAW / scale
+    if offset_flag is True:
+        return (RAW - offset) / scale
+    # Both signs of zero matter, so unknown offsets need selection in both
+    # directions: x+(+0) flips -0, x+(-0) preserves it; x-(+0) preserves -0,
+    # x-(-0) flips it.
+    centered = jnp.where(jnp.any(offset != 0), RAW - offset, RAW)
+    return centered / scale
+
+
+def _unscale_with_optional_offset(
+    SCL: jax.Array,
+    scale: jax.Array,
+    offset: jax.Array,
+    *,
+    offset_flag: bool | None,
+) -> jax.Array:
+    """Add a concrete offset branch, or select for a traced offset."""
+    unscaled = SCL * scale
+    if offset_flag is False:
+        return unscaled
+    if offset_flag is True:
+        return unscaled + offset
+    return jnp.where(jnp.any(offset != 0), unscaled + offset, unscaled)
 
 
 class Scaler(eqx.Module):
@@ -269,24 +304,18 @@ class AffineScaler(Scaler):
     The default path never constructs this; a user opts in by returning an
     ``AffineScaler`` for one axis from ``estimate_all_scales``. Offsets are
     meaningful only on VALUE axes — the harness rejects a non-zero offset on
-    the three rate axes. A zero offset created from concrete arrays retains the
-    signed-zero bit identity of ``LinearScaler``; one created from traced arrays
-    conservatively uses affine value operations instead.
+    the three rate axes. Closed-over concrete zero offsets retain
+    ``LinearScaler`` bit identity through reverse-mode training. A genuinely
+    dynamic traced offset uses runtime selection: values retain signed-zero
+    identity, but reverse-mode signed-zero identity is not guaranteed. The same
+    limitation applies when a bare ``AffineScaler.astype`` stages a real cast
+    inside a trace; composed state-scaler casts preserve their concrete branch.
     """
 
     scale: jax.Array = frozen_field()
     offset: jax.Array = frozen_field()
-    # Cached at construction to avoid host readback in transforms. If ``offset``
-    # is replaced via ``eqx.tree_at``, replace this flag consistently.
-    _offset_flag: bool = eqx.field(static=True, default=True)
 
-    def __init__(
-        self,
-        scale: jax.Array,
-        offset: jax.Array,
-        *,
-        _offset_flag: bool | None = None,
-    ):
+    def __init__(self, scale: jax.Array, offset: jax.Array):
         # Preserve user dtypes exactly; broadcast only (incompatible shapes
         # raise loudly). Rate-axis non-zero-offset rejection lives at the
         # wrapper boundary, where the semantic axis name is known.
@@ -296,21 +325,24 @@ class AffineScaler(Scaler):
             raise TypeError("AffineScaler.offset must be a JAX/NumPy array")
         self.scale = scale
         self.offset = jnp.broadcast_to(offset, scale.shape)
-        self._offset_flag = (
-            _offset_is_nonzero(self.offset, type_says_offset=True)
-            if _offset_flag is None
-            else _offset_flag
-        )
 
     def __rtruediv__(self, RAW: jax.Array) -> jax.Array:
         if isinstance(RAW, np.ndarray):
             raise TypeError("Use Scaler.scale_value() for NumPy arrays")
-        return (RAW - self.offset) / self.scale
+        return _scale_with_optional_offset(
+            RAW,
+            self.scale,
+            self.offset,
+            offset_flag=_offset_is_nonzero(self.offset),
+        )
 
     def __rmul__(self, SCL: jax.Array) -> jax.Array:
-        if not self._offset_flag:
-            return SCL * self.scale
-        return SCL * self.scale + self.offset
+        return _unscale_with_optional_offset(
+            SCL,
+            self.scale,
+            self.offset,
+            offset_flag=_offset_is_nonzero(self.offset),
+        )
 
     def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
         return RAW_rate / self.scale
@@ -326,7 +358,6 @@ class AffineScaler(Scaler):
         return AffineScaler(
             jnp.asarray(self.scale, dtype=dtype),
             jnp.asarray(self.offset, dtype=dtype),
-            _offset_flag=self._offset_flag,
         )
 
     def __getitem__(self, idx) -> "AffineScaler":
@@ -348,9 +379,13 @@ class _ConcatScaler(Scaler):
     parts: tuple[Scaler, ...]
     _scale_c: jax.Array
     _offset_c: jax.Array
-    _offset_flag: bool = eqx.field(static=True)
+    _offset_flag: bool | None = eqx.field(static=True)
 
-    def __init__(self, *parts: Scaler):
+    def __init__(
+        self,
+        *parts: Scaler,
+        _offset_flag_hint: bool | None = None,
+    ):
         for part in parts:
             if type(part) not in (LinearScaler, AffineScaler, _ConcatScaler):
                 raise TypeError(
@@ -361,10 +396,24 @@ class _ConcatScaler(Scaler):
         self.parts = tuple(parts)
         self._scale_c = jnp.concatenate([jnp.atleast_1d(p.scale) for p in parts])
         self._offset_c = jnp.concatenate([jnp.atleast_1d(p.offset) for p in parts])
-        self._offset_flag = any(
-            p._has_offset if type(p) is _ConcatScaler else p._offset_flag
+        # Derive from child leaves, not `_offset_c`: concatenation stages inside
+        # `jit` even when every child leaf is a concrete closed-over constant.
+        # This concat is rebuilt from current module leaves on every property
+        # access, so `eqx.tree_at` offset replacements cannot stale the flag.
+        flags = [
+            p._offset_flag if type(p) is _ConcatScaler else _offset_is_nonzero(p.offset)
             for p in parts
             if type(p) is not LinearScaler
+        ]
+        derived_flag = (
+            True
+            if any(flag is True for flag in flags)
+            else None
+            if None in flags
+            else False
+        )
+        self._offset_flag = (
+            derived_flag if _offset_flag_hint is None else _offset_flag_hint
         )
 
     @property
@@ -377,7 +426,7 @@ class _ConcatScaler(Scaler):
 
     @property
     def _has_offset(self) -> bool:
-        return self._offset_flag
+        return self._offset_flag is not False
 
     @property
     def scale(self) -> jax.Array:
@@ -393,16 +442,22 @@ class _ConcatScaler(Scaler):
         if isinstance(RAW, np.ndarray):
             raise TypeError("Use Scaler.scale_value() for NumPy arrays")
         # Keep all-linear default op-for-op RAW / scale (no extra -0).
-        if not self._has_offset:
-            return RAW / self._scale_arr
-        return (RAW - self._offset_arr) / self._scale_arr
+        return _scale_with_optional_offset(
+            RAW,
+            self._scale_arr,
+            self._offset_arr,
+            offset_flag=self._offset_flag,
+        )
 
     def __rmul__(self, SCL: jax.Array) -> jax.Array:
         # Keep all-linear default op-for-op SCL * scale. Adding +0 flips the
         # sign of -0.0 and is therefore NOT bit-identical.
-        if not self._has_offset:
-            return SCL * self._scale_arr
-        return SCL * self._scale_arr + self._offset_arr
+        return _unscale_with_optional_offset(
+            SCL,
+            self._scale_arr,
+            self._offset_arr,
+            offset_flag=self._offset_flag,
+        )
 
     def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
         return RAW_rate / self._scale_arr
@@ -415,7 +470,14 @@ class _ConcatScaler(Scaler):
         return tuple(self._scale_c.shape)
 
     def astype(self, dtype: jnp.dtype) -> "_ConcatScaler":
-        return _ConcatScaler(*(p.astype(dtype) for p in self.parts))
+        # A real cast stages child arrays inside `jit`; carry this transient
+        # concat's already-live predicate across rather than degrading it to
+        # the traced (`None`) fallback. `_ConcatScaler` is rebuilt from current
+        # public module leaves before this cast, so the hint cannot be stale.
+        return _ConcatScaler(
+            *(p.astype(dtype) for p in self.parts),
+            _offset_flag_hint=self._offset_flag,
+        )
 
     def __getitem__(self, idx):
         if self._has_offset:
@@ -624,24 +686,30 @@ class UserReactionModule(eqx.Module):
         The module is the single source of truth for scales, so it normalizes
         whatever it receives — a bare array becomes ``LinearScaler``; a
         ``Scaler`` passes through. Unknown keywords raise immediately (a scale
-        typo must never silently fall back to the default). Subclasses call
-        this first, then initialize their own declared fields; the base
-        constructor deliberately does not inspect or initialize subclass fields.
+        typo must never silently fall back to the default). Declared subclass
+        fields are accepted and their defaults are applied; required fields
+        remain available for custom subclass constructors to set after
+        ``super().__init__()``.
         """
-        scale_fields = {f.name: f for f in fields(UserReactionModule)}
-        unknown = sorted(set(kwargs) - set(scale_fields))
+        module_fields = {f.name: f for f in fields(type(self))}
+        scale_fields = {f.name for f in fields(UserReactionModule)}
+        unknown = sorted(set(kwargs) - set(module_fields))
         if unknown:
             raise TypeError(
                 f"Unknown UserReactionModule field(s): {', '.join(unknown)}"
             )
-        for f in scale_fields.values():
+        for f in module_fields.values():
             if f.name in kwargs:
                 value = kwargs[f.name]
             elif f.default is not MISSING:
                 value = f.default
-            else:
+            elif f.default_factory is not MISSING:
                 value = f.default_factory()
-            object.__setattr__(self, f.name, _as_scaler(value))
+            else:
+                continue
+            if f.name in scale_fields:
+                value = _as_scaler(value)
+            object.__setattr__(self, f.name, value)
 
     # ------------------------------------------------------------------
     # Axis-dimension properties. Subclass authors size their MLPs /
