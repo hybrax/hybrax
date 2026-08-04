@@ -322,3 +322,80 @@ def test_train_collection_checkpoint_params_reload(tmp_path: Path):
     for expected, actual in zip(trained, got):
         assert expected.shape == actual.shape
         assert jnp.allclose(expected, actual)
+
+
+# --- `latest` on filesystems that reject symlinks (SMB/NAS shares, WSL drvfs) -------------------
+
+
+def _write_step(root: Path, name: str) -> Path:
+    d = root / name
+    (d / "sub").mkdir(parents=True)
+    (d / "params.eqx").write_bytes(b"params-" + name.encode())
+    (d / "sub" / "nested.bin").write_bytes(b"nested-" + name.encode())
+    return d
+
+
+def _latest_of(root: Path) -> CheckpointWriter:
+    w = CheckpointWriter.__new__(CheckpointWriter)
+    w._dir = root
+    return w
+
+
+def test_update_latest_uses_a_symlink_when_the_filesystem_allows_it(tmp_path):
+    w = _latest_of(tmp_path)
+    w._update_latest(_write_step(tmp_path, "step_00100"))
+    assert (tmp_path / "latest").is_symlink()
+    assert (tmp_path / "latest").resolve().name == "step_00100"
+
+
+def test_update_latest_falls_back_to_a_copy_when_symlinks_are_refused(tmp_path, monkeypatch):
+    """SMB/NAS shares and WSL drvfs reject os.symlink. Training onto such a share must still work;
+    readers only ever touch `checkpoints/latest/params.eqx`, which resolves in both forms."""
+    monkeypatch.setattr(
+        "pathlib.Path.symlink_to",
+        lambda *a, **k: (_ for _ in ()).throw(OSError(1, "Operation not permitted")),
+    )
+    w = _latest_of(tmp_path)
+    w._update_latest(_write_step(tmp_path, "step_00100"))
+
+    latest = tmp_path / "latest"
+    assert latest.is_dir() and not latest.is_symlink()
+    assert (latest / "params.eqx").read_bytes() == b"params-step_00100"
+    assert (latest / "sub" / "nested.bin").read_bytes() == b"nested-step_00100"   # recurses
+
+
+def test_copy_fallback_is_replaced_not_merged_on_the_next_checkpoint(tmp_path, monkeypatch):
+    """A stale `latest` must be cleared, not written over — otherwise files from an older step
+    linger beside the new ones."""
+    monkeypatch.setattr(
+        "pathlib.Path.symlink_to",
+        lambda *a, **k: (_ for _ in ()).throw(OSError(1, "Operation not permitted")),
+    )
+    w = _latest_of(tmp_path)
+    w._update_latest(_write_step(tmp_path, "step_00100"))
+    (tmp_path / "latest" / "only_in_the_old_step.txt").write_text("stale")
+
+    w._update_latest(_write_step(tmp_path, "step_00200"))
+    latest = tmp_path / "latest"
+    assert (latest / "params.eqx").read_bytes() == b"params-step_00200"
+    assert not (latest / "only_in_the_old_step.txt").exists()
+
+
+def test_symlink_form_is_replaced_by_the_copy_form_and_vice_versa(tmp_path, monkeypatch):
+    """A directory that moved between filesystems (or a mount whose options changed) must not wedge
+    on `latest` already existing in the other form."""
+    w = _latest_of(tmp_path)
+    w._update_latest(_write_step(tmp_path, "step_00100"))          # symlink
+    assert (tmp_path / "latest").is_symlink()
+
+    monkeypatch.setattr(
+        "pathlib.Path.symlink_to",
+        lambda *a, **k: (_ for _ in ()).throw(OSError(1, "Operation not permitted")),
+    )
+    w._update_latest(_write_step(tmp_path, "step_00200"))          # -> copy
+    assert (tmp_path / "latest").is_dir() and not (tmp_path / "latest").is_symlink()
+
+    monkeypatch.undo()
+    w._update_latest(_write_step(tmp_path, "step_00300"))          # -> symlink again
+    assert (tmp_path / "latest").is_symlink()
+    assert (tmp_path / "latest").resolve().name == "step_00300"

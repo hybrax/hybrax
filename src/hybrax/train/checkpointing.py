@@ -121,7 +121,32 @@ class CheckpointWriter:
         return d
 
     def _update_latest(self, step_dir: Path) -> None:
+        """Point ``checkpoints/latest`` at the newest step.
+
+        A symlink where the filesystem supports one, a directory holding a COPY where it does not.
+        SMB/NAS shares and Windows-backed mounts (WSL drvfs/9p) reject ``os.symlink`` outright, and
+        training onto such a share is a normal deployment — the alternative is every fold dying with
+        ``PermissionError`` after the run has already done its work. Readers are unaffected either
+        way: ``checkpoints/latest/params.eqx`` resolves in both forms.
+        """
         link = self._dir / "latest"
-        if link.is_symlink() or link.exists():
+        if link.is_symlink() or link.is_file():
             link.unlink()
-        link.symlink_to(step_dir.name)
+        elif link.is_dir():
+            shutil.rmtree(link)
+        try:
+            link.symlink_to(step_dir.name)
+            return
+        except OSError:
+            pass
+        # Content-only copy. `shutil.copytree` is not usable here: it also replays permissions and
+        # mtimes via `copystat`, which those same filesystems reject, so it fails for a second and
+        # unrelated reason.
+        link.mkdir(parents=True, exist_ok=True)
+        for src in sorted(step_dir.rglob("*")):
+            dst = link / src.relative_to(step_dir)
+            if src.is_dir():
+                dst.mkdir(parents=True, exist_ok=True)
+            else:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
