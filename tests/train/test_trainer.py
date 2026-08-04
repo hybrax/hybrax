@@ -1081,3 +1081,135 @@ def test_affine_offset_cancels_from_measurement_loss():
     affine_loss = loss(affine)
     assert float(linear_loss) > 0.0  # nontrivial: prediction != measurements
     assert jnp.allclose(affine_loss, linear_loss, rtol=1e-5, atol=1e-7)
+
+
+def test_zero_offset_affine_matches_linear_through_differentiated_solve():
+    """A zero-offset `AffineScaler` is a drop-in for `LinearScaler` on a state axis,
+    through the differentiated solve and not merely for values.
+
+    This is the only test covering the traced vector field: `physical_solve.py` closes
+    `SCALE = ...SCALE_integrated_state.astype(dtype)` over the `ODETerm`, and because
+    the wrapper is the argument being differentiated, that offset is a *tracer*. The
+    Python branch in the value unscale is therefore unavailable and `yy * SCALE` selects
+    at runtime, whose reverse mode is a masked sum. Equality is asserted to a tight
+    tolerance rather than exactly: a zero-offset `AffineScaler` carries an extra array
+    leaf, so the two wrappers are different pytrees and fusion may legitimately reorder.
+
+    Know what this test does NOT do. With `b == 0` the affine and linear paths are
+    mathematically identical, so it cannot detect offset-semantics faults; an offset
+    leak into `_ConcatScaler.scale_derivative` was injected and passes here, and is
+    caught by `test_affine_offset_cancels_from_gradient_through_solve` instead. This
+    one exists for coverage of the traced path and as a regression net against gross
+    breakage of the drop-in claim. Not the guard for offset correctness.
+    """
+    linear, process_data = _build_wrapper_and_process()
+    RMC_scaler = linear.reaction_module.SCALE_modeled_RMCs
+    assert RMC_scaler.scale.shape == (1,), (
+        "must patch a non-zero-width axis, else the comparison is vacuous"
+    )
+    affine = eqx.tree_at(
+        lambda w: w.reaction_module.SCALE_modeled_RMCs,
+        linear,
+        AffineScaler(
+            scale=RMC_scaler.scale,
+            offset=jnp.zeros_like(RMC_scaler.scale),
+        ),
+    )
+    t_measured = clamp_padded_time_rows(
+        process_data.t_measured[None, :],
+        jnp.asarray([process_data.n_measured], dtype=jnp.int32),
+    )[0]
+
+    def loss(wrapper):
+        target_scaler = wrapper.reaction_module.SCALE_state[
+            wrapper.target_state_indices
+        ]
+        total, _ = _measurement_loss(
+            wrapper,
+            t_measured=t_measured,
+            SCL_target_measured=process_data.y_measured / target_scaler,
+            mask_measured=process_data.mask_measured,
+            n_measured=process_data.n_measured,
+            RAW_y0_measured=process_data.y0_measured,
+            jump_ts=process_data.controls.active_jump_ts,
+            max_solver_steps=100_000,
+            solver_rtol=1e-7,
+            solver_atol=1e-9,
+        )
+        return total
+
+    linear_loss, linear_grad = eqx.filter_value_and_grad(loss)(linear)
+    affine_loss, affine_grad = eqx.filter_value_and_grad(loss)(affine)
+
+    assert float(linear_loss) > 0.0  # nontrivial: prediction != measurements
+    assert jnp.allclose(affine_loss, linear_loss, rtol=1e-6, atol=1e-8)
+
+    # Compare the trainable leaves the two wrappers share. Gradients must be non-zero,
+    # or a masked-sum regression on the select would pass unnoticed.
+    for name in ("weight", "bias"):
+        linear_leaf = getattr(linear_grad.reaction_module.model, name)
+        affine_leaf = getattr(affine_grad.reaction_module.model, name)
+        assert bool(jnp.any(linear_leaf != 0.0)), (
+            f"gradient w.r.t. model.{name} is all zero -- comparison would be vacuous"
+        )
+        assert jnp.allclose(affine_leaf, linear_leaf, rtol=1e-6, atol=1e-8), (
+            f"zero-offset affine changed the gradient w.r.t. model.{name}"
+        )
+
+
+def test_affine_offset_cancels_from_gradient_through_solve():
+    """A non-zero offset shifts the state coordinate origin but must not reach any
+    derivative: `d((RAW - b)/s)/dt == (dRAW/dt)/s`, independent of `b`.
+
+    This is the load-bearing half of the pair. Unlike the zero-offset drop-in test, a
+    non-zero `b` makes the invariant substantive: any leak of the offset into the
+    derivative ops, or into the reverse-mode residual of the traced vector field, moves
+    this gradient. `_AuxReactionModule` emits `q=0` regardless of its input, so the
+    physical trajectory is genuinely offset-independent and the gradient w.r.t. the raw
+    initial condition must match exactly the same way the forward loss does.
+    """
+    linear, process_data = _build_wrapper_and_process(_AuxReactionModule)
+    RMC_scaler = linear.reaction_module.SCALE_modeled_RMCs
+    affine = eqx.tree_at(
+        lambda w: w.reaction_module.SCALE_modeled_RMCs,
+        linear,
+        AffineScaler(
+            scale=RMC_scaler.scale,
+            offset=jnp.asarray([10.0], dtype=RMC_scaler.scale.dtype),
+        ),
+    )
+    t_measured = clamp_padded_time_rows(
+        process_data.t_measured[None, :],
+        jnp.asarray([process_data.n_measured], dtype=jnp.int32),
+    )[0]
+
+    def loss(wrapper, RAW_y0_measured):
+        target_scaler = wrapper.reaction_module.SCALE_state[
+            wrapper.target_state_indices
+        ]
+        total, _ = _measurement_loss(
+            wrapper,
+            t_measured=t_measured,
+            SCL_target_measured=process_data.y_measured / target_scaler,
+            mask_measured=process_data.mask_measured,
+            n_measured=process_data.n_measured,
+            RAW_y0_measured=RAW_y0_measured,
+            jump_ts=process_data.controls.active_jump_ts,
+            max_solver_steps=100_000,
+            solver_rtol=1e-7,
+            solver_atol=1e-9,
+        )
+        return total
+
+    # Differentiate w.r.t. the raw initial condition: a leaf both wrappers share
+    # identically, so the two gradients are directly comparable pytrees.
+    grad_fn = jax.grad(loss, argnums=1)
+    linear_grad = grad_fn(linear, process_data.y0_measured)
+    affine_grad = grad_fn(affine, process_data.y0_measured)
+
+    assert bool(jnp.any(linear_grad != 0.0)), (
+        "gradient w.r.t. RAW y0 is all zero -- comparison would be vacuous"
+    )
+    assert jnp.allclose(affine_grad, linear_grad, rtol=1e-6, atol=1e-8), (
+        "a non-zero affine offset leaked into a derivative"
+    )
