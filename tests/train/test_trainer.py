@@ -21,6 +21,7 @@ from bp_format.mechanistic import build_rhs_ode
 import bp_train.trainer as trainer_module
 from bp_train.physical_solve import solve_physical_states
 from bp_train.model_api import (
+    AffineScaler,
     LossInputs,
     LossOutputs,
     ReactionOutputs,
@@ -1038,3 +1039,45 @@ def test_fail_time_export_marks_mid_trajectory_failure_nonfinite():
         "fail_time is the last successfully-reached node"
     )
     assert bool(jnp.all(jnp.isfinite(loss_states))), "loss-facing states stay finite"
+
+
+def test_affine_offset_cancels_from_measurement_loss():
+    # Test 3: same physical prediction/measurement residual with b=0 vs b!=0.
+    # _AuxReactionModule emits q=0 independent of its input, so both wrappers
+    # have the same physical trajectory; only the state coordinate origin differs.
+    linear, process_data = _build_wrapper_and_process(_AuxReactionModule)
+    affine = eqx.tree_at(
+        lambda w: w.reaction_module.SCALE_modeled_RMCs,
+        linear,
+        AffineScaler(
+            scale=linear.reaction_module.SCALE_modeled_RMCs.scale,
+            offset=jnp.asarray([10.0], dtype=jnp.float32),
+        ),
+    )
+    t_measured = clamp_padded_time_rows(
+        process_data.t_measured[None, :],
+        jnp.asarray([process_data.n_measured], dtype=jnp.int32),
+    )[0]
+
+    def loss(wrapper):
+        target_scaler = wrapper.reaction_module.SCALE_state[
+            wrapper.target_state_indices
+        ]
+        total, _ = _measurement_loss(
+            wrapper,
+            t_measured=t_measured,
+            SCL_target_measured=process_data.y_measured / target_scaler,
+            mask_measured=process_data.mask_measured,
+            n_measured=process_data.n_measured,
+            RAW_y0_measured=process_data.y0_measured,
+            jump_ts=process_data.controls.active_jump_ts,
+            max_solver_steps=100_000,
+            solver_rtol=1e-7,
+            solver_atol=1e-9,
+        )
+        return total
+
+    linear_loss = loss(linear)
+    affine_loss = loss(affine)
+    assert float(linear_loss) > 0.0  # nontrivial: prediction != measurements
+    assert jnp.allclose(affine_loss, linear_loss, rtol=1e-5, atol=1e-7)

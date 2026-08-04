@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import MISSING, dataclass, field, fields
+from typing import TYPE_CHECKING, Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 
 
 TRAINABLE_METADATA_KEY = "bp_train_trainable"
@@ -94,6 +95,408 @@ def partition_trainable(module: eqx.Module) -> tuple[eqx.Module, eqx.Module]:
     ``trainable_field()`` leaves and every other leaf stays frozen.
     """
     return _partition_trainable_from_metadata(module)
+
+
+# ---------------------------------------------------------------------------
+# Scalers: RAW <-> SCL transforms, one per semantic axis. Frozen, never trained.
+# ---------------------------------------------------------------------------
+
+
+def _offset_is_nonzero(offset: jax.Array) -> bool | None:
+    """Return a concrete offset predicate, or ``None`` for a traced offset.
+
+    NumPy is intentional: JAX operations stage even on a concrete array closed
+    over by ``jit``, while ``np.asarray`` yields a Python decision for that
+    normal library path. A genuinely dynamic offset rejects NumPy conversion;
+    callers then use a runtime ``jnp.where`` so one compiled function handles
+    both zero and non-zero replacements.
+    """
+    try:
+        return bool(np.any(np.asarray(offset) != 0))
+    except jax.errors.TracerArrayConversionError:
+        return None
+
+
+def _scale_with_optional_offset(
+    RAW: jax.Array,
+    scale: jax.Array,
+    offset: jax.Array,
+    *,
+    offset_flag: bool | None,
+) -> jax.Array:
+    """Subtract a concrete offset branch, or select for a traced offset."""
+    # Do not touch `offset` on the false branch: a wider zero offset would
+    # promote the result dtype despite being numerically inactive.
+    if offset_flag is False:
+        return RAW / scale
+    if offset_flag is True:
+        return (RAW - offset) / scale
+    # Both signs of zero matter, so unknown offsets need selection in both
+    # directions: x+(+0) flips -0, x+(-0) preserves it; x-(+0) preserves -0,
+    # x-(-0) flips it.
+    centered = jnp.where(jnp.any(offset != 0), RAW - offset, RAW)
+    return centered / scale
+
+
+def _unscale_with_optional_offset(
+    SCL: jax.Array,
+    scale: jax.Array,
+    offset: jax.Array,
+    *,
+    offset_flag: bool | None,
+) -> jax.Array:
+    """Add a concrete offset branch, or select for a traced offset."""
+    unscaled = SCL * scale
+    if offset_flag is False:
+        return unscaled
+    if offset_flag is True:
+        return unscaled + offset
+    return jnp.where(jnp.any(offset != 0), unscaled + offset, unscaled)
+
+
+class Scaler(eqx.Module):
+    """RAW <-> SCL transform for one semantic axis. Frozen, never trained.
+
+    A scaler encodes the reparametrisation between RAW physical space and the
+    SCL space the ODE solver integrates in. The default and overwhelmingly
+    common case is pure division (``LinearScaler``); ``AffineScaler`` adds an
+    offset (``SCL = (RAW - b) / s``) as an opt-in via the ``estimate_all_scales``
+    hook return value.
+
+    Two operation kinds are named explicitly because they diverge once an
+    offset exists. **Value** ops (``RAW / scaler``, ``SCL * scaler``) map a
+    quantity and its time-derivative identically under pure division, but under
+    an affine transform the value subtracts the offset and the derivative does
+    not (``d((RAW-b)/s)/dt = (dRAW/dt)/s``). Subtracting the offset from a
+    derivative is a silent, green-suite ODE-RHS corruption, so the derivative
+    ops are separate and must be called by name at every derivative site.
+
+    Value ops are exposed via the dunders ``__rtruediv__`` (``RAW / scaler``
+    -> SCL) and ``__rmul__`` (``SCL * scaler`` -> RAW); there is deliberately
+    no ``__truediv__`` / ``__mul__``, so ``scaler / x`` and ``scaler * x`` raise
+    ``TypeError`` loudly. Derivative ops (:meth:`scale_derivative` /
+    :meth:`unscale_derivative`) are offset-free and named, so a derivative site
+    cannot accidentally pick up a value transform through ``/`` or ``*`` — it
+    must call the method by name. A scaler is **not** silently array-coercible:
+    its rejecting ``__array__`` and NumPy dispatch guards make
+    ``jnp.asarray(scaler)`` / ``np.asarray(scaler)`` raise, so every coercion
+    site is a loud ``TypeError`` that must become an explicit ``.scale`` /
+    ``.astype`` access (the one library coercion site is ``physical_solve.py``).
+    """
+
+    __array_priority__ = 1000
+    __array_ufunc__ = None
+
+    def __array__(self, dtype=None):
+        del dtype
+        raise TypeError("A Scaler cannot be coerced to a NumPy array")
+
+    def scale_value(self, RAW: jax.Array) -> jax.Array:
+        """RAW -> SCL for a value without reversed-operator dispatch."""
+        return self.__rtruediv__(jnp.asarray(RAW))
+
+    def unscale_value(self, SCL: jax.Array) -> jax.Array:
+        """SCL -> RAW for a value without reversed-operator dispatch."""
+        return self.__rmul__(jnp.asarray(SCL))
+
+    # Value ops: RAW / scaler -> SCL, SCL * scaler -> RAW.
+    def __rtruediv__(self, RAW: jax.Array) -> jax.Array:
+        """RAW -> SCL for a VALUE (``RAW / scaler``)."""
+        raise NotImplementedError
+
+    def __rmul__(self, SCL: jax.Array) -> jax.Array:
+        """SCL -> RAW for a VALUE (``SCL * scaler``)."""
+        raise NotImplementedError
+
+    def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
+        """RAW rate -> SCL rate (offset-free; ``d((RAW-b)/s)/dt = (dRAW/dt)/s``)."""
+        raise NotImplementedError
+
+    def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
+        """SCL rate -> RAW rate (offset-free)."""
+        raise NotImplementedError
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Array shape of one element on this axis (NOT a scalar ``width``).
+
+        Axes are not all 1-D: ``V_in_cumulative`` is scalar ``()``, the two
+        ``*_Cin`` axes are 2-D ``(n_FVCs, n_RMCs)``, and several axes are
+        legitimately zero-width.
+        """
+        raise NotImplementedError
+
+    # Static contract for elementwise composition. Type-only so concrete eqx
+    # modules can store ``scale`` / ``offset`` as fields (a runtime @property
+    # here would block those field assignments). ``_ConcatScaler.__init__``
+    # validates the contract loudly at runtime.
+    if TYPE_CHECKING:
+        scale: jax.Array
+        offset: jax.Array
+
+    def astype(self, dtype: jnp.dtype) -> "Scaler":
+        """Return a scaler with the underlying arrays cast to ``dtype``."""
+        raise NotImplementedError
+
+    def __getitem__(self, idx) -> "Scaler":
+        """Sub-scaler by index (state target subsetting; value semantics)."""
+        raise NotImplementedError
+
+    # Deliberately NO __truediv__ / __mul__: see class docstring.
+
+
+class LinearScaler(Scaler):
+    """Pure-division scaler: ``SCL = RAW / s``. The default.
+
+    Value (``__rtruediv__`` / ``__rmul__``) and derivative ops are all ``/s`` or
+    ``*s``, so this is bit-identical to the pre-scaler ``RAW / SCALE`` /
+    ``SCL * SCALE`` by construction. The underlying array (``.scale``) is
+    stored verbatim — no dtype normalisation or unification — so
+    ``jnp.concatenate`` promotion over composed state axes is reproduced
+    exactly (a zero-width float64 axis still promotes the concat to float64).
+    """
+
+    scale: jax.Array = frozen_field()
+
+    def __init__(self, scale: jax.Array):
+        if not hasattr(scale, "shape") or not hasattr(scale, "dtype"):
+            raise TypeError("LinearScaler.scale must be a JAX/NumPy array")
+        self.scale = scale
+
+    def __rtruediv__(self, RAW: jax.Array) -> jax.Array:
+        if isinstance(RAW, np.ndarray):
+            raise TypeError("Use Scaler.scale_value() for NumPy arrays")
+        return RAW / self.scale
+
+    def __rmul__(self, SCL: jax.Array) -> jax.Array:
+        return SCL * self.scale
+
+    def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
+        return RAW_rate / self.scale
+
+    def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
+        return SCL_rate * self.scale
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return tuple(self.scale.shape)
+
+    @property
+    def offset(self) -> jax.Array:
+        return jnp.zeros_like(self.scale)
+
+    def astype(self, dtype: jnp.dtype) -> "LinearScaler":
+        return LinearScaler(jnp.asarray(self.scale, dtype=dtype))
+
+    def __getitem__(self, idx) -> "LinearScaler":
+        return LinearScaler(self.scale[idx])
+
+
+class AffineScaler(Scaler):
+    """Affine scaler: ``SCL = (RAW - b) / s``. Opt-in via the hook return value.
+
+    Value ops subtract the offset (``RAW / scaler`` → ``(RAW - b)/s``;
+    ``SCL * scaler`` → ``SCL * s + b``); derivative ops are offset-free
+    (``/s`` and ``*s``), because ``d((RAW-b)/s)/dt = (dRAW/dt)/s``. This
+    divergence is the whole point of the explicit derivative ops — a value
+    ``/`` applied to a rate would silently inject ``-b/s`` into the ODE RHS.
+
+    The default path never constructs this; a user opts in by returning an
+    ``AffineScaler`` for one axis from ``estimate_all_scales``. Offsets are
+    meaningful only on VALUE axes — the harness rejects a non-zero offset on
+    the three rate axes. Closed-over concrete zero offsets retain
+    ``LinearScaler`` bit identity through reverse-mode training. A genuinely
+    dynamic traced offset uses runtime selection: values retain signed-zero
+    identity, but reverse-mode signed-zero identity is not guaranteed. The same
+    limitation applies when a bare ``AffineScaler.astype`` stages a real cast
+    inside a trace; composed state-scaler casts preserve their concrete branch.
+    """
+
+    scale: jax.Array = frozen_field()
+    offset: jax.Array = frozen_field()
+
+    def __init__(self, scale: jax.Array, offset: jax.Array):
+        # Preserve user dtypes exactly; broadcast only (incompatible shapes
+        # raise loudly). Rate-axis non-zero-offset rejection lives at the
+        # wrapper boundary, where the semantic axis name is known.
+        if not hasattr(scale, "shape") or not hasattr(scale, "dtype"):
+            raise TypeError("AffineScaler.scale must be a JAX/NumPy array")
+        if not hasattr(offset, "shape") or not hasattr(offset, "dtype"):
+            raise TypeError("AffineScaler.offset must be a JAX/NumPy array")
+        self.scale = scale
+        self.offset = jnp.broadcast_to(offset, scale.shape)
+
+    def __rtruediv__(self, RAW: jax.Array) -> jax.Array:
+        if isinstance(RAW, np.ndarray):
+            raise TypeError("Use Scaler.scale_value() for NumPy arrays")
+        return _scale_with_optional_offset(
+            RAW,
+            self.scale,
+            self.offset,
+            offset_flag=_offset_is_nonzero(self.offset),
+        )
+
+    def __rmul__(self, SCL: jax.Array) -> jax.Array:
+        return _unscale_with_optional_offset(
+            SCL,
+            self.scale,
+            self.offset,
+            offset_flag=_offset_is_nonzero(self.offset),
+        )
+
+    def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
+        return RAW_rate / self.scale
+
+    def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
+        return SCL_rate * self.scale
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return tuple(self.scale.shape)
+
+    def astype(self, dtype: jnp.dtype) -> "AffineScaler":
+        return AffineScaler(
+            jnp.asarray(self.scale, dtype=dtype),
+            jnp.asarray(self.offset, dtype=dtype),
+        )
+
+    def __getitem__(self, idx) -> "AffineScaler":
+        return AffineScaler(self.scale[idx], self.offset[idx])
+
+
+class _ConcatScaler(Scaler):
+    """Composed state scaler: concatenates per-axis scalers in a fixed layout.
+
+    Used for ``SCALE_state`` / ``SCALE_integrated_state``. Restricted to
+    elementwise scalers (``LinearScaler`` / ``AffineScaler``) so composition is
+    ``concat(scale_i)`` / ``concat(offset_i)`` and ``__getitem__`` is
+    ``Scaler(arr[idx])``. Zero-width parts are preserved in the concat to
+    reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter them
+    (a zero-width float64 axis drives the state dtype in 9/10 examples;
+    dropping it would silently change loss precision).
+    """
+
+    parts: tuple[Scaler, ...]
+    _scale_c: jax.Array
+    _offset_c: jax.Array
+    _offset_flag: bool | None = eqx.field(static=True)
+
+    def __init__(
+        self,
+        *parts: Scaler,
+        _offset_flag_hint: bool | None = None,
+    ):
+        for part in parts:
+            if type(part) not in (LinearScaler, AffineScaler, _ConcatScaler):
+                raise TypeError(
+                    "State scaler composition supports exact LinearScaler, "
+                    "AffineScaler, or _ConcatScaler; got "
+                    f"{type(part).__name__}"
+                )
+        self.parts = tuple(parts)
+        self._scale_c = jnp.concatenate([jnp.atleast_1d(p.scale) for p in parts])
+        self._offset_c = jnp.concatenate([jnp.atleast_1d(p.offset) for p in parts])
+        # Derive from child leaves, not `_offset_c`: concatenation stages inside
+        # `jit` even when every child leaf is a concrete closed-over constant.
+        # This concat is rebuilt from current module leaves on every property
+        # access, so `eqx.tree_at` offset replacements cannot stale the flag.
+        flags = [
+            p._offset_flag if type(p) is _ConcatScaler else _offset_is_nonzero(p.offset)
+            for p in parts
+            if type(p) is not LinearScaler
+        ]
+        derived_flag = (
+            True
+            if any(flag is True for flag in flags)
+            else None
+            if None in flags
+            else False
+        )
+        self._offset_flag = (
+            derived_flag if _offset_flag_hint is None else _offset_flag_hint
+        )
+
+    @property
+    def _scale_arr(self) -> jax.Array:
+        return self._scale_c
+
+    @property
+    def _offset_arr(self) -> jax.Array:
+        return self._offset_c
+
+    @property
+    def _has_offset(self) -> bool:
+        return self._offset_flag is not False
+
+    @property
+    def scale(self) -> jax.Array:
+        """Composed scale array (concat of parts; greppable, like LinearScaler)."""
+        return self._scale_arr
+
+    @property
+    def offset(self) -> jax.Array:
+        """Composed offset array (concat of parts)."""
+        return self._offset_arr
+
+    def __rtruediv__(self, RAW: jax.Array) -> jax.Array:
+        if isinstance(RAW, np.ndarray):
+            raise TypeError("Use Scaler.scale_value() for NumPy arrays")
+        # Keep all-linear default op-for-op RAW / scale (no extra -0).
+        return _scale_with_optional_offset(
+            RAW,
+            self._scale_arr,
+            self._offset_arr,
+            offset_flag=self._offset_flag,
+        )
+
+    def __rmul__(self, SCL: jax.Array) -> jax.Array:
+        # Keep all-linear default op-for-op SCL * scale. Adding +0 flips the
+        # sign of -0.0 and is therefore NOT bit-identical.
+        return _unscale_with_optional_offset(
+            SCL,
+            self._scale_arr,
+            self._offset_arr,
+            offset_flag=self._offset_flag,
+        )
+
+    def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
+        return RAW_rate / self._scale_arr
+
+    def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
+        return SCL_rate * self._scale_arr
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return tuple(self._scale_c.shape)
+
+    def astype(self, dtype: jnp.dtype) -> "_ConcatScaler":
+        # A real cast stages child arrays inside `jit`; carry this transient
+        # concat's already-live predicate across rather than degrading it to
+        # the traced (`None`) fallback. `_ConcatScaler` is rebuilt from current
+        # public module leaves before this cast, so the hint cannot be stale.
+        return _ConcatScaler(
+            *(p.astype(dtype) for p in self.parts),
+            _offset_flag_hint=self._offset_flag,
+        )
+
+    def __getitem__(self, idx):
+        if self._has_offset:
+            return AffineScaler(self._scale_arr[idx], self._offset_arr[idx])
+        return LinearScaler(self._scale_arr[idx])
+
+
+def _as_scaler(value: jax.Array | Scaler) -> Scaler:
+    """Promote a bare array to ``LinearScaler``; pass a ``Scaler`` through.
+
+    The ``estimate_all_scales`` hook and the no-hook defaults both return bare
+    arrays (the 21 live+frozen hooks keep doing so); this promotes them to
+    ``LinearScaler`` so the default path is pure division, bit-identical to the
+    pre-scaler code. A hook opts into affine scaling by returning a ``Scaler``
+    (e.g. ``AffineScaler``) for the axis it wants to transform.
+    """
+    if isinstance(value, Scaler):
+        return value
+    return LinearScaler(value)
 
 
 # ---------------------------------------------------------------------------
@@ -188,21 +591,27 @@ class EstimatedScales:
     The harness unpacks these into ``build_reaction_module`` kwargs and the
     constructed module stores them as frozen fields. Together they cover every
     semantic axis the module / wrapper / trainer needs to scale.
+
+    Fields accept a bare ``jax.Array`` (promoted to ``LinearScaler`` by the
+    harness — the default, bit-identical to pure division) **or** a ``Scaler``
+    (e.g. ``AffineScaler`` to opt into affine scaling for one axis). Hooks keep
+    returning arrays for zero-edit compatibility; a hook opts in by returning a
+    ``Scaler`` for the axis it wants to transform.
     """
 
-    SCALE_modeled_RMCs: jax.Array
-    SCALE_V_in_cumulative: jax.Array
-    SCALE_modeled_FVCs_cumulative: jax.Array
-    SCALE_controlled_FVCs_cumulative: jax.Array
-    SCALE_controlled_FVCs_rates: jax.Array
-    SCALE_controlled_FVCs_Cin: jax.Array
-    SCALE_controlled_PVs: jax.Array
-    SCALE_modeled_FVCs_Cin: jax.Array
-    SCALE_modeled_BiologicalOde_rates: jax.Array
-    SCALE_modeled_FVCs_rates: jax.Array
+    SCALE_modeled_RMCs: jax.Array | Scaler
+    SCALE_V_in_cumulative: jax.Array | Scaler
+    SCALE_modeled_FVCs_cumulative: jax.Array | Scaler
+    SCALE_controlled_FVCs_cumulative: jax.Array | Scaler
+    SCALE_controlled_FVCs_rates: jax.Array | Scaler
+    SCALE_controlled_FVCs_Cin: jax.Array | Scaler
+    SCALE_controlled_PVs: jax.Array | Scaler
+    SCALE_modeled_FVCs_Cin: jax.Array | Scaler
+    SCALE_modeled_BiologicalOde_rates: jax.Array | Scaler
+    SCALE_modeled_FVCs_rates: jax.Array | Scaler
     # Defaults to empty (no modeled PVs); processes with uncontrolled,
     # dynamic process variables supply a real (n_modeled_PVs,) scale.
-    SCALE_modeled_PVs: jax.Array = field(
+    SCALE_modeled_PVs: jax.Array | Scaler = field(
         default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
     )
 
@@ -215,11 +624,18 @@ class UserReactionModule(eqx.Module):
     the trainer reads ``SCALE_state`` to convert measurements to SCL space.
 
     Subclasses inherit the scale fields below — they do NOT redeclare them;
-    instead they pass values to ``super().__init__(**scale_kwargs)``.
+    instead they pass values to ``super().__init__(**scale_kwargs)``. Each
+    ``SCALE_*`` field holds a :class:`Scaler` (frozen, never trained); the
+    harness promotes bare arrays from the ``estimate_all_scales`` hook to
+    :class:`LinearScaler` so the default path is pure division.
 
-    The ``scale_*`` / ``unscale_*`` helpers below are linear and work
-    identically for state values AND state derivatives (since
-    ``d(x/k)/dt = (dx/dt)/k`` for constant ``k``).
+    Most ``scale_*`` / ``unscale_*`` helpers below operate on VALUES. The three
+    ``*_rates`` helper pairs use derivative semantics. Under pure division
+    (``LinearScaler``) a value and its time-derivative scale identically, but
+    that interchangeability is NOT general: under an affine transform the
+    derivative must NOT subtract the offset (``d((RAW-b)/s)/dt = (dRAW/dt)/s``).
+    ``wrapper.py`` unscales the reaction module's latent derivative;
+    ``physical_solve.py`` then scales the full RAW ODE derivative.
     """
 
     # SCALE_* fields default to zero-sized placeholders so subclasses can be
@@ -227,42 +643,73 @@ class UserReactionModule(eqx.Module):
     # ``HybridOdeWrapper`` constructor validates per-axis shapes; supplying
     # real values via ``estimate_all_scales`` / ``super().__init__(**kwargs)``
     # is the production path.
-    SCALE_modeled_RMCs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_modeled_RMCs: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_modeled_PVs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_modeled_PVs: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_V_in_cumulative: jax.Array = frozen_field(
-        default_factory=lambda: jnp.asarray(1.0, dtype=jnp.float64)
+    SCALE_V_in_cumulative: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.asarray(1.0, dtype=jnp.float64))
     )
-    SCALE_modeled_FVCs_cumulative: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_modeled_FVCs_cumulative: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_controlled_FVCs_cumulative: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_controlled_FVCs_cumulative: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_controlled_FVCs_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_controlled_FVCs_rates: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_controlled_FVCs_Cin: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float64)
+    SCALE_controlled_FVCs_Cin: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros((0, 0), dtype=jnp.float64))
     )
-    SCALE_controlled_PVs: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_controlled_PVs: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_modeled_FVCs_Cin: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=jnp.float64)
+    SCALE_modeled_FVCs_Cin: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros((0, 0), dtype=jnp.float64))
     )
-    SCALE_modeled_BiologicalOde_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_modeled_BiologicalOde_rates: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_modeled_FVCs_rates: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_modeled_FVCs_rates: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
-    SCALE_latent: jax.Array = frozen_field(
-        default_factory=lambda: jnp.zeros(0, dtype=jnp.float64)
+    SCALE_latent: Scaler = frozen_field(
+        default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Set base scale fields (applying defaults); promote bare arrays.
+
+        The module is the single source of truth for scales, so it normalizes
+        whatever it receives — a bare array becomes ``LinearScaler``; a
+        ``Scaler`` passes through. Unknown keywords raise immediately (a scale
+        typo must never silently fall back to the default). Declared subclass
+        fields are accepted and their defaults are applied; required fields
+        remain available for custom subclass constructors to set after
+        ``super().__init__()``.
+        """
+        module_fields = {f.name: f for f in fields(type(self))}
+        scale_fields = {f.name for f in fields(UserReactionModule)}
+        unknown = sorted(set(kwargs) - set(module_fields))
+        if unknown:
+            raise TypeError(
+                f"Unknown UserReactionModule field(s): {', '.join(unknown)}"
+            )
+        for f in module_fields.values():
+            if f.name in kwargs:
+                value = kwargs[f.name]
+            elif f.default is not MISSING:
+                value = f.default
+            elif f.default_factory is not MISSING:
+                value = f.default_factory()
+            else:
+                continue
+            if f.name in scale_fields:
+                value = _as_scaler(value)
+            object.__setattr__(self, f.name, value)
 
     # ------------------------------------------------------------------
     # Axis-dimension properties. Subclass authors size their MLPs /
@@ -306,29 +753,29 @@ class UserReactionModule(eqx.Module):
         return int(self.SCALE_latent.shape[0])
 
     @property
-    def SCALE_state(self) -> jax.Array:
-        """Concatenated physical state-scale.
+    def SCALE_state(self) -> Scaler:
+        """Composed state scaler.
 
         Layout: ``[modeled_RMCs | modeled_PVs | V | modeled_FVCs_cumulative]``.
+        Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
+        reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter.
         """
-        return jnp.concatenate(
-            [
-                self.SCALE_modeled_RMCs,
-                self.SCALE_modeled_PVs,
-                jnp.atleast_1d(self.SCALE_V_in_cumulative),
-                self.SCALE_modeled_FVCs_cumulative,
-            ]
+        return _ConcatScaler(
+            self.SCALE_modeled_RMCs,
+            self.SCALE_modeled_PVs,
+            self.SCALE_V_in_cumulative,
+            self.SCALE_modeled_FVCs_cumulative,
         )
 
     @property
-    def SCALE_modeled_V(self) -> jax.Array:
+    def SCALE_modeled_V(self) -> Scaler:
         """Real-volume scale shares the V_in_cumulative scale (same units, L)."""
         return self.SCALE_V_in_cumulative
 
     @property
-    def SCALE_integrated_state(self) -> jax.Array:
-        """State scale used by the ODE solver, including trailing latent state."""
-        return jnp.concatenate([self.SCALE_state, self.SCALE_latent])
+    def SCALE_integrated_state(self) -> Scaler:
+        """State scaler used by the ODE solver, incl. trailing latent state."""
+        return _ConcatScaler(self.SCALE_state, self.SCALE_latent)
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         """Override. Inputs in SCL space; return rates in SCL space.
@@ -353,93 +800,110 @@ class UserReactionModule(eqx.Module):
         return jnp.zeros(self.n_latent, dtype=jnp.asarray(RAW_phys_y0).dtype)
 
     # ------------------------------------------------------------------
-    # Linear scale/unscale helpers. Argument-name suffix matches method name.
-    # Work for state values AND state derivatives identically.
+    # Value scale/unscale helpers (all except ``*_rates``) operate on VALUES.
+    # The three rate helper pairs use ``Scaler.scale_derivative`` /
+    # ``unscale_derivative`` (offset-free).
     # ------------------------------------------------------------------
 
     def scale_state(self, RAW_state):
-        return RAW_state / self.SCALE_state
+        return self.SCALE_state.scale_value(RAW_state)
 
     def unscale_state(self, SCL_state):
-        return SCL_state * self.SCALE_state
+        return self.SCALE_state.unscale_value(SCL_state)
 
     def scale_latent(self, RAW_latent):
-        return RAW_latent / self.SCALE_latent
+        return self.SCALE_latent.scale_value(RAW_latent)
 
     def unscale_latent(self, SCL_latent):
-        return SCL_latent * self.SCALE_latent
+        return self.SCALE_latent.unscale_value(SCL_latent)
 
     def scale_modeled_RMCs(self, RAW_modeled_RMCs):
-        return RAW_modeled_RMCs / self.SCALE_modeled_RMCs
+        return self.SCALE_modeled_RMCs.scale_value(RAW_modeled_RMCs)
 
     def unscale_modeled_RMCs(self, SCL_modeled_RMCs):
-        return SCL_modeled_RMCs * self.SCALE_modeled_RMCs
+        return self.SCALE_modeled_RMCs.unscale_value(SCL_modeled_RMCs)
 
     def scale_modeled_PVs(self, RAW_modeled_PVs):
-        return RAW_modeled_PVs / self.SCALE_modeled_PVs
+        return self.SCALE_modeled_PVs.scale_value(RAW_modeled_PVs)
 
     def unscale_modeled_PVs(self, SCL_modeled_PVs):
-        return SCL_modeled_PVs * self.SCALE_modeled_PVs
+        return self.SCALE_modeled_PVs.unscale_value(SCL_modeled_PVs)
 
     def scale_modeled_V(self, RAW_modeled_V):
-        return RAW_modeled_V / self.SCALE_modeled_V
+        return self.SCALE_modeled_V.scale_value(RAW_modeled_V)
 
     def unscale_modeled_V(self, SCL_modeled_V):
-        return SCL_modeled_V * self.SCALE_modeled_V
+        return self.SCALE_modeled_V.unscale_value(SCL_modeled_V)
 
     def scale_V_in_cumulative(self, RAW_V_in_cumulative):
-        return RAW_V_in_cumulative / self.SCALE_V_in_cumulative
+        return self.SCALE_V_in_cumulative.scale_value(RAW_V_in_cumulative)
 
     def unscale_V_in_cumulative(self, SCL_V_in_cumulative):
-        return SCL_V_in_cumulative * self.SCALE_V_in_cumulative
+        return self.SCALE_V_in_cumulative.unscale_value(SCL_V_in_cumulative)
 
     def scale_modeled_FVCs_cumulative(self, RAW_modeled_FVCs_cumulative):
-        return RAW_modeled_FVCs_cumulative / self.SCALE_modeled_FVCs_cumulative
+        return self.SCALE_modeled_FVCs_cumulative.scale_value(
+            RAW_modeled_FVCs_cumulative
+        )
 
     def unscale_modeled_FVCs_cumulative(self, SCL_modeled_FVCs_cumulative):
-        return SCL_modeled_FVCs_cumulative * self.SCALE_modeled_FVCs_cumulative
+        return self.SCALE_modeled_FVCs_cumulative.unscale_value(
+            SCL_modeled_FVCs_cumulative
+        )
 
     def scale_controlled_FVCs_cumulative(self, RAW_controlled_FVCs_cumulative):
-        return RAW_controlled_FVCs_cumulative / self.SCALE_controlled_FVCs_cumulative
+        return self.SCALE_controlled_FVCs_cumulative.scale_value(
+            RAW_controlled_FVCs_cumulative
+        )
 
     def unscale_controlled_FVCs_cumulative(self, SCL_controlled_FVCs_cumulative):
-        return SCL_controlled_FVCs_cumulative * self.SCALE_controlled_FVCs_cumulative
+        return self.SCALE_controlled_FVCs_cumulative.unscale_value(
+            SCL_controlled_FVCs_cumulative
+        )
 
     def scale_controlled_FVCs_rates(self, RAW_controlled_FVCs_rates):
-        return RAW_controlled_FVCs_rates / self.SCALE_controlled_FVCs_rates
+        return self.SCALE_controlled_FVCs_rates.scale_derivative(
+            RAW_controlled_FVCs_rates
+        )
 
     def unscale_controlled_FVCs_rates(self, SCL_controlled_FVCs_rates):
-        return SCL_controlled_FVCs_rates * self.SCALE_controlled_FVCs_rates
+        return self.SCALE_controlled_FVCs_rates.unscale_derivative(
+            SCL_controlled_FVCs_rates
+        )
 
     def scale_controlled_FVCs_Cin(self, RAW_controlled_FVCs_Cin):
-        return RAW_controlled_FVCs_Cin / self.SCALE_controlled_FVCs_Cin
+        return self.SCALE_controlled_FVCs_Cin.scale_value(RAW_controlled_FVCs_Cin)
 
     def unscale_controlled_FVCs_Cin(self, SCL_controlled_FVCs_Cin):
-        return SCL_controlled_FVCs_Cin * self.SCALE_controlled_FVCs_Cin
+        return self.SCALE_controlled_FVCs_Cin.unscale_value(SCL_controlled_FVCs_Cin)
 
     def scale_controlled_PVs(self, RAW_controlled_PVs):
-        return RAW_controlled_PVs / self.SCALE_controlled_PVs
+        return self.SCALE_controlled_PVs.scale_value(RAW_controlled_PVs)
 
     def unscale_controlled_PVs(self, SCL_controlled_PVs):
-        return SCL_controlled_PVs * self.SCALE_controlled_PVs
+        return self.SCALE_controlled_PVs.unscale_value(SCL_controlled_PVs)
 
     def scale_modeled_FVCs_Cin(self, RAW_modeled_FVCs_Cin):
-        return RAW_modeled_FVCs_Cin / self.SCALE_modeled_FVCs_Cin
+        return self.SCALE_modeled_FVCs_Cin.scale_value(RAW_modeled_FVCs_Cin)
 
     def unscale_modeled_FVCs_Cin(self, SCL_modeled_FVCs_Cin):
-        return SCL_modeled_FVCs_Cin * self.SCALE_modeled_FVCs_Cin
+        return self.SCALE_modeled_FVCs_Cin.unscale_value(SCL_modeled_FVCs_Cin)
 
     def scale_modeled_BiologicalOde_rates(self, RAW_modeled_BiologicalOde_rates):
-        return RAW_modeled_BiologicalOde_rates / self.SCALE_modeled_BiologicalOde_rates
+        return self.SCALE_modeled_BiologicalOde_rates.scale_derivative(
+            RAW_modeled_BiologicalOde_rates
+        )
 
     def unscale_modeled_BiologicalOde_rates(self, SCL_modeled_BiologicalOde_rates):
-        return SCL_modeled_BiologicalOde_rates * self.SCALE_modeled_BiologicalOde_rates
+        return self.SCALE_modeled_BiologicalOde_rates.unscale_derivative(
+            SCL_modeled_BiologicalOde_rates
+        )
 
     def scale_modeled_FVCs_rates(self, RAW_modeled_FVCs_rates):
-        return RAW_modeled_FVCs_rates / self.SCALE_modeled_FVCs_rates
+        return self.SCALE_modeled_FVCs_rates.scale_derivative(RAW_modeled_FVCs_rates)
 
     def unscale_modeled_FVCs_rates(self, SCL_modeled_FVCs_rates):
-        return SCL_modeled_FVCs_rates * self.SCALE_modeled_FVCs_rates
+        return self.SCALE_modeled_FVCs_rates.unscale_derivative(SCL_modeled_FVCs_rates)
 
 
 # ---------------------------------------------------------------------------

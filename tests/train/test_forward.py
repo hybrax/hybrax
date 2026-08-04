@@ -45,7 +45,7 @@ from bp_train.controls_store import ControlsStore
 from bp_train.harness import ForwardConfig, ForwardResult
 from bp_train.defaults import DefaultLossModule
 from bp_train.harness import compute_dense_exports, evaluate_trained_wrapper
-from bp_train.model_api import ReactionOutputs, UserReactionModule
+from bp_train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
 from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper
 
@@ -390,6 +390,7 @@ def _build_single_process_runtime(
     q_scale: float = 1.0,
     auxiliary: dict[str, jnp.ndarray] | None = None,
     biomass_times: jnp.ndarray | None = None,
+    modeled_rmc_scaler=None,
 ):
     process = _make_one_species_process(
         initial_volume=initial_volume,
@@ -403,12 +404,17 @@ def _build_single_process_runtime(
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
+    scale_kwargs = {
+        "SCALE_modeled_BiologicalOde_rates": jnp.asarray([q_scale], dtype=jnp.float32)
+    }
+    if modeled_rmc_scaler is not None:
+        scale_kwargs["SCALE_modeled_RMCs"] = modeled_rmc_scaler
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=_ConstantReactionModule(
             specific_rates=jnp.asarray([q_scaled], dtype=jnp.float32),
             modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
             auxiliary=auxiliary,
-            SCALE_modeled_BiologicalOde_rates=jnp.asarray([q_scale], dtype=jnp.float32),
+            **scale_kwargs,
         ),
         process=process,
         controls=controls,
@@ -938,6 +944,23 @@ def _single_dense_export(store, wrapper, *, prediction_grid_n):
         prediction_grid_n=prediction_grid_n,
     )
     return dense_exports["p1"]
+
+
+def test_affine_state_offset_keeps_zero_rhs_stationary_through_forward():
+    # Test 2 solver path + end-to-end forward: q=0 means dRAW/dt=0. A wrong
+    # value-scale on the derivative would subtract offset/scale and drift the
+    # biomass; scale_derivative leaves it stationary while value unscale carries
+    # the offset into/out of the solver.
+    _, store, wrapper = _build_single_process_runtime(
+        q_scaled=0.0,
+        modeled_rmc_scaler=AffineScaler(
+            jnp.asarray([2.0], dtype=jnp.float32),
+            jnp.asarray([10.0], dtype=jnp.float32),
+        ),
+    )
+    export = _single_dense_export(store, wrapper, prediction_grid_n=7)
+    assert export.c_species.shape == (7, 1)
+    assert np.allclose(export.c_species[:, 0], 1.0, rtol=0.0, atol=2e-6)
 
 
 def test_dense_export_uses_export_v_real_semantics():

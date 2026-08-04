@@ -37,6 +37,7 @@ from .model_api import (
     EstimatedScales,
     UserLossModule,
     UserReactionModule,
+    _as_scaler,
     partition_trainable,
 )
 from .trainer import (
@@ -521,21 +522,28 @@ def _resolve_estimated_scales(
             "estimate_all_scales(...) must return an EstimatedScales dataclass; "
             f"got {type(estimated).__name__}"
         )
-    return {
-        "SCALE_modeled_RMCs": estimated.SCALE_modeled_RMCs,
-        "SCALE_modeled_PVs": estimated.SCALE_modeled_PVs,
-        "SCALE_V_in_cumulative": estimated.SCALE_V_in_cumulative,
-        "SCALE_modeled_FVCs_cumulative": estimated.SCALE_modeled_FVCs_cumulative,
-        "SCALE_controlled_FVCs_cumulative": estimated.SCALE_controlled_FVCs_cumulative,
-        "SCALE_controlled_FVCs_rates": estimated.SCALE_controlled_FVCs_rates,
-        "SCALE_controlled_FVCs_Cin": estimated.SCALE_controlled_FVCs_Cin,
-        "SCALE_controlled_PVs": estimated.SCALE_controlled_PVs,
-        "SCALE_modeled_FVCs_Cin": estimated.SCALE_modeled_FVCs_Cin,
-        "SCALE_modeled_BiologicalOde_rates": (
+    resolved = {
+        "SCALE_modeled_RMCs": _as_scaler(estimated.SCALE_modeled_RMCs),
+        "SCALE_modeled_PVs": _as_scaler(estimated.SCALE_modeled_PVs),
+        "SCALE_V_in_cumulative": _as_scaler(estimated.SCALE_V_in_cumulative),
+        "SCALE_modeled_FVCs_cumulative": _as_scaler(
+            estimated.SCALE_modeled_FVCs_cumulative
+        ),
+        "SCALE_controlled_FVCs_cumulative": _as_scaler(
+            estimated.SCALE_controlled_FVCs_cumulative
+        ),
+        "SCALE_controlled_FVCs_rates": _as_scaler(
+            estimated.SCALE_controlled_FVCs_rates
+        ),
+        "SCALE_controlled_FVCs_Cin": _as_scaler(estimated.SCALE_controlled_FVCs_Cin),
+        "SCALE_controlled_PVs": _as_scaler(estimated.SCALE_controlled_PVs),
+        "SCALE_modeled_FVCs_Cin": _as_scaler(estimated.SCALE_modeled_FVCs_Cin),
+        "SCALE_modeled_BiologicalOde_rates": _as_scaler(
             estimated.SCALE_modeled_BiologicalOde_rates
         ),
-        "SCALE_modeled_FVCs_rates": estimated.SCALE_modeled_FVCs_rates,
+        "SCALE_modeled_FVCs_rates": _as_scaler(estimated.SCALE_modeled_FVCs_rates),
     }
+    return resolved
 
 
 def _target_state_indices(store: TrainingDataStore, rhs_ode: Any) -> jax.Array:
@@ -1050,6 +1058,8 @@ def train_collection(
             def _local(p):
                 wrapper = eqx.combine(p, trainable_static)
                 module = wrapper.reaction_module
+                # Use the solver's same target scaler so affine offsets cancel
+                # in residuals; divergence silently shifts them by b/s.
                 scale_targets = module.SCALE_state[wrapper.target_state_indices]
                 SCL_ym = ym / scale_targets[None, None, :]
                 tmc = clamp_padded_time_rows(tm, nm)
@@ -1230,6 +1240,8 @@ def train_collection(
             def _local(p):
                 wrapper = eqx.combine(p, trainable_static)
                 module = wrapper.reaction_module
+                # Use the solver's same target scaler so affine offsets cancel
+                # in residuals; divergence silently shifts them by b/s.
                 scale_targets = module.SCALE_state[wrapper.target_state_indices]
                 SCL_ym = ym / scale_targets[None, None, :]
                 tmc = clamp_padded_time_rows(tm, nm)
