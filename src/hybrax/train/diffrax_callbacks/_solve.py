@@ -163,6 +163,7 @@ def diffeqsolve_with_callbacks(
         rtol=1e-6, atol=1e-8
     ),
     max_steps_per_segment: int = 4096,
+    max_steps_total: int | None = None,
     adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
 ) -> CallbackSolution:
     """Solve an ODE with Julia-style callbacks.
@@ -184,7 +185,16 @@ def diffeqsolve_with_callbacks(
         callbacks: Single callback or CallbackSet.
         max_events: Maximum events (fixed for JIT). Unused slots are padded.
         stepsize_controller: Diffrax step size controller.
-        max_steps_per_segment: Max solver steps between events.
+        max_steps_per_segment: Max solver steps between events. Must be a static
+            Python int -- diffrax sizes its step loop from it. This is a *latency*
+            bound: it stops one stiff lane spinning for many seconds while other
+            devices block on a collective.
+        max_steps_total: Optional budget for the WHOLE trajectory. Once the running
+            sum of per-segment steps exceeds it the lane terminates exactly as if a
+            segment had failed (state poisoned to inf, ``fail_time`` recorded). Unlike
+            ``max_steps_per_segment`` this is grid-independent: chopping the same
+            horizon into more segments does not silently multiply the ceiling. ``None``
+            leaves only the per-segment bound.
         adjoint: Diffrax adjoint method for backpropagation.
 
     Returns:
@@ -260,7 +270,7 @@ def diffeqsolve_with_callbacks(
     # ---- Scan body ----
 
     def scan_fn(carry, _):
-        y, t_current, done, terminated, fail_time = carry
+        y, t_current, done, terminated, fail_time, steps_used = carry
 
         # Determine segment end time
         if has_presets:
@@ -339,6 +349,21 @@ def diffeqsolve_with_callbacks(
         # raw inf sentinel surviving into loss-facing state — only on ``fail_time``.
         R = diffrax.RESULTS
         seg_failed = (sol.result != R.successful) & (sol.result != R.event_occurred)
+
+        # Trajectory-level budget. ``max_steps_per_segment`` alone is grid-dependent:
+        # subdividing the same horizon into more segments hands each one a fresh
+        # allowance, so the effective ceiling is ``cap * n_segments`` and a caller
+        # asking for N steps can silently get orders of magnitude more. Accumulating
+        # the (already computed) per-segment counts gives a bound on the whole solve,
+        # so ``fail_time`` no longer depends on how the horizon was chopped. Treated as
+        # exactly the same kind of failure as a segment bail, so all the existing
+        # poisoning / collapse / fail_time machinery applies unchanged.
+        new_steps_used = steps_used + jnp.asarray(sol.stats["num_steps"], jnp.int32)
+        if max_steps_total is not None:
+            seg_failed = seg_failed | (
+                new_steps_used > jnp.asarray(int(max_steps_total), jnp.int32)
+            )
+
         y_at_stop = jnp.where(
             seg_failed, jnp.asarray(jnp.inf, y_at_stop.dtype), y_at_stop
         )
@@ -485,7 +510,14 @@ def diffeqsolve_with_callbacks(
             jnp.asarray(sol.stats["num_steps"], dtype=jnp.int32),
         )
 
-        return (y_after, t_next, new_done, new_terminated, new_fail_time), output
+        return (
+            y_after,
+            t_next,
+            new_done,
+            new_terminated,
+            new_fail_time,
+            new_steps_used,
+        ), output
 
     # ---- Run the scan ----
     init_carry = (
@@ -494,9 +526,10 @@ def diffeqsolve_with_callbacks(
         jnp.bool_(False),
         jnp.bool_(False),
         jnp.asarray(jnp.inf, dtype=time_dtype),
+        jnp.asarray(0, dtype=jnp.int32),
     )
     final_carry, outputs = jax.lax.scan(scan_fn, init_carry, None, length=max_events)
-    y_final, t_final, _, _, fail_time = final_carry
+    y_final, t_final, _, _, fail_time, _ = final_carry
     event_times, event_types, states_before, states_after, segment_num_steps = outputs
 
     event_count = jnp.sum((event_types >= 0).astype(jnp.int32))

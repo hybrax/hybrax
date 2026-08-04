@@ -46,6 +46,16 @@ _FAIL_TIME_EPS = 1e-4
 # on the first step.
 _DEGENERATE_DT0 = 1e-4
 
+# Per-segment step ceiling — a LATENCY bound, deliberately independent of the step
+# budget. Under pmap a high per-segment cap lets one stiff process (e.g. under a
+# too-hot lr) spin for many seconds inside its solve while the other devices finish and
+# block on the ``all_gather``; once one device lags >~20 s the XLA collective rendezvous
+# times out and the whole run dead-locks. A bounded cap makes a genuinely stiff segment
+# *bail fast* instead of hanging the barrier. Segments are short and exit early anyway,
+# so the clamp costs nothing in the stable case (512 vs 8096 → identical speed,
+# measured). Override per call for tests; the trajectory budget is ``max_steps``.
+_MAX_STEPS_PER_SEGMENT = 512
+
 # NB there is deliberately NO event-matching tolerance. ``affect_fn`` identifies the
 # firing bolus/sample by the preset INDEX the solver hands it, then compares times
 # exactly against its own ``preset_times`` array. A tolerance here would make any
@@ -86,20 +96,24 @@ def solve_physical_states(
     - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
       to ``inf``, so a failed forward is detectable and never reads back a stale value.
 
-    ``max_steps`` (from ``--solver-max-steps``) sets the per-segment step ceiling,
-    but it is **clamped to a barrier-safe maximum** (512). This matters under pmap:
-    a *high* per-segment cap lets one stiff process (e.g. under a too-hot lr) spin for
-    many seconds inside its solve while the other devices finish and block on the
-    ``all_gather``; once one device lags >~20 s the XLA collective rendezvous times out
-    and the whole run dead-locks. A bounded cap instead makes a genuinely stiff segment
-    *bail fast* (returns ``inf``, which ``zero_nans`` in the optimiser absorbs) rather
-    than hang the barrier. Segments are short and exit early anyway, so the clamp costs
-    nothing in the stable case (512 vs 8096 → identical speed, measured).
-    ``max_steps_per_segment=None`` ⇒ ``min(512, max_steps)``; pass a value to pin a
-    smaller cap (e.g. tests).
+    Two independent bounds apply, and exceeding either is the same failure as any
+    segment bail (state poisoned to ``inf``, ``fail_time`` recorded, later segments
+    collapsed):
+
+    - ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole solve**,
+      passed down as ``max_steps_total``. This is what makes the knob mean what it says.
+      Without it the only bound was per-segment, so the effective ceiling was
+      ``cap * n_segments`` — e.g. ``max_steps=8096`` on a 174-segment process really
+      allowed ~89,000 steps — and ``fail_time`` depended on how finely the horizon
+      happened to be chopped (a dense loss/export grid subdivides it, so the same model
+      could bail at a different time purely because more output points were requested).
+    - ``max_steps_per_segment`` is a **latency** bound against the pmap deadlock; see
+      :data:`_MAX_STEPS_PER_SEGMENT`. It defaults to that constant and is settable per
+      call; it is deliberately NOT derived from ``max_steps``, which measures a
+      different thing.
     """
     if max_steps_per_segment is None:
-        max_steps_per_segment = min(512, int(max_steps))
+        max_steps_per_segment = _MAX_STEPS_PER_SEGMENT
     n_RMCs = len(wrapper.modeled_RMC_names)
     n_PVs = len(wrapper.modeled_PV_names)
     n_FVCs = len(wrapper.modeled_FVC_names)
@@ -218,6 +232,7 @@ def solve_physical_states(
             rtol=rtol, atol=atol, jump_ts=jump_ts_arg
         ),
         max_steps_per_segment=max_steps_per_segment,
+        max_steps_total=int(max_steps),
         adjoint=diffrax.RecursiveCheckpointAdjoint(),
     )
 
