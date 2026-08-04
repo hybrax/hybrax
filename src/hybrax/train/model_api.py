@@ -1037,8 +1037,15 @@ class UserLossModule(eqx.Module):
         is then populated on :class:`LossInputs` as ``dense_*`` fields. Return
         ``None`` (default) to stay on the measurement-grid-only path.
 
-        The dense path costs ~zero extra ODE work — it just gathers
-        ``wrapper.physical_save_outputs`` at the dense times.
+        The dense path is NOT free. Every dense time becomes a preset node in
+        ``physical_solve``, i.e. an ODE **segment boundary**, and each segment is a
+        fresh ``diffeqsolve`` that restarts the step-size controller. Measured on a
+        240 h / 11-measurement / 10-sample-event process: 10 segments and 41 ODE
+        steps on the measurement grid alone, 38 segments / 121 steps at
+        ``dense_grid_n=30`` (2.95x), 108 segments / 229 steps at 100 (5.59x).
+        See ``trainer.evaluate_sample_with_loss_module`` for the related caveat that
+        ``max_steps`` is a per-SEGMENT budget, so a finer grid also changes which
+        samples bail.
         """
         return None
 

@@ -28,17 +28,37 @@ import jax.numpy as jnp
 
 from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
 
-_EVENT_EPS = 1e-4  # << ~0.08 h event spacing; ample headroom over float64 ULP at t~15
+# Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first
+# segment that bailed, i.e. the last node the solver actually reached — so a point
+# sitting exactly there WAS reached and must not be dropped by float noise in the
+# ``<=``. Only ever relevant at that single boundary point of a failed solve (on a
+# healthy solve ``fail_time`` is ``inf`` and the comparison is all-True). Wants to be
+# as small as possible while still capturing the boundary node; the next node is
+# typically orders of magnitude further away than this.
+_FAIL_TIME_EPS = 1e-4
+
+# Initial step for a DEGENERATE solve window (``t1 == t0``: one active measurement, or
+# every measurement at the same timestamp), where ``span * 1e-3`` is exactly zero.
+# diffrax requires a strictly positive ``dt0``; a zero one makes it bail on the
+# tol-floored micro-segment inside the callback loop, and that bail is then flagged as
+# a solve failure and poisoned to ``inf`` — so a healthy single-point process would
+# look like a crashed solve. Any positive value works; the adaptive controller corrects
+# on the first step.
+_DEGENERATE_DT0 = 1e-4
+
+# NB there is deliberately NO event-matching tolerance. ``affect_fn`` identifies the
+# firing bolus/sample by the preset INDEX the solver hands it, then compares times
+# exactly against its own ``preset_times`` array. A tolerance here would make any
+# output node within it re-trigger the event — see ``affect_fn``.
 
 
 def within_fail_time(t, fail_time):
     """True where time ``t`` is at/before a solve's failure cutoff (all-True when
     ``fail_time`` is ``inf``, i.e. no failure). Post-failure points are the complement,
-    ``~within_fail_time``. Centralizes the ``fail_time + _EVENT_EPS`` tolerance (the eps
-    keeps a measurement landing exactly on the last reached node) so the measurement
-    mask, the dense mask, the loss-facing finiteness fallback and the export sentinel
-    all use one identical cutoff."""
-    return t <= fail_time + jnp.asarray(_EVENT_EPS, jnp.asarray(t).dtype)
+    ``~within_fail_time``. Centralizes the ``fail_time + _FAIL_TIME_EPS`` boundary
+    tolerance so the measurement mask, the dense mask, the loss-facing finiteness
+    fallback and the export sentinel all use one identical cutoff."""
+    return t <= fail_time + jnp.asarray(_FAIL_TIME_EPS, jnp.asarray(t).dtype)
 
 
 def solve_physical_states(
@@ -117,24 +137,25 @@ def solve_physical_states(
     # parked past t1 so they never trigger. Measurement-only times get an identity
     # affect (so the event log records the state there for the loss).
     BIG = t1 + jnp.asarray(1.0e6, dtype=dtype)
-    eps = jnp.asarray(_EVENT_EPS, dtype=dtype)
     bolus_times = jnp.where(bmask, bt, BIG)
     sample_times = jnp.where(smask, st, BIG)
-    # Park any measurement/output time that coincides (within eps) with a bolus/sample
-    # node. affect_fn applies *every* event within eps of the current node, so a
-    # measurement node sitting within eps of a feed would apply that feed a SECOND time
-    # — double-counting it and drifting the volume/concentrations by ~one bolus from
-    # there on (visible in dense prediction grids, where a grid point can land on a
-    # feed). The event log still has the feed/sample node, so the gather below recovers
-    # the state at that measurement time. On the measurement grid (the loss) no point
-    # coincides with a feed, so this is a no-op there.
-    near_event = jnp.any(
-        (jnp.abs(t_eval[:, None] - bt[None, :]) < eps) & bmask[None, :], axis=1
-    ) | jnp.any((jnp.abs(t_eval[:, None] - st[None, :]) < eps) & smask[None, :], axis=1)
-    meas_times = jnp.where(meas_active & ~near_event, t_eval, BIG)
+    meas_times = jnp.where(meas_active, t_eval, BIG)
     preset_times = jnp.concatenate([bolus_times, sample_times, meas_times])
 
-    def affect_fn(y_scl, t, args):
+    def affect_fn(y_scl, t, args, preset_index):
+        # ``preset_index`` is the slot in ``preset_times`` the solver stopped at, so the
+        # firing node's time is looked up EXACTLY -- no tolerance, and no dependence on
+        # ``t`` (the solver's realised stop time) or on any dtype round-trip inside
+        # diffrax_callbacks. Matching ``|t - bt| < eps`` instead used to let an output
+        # node merely NEAR a feed re-apply it, double-counting the bolus and drifting
+        # volume/concentrations for the rest of the trajectory; that needed a separate
+        # guard parking such nodes. Exact lookup removes the failure mode outright.
+        #
+        # Co-timed events still group into ONE node: every bolus/sample whose stored
+        # time equals ``t_node`` fires together (e.g. a sample and a feed both at 24 h),
+        # which is required because the solver only accepts strictly-future nodes and
+        # would otherwise skip the duplicate slots.
+        t_node = preset_times[preset_index]
         y = y_scl * SCALE  # scaled -> physical (the jump is a physical mass balance)
         C = y[:n_RMCs]
         # Modeled PVs are intensive (ratios/observables), so volume jumps
@@ -143,9 +164,9 @@ def solve_physical_states(
         V = y[n_RMCs + n_PVs]
         cum = y[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
         h = y[n_RMCs + n_PVs + 1 + n_FVCs :]
-        s_on = (jnp.abs(t - st) < eps) & smask
+        s_on = (st == t_node) & smask
         sample_dv = jnp.sum(jnp.where(s_on, sv, 0.0))
-        b_on = (jnp.abs(t - bt) < eps) & bmask
+        b_on = (bt == t_node) & bmask
         bolus_dv = jnp.sum(jnp.where(b_on, bv, 0.0))
         bolus_mass = jnp.sum(jnp.where(b_on[:, None], bC * bv[:, None], 0.0), axis=0)
         # Physical order at a coincident timestamp: sample FIRST (well-mixed removal —
@@ -182,7 +203,7 @@ def solve_physical_states(
     # the adaptive controller adjusts immediately), so a genuinely short run keeps its
     # usual ``span * 1e-3`` untouched.
     span = t1 - t0
-    dt0 = jnp.where(span > 0, span * 1e-3, jnp.asarray(_EVENT_EPS, dtype))
+    dt0 = jnp.where(span > 0, span * 1e-3, jnp.asarray(_DEGENERATE_DT0, dtype))
 
     sol = diffeqsolve_with_callbacks(
         term,
@@ -214,7 +235,10 @@ def solve_physical_states(
         # any sample volume scheduled at ``tm`` from V. Boluses stay pre-bolus (the
         # offline measurement is taken before feeding). This makes the reported V
         # honour ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap.
-        s_here = (jnp.abs(tm - st) < eps) & smask
+        # Exact, for the same reason ``affect_fn`` matches exactly: with a tolerance an
+        # output point merely NEAR a sample would also get the correction, even though
+        # the solve has already applied that sample to the state it is reading.
+        s_here = (st == tm) & smask
         sample_dv_here = jnp.sum(jnp.where(s_here, sv, 0.0))
         return y.at[n_RMCs + n_PVs].add(-sample_dv_here)
 
@@ -226,7 +250,9 @@ def solve_physical_states(
     # value (first feed interval already integrated in), which surfaced as an inflated
     # V0 / diluted concentrations in the predictions.csv first row for continuous-feed
     # processes.
-    at_t0 = (jnp.abs(t_eval - t0) < eps) & meas_active
+    # Exact: ``t0`` IS ``t_eval[0]``, and every extra t0 row comes from a
+    # ``linspace(t0, ...)`` whose first element is bitwise ``t0``.
+    at_t0 = (t_eval == t0) & meas_active
     states = jnp.where(at_t0[:, None], y0[None, :], states)
 
     # Overwrite every post-failure row (``t > fail_time``) from ``fail_time`` — do NOT

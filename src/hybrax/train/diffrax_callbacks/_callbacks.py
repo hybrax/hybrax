@@ -114,12 +114,23 @@ class PresetTimeCallback(eqx.Module):
 
     Args:
         times: Array of times at which to trigger.
-        affect_fn: (y, t, args) -> new_y. Applied at each preset time.
+        affect_fn: ``(y, t, args, preset_index) -> new_y``. Applied at each preset
+            time. ``preset_index`` is the index into **this callback's own**
+            ``times`` (not into the merged/sorted array the solver scans), so an
+            affect can identify *which* preset fired without comparing floats.
+
+            Prefer the index over ``t``: ``t`` is the solver's *realised* stop time
+            and the merged preset array is cast to the solve's working dtype, so
+            neither is guaranteed bit-identical to the value in ``times``. Matching
+            on ``times[preset_index]`` is exact by construction. Matching on ``t``
+            with a tolerance instead makes any other node within that tolerance
+            re-trigger this preset — see ``bp_train.physical_solve.affect_fn``,
+            which used to need a parking guard for exactly that reason.
 
     Example:
         cb = PresetTimeCallback(
             times=jnp.array([12.0, 24.0, 36.0]),
-            affect_fn=lambda y, t, args: take_sample(y),
+            affect_fn=lambda y, t, args, i: take_sample(y),
         )
     """
 
@@ -139,7 +150,10 @@ class PeriodicCallback(eqx.Module):
 
     Args:
         dt: Time interval between triggers.
-        affect_fn: (y, t, args) -> new_y. Applied at each trigger.
+        affect_fn: ``(y, t, args, preset_index) -> new_y``. Applied at each trigger.
+            ``to_preset`` hands this straight to a :class:`PresetTimeCallback`, so it
+            takes the same 4-argument contract; ``preset_index`` is the slot in the
+            generated ``times``.
         t_start: First trigger time. Default: dt (skip t=0).
         t_end: Last possible trigger time. Must be set for array pre-allocation.
 
@@ -279,22 +293,51 @@ class CallbackSet(eqx.Module):
     def n_discrete(self) -> int:
         return len(self.discrete_callbacks)
 
+    def _preset_sort_order(self) -> jnp.ndarray:
+        """Permutation that sorts the concatenated preset times.
+
+        Single source of the ordering for ``get_all_preset_times`` /
+        ``get_preset_affect_indices`` / ``get_preset_local_indices``, so the three
+        derived arrays cannot drift apart. (They previously used ``jnp.sort`` and
+        ``jnp.argsort`` independently, which agree only while both stay stable.)
+        """
+        all_times = jnp.concatenate([cb.times for cb in self.preset_callbacks])
+        return jnp.argsort(all_times)
+
     def get_all_preset_times(self) -> jnp.ndarray:
         if not self.preset_callbacks:
             return jnp.array([])
         all_times = jnp.concatenate([cb.times for cb in self.preset_callbacks])
-        return jnp.sort(all_times)
+        return all_times[self._preset_sort_order()]
 
     def get_preset_affect_indices(self) -> jnp.ndarray:
+        """For each sorted preset slot: which preset callback owns it."""
         if not self.preset_callbacks:
             return jnp.array([], dtype=jnp.int32)
-        indices = []
-        for i, cb in enumerate(self.preset_callbacks):
-            indices.append(jnp.full(cb.times.shape[0], i, dtype=jnp.int32))
-        all_indices = jnp.concatenate(indices)
-        all_times = jnp.concatenate([cb.times for cb in self.preset_callbacks])
-        sort_order = jnp.argsort(all_times)
-        return all_indices[sort_order]
+        all_indices = jnp.concatenate(
+            [
+                jnp.full(cb.times.shape[0], i, dtype=jnp.int32)
+                for i, cb in enumerate(self.preset_callbacks)
+            ]
+        )
+        return all_indices[self._preset_sort_order()]
+
+    def get_preset_local_indices(self) -> jnp.ndarray:
+        """For each sorted preset slot: its index within its OWN callback's ``times``.
+
+        This is what gets handed to ``PresetTimeCallback.affect_fn`` as
+        ``preset_index``, letting an affect look the firing time up in the array it
+        supplied — exactly, with no float comparison and no dtype round-trip.
+        """
+        if not self.preset_callbacks:
+            return jnp.array([], dtype=jnp.int32)
+        local = jnp.concatenate(
+            [
+                jnp.arange(cb.times.shape[0], dtype=jnp.int32)
+                for cb in self.preset_callbacks
+            ]
+        )
+        return local[self._preset_sort_order()]
 
     def get_max_repeat_nudge(self) -> float:
         """Get the maximum repeat_nudge across all continuous callbacks."""

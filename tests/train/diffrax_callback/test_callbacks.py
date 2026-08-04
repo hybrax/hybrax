@@ -79,8 +79,8 @@ def test_float32_state_with_float64_times_keeps_state_dtype():
         del y, args
         return jnp.asarray([t, t])
 
-    def noop_affect(y, t, args):
-        del t, args
+    def noop_affect(y, t, args, i):
+        del t, args, i
         return y
 
     sol = diffeqsolve_with_callbacks(
@@ -109,8 +109,8 @@ def test_float32_state_with_float64_rhs_keeps_state_dtype():
         del t, args
         return jnp.asarray([1.0, 1.0], dtype=jnp.float64) * y
 
-    def noop_affect(y, t, args):
-        del t, args
+    def noop_affect(y, t, args, i):
+        del t, args, i
         return y.astype(jnp.float64)
 
     sol = diffeqsolve_with_callbacks(
@@ -141,12 +141,12 @@ def test_mixed_dtype_preset_affect_branches_cast_before_switch():
         del t, args
         return jnp.zeros_like(y)
 
-    def add_float32(y, t, args):
-        del t, args
+    def add_float32(y, t, args, i):
+        del t, args, i
         return y + jnp.asarray([1.0], dtype=jnp.float32)
 
-    def add_float64(y, t, args):
-        del t, args
+    def add_float64(y, t, args, i):
+        del t, args, i
         return y.astype(jnp.float64) + jnp.asarray([2.0], dtype=jnp.float64)
 
     sol = diffeqsolve_with_callbacks(
@@ -182,8 +182,8 @@ def test_evaluate_trajectory_uses_state_dtype_boundary():
         del t, args
         return jnp.asarray([1.0], dtype=jnp.float64) * y
 
-    def noop_affect(y, t, args):
-        del t, args
+    def noop_affect(y, t, args, i):
+        del t, args, i
         return y
 
     terms = diffrax.ODETerm(ode_returns_float64)
@@ -321,7 +321,7 @@ class TestPresetTimeCallback:
         preset_times = jnp.array([8.0, 16.0, 24.0, 32.0, 40.0])
         cb = PresetTimeCallback(
             times=preset_times,
-            affect_fn=lambda y, t, args: y.at[3].add(-0.05),
+            affect_fn=lambda y, t, args, i: y.at[3].add(-0.05),
         )
         sol = run(cb, max_events=10)
         n = int(sol.event_count)
@@ -332,7 +332,7 @@ class TestPresetTimeCallback:
     def test_volume_change(self):
         cb = PresetTimeCallback(
             times=jnp.array([10.0, 20.0]),
-            affect_fn=lambda y, t, args: y.at[3].add(-0.1),
+            affect_fn=lambda y, t, args, i: y.at[3].add(-0.1),
         )
         sol = run(cb, max_events=5)
         assert sol.y_final[3] == pytest.approx(0.8, abs=0.01)
@@ -342,7 +342,7 @@ class TestPeriodicCallback:
     def test_correct_count(self):
         cb = PeriodicCallback(
             dt=8.0,
-            affect_fn=lambda y, t, args: y.at[3].add(-0.02),
+            affect_fn=lambda y, t, args, i: y.at[3].add(-0.02),
             t_end=T_END,
         )
         sol = run(cb, max_events=10)
@@ -353,7 +353,7 @@ class TestPeriodicCallback:
         dt = 12.0
         cb = PeriodicCallback(
             dt=dt,
-            affect_fn=lambda y, t, args: y.at[3].add(-0.05),
+            affect_fn=lambda y, t, args, i: y.at[3].add(-0.05),
             t_end=T_END,
         )
         sol = run(cb, max_events=10)
@@ -390,11 +390,11 @@ class TestCallbackSet:
             ),
             PresetTimeCallback(
                 times=jnp.array([12.0, 24.0, 36.0]),
-                affect_fn=lambda y, t, args: y.at[3].add(-0.05),
+                affect_fn=lambda y, t, args, i: y.at[3].add(-0.05),
             ),
             PeriodicCallback(
                 dt=6.0,
-                affect_fn=lambda y, t, args: y,  # no-op log
+                affect_fn=lambda y, t, args, i: y,  # no-op log
                 t_end=T_END,
             ),
             ManifoldProjection(
@@ -415,7 +415,7 @@ class TestCallbackSet:
             ),
             PresetTimeCallback(
                 times=jnp.array([12.0]),
-                affect_fn=lambda y, t, args: y.at[3].add(-0.05),
+                affect_fn=lambda y, t, args, i: y.at[3].add(-0.05),
             ),
         )
         sol = run(cb, max_events=5)
@@ -556,7 +556,7 @@ class TestSolution:
             ),
             PresetTimeCallback(
                 times=jnp.array([12.0, 24.0]),
-                affect_fn=lambda y, t, args: y.at[3].add(-0.05),
+                affect_fn=lambda y, t, args, i: y.at[3].add(-0.05),
             ),
         )
         sol = run(cb, max_events=25)
@@ -580,7 +580,7 @@ class TestSolution:
             ),
             PresetTimeCallback(
                 times=jnp.array([12.0]),
-                affect_fn=lambda y, t, args: y,
+                affect_fn=lambda y, t, args, i: y,
             ),
         )
         sol = run(cb, max_events=25)

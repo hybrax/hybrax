@@ -81,7 +81,7 @@ callbacks = CallbackSet(
     # 3. Take samples at fixed times (removes 50 mL)
     PresetTimeCallback(
         times=jnp.array([6.0, 12.0, 18.0, 24.0, 30.0, 36.0, 42.0]),
-        affect_fn=lambda y, t, args: y.at[3].add(-0.05),
+        affect_fn=lambda y, t, args, i: y.at[3].add(-0.05),
     ),
 
     # 4. Log state every 4 hours (no-op affect, just records in event log)

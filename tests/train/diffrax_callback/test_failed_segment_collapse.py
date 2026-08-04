@@ -46,7 +46,7 @@ def _solve_lane(freq, *, callbacks=None, controller=None, max_steps=64, max_even
     cb = (
         callbacks
         if callbacks is not None
-        else PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y)
+        else PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y)
     )
     sol = diffeqsolve_with_callbacks(
         diffrax.ODETerm(rhs),
@@ -105,7 +105,7 @@ def test_post_failure_segments_take_zero_steps():
         t1=2.0,
         dt0=1e-3,
         y0=jnp.ones(2, dtype=jnp.float64),
-        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y),
+        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
         max_steps_per_segment=max_steps,
@@ -139,7 +139,7 @@ def test_event_states_before_and_after_are_poisoned():
         t1=2.0,
         dt0=1e-3,
         y0=jnp.ones(2, dtype=jnp.float64),
-        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y),
+        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
         max_steps_per_segment=64,
@@ -174,7 +174,7 @@ def test_dt_min_reached_is_detected():
         y0=jnp.asarray([1.0], dtype=jnp.float64),
         callbacks=PresetTimeCallback(
             times=jnp.asarray([0.25, 0.75, 1.0], dtype=jnp.float64),
-            affect_fn=lambda y, t, args: y,
+            affect_fn=lambda y, t, args, i: y,
         ),
         max_events=4,
         stepsize_controller=controller,
@@ -211,7 +211,7 @@ def test_fail_time_is_inf_on_a_healthy_solve():
         t1=2.0,
         dt0=1e-3,
         y0=jnp.ones(2, dtype=jnp.float64),
-        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y),
+        callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
         max_steps_per_segment=64,
@@ -241,7 +241,7 @@ def test_fail_time_marks_the_last_good_node():
         y0=jnp.asarray([1.0], dtype=jnp.float64),
         callbacks=PresetTimeCallback(
             times=jnp.asarray([0.25, 0.75, 1.0], dtype=jnp.float64),
-            affect_fn=lambda y, t, args: y,
+            affect_fn=lambda y, t, args, i: y,
         ),
         max_events=4,
         stepsize_controller=controller,
@@ -263,7 +263,7 @@ def test_clamping_callback_cannot_hide_failure():
         condition_fn=lambda y, t, args: jnp.any(y > 1e6),
         affect_fn=lambda y, t, args: jnp.minimum(y, 10.0),
     )
-    preset = PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args: y)
+    preset = PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y)
     cbset = CallbackSet(preset, clamp)
     freqs = jnp.array([0.0, 2.0e4, 0.0], dtype=jnp.float64)
     out = jax.jit(jax.vmap(lambda f: _solve_lane(f, callbacks=cbset)))(freqs)

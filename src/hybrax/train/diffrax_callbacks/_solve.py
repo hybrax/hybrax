@@ -124,6 +124,20 @@ def _wrap_affect_dtype(affect_fn):
     return wrapped
 
 
+def _wrap_preset_affect_dtype(affect_fn):
+    """Same as ``_wrap_affect_dtype`` for the 4-arg preset contract.
+
+    Preset affects additionally receive ``preset_index`` (the slot within their own
+    ``times``) so they can identify the firing preset exactly instead of comparing
+    floats against ``t``. See ``PresetTimeCallback``.
+    """
+
+    def wrapped(y, t, args, preset_index):
+        return _cast_like(affect_fn(y, t, args, preset_index), y)
+
+    return wrapped
+
+
 # ================================================================
 # Main solver
 # ================================================================
@@ -201,9 +215,11 @@ def diffeqsolve_with_callbacks(
     if has_presets:
         all_preset_times = callback_set.get_all_preset_times().astype(time_dtype)
         preset_affect_indices = callback_set.get_preset_affect_indices()
+        preset_local_indices = callback_set.get_preset_local_indices()
     else:
         all_preset_times = jnp.asarray([t1 + jnp.asarray(1.0, dtype=time_dtype)])
         preset_affect_indices = jnp.array([0], dtype=jnp.int32)
+        preset_local_indices = jnp.array([0], dtype=jnp.int32)
 
     # ---- Affect dispatchers (built at trace time) ----
 
@@ -221,16 +237,17 @@ def diffeqsolve_with_callbacks(
             ]
             return jax.lax.switch(idx, branches, y, t, args)
 
-    def _dispatch_preset_affect(y, t, args, preset_cb_idx):
+    def _dispatch_preset_affect(y, t, args, preset_cb_idx, preset_index):
         if n_preset == 1:
-            return _wrap_affect_dtype(callback_set.preset_callbacks[0].affect_fn)(
-                y, t, args
-            )
+            return _wrap_preset_affect_dtype(
+                callback_set.preset_callbacks[0].affect_fn
+            )(y, t, args, preset_index)
         else:
             branches = [
-                _wrap_affect_dtype(cb.affect_fn) for cb in callback_set.preset_callbacks
+                _wrap_preset_affect_dtype(cb.affect_fn)
+                for cb in callback_set.preset_callbacks
             ]
-            return jax.lax.switch(preset_cb_idx, branches, y, t, args)
+            return jax.lax.switch(preset_cb_idx, branches, y, t, args, preset_index)
 
     def _apply_discrete_callbacks(y, t, args):
         """Apply all discrete callbacks in order."""
@@ -376,6 +393,7 @@ def diffeqsolve_with_callbacks(
                 t_at_stop,
                 args,
                 preset_affect_indices[jnp.clip(next_preset_idx, 0)],
+                preset_local_indices[jnp.clip(next_preset_idx, 0)],
             )
             y_after = jnp.where(
                 continuous_triggered,
@@ -393,6 +411,7 @@ def diffeqsolve_with_callbacks(
                 t_at_stop,
                 args,
                 preset_affect_indices[jnp.clip(next_preset_idx, 0)],
+                preset_local_indices[jnp.clip(next_preset_idx, 0)],
             )
             y_after = jnp.where(preset_triggered, y_pres, y_at_stop)
         else:
