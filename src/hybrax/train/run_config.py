@@ -83,7 +83,7 @@ class SolverConfig(ConfigBase):
 
 
 class CheckpointConfig(ConfigBase):
-    every: float = Field(1.0, ge=0)
+    every: float = Field(100., ge=0)
 
     @field_validator("every")
     @classmethod
