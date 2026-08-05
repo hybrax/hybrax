@@ -60,7 +60,9 @@ def _process(discrete_events: DiscreteEvents | None) -> BioProcess:
 
 
 def _collection(discrete_events: DiscreteEvents | None) -> BioProcessCollection:
-    return BioProcessCollection(metadata={}, processes={"p1": _process(discrete_events)})
+    return BioProcessCollection(
+        metadata={}, processes={"p1": _process(discrete_events)}
+    )
 
 
 def test_discrete_event_jump_ts_none_is_empty():

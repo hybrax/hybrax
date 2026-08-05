@@ -83,9 +83,14 @@ def test_result_is_correct_for_any_segmentation(n_segments):
 def test_agreement_tightens_with_tolerance():
     """Discretization noise, not bias: the gap between a coarse and a reference solve
     must shrink as the tolerance tightens."""
-    ref = float(_solve(n_segments=10, dt0=_T1 * 1e-3, rtol=1e-12, atol=1e-14).y_final[0])
+    ref = float(
+        _solve(n_segments=10, dt0=_T1 * 1e-3, rtol=1e-12, atol=1e-14).y_final[0]
+    )
     devs = [
-        abs(float(_solve(n_segments=10, dt0=_T1 * 1e-3, rtol=r, atol=a).y_final[0]) - ref)
+        abs(
+            float(_solve(n_segments=10, dt0=_T1 * 1e-3, rtol=r, atol=a).y_final[0])
+            - ref
+        )
         / abs(ref)
         for r, a in ((1e-5, 1e-6), (1e-8, 1e-9))
     ]

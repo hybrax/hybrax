@@ -152,13 +152,25 @@ def test_every_active_event_fires_exactly_once():
 
     expected = (
         1.0
-        + float(jnp.sum(jnp.where(controls.bolus_event_mask, controls.bolus_event_volumes, 0.0)))
-        - float(jnp.sum(jnp.where(controls.sample_event_mask, controls.sample_event_volumes, 0.0)))
+        + float(
+            jnp.sum(
+                jnp.where(controls.bolus_event_mask, controls.bolus_event_volumes, 0.0)
+            )
+        )
+        - float(
+            jnp.sum(
+                jnp.where(
+                    controls.sample_event_mask, controls.sample_event_volumes, 0.0
+                )
+            )
+        )
     )
 
     # 61 points over [0, 1.5]; several land within 1e-4 of the t=1.0 events by design.
     t_eval = jnp.asarray(
-        np.unique(np.concatenate([np.linspace(0.0, 1.5, 61), [1.0 - 1e-5, 1.0 + 1e-5]])),
+        np.unique(
+            np.concatenate([np.linspace(0.0, 1.5, 61), [1.0 - 1e-5, 1.0 + 1e-5]])
+        ),
         dtype=dtype,
     )
     states = solve(

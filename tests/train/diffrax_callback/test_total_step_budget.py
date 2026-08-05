@@ -77,7 +77,9 @@ def test_budget_is_independent_of_how_the_horizon_is_chopped():
     alone the coarse grid would bail and the fine grid would sail through on
     ``cap * n_segments``; with a trajectory budget both must reach the same verdict.
     """
-    budget = int(jnp.sum(_solve(n_segments=4, max_steps_total=100_000).segment_num_steps))
+    budget = int(
+        jnp.sum(_solve(n_segments=4, max_steps_total=100_000).segment_num_steps)
+    )
 
     coarse = _solve(n_segments=4, max_steps_total=budget // 2)
     fine = _solve(n_segments=32, max_steps_total=budget // 2)

@@ -15,11 +15,24 @@ from bp_train.loo_metrics import (
 def test_prediction_unscoreable_cases():
     t = np.array([0.0, 5.0, 10.0])
     # finite + in-range -> scoreable
-    assert _prediction_unscoreable(t, np.array([1.0, 2.0, 3.0]), np.array([0.0, 5.0, 10.0])) is False
+    assert (
+        _prediction_unscoreable(
+            t, np.array([1.0, 2.0, 3.0]), np.array([0.0, 5.0, 10.0])
+        )
+        is False
+    )
     # non-finite values -> unscoreable
-    assert _prediction_unscoreable(t, np.array([1.0, np.nan, 3.0]), np.array([0.0, 10.0])) is True
+    assert (
+        _prediction_unscoreable(t, np.array([1.0, np.nan, 3.0]), np.array([0.0, 10.0]))
+        is True
+    )
     # measurement beyond the (truncated) prediction grid -> unscoreable
-    assert _prediction_unscoreable(np.array([0.0, 5.0]), np.array([1.0, 2.0]), np.array([0.0, 10.0])) is True
+    assert (
+        _prediction_unscoreable(
+            np.array([0.0, 5.0]), np.array([1.0, 2.0]), np.array([0.0, 10.0])
+        )
+        is True
+    )
     # empty grid -> unscoreable
     assert _prediction_unscoreable(np.array([]), np.array([]), np.array([1.0])) is True
 
@@ -28,7 +41,9 @@ def test_diverged_nonfinite_scores_nan_not_raise():
     out = _evaluate_predictions_for_process(
         pred_t=np.array([0.0, 5.0, 10.0]),
         pred_columns={"c_biomass": np.array([1.0, np.nan, 3.0])},
-        measurements={"biomass": (np.array([0.0, 5.0, 10.0]), np.array([1.0, 2.0, 3.0]))},
+        measurements={
+            "biomass": (np.array([0.0, 5.0, 10.0]), np.array([1.0, 2.0, 3.0]))
+        },
     )
     assert out["biomass"]["n_measured"] == 0
     assert np.isnan(out["biomass"]["nmae"])
@@ -39,7 +54,9 @@ def test_truncated_grid_scores_nan_not_raise():
     out = _evaluate_predictions_for_process(
         pred_t=np.array([0.0, 5.0]),
         pred_columns={"c_biomass": np.array([1.0, 2.0])},
-        measurements={"biomass": (np.array([0.0, 5.0, 10.0]), np.array([1.0, 2.0, 9.0]))},
+        measurements={
+            "biomass": (np.array([0.0, 5.0, 10.0]), np.array([1.0, 2.0, 9.0]))
+        },
     )
     assert np.isnan(out["biomass"]["nmae"])
 
@@ -50,7 +67,9 @@ def test_finite_in_range_nodeless_still_raises():
         _evaluate_predictions_for_process(
             pred_t=np.array([0.0, 5.0, 10.0]),
             pred_columns={"c_biomass": np.array([1.0, 2.0, 3.0])},
-            measurements={"biomass": (np.array([0.0, 3.0, 10.0]), np.array([1.0, 2.0, 3.0]))},
+            measurements={
+                "biomass": (np.array([0.0, 3.0, 10.0]), np.array([1.0, 2.0, 3.0]))
+            },
         )
 
 
@@ -58,7 +77,9 @@ def test_finite_scoreable_computes_metrics():
     out = _evaluate_predictions_for_process(
         pred_t=np.array([0.0, 5.0, 10.0]),
         pred_columns={"c_biomass": np.array([1.0, 2.0, 3.0])},
-        measurements={"biomass": (np.array([0.0, 5.0, 10.0]), np.array([1.0, 2.0, 3.0]))},
+        measurements={
+            "biomass": (np.array([0.0, 5.0, 10.0]), np.array([1.0, 2.0, 3.0]))
+        },
     )
     assert out["biomass"]["n_measured"] == 3
     assert out["biomass"]["nmae"] == pytest.approx(0.0)

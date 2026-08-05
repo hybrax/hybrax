@@ -28,13 +28,14 @@ SOLVER = diffrax.Tsit5()
 CTRL = diffrax.PIDController(rtol=1e-6, atol=1e-8)
 
 # Known stoichiometric constants
-YXS = 0.5   # g biomass / g substrate
-YPX = 0.1   # g product / g biomass
+YXS = 0.5  # g biomass / g substrate
+YPX = 0.1  # g product / g biomass
 
 
 # ================================================================
 # Ground truth (the "unknown" model we'll learn from data)
 # ================================================================
+
 
 def true_growth_rate(S, X):
     """Haldane kinetics — this is what the neural network will learn."""
@@ -50,6 +51,7 @@ def true_ode(t, y, args):
 # ================================================================
 # Step 1: Generate training data (batch cultures, no events)
 # ================================================================
+
 
 def generate_data():
     """Multiple batch trajectories with varied initial conditions."""
@@ -67,10 +69,16 @@ def generate_data():
 
     for y0 in initial_conditions:
         sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(true_ode), SOLVER,
-            0.0, 20.0, 0.01, y0, None,
+            diffrax.ODETerm(true_ode),
+            SOLVER,
+            0.0,
+            20.0,
+            0.01,
+            y0,
+            None,
             saveat=diffrax.SaveAt(ts=ts),
-            stepsize_controller=CTRL, max_steps=4096,
+            stepsize_controller=CTRL,
+            max_steps=4096,
         )
         all_ts.append(sol.ts)
         all_ys.append(sol.ys)
@@ -82,14 +90,20 @@ def generate_data():
 # Step 2: Hybrid Neural ODE
 # ================================================================
 
+
 class NeuralGrowthRate(eqx.Module):
     """Learns mu(S, X) from data. Output is positive via softplus."""
+
     mlp: eqx.nn.MLP
 
     def __init__(self, key):
         self.mlp = eqx.nn.MLP(
-            in_size=2, out_size=1, width_size=32, depth=2,
-            activation=jax.nn.tanh, key=key,
+            in_size=2,
+            out_size=1,
+            width_size=32,
+            depth=2,
+            activation=jax.nn.tanh,
+            key=key,
         )
 
     def __call__(self, S, X):
@@ -118,14 +132,20 @@ def train_dynamics(all_ts, all_ys, n_epochs=500):
         for ts, ys in zip(all_ts, all_ys):
             n = ts.shape[0]
             for i in range(0, n - window, 2):
-                seg_ts = ts[i:i + window + 1]
+                seg_ts = ts[i : i + window + 1]
                 sol = diffrax.diffeqsolve(
-                    diffrax.ODETerm(hybrid_ode), SOLVER,
-                    seg_ts[0], seg_ts[-1], 0.01, ys[i], neural_mu,
+                    diffrax.ODETerm(hybrid_ode),
+                    SOLVER,
+                    seg_ts[0],
+                    seg_ts[-1],
+                    0.01,
+                    ys[i],
+                    neural_mu,
                     saveat=diffrax.SaveAt(ts=seg_ts),
-                    stepsize_controller=CTRL, max_steps=2048,
+                    stepsize_controller=CTRL,
+                    max_steps=2048,
                 )
-                total_loss += jnp.mean((sol.ys - ys[i:i + window + 1]) ** 2)
+                total_loss += jnp.mean((sol.ys - ys[i : i + window + 1]) ** 2)
                 count += 1.0
         return total_loss / count
 
@@ -143,14 +163,18 @@ def train_dynamics(all_ts, all_ys, n_epochs=500):
         if epoch % 100 == 0 or epoch == 1:
             mu_l = float(neural_mu(5.0, 1.0))
             mu_t = float(true_growth_rate(5.0, 1.0))
-            print(f"  Epoch {epoch:3d} | Loss: {float(loss):.6f} | "
-                  f"mu(5,1): {mu_l:.4f} (true: {mu_t:.4f})")
+            print(
+                f"  Epoch {epoch:3d} | Loss: {float(loss):.6f} | "
+                f"mu(5,1): {mu_l:.4f} (true: {mu_t:.4f})"
+            )
 
     print("\nGrowth rate comparison:")
     for S, X in [(1.0, 1.0), (5.0, 5.0), (10.0, 10.0), (20.0, 5.0)]:
         mu_l, mu_t = float(neural_mu(S, X)), float(true_growth_rate(S, X))
-        print(f"  S={S:5.1f}, X={X:5.1f}: learned={mu_l:.4f}  true={mu_t:.4f}  "
-              f"err={abs(mu_l - mu_t) / (mu_t + 1e-10):.1%}")
+        print(
+            f"  S={S:5.1f}, X={X:5.1f}: learned={mu_l:.4f}  true={mu_t:.4f}  "
+            f"err={abs(mu_l - mu_t) / (mu_t + 1e-10):.1%}"
+        )
 
     return neural_mu
 
@@ -159,8 +183,10 @@ def train_dynamics(all_ts, all_ys, n_epochs=500):
 # Step 3: Neural feed controller
 # ================================================================
 
+
 class FeedController(eqx.Module):
     """State -> (feed_volume, feed_concentration). Outputs bounded via sigmoid."""
+
     mlp: eqx.nn.MLP
     vol_min: float = eqx.field(static=True, default=0.05)
     vol_max: float = eqx.field(static=True, default=0.5)
@@ -169,8 +195,12 @@ class FeedController(eqx.Module):
 
     def __init__(self, key):
         self.mlp = eqx.nn.MLP(
-            in_size=4, out_size=2, width_size=16, depth=2,
-            activation=jax.nn.tanh, key=key,
+            in_size=4,
+            out_size=2,
+            width_size=16,
+            depth=2,
+            activation=jax.nn.tanh,
+            key=key,
         )
 
     def __call__(self, y):
@@ -183,12 +213,14 @@ class FeedController(eqx.Module):
 def apply_feed(y, feed_vol, feed_conc):
     X, S, P, V = y[0], y[1], y[2], y[3]
     V_new = V + feed_vol
-    return jnp.array([
-        X * V / V_new,
-        (S * V + feed_conc * feed_vol) / V_new,
-        P * V / V_new,
-        V_new,
-    ])
+    return jnp.array(
+        [
+            X * V / V_new,
+            (S * V + feed_conc * feed_vol) / V_new,
+            P * V / V_new,
+            V_new,
+        ]
+    )
 
 
 def optimize_control(neural_mu, y0, t_end, n_epochs=200):
@@ -217,9 +249,15 @@ def optimize_control(neural_mu, y0, t_end, n_epochs=200):
         )
 
         sol = diffeqsolve_with_callbacks(
-            diffrax.ODETerm(ode_fn), SOLVER,
-            0.0, t_end, 0.01, y0, args,
-            callbacks=cb, max_events=15,
+            diffrax.ODETerm(ode_fn),
+            SOLVER,
+            0.0,
+            t_end,
+            0.01,
+            y0,
+            args,
+            callbacks=cb,
+            max_events=15,
             stepsize_controller=CTRL,
         )
 
@@ -245,9 +283,11 @@ def optimize_control(neural_mu, y0, t_end, n_epochs=200):
         if epoch % 25 == 0 or epoch == 1:
             feed_ctrl, thresh = control_params
             fv, fc = feed_ctrl(jnp.array([15.0, 2.0, 1.0, 1.5]))
-            print(f"  Epoch {epoch:3d} | Product: {-float(loss):7.2f}g | "
-                  f"threshold={float(thresh):.3f} | "
-                  f"ctrl@test: vol={float(fv):.3f}L conc={float(fc):.0f}g/L")
+            print(
+                f"  Epoch {epoch:3d} | Product: {-float(loss):7.2f}g | "
+                f"threshold={float(thresh):.3f} | "
+                f"ctrl@test: vol={float(fv):.3f}L conc={float(fc):.0f}g/L"
+            )
 
     # Final evaluation
     feed_ctrl, thresh = control_params
@@ -265,17 +305,25 @@ def optimize_control(neural_mu, y0, t_end, n_epochs=200):
         direction="down",
     )
     sol = diffeqsolve_with_callbacks(
-        diffrax.ODETerm(ode_eval), SOLVER,
-        0.0, t_end, 0.01, y0, args_final,
-        callbacks=cb_final, max_events=15,
+        diffrax.ODETerm(ode_eval),
+        SOLVER,
+        0.0,
+        t_end,
+        0.01,
+        y0,
+        args_final,
+        callbacks=cb_final,
+        max_events=15,
         stepsize_controller=CTRL,
     )
 
     print(f"\nOptimized strategy:")
     print(f"  Feed threshold: S < {float(thresh):.3f} g/L")
     sol.print_events(["X", "S", "P", "V"])
-    print(f"\n  Final: X={sol.y_final[0]:.2f}, S={sol.y_final[1]:.2f}, "
-          f"P={sol.y_final[2]:.2f}, V={sol.y_final[3]:.2f}")
+    print(
+        f"\n  Final: X={sol.y_final[0]:.2f}, S={sol.y_final[1]:.2f}, "
+        f"P={sol.y_final[2]:.2f}, V={sol.y_final[3]:.2f}"
+    )
     print(f"  Total product: {sol.y_final[2] * sol.y_final[3]:.2f} g")
 
     return control_params
