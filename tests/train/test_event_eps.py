@@ -41,6 +41,8 @@ of the run, no error, and a perfectly plausible-looking trajectory. Passing the 
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
@@ -71,11 +73,12 @@ def _wrapper(dtype):
         return wrapper
     # ``build_stateful_wrapper`` pins its scalers to float32; promote them so the solve
     # runs in the precision production uses (bp_train enables x64 at import).
+    # ``tree_at`` selectors may only traverse stored PyTree fields, not properties.
     names = [
-        name
-        for name in dir(wrapper.reaction_module)
-        if name.startswith("SCALE_")
-        and isinstance(getattr(wrapper.reaction_module, name), LinearScaler)
+        field.name
+        for field in fields(wrapper.reaction_module)
+        if field.name.startswith("SCALE_")
+        and isinstance(getattr(wrapper.reaction_module, field.name), LinearScaler)
     ]
     return eqx.tree_at(
         lambda w: tuple(getattr(w.reaction_module, n) for n in names),
