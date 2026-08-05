@@ -59,9 +59,11 @@ in.
   why the loss is mean-aggregated (see
   [01_design_rationale.md](01_design_rationale.md#6-mean-loss-aggregation)).
 - **Checkpointing** ([`checkpointing.py`](../bp_train/checkpointing.py)):
-  `checkpoint_every` is measured in epochs and may be fractional. All periodic
-  checkpoints are retained, and a final checkpoint is mandatory. Plots render
-  on a background worker.
+  `checkpoint_every` is measured in epochs and may be fractional. The default
+  automatic cadence is `max(5, ceil(epochs / 20))`, so it writes at most 20
+  checkpoints. Explicit cadences are honored, all periodic checkpoints are
+  retained, and a final checkpoint is mandatory. Plots render on a background
+  worker.
 - **Logging** ([`logging.py`](../bp_train/logging.py), `RunLogger`): every update
   writes a console row and `metrics.csv` row with epoch, batch, and sample
   counters. Epoch mean loss and training-only duration appear on epoch-end rows.

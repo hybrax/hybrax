@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import equinox as eqx
@@ -107,6 +108,30 @@ def test_fractional_checkpoint_boundaries_are_exact_and_distinct():
     assert _checkpoint_update_boundaries(
         0, batches_per_epoch=10, total_updates=10
     ) == frozenset({10})
+
+
+def test_automatic_checkpoint_cadence_uses_at_least_five_epochs_and_at_most_20():
+    from bp_train.harness import _checkpoint_update_boundaries
+
+    assert _checkpoint_update_boundaries(
+        None, batches_per_epoch=3, total_updates=30
+    ) == frozenset({15, 30})
+    assert _checkpoint_update_boundaries(
+        None, batches_per_epoch=1, total_updates=100
+    ) == frozenset(range(5, 101, 5))
+    assert _checkpoint_update_boundaries(
+        None, batches_per_epoch=1, total_updates=1500
+    ) == frozenset(range(75, 1501, 75))
+    assert (
+        len(_checkpoint_update_boundaries(None, batches_per_epoch=3, total_updates=303))
+        <= 20
+    )
+    huge_epochs = 18_014_398_509_481_001
+    huge_boundaries = _checkpoint_update_boundaries(
+        None, batches_per_epoch=1, total_updates=huge_epochs
+    )
+    assert min(huge_boundaries) == (huge_epochs + 19) // 20
+    assert len(huge_boundaries) == 20
 
 
 def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
@@ -247,7 +272,7 @@ def _make_collection() -> BioProcessCollection:
 def _run_train(
     *,
     checkpoint_dir: Path | None,
-    checkpoint_every: float,
+    checkpoint_every: float | None,
     epochs: int,
     plots: bool = False,
     metrics_csv: str | None = None,
@@ -294,6 +319,19 @@ def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     ]
     assert (checkpoints / "latest").resolve().name == "step_00005"
     assert not (checkpoints / "best").exists()
+
+
+def test_automatic_checkpoint_cadence_is_logged(tmp_path: Path, caplog):
+    caplog.set_level(logging.INFO, logger="bp_train.harness")
+
+    _run_train(
+        checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=None, epochs=10
+    )
+
+    assert (
+        "checkpoint_every is null; using sensible automatic default "
+        "every=5 epochs (2 checkpoints including final)" in caplog.messages
+    )
 
 
 def test_checkpoint_every_zero_still_writes_final(tmp_path: Path):
@@ -348,7 +386,9 @@ def test_update_latest_uses_a_symlink_when_the_filesystem_allows_it(tmp_path):
     assert (tmp_path / "latest").resolve().name == "step_00100"
 
 
-def test_update_latest_falls_back_to_a_copy_when_symlinks_are_refused(tmp_path, monkeypatch):
+def test_update_latest_falls_back_to_a_copy_when_symlinks_are_refused(
+    tmp_path, monkeypatch
+):
     """SMB/NAS shares and WSL drvfs reject os.symlink. Training onto such a share must still work;
     readers only ever touch `checkpoints/latest/params.eqx`, which resolves in both forms."""
     monkeypatch.setattr(
@@ -361,10 +401,14 @@ def test_update_latest_falls_back_to_a_copy_when_symlinks_are_refused(tmp_path, 
     latest = tmp_path / "latest"
     assert latest.is_dir() and not latest.is_symlink()
     assert (latest / "params.eqx").read_bytes() == b"params-step_00100"
-    assert (latest / "sub" / "nested.bin").read_bytes() == b"nested-step_00100"   # recurses
+    assert (
+        latest / "sub" / "nested.bin"
+    ).read_bytes() == b"nested-step_00100"  # recurses
 
 
-def test_copy_fallback_is_replaced_not_merged_on_the_next_checkpoint(tmp_path, monkeypatch):
+def test_copy_fallback_is_replaced_not_merged_on_the_next_checkpoint(
+    tmp_path, monkeypatch
+):
     """A stale `latest` must be cleared, not written over — otherwise files from an older step
     linger beside the new ones."""
     monkeypatch.setattr(
@@ -381,21 +425,23 @@ def test_copy_fallback_is_replaced_not_merged_on_the_next_checkpoint(tmp_path, m
     assert not (latest / "only_in_the_old_step.txt").exists()
 
 
-def test_symlink_form_is_replaced_by_the_copy_form_and_vice_versa(tmp_path, monkeypatch):
+def test_symlink_form_is_replaced_by_the_copy_form_and_vice_versa(
+    tmp_path, monkeypatch
+):
     """A directory that moved between filesystems (or a mount whose options changed) must not wedge
     on `latest` already existing in the other form."""
     w = _latest_of(tmp_path)
-    w._update_latest(_write_step(tmp_path, "step_00100"))          # symlink
+    w._update_latest(_write_step(tmp_path, "step_00100"))  # symlink
     assert (tmp_path / "latest").is_symlink()
 
     monkeypatch.setattr(
         "pathlib.Path.symlink_to",
         lambda *a, **k: (_ for _ in ()).throw(OSError(1, "Operation not permitted")),
     )
-    w._update_latest(_write_step(tmp_path, "step_00200"))          # -> copy
+    w._update_latest(_write_step(tmp_path, "step_00200"))  # -> copy
     assert (tmp_path / "latest").is_dir() and not (tmp_path / "latest").is_symlink()
 
     monkeypatch.undo()
-    w._update_latest(_write_step(tmp_path, "step_00300"))          # -> symlink again
+    w._update_latest(_write_step(tmp_path, "step_00300"))  # -> symlink again
     assert (tmp_path / "latest").is_symlink()
     assert (tmp_path / "latest").resolve().name == "step_00300"

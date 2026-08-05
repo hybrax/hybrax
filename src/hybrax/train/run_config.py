@@ -83,12 +83,12 @@ class SolverConfig(ConfigBase):
 
 
 class CheckpointConfig(ConfigBase):
-    every: float = Field(100., ge=0)
+    every: float | None = Field(None, ge=0)
 
     @field_validator("every")
     @classmethod
-    def _validate_every(cls, value: float) -> float:
-        if not math.isfinite(value):
+    def _validate_every(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
             raise ValueError("checkpoint.every must be finite")
         return value
 

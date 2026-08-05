@@ -437,7 +437,8 @@ non-shuffle order are covered by focused harness tests.
 
 ### 16.5 Epoch config and checkpoint contract
 
-✅ `checkpoint.every` is a finite nonnegative float in epoch units. Exact
+✅ `checkpoint.every` is null or a finite nonnegative float in epoch units. Null
+uses `max(5, ceil(epochs / 20))`, producing at most 20 checkpoints. Exact
 fractional thresholds are deduplicated, all checkpoints are retained, and every
 artifact run writes a mandatory final checkpoint and updates `latest`. Separate
 logging/holdout cadence, best selection, pruning, and individual train resume

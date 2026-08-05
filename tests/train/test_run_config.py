@@ -344,6 +344,15 @@ def test_removed_training_cadence_fields_are_rejected(section):
         RunConfig.model_validate(section)
 
 
+def test_checkpoint_every_defaults_to_auto_and_accepts_explicit_cadence():
+    assert RunConfig().checkpoint.every is None
+    assert (
+        RunConfig.model_validate({"checkpoint": {"every": None}}).checkpoint.every
+        is None
+    )
+    assert RunConfig.model_validate({"checkpoint": {"every": 5}}).checkpoint.every == 5
+
+
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), -0.1])
 def test_checkpoint_every_must_be_finite_and_nonnegative(value):
     with pytest.raises(ValueError, match="checkpoint"):
