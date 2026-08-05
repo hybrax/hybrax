@@ -21,8 +21,8 @@ from bp_train.model_api import (
     ReactionOutputs,
     Scaler,
     UserReactionModule,
-    _ConcatScaler,
     _as_scaler,
+    _compose_scalers,
     frozen_field,
     partition_trainable,
     trainable_field,
@@ -525,12 +525,12 @@ def test_concat_scaler_preserves_zero_width_dtype_promotion():
         LinearScaler(jnp.asarray(10.0, dtype=jnp.float32)),
         LinearScaler(jnp.asarray([5.0], dtype=jnp.float32)),
     ]
-    composed = _ConcatScaler(*parts)
+    composed = _compose_scalers(*parts)
     assert composed.shape == (4,)
     # The composed scale array is float64 because the empty f64 part promotes it.
     assert composed.scale.dtype == jnp.float64
     # Dropping the empty part would make it float32 — guard against that tidy-up.
-    without_empty = _ConcatScaler(parts[0], parts[2], parts[3])
+    without_empty = _compose_scalers(parts[0], parts[2], parts[3])
     assert without_empty.scale.dtype == jnp.float32
 
 
@@ -539,9 +539,9 @@ def test_concat_scaler_getitem_and_value_ops():
         LinearScaler(jnp.asarray([2.0, 4.0], dtype=jnp.float32)),
         LinearScaler(jnp.asarray([10.0], dtype=jnp.float32)),
     ]
-    composed = _ConcatScaler(*parts)
+    composed = _compose_scalers(*parts)
     sub = composed[jnp.asarray([0, 1])]
-    assert isinstance(sub, LinearScaler)
+    assert type(sub) is LinearScaler
     assert jnp.array_equal(sub.scale, jnp.asarray([2.0, 4.0]))
     raw = jnp.asarray([4.0, 8.0, 20.0], dtype=jnp.float32)
     assert jnp.array_equal(raw / composed, jnp.asarray([2.0, 2.0, 2.0]))
@@ -599,8 +599,15 @@ def test_rate_helpers_use_derivative_semantics():
 
 
 def test_tree_at_affine_offset_zero_to_nonzero_updates_value_and_state():
-    scaler = AffineScaler(jnp.asarray([2.0]), jnp.asarray([0.0]))
-    scaler = eqx.tree_at(lambda x: x.offset, scaler, jnp.asarray([10.0]))
+    scaler = AffineScaler(
+        jnp.asarray([2.0], dtype=jnp.float32),
+        jnp.asarray([0.0], dtype=jnp.float32),
+    ).astype(jnp.float64)
+    scaler = eqx.tree_at(
+        lambda x: x.offset,
+        scaler,
+        jnp.asarray([10.0], dtype=jnp.float64),
+    )
 
     assert jnp.array_equal(
         scaler.unscale_value(jnp.asarray([1.0])), jnp.asarray([12.0])
@@ -693,6 +700,7 @@ def test_zero_offset_affine_state_scaler_preserves_negative_zero():
     )
     scl = jnp.asarray([-0.0, -0.0], dtype=jnp.float64)
 
+    assert type(module.SCALE_integrated_state) is LinearScaler
     eager = module.unscale_state(scl)
     jitted = jax.jit(lambda m, x: m.unscale_state(x))(module, scl)
     cast_jitted = jax.jit(
@@ -714,7 +722,7 @@ def test_concat_scaler_materializes_arrays_once(monkeypatch):
         return concatenate(*args, **kwargs)
 
     monkeypatch.setattr(model_api.jnp, "concatenate", counted)
-    scaler = _ConcatScaler(
+    scaler = _compose_scalers(
         LinearScaler(jnp.asarray([2.0], dtype=jnp.float32)),
         AffineScaler(
             jnp.asarray([4.0], dtype=jnp.float32),
@@ -740,7 +748,7 @@ def test_all_linear_concat_is_op_for_op_and_preserves_negative_zero():
         jnp.asarray(10.0, dtype=jnp.float32),
         jnp.asarray([5.0], dtype=jnp.float32),
     ]
-    composed = _ConcatScaler(*(LinearScaler(scale) for scale in scales))
+    composed = _compose_scalers(*(LinearScaler(scale) for scale in scales))
     concat_scale = jnp.concatenate([jnp.atleast_1d(scale) for scale in scales])
     raw = jnp.asarray([-0.0, 8.0, 10.0, 5.0], dtype=concat_scale.dtype)
     scl = jnp.asarray([-0.0, 2.0, 1.0, 1.0], dtype=concat_scale.dtype)
@@ -771,8 +779,8 @@ def test_user_reaction_module_promotes_bare_scale_arrays():
     assert isinstance(module.SCALE_modeled_RMCs, LinearScaler)
     assert isinstance(module.SCALE_V_in_cumulative, LinearScaler)
     assert module.n_modeled_RMCs == 2
-    # composed state scaler
-    assert isinstance(module.SCALE_state, _ConcatScaler)
+    # All-linear composition reuses the concrete linear implementation.
+    assert type(module.SCALE_state) is LinearScaler
     assert module.SCALE_state.shape == (3,)
 
 
@@ -863,15 +871,38 @@ def test_concat_scaler_preserves_offset_layout_and_getitem():
         jnp.asarray([5.0, 6.0]),
         jnp.asarray([40.0, 50.0]),
     )
-    state = _ConcatScaler(rmcs, pvs, volume, cumulative)
+    state = _compose_scalers(rmcs, pvs, volume, cumulative)
+    assert type(state) is AffineScaler
     assert jnp.array_equal(state.scale, jnp.asarray([2.0, 3.0, 4.0, 5.0, 6.0]))
     assert jnp.array_equal(state.offset, jnp.asarray([10.0, 20.0, 30.0, 40.0, 50.0]))
     raw = state.offset + state.scale
     assert jnp.array_equal(raw / state, jnp.ones(5))
     sub = state[jnp.asarray([0, 3])]
-    assert isinstance(sub, AffineScaler)
+    assert type(sub) is AffineScaler
     assert jnp.array_equal(sub.offset, jnp.asarray([10.0, 40.0]))
     assert jnp.array_equal(jnp.asarray([12.0, 45.0]) / sub, jnp.ones(2))
+
+
+def test_integrated_state_preserves_discarded_zero_offset_dtype():
+    module = UserReactionModule(
+        SCALE_modeled_RMCs=AffineScaler(
+            jnp.asarray([2.0], dtype=jnp.float32),
+            jnp.asarray([0.0], dtype=jnp.float64),
+        ),
+        SCALE_modeled_PVs=LinearScaler(jnp.zeros(0, dtype=jnp.float32)),
+        SCALE_V_in_cumulative=LinearScaler(jnp.asarray(3.0, dtype=jnp.float32)),
+        SCALE_modeled_FVCs_cumulative=LinearScaler(jnp.zeros(0, dtype=jnp.float32)),
+        SCALE_latent=AffineScaler(
+            jnp.asarray([4.0], dtype=jnp.float32),
+            jnp.asarray([5.0], dtype=jnp.float32),
+        ),
+    )
+
+    integrated = module.SCALE_integrated_state
+    assert type(module.SCALE_state) is LinearScaler
+    assert type(integrated) is AffineScaler
+    assert integrated.offset.dtype == jnp.float64
+    assert integrated.unscale_value(jnp.ones(3, dtype=jnp.float32)).dtype == jnp.float64
 
 
 def test_affine_scaler_leaves_are_frozen_by_partition():
@@ -904,9 +935,9 @@ def test_concat_rejects_builtin_subclasses_with_custom_semantics():
             return jnp.exp(scl)
 
     with pytest.raises(TypeError, match="exact LinearScaler"):
-        _ConcatScaler(LogLinearScaler(jnp.ones(1)))
+        _compose_scalers(LogLinearScaler(jnp.ones(1)))
     with pytest.raises(TypeError, match="exact LinearScaler"):
-        _ConcatScaler(LogAffineScaler(jnp.ones(1), jnp.zeros(1)))
+        _compose_scalers(LogAffineScaler(jnp.ones(1), jnp.zeros(1)))
 
 
 def test_concat_rejects_custom_non_affine_state_scaler():
@@ -944,4 +975,4 @@ def test_concat_rejects_custom_non_affine_state_scaler():
             return self
 
     with pytest.raises(TypeError, match="exact LinearScaler"):
-        _ConcatScaler(LogScaler())
+        _compose_scalers(LogScaler())
