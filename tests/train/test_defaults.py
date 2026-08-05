@@ -78,6 +78,13 @@ def test_default_reaction_module_pins_depth_threshold_and_computed_width():
     assert deep.model.activation is jax.nn.silu
 
 
+def test_default_reaction_module_allows_empty_rate_head():
+    module = _reaction_module(key=jax.random.key(9), n_out=0)
+
+    assert module.model.layers[-1].weight.shape == (0, 8)
+    assert module.model.layers[-1].bias.shape == (0,)
+
+
 def test_zero_depth_module_uses_small_glorot_linear_layer():
     key = jax.random.key(7)
     module = _reaction_module(key=key, depth=0, width_size=3)

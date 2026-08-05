@@ -231,9 +231,11 @@ class DefaultReactionModule(UserReactionModule):
         layers = []
         for i, (layer, layer_key) in enumerate(zip(self.model.layers, layer_keys)):
             init = glorot_init if i == depth else hidden_init
-            weight = init(layer_key, layer.weight.shape, layer.weight.dtype)
-            if i == depth:
-                weight *= 0.01
+            weight = layer.weight
+            if weight.size:
+                weight = init(layer_key, weight.shape, weight.dtype)
+                if i == depth:
+                    weight *= 0.01
             layer = eqx.tree_at(lambda linear: linear.weight, layer, weight)
             if layer.bias is not None:
                 layer = eqx.tree_at(
