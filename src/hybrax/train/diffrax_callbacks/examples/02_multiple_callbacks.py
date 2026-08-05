@@ -37,7 +37,7 @@ def bioreactor_ode(t, y, args):
     """Monod kinetics with substrate inhibition.
     State: [X (biomass), S (substrate), P (product), V (volume)]
     """
-    X, S, P, V = y[0], y[1], y[2], y[3]
+    X, S, _, _ = y[0], y[1], y[2], y[3]
     mu = 0.4 * S / (2.0 + S + S**2 / 50.0)
     return jnp.array([mu * X, -mu * X / 0.5, 0.1 * mu * X, 0.0])
 
@@ -145,7 +145,7 @@ print()
 
 sol.print_events(["X", "S", "P", "V"], callback_names=callback_names)
 
-print(f"\nFinal state:")
+print("\nFinal state:")
 print(f"  Biomass:   X = {sol.y_final[0]:.2f} g/L")
 print(f"  Substrate: S = {sol.y_final[1]:.2f} g/L")
 print(f"  Product:   P = {sol.y_final[2]:.2f} g/L")

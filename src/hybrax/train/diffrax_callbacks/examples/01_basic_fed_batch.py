@@ -26,7 +26,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 def bioreactor_ode(t, y, args):
-    X, S, P, V = y[0], y[1], y[2], y[3]
+    X, S, _, _ = y[0], y[1], y[2], y[3]
     mu = 0.4 * S / (2.0 + S + S**2 / 50.0)  # Haldane
     return jnp.array([mu * X, -mu * X / 0.5, 0.1 * mu * X, 0.0])
 

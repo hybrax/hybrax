@@ -43,7 +43,7 @@ def true_growth_rate(S, X):
 
 
 def true_ode(t, y, args):
-    X, S, P, V = y[0], y[1], y[2], y[3]
+    X, S, _, _ = y[0], y[1], y[2], y[3]
     mu = true_growth_rate(S, X)
     return jnp.array([mu * X, -mu * X / YXS, YPX * mu * X, 0.0])
 
@@ -113,7 +113,7 @@ class NeuralGrowthRate(eqx.Module):
 def hybrid_ode(t, y, args):
     """Known mass balances + neural growth rate (passed via args)."""
     neural_mu = args
-    X, S, P, V = y[0], y[1], y[2], y[3]
+    X, S, _, _ = y[0], y[1], y[2], y[3]
     mu = neural_mu(jnp.maximum(S, 0.0), jnp.maximum(X, 0.0))
     return jnp.array([mu * X, -mu * X / YXS, YPX * mu * X, 0.0])
 
@@ -238,7 +238,7 @@ def optimize_control(neural_mu, y0, t_end, n_epochs=200):
 
         def ode_fn(t, y, args):
             mu_net = args[0]
-            X, S, P, V = y[0], y[1], y[2], y[3]
+            X, S, _, _ = y[0], y[1], y[2], y[3]
             mu = mu_net(jnp.maximum(S, 0.0), jnp.maximum(X, 0.0))
             return jnp.array([mu * X, -mu * X / YXS, YPX * mu * X, 0.0])
 
@@ -295,7 +295,7 @@ def optimize_control(neural_mu, y0, t_end, n_epochs=200):
 
     def ode_eval(t, y, args):
         mu_net = args[0]
-        X, S, P, V = y[0], y[1], y[2], y[3]
+        X, S, _, _ = y[0], y[1], y[2], y[3]
         mu = mu_net(jnp.maximum(S, 0.0), jnp.maximum(X, 0.0))
         return jnp.array([mu * X, -mu * X / YXS, YPX * mu * X, 0.0])
 
@@ -317,7 +317,7 @@ def optimize_control(neural_mu, y0, t_end, n_epochs=200):
         stepsize_controller=CTRL,
     )
 
-    print(f"\nOptimized strategy:")
+    print("\nOptimized strategy:")
     print(f"  Feed threshold: S < {float(thresh):.3f} g/L")
     sol.print_events(["X", "S", "P", "V"])
     print(
