@@ -109,6 +109,23 @@ are zero, and the output weights use `0.01 × Glorot uniform` to start the ODE
 rates near zero. The single trainable leaf is the MLP
 (`model: eqx.nn.MLP = trainable_field()`).
 
+### `DefaultStatefulReactionModule`
+
+`DefaultStatefulReactionModule` is a latent ODE with a standard GRU:
+`dh/dt = GRUCell(x, h) - h`. Its cell input `x` contains the scaled physical
+and control inputs only; the latent state is passed only as the GRU hidden
+argument. The reset and keep gates use sigmoid and the candidate uses tanh.
+
+Each reset/keep/candidate input-kernel block starts from independent
+Glorot-uniform weights, and each recurrent block from independent orthogonal
+weights. The GRU's trainable `bias` and `bias_n` both start at zero. Its signed
+biological-rate head uses `0.01 × Glorot` weights and a zero bias, giving a
+near-zero initial output. When modeled feeds exist, their Softplus head also
+uses `0.01 × Glorot` weights, but its trainable bias is calibrated so a zero
+readout emits `0.01` in SCL derivative units. That nonzero feed-head bias is
+separate from, and does not change, the zero initialization of internal GRU
+biases.
+
 ### Field tagging
 
 Declare trainable leaves with [`trainable_field()`](../bp_train/model_api.py),

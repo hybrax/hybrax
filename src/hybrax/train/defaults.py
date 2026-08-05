@@ -47,9 +47,11 @@ def default_transform_process_collection(collection, config: RunConfig):
 
 
 class DefaultStatefulReactionModule(UserReactionModule):
-    """Minimal GRU latent-ODE reaction model.
+    """Standard-GRU latent-ODE reaction model with calibrated output heads.
 
-    Uses ``dh/dt = GRUCell(x, h) - h`` and reads ``h`` for rate heads.
+    The GRU consumes physical and control inputs, with ``h`` passed only as its
+    hidden state. Input kernels use per-gate Glorot initialization, recurrent
+    kernels are per-gate orthogonal, and internal biases start at zero.
     """
 
     gru_cell: eqx.nn.GRUCell = trainable_field()
@@ -69,6 +71,9 @@ class DefaultStatefulReactionModule(UserReactionModule):
         }
         super().__init__(**scale_kwargs)
         key_gru, key_rate, key_feed = jax.random.split(key, 3)
+        gru_key, gru_init_key = jax.random.split(key_gru)
+        rate_key, rate_init_key = jax.random.split(key_rate)
+        feed_key, feed_init_key = jax.random.split(key_feed)
         n_input = (
             self.n_modeled_RMCs
             + self.n_modeled_PVs
@@ -77,28 +82,78 @@ class DefaultStatefulReactionModule(UserReactionModule):
             + self.n_controlled_FVCs  # controlled-FVC cumulatives
             + self.n_controlled_FVCs  # controlled-FVC rates
             + self.n_controlled_PVs
-            + self.n_latent
         )
         self.gru_cell = eqx.nn.GRUCell(
             input_size=n_input,
             hidden_size=self.n_latent,
-            key=key_gru,
+            key=gru_key,
+        )
+        gru_keys = jax.random.split(gru_init_key, 6)
+        glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
+        orthogonal_init = jax.nn.initializers.orthogonal()
+        input_blocks = jnp.split(self.gru_cell.weight_ih, 3)
+        recurrent_blocks = jnp.split(self.gru_cell.weight_hh, 3)
+        weight_ih = jnp.concatenate(
+            [
+                glorot_init(gru_keys[i], block.shape, block.dtype)
+                for i, block in enumerate(input_blocks)
+            ]
+        )
+        weight_hh = jnp.concatenate(
+            [
+                orthogonal_init(gru_keys[i + 3], block.shape, block.dtype)
+                for i, block in enumerate(recurrent_blocks)
+            ]
+        )
+        self.gru_cell = eqx.tree_at(
+            lambda cell: (cell.weight_ih, cell.weight_hh, cell.bias, cell.bias_n),
+            self.gru_cell,
+            (
+                weight_ih,
+                weight_hh,
+                jnp.zeros_like(self.gru_cell.bias),
+                jnp.zeros_like(self.gru_cell.bias_n),
+            ),
         )
         n_readout = self.n_latent + self.n_modeled_RMCs + self.n_modeled_PVs
         self.rate_head = eqx.nn.Linear(
             in_features=n_readout,
             out_features=self.n_modeled_BiologicalOde_rates,
-            key=key_rate,
+            key=rate_key,
+        )
+        rate_weight = self.rate_head.weight
+        if rate_weight.size:
+            rate_weight = 0.01 * glorot_init(
+                rate_init_key, rate_weight.shape, rate_weight.dtype
+            )
+        self.rate_head = eqx.tree_at(
+            lambda head: (head.weight, head.bias),
+            self.rate_head,
+            (rate_weight, jnp.zeros_like(self.rate_head.bias)),
         )
         self.feed_head = (
             eqx.nn.Linear(
                 in_features=n_readout,
                 out_features=self.n_modeled_FVCs,
-                key=key_feed,
+                key=feed_key,
             )
             if self.n_modeled_FVCs
             else None
         )
+        if self.feed_head is not None:
+            feed_weight = 0.01 * glorot_init(
+                feed_init_key,
+                self.feed_head.weight.shape,
+                self.feed_head.weight.dtype,
+            )
+            feed_bias = jnp.zeros_like(self.feed_head.bias) + jnp.log(
+                jnp.expm1(jnp.asarray(0.01, dtype=self.feed_head.bias.dtype))
+            )
+            self.feed_head = eqx.tree_at(
+                lambda head: (head.weight, head.bias),
+                self.feed_head,
+                (feed_weight, feed_bias),
+            )
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         del t
@@ -112,7 +167,6 @@ class DefaultStatefulReactionModule(UserReactionModule):
                 inputs.SCL_controlled_FVCs_cumulative,
                 inputs.SCL_controlled_FVCs_rates,
                 inputs.SCL_controlled_PVs,
-                h,
             ]
         )
         dh_dt = self.gru_cell(cell_input, h) - h
