@@ -2,9 +2,106 @@
 
 from __future__ import annotations
 
+import jax
+import jax.numpy as jnp
+import pytest
+
 from bp_format.mechanistic import build_rhs_ode
-from bp_train.defaults import default_build_reaction_module
+from bp_train.defaults import DefaultReactionModule, default_build_reaction_module
 from test_harness import _make_collection
+
+
+def _reaction_module(*, key, depth=2, width_size=None, n_in=2, n_out=1):
+    return DefaultReactionModule(
+        key=key,
+        depth=depth,
+        width_size=width_size,
+        SCALE_modeled_RMCs=jnp.ones(n_in),
+        SCALE_modeled_BiologicalOde_rates=jnp.ones(n_out),
+    )
+
+
+def test_shallow_default_reaction_module_uses_tanh_and_glorot():
+    key = jax.random.key(3)
+    module = _reaction_module(key=key)
+    _, init_key = jax.random.split(key)
+    layer_keys = jax.random.split(init_key, 3)
+    glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
+
+    assert module.model.depth == 2
+    assert module.model.width_size == 8
+    assert module.model.activation is jax.nn.tanh
+    for layer, layer_key in zip(module.model.layers[:-1], layer_keys[:-1]):
+        expected = glorot_init(layer_key, layer.weight.shape, layer.weight.dtype)
+        assert jnp.array_equal(layer.weight, expected)
+        assert jnp.count_nonzero(layer.bias) == 0
+
+    output = module.model.layers[-1]
+    expected_output = 0.01 * glorot_init(
+        layer_keys[-1], output.weight.shape, output.weight.dtype
+    )
+    assert jnp.array_equal(output.weight, expected_output)
+    assert jnp.count_nonzero(output.bias) == 0
+
+
+def test_deep_default_reaction_module_uses_requested_width_silu_and_he():
+    key = jax.random.key(4)
+    module = _reaction_module(key=key, depth=5, width_size=13)
+    _, init_key = jax.random.split(key)
+    layer_keys = jax.random.split(init_key, 6)
+    he_init = jax.nn.initializers.he_uniform(in_axis=1, out_axis=0)
+
+    assert module.model.depth == 5
+    assert module.model.width_size == 13
+    assert module.model.activation is jax.nn.silu
+    for layer, layer_key in zip(module.model.layers[:-1], layer_keys[:-1]):
+        expected = he_init(layer_key, layer.weight.shape, layer.weight.dtype)
+        assert jnp.array_equal(layer.weight, expected)
+        assert jnp.count_nonzero(layer.bias) == 0
+
+    output = module.model.layers[-1]
+    glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
+    expected_output = 0.01 * glorot_init(
+        layer_keys[-1], output.weight.shape, output.weight.dtype
+    )
+    assert jnp.array_equal(output.weight, expected_output)
+    assert jnp.count_nonzero(output.bias) == 0
+
+
+def test_default_reaction_module_pins_depth_threshold_and_computed_width():
+    shallow = _reaction_module(key=jax.random.key(5), depth=3, n_in=5, n_out=2)
+    deep = _reaction_module(key=jax.random.key(6), depth=4, n_in=5, n_out=2)
+
+    assert shallow.model.width_size == 10
+    assert shallow.model.activation is jax.nn.tanh
+    assert deep.model.width_size == 10
+    assert deep.model.activation is jax.nn.silu
+
+
+def test_zero_depth_module_uses_small_glorot_linear_layer():
+    key = jax.random.key(7)
+    module = _reaction_module(key=key, depth=0, width_size=3)
+    _, init_key = jax.random.split(key)
+    (layer_key,) = jax.random.split(init_key, 1)
+    layer = module.model.layers[0]
+    expected = 0.01 * jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)(
+        layer_key, layer.weight.shape, layer.weight.dtype
+    )
+
+    assert module.model.depth == 0
+    assert jnp.array_equal(layer.weight, expected)
+    assert jnp.count_nonzero(layer.bias) == 0
+
+
+@pytest.mark.parametrize(
+    ("depth", "width_size", "message"),
+    [(-1, None, "depth must be non-negative"), (2, 0, "width_size must be positive")],
+)
+def test_default_reaction_module_rejects_invalid_architecture(
+    depth, width_size, message
+):
+    with pytest.raises(ValueError, match=message):
+        _reaction_module(key=jax.random.key(8), depth=depth, width_size=width_size)
 
 
 def test_default_reaction_module_scale_follows_modeled_state_not_targets():
@@ -23,7 +120,9 @@ def test_default_reaction_module_scale_follows_modeled_state_not_targets():
     # A measured-target set LONGER than the RMC state slice, mimicking
     # target_source="combined" (reactor components + process variables).
     target_names = ["biomass", "viability", "extra_pv"]
-    assert len(target_names) != n_rmc  # precondition: counts differ, else nothing to catch
+    assert (
+        len(target_names) != n_rmc
+    )  # precondition: counts differ, else nothing to catch
 
     module = default_build_reaction_module(
         target_names=target_names,

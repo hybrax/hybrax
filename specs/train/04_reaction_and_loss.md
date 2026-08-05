@@ -99,10 +99,15 @@ axes you need — unused fields cost nothing under JIT.
 
 ### `DefaultReactionModule`
 
-A 2-layer `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
+An `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
 `SCL_modeled_BiologicalOde_rates` (includes any `r_<pv>` PV rates). It ignores
-controls and emits zero-length modeled-feed rates. The single trainable leaf is
-the MLP (`model: eqx.nn.MLP = trainable_field()`).
+controls and emits zero-valued modeled-feed rates. The defaults remain two hidden
+layers and width `max(8, 2 * max(n_inputs, n_outputs))`; pass `depth` and
+`width_size` to override them. Networks through three hidden layers use tanh with
+Glorot-uniform weights; deeper networks use SiLU with He-uniform weights. Biases
+are zero, and the output weights use `0.01 × Glorot uniform` to start the ODE
+rates near zero. The single trainable leaf is the MLP
+(`model: eqx.nn.MLP = trainable_field()`).
 
 ### Field tagging
 

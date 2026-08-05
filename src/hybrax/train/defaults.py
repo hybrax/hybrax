@@ -134,22 +134,59 @@ class DefaultReactionModule(UserReactionModule):
 
     Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_<pv>``
     PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
-    zero-length modeled VC rates.
+    zero-valued modeled VC rates. Uses tanh/Glorot through three hidden layers,
+    or SiLU/He for deeper networks. The rate head starts near zero.
     """
 
     model: eqx.nn.MLP = trainable_field()
 
-    def __init__(self, *, key: jax.Array, **scale_kwargs):
+    def __init__(
+        self,
+        *,
+        key: jax.Array,
+        depth: int = 2,
+        width_size: int | None = None,
+        **scale_kwargs,
+    ):
         super().__init__(**scale_kwargs)
         n_in = self.n_modeled_RMCs + self.n_modeled_PVs
         n_out = self.n_modeled_BiologicalOde_rates
+        if depth < 0:
+            raise ValueError("depth must be non-negative")
+        if width_size is None:
+            width_size = max(8, 2 * max(n_in, n_out))
+        if width_size <= 0:
+            raise ValueError("width_size must be positive")
+        model_key, init_key = jax.random.split(key)
         self.model = eqx.nn.MLP(
             in_size=n_in,
             out_size=n_out,
-            width_size=max(8, 2 * max(n_in, n_out)),
-            depth=2,
-            key=key,
+            width_size=width_size,
+            depth=depth,
+            activation=jax.nn.tanh if depth <= 3 else jax.nn.silu,
+            key=model_key,
         )
+
+        layer_keys = jax.random.split(init_key, depth + 1)
+        glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
+        hidden_init = (
+            glorot_init
+            if depth <= 3
+            else jax.nn.initializers.he_uniform(in_axis=1, out_axis=0)
+        )
+        layers = []
+        for i, (layer, layer_key) in enumerate(zip(self.model.layers, layer_keys)):
+            init = glorot_init if i == depth else hidden_init
+            weight = init(layer_key, layer.weight.shape, layer.weight.dtype)
+            if i == depth:
+                weight *= 0.01
+            layer = eqx.tree_at(lambda linear: linear.weight, layer, weight)
+            if layer.bias is not None:
+                layer = eqx.tree_at(
+                    lambda linear: linear.bias, layer, jnp.zeros_like(layer.bias)
+                )
+            layers.append(layer)
+        self.model = eqx.tree_at(lambda mlp: mlp.layers, self.model, tuple(layers))
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         del t
