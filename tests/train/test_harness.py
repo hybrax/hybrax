@@ -37,6 +37,7 @@ from bp_train.controls_store import ControlsStore
 from bp_train.harness import (
     TrainHarnessConfig,
     _build_batch_index_stream,
+    _build_optimizer,
     _build_reaction_module,
     _ensure_process_names,
     _resolve_estimated_scales,
@@ -862,6 +863,22 @@ def test_harness_process_name_validation_rejects_duplicates_and_empty():
         _ensure_process_names(store, ("p1", "p1"))
     with pytest.raises(ValueError, match="non-empty"):
         _ensure_process_names(store, ())
+
+
+def test_build_optimizer_evaluates_schedule_with_int64_count():
+    scalar = _build_optimizer("sgd", 0.01, grad_clip_norm=0)
+    schedule = _build_optimizer(
+        "sgd",
+        optax.exponential_decay(0.01, transition_steps=10, decay_rate=1.0),
+        grad_clip_norm=0,
+    )
+    params = jnp.asarray(1.0, dtype=jnp.float64)
+    gradient = jnp.asarray(1.0, dtype=jnp.float64)
+
+    scalar_update, _ = scalar.update(gradient, scalar.init(params))
+    schedule_update, _ = schedule.update(gradient, schedule.init(params))
+
+    assert jnp.array_equal(schedule_update, scalar_update)
 
 
 def test_harness_phase1_batching_validation_checks_basics():

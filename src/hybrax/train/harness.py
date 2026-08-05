@@ -257,6 +257,18 @@ def _build_optimizer(
             raise ValueError("learning_rate must be positive")
     if float(grad_clip_norm) < 0.0:
         raise ValueError("grad_clip_norm must be non-negative")
+    if callable(learning_rate):
+        # optax passes an int32 count to learning-rate callables, making some schedules
+        # compute in float32 even with JAX x64 enabled (this depends on the actual
+        # schedule arithmetic, exponential decay, for example, uses f32 and cosine uses
+        # f64). We thus promote the count before schedule arithmetic to make sure f64 is
+        # used in any case (which fixes some minor issues we saw in training
+        # reproducibility).
+        schedule = learning_rate
+
+        def learning_rate(count):
+            return schedule(jnp.asarray(count, dtype=jnp.int64))
+
     name = str(optimizer_name)
     if name == "adam":
         base = optax.adam(learning_rate)
