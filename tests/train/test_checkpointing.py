@@ -362,7 +362,8 @@ def test_train_collection_checkpoint_params_reload(tmp_path: Path):
         assert jnp.allclose(expected, actual)
 
 
-# --- `latest` on filesystems that reject symlinks (SMB/NAS shares, WSL drvfs) -------------------
+# --- `latest` on filesystems that reject symlinks (SMB/NAS shares, WSL drvfs)
+# ---
 
 
 def _write_step(root: Path, name: str) -> Path:
@@ -389,8 +390,9 @@ def test_update_latest_uses_a_symlink_when_the_filesystem_allows_it(tmp_path):
 def test_update_latest_falls_back_to_a_copy_when_symlinks_are_refused(
     tmp_path, monkeypatch
 ):
-    """SMB/NAS shares and WSL drvfs reject os.symlink. Training onto such a share must still work;
-    readers only ever touch `checkpoints/latest/params.eqx`, which resolves in both forms."""
+    """SMB/NAS shares and WSL drvfs reject os.symlink. Training onto such a share must
+    still work; readers only ever touch `checkpoints/latest/params.eqx`, which resolves
+    in both forms."""
     monkeypatch.setattr(
         "pathlib.Path.symlink_to",
         lambda *a, **k: (_ for _ in ()).throw(OSError(1, "Operation not permitted")),
@@ -409,8 +411,8 @@ def test_update_latest_falls_back_to_a_copy_when_symlinks_are_refused(
 def test_copy_fallback_is_replaced_not_merged_on_the_next_checkpoint(
     tmp_path, monkeypatch
 ):
-    """A stale `latest` must be cleared, not written over — otherwise files from an older step
-    linger beside the new ones."""
+    """A stale `latest` must be cleared, not written over — otherwise files from an
+    older step linger beside the new ones."""
     monkeypatch.setattr(
         "pathlib.Path.symlink_to",
         lambda *a, **k: (_ for _ in ()).throw(OSError(1, "Operation not permitted")),
@@ -428,8 +430,8 @@ def test_copy_fallback_is_replaced_not_merged_on_the_next_checkpoint(
 def test_symlink_form_is_replaced_by_the_copy_form_and_vice_versa(
     tmp_path, monkeypatch
 ):
-    """A directory that moved between filesystems (or a mount whose options changed) must not wedge
-    on `latest` already existing in the other form."""
+    """A directory that moved between filesystems (or a mount whose options changed)
+    must not wedge on `latest` already existing in the other form."""
     w = _latest_of(tmp_path)
     w._update_latest(_write_step(tmp_path, "step_00100"))  # symlink
     assert (tmp_path / "latest").is_symlink()

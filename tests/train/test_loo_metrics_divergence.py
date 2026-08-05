@@ -1,5 +1,6 @@
-"""Divergence-tolerant LOO scoring: an unscoreable fold scores NaN, never crashes, and the
-measurement-node guard still fails loudly for a genuinely-old node-omitting predictions.csv."""
+"""Divergence-tolerant LOO scoring: an unscoreable fold scores NaN, never crashes,
+and the measurement-node guard still fails loudly for a genuinely-old
+node-omitting predictions.csv."""
 
 from __future__ import annotations
 
@@ -50,7 +51,8 @@ def test_diverged_nonfinite_scores_nan_not_raise():
 
 
 def test_truncated_grid_scores_nan_not_raise():
-    # diverged solve stopped at t=5 but measurements go to t=10 -> NaN, NOT a clamped-interp value.
+    # diverged solve stopped at t=5 but measurements go to t=10 -> NaN, NOT a
+    # clamped-interp value.
     out = _evaluate_predictions_for_process(
         pred_t=np.array([0.0, 5.0]),
         pred_columns={"c_biomass": np.array([1.0, 2.0])},
@@ -62,7 +64,8 @@ def test_truncated_grid_scores_nan_not_raise():
 
 
 def test_finite_in_range_nodeless_still_raises():
-    # finite prediction whose grid omits an interior measurement node -> the guard must fire loudly.
+    # finite prediction whose grid omits an interior measurement node -> the guard
+    # must fire loudly.
     with pytest.raises(ValueError, match="no grid node"):
         _evaluate_predictions_for_process(
             pred_t=np.array([0.0, 5.0, 10.0]),

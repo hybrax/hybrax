@@ -112,13 +112,15 @@ def test_default_reaction_module_rejects_invalid_architecture(
 
 
 def test_default_reaction_module_scale_follows_modeled_state_not_targets():
-    """``SCALE_modeled_RMCs`` is sized by the modeled RMC state slice, not by the targets.
+    """``SCALE_modeled_RMCs`` is sized by the modeled RMC state slice, not by the
+    targets.
 
-    Under ``target_source="combined"`` / ``"process_variables"`` the measured-target set
-    (reactor components *plus* modeled PVs) is a different length than the reactor-component
-    state slice the module scales. Sizing the fallback RMC scale from ``len(target_names)``
-    then produces a wrong-length axis that the wrapper rejects. This guards that regression:
-    the RMC scale must always match ``len(rhs_ode.name_modeled_RMCs)``.
+    Under ``target_source="combined"`` / ``"process_variables"`` the measured-target
+    set (reactor components *plus* modeled PVs) is a different length than the
+    reactor-component state slice the module scales. Sizing the fallback RMC scale
+    from ``len(target_names)`` then produces a wrong-length axis that the wrapper
+    rejects. This guards that regression: the RMC scale must always match
+    ``len(rhs_ode.name_modeled_RMCs)``.
     """
     collection = _make_collection()
     rhs_ode = build_rhs_ode(collection.processes["p1"])

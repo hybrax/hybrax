@@ -5,10 +5,11 @@ from the fixed ``dt0`` makes the step-size controller re-ramp from scratch. When
 natural step is much larger than ``dt0`` that ramp is most of the segment's cost --
 measured 10-40% of all ODE steps on bp-bench training grids.
 
-The carried value is floored at ``dt0``, which makes the policy **monotone**: it can only
-ever start larger than the fixed default, never smaller. That matters because a very
-short segment would otherwise hand a tiny step to the next, possibly much longer, one and
-force it to ramp back up -- a regression the fixed ``dt0`` cannot have.
+The carried value is floored at ``dt0``, which makes the policy **monotone**: it
+can only ever start larger than the fixed default, never smaller. That matters
+because a very short segment would otherwise hand a tiny step to the next,
+possibly much longer, one and force it to ramp back up -- a regression the fixed
+``dt0`` cannot have.
 
 Both policies are valid solutions of the same ODE taking different step sequences, so
 they differ by O(global truncation error); ``test_agreement_tightens_with_tolerance``

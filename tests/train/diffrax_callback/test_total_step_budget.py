@@ -7,9 +7,9 @@ could silently get orders of magnitude more -- ``solver.max_steps = 8096`` on a
 174-segment process really allowed ~89,000 -- and ``fail_time`` moved when the horizon
 was chopped more finely (which a dense loss or export grid does).
 
-``max_steps_total`` sums the per-segment counts in the scan carry and terminates the lane
-exactly like a segment bail, so the budget is a property of the trajectory rather than of
-the output grid.
+``max_steps_total`` sums the per-segment counts in the scan carry and terminates
+the lane exactly like a segment bail, so the budget is a property of the
+trajectory rather than of the output grid.
 """
 
 import diffrax

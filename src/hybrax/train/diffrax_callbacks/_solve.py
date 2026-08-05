@@ -302,7 +302,8 @@ def diffeqsolve_with_callbacks(
 
         # Solve the segment (dt == 0 for a collapsed lane; diffrax handles t0 == t1).
         #
-        # ``dt_prev`` is the previous segment's average ACCEPTED step, floored at ``dt0``
+        # ``dt_prev`` is the previous segment's average ACCEPTED step, floored at
+        # ``dt0``
         # (see the carry update below). Every segment is a fresh ``diffeqsolve`` with no
         # controller history, so starting each one from the fixed ``dt0`` makes the
         # controller re-ramp from scratch; when the natural step is much larger than
@@ -520,7 +521,8 @@ def diffeqsolve_with_callbacks(
         )
 
         # Seed the next segment from what this one actually sustained: its average
-        # ACCEPTED step. Floored at ``dt0`` so the policy is MONOTONE -- it can only ever
+        # ACCEPTED step. Floored at ``dt0`` so the policy is MONOTONE -- it can
+        # only ever
         # start larger than the fixed default, never smaller. Without that floor a very
         # short segment (two events close together) would hand a tiny step to the next,
         # possibly much longer, segment and force it to ramp back up -- a regression the
