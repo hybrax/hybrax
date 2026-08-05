@@ -866,7 +866,14 @@ def test_harness_process_name_validation_rejects_duplicates_and_empty():
 
 
 def test_build_optimizer_evaluates_schedule_with_int64_count():
+    """Prevent Optax's int32 counter from reducing schedule arithmetic to float32.
+
+    A no-decay schedule and scalar rate must produce bitwise-identical float64
+    updates; equality fails if the schedule receives Optax's original int32 count.
+    The wrapper in ``_build_optimizer`` prevents this (fixed in commit b8ddce1).
+    """
     scalar = _build_optimizer("sgd", 0.01, grad_clip_norm=0)
+    # decay_rate=1 makes the schedule mathematically identical to the scalar rate.
     schedule = _build_optimizer(
         "sgd",
         optax.exponential_decay(0.01, transition_steps=10, decay_rate=1.0),
@@ -878,6 +885,7 @@ def test_build_optimizer_evaluates_schedule_with_int64_count():
     scalar_update, _ = scalar.update(gradient, scalar.init(params))
     schedule_update, _ = schedule.update(gradient, schedule.init(params))
 
+    # Exact equality catches float32 rounding that is later widened to float64.
     assert jnp.array_equal(schedule_update, scalar_update)
 
 
