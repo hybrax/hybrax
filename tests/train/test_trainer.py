@@ -70,6 +70,20 @@ class _LinearReactionModule(UserReactionModule):
         )
 
 
+class _RawDependentReactionModule(UserReactionModule):
+    def __init__(self, **scale_kwargs):
+        super().__init__(**scale_kwargs)
+
+    def __call__(self, t, inputs):
+        del t
+        RAW_modeled_RMCs = self.unscale_modeled_RMCs(inputs.SCL_modeled_RMCs)
+        rate = -0.2 * RAW_modeled_RMCs[0]
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([rate]),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=rate.dtype),
+        )
+
+
 class _AuxReactionModule(UserReactionModule):
     def __init__(self, **scale_kwargs):
         super().__init__(**scale_kwargs)
@@ -1037,6 +1051,40 @@ def test_fail_time_export_marks_mid_trajectory_failure_nonfinite():
         "fail_time is the last successfully-reached node"
     )
     assert bool(jnp.all(jnp.isfinite(loss_states))), "loss-facing states stay finite"
+
+
+def test_affine_offset_preserves_moving_raw_trajectory_through_sample_event():
+    linear, process_data = _build_wrapper_and_process(
+        _RawDependentReactionModule, process_name="p1"
+    )
+    RMC_scaler = linear.reaction_module.SCALE_modeled_RMCs
+    affine = eqx.tree_at(
+        lambda w: w.reaction_module.SCALE_modeled_RMCs,
+        linear,
+        AffineScaler(
+            scale=RMC_scaler.scale,
+            offset=jnp.asarray([10.0], dtype=RMC_scaler.scale.dtype),
+        ),
+    )
+
+    def solve(wrapper):
+        return solve_physical_states(
+            wrapper,
+            t_eval=process_data.t_measured,
+            n_measured=process_data.n_measured,
+            RAW_y0=process_data.y0_measured,
+            max_steps=100_000,
+            rtol=1e-8,
+            atol=1e-10,
+            jump_ts=process_data.controls.active_jump_ts,
+        )
+
+    linear_states = solve(linear)
+    affine_states = solve(affine)
+
+    assert linear_states[-1, 0] < linear_states[0, 0]
+    assert linear_states[1, 1] == pytest.approx(0.9)
+    assert jnp.allclose(affine_states, linear_states, rtol=1e-6, atol=1e-8)
 
 
 def test_affine_offset_cancels_from_measurement_loss():
