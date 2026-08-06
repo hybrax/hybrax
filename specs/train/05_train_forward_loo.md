@@ -87,20 +87,37 @@ forward_from_collection(collection, *, model_path, config=None, custom_py=None,
 ```
 
 Loads a trained model and runs one forward ODE pass per selected process (no
-gradient steps; `step = -1`). Driven by the CLI `forward` subcommand with a
-`forward_config.json` (`models` list → single model or ensemble) or `--model`.
+gradient steps; `step = -1`). Driven by the CLI `forward` subcommand, which is
+[fully config-driven](02_cli_and_config.md#bp-train-forward): the
+`forward-config.json` carries a `models` list (one entry = single model, more =
+ensemble) plus optional `data` and `output` blocks.
 
 - [`ForwardConfig`](../bp_train/harness.py) / [`ForwardResult`](../bp_train/harness.py)
   carry the per-process losses and dense exports.
-- `compute_dense_exports(trained_wrapper, store, collection, process_names, *,
+- `compute_dense_exports(trained_wrapper, store, process_names, *,
   solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts,
   prediction_grid_n=200)` runs one batched solve and returns per-process
   [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories
-  (time, species, volume, rates, auxiliary).
+  (time, species, volume, rates, auxiliary). It is *the* single source of dense
+  predictions — forward and the training-checkpoint `predictions.csv` writer
+  both call it, so exported predictions always match the training solve.
+- For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
+  into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
+  own `models/<name>/predictions.csv` and `losses.csv`.
 - Outputs ([`postprocessing.py`](../bp_train/postprocessing.py)):
-  `plot_process_simulations` (per-process fit plots with measurement overlays and
-  bolus annotations), `export_predictions_csv` (`predictions.csv` /
-  `--timeseries-csv` merged across processes), and a `losses.csv` loss table.
+  `plot_process_simulations` (per-process fit plots with measurement overlays,
+  bolus annotations, and the ensemble ±std band) and `export_predictions_csv`.
+
+### Programmatic forward
+
+For a loaded model, `model_predict(wrapper, config, collection)` is the simpler
+path — it takes its solver settings from `config` and returns the same
+`{process_name: DenseProcessExport}` mapping. See
+[06_serialization_inspect.md](06_serialization_inspect.md#reconstruction).
+
+`forward_from_collection` re-runs `estimate_all_scales` against whatever
+collection it is given, so it re-scales the model if that is not the training
+collection. `model_predict` reuses the trained scales as-is.
 
 ## Leave-one/some-process-out cross-validation
 
@@ -170,9 +187,8 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 
 ```bash
 # train, then re-simulate + export, then cross-validate
-bp-train train   --config examples/01_kittler_2022/vanilla/train-config.json
-bp-train forward --model examples/01_kittler_2022/vanilla/output \
-                 --timeseries-csv predictions.csv
+bp-train train   --config examples/01_kittler_2022/fba_hyb/train-all-config.json
+bp-train forward --config examples/01_kittler_2022/fba_hyb/forward-config.json
 bp-train loo     --config examples/01_kittler_2022/fba_hyb/loo-config.json
 ```
 

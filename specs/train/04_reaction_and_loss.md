@@ -70,6 +70,15 @@ def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
   `n_controlled_PVs`, `n_latent`) so you size MLPs after `super().__init__()`
   without threading `n_*` kwargs.
 
+Three further methods exist for stateful modules; the defaults are fine for a
+stateless one:
+
+| Member | Default | Override when |
+|---|---|---|
+| `initial_latent(RAW_phys_y0)` | zeros of length `n_latent` | the latent state should be seeded from the initial physical state |
+| `latent_observables` | `()` | some observable needs live latent state *during* the solve |
+| `observe(states)` | identity | the physical state needs a post-hoc observation map |
+
 ### `ReactionInputs`
 
 Built by the wrapper at each RHS evaluation; all in SCL space. Read only the
@@ -110,6 +119,11 @@ rates near zero. The single trainable leaf is the MLP
 (`model: eqx.nn.MLP = trainable_field()`).
 
 ### `DefaultStatefulReactionModule`
+
+Import it from `bp_train.defaults` — unlike `DefaultReactionModule` it is not
+re-exported at the package top level. Using any module with `n_latent > 0` also
+requires `train.allow_stateful_models: true` in the config; otherwise training
+fails fast.
 
 `DefaultStatefulReactionModule` is a latent ODE with a standard GRU:
 `dh/dt = GRUCell(x, h) - h`. Its cell input `x` contains the scaled physical
@@ -213,6 +227,23 @@ fields above, leading dim `n_dense`:
 | `dense_SCL_modeled_FVCs_rates` / `dense_RAW_…` | `(n_dense, n_modeled_FVCs)` | feed-rates pair |
 | `dense_SCL_V` / `dense_RAW_V` | `(n_dense,)` | volume pair |
 | `dense_auxiliary` | `dict[str, (n_dense, …)]` | `auxiliary` |
+| `dense_valid_time` | `(n_dense,)` bool | which dense rows are real predictions — see below |
+
+#### Failed solves
+
+If the ODE solve bailed partway (a stiff segment hit the step cap), every point
+past the failure time is dropped **before** `LossInputs` is built:
+
+- On the measurement grid, `mask_measured` / `mask_measured_any` are already
+  zeroed on those rows.
+- On the dense grid, `dense_valid_time` marks the still-valid rows. It is
+  all-`True` when the solve succeeded, and `None` when the dense grid is off.
+
+Every predicted trajectory here — measurement and dense — is guaranteed finite:
+post-failure rows carry a finite fallback, never `inf`/`nan`. So the
+`penalty * mask` idiom is safe (no `0 * inf`). **Gate dense penalties by
+`dense_valid_time`** the way measurement terms use `mask_measured`; the dense
+grid has no other failure mask.
 
 #### Masks (sparse, unaligned measurements)
 
@@ -465,15 +496,20 @@ penalties[label] = self.weight * _hinge_sq(values, scl_threshold, side, mask)
 
 #### Practical note on `dense_grid_n` size
 
-The added cost is just more `SaveAt` evaluations of `wrapper.save_outputs`;
-the underlying solver steps are adaptive and unchanged. In practice, very
-large `dense_grid_n` (on the order of the number of internal solver steps)
-can stress the JIT'd graph during the backward pass on some setups; on the
-`martens_single` fixture `dense_grid_n=32` is comfortable, `dense_grid_n>=64`
-started to bite at the default solver tolerances (segfault inside the JIT'd
-train step on the current JAX/diffrax). Pick the smallest N your finite
-differences need; if you hit a hard crash at large N, drop it and/or loosen
-the solver tolerances.
+**A dense time is not a segment boundary.** `physical_solve` splits segments only
+at bolus/sample events and reads the output grid off `SaveAt(ts=…)` *inside* each
+segment — interpolation, costing no solver steps. So a finer dense grid does not
+subdivide the integration, does not move `fail_time`, and does not change which
+samples bail.
+
+(This was not always true. When output times *were* segment boundaries, one
+240 h / 11-measurement / 10-sample-event process went from 10 segments and 38 ODE
+steps at `dense_grid_n=None` to 108 segments and 229 steps at `dense_grid_n=100`.
+See [specs/two_tier_integration_grid.md](../specs/two_tier_integration_grid.md).)
+
+It is still not free: each dense point costs one interpolant evaluation per
+segment it lands in, and the `dense_*` arrays it populates are real arrays inside
+the loss. Pick the smallest N your finite differences actually need.
 
 ### Where terms show up
 

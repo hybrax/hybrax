@@ -37,7 +37,8 @@ bp-train prepare --config prepare-config.json --output-dir prepared
 bp-train train   --config train-config.json
 
 # 3. re-simulate a trained model, regenerate plots, export predictions
-bp-train forward --model output --timeseries-csv predictions.csv
+#    (the config names the model dir(s); >1 = ensemble)
+bp-train forward --config forward-config.json
 
 # 4. (optional) leave-one-process-out cross-validation
 bp-train loo     --config loo-config.json
@@ -84,6 +85,10 @@ same `(wrapper, config)` pair.
 Full docs — including the design rationale and the **single `custom.py` hooks
 reference** — are in [documentation/](documentation/README.md). Start with the
 [Design Rationale](documentation/01_design_rationale.md).
+
+[specs/](specs/README.md) holds proposals, roadmaps, and investigations. It is
+not a description of current behaviour — several documents there predate the
+current API.
 
 bp-train builds on [bp-format](../bp-format) for the data model and the
 mechanistic ODE RHS.

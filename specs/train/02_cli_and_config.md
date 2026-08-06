@@ -44,7 +44,7 @@ Transform a raw bp-format process collection into a prepared artifact.
 | Flag | Required | Meaning |
 |---|---|---|
 | `--config` | yes | Path to a prepare run config JSON (needs a `prepare` section). |
-| `--output-dir` | yes | Output directory; prepare writes `prepared.json`, `prepare_config.json`, and `prepare_diagnostics/` into it. |
+| `--output-dir` | yes | Output directory; prepare writes `prepared.json`, `prepare_config.json`, `prepare_diagnostics/`, and — when augmentation is configured — `augmented-data.png` into it. |
 | `--overwrite` | no | Overwrite an existing `prepared.json` in `--output-dir` (rewrites only prepare's own files; leaves any train/forward artifacts in the dir untouched). |
 
 ### `bp-train train`
@@ -65,20 +65,52 @@ update.
 
 ### `bp-train forward`
 
-Load a trained model and run one forward ODE pass per selected process (no
-training); regenerates plots and prints a loss table.
+Load one or more trained models and run one forward ODE pass per selected
+process (no training); regenerates plots and prints a loss table.
+
+**Fully config-driven** — everything that used to be a flag (`--model`,
+`--input`, `--process`, `--plot`, `--loss-csv`, `--timeseries-csv`) now lives in
+the `forward-config.json`.
 
 | Flag | Meaning |
 |---|---|
-| `--config` | `forward_config.json`: a `models` list of self-contained run/checkpoint dirs (len 1 = single, >1 = ensemble) + optional `data`/`output`. Mutually exclusive with `--model`. |
-| `--model` | Shorthand for a 1-model config: a run dir, or a checkpoint dir / `params.eqx` inside it. |
-| `--input` | Optional prepared collection to forward on (new data + controls): a `prepared.json[.gz]` file or a prepare `--output-dir` (resolves `prepared.json` inside); defaults to each model's bundled one. |
-| `--process` | Process name to evaluate (repeatable or comma-separated); default all. |
-| `--output-dir` | Forward outputs dir; default `<first model>/forward`. |
-| `--plot` / `--no-plot` | Per-process plots (default on). |
-| `--loss-csv` | Loss-table CSV; default `<output-dir>/losses.csv`. |
-| `--timeseries-csv` | One merged CSV of dense simulated trajectories with a `process` column. |
-| `--log-level` | Python logging level. |
+| `--config` | Required. Path to a `forward-config.json` (schema below). |
+| `--output-dir` | Override `output.dir`; default `<first model>/forward`. |
+| `--overwrite` | Allow re-running into an output dir that already holds a `losses.csv`. |
+| `--log-level` | `DEBUG`/`INFO`/`WARNING`/`ERROR`. |
+
+The `forward-config.json`:
+
+```jsonc
+{
+  // One or more self-contained run/checkpoint dirs. len 1 = single model,
+  // >1 = ensemble. Bare path strings and {"name": ..., "path": ...} objects
+  // are interchangeable; `name` defaults to the bundle's output.dir basename.
+  "models": ["output_all"],
+
+  // Optional. Forward on data other than each model's bundled prepared.json.
+  "data": {
+    "prepared": "prepared",        // prepared.json[.gz] or a prepare output dir
+    "processes": ["run_1"]         // subset; omit for all
+  },
+
+  // Optional.
+  "output": { "dir": null, "plots": true }
+}
+```
+
+An ensemble (`len(models) > 1`) **requires** `data.prepared`, so every model
+predicts on the same collection and the per-model outputs can be aligned.
+
+Outputs under `--output-dir`:
+
+```
+predictions.csv          # mean across models (the single model itself, if one)
+predictions_std.csv      # ensembles only: per-point std across models
+losses.csv               # loss table of the first model
+models/<name>/           # per model: predictions.csv + losses.csv
+<process>_*.png          # fit plots: mean line, ±std band, measured overlay
+```
 
 ### `bp-train loo`
 
@@ -133,8 +165,10 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
 
 ## `custom.py` hooks reference
 
-A run can supply a `custom.py` module (via `custom_py` in the config, or
-`--custom`/`--model` paths). Hooks are looked up by name with
+A run can supply a `custom.py` module via `custom_py` in the config. (`forward`
+finds it from the model bundle instead: the path recorded in the run's
+`config.json` if it still exists on this machine, otherwise the `custom.py`
+copied into the run dir.) Hooks are looked up by name with
 [`get_hook(custom_module, "<name>", <default>)`](../bp_train/utils.py); a missing
 hook falls back to its default (or to a no-op for the `None`-default hooks). The
 module is imported with `load_custom_module`. A custom typed config object is
@@ -397,9 +431,19 @@ From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config
   }
 }
 ```
-Run it with:
+with [examples/00_e2e_sim/forward-config.json](../examples/00_e2e_sim/forward-config.json):
+
+```json
+{
+  "models": ["output_all"],
+  "output": { "plots": true }
+}
+```
+
+Run them with:
 ```bash
 bp-train prepare --config prepare-config.json --output-dir prepared
 bp-train train   --config train-config.json
-bp-train forward --model output
+bp-train forward --config forward-config.json
+bp-train loo     --config loo-config.json
 ```

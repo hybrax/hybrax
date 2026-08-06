@@ -57,11 +57,14 @@ adapter is invoked separately before the hooks. Full per-hook write-ups
 |---|---|---|---|
 | [`transform_process_collection`](02_cli_and_config.md#transform_process_collection) | prepare | `(collection, config) -> collection` | rename map |
 | [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(*, parent_name, child_name, state_name, times, base_values, augmented_values, config) -> ndarray` | none |
-| [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(collection, target_names, config) -> EstimatedScales` | none (ones) |
+| [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(collection, target_names, config, *, controls_store=…) -> EstimatedScales` | none (ones) |
 | [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, collection, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
 | [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, collection) -> UserLossModule` | `DefaultLossModule` |
-| [`build_learning_rate`](02_cli_and_config.md#build_learning_rate) | train | `(custom_cfg, train_cfg) -> float` | none |
+| [`build_learning_rate`](02_cli_and_config.md#build_learning_rate) | train | `(custom_cfg, train_cfg, total_updates) -> float \| optax.Schedule` | none |
 | [`build_optimizer`](02_cli_and_config.md#build_optimizer) | train | `(custom_cfg, train_cfg) -> optax.GradientTransformation` | none |
+
+`controls_store` reaches `estimate_all_scales` only if the hook declares it, so
+the three-argument form stays valid.
 
 The two base classes the `build_*_module` hooks return are documented in
 [04_reaction_and_loss.md](04_reaction_and_loss.md): `UserReactionModule.__call__(t,
@@ -108,12 +111,11 @@ The `examples/` directory contains end-to-end case studies. Each has a
 
 | Directory | Organism / data | Demonstrates |
 |-----------|-----------------|--------------|
-| [`00_e2e_sim/`](../examples/00_e2e_sim) | Simulated | Custom reaction module learning RMC + modeled-PV rates; `estimate_all_scales` |
-| [`01_kittler_2022/vanilla/`](../examples/01_kittler_2022/vanilla) | E. coli fed-batch | `DefaultReactionModule` baseline |
+| [`00_e2e_sim/`](../examples/00_e2e_sim) | Simulated | Custom reaction module learning RMC + modeled-PV rates; `estimate_all_scales`. The smallest complete prepare → train → forward → loo set. |
 | [`01_kittler_2022/fba_hyb/`](../examples/01_kittler_2022/fba_hyb) | E. coli fed-batch | FBA surrogate reaction module + Kendall uncertainty loss |
+| [`01_kittler_2022/structured/`](../examples/01_kittler_2022/structured) | E. coli fed-batch | Structured loss terms |
 | [`11_tub_2026/fba_hyb/`](../examples/11_tub_2026/fba_hyb) | V. natriegens | FBA surrogate with algebraic biomass + bounds-hinge loss |
 | [`11_tub_2026/migration/`](../examples/11_tub_2026/migration) | V. natriegens | Migration from legacy bp-format |
-| [`12_martens_2025_expanded/vanilla/`](../examples/12_martens_2025_expanded/vanilla) | CHO (simulated) | Default reaction module |
 | [`12_martens_2025_expanded/structured/`](../examples/12_martens_2025_expanded/structured) | CHO (simulated) | Dense-grid curvature penalty + between-measurement bounds |
 | [`12_martens_2025_expanded/migration/`](../examples/12_martens_2025_expanded/migration) | CHO (simulated) | Migration from legacy bp-format |
 | [`13_volume_integration/`](../examples/13_volume_integration) | Synthetic | Volume integration / dilution tracking |
@@ -122,3 +124,5 @@ The `examples/` directory contains end-to-end case studies. Each has a
 
 - [bp-format documentation](../../bp-format/documentation/README.md) — the data
   model, mechanistic RHS, and pseudobatch transform that bp-train builds on.
+- [specs/](../specs/README.md) — proposals, roadmaps, and investigations. Not a
+  description of current behaviour.
