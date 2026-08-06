@@ -4,153 +4,206 @@ Source: `bp_format/mechanistic.py`
 
 ## Purpose
 
-Build JAX/Equinox-compatible ODE components from a `BioProcess`:
+Turn a `BioProcess` into the pieces of an ODE:
 
-- `ProcessOrdering`: canonical name ordering across every derived module
-  (states, controls, rates, algebraic, FVCs, SVCs).
-- `ControlSplines`: controlled inputs (controlled FVCs/SVCs/PVs) over time.
-- `RhsOde`: mechanistic RHS evaluating user-supplied biological expressions
-  for each dynamic state, with bp-format adding feed/dilution and volume
-  dynamics on top.
-- `extract_discrete_events`, `build_state_splines`, `build_algebraic_func`:
-  helpers for events, state splines, and algebraic-variable observables.
+- **`ProcessOrdering`** — the canonical layout of every state, control, and rate
+  vector.
+- **`ControlSplines`** — all controlled inputs as one function of time.
+- **`RhsOde`** — `dc/dt`, combining the biology you wrote with the physics
+  bp-format adds.
+- Helpers for discrete events, state trajectories, and algebraic observables.
 
-Forward integration of the process lives in `bp-train` and is not part of
-bp-format.
+Everything here is `eqx.Module` and JIT-safe.
 
-## ProcessOrdering — single source of truth
+**bp-format does not integrate.** It builds the right-hand side; running a
+solver over it is [bp-train](../../bp-train/documentation/README.md)'s job.
 
-`get_process_ordering(process) -> ProcessOrdering` collects every name
-group consumed by every other factory. Sub-group ordering rules:
-
-- `name_modeled_rates`: preserve user-supplied insertion order of
-  `BiologicalOde.rates` (downstream consumers pass rate vectors in this
-  order).
-- `name_modeled_algebraic`: topo-sorted by inter-algebraic dependencies,
-  ties broken alphabetically.
-- All other tuples are alphabetical within their sub-group.
-
-Layout invariants:
-
-```
-c = [name_modeled_RMCs... | name_modeled_PVs... | V]
-u = [name_controlled_FVCs... | name_controlled_SVCs... | name_controlled_PVs...]
-```
-
-The first `len(FVCs)+len(SVCs)` entries of `u` are flow rates (spline
-derivatives). FVC flow rates are non-negative; SVC flow rates carry their
-storage sign (non-positive) so the feed-dilution machinery treats them as
-signed outflows. The remaining entries of `u` are direct PV values.
-
-`get_process_ordering` validates:
-
-- Every continuous `FeedVolumeChange` defines `feed_medium`, with every
-  feed component existing in `reactor_medium.components`.
-- Every non-controlled `ProcessVariable` carries a `TimeSeries` value
-  (static PVs must be `is_controlled=True`).
-- The `BiologicalOde.algebraic` graph is acyclic.
-- All names across every group are unique (no shared names between
-  states, rates, algebraic, controlled PVs, FVCs, SVCs).
-
-## State and Rate Model
-
-### Dynamics partition
-
-For each dynamic state `s`, the `RhsOde` evaluates a user-supplied
-biological derivative expression over the symbol table
-
-```
-{state names} ∪ {controlled-PV names} ∪ {algebraic names} ∪ {rate names}
-```
-
-and bp-format adds the physical contribution on top. For reactor (RMC)
-states this is feed inflow (FVCs add species) and dilution from all flows
-(FVCs and SVCs); for PV states it is biological-only (no feed/dilution);
-for volume it is `dV/dt = total_FVC_inflow - total_SVC_outflow_magnitude`.
-
-The biological derivative expressions live in
-`process.biological_ode.derivatives`. When the user does not supply a
-`biological_ode` block, `BioProcess.__post_init__` auto-generates a
-minimal one keyed by reactor-medium component names and dynamic PV names.
-
-## Public API
-
-### Factory functions
-
-- `get_process_ordering(process) -> ProcessOrdering`
-- `get_control_splines(process, ordering=None) -> ControlSplines`
-- `build_rhs_ode(process, ordering=None) -> RhsOde` — raises if
-  `process.biological_ode` is unset.
-- `build_algebraic_func(process, ordering=None) -> Callable` — evaluator for
-  `BiologicalOde.algebraic` quantities, e.g. `X_active(t)` as an observable.
-- `extract_discrete_events(process, ordering) -> list[dict]`
-- `build_state_splines(process, ordering) -> dict[str, callable]`
-
-`extract_discrete_events` and `build_state_splines` take a
-`ProcessOrdering` rather than a compiled `RhsOde` — they only need name
-tuples, not lambdified callables.
-
-### `RhsOde` call signature
+## `ProcessOrdering` — one layout, decided once
 
 ```python
-rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs) -> dc_dt
+ordering = bp.mechanistic.get_process_ordering(process)
 ```
 
-Argument shapes:
+Every other factory takes this same object, so a rate vector built for one is
+valid for all of them. Without it, each factory would need its own sorting rule
+and they would drift.
 
-- `c`: `(len(name_modeled_RMCs) + len(name_modeled_PVs) + 1,)` —
-  `[RMCs..., PVs..., V]`.
-- `rates`: `(len(name_modeled_rates),)` aligned with
-  `rhs_ode.name_modeled_rates`.
-- `u`: full control vector from `ControlSplines.__call__(t)` —
-  `[FVC_flows | SVC_flows | PV_values]`.
-- `f_modeled_FVCs`: `(len(name_modeled_FVCs),)` — uncontrolled FVC flow
-  rates (non-negative); pass `jnp.zeros(0)` when none.
-- `f_modeled_SVCs`: `(len(name_modeled_SVCs),)` — uncontrolled SVC flow
-  rates (non-positive, signed); pass `jnp.zeros(0)` when none.
+Ordering rules:
 
-Return shape: same as `c`.
+- `name_modeled_rates` — **the insertion order of `BiologicalOde.rates`**, kept
+  as written. Sorting it would silently permute every rate vector downstream.
+- `name_modeled_algebraic` — topologically sorted so each expression's
+  dependencies are computed first; alphabetical within a level.
+- Everything else — alphabetical. Biomass has no reserved index.
 
-Evaluation order inside `__call__`:
+Resulting layouts:
 
-1. Compute algebraic variables (e.g. `X_active`) in topo-sorted order.
-2. Evaluate the per-state biological RHS expression.
-3. Add feed/dilution contributions on the reactor block (PV states are
-   biological-only).
-4. Append `dV/dt` from FVC inflow + SVC outflow.
+```
+c = [ modeled_RMCs... | modeled_PVs... | V ]
+u = [ controlled_FVCs... | controlled_SVCs... | controlled_PVs... ]
+```
 
-### Fields on `RhsOde`
+In `u`, the first `len(FVCs) + len(SVCs)` entries are **flow rates** (spline
+derivatives of the cumulative-volume traces); the rest are direct process
+variable values. Feed flows are non-negative; sample flows keep their stored
+negative sign, and the mass balance treats them as signed.
 
-- Names: `name_modeled_rates`, `name_modeled_algebraic`,
-  `name_modeled_RMCs`, `name_modeled_PVs`, `name_modeled_FVCs`,
-  `name_modeled_SVCs`, `name_controlled_PVs`, `name_controlled_FVCs`,
-  `name_controlled_SVCs`.
-- Compiled callables: `algebraic_funcs`, `derivative_funcs`.
-- Feed compositions: `Cin_controlled_FVCs`, `Cin_modeled_FVCs`.
+`get_process_ordering` raises if:
 
-All sizes derive from the lengths of the name tuples (`len(...)`); there
-are no separate sizing fields.
+- a continuous `FeedVolumeChange` has no `feed_medium`, or names a species that
+  is not in `reactor_medium.components`;
+- an uncontrolled `ProcessVariable` holds a `StaticVariable` (a state with no
+  time axis cannot be integrated — mark it `is_controlled=True`);
+- the `algebraic` graph has a cycle;
+- any name appears in two groups (a state that is also a rate, and so on).
 
-### Boundary: biological vs. physical
+Field list: [02_data_model.md](02_data_model.md#processordering).
 
-User-written expressions describe only the *biological* part of `dc/dt`.
-bp-format unconditionally adds, on top of the biological derivatives:
+## `ControlSplines`
 
-- Feed inflow + dilution on reactor states from FVC flows and the
-  `Cin_*` matrices.
-- Dilution from SVC outflows on reactor states.
-- `dV/dt = total_FVC_inflow - total_SVC_outflow_magnitude`.
+```python
+controls = bp.mechanistic.get_control_splines(process, ordering)
+u = controls(t)            # shape (n_controlled_FVCs + n_controlled_SVCs + n_controlled_PVs,)
+```
 
-Process-variable states receive *no* physical contribution — their
-dynamics are entirely encoded in the user expressions.
+Evaluates every controlled signal at time `t`, in `ProcessOrdering` layout.
+Volume-change entries are differentiated (`nu=1`) because they are stored
+cumulatively and the ODE needs a rate; process variables are evaluated directly.
 
-### Bounds
+Stored splines are reused as-is, never refitted. A series with no spline state
+gets a cubic fit on the spot; a `StaticVariable` process variable becomes a
+constant piece over the time axis.
 
-`bounds` on reactor components, process variables, volume, and per-rate
-are **metadata only** — never plumbed into `RhsOde`. Downstream
-consumers (e.g. `bp-train`'s loss generator) read them off the process
-to build soft-constraint penalties (concentrations ≥ 0, quality
-attributes in [0, 1], etc.).
+## `RhsOde`
+
+```python
+rhs_ode = bp.mechanistic.build_rhs_ode(process, ordering)
+dc_dt   = rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
+```
+
+| Argument | Shape | Meaning |
+|----------|-------|---------|
+| `c` | `(n_RMCs + n_PVs + 1,)` | State: `[RMCs…, PVs…, V]` |
+| `rates` | `(len(name_modeled_rates),)` | Rate values, in declaration order |
+| `u` | full control vector | Output of `ControlSplines(t)` |
+| `f_modeled_FVCs` | `(len(name_modeled_FVCs),)` | Uncontrolled feed flow rates, ≥ 0 |
+| `f_modeled_SVCs` | `(len(name_modeled_SVCs),)` | Uncontrolled sample flow rates, ≤ 0 |
+
+Returns `dc/dt` with the same shape as `c`. Pass `jnp.zeros(0)` for the modeled
+flow vectors when there are none.
+
+`rates` is a single flat array, not a tuple — one argument, one layout, aligned
+with `rhs_ode.name_modeled_rates`.
+
+### What it computes
+
+1. **Algebraic quantities**, in topological order. Each is a sympy expression
+   compiled to a JAX callable over `[RMCs | PVs | controlled PVs | algebraic |
+   rates]`.
+2. **Biological derivatives**, one compiled expression per dynamic state,
+   verbatim from `biological_ode.derivatives`. A state with no entry gets `0`.
+3. **Physical contributions on reactor states only**:
+
+   ```
+   total_in  = Σ controlled feed flows + Σ modeled feed flows        (≥ 0)
+   total_out = −(Σ controlled sample flows + Σ modeled sample flows) (≥ 0)
+
+   dilution  = −(total_in + total_out) / V · c_RMCs
+   addition  =  Σ_k flow_k · Cin[k, :] / V
+   ```
+
+   Every flow dilutes; only feeds add mass, at their medium composition.
+4. **Volume**: `dV/dt = total_in − total_out`.
+
+**Process-variable states get no physical term.** Their dynamics are entirely
+what you wrote. A dissolved-oxygen state is not "diluted" by feeding, and
+pretending otherwise would be wrong — if a process variable really does need a
+transport term, write it into its derivative expression.
+
+Volume is guarded: `eqx.error_if` aborts the solve if `V` reaches `1e-10` or
+below, rather than dividing by nearly zero.
+
+### The biological / physical boundary
+
+This split is the core contract of the module.
+
+| You write | bp-format adds |
+|-----------|----------------|
+| `biological_ode.derivatives`, `algebraic`, `rates` | feed inflow, dilution, sample outflow, `dV/dt` |
+
+Feed and sample flow rates are deliberately **not** in the expression symbol
+table. That keeps mass balance out of user code and makes it impossible to
+double-count a dilution term. (It is also why perfusion and evaporation are not
+expressible today — see [specs/](../specs/README.md).)
+
+`print_rhs_ode` renders the two halves side by side; use it to check what you
+actually built.
+
+### Fields
+
+Name tuples (all static): `name_modeled_rates`, `name_modeled_algebraic`,
+`name_modeled_RMCs`, `name_modeled_PVs`, `name_modeled_FVCs`,
+`name_modeled_SVCs`, `name_controlled_PVs`, `name_controlled_FVCs`,
+`name_controlled_SVCs`.
+
+Compiled callables: `algebraic_funcs`, `derivative_funcs`.
+
+Feed composition matrices: `Cin_controlled_FVCs`, `Cin_modeled_FVCs`, each
+`(n_feeds, n_RMCs)` of static feed concentrations, zero where a feed does not
+carry a species.
+
+There are no separate size fields — every dimension is `len(...)` of a name
+tuple.
+
+### Bounds are not enforced here
+
+`bounds` on components, process variables, volume, and rates never reach
+`RhsOde`. They are metadata for downstream loss generators. A rate bounded
+`(0, None)` is not clipped during a solve; it is up to the training loss to
+penalize violations.
+
+## Helpers
+
+### `build_algebraic_func(process, ordering=None)`
+
+```python
+f = bp.mechanistic.build_algebraic_func(process, ordering)
+f(state_values, ctrl_pv_values, rates)   # -> {"X_active": ..., ...}
+```
+
+Evaluates the `algebraic` quantities on their own, keyed by name in topological
+order. Useful for plotting or for a loss that targets a derived quantity such as
+active biomass. `state_values` is `[RMCs… | PVs…]` without volume.
+
+### `extract_discrete_events(process, ordering)`
+
+Returns a list of dicts, sorted by time with **samples before boluses** at the
+same timestamp:
+
+| Key | Value |
+|-----|-------|
+| `t` | event time |
+| `kind` | `"sample"` or `"bolus_feed"` |
+| `dV` | signed volume change |
+| `Cin` | feed composition aligned with `ordering.name_modeled_RMCs`, or `None` for samples |
+| `source` | name of the originating volume change |
+
+Zero-magnitude deltas (`< 1e-15`) are dropped. At most one sample and one bolus
+per timestamp — more raises, because the outcome would depend on an
+undefined ordering.
+
+### `build_state_splines(process, ordering)`
+
+Returns `{state_name: callable}` for every non-volume state, giving the measured
+trajectory as a continuous function.
+
+- Pseudobatch-transformed reactor components return a `BacktransformSpline`, so
+  the callable yields **real-space** concentration.
+- Everything else returns the stored `PPoly` directly; a `StaticVariable`
+  becomes a constant piece.
+
+The pseudobatch bundle is validated first: a `c*` trace without a matching
+`feed_corrections` entry (or the reverse) raises.
 
 ## Example
 
@@ -158,22 +211,48 @@ attributes in [0, 1], etc.).
 import jax.numpy as jnp
 import bp_format as bp
 
-process = ...
 ordering = bp.mechanistic.get_process_ordering(process)
-ctrl = bp.mechanistic.get_control_splines(process, ordering)
-rhs_ode = bp.mechanistic.build_rhs_ode(process, ordering)
+controls = bp.mechanistic.get_control_splines(process, ordering)
+rhs_ode  = bp.mechanistic.build_rhs_ode(process, ordering)
 
-t = jnp.array(5.0)
-u = ctrl(t)
-c = jnp.zeros(len(rhs_ode.name_modeled_RMCs) + len(rhs_ode.name_modeled_PVs) + 1)
-rates = jnp.zeros(len(rhs_ode.name_modeled_rates))
-dc_dt = rhs_ode(c, rates, u, jnp.zeros(0), jnp.zeros(0))
+n_states = len(ordering.name_modeled_RMCs) + len(ordering.name_modeled_PVs) + 1
+
+t     = jnp.array(5.0)
+c     = jnp.ones(n_states)
+rates = jnp.zeros(len(ordering.name_modeled_rates))
+
+dc_dt = rhs_ode(
+    c, rates, controls(t),
+    jnp.zeros(len(ordering.name_modeled_FVCs)),
+    jnp.zeros(len(ordering.name_modeled_SVCs)),
+)
 ```
 
-Forward integration is provided by `bp-train`; consume `RhsOde` and
-`ControlSplines` from there.
+Under JIT:
 
-## See Also
+```python
+import equinox as eqx
 
-- [Data Model](02_data_model.md) — `ProcessOrdering` listing
-- [Splines](07_splines.md)
+step = eqx.filter_jit(rhs_ode)
+dc_dt = step(c, rates, controls(t), jnp.zeros(0), jnp.zeros(0))
+```
+
+## Limitations
+
+- **Feed composition must be static.** A `TimeSeries` feed concentration raises
+  `NotImplementedError`.
+- **Well-mixed CSTR only.** Every species leaves at the same rate through a
+  `SampleVolumeChange`, so perfusion with cell retention and evaporation (where
+  solutes stay) cannot be expressed.
+- **No rate inversion.** Recovering rate values from state splines is not
+  implemented.
+
+Design notes on the last two live in [specs/](../specs/README.md); neither has
+code behind it.
+
+## See also
+
+- [Data Model](02_data_model.md) — `BiologicalOde`, `ProcessOrdering`
+- [Inspection](05_inspection.md) — `print_rhs_ode`
+- [Splines](07_splines.md) — the state trajectories consumed here
+- [bp-train](../../bp-train/documentation/README.md) — integrates all of this

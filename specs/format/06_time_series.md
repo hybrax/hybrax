@@ -4,190 +4,218 @@ Source: `bp_format/time_series/`
 
 ## Purpose
 
-The `TimeSeries` class is the fundamental measurement container in bp-format. It is an `eqx.Module` (JAX pytree) that stores measured data (`times`/`values` arrays) and optionally carries fitted spline coefficients (`breaks`/`coeffs`/`segment_start_piece_idx`) for continuous-time evaluation.
+`TimeSeries` is the container for everything that varies over time: measured
+concentrations, cumulative feed traces, process signals, and the pseudobatch
+helper trajectories. It holds **discrete samples, a fitted spline, or both**.
 
-`TimeSeries` itself does not decide whether the data is continuous or discontinuous -- that semantic comes from the parent object. For example, a `VolumeChange` with `is_continuous=True` holds a TimeSeries representing a continuous flow, while `is_continuous=False` means discrete events (bolus feeds, sampling). Spline fitting is only meaningful for continuous data.
+It is an `eqx.Module`, so it passes through `jax.jit` / `jax.grad` / `jax.vmap`
+untouched — an ODE solver can evaluate a stored spline inside a compiled step
+function.
 
-## Design Rationale
+`TimeSeries` does not know whether its data is continuous. That comes from the
+parent object: a `VolumeChange` with `is_continuous=True` holds a flow profile,
+one with `is_continuous=False` holds discrete events where a spline would be
+meaningless.
 
-- **Why `eqx.Module`:** TimeSeries instances are passed into JIT-compiled functions (ODE solvers, loss functions). Being an Equinox module means JAX can automatically trace through TimeSeries objects, enabling `jax.jit`, `jax.grad`, and `jax.vmap`.
+## Design notes
 
-- **Why power-basis storage:** Spline coefficients are stored as `[a, b, c, d]` per piece, where the polynomial is `a + b*dt + c*dt^2 + d*dt^3` with `dt = t - t_break`. Horner-form evaluation (`a + dt*(b + dt*(c + dt*d))`) is simple, fast, and maps cleanly to JAX operations. B-spline basis evaluation would require recursive knot-vector lookups.
+- **Power-basis coefficients.** A piece is `[a, b, c, d]`, evaluated as
+  `a + h(b + h(c + h·d))` with `h = t − t_break`. Horner form, a handful of
+  fused multiply-adds, trivially vectorized. B-spline evaluation would need
+  recursive knot lookups.
+- **`jump_times`** records where the signal genuinely discontinues (bolus
+  events), so segmentation and event handling can find them without re-deriving
+  them from the volume changes.
+- **`continuity_side`** decides which piece wins exactly at a breakpoint.
+  `"right"` (default) gives the post-event value; `"left"` gives the pre-event
+  value. Pseudobatch ADF and feed-correction traces use `"left"`, so reading
+  them *at* an event time returns the pre-event value and the jump applies
+  immediately after.
+- **`derived`** marks a series as computed rather than measured, so downstream
+  code can tell a fitted rate from raw experimental data.
+- **float64 only.** Constructing a `TimeSeries` from float32 arrays raises
+  rather than upcasting silently — see
+  [Design Rationale §1](01_design_rationale.md#1-jax-first-but-only-where-it-matters).
 
-- **Why `jump_times`:** Fed-batch processes have discontinuities at bolus feed events. The `jump_times` field tracks where these occur so that downstream code (spline segmentation, event detection) can handle them correctly.
-
-- **Why `continuity_side`:** At breakpoints where the spline transitions between pieces, the value can be taken from the left or right piece. For fed-batch processes with discrete events, right-continuity (`"right"`) means the post-event value is used at the event time.
-
-- **Why `derived` flag:** Marks a TimeSeries as computed (not directly measured). Downstream code can distinguish derived series (e.g., specific rates, pseudobatch concentrations) from raw experimental data.
-
-## Public API
-
-### `TimeSeries` Class
+## The class
 
 ```python
 class TimeSeries(eqx.Module):
-    # Measured data (optional -- but at least one of data or spline must be present)
-    times: jnp.ndarray | None     # strictly increasing 1D array
-    values: jnp.ndarray | None    # same shape as times
-
-    # Fitted spline coefficients (optional, all three required if any present)
-    breaks: jnp.ndarray | None              # breakpoints (n_pieces + 1)
-    coeffs: jnp.ndarray | None              # shape (n_pieces, 4), power-basis [a, b, c, d]
-    segment_start_piece_idx: jnp.ndarray | None  # maps segments to piece indices
-
-    # Metadata (static fields, not JAX-traced)
-    derived: bool                  # default False
-    continuity_side: str           # "left" or "right", default "right"
-    jump_times: jnp.ndarray | None # event times for discontinuities
-    metadata: Any                  # arbitrary metadata dict
-    dtype: jnp.dtype               # JAX dtype for arrays, default float64
+    times: jnp.ndarray | None                    # strictly increasing, 1-D
+    values: jnp.ndarray | None                   # same length as times
+    breaks: jnp.ndarray | None                   # spline: n_pieces + 1
+    coeffs: jnp.ndarray | None                   # spline: (n_pieces, 4)
+    segment_start_piece_idx: jnp.ndarray | None  # spline: segment start pieces
+    jump_times: jnp.ndarray                      # default: empty
+    derived: bool = False                        # static
+    continuity_side: str = "right"               # static, "left" | "right"
+    metadata: Any = None                         # static
 ```
 
-**Construction invariants:**
-- Must provide discrete samples (times + values) and/or spline state (breaks + coeffs + segment_start_piece_idx).
-- If discrete samples are provided, both `times` and `values` are required, must be 1D, same length, and `times` must be strictly increasing.
-- If spline state is provided, all three fields are required. `coeffs` must be `(n_pieces, 4)`, `breaks` must have `n_pieces + 1` entries.
+All constructor arguments are keyword-only.
 
-**Key methods:**
+**Invariants, enforced at construction:**
 
-| Method | Description |
+- At least one of {samples, spline} must be present.
+- Samples: `times` and `values` both given, both 1-D, equal length, `times`
+  strictly increasing.
+- Spline: `breaks`, `coeffs`, and `segment_start_piece_idx` all given.
+  `coeffs` is `(n_pieces, 4)` with `n_pieces >= 1`; `len(breaks) == n_pieces + 1`;
+  `breaks` strictly increasing.
+- `segment_start_piece_idx` starts at `0`, is strictly increasing, and stays in
+  range. It marks which piece each independently-fitted segment begins at.
+- Passing a `poly=` argument instead of `breaks`/`coeffs` is allowed; its
+  `continuity_side` must match.
+
+## Methods and properties
+
+| Member | Description |
 |--------|-------------|
-| `evaluate(t, *, side=None)` | Evaluate spline at a single time point. Returns scalar. |
-| `evaluate_many(ts, *, side=None)` | Evaluate spline at multiple time points. Returns 1D array. |
-| `deriv(order=1)` | Return a new TimeSeries with derivative coefficients. |
-| `integrate(a, b)` | Compute the definite integral from `a` to `b`. |
-| `to_dict()` | Serialize to a dict (for JSON). |
-| `from_dict(data)` | Class method: deserialize from a dict. |
+| `poly` | The spline as a `PPoly`, or `None` if no spline is stored. |
+| `dtype` | Floating dtype of the arrays (always float64). Read-only. |
+| `evaluate(t, *, side=None)` | Evaluate the spline at one time. |
+| `evaluate_many(ts, *, side=None)` | Evaluate the spline on a 1-D grid. |
+| `lin_interp(t)` | Linear interpolation of the **samples**, ignoring any spline. |
+| `deriv(order=1)` | New `TimeSeries` holding the derivative spline. |
+| `integrate(a, b)` | Definite integral of the spline over `[a, b]`. |
+| `to_pd_series()` | Samples as a pandas `Series` indexed by time. |
+| `to_dict()` / `TimeSeries.from_dict(d)` | Canonical dict round trip. |
+| `TimeSeries.from_process_state(state, variable)` | Build from a `metadata.hybrax.process_state` payload. |
+| `TimeSeries.from_input_dict(data, process_key, variable)` | Same, from a full input JSON. |
 
-**Arithmetic operators:**
-TimeSeries supports `+`, `-`, `*`, `/` with other TimeSeries or scalars.
+`evaluate*` raise if there is no spline; `lin_interp` and `to_pd_series` raise
+if there are no samples.
 
-- **Exact (add/sub with splines):** When both operands have splines, breakpoints are merged and coefficients are added/subtracted directly. No approximation error.
-- **Approximate (mul/div with splines):** Multiplication and division of splines cannot be done exactly in the power basis. These operations fit a new smoothing spline to the result.
-- **Discrete fallback:** When one or both operands lack splines, operations fall back to interpolating discrete samples onto a merged time grid.
-- **Scalar operations:** `ts * 2.0` or `ts / 3.0` scales coefficients directly (exact).
+## Arithmetic
 
-### `spline_ops` Module
+`TimeSeries` supports `+`, `-`, `*`, `/` with another `TimeSeries` or with a
+scalar. Which path runs depends on what the operands carry:
 
-Low-level spline evaluation primitives.
+| Case | Behaviour |
+|------|-----------|
+| `+` / `-`, both have splines | **Exact.** Breakpoints are merged and coefficients added — a sum of cubics is a cubic. |
+| `*` / `/`, both have splines | **Approximate.** A product of cubics is degree 6, so the result is re-fitted as a cubic on a merged grid, tightening the smoothing parameter until the mean relative error is within `APPROX_REL_ERR_TARGET`. Raises if it cannot converge in `APPROX_MAX_REFIT_ATTEMPTS`. |
+| Either operand lacks a spline | **Discrete.** Both are linearly interpolated onto a merged time grid; the result has samples only. Warns if exactly one operand had a spline, since that spline is being discarded. |
+| Scalar `*` / `/` | **Exact.** Coefficients and values are scaled directly. |
+
+Division raises `ZeroDivisionError` if the denominator reaches or crosses zero
+(checked both on the sample values and across the spline pieces). Results are
+marked `derived=True` and carry `metadata["source"]` recording which path ran.
+
+Both operands must share a `continuity_side` and dtype.
+
+## `PPoly`
+
+`bp_format.time_series.PPoly` is the bare spline evaluator — an `eqx.Module`
+with `breaks` and `coeffs` and no measurement data.
+
+| Member | Description |
+|--------|-------------|
+| `PPoly(breaks, coeffs, continuity_side="right")` | Construct directly. |
+| `PPoly.from_scipy_ppoly(ppoly, ...)` | Convert a SciPy `PPoly`; pads lower-degree pieces to cubic and drops zero-width pieces. |
+| `PPoly.from_samples_pchip(t, y, ...)` | Build via SciPy's PCHIP interpolator. |
+| `__call__(t, nu=0, side=None)` | Evaluate; `nu` is the derivative order. |
+| `derivative(order=1)` | New `PPoly` of the derivative. |
+
+`TimeSeries.poly` returns one of these; `ControlSplines` and
+`BacktransformSpline` store them.
+
+## Helper modules
+
+### `spline_ops` — spline primitives
 
 | Function | Description |
 |----------|-------------|
-| `piece_index(t, breaks, side)` | Find which piece contains time `t`. |
-| `evaluate_piece(coeff_row, dt)` | Evaluate one cubic piece using Horner's method. |
-| `evaluate_scalar(t, breaks, coeffs, side)` | Evaluate the full piecewise spline at one time. |
-| `evaluate_many(ts, breaks, coeffs, side)` | Vectorized evaluation via `jax.vmap`. |
-| `rebase_piece(coeff_row, shift)` | Rebase coefficients from `x0` to `x0 + shift`. |
-| `rebase_to_breaks(old_breaks, old_coeffs, new_breaks)` | Rebase an entire spline onto a new breakpoint grid. |
-| `derivative_coeffs(coeffs, order)` | Compute polynomial derivative coefficients. |
-| `integrate_definite(breaks, coeffs, a, b)` | Definite integral over `[a, b]`. |
-| `merge_breaks(breaks_a, breaks_b)` | Union of two breakpoint arrays. |
-| `merge_segment_starts(...)` | Merge segment start indices for two splines. |
+| `piece_index(t, breaks, side)` | Which piece contains `t`. |
+| `evaluate_piece(coeff_row, dt)` | One cubic piece, Horner form. |
+| `evaluate_scalar` / `evaluate_many` | Full spline at one time / a grid. |
+| `rebase_piece(coeff_row, shift)` | Shift a piece's local origin. |
+| `rebase_to_breaks(old_breaks, old_coeffs, new_breaks)` | Re-express a spline on a finer breakpoint grid, exactly. |
+| `derivative_coeffs(coeffs, order)` | Differentiate coefficients. |
+| `integrate_definite(breaks, coeffs, a, b)` | Definite integral. |
+| `merge_breaks(a, b)` | Union of two breakpoint arrays. |
+| `merge_segment_starts(...)` | Merge segment boundaries of two splines. |
+| `has_near_zero_piece_value(breaks, coeffs, threshold)` | Whether any piece approaches zero — the division guard. |
+| `validate_side(side)` | Reject anything other than `"left"` / `"right"`. |
 
-### `grid_utils` Module
-
-Time-grid operations for merging and interpolating discrete samples.
-
-| Function | Description |
-|----------|-------------|
-| `merge_times_with_tolerance(a, b)` | Merge two sorted time arrays, deduplicating within tolerance (`TIME_DEDUP_ATOL`, `TIME_DEDUP_RTOL`). |
-| `linear_interpolate_samples(times, values, target_times)` | Linearly interpolate discrete samples onto a target grid. |
-| `synthesize_binary_samples(t_a, v_a, t_b, v_b, op)` | Merge discrete samples for binary operations. |
-
-### `io` Module
-
-Serialization/deserialization for TimeSeries.
+### `grid_utils` — time-grid operations
 
 | Function | Description |
 |----------|-------------|
-| `timeseries_to_dict(ts)` | Convert TimeSeries to canonical dict format. |
-| `timeseries_from_dict(cls, data)` | Reconstruct TimeSeries from dict. |
-| `timeseries_from_process_state(cls, process_state, variable)` | Load from metadata.hybrax format. |
-| `timeseries_from_input_dict(cls, input_data, process_key, variable)` | Load from full input JSON. |
+| `merge_times_with_tolerance(a, b)` | Merge sorted time arrays, deduplicating near-identical timestamps. |
+| `linear_interpolate_samples(times, values, target)` | Linear interpolation, clamped at both ends. |
+| `synthesize_binary_samples(t_a, v_a, t_b, v_b, op)` | Sample grid for a binary operation. |
 
-### `constants` Module
+### `io` — dict conversion
 
-Numerical tolerance defaults:
+`timeseries_to_dict`, `timeseries_from_dict`, `timeseries_from_process_state`,
+`timeseries_from_input_dict`. Reached through the `TimeSeries` class methods
+above; see [03_serialization.md](03_serialization.md) for the full dataset I/O.
+
+### `constants` — numerical defaults
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `TIME_DEDUP_ATOL` | `1e-8` | Absolute tolerance for time deduplication |
-| `TIME_DEDUP_RTOL` | `1e-7` | Relative tolerance for time deduplication |
-| `APPROX_ABS_FLOOR` | `1e-8` | Absolute floor for approximate operations |
-| `APPROX_REL_ERR_TARGET` | `1e-3` | Target relative error for smoothing spline fits |
-| `APPROX_INITIAL_S` | `1.0` | Initial smoothing parameter |
-| `APPROX_S_REDUCTION_FACTOR` | `0.5` | Smoothing parameter reduction per refit attempt |
-| `APPROX_MAX_REFIT_ATTEMPTS` | `8` | Maximum refit attempts for approximate operations |
-| `DIVISION_NEAR_ZERO_THRESHOLD` | `1e-8` | Threshold for near-zero division detection |
+| `TIME_DEDUP_ATOL` | `1e-8` | Absolute tolerance when merging time grids |
+| `TIME_DEDUP_RTOL` | `1e-7` | Relative tolerance when merging time grids |
+| `APPROX_ABS_FLOOR` | `1e-8` | Error-scale floor for approximate refits |
+| `APPROX_REL_ERR_TARGET` | `1e-3` | Accepted mean relative error of an approximate refit |
+| `APPROX_INITIAL_S` | `1.0` | Starting smoothing parameter |
+| `APPROX_S_REDUCTION_FACTOR` | `0.5` | Smoothing reduction per retry |
+| `APPROX_MAX_REFIT_ATTEMPTS` | `8` | Retries before giving up |
+| `DIVISION_NEAR_ZERO_THRESHOLD` | `1e-8` | Denominator floor for division |
 
 ## Examples
 
-### Creating a TimeSeries from Experimental Data
+### From experimental data
 
 ```python
 import jax.numpy as jnp
 from bp_format import TimeSeries
 
-# Discrete-only (no spline)
 ts = TimeSeries(
     times=jnp.array([0.0, 2.0, 4.0, 6.0, 8.0]),
     values=jnp.array([1.0, 2.5, 5.1, 4.2, 3.0]),
 )
-
-print(ts.times)   # [0. 2. 4. 6. 8.]
-print(ts.values)  # [1.  2.5 5.1 4.2 3. ]
+ts.lin_interp(3.0)      # works: samples are present
+ts.evaluate(3.0)        # raises: no spline yet
 ```
 
-### Evaluating a Spline-Backed TimeSeries
+### Fitting and evaluating
 
 ```python
-# After spline fitting (e.g., via bp_format.splines.fit_timeseries_spline),
-# the TimeSeries will have breaks, coeffs, and segment_start_piece_idx populated.
+from bp_format.splines import fit_timeseries_spline
 
-# Evaluate at a single time
-value_at_3 = ts_with_spline.evaluate(3.0)
-
-# Evaluate at multiple times
-t_dense = jnp.linspace(0.0, 8.0, 100)
-values_dense = ts_with_spline.evaluate_many(t_dense)
+fitted = fit_timeseries_spline(ts)          # smoothing_s=0 -> interpolating
+fitted.evaluate(3.0)
+fitted.evaluate_many(jnp.linspace(0.0, 8.0, 100))
+fitted.integrate(0.0, 8.0)
 ```
 
-### Arithmetic on TimeSeries
+### Derivatives
 
 ```python
-# Add two time series (exact if both have splines)
-combined = ts_biomass + ts_product
-
-# Scale by a constant
-doubled = ts_biomass * 2.0
-
-# Compute a ratio (approximate if both have splines)
-yield_ratio = ts_product / ts_biomass
+rate = fitted.deriv(order=1)                # derived=True
+rate.evaluate_many(jnp.array([1.0, 3.0, 5.0]))
 ```
 
-### Computing Derivatives
+### Arithmetic
 
 ```python
-# Get the first derivative (rate of change)
-rate = ts_with_spline.deriv(order=1)
-
-# Evaluate the derivative at specific times
-rate_values = rate.evaluate_many(jnp.array([1.0, 3.0, 5.0]))
+total    = ts_biomass + ts_product          # exact if both have splines
+doubled  = ts_biomass * 2.0                 # exact
+specific = ts_product / ts_biomass          # approximate refit
+specific.metadata["source"]                 # "approx_binary_op"
 ```
 
-### Serialization Round-Trip
+### Round trip
 
 ```python
-# To dict (for JSON serialization)
-data = ts.to_dict()
-
-# From dict
-ts_restored = TimeSeries.from_dict(data)
+restored = TimeSeries.from_dict(ts.to_dict())
 ```
 
-## See Also
+## See also
 
-- [Data Model](02_data_model.md) -- where TimeSeries fits in the hierarchy
-- [Splines](07_splines.md) -- spline fitting and pseudobatch transformation
-- [Serialization](03_serialization.md) -- full dataset JSON I/O
-- [Design Rationale](01_design_rationale.md#4-timeseries-structure) -- why this structure and optional spline state
+- [Data Model](02_data_model.md) — where `TimeSeries` sits in the hierarchy
+- [Splines](07_splines.md) — fitting and the pseudobatch transform
+- [Serialization](03_serialization.md) — dataset-level JSON I/O

@@ -1,303 +1,312 @@
-# Splines and Pseudobatch Transform
+# Splines and the Pseudobatch Transform
 
 Source: `bp_format/splines.py`
 
 ## Purpose
 
-This module provides the pseudobatch transformation pipeline and spline fitting infrastructure for converting discrete concentration measurements from fed-batch / sample-driven bioprocesses into continuous-time representations. It bridges the gap between raw experimental data and the smooth, differentiable functions needed for ODE integration and gradient-based optimization.
+Turn sparse offline concentration measurements from a fed-batch run into smooth,
+differentiable functions of time. Three jobs:
 
-The module handles three related tasks:
+1. **Pseudobatch transform** — strip dilution and feed addition out of the
+   measured concentrations.
+2. **Spline fitting** — fit a smooth cubic to what is left, which is now
+   actually smooth.
+3. **Backtransform** — reconstruct the real concentration (and its derivative)
+   from that spline at any time.
 
-1. **Pseudobatch normalization** — transforms fed-batch concentrations to batch-equivalent pseudo-concentrations by removing dilution and feed-addition effects.
-2. **Smooth spline fitting** — fits smoothing `TimeSeries` splines to the resulting pseudo-concentrations (which are smooth by design).
-3. **Backtransformation** — reconstructs real-space concentrations from the pseudo-concentration spline, the accumulated dilution factor (ADF), and the feed-correction trajectory.
+## The problem
 
-## Mathematical background
+A measured concentration in a fed-batch reactor moves for two unrelated reasons:
+the cells consumed or produced something, and the broth was diluted or sampled.
+Fitting a spline directly to `c(t)` therefore means fitting through instantaneous
+jumps at every bolus — the spline rings, and the implied `dc/dt` is wrong
+everywhere near the event.
 
-### The pseudobatch identity
-
-For a fed-batch bioreactor under mass balance, the real-space concentration `c(t)` of a species is related to a "pseudobatch" concentration `c*(t)` via
-
-```
-c(t) = ( c*(t) + fc(t) ) / ADF(t)
-```
-
-with the inverse transform
-
-```
-c*(t) = c(t) · ADF(t) − fc(t)
-```
-
-where
-
-- **`ADF(t)` — Accumulated Dilution Factor.** A multiplicative factor that
-  re-normalises species concentrations to a common reference volume so that
-  physical dilution of the broth is cancelled out. In the active
-  implementation it is represented as a `TimeSeries` with a piecewise-linear
-  baseline plus instantaneous bolus jumps: continuous feed changes ADF
-  smoothly, bolus feed adds true jumps, and pure sampling leaves ADF flat.
-- **`fc(t)` — feed correction.** The cumulative mass of the species that has been added by all feeds (continuous + bolus) up to time `t`, discounted by the ADF at each addition and normalised by the reactor volume:
-  ```
-  fc(t) = cumsum_streams( ADF · Δaccumulated_feed · c_in_feed / V_reactor )
-  ```
-  `fc` grows smoothly due to continuous feed and jumps instantaneously at each bolus event.
-- **`c*(t)` — pseudobatch-space concentration.** The "as-if it were a batch with no feed and no sampling" concentration. By construction `c*` is **smooth at every event** (continuous feed, bolus, sample) provided ADF satisfies the smoothness invariant below. This is what makes `c*` a good target for spline fitting — unlike `c(t)`, which has discontinuities at bolus and sample events, `c*` is continuous.
-
-### The pseudobatch smoothness invariant
-
-At any event at time `t_event`, the pseudobatch framework requires
+## The pseudobatch identity
 
 ```
-ADF_post / ADF_pre  =  V_reactor_post / V_reactor_before_bolus
+c*(t) = c(t) · ADF(t) − fc(t)          forward
+c(t)  = (c*(t) + fc(t)) / ADF(t)       inverse
 ```
 
-where `V_reactor_before_bolus` is the reactor volume *after any simultaneous sampling but before the bolus addition*. When this invariant holds, `c*(t)` is continuous across every event and can be fitted with a smooth spline. When it is violated, the cubic spline averages hidden discontinuities and the reconstructed `c(t)` picks up spurious sample-time steps or mis-sized bolus jumps.
+- **`ADF(t)`** — *accumulated dilution factor*. Rescales concentrations to the
+  initial reactor volume, cancelling physical dilution.
+- **`fc(t)`** — *feed correction*. The species mass delivered by all feeds up to
+  `t`, expressed on the same normalized basis.
+- **`c*(t)`** — the concentration this species *would* have had in a batch
+  reactor with identical biology. Continuous across feeds, boluses, and samples,
+  so it is a well-behaved spline target.
 
-### Computing ADF — the sample-compensation factor `S(t)`
+The discontinuities have not disappeared — they moved into `ADF` and `fc`, which
+are represented exactly rather than fitted.
 
-Sampling removes volume but does **not** change concentration, so ADF must be *unchanged* across sample events. At the same time, any future bolus ratio must reflect the now-smaller reactor volume. This is achieved with a sample-compensation factor `S(t)`:
+## How `ADF` is built
+
+Sampling removes volume but does **not** change any concentration, so `ADF` must
+stay flat across a sample. At the same time, a later bolus must be sized against
+the now-smaller reactor. A sample-compensation factor `S(t)` reconciles the two:
 
 ```
-S(t)    = ∏  over samples at time ≤ t of  V_before_sample / V_after_sample
-V_eff(t) = V_reactor_actual(t) · S(t)
-ADF(t)  = V_eff(t) / V_init
+S(t)     = ∏  over samples up to t  of  V_before_sample / V_after_sample
+V_eff(t) = V_reactor(t) · S(t)
+ADF(t)   = V_eff(t) / V_init
 ```
 
-Event-by-event behaviour:
+| Event | `V_reactor` | `S(t)` | `ADF` |
+|-------|-------------|--------|-------|
+| continuous feed | grows | unchanged | grows smoothly |
+| sample only | drops by `V_s` | × `V_pre / (V_pre − V_s)` | **unchanged** |
+| bolus only | grows by `V_b` | unchanged | jumps by `(V_pre + V_b) / V_pre` |
+| sample + bolus at the same time | net `V_b − V_s` | × `V_pre / (V_pre − V_s)` | jumps by `(V_pre − V_s + V_b) / (V_pre − V_s)` |
 
-| Event | `V_reactor` | `S(t)` | `V_eff` / ADF | ratio |
-|-------|-------------|--------|---------------|-------|
-| continuous feed | grows | unchanged | grows proportionally | `V_post/V_pre` (smoothness invariant) |
-| sample only | drops by `V_s` | multiplied by `V_pre/(V_pre−V_s)` | unchanged → ADF held | 1 |
-| bolus only | grows by `V_b` | unchanged | grows | `(V_pre+V_b)/V_pre` |
-| simultaneous sample + bolus (sample first, then bolus) | net `V_b−V_s` | multiplied by `V_pre/(V_pre−V_s)` | steps by `(V_pre−V_s+V_b)/(V_pre−V_s)` | correct physics |
+The last row is why event order matters: **sample first, then bolus**. The
+offline measurement describes the broth as drawn, and the bolus dilutes what
+remains.
 
-`S(t)` is exposed as `pseudobatch_transform.sample_compensation` when the
-process-level pseudobatch bundle is materialized. Compatibility plotting arrays
-may be present in lower-level helper payloads, but runtime evaluation uses
-`TimeSeries.evaluate`.
+`S(t)` is kept as `pseudobatch_transform.sample_compensation` for inspection.
 
-### Exact TimeSeries break grid
+## How `fc` is built
 
-Volume, feeds, ADF, and `fc` are represented on an exact `TimeSeries` break grid
-that includes:
+Each addition contributes
 
-- every measurement time,
-- every event time,
-- every reference time of every `TimeSeries` in `volume_changes`,
-
-There are no `t_event ± eps` knots. Discontinuities are represented by local
-polynomial pieces plus `continuity_side="left"` semantics.
-
-## Implementation pipeline
-
-1. **`build_pseudobatch_inputs(process, species_name)`** — builds lower-level
-   `TimeSeries` objects for reactor volume, accumulated feed, sample
-   compensation, ADF, and feed correction. It computes `c_star = meas_conc ·
-   adf − feed_corr` at measurement times.
-2. **`build_pseudobatch_transform(process, species_names)`** — materializes the
-   JSON-facing schema: shared `pseudobatch_transform.adf`, species-keyed
-   `pseudobatch_transform.feed_corrections`, optional helper traces, derived
-   `volume.total_volume`, and each component's `c_star_concentration`. Raw
-   real concentration remains in `component.concentration`.
-3. **`build_splines(inputs, process, species_name)`** — builds a lower-level
-   runtime backtransform payload for `(meas_times, c_star)`. Stored
-   `TimeSeries` carriers use the common smoothing-B-spline policy: segments
-   with at least four points use SciPy cubic smoothing B-splines
-   (`smoothing_s=0` is exact/interpolating), while shorter segments fall back
-   to interpolating `CubicSpline`.
-4. **`evaluate_pseudobatch_transform(process, component, times)`** — evaluates
-   `c(t) = (c*(t) + fc(t)) / ADF(t)` from the stored component-level c* and the
-   process-level transform bundle.
-
-## Design rationale
-
-### Why separate `c*` and `fc` in the spline representation?
-
-The key insight of pseudobatch is that `c*(t)` is smooth while `c(t)` is not.
-By splining `c*` and reconstructing `c = (c* + fc) / ADF` with canonical
-`TimeSeries` ADF/feed-correction objects, we avoid fitting the concentration
-spline through discontinuities. Bolus jumps and sample-time batch-equivalence
-shifts are encoded in the `TimeSeries` pieces; the `c*` spline covers only the
-smooth pseudobatch dynamics.
-
-### Feed correction invariant
-
-Feed correction is built from the simplified physical invariant:
-
-```python
-dFC = S(t) * dF * C_feed / V_init
+```
+Δfc = S(t) · ΔV_feed · C_feed / V_init
 ```
 
-For continuous feeds this is integrated piecewise. For boluses, the exact jump
-uses the sample-first value of `S(t)` at the event timestamp.
+integrated piecewise for continuous feeds and applied as an exact jump for
+boluses, using the sample-first value of `S(t)` at that timestamp.
 
-### Constants
+## Representation: exact pieces, no epsilon knots
 
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `DEFAULT_MAX_SEGMENTS` | `16` | Maximum number of segments in padded storage |
-| Smoothing B-spline minimum samples | `4` | Segments with fewer samples fall back to interpolating `CubicSpline` |
+`ADF`, `fc`, reactor volume, and accumulated feeds are all built on one
+breakpoint grid containing the process start and end, every measurement time,
+and every timestamp or breakpoint of every volume change.
+
+They are stored as `TimeSeries` with **`continuity_side="left"`** and exact local
+polynomial coefficients. There are no `t_event ± ε` knots: evaluating at an event
+time returns the pre-event value, and the jump takes effect immediately after.
+
+`ADF` and `fc` are **not** step functions — continuous feed makes both vary
+smoothly between events. Only boluses cause true jumps, recorded in `jump_times`
+(with magnitudes in `metadata["jump_values"]`).
+
+## Storage layout
+
+After building the transform, one process holds:
+
+| Where | What |
+|-------|------|
+| `component.concentration` | The real measured concentration. **Never overwritten.** |
+| `component.c_star_concentration` | The fitted `c*` spline, tagged `metadata["transform"]["name"] == "pseudo_batch"` |
+| `process.pseudobatch_transform.adf` | Shared `ADF` — one per process |
+| `process.pseudobatch_transform.feed_corrections[species]` | Per-species `fc` |
+| `process.pseudobatch_transform.sample_compensation` | `S(t)`, diagnostic |
+| `process.pseudobatch_transform.accumulated_feeds[feed]` | Per-stream cumulative feed, diagnostic |
+| `process.volume.total_volume` | Reconstructed reactor-volume trace, filled in if it was `None` |
+
+`ADF` and `S(t)` are species-independent, so they are stored once. The builder
+recomputes them per species and **asserts they came out identical** — a mismatch
+means the physical bookkeeping diverged and it raises.
+
+The schema is checked before use: a `c*` trace with no matching
+`feed_corrections` entry (or vice versa) raises, as does a `c*` trace on a
+process with no transform bundle at all.
+
+## Spline fitting policy
+
+`fit_timeseries_spline(ts, *, boundaries=None, smoothing_s=0.0)`:
+
+| Points in a segment | Method |
+|---------------------|--------|
+| ≥ 4 | SciPy smoothing B-spline (`make_splrep`, cubic). `smoothing_s=0` makes it interpolating. |
+| 2–3 | Interpolating natural `CubicSpline` — a cubic smoothing B-spline needs 4 samples |
+| 1 | Constant piece over a `1e-6`-wide interval |
+
+`boundaries` splits the series into independently fitted segments; the resulting
+piece indices are recorded in `segment_start_piece_idx`. Use
+`make_segment_boundaries` with event times to break the fit at discontinuities.
+The chosen strategy per segment is recorded in `metadata["fit_strategies"]`.
 
 ## Public API
-
-### Core spline infrastructure
-
-| Function | Description |
-|----------|-------------|
-| `fit_timeseries_spline(ts, boundaries, smoothing_s)` | Fit segmented spline state onto a `TimeSeries`. Segments with at least four points use SciPy cubic smoothing B-splines; `smoothing_s=0` gives an exact/interpolating fit. Shorter segments fall back to interpolating `CubicSpline`. |
-| `make_cubic_ppoly(t, y, bc_type)` | Create an owned `PPoly` cubic spline from arrays. |
-| `make_constant_spline(value, t_start, t_end)` | Create a constant-valued spline over a time range. |
-
-### Evaluation
-
-| Function | Description |
-|----------|-------------|
-| `TimeSeries.evaluate(t)` | Evaluate a spline-backed `TimeSeries` at a single time point. |
-| `TimeSeries.evaluate_many(t)` | Evaluate a spline-backed `TimeSeries` on a 1-D time grid. |
-
-### Segmentation
-
-| Function | Description |
-|----------|-------------|
-| `detect_discrete_state_events(process)` | Extract discrete event times from a `BioProcess`. Returns `DiscreteEvents`. |
-| `make_segment_boundaries(t_min, t_max, event_times)` | Build segment breakpoints from event times. |
-| `split_timeseries(ts, boundaries)` | Partition a `TimeSeries` into segments at the given boundaries. |
 
 ### Pseudobatch pipeline
 
 | Function | Description |
 |----------|-------------|
-| `build_pseudobatch_inputs(process, species_name)` | Build canonical pseudobatch `TimeSeries` objects and measurement-level `c_star`, `adf_at_meas`, and `feed_corr_at_meas`. |
-| `build_pseudobatch_transform(process, species_names, *, cstar_smoothing_s=0.0)` | Build process-level pseudobatch storage: `adf`, `feed_corrections`, optional helper traces, `volume.total_volume`, and component-level `c_star_concentration`. |
-| `build_splines(inputs, process=None, species_name=None, *, cstar_smoothing_s=0.0)` | Build lower-level runtime spline payloads from `build_pseudobatch_inputs`; mainly useful for tests/internal pipelines. |
-| `to_timeseries(inputs, splines, species_name, *, cstar_smoothing_s=0.0)` | Convert lower-level pseudobatch samples to a transformed `TimeSeries` carrier. |
-| `evaluate_pseudobatch_transform(process, component, times)` | Evaluate stored c* as real concentration using `component.c_star_concentration`, `pseudobatch_transform.adf`, and `feed_corrections[component]`. |
-| `evaluate_real_concentration(t_eval, splines)` | Lower-level backtransform on a `build_splines` payload (used by tests / internal pipelines). |
+| `build_pseudobatch_transform(process, species_names=None, *, cstar_smoothing_s=0.0)` | The one you normally call. Builds the whole bundle. `species_names=None` means every reactor component with a `TimeSeries` concentration. |
+| `evaluate_pseudobatch_transform(process, component, times)` | Evaluate stored `c*` back to real concentration. `component` may be a name or the object. |
+| `build_backtransform_spline(process, species_name)` | A JIT-compatible `BacktransformSpline` for the same thing. |
 
-### JAX-compatible backtransform classes
-
-#### `BacktransformSpline`
-
-An `eqx.Module` that evaluates the inverse pseudobatch transform at any time:
+`build_pseudobatch_transform` **mutates the process**: it sets each component's
+`c_star_concentration` and fills `volume.total_volume` if empty. It *returns* the
+bundle — assign it yourself:
 
 ```python
-c(t) = (c*(t) + feed_correction(t)) / ADF(t)
+process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
 ```
 
-Fields:
-- `c_star_spline` — owned `PPoly` view of the stored `TimeSeries` c* spline
-- `adf_ts`, `feed_corr_ts` — canonical ADF and feed-correction `TimeSeries`
-  sourced from `pseudobatch_transform.adf` and `feed_corrections[species]`
-- `dadf_ts`, `dfc_ts` — derivative `TimeSeries` for `d(ADF)/dt` and
-  `d(feed_corr)/dt`, used by `derivative()` for smooth RHS terms
-- `adf_times`, `adf_values`, `adf_jump_times`, `adf_jump_values` — flat
-  break-grid arrays mirroring `adf_ts` for cheap JAX evaluation
-- `fc_times`, `fc_values`, `fc_jump_times`, `fc_jump_values` — same for
-  the feed-correction trajectory
-- `is_constant` — static bypass flag for constant-concentration species
-- `constant_value` — returned directly when `is_constant = True`
+It raises if `component.concentration` itself carries pseudobatch `c*`
+metadata — that means the real concentration was overwritten by a transform at
+some point, and there is nothing raw left to transform.
 
-Methods:
-- `__call__(t)` — evaluate backtransformed concentration
-- `derivative()` — return a callable for `dc/dt`
+Re-running it on a process that already has a transform is **not** an error: the
+`c_star_concentration` fields and the returned bundle are simply recomputed from
+the (untouched) real concentrations. Note that `volume.total_volume` is only
+filled when it is `None`, so it keeps whatever was there.
 
-Build with `build_backtransform_spline(process, species_name)` from a process
-that has `pseudobatch_transform` and component-level `c_star_concentration`.
+### Spline infrastructure
+
+| Function | Description |
+|----------|-------------|
+| `fit_timeseries_spline(ts, *, boundaries=None, smoothing_s=0.0)` | Fit segmented spline state onto a `TimeSeries`. |
+| `make_cubic_ppoly(t, y, bc_type="natural")` | A cubic `PPoly` from raw arrays; sorts and deduplicates knots. |
+| `make_constant_spline(value, t_start, t_end)` | A constant spline-backed `TimeSeries`. |
+
+### Segmentation
+
+| Function | Description |
+|----------|-------------|
+| `detect_discrete_state_events(process)` | Event times from all non-continuous volume changes, as `DiscreteEvents`. |
+| `make_segment_boundaries(t_min, t_max, event_times)` | `[t_min, …interior events…, t_max]`. |
+| `split_timeseries(ts, boundaries)` | Split into segments; boundary points belong to both neighbours. |
+
+### Lower-level pipeline
+
+Used by tests and by the transform builder itself; you rarely need them
+directly.
+
+| Function | Description |
+|----------|-------------|
+| `build_pseudobatch_inputs(process, species_name)` | Per-species `ADF`, `fc`, volume, accumulated-feed series plus `c_star` at measurement times. |
+| `build_splines(inputs, ...)` | Runtime payload dict from those inputs. |
+| `to_timeseries(inputs, splines, species_name, ...)` | The `c*` carrier from that payload. |
+| `evaluate_real_concentration(t_eval, splines)` | Backtransform on a `build_splines` payload. |
+
+### `BacktransformSpline`
+
+An `eqx.Module` evaluating `c(t) = (c*(t) + fc(t)) / ADF(t)` inside JIT.
+
+| Member | Description |
+|--------|-------------|
+| `__call__(t)` | Backtransformed concentration. |
+| `derivative()` | A callable returning `dc/dt`. |
+| `c_star_spline` | `PPoly` view of the stored `c*`. |
+| `adf_ts`, `feed_corr_ts` | The canonical `ADF` / `fc` series. |
+| `dadf_ts`, `dfc_ts` | Their derivative series. |
+| `is_constant`, `constant_value` | Bypass for near-constant species. |
+
+**The derivative is not just `dc*/dt / ADF`.** By the quotient rule,
+
+```
+dc/dt = ( dc*/dt + dfc/dt − c · dADF/dt ) / ADF
+```
+
+The `−c · dADF/dt` term is non-zero whenever continuous feed makes `ADF` vary
+between events. Dropping it puts a systematic bias into every rate inferred from
+the spline.
+
+For species whose measured concentration is effectively constant (and which have
+no discrete feed), `is_constant` short-circuits the whole thing and returns the
+stored value — a cubic through flat data oscillates, and the backtransform would
+amplify that.
+
+## Failure modes
+
+The pipeline raises rather than producing plausible-looking wrong numbers:
+
+| Condition | Why |
+|-----------|-----|
+| Reactor volume ≤ `1e-10` at any breakpoint, before or after any event, or anywhere inside a volume piece | Physically impossible; `ADF` would blow up |
+| `|ADF| ≤ 1e-12` at a division | Same |
+| A feed concentration given as a `TimeSeries` | Time-varying feed composition is not implemented |
+| `c*` present without a `feed_corrections` entry, or vice versa | Half a transform cannot be inverted |
+| `component.concentration` already carries `c*` metadata | The real concentration was overwritten; nothing raw left to transform |
+| Species-independent series differ between species | The volume bookkeeping is inconsistent |
 
 ## Examples
 
-### Detecting discrete events
+### Build and use the transform
 
 ```python
 import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-process = case_study.processes["batch_001"]
-
-events = bp.splines.detect_discrete_state_events(process)
-print(events.times)   # array of event times
-print(events.labels)  # optional labels
-```
-
-### Fitting splines to a process
-
-```python
-import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-process = case_study.processes["run_1"]
-
-# Build JSON-facing pseudobatch storage for one species
-transform = bp.splines.build_pseudobatch_transform(process, ["glucose"])
-process.pseudobatch_transform = transform
-series = process.reactor_medium.components["glucose"].c_star_concentration
-```
-
-### Inspecting ADF and `S(t)`
-
-```python
 import jax.numpy as jnp
+
+process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
+
+t = jnp.linspace(process.time_axis.start, process.time_axis.end, 500)
+c = bp.splines.evaluate_pseudobatch_transform(process, "glucose", t)
+```
+
+### Inspect `ADF` and `S(t)`
+
+```python
 import matplotlib.pyplot as plt
 
-times = jnp.linspace(process.time_axis.start, process.time_axis.end, 500)
 transform = process.pseudobatch_transform
-
-fig, ax1 = plt.subplots()
-ax1.plot(times, transform.adf.evaluate_many(times), label="ADF")
-ax2 = ax1.twinx()
+fig, ax = plt.subplots()
+ax.plot(t, transform.adf.evaluate_many(t), label="ADF")
 if transform.sample_compensation is not None:
-    ax2.plot(
-        times,
-        transform.sample_compensation.evaluate_many(times),
-        color="tab:green",
-        label="S(t)",
-    )
-ax1.set_xlabel("time"); ax1.set_ylabel("ADF"); ax2.set_ylabel("S(t)")
+    ax.plot(t, transform.sample_compensation.evaluate_many(t), label="S(t)")
+ax.set_xlabel(f"time [{process.time_axis.unit}]")
+ax.legend()
 ```
 
-### Evaluating backtransformed concentrations
+Flat `ADF` across a sampling event and a step at a bolus is the signature of a
+correct transform. If `ADF` steps at a *pure sampling* event, the volume
+accounting is wrong.
 
-```python
-import jax.numpy as jnp
-from bp_format.splines import evaluate_pseudobatch_transform
-
-# Evaluate at many times from stored c*, feed correction, and ADF.
-t_dense = jnp.linspace(0.0, 48.0, 500)
-c_dense = evaluate_pseudobatch_transform(process, "glucose", t_dense)
-```
-
-### Using `BacktransformSpline` in a JIT-compiled function
+### Inside a JIT-compiled function
 
 ```python
 import equinox as eqx
 import jax
-import jax.numpy as jnp
-from bp_format.splines import build_backtransform_spline
 
-bt = build_backtransform_spline(process, "glucose")
+bt = bp.splines.build_backtransform_spline(process, "glucose")
 
 @eqx.filter_jit
-def eval_concentrations(bt_spline, times):
-    return jax.vmap(bt_spline)(times)
+def concentrations(spline, times):
+    return jax.vmap(spline)(times)
 
-c_values = eval_concentrations(bt, jnp.linspace(0.0, 48.0, 100))
+@eqx.filter_jit
+def rates(spline, times):
+    return jax.vmap(spline.derivative())(times)
 ```
 
-## Accuracy notes
+### Segmenting a fit at events
 
-On the three real datasets `10_martens_2025_f`, `12_martens_expanded`, and `02_gotsmy_2023`, the end-to-end backtransform is accurate to:
+```python
+events = bp.splines.detect_discrete_state_events(process)
+bounds = bp.splines.make_segment_boundaries(
+    process.time_axis.start, process.time_axis.end, events.times
+)
+fitted = bp.splines.fit_timeseries_spline(raw_series, boundaries=bounds)
+```
 
-- `abs@meas ≤ 1e-5` at every measurement point (pseudobatch-math invariant).
-- `rel@gt_p90 < 1 %` between measurements on dense ground-truth CSVs for the fed species (`glucose`, `glutamine`) on all martens datasets.
-- `rel@gt_p99 < 5 %` for all species on dense continuous-feed datasets (`12_martens_expanded`).
+## Accuracy
 
-Outliers beyond this range (e.g. `10_martens_2025_f` glucose at its sharpest peak) are a sampling-density limitation: 9 sparse measurement points cannot fully constrain a cubic spline through rapid transitions. They are not pipeline bugs.
+At every measurement point the backtransform reproduces the measurement to
+`≤ 1e-5` absolute — that is the pseudobatch identity closing on itself, and a
+larger error means a bug.
+
+*Between* measurements the accuracy is bounded by sampling density, not by the
+pipeline. On continuously fed datasets the 99th-percentile relative error
+against dense ground truth stays under ~5 %; the worst cases are sharp peaks
+sampled fewer than ten times, where no cubic can follow the transition. Those
+are a data limitation.
+
+## Known dead code
+
+`DEFAULT_MAX_SEGMENTS = 16` is defined but never used — a leftover from padded
+segment storage.
 
 ## See also
 
-- [TimeSeries](06_time_series.md) — the underlying data container
-- [Mechanistic](08_mechanistic.md) — consumes splines for ODE integration
-- [Data Model](02_data_model.md) — `TimeSeries`, `VolumeChange`, and `DiscreteEvents`
-- [Design Rationale](01_design_rationale.md#5-pseudobatch-normalization) — mathematical background
-- [`pseudobatch`](https://github.com/viktorht/pseudobatch) — upstream library (`accumulated_dilution_factor`, `pseudobatch_transform`)
+- [TimeSeries](06_time_series.md) — the container being fitted
+- [Mechanistic](08_mechanistic.md) — consumes these splines as state trajectories
+- [Design Rationale §5](01_design_rationale.md#5-pseudobatch-normalization)
+- Hesselberg-Thomsen, V., Groves, T., McCubbin, T., Martínez-Monge, I.,
+  de Mas, I. M., & Nielsen, L. K. (2024). Pseudo batch transformation: a novel
+  method to correct for mass removal through sample withdrawal of fed-batch
+  fermentations. *bioRxiv*.
+- [`pseudobatch`](https://github.com/viktorht/pseudobatch) — the upstream
+  reference library

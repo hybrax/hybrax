@@ -4,114 +4,131 @@ Source: `bp_format/inspect.py`
 
 ## Purpose
 
-Provides human-readable text output and matplotlib plotting for quick data exploration. These functions are designed for interactive use in notebooks and scripts, not for production pipelines.
+Look at what you have. These functions print and plot; they are for notebooks
+and quick checks, not for production pipelines. Plotting needs matplotlib
+(`pip install -e ".[plotting]"`).
 
-## Public API
+## Text output
 
-### Text Output
+### `print_process_structure(process, verbosity=3)`
 
-#### `print_process_structure(process, verbosity=3)`
+A hierarchical view of one `BioProcess`.
 
-Prints a hierarchical tree view of a BioProcess. The `verbosity` parameter controls detail level:
+| Verbosity | Shows |
+|-----------|-------|
+| 1 | Which variables exist — component, process-variable, and volume-change names |
+| 2 | Adds data types and sizes |
+| 3 | Adds units, value ranges, and spline status (default) |
 
-| Level | Shows |
-|-------|-------|
-| 1 | Process name, type, time range, component count |
-| 2 | Level 1 + component names and units |
-| 3 | Level 2 + data point counts, value ranges, spline status |
+### `print_case_study_structure(case_study, verbosity=3)`
 
-#### `print_case_study_structure(case_study, verbosity=3)`
+`case_id`, organism, citation, and a per-process summary with data-point counts.
 
-Prints an overview of a CaseStudy: case_id, organism, citation, process count, and per-process datapoint counts (controlled by verbosity).
+### `print_rhs_ode(target, ordering=None)`
 
-#### `print_rhs_ode(target, ordering=None)`
+The most useful one for modeling. Renders the mechanistic ODE as a single ASCII
+box, with sub-tables for:
 
-Renders the mechanistic ODE structure of a `BioProcess`, `CaseStudy`, or `BioProcessCollection` as a single ASCII box with sub-tables for algebraic quantities, rate symbols (with bounds), the per-state biological derivative expressions, the feed/dilution contributions that bp-format adds on top, and the volume balance (FVC additions, SVC removals). For multi-process containers, `validate_biological_ode_equivalence` runs first; the call raises `ValueError` if the contained processes do not share an identical `biological_ode` block.
+- **Algebraic** — name and expression, in evaluation (topological) order
+- **Rates** — name, lower bound, upper bound, in declaration order (this *is*
+  `name_modeled_rates`, the layout of the rate vector you must supply)
+- **Derivatives** — per state: unit, the biological expression verbatim from
+  `biological_ode.derivatives`, and separately the `+ feed(...)` and
+  `− dilution(...)` terms bp-format adds on top
+- **Volume** — additions from feeds, removals from samples
 
-### Plotting
+Accepts a `BioProcess`, a `CaseStudy`, or a `BioProcessCollection`. For a
+container it first runs
+[`validate_biological_ode_equivalence`](04_validation.md#validate_biological_ode_equivalencecontainer)
+and raises `ValueError` if the processes do not share the same
+`biological_ode` — printing one process's ODE as if it described all of them
+would be misleading. The title names the container, not the process that was
+rendered.
 
-#### `plot_process(process, figsize_per_panel=(5, 3), save_path=None)`
+Splitting biological from physical terms is the point: it shows exactly which
+part of `dc/dt` you wrote and which part came from the volume machinery.
 
-Creates a matplotlib figure with one subplot per variable:
-- Reactor medium components (concentrations over time)
-- Volume profile (initial + cumulative changes)
-- Process variables (pH, temperature, etc.)
-- Spline fits (if spline-backed `TimeSeries` state is present, plotted
-  alongside discrete data)
+## Plotting
 
-Returns the matplotlib figure object.
+### `plot_process(process, figsize_per_panel=(5, 3), save_path=None)`
 
-#### `plot_case_study(case_study, figsize_per_panel=(5, 3), save_path=None)`
+One panel per variable — reactor components, process variables, total volume —
+with discrete samples as markers and any fitted spline drawn through them.
+Pseudobatch-transformed species are shown backtransformed into real space, so
+the curve is directly comparable to the measurements.
 
-Creates a grid plot comparing all processes in a case study. Each column is a process, each row is a variable. Useful for visually checking consistency across runs.
+Returns the matplotlib figure.
 
-Returns the matplotlib figure object.
+### `plot_case_study(case_study, figsize_per_panel=(5, 3), save_path=None)`
 
-**Parameters for both plot functions:**
-- `figsize_per_panel`: Tuple `(width, height)` in inches per subplot panel.
-- `save_path`: If provided, saves the figure to this path (PNG, PDF, etc.).
+A grid: one column per process, one row per variable. The fastest way to spot a
+run whose units, scale, or sampling schedule differ from the rest.
+
+Returns the matplotlib figure.
+
+Both take `figsize_per_panel` as `(width, height)` in inches per panel, and
+write the figure to `save_path` if given.
 
 ## Examples
 
-### Printing Process Structure
-
 ```python
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("data.json")
-process = case_study.processes["batch_001"]
+collection = bp.serialization.load_process_collection("data.json")
+process = collection.processes["run_1"]
 
-# Quick overview
 bp.print_process_structure(process, verbosity=1)
-# Output:
-#   batch_001 (batch) | 0.0 - 24.0 h | 2 components, 0 process variables
+bp.print_case_study_structure(case_study)
 
-# Detailed view
-bp.print_process_structure(process, verbosity=3)
-# Output:
-#   batch_001 (batch) | 0.0 - 24.0 h
-#   Reactor Medium: minimal_medium (1.0 kg/L)
-#     biomass [g/L]: 5 data points, range [0.5, 12.0]
-#     glucose [g/L]: 5 data points, range [0.1, 20.0]
-#   Volume: 1.0 L, 0 changes
-#   ...
-```
-
-### Printing Case Study Structure
-
-```python
-import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-bp.print_case_study_structure(case_study, verbosity=1)
-# Output:
-#   kittler_2022 (Escherichia coli): 4 processes
-```
-
-### Plotting a Single Process
-
-```python
-import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-process = case_study.processes["batch_001"]
+# what will actually be integrated
+bp.print_rhs_ode(collection)
 
 fig = bp.plot_process(process)
-fig.savefig("batch_001.png", dpi=150, bbox_inches="tight")
+fig.savefig("run_1.png", dpi=150, bbox_inches="tight")
+
+bp.plot_case_study(case_study, figsize_per_panel=(4, 2.5),
+                   save_path="overview.png")
 ```
 
-### Plotting a Case Study for Comparison
+`print_rhs_ode` output for a two-process study with an intracellular product, a
+continuous glucose feed, and discrete sampling:
 
-```python
-import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-
-fig = bp.plot_case_study(case_study, figsize_per_panel=(4, 2.5))
-fig.savefig("kittler_overview.png", dpi=150, bbox_inches="tight")
+```
++---------------------- RhsOde Structure: demo_2026 (2 processes) ----------------------+
+| Algebraic                                                                             |
++---------------------------------------------------------------------------------------+
+| Name     | Expression                                                                 |
+| X_active | biomass - product                                                          |
++---------------------------------------------------------------------------------------+
+| Rates (declaration order — this is `name_modeled_rates`)                              |
++---------------------------------------------------------------------------------------+
+| Name      | Lower |                                                             Upper |
+| q_growth  |     0 |                                                                 — |
+| q_product |     — |                                                                 — |
+| q_glucose |     — |                                                                 0 |
++---------------------------------------------------------------------------------------+
+| Derivatives                                                                           |
++---------------------------------------------------------------------------------------+
+| State   | Unit  | Biological                        | Feed         | Dilution         |
+| biomass | [g/L] | (q_growth + q_product) * X_active |              | − dilution(feed) |
+| glucose | [g/L] | q_glucose * X_active              | + feed(feed) | − dilution(feed) |
+| product | [g/L] | q_product * X_active              |              | − dilution(feed) |
++---------------------------------------------------------------------------------------+
+| Volume                                                                                |
++---------------------------------------------------------------------------------------+
+| State | Unit | Additions | Removals                                                   |
+| V     | [L]  | feed      | − sample(sampling)                                         |
++---------------------------------------------------------------------------------------+
 ```
 
-## See Also
+Read it as: only `glucose` gets a `+ feed(...)` term because it is the only
+species with a non-zero concentration in the feed medium; every reactor species
+is diluted by the continuous feed; the discrete sampling events appear under
+Volume rather than Dilution because they are applied as state jumps, not as a
+continuous flow.
 
-- [Data Model](02_data_model.md) -- the structures being inspected
-- [Splines](07_splines.md) -- spline fits visualized by `plot_process`
+## See also
+
+- [Data Model](02_data_model.md) — what is being inspected
+- [Mechanistic](08_mechanistic.md) — the ODE `print_rhs_ode` renders
+- [Splines](07_splines.md) — the fits `plot_process` draws

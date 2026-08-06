@@ -23,13 +23,13 @@ pip install -e ".[dev]"
 import bp_format as bp
 
 # Load a case study from JSON
-case_study = bp.serialization.load_case_study("examples/01_kittler_2022/02_bp_format_data_all/data.json")
+case_study = bp.serialization.load_case_study("data.json")
 
 # Explore the case study
 bp.print_case_study_structure(case_study, verbosity=1)
 
 # Access a specific process
-process = case_study.processes["batch_001"]
+process = case_study.processes["run_1"]
 
 # Validate data integrity
 is_valid, messages = bp.validate_process(process)
@@ -48,10 +48,11 @@ fig = bp.plot_process(process)
 | [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (CaseStudy, BioProcessCollection, BioProcess, etc.) |
 | [`time_series`](documentation/06_time_series.md) | Time-series container with optional fitted spline coefficients (JAX pytree) |
 | [`splines`](documentation/07_splines.md) | Pseudobatch transformation and segmented spline fitting |
-| [`mechanistic`](documentation/08_mechanistic.md) | Auto-generated ODE RHS, control splines, integration |
+| [`mechanistic`](documentation/08_mechanistic.md) | ODE right-hand side and control splines (integration lives in bp-train) |
 | [`serialization`](documentation/03_serialization.md) | JSON save/load for the full data hierarchy |
-| [`validate`](documentation/04_validation.md) | Data integrity checks (9 validators) |
+| [`validate`](documentation/04_validation.md) | Data integrity checks (12 validators) |
 | [`inspect`](documentation/05_inspection.md) | Text printing and matplotlib visualization |
+| [`simulation`](documentation/09_simulation.md) | Event bookkeeping for synthetic datasets |
 
 ## Data Structure
 
@@ -104,10 +105,9 @@ BioProcess
            └─ values: TimeSeries
 
 TimeSeries
- ├─ times: jnp.ndarray
- ├─ values: jnp.ndarray
- ├─ breaks / coeffs / segment_start_piece_idx (optional spline state)
- └─ canonical API only (legacy `timepoints` removed)
+ ├─ times: jnp.ndarray | None
+ ├─ values: jnp.ndarray | None
+ └─ breaks / coeffs / segment_start_piece_idx (optional spline state)
 
 StaticVariable
  └─ value: float
@@ -125,18 +125,18 @@ FeedMedium
 
 ## Ecosystem Context
 
-bp-format is the data foundation for a planned ecosystem of bioprocess modeling packages:
+bp-format is the data foundation the other packages build on:
 
 | Package | Purpose | Status |
 |---------|---------|--------|
-| **bp-form** (current bp-format) | Data classes, I/O, validation, basic simulation | Active development |
-| **bp-bench** | Pre-processed case study database | Planned |
-| **bp-prep** | Web app for preprocessing raw data | Active development |
-| **bp-train** | Training utilities (LOO-CV, augmentation) | Active development |
-| **bp-sim** | Data generation with DoE support | Planned |
-| **bp-design** | Post-training model-based DoE | Planned |
-| **bp-control** | Post-training model-based MPC | Planned |
+| **bp-format** | Data model, I/O, validation, mechanistic RHS | Active development |
+| **bp-train** | Hybrid ODE model training, LOO-CV, augmentation | Active development |
+| **bp-bench** | Benchmark database of prepared case studies | Active development |
+
+Further packages sketched in [specs/PRD.md](specs/PRD.md) are ideas, not code.
 
 ## Documentation
 
-See the [full documentation](documentation/README.md) for detailed module guides, design rationale, and examples.
+- [documentation/](documentation/README.md) — module guides and design rationale.
+- [specs/](specs/README.md) — proposals, roadmaps, and design notes. Not a
+  description of current behaviour.

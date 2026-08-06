@@ -42,12 +42,10 @@ build_algebraic_func(process) -> Callable
     Returns ``f(state_values, ctrl_pv_values, rates) -> {name: scalar}`` for
     inspecting algebraic quantities (e.g. ``X_active``).
 
-Forward integration of the process lives in ``bp-train``; this module no
-longer provides ``integrate_process`` (removed alongside the legacy
-auto-shape inversion helpers ``build_q_func`` / ``build_rates_func`` /
-``estimate_specific_rates`` / ``integrate_process_pseudospace``). The
-analytical replacement ``build_rates_func_analytical`` is specified in
-``documentation/_analytical_rates_spec.md`` and not yet implemented.
+Forward integration of the process lives in ``bp-train``; this module does
+not integrate. Rate inversion (recovering rate values from state splines)
+is not implemented; the design proposal is in
+``specs/_analytical_rates_spec.md``.
 """
 
 from __future__ import annotations

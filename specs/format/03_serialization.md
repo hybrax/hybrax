@@ -1,113 +1,190 @@
 # Serialization
 
-Source: `bp_format/serialization.py`
+Source: `bp_format/serialization.py`, `bp_format/json_io.py`
 
 ## Purpose
 
-Provides JSON-based save/load for the full bp-format data hierarchy. Handles
-bidirectional conversion between Python dataclass objects and
-JSON-serializable dicts, including special handling for JAX arrays,
-`NaN`/`Inf` values, and `TimeSeries` with optional spline state. Supports
-both plain `.json` and gzipped `.json.gz` files.
+Save and load the whole bp-format hierarchy as JSON, including JAX arrays and
+fitted spline state. Plain `.json` and gzipped `.json.gz` are both supported.
 
-## Design Rationale
+## Why JSON
 
-- **Why JSON?** Human-readable, language-agnostic, git-diffable, and requires no binary format lock-in.
-- **Why two top-level types?** `CaseStudy` is the strict, publication-linked container (it requires `case_id`, `organism`, `citation`). `BioProcessCollection` is the loose wrapper for raw or intermediate work (a dict of processes plus optional free-form metadata). Each gets its own file.
-- **One function per type:** A single `save_*` / `load_*` pair per type handles both explicit file paths and directories — there are no separate `*_json` variants.
-- **Smart path resolution:** Functions accept either a `.json`/`.json.gz` file path or a directory path. When given a directory, they write `data.json` inside it and load `data.json` or `data.json.gz`.
+Human-readable, diffable in git, language-agnostic, and no binary format to lock
+the data in. Datasets are small enough (thousands of samples, not gigabytes)
+that a text format costs nothing meaningful; `.json.gz` handles the dense online
+traces.
 
 ## Public API
 
 | Function | Description |
 |----------|-------------|
-| `save_case_study(case_study, path)` | Save a `CaseStudy` to JSON. |
-| `load_case_study(path) -> CaseStudy` | Load a `CaseStudy` from JSON. |
-| `save_process_collection(collection, path)` | Save a `BioProcessCollection` to JSON. |
-| `load_process_collection(path) -> BioProcessCollection` | Load a `BioProcessCollection` from JSON. |
+| `save_case_study(case_study, path)` | Write a `CaseStudy`. |
+| `load_case_study(path) -> CaseStudy` | Read a `CaseStudy`. |
+| `save_process_collection(collection, path)` | Write a `BioProcessCollection`. |
+| `load_process_collection(path) -> BioProcessCollection` | Read a `BioProcessCollection`. |
 
-### Path Resolution
+One save/load pair per top-level type — there are no `*_json` variants.
+
+### Path resolution
+
+`path` may be a file or a directory.
 
 ```python
-# These are equivalent:
-bp.serialization.save_case_study(case_study, Path("output/"))          # writes output/data.json
-bp.serialization.save_case_study(case_study, Path("output/data.json")) # writes output/data.json
-bp.serialization.save_case_study(case_study, Path("output/custom.json"))  # writes output/custom.json
-bp.serialization.save_case_study(case_study, Path("output/data.json.gz")) # writes gzipped JSON
+save_case_study(cs, Path("output/"))              # -> output/data.json
+save_case_study(cs, Path("output/data.json"))     # -> output/data.json
+save_case_study(cs, Path("output/custom.json"))   # -> output/custom.json
+save_case_study(cs, Path("output/data.json.gz"))  # -> gzipped
 ```
 
-### JSON Structure Overview
+When loading from a directory, `data.json` is tried first, then `data.json.gz`.
+Anything that is neither `.json` nor `.json.gz` raises `FileNotFoundError` with
+an explicit message.
 
-A `CaseStudy` file follows the dataclass hierarchy directly: the strict
-identity fields sit at the top level, with `processes` nested beneath. (A
-`BioProcessCollection` file is the same shape but with `metadata` /
-`processes` at the top level instead of the `case_id`/`organism`/`citation`
-fields.)
+### Comments in input files
+
+`json_io.loads_json` strips **whole-line** `//` comments before parsing, so
+hand-maintained config and fixture files can be annotated. Trailing comments
+after data on the same line are *not* stripped.
+
+## JSON structure
+
+The file mirrors the dataclass hierarchy directly.
 
 ```json
 {
   "case_id": "kittler_2022",
-  "organism": "S. cerevisiae",
+  "organism": "E. coli",
   "citation": "Kittler et al., 2022",
   "processes": {
-    "batch_001": {
-      "metadata": {"name": "batch_001", "process_type": "batch"},
-      "time_axis": {"unit": "h", "start": 0.0, "end": 24.0, "time_reference": "inoculation"},
+    "run_1": {
+      "metadata":  {"name": "run_1", "process_type": "fed_batch", "notes": null},
+      "time_axis": {"unit": "h", "start": 0.0, "end": 24.0,
+                    "time_reference": "inoculation"},
       "reactor_medium": {
-        "name": "...",
-        "density": 1.0,
-        "density_unit": "kg/L",
+        "name": "medium", "density": 1.0, "density_unit": "kg/L",
         "components": {
           "biomass": {
             "name": "biomass",
             "unit": "g/L",
-            "concentration": {
-              "type": "TimeSeries",
-              "times": [0.0, 6.0, 12.0],
-              "values": [0.5, 1.2, 3.1]
-            },
-            "c_star_concentration": {
-              "type": "TimeSeries",
-              "times": [0.0, 6.0, 12.0],
-              "values": [0.5, 1.1, 2.8],
-              "metadata": {
-                "transform": {"name": "pseudo_batch", "component": "biomass"}
-              }
-            }
+            "concentration": { "type": "TimeSeries", "...": "see below" }
           }
         }
       },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
-        "volume_changes": {},
-        "total_volume": {"times": [0.0, 24.0], "values": [1.0, 1.2]}
+        "volume_changes": { "feed": { "type": "FeedVolumeChange", "...": "..." } }
       },
       "process_variables": {},
-      "pseudobatch_transform": {
-        "adf": {"times": [0.0, 24.0], "values": [1.0, 1.2]},
-        "feed_corrections": {
-          "biomass": {"times": [0.0, 24.0], "values": [0.0, 0.0]}
-        },
-        "sample_compensation": {"times": [0.0, 24.0], "values": [1.0, 1.0]},
-        "accumulated_feeds": {}
-      }
+      "biological_ode": { "...": "see below" }
     }
   }
 }
 ```
 
-**TimeSeries payloads** are tagged with `"type": "TimeSeries"` at the top level and carry `times`, `values`, `derived` (bool), `jump_times`, `continuity_side` (`"left"` or `"right"`), `metadata`, and `dtype`. If spline state is present, `breaks`, `coeffs`, and `segment_start_piece_idx` are also included. Raw real concentration stays in `concentration`; optional pseudobatch c* lives in `c_star_concentration`. The process-level pseudobatch bundle uses `adf`, `feed_corrections`, `sample_compensation`, and `accumulated_feeds`.
+A `BioProcessCollection` file has the same shape, with `metadata` and
+`processes` at the top level instead of `case_id`/`organism`/`citation`.
 
-**StaticVariable payloads** are represented as `{"type": "StaticVariable", "value": 500.0}`.
+### Arrays
 
-**VolumeChange payloads** carry a `"type"` discriminator of either `"FeedVolumeChange"` or `"SampleVolumeChange"`, plus the common fields `name`, `unit`, `is_controlled`, `is_continuous`, `values` (a nested `TimeSeries` payload). `FeedVolumeChange` adds a nested `feed_medium` object.
+Every numeric array is written by `NumpyEncoder` as a tagged object, **not** a
+bare list:
 
-**AugmentedBioProcess payloads** carry every field a `BioProcess` does, plus `"__type__": "AugmentedBioProcess"` and a `"parent_process": "<parent-key>"` entry. Loaders inspect `__type__` to reconstruct the correct subclass; entries without that tag are loaded as plain `BioProcess`.
+```json
+{"__ndarray__": [0.0, 6.0, 12.0], "dtype": "float64"}
+```
 
-**Bounds** are serialized as a small object `{"lower": <number-or-null>, "upper": <number-or-null>}` on `ReactorMediumComponent`, `ProcessVariable`, `Volume`, and per-rate inside a `BiologicalOde.rates` entry. The default `(None, None)` (unbounded on both sides) is **omitted** from JSON to keep payloads clean; loaders treat a missing `bounds` key as unbounded.
+On load, `_restore_arrays` walks the tree and rebuilds `jnp` arrays. Floating
+dtypes are always restored as float64, so an older float32 payload loads
+correctly and is upcast once.
 
-**`biological_ode` payload** appears at the process level when the user has defined the optional block:
+### `TimeSeries` payloads
+
+```json
+"concentration": {
+  "type": "TimeSeries",
+  "times":  {"__ndarray__": [0.0, 6.0, 12.0], "dtype": "float64"},
+  "values": {"__ndarray__": [0.5, 1.2, 3.1],  "dtype": "float64"},
+  "derived": false,
+  "jump_times": {"__ndarray__": [], "dtype": "float64"},
+  "continuity_side": "right",
+  "breaks": {"__ndarray__": "...", "dtype": "float64"},
+  "coeffs": {"__ndarray__": "...", "dtype": "float64"},
+  "segment_start_piece_idx": {"__ndarray__": [0], "dtype": "int32"},
+  "metadata": {"fit_strategy": "smoothing_bspline"}
+}
+```
+
+- `breaks` / `coeffs` / `segment_start_piece_idx` appear only when a spline has
+  been fitted. All three go together.
+- `times` and `values` may be absent for a spline-only series.
+- The `"type": "TimeSeries"` tag is present only where the field could also hold
+  a `StaticVariable` (component concentrations, process-variable values).
+  Fields that are always a `TimeSeries` — volume-change `values`,
+  `total_volume`, and everything in `pseudobatch_transform` — omit it.
+
+### `StaticVariable` payloads
+
+```json
+{"type": "StaticVariable", "value": 500.0}
+```
+
+### `VolumeChange` payloads
+
+Discriminated by `"type"`:
+
+```json
+"feed": {
+  "type": "FeedVolumeChange",
+  "name": "feed", "unit": "L",
+  "is_controlled": true, "is_continuous": true,
+  "values": {"times": "...", "values": "..."},
+  "feed_medium": {"name": "...", "density": 1.0, "density_unit": "kg/L",
+                  "components": {"glucose": {"name": "glucose", "unit": "g/L",
+                                             "is_controlled": false,
+                                             "concentration": {"type": "StaticVariable",
+                                                               "value": 500.0}}}}
+}
+```
+
+`SampleVolumeChange` is the same minus `feed_medium`. A payload with no `"type"`
+key is rejected as an old schema.
+
+### `pseudobatch_transform` payload
+
+Process-level, holding only what is shared across species:
+
+```json
+"pseudobatch_transform": {
+  "adf": {"breaks": "...", "coeffs": "...", "continuity_side": "left", "...": "..."},
+  "feed_corrections":  {"glucose": {"...": "..."}},
+  "sample_compensation": {"...": "..."},
+  "accumulated_feeds": {"feed": {"...": "..."}}
+}
+```
+
+Per-species `c*` is *not* here — it lives on each component as
+`c_star_concentration`, tagged with
+
+```json
+"metadata": {"transform": {"name": "pseudo_batch", "component": "glucose",
+                           "is_constant": false, "constant_value": null}}
+```
+
+`adf` and `feed_corrections` are required whenever the key is present; a partial
+bundle raises on load rather than loading silently.
+
+### `bounds` payloads
+
+```json
+"bounds": {"lower": 0.0, "upper": null}
+```
+
+Present on `ReactorMediumComponent`, `ProcessVariable`, and `Volume`. The
+default `(None, None)` is **omitted entirely** to keep files clean; a missing
+`bounds` key loads as unbounded.
+
+### `biological_ode` payload
 
 ```json
 "biological_ode": {
@@ -115,74 +192,79 @@ fields.)
     "X_active": "biomass - product"
   },
   "rates": {
-    "q_X_active": {"bounds": {"lower": 0.0, "upper": null}},
-    "q_P":        {"bounds": null},
-    "q_S":        {"bounds": {"lower": null, "upper": 0.0}}
+    "q_growth":  {"lower": 0.0,  "upper": null},
+    "q_product": null,
+    "q_glucose": {"lower": null, "upper": 0.0}
   },
   "derivatives": {
-    "biomass": "q_X_active * X_active + q_P * X_active",
-    "product": "q_P * X_active",
-    "glucose": "q_S * X_active",
+    "biomass": "(q_growth + q_product) * X_active",
+    "product": "q_product * X_active",
+    "glucose": "q_glucose * X_active",
     "pH":      "0"
   }
 }
 ```
 
-`derivatives` keys are dynamic-state names (reactor components or uncontrolled process variables); a value of `"0"` is the canonical way to declare *no biological dynamics for this state*. Omitting an entry for any dynamic state is rejected by `validate_biological_ode` so every choice is deliberate.
+Each `rates` value is a bounds object, or `null` for unbounded. Key order in
+`rates` is the rate-vector layout and is preserved by JSON object ordering.
+
+`derivatives` keys are dynamic-state names. `"0"` is the canonical way to say
+"no biological dynamics"; omitting a state is rejected by
+`validate_biological_ode`.
+
+The block is always written, because `BioProcess.__post_init__` auto-fills it.
+
+### `AugmentedBioProcess` payload
+
+Everything a `BioProcess` has, plus:
+
+```json
+"__type__": "AugmentedBioProcess",
+"parent_process": "run_1"
+```
+
+Loaders switch on `__type__`; entries without it become plain `BioProcess`. A
+payload tagged augmented but missing a non-empty `parent_process` string raises.
+
+## Rejected legacy payloads
+
+Loading fails loudly rather than guessing, for:
+
+| Payload | Message |
+|---------|---------|
+| Sibling `"interpolator"` object on a component, PV, or volume change | Regenerate with TimeSeries-only spline storage |
+| `VolumeChange` with no `"type"` key | Old schema; regenerate the dataset |
+| `metadata.transform.series` (executable transform nested in metadata) | Store pseudobatch state in `process.pseudobatch_transform` |
+| `pseudobatch_transform` missing `adf` or `feed_corrections` | Missing required key |
 
 ## Examples
 
-### Saving and Loading a Case Study
+### Round trip
 
 ```python
 import bp_format as bp
 from pathlib import Path
 
-# Save
 bp.serialization.save_case_study(case_study, Path("output/"))
+restored = bp.serialization.load_case_study(Path("output/"))
 
-# Load
-case_study = bp.serialization.load_case_study(Path("output/"))
-
-# Access data
-print(f"{case_study.case_id}: {len(case_study.processes)} processes, "
-      f"organism={case_study.organism}")
+assert restored.case_id == case_study.case_id
+assert set(restored.processes) == set(case_study.processes)
 ```
 
-### Saving and Loading a Process Collection
+### Intermediate data
 
 ```python
-import bp_format as bp
-from pathlib import Path
-
-# Useful for raw or intermediate work that is not yet a full case study
 collection = bp.BioProcessCollection(
-    metadata={"source": "preprocessing"},
+    metadata={"source": "preprocessing", "date": "2026-07-01"},
     processes={"run_1": process_1, "run_2": process_2},
 )
-
 bp.serialization.save_process_collection(collection, Path("intermediate/"))
 restored = bp.serialization.load_process_collection(Path("intermediate/"))
 ```
 
-### Round-Trip Verification
+## See also
 
-```python
-import bp_format as bp
-from pathlib import Path
-import tempfile
-
-with tempfile.TemporaryDirectory() as tmp:
-    path = Path(tmp)
-    bp.serialization.save_case_study(case_study, path)
-    restored = bp.serialization.load_case_study(path)
-
-    # Verify structure preserved
-    assert restored.case_id == case_study.case_id
-    assert set(restored.processes.keys()) == set(case_study.processes.keys())
-```
-
-## See Also
-
-- [Data Model](02_data_model.md) -- the dataclass structures being serialized
-- [TimeSeries](06_time_series.md) -- serialization of discrete samples and spline state
+- [Data Model](02_data_model.md) — the structures being serialized
+- [TimeSeries](06_time_series.md) — sample and spline storage
+- [Validation](04_validation.md) — run after loading

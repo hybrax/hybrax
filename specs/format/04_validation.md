@@ -4,141 +4,204 @@ Source: `bp_format/validate.py`
 
 ## Purpose
 
-Provides data integrity checks that catch common errors in bioprocess data before they propagate into modeling. All validation functions return `(bool, str)` tuples for composability, enabling callers to collect all issues in one pass rather than failing on the first error.
+Catch the errors that bioprocess data reliably contains — wrong signs, missing
+species, misaligned timestamps — before they turn into silent numerical
+nonsense during ODE integration.
 
-## Design Rationale
+Every validator returns `(bool, str)` (or `(bool, list[str])` for the
+aggregates) instead of raising, so one pass collects **all** problems into a
+report rather than stopping at the first. Structural impossibilities still raise
+— see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-- **Why validate early?** Bioprocess data comes from diverse sources with inconsistent conventions. Wrong signs on volume changes, missing biomass components, or mismatched array lengths can cause silent numerical errors during ODE integration. Catching these at data loading time saves hours of debugging.
-- **Why `(bool, str)` return type?** Allows both programmatic checking (`if not ok: ...`) and human-readable reporting. `validate_process()` aggregates all individual checks into a single pass. This is preferred over raising exceptions because it provides a comprehensive report rather than stopping at the first issue.
-- **Why cross-process consistency checks?** All processes in a case study should share the same variable structure for fair benchmarking. `validate_case_study()` checks this.
+All 12 validators are exported from the package root: `bp.validate_process(...)`.
 
-## Public API
+## Individual validators
 
-### Individual Validators
+### `validate_timeseries_shape(ts, name="")`
 
-Each returns `(bool, str)` where `True` means valid and the string is either empty or describes the issue.
+`times` and `values` are both 1-D, the same length, and `times` is strictly
+increasing (no duplicates). Fails if the series has no discrete samples at all.
 
-#### `validate_timeseries_shape(ts, name="")`
-Checks that a TimeSeries has:
-- 1D arrays for both `times` and `values`
-- Matching lengths
-- Strictly increasing time points
+### `validate_volume_change_sign(volume_change)`
 
-#### `validate_volume_change_sign(volume_change)`
-Checks sign conventions:
-- `FeedVolumeChange`: all values >= 0 (inflow)
-- `SampleVolumeChange`: all values <= 0 (outflow)
+- `FeedVolumeChange`: all values ≥ 0 (inflow)
+- `SampleVolumeChange`: all values ≤ 0 (outflow)
+- Unknown type: values must be purely positive or purely negative, never mixed
 
-#### `validate_volume_change_states(process)`
-For every positive volume change (feed), checks that the feed medium defines concentrations for all dynamic state variables in the reactor medium. This ensures the ODE RHS can compute dilution terms for every species.
+Uses a 1e-12 tolerance so exact zeros and float noise pass.
 
-#### `validate_biomass_in_reactor_medium(process)`
-Checks that the reactor medium contains a component named `"biomass"` (case-insensitive). Biomass is required at index 0 in the ODE state vector.
+### `validate_volume_change_states(process)`
 
-#### `validate_measurement_sampling_alignment(process)`
-Checks that measurement times for reactor medium components do not coincide with sampling events. Measurements taken exactly at a sampling time may have corrupted concentrations due to the volume change.
+For every volume change that adds volume, checks that its `feed_medium` defines
+a concentration for **every dynamic species** in the reactor medium (any
+component whose concentration is a `TimeSeries`).
 
-#### `validate_biological_ode(process)`
-Aggregate validator for `process.biological_ode`. Covers: every dynamic state has an entry in `derivatives` (including `"0"` for "no biological dynamics"); every free symbol resolves to a state, controlled-PV, `algebraic` name, or rate; `algebraic` dependencies are acyclic; rate-symbol names do not collide with any other name in scope; each `rates` entry has a well-formed `Bounds` tuple. The validator also parses every `algebraic` and `derivatives` expression with sympy and rejects any `Add` subtree that sums two or more reactor-component / process-variable symbols with incompatible units (e.g. `biomass - product` is accepted at matching units, rejected when one is `g/L` and the other `mg/L`).
+A missing entry is ambiguous — did the feed really contain none of that species,
+or was it just not recorded? The mass balance needs the answer, so state it
+explicitly with `StaticVariable(0.0)` when the species is genuinely absent.
 
-#### `validate_biological_ode_equivalence(container)`
-Cross-process consistency. Given a `CaseStudy` or `BioProcessCollection`, verifies that every contained process exposes an identical `BiologicalOde` block (same `algebraic`, `rates`, and `derivatives` mappings). Returns `(bool, str)`.
+### `validate_biomass_in_reactor_medium(process)`
 
-#### `validate_bounds(process)`
-Walks every `Bounds` carrier on the process (`ReactorMediumComponent.bounds`, `ProcessVariable.bounds`, `Volume.bounds`, and each `BiologicalOde.rates` entry) and checks that each is a 2-tuple of `Optional[float]` with `lower <= upper` when both are set.
+The reactor medium contains a component named `biomass` (case-insensitive).
 
-#### `validate_volume_consistency(process)`
-Checks that the volume balance is internally consistent: initial volume plus cumulative volume changes should match the expected final volume (within a tolerance). Returns `(bool, str, float)` — the third element is the total cumulative volume change, useful for reporting alongside the pass/fail message.
+This matters because the auto-generated `BiologicalOde` builds every derivative
+as `q_<species> * biomass` and cannot do so without it. If your process has no
+biomass component, supply your own `biological_ode` — the check will still
+report, but the process is usable.
 
-### Aggregate Validators
+Biomass has **no reserved position** in the state vector; reactor components are
+ordered alphabetically.
 
-#### `validate_process(process) -> (bool, List[str])`
-Runs all individual validators on a single process. Returns a list of all error messages (empty if valid).
+### `validate_measurement_sampling_alignment(process, rel_threshold=1e-4)`
 
-#### `validate_case_study(case_study) -> (bool, Dict[str, List[str]])`
-Runs `validate_process()` on each process in the case study, plus cross-process consistency checks:
-- All processes should define the same set of reactor medium components.
-- All processes should define the same set of process variables.
-- Every `AugmentedBioProcess` in the case study must reference an existing,
-  non-augmented parent (delegated to `validate_augmented_parent_refs`).
-  Results are reported under the `"__augmented__"` key in the report dict.
+Flags concentration measurements timestamped *slightly after* a sampling event —
+strictly between the sample time and `sample_time + rel_threshold ·
+process_length` (0.01 % of the run by default).
 
-Returns a dict mapping process IDs to their error message lists.
+An offline measurement describes the broth **as drawn**, i.e. the pre-sample
+state. A timestamp a few seconds late makes the pseudobatch transform pick the
+post-sample volume, which corrupts the accumulated dilution factor and every
+spline built on it. Move such timestamps onto the sampling time exactly.
 
-#### `validate_augmented_parent_refs(container) -> (bool, List[str])`
-Verifies the `parent_process` field of every `AugmentedBioProcess` inside
-a `CaseStudy` or `BioProcessCollection`. Each augmented child must point
-to a key that exists in the same `processes` dict and that resolves to a
-non-augmented `BioProcess`; chained augmentation is rejected in v1.
-Returns `(all_valid, messages)` where `messages` always contains at least
-one summary line. This is invoked automatically from
-`validate_case_study` but can also be called directly on a
-`BioProcessCollection`.
+Measurements *exactly at* a sampling time are correct and are not flagged.
+
+### `validate_bounds(process)`
+
+Every `Bounds` tuple on the process — `ReactorMediumComponent.bounds`,
+`ProcessVariable.bounds`, `Volume.bounds` — has `lower <= upper` when both are
+set. (Bounds on `BiologicalOde.rates` are checked by `validate_biological_ode`.)
+
+### `validate_biological_ode(process)`
+
+The aggregate check for `process.biological_ode`. No-op when it is `None`.
+
+- Every dynamic state (reactor component or uncontrolled process variable) has
+  an entry in `derivatives`; `"0"` counts. Every `derivatives` key *is* a
+  dynamic state — no extras.
+- Every expression parses with sympy.
+- Every free symbol resolves to a state, a controlled process variable, an
+  `algebraic` name, or a `rates` name.
+- The `algebraic` dependency graph is acyclic.
+- Rate names collide with nothing; algebraic names collide with nothing.
+- Every `rates` bounds tuple has `lower <= upper`.
+- **Unit consistency in sums.** Any `Add` node that combines two or more state
+  symbols requires those states to share a unit. `biomass - product` is fine at
+  matching units and rejected when one is `g/L` and the other `mg/L` — the
+  subtraction would be meaningless.
+
+### `validate_biological_ode_equivalence(container)`
+
+Given a `CaseStudy` or `BioProcessCollection`, checks that every process exposes
+an identical `BiologicalOde` (same `algebraic`, `rates`, and `derivatives`). One
+model has to describe every run in a study for the benchmark to mean anything.
+Containers with 0 or 1 process pass trivially.
+
+Not part of `validate_case_study`; call it directly, or let
+[`print_rhs_ode`](05_inspection.md) run it for you.
+
+### `validate_volume_consistency(process, final_volume)`
+
+Initial volume plus all volume changes should land within 5 % of the measured
+final volume. Returns `(bool, str, float)` — the third element is the net volume
+change.
+
+Continuous changes contribute `values[-1] - values[0]` (cumulative); discrete
+changes contribute `sum(values)`. Only the endpoints are used, because this runs
+*before* any spline fitting.
+
+> `final_volume` has no usable default — pass the measured value.
+
+### `validate_augmented_parent_refs(container)`
+
+For every `AugmentedBioProcess` in a `CaseStudy` or `BioProcessCollection`:
+`parent_process` names a key in the same container, and that key resolves to a
+**non-augmented** `BioProcess`. Chained augmentation is rejected.
+
+Returns `(bool, list[str])`, always with at least one summary line. Called
+automatically by `validate_case_study`.
+
+## Aggregate validators
+
+### `validate_process(process) -> (bool, list[str])`
+
+Runs, in order:
+
+1. `validate_timeseries_shape` on every reactor component, process variable, and
+   volume change carrying a `TimeSeries`
+2. `validate_volume_change_sign` on every volume change
+3. `validate_volume_change_states`
+4. `validate_biomass_in_reactor_medium`
+5. `validate_measurement_sampling_alignment`
+6. `validate_bounds`
+7. `validate_biological_ode`
+
+Returns one message per check — including the passing ones, so the output reads
+as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.
+
+`validate_volume_consistency` is **not** included (it needs a `final_volume`
+argument you have to supply).
+
+### `validate_case_study(case_study) -> (bool, dict[str, list[str]])`
+
+`validate_process` on every process, plus cross-process structure checks against
+the first process:
+
+- same reactor components, each with the same value type and unit
+- same process variables, each with the same value type and unit
+- same volume-change names and units
+
+Results are keyed by process name, with cross-process findings under
+`"__consistency__"` and augmented-parent findings under `"__augmented__"`.
 
 ## Examples
 
-### Validating a Single Process
+### One process
 
 ```python
 import bp_format as bp
 
 case_study = bp.serialization.load_case_study("data.json")
-process = case_study.processes["batch_001"]
+process = case_study.processes["run_1"]
 
-is_valid, messages = bp.validate_process(process)
-if not is_valid:
-    print("Validation errors:")
-    for msg in messages:
-        print(f"  - {msg}")
-else:
-    print("Process is valid.")
+ok, messages = bp.validate_process(process)
+for msg in messages:
+    print(("  " if ok else "  ! ") + msg)
 ```
 
-### Validating an Entire Case Study
+### A whole case study
 
 ```python
-import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-
-is_valid, report = bp.validate_case_study(case_study)
-if not is_valid:
-    for process_id, messages in report.items():
-        if messages:
-            print(f"\n{process_id}:")
-            for msg in messages:
-                print(f"  - {msg}")
+ok, report = bp.validate_case_study(case_study)
+if not ok:
+    for key, messages in report.items():
+        print(f"\n{key}:")
+        for msg in messages:
+            print(f"  - {msg}")
 ```
 
-### Validating All Processes in a Case Study
+### Volume balance against a measured endpoint
 
 ```python
-import bp_format as bp
-
-case_study = bp.serialization.load_case_study("data.json")
-
-cs = case_study
-is_valid, report = bp.validate_case_study(cs)
-if not is_valid:
-    print(f"\nCase study '{cs.case_id}' has issues:")
-    for pid, msgs in report.items():
-        for msg in msgs:
-            print(f"  [{pid}] {msg}")
-else:
-    print("All processes valid.")
+ok, msg, delta = bp.validate_volume_consistency(process, final_volume=1.85)
+print(msg)           # full balance table
+print(f"net change: {delta:+.3f} {process.volume.unit}")
 ```
 
-### Common Failure Modes
+## Common failures
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| "values must be >= 0" on a FeedVolumeChange | Negative values in feed stream | Check sign convention; feeds should be non-negative |
-| "biomass not found in reactor medium" | Missing or misspelled biomass component | Add a component named `"biomass"` to `reactor_medium.components` |
-| "times and values must have the same length" | Array length mismatch | Ensure measurement arrays are aligned |
-| "feed medium missing component X" | Feed doesn't define all reactor species | Add the missing species to the `FeedMedium` (concentration can be 0) |
+| Message | Cause | Fix |
+|---------|-------|-----|
+| `FeedVolumeChange contains negative values` | Sign convention flipped | Feeds are ≥ 0, samples ≤ 0 |
+| `does not contain a 'biomass' component` | Missing or renamed biomass | Rename it, or supply your own `biological_ode` |
+| `times length does not match values length` | Arrays misaligned during parsing | Rebuild the `TimeSeries` |
+| `missing feed components for state variable(s)` | Feed medium omits a reactor species | Add it, with the real concentration — `0.0` only if truly absent |
+| `measurement at t=… is … after sampling` | Offline timestamp nudged past the sample | Snap it onto the sampling time |
+| `derivatives missing entries for dynamic state(s)` | A state has no `d/dt` | Add an entry; `"0"` if there is no biology |
+| `references undeclared symbol(s)` | Typo, or a symbol that is not a state / control / algebraic / rate | Declare it or fix the name |
+| `combined additively with mismatched units` | Summing `g/L` with `mg/L` | Convert to one unit |
 
-## See Also
+## See also
 
-- [Data Model](02_data_model.md) -- the structures being validated
-- [Serialization](03_serialization.md) -- validate after loading
-- [Design Rationale](01_design_rationale.md#6-validation-first-approach) -- why validation-first
+- [Data Model](02_data_model.md) — what is being validated
+- [Serialization](03_serialization.md) — validate after loading
+- [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly)

@@ -4,36 +4,49 @@ Source: `bp_format/dataclasses.py`
 
 ## Purpose
 
-The data model defines a hierarchical set of Python dataclasses that describe bioprocess experiments from raw measurements up to multi-study benchmark datasets. Every class uses standard `@dataclass` decorators (not `eqx.Module`) because the outer containers hold `Dict[str, ...]` fields that are manipulated outside the JAX JIT boundary. The one exception is `TimeSeries`, which lives in the `time_series/` subpackage and is an `eqx.Module`.
+The data model describes a bioprocess experiment as nested Python dataclasses,
+from a single measurement up to a whole published case study. Everything here is
+a plain `@dataclass`; the one exception is `TimeSeries`, which lives in
+`bp_format/time_series/` and is an `eqx.Module` so it can cross a JAX JIT
+boundary (see [Design Rationale §1](01_design_rationale.md#1-jax-first-but-only-where-it-matters)).
 
-## Design Rationale
+All classes are re-exported from the package root: `bp.TimeAxis`,
+`bp.BioProcess`, and so on.
 
-- **Dict keyed by name, not lists:** Components are stored as `Dict[str, Component]` (e.g., `reactor_medium.components["glucose"]`). This gives O(1) lookup, produces clean JSON keys, and makes iteration order explicit.
-- **Volume is separate from states and controls:** Volume is affected by multiple operations (feeds, sampling, evaporation) and enters the ODE differently from states. See [Design Rationale: Volume](01_design_rationale.md#3-volume-as-a-first-class-concept).
-- **Intracellular accumulation lives in `BiologicalOde`:** When a species accumulates inside cells (e.g., inclusion bodies), the user encodes the active-biomass relationship explicitly via `BiologicalOde.algebraic` (e.g., `{"X_active": "biomass - product"}`) and the corresponding derivatives. There is no flag on `ReactorMediumComponent`; `BioProcess.__post_init__` auto-fills a minimal block with `dc/dt = q · biomass` for each reactor component when the user does not supply one, and biology that departs from that template (intracellular bookkeeping, dead-cell pools, custom algebraics) is a user-supplied `BiologicalOde` block consumed by the same `RhsOde`.
-- **Feed/Sample subtypes:** `FeedVolumeChange` and `SampleVolumeChange` enforce sign conventions at the type level and only feeds carry a `FeedMedium` reference (sampling removes reactor contents at current concentrations).
-- **`TimeSeries | StaticVariable` union:** Concentrations and process variables can be either time-varying (measured) or constant (known). The union type handles both cases cleanly.
+## Key choices
 
-## Class Reference
+- **Dicts keyed by name, not lists.** `reactor_medium.components["glucose"]` is
+  O(1), makes clean JSON, and keeps iteration explicit.
+- **Volume is separate from states and controls** — see
+  [Design Rationale §3](01_design_rationale.md#3-volume-is-its-own-category).
+- **Feed and sample are different types.** `FeedVolumeChange` and
+  `SampleVolumeChange` fix the sign convention at the type level, and only feeds
+  carry a `FeedMedium`.
+- **`TimeSeries | StaticVariable` everywhere a value could be constant.** A
+  measured concentration is a `TimeSeries`; a known feed concentration is a
+  `StaticVariable`.
+- **Biology lives in `BiologicalOde`, not in flags on components.** There is no
+  `is_intracellular` switch. If a species accumulates inside cells you write it
+  out: `algebraic={"X_active": "biomass - product"}` plus the matching
+  derivatives.
 
-### Low-Level Structures
+## Low-level structures
 
-#### `TimeAxis`
-Defines the time domain for a bioprocess.
+### `TimeAxis`
 
 ```python
 @dataclass
 class TimeAxis:
-    unit: str           # e.g. "h", "days"
-    start: float        # process start time
-    end: float          # process end time
-    time_reference: str  # "inoculation", "first_feed", or "operator_defined"
+    unit: str            # "h", "days"
+    start: float
+    end: float
+    time_reference: str  # "inoculation", "first_feed", "operator_defined"
 ```
 
-The `time_reference` field documents what `t=0` corresponds to, which is critical for aligning data across processes.
+`time_reference` records what `t = 0` means, which is what makes runs from
+different sources alignable.
 
-#### `StaticVariable`
-A single time-independent scalar value.
+### `StaticVariable`
 
 ```python
 @dataclass
@@ -41,94 +54,105 @@ class StaticVariable:
     value: float
 ```
 
-Used for constant feed concentrations, fixed parameters, etc.
+One time-independent scalar. Used for feed concentrations, fixed setpoints, and
+any process variable that never changes.
 
-#### `TimeSeries`
-The canonical carrier for both sampled trajectories and optional spline state.
+### `TimeSeries`
+
+The carrier for anything that varies over time. Full treatment in
+[06_time_series.md](06_time_series.md).
 
 ```python
 class TimeSeries(eqx.Module):
-    times: jnp.ndarray
-    values: jnp.ndarray
-    jump_times: jnp.ndarray
-    continuity_side: str
-    breaks: Optional[jnp.ndarray]
-    coeffs: Optional[jnp.ndarray]
-    segment_start_piece_idx: Optional[jnp.ndarray]
-    metadata: Optional[dict]
+    times: jnp.ndarray | None                    # strictly increasing
+    values: jnp.ndarray | None                   # same length as times
+    breaks: jnp.ndarray | None                   # fitted spline: breakpoints
+    coeffs: jnp.ndarray | None                   # fitted spline: (n_pieces, 4)
+    segment_start_piece_idx: jnp.ndarray | None  # fitted spline: segment starts
+    jump_times: jnp.ndarray                      # known discontinuities
+    derived: bool                                # computed, not measured
+    continuity_side: str                         # "left" or "right"
+    metadata: Any                                # free-form dict
 ```
 
-`TimeSeries` is the only continuous-value carrier in the active model. Raw
-measurements live in `times` / `values`, while fitted spline state lives
-directly on the same object via `breaks`, `coeffs`, and
-`segment_start_piece_idx`. Pseudobatch transforms are also stored on
-`TimeSeries.metadata`.
+At least one of {samples, spline} must be present. All float fields are float64.
 
-#### `DiscreteEvents`
-Stores discrete event times (bolus feeds, sampling, volume jumps).
+### `DiscreteEvents`
 
 ```python
 @dataclass
 class DiscreteEvents:
-    times: jnp.ndarray          # sorted, unique event times
-    labels: Optional[list]       # optional labels for each event
-    metadata: Optional[dict]     # additional event metadata
+    times: jnp.ndarray          # sorted, unique
+    labels: Optional[list]
+    metadata: Optional[dict]
 ```
 
-### Medium Components
+An optional convenience record of event times. The authoritative source of
+events is always `volume.volume_changes` with `is_continuous=False`.
 
-#### `ReactorMediumComponent`
-A single species (biomass, substrate, product) measured in the reactor.
+### `Bounds`
+
+```python
+Bounds = Tuple[Optional[float], Optional[float]]   # (lower, upper)
+```
+
+`None` on either side means unbounded; `(None, None)` is the default.
+
+**Bounds are metadata only.** They are never enforced by `RhsOde` or by any
+integrator. Downstream consumers — bp-train's loss module, for instance — read
+them off the process to build soft penalties such as "this concentration cannot
+go negative".
+
+## Medium components
+
+### `ReactorMediumComponent`
+
+One species measured in the reactor.
 
 ```python
 @dataclass
 class ReactorMediumComponent:
-    name: str                                    # e.g. "glucose", "biomass"
-    unit: str                                    # e.g. "g/L", "mM"
-    concentration: TimeSeries | StaticVariable                 # measured real concentration over time
-    c_star_concentration: TimeSeries | StaticVariable | None    # optional derived pseudobatch c* trace
-    bounds: Bounds = (None, None)                              # optional metadata: (lo, hi); None on either side = unbounded
+    name: str                                                 # "glucose", "biomass"
+    unit: str                                                 # "g/L", "mM"
+    concentration: TimeSeries | StaticVariable                # real, as measured
+    c_star_concentration: TimeSeries | StaticVariable | None  # pseudobatch trace
+    bounds: Bounds = (None, None)
 ```
 
-`concentration` always denotes the real reactor concentration in physical units.
-When a pseudobatch transform is available, the derived c* carrier lives in
-`c_star_concentration` and shared transform helpers live on
-`BioProcess.pseudobatch_transform`. Spline state for either quantity is stored
-inside that quantity's `TimeSeries`; there is no sibling interpolator or
-separate `concentration_fit` field.
+`concentration` is *always* the real reactor concentration in physical units.
+When a pseudobatch transform has been built, the derived `c*` trace goes in
+`c_star_concentration` and the shared parts (ADF, feed corrections) go on
+`BioProcess.pseudobatch_transform`. Loaders reject a `c*` trace with no matching
+transform bundle, and reject feeding an already-transformed concentration back
+into the transform builder.
 
-Active biomass and other derived quantities (e.g. `X_active = biomass - product`) are declared on `BiologicalOde.algebraic`, not on the component itself. The auto-generated block uses `dc/dt = q · biomass` uniformly; any process whose biology departs from that template supplies a custom `BiologicalOde` block consumed by the same `RhsOde`.
+### `FeedMediumComponent`
 
-The `bounds` field is **metadata only**: never plumbed into `RhsOde` / integrator. Downstream consumers (e.g. `bp-train`'s loss generator) read it off the process to build soft-constraint penalties such as "concentrations cannot be negative".
-
-#### `FeedMediumComponent`
-A single species in a feed stream.
+One species in a feed stream.
 
 ```python
 @dataclass
 class FeedMediumComponent:
-    name: str                                    # e.g. "glucose", "ammonium"
-    unit: str                                    # e.g. "g/L"
-    concentration: TimeSeries | StaticVariable   # feed concentration (usually static)
-    is_controlled: bool                          # whether concentration is operator-controlled
+    name: str
+    unit: str
+    concentration: TimeSeries | StaticVariable   # in practice: StaticVariable
+    is_controlled: bool = False
 ```
 
-#### `ReactorMedium`
-The reactor contents: a collection of components with density information.
+> The mechanistic code currently requires `StaticVariable` here. A `TimeSeries`
+> feed concentration raises `NotImplementedError` in `build_rhs_ode` and in the
+> pseudobatch feed correction.
+
+### `ReactorMedium` and `FeedMedium`
 
 ```python
 @dataclass
 class ReactorMedium:
     name: str
-    density: float        # often 1.0 kg/L for aqueous solutions
-    density_unit: str     # typically "kg/L"
+    density: float                  # often 1.0 for aqueous media
+    density_unit: str               # typically "kg/L"
     components: Dict[str, ReactorMediumComponent]
-```
 
-#### `FeedMedium`
-A feed stream: composition and density.
-
-```python
 @dataclass
 class FeedMedium:
     name: str
@@ -137,375 +161,356 @@ class FeedMedium:
     components: Dict[str, FeedMediumComponent]
 ```
 
-### Process Variables
-
-#### `ProcessVariable`
-Non-concentration signals such as pH, temperature, dissolved oxygen, or off-gas measurements.
+## Process variables
 
 ```python
 @dataclass
 class ProcessVariable:
-    name: str                                    # original name from paper
-    unit: str                                    # e.g. "°C", "%", "L/h"
-    is_controlled: bool                          # True for controls (pH, DO), False for states (off-gas)
+    name: str
+    unit: str                                # "°C", "%", "L/h"
+    is_controlled: bool
     values: TimeSeries | StaticVariable
-    bounds: Bounds = (None, None)                # optional metadata: (lo, hi); None on either side = unbounded
+    bounds: Bounds = (None, None)
 ```
 
-The `is_controlled` flag determines whether this variable is treated as a known input (control) or an observed output (state) in the mechanistic module. Under a user-defined `BiologicalOde`:
+Anything that is not a concentration and not a volume change: pH, temperature,
+dissolved oxygen, off-gas, stirrer speed.
 
-- Uncontrolled PVs are *dynamic states* — they may appear as keys in `BiologicalOde.derivatives` (with a user-written derivative).
-- Controlled PVs are *time-varying inputs* — they may appear as symbols inside expressions but never as keys.
+`is_controlled` decides how the mechanistic module treats it:
 
-`bounds` is metadata only (see `ReactorMediumComponent`).
+| `is_controlled` | Role | In `BiologicalOde` |
+|---|---|---|
+| `True` | Known input, driven by recorded data | may appear *inside* expressions |
+| `False` | Modeled state with its own `d/dt` | must appear as a **key** in `derivatives` |
 
-### Volume Operations
+A `StaticVariable`-valued process variable must have `is_controlled=True` — a
+state with no time axis cannot be integrated, and `get_process_ordering` raises
+if it finds one.
 
-#### `VolumeChange` (base)
-Base class for volume change events.
+## Volume operations
 
 ```python
 @dataclass
-class VolumeChange:
+class VolumeChange:              # base
     name: str
-    unit: str             # "L", "m3", "kg" — NOT rates like "L/h"
-    is_controlled: bool   # True if operator-controlled
-    is_continuous: bool   # True for continuous flows, False for bolus/discrete events
-    values: TimeSeries    # cumulative volume change over time
-```
+    unit: str                    # "L", "m3", "kg" — never "L/h"
+    is_controlled: bool          # True = operator-set, False = modeled
+    is_continuous: bool          # True = flow profile, False = discrete events
+    values: TimeSeries           # cumulative volume, or per-event deltas
 
-Volume changes store cumulative volumes (not rates), because rates are usually derived quantities.
-
-#### `FeedVolumeChange(VolumeChange)`
-Inflow with associated feed medium composition. All delta values must be >= 0.
-
-```python
 @dataclass
 class FeedVolumeChange(VolumeChange):
-    feed_medium: FeedMedium
-```
+    feed_medium: FeedMedium      # values >= 0
 
-#### `SampleVolumeChange(VolumeChange)`
-Outflow from sampling. All delta values must be <= 0.
-
-```python
 @dataclass
 class SampleVolumeChange(VolumeChange):
-    pass
+    pass                         # values <= 0
 ```
 
-Sampling removes reactor contents at current concentrations, so no separate medium definition is needed.
+How `values` is read depends on `is_continuous`:
 
-#### `Volume`
-Container aggregating initial volume and all volume change operations.
+- **`is_continuous=True`** — a cumulative volume trace. Its spline *derivative*
+  is the flow rate used in the ODE.
+- **`is_continuous=False`** — one signed delta per event time. Boluses and
+  sampling.
+
+Sampling removes broth at whatever concentrations it currently has, so it needs
+no medium definition.
 
 ```python
 @dataclass
 class Volume:
     initial_volume: float
-    unit: str                                      # "L", "m3", "kg"
-    volume_changes: Dict[str, VolumeChange]        # keyed by operation name
-    total_volume: TimeSeries | None                # optional full reactor-volume trace
-    bounds: Bounds = (None, None)                  # optional metadata on V (e.g. (0, V_max_reactor))
+    unit: str
+    volume_changes: Dict[str, VolumeChange]
+    total_volume: TimeSeries | None = None
+    bounds: Bounds = (None, None)         # e.g. (0, max_working_volume)
 ```
 
-`total_volume` may be raw online volume data or a derived trace reconstructed
-from `initial_volume` plus `volume_changes`. Pseudobatch builders populate it
-when they materialize the shared volume/ADF support traces.
+`total_volume` is the full reactor-volume trace. It may be online measurement
+data, or it may be reconstructed from `initial_volume` plus the volume changes —
+`build_pseudobatch_transform` fills it in if it is still `None`.
 
-### Process Level
+## The biological ODE
 
-#### `BioProcessMetadata`
-Static metadata about a process run.
+```python
+@dataclass
+class BiologicalOde:
+    algebraic: Dict[str, str]      # name -> expression
+    rates: Dict[str, Bounds]       # rate symbol -> (lower, upper)
+    derivatives: Dict[str, str]    # state name -> biological dc/dt
+```
+
+This block describes **only the biological part** of `dc/dt`. Feed inflow,
+dilution, sample outflow, and `dV/dt` are added on top by bp-format from the
+`Volume` machinery — you never write them yourself.
+
+- **`algebraic`** — intermediate quantities recomputed every RHS call, e.g.
+  `{"X_active": "biomass - product"}`. Must be acyclic.
+- **`rates`** — names of the abstract specific rates the runtime supplies. This
+  dict's **insertion order is the rate-vector layout** that downstream code
+  passes in, so it is deliberately not sorted. The `Bounds` values are metadata
+  for loss generators.
+- **`derivatives`** — one entry per dynamic state (every reactor component and
+  every uncontrolled process variable). Use `"0"` for "no biological dynamics".
+  The entry must exist even when zero, so the choice is visible.
+
+Every free symbol in any expression must resolve to a state name, a controlled
+process-variable name, an `algebraic` name, or a `rates` name. See
+[`validate_biological_ode`](04_validation.md#validate_biological_odeprocess).
+
+### Auto-generation
+
+If you leave `biological_ode` as `None`, `BioProcess.__post_init__` fills it in
+with the standard template. That requires a reactor component named `biomass`
+(case-insensitive) and produces:
+
+- `algebraic = {}`
+- `rates` — `q_<biomass>` first, then `q_<other components>` in insertion order,
+  then `r_<dynamic process variable>` in insertion order
+- `derivatives` — `"<component>": "q_<component> * <biomass>"` for reactor
+  components, `"<pv>": "r_<pv>"` for dynamic process variables
+
+Static process variables are skipped: they have no biological derivative.
+
+**A process with reactor components but no `biomass` raises at construction
+time.** Either name a component `biomass` or supply your own `biological_ode`.
+
+## Process level
 
 ```python
 @dataclass
 class BioProcessMetadata:
-    name: str                    # process identifier
-    process_type: str            # "batch", "fed_batch", or "continuous"
-    notes: Optional[str]         # free-text notes
-```
+    name: str
+    process_type: str            # "batch", "fed_batch", "continuous"
+    notes: Optional[str] = None
 
-#### `BioProcess`
-A single experimental bioprocess run. This is the central object in bp-format.
-
-```python
 @dataclass
 class BioProcess:
     metadata: Optional[BioProcessMetadata]
     time_axis: TimeAxis
     volume: Volume
     reactor_medium: ReactorMedium
-    process_variables: Dict[str, ProcessVariable]
-    discrete_events: Optional[DiscreteEvents]
-    biological_ode: Optional[BiologicalOde] = None  # user-defined per-state biological RHS
+    process_variables: Dict[str, ProcessVariable] = {}
+    discrete_events: Optional[DiscreteEvents] = None
+    biological_ode: Optional[BiologicalOde] = None       # auto-filled
     pseudobatch_transform: Optional[PseudobatchTransform] = None
 ```
 
-`pseudobatch_transform`, when present, contains shared helpers only:
-`adf`, species-keyed `feed_corrections`, optional `sample_compensation`, and
-`accumulated_feeds`. It does not duplicate per-species c*, which is stored on
-the corresponding `ReactorMediumComponent.c_star_concentration`.
-
-When `biological_ode` is `None` (default), the mechanistic module auto-generates the RHS as `q_i * c_biomass + r_i + feed_dilution` per reactor state, uniformly across components. When set, the user-defined block takes precedence — intracellular bookkeeping, dead-cell pools, and other custom biology are expressed there. See `BiologicalOde` below and the [Mechanistic Module](08_mechanistic.md) page for full semantics.
-
-#### `BiologicalOde`
-User-defined per-state biological RHS expressions. Describes only the *biological* part of `dc/dt`; physical contributions (feed, dilution, sample, dV) continue to be added by bp-format from the existing `VolumeChange` machinery.
+### `PseudobatchTransform`
 
 ```python
 @dataclass
-class BiologicalOde:
-    algebraic: Dict[str, str]          # name -> algebraic expression string
-    rates: Dict[str, Bounds]           # rate-symbol name -> (lower, upper) bounds
-    derivatives: Dict[str, str]        # state name -> dc/dt expression (biological part)
+class PseudobatchTransform:
+    adf: TimeSeries                              # shared accumulated dilution factor
+    feed_corrections: Dict[str, TimeSeries]      # per species
+    sample_compensation: Optional[TimeSeries]    # diagnostic
+    accumulated_feeds: Dict[str, TimeSeries]     # diagnostic, per feed stream
 ```
 
-Validation (see `validate_biological_ode`) requires:
+Only the parts shared across species live here. Per-species `c*` stays on
+`ReactorMediumComponent.c_star_concentration`. Details in
+[07_splines.md](07_splines.md).
 
-- Every dynamic state (reactor component or uncontrolled PV) appears as a key in `derivatives`. Use `"0"` to declare *no biological dynamics for this state* — the entry must be present, even when zero, so every choice is deliberate.
-- Every free symbol in any expression resolves to one of: a state name, a controlled-PV name (input), an `algebraic` name, or a `rates` name.
-- `algebraic` dependencies are acyclic (topo-sorted at build time).
-- Rate names are disjoint from state, algebraic, and controlled-PV names.
+### `AugmentedBioProcess`
 
-Rates are abstract placeholders: their values are supplied at call time by the runtime. `len(BiologicalOde.rates)` is the rate-vector dimension. Each entry is a `Bounds = Tuple[Optional[float], Optional[float]]` of `(lower, upper)`; use `(None, None)` for unbounded rates. The bounds are pure metadata for downstream loss generators.
-
-When `BioProcess.biological_ode` is `None` at construction, `BioProcess.__post_init__` calls `_auto_generate_biological_ode(process)` to fill it. The auto-generated block requires a `"biomass"` reactor-medium component (case-insensitive) and produces:
-
-- `algebraic = {}`
-- `rates = {"q_<biomass>": (None, None), "q_<other_RMC>": ..., "r_<dynamic_PV>": ...}` in *biomass-first → other RMCs (insertion order) → dynamic PVs (insertion order)* order — this is the rate-vector layout downstream consumers see.
-- `derivatives = {"<RMC>": "q_<RMC> * <biomass>", "<dynamic_PV>": "r_<dynamic_PV>"}`
-
-Processes without a biomass component must define `BioProcess.biological_ode` explicitly.
-
-#### `AugmentedBioProcess`
-A synthetic variant of a real `BioProcess` that lives next to its parent in
-the same `BioProcessCollection` / `CaseStudy`. Same fields as `BioProcess`,
-plus a mandatory `parent_process` string referencing the parent's key.
+A synthetic variant of a real run, stored beside its parent.
 
 ```python
 @dataclass(kw_only=True)
 class AugmentedBioProcess(BioProcess):
-    parent_process: str        # key of the real BioProcess this was derived from
+    parent_process: str      # key of the real BioProcess in the same container
 ```
 
-The structural contract is:
+Because it subclasses `BioProcess`, every container, validator, serializer, and
+mechanistic builder accepts it unchanged.
 
-- Augmented children share the parent's structural identity (same
-  control/state schema, medium semantics, units). Validation reuses the
-  cross-process consistency checks that already apply to real processes
-  in a `CaseStudy`.
-- `parent_process` must resolve to a non-augmented `BioProcess` in the
-  same container. Chained augmentation (augmented-of-augmented) is
-  rejected by `validate_augmented_parent_refs`.
-- Because `AugmentedBioProcess` is a `BioProcess` subclass, every existing
-  `Dict[str, BioProcess]` container, the mechanistic RHS path, and any
-  validation/serialization hook that already accepts `BioProcess`
-  transparently accepts the augmented variant.
+Rules:
 
-**Why grouping matters.** Downstream consumers must treat the parent and
-its augmented children as one indivisible unit when constructing
-train/eval splits, holdout sets, or cross-validation folds. An augmented
-sibling that ends up on the train side while its parent is held out
-constitutes data leakage. `validate_augmented_parent_refs` lets those
-consumers discover the parent → children grouping deterministically.
+- `parent_process` must name a key in the same container that resolves to a
+  **non-augmented** `BioProcess`. Augmented-of-augmented is rejected by
+  `validate_augmented_parent_refs`.
+- A child inherits its parent's structure — same state and control schema, same
+  units.
+- **Parent and children are one unit for splitting.** An augmented sibling on
+  the train side while its parent is held out is data leakage. The validator
+  exposes the parent → children grouping so consumers can honour it.
 
-**Serialization.** Augmented processes are tagged in JSON with
-`"__type__": "AugmentedBioProcess"` plus the `parent_process` field;
-loaders reconstruct them via `load_process_collection` /
-`load_case_study`. Plain `BioProcess` payloads are unchanged.
+In JSON, augmented processes carry `"__type__": "AugmentedBioProcess"` plus
+`parent_process`.
 
-### Mechanistic Ordering
+> No code in bp-format produces `AugmentedBioProcess` objects — the shape is
+> fixed so that consumers (bp-train's augmentation and LOO orchestrator) can
+> rely on it.
 
-#### `ProcessOrdering`
-Frozen dataclass holding the canonical name ordering across every derived
-mechanistic module. Built by
-`bp_format.mechanistic.get_process_ordering(process)` and consumed by
-`get_control_splines`, `build_rhs_ode`, `extract_discrete_events`, and
-`build_state_splines` so every state/control/rate vector has the same
-layout.
+## Mechanistic ordering
+
+### `ProcessOrdering`
+
+The single place that decides the layout of every state, control, and rate
+vector. Built by `bp_format.mechanistic.get_process_ordering(process)` and
+consumed by every other mechanistic factory.
 
 ```python
 @dataclass(frozen=True)
 class ProcessOrdering:
-    name_modeled_rates: Tuple[str, ...]      # user dict-order from BiologicalOde.rates
-    name_modeled_algebraic: Tuple[str, ...]  # topo-sorted (alphabetical within levels)
+    name_modeled_rates: Tuple[str, ...]      # BiologicalOde.rates insertion order
+    name_modeled_algebraic: Tuple[str, ...]  # topo-sorted
     name_modeled_RMCs: Tuple[str, ...]       # alphabetical
     name_modeled_PVs: Tuple[str, ...]        # alphabetical, is_controlled=False
-    name_modeled_FVCs: Tuple[str, ...]       # alphabetical, continuous + uncontrolled
-    name_modeled_SVCs: Tuple[str, ...]       # alphabetical, continuous + uncontrolled
+    name_modeled_FVCs: Tuple[str, ...]       # continuous + uncontrolled
+    name_modeled_SVCs: Tuple[str, ...]       # continuous + uncontrolled
     name_controlled_PVs: Tuple[str, ...]     # alphabetical, is_controlled=True
-    name_controlled_FVCs: Tuple[str, ...]    # alphabetical, continuous + controlled
-    name_controlled_SVCs: Tuple[str, ...]    # alphabetical, continuous + controlled
+    name_controlled_FVCs: Tuple[str, ...]    # continuous + controlled
+    name_controlled_SVCs: Tuple[str, ...]    # continuous + controlled
 ```
 
 Ordering rules:
 
-- `name_modeled_rates` preserves the user-supplied insertion order of
-  `BiologicalOde.rates`. Sorting it would silently reorder downstream rate
-  vectors.
-- `name_modeled_algebraic` is topo-sorted by inter-algebraic dependencies;
-  ties are broken alphabetically. Topo-order must be preserved so each
-  algebraic expression's dependencies are already evaluated by the time it
-  is computed.
-- All other tuples are alphabetical within their sub-group. Biomass has no
-  reserved index — RMCs are sorted purely by string.
+- `name_modeled_rates` keeps the user's insertion order. Sorting it would
+  silently reshuffle every rate vector downstream.
+- `name_modeled_algebraic` is topologically sorted so each expression's
+  dependencies are already computed; alphabetical within a level.
+- Everything else is alphabetical. **Biomass has no reserved index.**
 
-State vector layout: `c = [name_modeled_RMCs... | name_modeled_PVs... | V]`.
-Control vector layout: `u = [name_controlled_FVCs... | name_controlled_SVCs... | name_controlled_PVs...]`.
+Resulting layouts:
 
-`get_process_ordering` validates: every `FeedVolumeChange` has a
-`feed_medium` whose components exist in `reactor_medium.components`;
-non-controlled PVs carry a `TimeSeries` (static PVs must be
-`is_controlled=True`); `BiologicalOde.algebraic` is acyclic; no name
-collisions across groups.
+```
+state    c = [ modeled_RMCs... | modeled_PVs... | V ]
+control  u = [ controlled_FVCs... | controlled_SVCs... | controlled_PVs... ]
+```
 
-### Top-Level Containers
+See [08_mechanistic.md](08_mechanistic.md) for what the factories do with them.
 
-The top-level artifact — one file on disk — is one of these two. `CaseStudy`
-is the strict, publication-linked form; `BioProcessCollection` is the loose
-form for raw or intermediate data.
-
-#### `CaseStudy`
-Processes from one publication or experimental campaign. Strict: requires
-`case_id`, `organism`, and `citation`. Each case study is its own file.
+## Top-level containers
 
 ```python
 @dataclass
 class CaseStudy:
-    case_id: str           # unique identifier
-    organism: str          # e.g. "E. coli", "S. cerevisiae", "CHO"
-    citation: str          # publication reference
+    case_id: str
+    organism: str            # "E. coli", "CHO"
+    citation: str
     processes: Dict[str, BioProcess]
-```
 
-#### `BioProcessCollection`
-A lightweight wrapper for multiple processes without full case-study metadata.
-
-```python
 @dataclass
 class BioProcessCollection:
-    metadata: Optional[Dict]
-    processes: Dict[str, BioProcess]
+    metadata: Optional[Dict] = None
+    processes: Dict[str, BioProcess] = {}
 ```
+
+One file on disk holds one of these. `CaseStudy` is the strict,
+publication-linked form; `BioProcessCollection` is the loose form for raw or
+intermediate data.
 
 ## Examples
 
-### Constructing a Minimal Batch Process
+### A minimal batch process
 
 ```python
 import bp_format as bp
 import jax.numpy as jnp
 
-# Time axis
-time_axis = bp.TimeAxis(unit="h", start=0.0, end=24.0, time_reference="inoculation")
-
-# Reactor medium with biomass and glucose
-reactor_medium = bp.ReactorMedium(
-    name="minimal_medium",
-    density=1.0,
-    density_unit="kg/L",
-    components={
-        "biomass": bp.ReactorMediumComponent(
-            name="biomass", unit="g/L",
-            concentration=bp.TimeSeries(
-                times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
-                values=jnp.array([0.5, 1.2, 3.1, 7.5, 12.0]),
-            ),
-        ),
-        "glucose": bp.ReactorMediumComponent(
-            name="glucose", unit="g/L",
-            concentration=bp.TimeSeries(
-                times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
-                values=jnp.array([20.0, 17.5, 12.0, 4.0, 0.1]),
-            ),
-        ),
-    },
-)
-
-# Volume (batch = no changes)
-volume = bp.Volume(initial_volume=1.0, unit="L")
-
-# Assemble the process
 process = bp.BioProcess(
     metadata=bp.BioProcessMetadata(name="batch_001", process_type="batch"),
-    time_axis=time_axis,
-    volume=volume,
-    reactor_medium=reactor_medium,
+    time_axis=bp.TimeAxis(unit="h", start=0.0, end=24.0,
+                          time_reference="inoculation"),
+    volume=bp.Volume(initial_volume=1.0, unit="L"),
+    reactor_medium=bp.ReactorMedium(
+        name="minimal_medium", density=1.0, density_unit="kg/L",
+        components={
+            "biomass": bp.ReactorMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=bp.TimeSeries(
+                    times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
+                    values=jnp.array([0.5, 1.2, 3.1, 7.5, 12.0]),
+                ),
+            ),
+            "glucose": bp.ReactorMediumComponent(
+                name="glucose", unit="g/L",
+                concentration=bp.TimeSeries(
+                    times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
+                    values=jnp.array([20.0, 17.5, 12.0, 4.0, 0.1]),
+                ),
+            ),
+        },
+    ),
 )
+
+# biological_ode was auto-filled:
+process.biological_ode.rates        # {"q_biomass": (None, None), "q_glucose": (None, None)}
+process.biological_ode.derivatives  # {"biomass": "q_biomass * biomass",
+                                    #  "glucose": "q_glucose * biomass"}
 ```
 
-### Constructing a Fed-Batch Process with a Bolus Feed
+### Adding a bolus feed and sampling
 
 ```python
-import bp_format as bp
-import jax.numpy as jnp
-
-time_axis = bp.TimeAxis(unit="h", start=0.0, end=48.0, time_reference="inoculation")
-
-# Feed medium (glucose solution)
 feed_medium = bp.FeedMedium(
-    name="glucose_feed",
-    density=1.05,
-    density_unit="kg/L",
+    name="glucose_feed", density=1.05, density_unit="kg/L",
     components={
+        # every reactor species should appear — 0.0 means "truly absent"
         "glucose": bp.FeedMediumComponent(
-            name="glucose", unit="g/L",
-            concentration=bp.StaticVariable(value=500.0),
-        ),
+            name="glucose", unit="g/L", concentration=bp.StaticVariable(500.0)),
         "biomass": bp.FeedMediumComponent(
-            name="biomass", unit="g/L",
-            concentration=bp.StaticVariable(value=0.0),
-        ),
+            name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
     },
 )
 
-# Volume with a bolus feed at t=12h and sampling at t=6h, t=18h
-volume = bp.Volume(
-    initial_volume=1.0,
-    unit="L",
+process.volume = bp.Volume(
+    initial_volume=1.0, unit="L",
     volume_changes={
         "glucose_bolus": bp.FeedVolumeChange(
             name="glucose_bolus", unit="L",
             is_controlled=True, is_continuous=False,
-            values=bp.TimeSeries(
-                times=jnp.array([12.0]),
-                values=jnp.array([0.1]),
-            ),
+            values=bp.TimeSeries(times=jnp.array([12.0]),
+                                 values=jnp.array([0.1])),      # >= 0
             feed_medium=feed_medium,
         ),
         "sampling": bp.SampleVolumeChange(
             name="sampling", unit="L",
             is_controlled=True, is_continuous=False,
-            values=bp.TimeSeries(
-                times=jnp.array([6.0, 18.0]),
-                values=jnp.array([-0.005, -0.005]),
-            ),
+            values=bp.TimeSeries(times=jnp.array([6.0, 18.0]),
+                                 values=jnp.array([-0.005, -0.005])),   # <= 0
         ),
     },
 )
-
-# ... add reactor_medium and assemble as above
 ```
 
-### Accessing Nested Fields
+### A custom biological ODE
+
+For an intracellular product, biomass measurements include the product, so the
+active biomass driving the rates is the difference:
 
 ```python
-# Get glucose concentration time series
-glucose_ts = process.reactor_medium.components["glucose"].concentration
-print(glucose_ts.times)   # jnp.array([0.0, 6.0, 12.0, ...])
-print(glucose_ts.values)  # jnp.array([20.0, 17.5, 12.0, ...])
-
-# Iterate over all volume changes
-for name, vc in process.volume.volume_changes.items():
-    print(f"{name}: {type(vc).__name__}, continuous={vc.is_continuous}")
-
-# Check process type
-print(process.metadata.process_type)  # "batch" or "fed_batch"
+process.biological_ode = bp.BiologicalOde(
+    algebraic={"X_active": "biomass - product"},
+    rates={
+        "q_growth":  (0.0, None),     # growth cannot be negative
+        "q_product": (0.0, None),
+        "q_glucose": (None, 0.0),     # uptake cannot be positive
+    },
+    derivatives={
+        "biomass": "(q_growth + q_product) * X_active",
+        "product": "q_product * X_active",
+        "glucose": "q_glucose * X_active",
+    },
+)
 ```
 
-## See Also
+### Reading nested fields
 
-- [Design Rationale](01_design_rationale.md) -- cross-cutting decisions behind this model
-- [TimeSeries](06_time_series.md) -- the `TimeSeries` class in detail
-- [Serialization](03_serialization.md) -- how these structures are saved/loaded as JSON
-- [Validation](04_validation.md) -- integrity checks on these structures
+```python
+glucose = process.reactor_medium.components["glucose"].concentration
+glucose.times, glucose.values
+
+for name, vc in process.volume.volume_changes.items():
+    print(name, type(vc).__name__, "continuous" if vc.is_continuous else "discrete")
+```
+
+## See also
+
+- [Design Rationale](01_design_rationale.md)
+- [TimeSeries](06_time_series.md)
+- [Serialization](03_serialization.md)
+- [Validation](04_validation.md)
+- [Mechanistic](08_mechanistic.md)

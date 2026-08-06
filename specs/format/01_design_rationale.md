@@ -1,106 +1,177 @@
 # Design Rationale
 
-This document explains the cross-cutting design decisions behind bp-format. Individual module docs reference these sections for context.
+Why bp-format looks the way it does. The other pages describe *what* the code
+does; this one explains the choices behind it.
 
-## 1. JAX-First Architecture
+## 1. JAX-first, but only where it matters
 
-bp-format is built on [JAX](https://github.com/google/jax) and [Equinox](https://github.com/patrick-kidger/equinox) to support:
+The numerical objects in bp-format are built on
+[JAX](https://github.com/google/jax) and
+[Equinox](https://github.com/patrick-kidger/equinox) so that downstream training
+code can differentiate straight through them:
 
-- **Automatic differentiation (AD):** Gradient-based optimization of hybrid bioprocess models requires differentiating through ODE integration, spline evaluation, and loss computation. JAX's `jax.grad` / `jax.value_and_grad` enable this end-to-end.
-- **JIT compilation:** `jax.jit` (or `eqx.filter_jit`) compiles Python functions to optimized XLA code, which is critical for the repeated forward solves in training loops.
-- **Vectorization:** `jax.vmap` allows batching over processes or parameter sets without manual loop code.
+- **Autodiff.** Fitting a hybrid model means taking gradients through ODE
+  integration and spline evaluation. `jax.grad` handles that end-to-end.
+- **JIT.** `eqx.filter_jit` compiles the repeated forward solves in a training
+  loop down to XLA.
+- **Vectorization.** `jax.vmap` batches over processes or parameter sets
+  without hand-written loops.
 
-**Why Equinox?** Equinox provides `eqx.Module`, a frozen dataclass that registers as a JAX pytree. This means that objects like `TimeSeries`, `ControlSplines`, and `RhsOde` can be passed into and out of JIT-compiled functions without manual pytree registration. Equinox also provides `eqx.filter_jit`, which automatically separates static (non-differentiable) fields from dynamic (array) leaves.
+`eqx.Module` is a frozen dataclass that JAX already knows how to flatten into a
+pytree, so a `TimeSeries`, `ControlSplines`, or `RhsOde` can cross a JIT
+boundary untouched.
 
-**Constraints this introduces:**
-- Array fields must be JAX arrays (`jnp.ndarray`), not plain NumPy.
-- Python dicts with string keys are not natural JAX pytree leaves. The outer container classes (`BioProcess`, `CaseStudy`, etc.) use standard Python `@dataclass` rather than `eqx.Module` because they hold `Dict[str, ...]` fields that are manipulated outside the JIT boundary. Only the inner numerical objects (e.g., `TimeSeries`) need to be `eqx.Module`.
-- Mutation is not allowed on `eqx.Module` instances (they are frozen). Use `eqx.tree_at` for functional updates.
+**Only the numerical leaves are Equinox modules.** `TimeSeries`, `PPoly`,
+`ControlSplines`, `RhsOde`, and `BacktransformSpline` are `eqx.Module`.
+Everything else — `BioProcess`, `CaseStudy`, `ReactorMedium`, … — is a plain
+`@dataclass`. Those containers hold `Dict[str, ...]` fields that are edited by
+name outside any JIT boundary; making them pytrees would buy nothing and cost
+mutability.
 
-## 2. Hierarchical Data Model
+**Consequences to know about:**
 
-Bioprocess experiments are organized in a three-level hierarchy. The top-level
-artifact — one file on disk — is either a strict `CaseStudy` or a loose
-`BioProcessCollection`:
+- Array fields must be `jnp.ndarray`, not NumPy.
+- `eqx.Module` instances are immutable. Use `dataclasses.replace` or
+  `eqx.tree_at` for functional updates.
+- Plain dataclasses (`BioProcess` and friends) *are* mutable — pipeline steps
+  assign `process.pseudobatch_transform = ...` in place.
 
-```
-CaseStudy             (one publication / experimental campaign — strict metadata)
-  -> BioProcess       (one experimental run)
-    -> Components      (reactor medium, volume, process variables)
+**float64 everywhere.** Importing `bp_format` sets `JAX_ENABLE_X64=true` before
+JAX loads. Pseudobatch math divides by an accumulated dilution factor and
+differentiates splines; float32 loses too much there. A `TimeSeries` constructed
+from float32 arrays raises rather than silently upcasting, so precision loss
+cannot enter through the data.
 
-BioProcessCollection  (raw / intermediate processes — no strict metadata)
-  -> BioProcess
-    -> Components
-```
+**Importing is cheap.** `bp_format/__init__.py` resolves its exports lazily via
+`__getattr__`, so `import bp_format` does not pull in JAX, sympy, or matplotlib
+until you touch something that needs them.
 
-**Why this hierarchy?**
-
-- **CaseStudy** corresponds to one publication or experimental campaign. It carries `organism`, `citation`, and a `case_id`, which is the natural grouping for leave-one-process-out cross-validation. Each case study is its own file.
-- **BioProcessCollection** is the loose counterpart: a dict of processes plus optional free-form metadata, for raw or intermediate data that is not yet a full-fledged case study.
-- **BioProcess** is a single fermentation run. It contains everything needed to simulate or analyze that run: time axis, volume operations, reactor medium concentrations, and process variables.
-- **Components** within a process are organized by their physical role:
-  - `ReactorMedium` holds concentration time series (biomass, substrates, products).
-  - `Volume` holds all volume-change operations (feeds, sampling).
-  - `ProcessVariable` holds non-concentration signals (pH, temperature, dissolved oxygen, off-gas).
-
-**Why `Dict[str, ...]` keyed by name?** String-keyed dicts provide O(1) lookup by name, produce readable JSON, and make it easy to iterate over components. Lists would require linear search and lose the semantic naming.
-
-## 3. Volume as a First-Class Concept
-
-Volume is not a state variable, not a control input, and not a process variable. It is its own category because:
-
-- **Multiple operations affect it:** A single process can have continuous feeds, bolus feeds, and sampling events, each with different media compositions and schedules.
-- **It interacts with the ODE differently:** In the mass balance equation, each feed stream `k` contributes a dilution term `(f_k / V) * (C_in[k,i] - c_i)` for every species `i`. Volume itself evolves as `dV/dt = sum(f_k)`.
-- **It carries composition metadata:** Each `FeedVolumeChange` references a `FeedMedium` that defines what enters the reactor. Sampling (`SampleVolumeChange`) removes reactor contents at current concentrations.
-
-The `Volume` dataclass aggregates `initial_volume` and a dict of `VolumeChange` entries (either `FeedVolumeChange` or `SampleVolumeChange`). Sign conventions are enforced: feeds are non-negative, samples are non-positive.
-
-## 4. TimeSeries Structure
-
-The `TimeSeries` class (an `eqx.Module`) stores measured data as `times` and `values` arrays, and optionally carries fitted spline coefficients (`breaks`, `coeffs`, `segment_start_piece_idx`) that provide a continuous-time interpolation of that data.
-
-**Important:** `TimeSeries` itself is agnostic about whether the data it holds represents continuous or discrete (discontinuous) quantities. That semantic is determined by the parent object. For example, a `VolumeChange` with `is_continuous=True` uses its `TimeSeries` to represent a continuous flow profile, while `is_continuous=False` means the same `TimeSeries` holds discrete event data (bolus feeds, sampling). When the data represents discrete events, fitting splines to it would not be meaningful.
-
-**Why optional spline coefficients?**
-
-- The raw `times`/`values` are the ground truth from experiments. They are needed for loss computation and data validation.
-- Spline coefficients enable continuous-time evaluation during ODE integration. Instead of interpolating at each solver step, the solver can evaluate the spline directly.
-- Spline fitting (in `bp_format.splines`) populates the spline fields from discrete samples when appropriate (i.e., for continuous quantities like concentrations or continuous feed profiles).
-- A `TimeSeries` can be spline-only (no discrete samples) in pseudobatch workflows where the original samples are no longer meaningful.
-
-**Why power-basis storage (not B-spline basis)?** Power-basis polynomials `c[0]*h^3 + c[1]*h^2 + c[2]*h + c[3]` (where `h = t - t_break`) can be evaluated with Horner's method in a few multiply-adds. This is simple, fast, and maps cleanly to JAX operations. B-spline basis evaluation requires recursive knot-vector lookups that are harder to vectorize.
-
-## 5. Pseudobatch Normalization
-
-Fed-batch processes change volume over time, which means observed concentrations are affected by dilution from feeds in addition to biological activity. This makes it difficult to compare fed-batch and batch processes or to fit smooth splines to fed-batch concentration data.
-
-**The pseudobatch transform** (Hesselberg-Thomsen et al., 2024) converts measured concentrations `c(t)` to pseudo-concentrations `c*(t)` that represent what the concentrations *would have been* in a batch process with the same biological activity:
+## 2. Three levels: study → run → components
 
 ```
-c*(t) = c(t) * ADF(t) - feed_correction(t)
+CaseStudy             one publication or campaign — strict metadata
+  └─ BioProcess       one experimental run
+       └─ components  reactor medium, volume, process variables
+
+BioProcessCollection  same, minus the strict metadata
+  └─ BioProcess
 ```
 
-where:
-- `ADF(t)` is the accumulative dilution factor (ratio of current to initial volume)
-- `feed_correction(t)` accounts for mass added by feed streams
+- **`CaseStudy`** carries `case_id`, `organism`, and `citation`. That is the
+  natural unit for leave-one-process-out cross-validation, and it is one file
+  on disk.
+- **`BioProcessCollection`** is the loose counterpart — a dict of processes plus
+  free-form metadata — for raw or intermediate data that is not yet a published
+  case study.
+- **`BioProcess`** is a single fermentation run and holds everything needed to
+  simulate it: time axis, volume operations, reactor concentrations, process
+  variables, and the biological ODE.
+- **Components** are grouped by physical role: `ReactorMedium` for
+  concentrations, `Volume` for anything that changes the working volume,
+  `ProcessVariable` for everything else (pH, temperature, DO, off-gas).
 
-**Why is this central to bp-format?**
+**Why dicts keyed by name?** O(1) lookup, readable JSON keys, and obvious
+iteration. Lists would mean linear search and lose the naming.
 
-- **Smoother curves:** Pseudo-concentrations remove dilution artifacts, producing smoother time courses that are better approximated by cubic splines.
-- **Fair comparison:** Models trained on pseudobatch data can be compared across batch and fed-batch processes.
-- **Spline segmentation:** Even after pseudobatch transformation, bolus feed events create discontinuities. The spline fitting pipeline segments the time axis at event boundaries and fits each segment independently.
+## 3. Volume is its own category
 
-**Step interpolation for ADF/feed-term:** ADF and feed correction are piecewise-constant (they jump at discrete events). They must be evaluated with step (nearest-neighbor) interpolation, not linear interpolation, to preserve correct discontinuity behavior in the backtransform.
+Volume is not a state, not a control, and not a process variable:
 
-## 6. Validation-First Approach
+- **Many operations move it.** One run can have continuous feeds, bolus feeds,
+  and sampling, each on its own schedule.
+- **It enters the ODE differently.** Every flow dilutes every reactor species by
+  `-(inflow + outflow)/V · c`, while feeds additionally *add* mass at `q·Cin/V`.
+  Volume itself follows `dV/dt = inflow − outflow`.
+- **It carries chemistry.** A `FeedVolumeChange` references a `FeedMedium` that
+  says what enters. A `SampleVolumeChange` removes broth at current
+  concentrations, so it needs no medium.
 
-Bioprocess data comes from diverse sources (different labs, instruments, conventions). Common errors include:
-- Negative feed volumes (sign convention confusion)
-- Missing biomass component in reactor medium
-- Mismatched array lengths between times and values
-- Feed media that do not define all reactor species
-- Measurement times coinciding with sampling events (corrupted by volume change)
+Signs are enforced by type: feeds store non-negative values, samples store
+non-positive ones. Values are stored as **cumulative volumes, never rates** —
+rates are a derived quantity (the spline derivative), and storing the primary
+measurement avoids baking one differentiation choice into the data.
 
-bp-format validates data early and explicitly. All validation functions return `(bool, str)` tuples, making them composable and easy to aggregate. `validate_process()` runs all checks on a single process; `validate_case_study()` adds cross-process consistency checks (e.g., all processes in a case study should have the same reactor medium components).
+## 4. TimeSeries carries samples, a spline, or both
 
-**Why not raise exceptions?** Returning `(bool, str)` allows callers to collect all issues in one pass and present a comprehensive report, rather than failing on the first error.
+`TimeSeries` holds `times`/`values` from the experiment and, optionally, fitted
+spline state (`breaks`, `coeffs`, `segment_start_piece_idx`) giving a
+continuous-time version of the same signal. At least one of the two must be
+present.
+
+- Raw samples are ground truth for loss computation and validation.
+- The spline lets an ODE solver evaluate a signal at arbitrary times without
+  re-interpolating at every step.
+- A spline-only series is legitimate: pseudobatch helper traces such as ADF are
+  built directly as exact polynomial pieces and have no "measurements".
+
+**`TimeSeries` does not know if its data is continuous.** That comes from the
+parent. A `VolumeChange` with `is_continuous=True` means the series is a
+continuous flow profile; `is_continuous=False` means the same series holds
+discrete bolus or sampling events, where fitting a spline would be meaningless.
+
+**Why power-basis coefficients, not B-splines?** A piece is stored as
+`[a, b, c, d]` and evaluated as `a + h(b + h(c + h·d))` with `h = t − t_break` —
+a few fused multiply-adds that map directly onto JAX. B-spline evaluation needs
+recursive knot-vector lookups that vectorize poorly.
+
+## 5. Pseudobatch normalization
+
+In a fed-batch run, a measured concentration changes for two unrelated reasons:
+the cells did something, and the broth got diluted or sampled. That makes raw
+`c(t)` jump at every bolus and behave badly under spline fitting.
+
+The pseudobatch transform (Hesselberg-Thomsen et al., 2024) separates the two:
+
+```
+c*(t) = c(t) · ADF(t) − fc(t)          forward
+c(t)  = (c*(t) + fc(t)) / ADF(t)       inverse
+```
+
+- **`ADF(t)`** — accumulated dilution factor — normalizes to the initial volume.
+- **`fc(t)`** — feed correction — subtracts mass that arrived via feeds.
+- **`c*(t)`** is what the concentration *would have been* in a batch with the
+  same biology: smooth across feeds and samples, and therefore a good spline
+  target.
+
+**Why this is central:** smooth curves fit well, batch and fed-batch runs become
+comparable, and the discontinuities stay where they belong — in `ADF` and `fc`,
+not smeared through the concentration spline.
+
+`ADF` and `fc` are **not step functions.** Continuous feed makes both vary
+smoothly; only boluses cause true jumps. They are stored as exact piecewise
+polynomials with `continuity_side="left"`, so a value at an event time is the
+pre-event value and the jump takes effect immediately after. Treating them as
+globally piecewise-constant would be wrong for any continuously fed process.
+
+Details: [07_splines.md](07_splines.md).
+
+## 6. Check the data, then fail loudly
+
+Bioprocess data arrives from many labs with many conventions. The recurring
+problems are always the same: sign confusion on feeds, a missing biomass
+component, mismatched array lengths, a feed medium that forgets a species,
+measurement timestamps nudged past a sampling event.
+
+bp-format uses **two** mechanisms, deliberately:
+
+**Validators return `(bool, str)`.** Everything in `bp_format/validate.py` reports
+rather than raises, so one pass collects every problem into a readable report
+instead of stopping at the first. `validate_process()` aggregates the
+per-process checks; `validate_case_study()` adds cross-process consistency.
+
+**Constructors and builders raise.** Anything that would produce silently wrong
+numbers fails immediately: a `TimeSeries` with unsorted times, a feed medium
+naming a species that is not in the reactor, a name used by both a state and a
+rate, a cyclic algebraic definition, a `c*` trace with no matching transform
+bundle. Inside JIT, `eqx.error_if` guards the same invariants at runtime — a
+reactor volume at or below `1e-10` aborts the solve instead of dividing by
+nearly zero.
+
+The rule of thumb: *reporting* is for data quality you may knowingly accept;
+*raising* is for states from which no correct answer exists.
+
+## See also
+
+- [Data Model](02_data_model.md)
+- [Validation](04_validation.md)
+- [Splines](07_splines.md)
