@@ -39,34 +39,74 @@ rebuilding the static half.
 ### Reconstruction
 
 ```python
-load_run(run_dir, *, checkpoint="latest", load_opt_state=False) -> LoadedRun
-load_params(run_dir, *, into, checkpoint="latest") -> wrapper
+model_load(path) -> (trained_wrapper, config)
+model_reload(path, trained_wrapper) -> (trained_wrapper, config)
+model_predict(trained_wrapper, config, collection, *, process_names=None, grid_n=200)
+    -> {process_name: DenseProcessExport}
 reconstruct_run(run_dir, config, document=None) -> (reaction_module, loss_module, store, collection)
 ```
 
-- `load_run` reconstructs a trained model from a run directory **alone** — the
-  one call notebooks and forward evaluation use. `checkpoint` is `"latest"` or
-  a `"step_00300"` directory under `checkpoints/`. Returns a
-  [`LoadedRun`](../bp_train/serialization.py):
+**Addressing a model.** All three take a **path**, not a run dir plus a selector
+string. `path` may be a run directory, a checkpoint directory, or a `params.eqx`.
+A directory resolves its weights in one ordered pass:
 
-  | Field | Meaning |
-  |---|---|
-  | `wrapper` | the reconstructed `HybridOdeWrapper` |
-  | `collection` | the rebuilt bp-format collection |
-  | `store` | the `TrainingDataStore` |
-  | `config` | the resolved `RunConfig` |
-  | `run_dir` | the source directory |
-  | `opt_state` | optimizer state (only if `load_opt_state=True`) |
+```
+<dir>/params.eqx  →  <dir>/model/params.eqx  →  <dir>/checkpoints/latest/params.eqx
+```
 
-  `LoadedRun.reload(checkpoint="latest")` refreshes just the weights from another
-  checkpoint into the existing wrapper.
+so a run that has not finished (no `model/` yet) still loads from its latest
+checkpoint. Name a specific checkpoint by its path —
+`model_load(run_dir / "checkpoints" / "step_00300")` — which works because every
+checkpoint dir bundles its own `config.json`, `custom.py` and `prepared.json.gz`.
+A file that is not named `params.eqx` raises rather than silently falling through
+to the run's final weights.
 
-- `load_params` refreshes weights into an **already-built** wrapper (no
-  dataset/`custom.py` reload).
+- `model_load` reconstructs a trained model from a run directory **alone**. It
+  loads the run's prepared collection to rebuild the **static** half of the wrapper
+  (`rhs_ode`, `controls`, every `SCALE_*`, the index arrays); only the trainable
+  leaves come from `params.eqx`. That reconstruction is the expensive part of the
+  call. Returns `(trained_wrapper, config)`; `config.solver` carries the solver
+  settings the model was fitted under.
+
+- `model_reload` refreshes **only** the trainable leaves into a wrapper you already
+  hold, skipping the collection entirely — on a 61-process run that is ~0.03 s
+  against ~100 s. It returns the same `(trained_wrapper, config)` pair as
+  `model_load`, so the two are interchangeable at the call site, and it logs a
+  warning on **every** call. See the danger note below.
+
+- `model_predict` forward-solves the model over `collection` in one batched solve.
+  The collection may hold processes the model never trained on — every process in a
+  collection shares one `RhsOde` layout, and a mismatch fails fast via
+  `validate_rhs_ode_compatibility`. Solver settings come from `config.solver`, so
+  there is nothing to re-decide at the call site. Two requirements on `collection`:
+  every process needs a measurement at its first time for **every** target (that is
+  where the ODE initial condition comes from), and the target set must match
+  `config.data.targets`.
+
 - `reconstruct_run` is THE single reconstruction path (forward, resume,
-  `load_run` all call it): it verifies the prepared `content_hash` against
+  `model_load` all call it): it verifies the prepared `content_hash` against
   `config.json`, then rebuilds `(reaction_module, loss_module, store,
   collection)` exactly as training did.
+
+### Danger: `model_reload` keeps the static half
+
+`model_reload` exchanges only the **trainable** leaves. The static half — every
+`SCALE_*`, `controls`, `Cin`, `rhs_ode`, `target_state_indices` — is kept from the
+wrapper you pass in and is **not** read from the checkpoint, because it was never
+written there (see `save_model` above). Equinox only checks that the *trainable*
+pytree matches, which for a typical MLP head depends on layer shapes alone.
+
+So passing a wrapper that came from a different run, or one built against a
+different collection, loads the weights into a different scaled space and every
+prediction is silently wrong — no exception, no NaN, no log line beyond the
+standing warning. **Only use `model_reload` to move between checkpoints of the same
+run.** When in doubt, pay for `model_load`.
+
+The same mechanism is why `model_predict` takes an already-loaded wrapper rather
+than rebuilding one: it reuses the trained `SCALE_*` as-is. By contrast
+`forward_from_collection` re-runs `estimate_all_scales` against whatever collection
+it is given, so feeding it a collection other than the training one re-scales the
+model without saying so.
 
 ### Provenance
 
@@ -106,12 +146,13 @@ print_reaction_schema(wrapper)
 ## Examples
 
 ```python
-from bp_train import load_run, print_trainable_structure
+from bp_format.serialization import load_process_collection
+from bp_train import model_load, model_predict, print_trainable_structure
 
-run = load_run("examples/00_e2e_sim/output", checkpoint="latest")
-print_trainable_structure(run.wrapper.reaction_module)
+wrapper, config = model_load("examples/00_e2e_sim/output_all")
+print_trainable_structure(wrapper.reaction_module)
 
-# re-simulate with the loaded wrapper (see 05_train_forward_loo.md)
-from bp_train import forward_from_collection
-result = forward_from_collection(run.collection, model_path="examples/00_e2e_sim/output")
+# Re-simulate with the loaded wrapper — no solver arguments; they ride in `config`.
+collection = load_process_collection("examples/00_e2e_sim/prepared/prepared.json")
+predictions = model_predict(wrapper, config, collection)
 ```

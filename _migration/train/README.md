@@ -51,15 +51,23 @@ MLP reaction module with per-target MSE loss. See
 ### Programmatic
 
 ```python
-from bp_train import load_run, forward_from_collection, print_trainable_structure
+from bp_format.serialization import load_process_collection
+from bp_train import model_load, model_predict, print_trainable_structure
 
-# reload a trained model from its run directory (rebuilds the static half)
-run = load_run("examples/00_e2e_sim/output", checkpoint="latest")
-print_trainable_structure(run.wrapper.reaction_module)
+# Load a trained model from its run directory. `config` carries the solver
+# settings the model was fitted under, so prediction takes no solver arguments.
+wrapper, config = model_load("examples/00_e2e_sim/output_all")
+print_trainable_structure(wrapper.reaction_module)
 
-# forward-simulate every process
-result = forward_from_collection(run.collection, model_path="examples/00_e2e_sim/output")
+# Forward-simulate. The collection may hold processes the model never trained on.
+collection = load_process_collection("examples/00_e2e_sim/prepared/prepared.json")
+predictions = model_predict(wrapper, config, collection)   # {name: DenseProcessExport}
 ```
+
+`model_load` addresses a model by path — a run directory, a checkpoint directory,
+or a `params.eqx`. To move between checkpoints of the *same* run without paying
+for the dataset rebuild again, use `model_reload(path, wrapper)`, which returns the
+same `(wrapper, config)` pair.
 
 ## Modules
 

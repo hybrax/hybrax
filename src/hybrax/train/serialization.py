@@ -12,8 +12,11 @@ Mirrors ``bp_format/serialization.py``. This module owns:
 - ``save_opt_state`` / ``load_opt_state`` — optimizer state twins.
 - ``content_hash`` / ``file_hash`` — stable data integrity hashing.
 - ``write_run_config_json`` / ``read_run_config_json`` — the run-dir ``config.json``.
-- ``reconstruct_run`` / ``load_run`` / ``load_params`` / ``LoadedRun`` — the
-  single model-reconstruction path shared by forward and notebooks.
+- ``reconstruct_run`` — the single model-reconstruction path shared by forward
+  and notebooks.
+- ``model_load`` / ``model_reload`` — the user-facing loaders. Both return
+  ``(trained_wrapper, config)``; ``model_reload`` skips the collection and only
+  swaps trainable leaves.
 """
 
 from __future__ import annotations
@@ -21,7 +24,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -256,7 +258,7 @@ def reconstruct_run(
     config: RunConfig,
     document: dict[str, Any] | None = None,
 ) -> tuple[Any, Any, Any, BioProcessCollection]:
-    """THE single reconstruction path — forward, resume, and load_run all use it.
+    """THE single reconstruction path — forward, resume, and model_load all use it.
 
     Verifies the prepared ``content_hash`` against ``config.json`` first, then
     rebuilds ``(reaction_module, loss_module, store, collection)`` exactly as
@@ -333,47 +335,79 @@ def reconstruct_run(
     return reaction_module, loss_module, store, collection
 
 
-@dataclass(frozen=True)
-class LoadedRun:
-    """A trained model reconstructed from a run directory."""
-
-    wrapper: Any
-    collection: BioProcessCollection
-    store: Any
-    config: RunConfig
-    run_dir: Path
-    opt_state: Any | None = None
-
-    def reload(self, checkpoint: str = "latest") -> Any:
-        """Refresh just the weights from another checkpoint into this wrapper."""
-        return load_params(self.run_dir, into=self.wrapper, checkpoint=checkpoint)
+def _resolve_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
+    """Nearest directory at/above ``path`` that holds a ``config.json``."""
+    current = path if path.is_dir() else path.parent
+    for _ in range(max_levels + 1):
+        if (current / "config.json").is_file():
+            return current
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
 
 
-def checkpoint_params_path(run_dir: str | Path, checkpoint: str = "latest") -> Path:
-    """Resolve ``checkpoints/<checkpoint>/params.eqx``."""
-    return Path(run_dir) / "checkpoints" / checkpoint / "params.eqx"
+def _resolve_model_path(path: str | Path) -> tuple[Path, Path]:
+    """Resolve a model reference to ``(run_dir, params_path)``.
 
-
-def load_run(
-    run_dir: str | Path,
-    *,
-    checkpoint: str = "latest",
-    load_opt_state: bool = False,
-) -> LoadedRun:
-    """Reconstruct a trained model from a run directory **alone**.
-
-    ``checkpoint`` names ``latest`` or a ``step_XXXXX`` directory.
+    ``path`` is a run directory, a checkpoint directory, or a ``params.eqx``. A
+    directory resolves its weights in one ordered pass — ``<dir>/params.eqx``,
+    ``<dir>/model/params.eqx``, ``<dir>/checkpoints/latest/params.eqx`` — so a run
+    that has not finished (no ``model/`` yet) still loads from its latest
+    checkpoint. A file must be named ``params.eqx``: a legacy
+    ``trained_wrapper.eqx`` raises instead of silently falling through to the run's
+    final weights.
     """
-    from .harness import (
-        TrainHarnessConfig,
-        _build_template_wrapper,
-        build_optimizer_for_run,
-        derive_update_budget,
-    )
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"model path does not exist: {path}")
 
-    run_dir = Path(run_dir)
+    if path.is_file():
+        if path.name != "params.eqx":
+            raise FileNotFoundError(f"model file must be a params.eqx, got {path}")
+        params_path = path
+    else:
+        for candidate in (
+            path / "params.eqx",
+            path / "model" / "params.eqx",
+            path / "checkpoints" / "latest" / "params.eqx",
+        ):
+            if candidate.is_file():
+                params_path = candidate
+                break
+        else:
+            raise FileNotFoundError(f"no params.eqx found for model {path}")
+
+    run_dir = _resolve_run_dir(path)
+    if run_dir is None:
+        raise FileNotFoundError(
+            f"no config.json at or above {path}; pass a trained run directory "
+            "or a self-contained checkpoint dir."
+        )
+    return run_dir, params_path
+
+
+def model_load(path: str | Path) -> tuple[Any, RunConfig]:
+    """Load a trained model and the run config it was trained under.
+
+    ``path`` is a run directory, a checkpoint directory, or a ``params.eqx`` —
+    see :func:`_resolve_model_path` for the ordered rule. Address a specific
+    checkpoint by its path, e.g. ``model_load(run_dir / "checkpoints" / "step_00300")``.
+
+    The run's own prepared collection is loaded to rebuild the **static** half of
+    the wrapper (``rhs_ode``, ``controls``, every ``SCALE_*``, the index arrays);
+    only the trainable leaves come from ``params.eqx``. That reconstruction is the
+    expensive part of the call — use :func:`model_reload` to swap in a newer
+    checkpoint of the *same* run without paying it again.
+
+    Returns ``(trained_wrapper, config)``. ``config.solver`` carries the solver
+    settings the model was fitted under; pass it to :func:`~bp_train.model_predict`.
+    """
+    from .harness import _build_template_wrapper
+
+    run_dir, params_path = _resolve_model_path(path)
     config, document = read_run_config_json(run_dir / "config.json")
-    reaction_module, loss_module, store, collection = reconstruct_run(
+    reaction_module, loss_module, store, _collection = reconstruct_run(
         run_dir, config, document
     )
     selected_processes = (
@@ -387,72 +421,35 @@ def load_run(
         selected_processes=selected_processes,
         loss_module=loss_module,
     )
-
-    params_path = checkpoint_params_path(run_dir, checkpoint)
-    wrapper = load_trained_wrapper(params_path, template=template)
-
-    opt_state = None
-    if load_opt_state:
-        bundled_custom = run_dir / "custom.py"
-        from .utils import load_custom_module
-
-        custom_module = (
-            load_custom_module(bundled_custom) if bundled_custom.is_file() else None
-        )
-        from .run_config import reresolve_custom
-
-        hook_config = reresolve_custom(config, custom_module)
-        train_like_cfg = TrainHarnessConfig(
-            process_names=selected_processes,
-            target_variable_order=(
-                config.data.targets if config.data is not None else None
-            ),
-            target_source=(
-                config.data.target_source if config.data is not None else "auto"
-            ),
-            epochs=config.train.epochs,
-            batch_size=config.train.batch_size,
-            shuffle_batches=config.train.shuffle,
-            batch_seed=config.train.batch_seed,
-            seed=int(config.train.seed),
-            optimizer_name=config.train.optimizer,
-            learning_rate=config.train.learning_rate,
-            grad_clip_norm=config.train.grad_clip_norm,
-            allow_stateful_models=config.train.allow_stateful_models,
-        )
-        _, _, total_updates = derive_update_budget(
-            train_like_cfg, selected_process_count=len(selected_processes)
-        )
-        optimizer, _train_cfg = build_optimizer_for_run(
-            custom_module=custom_module,
-            custom_cfg=hook_config,
-            train_cfg=train_like_cfg,
-            total_updates=total_updates,
-        )
-        trainable_params, _ = partition_trainable(wrapper)
-        opt_template = optimizer.init(trainable_params)
-        # The bool parameter `load_opt_state` shadows the module-level function
-        # of the same name here, so reach the function through the module globals.
-        opt_state = globals()["load_opt_state"](
-            params_path.with_name("opt_state.eqx"), template=opt_template
-        )
-
-    return LoadedRun(
-        wrapper=wrapper,
-        collection=collection,
-        store=store,
-        config=config,
-        run_dir=run_dir,
-        opt_state=opt_state,
-    )
+    return load_trained_wrapper(params_path, template=template), config
 
 
-def load_params(run_dir: str | Path, *, into: Any, checkpoint: str = "latest") -> Any:
-    """Refresh weights into an **already-built** wrapper (no dataset/custom.py reload).
+def model_reload(path: str | Path, trained_wrapper: Any) -> tuple[Any, RunConfig]:
+    """Refresh **only** the trainable leaves from ``path`` into an existing wrapper.
 
-    ``into`` must be structurally identical to the trained wrapper; eqx raises on
-    a pytree mismatch.
+    Returns the same ``(trained_wrapper, config)`` pair as :func:`model_load`, so
+    the two are interchangeable at the call site. Skips the prepared collection
+    entirely, which is the whole point: on a 61-process run that is ~0.03 s against
+    ~100 s, almost all of which is the ``estimate_all_scales`` hook.
+
+    .. danger::
+       The **static** half — every ``SCALE_*``, ``controls``, ``Cin``, ``rhs_ode``,
+       ``target_state_indices`` — is kept from ``trained_wrapper`` and is **not**
+       read from the checkpoint (it was never written there; see :func:`save_model`).
+       Equinox only checks that the *trainable* pytree matches, which for a typical
+       MLP head depends on layer shapes alone. So passing a wrapper that came from a
+       different run, or one built against a different collection, loads the weights
+       into a different scaled space and every prediction is silently wrong — no
+       exception, no NaN. Only use this to move between checkpoints of the **same**
+       run. When in doubt, pay for :func:`model_load`.
     """
-    return load_trained_wrapper(
-        checkpoint_params_path(run_dir, checkpoint), template=into
+    run_dir, params_path = _resolve_model_path(path)
+    config, _document = read_run_config_json(run_dir / "config.json")
+    logger.warning(
+        "model_reload(%s): refreshing trainable leaves only. The static half "
+        "(SCALE_*, controls, Cin, rhs_ode) is kept from the wrapper you passed in "
+        "and is NOT read from the checkpoint. If that wrapper came from a different "
+        "run or a different collection, predictions will be silently wrong.",
+        params_path,
     )
+    return load_trained_wrapper(params_path, template=trained_wrapper), config

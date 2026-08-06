@@ -52,7 +52,7 @@ from .training_data import (
 )
 from .run_config import RunConfig
 from .utils import get_hook, load_custom_module, resolve_config
-from .wrapper import HybridOdeWrapper
+from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
     ProcessPlotSource,
@@ -130,6 +130,102 @@ def compute_dense_exports(
         np.asarray(per_sample_per_target),
         dense_exports,
     )
+
+
+def model_predict(
+    trained_wrapper: HybridOdeWrapper,
+    config: RunConfig,
+    collection: BioProcessCollection,
+    *,
+    process_names: tuple[str, ...] | None = None,
+    grid_n: int = 200,
+) -> dict[str, DenseProcessExport]:
+    """Forward-solve a trained model over ``collection`` in one batched solve.
+
+    The companion to :func:`~bp_train.model_load`: pass the pair it returned plus
+    the collection you want predictions for. Solver settings come from
+    ``config.solver`` — the values the model was actually fitted under — so there
+    is nothing to re-decide here.
+
+    ``collection`` may hold processes the model never trained on. Every process in
+    a collection shares one ``RhsOde`` layout; only controls and events differ, and
+    a mismatch fails fast via :func:`~bp_train.validate_rhs_ode_compatibility`.
+
+    To predict a subset, pass ``process_names`` — do **not** slice
+    ``collection.processes``. The bp-train metadata block carries its own
+    ``process_order``, so a hand-sliced collection fails when the controls store
+    is rebuilt.
+
+    ``process_names`` defaults to every process in ``collection``. ``grid_n`` is
+    the size of the evenly-spaced output grid; each process's own measurement
+    times are spliced into it, so the returned ``t`` is that union (sorted, and
+    therefore usually a little longer than ``grid_n``) — a node lands exactly on
+    every measurement instead of interpolating across bolus/feed discontinuities.
+
+    Two requirements on ``collection``, both structural rather than incidental:
+
+    - Every process needs a measurement at its first time for **every** target —
+      that is where the ODE initial condition comes from.
+    - The target set must match what the model was trained on
+      (``config.data.targets``).
+
+    Returns ``{process_name: DenseProcessExport}``. Losses are deliberately not
+    returned: they are meaningless for a process whose measurements are only a
+    ``t0`` seed. Use :func:`evaluate_trained_wrapper` when you want them.
+
+    .. note::
+       This reuses ``trained_wrapper``'s ``SCALE_*`` as-is and never rebuilds the
+       reaction module, which is what makes it safe on a collection other than the
+       training one. :func:`forward_from_collection` takes the opposite route — it
+       re-runs ``estimate_all_scales`` against whatever collection it is given, so
+       feeding it foreign data silently re-scales the model.
+    """
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=(
+            tuple(config.data.targets)
+            if config.data is not None and config.data.targets
+            else None
+        ),
+        target_source=(
+            config.data.target_source if config.data is not None else TARGET_SOURCE_AUTO
+        ),
+    )
+
+    selected = (
+        tuple(process_names)
+        if process_names is not None
+        else tuple(store.process_order)
+    )
+    if not selected:
+        raise ValueError("model_predict: no processes to predict")
+    unknown = [name for name in selected if name not in store.process_order]
+    if unknown:
+        raise ValueError(
+            f"model_predict: unknown process names {unknown}; "
+            f"available={tuple(store.process_order)}"
+        )
+
+    # Fail fast on a layout mismatch: without this the solve either dies deep in
+    # diffrax on a shape error or, worse, integrates the wrong axes silently.
+    validate_rhs_ode_compatibility(
+        "trained model",
+        trained_wrapper.rhs_ode,
+        f"collection process {selected[0]!r}",
+        store.rhs_ode,
+    )
+
+    _per_sample_total, _per_sample_per_target, dense_exports = compute_dense_exports(
+        trained_wrapper,
+        store,
+        selected,
+        solver_max_steps=int(config.solver.max_steps),
+        solver_rtol=float(config.solver.rtol),
+        solver_atol=float(config.solver.atol),
+        solver_use_jump_ts=bool(config.solver.jump_ts),
+        prediction_grid_n=int(grid_n),
+    )
+    return dense_exports
 
 
 # Floor below which `np.var` is treated as "all measurements identical" when
@@ -298,7 +394,7 @@ def build_optimizer_for_run(
     Applies the optional ``build_learning_rate`` + ``build_optimizer`` hooks,
     falling back to the default chain. Returns ``(optimizer, train_cfg)`` where
     ``train_cfg`` carries any hook-overridden learning rate. Shared with
-    ``serialization.load_run`` so optimizer-state loading uses an identical
+    ``serialization.model_load`` so optimizer-state loading uses an identical
     template.
     """
     lr_hook = get_hook(custom_module, "build_learning_rate", None)

@@ -8,7 +8,6 @@ from pathlib import Path
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import optax
 import pytest
 from bp_format.dataclasses import (
     BioProcess,
@@ -213,88 +212,6 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
     reconstruct_run(tmp_path, config, document)
 
     assert seen["allow_stateful_models"] is True
-
-
-def test_load_run_optimizer_rebuild_uses_derived_budget_and_resolved_custom(
-    monkeypatch, tmp_path: Path
-):
-    collection = _collection(n_processes=4)
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=["biomass"],
-        target_source="reactor_components",
-    )
-    wrapper = _build_wrapper(collection)
-    # Four selected processes with batch_size=2 give batches_per_epoch=2, so
-    # total_updates (= epochs * batches_per_epoch = 5 * 2 = 10) differs from
-    # the raw epochs (5). This lets the test catch a regression that passes
-    # raw epochs instead of the derived total_updates through to optimizer/LR
-    # reconstruction, which the previous single-process fixture could not
-    # (there batches_per_epoch was 1, so total_updates == epochs == 5).
-    config = RunConfig(
-        data=DataConfig(
-            prepared=tmp_path / "prepared.json",
-            targets=("biomass",),
-            processes=("p1", "p2", "p3", "p4"),
-        ),
-        train=TrainConfig(allow_stateful_models=True, batch_size=2),
-        custom={"factor": 0.5},
-    )
-    (tmp_path / "custom.py").write_text(
-        "from types import SimpleNamespace\n\n"
-        "def get_custom_config(raw_custom, config):\n"
-        "    return SimpleNamespace(**raw_custom)\n"
-    )
-    seen = {}
-
-    monkeypatch.setattr(
-        serialization, "read_run_config_json", lambda _path: (config, {})
-    )
-    monkeypatch.setattr(
-        serialization,
-        "reconstruct_run",
-        lambda *_args: (
-            wrapper.reaction_module,
-            wrapper.loss_module,
-            store,
-            collection,
-        ),
-    )
-    monkeypatch.setattr(
-        harness, "_build_template_wrapper", lambda *_args, **_kwargs: (wrapper, {})
-    )
-    monkeypatch.setattr(
-        serialization, "load_trained_wrapper", lambda *_args, **_kwargs: wrapper
-    )
-    monkeypatch.setattr(
-        serialization, "load_opt_state", lambda *_args, **_kwargs: "opt-state"
-    )
-
-    def fake_build_optimizer_for_run(
-        *, custom_module, custom_cfg, train_cfg, total_updates
-    ):
-        del custom_module
-        seen["allow_stateful_models"] = train_cfg.allow_stateful_models
-        seen["total_updates"] = total_updates
-        seen["custom_factor"] = custom_cfg.custom.factor
-        return optax.sgd(0.1), train_cfg
-
-    monkeypatch.setattr(
-        harness, "build_optimizer_for_run", fake_build_optimizer_for_run
-    )
-
-    loaded = serialization.load_run(tmp_path, load_opt_state=True)
-
-    # 4 selected processes // batch_size=2 => batches_per_epoch=2; derived
-    # total_updates = epochs * batches_per_epoch = 5 * 2 = 10, distinct from
-    # raw epochs (5). Pinning 10 here fails if the code regresses to passing
-    # raw epochs.
-    assert seen == {
-        "allow_stateful_models": True,
-        "total_updates": 10,
-        "custom_factor": 0.5,
-    }
-    assert loaded.opt_state == "opt-state"
 
 
 def test_save_model_excludes_controls_and_roundtrips(tmp_path: Path):

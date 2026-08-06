@@ -435,7 +435,7 @@ def reresolve_custom(config: RunConfig, custom_module: ModuleType | None) -> Run
     A fresh run wraps the raw ``custom`` section via ``get_custom_config`` (or
     ``DefaultCustomConfig``) so hooks can use attribute access
     (``config.custom.target_loss_weights``). When a run is reconstructed from
-    config.json (resume / load_run / forward), ``custom`` comes back as a plain
+    config.json (resume / model_load / forward), ``custom`` comes back as a plain
     dict; this restores the same typed wrapper so reconstruction matches a fresh
     run. No-op if ``custom`` is already resolved (not a dict) or absent.
     """

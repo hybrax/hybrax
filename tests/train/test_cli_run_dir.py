@@ -74,7 +74,7 @@ def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypat
     assert main(["train", "--config", str(config)]) == 0
 
 
-def test_train_cli_produces_fair_run_dir_and_load_run(tmp_path: Path):
+def test_train_cli_produces_fair_run_dir_and_model_load(tmp_path: Path):
     prepared = _write_prepared(tmp_path / "prepared.json")
     run_dir = tmp_path / "run"
     config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir)
@@ -99,13 +99,13 @@ def test_train_cli_produces_fair_run_dir_and_load_run(tmp_path: Path):
     assert doc["inputs"]["prepared_input"]["content_hash"].startswith("sha256:")
     assert "jax" in doc["environment"]
 
-    # load_run reconstructs from the run dir alone (prepared.json via recorded path).
-    run = bp_train.load_run(run_dir)
-    assert run.wrapper is not None
-    assert run.config.train.epochs == 4
+    # model_load reconstructs from the run dir alone (prepared.json via recorded path).
+    wrapper, config = bp_train.model_load(run_dir)
+    assert wrapper is not None
+    assert config.train.epochs == 4
     # A re-prepared (byte-different but identical) prepared.json still loads.
     _write_prepared(prepared)
-    bp_train.load_run(run_dir)
+    bp_train.model_load(run_dir)
 
 
 def test_train_cli_rerun_guard_and_overwrite(tmp_path: Path):
@@ -176,31 +176,34 @@ def test_train_cli_epochs_override_takes_effect(tmp_path: Path):
     doc = json.loads((run_dir / "config.json").read_text())
     assert doc["updates_completed"] == 2
 
-    run = bp_train.load_run(run_dir)
-    assert run.config.train.epochs == 2
+    _wrapper, config = bp_train.model_load(run_dir)
+    assert config.train.epochs == 2
 
 
-def test_load_params_refreshes_without_reading_prepared(tmp_path: Path, monkeypatch):
+def test_model_reload_refreshes_without_reading_prepared(tmp_path: Path, monkeypatch):
     prepared = _write_prepared(tmp_path / "prepared.json")
     run_dir = tmp_path / "run"
     config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir)
     assert main(["train", "--config", str(config)]) == 0
 
-    run = bp_train.load_run(run_dir, checkpoint="latest")
+    wrapper, _config = bp_train.model_load(run_dir)
 
-    # load_params is the lightweight path: it must NOT re-read the dataset.
+    # model_reload is the lightweight path: it must NOT re-read the dataset.
     import bp_train.serialization as S
 
     def _boom(*_a, **_k):
-        raise AssertionError("load_params must not load the collection")
+        raise AssertionError("model_reload must not load the collection")
 
     monkeypatch.setattr(S, "load_process_collection", _boom)
-    refreshed = bp_train.load_params(run_dir, into=run.wrapper, checkpoint="latest")
+    refreshed, config = bp_train.model_reload(run_dir, wrapper)
     assert refreshed is not None
-    run.reload("latest")  # LoadedRun.reload uses the same lightweight path
+    # Same 2-tuple shape as model_load, so the two are interchangeable.
+    assert config.train.epochs == 4
+    # A named checkpoint is addressed by its path, not a selector string.
+    bp_train.model_reload(run_dir / "checkpoints" / "latest", wrapper)
 
 
-def test_load_run_integrity_guard_on_content_change(tmp_path: Path):
+def test_model_load_integrity_guard_on_content_change(tmp_path: Path):
     prepared = _write_prepared(tmp_path / "prepared.json")
     run_dir = tmp_path / "run"
     config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir)
@@ -209,4 +212,4 @@ def test_load_run_integrity_guard_on_content_change(tmp_path: Path):
     # Tamper the prepared.json *content* → content_hash mismatch → hard error.
     _write_prepared(prepared, biomass_values=(2.0, 1.5, 1.0))
     with pytest.raises(ValueError, match="differs"):
-        bp_train.load_run(run_dir)
+        bp_train.model_load(run_dir)
