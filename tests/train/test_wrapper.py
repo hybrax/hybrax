@@ -53,36 +53,33 @@ def _unit_scale_kwargs(
         n_controlled_PVs = len(controls.name_controlled_PVs)
     assert n_controlled_FVCs is not None
     assert n_controlled_PVs is not None
-    f32 = jnp.float32
     return {
-        "SCALE_modeled_RMCs": jnp.ones(n_species, dtype=f32),
-        "SCALE_modeled_PVs": jnp.ones(n_modeled_PVs, dtype=f32),
-        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_VCs, dtype=f32),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs, dtype=f32),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs, dtype=f32),
-        "SCALE_controlled_FVCs_Cin": jnp.ones(
-            (n_controlled_FVCs, n_species), dtype=f32
-        ),
-        "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs, dtype=f32),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_VCs, n_species), dtype=f32),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_VCs, dtype=f32),
+        "SCALE_modeled_RMCs": jnp.ones(n_species),
+        "SCALE_modeled_PVs": jnp.ones(n_modeled_PVs),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_VCs),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs),
+        "SCALE_controlled_FVCs_Cin": jnp.ones((n_controlled_FVCs, n_species)),
+        "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_VCs, n_species)),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_VCs),
     }
 
 
 _PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
-    "SCALE_modeled_RMCs": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
-    "SCALE_controlled_PVs": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 0), dtype=jnp.float32),
-    "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
-    "SCALE_latent": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_modeled_RMCs": jnp.zeros(0),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0),
+    "SCALE_modeled_FVCs_cumulative": jnp.zeros(0),
+    "SCALE_controlled_FVCs_cumulative": jnp.zeros(0),
+    "SCALE_controlled_FVCs_rates": jnp.zeros(0),
+    "SCALE_controlled_FVCs_Cin": jnp.zeros((0, 0)),
+    "SCALE_controlled_PVs": jnp.zeros(0),
+    "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 0)),
+    "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0),
+    "SCALE_modeled_FVCs_rates": jnp.zeros(0),
+    "SCALE_latent": jnp.zeros(0),
 }
 
 
@@ -130,8 +127,8 @@ class InvalidReactionShapeModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([[0.1]], dtype=jnp.float32),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.asarray([[0.1]]),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
         )
 
 
@@ -141,13 +138,13 @@ class LatentEchoReactionModule(UserReactionModule):
     def __init__(self, *, initial_h0, **scale_kwargs):
         scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
         super().__init__(**scale_kwargs)
-        self.initial_h0 = jnp.asarray(initial_h0, dtype=jnp.float32)
+        self.initial_h0 = jnp.asarray(initial_h0)
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=jnp.float32),
-            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
+            SCL_modeled_FVCs_rates=jnp.zeros(0),
             SCL_latent_derivative=inputs.SCL_latent
             + jnp.asarray([1.0, 2.0], dtype=inputs.SCL_latent.dtype),
             auxiliary={"SCL_latent": inputs.SCL_latent},
@@ -172,12 +169,10 @@ class VolumeFeatureEchoReactionModule(UserReactionModule):
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
-        v_feature = jnp.asarray(inputs.SCL_modeled_V, dtype=jnp.float32)
+        v_feature = jnp.asarray(inputs.SCL_modeled_V)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.full(
-                (self.n_species,), v_feature, dtype=jnp.float32
-            ),
-            SCL_modeled_FVCs_rates=jnp.zeros((self.n_modeled,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.full((self.n_species,), v_feature),
+            SCL_modeled_FVCs_rates=jnp.zeros((self.n_modeled,)),
         )
 
 
@@ -426,13 +421,13 @@ def test_wrapper_rejects_nonzero_rate_offset_for_direct_module(
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     n_modeled_feeds = 1 if modeled_feed else 0
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros(1, dtype=jnp.float32),
-        modeled_feed_rates=jnp.zeros(n_modeled_feeds, dtype=jnp.float32),
+        specific_rates=jnp.zeros(1),
+        modeled_feed_rates=jnp.zeros(n_modeled_feeds),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales[rate_field] = AffineScaler(
-        jnp.ones(1, dtype=jnp.float32),
-        jnp.ones(1, dtype=jnp.float32),
+        jnp.ones(1),
+        jnp.ones(1),
     )
     module = _inject_scales(module, scales)
     with pytest.raises(ValueError, match=f"{rate_field} is a rate axis"):
@@ -448,7 +443,7 @@ def test_physical_rhs_uses_custom_rate_derivative_semantics():
         scale: jnp.ndarray
 
         def __init__(self):
-            self.scale = jnp.ones(1, dtype=jnp.float32)
+            self.scale = jnp.ones(1)
 
         def __rtruediv__(self, raw):
             return raw * 10.0
@@ -476,8 +471,8 @@ def test_physical_rhs_uses_custom_rate_derivative_semantics():
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.asarray([2.0], dtype=jnp.float32),
-        modeled_feed_rates=jnp.zeros(0, dtype=jnp.float32),
+        specific_rates=jnp.asarray([2.0]),
+        modeled_feed_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales["SCALE_modeled_BiologicalOde_rates"] = DivergentRateScaler()
@@ -525,12 +520,12 @@ def test_wrapper_accepts_custom_offset_free_rate_scaler_without_offset_metadata(
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros(1, dtype=jnp.float32),
-        modeled_feed_rates=jnp.zeros(0, dtype=jnp.float32),
+        specific_rates=jnp.zeros(1),
+        modeled_feed_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(
-        jnp.ones(1, dtype=jnp.float32)
+        jnp.ones(1)
     )
     module = _inject_scales(module, scales)
     wrapper = HybridOdeWrapper.from_process(
@@ -613,16 +608,16 @@ def test_wrapper_appends_initial_latent_to_physical_state():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = LatentEchoReactionModule(
-        initial_h0=jnp.asarray([7.0, 8.0], dtype=jnp.float32),
-        SCALE_latent=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+        initial_h0=jnp.asarray([7.0, 8.0]),
+        SCALE_latent=jnp.asarray([2.0, 4.0]),
     )
     wrapper = _build_wrapper(process, controls, module)
 
-    y0 = jnp.asarray([1.0, 2.0], dtype=jnp.float32)
+    y0 = jnp.asarray([1.0, 2.0])
 
     assert jnp.array_equal(
         wrapper.initial_physical_state_from_raw(y0),
-        jnp.asarray([1.0, 2.0, 7.0, 8.0], dtype=jnp.float32),
+        jnp.asarray([1.0, 2.0, 7.0, 8.0]),
     )
 
 
@@ -632,18 +627,18 @@ def test_wrapper_rhs_appends_latent_derivative_without_physical_transport():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = LatentEchoReactionModule(
-        initial_h0=jnp.zeros(2, dtype=jnp.float32),
-        SCALE_latent=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+        initial_h0=jnp.zeros(2),
+        SCALE_latent=jnp.asarray([2.0, 4.0]),
     )
     wrapper = _build_wrapper(process, controls, module)
 
-    y = jnp.asarray([1.0, 1.0, 6.0, 20.0], dtype=jnp.float32)
+    y = jnp.asarray([1.0, 1.0, 6.0, 20.0])
     dy = wrapper.physical_rhs(0.5, y)
 
     assert dy.shape == y.shape
     # `LatentEchoReactionModule` returns SCL dh/dt = [6/2, 20/4] + [1, 2].
     # The wrapper unscales that derivative and does not apply dilution/clamping.
-    assert jnp.array_equal(dy[-2:], jnp.asarray([8.0, 28.0], dtype=jnp.float32))
+    assert jnp.array_equal(dy[-2:], jnp.asarray([8.0, 28.0]))
 
 
 def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
@@ -652,20 +647,20 @@ def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = LatentEchoReactionModule(
-        initial_h0=jnp.zeros(2, dtype=jnp.float32),
-        SCALE_latent=jnp.asarray([2.0, 4.0], dtype=jnp.float32),
+        initial_h0=jnp.zeros(2),
+        SCALE_latent=jnp.asarray([2.0, 4.0]),
     )
     wrapper = _build_wrapper(process, controls, module)
 
     outputs = wrapper.physical_save_outputs(
-        0.5, jnp.asarray([1.0, 1.0, 6.0, 20.0], dtype=jnp.float32)
+        0.5, jnp.asarray([1.0, 1.0, 6.0, 20.0])
     )
 
     assert outputs.SCL_states.shape == (2,)
     assert jnp.array_equal(outputs.SCL_states, jnp.asarray([1.0, 1.0]))
     assert outputs.auxiliary is not None
     assert jnp.array_equal(
-        outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0], dtype=jnp.float32)
+        outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0])
     )
 
 
@@ -746,13 +741,13 @@ def test_continuous_feed_transport_volume_and_dilution():
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,), dtype=jnp.float32),  # zero reaction
-        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+        specific_rates=jnp.zeros((1,)),  # zero reaction
+        modeled_feed_rates=jnp.zeros((0,)),
     )
     wrapper = _build_wrapper(process, controls, module)
 
     # state layout is [biomass, V]; initial biomass=1.0, V0=1.0
-    y0 = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    y0 = jnp.asarray([1.0, 1.0])
     t_eval = jnp.linspace(0.0, 2.0, 21)
     states = solve_physical_states(
         wrapper,
@@ -779,7 +774,7 @@ def test_continuous_feed_transport_volume_and_dilution():
 
     # Regression: t0 repeated across the grid must all return y0 (not the gather
     # boundary value with the first feed interval already integrated in).
-    dup = jnp.asarray([0.0, 0.0, 0.0, 1.0, 2.0], dtype=jnp.float32)
+    dup = jnp.asarray([0.0, 0.0, 0.0, 1.0, 2.0])
     dup_states = solve_physical_states(
         wrapper,
         t_eval=dup,
@@ -846,8 +841,8 @@ def test_wrapper_supports_modeled_pv():
 
     # q_biomass = 0 (biomass constant); r_ratio = 0.5 (PV grows 0.5 / h).
     module = ConstantReactionModule(
-        specific_rates=jnp.asarray([0.0, 0.5], dtype=jnp.float32),
-        modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+        specific_rates=jnp.asarray([0.0, 0.5]),
+        modeled_feed_rates=jnp.zeros((0,)),
     )
     wrapper = _build_wrapper(process, controls, module)  # must NOT raise
     assert wrapper.modeled_PV_names == ("ratio",)
@@ -860,7 +855,7 @@ def test_wrapper_supports_modeled_pv():
         + len(rhs_ode.name_modeled_FVCs)
     )
     assert n_state == 3
-    y0 = jnp.asarray([1.0, 0.0, 1.0], dtype=jnp.float32)  # biomass, ratio, V
+    y0 = jnp.asarray([1.0, 0.0, 1.0])  # biomass, ratio, V
 
     # RHS at t=0: [d_biomass=0 | d_ratio=0.5 (biological-only) | d_V=0].
     d0 = wrapper.physical_rhs(0.0, y0)

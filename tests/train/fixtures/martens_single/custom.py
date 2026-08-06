@@ -163,22 +163,17 @@ def estimate_all_scales(collection, target_names, config):
     SCALE_controlled_FVCs_Cin = np.maximum(np.abs(RAW_controlled_FVCs_Cin), 1.0)
     SCALE_modeled_FVCs_Cin = np.maximum(np.abs(RAW_modeled_FVCs_Cin), 1.0)
 
-    f32 = jnp.float32
     return EstimatedScales(
-        SCALE_modeled_RMCs=jnp.asarray(SCALE_modeled_RMCs, dtype=f32),
-        SCALE_V_in_cumulative=jnp.asarray(SCALE_V_in_cumulative, dtype=f32),
-        SCALE_modeled_FVCs_cumulative=jnp.asarray(
-            SCALE_modeled_FVCs_cumulative, dtype=f32
-        ),
-        SCALE_controlled_FVCs_cumulative=jnp.asarray(
-            SCALE_controlled_FVCs_cumulative, dtype=f32
-        ),
-        SCALE_controlled_FVCs_rates=jnp.asarray(SCALE_controlled_FVCs_rates, dtype=f32),
-        SCALE_controlled_FVCs_Cin=jnp.asarray(SCALE_controlled_FVCs_Cin, dtype=f32),
-        SCALE_controlled_PVs=jnp.asarray(SCALE_controlled_PVs, dtype=f32),
-        SCALE_modeled_FVCs_Cin=jnp.asarray(SCALE_modeled_FVCs_Cin, dtype=f32),
-        SCALE_modeled_BiologicalOde_rates=jnp.ones(n_rates, dtype=f32),
-        SCALE_modeled_FVCs_rates=jnp.ones(n_modeled_VCs, dtype=f32),
+        SCALE_modeled_RMCs=jnp.asarray(SCALE_modeled_RMCs),
+        SCALE_V_in_cumulative=jnp.asarray(SCALE_V_in_cumulative),
+        SCALE_modeled_FVCs_cumulative=jnp.asarray(SCALE_modeled_FVCs_cumulative),
+        SCALE_controlled_FVCs_cumulative=jnp.asarray(SCALE_controlled_FVCs_cumulative),
+        SCALE_controlled_FVCs_rates=jnp.asarray(SCALE_controlled_FVCs_rates),
+        SCALE_controlled_FVCs_Cin=jnp.asarray(SCALE_controlled_FVCs_Cin),
+        SCALE_controlled_PVs=jnp.asarray(SCALE_controlled_PVs),
+        SCALE_modeled_FVCs_Cin=jnp.asarray(SCALE_modeled_FVCs_Cin),
+        SCALE_modeled_BiologicalOde_rates=jnp.ones(n_rates),
+        SCALE_modeled_FVCs_rates=jnp.ones(n_modeled_VCs),
     )
 
 

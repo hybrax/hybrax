@@ -296,16 +296,16 @@ def _make_forward_run_dir(
 
 
 _FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
-    "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_modeled_RMCs": jnp.ones(1),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0),
+    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
+    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
+    "SCALE_controlled_FVCs_rates": jnp.ones(0),
+    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_controlled_PVs": jnp.ones(0),
+    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+    "SCALE_modeled_FVCs_rates": jnp.ones(0),
 }
 
 
@@ -405,14 +405,14 @@ def _build_single_process_runtime(
         target_source="reactor_components",
     )
     scale_kwargs = {
-        "SCALE_modeled_BiologicalOde_rates": jnp.asarray([q_scale], dtype=jnp.float32)
+        "SCALE_modeled_BiologicalOde_rates": jnp.asarray([q_scale])
     }
     if modeled_rmc_scaler is not None:
         scale_kwargs["SCALE_modeled_RMCs"] = modeled_rmc_scaler
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=_ConstantReactionModule(
-            specific_rates=jnp.asarray([q_scaled], dtype=jnp.float32),
-            modeled_feed_rates=jnp.zeros((0,), dtype=jnp.float32),
+            specific_rates=jnp.asarray([q_scaled]),
+            modeled_feed_rates=jnp.zeros((0,)),
             auxiliary=auxiliary,
             **scale_kwargs,
         ),
@@ -954,8 +954,8 @@ def test_affine_state_offset_keeps_zero_rhs_stationary_through_forward():
     _, store, wrapper = _build_single_process_runtime(
         q_scaled=0.0,
         modeled_rmc_scaler=AffineScaler(
-            jnp.asarray([2.0], dtype=jnp.float32),
-            jnp.asarray([10.0], dtype=jnp.float32),
+            jnp.asarray([2.0]),
+            jnp.asarray([10.0]),
         ),
     )
     export = _single_dense_export(store, wrapper, prediction_grid_n=7)
@@ -1127,8 +1127,8 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
         q_scaled=1.5,
         q_scale=2.0,
         auxiliary={
-            "mu_raw": jnp.asarray(-0.75, dtype=jnp.float32),
-            "latent_pair": jnp.asarray([4.0, 5.0], dtype=jnp.float32),
+            "mu_raw": jnp.asarray(-0.75),
+            "latent_pair": jnp.asarray([4.0, 5.0]),
         },
     )
 

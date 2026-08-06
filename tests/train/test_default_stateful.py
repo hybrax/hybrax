@@ -37,9 +37,9 @@ def _initialization_keys(key):
 def _feed_scale_kwargs():
     return {
         **_SCALE_KWARGS,
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(1, dtype=jnp.float32),
-        "SCALE_modeled_FVCs_rates": jnp.ones(1, dtype=jnp.float32),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((1, 1), dtype=jnp.float32),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(1),
+        "SCALE_modeled_FVCs_rates": jnp.ones(1),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((1, 1)),
     }
 
 
@@ -47,11 +47,11 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
     module = DefaultStatefulReactionModule(
         key=jax.random.key(0), n_latent=2, **_SCALE_KWARGS
     )
-    h = jnp.asarray([0.2, -0.3], dtype=jnp.float32)
+    h = jnp.asarray([0.2, -0.3])
 
-    outputs = module(jnp.asarray(0.0, dtype=jnp.float32), _inputs(h))
+    outputs = module(jnp.asarray(0.0), _inputs(h))
 
-    cell_input = jnp.asarray([1.0, 1.0], dtype=jnp.float32)
+    cell_input = jnp.asarray([1.0, 1.0])
     expected_input_size = (
         module.n_modeled_RMCs
         + module.n_modeled_PVs
@@ -62,7 +62,7 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
     )
     assert module.n_latent == 2
     assert module.gru_cell.weight_ih.shape == (3 * module.n_latent, expected_input_size)
-    assert jnp.array_equal(module.SCALE_latent.scale, jnp.ones(2, dtype=jnp.float32))
+    assert jnp.array_equal(module.SCALE_latent.scale, jnp.ones(2))
     assert jnp.allclose(
         outputs.SCL_latent_derivative, module.gru_cell(cell_input, h) - h
     )
@@ -125,7 +125,7 @@ def test_default_stateful_empty_rate_head_skips_glorot(monkeypatch):
         n_latent=3,
         **{
             **_SCALE_KWARGS,
-            "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0, dtype=jnp.float32),
+            "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0),
         },
     )
 
@@ -197,11 +197,11 @@ def test_default_stateful_module_call_is_pure_for_identical_inputs():
     module = DefaultStatefulReactionModule(
         key=jax.random.key(2), n_latent=2, **_SCALE_KWARGS
     )
-    h = jnp.asarray([0.2, -0.3], dtype=jnp.float32)
+    h = jnp.asarray([0.2, -0.3])
     inputs = _inputs(h)
 
-    first = module(jnp.asarray(0.0, dtype=jnp.float32), inputs)
-    second = module(jnp.asarray(0.0, dtype=jnp.float32), inputs)
+    first = module(jnp.asarray(0.0), inputs)
+    second = module(jnp.asarray(0.0), inputs)
 
     assert jnp.array_equal(first.SCL_latent_derivative, second.SCL_latent_derivative)
     assert jnp.array_equal(
@@ -214,7 +214,7 @@ def test_default_stateful_module_call_is_pure_for_identical_inputs():
 def test_stateful_module_can_override_trainable_initial_latent():
     module = TrainableH0DefaultStateful(
         key=jax.random.key(1),
-        h0=jnp.asarray([0.5, -0.25], dtype=jnp.float32),
+        h0=jnp.asarray([0.5, -0.25]),
         **_SCALE_KWARGS,
     )
 

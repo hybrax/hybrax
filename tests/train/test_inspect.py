@@ -113,14 +113,14 @@ class _MixedTagsFixture(UserReactionModule):
 
     def __init__(self):
         super().__init__()
-        self.weights = jnp.zeros((2, 2), dtype=jnp.float32)
-        self.bias_frozen = jnp.zeros((2,), dtype=jnp.float32)
+        self.weights = jnp.zeros((2, 2))
+        self.bias_frozen = jnp.zeros((2,))
 
     def __call__(self, t, inputs):
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros((0,), dtype=jnp.float32),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.zeros((0,)),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
         )
 
 

@@ -12,13 +12,13 @@ from stateful_helpers import (
 
 def test_latent_state_survives_sample_and_bolus_jump_unchanged():
     process = make_process(jump=True)
-    h0 = jnp.asarray([3.0, -2.0], dtype=jnp.float32)
+    h0 = jnp.asarray([3.0, -2.0])
     wrapper = build_stateful_wrapper(process, ZeroLatentDerivativeModule(h0))
 
     states = solve(
         wrapper,
-        jnp.asarray([0.0, 1.0, 1.5], dtype=jnp.float32),
-        jnp.asarray([1.0, 1.0], dtype=jnp.float32),
+        jnp.asarray([0.0, 1.0, 1.5]),
+        jnp.asarray([1.0, 1.0]),
     )
 
     assert states.shape == (3, 4)

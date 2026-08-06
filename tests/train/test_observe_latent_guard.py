@@ -12,7 +12,7 @@ class _LatentAuxModule(UserReactionModule):
 
     def __init__(self, h0):
         super().__init__()
-        self.h0 = jnp.asarray(h0, dtype=jnp.float32)
+        self.h0 = jnp.asarray(h0)
 
     @property
     def latent_observables(self) -> tuple[str, ...]:
@@ -53,30 +53,30 @@ def test_validation_rejects_latent_observables_with_identity_posthoc_observe():
     with pytest.raises(ValueError, match="ReactionOutputs.auxiliary"):
         build_stateful_wrapper(
             make_process(),
-            _LatentAuxModule(jnp.asarray([2.0], dtype=jnp.float32)),
+            _LatentAuxModule(jnp.asarray([2.0])),
         )
 
 
 def test_save_outputs_requires_declared_latent_observables_in_auxiliary():
     wrapper = build_stateful_wrapper(
         make_process(),
-        _MissingAuxiliaryModule(jnp.asarray([2.0], dtype=jnp.float32)),
+        _MissingAuxiliaryModule(jnp.asarray([2.0])),
     )
 
     with pytest.raises(ValueError, match="missing: \\['mu'\\]"):
         wrapper.physical_save_outputs(
-            0.0, jnp.asarray([1.0, 1.0, 2.0], dtype=jnp.float32)
+            0.0, jnp.asarray([1.0, 1.0, 2.0])
         )
 
 
 def test_latent_observable_uses_auxiliary_and_posthoc_observe_raises():
     wrapper = build_stateful_wrapper(
         make_process(),
-        _RaisingLatentObserveModule(jnp.asarray([2.0], dtype=jnp.float32)),
+        _RaisingLatentObserveModule(jnp.asarray([2.0])),
     )
 
     save_outputs = wrapper.physical_save_outputs(
-        0.0, jnp.asarray([1.0, 1.0, 2.0], dtype=jnp.float32)
+        0.0, jnp.asarray([1.0, 1.0, 2.0])
     )
 
     assert save_outputs.auxiliary is not None

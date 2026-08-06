@@ -66,17 +66,17 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     # Defaults sized for ``_make_collection`` (single biomass species, one sample
     # event, no feeds). Tests with different layouts pass explicit kwargs to
     # override these.
-    "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_latent": jnp.zeros(0, dtype=jnp.float32),
+    "SCALE_modeled_RMCs": jnp.ones(1),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0),
+    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
+    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
+    "SCALE_controlled_FVCs_rates": jnp.ones(0),
+    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_controlled_PVs": jnp.ones(0),
+    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+    "SCALE_modeled_FVCs_rates": jnp.ones(0),
+    "SCALE_latent": jnp.zeros(0),
 }
 
 
@@ -84,7 +84,7 @@ class _StatefulHarnessModule(UserReactionModule):
     def __init__(self, **scale_kwargs):
         merged = {
             **_DEFAULT_LINEAR_SCALES,
-            "SCALE_latent": jnp.ones(1, dtype=jnp.float32),
+            "SCALE_latent": jnp.ones(1),
             **scale_kwargs,
         }
         super().__init__(**merged)
@@ -92,8 +92,8 @@ class _StatefulHarnessModule(UserReactionModule):
     def __call__(self, t, inputs):
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=jnp.float32),
-            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=jnp.float32),
+            SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
+            SCL_modeled_FVCs_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
         )
 
@@ -106,7 +106,7 @@ class _LinearReactionModule(UserReactionModule):
         merged = {**_DEFAULT_LINEAR_SCALES, **scale_kwargs}
         super().__init__(**merged)
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(42))
-        self.non_model_bias = jnp.asarray([0.05], dtype=jnp.float32)
+        self.non_model_bias = jnp.asarray([0.05])
 
     def __call__(self, t, inputs):
         del t
@@ -124,23 +124,22 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
     """Build unit SCALE_* kwargs sized to a process / its controls."""
     rhs_ode = build_rhs_ode(collection.processes[process_name])
     controls = ControlsStore.from_collection(collection).get_controls(process_name)
-    f32 = jnp.float32
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_FVCs = len(rhs_ode.name_modeled_FVCs)
     n_rates = len(rhs_ode.name_modeled_rates)
     n_FVC = len(controls.name_controlled_FVCs)
     n_PV = len(controls.name_controlled_PVs)
     return {
-        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
-        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs, dtype=f32),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC, dtype=f32),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs), dtype=f32),
-        "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs), dtype=f32),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs, dtype=f32),
+        "SCALE_modeled_RMCs": jnp.ones(n_RMCs),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC),
+        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs)),
+        "SCALE_controlled_PVs": jnp.ones(n_PV),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs)),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs),
     }
 
 
@@ -563,8 +562,8 @@ def test_train_collection_runs_with_nonzero_affine_state_offset():
         target_source="reactor_components",
     )
     scaler = AffineScaler(
-        jnp.asarray([1.0], dtype=jnp.float32),
-        jnp.asarray([1.0], dtype=jnp.float32),
+        jnp.asarray([1.0]),
+        jnp.asarray([1.0]),
     )
     assert jnp.array_equal(jnp.asarray([1.0]) / scaler, jnp.asarray([0.0]))
     result = train_collection(

@@ -74,10 +74,11 @@ def _wrapper(dtype):
     wrapper = build_stateful_wrapper(
         process, ZeroLatentDerivativeModule(jnp.zeros(2, dtype=dtype))
     )
-    if dtype is jnp.float32:
-        return wrapper
-    # ``build_stateful_wrapper`` pins its scalers to float32; promote them so the solve
-    # runs in the precision production uses (bp_train enables x64 at import).
+    # The solve's working precision follows the scalers, so cast them to the dtype under
+    # test. Both directions matter: these tests exist to pin that event matching is
+    # dtype-AWARE (the tolerance is ``eps(dtype)``-scaled), so the float32 case must
+    # really run in float32 even though ``bp_train`` enables x64 at import and the
+    # helpers now build float64 scalers.
     # ``tree_at`` selectors may only traverse stored PyTree fields, not properties.
     names = [
         field.name

@@ -80,8 +80,8 @@ class _TrainableModule(eqx.Module):
     frozen: jax.Array = frozen_field()
 
     def __init__(self) -> None:
-        self.w = jnp.asarray([1.0, 2.0], dtype=jnp.float32)
-        self.frozen = jnp.asarray([9.0], dtype=jnp.float32)
+        self.w = jnp.asarray([1.0, 2.0])
+        self.frozen = jnp.asarray([9.0])
 
 
 def _opt_state_for(module: eqx.Module):
@@ -195,16 +195,16 @@ def test_checkpoint_writer_export_failure_does_not_publish(tmp_path: Path):
 
 
 _DEFAULT_CHECKPOINTING_SCALES: dict[str, jnp.ndarray] = {
-    "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_controlled_PVs": jnp.ones(0, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1), dtype=jnp.float32),
-    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0, dtype=jnp.float32),
+    "SCALE_modeled_RMCs": jnp.ones(1),
+    "SCALE_V_in_cumulative": jnp.asarray(1.0),
+    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
+    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
+    "SCALE_controlled_FVCs_rates": jnp.ones(0),
+    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_controlled_PVs": jnp.ones(0),
+    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+    "SCALE_modeled_FVCs_rates": jnp.ones(0),
 }
 
 
@@ -215,7 +215,7 @@ class _LinearReactionModule(UserReactionModule):
     def __init__(self, **scale_kwargs):
         super().__init__(**{**_DEFAULT_CHECKPOINTING_SCALES, **scale_kwargs})
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(42))
-        self.non_model_bias = jnp.asarray([0.05], dtype=jnp.float32)
+        self.non_model_bias = jnp.asarray([0.05])
 
     def __call__(self, t, inputs):
         del t

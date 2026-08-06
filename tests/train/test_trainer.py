@@ -56,7 +56,7 @@ class _LinearReactionModule(UserReactionModule):
     def __init__(self, **scale_kwargs):
         super().__init__(**scale_kwargs)
         self.model = eqx.nn.Linear(1, 1, key=jax.random.key(123))
-        self.non_model_bias = jnp.asarray([0.05], dtype=jnp.float32)
+        self.non_model_bias = jnp.asarray([0.05])
 
     def __call__(self, t, inputs):
         del t
@@ -186,23 +186,22 @@ def _make_two_process_collection() -> BioProcessCollection:
 
 
 def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
-    f32 = jnp.float32
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_FVCs = len(rhs_ode.name_modeled_FVCs)
     n_rates = len(rhs_ode.name_modeled_rates)
     n_FVC = len(controls.name_controlled_FVCs)
     n_PV = len(controls.name_controlled_PVs)
     return {
-        "SCALE_modeled_RMCs": jnp.ones(n_RMCs, dtype=f32),
-        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=f32),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs, dtype=f32),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC, dtype=f32),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC, dtype=f32),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs), dtype=f32),
-        "SCALE_controlled_PVs": jnp.ones(n_PV, dtype=f32),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs), dtype=f32),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates, dtype=f32),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs, dtype=f32),
+        "SCALE_modeled_RMCs": jnp.ones(n_RMCs),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0),
+        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC),
+        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs)),
+        "SCALE_controlled_PVs": jnp.ones(n_PV),
+        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs)),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
+        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs),
     }
 
 
@@ -248,7 +247,6 @@ def test_clamp_padded_time_rows_repeats_last_active_timestamp():
             [0.0, 1.0, 2.0, 999.0],
             [0.0, 5.0, 6.0, 7.0],
         ],
-        dtype=jnp.float32,
     )
     lengths = jnp.asarray([3, 1], dtype=jnp.int32)
 
@@ -614,7 +612,7 @@ def test_batched_loss_fn_preserves_none_jump_ts_branch():
         solver_rtol=1e-5,
         solver_atol=1e-7,
     )
-    jump_ts_rows = jnp.zeros((1, 1), dtype=jnp.float32)
+    jump_ts_rows = jnp.zeros((1, 1))
     mean_total_present, *_ = batched_loss_fn(
         wrapper,
         batch,
@@ -759,12 +757,12 @@ def test_evaluate_one_sample_loss_returns_fail_time():
 def test_build_union_time_grid_sorts_and_indexes_correctly():
     from bp_train.dense import build_union_time_grid
 
-    t_meas = jnp.asarray([0.0, 1.0, 4.0], dtype=jnp.float32)
+    t_meas = jnp.asarray([0.0, 1.0, 4.0])
     t_eval, sample_idx, dense_t, dense_idx, _pred_t, _pred_idx = build_union_time_grid(
         t_meas, n_measured=3, n_dense=3
     )
     # dense linspace covers the (active) measurement span.
-    assert jnp.allclose(dense_t, jnp.asarray([0.0, 2.0, 4.0], dtype=jnp.float32))
+    assert jnp.allclose(dense_t, jnp.asarray([0.0, 2.0, 4.0]))
     # t_eval is the sorted concat.
     assert jnp.all(jnp.diff(t_eval) >= 0)
     assert t_eval.shape[0] == 6
@@ -1051,7 +1049,7 @@ def test_affine_offset_cancels_from_measurement_loss():
         linear,
         AffineScaler(
             scale=linear.reaction_module.SCALE_modeled_RMCs.scale,
-            offset=jnp.asarray([10.0], dtype=jnp.float32),
+            offset=jnp.asarray([10.0]),
         ),
     )
     t_measured = clamp_padded_time_rows(

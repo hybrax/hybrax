@@ -22,8 +22,8 @@ def _loss(module):
     wrapper = build_stateful_wrapper(process, module)
     states = solve(
         wrapper,
-        jnp.asarray([0.0, 0.1], dtype=jnp.float32),
-        jnp.asarray([1.0, 1.0], dtype=jnp.float32),
+        jnp.asarray([0.0, 0.1]),
+        jnp.asarray([1.0, 1.0]),
     )
     return states[-1, -1]
 
@@ -59,7 +59,7 @@ def _perturb_gru_weight(module):
 def test_stateful_gradients_match_finite_difference_for_h0_and_gru_weight():
     module = TrainableH0DefaultStateful(
         key=jax.random.key(0),
-        h0=jnp.asarray([0.2], dtype=jnp.float32),
+        h0=jnp.asarray([0.2]),
         **_SCALE_KWARGS,
     )
 

@@ -35,20 +35,18 @@ from bp_train.wrapper import HybridOdeWrapper
 
 def default_stateful_scale_kwargs(n_controlled_fvcs: int = 1):
     return {
-        "SCALE_modeled_RMCs": jnp.ones(1, dtype=jnp.float32),
-        "SCALE_V_in_cumulative": jnp.asarray(1.0, dtype=jnp.float32),
-        "SCALE_modeled_FVCs_cumulative": jnp.zeros(0, dtype=jnp.float32),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(
-            n_controlled_fvcs, dtype=jnp.float32
-        ),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_fvcs, dtype=jnp.float32),
+        "SCALE_modeled_RMCs": jnp.ones(1),
+        "SCALE_V_in_cumulative": jnp.asarray(1.0),
+        "SCALE_modeled_FVCs_cumulative": jnp.zeros(0),
+        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_fvcs),
+        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_fvcs),
         "SCALE_controlled_FVCs_Cin": jnp.ones(
-            (n_controlled_fvcs, 1), dtype=jnp.float32
+            (n_controlled_fvcs, 1)
         ),
-        "SCALE_controlled_PVs": jnp.zeros(0, dtype=jnp.float32),
-        "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 1), dtype=jnp.float32),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(1, dtype=jnp.float32),
-        "SCALE_modeled_FVCs_rates": jnp.zeros(0, dtype=jnp.float32),
+        "SCALE_controlled_PVs": jnp.zeros(0),
+        "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 1)),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+        "SCALE_modeled_FVCs_rates": jnp.zeros(0),
     }
 
 
@@ -207,9 +205,9 @@ def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
     scale_kwargs = {
         **default_stateful_scale_kwargs(n_controlled_fvcs),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(
-            len(rhs.name_modeled_rates), dtype=jnp.float32
+            len(rhs.name_modeled_rates)
         ),
-        "SCALE_latent": jnp.ones(n_latent, dtype=jnp.float32),
+        "SCALE_latent": jnp.ones(n_latent),
     }
     module = eqx.tree_at(
         lambda m: tuple(getattr(m, name) for name in scale_kwargs),
