@@ -159,11 +159,12 @@ def diffeqsolve_with_callbacks(
     | ManifoldProjection
     | CallbackSet,
     max_events: int = 20,
+    output_times: jnp.ndarray | None = None,
+    output_window: int | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController = diffrax.PIDController(
         rtol=1e-6, atol=1e-8
     ),
-    max_steps_per_segment: int = 4096,
-    max_steps_total: int | None = None,
+    max_steps: int = 4096,
     adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
 ) -> CallbackSolution:
     """Solve an ODE with Julia-style callbacks.
@@ -184,17 +185,36 @@ def diffeqsolve_with_callbacks(
         args: ODE arguments (passed to vector field and callbacks).
         callbacks: Single callback or CallbackSet.
         max_events: Maximum events (fixed for JIT). Unused slots are padded.
+        output_times: Optional (n_output,) ASCENDING times inside ``[t0, t1]`` at which
+            to record the trajectory, returned as ``CallbackSolution.output_states``.
+            Each segment saves its own share with ``SaveAt(ts=...)``, which is pure
+            interpolation and costs no extra solver steps -- so an output time does NOT
+            have to be a preset, and asking for a finer trajectory no longer subdivides
+            the integration. ``None`` keeps the segment solves on ``SaveAt(t1=True)``
+            and leaves ``output_states`` as ``None``.
+        output_window: Optional static bound on how many ``output_times`` entries a
+            single segment may own. Each segment then only sees a ``dynamic_slice``
+            window of that size instead of the whole grid. Without it the per-segment
+            save work is ``O(max_events * n_output)``, because diffrax writes every slot
+            in every segment (out-of-range times pin onto the segment endpoints) -- which
+            makes an event-heavy process SLOWER than saving at boundaries. ``None`` uses
+            the whole grid. If a segment ever owns more than ``output_window`` points the
+            excess would be dropped, so ``output_overflow`` is raised instead.
         stepsize_controller: Diffrax step size controller.
-        max_steps_per_segment: Max solver steps between events. Must be a static
-            Python int -- diffrax sizes its step loop from it. This is a *latency*
-            bound: it stops one stiff lane spinning for many seconds while other
-            devices block on a collective.
-        max_steps_total: Optional budget for the WHOLE trajectory. Once the running
-            sum of per-segment steps exceeds it the lane terminates exactly as if a
-            segment had failed (state poisoned to inf, ``fail_time`` recorded). Unlike
-            ``max_steps_per_segment`` this is grid-independent: chopping the same
-            horizon into more segments does not silently multiply the ceiling. ``None``
-            leaves only the per-segment bound.
+        max_steps: Step budget for the WHOLE trajectory. Must be a static Python int --
+            diffrax sizes its step loop from it. It bounds each segment's inner solve
+            AND the running sum across segments, so once the total is exceeded the lane
+            terminates exactly as if a segment had failed (state poisoned to inf,
+            ``fail_time`` recorded).
+
+            This replaces the earlier pair of a per-segment cap plus an optional total.
+            The per-segment cap was a *latency* bound (stopping one stiff lane spinning
+            while other devices block on a collective) and predates the total; once a
+            trajectory budget exists it is redundant, because the total bounds a lane
+            more tightly than ``cap * n_segments`` ever did. Keeping both was actively
+            harmful: with few, long segments the smaller per-segment cap silently became
+            the binding constraint, so a process needing more steps than the cap bailed
+            even though its trajectory budget was ample.
         adjoint: Diffrax adjoint method for backpropagation.
 
     Returns:
@@ -213,6 +233,22 @@ def diffeqsolve_with_callbacks(
 
     solve_terms = _wrap_ode_term_dtype(terms)
 
+    # ---- Tier-B output grid (see ``output_times`` in the docstring) ----
+    has_output = output_times is not None
+    if has_output:
+        output_times = jnp.asarray(output_times, dtype=time_dtype)
+        if output_times.ndim != 1:
+            raise ValueError(f"output_times must be 1-D, got {output_times.ndim}-D")
+        if output_times.shape[0] == 0:
+            # diffrax maps an empty ``ts`` to ``None`` and then reports the unrelated
+            # "Empty saveat -- nothing will be saved"; fail here with the real reason.
+            raise ValueError("output_times must be non-empty; pass None to disable")
+        n_output = output_times.shape[0]
+        window = n_output if output_window is None else min(int(output_window), n_output)
+    else:
+        n_output = 0
+        window = 0
+
     n_continuous = callback_set.n_continuous
     n_preset = callback_set.n_preset
     n_discrete = callback_set.n_discrete
@@ -227,6 +263,19 @@ def diffeqsolve_with_callbacks(
         preset_affect_indices = callback_set.get_preset_affect_indices()
         preset_local_indices = callback_set.get_preset_local_indices()
     else:
+        all_preset_times = jnp.zeros((0,), dtype=time_dtype)
+
+    # A PresetTimeCallback may carry an EMPTY ``times`` array: a process with zero
+    # bolus AND zero sample events is legitimate data, not user error (the padded
+    # widths are collection-wide maxima and are legitimately 0). Such a callback makes
+    # ``n_preset > 0`` but leaves nothing that can ever fire, and
+    # ``_find_next_preset_time`` would ``argmin`` an empty array -- a hard trace-time
+    # error. Decide ``has_presets`` from the MERGED array, not the callback count, and
+    # fall through to the same parked entry the no-callback case uses. Static: array
+    # shapes are compile-time constants, so every ``if has_presets`` branch below is
+    # unaffected.
+    has_presets = all_preset_times.shape[0] > 0
+    if not has_presets:
         all_preset_times = jnp.asarray([t1 + jnp.asarray(1.0, dtype=time_dtype)])
         preset_affect_indices = jnp.array([0], dtype=jnp.int32)
         preset_local_indices = jnp.array([0], dtype=jnp.int32)
@@ -270,7 +319,17 @@ def diffeqsolve_with_callbacks(
     # ---- Scan body ----
 
     def scan_fn(carry, _):
-        y, t_current, done, terminated, fail_time, steps_used, dt_prev = carry
+        (
+            y,
+            t_current,
+            done,
+            terminated,
+            fail_time,
+            steps_used,
+            dt_prev,
+            output_buffer,
+            output_overflow,
+        ) = carry
 
         # Determine segment end time
         if has_presets:
@@ -290,15 +349,25 @@ def diffeqsolve_with_callbacks(
         )
 
         # Once a lane has ``terminated`` (a prior segment bailed — e.g. hit
-        # ``max_steps_per_segment`` on a stiff blow-up), collapse every later segment to
+        # ``max_steps_per_segment`` on a stiff blow-up) OR is ``done`` (a healthy lane
+        # that consumed every preset and reached ``t1``), collapse every later segment to
         # zero length so the batched solve does ~0 steps for it. This is the vmap-safe
         # analogue of "skip the rest of the trajectory": under ``vmap`` the per-segment
         # ``diffeqsolve`` while-loop is paced by the slowest *live* lane, so a
         # zero-length lane satisfies ``t >= t1`` at entry, takes no steps and stops
         # driving the loop — whereas a ``lax.cond`` skip would vectorise to running both
-        # branches. A strict no-op when ``terminated`` is all-False (the common case):
-        # ``segment_t1`` is unchanged, so a failure-free solve is bit-identical.
-        segment_t1 = jnp.where(terminated, t_current, segment_t1)
+        # branches.
+        #
+        # ``done`` must be in here, not just ``terminated``. The scan always runs
+        # ``max_events`` iterations; without the collapse a finished lane still gets
+        # ``segment_t1 = max(t1, t_current + tol)`` from the clamp just above — a
+        # tolerance-LENGTH (not zero-length) segment, which diffrax runs at >= 1 accepted
+        # step. Those steps are real: they cost a full 6-stage Tsit5 evaluation each AND
+        # they accumulate into ``steps_used`` below, so they silently eat the
+        # ``max_steps_total`` budget. Measured on a 2023_bayer-shaped process: 38 ODE
+        # steps at ``max_events=25`` vs 27 at ``max_events=14``, for the same 10 real
+        # segments.
+        segment_t1 = jnp.where(terminated | done, t_current, segment_t1)
 
         # Solve the segment (dt == 0 for a collapsed lane; diffrax handles t0 == t1).
         #
@@ -312,7 +381,27 @@ def diffeqsolve_with_callbacks(
         # overshoot the event.
         dt = jnp.minimum(dt_prev, segment_t1 - t_current)
 
-        saveat = diffrax.SaveAt(t1=True)
+        if has_output:
+            live = (~done) & (~terminated)
+            # Window bounds are DERIVED from the segment endpoints, never carried as a
+            # running counter. A counter drifts as soon as the grid holds duplicate
+            # times -- and it does: a union grid splices a linspace into the measurement
+            # times, so t0/t1 appear twice and measurement times coincide with events.
+            # Slots no segment owns are then never counted, the pointer falls behind and
+            # the window slides off the owned range, silently leaving ``inf`` rows.
+            # ``side="right"`` counts entries <= t, so ``hi - lo`` is exactly the count in
+            # the half-open ``(t_current, segment_t1]`` that ``owns`` selects below.
+            lo = jnp.searchsorted(output_times, t_current, side="right")
+            hi = jnp.searchsorted(output_times, segment_t1, side="right")
+            start = jnp.clip(lo, 0, max(n_output - window, 0))
+            ts_window = jax.lax.dynamic_slice(output_times, (start,), (window,))
+            # Clipping is required (diffrax rejects ts outside [t0, t1]) and exact at
+            # both ends; it is monotone, so an ascending grid stays ascending.
+            saveat = diffrax.SaveAt(
+                t1=True, ts=jnp.clip(ts_window, t_current, segment_t1)
+            )
+        else:
+            saveat = diffrax.SaveAt(t1=True)
 
         sol = diffrax.diffeqsolve(
             solve_terms,
@@ -325,7 +414,7 @@ def diffeqsolve_with_callbacks(
             saveat=saveat,
             stepsize_controller=stepsize_controller,
             event=diffrax_event,
-            max_steps=max_steps_per_segment,
+            max_steps=max_steps,
             throw=False,
             adjoint=adjoint,
         )
@@ -359,23 +448,60 @@ def diffeqsolve_with_callbacks(
         R = diffrax.RESULTS
         seg_failed = (sol.result != R.successful) & (sol.result != R.event_occurred)
 
-        # Trajectory-level budget. ``max_steps_per_segment`` alone is grid-dependent:
+        # Trajectory-level budget. A per-segment bound alone would be grid-dependent:
         # subdividing the same horizon into more segments hands each one a fresh
-        # allowance, so the effective ceiling is ``cap * n_segments`` and a caller
-        # asking for N steps can silently get orders of magnitude more. Accumulating
-        # the (already computed) per-segment counts gives a bound on the whole solve,
-        # so ``fail_time`` no longer depends on how the horizon was chopped. Treated as
+        # allowance, so the effective ceiling would be ``max_steps * n_segments`` and a
+        # caller asking for N steps could silently get orders of magnitude more.
+        # Accumulating the (already computed) per-segment counts bounds the whole solve,
+        # so ``fail_time`` does not depend on how the horizon was chopped. Treated as
         # exactly the same kind of failure as a segment bail, so all the existing
         # poisoning / collapse / fail_time machinery applies unchanged.
         new_steps_used = steps_used + jnp.asarray(sol.stats["num_steps"], jnp.int32)
-        if max_steps_total is not None:
-            seg_failed = seg_failed | (
-                new_steps_used > jnp.asarray(int(max_steps_total), jnp.int32)
-            )
+        seg_failed = seg_failed | (
+            new_steps_used > jnp.asarray(int(max_steps), jnp.int32)
+        )
+
+        if has_output:
+            # With ``SaveAt(ts=...)`` diffrax fills every UNREACHED save slot -- the
+            # ``t1`` one included -- with ``inf`` on a bail, where ``SaveAt(t1=True)``
+            # alone hands back the last-reached (finite) state. An ``inf`` ``t_at_stop``
+            # would NaN ``t_next``, ``dt`` and the collapse arithmetic on every later
+            # iteration, so freeze time at the segment start. Nothing is lost:
+            # ``fail_time`` is derived separately just below.
+            t_at_stop = jnp.where(seg_failed, t_current, t_at_stop)
 
         y_at_stop = jnp.where(
             seg_failed, jnp.asarray(jnp.inf, y_at_stop.dtype), y_at_stop
         )
+
+        if has_output:
+            # OWNERSHIP: half-open ``(t_current, segment_t1]``. Exactly one live segment
+            # owns each output time, and a time landing ON an event is owned by the
+            # segment that ENDS there -- i.e. it reports the PRE-affect state, matching
+            # ``event_states_before``. Assigning it to the starting segment instead would
+            # return the post-jump state and silently shift volumes and concentrations at
+            # exactly the times every yield and rate is anchored to.
+            owns = (ts_window > t_current) & (ts_window <= segment_t1) & live
+            seg_saved = sol.ys[:-1]
+            # A bailing segment's REACHED slots are genuine converged values, so they are
+            # kept (poisoning them would put ``inf`` into rows ``fail_time`` calls valid).
+            # But today the only array read back from a failed segment is
+            # ``event_states_before``, which is ``inf`` -- so a failed lane contributes
+            # exactly ZERO gradient. ``stop_gradient`` preserves that contract; without it
+            # the change would silently start backpropagating through a blow-up.
+            seg_saved = jnp.where(
+                seg_failed, jax.lax.stop_gradient(seg_saved), seg_saved
+            )
+            slots = start + jnp.arange(window, dtype=start.dtype)
+            new_output_buffer = output_buffer.at[slots].set(
+                jnp.where(owns[:, None], seg_saved, output_buffer[slots])
+            )
+            new_output_overflow = output_overflow | (
+                jnp.where(live, hi - lo, 0) > window
+            )
+        else:
+            new_output_buffer = output_buffer
+            new_output_overflow = output_overflow
 
         # Record the time of the FIRST failure on this lane. ``terminated`` is the
         # INCOMING carry value (a prior segment already bailed), so ``first_failure``
@@ -385,6 +511,13 @@ def diffeqsolve_with_callbacks(
         # conservative cutoff: measurements at ``t > fail_time`` are past the failed
         # solve. Stays ``inf`` for a lane that never fails.
         first_failure = seg_failed & (~terminated)
+        # ``t_current`` — the START of the failing segment — stays the cutoff even though
+        # ``SaveAt(ts=...)`` could now report the last output time actually reached. That
+        # finer cutoff was implemented and rejected: on a blow-up the solver *does* reach
+        # output points past the last good node, but the values there are garbage (1e11
+        # on the ``_BlowUpReactionModule`` fixture), so a later cutoff stops masking them
+        # and presents them as real predictions. The conservative node-level cutoff is
+        # the whole point of ``fail_time``.
         new_fail_time = jnp.where(first_failure, t_current, fail_time)
 
         # ---- Determine what happened ----
@@ -541,9 +674,23 @@ def diffeqsolve_with_callbacks(
             new_fail_time,
             new_steps_used,
             new_dt,
+            new_output_buffer,
+            new_output_overflow,
         ), output
 
     # ---- Run the scan ----
+    y0_arr = jnp.asarray(y0)
+    if has_output:
+        # No segment precedes ``t0``, and ownership is half-open, so a ``t0`` slot is
+        # never written by the loop -- seed it with ``y0`` directly. Every other slot
+        # starts at ``inf`` so an unreached row is detectable rather than stale.
+        output_init = jnp.where(
+            (output_times <= t0)[:, None],
+            y0_arr[None, :],
+            jnp.asarray(jnp.inf, y0_arr.dtype),
+        )
+    else:
+        output_init = jnp.zeros((0,) + y0_arr.shape, dtype=y0_arr.dtype)
     init_carry = (
         y0,
         t0,
@@ -552,9 +699,21 @@ def diffeqsolve_with_callbacks(
         jnp.asarray(jnp.inf, dtype=time_dtype),
         jnp.asarray(0, dtype=jnp.int32),
         jnp.asarray(dt0, dtype=time_dtype),
+        output_init,
+        jnp.bool_(False),
     )
     final_carry, outputs = jax.lax.scan(scan_fn, init_carry, None, length=max_events)
-    y_final, t_final, _, _, fail_time, _, _ = final_carry
+    (
+        y_final,
+        t_final,
+        _,
+        _,
+        fail_time,
+        _,
+        _,
+        output_states,
+        output_overflow,
+    ) = final_carry
     event_times, event_types, states_before, states_after, segment_num_steps = outputs
 
     event_count = jnp.sum((event_types >= 0).astype(jnp.int32))
@@ -569,6 +728,8 @@ def diffeqsolve_with_callbacks(
         event_states_after=states_after,
         event_count=event_count,
         segment_num_steps=segment_num_steps,
+        output_states=output_states if has_output else None,
+        output_overflow=output_overflow if has_output else None,
     )
 
 

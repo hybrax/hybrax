@@ -40,7 +40,7 @@ def _solve(*, n_segments, dt0, rtol=1e-5, atol=1e-6):
         callbacks=PresetTimeCallback(times=times, affect_fn=lambda y, t, args, i: y),
         max_events=n_segments,
         stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
-        max_steps_per_segment=10_000,
+        max_steps=10_000,
     )
 
 
@@ -108,8 +108,7 @@ def test_collapsed_lane_does_not_corrupt_the_carry():
         ),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-10, atol=1e-13),
-        max_steps_per_segment=10_000,
-        max_steps_total=3,  # forces an early failure
+        max_steps=3,  # forces an early failure
     )
     assert bool(jnp.all(jnp.isinf(sol.y_final)))
     assert bool(jnp.all(jnp.isfinite(sol.segment_num_steps)))

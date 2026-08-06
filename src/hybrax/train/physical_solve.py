@@ -13,16 +13,25 @@ unlike a custom solver that modifies state inside ``step`` (which silently break
 diffrax adjoint).
 
 RAM: the segments run in a sequential ``lax.scan`` (one segment's solve live at a time)
-and ``RecursiveCheckpointAdjoint`` keeps only ~``O(log max_steps_per_segment)``
-checkpoints, so RAM is **flat in the number of events** — *not*
-``max_steps × #segments`` (measured ~2.34 GB for a full 37-way step). The
-per-segment cap is therefore a cheap *safety* ceiling, not a budget that must be
-rationed across segments.
+and ``RecursiveCheckpointAdjoint`` keeps only ~``O(log max_steps)`` checkpoints, so RAM
+is **flat in the number of events** — *not* ``max_steps × #segments`` (measured ~2.34 GB
+for a full 37-way step).
+
+Output times (measurements, and any dense/prediction grid spliced in by
+``dense.build_union_time_grid``) are NOT segment boundaries. Segments are decided purely
+by the physics — bolus and sample events, the only things that jump the state — and the
+trajectory is read out with ``SaveAt(ts=...)`` inside each segment, which is pure
+interpolation and costs no solver steps. Making every output time a boundary used to
+subdivide the integration: a 2023_bayer-shaped process went from 10 segments / 38 ODE
+steps on the measurement grid to 208 / 426 once a 200-point export grid was requested.
 """
 
 from __future__ import annotations
 
+import math
+
 import diffrax
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 
@@ -46,16 +55,6 @@ _FAIL_TIME_EPS = 1e-4
 # on the first step.
 _DEGENERATE_DT0 = 1e-4
 
-# Per-segment step ceiling — a LATENCY bound, deliberately independent of the step
-# budget. Under pmap a high per-segment cap lets one stiff process (e.g. under a
-# too-hot lr) spin for many seconds inside its solve while the other devices finish and
-# block on the ``all_gather``; once one device lags >~20 s the XLA collective rendezvous
-# times out and the whole run dead-locks. A bounded cap makes a genuinely stiff segment
-# *bail fast* instead of hanging the barrier. Segments are short and exit early anyway,
-# so the clamp costs nothing in the stable case (512 vs 8096 → identical speed,
-# measured). Override per call for tests; the trajectory budget is ``max_steps``.
-_MAX_STEPS_PER_SEGMENT = 512
-
 # NB there is deliberately NO event-matching tolerance. ``affect_fn`` identifies the
 # firing bolus/sample by the preset INDEX the solver hands it, then compares times
 # exactly against its own ``preset_times`` array. A tolerance here would make any
@@ -71,6 +70,38 @@ def within_fail_time(t, fail_time):
     return t <= fail_time + jnp.asarray(_FAIL_TIME_EPS, jnp.asarray(t).dtype)
 
 
+def _output_window(controls, n_linspace: int) -> int:
+    """Static per-segment output-window size, given how many linspace points are spliced
+    into the output grid.
+
+    Without a window each segment is handed the whole grid and diffrax writes every slot
+    in every segment, so the save work is ``O(n_segments * n_output)`` — measured 10x
+    SLOWER than a boundary save on a 160-event process under vmap. With it the work is
+    ``O(n_segments * window)``, and the per-segment cost scales with the window (10.6
+    us/segment for a plain ``SaveAt(t1=True)``, 14 at window 1, 68 at 25, 209 at 200), so
+    the window wants to be as tight as it can provably be.
+
+    The bound is exact, not an estimate. An output grid is the measurement block plus up
+    to two ``linspace(t0, t1, N)`` blocks:
+
+    - measurement block: at most ``max_measurements_per_event_gap`` per gap, counted
+      exactly (on the PADDED grid) at prepare time.
+    - a linspace block of ``N`` points has spacing ``h = (t1 - t0) / (N - 1)``, so a gap
+      of length ``f * (t1 - t0)`` holds at most ``floor(f * (N - 1)) + 1`` of them. Two
+      blocks therefore contribute at most ``f * n_linspace + 2 <= ceil(f * n_linspace) + 2``.
+
+    ``n_linspace`` is a static Python int: the caller building the union grid knows
+    ``dense_grid_n`` and ``prediction_grid_n`` exactly. A caller that just has a grid and
+    cannot say passes the whole grid length instead, which is a valid (looser) bound
+    because the measurement block it double-counts is itself bounded by ``f``.
+    """
+    return (
+        math.ceil(controls.max_event_gap_fraction * n_linspace)
+        + controls.max_measurements_per_event_gap
+        + 2
+    )
+
+
 def solve_physical_states(
     wrapper,
     *,
@@ -81,39 +112,35 @@ def solve_physical_states(
     rtol: float,
     atol: float,
     jump_ts: jax.Array | None = None,
-    max_steps_per_segment: int | None = None,
+    n_linspace: int | None = None,
     return_fail_time: bool = False,
 ):
     """RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.
 
+    ``n_linspace`` is how many of ``t_eval``'s points come from evenly-spaced blocks
+    spliced in by :func:`dense.build_union_time_grid` (``dense_grid_n`` +
+    ``prediction_grid_n``), as opposed to the measurement block. It only sizes the
+    per-segment output window (:func:`_output_window`), and passing it exactly is what
+    makes the window tight. ``None`` falls back to the whole grid length: still a valid
+    bound, just looser, which is the right default for a caller that simply has a grid
+    and no way to say how it was composed.
+
     ``fail_time`` is the scalar time of the first segment failure on this solve (``inf``
-    if none). Post-failure rows (``t > fail_time``) are overwritten from ``fail_time``
-    either way — the raw gather is NOT trusted there, since on a mid-trajectory bail the
-    argmin falls back to the last reached node and yields a stale FINITE value:
+    if none), i.e. the start of the failing segment == the last node it reached. Rows at
+    ``t > fail_time`` are overwritten either way:
     - ``return_fail_time=True`` (loss path) returns ``(states, fail_time)`` with those
       rows set to a finite ``y0`` placeholder, so the ``penalty(state) * mask`` idiom
       stays safe; the caller must still mask them out via ``fail_time``.
     - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
       to ``inf``, so a failed forward is detectable and never reads back a stale value.
 
-    Two independent bounds apply, and exceeding either is the same failure as any
-    segment bail (state poisoned to ``inf``, ``fail_time`` recorded, later segments
-    collapsed):
-
-    - ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole solve**,
-      passed down as ``max_steps_total``. This is what makes the knob mean what it says.
-      Without it the only bound was per-segment, so the effective ceiling was
-      ``cap * n_segments`` — e.g. ``max_steps=8096`` on a 174-segment process really
-      allowed ~89,000 steps — and ``fail_time`` depended on how finely the horizon
-      happened to be chopped (a dense loss/export grid subdivides it, so the same model
-      could bail at a different time purely because more output points were requested).
-    - ``max_steps_per_segment`` is a **latency** bound against the pmap deadlock; see
-      :data:`_MAX_STEPS_PER_SEGMENT`. It defaults to that constant and is settable per
-      call; it is deliberately NOT derived from ``max_steps``, which measures a
-      different thing.
+    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole solve**: it
+    bounds each segment's inner solve and the running sum across segments, so exceeding
+    it is the same failure as any segment bail (state poisoned to ``inf``, ``fail_time``
+    recorded, later segments collapsed). It is grid-independent — chopping the same
+    horizon into more segments does not multiply the ceiling, so ``fail_time`` no longer
+    moves just because a denser output grid was requested.
     """
-    if max_steps_per_segment is None:
-        max_steps_per_segment = _MAX_STEPS_PER_SEGMENT
     n_RMCs = len(wrapper.modeled_RMC_names)
     n_PVs = len(wrapper.modeled_PV_names)
     n_FVCs = len(wrapper.modeled_FVC_names)
@@ -147,14 +174,24 @@ def solve_physical_states(
     sv = controls.sample_event_volumes.astype(dtype)
     smask = controls.sample_event_mask
 
-    # Preset times = bolus ∪ sample ∪ measurement times. Inactive/padded slots are
-    # parked past t1 so they never trigger. Measurement-only times get an identity
-    # affect (so the event log records the state there for the loss).
+    # TIER A — segment boundaries. Only bolus and sample events, because only they jump
+    # the state (see ``affect_fn``). Output times are NOT here: they are read out with
+    # ``SaveAt(ts=...)`` inside a segment, which is interpolation and costs no solver
+    # steps. Vector-field kinks (control-spline knots, ``discrete_events``) are handled
+    # by ``PIDController(jump_ts=...)`` below and were never boundaries either.
+    # Inactive/padded slots are parked past t1 so they never trigger.
     BIG = t1 + jnp.asarray(1.0e6, dtype=dtype)
     bolus_times = jnp.where(bmask, bt, BIG)
     sample_times = jnp.where(smask, st, BIG)
-    meas_times = jnp.where(meas_active, t_eval, BIG)
-    preset_times = jnp.concatenate([bolus_times, sample_times, meas_times])
+    preset_times = jnp.concatenate([bolus_times, sample_times])
+
+    # Tier-B output grid. Inactive/padded slots are parked at ``t1`` (NOT at ``BIG``:
+    # ``SaveAt(ts=...)`` requires every entry inside ``[t0, t1]`` and ascending). The
+    # active prefix is already ascending and ``t1`` is its maximum, so the parked tail
+    # keeps the array sorted. This is the same value ``clamp_padded_time_rows`` writes,
+    # so the production path (which clamps before calling) is unaffected and a direct
+    # caller passing a raw zero-padded row is handled identically.
+    output_times = jnp.where(meas_active, t_eval, t1)
 
     def affect_fn(y_scl, t, args, preset_index):
         # ``preset_index`` is the slot in ``preset_times`` the solver stopped at, so the
@@ -227,55 +264,56 @@ def solve_physical_states(
         dt0=dt0,
         y0=y0 / SCALE,
         callbacks=cb,
-        max_events=preset_times.shape[0],
+        # N jump nodes need N+1 segments: one stop per node plus the final leg to t1.
+        # (With measurement times in the preset set t1 was itself a preset, so the old
+        # ``shape[0]`` already covered the last leg.)
+        max_events=preset_times.shape[0] + 1,
+        output_times=output_times,
+        output_window=_output_window(
+            wrapper.controls,
+            output_times.shape[0] if n_linspace is None else n_linspace,
+        ),
         stepsize_controller=diffrax.PIDController(
             rtol=rtol, atol=atol, jump_ts=jump_ts_arg
         ),
-        max_steps_per_segment=max_steps_per_segment,
-        max_steps_total=int(max_steps),
+        max_steps=int(max_steps),
         adjoint=diffrax.RecursiveCheckpointAdjoint(),
     )
 
-    # The event log records the pre-affect state at every node (bolus/sample/meas).
-    # Gather the state at each measurement time (closest *real* event in the log;
-    # unused/padded slots are parked past t1 so they never win the argmin).
-    ev_t = jnp.where(sol.event_types >= 0, sol.event_times, BIG)  # [max_events]
-    ev_y = sol.event_states_before  # [max_events, n_state] (scaled)
-
-    def _gather(tm):
-        i = jnp.argmin(jnp.abs(ev_t - tm))
-        y = ev_y[i] * SCALE  # scaled -> physical (states are returned unscaled)
-        # Report the POST-sample state at a sample-coincident time: a well-mixed
-        # sample leaves concentrations unchanged and only removes volume, so subtract
-        # any sample volume scheduled at ``tm`` from V. Boluses stay pre-bolus (the
-        # offline measurement is taken before feeding). This makes the reported V
-        # honour ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap.
-        # Exact, for the same reason ``affect_fn`` matches exactly: with a tolerance an
-        # output point merely NEAR a sample would also get the correction, even though
-        # the solve has already applied that sample to the state it is reading.
-        s_here = (st == tm) & smask
-        sample_dv_here = jnp.sum(jnp.where(s_here, sv, 0.0))
-        return y.at[n_RMCs + n_PVs].add(-sample_dv_here)
-
-    states = jax.vmap(_gather)(t_eval)  # [M, n_state]
+    # Assertion, not a safety net: the window bound is exact (see ``_output_window``), so
+    # this can only fire if that derivation is wrong. Left in because the alternative
+    # failure mode is silent -- the excess rows would simply stay ``inf``.
+    states = eqx.error_if(
+        sol.output_states,
+        sol.output_overflow,
+        "output window too small: a segment owned more output times than it can hold",
+    )
+    states = states * SCALE  # scaled -> physical (states are returned unscaled)
+    # Report the POST-sample state at a sample-coincident time: a well-mixed sample
+    # leaves concentrations unchanged and only removes volume, so subtract any sample
+    # volume scheduled at that time from V. Boluses stay pre-bolus (the offline
+    # measurement is taken before feeding). This makes the reported V honour
+    # ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap. Exact, for the same
+    # reason ``affect_fn`` matches exactly: with a tolerance an output point merely NEAR
+    # a sample would also get the correction, even though the solve has already applied
+    # that sample to the state it is reading. Keyed on the caller's ``t_eval`` (not the
+    # parked ``output_times``) so padded rows behave exactly as before.
+    s_here = (t_eval[:, None] == st[None, :]) & smask[None, :]
+    sample_dv_here = jnp.sum(jnp.where(s_here, sv[None, :], 0.0), axis=1)
+    states = states.at[:, n_RMCs + n_PVs].add(-sample_dv_here)
     # Every grid point at t0 is the initial state (no event precedes t0). The dense /
     # prediction export solves on a union grid that can carry t0 at *several* indices
     # (measurement-t0, dense-t0, prediction-t0), not only index 0 — so patch all of
-    # them. Patching only states[0] left the other t0 rows on the _gather boundary
-    # value (first feed interval already integrated in), which surfaced as an inflated
-    # V0 / diluted concentrations in the predictions.csv first row for continuous-feed
-    # processes.
+    # them. The solve already seeds its t0 slots with ``y0``, but only in SCALED space,
+    # so the ``/ SCALE`` → ``* SCALE`` round trip can differ from ``y0`` by an ULP;
+    # this writes the exact physical value.
     # Exact: ``t0`` IS ``t_eval[0]``, and every extra t0 row comes from a
     # ``linspace(t0, ...)`` whose first element is bitwise ``t0``.
     at_t0 = (t_eval == t0) & meas_active
     states = jnp.where(at_t0[:, None], y0[None, :], states)
 
-    # Overwrite every post-failure row (``t > fail_time``) from ``fail_time`` — do NOT
-    # trust the raw gather to carry a marker there. On a MID-trajectory bail the
-    # post-failure nodes are parked (``event_type == -1``), so the argmin lands on the
-    # last successfully-reached node and returns a stale FINITE value (the inf sentinel
-    # only survives for a first-segment bail, where the argmin defaults to the poisoned
-    # index 0). Healthy solve: ``fail_time == inf`` -> no-op.
+    # Overwrite every post-failure row (``t > fail_time``) from ``fail_time``. Healthy
+    # solve: ``fail_time == inf`` -> no-op.
     fail_time = sol.fail_time
     post_fail = ~within_fail_time(t_eval, fail_time)
     if return_fail_time:
@@ -284,7 +322,15 @@ def solve_physical_states(
         # ``0 * inf = nan`` poison the loss/gradient even for a masked row). The caller
         # still EXCLUDES these rows via ``fail_time`` (measurement mask +
         # ``dense_valid_time``); the placeholder only guarantees finiteness.
-        states = jnp.where(post_fail[:, None], y0[None, :], states)
+        #
+        # The ``~isfinite`` arm is load-bearing, not defensive. ``within_fail_time``
+        # classifies rows up to ``fail_time + _FAIL_TIME_EPS`` as valid, while the solve
+        # writes ``inf`` for every slot it did not reach — so an output time inside that
+        # 1e-4 window is called valid AND is ``inf``. Time alone is therefore not a
+        # sufficient test for finiteness here.
+        states = jnp.where(
+            post_fail[:, None] | ~jnp.isfinite(states), y0[None, :], states
+        )
         return states, fail_time
     # FORWARD/EXPORT path (``simulate_measurement_states``, plotting): write an explicit
     # non-finite sentinel so a failed forward is detectable and never reads back as a

@@ -37,6 +37,112 @@ def _as_jax_array(values: Any, *, dtype: Any = jnp.float64) -> jax.Array:
     return jnp.asarray(np.asarray(values, dtype=dtype))
 
 
+def _offline_measurement_times(process: Any) -> np.ndarray:
+    """Every timestamp an offline measurement could sit on, as a sorted array.
+
+    Exactly ``{reactor components} ∪ {MEASURED process variables}`` — which is the
+    complete set of columns any ``target_source`` can select (``reactor_components``,
+    ``process_variables``, ``combined``, ``auto``), so it bounds the measurement block of
+    the output grid for every run.
+
+    ``is_controlled`` process variables are excluded, and that exclusion is the whole
+    point of this helper. They are pH, temperature, gas flow, stirring speed — control
+    INPUTS the RHS reads via ``eval_controlled_PVs``, logged online at thousands of
+    points. They can never be measurement targets: ``training_data`` filters them out by
+    default (``_process_variable_targets``) and raises if one is configured explicitly.
+    Counting their timestamps as measurement rows inflated the output-window bound by two
+    orders of magnitude (G of 288/317/451 instead of 1/15/6 on the shipped examples),
+    which silently disabled the window on every real dataset.
+    """
+    times: set[float] = set()
+
+    def _collect(values: Any) -> None:
+        # NB ``getattr(..., None) or ()`` would force a truth-value check on a JAX
+        # array; compare against None explicitly.
+        ts = getattr(values, "times", None)
+        if ts is None:
+            return
+        times.update(np.asarray(ts, dtype=np.float64).reshape(-1).tolist())
+
+    for component in process.reactor_medium.components.values():
+        _collect(getattr(component, "concentration", None))
+    for variable in (process.process_variables or {}).values():
+        if bool(variable.is_controlled):
+            continue
+        _collect(getattr(variable, "values", None))
+    return np.asarray(sorted(times), dtype=np.float64)
+
+
+def _output_window_bounds(collection: Any, process_order: list[str]) -> tuple[float, int]:
+    """Collection-wide constants that size the solver's per-segment output window.
+
+    The solver saves its trajectory with ``SaveAt(ts=...)`` inside each segment, and
+    hands each segment only a fixed-size window of the output grid — otherwise diffrax
+    writes every output slot in every segment and the work is ``O(n_segments * n_out)``,
+    which on an event-heavy process is far slower than saving only at boundaries
+    (measured 10x on the forward pass at 160 events). Per-segment save cost scales with
+    the window, so it wants to be as tight as it provably can be. The size must be a
+    static Python int, so it has to be bounded here rather than at trace time.
+
+    An output grid is the measurement times plus up to two ``linspace(t0, t1, N)``
+    blocks. In a gap of relative width ``f`` an N-point linspace contributes at most
+    ``ceil(f * N) + 1`` points, so with two blocks and the measurement contribution:
+
+        window >= ceil(f * (n_dense + n_prediction)) + measurements_per_gap + 2
+
+    Returns ``(max_event_gap_fraction, max_measurements_per_event_gap)``: the two
+    collection-wide maxima that ``f`` and ``measurements_per_gap`` need. Both are taken
+    across every process because the window is one static size for the whole vmapped
+    batch.
+
+    PRECONDITION: the solver's output grid spans the process's measurement window, which
+    every production path satisfies -- ``dense.build_union_time_grid`` linspaces over
+    ``[t_measured[0], t_measured[n_measured - 1]]``. ``f`` is a RELATIVE gap, so a caller
+    that hand-rolls a strictly narrower ``t_eval`` shrinks the denominator and can push
+    the true fraction above this bound. No tight bound exists that survives an arbitrary
+    sub-window (shrink the window around one gap and the fraction tends to 1), so this is
+    a precondition rather than something to defend against, and
+    ``CallbackSolution.output_overflow`` turns a violation into a loud error instead of
+    silently dropped output rows.
+    """
+    spans: list[tuple[np.ndarray, np.ndarray]] = []
+    for process_name in process_order:
+        process = collection.processes[process_name]
+        measured = _offline_measurement_times(process)
+        if measured.size < 2:
+            continue
+        t0, t1 = float(measured[0]), float(measured[-1])
+        event_md = collect_discrete_event_metadata(
+            process, tuple(build_rhs_ode(process).name_modeled_RMCs)
+        )
+        events = np.asarray(
+            list(event_md["sample_times"]) + list(event_md["bolus_times"]),
+            dtype=np.float64,
+        )
+        events = np.unique(events[(events > t0) & (events <= t1)])
+        spans.append((measured, np.unique(np.concatenate([[t0], events, [t1]]))))
+
+    if not spans:
+        return 1.0, 0
+    # Padding width: ``clamp_padded_time_rows`` parks unused measurement slots at t1, so
+    # they all land in the final gap and must be counted there.
+    padded_width = max(measured.size for measured, _ in spans)
+
+    gap_fraction = 0.0
+    measurements_per_gap = 0
+    for measured, boundaries in spans:
+        t0, t1 = float(measured[0]), float(measured[-1])
+        padded = np.concatenate(
+            [measured, np.full(padded_width - measured.size, t1, dtype=np.float64)]
+        )
+        for lo, hi in zip(boundaries[:-1], boundaries[1:], strict=True):
+            gap_fraction = max(gap_fraction, float(hi - lo) / (t1 - t0))
+            measurements_per_gap = max(
+                measurements_per_gap, int(((padded > lo) & (padded <= hi)).sum())
+            )
+    return gap_fraction, measurements_per_gap
+
+
 def _discrete_event_jump_ts(process: Any) -> list[float]:
     """Sorted unique vector-field discontinuity times from ``discrete_events``.
 
@@ -170,6 +276,10 @@ class PerProcessControls(eqx.Module):
     bolus_event_volumes: jax.Array
     bolus_event_Cin: jax.Array
     bolus_event_mask: jax.Array
+    # Collection-wide bounds that size the solver's per-segment output window; see
+    # ``_output_window_bounds``. Static so a pytree traversal cannot rewrite them.
+    max_event_gap_fraction: float = eqx.field(static=True)
+    max_measurements_per_event_gap: int = eqx.field(static=True)
 
     @property
     def n_u(self) -> int:
@@ -292,6 +402,10 @@ class BatchControls(eqx.Module):
     bolus_event_volumes: jax.Array
     bolus_event_Cin: jax.Array
     bolus_event_mask: jax.Array
+    # Collection-wide bounds that size the solver's per-segment output window; see
+    # ``_output_window_bounds``. Static so a pytree traversal cannot rewrite them.
+    max_event_gap_fraction: float = eqx.field(static=True)
+    max_measurements_per_event_gap: int = eqx.field(static=True)
 
     def _eval_values(self, row_idx: int, t: jax.Array) -> jax.Array:
         """Interpolate all control VALUES for one batch row, canonical order.
@@ -411,6 +525,10 @@ class ControlsStore(eqx.Module):
     bolus_event_volumes: jax.Array
     bolus_event_Cin: jax.Array
     bolus_event_mask: jax.Array
+    # Collection-wide bounds that size the solver's per-segment output window; see
+    # ``_output_window_bounds``. Static so a pytree traversal cannot rewrite them.
+    max_event_gap_fraction: float = eqx.field(static=True)
+    max_measurements_per_event_gap: int = eqx.field(static=True)
     # Runtime-built per-process metadata entries needed to construct thin views.
     _process_md_by_name: dict[str, dict[str, Any]]
 
@@ -766,6 +884,10 @@ class ControlsStore(eqx.Module):
                 "control_metadata": process_control_metadata[process_name],
             }
 
+        gap_fraction, measurements_per_gap = _output_window_bounds(
+            collection, process_order
+        )
+
         shape_metadata = {
             "n_processes": len(process_order),
             "max_grid_length": max_grid_length,
@@ -815,6 +937,8 @@ class ControlsStore(eqx.Module):
                 else _as_jax_array(bolus_event_Cin_rows)
             ),
             bolus_event_mask=jnp.asarray(bolus_event_mask_rows, dtype=bool),
+            max_event_gap_fraction=gap_fraction,
+            max_measurements_per_event_gap=measurements_per_gap,
             _process_md_by_name=processes_metadata,
         )
 
@@ -857,6 +981,8 @@ class ControlsStore(eqx.Module):
             bolus_event_volumes=self.bolus_event_volumes[process_index],
             bolus_event_Cin=self.bolus_event_Cin[process_index],
             bolus_event_mask=self.bolus_event_mask[process_index],
+            max_event_gap_fraction=self.max_event_gap_fraction,
+            max_measurements_per_event_gap=self.max_measurements_per_event_gap,
         )
 
     def gather_batch(self, process_indices: jax.Array | np.ndarray) -> BatchControls:
@@ -894,4 +1020,6 @@ class ControlsStore(eqx.Module):
             bolus_event_volumes=self.bolus_event_volumes[indices],
             bolus_event_Cin=self.bolus_event_Cin[indices],
             bolus_event_mask=self.bolus_event_mask[indices],
+            max_event_gap_fraction=self.max_event_gap_fraction,
+            max_measurements_per_event_gap=self.max_measurements_per_event_gap,
         )

@@ -1037,15 +1037,17 @@ class UserLossModule(eqx.Module):
         is then populated on :class:`LossInputs` as ``dense_*`` fields. Return
         ``None`` (default) to stay on the measurement-grid-only path.
 
-        The dense path is NOT free. Every dense time becomes a preset node in
-        ``physical_solve``, i.e. an ODE **segment boundary**, and each segment is a
-        fresh ``diffeqsolve`` that restarts the step-size controller. Measured on a
-        240 h / 11-measurement / 10-sample-event process: 10 segments and 41 ODE
-        steps on the measurement grid alone, 38 segments / 121 steps at
-        ``dense_grid_n=30`` (2.95x), 108 segments / 229 steps at 100 (5.59x).
-        See ``trainer.evaluate_sample_with_loss_module`` for the related caveat that
-        ``max_steps`` is a per-SEGMENT budget, so a finer grid also changes which
-        samples bail.
+        A dense time is NOT a segment boundary — ``physical_solve`` splits segments
+        only at bolus/sample events and reads the grid off ``SaveAt(ts=...)`` inside
+        each segment, which is interpolation and costs no solver steps. So a finer
+        dense grid does not subdivide the integration, does not change ``fail_time``,
+        and does not change which samples bail. (It used to do all three: on a
+        240 h / 11-measurement / 10-sample-event process the solve went from 10
+        segments / 38 ODE steps at ``dense_grid_n=None`` to 108 / 229 at 100.)
+
+        It is not free, though: each dense point still costs one interpolant
+        evaluation per segment it is windowed into, and the ``dense_*`` views it
+        populates are real arrays in the loss.
         """
         return None
 

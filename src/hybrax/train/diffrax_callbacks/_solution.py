@@ -28,7 +28,21 @@ class CallbackSolution(eqx.Module):
         event_states_after: (max_events, state_dim) states just after each affect.
         event_count: Total number of events that triggered.
         segment_num_steps: (max_events,) solver steps taken by each segment. Collapsed
-            post-failure segments take zero steps.
+            post-failure and post-``done`` segments take zero steps.
+
+        output_states: (n_output, state_dim) state at each requested ``output_times``
+            entry, or ``None`` when ``output_times`` was not passed. This is the
+            TRAJECTORY readout: unlike the event log it does not require an output time
+            to be a segment boundary, because each segment saves its own points with
+            ``SaveAt(ts=...)`` (pure interpolation, no extra solver steps). A time
+            coinciding with an event is owned by the segment that ENDS there, so it
+            reports the PRE-affect state -- the same convention as
+            ``event_states_before``. Rows the solve never reached (past a bail) are
+            ``inf``; use ``fail_time`` to classify them.
+        output_overflow: scalar bool, or ``None`` when ``output_times`` was not passed.
+            True if any segment owned more output points than ``output_window`` could
+            carry, which would silently drop the excess. Callers must treat this as a
+            hard error.
     """
 
     y_final: jnp.ndarray
@@ -41,6 +55,9 @@ class CallbackSolution(eqx.Module):
     event_states_after: jnp.ndarray
     event_count: jnp.ndarray
     segment_num_steps: jnp.ndarray
+
+    output_states: jnp.ndarray | None = None
+    output_overflow: jnp.ndarray | None = None
 
     def get_events(self, callback_index: int = None):
         """Get event times and states, optionally filtered by callback index.

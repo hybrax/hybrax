@@ -153,9 +153,14 @@ def test_every_active_event_fires_exactly_once():
         - float(jnp.sum(jnp.where(controls.sample_event_mask, controls.sample_event_volumes, 0.0)))
     )
 
-    # 61 points over [0, 1.5]; several land within 1e-4 of the t=1.0 events by design.
+    # 61 points over the process's full measurement window [0, 2]; several land within
+    # 1e-4 of the t=1.0 events by design (1.0 is itself a grid point at this spacing).
+    # The span must match the measurement window: the solver sizes its per-segment output
+    # window from a RELATIVE inter-event gap fraction (``_output_window_bounds``), so a
+    # deliberately narrower grid inflates the true fraction past the bound and trips
+    # ``output_overflow``.
     t_eval = jnp.asarray(
-        np.unique(np.concatenate([np.linspace(0.0, 1.5, 61), [1.0 - 1e-5, 1.0 + 1e-5]])),
+        np.unique(np.concatenate([np.linspace(0.0, 2.0, 61), [1.0 - 1e-5, 1.0 + 1e-5]])),
         dtype=dtype,
     )
     states = solve(

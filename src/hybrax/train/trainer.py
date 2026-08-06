@@ -60,6 +60,7 @@ def _solve_measurement_save_outputs_on_grid(
     rtol: float,
     atol: float,
     jump_ts: jax.Array | None,
+    n_linspace: int | None = None,
 ) -> tuple[SaveOutputs, jax.Array]:
     """Solve measurement grid once; return save-time observables and ``fail_time``.
 
@@ -69,6 +70,10 @@ def _solve_measurement_save_outputs_on_grid(
     the first segment failure (``inf`` if the solve never bailed); the caller masks
     measurements at ``t > fail_time`` out of the loss. Those rows carry a finite ``y0``
     placeholder here (the loss-facing solve is sanitized), not a real prediction.
+
+    ``n_linspace`` counts the evenly-spaced points ``build_union_time_grid`` spliced into
+    ``t_eval``; it only sizes the solver's per-segment output window. ``None`` (a bare
+    measurement grid) leaves the solver to bound it from the grid length.
     """
     # Bounded physical-state solve (manual jumps at events) — well-conditioned
     # gradient. Replaces the pseudobatch single-solve whose unbounded accumulator
@@ -86,6 +91,7 @@ def _solve_measurement_save_outputs_on_grid(
         rtol=float(rtol),
         atol=float(atol),
         jump_ts=jump_ts,
+        n_linspace=n_linspace,
         return_fail_time=True,
     )
     return jax.vmap(wrapper.physical_save_outputs)(t_eval, states), fail_time
@@ -127,6 +133,10 @@ def simulate_measurement_states(
         max_steps=max_steps,
         rtol=rtol,
         atol=atol,
+        # Bare measurement grid — no linspace spliced in — so the output window needs
+        # only the per-gap measurement count. Saying so beats letting the solver bound
+        # it from the grid length, and per-segment save cost scales with the window.
+        n_linspace=0,
     )
 
 
@@ -181,6 +191,14 @@ class _BatchIndexedControls(eqx.Module):
     @property
     def bolus_event_mask(self) -> jax.Array:
         return self.batch_controls.bolus_event_mask[self.row_idx]
+
+    @property
+    def max_event_gap_fraction(self) -> float:
+        return self.batch_controls.max_event_gap_fraction
+
+    @property
+    def max_measurements_per_event_gap(self) -> int:
+        return self.batch_controls.max_measurements_per_event_gap
 
 
 def evaluate_sample_with_loss_module(
@@ -261,11 +279,9 @@ def evaluate_sample_with_loss_module(
         # Dense/prediction path: solve ONCE on the union of the measurement grid,
         # the loss module's dense grid, and the forward prediction grid, then
         # index-split. Loss reads the dense block; forward reads the prediction
-        # block. SaveAt just records at more points, so the loss value is unchanged
-        # for a solve that SUCCEEDS. Caveat: ``max_steps`` is a per-SEGMENT budget, so
-        # a finer union grid subdivides into more/shorter segments; a sample that bails
-        # can therefore reach a different ``fail_time`` (hence a different post-failure
-        # mask) than at measurement resolution. Only bailing samples are affected.
+        # block. The union grid only decides where the solve is SAVED, not where it is
+        # split — segments come from bolus/sample events alone — so a finer grid leaves
+        # the loss value, ``fail_time`` and the post-failure mask alone.
         from .dense import build_union_time_grid
 
         (
@@ -292,6 +308,10 @@ def evaluate_sample_with_loss_module(
             rtol=solver_rtol,
             atol=solver_atol,
             jump_ts=jump_ts,
+            # Exactly the two linspace blocks spliced in just above, so the solver can
+            # size its per-segment output window tightly instead of bounding the whole
+            # grid. Both are static Python ints here.
+            n_linspace=(dense_grid_n or 0) + (prediction_grid_n or 0),
         )
         sample_save_outputs = jtu.tree_map(lambda leaf: leaf[sample_idx], save_outputs)
         meas_views = _views_from_save_outputs(sample_save_outputs)

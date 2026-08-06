@@ -36,7 +36,7 @@ jax.config.update("jax_enable_x64", True)
 _EVENTS = jnp.linspace(0.4, 2.0, 5, dtype=jnp.float64)  # max_events > 1
 
 
-def _solve_lane(freq, *, callbacks=None, controller=None, max_steps=64, max_events=5):
+def _solve_lane(freq, *, callbacks=None, controller=None, max_steps=320, max_events=5):
     """One trajectory. ``freq`` drives an oscillatory forcing; large freq -> stiff ->
     exhausts ``max_steps``. freq == 0 -> smooth healthy decay."""
 
@@ -58,7 +58,7 @@ def _solve_lane(freq, *, callbacks=None, controller=None, max_steps=64, max_even
         callbacks=cb,
         max_events=max_events,
         stepsize_controller=controller or diffrax.PIDController(rtol=1e-8, atol=1e-11),
-        max_steps_per_segment=max_steps,
+        max_steps=max_steps,
     )
     return sol.y_final
 
@@ -93,7 +93,7 @@ def test_early_failure_remains_poisoned():
 def test_post_failure_segments_take_zero_steps():
     """The performance fix: after an early bail, every remaining segment is a
     zero-length solve and must take no adaptive solver steps."""
-    max_steps = 64
+    max_steps = 320
 
     def rhs(t, y, args):
         return 2.0e4 * jnp.sin(2.0e4 * t) * y
@@ -108,7 +108,7 @@ def test_post_failure_segments_take_zero_steps():
         callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
-        max_steps_per_segment=max_steps,
+        max_steps=max_steps,
     )
 
     steps = sol.segment_num_steps.tolist()
@@ -142,7 +142,7 @@ def test_event_states_before_and_after_are_poisoned():
         callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
-        max_steps_per_segment=64,
+        max_steps=320,
     )
     assert bool(jnp.all(jnp.isinf(sol.event_states_before))), (
         "event_states_before (gathered by physical_solve) must be poisoned"
@@ -178,7 +178,7 @@ def test_dt_min_reached_is_detected():
         ),
         max_events=4,
         stepsize_controller=controller,
-        max_steps_per_segment=10_000,
+        max_steps=10_000,
     )
     assert bool(jnp.all(jnp.isinf(sol.y_final))), "dt_min_reached bail must be poisoned"
 
@@ -214,7 +214,7 @@ def test_fail_time_is_inf_on_a_healthy_solve():
         callbacks=PresetTimeCallback(times=_EVENTS, affect_fn=lambda y, t, args, i: y),
         max_events=5,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-11),
-        max_steps_per_segment=64,
+        max_steps=320,
     )
     assert bool(jnp.isinf(sol.fail_time)), "healthy solve must have fail_time == inf"
 
@@ -245,7 +245,7 @@ def test_fail_time_marks_the_last_good_node():
         ),
         max_events=4,
         stepsize_controller=controller,
-        max_steps_per_segment=10_000,
+        max_steps=10_000,
     )
     assert float(sol.fail_time) == 0.25, (
         "fail_time must be the last successfully-reached node (0.25), not later"
