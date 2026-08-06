@@ -57,6 +57,22 @@ def _normalize_auxiliary_outputs(
     return normalized
 
 
+def _validate_reaction_output_shapes(module: Any, outputs: Any) -> Any:
+    expected_shapes = {
+        "SCL_modeled_BiologicalOde_rates": (module.n_modeled_BiologicalOde_rates,),
+        "SCL_modeled_FVCs_rates": (module.n_modeled_FVCs,),
+        "SCL_latent_derivative": (module.n_latent,),
+    }
+    for name, expected_shape in expected_shapes.items():
+        actual_shape = tuple(jnp.shape(getattr(outputs, name)))
+        if actual_shape != expected_shape:
+            raise ValueError(
+                f"ReactionOutputs.{name} has shape {actual_shape}, "
+                f"expected {expected_shape}"
+            )
+    return outputs
+
+
 class HybridOdeWrapper(eqx.Module):
     """RAW physical-state wrapper around a user reaction module.
 
@@ -319,7 +335,7 @@ class HybridOdeWrapper(eqx.Module):
             SCL_modeled_FVCs_Cin=module.scale_modeled_FVCs_Cin(RAW_modeled_FVCs_Cin),
             SCL_latent=module.scale_latent(RAW_latent),
         )
-        outputs = module(t_arr, inputs)
+        outputs = _validate_reaction_output_shapes(module, module(t_arr, inputs))
         RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
             jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
         )
@@ -432,7 +448,7 @@ class HybridOdeWrapper(eqx.Module):
             ),
             SCL_latent=module.scale_latent(RAW_latent),
         )
-        outputs = module(t_arr, inputs)
+        outputs = _validate_reaction_output_shapes(module, module(t_arr, inputs))
         RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
             jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
         )

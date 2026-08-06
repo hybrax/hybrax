@@ -118,17 +118,31 @@ class ConstantReactionModule(UserReactionModule):
 
 
 class InvalidReactionShapeModule(UserReactionModule):
-    """Test reaction module returning malformed output ranks."""
+    """Return configurable outputs so each malformed field is tested in isolation."""
 
-    def __init__(self, **scale_kwargs):
+    biological_rates: jnp.ndarray
+    feed_rates: jnp.ndarray
+    latent_derivative: jnp.ndarray
+
+    def __init__(
+        self,
+        biological_rates,
+        feed_rates,
+        latent_derivative,
+        **scale_kwargs,
+    ):
         scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
         super().__init__(**scale_kwargs)
+        self.biological_rates = jnp.asarray(biological_rates)
+        self.feed_rates = jnp.asarray(feed_rates)
+        self.latent_derivative = jnp.asarray(latent_derivative)
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([[0.1]]),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
+            SCL_modeled_BiologicalOde_rates=self.biological_rates,
+            SCL_modeled_FVCs_rates=self.feed_rates,
+            SCL_latent_derivative=self.latent_derivative,
         )
 
 
@@ -402,6 +416,67 @@ def _build_wrapper(process, controls, reaction_module, **kwargs):
 
 
 @pytest.mark.parametrize(
+    ("field", "modeled_feed", "n_latent", "method", "expected_shape"),
+    [
+        (
+            "SCL_modeled_BiologicalOde_rates",
+            False,
+            0,
+            "physical_rhs",
+            (1,),
+        ),
+        ("SCL_modeled_FVCs_rates", True, 0, "physical_rhs", (1,)),
+        ("SCL_latent_derivative", False, 2, "physical_rhs", (2,)),
+        (
+            "SCL_modeled_BiologicalOde_rates",
+            False,
+            0,
+            "physical_save_outputs",
+            (1,),
+        ),
+    ],
+)
+def test_wrapper_rejects_broadcastable_scalar_reaction_output(
+    field, modeled_feed, n_latent, method, expected_shape
+):
+    """Reject scalars that downstream scaler operations would silently broadcast.
+
+    Every fixed-layout output is covered through the RHS, and the duplicate module
+    invocation in the save path gets an independent regression case.
+    """
+    process = _make_single_species_process()
+    if modeled_feed:
+        process.volume.volume_changes["feed_A"].is_controlled = False
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    outputs = {
+        "biological_rates": jnp.zeros(1),
+        "feed_rates": jnp.zeros(1 if modeled_feed else 0),
+        "latent_derivative": jnp.zeros(n_latent),
+    }
+    output_names = {
+        "SCL_modeled_BiologicalOde_rates": "biological_rates",
+        "SCL_modeled_FVCs_rates": "feed_rates",
+        "SCL_latent_derivative": "latent_derivative",
+    }
+    outputs[output_names[field]] = jnp.asarray(0.0)
+    module = InvalidReactionShapeModule(
+        **outputs,
+        SCALE_latent=jnp.ones(n_latent),
+    )
+    wrapper = _build_wrapper(process, controls, module)
+    y_phys = jnp.ones(2 + int(modeled_feed) + n_latent)
+
+    with pytest.raises(ValueError) as exc_info:
+        getattr(wrapper, method)(0.0, y_phys)
+
+    assert str(exc_info.value) == (
+        f"ReactionOutputs.{field} has shape (), expected {expected_shape}"
+    )
+
+
+@pytest.mark.parametrize(
     ("rate_field", "modeled_feed"),
     [
         ("SCALE_controlled_FVCs_rates", False),
@@ -524,9 +599,7 @@ def test_wrapper_accepts_custom_offset_free_rate_scaler_without_offset_metadata(
         modeled_feed_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
-    scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(
-        jnp.ones(1)
-    )
+    scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(jnp.ones(1))
     module = _inject_scales(module, scales)
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=module,
@@ -652,16 +725,12 @@ def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
     )
     wrapper = _build_wrapper(process, controls, module)
 
-    outputs = wrapper.physical_save_outputs(
-        0.5, jnp.asarray([1.0, 1.0, 6.0, 20.0])
-    )
+    outputs = wrapper.physical_save_outputs(0.5, jnp.asarray([1.0, 1.0, 6.0, 20.0]))
 
     assert outputs.SCL_states.shape == (2,)
     assert jnp.array_equal(outputs.SCL_states, jnp.asarray([1.0, 1.0]))
     assert outputs.auxiliary is not None
-    assert jnp.array_equal(
-        outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0])
-    )
+    assert jnp.array_equal(outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0]))
 
 
 def test_continuous_feed_transport_volume_and_dilution():
