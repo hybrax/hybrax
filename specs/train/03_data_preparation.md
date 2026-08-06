@@ -100,8 +100,18 @@ integrates in O(1) space. The [`estimate_all_scales`](02_cli_and_config.md#estim
 hook returns them as an [`EstimatedScales`](../bp_train/model_api.py). Bare
 arrays become frozen `LinearScaler` fields (`SCL = RAW / scale`, the default);
 a hook may return `AffineScaler(scale, offset)` for a value axis to opt into
-`SCL = (RAW - offset) / scale`. The reaction module is the single source of
-truth (see
+`SCL = (RAW - offset) / scale`. Use an offset when an axis varies over a small
+range around a much larger baseline, so the variation rather than the absolute
+value sets the SCL magnitude. Controlled temperature and pH, or reactor volume
+in fed-batch processes, are typical candidates; choose the offset near the
+operating baseline and estimate the scale from the centered values.
+
+For integrated-state axes, the adaptive solver applies its error tolerance in
+SCL coordinates (`atol + rtol * abs(SCL)`). Centering a state near zero reduces
+the relative-tolerance term and can therefore increase solver work; check step
+counts and failed segments with the intended offset and tolerances.
+
+The reaction module is the single source of truth (see
 [01_design_rationale.md](01_design_rationale.md#2-scaled-scl-vs-physical-raw-space)).
 A stateful reaction module also supplies `SCALE_latent`; `SCALE_state`,
 `SCALE_modeled_V`, and `SCALE_integrated_state` are derived scaler properties.
