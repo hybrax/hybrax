@@ -1,15 +1,15 @@
 """``max_steps``: a trajectory-level step budget, independent of segmentation.
 
 A per-segment bound alone would not be a budget: each segment gets a fresh allowance, so
-the effective ceiling is ``cap * n_segments``. A caller asking for N steps could silently
-get orders of magnitude more -- ``solver.max_steps = 8096`` on a 174-segment process
-really allowed ~89,000 -- and ``fail_time`` moved when the horizon was chopped more
-finely (which a dense loss or export grid used to do).
+the effective ceiling is ``cap * n_segments``. A caller asking for N steps could
+silently get orders of magnitude more -- ``solver.max_steps = 8096`` on a
+174-segment process really allowed ~89,000 -- and ``fail_time`` moved when the
+horizon was chopped more finely (which a dense loss or export grid used to do).
 
-``max_steps`` sums the per-segment counts in the scan carry and terminates the lane
-exactly like a segment bail, so the budget is a property of the trajectory rather than of
-the output grid. It is also the bound handed to each inner solve, so there is exactly one
-knob and it can never be undercut by a second, tighter one.
+``max_steps`` sums the per-segment counts in the scan carry and terminates the
+lane exactly like a segment bail, so the budget is a property of the trajectory
+rather than of the output grid. It is also the bound handed to each inner solve,
+so there is exactly one knob and it can never be undercut by a second, tighter one.
 """
 
 import diffrax
@@ -80,10 +80,10 @@ def test_budget_is_independent_of_how_the_horizon_is_chopped():
 
 
 def test_max_steps_also_bounds_the_inner_solve():
-    """There is exactly ONE knob, and it bounds a single segment too. A budget below what
-    one segment needs must bail rather than let that segment run unbounded -- this is what
-    makes the trajectory bound safe to use as the pmap latency guard now that the separate
-    per-segment cap is gone."""
+    """There is exactly ONE knob, and it bounds a single segment too. A budget below
+    what one segment needs must bail rather than let that segment run unbounded --
+    this is what makes the trajectory bound safe to use as the pmap latency guard now
+    that the separate per-segment cap is gone."""
     sol = _solve(n_segments=1, max_steps=4)
     assert bool(jnp.all(jnp.isinf(sol.y_final)))
     assert float(sol.fail_time) == 0.0, "the single segment bails from t0"

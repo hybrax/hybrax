@@ -37,6 +37,7 @@ from bp_train.controls_store import ControlsStore
 from bp_train.harness import (
     TrainHarnessConfig,
     _build_batch_index_stream,
+    _build_optimizer,
     _build_reaction_module,
     _ensure_process_names,
     _resolve_estimated_scales,
@@ -862,6 +863,30 @@ def test_harness_process_name_validation_rejects_duplicates_and_empty():
         _ensure_process_names(store, ("p1", "p1"))
     with pytest.raises(ValueError, match="non-empty"):
         _ensure_process_names(store, ())
+
+
+def test_build_optimizer_evaluates_schedule_with_int64_count():
+    """Prevent Optax's int32 counter from reducing schedule arithmetic to float32.
+
+    A no-decay schedule and scalar rate must produce bitwise-identical float64
+    updates; equality fails if the schedule receives Optax's original int32 count.
+    The wrapper in ``_build_optimizer`` prevents this (fixed in commit b8ddce1).
+    """
+    scalar = _build_optimizer("sgd", 0.01, grad_clip_norm=0)
+    # decay_rate=1 makes the schedule mathematically identical to the scalar rate.
+    schedule = _build_optimizer(
+        "sgd",
+        optax.exponential_decay(0.01, transition_steps=10, decay_rate=1.0),
+        grad_clip_norm=0,
+    )
+    params = jnp.asarray(1.0, dtype=jnp.float64)
+    gradient = jnp.asarray(1.0, dtype=jnp.float64)
+
+    scalar_update, _ = scalar.update(gradient, scalar.init(params))
+    schedule_update, _ = schedule.update(gradient, schedule.init(params))
+
+    # Exact equality catches float32 rounding that is later widened to float64.
+    assert jnp.array_equal(schedule_update, scalar_update)
 
 
 def test_harness_phase1_batching_validation_checks_basics():

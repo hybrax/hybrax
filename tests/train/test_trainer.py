@@ -1096,9 +1096,9 @@ def test_zero_offset_affine_matches_linear_through_differentiated_solve():
     leaf, so the two wrappers are different pytrees and fusion may legitimately reorder.
 
     Know what this test does NOT do. With `b == 0` the affine and linear paths are
-    mathematically identical, so it cannot detect offset-semantics faults; an offset
-    leak into `_ConcatScaler.scale_derivative` was injected and passes here, and is
-    caught by `test_affine_offset_cancels_from_gradient_through_solve` instead. This
+    mathematically identical, so it cannot detect offset-semantics faults. An
+    injected offset leak into the composed scaler's `scale_derivative` passes here;
+    `test_affine_offset_cancels_from_gradient_through_solve` catches it instead. This
     one exists for coverage of the traced path and as a regression net against gross
     breakage of the drop-in claim. Not the guard for offset correctness.
     """

@@ -318,7 +318,7 @@ directory.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `every` | 1.0 (>=0) | Periodic checkpoint cadence in epochs. Fractional values are supported; 0 disables periodic writes, not the mandatory final checkpoint. |
+| `every` | null | Periodic checkpoint cadence in epochs. Null selects `max(5, ceil(epochs / 20))`, giving at most 20 checkpoints; explicit fractional values are supported, and 0 disables periodic writes but not the mandatory final checkpoint. |
 
 **`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
 `output`), `plots` (default true).

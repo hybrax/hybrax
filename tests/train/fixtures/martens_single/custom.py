@@ -48,11 +48,7 @@ class FixtureReactionModule(UserReactionModule):
     def __init__(self, *, key, output_scale=0.1, **scale_kwargs):
         super().__init__(**scale_kwargs)
         self.output_scale = float(output_scale)
-        n_in = (
-            self.n_modeled_RMCs
-            + self.n_controlled_FVCs
-            + self.n_controlled_PVs
-        )
+        n_in = self.n_modeled_RMCs + self.n_controlled_FVCs + self.n_controlled_PVs
         n_out = self.n_modeled_BiologicalOde_rates + self.n_modeled_FVCs
         self.model = eqx.nn.MLP(
             in_size=max(n_in, 1),

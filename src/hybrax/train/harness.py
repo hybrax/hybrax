@@ -161,13 +161,15 @@ class TrainHarnessConfig:
     metrics_csv: str | None = None
     metrics_jsonl: str | None = None
     log_decimals: int = 4
-    # Checkpointing. ``checkpoint_every`` is measured in epochs; zero disables
-    # periodic writes, while a final checkpoint remains mandatory when configured.
-    # ``plots`` gates background plot rendering; ``prepared_path`` is the resolved
-    # prepared.json(.gz) bundled into every checkpoint (so each is self-contained)
-    # and the source of measured-point overlays for per-checkpoint process plots.
+    # Checkpointing. ``checkpoint_every`` is measured in epochs; None selects an
+    # automatic cadence of at least five epochs and at most 20 checkpoints. Zero
+    # disables periodic writes, while a final checkpoint remains mandatory when
+    # configured. ``plots`` gates background plot rendering; ``prepared_path`` is
+    # the resolved prepared.json(.gz) bundled into every checkpoint (so each is
+    # self-contained) and the source of measured-point overlays for per-checkpoint
+    # process plots.
     checkpoint_dir: Path | None = None
-    checkpoint_every: float = 1.0
+    checkpoint_every: float | None = None
     plots: bool = True
     prepared_path: Path | None = None
     # Optional LOO holdout set, evaluated whenever a checkpoint is written.
@@ -255,6 +257,18 @@ def _build_optimizer(
             raise ValueError("learning_rate must be positive")
     if float(grad_clip_norm) < 0.0:
         raise ValueError("grad_clip_norm must be non-negative")
+    if callable(learning_rate):
+        # optax passes an int32 count to learning-rate callables, making some schedules
+        # compute in float32 even with JAX x64 enabled (this depends on the actual
+        # schedule arithmetic, exponential decay, for example, uses f32 and cosine uses
+        # f64). We thus promote the count before schedule arithmetic to make sure f64 is
+        # used in any case (which fixes some minor issues we saw in training
+        # reproducibility).
+        schedule = learning_rate
+
+        def learning_rate(count):
+            return schedule(jnp.asarray(count, dtype=jnp.int64))
+
     name = str(optimizer_name)
     if name == "adam":
         base = optax.adam(learning_rate)
@@ -377,10 +391,15 @@ def _build_batch_index_stream(
     return jnp.asarray(np.stack(epochs_indices).reshape(-1, batch_size))
 
 
+def _resolve_checkpoint_every(every: float | None, *, epochs: int) -> float:
+    return max(5, (epochs + 19) // 20) if every is None else every
+
+
 def _checkpoint_update_boundaries(
-    every: float, *, batches_per_epoch: int, total_updates: int
+    every: float | None, *, batches_per_epoch: int, total_updates: int
 ) -> frozenset[int]:
     boundaries = {total_updates}
+    every = _resolve_checkpoint_every(every, epochs=total_updates // batches_per_epoch)
     if not math.isfinite(every) or every < 0:
         raise ValueError("checkpoint_every must be finite and nonnegative")
     cadence = Fraction(str(every))
@@ -1462,15 +1481,25 @@ def train_collection(
     )
 
     checkpoint_enabled = cfg.checkpoint_dir is not None
+    resolved_checkpoint_every = _resolve_checkpoint_every(
+        cfg.checkpoint_every, epochs=cfg.epochs
+    )
     checkpoint_boundaries = (
         _checkpoint_update_boundaries(
-            cfg.checkpoint_every,
+            resolved_checkpoint_every,
             batches_per_epoch=batches_per_epoch,
             total_updates=total_updates,
         )
         if checkpoint_enabled
         else frozenset()
     )
+    if checkpoint_enabled and cfg.checkpoint_every is None:
+        logger.info(
+            "checkpoint_every is null; using sensible automatic default "
+            "every=%d epochs (%d checkpoints including final)",
+            resolved_checkpoint_every,
+            len(checkpoint_boundaries),
+        )
     plotter = BackgroundPlotter() if (checkpoint_enabled and cfg.plots) else None
     checkpoint_writer = (
         CheckpointWriter(

@@ -99,10 +99,32 @@ axes you need — unused fields cost nothing under JIT.
 
 ### `DefaultReactionModule`
 
-A 2-layer `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
+An `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
 `SCL_modeled_BiologicalOde_rates` (includes any `r_<pv>` PV rates). It ignores
-controls and emits zero-length modeled-feed rates. The single trainable leaf is
-the MLP (`model: eqx.nn.MLP = trainable_field()`).
+controls and emits zero-valued modeled-feed rates. The defaults remain two hidden
+layers and width `max(8, 2 * max(n_inputs, n_outputs))`; pass `depth` and
+`width_size` to override them. Networks through three hidden layers use tanh with
+Glorot-uniform weights; deeper networks use SiLU with He-uniform weights. Biases
+are zero, and the output weights use `0.01 × Glorot uniform` to start the ODE
+rates near zero. The single trainable leaf is the MLP
+(`model: eqx.nn.MLP = trainable_field()`).
+
+### `DefaultStatefulReactionModule`
+
+`DefaultStatefulReactionModule` is a latent ODE with a standard GRU:
+`dh/dt = GRUCell(x, h) - h`. Its cell input `x` contains the scaled physical
+and control inputs only; the latent state is passed only as the GRU hidden
+argument. The reset and keep gates use sigmoid and the candidate uses tanh.
+
+Each reset/keep/candidate input-kernel block starts from independent
+Glorot-uniform weights, and each recurrent block from independent orthogonal
+weights. The GRU's trainable `bias` and `bias_n` both start at zero. Its signed
+biological-rate head uses `0.01 × Glorot` weights and a zero bias, giving a
+near-zero initial output. When modeled feeds exist, their Softplus head also
+uses `0.01 × Glorot` weights, but its trainable bias is calibrated so a zero
+readout emits `0.01` in SCL derivative units. That nonzero feed-head bias is
+separate from, and does not change, the zero initialization of internal GRU
+biases.
 
 ### Field tagging
 

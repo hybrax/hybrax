@@ -228,8 +228,8 @@ class Scaler(eqx.Module):
 
     # Static contract for elementwise composition. Type-only so concrete eqx
     # modules can store ``scale`` / ``offset`` as fields (a runtime @property
-    # here would block those field assignments). ``_ConcatScaler.__init__``
-    # validates the contract loudly at runtime.
+    # here would block those field assignments). ``_compose_scalers`` validates
+    # the contract loudly at runtime.
     if TYPE_CHECKING:
         scale: jax.Array
         offset: jax.Array
@@ -307,9 +307,28 @@ class AffineScaler(Scaler):
     the three rate axes. Closed-over concrete zero offsets retain
     ``LinearScaler`` bit identity through reverse-mode training. A genuinely
     dynamic traced offset uses runtime selection: values retain signed-zero
-    identity, but reverse-mode signed-zero identity is not guaranteed. The same
-    limitation applies when a bare ``AffineScaler.astype`` stages a real cast
-    inside a trace; composed state-scaler casts preserve their concrete branch.
+    identity, but reverse-mode signed-zero identity is not guaranteed.
+
+    A bare ``AffineScaler.astype`` staged inside a trace uses the dynamic
+    fallback. Composed zero-offset state scalers instead collapse to
+    ``LinearScaler`` before casting, preserving the solver's concrete
+    offset-free branch without cached public state.
+
+    A composed **non-zero** offset does take that dynamic fallback, and the
+    reason is not obvious: ``_compose_scalers`` reads the predicate from
+    concrete child leaves, but the ``AffineScaler`` it returns holds the
+    *concatenated* arrays, and ``jnp.concatenate`` stages inside a trace even
+    when every child is a concrete closed-over constant. The composed scaler's
+    ops therefore re-derive the predicate from a tracer and select at runtime.
+    Measured over a real ``solve_physical_states`` with a non-zero offset and
+    the module closed over: 7 of 10 composed value ops select rather than
+    branch, at both float32 and float64. That is numerically correct and there
+    is no bit-identity claim for a non-zero offset, so it is accepted rather
+    than worked around — carrying the predicate across would reintroduce the
+    public cached flag that ``eqx.tree_at`` can stale. Note it costs extra
+    selects on closed-over forward paths (export, inference). The training path
+    is unaffected in the sense that it already selects: there the module is a
+    differentiated argument, so the offset is a genuine tracer either way.
     """
 
     scale: jax.Array = frozen_field()
@@ -364,125 +383,35 @@ class AffineScaler(Scaler):
         return AffineScaler(self.scale[idx], self.offset[idx])
 
 
-class _ConcatScaler(Scaler):
-    """Composed state scaler: concatenates per-axis scalers in a fixed layout.
+def _compose_scalers(*parts: Scaler) -> LinearScaler | AffineScaler:
+    """Compose exact elementwise scalers into one concrete scaler.
 
-    Used for ``SCALE_state`` / ``SCALE_integrated_state``. Restricted to
-    elementwise scalers (``LinearScaler`` / ``AffineScaler``) so composition is
-    ``concat(scale_i)`` / ``concat(offset_i)`` and ``__getitem__`` is
-    ``Scaler(arr[idx])``. Zero-width parts are preserved in the concat to
-    reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter them
-    (a zero-width float64 axis drives the state dtype in 9/10 examples;
-    dropping it would silently change loss precision).
+    Zero-width parts stay in both concatenations because they participate in
+    JAX dtype promotion. Arrays are materialized once here; value and derivative
+    operations then reuse the existing concrete scaler implementations.
     """
+    for part in parts:
+        if type(part) not in (LinearScaler, AffineScaler):
+            raise TypeError(
+                "State scaler composition supports exact LinearScaler or "
+                f"AffineScaler; got {type(part).__name__}"
+            )
 
-    parts: tuple[Scaler, ...]
-    _scale_c: jax.Array
-    _offset_c: jax.Array
-    _offset_flag: bool | None = eqx.field(static=True)
-
-    def __init__(
-        self,
-        *parts: Scaler,
-        _offset_flag_hint: bool | None = None,
-    ):
-        for part in parts:
-            if type(part) not in (LinearScaler, AffineScaler, _ConcatScaler):
-                raise TypeError(
-                    "State scaler composition supports exact LinearScaler, "
-                    "AffineScaler, or _ConcatScaler; got "
-                    f"{type(part).__name__}"
-                )
-        self.parts = tuple(parts)
-        self._scale_c = jnp.concatenate([jnp.atleast_1d(p.scale) for p in parts])
-        self._offset_c = jnp.concatenate([jnp.atleast_1d(p.offset) for p in parts])
-        # Derive from child leaves, not `_offset_c`: concatenation stages inside
-        # `jit` even when every child leaf is a concrete closed-over constant.
-        # This concat is rebuilt from current module leaves on every property
-        # access, so `eqx.tree_at` offset replacements cannot stale the flag.
-        flags = [
-            p._offset_flag if type(p) is _ConcatScaler else _offset_is_nonzero(p.offset)
-            for p in parts
-            if type(p) is not LinearScaler
-        ]
-        derived_flag = (
-            True
-            if any(flag is True for flag in flags)
-            else None
-            if None in flags
-            else False
-        )
-        self._offset_flag = (
-            derived_flag if _offset_flag_hint is None else _offset_flag_hint
-        )
-
-    @property
-    def _scale_arr(self) -> jax.Array:
-        return self._scale_c
-
-    @property
-    def _offset_arr(self) -> jax.Array:
-        return self._offset_c
-
-    @property
-    def _has_offset(self) -> bool:
-        return self._offset_flag is not False
-
-    @property
-    def scale(self) -> jax.Array:
-        """Composed scale array (concat of parts; greppable, like LinearScaler)."""
-        return self._scale_arr
-
-    @property
-    def offset(self) -> jax.Array:
-        """Composed offset array (concat of parts)."""
-        return self._offset_arr
-
-    def __rtruediv__(self, RAW: jax.Array) -> jax.Array:
-        if isinstance(RAW, np.ndarray):
-            raise TypeError("Use Scaler.scale_value() for NumPy arrays")
-        # Keep all-linear default op-for-op RAW / scale (no extra -0).
-        return _scale_with_optional_offset(
-            RAW,
-            self._scale_arr,
-            self._offset_arr,
-            offset_flag=self._offset_flag,
-        )
-
-    def __rmul__(self, SCL: jax.Array) -> jax.Array:
-        # Keep all-linear default op-for-op SCL * scale. Adding +0 flips the
-        # sign of -0.0 and is therefore NOT bit-identical.
-        return _unscale_with_optional_offset(
-            SCL,
-            self._scale_arr,
-            self._offset_arr,
-            offset_flag=self._offset_flag,
-        )
-
-    def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
-        return RAW_rate / self._scale_arr
-
-    def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
-        return SCL_rate * self._scale_arr
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        return tuple(self._scale_c.shape)
-
-    def astype(self, dtype: jnp.dtype) -> "_ConcatScaler":
-        # A real cast stages child arrays inside `jit`; carry this transient
-        # concat's already-live predicate across rather than degrading it to
-        # the traced (`None`) fallback. `_ConcatScaler` is rebuilt from current
-        # public module leaves before this cast, so the hint cannot be stale.
-        return _ConcatScaler(
-            *(p.astype(dtype) for p in self.parts),
-            _offset_flag_hint=self._offset_flag,
-        )
-
-    def __getitem__(self, idx):
-        if self._has_offset:
-            return AffineScaler(self._scale_arr[idx], self._offset_arr[idx])
-        return LinearScaler(self._scale_arr[idx])
+    scale = jnp.concatenate([jnp.atleast_1d(part.scale) for part in parts])
+    offset = jnp.concatenate([jnp.atleast_1d(part.offset) for part in parts])
+    flags = [
+        _offset_is_nonzero(part.offset) for part in parts if type(part) is AffineScaler
+    ]
+    offset_flag = (
+        True
+        if any(flag is True for flag in flags)
+        else None
+        if None in flags
+        else False
+    )
+    if offset_flag is False:
+        return LinearScaler(scale)
+    return AffineScaler(scale, offset)
 
 
 def _as_scaler(value: jax.Array | Scaler) -> Scaler:
@@ -753,6 +682,15 @@ class UserReactionModule(eqx.Module):
         return int(self.SCALE_latent.shape[0])
 
     @property
+    def _state_scalers(self) -> tuple[Scaler, ...]:
+        return (
+            self.SCALE_modeled_RMCs,
+            self.SCALE_modeled_PVs,
+            self.SCALE_V_in_cumulative,
+            self.SCALE_modeled_FVCs_cumulative,
+        )
+
+    @property
     def SCALE_state(self) -> Scaler:
         """Composed state scaler.
 
@@ -760,12 +698,7 @@ class UserReactionModule(eqx.Module):
         Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
         reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter.
         """
-        return _ConcatScaler(
-            self.SCALE_modeled_RMCs,
-            self.SCALE_modeled_PVs,
-            self.SCALE_V_in_cumulative,
-            self.SCALE_modeled_FVCs_cumulative,
-        )
+        return _compose_scalers(*self._state_scalers)
 
     @property
     def SCALE_modeled_V(self) -> Scaler:
@@ -775,7 +708,7 @@ class UserReactionModule(eqx.Module):
     @property
     def SCALE_integrated_state(self) -> Scaler:
         """State scaler used by the ODE solver, incl. trailing latent state."""
-        return _ConcatScaler(self.SCALE_state, self.SCALE_latent)
+        return _compose_scalers(*self._state_scalers, self.SCALE_latent)
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         """Override. Inputs in SCL space; return rates in SCL space.

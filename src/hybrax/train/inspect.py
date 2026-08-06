@@ -64,17 +64,13 @@ def _collect_structure_rows(
             child = getattr(value, fname)
             child_name = f"{prefix}.{fname}" if prefix else fname
             field_tag = finfo.metadata.get(TRAINABLE_METADATA_KEY)
-            child_inherited = (
-                inherited_tag if inherited_tag is not None else field_tag
-            )
+            child_inherited = inherited_tag if inherited_tag is not None else field_tag
             rows.extend(_collect_structure_rows(child, child_name, child_inherited))
         return rows
 
     if isinstance(value, (list, tuple)):
         for i, item in enumerate(value):
-            rows.extend(
-                _collect_structure_rows(item, f"{prefix}[{i}]", inherited_tag)
-            )
+            rows.extend(_collect_structure_rows(item, f"{prefix}[{i}]", inherited_tag))
         return rows
 
     if eqx.is_array(value):
@@ -109,9 +105,7 @@ def format_trainable_structure(
     if shape_width is None:
         shape_width = max([len(header[1])] + [len(r[1]) for r in rows] + [width_floor])
     if status_width is None:
-        status_width = max(
-            [len(header[2])] + [len(r[2]) for r in rows] + [width_floor]
-        )
+        status_width = max([len(header[2])] + [len(r[2]) for r in rows] + [width_floor])
 
     total_width = name_width + shape_width + status_width + 10
 
@@ -242,7 +236,11 @@ def _names_cell_lines(
 def _reaction_schema_rows(
     rhs_ode: "RhsOde",
     controls: "PerProcessControls",
-) -> tuple[list[tuple[str, str, tuple[str, ...]]], list[tuple[str, str, tuple[str, ...]]], list[tuple[str, tuple[str, ...], tuple[str, ...]]]]:
+) -> tuple[
+    list[tuple[str, str, tuple[str, ...]]],
+    list[tuple[str, str, tuple[str, ...]]],
+    list[tuple[str, tuple[str, ...], tuple[str, ...]]],
+]:
     """Build the (inputs, outputs, cin_followups) row collections.
 
     `cin_followups` carries (axis_name, row_names, col_names) for each
@@ -342,12 +340,8 @@ def _render_schema_table(
         )
         pre_lines.append(cell_lines)
 
-    axis_width = max(
-        [len(header[0])] + [len(r[0]) for r in rows] + [width_floor]
-    )
-    shape_width = max(
-        [len(header[1])] + [len(r[1]) for r in rows] + [width_floor]
-    )
+    axis_width = max([len(header[0])] + [len(r[0]) for r in rows] + [width_floor])
+    shape_width = max([len(header[1])] + [len(r[1]) for r in rows] + [width_floor])
     names_width = max(
         [len(header[2])]
         + [len(line) for block in pre_lines for line in block]
@@ -367,9 +361,7 @@ def _render_schema_table(
     title_pad_total = total_width - 2 - len(title) - 2  # two spaces around title
     title_left = title_pad_total // 2
     title_right = title_pad_total - title_left
-    title_line = (
-        "+" + "-" * title_left + " " + title + " " + "-" * title_right + "+"
-    )
+    title_line = "+" + "-" * title_left + " " + title + " " + "-" * title_right + "+"
 
     out: list[str] = [title_line]
     out.append(_fmt_row(header[0], header[1], header[2]))
@@ -393,17 +385,13 @@ def format_reaction_schema(
     row with shape ``(n_rows, n_cols)`` followed by indented
     ``rows:``/``cols:`` lines naming the matrix axes.
     """
-    inputs_rows, outputs_rows, cin_followups = _reaction_schema_rows(
-        rhs_ode, controls
-    )
+    inputs_rows, outputs_rows, cin_followups = _reaction_schema_rows(rhs_ode, controls)
     cin_followups_by_name = {name: (rows, cols) for name, rows, cols in cin_followups}
 
     inputs_table = _render_schema_table(
         "ReactionInputs Schema", inputs_rows, cin_followups_by_name
     )
-    outputs_table = _render_schema_table(
-        "ReactionOutputs Schema", outputs_rows, {}
-    )
+    outputs_table = _render_schema_table("ReactionOutputs Schema", outputs_rows, {})
     return inputs_table + "\n\n" + outputs_table
 
 

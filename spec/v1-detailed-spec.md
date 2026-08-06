@@ -944,8 +944,9 @@ Unknown, duplicate, or empty process selections fail. Nonpositive epochs or
 batch size, oversized batches, nonpositive learning rate, and unsupported
 optimizers fail explicitly.
 
-`checkpoint.every` is a finite nonnegative float measured in epochs. Periodic
-checkpoint ordinal `k` triggers after update
+`checkpoint.every` is null or a finite nonnegative float measured in epochs.
+Null resolves to `max(5, ceil(epochs / 20))`, producing at most 20 checkpoints.
+Periodic checkpoint ordinal `k` triggers after update
 `ceil(k * checkpoint.every * batches_per_epoch)`, with exact decimal intent and
 duplicate boundaries removed. Zero disables periodic writes only. Every
 artifact-producing run writes a mandatory final checkpoint; all checkpoint
