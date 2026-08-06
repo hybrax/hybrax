@@ -77,7 +77,7 @@ def _solve_measurement_save_outputs_on_grid(
     """
     # Bounded physical-state solve (manual jumps at events) — well-conditioned
     # gradient. Replaces the pseudobatch single-solve whose unbounded accumulator
-    # corrupted the adjoint (see spec/pseudo_diagnosis.md).
+    # corrupted the adjoint (see specs/pseudo_diagnosis.md).
     from .physical_solve import solve_physical_states
 
     n_meas_arr = jnp.asarray(n_measured, dtype=jnp.int32)
