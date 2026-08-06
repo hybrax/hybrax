@@ -238,9 +238,13 @@ class NonNegLossModule(DefaultLossModule):
         # Measurement-grid term: non-negativity hinge per species.
         mask = inputs.mask_measured_any
         denom = jnp.maximum(jnp.sum(mask), 1.0)
+        scaler = inputs.reaction_module.SCALE_state[: len(self.target_names)]
+        SCL_zero = scaler.scale_value(
+            jnp.zeros(len(self.target_names), dtype=inputs.SCL_target_pred.dtype)
+        )
         penalties = {}
         for i, name in enumerate(self.target_names):
-            violation = jax.nn.relu(-inputs.SCL_target_pred[:, i])
+            violation = jax.nn.relu(SCL_zero[i] - inputs.SCL_target_pred[:, i])
             penalties[f"nonneg/{name}"] = self.weight * (
                 jnp.sum(jnp.square(violation) * mask) / denom
             )
