@@ -40,11 +40,17 @@ When loading from a directory, `data.json` is tried first, then `data.json.gz`.
 Anything that is neither `.json` nor `.json.gz` raises `FileNotFoundError` with
 an explicit message.
 
-### Comments in input files
+### JSON parsing and comments
 
-`json_io.loads_json` strips **whole-line** `//` comments before parsing, so
-hand-maintained config and fixture files can be annotated. Trailing comments
-after data on the same line are *not* stripped.
+All reads use ijson's YAJL backend with `allow_comments=True`, so whole-line and
+inline `//` comments and `/* ... */` block comments are accepted directly. No
+comment-stripping preprocessing is used. Ordinary documents are fully
+materialized; `BioProcessCollection` entries are instead restored and
+constructed one process at a time to limit peak memory. Both paths consume the
+complete document, so malformed suffixes and trailing garbage fail.
+
+Bare `NaN`, `Infinity`, and `-Infinity` tokens are invalid and rejected. Writers
+always emit valid JSON, replacing non-finite floating values with `null`.
 
 ## JSON structure
 
@@ -96,7 +102,9 @@ bare list:
 
 On load, `_restore_arrays` walks the tree and rebuilds `jnp` arrays. Floating
 dtypes are always restored as float64, so an older float32 payload loads
-correctly and is upcast once.
+correctly and is upcast once. A `null` inside a typed floating array reconstructs
+as NaN; `null` is invalid inside typed integer and boolean arrays. Outside typed
+floating arrays, `null` remains Python `None`.
 
 ### `TimeSeries` payloads
 

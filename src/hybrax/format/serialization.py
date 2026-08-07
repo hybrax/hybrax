@@ -2,10 +2,14 @@
 
 import gzip
 import json
-import jax.numpy as jnp
-import numpy as np
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Optional, Union
+
+import jax.numpy as jnp
+import numpy as np
+from ijson.common import ObjectBuilder
+
 from .dataclasses import (
     AugmentedBioProcess,
     BiologicalOde,
@@ -29,7 +33,7 @@ from .dataclasses import (
     ReactorMediumComponent,
     ProcessVariable,
 )
-from .json_io import loads_json
+from .json_io import _kvitems, _parse, load_json
 
 
 def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
@@ -114,19 +118,21 @@ def _resolve_existing_json_path(path: Path) -> Path:
 
 
 def _open_json_file(path: Path, mode: str):
-    """Open a JSON or JSON.GZ file in text mode."""
+    """Open a JSON or JSON.GZ file."""
     path = Path(path)
+    kwargs = {} if "b" in mode else {"encoding": "utf-8"}
     if _is_json_gz_path(path):
-        return gzip.open(path, mode, encoding="utf-8")
-    return open(path, mode, encoding="utf-8")
+        return gzip.open(path, mode, **kwargs)
+    return open(path, mode, **kwargs)
 
 
 def _save_json(data_dict: Dict, json_path: Path) -> None:
     """Write a serialized data dict to a `.json` / `.json.gz` file."""
     json_path = Path(json_path)
     json_path.parent.mkdir(parents=True, exist_ok=True)
+    _normalize_nonfinite(data_dict)
     with _open_json_file(json_path, "wt") as f:
-        json.dump(data_dict, f, indent=2, cls=NumpyEncoder)
+        json.dump(data_dict, f, indent=2, cls=NumpyEncoder, allow_nan=False)
     print(f"✓ Saved to {json_path}")
 
 
@@ -137,8 +143,14 @@ def _restore_arrays(obj):
             # Floating data is float64 (x64 pipeline). Legacy payloads may store
             # float32; load them straight as float64 (int/bool dtypes preserved).
             stored = np.dtype(obj["dtype"])
-            dtype = jnp.float64 if np.issubdtype(stored, np.floating) else stored
-            return jnp.array(obj["__ndarray__"], dtype=dtype)
+            payload = obj["__ndarray__"]
+            if np.issubdtype(stored, np.floating):
+                return jnp.array(np.asarray(payload, dtype=np.float64))
+            if _contains_none(payload):
+                raise ValueError(
+                    f"null is invalid in a typed {stored} __ndarray__ payload"
+                )
+            return jnp.array(payload, dtype=stored)
         return {k: _restore_arrays(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_restore_arrays(item) for item in obj]
@@ -148,9 +160,7 @@ def _restore_arrays(obj):
 def _load_json(json_path: Path) -> Dict:
     """Read a `.json` / `.json.gz` file and restore JAX arrays."""
     json_path = Path(json_path)
-    with _open_json_file(json_path, "rt") as f:
-        data_dict = loads_json(f.read())
-    return _restore_arrays(data_dict)
+    return _restore_arrays(load_json(json_path))
 
 
 def save_case_study(case_study: CaseStudy, path: Path) -> None:
@@ -179,12 +189,93 @@ def save_process_collection(collection: BioProcessCollection, path: Path) -> Non
     _save_json(_process_collection_to_dict(collection), _resolve_json_path(path))
 
 
+def _read_collection_metadata(json_path: Path):
+    metadata = None
+    metadata_builder = None
+    metadata_depth = 0
+    pending_key = None
+    root_seen = False
+    metadata_seen = False
+    processes_seen = False
+
+    with _open_json_file(json_path, "rb") as f:
+        for prefix, event, value in _parse(f, source=json_path):
+            if not root_seen:
+                if prefix != "" or event != "start_map":
+                    raise ValueError(f"{json_path}: collection root must be an object")
+                root_seen = True
+                continue
+
+            if prefix == "" and event == "map_key":
+                pending_key = value
+                continue
+
+            if pending_key == "processes" and prefix == "processes":
+                if event != "start_map":
+                    raise ValueError(
+                        f"{json_path}: collection processes must be an object"
+                    )
+                processes_seen = True
+                pending_key = None
+                if metadata_seen:
+                    return metadata
+                continue
+
+            if pending_key == "metadata" and prefix == "metadata":
+                if event == "null":
+                    metadata = None
+                    metadata_seen = True
+                    if processes_seen:
+                        return metadata
+                elif event == "start_map":
+                    metadata_builder = ObjectBuilder()
+                    metadata_builder.event(event, value)
+                    metadata_depth = 1
+                else:
+                    raise ValueError(
+                        f"{json_path}: collection metadata must be an object or null"
+                    )
+                pending_key = None
+                continue
+
+            if metadata_builder is not None and (
+                prefix == "metadata" or prefix.startswith("metadata.")
+            ):
+                metadata_builder.event(event, value)
+                if event in ("start_map", "start_array"):
+                    metadata_depth += 1
+                elif event in ("end_map", "end_array"):
+                    metadata_depth -= 1
+                    if metadata_depth == 0:
+                        metadata = _restore_arrays(metadata_builder.value)
+                        metadata_builder = None
+                        metadata_seen = True
+                        if processes_seen:
+                            return metadata
+
+    if not root_seen:
+        raise ValueError(f"{json_path}: collection root must be an object")
+    if not processes_seen:
+        raise ValueError(f"{json_path}: collection must contain a processes object")
+    return metadata
+
+
+def _stream_process_collection(json_path: Path) -> BioProcessCollection:
+    metadata = _read_collection_metadata(json_path)
+    processes = {}
+    with _open_json_file(json_path, "rb") as f:
+        for process_id, process_data in _kvitems(f, "processes", source=json_path):
+            processes[process_id] = _dict_to_process(_restore_arrays(process_data))
+    return BioProcessCollection(metadata=metadata, processes=processes)
+
+
 def load_process_collection(path: Path) -> BioProcessCollection:
-    """Load a BioProcessCollection from JSON.
+    """Load a BioProcessCollection incrementally from JSON.
 
     `path` may be a JSON file path or a directory containing `data.json`.
+    The YAJL-backed parser also accepts ``//`` and ``/* ... */`` comments.
     """
-    return _dict_to_process_collection(_load_json(_resolve_existing_json_path(path)))
+    return _stream_process_collection(_resolve_existing_json_path(path))
 
 
 # ============================================================
@@ -195,7 +286,7 @@ def load_process_collection(path: Path) -> BioProcessCollection:
 def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
     """Convert BioProcessCollection to nested dictionary."""
     return {
-        "metadata": collection.metadata,
+        "metadata": deepcopy(collection.metadata),
         "processes": {
             p_id: _process_to_dict(process)
             for p_id, process in collection.processes.items()
@@ -362,7 +453,7 @@ def _timeseries_to_dict_payload(
     if hasattr(value, "continuity_side"):
         payload["continuity_side"] = value.continuity_side
     if getattr(value, "metadata", None) is not None:
-        payload["metadata"] = value.metadata
+        payload["metadata"] = deepcopy(value.metadata)
     return payload
 
 
@@ -830,8 +921,8 @@ def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
     """Convert DiscreteEvents to dictionary"""
     return {
         "times": de.times,
-        "labels": de.labels,
-        "metadata": de.metadata,
+        "labels": deepcopy(de.labels),
+        "metadata": deepcopy(de.metadata),
     }
 
 
@@ -852,10 +943,39 @@ def _dict_to_discrete_events(data: Dict) -> DiscreteEvents:
 # ============================================================
 
 
+def _contains_none(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (list, tuple)):
+        return any(_contains_none(item) for item in value)
+    return False
+
+
+def _normalize_nonfinite(value):
+    """Replace non-finite floats in temporary serialization data with null."""
+    if isinstance(value, (float, np.floating)):
+        value = float(value)
+        return value if np.isfinite(value) else None
+    if isinstance(value, dict):
+        for key, item in value.items():
+            value[key] = _normalize_nonfinite(item)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            value[index] = _normalize_nonfinite(item)
+    elif isinstance(value, tuple):
+        return tuple(_normalize_nonfinite(item) for item in value)
+    return value
+
+
 class NumpyEncoder(json.JSONEncoder):
-    """JSON encoder that handles numpy/JAX arrays"""
+    """JSON encoder that handles numpy/JAX arrays."""
 
     def default(self, obj):
         if isinstance(obj, (jnp.ndarray, np.ndarray)):
-            return {"__ndarray__": obj.tolist(), "dtype": str(obj.dtype)}
+            return {
+                "__ndarray__": _normalize_nonfinite(obj.tolist()),
+                "dtype": str(obj.dtype),
+            }
+        if isinstance(obj, np.floating):
+            return _normalize_nonfinite(obj)
         return super().default(obj)

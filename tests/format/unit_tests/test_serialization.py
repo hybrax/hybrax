@@ -2,10 +2,15 @@
 
 import gzip
 import json
-import pytest
-import jax.numpy as jnp
 from pathlib import Path
 import tempfile
+
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
+import bp_format.serialization as serialization
+from bp_format.json_io import JSONParseError
 
 from bp_format import (
     BiologicalOde,
@@ -169,6 +174,48 @@ def test_save_load_process_collection_roundtrip(sample_collection):
         assert loaded.processes["fed_batch_001"].metadata.name == "fed_batch_001"
 
 
+def test_load_process_collection_streams_processes_with_legacy_values(
+    sample_collection,
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "collection.json"
+        sample_collection.metadata = {
+            "source": "raw_lab_export",
+            "run_ids": jnp.array([1, 2]),
+        }
+        sample_collection.processes = {
+            "first": sample_collection.processes["fed_batch_001"],
+            "second": sample_collection.processes["fed_batch_001"],
+        }
+        save_process_collection(sample_collection, path)
+
+        legacy = serialization._dict_to_process_collection(
+            serialization._load_json(path)
+        )
+        loaded = load_process_collection(path)
+
+        assert list(loaded.processes) == list(legacy.processes) == ["first", "second"]
+        assert loaded.metadata["source"] == legacy.metadata["source"]
+        np.testing.assert_array_equal(
+            loaded.metadata["run_ids"], legacy.metadata["run_ids"]
+        )
+        for process_id in loaded.processes:
+            expected = legacy.processes[process_id]
+            actual = loaded.processes[process_id]
+            np.testing.assert_array_equal(
+                actual.process_variables["temperature"].values.values,
+                expected.process_variables["temperature"].values.values,
+            )
+            np.testing.assert_array_equal(
+                actual.reactor_medium.components["biomass"].concentration.times,
+                expected.reactor_medium.components["biomass"].concentration.times,
+            )
+            assert (
+                actual.process_variables["pH"].values.value
+                == expected.process_variables["pH"].values.value
+            )
+
+
 def test_load_process_collection_accepts_whole_line_comments(sample_collection):
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "collection.json"
@@ -193,6 +240,194 @@ def test_load_process_collection_accepts_whole_line_comments(sample_collection):
             "note": separator_value,
         }
         assert "fed_batch_001" in loaded.processes
+
+
+def test_load_process_collection_accepts_yajl_inline_and_block_comments(
+    sample_collection,
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "collection.json"
+        save_process_collection(sample_collection, path)
+        serialized = path.read_text(encoding="utf-8")
+        serialized = serialized.replace("{", "{/* block comment */", 1)
+        serialized = serialized.replace(
+            '"metadata": null,', '"metadata": null, // inline comment', 1
+        )
+        path.write_text(serialized, encoding="utf-8")
+
+        loaded = load_process_collection(path)
+
+        assert "fed_batch_001" in loaded.processes
+
+
+def test_save_process_collection_normalizes_nonfinite_values(sample_collection):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "collection.json"
+        sample_collection.metadata = {
+            "nan": float("nan"),
+            "positive": float("inf"),
+            "negative": np.float32("-inf"),
+        }
+        component = sample_collection.processes[
+            "fed_batch_001"
+        ].reactor_medium.components["biomass"]
+        component.concentration = TimeSeries(
+            times=jnp.array([0.0, 1.0]),
+            values=jnp.array([0.1, jnp.inf]),
+        )
+        save_process_collection(sample_collection, path)
+
+        text = path.read_text(encoding="utf-8")
+        assert "NaN" not in text
+        assert "Infinity" not in text
+        loaded = load_process_collection(path)
+
+        assert loaded.metadata == {
+            "nan": None,
+            "positive": None,
+            "negative": None,
+        }
+        values = (
+            loaded.processes["fed_batch_001"]
+            .reactor_medium.components["biomass"]
+            .concentration.values
+        )
+        assert values[0] == pytest.approx(0.1)
+        assert np.isnan(values[1])
+
+
+def test_restore_arrays_rejects_null_in_integer_and_bool_payloads():
+    for dtype in ("int32", "bool"):
+        with pytest.raises(ValueError, match="null is invalid"):
+            serialization._restore_arrays({"__ndarray__": [1, None], "dtype": dtype})
+
+
+def test_load_process_collection_converts_each_process_before_reading_next(
+    monkeypatch, sample_process
+):
+    process_data = serialization._process_to_dict(sample_process)
+    converted = []
+    original = serialization._dict_to_process
+
+    def record_conversion(data):
+        converted.append(data["metadata"]["name"])
+        return original(data)
+
+    def stream_processes(_file, prefix, *, source):
+        assert prefix == "processes"
+        assert source.name == "collection.json"
+        yield "first", process_data
+        assert converted == ["fed_batch_001"]
+        yield "second", process_data
+
+    monkeypatch.setattr(serialization, "_dict_to_process", record_conversion)
+    monkeypatch.setattr(serialization, "_kvitems", stream_processes)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "collection.json"
+        path.write_text('{"metadata": null, "processes": {}}', encoding="utf-8")
+        loaded = load_process_collection(path)
+
+    assert list(loaded.processes) == ["first", "second"]
+    assert converted == ["fed_batch_001", "fed_batch_001"]
+
+
+def test_load_process_collection_rejects_nonfinite_tokens_without_fallback(
+    monkeypatch, tmp_path
+):
+    path = tmp_path / "collection.json"
+    path.write_text('{"metadata": {"loss": NaN}, "processes": {}}', encoding="utf-8")
+    monkeypatch.setattr(
+        serialization,
+        "_load_json",
+        lambda _path: pytest.fail("full-document fallback must not run"),
+    )
+
+    with pytest.raises(ValueError, match=str(path)):
+        load_process_collection(path)
+
+
+@pytest.mark.parametrize(
+    "document, message",
+    [
+        ("42", "root must be an object"),
+        ('{"metadata": null}', "must contain a processes object"),
+        ('{"metadata": null, "processes": []}', "processes must be an object"),
+        ('{"metadata": null, "processes": null}', "processes must be an object"),
+        ('{"metadata": [], "processes": {}}', "metadata must be an object or null"),
+    ],
+)
+def test_load_process_collection_rejects_invalid_structure(tmp_path, document, message):
+    path = tmp_path / "collection.json"
+    path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_process_collection(path)
+
+
+def test_load_process_collection_validates_suffix_and_top_level_key_order(
+    sample_collection, tmp_path
+):
+    path = tmp_path / "collection.json"
+    sample_collection.metadata = {"source": "reordered"}
+    save_process_collection(sample_collection, path)
+    original = json.loads(path.read_text(encoding="utf-8"))
+    reordered = {
+        "processes": original["processes"],
+        "metadata": original["metadata"],
+    }
+    path.write_text(json.dumps(reordered), encoding="utf-8")
+
+    loaded = load_process_collection(path)
+    assert "fed_batch_001" in loaded.processes
+    assert loaded.metadata == {"source": "reordered"}
+
+    path.write_text(path.read_text(encoding="utf-8") + " trailing", encoding="utf-8")
+    with pytest.raises(ValueError, match=str(path)):
+        load_process_collection(path)
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("suffix", [b" /* unterminated", b" 2"])
+def test_load_process_collection_rejects_malformed_suffix(tmp_path, compressed, suffix):
+    directory = tmp_path / "comments"
+    directory.mkdir()
+    path = directory / ("collection.json.gz" if compressed else "collection.json")
+    payload = b'{"metadata": null, "processes": {}}' + suffix
+    if compressed:
+        with gzip.open(path, "wb") as stream:
+            stream.write(payload)
+    else:
+        path.write_bytes(payload)
+
+    with pytest.raises(JSONParseError, match=str(path)):
+        load_process_collection(path)
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("duplicate_member", ["metadata", "processes"])
+def test_load_process_collection_rejects_duplicate_top_level_members(
+    tmp_path, sample_process, compressed, duplicate_member
+):
+    process_json = json.dumps(
+        serialization._process_to_dict(sample_process), cls=serialization.NumpyEncoder
+    )
+    if duplicate_member == "metadata":
+        document = '{"metadata":{"version":1},"processes":{},"metadata":{"version":2}}'
+    else:
+        document = (
+            '{"metadata":null,"processes":{"stale":'
+            f"{process_json}" + '},"processes":{}}'
+        )
+    path = tmp_path / ("collection.json.gz" if compressed else "collection.json")
+    if compressed:
+        with gzip.open(path, "wt", encoding="utf-8") as stream:
+            stream.write(document)
+    else:
+        path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(JSONParseError, match="duplicate top-level key"):
+        load_process_collection(path)
 
 
 def test_default_api_accepts_explicit_process_collection_json_gz_paths(

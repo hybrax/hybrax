@@ -10,6 +10,7 @@ setup(
         "jaxlib>=0.4.0",
         "numpy>=1.20.0",
         "scipy>=1.15.0",
+        "ijson>=3.5.1",
     ],
     extras_require={
         "dev": [
