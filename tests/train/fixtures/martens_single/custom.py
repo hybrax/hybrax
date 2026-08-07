@@ -8,9 +8,10 @@ fixture keeps working if the data evolves:
 - a small plain-MLP reaction module (output scaled down so initial rates stay
   near zero and the integrator survives step 0),
 - RMS / max-abs scale estimation across the collection,
-- a ``DefaultLossModule`` subclass that adds one ``nonneg/<target>`` hinge per
-  target, so the build_loss_module hook + named-loss plumbing are exercised
-  through train -> checkpoint -> forward -> losses.csv.
+- a ``BoundsViolationLossModule`` subclass that adds metadata-driven state
+  bounds plus dense rate-curvature terms, so the build_loss_module hook +
+  named-loss plumbing are exercised through train -> checkpoint -> forward ->
+  losses.csv.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import numpy as np
 
 from bp_format.mechanistic import build_rhs_ode
 from bp_train import (
-    DefaultLossModule,
+    BoundsViolationLossModule,
     EstimatedScales,
     LossInputs,
     LossOutputs,
@@ -178,7 +179,7 @@ def estimate_all_scales(collection, target_names, config):
 
 
 # ---------------------------------------------------------------------------
-# Loss: default per-target MSE + one non-negativity hinge per target
+# Loss: default per-target MSE + bounds + dense rate curvature
 # ---------------------------------------------------------------------------
 
 
@@ -190,17 +191,9 @@ _CURVATURE_RATE_NAMES = ("q_biomass", "q_glucose")
 _CURVATURE_RATE_INDICES = (0, 4)
 
 
-class NonNegLossModule(DefaultLossModule):
-    """DefaultLossModule + a ``nonneg/<target>`` hinge penalizing negative
-    predicted concentrations + ``curvature/<rate>`` second-derivative penalties
-    on two BiologicalOde rates evaluated on a dense grid.
+class FixtureLossModule(BoundsViolationLossModule):
+    """Metadata-driven state bounds plus dense rate-curvature penalties."""
 
-    Exercises the build_loss_module hook end-to-end for every new
-    ``LossInputs`` axis: measurement-grid (nonneg/), dense-grid (curvature/),
-    and ``jump_ts`` masking near controls-discontinuities.
-    """
-
-    weight: float = eqx.field(static=True)
     curvature_weight: float = eqx.field(static=True)
     _dense_grid_n: int = eqx.field(static=True)
     _jump_epsilon_h: float = eqx.field(static=True)
@@ -209,23 +202,25 @@ class NonNegLossModule(DefaultLossModule):
         self,
         *,
         target_names,
+        collection,
         weight=0.1,
         curvature_weight=1e-3,
         dense_grid_n=32,
         jump_epsilon_h=0.25,
     ):
-        super().__init__(target_names=target_names)
-        self.weight = float(weight)
+        super().__init__(
+            target_names=target_names,
+            collection=collection,
+            weight=weight,
+        )
         self.curvature_weight = float(curvature_weight)
         self._dense_grid_n = int(dense_grid_n)
         self._jump_epsilon_h = float(jump_epsilon_h)
 
     @property
     def loss_names(self):
-        return (
-            tuple(self.target_names)
-            + tuple(f"nonneg/{name}" for name in self.target_names)
-            + tuple(f"curvature/{name}" for name in _CURVATURE_RATE_NAMES)
+        return super().loss_names + tuple(
+            f"curvature/{name}" for name in _CURVATURE_RATE_NAMES
         )
 
     @property
@@ -235,19 +230,7 @@ class NonNegLossModule(DefaultLossModule):
     def __call__(self, inputs: LossInputs) -> LossOutputs:
         base = super().__call__(inputs).named_losses
 
-        # Measurement-grid term: non-negativity hinge per species.
-        mask = inputs.mask_measured_any
-        denom = jnp.maximum(jnp.sum(mask), 1.0)
-        scaler = inputs.reaction_module.SCALE_state[: len(self.target_names)]
-        SCL_zero = scaler.scale_value(
-            jnp.zeros(len(self.target_names), dtype=inputs.SCL_target_pred.dtype)
-        )
         penalties = {}
-        for i, name in enumerate(self.target_names):
-            violation = jax.nn.relu(SCL_zero[i] - inputs.SCL_target_pred[:, i])
-            penalties[f"nonneg/{name}"] = self.weight * (
-                jnp.sum(jnp.square(violation) * mask) / denom
-            )
 
         # Dense-grid term: second-derivative (curvature) of two SCL rates,
         # masked away from controls-discontinuity neighborhoods.
@@ -279,5 +262,5 @@ class NonNegLossModule(DefaultLossModule):
 
 
 def build_loss_module(*, target_names, process_names, config, seed, collection):
-    del process_names, config, seed, collection
-    return NonNegLossModule(target_names=target_names)
+    del process_names, config, seed
+    return FixtureLossModule(target_names=target_names, collection=collection)

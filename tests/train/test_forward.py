@@ -404,9 +404,7 @@ def _build_single_process_runtime(
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    scale_kwargs = {
-        "SCALE_modeled_BiologicalOde_rates": jnp.asarray([q_scale])
-    }
+    scale_kwargs = {"SCALE_modeled_BiologicalOde_rates": jnp.asarray([q_scale])}
     if modeled_rmc_scaler is not None:
         scale_kwargs["SCALE_modeled_RMCs"] = modeled_rmc_scaler
     wrapper = HybridOdeWrapper.from_process(
@@ -721,9 +719,9 @@ def test_forward_end_to_end_on_fixture(tmp_path: Path):
     rows = pd.read_csv(losses_csv)
     assert rows.columns[0] == "process"
     assert (rows["process"] == "run_1").any()
-    # The custom build_loss_module adds nonneg/<target> columns alongside the
-    # per-target measurement terms — confirm they survived to the CSV.
-    assert any(str(c).startswith("nonneg/") for c in rows.columns)
+    # The custom build_loss_module adds metadata-driven bounds columns alongside
+    # the per-target measurement terms — confirm they survived to the CSV.
+    assert any(str(c).startswith("lwr_bnd/") for c in rows.columns)
     # The dense-grid curvature term (uses dense_t + jump_ts) also surfaces as
     # curvature/<rate> columns — proves the dense_grid_n opt-in path runs
     # end-to-end through train -> checkpoint -> forward -> losses.csv.

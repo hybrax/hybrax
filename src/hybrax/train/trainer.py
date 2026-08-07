@@ -253,6 +253,7 @@ def evaluate_sample_with_loss_module(
             "RAW_modeled_FVCs_rates": RAW_fvc_rates,
             "SCL_V": module.scale_modeled_V(RAW_V),
             "RAW_V": RAW_V,
+            "RAW_V_unclamped": save_outputs.RAW_V_export,
             "auxiliary": save_outputs.auxiliary or {},
         }
 
@@ -387,6 +388,7 @@ def evaluate_sample_with_loss_module(
         RAW_modeled_FVCs_rates=meas_views["RAW_modeled_FVCs_rates"],
         SCL_V=meas_views["SCL_V"],
         RAW_V=meas_views["RAW_V"],
+        RAW_V_unclamped=meas_views["RAW_V_unclamped"],
         auxiliary=meas_views["auxiliary"],
         SCL_target_pred=SCL_target_pred,
         SCL_target_measured=SCL_target_measured,

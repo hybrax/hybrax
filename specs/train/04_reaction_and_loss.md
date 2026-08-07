@@ -2,6 +2,7 @@
 
 Source: [`bp_train/model_api.py`](../bp_train/model_api.py),
 [`bp_train/defaults.py`](../bp_train/defaults.py),
+[`bp_train/bounds_loss.py`](../bp_train/bounds_loss.py),
 [`bp_train/wrapper.py`](../bp_train/wrapper.py),
 [`bp_train/dense.py`](../bp_train/dense.py)
 
@@ -307,40 +308,48 @@ class MAELossModule(DefaultLossModule):
         return jnp.sum(masked, axis=0) / n_active
 ```
 
-### Adding custom loss terms
+### Adding bounds penalties
 
-Subclass and add named entries — they show up automatically as new panels and
-log columns:
+`BoundsViolationLossModule` retains the default measurement MSE and adds one
+squared-hinge term for each finite bp-format bound on a modeled reactor-medium
+component, modeled process variable, reactor volume, or `BiologicalOde` rate:
 
 ```python
-class BoundsHingeLossModule(DefaultLossModule):
-    bound_records: tuple = eqx.field(static=True)
-    weight: float = eqx.field(static=True)
+from bp_train import BoundsViolationLossModule
 
-    def __init__(self, *, target_names, collection, weight):
-        super().__init__(target_names=target_names)
-        self.bound_records = tuple(_collect_bounds(collection, ...))
-        self.weight = float(weight)
 
-    @property
-    def loss_names(self):
-        return tuple(self.target_names) + tuple(l for l, *_ in self.bound_records)
-
-    def __call__(self, inputs):
-        base = super().__call__(inputs).named_losses          # measurement terms
-        rm = inputs.reaction_module
-        penalties = {}
-        for label, source, idx, side, threshold_RAW in self.bound_records:
-            values = inputs.SCL_states[:, idx]
-            scl_threshold = threshold_RAW / rm.SCALE_state[idx]
-            penalties[label] = self.weight * _hinge_sq(
-                values, scl_threshold, side, inputs.mask_measured_any
-            )
-        return LossOutputs(named_losses={**base, **penalties})
+def build_loss_module(*, target_names, collection, config, **_):
+    return BoundsViolationLossModule(
+        target_names=target_names,
+        collection=collection,
+        weight=config.custom.bounds_weight,
+    )
 ```
 
-See [examples/11_tub_2026/fba_hyb/custom.py](../examples/11_tub_2026/fba_hyb/custom.py)
-for the full bounds-hinge module.
+Bounds default to `(None, None)`, so constructing this module does not invent
+physical constraints. Bounds for the same quantity must agree across all
+processes in the collection. Violations are computed in RAW physical space,
+then normalized with the corresponding offset-free derivative scale. Reactor-
+volume bounds use the integrated volume before the reaction model's `min_V`
+safety floor. This is safe for both linear and affine value scalers. `weight`
+multiplies every bounds term and must be finite and nonnegative. At zero, the
+bound terms remain in the stable loss schema and evaluate to zero; because total
+loss averages all named
+terms, select `DefaultLossModule` instead when no bounds terms should exist.
+
+The penalties use the existing measurement grid and `mask_measured_any`; the
+module does not request a denser solve. Each finite side is reported separately
+as `lwr_bnd/<state>`, `upr_bnd/<state>`, `lwr_bnd/rate/<rate>`, or
+`upr_bnd/rate/<rate>`. If a modeled state is named `V`, reactor-volume terms use
+the `volume/V` segment. Reconstruction targets share the loss-name namespace;
+any remaining actual collision is rejected during module construction. See
+[the TUB migration hook](../examples/11_tub_2026/migration/custom.py).
+
+### Adding other custom loss terms
+
+Subclass a built-in loss module and add named entries; they show up
+automatically as new panels and log columns. `loss_names` must include the base
+module's names and every added term.
 
 ### Trainable loss parameters
 
@@ -472,26 +481,32 @@ class CurvatureLossModule(DefaultLossModule):
         return LossOutputs(named_losses={**base, **extras})
 ```
 
-The full version (with `nonneg/<target>` measurement terms alongside the
-curvature) is in
+The full version composes metadata-driven `lwr_bnd/<state>` measurement terms
+with curvature in
 [tests/fixtures/martens_single/custom.py](../tests/fixtures/martens_single/custom.py)
 — it runs end-to-end through `prepare -> train -> forward -> losses.csv`.
 
 #### Example 2 — between-measurement bounds
 
-Today's `BoundsHingeLossModule` only enforces bounds at measurement times.
-Swapping `inputs.SCL_states` → `inputs.dense_SCL_states` (and
-`inputs.mask_measured_any` → a dense-point mask) makes the same hinge fire on
-every dense point — the bound is then enforced *everywhere* the solver
-reports state, not only when the plate was sampled:
+`BoundsViolationLossModule` intentionally checks only measurement times. The
+RMC/PV example below keeps the same RAW-first, offset-free normalization and
+also masks points after a solve failure. `dense_RAW_states` contains the floored
+volume, so a dense physical-volume bound would first need an unclamped dense-
+volume input.
 
 ```python
-# inside __call__ of a DefaultLossModule subclass with dense_grid_n set
-values = inputs.dense_SCL_states[:, idx]
+# inside __call__ of a BoundsViolationLossModule subclass with dense_grid_n set
+values = inputs.dense_RAW_states[:, idx]  # modeled RMC/PV state
+violation = jax.nn.relu(threshold_RAW - values)  # lower-bound example
+scaler = inputs.reaction_module.SCALE_state[idx]
+normalized = scaler.scale_derivative(violation)
 mask = dense_point_mask_away_from_jumps(
     inputs.dense_t, inputs.jump_ts, jump_eps_h
-).astype(values.dtype)
-penalties[label] = self.weight * _hinge_sq(values, scl_threshold, side, mask)
+) & inputs.dense_valid_time
+dense_penalty = self.weight * (
+    jnp.sum(jnp.square(normalized) * mask)
+    / jnp.maximum(jnp.sum(mask), 1)
+)
 ```
 
 #### Practical note on `dense_grid_n` size

@@ -59,6 +59,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "product": {
@@ -100,6 +104,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "total_cells": {
@@ -141,6 +149,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "dead_cells": {
@@ -182,6 +194,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "glucose": {
@@ -223,6 +239,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "glutamine": {
@@ -264,6 +284,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "lactate": {
@@ -305,6 +329,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           },
           "ammonia": {
@@ -346,6 +374,10 @@
                 "dtype": "float32"
               },
               "continuity_side": "right"
+            },
+            "bounds": {
+              "lower": 0.0,
+              "upper": null
             }
           }
         }

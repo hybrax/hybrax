@@ -885,6 +885,9 @@ class LossInputs(eqx.Module):
     RAW_modeled_FVCs_rates: jax.Array
     SCL_V: jax.Array
     RAW_V: jax.Array
+    # Integrated volume before the wrapper's ``min_V`` floor. Use for physical
+    # constraint losses; ``RAW_V`` is the safe value passed to the reaction model.
+    RAW_V_unclamped: jax.Array
     auxiliary: dict[str, jax.Array]
 
     # Convenience target slice: SCL_states[:, target_state_indices]

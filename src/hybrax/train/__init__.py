@@ -204,6 +204,7 @@ _EXPORTS = {
     "evaluate_sample_with_loss_module": "trainer",
     "DefaultReactionModule": "defaults",
     "DefaultLossModule": "defaults",
+    "BoundsViolationLossModule": "bounds_loss",
     "ForwardConfig": "harness",
     "ForwardResult": "harness",
     "TrainHarnessConfig": "harness",
