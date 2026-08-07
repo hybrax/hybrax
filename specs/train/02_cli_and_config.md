@@ -238,8 +238,11 @@ def augment_state_values(*, base_values, augmented_values, **_):
 ### `estimate_all_scales`
 
 ```python
-def estimate_all_scales(collection, target_names: list[str], config,
-                        *, controls_store) -> EstimatedScales
+def estimate_all_scales(
+    runtime_data: RuntimeDataContext,
+    target_names: list[str],
+    config,
+) -> EstimatedScales
 ```
 Return the `SCALE_*` axes (as an [`EstimatedScales`](../bp_train/model_api.py))
 used to normalize state/rate/control vectors. Bare arrays are promoted to
@@ -261,33 +264,33 @@ offsets. Runs once at train setup; the scalers are baked into the reaction
 module. No default hook — when absent, every axis is a unit `LinearScaler` (no
 scaling). See [03_data_preparation.md](03_data_preparation.md#scale-estimation).
 
-`controls_store` is **optional**: it is passed only to hooks that declare it, so
-the three-argument form above remains valid and existing `custom.py` modules —
-including the frozen copies inside run directories, which are reloaded verbatim
-on resume and forward — keep working unchanged. Declare it to receive the
-already-built [`ControlsStore`](../bp_train/controls_store.py) instead of
-calling `ControlsStore.from_collection(collection)` yourself, which duplicates
-work the harness has already done.
+`runtime_data` is a collection-free
+[`RuntimeDataContext`](../bp_train/runtime_context.py). Its `training_data`,
+`controls_store`, `rhs_ode`, `process_order`, and typed trace accessors expose
+the numeric inputs used by scale hooks without rebuilding or retaining a
+`BioProcessCollection`.
 
 ### `build_reaction_module`
 
 ```python
 def build_reaction_module(*, target_names, process_names, config, seed,
-                          collection, **scale_kwargs) -> UserReactionModule
+                          runtime_context, **scale_kwargs) -> UserReactionModule
 ```
-Construct the reaction module. `scale_kwargs` carries the promoted `SCALE_*`
-scalers from `estimate_all_scales`. Pass them unchanged to
-`super().__init__(**scale_kwargs)`. Default is `DefaultReactionModule` (a
-2-layer MLP). See
+Construct the reaction module. `runtime_context` contains the prepared
+`RuntimeDataContext` as `.data` and the resolved scalers as `.scales`.
+`scale_kwargs` carries those same promoted `SCALE_*` scaler instances from
+`estimate_all_scales`; pass them unchanged to `super().__init__(**scale_kwargs)`.
+Default is `DefaultReactionModule` (a 2-layer MLP). See
 [04_reaction_and_loss.md](04_reaction_and_loss.md#the-reaction-module).
 
 ### `build_loss_module`
 
 ```python
 def build_loss_module(*, target_names, process_names, config, seed,
-                      collection) -> UserLossModule
+                      runtime_context) -> UserLossModule
 ```
-Construct the loss module. Default is `DefaultLossModule` (per-target MSE). See
+Construct the loss module. `runtime_context` is the same resolved context passed
+to the reaction-module hook. Default is `DefaultLossModule` (per-target MSE). See
 [04_reaction_and_loss.md](04_reaction_and_loss.md#the-loss-module).
 
 ### `build_learning_rate`

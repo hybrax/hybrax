@@ -6,10 +6,10 @@ from numbers import Integral
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.mechanistic import build_rhs_ode
 
 from .defaults import DefaultLossModule
 from .model_api import LossInputs, LossOutputs
+from .runtime_context import BoundSnapshot, collect_bound_records
 
 
 class BoundsViolationLossModule(DefaultLossModule):
@@ -28,7 +28,14 @@ class BoundsViolationLossModule(DefaultLossModule):
     weight: float = eqx.field(static=True)
     _dense_grid_n: int | None = eqx.field(static=True)
 
-    def __init__(self, *, target_names, collection, weight, dense_grid_n=None):
+    def __init__(
+        self,
+        *,
+        target_names,
+        bound_snapshots: tuple[BoundSnapshot, ...],
+        weight,
+        dense_grid_n=None,
+    ):
         super().__init__(target_names=target_names)
         weight = float(weight)
         if not math.isfinite(weight) or weight < 0:
@@ -39,11 +46,12 @@ class BoundsViolationLossModule(DefaultLossModule):
             if dense_grid_n < 2:
                 raise ValueError("dense_grid_n must be at least 2")
             dense_grid_n = int(dense_grid_n)
-        records = _collect_bound_records(collection)
-        self.bound_records = records
+        self.bound_records = collect_bound_records(bound_snapshots)
         self.weight = weight
         self._dense_grid_n = dense_grid_n
-        own_loss_names = self.target_names + tuple(record[0] for record in records)
+        own_loss_names = self.target_names + tuple(
+            record[0] for record in self.bound_records
+        )
         if len(own_loss_names) != len(set(own_loss_names)):
             raise ValueError(
                 f"Bounds loss names must be unique; got {own_loss_names!r}"
@@ -103,85 +111,3 @@ class BoundsViolationLossModule(DefaultLossModule):
             named_losses[label] = self.weight * squared_sum / n_active
 
         return LossOutputs(named_losses=named_losses)
-
-
-def _collect_bound_records(collection):
-    processes = tuple(collection.processes.items())
-    if not processes:
-        raise ValueError("BoundsViolationLossModule requires a non-empty collection")
-
-    reference = processes[0][1]
-    rhs_ode = build_rhs_ode(reference)
-    sources = []
-
-    def add_source(label, source, idx, getter):
-        sources.append((label, source, idx, getter))
-
-    for idx, name in enumerate(rhs_ode.name_modeled_RMCs):
-        add_source(
-            name,
-            "state",
-            idx,
-            lambda p, n=name: p.reactor_medium.components[n].bounds,
-        )
-
-    pv_offset = len(rhs_ode.name_modeled_RMCs)
-    for idx, name in enumerate(rhs_ode.name_modeled_PVs, start=pv_offset):
-        add_source(
-            name,
-            "state",
-            idx,
-            lambda p, n=name: p.process_variables[n].bounds,
-        )
-
-    volume_idx = pv_offset + len(rhs_ode.name_modeled_PVs)
-    state_names = rhs_ode.name_modeled_RMCs + rhs_ode.name_modeled_PVs
-    volume_label = "volume/V" if "V" in state_names else "V"
-    add_source(volume_label, "volume", volume_idx, lambda p: p.volume.bounds)
-
-    for idx, name in enumerate(rhs_ode.name_modeled_rates):
-        add_source(
-            f"rate/{name}",
-            "rate",
-            idx,
-            lambda p, n=name: (
-                (None, None) if p.biological_ode is None else p.biological_ode.rates[n]
-            ),
-        )
-
-    records = []
-    for label, source, idx, getter in sources:
-        bounds = tuple(getter(reference))
-        for process_name, process in processes[1:]:
-            try:
-                other = tuple(getter(process))
-            except KeyError as error:
-                raise ValueError(
-                    f"Bounds source {label!r} is missing from process {process_name!r}"
-                ) from error
-            if other != bounds:
-                reference_name = processes[0][0]
-                raise ValueError(
-                    f"Bounds for {label!r} differ across processes: "
-                    f"{bounds!r} in {reference_name!r} vs {other!r} "
-                    f"in {process_name!r}"
-                )
-        lower, upper = (None if bound is None else float(bound) for bound in bounds)
-        for description, threshold in (("Lower", lower), ("Upper", upper)):
-            if threshold is not None and not math.isfinite(threshold):
-                raise ValueError(
-                    f"{description} bound for {label!r} must be finite or None"
-                )
-        if lower is not None and upper is not None and lower > upper:
-            raise ValueError(
-                f"Lower bound for {label!r} must not exceed its upper bound"
-            )
-
-        for prefix, sign, threshold in (
-            ("lwr_bnd", 1.0, lower),
-            ("upr_bnd", -1.0, upper),
-        ):
-            if threshold is not None:
-                records.append((f"{prefix}/{label}", source, idx, sign, threshold))
-
-    return tuple(records)

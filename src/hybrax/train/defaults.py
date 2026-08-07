@@ -6,8 +6,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from bp_format.mechanistic import build_rhs_ode
-
 from .model_api import (
     LinearScaler,
     LossInputs,
@@ -265,12 +263,12 @@ def default_build_reaction_module(
     process_names: list[str],
     config: RunConfig,
     seed: int,
-    collection: Any,
+    runtime_context: Any,
     **scale_kwargs: Any,
 ) -> UserReactionModule:
     """Default train hook for reaction-module construction.
 
-    Derives the rates head size from the first process's BiologicalOde via
+    Derives the rates head size from the prepared canonical
     ``rhs_ode.name_modeled_rates`` so user-defined ODEs with rate counts that
     differ from the species count are supported out of the box.
 
@@ -281,8 +279,7 @@ def default_build_reaction_module(
     del config, target_names
     if not process_names:
         raise ValueError("default_build_reaction_module requires at least one process")
-    first_process = collection.processes[process_names[0]]
-    rhs_ode = build_rhs_ode(first_process)
+    rhs_ode = runtime_context.training_data.rhs_ode
     # Scales are sized by the modeled RMC state slice, not by measured targets:
     # combined/PV target sets have their own SCALE_modeled_PVs axis.
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
@@ -353,10 +350,10 @@ def default_build_loss_module(
     process_names: list[str],
     config: RunConfig,
     seed: int,
-    collection: Any,
+    runtime_context: Any,
 ) -> UserLossModule:
     """Default train hook for loss-module construction (per-target MSE)."""
-    del process_names, config, seed, collection
+    del process_names, config, seed, runtime_context
     return DefaultLossModule(target_names=list(target_names))
 
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import math
 import sys
@@ -29,6 +28,7 @@ from .checkpointing import CheckpointWriter
 from .plotting_worker import BackgroundPlotter
 from .defaults import (
     DefaultLossModule,
+    _default_scale_kwargs,
     default_build_loss_module,
     default_build_reaction_module,
 )
@@ -51,7 +51,13 @@ from .training_data import (
     TrainingDataStore,
 )
 from .run_config import RunConfig
-from .utils import get_hook, load_custom_module, resolve_config, split_hooks_by_customization
+from .runtime_context import RuntimeContext, RuntimeDataContext
+from .utils import (
+    get_hook,
+    load_custom_module,
+    resolve_config,
+    split_hooks_by_customization,
+)
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
@@ -527,13 +533,12 @@ def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> No
 
 def _build_reaction_module(
     *,
-    store: TrainingDataStore,
     config: TrainHarnessConfig,
     custom_module,
     custom_config: Any,
-    collection: BioProcessCollection,
-    scale_kwargs: dict[str, Any],
+    runtime_context: RuntimeContext,
 ) -> UserReactionModule:
+    store = runtime_context.training_data
     hook = get_hook(
         custom_module,
         "build_reaction_module",
@@ -544,8 +549,11 @@ def _build_reaction_module(
         process_names=list(store.process_order),
         config=custom_config,
         seed=int(config.seed),
-        collection=collection,
-        **scale_kwargs,
+        runtime_context=runtime_context,
+        **{
+            field.name: getattr(runtime_context.scales, field.name)
+            for field in dataclasses.fields(EstimatedScales)
+        },
     )
     if not isinstance(module, UserReactionModule):
         raise TypeError(
@@ -568,97 +576,94 @@ def _loss_target_labels(store: TrainingDataStore) -> list[str]:
 
 def _build_loss_module(
     *,
-    store: TrainingDataStore,
     config: TrainHarnessConfig,
     custom_module,
     custom_config: Any,
-    collection: BioProcessCollection,
+    runtime_context: RuntimeContext,
 ) -> UserLossModule:
+    store = runtime_context.training_data
     hook = get_hook(custom_module, "build_loss_module", default_build_loss_module)
     module = hook(
         target_names=_loss_target_labels(store),
         process_names=list(store.process_order),
         config=custom_config,
         seed=int(config.seed),
-        collection=collection,
+        runtime_context=runtime_context,
     )
     if not isinstance(module, UserLossModule):
         raise TypeError("build_loss_module(...) must return a UserLossModule instance")
     return module
 
 
-_BY_KEYWORD = (
-    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-    inspect.Parameter.KEYWORD_ONLY,
-)
-
-
-def _accepted_hook_kwargs(hook: Any, **candidates: Any) -> dict[str, Any]:
-    """Filter `candidates` down to the keyword arguments `hook` can receive.
-
-    Lets the hook contract grow optional inputs without a coordinated edit to
-    every `custom.py`, including frozen copies in run directories that
-    `reconstruct_run` loads verbatim. A `**kwargs` hook absorbs everything;
-    otherwise a candidate must be named by a parameter that is actually
-    bindable by keyword — matching the name alone would forward a
-    positional-only parameter and make the call raise.
-    """
-    parameters = inspect.signature(hook).parameters
-    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
-        return dict(candidates)
-    return {
-        name: value
-        for name, value in candidates.items()
-        if name in parameters and parameters[name].kind in _BY_KEYWORD
-    }
-
-
 def _resolve_estimated_scales(
     *,
     custom_module,
-    collection: BioProcessCollection,
-    store: TrainingDataStore,
+    runtime_data: RuntimeDataContext,
     custom_cfg: Any,
-) -> dict[str, Any]:
-    """Call the optional ``estimate_all_scales`` hook and unpack into kwargs.
-
-    The hook returns an ``EstimatedScales`` dataclass (or a falsy result if no
-    hook is configured). The output flattens into ``SCALE_*`` kwargs that feed
-    ``build_reaction_module``. `controls_store` reaches only hooks that declare
-    it; see `_accepted_hook_kwargs`.
-    """
+) -> EstimatedScales:
+    """Resolve every semantic-axis scale into normalized scalers."""
+    store = runtime_data.training_data
     hook = get_hook(custom_module, "estimate_all_scales", None)
     if hook is None:
-        return {}
-    optional = _accepted_hook_kwargs(hook, controls_store=store.controls_store)
-    estimated = hook(collection, list(store.name_measured), custom_cfg, **optional)
+        defaults = _default_scale_kwargs(
+            n_RMCs=len(store.rhs_ode.name_modeled_RMCs),
+            n_rates=len(store.rhs_ode.name_modeled_rates),
+            n_modeled_FVCs=len(store.rhs_ode.name_modeled_FVCs),
+            n_controlled_FVCs=len(store.rhs_ode.name_controlled_FVCs),
+            rhs_ode=store.rhs_ode,
+        )
+        defaults.pop("SCALE_latent")
+        estimated = EstimatedScales(**defaults)
+    else:
+        estimated = hook(runtime_data, list(store.name_measured), custom_cfg)
     if not isinstance(estimated, EstimatedScales):
         raise TypeError(
             "estimate_all_scales(...) must return an EstimatedScales dataclass; "
             f"got {type(estimated).__name__}"
         )
     resolved = {
-        "SCALE_modeled_RMCs": _as_scaler(estimated.SCALE_modeled_RMCs),
-        "SCALE_modeled_PVs": _as_scaler(estimated.SCALE_modeled_PVs),
-        "SCALE_V_in_cumulative": _as_scaler(estimated.SCALE_V_in_cumulative),
-        "SCALE_modeled_FVCs_cumulative": _as_scaler(
-            estimated.SCALE_modeled_FVCs_cumulative
-        ),
-        "SCALE_controlled_FVCs_cumulative": _as_scaler(
-            estimated.SCALE_controlled_FVCs_cumulative
-        ),
-        "SCALE_controlled_FVCs_rates": _as_scaler(
-            estimated.SCALE_controlled_FVCs_rates
-        ),
-        "SCALE_controlled_FVCs_Cin": _as_scaler(estimated.SCALE_controlled_FVCs_Cin),
-        "SCALE_controlled_PVs": _as_scaler(estimated.SCALE_controlled_PVs),
-        "SCALE_modeled_FVCs_Cin": _as_scaler(estimated.SCALE_modeled_FVCs_Cin),
-        "SCALE_modeled_BiologicalOde_rates": _as_scaler(
-            estimated.SCALE_modeled_BiologicalOde_rates
-        ),
-        "SCALE_modeled_FVCs_rates": _as_scaler(estimated.SCALE_modeled_FVCs_rates),
+        field.name: _as_scaler(getattr(estimated, field.name))
+        for field in dataclasses.fields(EstimatedScales)
     }
-    return resolved
+    return EstimatedScales(**resolved)
+
+
+def _build_runtime_modules(
+    *,
+    store: TrainingDataStore,
+    collection: BioProcessCollection,
+    config: TrainHarnessConfig,
+    custom_module,
+    custom_config: Any,
+    build_loss: bool = True,
+) -> tuple[UserReactionModule, UserLossModule | None]:
+    """Build collection-free runtime hook modules once."""
+    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    runtime_context = RuntimeContext(
+        runtime_data,
+        _resolve_estimated_scales(
+            custom_module=custom_module,
+            runtime_data=runtime_data,
+            custom_cfg=custom_config,
+        ),
+    )
+    reaction_module = _build_reaction_module(
+        config=config,
+        custom_module=custom_module,
+        custom_config=custom_config,
+        runtime_context=runtime_context,
+    )
+    loss_module = (
+        _build_loss_module(
+            config=config,
+            custom_module=custom_module,
+            custom_config=custom_config,
+            runtime_context=runtime_context,
+        )
+        if build_loss
+        else None
+    )
+    return reaction_module, loss_module
 
 
 def _target_state_indices(store: TrainingDataStore, rhs_ode: Any) -> jax.Array:
@@ -845,31 +850,14 @@ def forward_from_collection(
             run_config is not None and run_config.train.allow_stateful_models
         ),
     )
-    # `estimate_all_scales` runs FIRST: its output is plumbed into the
-    # reaction-module constructor as SCALE_* kwargs (the module is the
-    # single source of truth for scales).
-    scale_kwargs = _resolve_estimated_scales(
-        custom_module=custom_module,
+    reaction_module, loss_module = _build_runtime_modules(
+        store=store,
         collection=collection,
-        store=store,
-        custom_cfg=custom_cfg,
-    )
-    reaction_module = _build_reaction_module(
-        store=store,
         config=train_like_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
-        collection=collection,
-        scale_kwargs=scale_kwargs,
     )
-
-    loss_module = _build_loss_module(
-        store=store,
-        config=train_like_cfg,
-        custom_module=custom_module,
-        custom_config=custom_cfg,
-        collection=collection,
-    )
+    assert loss_module is not None
 
     template_wrapper = _build_template_wrapper(
         store,
@@ -1994,23 +1982,14 @@ def prepare_training(
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
-    # estimate_all_scales runs FIRST: its return flattens into SCALE_* kwargs
-    # feeding build_reaction_module (the module is the single source of
-    # truth for scales).
-    scale_kwargs = _resolve_estimated_scales(
-        custom_module=custom_module,
+    reaction_module, loss_module = _build_runtime_modules(
+        store=store,
         collection=collection,
-        store=store,
-        custom_cfg=custom_cfg,
-    )
-    reaction_module = _build_reaction_module(
-        store=store,
         config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
-        collection=collection,
-        scale_kwargs=scale_kwargs,
     )
+    assert loss_module is not None
     _, _, total_updates = derive_update_budget(
         train_cfg, selected_process_count=len(selected_processes)
     )
@@ -2019,14 +1998,6 @@ def prepare_training(
         custom_cfg=custom_cfg,
         train_cfg=train_cfg,
         total_updates=total_updates,
-    )
-
-    loss_module = _build_loss_module(
-        store=store,
-        config=train_cfg,
-        custom_module=custom_module,
-        custom_config=custom_cfg,
-        collection=collection,
     )
 
     plot_sources = (

@@ -2,6 +2,7 @@
 
 Source: [`bp_train/model_api.py`](../bp_train/model_api.py),
 [`bp_train/defaults.py`](../bp_train/defaults.py),
+[`bp_train/runtime_context.py`](../bp_train/runtime_context.py),
 [`bp_train/bounds_loss.py`](../bp_train/bounds_loss.py),
 [`bp_train/wrapper.py`](../bp_train/wrapper.py),
 [`bp_train/dense.py`](../bp_train/dense.py)
@@ -34,11 +35,13 @@ MLP.
 
 ```python
 def build_reaction_module(*, target_names, process_names, config, seed,
-                          collection, **scale_kwargs):
+                          runtime_context, **scale_kwargs):
     return MyReactionModule(key=jax.random.key(seed), **scale_kwargs)
 ```
 
-`scale_kwargs` carries the promoted `SCALE_*` scalers from
+`runtime_context` provides collection-free prepared data as `.data` and the
+resolved `EstimatedScales` as `.scales`. `scale_kwargs` carries those same
+promoted `SCALE_*` scaler instances from
 [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales); pass them to
 `super().__init__(**scale_kwargs)`. Bare hook arrays become `LinearScaler`;
 `AffineScaler(scale, offset)` opts one value axis into affine scaling. The hook
@@ -178,15 +181,17 @@ Define this in your `custom.py` to supply a loss module; omit it to get the
 default per-target MSE.
 
 ```python
-def build_loss_module(*, target_names, process_names, config, seed, collection):
+def build_loss_module(
+    *, target_names, process_names, config, seed, runtime_context
+):
     return MyLossModule(...)
 ```
 
 - `target_names` — the loss target-column labels: measured species followed by
   cumulative modeled-feed columns (`B_<feed>_cum`). These name the columns of
   `LossInputs.SCL_target_pred`, so a per-target module emits one term per label.
-- `process_names`, `config` (your `CONFIG` dict), `seed`, `collection` — same as
-  `build_reaction_module`.
+- `process_names`, `config` (your `CONFIG` dict), `seed`, and `runtime_context` —
+  same as `build_reaction_module`.
 
 The hook is discovered the same way as `build_reaction_module`
 ([`get_hook`](02_cli_and_config.md#custompy-hooks-reference), falling back to
@@ -319,10 +324,10 @@ component, modeled process variable, reactor volume, or `BiologicalOde` rate:
 from bp_train import BoundsViolationLossModule
 
 
-def build_loss_module(*, target_names, collection, config, **_):
+def build_loss_module(*, target_names, runtime_context, config, **_):
     return BoundsViolationLossModule(
         target_names=target_names,
-        collection=collection,
+        bound_snapshots=runtime_context.data.bound_snapshots,
         weight=config.custom.bounds_weight,
         dense_grid_n=64,  # optional; omit for measurement-time bounds only
     )

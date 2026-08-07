@@ -20,6 +20,8 @@ from bp_format.dataclasses import (
 
 from bp_train import BoundsViolationLossModule, DefaultLossModule
 from bp_train.model_api import AffineScaler, LinearScaler, LossInputs
+from bp_train.runtime_context import RuntimeDataContext
+from bp_train.training_data import TrainingDataStore
 
 
 NO_BOUNDS = (None, None)
@@ -83,6 +85,20 @@ def _process(
 
 def _collection(**kwargs):
     return BioProcessCollection(processes={"p1": _process("p1", **kwargs)})
+
+
+def _bound_snapshots(collection):
+    if not collection.processes:
+        raise ValueError("runtime context requires a non-empty collection")
+    target_name = next(
+        iter(next(iter(collection.processes.values())).reactor_medium.components)
+    )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=[target_name],
+        target_source="reactor_components",
+    )
+    return RuntimeDataContext.from_collection(store, collection).bound_snapshots
 
 
 def _inputs(
@@ -162,11 +178,13 @@ def _inputs(
 def test_bounds_loss_is_raw_affine_safe_masked_and_named():
     module = BoundsViolationLossModule(
         target_names=("biomass", "oxygen", "V"),
-        collection=_collection(
-            rmc_bounds=(0.0, 10.0),
-            oxygen_bounds=(1.0, None),
-            volume_bounds=(0.5, 2.0),
-            rate_bounds=((-1.0, 1.0), (None, 3.0)),
+        bound_snapshots=_bound_snapshots(
+            _collection(
+                rmc_bounds=(0.0, 10.0),
+                oxygen_bounds=(1.0, None),
+                volume_bounds=(0.5, 2.0),
+                rate_bounds=((-1.0, 1.0), (None, 3.0)),
+            )
         ),
         weight=0.5,
     )
@@ -212,7 +230,7 @@ def test_bounds_loss_is_raw_affine_safe_masked_and_named():
 def test_volume_bound_uses_unclamped_integrated_volume():
     module = BoundsViolationLossModule(
         target_names=("biomass", "oxygen", "V"),
-        collection=_collection(volume_bounds=(0.5, None)),
+        bound_snapshots=_bound_snapshots(_collection(volume_bounds=(0.5, None))),
         weight=1.0,
     )
     inputs = _inputs(
@@ -235,7 +253,7 @@ def test_rmc_named_v_does_not_collide_with_volume_bound():
     )
     module = BoundsViolationLossModule(
         target_names=("V", "oxygen", "reactor_volume"),
-        collection=collection,
+        bound_snapshots=_bound_snapshots(collection),
         weight=1.0,
     )
     inputs = _inputs(
@@ -264,7 +282,9 @@ def test_bound_name_collision_with_reconstruction_target_is_rejected():
     with pytest.raises(ValueError, match="loss names must be unique"):
         BoundsViolationLossModule(
             target_names=("x", "lwr_bnd/x"),
-            collection=BioProcessCollection(processes={"p1": process}),
+            bound_snapshots=_bound_snapshots(
+                BioProcessCollection(processes={"p1": process})
+            ),
             weight=1.0,
         )
 
@@ -278,7 +298,9 @@ def test_unbounded_collection_is_default_loss_noop():
         scl_pred=[[1.0, 2.0, 3.0]],
     )
     module = BoundsViolationLossModule(
-        target_names=target_names, collection=_collection(), weight=1.0
+        target_names=target_names,
+        bound_snapshots=_bound_snapshots(_collection()),
+        weight=1.0,
     )
 
     losses = module(inputs).named_losses
@@ -304,7 +326,9 @@ def test_subclass_can_initialize_loss_name_fields_after_super():
             return super().loss_names + self.extra_names
 
     module = ExtendedBoundsLoss(
-        target_names=("biomass",), collection=_collection(), weight=1.0
+        target_names=("biomass",),
+        bound_snapshots=_bound_snapshots(_collection()),
+        weight=1.0,
     )
     assert module.loss_names == ("biomass", "extra")
 
@@ -313,7 +337,7 @@ def test_zero_weight_keeps_stable_zero_terms():
     target_names = ("biomass", "oxygen", "V")
     module = BoundsViolationLossModule(
         target_names=target_names,
-        collection=_collection(rmc_bounds=(0.0, None)),
+        bound_snapshots=_bound_snapshots(_collection(rmc_bounds=(0.0, None))),
         weight=0.0,
     )
     inputs = _inputs(
@@ -335,12 +359,14 @@ def test_dense_bounds_use_deduplicated_union_and_derivative_scales():
     )
     module = BoundsViolationLossModule(
         target_names=("biomass",),
-        collection=collection,
+        bound_snapshots=_bound_snapshots(collection),
         weight=1.0,
         dense_grid_n=3,
     )
     measurement_module = BoundsViolationLossModule(
-        target_names=("biomass",), collection=collection, weight=1.0
+        target_names=("biomass",),
+        bound_snapshots=_bound_snapshots(collection),
+        weight=1.0,
     )
     inputs = _inputs(
         raw_states=[[0.0, 10.0, 1.0], [0.0, 10.0, 1.0]],
@@ -375,7 +401,7 @@ def test_dense_bounds_use_deduplicated_union_and_derivative_scales():
 def test_dense_bounds_mask_failed_rows_and_keep_gradients_finite():
     module = BoundsViolationLossModule(
         target_names=("biomass",),
-        collection=_collection(rmc_bounds=(0.0, None)),
+        bound_snapshots=_bound_snapshots(_collection(rmc_bounds=(0.0, None))),
         weight=1.0,
         dense_grid_n=3,
     )
@@ -402,7 +428,7 @@ def test_dense_bounds_mask_failed_rows_and_keep_gradients_finite():
 def test_dense_volume_bound_uses_unclamped_volume():
     module = BoundsViolationLossModule(
         target_names=("biomass",),
-        collection=_collection(volume_bounds=(1.0, None)),
+        bound_snapshots=_bound_snapshots(_collection(volume_bounds=(1.0, None))),
         weight=1.0,
         dense_grid_n=3,
     )
@@ -428,7 +454,7 @@ def test_invalid_dense_grid_size_is_rejected(dense_grid_n):
     with pytest.raises(ValueError, match="dense_grid_n"):
         BoundsViolationLossModule(
             target_names=("biomass",),
-            collection=_collection(),
+            bound_snapshots=_bound_snapshots(_collection()),
             weight=1.0,
             dense_grid_n=dense_grid_n,
         )
@@ -438,7 +464,9 @@ def test_invalid_dense_grid_size_is_rejected(dense_grid_n):
 def test_invalid_weight_is_rejected(weight):
     with pytest.raises(ValueError, match="finite and nonnegative"):
         BoundsViolationLossModule(
-            target_names=("biomass",), collection=_collection(), weight=weight
+            target_names=("biomass",),
+            bound_snapshots=_bound_snapshots(_collection()),
+            weight=weight,
         )
 
 
@@ -453,7 +481,7 @@ def test_invalid_bounds_are_rejected(bounds, message):
     with pytest.raises(ValueError, match=message):
         BoundsViolationLossModule(
             target_names=("biomass",),
-            collection=_collection(rmc_bounds=bounds),
+            bound_snapshots=_bound_snapshots(_collection(rmc_bounds=bounds)),
             weight=1.0,
         )
 
@@ -462,7 +490,7 @@ def test_empty_collection_is_rejected():
     with pytest.raises(ValueError, match="non-empty collection"):
         BoundsViolationLossModule(
             target_names=("biomass",),
-            collection=BioProcessCollection(processes={}),
+            bound_snapshots=_bound_snapshots(BioProcessCollection(processes={})),
             weight=1.0,
         )
 
@@ -476,9 +504,11 @@ def test_missing_rate_in_later_process_is_rejected_clearly():
     p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
     collection = BioProcessCollection(processes={"p1": _process("p1"), "p2": p2})
 
-    with pytest.raises(ValueError, match="missing from process 'p2'"):
+    with pytest.raises(ValueError, match="biological_ode mismatch across processes"):
         BoundsViolationLossModule(
-            target_names=("biomass",), collection=collection, weight=1.0
+            target_names=("biomass",),
+            bound_snapshots=_bound_snapshots(collection),
+            weight=1.0,
         )
 
 
@@ -491,5 +521,7 @@ def test_inconsistent_process_bounds_are_rejected():
     )
     with pytest.raises(ValueError, match="differ across processes"):
         BoundsViolationLossModule(
-            target_names=("biomass",), collection=collection, weight=1.0
+            target_names=("biomass",),
+            bound_snapshots=_bound_snapshots(collection),
+            weight=1.0,
         )

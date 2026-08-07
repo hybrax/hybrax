@@ -57,14 +57,15 @@ adapter is invoked separately before the hooks. Full per-hook write-ups
 |---|---|---|---|
 | [`transform_process_collection`](02_cli_and_config.md#transform_process_collection) | prepare | `(collection, config) -> collection` | rename map |
 | [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(*, parent_name, child_name, state_name, times, base_values, augmented_values, config) -> ndarray` | none |
-| [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(collection, target_names, config, *, controls_store=…) -> EstimatedScales` | none (ones) |
-| [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, collection, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
-| [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, collection) -> UserLossModule` | `DefaultLossModule` |
+| [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(runtime_data, target_names, config) -> EstimatedScales` | none (ones) |
+| [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, runtime_context, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
+| [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, runtime_context) -> UserLossModule` | `DefaultLossModule` |
 | [`build_learning_rate`](02_cli_and_config.md#build_learning_rate) | train | `(custom_cfg, train_cfg, total_updates) -> float \| optax.Schedule` | none |
 | [`build_optimizer`](02_cli_and_config.md#build_optimizer) | train | `(custom_cfg, train_cfg) -> optax.GradientTransformation` | none |
 
-`controls_store` reaches `estimate_all_scales` only if the hook declares it, so
-the three-argument form stays valid.
+`runtime_data` is a collection-free `RuntimeDataContext` containing the prepared
+training and control stores plus the numeric source traces needed by shipped
+scale hooks. `runtime_context` adds the resolved `EstimatedScales`.
 
 The two base classes the `build_*_module` hooks return are documented in
 [04_reaction_and_loss.md](04_reaction_and_loss.md): `UserReactionModule.__call__(t,

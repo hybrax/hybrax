@@ -47,15 +47,24 @@ from bp_train.harness import (
     train_collection,
 )
 from bp_train.defaults import DefaultLossModule, default_build_reaction_module
+from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
 from bp_train.model_api import (
     AffineScaler,
     EstimatedScales,
+    LinearScaler,
     ReactionOutputs,
     UserReactionModule,
     frozen_field,
     trainable_field,
 )
 from bp_train.training_data import TrainingDataStore
+
+
+def _runtime_context(store) -> RuntimeContext:
+    return RuntimeContext(
+        RuntimeDataContext(store, (), (), (), (), (), ()),
+        EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+    )
 
 
 def _biomass_loss() -> DefaultLossModule:
@@ -76,7 +85,6 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
     "SCALE_modeled_FVCs_rates": jnp.ones(0),
-    "SCALE_latent": jnp.zeros(0),
 }
 
 
@@ -146,9 +154,9 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
 class _StatefulCustomModule:
     @staticmethod
     def build_reaction_module(
-        *, target_names, process_names, config, seed, collection, **scale_kwargs
+        *, target_names, process_names, config, seed, runtime_context, **scale_kwargs
     ):
-        del target_names, process_names, config, seed, collection
+        del target_names, process_names, config, seed, runtime_context
         return _StatefulHarnessModule(**scale_kwargs)
 
 
@@ -162,12 +170,10 @@ def test_build_reaction_module_rejects_stateful_without_opt_in():
 
     with pytest.raises(ValueError, match="allow_stateful_models"):
         _build_reaction_module(
-            store=store,
             config=TrainHarnessConfig(),
             custom_module=_StatefulCustomModule,
             custom_config={},
-            collection=collection,
-            scale_kwargs={},
+            runtime_context=_runtime_context(store),
         )
 
 
@@ -180,12 +186,10 @@ def test_build_reaction_module_accepts_stateful_with_opt_in():
     )
 
     module = _build_reaction_module(
-        store=store,
         config=TrainHarnessConfig(allow_stateful_models=True),
         custom_module=_StatefulCustomModule,
         custom_config={},
-        collection=collection,
-        scale_kwargs={},
+        runtime_context=_runtime_context(store),
     )
 
     assert module.n_latent == 1
@@ -483,13 +487,14 @@ def test_target_state_indices_map_pv_only_targets_to_pv_state_column():
 
 def test_default_reaction_module_scales_rmc_axis_not_combined_targets():
     collection = _make_combined_target_collection()
+    store = TrainingDataStore.from_collection(collection, target_source="combined")
 
     module = default_build_reaction_module(
         target_names=["biomass", "ratio"],
         process_names=["p1"],
         config=TrainHarnessConfig(),
         seed=0,
-        collection=collection,
+        runtime_context=_runtime_context(store),
     )
 
     assert module.SCALE_modeled_RMCs.shape == (1,)
@@ -507,7 +512,7 @@ def test_train_collection_process_variable_target_uses_full_initial_state():
         process_names=list(store.process_order),
         config=TrainHarnessConfig(),
         seed=0,
-        collection=collection,
+        runtime_context=_runtime_context(store),
     )
 
     result = train_collection(
@@ -1090,6 +1095,14 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.from_collection",
+        lambda store, _collection: RuntimeDataContext(store, (), (), (), (), (), ()),
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._resolve_estimated_scales",
+        lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+    )
+    monkeypatch.setattr(
         "bp_train.harness._build_reaction_module", lambda **_kw: object()
     )
     monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
@@ -1146,6 +1159,14 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.from_collection",
+        lambda store, _collection: RuntimeDataContext(store, (), (), (), (), (), ()),
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._resolve_estimated_scales",
+        lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+    )
+    monkeypatch.setattr(
         "bp_train.harness._build_reaction_module", lambda **_kw: object()
     )
     monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
@@ -1194,6 +1215,14 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
     monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
     monkeypatch.setattr(
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.from_collection",
+        lambda store, _collection: RuntimeDataContext(store, (), (), (), (), (), ()),
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._resolve_estimated_scales",
+        lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
     monkeypatch.setattr(
         "bp_train.harness._build_reaction_module", lambda **_kw: object()
@@ -1300,17 +1329,18 @@ def test_build_loss_module_discovers_custom_hook():
 
     class _CustomModule:
         @staticmethod
-        def build_loss_module(*, target_names, process_names, config, seed, collection):
-            del process_names, config, seed, collection
+        def build_loss_module(
+            *, target_names, process_names, config, seed, runtime_context
+        ):
+            del process_names, config, seed, runtime_context
             seen["target_names"] = tuple(target_names)
             return sentinel
 
     module = _build_loss_module(
-        store=store,
         config=TrainHarnessConfig(epochs=1),
         custom_module=_CustomModule(),
         custom_config={},
-        collection=collection,
+        runtime_context=_runtime_context(store),
     )
     assert module is sentinel
     assert seen["target_names"] == ("biomass",)
@@ -1326,84 +1356,39 @@ def test_build_loss_module_defaults_when_no_hook():
         target_source="reactor_components",
     )
     module = _build_loss_module(
-        store=store,
         config=TrainHarnessConfig(epochs=1),
         custom_module=None,
         custom_config={},
-        collection=collection,
+        runtime_context=_runtime_context(store),
     )
     assert isinstance(module, DefaultLossModule)
     assert tuple(module.loss_names) == ("biomass",)
 
 
-def test_accepted_hook_kwargs_filters_to_declared_parameters():
-    from bp_train.harness import _accepted_hook_kwargs
-
-    def legacy(collection, target_names, config):
-        raise AssertionError("not called")
-
-    def modern(collection, target_names, config, *, controls_store):
-        raise AssertionError("not called")
-
-    def catch_all(collection, target_names, config, **kwargs):
-        raise AssertionError("not called")
-
-    def positional_only(collection, target_names, config, controls_store=None, /):
-        return controls_store
-
-    sentinel = object()
-    # A frozen output_*/custom.py predating the parameter must still be callable.
-    assert _accepted_hook_kwargs(legacy, controls_store=sentinel) == {}
-    assert _accepted_hook_kwargs(modern, controls_store=sentinel) == {
-        "controls_store": sentinel
-    }
-    assert _accepted_hook_kwargs(catch_all, controls_store=sentinel) == {
-        "controls_store": sentinel
-    }
-    # Named but not bindable by keyword: forwarding it would raise at the call.
-    accepted = _accepted_hook_kwargs(positional_only, controls_store=sentinel)
-    assert accepted == {}
-    assert positional_only(None, None, None, **accepted) is None
-
-
-def test_resolve_estimated_scales_passes_controls_store_only_when_declared():
-    """The wiring itself, not just the filter: removing it must fail here."""
+def test_resolve_estimated_scales_receives_runtime_data():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
+    runtime_data = RuntimeDataContext(store, (), (), (), (), (), ())
     scales = EstimatedScales(
         **{field.name: jnp.zeros(()) for field in dataclasses.fields(EstimatedScales)}
     )
     seen: dict[str, Any] = {}
 
-    class LegacyModule:
+    class CustomModule:
         @staticmethod
-        def estimate_all_scales(collection, target_names, config):
-            seen["legacy"] = True
+        def estimate_all_scales(data, target_names, config):
+            seen["data"] = data
             return scales
 
-    class ModernModule:
-        @staticmethod
-        def estimate_all_scales(collection, target_names, config, *, controls_store):
-            seen["controls_store"] = controls_store
-            return scales
-
-    kwargs = _resolve_estimated_scales(
-        custom_module=LegacyModule,
-        collection=collection,
-        store=store,
+    estimated = _resolve_estimated_scales(
+        custom_module=CustomModule,
+        runtime_data=runtime_data,
         custom_cfg={},
     )
-    assert seen == {"legacy": True}
-    assert "SCALE_modeled_RMCs" in kwargs
-
-    _resolve_estimated_scales(
-        custom_module=ModernModule,
-        collection=collection,
-        store=store,
-        custom_cfg={},
-    )
-    assert seen["controls_store"] is store.controls_store
+    assert seen == {"data": runtime_data}
+    for field in dataclasses.fields(EstimatedScales):
+        assert isinstance(getattr(estimated, field.name), LinearScaler)

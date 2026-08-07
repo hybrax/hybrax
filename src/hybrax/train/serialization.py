@@ -291,12 +291,7 @@ def reconstruct_run(
     training did. Returns those four; callers build the template wrapper.
     """
     # Lazy import to avoid an import cycle (harness imports this module's twins).
-    from .harness import (
-        TrainHarnessConfig,
-        _build_loss_module,
-        _build_reaction_module,
-        _resolve_estimated_scales,
-    )
+    from .harness import TrainHarnessConfig, _build_runtime_modules
     from .training_data import TrainingDataStore
     from .utils import load_custom_module
 
@@ -337,27 +332,14 @@ def reconstruct_run(
         seed=int(config.train.seed),
         allow_stateful_models=config.train.allow_stateful_models,
     )
-    scale_kwargs = _resolve_estimated_scales(
-        custom_module=custom_module,
+    reaction_module, loss_module = _build_runtime_modules(
+        store=store,
         collection=collection,
-        store=store,
-        custom_cfg=config,
-    )
-    reaction_module = _build_reaction_module(
-        store=store,
         config=train_like_cfg,
         custom_module=custom_module,
         custom_config=config,
-        collection=collection,
-        scale_kwargs=scale_kwargs,
     )
-    loss_module = _build_loss_module(
-        store=store,
-        config=train_like_cfg,
-        custom_module=custom_module,
-        custom_config=config,
-        collection=collection,
-    )
+    assert loss_module is not None
     return reaction_module, loss_module, store, collection
 
 

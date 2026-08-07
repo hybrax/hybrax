@@ -8,7 +8,25 @@ import pytest
 
 from bp_format.mechanistic import build_rhs_ode
 from bp_train.defaults import DefaultReactionModule, default_build_reaction_module
+from bp_train.harness import _resolve_estimated_scales
+from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
+from bp_train.training_data import TrainingDataStore
 from test_harness import _make_collection
+
+
+def _runtime_context(collection):
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    scales = _resolve_estimated_scales(
+        custom_module=None,
+        runtime_data=runtime_data,
+        custom_cfg=None,
+    )
+    return RuntimeContext(runtime_data, scales)
 
 
 def _reaction_module(*, key, depth=2, width_size=None, n_in=2, n_out=1):
@@ -138,7 +156,7 @@ def test_default_reaction_module_scale_follows_modeled_state_not_targets():
         process_names=list(collection.processes),
         config=None,
         seed=0,
-        collection=collection,
+        runtime_context=_runtime_context(collection),
     )
 
     assert module.SCALE_modeled_RMCs.shape[0] == n_rmc
@@ -156,7 +174,7 @@ def test_default_reaction_module_scale_independent_of_target_count():
             process_names=list(collection.processes),
             config=None,
             seed=0,
-            collection=collection,
+            runtime_context=_runtime_context(collection),
         ).SCALE_modeled_RMCs.shape[0]
         for targets in (
             ["biomass"],
