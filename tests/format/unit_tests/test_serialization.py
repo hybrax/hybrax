@@ -1,6 +1,7 @@
 """Tests for bp_format.serialization functionality."""
 
 import gzip
+import json
 import pytest
 import jax.numpy as jnp
 from pathlib import Path
@@ -548,8 +549,11 @@ def test_json_roundtrip_biological_ode(sample_process):
     assert p2.biological_ode.rates["q_unused"] == (None, None)
 
 
-def test_default_unbounded_is_omitted_from_json(sample_process):
-    """A freshly built process without bounds writes no bounds keys to JSON."""
+def test_rmc_bounds_default_missing_key_and_explicit_unbounded_roundtrip(
+    sample_process,
+):
+    """RMC bounds distinguish the nonnegative default from explicit unbounded."""
+    sample_process.reactor_medium.components["glucose"].bounds = (None, None)
     cs = CaseStudy(
         case_id="b",
         organism="o",
@@ -560,8 +564,24 @@ def test_default_unbounded_is_omitted_from_json(sample_process):
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "d.json"
         save_case_study(cs, path)
-        text = path.read_text()
-        assert '"bounds"' not in text
+        payload = json.loads(path.read_text())
+        components = payload["processes"]["fed_batch_001"]["reactor_medium"][
+            "components"
+        ]
+        assert "bounds" not in components["biomass"]
+        assert components["glucose"]["bounds"] is None
+        assert "bounds" not in payload["processes"]["fed_batch_001"]["volume"]
+        assert all(
+            "bounds" not in variable
+            for variable in payload["processes"]["fed_batch_001"][
+                "process_variables"
+            ].values()
+        )
+        loaded_components = (
+            load_case_study(path).processes["fed_batch_001"].reactor_medium.components
+        )
+        assert loaded_components["glucose"].bounds == (None, None)
+        assert loaded_components["biomass"].bounds == (0.0, None)
 
 
 def test_auto_generated_biological_ode_roundtrips(sample_process):

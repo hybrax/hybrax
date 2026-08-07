@@ -180,9 +180,11 @@ bundle raises on load rather than loading silently.
 "bounds": {"lower": 0.0, "upper": null}
 ```
 
-Present on `ReactorMediumComponent`, `ProcessVariable`, and `Volume`. The
-default `(None, None)` is **omitted entirely** to keep files clean; a missing
-`bounds` key loads as unbounded.
+Present on `ReactorMediumComponent`, `ProcessVariable`, and `Volume`. The RMC
+default `(0.0, None)` is omitted; a missing RMC `bounds` key loads with that
+default. An explicitly unbounded RMC is written as `"bounds": null` and reloads
+as `(None, None)`. The `(None, None)` default for process variables and volume is
+also omitted; their missing `bounds` keys load as unbounded.
 
 ### `biological_ode` payload
 

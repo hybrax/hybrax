@@ -116,6 +116,7 @@ def test_reactor_medium_component_timeseries():
     ts = TimeSeries(times=jnp.array([0.0, 1.0, 2.0]), values=jnp.array([0.1, 0.5, 1.0]))
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     assert rc.name == "biomass"
+    assert rc.bounds == (0.0, None)
 
 
 def test_reactor_medium_component_static():

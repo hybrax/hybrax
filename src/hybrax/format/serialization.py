@@ -13,6 +13,7 @@ from .dataclasses import (
     CaseStudy,
     BioProcess,
     Bounds,
+    _DEFAULT_RMC_BOUNDS,
     TimeSeries,
     TimeAxis,
     DiscreteEvents,
@@ -294,9 +295,9 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         result["c_star_concentration"] = _timeseries_or_static_to_dict(
             comp.c_star_concentration
         )
-    bounds_dict = _bounds_to_dict(comp.bounds)
-    if bounds_dict is not None:
-        result["bounds"] = bounds_dict
+    if comp.bounds != _DEFAULT_RMC_BOUNDS:
+        # Preserve explicit unbounded bounds instead of reloading the RMC default.
+        result["bounds"] = _bounds_to_dict(comp.bounds)
     return result
 
 
@@ -647,12 +648,15 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
         c_star_concentration = _dict_to_timeseries_or_static(
             comp_data["c_star_concentration"]
         )
+    kwargs = {}
+    if "bounds" in comp_data:
+        kwargs["bounds"] = _dict_to_bounds(comp_data["bounds"])
     return ReactorMediumComponent(
         name=comp_data["name"],
         unit=comp_data["unit"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
         c_star_concentration=c_star_concentration,
-        bounds=_dict_to_bounds(comp_data.get("bounds")),
+        **kwargs,
     )
 
 

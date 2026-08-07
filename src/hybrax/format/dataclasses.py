@@ -10,12 +10,13 @@ import jax.numpy as jnp
 from .time_series import TimeSeries
 
 # Bounds metadata: ``(lower, upper)`` with ``None`` on either side meaning
-# unbounded. Default ``(None, None)`` is unbounded on both sides. Bounds are
-# pure metadata — not enforced inside RhsOde / integrator. Downstream consumers
+# unbounded. RMCs default to nonnegative; other carriers default unbounded.
+# Bounds are pure metadata — not enforced inside RhsOde / integrator. Consumers
 # (e.g. bp-train's loss generator) read them off the process to build
 # soft-constraint penalties.
 Bounds = Tuple[Optional[float], Optional[float]]
 _NO_BOUNDS: Bounds = (None, None)
+_DEFAULT_RMC_BOUNDS: Bounds = (0.0, None)
 
 
 @dataclass(frozen=True)
@@ -138,7 +139,7 @@ class ReactorMediumComponent:
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
     c_star_concentration: TimeSeries | StaticVariable | None = None
-    bounds: Bounds = _NO_BOUNDS  # (lo, hi); None on either side = unbounded
+    bounds: Bounds = _DEFAULT_RMC_BOUNDS
 
 
 @dataclass

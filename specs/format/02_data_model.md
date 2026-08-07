@@ -96,7 +96,9 @@ events is always `volume.volume_changes` with `is_continuous=False`.
 Bounds = Tuple[Optional[float], Optional[float]]   # (lower, upper)
 ```
 
-`None` on either side means unbounded; `(None, None)` is the default.
+`None` on either side means unbounded. The default is `(0.0, None)` for
+`ReactorMediumComponent` concentrations and `(None, None)` for other users of
+this type.
 
 **Bounds are metadata only.** They are never enforced by `RhsOde` or by any
 integrator. Downstream consumers — bp-train's loss module, for instance — read
@@ -116,8 +118,11 @@ class ReactorMediumComponent:
     unit: str                                                 # "g/L", "mM"
     concentration: TimeSeries | StaticVariable                # real, as measured
     c_star_concentration: TimeSeries | StaticVariable | None  # pseudobatch trace
-    bounds: Bounds = (None, None)
+    bounds: Bounds = (0.0, None)
 ```
+
+RMC concentrations default to nonnegative. Pass `bounds=(None, None)` to opt
+out explicitly.
 
 `concentration` is *always* the real reactor concentration in physical units.
 When a pseudobatch transform has been built, the derived `c*` trace goes in
