@@ -34,6 +34,7 @@ from bp_train.loo import (
     FoldResult,
     LOOResult,
     _build_fold_groups,
+    _read_final_train_loss,
     compute_parallel_split,
     resolve_folds,
     run_loo_cv,
@@ -472,6 +473,16 @@ def test_summary_and_aggregate_from_disk(tmp_path):
     assert aggregate["n_folds"] == 3
     assert aggregate["base_seed"] == 10
     assert aggregate["holdout_total_mean"] == pytest.approx(0.5)
+
+
+def test_null_final_train_loss_remains_missing_not_finite(tmp_path):
+    fold_dir = tmp_path / "fold"
+    fold_dir.mkdir()
+    (fold_dir / "trained_wrapper.meta.json").write_text(
+        '{"training": {"final_mean_loss": null}}', encoding="utf-8"
+    )
+
+    assert math.isnan(_read_final_train_loss(fold_dir))
 
 
 # ---------------------------------------------------------------------------

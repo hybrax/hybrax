@@ -166,6 +166,29 @@ def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
     assert jnp.allclose(reloaded.w, module.w)
 
 
+def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
+    module = _TrainableModule()
+    writer = CheckpointWriter(
+        tmp_path / "checkpoints", plotter=None, plots_enabled=False
+    )
+    writer.write(
+        step=1,
+        samples_seen=1,
+        wrapper=module,
+        opt_state=_opt_state_for(module),
+        mean_loss=float("inf"),
+        holdout_loss=float("nan"),
+        render_predictions_fn=_dummy_predictions,
+        loss_by_step=[float("inf")],
+    )
+
+    path = tmp_path / "checkpoints" / "latest" / "train_state.json"
+    text = path.read_text(encoding="utf-8")
+    assert "Infinity" not in text and "NaN" not in text
+    assert json.loads(text)["mean_loss"] is None
+    assert json.loads(text)["holdout_loss"] is None
+
+
 def test_checkpoint_writer_export_failure_does_not_publish(tmp_path: Path):
     module = _TrainableModule()
     writer = CheckpointWriter(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import logging
 from pathlib import Path
 from typing import Any, Sequence
@@ -16,6 +15,7 @@ import pandas as pd
 from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
 from bp_format.json_io import load_json
 
+from .serialization import write_json
 from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
@@ -205,9 +205,7 @@ def _auxiliary_row_values(
 
 def save_model_metadata(path: str | Path, meta: dict[str, Any]) -> None:
     """Write a small JSON sidecar next to a saved model."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    write_json(path, meta, sort_keys=True)
     logger.info("model metadata saved to %s", path)
 
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import gzip
-import json
 import logging
 import os
 from copy import deepcopy
@@ -19,7 +17,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from bp_format.json_io import loads_json
+from bp_format.json_io import has_top_level_key
 from bp_format.serialization import (
     load_case_study,
     load_process_collection,
@@ -32,7 +30,7 @@ from .constants import METADATA_NAMESPACE
 from .controls import select_control_sources
 from .defaults import default_transform_process_collection
 from .run_config import LoadedRunConfig, PrepareConfig
-from .serialization import content_hash, environment_versions
+from .serialization import content_hash, environment_versions, write_json
 from .utils import get_hook, split_hooks_by_customization
 from .validation import (
     ensure_prepared_training_semantics,
@@ -92,9 +90,7 @@ def _raw_input_is_case_study(path: Path) -> bool:
             if (path / name).exists():
                 path = path / name
                 break
-    opener = gzip.open if str(path).endswith(".gz") else open
-    with opener(path, "rt", encoding="utf-8") as f:
-        return "case_id" in loads_json(f.read())
+    return has_top_level_key(path, "case_id")
 
 
 def load_raw_collection(
@@ -491,9 +487,7 @@ def prepare_artifact(
     # Standalone, inspectable record of how this prepare ran (clash-free with
     # train's config.json) — the bp_train provenance/metadata block, without the
     # bulk collection.
-    (output_dir / "prepare_config.json").write_text(
-        json.dumps(bp_train_metadata, indent=2, default=str), encoding="utf-8"
-    )
+    write_json(output_dir / "prepare_config.json", bp_train_metadata, default=str)
 
     if prepare.diagnostics:
         try:

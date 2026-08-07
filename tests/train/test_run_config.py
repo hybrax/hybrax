@@ -20,7 +20,7 @@ def _write_json(path: Path, data: object) -> Path:
     return path
 
 
-def test_config_accepts_only_whole_line_comments(tmp_path: Path) -> None:
+def test_config_accepts_comments_without_preprocessing(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text(
         "// training input\n"
@@ -42,20 +42,19 @@ def test_config_accepts_only_whole_line_comments(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "invalid_comment",
+    "document",
     [
-        '  "data": {"prepared": "prepared.json"} // inline\n',
-        "  /* block comment */\n",
+        '{"data": {"prepared": "prepared.json"} // inline\n}',
+        '{/* block comment */ "data": {"prepared": "prepared.json"}}',
     ],
 )
-def test_config_rejects_non_whole_line_comments(
-    tmp_path: Path, invalid_comment: str
+def test_config_accepts_inline_and_block_comments(
+    tmp_path: Path, document: str
 ) -> None:
     config_path = tmp_path / "config.json"
-    config_path.write_text("{\n" + invalid_comment + "}\n", encoding="utf-8")
+    config_path.write_text(document, encoding="utf-8")
 
-    with pytest.raises(json.JSONDecodeError):
-        load_train_config(config_path)
+    assert load_train_config(config_path).config.data is not None
 
 
 def test_unknown_top_level_keys_fail(tmp_path: Path) -> None:

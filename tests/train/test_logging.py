@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 
 import pandas as pd
 import pytest
@@ -196,6 +197,32 @@ def test_runlogger_csv_and_jsonl_carry_failed_segment_columns(tmp_path):
     assert records[0]["failed_processes"] == []
     assert records[1]["n_failed_samples"] == 1
     assert records[1]["failed_processes"] == ["p2"]
+
+
+def test_runlogger_jsonl_normalizes_nonfinite_metrics(tmp_path):
+    path = tmp_path / "metrics.jsonl"
+    record = replace(
+        _record(1),
+        mean_loss=float("inf"),
+        per_target_loss=(float("nan"),),
+        per_process_loss=(-float("inf"),),
+        process_names=("p1",),
+    )
+    with RunLogger(metrics_jsonl=path) as run:
+        run.start(
+            target_names=("biomass",),
+            process_names=("p1",),
+            total_updates=1,
+            compile_warmup_seconds=0.0,
+        )
+        run.record_step(record)
+
+    text = path.read_text(encoding="utf-8")
+    assert "Infinity" not in text and "NaN" not in text
+    row = json.loads(text)
+    assert row["mean_loss"] is None
+    assert row["per_target_loss"] == [None]
+    assert row["per_process_loss"] == [None]
 
 
 def test_runlogger_close_is_idempotent(tmp_path):

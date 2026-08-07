@@ -8,6 +8,8 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+import bp_format.json_io as json_io
 from bp_format.dataclasses import (
     BiologicalOde,
     BioProcess,
@@ -32,7 +34,6 @@ from bp_format.serialization import (
     save_process_collection,
 )
 
-from bp_train.constants import METADATA_NAMESPACE
 from bp_train.controls import select_control_sources
 from bp_train.controls_store import ControlsStore
 from bp_train.prepare import load_raw_collection, prepare_artifact
@@ -135,6 +136,23 @@ def test_load_raw_collection_accepts_commented_case_study(tmp_path: Path):
     loaded = load_raw_collection(path)
 
     assert loaded.metadata["case_study"]["case_id"] == "commented"
+    assert set(loaded.processes) == set(collection.processes)
+
+
+def test_collection_file_routing_never_materializes_the_full_json(
+    tmp_path: Path, monkeypatch
+):
+    collection = _make_feed_collection()
+    path = tmp_path / "collection.json"
+    save_process_collection(collection, path)
+
+    def fail_eager_load(*_args, **_kwargs):
+        raise AssertionError("collection routing used whole-document JSON loading")
+
+    monkeypatch.setattr(json_io, "_load_stream", fail_eager_load)
+
+    loaded = load_raw_collection(path)
+
     assert set(loaded.processes) == set(collection.processes)
 
 
@@ -943,21 +961,14 @@ def test_prepare_artifact_writes_output_dir_layout(tmp_path):
     assert (output_dir / "prepare_diagnostics").is_dir()
 
 
-def test_prepare_provenance_preserves_nonfinite_values(tmp_path):
-    output_dir = tmp_path / "prepared-nonfinite"
-    prepared = _prepare_from_collection(
-        _make_two_process_collection(),
-        tmp_path,
-        output_dir,
-        prepare_config={"diagnostics": False, "max_rel_error": float("inf")},
-    )
-
-    provenance = prepared.metadata[METADATA_NAMESPACE]["provenance"]
-    assert math.isinf(provenance["prepare_config"]["max_rel_error"])
-    standalone = json.loads(
-        (output_dir / "prepare_config.json").read_text(encoding="utf-8")
-    )
-    assert math.isinf(standalone["provenance"]["prepare_config"]["max_rel_error"])
+def test_prepare_config_rejects_nonfinite_input(tmp_path):
+    with pytest.raises(ValueError, match="prepared-nonfinite-config.json"):
+        _prepare_from_collection(
+            _make_two_process_collection(),
+            tmp_path,
+            tmp_path / "prepared-nonfinite",
+            prepare_config={"diagnostics": False, "max_rel_error": float("inf")},
+        )
 
 
 def test_resolve_prepared_path_dir_vs_file(tmp_path):

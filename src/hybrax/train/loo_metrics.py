@@ -18,7 +18,6 @@ metrics are computed.
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import statistics
@@ -39,6 +38,8 @@ from bp_format.dataclasses import (
 )
 from bp_format.json_io import load_json
 from bp_format.serialization import load_process_collection
+
+from .serialization import write_json
 
 logger = logging.getLogger(__name__)
 
@@ -494,9 +495,7 @@ def compute_loo_metrics(
         metrics_csv_path = loo_dir / "loo_metrics.csv"
         aggregate_json_path = loo_dir / "loo_metrics_aggregate.json"
         per_fold_target.to_csv(metrics_csv_path, index=False)
-        aggregate_json_path.write_text(
-            json.dumps(aggregate, indent=2), encoding="utf-8"
-        )
+        write_json(aggregate_json_path, aggregate)
         logger.info(
             "LOO metrics written to %s; aggregate to %s",
             metrics_csv_path,

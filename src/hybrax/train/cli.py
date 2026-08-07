@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import gc
-import json
 import logging
 import shutil
 import sys
@@ -48,6 +47,7 @@ from .run_config import (
 )
 from .serialization import (
     content_hash,
+    dumps_json,
     environment_versions as _environment_versions,
     read_run_config_json,
     run_config_to_jsonable,
@@ -1029,7 +1029,7 @@ def _bundle_loo_run_dir(
     raw.setdefault("output", {})["dir"] = "."
 
     bundle_path = output_dir / "loo-config.json"
-    bundle_path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+    bundle_path.write_text(dumps_json(raw, indent=2) + "\n", encoding="utf-8")
     return bundle_path
 
 

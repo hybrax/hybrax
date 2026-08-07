@@ -22,7 +22,6 @@ calculation.
 from __future__ import annotations
 
 import dataclasses
-import json
 import logging
 import os
 import shutil
@@ -1044,8 +1043,7 @@ def _write_summary_and_aggregate(
 
     summary_csv_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(summary_rows).to_csv(summary_csv_path, index=False)
-    aggregate_json_path.parent.mkdir(parents=True, exist_ok=True)
-    aggregate_json_path.write_text(json.dumps(aggregate, indent=2), encoding="utf-8")
+    write_json(aggregate_json_path, aggregate)
     logger.info(
         "LOO summary saved to %s; aggregate to %s",
         summary_csv_path,

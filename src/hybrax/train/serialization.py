@@ -24,6 +24,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
@@ -169,7 +171,7 @@ def content_hash(collection: BioProcessCollection) -> str:
     change it.
     """
     as_dict = _strip_provenance(_process_collection_to_dict(collection))
-    canonical = json.dumps(
+    canonical = dumps_json(
         as_dict, sort_keys=True, separators=(",", ":"), cls=NumpyEncoder
     )
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -186,10 +188,34 @@ def run_config_to_jsonable(config: RunConfig) -> dict[str, Any]:
     return config.model_dump(mode="json")
 
 
-def write_json(path: str | Path, document: dict[str, Any]) -> None:
+def _json_safe(value: Any) -> Any:
+    """Return JSON-native data with non-finite real scalars replaced by None."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        value = float(value)
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def dumps_json(document: Any, **kwargs: Any) -> str:
+    """Encode valid JSON, normalizing non-finite real scalars to null."""
+    kwargs["allow_nan"] = False
+    return json.dumps(_json_safe(document), **kwargs)
+
+
+def write_json(
+    path: str | Path, document: Any, *, indent: int = 2, **kwargs: Any
+) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    path.write_text(dumps_json(document, indent=indent, **kwargs), encoding="utf-8")
 
 
 def read_json(path: str | Path) -> dict[str, Any]:

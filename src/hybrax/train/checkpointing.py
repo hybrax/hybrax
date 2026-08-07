@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import gzip
-import json
 import shutil
 import time
 from pathlib import Path
@@ -15,7 +14,7 @@ from .postprocessing import (
     plot_loss_curve,
     render_process_figures,
 )
-from .serialization import save_model, save_opt_state
+from .serialization import save_model, save_opt_state, write_json
 
 
 def _bundle_prepared_gz(src: Path, dst: Path) -> None:
@@ -63,20 +62,17 @@ class CheckpointWriter:
         d.mkdir(parents=True, exist_ok=True)
         save_model(wrapper, d / "params.eqx")
         save_opt_state(opt_state, d / "opt_state.eqx")
-        (d / "train_state.json").write_text(
-            json.dumps(
-                {
-                    "step": int(step),
-                    "samples_seen": int(samples_seen),
-                    "mean_loss": float(mean_loss),
-                    "holdout_loss": (
-                        float(holdout_loss) if holdout_loss is not None else None
-                    ),
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
+        write_json(
+            d / "train_state.json",
+            {
+                "step": int(step),
+                "samples_seen": int(samples_seen),
+                "mean_loss": float(mean_loss),
+                "holdout_loss": (
+                    float(holdout_loss) if holdout_loss is not None else None
+                ),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
+            },
         )
 
         run_dir = self._dir.parent

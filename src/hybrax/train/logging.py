@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass
@@ -10,6 +9,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import pandas as pd
+
+from .serialization import dumps_json
 
 __all__ = ["StepRecord", "RunLogger"]
 
@@ -311,7 +312,7 @@ class RunLogger:
                 self._metrics_csv_path, mode="a", header=False, index=False
             )
         if self._jsonl_file is not None:
-            self._jsonl_file.write(json.dumps(_row(record, strings=False)) + "\n")
+            self._jsonl_file.write(dumps_json(_row(record, strings=False)) + "\n")
 
     def finalize(self) -> dict[str, Any]:
         if self._jsonl_file is not None:

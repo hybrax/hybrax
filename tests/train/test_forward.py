@@ -112,6 +112,17 @@ def test_save_and_load_model_metadata_roundtrip(tmp_path: Path):
     assert loaded == meta
 
 
+def test_save_model_metadata_normalizes_nonfinite_loss(tmp_path: Path):
+    path = tmp_path / "trained_wrapper.meta.json"
+    postprocessing.save_model_metadata(
+        path, {"training": {"final_mean_loss": float("inf")}}
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert "Infinity" not in text
+    assert json.loads(text)["training"]["final_mean_loss"] is None
+
+
 def test_load_model_metadata_missing_returns_empty(tmp_path: Path):
     assert postprocessing.load_model_metadata(tmp_path / "nope.json") == {}
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
-import math
 from pathlib import Path
 
 import equinox as eqx
@@ -30,7 +29,6 @@ from bp_train.run_config import (
     RunConfig,
     TrainConfig,
     load_train_config,
-    reresolve_custom,
 )
 from bp_train.serialization import (
     content_hash,
@@ -126,12 +124,26 @@ def _trainable_arrays(module):
     ]
 
 
-def test_write_json_uses_stdlib_json(tmp_path: Path):
+def test_write_json_emits_valid_json_and_preserves_finite_values(tmp_path: Path):
     path = tmp_path / "config.json"
 
-    serialization.write_json(path, {"status": "complete"})
+    serialization.write_json(
+        path,
+        {
+            "status": "complete",
+            "finite": 1.25,
+            "values": [float("nan"), float("inf"), -float("inf")],
+        },
+    )
 
-    assert json.loads(path.read_text(encoding="utf-8")) == {"status": "complete"}
+    text = path.read_text(encoding="utf-8")
+    assert "NaN" not in text
+    assert "Infinity" not in text
+    assert json.loads(text) == {
+        "status": "complete",
+        "finite": 1.25,
+        "values": [None, None, None],
+    }
 
 
 def test_read_json_accepts_whole_line_comments(tmp_path: Path):
@@ -141,50 +153,20 @@ def test_read_json_accepts_whole_line_comments(tmp_path: Path):
     assert serialization.read_json(path) == {"status": "complete"}
 
 
-@pytest.mark.parametrize("typed_custom", [False, True])
-def test_run_config_roundtrip_preserves_nonfinite_values(
-    tmp_path: Path, typed_custom: bool
-):
-    custom_py = ""
-    if typed_custom:
-        (tmp_path / "custom.py").write_text(
-            "from pydantic import BaseModel\n"
-            "class CustomConfig(BaseModel):\n"
-            "    value: float\n"
-            "    negative: float\n"
-            "def get_custom_config(raw_custom, config):\n"
-            "    return CustomConfig.model_validate(raw_custom)\n",
-            encoding="utf-8",
-        )
-        custom_py = '"custom_py": "custom.py",\n'
-    learning_rate = "1e-3" if typed_custom else "Infinity"
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_run_config_rejects_bare_nonfinite_tokens(tmp_path: Path, token: str):
     source_path = tmp_path / "source.json"
     source_path.write_text(
-        "// non-finite stdlib JSON extensions\n"
+        "// non-finite JSON tokens are invalid\n"
         "{\n"
         '  "data": {"prepared": "prepared.json"},\n'
-        f'  "train": {{"learning_rate": {learning_rate}}},\n'
-        f"  {custom_py}"
-        '  "custom": {"value": NaN, "negative": -Infinity}\n'
+        f'  "train": {{"learning_rate": {token}}}\n'
         "}\n",
         encoding="utf-8",
     )
-    loaded = load_train_config(source_path)
-    snapshot_path = tmp_path / "config.json"
-    serialization.write_json(
-        snapshot_path,
-        {"config": serialization.run_config_to_jsonable(loaded.config)},
-    )
 
-    reconstructed, _ = serialization.read_run_config_json(snapshot_path)
-    reconstructed = reresolve_custom(reconstructed, loaded.custom_module)
-
-    if typed_custom:
-        assert reconstructed.train.learning_rate == pytest.approx(1e-3)
-    else:
-        assert math.isinf(reconstructed.train.learning_rate)
-    assert math.isnan(reconstructed.custom.value)
-    assert reconstructed.custom.negative == -float("inf")
+    with pytest.raises(ValueError, match=str(source_path)):
+        load_train_config(source_path)
 
 
 def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
