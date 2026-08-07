@@ -326,9 +326,11 @@ def build_loss_module(*, target_names, collection, config, **_):
     )
 ```
 
-Bounds default to `(None, None)`, so constructing this module does not invent
-physical constraints. Bounds for the same quantity must agree across all
-processes in the collection. Violations are computed in RAW physical space,
+bp-format defaults reactor-medium component bounds to `(0.0, None)`; process
+variables, reactor volume, and rates default to `(None, None)`. Set an RMC's
+bounds explicitly to `(None, None)` to opt out. The bounds loss module itself
+remains opt-in. Bounds for the same quantity must agree across all processes in
+the collection. Violations are computed in RAW physical space,
 then normalized with the corresponding offset-free derivative scale. Reactor-
 volume bounds use the integrated volume before the reaction model's `min_V`
 safety floor. This is safe for both linear and affine value scalers. `weight`
