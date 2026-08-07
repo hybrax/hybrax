@@ -145,8 +145,7 @@ def test_train_harness_config_from_run_config_maps_sections():
 
 
 # The old custom.py-sha256 sidecar is replaced by config.json
-# inputs.custom_py.file_hash; see test_forward_end_to_end_on_fixture
-# and tests/test_cli_run_dir.py.
+# inputs.custom_py.file_hash; see tests/test_cli_run_dir.py.
 
 
 @pytest.mark.parametrize(

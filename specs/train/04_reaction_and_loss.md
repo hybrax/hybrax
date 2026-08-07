@@ -481,10 +481,8 @@ class CurvatureLossModule(DefaultLossModule):
         return LossOutputs(named_losses={**base, **extras})
 ```
 
-The full version composes metadata-driven `lwr_bnd/<state>` measurement terms
-with curvature in
-[tests/fixtures/martens_single/custom.py](../tests/fixtures/martens_single/custom.py)
-— it runs end-to-end through `prepare -> train -> forward -> losses.csv`.
+The same module can compose metadata-driven `lwr_bnd/<state>` measurement
+terms with the curvature penalty.
 
 #### Example 2 — between-measurement bounds
 
