@@ -1,3 +1,4 @@
 source/autoapi/
-source/narrative/
+source/_data/out/
 _scratch/
+.jupyter_cache/

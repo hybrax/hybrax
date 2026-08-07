@@ -1,30 +1,75 @@
+import os
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from pathlib import Path
+
+_HERE = Path(__file__).parent
+
 project   = "Bioprocess Modeling docs"
 author    = "Bioprocess Modeling Collective"
 copyright = "2026, Bioprocess Modeling Collective"
-release   = version = "0.1.0"
+
+
+def _v(name: str) -> str:
+    try:
+        return _pkg_version(name)
+    except PackageNotFoundError:
+        return "unknown"
+
+
+# Read from the installed packages (importlib.metadata — never imports them).
+release = version = f"bp-format {_v('bp-format')} / bp-train {_v('bp-train')}"
 
 extensions = [
     "autoapi.extension",       # static API gen over BOTH packages — no import
-    "myst_parser",             # narrative .md
+    "myst_nb",                 # executable MyST markdown (supersedes myst_parser)
     "sphinx.ext.napoleon",     # Google-style docstrings
     "sphinx.ext.viewcode",     # [source] links
     "sphinx.ext.intersphinx",  # external refs only (python/numpy/jax)
     "sphinx_copybutton",
 ]
 
-source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
+# myst-nb owns .md and .ipynb. Files without {code-cell} blocks are parsed as
+# plain MyST markdown, so ordinary pages are unaffected.
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "myst-nb",
+    ".ipynb": "myst-nb",
+}
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = [
+    "_build", "Thumbs.db", ".DS_Store",
+    "_data/**",          # dataset generator + generated data — not documents
+    "**/.ipynb_checkpoints",
+]
 
 # --- Furo ---
 html_theme = "furo"
 html_title = "Bioprocess Modeling docs"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_logo = "_static/hybrax_logo.png"
+html_favicon = "_static/favicon.png"
 html_theme_options = {
     "light_css_variables": {"color-brand-primary": "#2563eb", "color-brand-content": "#2563eb"},
     "dark_css_variables":  {"color-brand-primary": "#60a5fa", "color-brand-content": "#60a5fa"},
 }
+
+# --- MyST-NB execution -------------------------------------------------------
+# Pages with {code-cell} blocks run for real at build time against the installed
+# packages. That is deliberate: an API break must break the docs build instead of
+# silently rotting a page. "cache" means only pages whose source changed re-run.
+nb_execution_mode = "cache"
+nb_execution_cache_path = str(_HERE.parent / "_scratch" / "jupyter_cache")
+nb_execution_timeout = 900          # a tutorial that trains a model needs headroom
+nb_execution_raise_on_error = True  # a failing cell fails the build
+nb_merge_streams = True
+
+# The kernel inherits this environment. Keep the docs build single-device and
+# headless so it never competes for cores or tries to open a window.
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
+os.environ.setdefault("BP_TRAIN_DEVICES", "1")
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("MPLCONFIGDIR", str(_HERE.parent / "_scratch" / "mpl"))
 
 # --- AutoAPI over BOTH package source trees (paths relative to this conf.py) ---
 autoapi_type = "python"
@@ -56,8 +101,17 @@ intersphinx_mapping = {
 }
 intersphinx_disabled_reftypes = ["*"]
 
-# --- Keep the build clean (dead ../bp_*/foo.py md links + 3rd-party type refs) ---
+# --- Warning policy ---
+# `myst.xref_missing` is deliberately NOT suppressed any more: bp-docs owns all of
+# its own prose now, so a dead cross-reference is a real bug and -W should catch it.
+# What remains is third-party noise we cannot fix from here.
+#
+# `docutils` and `duplicate_object` are suppressed because every instance comes from
+# autoapi's *generated* RST, i.e. from docstring formatting inside bp-format/bp-train.
+# Those packages are read-only inputs to this build. Our own pages are MyST markdown
+# and report under `myst.*`, which is not suppressed.
 nitpicky = False
-suppress_warnings = ["myst.xref_missing", "myst.header",
+suppress_warnings = ["myst.header",
                      "autoapi.python_import_resolution", "ref.python",
-                     "misc.highlighting_failure"]
+                     "misc.highlighting_failure",
+                     "docutils", "duplicate_object"]

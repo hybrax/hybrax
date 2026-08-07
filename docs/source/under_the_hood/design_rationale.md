@@ -201,7 +201,7 @@ with explicit event jumps keeps the adjoint well-behaved.
 
 Each sample is solved **once**. The solver saves states/rates at the measurement times
 (and, when a loss module opts in, at a dense grid — see
-[Reaction & loss](narrative/bp-train/04_reaction_and_loss.md)). The reaction module
+[the loss module](../train/loss_module.md)). The reaction module
 produces rates *inside* that solve; the loss module reads the saved outputs *after* it.
 Adding dense save points costs extra `SaveAt` evaluations, not extra solver steps.
 
@@ -248,7 +248,7 @@ evaluated inside the RHS at each `t`.
 + `custom.py` at load time. This avoids shape mismatches on the controls store, keeps
 checkpoints small, and is forward-compatible with future trainable controls. Every
 checkpoint directory is self-contained (it bundles `prepared.json.gz` and `custom.py`).
-See [Serialization & inspection](narrative/bp-train/06_serialization_inspect.md).
+See [Saving, loading and predicting](../train/save_load_predict.md).
 
 ### 9. Opt-in multi-core device pooling
 

@@ -1,6 +1,9 @@
 sphinx>=7.2
 furo>=2024.1
-myst-parser>=2.0
+myst-nb>=1.1          # executable MyST + .ipynb; supersedes myst-parser
 linkify-it-py>=2.0
 sphinx-autoapi>=3.1
 sphinx-copybutton>=0.5
+jupyter-cache>=1.0    # only re-execute pages whose source changed
+ipykernel>=6.29
+matplotlib>=3.8
