@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import gc
 import logging
 import shutil
 import sys
 import time
-import weakref
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +22,10 @@ from .harness import (
     train_harness_config_from_run_config,
 )
 from .loo import (
+    _dispatch_producer,
     execute_trained_fold,
-    prepare_single_fold,
+    prepare_single_fold_from_runtime_artifact,
+    produce_runtime_artifact,
     run_loo_cv,
     train_prepared_fold,
 )
@@ -209,8 +209,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Resume an interrupted LOO run from its output directory. Reloads the "
-            "bundled loo-config.json verbatim (no overrides) and re-runs only the "
-            "folds missing a losses.csv. Mutually exclusive with --config."
+            "bundled loo-config.json verbatim (no overrides) and re-runs only "
+            "folds without identity-matched completion records. Mutually "
+            "exclusive with --config."
         ),
     )
     loo_parser.add_argument(
@@ -223,8 +224,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow re-running into a LOO output dir that already completed.",
     )
-    # Internal: dispatched by the orchestrator to run exactly one fold in-process
-    # (worker mode). Each worker gets its own BP_TRAIN_DEVICES value.
+    internal_loo_mode = loo_parser.add_mutually_exclusive_group()
+    internal_loo_mode.add_argument(
+        "--produce-runtime", action="store_true", help=argparse.SUPPRESS
+    )
+    internal_loo_mode.add_argument(
+        "--runtime-artifact", default=None, help=argparse.SUPPRESS
+    )
     loo_parser.add_argument("--fold", type=int, default=None, help=argparse.SUPPRESS)
     loo_parser.add_argument(
         "--log-level",
@@ -306,10 +312,10 @@ def _apply_train_cli_overrides(cfg: RunConfig, args: argparse.Namespace) -> RunC
         updates["output"] = cfg.output.model_copy(
             update={"dir": Path(args.output_dir).resolve()}
         )
-    if not args.plot:  # --no-plot
+    if getattr(args, "plot", True) is False:  # --no-plot
         base = updates.get("output", cfg.output)
         updates["output"] = base.model_copy(update={"plots": False})
-    if args.epochs is not None:
+    if getattr(args, "epochs", None) is not None:
         updates["train"] = cfg.train.model_copy(update={"epochs": int(args.epochs)})
     return cfg.model_copy(update=updates) if updates else cfg
 
@@ -811,7 +817,43 @@ def _handle_loo(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger(__name__)
 
-    # ---- resume: reload the self-contained run dir, re-run only missing folds ----
+    if args.produce_runtime or args.runtime_artifact is not None:
+        if args.resume is not None or args.config is None:
+            log.error("internal LOO modes require --config and cannot resume")
+            return 1
+        loaded = load_loo_config(args.config)
+        cfg = _apply_train_cli_overrides(loaded.config, args)
+        if cfg.data is None:
+            raise ValueError("LOO command requires a data config section")
+        output_dir = Path(cfg.output.dir)
+        if args.produce_runtime:
+            if args.fold is not None:
+                log.error("--produce-runtime cannot select a fold")
+                return 1
+            produce_runtime_artifact(
+                cfg=cfg,
+                custom_module=loaded.custom_module,
+                output_dir=output_dir,
+                bundle_path=Path(args.config),
+            )
+            return 0
+        if args.fold is None:
+            log.error("--runtime-artifact requires --fold")
+            return 1
+        prepared_fold = prepare_single_fold_from_runtime_artifact(
+            cfg=cfg,
+            custom_module=loaded.custom_module,
+            output_dir=output_dir,
+            bundle_path=Path(args.config),
+            artifact_path=Path(args.runtime_artifact),
+            fold_idx=args.fold,
+        )
+        trained_fold = train_prepared_fold(prepared_fold)
+        del prepared_fold
+        execute_trained_fold(trained_fold)
+        return 0
+
+    # ---- resume: reload only the self-contained bundle and runtime state ----
     if args.resume is not None:
         if args.config is not None:
             log.error("loo: --resume and --config are mutually exclusive")
@@ -828,16 +870,13 @@ def _handle_loo(args: argparse.Namespace) -> int:
         cfg = loaded.config
         if cfg.data is None:
             raise ValueError("LOO run dir config is missing a data section")
-        collection = load_process_collection(cfg.data.prepared)
         config_json = resume_dir / "config.json"
         update_run_config_status(config_json, status="running", resumed_at=_now_iso())
         try:
             result = run_loo_cv(
-                collection,
                 cfg=cfg,
                 config_path=bundle,
                 output_dir=resume_dir,
-                custom_py=cfg.custom_py,
                 resume=True,
             )
         except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
@@ -869,47 +908,11 @@ def _handle_loo(args: argparse.Namespace) -> int:
         return 1
 
     loaded = load_loo_config(args.config)
-    cfg = loaded.config
-    if args.output_dir is not None:
-        cfg = cfg.model_copy(
-            update={
-                "output": cfg.output.model_copy(
-                    update={"dir": Path(args.output_dir).resolve()}
-                )
-            }
-        )
+    cfg = _apply_train_cli_overrides(loaded.config, args)
     if cfg.data is None:
         raise ValueError("loo command requires a data config section")
     output_dir = Path(cfg.output.dir)
-    collection = load_process_collection(cfg.data.prepared)
 
-    # ---- worker mode: prepare, release collection, then train one fold ----
-    if args.fold is not None:
-        collection_ref = weakref.ref(collection)
-        prepared_fold = prepare_single_fold(
-            collection,
-            cfg=cfg,
-            custom_module=loaded.custom_module,
-            output_dir=output_dir,
-            fold_idx=args.fold,
-            custom_py=cfg.custom_py,
-        )
-        del collection
-        gc.collect()
-        if collection_ref() is not None:
-            raise RuntimeError(
-                "LOO fold preparation retained the process collection. "
-                "Custom hooks such as build_reaction_module and build_loss_module "
-                "must keep only the data they need, not the full BioProcessCollection. "
-                "Delete any retained collection references after extracting that data."
-            )
-        trained_fold = train_prepared_fold(prepared_fold)
-        del prepared_fold
-        gc.collect()
-        execute_trained_fold(trained_fold)
-        return 0
-
-    # ---- orchestrator mode ----
     config_json = output_dir / "config.json"
     if config_json.is_file():
         try:
@@ -931,24 +934,20 @@ def _handle_loo(args: argparse.Namespace) -> int:
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    # Bundle a self-contained run dir: true copies of custom.py + prepared, and a
-    # loadable loo-config.json that points at the local copies. Every worker (and
-    # --resume) loads ONLY from the run dir, so editing/moving the source tree
-    # mid-run can't desync folds.
     bundle_path = _bundle_loo_run_dir(
         raw_config_path=args.config, cfg=cfg, output_dir=output_dir
     )
-
+    # Reload the bundle so every child and the parent use the same relative,
+    # movable config identity. This path deliberately does not deserialize data.
+    bundled = load_loo_config(bundle_path)
+    bundled_cfg = bundled.config
     document = {
         "status": "running",
         "started_at": _now_iso(),
         "cli_argv": list(sys.argv),
         "config": run_config_to_jsonable(cfg),
         "inputs": {
-            "prepared_input": {
-                "path": str(cfg.data.prepared),
-                "content_hash": content_hash(collection),
-            },
+            "prepared_input": {"path": str(cfg.data.prepared)},
             "custom_py": {
                 "bundled": "custom.py" if cfg.custom_py is not None else None,
                 "file_hash": (
@@ -963,12 +962,13 @@ def _handle_loo(args: argparse.Namespace) -> int:
     write_json(config_json, document)
 
     try:
+        producer_rc = _dispatch_producer(bundle_path, output_dir)
+        if producer_rc != 0:
+            raise RuntimeError(f"LOO runtime producer failed: exit {producer_rc}")
         result = run_loo_cv(
-            collection,
-            cfg=cfg,
+            cfg=bundled_cfg,
             config_path=bundle_path,
             output_dir=output_dir,
-            custom_py=cfg.custom_py,
         )
     except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
         update_run_config_status(

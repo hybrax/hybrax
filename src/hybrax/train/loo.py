@@ -12,7 +12,7 @@ folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fol
 JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
 lets the OS schedule the worker processes, then aggregates their on-disk losses
 into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
-skips folds that already wrote ``losses.csv`` and re-runs only the rest.
+skips only identity-matched, complete folds and re-runs the rest.
 
 This module stays a thin orchestrator on top of the harness preparation,
 training, and evaluation entry points; it does not reimplement batching or loss
@@ -22,12 +22,15 @@ calculation.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 import logging
 import os
 import shutil
 import statistics
 import subprocess
 import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,22 +43,40 @@ from bp_format.json_io import load_json
 from .harness import (
     ForwardConfig,
     PreparedTraining,
+    _resolve_estimated_scales,
     evaluate_trained_wrapper,
     prepare_training,
+    prepare_training_from_runtime_context,
     train_collection,
     train_harness_config_from_run_config,
 )
 from .postprocessing import extract_process_plot_sources, save_model_metadata
+from .runtime_artifact import (
+    FORMAT_VERSION,
+    RhsOdeDescriptor,
+    RuntimeArtifactFold,
+    load_runtime_artifact,
+    read_runtime_artifact_metadata,
+    write_runtime_artifact,
+)
+from .runtime_context import RuntimeDataContext
 from .run_config import LooConfig, RunConfig
 from .serialization import (
+    content_hash,
+    dumps_json,
     load_trained_wrapper,
     run_config_to_jsonable,
     save_model,
     update_run_config_status,
     write_json,
 )
+from .training_data import TrainingDataStore
 
 logger = logging.getLogger(__name__)
+
+LOO_STATE_VERSION = 1
+_RUNTIME_ARTIFACT_NAME = "runtime-artifact"
+_LOO_STATE_NAME = "loo-runtime.json"
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +120,167 @@ class LOOResult:
     summary_csv_path: Path
     aggregate_json_path: Path
     aggregate: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LooRuntimeState:
+    """Validated identity binding for one self-contained LOO run."""
+
+    run_fingerprint: str
+    prepared_content_hash: str
+    artifact_format_version: int
+    artifact_path: Path
+    artifact_identity: str
+    folds: tuple[RuntimeArtifactFold, ...]
+
+
+def _fold_record(fold: Fold | RuntimeArtifactFold, *, seed: int) -> RuntimeArtifactFold:
+    return RuntimeArtifactFold(
+        idx=fold.idx,
+        test=tuple(fold.test),
+        train=tuple(fold.train),
+        slug=fold.slug,
+        seed=seed,
+    )
+
+
+def _state_path(output_dir: Path) -> Path:
+    return output_dir / _LOO_STATE_NAME
+
+
+def _atomic_json(path: Path, value: dict[str, Any]) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(dumps_json(value, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _fingerprint(bundle_path: Path, custom_path: Path | None) -> str:
+    raw = load_json(bundle_path)
+    if not isinstance(raw, dict):
+        raise ValueError("bundled LOO config must be a JSON object")
+    custom_hash = (
+        "sha256:" + hashlib.sha256(custom_path.read_bytes()).hexdigest()
+        if custom_path is not None
+        else None
+    )
+    payload = {"config": raw, "custom_hash": custom_hash}
+    return (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+
+
+def _write_loo_state(path: Path, state: LooRuntimeState) -> None:
+    _atomic_json(
+        path,
+        {
+            "version": LOO_STATE_VERSION,
+            "run_fingerprint": state.run_fingerprint,
+            "prepared_content_hash": state.prepared_content_hash,
+            "artifact_format_version": state.artifact_format_version,
+            "artifact_path": state.artifact_path.as_posix(),
+            "artifact_identity": state.artifact_identity,
+            "folds": [dataclasses.asdict(fold) for fold in state.folds],
+        },
+    )
+
+
+def _read_loo_state(output_dir: Path) -> LooRuntimeState:
+    path = _state_path(output_dir)
+    try:
+        raw = load_json(path)
+    except Exception as error:
+        raise ValueError("invalid LOO runtime state") from error
+    required = {
+        "version",
+        "run_fingerprint",
+        "prepared_content_hash",
+        "artifact_format_version",
+        "artifact_path",
+        "artifact_identity",
+        "folds",
+    }
+    if (
+        not isinstance(raw, dict)
+        or set(raw) != required
+        or raw["version"] != LOO_STATE_VERSION
+        or raw["artifact_format_version"] != FORMAT_VERSION
+        or Path(raw.get("artifact_path", "")) != Path(_RUNTIME_ARTIFACT_NAME)
+    ):
+        raise ValueError("invalid LOO runtime state")
+    if not all(
+        isinstance(raw[key], str)
+        for key in required - {"version", "artifact_format_version", "folds"}
+    ):
+        raise ValueError("invalid LOO runtime state")
+    if not isinstance(raw["folds"], list) or not raw["folds"]:
+        raise ValueError("invalid LOO runtime state")
+    folds = []
+    for item in raw["folds"]:
+        if not isinstance(item, dict) or set(item) != {
+            "idx",
+            "test",
+            "train",
+            "slug",
+            "seed",
+        }:
+            raise ValueError("invalid LOO runtime state")
+        if (
+            type(item["idx"]) is not int
+            or item["idx"] < 0
+            or type(item["seed"]) is not int
+            or not isinstance(item["slug"], str)
+            or not isinstance(item["test"], list)
+            or not isinstance(item["train"], list)
+            or not item["test"]
+            or not item["train"]
+            or not all(isinstance(v, str) for v in item["test"] + item["train"])
+        ):
+            raise ValueError("invalid LOO runtime state")
+        folds.append(
+            RuntimeArtifactFold(
+                item["idx"],
+                tuple(item["test"]),
+                tuple(item["train"]),
+                item["slug"],
+                item["seed"],
+            )
+        )
+    if len({f.idx for f in folds}) != len(folds) or len({f.slug for f in folds}) != len(
+        folds
+    ):
+        raise ValueError("invalid LOO runtime state")
+    return LooRuntimeState(
+        raw["run_fingerprint"],
+        raw["prepared_content_hash"],
+        raw["artifact_format_version"],
+        Path(raw["artifact_path"]),
+        raw["artifact_identity"],
+        tuple(folds),
+    )
+
+
+def _validate_state(
+    output_dir: Path, *, bundle_path: Path, custom_path: Path | None
+) -> LooRuntimeState:
+    state = _read_loo_state(output_dir)
+    if state.run_fingerprint != _fingerprint(bundle_path, custom_path):
+        raise ValueError("LOO runtime state fingerprint does not match bundled config")
+    artifact_path = output_dir / state.artifact_path
+    metadata = read_runtime_artifact_metadata(artifact_path)
+    if metadata.identity != state.artifact_identity or metadata.folds != state.folds:
+        raise ValueError("LOO runtime state does not match runtime artifact")
+    if metadata.identity_inputs != {
+        "run_fingerprint": state.run_fingerprint,
+        "prepared_content_hash": state.prepared_content_hash,
+    }:
+        raise ValueError("LOO runtime artifact identity inputs do not match state")
+    return dataclasses.replace(state, artifact_path=artifact_path)
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +535,9 @@ def resolve_folds(
         explicit_train = None
         if hs.train is not None:
             explicit_train = tuple(hs.train)
-            _require_known(explicit_train, known, what="train", idx=idx, full=full_names)
+            _require_known(
+                explicit_train, known, what="train", idx=idx, full=full_names
+            )
             overlap = sorted(set(test) & set(explicit_train))
             if overlap:
                 raise ValueError(
@@ -414,7 +598,7 @@ def compute_parallel_split(
 # ---------------------------------------------------------------------------
 
 
-def _worker_cmd(config_path: Path, output_dir: Path, fold_idx: int) -> list[str]:
+def _producer_cmd(config_path: Path, output_dir: Path) -> list[str]:
     return [
         sys.executable,
         "-m",
@@ -424,6 +608,24 @@ def _worker_cmd(config_path: Path, output_dir: Path, fold_idx: int) -> list[str]
         str(config_path),
         "--output-dir",
         str(output_dir),
+        "--produce-runtime",
+    ]
+
+
+def _worker_cmd(
+    config_path: Path, output_dir: Path, artifact_path: Path, fold_idx: int
+) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "bp_train.cli",
+        "loo",
+        "--config",
+        str(config_path),
+        "--output-dir",
+        str(output_dir),
+        "--runtime-artifact",
+        str(artifact_path),
         "--fold",
         str(fold_idx),
     ]
@@ -452,15 +654,24 @@ def _worker_env(devices: int) -> dict[str, str]:
     return env
 
 
+def _dispatch_producer(config_path: Path, output_dir: Path) -> int:
+    """Run the collection-owning producer before any fold worker starts."""
+    return subprocess.run(
+        _producer_cmd(config_path, output_dir), check=False
+    ).returncode
+
+
 def _dispatch_worker(
     config_path: Path,
     output_dir: Path,
+    artifact_path: Path,
     fold_idx: int,
     devices: int,
 ) -> int:
     """Run one fold subprocess. Returns its exit code."""
     proc = subprocess.Popen(
-        _worker_cmd(config_path, output_dir, fold_idx), env=_worker_env(devices)
+        _worker_cmd(config_path, output_dir, artifact_path, fold_idx),
+        env=_worker_env(devices),
     )
     return proc.wait()
 
@@ -468,6 +679,7 @@ def _dispatch_worker(
 def _dispatch_pool(
     config_path: Path,
     output_dir: Path,
+    artifact_path: Path,
     folds: list[Fold],
     parallel: int,
     devices: int,
@@ -477,7 +689,9 @@ def _dispatch_pool(
 
     def _run(fold: Fold) -> None:
         try:
-            rc = _dispatch_worker(config_path, output_dir, fold.idx, devices)
+            rc = _dispatch_worker(
+                config_path, output_dir, artifact_path, fold.idx, devices
+            )
             if rc != 0:
                 failures.append((fold.slug, f"exit {rc}"))
         except Exception as exc:  # noqa: BLE001 - record, don't abort other folds
@@ -525,6 +739,200 @@ class TrainedFold:
     train_result: Any
 
 
+def _effective_fold_config(
+    cfg: RunConfig, fold: Fold, output_dir: Path, custom_py: Path | None
+) -> tuple[RunConfig, Path, Path | None]:
+    fold_dir = output_dir / "folds" / fold.slug
+    fold_custom = fold_dir / "custom.py" if custom_py is not None else None
+    effective_cfg = cfg.model_copy(
+        update={
+            "data": cfg.data.model_copy(update={"processes": fold.train}),
+            "train": cfg.train.model_copy(
+                update={"seed": int(cfg.train.seed) + fold.idx}
+            ),
+            "output": cfg.output.model_copy(update={"dir": fold_dir.resolve()}),
+            "custom_py": fold_custom,
+        }
+    )
+    return effective_cfg, fold_dir, fold_custom
+
+
+def _rhs_descriptor(
+    collection: BioProcessCollection, store: TrainingDataStore
+) -> RhsOdeDescriptor:
+    process = next(iter(collection.processes.values()))
+    ode = process.biological_ode
+    if ode is None:
+        raise ValueError("runtime artifact requires a biological_ode")
+    rhs = store.rhs_ode
+    return RhsOdeDescriptor(
+        name_modeled_rates=tuple(rhs.name_modeled_rates),
+        name_modeled_algebraic=tuple(rhs.name_modeled_algebraic),
+        name_modeled_RMCs=tuple(rhs.name_modeled_RMCs),
+        name_modeled_PVs=tuple(rhs.name_modeled_PVs),
+        name_modeled_FVCs=tuple(rhs.name_modeled_FVCs),
+        name_modeled_SVCs=tuple(rhs.name_modeled_SVCs),
+        name_controlled_PVs=tuple(rhs.name_controlled_PVs),
+        name_controlled_FVCs=tuple(rhs.name_controlled_FVCs),
+        name_controlled_SVCs=tuple(rhs.name_controlled_SVCs),
+        algebraic_expressions=tuple(
+            ode.algebraic[name] for name in rhs.name_modeled_algebraic
+        ),
+        derivative_expressions=tuple(
+            ode.derivatives[name]
+            for name in (*rhs.name_modeled_RMCs, *rhs.name_modeled_PVs)
+        ),
+    )
+
+
+def produce_runtime_artifact(
+    *, cfg: RunConfig, custom_module: Any, output_dir: Path, bundle_path: Path
+) -> LooRuntimeState:
+    """Collection-owning, short-lived producer for all fold runtime inputs."""
+    if cfg.data is None:
+        raise ValueError("LOO requires data")
+    from bp_format.serialization import load_process_collection
+
+    collection = load_process_collection(cfg.data.prepared)
+    folds = resolve_folds(collection, cfg.loo)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=cfg.data.targets,
+        target_source=cfg.data.target_source,
+    )
+    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    records = []
+    for fold in folds:
+        effective, _dir, _custom = _effective_fold_config(
+            cfg, fold, output_dir, cfg.custom_py
+        )
+        scales = _resolve_estimated_scales(
+            custom_module=custom_module, runtime_data=runtime_data, custom_cfg=effective
+        )
+        records.append(
+            (_fold_record(fold, seed=int(cfg.train.seed) + fold.idx), scales)
+        )
+    fingerprint = _fingerprint(bundle_path, cfg.custom_py)
+    prepared_hash = content_hash(collection)
+    artifact_path = output_dir / _RUNTIME_ARTIFACT_NAME
+    identity = write_runtime_artifact(
+        artifact_path,
+        runtime_data=runtime_data,
+        folds=tuple(records),
+        rhs_descriptor=_rhs_descriptor(collection, store),
+        identity_inputs={
+            "run_fingerprint": fingerprint,
+            "prepared_content_hash": prepared_hash,
+        },
+        plot_sources=(
+            extract_process_plot_sources(
+                collection, store.rhs_ode, tuple(store.process_order)
+            )
+            if cfg.output.plots
+            else None
+        ),
+    )
+    state = LooRuntimeState(
+        fingerprint,
+        prepared_hash,
+        FORMAT_VERSION,
+        Path(_RUNTIME_ARTIFACT_NAME),
+        identity,
+        tuple(record[0] for record in records),
+    )
+    try:
+        _write_loo_state(_state_path(output_dir), state)
+    except BaseException:
+        shutil.rmtree(artifact_path, ignore_errors=True)
+        raise
+    return state
+
+
+def _fold_from_record(fold: RuntimeArtifactFold) -> Fold:
+    return Fold(fold.idx, fold.test, fold.train, fold.slug)
+
+
+def _fold_harness_config(effective_cfg: RunConfig, fold: Fold, fold_dir: Path):
+    return dataclasses.replace(
+        train_harness_config_from_run_config(effective_cfg, run_dir=fold_dir),
+        holdout_processes=fold.test,
+        holdout_label="holdout",
+    )
+
+
+def _fold_runtime_metadata(
+    state: LooRuntimeState, fold: RuntimeArtifactFold
+) -> dict[str, Any]:
+    return {
+        "loo_runtime": {
+            "state_version": LOO_STATE_VERSION,
+            "run_fingerprint": state.run_fingerprint,
+            "artifact_identity": state.artifact_identity,
+            "fold": {
+                "idx": fold.idx,
+                "test": list(fold.test),
+                "train": list(fold.train),
+                "slug": fold.slug,
+                "seed": fold.seed,
+            },
+        }
+    }
+
+
+def prepare_single_fold_from_runtime_artifact(
+    *,
+    cfg: RunConfig,
+    custom_module: Any | None,
+    output_dir: Path,
+    bundle_path: Path,
+    artifact_path: Path,
+    fold_idx: int,
+) -> PreparedFold:
+    """Prepare one fold solely from its validated runtime artifact."""
+    state = _validate_state(
+        output_dir, bundle_path=bundle_path, custom_path=cfg.custom_py
+    )
+    if artifact_path.resolve() != state.artifact_path.resolve():
+        raise ValueError("runtime artifact path does not match LOO state")
+    artifact = load_runtime_artifact(artifact_path, fold_id=fold_idx)
+    if artifact.identity != state.artifact_identity or artifact.fold not in state.folds:
+        raise ValueError("runtime artifact fold does not match LOO state")
+    record = next(fold for fold in state.folds if fold.idx == fold_idx)
+    if artifact.fold != record:
+        raise ValueError("runtime artifact selected fold does not match LOO state")
+    fold = _fold_from_record(record)
+    effective_cfg, fold_dir, fold_custom = _effective_fold_config(
+        cfg, fold, output_dir, cfg.custom_py
+    )
+    fold_dir.mkdir(parents=True, exist_ok=True)
+    if fold_custom is not None:
+        shutil.copyfile(cfg.custom_py, fold_custom)
+    config_json = fold_dir / "config.json"
+    write_json(
+        config_json,
+        {
+            "status": "running",
+            "config": run_config_to_jsonable(effective_cfg),
+            **_fold_runtime_metadata(state, record),
+        },
+    )
+    return PreparedFold(
+        fold=fold,
+        fold_seed=record.seed,
+        fold_dir=fold_dir,
+        fold_custom=fold_custom,
+        config_json=config_json,
+        effective_cfg=effective_cfg,
+        training=prepare_training_from_runtime_context(
+            artifact.context,
+            config=_fold_harness_config(effective_cfg, fold, fold_dir),
+            custom_module=custom_module,
+            custom_cfg=effective_cfg,
+            plot_sources=artifact.plot_sources,
+        ),
+    )
+
+
 def prepare_single_fold(
     collection: BioProcessCollection,
     *,
@@ -542,30 +950,18 @@ def prepare_single_fold(
         )
     fold = folds[fold_idx]
     fold_seed = int(cfg.train.seed) + fold.idx
-    fold_dir = Path(output_dir) / "folds" / fold.slug
-    fold_dir.mkdir(parents=True, exist_ok=True)
-    fold_custom = None
-    if custom_py is not None:
-        fold_custom = fold_dir / "custom.py"
-        shutil.copyfile(custom_py, fold_custom)
-    effective_cfg = cfg.model_copy(
-        update={
-            "data": cfg.data.model_copy(update={"processes": fold.train}),
-            "train": cfg.train.model_copy(update={"seed": fold_seed}),
-            "output": cfg.output.model_copy(update={"dir": fold_dir.resolve()}),
-            "custom_py": fold_custom,
-        }
+    effective_cfg, fold_dir, fold_custom = _effective_fold_config(
+        cfg, fold, Path(output_dir), Path(custom_py) if custom_py is not None else None
     )
+    fold_dir.mkdir(parents=True, exist_ok=True)
+    if fold_custom is not None:
+        shutil.copyfile(custom_py, fold_custom)
     config_json = fold_dir / "config.json"
     write_json(
         config_json,
         {"status": "running", "config": run_config_to_jsonable(effective_cfg)},
     )
-    harness_cfg = dataclasses.replace(
-        train_harness_config_from_run_config(effective_cfg, run_dir=fold_dir),
-        holdout_processes=fold.test,
-        holdout_label="holdout",
-    )
+    harness_cfg = _fold_harness_config(effective_cfg, fold, fold_dir)
     logger.info(
         "LOO fold %d: slug=%s test=%s n_train=%d seed=%d",
         fold.idx,
@@ -750,48 +1146,60 @@ def run_single_fold(
 # ---------------------------------------------------------------------------
 
 
+def _fold_complete(
+    fold_dir: Path, state: LooRuntimeState, fold: RuntimeArtifactFold
+) -> bool:
+    config_path = fold_dir / "config.json"
+    losses_path = fold_dir / "losses.csv"
+    if not config_path.exists():
+        return False
+    try:
+        document = load_json(config_path)
+    except Exception as error:
+        raise ValueError(f"invalid fold config for {fold.slug}") from error
+    if not isinstance(document, dict):
+        raise ValueError(f"invalid fold config for {fold.slug}")
+    runtime = document.get("loo_runtime")
+    if (
+        runtime is not None
+        and runtime != _fold_runtime_metadata(state, fold)["loo_runtime"]
+    ):
+        raise ValueError(f"fold runtime identity does not match state: {fold.slug}")
+    return (
+        losses_path.is_file()
+        and document.get("status") == "complete"
+        and runtime == _fold_runtime_metadata(state, fold)["loo_runtime"]
+    )
+
+
 def run_loo_cv(
-    collection: BioProcessCollection,
     *,
     cfg: RunConfig,
     config_path: str | Path,
     output_dir: str | Path,
-    custom_py: str | Path | None = None,
     resume: bool = False,
 ) -> LOOResult:
-    """Resolve folds, size + dispatch the subprocess pool, then aggregate.
-
-    ``config_path`` is the run-config JSON re-passed verbatim to each worker
-    subprocess (``loo --config <config_path> --fold <i>``). With ``resume=True``
-    folds that already wrote ``folds/<slug>/losses.csv`` are skipped and only the
-    missing/partial ones are re-run.
-    """
-    folds = resolve_folds(collection, cfg.loo, data_processes=cfg.data.processes)
-    n_folds = len(folds)
+    """Dispatch artifact-backed workers and aggregate their fold outputs."""
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
     config_path = Path(config_path).resolve()
-
+    state = _validate_state(
+        output_dir, bundle_path=config_path, custom_path=cfg.custom_py
+    )
+    folds = tuple(_fold_from_record(fold) for fold in state.folds)
+    n_folds = len(folds)
     loo_cfg = cfg.loo or LooConfig()
     n_cpu = os.cpu_count() or 1
-
-    # A fold's effective batch is its train-set size, capped by an explicit
-    # train.batch_size. Exposing more host devices than the batch only deadlocks
-    # the pmap collective, so the per-fold device count is capped at the
-    # SMALLEST fold's effective batch.
     batch_size = cfg.train.batch_size
 
     def _eff_batch(fold: Fold) -> int:
         return min(len(fold.train), batch_size) if batch_size else len(fold.train)
-
-    min_batch = min(_eff_batch(f) for f in folds)
 
     parallel, devices = compute_parallel_split(
         n_folds,
         n_cpu,
         loo_cfg.parallel_folds,
         devices_per_fold=loo_cfg.devices_per_fold,
-        max_devices_per_fold=min_batch,
+        max_devices_per_fold=min(_eff_batch(fold) for fold in folds),
     )
     if loo_cfg.parallel_folds > n_folds:
         logger.info(
@@ -800,15 +1208,15 @@ def run_loo_cv(
             n_folds,
             parallel,
         )
-
-    # On resume, skip folds whose losses.csv already exists (the artifact the
-    # aggregation reads); re-run the rest (overwriting any partial output).
     if resume:
-        pending = [
-            f
-            for f in folds
-            if not (output_dir / "folds" / f.slug / "losses.csv").is_file()
-        ]
+        pending = []
+        for fold, record in zip(folds, state.folds, strict=True):
+            fold_dir = output_dir / "folds" / fold.slug
+            if _fold_complete(fold_dir, state, record):
+                continue
+            if fold_dir.exists():
+                shutil.rmtree(fold_dir)
+            pending.append(fold)
         logger.info(
             "LOO resume: %d/%d fold(s) already complete, running %d remaining",
             n_folds - len(pending),
@@ -825,11 +1233,11 @@ def run_loo_cv(
         parallel,
         devices,
     )
-
     if pending:
-        _dispatch_pool(config_path, output_dir, pending, parallel, devices)
+        _dispatch_pool(
+            config_path, output_dir, state.artifact_path, pending, parallel, devices
+        )
 
-    # --- aggregate on-disk fold losses ---
     summary_csv_path = output_dir / "loo_summary.csv"
     aggregate_json_path = output_dir / "loo_aggregate.json"
     aggregate = _write_summary_and_aggregate(
@@ -839,12 +1247,10 @@ def run_loo_cv(
         aggregate_json_path=aggregate_json_path,
         base_seed=int(cfg.train.seed),
     )
-
     if cfg.output.plots:
         _plot_cross_fold_losses(folds=folds, output_dir=output_dir)
-
     return LOOResult(
-        fold_dirs=tuple(output_dir / "folds" / f.slug for f in folds),
+        fold_dirs=tuple(output_dir / "folds" / fold.slug for fold in folds),
         parallel_folds=parallel,
         devices_per_fold=devices,
         summary_csv_path=summary_csv_path,

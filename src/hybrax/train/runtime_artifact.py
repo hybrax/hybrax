@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, fields
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Mapping
 
 import jax.numpy as jnp
 import numpy as np
@@ -22,6 +22,7 @@ from bp_format.mechanistic import RhsOde
 
 from .controls_store import ControlsStore
 from .model_api import AffineScaler, EstimatedScales, LinearScaler, Scaler
+from .postprocessing import ProcessPlotSource
 from .runtime_context import RuntimeContext, RuntimeDataContext
 from .training_data import TrainingDataStore
 
@@ -107,6 +108,16 @@ class RuntimeArtifact:
     identity: str
     context: RuntimeContext
     fold: RuntimeArtifactFold
+    plot_sources: Mapping[str, ProcessPlotSource] | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeArtifactMetadata:
+    """Validated manifest data available without reading numeric arrays."""
+
+    identity: str
+    identity_inputs: Mapping[str, str]
+    folds: tuple[RuntimeArtifactFold, ...]
 
 
 @dataclass(frozen=True)
@@ -174,6 +185,63 @@ def _scaler(value: Scaler, name: str, arrays: dict[str, Any]) -> dict[str, str]:
             "offset": f"scale.{name}.offset",
         }
     raise TypeError(f"{name}: unsupported scaler {type(value).__name__}")
+
+
+def _plot_source_arrays(
+    plot_sources: Mapping[str, ProcessPlotSource], process_order: tuple[str, ...]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    if set(plot_sources) != set(process_order):
+        raise ValueError("plot sources must match runtime process order")
+    arrays: dict[str, Any] = {}
+    records: list[dict[str, Any]] = []
+    for row, process_name in enumerate(process_order):
+        source = plot_sources[process_name]
+        if type(source) is not ProcessPlotSource:
+            raise TypeError("plot sources must contain ProcessPlotSource instances")
+        measured = []
+        for column, (name, unit, times, values) in enumerate(source.measured_series):
+            prefix = f"plot.{row}.measured.{column}"
+            arrays[f"{prefix}.times"] = times
+            arrays[f"{prefix}.values"] = values
+            measured.append(
+                {
+                    "name": name,
+                    "unit": unit,
+                    "times": f"{prefix}.times",
+                    "values": f"{prefix}.values",
+                }
+            )
+        changes = []
+        for column, (name, kind, continuous, unit, times, values) in enumerate(
+            source.volume_changes
+        ):
+            prefix = f"plot.{row}.volume.{column}"
+            arrays[f"{prefix}.times"] = times
+            arrays[f"{prefix}.values"] = values
+            changes.append(
+                {
+                    "name": name,
+                    "kind": kind,
+                    "is_continuous": continuous,
+                    "unit": unit,
+                    "times": f"{prefix}.times",
+                    "values": f"{prefix}.values",
+                }
+            )
+        records.append(
+            {
+                "process_name": process_name,
+                "time_unit": source.time_unit,
+                "t_start": source.t_start,
+                "t_end": source.t_end,
+                "v_unit": source.v_unit,
+                "initial_volume": source.initial_volume,
+                "measured_series": measured,
+                "volume_changes": changes,
+            }
+        )
+    _validate_plot_sources_metadata(records, arrays, process_order)
+    return arrays, records
 
 
 def _context_arrays(data: RuntimeDataContext) -> dict[str, Any]:
@@ -462,6 +530,7 @@ def write_runtime_artifact(
     folds: tuple[tuple[RuntimeArtifactFold, EstimatedScales], ...],
     rhs_descriptor: RhsOdeDescriptor,
     identity_inputs: dict[str, str] | None = None,
+    plot_sources: Mapping[str, ProcessPlotSource] | None = None,
 ) -> str:
     """Atomically write shared runtime data and independently loadable scales."""
     if not isinstance(runtime_data, RuntimeDataContext):
@@ -503,6 +572,17 @@ def write_runtime_artifact(
             f"shared.{name}": _array_record(temporary, f"shared/{name}", value)
             for name, value in sorted(shared.items())
         }
+        plot_metadata = None
+        if plot_sources is not None:
+            plot_arrays, plot_metadata = _plot_source_arrays(
+                plot_sources, runtime_data.process_order
+            )
+            records.update(
+                {
+                    f"shared.{name}": _array_record(temporary, f"shared/{name}", value)
+                    for name, value in sorted(plot_arrays.items())
+                }
+            )
         fold_records = []
         for fold, estimated_scales in folds:
             scale_arrays: dict[str, Any] = {}
@@ -519,9 +599,12 @@ def write_runtime_artifact(
                 }
             )
             fold_records.append({"fold": _json_value(fold.__dict__), "scales": scales})
+        base = _base_metadata(runtime_data, rhs_descriptor, identity_inputs)
+        if plot_metadata is not None:
+            base["plot_sources"] = plot_metadata
         manifest = {
             "format_version": FORMAT_VERSION,
-            "base": _base_metadata(runtime_data, rhs_descriptor, identity_inputs),
+            "base": base,
             "arrays": records,
             "folds": fold_records,
         }
@@ -675,13 +758,12 @@ def _rhs(raw: Any, arrays: dict[str, np.ndarray]) -> RhsOde:
 def _validate_base_metadata(
     base: Any,
 ) -> tuple[tuple[str, ...], tuple[str | None, ...]]:
-    if not isinstance(base, dict) or set(base) != {
-        "identity_inputs",
-        "rhs",
-        "store",
-        "controls",
-        "runtime",
-    }:
+    required_base_keys = {"identity_inputs", "rhs", "store", "controls", "runtime"}
+    if (
+        not isinstance(base, dict)
+        or not required_base_keys <= set(base)
+        or set(base) - (required_base_keys | {"plot_sources"})
+    ):
         raise ValueError("invalid runtime artifact schema")
     if not isinstance(base["identity_inputs"], dict) or not all(
         isinstance(key, str) and isinstance(value, str)
@@ -831,7 +913,104 @@ def _validate_base_metadata(
     ):
         if any(type(width) is not int or width < 0 for width in widths):
             raise ValueError("invalid runtime trace width")
+    if "plot_sources" in base:
+        if not isinstance(base["plot_sources"], list) or len(
+            base["plot_sources"]
+        ) != len(process_order):
+            raise ValueError("plot source process count mismatch")
+        _validate_plot_sources_metadata(
+            base["plot_sources"], None, tuple(process_order)
+        )
     return tuple(process_order), tuple(parents)
+
+
+def _validate_plot_sources_metadata(
+    raw: Any,
+    arrays: Mapping[str, Any] | None,
+    process_order: tuple[str, ...] | None = None,
+) -> set[str]:
+    if not isinstance(raw, list):
+        raise ValueError("invalid plot source metadata")
+    keys: set[str] = set()
+    for source in raw:
+        if not isinstance(source, dict) or set(source) != {
+            "process_name",
+            "time_unit",
+            "t_start",
+            "t_end",
+            "v_unit",
+            "initial_volume",
+            "measured_series",
+            "volume_changes",
+        }:
+            raise ValueError("invalid plot source metadata")
+        if (
+            not isinstance(source["process_name"], str)
+            or not source["process_name"]
+            or not isinstance(source["time_unit"], str)
+            or not source["time_unit"]
+            or not isinstance(source["v_unit"], str)
+            or not source["v_unit"]
+            or any(
+                type(source[name]) not in (int, float) or not np.isfinite(source[name])
+                for name in ("t_start", "t_end", "initial_volume")
+            )
+            or source["t_start"] > source["t_end"]
+            or not isinstance(source["measured_series"], list)
+            or not isinstance(source["volume_changes"], list)
+        ):
+            raise ValueError("invalid plot source metadata")
+        for item, expected in (
+            *(
+                (item, {"name", "unit", "times", "values"})
+                for item in source["measured_series"]
+            ),
+            *(
+                (item, {"name", "kind", "is_continuous", "unit", "times", "values"})
+                for item in source["volume_changes"]
+            ),
+        ):
+            if not isinstance(item, dict) or set(item) != expected:
+                raise ValueError("invalid plot source metadata")
+            if (
+                not isinstance(item["name"], str)
+                or not item["name"]
+                or not isinstance(item["unit"], str)
+                or not item["unit"]
+                or not isinstance(item["times"], str)
+                or not isinstance(item["values"], str)
+                or item["times"] == item["values"]
+            ):
+                raise ValueError("invalid plot source metadata")
+            if "kind" in item and (
+                item["kind"] not in {"feed", "sample"}
+                or type(item["is_continuous"]) is not bool
+            ):
+                raise ValueError("invalid plot source metadata")
+            keys.update((item["times"], item["values"]))
+            if arrays is not None:
+                times = np.asarray(arrays.get(item["times"]))
+                values = np.asarray(arrays.get(item["values"]))
+                if (
+                    times.ndim != 1
+                    or values.shape != times.shape
+                    or times.dtype.kind != "f"
+                    or values.dtype.kind != "f"
+                    or not np.all(np.isfinite(times))
+                    or not np.all(np.isfinite(values))
+                    or not _strictly_increasing(times)
+                ):
+                    raise ValueError("invalid plot source arrays")
+    if process_order is not None and [source["process_name"] for source in raw] != list(
+        process_order
+    ):
+        raise ValueError("plot source process order mismatch")
+    if len(keys) != sum(
+        len(source["measured_series"]) * 2 + len(source["volume_changes"]) * 2
+        for source in raw
+    ):
+        raise ValueError("plot source arrays must have distinct names")
+    return keys
 
 
 def _fold_from_manifest(
@@ -1354,9 +1533,16 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
         raise ValueError(f"unknown fold ID {fold_id}")
     fold, scales_raw = selected
     selected_scale_keys = _scale_array_keys(scales_raw, fold_id)
-    expected_all = {
-        f"shared.{name}" for name in _context_arrays_placeholder(base)
-    } | expected_scale_keys
+    plot_keys = (
+        _validate_plot_sources_metadata(base["plot_sources"], None, process_order)
+        if "plot_sources" in base
+        else set()
+    )
+    expected_all = (
+        {f"shared.{name}" for name in _context_arrays_placeholder(base)}
+        | {f"shared.{name}" for name in plot_keys}
+        | expected_scale_keys
+    )
     if set(records) != expected_all:
         raise ValueError("runtime artifact has missing or extra arrays")
     filenames = {
@@ -1375,6 +1561,11 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     } | selected_scale_keys
     arrays = {name: _read_array(root, name, records[name]) for name in required}
     _validate_semantic_arrays(base, arrays)
+    if "plot_sources" in base:
+        _validate_plot_sources_metadata(
+            base["plot_sources"],
+            {name.removeprefix("shared."): value for name, value in arrays.items()},
+        )
     descriptor = _descriptor_from_payload(base["rhs"])
     _validate_scale_arrays(
         descriptor,
@@ -1455,9 +1646,109 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
         )
     except (KeyError, TypeError) as error:
         raise ValueError("invalid runtime trace metadata") from error
+    plot_sources = _load_plot_sources(base, arrays)
     return RuntimeArtifact(
-        manifest["identity"], RuntimeContext(data, EstimatedScales(**scales)), fold
+        manifest["identity"],
+        RuntimeContext(data, EstimatedScales(**scales)),
+        fold,
+        plot_sources,
     )
+
+
+def read_runtime_artifact_metadata(path: str | Path) -> RuntimeArtifactMetadata:
+    """Validate artifact declarations without opening any numeric array file."""
+    root = Path(path)
+    manifest = _read_manifest(root)
+    records = manifest["arrays"]
+    if not isinstance(records, dict):
+        raise ValueError("invalid runtime artifact schema")
+    process_order, parents = _validate_base_metadata(manifest["base"])
+    parsed: list[RuntimeArtifactFold] = []
+    scale_keys: set[str] = set()
+    if not isinstance(manifest["folds"], list) or not manifest["folds"]:
+        raise ValueError("invalid fold manifest")
+    for item in manifest["folds"]:
+        if not isinstance(item, dict) or set(item) != {"fold", "scales"}:
+            raise ValueError("invalid fold manifest")
+        fold = _fold_from_manifest(item["fold"], process_order, parents)
+        parsed.append(fold)
+        scale_keys |= _scale_array_keys(item["scales"], fold.idx)
+    if len({fold.idx for fold in parsed}) != len(parsed) or len(
+        {fold.slug for fold in parsed}
+    ) != len(parsed):
+        raise ValueError("fold IDs and slugs must be unique")
+    plot_keys = (
+        _validate_plot_sources_metadata(
+            manifest["base"]["plot_sources"], None, process_order
+        )
+        if "plot_sources" in manifest["base"]
+        else set()
+    )
+    expected = (
+        {f"shared.{name}" for name in _context_arrays_placeholder(manifest["base"])}
+        | {f"shared.{name}" for name in plot_keys}
+        | scale_keys
+    )
+    if set(records) != expected:
+        raise ValueError("runtime artifact has missing or extra arrays")
+    filenames = {
+        name: _array_filename(name, record) for name, record in records.items()
+    }
+    if len(set(filenames.values())) != len(filenames):
+        raise ValueError("runtime artifact arrays must use distinct files")
+    actual_files = {
+        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
+    }
+    if actual_files != {"manifest.json", *filenames.values()}:
+        raise ValueError("runtime artifact has missing or extra files")
+    return RuntimeArtifactMetadata(
+        manifest["identity"],
+        MappingProxyType(dict(manifest["base"]["identity_inputs"])),
+        tuple(parsed),
+    )
+
+
+def _load_plot_sources(
+    base: dict[str, Any], arrays: Mapping[str, np.ndarray]
+) -> Mapping[str, ProcessPlotSource] | None:
+    raw = base.get("plot_sources")
+    if raw is None:
+        return None
+    _validate_plot_sources_metadata(
+        raw,
+        {name.removeprefix("shared."): value for name, value in arrays.items()},
+        tuple(base["store"]["process_order"]),
+    )
+    sources = {}
+    for process_name, source in zip(base["store"]["process_order"], raw, strict=True):
+        sources[process_name] = ProcessPlotSource(
+            source["time_unit"],
+            source["t_start"],
+            source["t_end"],
+            source["v_unit"],
+            source["initial_volume"],
+            tuple(
+                (
+                    item["name"],
+                    item["unit"],
+                    arrays[f"shared.{item['times']}"],
+                    arrays[f"shared.{item['values']}"],
+                )
+                for item in source["measured_series"]
+            ),
+            tuple(
+                (
+                    item["name"],
+                    item["kind"],
+                    item["is_continuous"],
+                    item["unit"],
+                    arrays[f"shared.{item['times']}"],
+                    arrays[f"shared.{item['values']}"],
+                )
+                for item in source["volume_changes"]
+            ),
+        )
+    return MappingProxyType(sources)
 
 
 def _context_arrays_placeholder(base: dict[str, Any]) -> set[str]:

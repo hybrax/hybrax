@@ -116,14 +116,15 @@ models/<name>/           # per model: predictions.csv + losses.csv
 
 Leave-one/some-process-out cross-validation.
 Config-driven: the run config is the same as `train` plus an optional `loo` section.
-Each fold trains as its own subprocess; you choose how many run at once and how many JAX CPU devices each fold exposes.
-The run dir is self-contained (bundled config + `custom.py` + prepared), so
-`--resume` continues an interrupted run from the dir alone.
+Each fold trains as its own subprocess; you choose how many run at once and how many JAX CPU devices each fold exposes. A short-lived producer loads the
+prepared collection, resolves folds, estimates scales, and writes a strict,
+collection-free `runtime-artifact/`; it exits before fold workers start. Workers
+load only that artifact, never the prepared collection.
 
 | Flag | Meaning |
 |---|---|
 | `--config` | Run config JSON (train schema + a `loo` section). Required unless `--resume`. |
-| `--resume` | Continue an interrupted run from its output dir; reloads the bundled `loo-config.json` verbatim and re-runs only folds missing a `losses.csv`. Mutually exclusive with `--config`. |
+| `--resume` | Continue an interrupted run from its output dir; reloads the bundled `loo-config.json` verbatim and re-runs only folds without a matching completed-fold record. Mutually exclusive with `--config`. |
 | `--output-dir` | Override `output.dir` (the LOO run directory). |
 | `--overwrite` | Re-run into an output dir that already completed. |
 
@@ -136,9 +137,12 @@ The `loo` config section:
 | `devices_per_fold` | Optional positive JAX CPU-device count per fold. Omitted (`null`) → `n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold cannot expose more host devices than its `pmap` batch without deadlocking). |
 Each fold's holdout loss is evaluated whenever a checkpoint is written, including the mandatory final checkpoint.
 
-Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, `prepared.json`,
-`config.json`) + per-fold `folds/<slug>/` + top-level `loo_summary.csv` /
-`loo_aggregate.json`.
+Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, prepared
+artifact, `config.json`), strict `runtime-artifact/`, identity-bound
+`loo-runtime.json`, per-fold `folds/<slug>/`, and top-level `loo_summary.csv` /
+`loo_aggregate.json`. `loo-runtime.json` binds the bundled config/custom hook
+fingerprint, prepared-content hash, artifact identity, and resolved folds;
+resume rejects a mismatch.
 
 ## Run directory layout
 

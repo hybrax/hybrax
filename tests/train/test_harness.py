@@ -42,6 +42,7 @@ from bp_train.harness import (
     _ensure_process_names,
     _resolve_estimated_scales,
     _target_state_indices,
+    prepare_training_from_runtime_context,
     _validate_batching_config,
     train_from_collection,
     train_collection,
@@ -1363,6 +1364,36 @@ def test_build_loss_module_defaults_when_no_hook():
     )
     assert isinstance(module, DefaultLossModule)
     assert tuple(module.loss_names) == ("biomass",)
+
+
+def test_prepare_training_from_runtime_context_never_constructs_or_scales(
+    monkeypatch,
+):
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.from_collection",
+        lambda *_args, **_kwargs: pytest.fail("constructed runtime data"),
+    )
+    monkeypatch.setattr(
+        "bp_train.harness._resolve_estimated_scales",
+        lambda **_kwargs: pytest.fail("estimated scales"),
+    )
+
+    prepared = prepare_training_from_runtime_context(
+        _runtime_context(store),
+        config=TrainHarnessConfig(process_names=("p1",), epochs=1),
+        custom_module=None,
+        custom_cfg={},
+    )
+
+    assert prepared.store is store
+    assert prepared.config.process_names == ("p1",)
 
 
 def test_resolve_estimated_scales_receives_runtime_data():

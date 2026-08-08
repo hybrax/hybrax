@@ -26,7 +26,8 @@ the leave-one-process-out cross-validation that wraps both.
   time grid ([`build_union_time_grid`](04_reaction_and_loss.md#dense-grid-losses)).
 - **LOO reuses the harness verbatim.** Each fold is an ordinary training run plus
   a forward on the holdout; folds are grouped so augmented children never leave
-  their parent.
+  their parent. A producer materializes collection-free runtime inputs before
+  the worker processes begin.
 
 ## Training
 
@@ -167,14 +168,23 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 - **Holdout evaluation:** each fold uses its `test` set as a diagnostic holdout,
   evaluated at every periodic checkpoint and at the mandatory final checkpoint.
   It never drives the optimizer.
+- **Runtime producer and workers:** the orchestrator first starts a short-lived
+  producer subprocess. It loads the bundled prepared artifact, resolves folds,
+  estimates scales, and writes `<output_dir>/runtime-artifact/`, then exits.
+  Fold workers load only this strict, collection-free artifact; they do not load
+  prepared JSON or estimate scales. The internal producer/worker CLI modes are
+  implementation details, not user-facing commands.
 - **Self-contained run dir**: the orchestrator writes true copies of `custom.py`
   and the prepared artifact into `<output_dir>/` plus a loadable
-  `loo-config.json` with paths relative to the run dir. Every worker (and
-  `--resume`) loads **only** from there, so editing or moving the source tree
-  mid-run can't desync folds.
+  `loo-config.json` with paths relative to the run dir. It also writes atomic
+  `loo-runtime.json`, binding the bundled-config/custom-hook fingerprint,
+  prepared-content hash, runtime-artifact identity, format version, and resolved
+  fold records. Editing or moving the source tree mid-run cannot desync workers.
 - **Resume** (`--resume <run_dir>`): reloads the bundled `loo-config.json`
-  verbatim (no overrides — `parallel_folds` etc. come from the run dir) and
-  re-runs only folds missing a `losses.csv`, then re-aggregates.
+  verbatim (no overrides — `parallel_folds` etc. come from the run dir), validates
+  `loo-runtime.json` and the runtime artifact, and re-runs only folds with no
+  matching completed record (`config.json` status, runtime identity, and
+  `losses.csv`), then re-aggregates.
 - **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
   `checkpoints/`, `trained_wrapper.eqx`, `losses.csv`, predictions, plots).

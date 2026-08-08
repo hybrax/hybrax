@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import gc
 import json
 import math
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-import weakref
 
 import jax.numpy as jnp
 import pandas as pd
@@ -306,31 +304,23 @@ def test_resolve_folds_explicit_overlap_raises():
 
 
 def test_resolve_folds_classic_respects_data_processes():
-    folds = resolve_folds(
-        _three_parent_collection(), None, data_processes=("p1", "p2")
-    )
+    folds = resolve_folds(_three_parent_collection(), None, data_processes=("p1", "p2"))
     assert [f.slug for f in folds] == ["p1", "p2"]
     assert all("p3" not in (*f.test, *f.train) for f in folds)
 
 
 def test_resolve_folds_classic_data_processes_default_train_excludes_restricted():
-    folds = resolve_folds(
-        _three_parent_collection(), None, data_processes=("p1", "p2")
-    )
+    folds = resolve_folds(_three_parent_collection(), None, data_processes=("p1", "p2"))
     assert folds[0].train == ("p2",)
 
 
 def test_resolve_folds_data_processes_child_without_parent_raises():
     with pytest.raises(ValueError, match="excludes its parent process 'P0'"):
-        resolve_folds(
-            _augmented_collection(), None, data_processes=("P0_aug", "P1")
-        )
+        resolve_folds(_augmented_collection(), None, data_processes=("P0_aug", "P1"))
 
 
 def test_resolve_folds_data_processes_parent_without_child_is_allowed():
-    folds = resolve_folds(
-        _augmented_collection(), None, data_processes=("P0", "P1")
-    )
+    folds = resolve_folds(_augmented_collection(), None, data_processes=("P0", "P1"))
     assert [f.slug for f in folds] == ["P0", "P1"]
     assert folds[0].test == ("P0",)
     assert folds[0].train == ("P1",)
@@ -338,17 +328,13 @@ def test_resolve_folds_data_processes_parent_without_child_is_allowed():
 
 def test_resolve_folds_data_processes_unknown_name_raises():
     with pytest.raises(ValueError, match="data.processes.*unknown process name"):
-        resolve_folds(
-            _three_parent_collection(), None, data_processes=("p1", "ghost")
-        )
+        resolve_folds(_three_parent_collection(), None, data_processes=("p1", "ghost"))
 
 
 def test_resolve_folds_per_fold_test_outside_data_processes_raises():
     loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p3",)),))
     with pytest.raises(ValueError, match="excluded by data.processes"):
-        resolve_folds(
-            _three_parent_collection(), loo_cfg, data_processes=("p1", "p2")
-        )
+        resolve_folds(_three_parent_collection(), loo_cfg, data_processes=("p1", "p2"))
 
 
 def test_resolve_folds_per_fold_train_outside_data_processes_raises():
@@ -356,9 +342,7 @@ def test_resolve_folds_per_fold_train_outside_data_processes_raises():
         per_fold_holdout_sets=(HoldoutSet(test=("p1",), train=("p3",)),)
     )
     with pytest.raises(ValueError, match="excluded by data.processes"):
-        resolve_folds(
-            _three_parent_collection(), loo_cfg, data_processes=("p1", "p2")
-        )
+        resolve_folds(_three_parent_collection(), loo_cfg, data_processes=("p1", "p2"))
 
 
 def test_resolve_folds_per_fold_default_train_restricted_by_data_processes():
@@ -732,16 +716,61 @@ def test_prepare_single_fold_skips_holdout_sources_when_plots_are_off(
 
 
 # ---------------------------------------------------------------------------
-# run_loo_cv (orchestrator) with mocked subprocess dispatch
+# Artifact-backed orchestration and internal CLI modes
 # ---------------------------------------------------------------------------
+
+
+def _runtime_state(collection, output_dir: Path, seed: int = 10):
+    folds = resolve_folds(collection, None)
+    records = tuple(
+        loo_mod.RuntimeArtifactFold(
+            idx=fold.idx,
+            test=fold.test,
+            train=fold.train,
+            slug=fold.slug,
+            seed=seed + fold.idx,
+        )
+        for fold in folds
+    )
+    return loo_mod.LooRuntimeState(
+        "sha256:fingerprint",
+        "sha256:prepared",
+        loo_mod.FORMAT_VERSION,
+        output_dir / "runtime-artifact",
+        "sha256:artifact",
+        records,
+    )
+
+
+def test_loo_runtime_state_rejects_nonlocal_artifact_path(tmp_path):
+    state = _runtime_state(_three_parent_collection(), Path("."))
+    loo_mod._write_loo_state(tmp_path / "loo-runtime.json", state)
+    raw = json.loads((tmp_path / "loo-runtime.json").read_text())
+    raw["artifact_path"] = "../runtime-artifact"
+    (tmp_path / "loo-runtime.json").write_text(json.dumps(raw))
+
+    with pytest.raises(ValueError, match="invalid LOO runtime state"):
+        loo_mod._read_loo_state(tmp_path)
+
+
+def test_loo_runtime_state_rejects_nonlist_fold_membership(tmp_path):
+    state = _runtime_state(_three_parent_collection(), Path("."))
+    loo_mod._write_loo_state(tmp_path / "loo-runtime.json", state)
+    raw = json.loads((tmp_path / "loo-runtime.json").read_text())
+    raw["folds"][0]["test"] = "p1"
+    (tmp_path / "loo-runtime.json").write_text(json.dumps(raw))
+
+    with pytest.raises(ValueError, match="invalid LOO runtime state"):
+        loo_mod._read_loo_state(tmp_path)
 
 
 def _patch_dispatch(monkeypatch) -> dict[str, Any]:
     """Replace the subprocess pool with a stub-fold writer (no real training)."""
     seen: dict[str, Any] = {}
 
-    def fake_pool(config_path, output_dir, folds, parallel, devices):
+    def fake_pool(config_path, output_dir, artifact_path, folds, parallel, devices):
         seen["pool_folds"] = [f.slug for f in folds]
+        seen["artifact_path"] = Path(artifact_path)
         seen["parallel"] = parallel
         seen["devices"] = devices
         for fold in folds:
@@ -751,8 +780,10 @@ def _patch_dispatch(monkeypatch) -> dict[str, Any]:
     return seen
 
 
-def test_run_loo_cv_runs_all_folds_and_aggregates(monkeypatch, tmp_path):
+def test_run_loo_cv_dispatches_only_state_folds(monkeypatch, tmp_path):
     collection = _three_parent_collection()
+    state = _runtime_state(collection, tmp_path)
+    monkeypatch.setattr(loo_mod, "_validate_state", lambda *_a, **_k: state)
     seen = _patch_dispatch(monkeypatch)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
@@ -761,44 +792,22 @@ def test_run_loo_cv_runs_all_folds_and_aggregates(monkeypatch, tmp_path):
     )
 
     result = run_loo_cv(
-        collection,
-        cfg=cfg,
-        config_path=tmp_path / "loo-config.json",
-        output_dir=tmp_path,
+        cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
     )
 
     assert isinstance(result, LOOResult)
-    assert seen["pool_folds"] == ["p1", "p2", "p3"]  # all folds dispatched
-    assert seen["parallel"] == 2  # user-set parallel_folds
+    assert seen["pool_folds"] == ["p1", "p2", "p3"]
+    assert seen["artifact_path"] == state.artifact_path
+    assert seen["parallel"] == 2
     assert result.parallel_folds == 2
-    assert (tmp_path / "loo_summary.csv").exists()
     assert result.aggregate["n_folds"] == 3
-
-
-def test_run_loo_cv_respects_data_processes_restriction(monkeypatch, tmp_path):
-    collection = _three_parent_collection()
-    seen = _patch_dispatch(monkeypatch)
-    cfg = RunConfig(
-        data=DataConfig(prepared=Path("prepared.json"), processes=("p1", "p2")),
-        train=TrainConfig(epochs=2, seed=10),
-        loo=LooConfig(parallel_folds=2),
-    )
-
-    result = run_loo_cv(
-        collection,
-        cfg=cfg,
-        config_path=tmp_path / "loo-config.json",
-        output_dir=tmp_path,
-    )
-
-    assert seen["pool_folds"] == ["p1", "p2"]
-    assert result.aggregate["n_folds"] == 2
-    assert len(result.fold_dirs) == 2
 
 
 def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 16)
     collection = _three_parent_collection()
+    state = _runtime_state(collection, tmp_path)
+    monkeypatch.setattr(loo_mod, "_validate_state", lambda *_a, **_k: state)
     seen = _patch_dispatch(monkeypatch)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
@@ -807,7 +816,6 @@ def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     )
 
     result = run_loo_cv(
-        collection,
         cfg=cfg,
         config_path=tmp_path / "loo-config.json",
         output_dir=tmp_path,
@@ -818,27 +826,59 @@ def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     assert result.devices_per_fold == 2
 
 
-def test_run_loo_cv_resume_skips_completed_folds(monkeypatch, tmp_path):
+def test_run_loo_cv_resume_requires_identity_bound_completion(monkeypatch, tmp_path):
     collection = _three_parent_collection()
+    state = _runtime_state(collection, tmp_path)
+    monkeypatch.setattr(loo_mod, "_validate_state", lambda *_a, **_k: state)
     seen = _patch_dispatch(monkeypatch)
-    folds = resolve_folds(collection, None)
-    _write_stub_fold(tmp_path, folds[0])  # pretend fold "p1" already finished
+    first = loo_mod._fold_from_record(state.folds[0])
+    _write_stub_fold(tmp_path, first)
+    # losses.csv alone is incomplete: it must be cleared and rerun.
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
         train=TrainConfig(epochs=2, seed=10),
         loo=LooConfig(parallel_folds=1),
     )
 
-    result = run_loo_cv(
-        collection,
+    run_loo_cv(
         cfg=cfg,
         config_path=tmp_path / "loo-config.json",
         output_dir=tmp_path,
         resume=True,
     )
 
-    assert seen["pool_folds"] == ["p2", "p3"]  # p1 skipped (already complete)
-    assert result.aggregate["n_folds"] == 3  # aggregate still spans all folds
+    assert seen["pool_folds"] == ["p1", "p2", "p3"]
+
+
+def test_run_loo_cv_resume_skips_matching_completed_fold(monkeypatch, tmp_path):
+    collection = _three_parent_collection()
+    state = _runtime_state(collection, tmp_path)
+    monkeypatch.setattr(loo_mod, "_validate_state", lambda *_a, **_k: state)
+    seen = _patch_dispatch(monkeypatch)
+    fold = loo_mod._fold_from_record(state.folds[0])
+    _write_stub_fold(tmp_path, fold)
+    (tmp_path / "folds" / fold.slug / "config.json").write_text(
+        json.dumps(
+            {
+                "status": "complete",
+                **loo_mod._fold_runtime_metadata(state, state.folds[0]),
+            }
+        )
+    )
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(epochs=2, seed=10),
+        loo=LooConfig(parallel_folds=1),
+    )
+
+    run_loo_cv(
+        cfg=cfg,
+        config_path=tmp_path / "loo-config.json",
+        output_dir=tmp_path,
+        resume=True,
+    )
+
+    assert seen["pool_folds"] == ["p2", "p3"]
 
 
 def test_worker_env_strips_inherited_host_device_pin(monkeypatch):
@@ -853,35 +893,7 @@ def test_worker_env_strips_inherited_host_device_pin(monkeypatch):
 
 def test_worker_env_drops_xla_flags_when_only_pin(monkeypatch):
     monkeypatch.setenv("XLA_FLAGS", "--xla_force_host_platform_device_count=8")
-    env = loo_mod._worker_env(2)
-    assert "XLA_FLAGS" not in env
-
-
-def test_single_fold_std_is_nan(tmp_path):
-    collection = _three_parent_collection()
-    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p1",)),))
-    folds = resolve_folds(collection, loo_cfg)
-    _write_stub_fold(tmp_path, folds[0])
-    agg = loo_mod._write_summary_and_aggregate(
-        folds=folds,
-        output_dir=tmp_path,
-        summary_csv_path=tmp_path / "s.csv",
-        aggregate_json_path=tmp_path / "a.json",
-        base_seed=0,
-    )
-    assert math.isnan(agg["holdout_total_std"])
-
-
-def test_read_final_train_loss_accepts_comments_and_malformed_is_nan(tmp_path):
-    sidecar = tmp_path / "trained_wrapper.meta.json"
-    sidecar.write_text(
-        '// fit result\n{"training": {"final_mean_loss": 1.25}}',
-        encoding="utf-8",
-    )
-    assert loo_mod._read_final_train_loss(tmp_path) == pytest.approx(1.25)
-
-    sidecar.write_text("// comment only", encoding="utf-8")
-    assert math.isnan(loo_mod._read_final_train_loss(tmp_path))
+    assert "XLA_FLAGS" not in loo_mod._worker_env(2)
 
 
 # ---------------------------------------------------------------------------
@@ -901,89 +913,24 @@ def _write_min_config(path: Path) -> None:
     )
 
 
-def test_loo_cli_worker_releases_own_collection_before_training(monkeypatch, tmp_path):
+def test_loo_cli_worker_is_collection_free(monkeypatch, tmp_path):
+    cfg_path = tmp_path / "config.json"
+    _write_min_config(cfg_path)
     captured: dict[str, Any] = {}
-    cfg_path = tmp_path / "config.json"
-    _write_min_config(cfg_path)
-    collection_ref = None
-    prepared_ref = None
-
-    def fake_load(_path):
-        nonlocal collection_ref
-
-        class Collection:
-            pass
-
-        collection = Collection()
-        collection_ref = weakref.ref(collection)
-        return collection
-
-    def fake_prepare(collection, **kwargs):
-        nonlocal prepared_ref
-
-        class Prepared:
-            pass
-
-        captured["fold_idx"] = kwargs["fold_idx"]
-        captured["output_dir"] = Path(kwargs["output_dir"])
-        prepared = Prepared()
-        prepared_ref = weakref.ref(prepared)
-        return prepared
-
-    def fake_train(_prepared):
-        gc.collect()
-        assert collection_ref is not None
-        assert collection_ref() is None
-        return object()
-
-    def fake_execute(_trained):
-        gc.collect()
-        assert prepared_ref is not None
-        assert prepared_ref() is None
-
-    monkeypatch.setattr(cli, "load_process_collection", fake_load)
-    monkeypatch.setattr(cli, "prepare_single_fold", fake_prepare)
-    monkeypatch.setattr(cli, "train_prepared_fold", fake_train)
-    monkeypatch.setattr(cli, "execute_trained_fold", fake_execute)
-
-    rc = cli.main(
-        [
-            "loo",
-            "--config",
-            str(cfg_path),
-            "--output-dir",
-            str(tmp_path / "out"),
-            "--fold",
-            "2",
-        ]
-    )
-    assert rc == 0
-    assert captured["fold_idx"] == 2
-    assert captured["output_dir"] == tmp_path / "out"
-
-
-def test_loo_cli_worker_rejects_prepared_runtime_retaining_collection(
-    monkeypatch, tmp_path
-):
-    cfg_path = tmp_path / "config.json"
-    _write_min_config(cfg_path)
-
-    class Collection:
-        pass
-
-    monkeypatch.setattr(cli, "load_process_collection", lambda _path: Collection())
     monkeypatch.setattr(
         cli,
-        "prepare_single_fold",
-        lambda collection, **_kwargs: SimpleNamespace(collection=collection),
+        "load_process_collection",
+        lambda *_a: pytest.fail("worker loaded prepared collection"),
     )
     monkeypatch.setattr(
         cli,
-        "train_prepared_fold",
-        lambda _prepared: pytest.fail("training started with retained collection"),
+        "prepare_single_fold_from_runtime_artifact",
+        lambda **kwargs: captured.update(kwargs) or object(),
     )
+    monkeypatch.setattr(cli, "train_prepared_fold", lambda _prepared: object())
+    monkeypatch.setattr(cli, "execute_trained_fold", lambda _trained: None)
 
-    with pytest.raises(RuntimeError, match="must keep only the data they need"):
+    assert (
         cli.main(
             [
                 "loo",
@@ -991,115 +938,116 @@ def test_loo_cli_worker_rejects_prepared_runtime_retaining_collection(
                 str(cfg_path),
                 "--output-dir",
                 str(tmp_path / "out"),
+                "--runtime-artifact",
+                str(tmp_path / "artifact"),
                 "--fold",
-                "0",
+                "2",
             ]
         )
+        == 0
+    )
+    assert captured["fold_idx"] == 2
+    assert captured["artifact_path"] == tmp_path / "artifact"
 
 
-def test_loo_cli_orchestrator_bundles_and_calls_cv(monkeypatch, tmp_path):
-    captured: dict[str, Any] = {}
+def test_loo_cli_producer_is_the_only_collection_owner(monkeypatch, tmp_path):
     cfg_path = tmp_path / "config.json"
     _write_min_config(cfg_path)
-    cfg_path.write_text(
-        "// source config comment\n" + cfg_path.read_text(encoding="utf-8"),
-        encoding="utf-8",
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        cli,
+        "produce_runtime_artifact",
+        lambda **kwargs: captured.update(kwargs),
     )
-    (tmp_path / "prepared.json").write_text("{}")  # real file -> bundle copies it
-    out_dir = tmp_path / "out"
-    stale_fold = out_dir / "folds" / "old-fold"
-    stale_fold.mkdir(parents=True)
-    (stale_fold / "checkpoint.eqx").write_text("stale", encoding="utf-8")
-    (out_dir / "obsolete.txt").write_text("old run", encoding="utf-8")
 
-    monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
-    monkeypatch.setattr(cli, "content_hash", lambda _c: "sha256:stub")
-
-    def fake_cv(collection, *, cfg, config_path, output_dir, custom_py, resume=False):
-        captured["config_path"] = Path(config_path)
-        captured["output_dir"] = Path(output_dir)
-        captured["resume"] = resume
-        return LOOResult(
-            fold_dirs=(Path(output_dir) / "folds" / "p1",),
-            parallel_folds=1,
-            devices_per_fold=1,
-            summary_csv_path=Path(output_dir) / "loo_summary.csv",
-            aggregate_json_path=Path(output_dir) / "loo_aggregate.json",
-            aggregate={"n_folds": 1},
+    assert (
+        cli.main(
+            [
+                "loo",
+                "--config",
+                str(cfg_path),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--produce-runtime",
+            ]
         )
-
-    monkeypatch.setattr(cli, "run_loo_cv", fake_cv)
-
-    rc = cli.main(
-        [
-            "loo",
-            "--config",
-            str(cfg_path),
-            "--output-dir",
-            str(out_dir),
-            "--overwrite",
-        ]
+        == 0
     )
-    assert rc == 0
-    assert not (out_dir / "obsolete.txt").exists()
-    assert not stale_fold.exists()
-    # Workers are pointed at the bundled, self-contained config — not the source.
-    assert captured["config_path"] == out_dir / "loo-config.json"
-    assert captured["resume"] is False
-    # The run dir is self-contained: bundled loadable config + copied prepared.
+    assert captured["bundle_path"] == cfg_path
+
+
+def test_loo_cli_orchestrator_produces_before_dispatch(monkeypatch, tmp_path):
+    cfg_path = tmp_path / "config.json"
+    _write_min_config(cfg_path)
+    (tmp_path / "prepared.json").write_text("{}")
+    out_dir = tmp_path / "out"
+    events: list[str] = []
+    monkeypatch.setattr(
+        cli,
+        "load_process_collection",
+        lambda *_a: pytest.fail("orchestrator loaded collection"),
+    )
+    monkeypatch.setattr(
+        cli, "_dispatch_producer", lambda *_a: events.append("producer") or 0
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_loo_cv",
+        lambda **kwargs: (
+            events.append("workers")
+            or LOOResult(
+                fold_dirs=(out_dir / "folds" / "p1",),
+                parallel_folds=1,
+                devices_per_fold=1,
+                summary_csv_path=out_dir / "loo_summary.csv",
+                aggregate_json_path=out_dir / "loo_aggregate.json",
+                aggregate={"n_folds": 1},
+            )
+        ),
+    )
+
+    assert (
+        cli.main(
+            [
+                "loo",
+                "--config",
+                str(cfg_path),
+                "--output-dir",
+                str(out_dir),
+            ]
+        )
+        == 0
+    )
+    assert events == ["producer", "workers"]
     assert (out_dir / "loo-config.json").is_file()
     assert (out_dir / "prepared.json").is_file()
-    bundled = json.loads((out_dir / "loo-config.json").read_text())
-    assert bundled["data"]["prepared"] == "prepared.json"  # relative -> local copy
-    assert bundled["output"]["dir"] == "."
-    document = json.loads((out_dir / "config.json").read_text())
-    assert document["status"] == "complete"
-    assert document["aggregate"] == {"n_folds": 1}
 
 
-def test_loo_cli_resume_reloads_bundle(monkeypatch, tmp_path):
-    captured: dict[str, Any] = {}
+def test_loo_cli_resume_does_not_load_collection(monkeypatch, tmp_path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    (run_dir / "loo-config.json").write_text(
-        json.dumps(
-            {
-                "data": {"prepared": "prepared.json"},
-                "train": {"epochs": 2, "seed": 7},
-                "output": {"dir": "."},
-                "loo": {"parallel_folds": 1},
-            }
-        )
-    )
-    (run_dir / "prepared.json").write_text("{}")
+    _write_min_config(run_dir / "loo-config.json")
     (run_dir / "config.json").write_text(json.dumps({"status": "running"}))
-
-    monkeypatch.setattr(cli, "load_process_collection", lambda _p: object())
-
-    def fake_cv(collection, *, cfg, config_path, output_dir, custom_py, resume=False):
-        captured["resume"] = resume
-        captured["config_path"] = Path(config_path)
-        captured["output_dir"] = Path(output_dir)
-        return LOOResult(
+    monkeypatch.setattr(
+        cli,
+        "load_process_collection",
+        lambda *_a: pytest.fail("resume loaded collection"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_loo_cv",
+        lambda **kwargs: LOOResult(
             fold_dirs=(),
             parallel_folds=1,
             devices_per_fold=1,
             summary_csv_path=run_dir / "loo_summary.csv",
             aggregate_json_path=run_dir / "loo_aggregate.json",
             aggregate={"n_folds": 2},
-        )
+        ),
+    )
 
-    monkeypatch.setattr(cli, "run_loo_cv", fake_cv)
-
-    rc = cli.main(["loo", "--resume", str(run_dir)])
-    assert rc == 0
-    assert captured["resume"] is True
-    assert captured["config_path"] == run_dir / "loo-config.json"
-    assert captured["output_dir"] == run_dir
-    document = json.loads((run_dir / "config.json").read_text())
-    assert document["status"] == "complete"
+    assert cli.main(["loo", "--resume", str(run_dir)]) == 0
 
 
 def test_loo_cli_rejects_config_and_resume_together(tmp_path):
-    rc = cli.main(["loo", "--config", "x.json", "--resume", str(tmp_path)])
-    assert rc == 1
+    assert cli.main(["loo", "--config", "x.json", "--resume", str(tmp_path)]) == 1

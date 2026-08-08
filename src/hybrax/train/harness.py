@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import equinox as eqx
 import jax
@@ -1909,7 +1909,52 @@ class PreparedTraining:
     loss_module: UserLossModule
     config: TrainHarnessConfig
     optimizer: optax.GradientTransformation
-    plot_sources: dict[str, ProcessPlotSource] | None
+    plot_sources: Mapping[str, ProcessPlotSource] | None
+
+
+def prepare_training_from_runtime_context(
+    runtime_context: RuntimeContext,
+    *,
+    config: TrainHarnessConfig,
+    custom_module: Any,
+    custom_cfg: Any,
+    plot_sources: Mapping[str, ProcessPlotSource] | None = None,
+) -> PreparedTraining:
+    """Prepare training solely from an already-loaded runtime context."""
+    if not isinstance(runtime_context, RuntimeContext):
+        raise TypeError("runtime_context must be a RuntimeContext")
+    store = runtime_context.training_data
+    selected_processes = _ensure_process_names(store, config.process_names)
+    train_cfg = dataclasses.replace(config, process_names=selected_processes)
+    reaction_module = _build_reaction_module(
+        config=train_cfg,
+        custom_module=custom_module,
+        custom_config=custom_cfg,
+        runtime_context=runtime_context,
+    )
+    loss_module = _build_loss_module(
+        config=train_cfg,
+        custom_module=custom_module,
+        custom_config=custom_cfg,
+        runtime_context=runtime_context,
+    )
+    _, _, total_updates = derive_update_budget(
+        train_cfg, selected_process_count=len(selected_processes)
+    )
+    optimizer, train_cfg = build_optimizer_for_run(
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
+        train_cfg=train_cfg,
+        total_updates=total_updates,
+    )
+    return PreparedTraining(
+        store=store,
+        reaction_module=reaction_module,
+        loss_module=loss_module,
+        config=train_cfg,
+        optimizer=optimizer,
+        plot_sources=plot_sources,
+    )
 
 
 def prepare_training(
@@ -1982,35 +2027,25 @@ def prepare_training(
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
-    reaction_module, loss_module = _build_runtime_modules(
-        store=store,
-        collection=collection,
-        config=train_cfg,
-        custom_module=custom_module,
-        custom_config=custom_cfg,
+    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    runtime_context = RuntimeContext(
+        runtime_data,
+        _resolve_estimated_scales(
+            custom_module=custom_module,
+            runtime_data=runtime_data,
+            custom_cfg=custom_cfg,
+        ),
     )
-    assert loss_module is not None
-    _, _, total_updates = derive_update_budget(
-        train_cfg, selected_process_count=len(selected_processes)
-    )
-    optimizer, train_cfg = build_optimizer_for_run(
-        custom_module=custom_module,
-        custom_cfg=custom_cfg,
-        train_cfg=train_cfg,
-        total_updates=total_updates,
-    )
-
     plot_sources = (
         extract_process_plot_sources(collection, store.rhs_ode, selected_processes)
         if train_cfg.plots and train_cfg.checkpoint_dir is not None
         else None
     )
-    return PreparedTraining(
-        store=store,
-        reaction_module=reaction_module,
-        loss_module=loss_module,
+    return prepare_training_from_runtime_context(
+        runtime_context,
         config=train_cfg,
-        optimizer=optimizer,
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
         plot_sources=plot_sources,
     )
 
