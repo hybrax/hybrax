@@ -226,7 +226,8 @@ fields above, leading dim `n_dense`:
 | `dense_SCL_states` / `dense_RAW_states` | `(n_dense, n_state)` | `SCL_states` / `RAW_states` |
 | `dense_SCL_modeled_BiologicalOde_rates` / `dense_RAW_…` | `(n_dense, n_rates)` | rates pair |
 | `dense_SCL_modeled_FVCs_rates` / `dense_RAW_…` | `(n_dense, n_modeled_FVCs)` | feed-rates pair |
-| `dense_SCL_V` / `dense_RAW_V` | `(n_dense,)` | volume pair |
+| `dense_SCL_V` / `dense_RAW_V` | `(n_dense,)` | floored volume pair |
+| `dense_RAW_V_unclamped` | `(n_dense,)` | integrated volume before the `min_V` safety floor |
 | `dense_auxiliary` | `dict[str, (n_dense, …)]` | `auxiliary` |
 | `dense_valid_time` | `(n_dense,)` bool | which dense rows are real predictions — see below |
 
@@ -323,6 +324,7 @@ def build_loss_module(*, target_names, collection, config, **_):
         target_names=target_names,
         collection=collection,
         weight=config.custom.bounds_weight,
+        dense_grid_n=64,  # optional; omit for measurement-time bounds only
     )
 ```
 
@@ -339,12 +341,19 @@ bound terms remain in the stable loss schema and evaluate to zero; because total
 loss averages all named
 terms, select `DefaultLossModule` instead when no bounds terms should exist.
 
-The penalties use the existing measurement grid and `mask_measured_any`; the
-module does not request a denser solve. Each finite side is reported separately
-as `lwr_bnd/<state>`, `upr_bnd/<state>`, `lwr_bnd/rate/<rate>`, or
-`upr_bnd/rate/<rate>`. If a modeled state is named `V`, reactor-volume terms use
-the `volume/V` segment. Reconstruction targets share the loss-name namespace;
-any remaining actual collision is rejected during module construction. See
+By default, penalties use the existing measurement grid and
+`mask_measured_any`. Set `dense_grid_n` to an integer of at least 2 to evaluate
+each bound over the union of measurement times and an evenly spaced dense grid.
+Measurement rows that coincide with dense timestamps are counted once, every
+retained timestamp has equal weight, and failed dense rows are excluded with
+`dense_valid_time`. Pointwise bounds remain active at discontinuities; jump masks
+are only needed for finite-difference stencils.
+
+Each finite side is reported separately as `lwr_bnd/<state>`,
+`upr_bnd/<state>`, `lwr_bnd/rate/<rate>`, or `upr_bnd/rate/<rate>`. If a modeled
+state is named `V`, reactor-volume terms use the `volume/V` segment.
+Reconstruction targets share the loss-name namespace; any remaining actual
+collision is rejected during module construction. See
 [the TUB migration hook](../examples/11_tub_2026/migration/custom.py).
 
 ### Adding other custom loss terms
@@ -414,7 +423,7 @@ plate was sampled. Opt in by declaring a `dense_grid_n` property:
 class CurvatureLossModule(DefaultLossModule):
     @property
     def dense_grid_n(self):
-        return 32  # any int N > 0
+        return 32  # any int N >= 2
 ```
 
 When set, the trainer solves **once** on `union(t_measured, linspace(t_start,
@@ -483,31 +492,9 @@ class CurvatureLossModule(DefaultLossModule):
         return LossOutputs(named_losses={**base, **extras})
 ```
 
-The same module can compose metadata-driven `lwr_bnd/<state>` measurement
-terms with the curvature penalty.
-
-#### Example 2 — between-measurement bounds
-
-`BoundsViolationLossModule` intentionally checks only measurement times. The
-RMC/PV example below keeps the same RAW-first, offset-free normalization and
-also masks points after a solve failure. `dense_RAW_states` contains the floored
-volume, so a dense physical-volume bound would first need an unclamped dense-
-volume input.
-
-```python
-# inside __call__ of a BoundsViolationLossModule subclass with dense_grid_n set
-values = inputs.dense_RAW_states[:, idx]  # modeled RMC/PV state
-violation = jax.nn.relu(threshold_RAW - values)  # lower-bound example
-scaler = inputs.reaction_module.SCALE_state[idx]
-normalized = scaler.scale_derivative(violation)
-mask = dense_point_mask_away_from_jumps(
-    inputs.dense_t, inputs.jump_ts, jump_eps_h
-) & inputs.dense_valid_time
-dense_penalty = self.weight * (
-    jnp.sum(jnp.square(normalized) * mask)
-    / jnp.maximum(jnp.sum(mask), 1)
-)
-```
+The same module can compose metadata-driven `lwr_bnd/<state>` terms with the
+curvature penalty. For built-in between-measurement bounds, pass
+`dense_grid_n` directly to `BoundsViolationLossModule` as shown above.
 
 #### Practical note on `dense_grid_n` size
 

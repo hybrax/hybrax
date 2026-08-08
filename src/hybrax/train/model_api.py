@@ -926,6 +926,8 @@ class LossInputs(eqx.Module):
     dense_RAW_modeled_FVCs_rates: jax.Array | None = None
     dense_SCL_V: jax.Array | None = None
     dense_RAW_V: jax.Array | None = None
+    # Dense counterpart of ``RAW_V_unclamped``.
+    dense_RAW_V_unclamped: jax.Array | None = None
     dense_auxiliary: dict[str, jax.Array] | None = None
     # (dense_grid_n,) bool: True for dense rows at/before the solve's failure time,
     # False for post-failure rows (whose trajectory values are a finite fallback, not

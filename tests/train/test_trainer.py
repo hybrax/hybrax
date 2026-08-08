@@ -219,7 +219,9 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     }
 
 
-def _build_wrapper_and_process(module_cls=_LinearReactionModule, process_name="p2"):
+def _build_wrapper_and_process(
+    module_cls=_LinearReactionModule, process_name="p2", min_V=1e-6
+):
     from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
 
     collection = _make_two_process_collection()
@@ -236,6 +238,7 @@ def _build_wrapper_and_process(module_cls=_LinearReactionModule, process_name="p
         process=collection.processes[process_name],
         controls=process_data.controls,
         loss_module=DefaultLossModule(target_names=["biomass"]),
+        min_V=min_V,
     )
     return wrapper, process_data
 
@@ -858,6 +861,28 @@ class _MeasHingeLoss(DefaultLossModule):
         return LossOutputs(named_losses={**base, "hinge": hinge})
 
 
+class _DenseVolumeProbeLoss(DefaultLossModule):
+    _dense_grid_n: int = eqx.field(static=True, default=3)
+
+    @property
+    def dense_grid_n(self):
+        return self._dense_grid_n
+
+    @property
+    def loss_names(self):
+        return tuple(self.target_names) + ("dense_raw_v", "dense_raw_v_unclamped")
+
+    def __call__(self, inputs: LossInputs) -> LossOutputs:
+        base = super().__call__(inputs).named_losses
+        return LossOutputs(
+            named_losses={
+                **base,
+                "dense_raw_v": jnp.mean(inputs.dense_RAW_V),
+                "dense_raw_v_unclamped": jnp.mean(inputs.dense_RAW_V_unclamped),
+            }
+        )
+
+
 class _DenseFailLoss(DefaultLossModule):
     """DefaultLossModule + dense terms that consume ``dense_valid_time``: a validity
     count (to pin that the mask is populated with the right cutoff) and a
@@ -885,6 +910,31 @@ class _DenseFailLoss(DefaultLossModule):
         return LossOutputs(
             named_losses={**base, "dense_valid_count": count, "dense_hinge": hinge}
         )
+
+
+def test_trainer_wires_unclamped_dense_volume_from_export():
+    wrapper, process_data = _build_wrapper_and_process(min_V=2.0)
+    wrapper = eqx.tree_at(
+        lambda w: w.loss_module,
+        wrapper,
+        _DenseVolumeProbeLoss(target_names=["biomass"]),
+    )
+
+    result = evaluate_sample_with_loss_module(
+        wrapper,
+        t_measured=process_data.t_measured,
+        SCL_target_measured=process_data.y_measured,
+        mask_measured=process_data.mask_measured,
+        n_measured=process_data.n_measured,
+        RAW_y0_measured=process_data.y0_measured,
+        jump_ts=process_data.controls.active_jump_ts,
+        max_solver_steps=100_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+    )
+
+    assert result.per_target_loss[1] == pytest.approx(2.0)
+    assert result.per_target_loss[2] == pytest.approx(31.0 / 30.0)
 
 
 def _fail_time_kwargs(process_data, **overrides):

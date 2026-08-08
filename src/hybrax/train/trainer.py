@@ -412,6 +412,7 @@ def evaluate_sample_with_loss_module(
         dense_RAW_modeled_FVCs_rates=dense_views["RAW_modeled_FVCs_rates"],
         dense_SCL_V=dense_views["SCL_V"],
         dense_RAW_V=dense_views["RAW_V"],
+        dense_RAW_V_unclamped=dense_views["RAW_V_unclamped"],
         dense_auxiliary=dense_views["auxiliary"],
         dense_valid_time=dense_valid_time,
     )

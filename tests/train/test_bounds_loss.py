@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import pytest
 from bp_format.dataclasses import (
@@ -84,7 +85,21 @@ def _collection(**kwargs):
     return BioProcessCollection(processes={"p1": _process("p1", **kwargs)})
 
 
-def _inputs(*, raw_states, raw_rates, mask_any, scl_pred=None, raw_v_unclamped=None):
+def _inputs(
+    *,
+    raw_states,
+    raw_rates,
+    mask_any,
+    scl_pred=None,
+    raw_v_unclamped=None,
+    t_measured=None,
+    dense_t=None,
+    dense_raw_states=None,
+    dense_raw_rates=None,
+    dense_raw_v=None,
+    dense_raw_v_unclamped=None,
+    dense_valid_time=None,
+):
     raw_states = jnp.asarray(raw_states)
     raw_rates = jnp.asarray(raw_rates)
     n_rows, n_states = raw_states.shape
@@ -96,6 +111,18 @@ def _inputs(*, raw_states, raw_rates, mask_any, scl_pred=None, raw_v_unclamped=N
     zeros_rates = jnp.zeros_like(raw_rates)
     if raw_v_unclamped is None:
         raw_v_unclamped = raw_states[:, 2]
+    if t_measured is None:
+        t_measured = jnp.arange(n_rows, dtype=float)
+    dense_raw_states = (
+        None if dense_raw_states is None else jnp.asarray(dense_raw_states)
+    )
+    dense_raw_rates = None if dense_raw_rates is None else jnp.asarray(dense_raw_rates)
+    if dense_raw_v is None and dense_raw_states is not None:
+        dense_raw_v = dense_raw_states[:, 2]
+    if dense_raw_v_unclamped is None:
+        dense_raw_v_unclamped = dense_raw_v
+    if dense_raw_v_unclamped is not None:
+        dense_raw_v_unclamped = jnp.asarray(dense_raw_v_unclamped)
     return LossInputs(
         SCL_states=zeros_states,
         RAW_states=raw_states,
@@ -111,8 +138,16 @@ def _inputs(*, raw_states, raw_rates, mask_any, scl_pred=None, raw_v_unclamped=N
         SCL_target_measured=jnp.zeros_like(scl_pred),
         mask_measured=mask,
         mask_measured_any=jnp.asarray(mask_any),
-        t_measured=jnp.arange(n_rows, dtype=float),
+        t_measured=jnp.asarray(t_measured),
         n_measured=jnp.sum(jnp.asarray(mask_any, dtype=jnp.int32)),
+        dense_t=None if dense_t is None else jnp.asarray(dense_t),
+        dense_RAW_states=dense_raw_states,
+        dense_RAW_modeled_BiologicalOde_rates=dense_raw_rates,
+        dense_RAW_V=dense_raw_v,
+        dense_RAW_V_unclamped=dense_raw_v_unclamped,
+        dense_valid_time=(
+            None if dense_valid_time is None else jnp.asarray(dense_valid_time)
+        ),
         reaction_module=SimpleNamespace(
             SCALE_state=AffineScaler(
                 scale=jnp.asarray([2.0, 4.0, 8.0]),
@@ -249,6 +284,7 @@ def test_unbounded_collection_is_default_loss_noop():
     losses = module(inputs).named_losses
     expected = DefaultLossModule(target_names=target_names)(inputs).named_losses
 
+    assert module.dense_grid_n is None
     assert module.loss_names == target_names
     assert losses.keys() == expected.keys()
     for name in target_names:
@@ -288,6 +324,114 @@ def test_zero_weight_keeps_stable_zero_terms():
 
     assert module.loss_names == target_names + ("lwr_bnd/biomass",)
     assert float(module(inputs).named_losses["lwr_bnd/biomass"]) == 0.0
+
+
+def test_dense_bounds_use_deduplicated_union_and_derivative_scales():
+    collection = _collection(
+        rmc_bounds=(0.0, None),
+        oxygen_bounds=(None, 10.0),
+        volume_bounds=(1.0, None),
+        rate_bounds=((0.0, None), (None, 2.0)),
+    )
+    module = BoundsViolationLossModule(
+        target_names=("biomass",),
+        collection=collection,
+        weight=1.0,
+        dense_grid_n=3,
+    )
+    measurement_module = BoundsViolationLossModule(
+        target_names=("biomass",), collection=collection, weight=1.0
+    )
+    inputs = _inputs(
+        raw_states=[[0.0, 10.0, 1.0], [0.0, 10.0, 1.0]],
+        raw_rates=[[0.0, 2.0], [0.0, 2.0]],
+        mask_any=[True, True],
+        scl_pred=[[2.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        t_measured=[0.0, 1.0],
+        dense_t=[0.0, 0.5, 1.0],
+        dense_raw_states=[[0.0, 10.0, 1.0], [-4.0, 18.0, 0.0], [0.0, 10.0, 1.0]],
+        dense_raw_rates=[[0.0, 2.0], [-1.0, 6.0], [0.0, 2.0]],
+        dense_valid_time=[True, True, True],
+    )
+
+    losses = module(inputs).named_losses
+    measurement_losses = measurement_module(inputs).named_losses
+
+    assert module.dense_grid_n == 3
+    assert module.loss_names == measurement_module.loss_names
+    assert losses.keys() == measurement_losses.keys()
+    assert losses["biomass"] == pytest.approx(measurement_losses["biomass"])
+    assert losses["biomass"] == pytest.approx(2.0)
+    for name in (
+        "lwr_bnd/biomass",
+        "upr_bnd/oxygen",
+        "lwr_bnd/rate/q_biomass",
+        "upr_bnd/rate/r_oxygen",
+    ):
+        assert losses[name] == pytest.approx(4.0 / 3.0)
+    assert losses["lwr_bnd/V"] == pytest.approx(1.0 / 192.0)
+
+
+def test_dense_bounds_mask_failed_rows_and_keep_gradients_finite():
+    module = BoundsViolationLossModule(
+        target_names=("biomass",),
+        collection=_collection(rmc_bounds=(0.0, None)),
+        weight=1.0,
+        dense_grid_n=3,
+    )
+
+    def loss(dense_biomass):
+        dense_states = jnp.column_stack((dense_biomass, jnp.zeros(3), jnp.ones(3)))
+        inputs = _inputs(
+            raw_states=[[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
+            raw_rates=jnp.zeros((2, 2)),
+            mask_any=[True, True],
+            t_measured=[0.0, 1.0],
+            dense_t=[0.0, 0.5, 1.0],
+            dense_raw_states=dense_states,
+            dense_raw_rates=jnp.zeros((3, 2)),
+            dense_valid_time=[True, True, False],
+        )
+        return module(inputs).named_losses["lwr_bnd/biomass"]
+
+    dense_biomass = jnp.asarray([0.0, -4.0, -1e6])
+    assert loss(dense_biomass) == pytest.approx(2.0)
+    assert jnp.all(jnp.isfinite(jax.grad(loss)(dense_biomass)))
+
+
+def test_dense_volume_bound_uses_unclamped_volume():
+    module = BoundsViolationLossModule(
+        target_names=("biomass",),
+        collection=_collection(volume_bounds=(1.0, None)),
+        weight=1.0,
+        dense_grid_n=3,
+    )
+    inputs = _inputs(
+        raw_states=[[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
+        raw_rates=jnp.zeros((2, 2)),
+        mask_any=[True, True],
+        t_measured=[0.0, 1.0],
+        dense_t=[0.0, 0.5, 1.0],
+        dense_raw_states=[[0.0, 0.0, 1.0]] * 3,
+        dense_raw_rates=jnp.zeros((3, 2)),
+        dense_raw_v_unclamped=[1.0, 0.0, 1.0],
+        dense_valid_time=[True, True, True],
+    )
+
+    loss = module(inputs).named_losses["lwr_bnd/V"]
+
+    assert loss == pytest.approx(1.0 / 192.0)
+
+
+@pytest.mark.parametrize("dense_grid_n", [True, 1, 1.5])
+def test_invalid_dense_grid_size_is_rejected(dense_grid_n):
+    with pytest.raises(ValueError, match="dense_grid_n"):
+        BoundsViolationLossModule(
+            target_names=("biomass",),
+            collection=_collection(),
+            weight=1.0,
+            dense_grid_n=dense_grid_n,
+        )
 
 
 @pytest.mark.parametrize("weight", [-1.0, float("inf"), float("nan")])
