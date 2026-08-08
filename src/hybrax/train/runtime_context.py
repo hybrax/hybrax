@@ -277,10 +277,10 @@ def _sample_volume_events(process, process_name: str) -> RawTrace:
     )
     if not traces:
         return _readonly_trace([], [])
-    return _readonly_trace(
-        np.concatenate([times for times, _ in traces]),
-        np.concatenate([values for _, values in traces]),
-    )
+    times = np.concatenate([times for times, _ in traces])
+    values = np.concatenate([values for _, values in traces])
+    order = np.argsort(times, kind="stable")
+    return _readonly_trace(times[order], values[order])
 
 
 def _trace(value, process_name: str, description: str) -> RawTrace:

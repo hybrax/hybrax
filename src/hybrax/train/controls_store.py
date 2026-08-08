@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +74,9 @@ def _offline_measurement_times(process: Any) -> np.ndarray:
     return np.asarray(sorted(times), dtype=np.float64)
 
 
-def _output_window_bounds(collection: Any, process_order: list[str]) -> tuple[float, int]:
+def _output_window_bounds(
+    collection: Any, process_order: list[str]
+) -> tuple[float, int]:
     """Collection-wide constants that size the solver's per-segment output window.
 
     The solver saves its trajectory with ``SaveAt(ts=...)`` inside each segment, and
@@ -268,7 +271,7 @@ class PerProcessControls(eqx.Module):
     jump_ts: jax.Array
     grid_length: int = eqx.field(static=True)
     jump_ts_length: int = eqx.field(static=True)
-    control_metadata: dict[str, dict[str, Any]] = eqx.field(static=True)
+    control_metadata: Mapping[str, Mapping[str, Any]] = eqx.field(static=True)
     sample_event_times: jax.Array
     sample_event_volumes: jax.Array
     sample_event_mask: jax.Array
@@ -973,7 +976,7 @@ class ControlsStore(eqx.Module):
             jump_ts=self.jump_ts[process_index],
             grid_length=int(self.grid_lengths[process_index]),
             jump_ts_length=int(self.jump_ts_lengths[process_index]),
-            control_metadata=dict(process_md["control_metadata"]),
+            control_metadata=process_md["control_metadata"],
             sample_event_times=self.sample_event_times[process_index],
             sample_event_volumes=self.sample_event_volumes[process_index],
             sample_event_mask=self.sample_event_mask[process_index],
