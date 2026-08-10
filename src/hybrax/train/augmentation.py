@@ -10,6 +10,7 @@ import numpy as np
 from bp_format.dataclasses import (
     AugmentedBioProcess,
     BioProcessCollection,
+    SampleVolumeChange,
     TimeSeries,
 )
 from bp_format.mechanistic import get_process_ordering
@@ -25,6 +26,9 @@ _MOSTLY_NONNEGATIVE_FRACTION = 0.5
 # timestamp step by several ULP, or the grid cannot meaningfully honor it.
 _MIN_SPACING_REL_TOL = 1e-6
 _MIN_SPACING_MIN_ULPS = 4
+# Matches bp_format.validate_measurement_sampling_alignment's default.
+_SAMPLING_NEAR_MISS_REL_THRESHOLD = 1e-4
+_MAX_GRID_ATTEMPTS = 100
 
 
 def _times_match(left, right):
@@ -47,32 +51,55 @@ def _child_grid(
     child_index: int,
     t0: float,
     t_end: float,
+    sampling_times: tuple[float, ...] = (),
 ) -> np.ndarray:
     n_intervals = augmentation.n_time_points - 1
     duration = t_end - t0
     min_spacing = augmentation.min_spacing_fraction * duration / n_intervals
     remaining_duration = duration * (1.0 - augmentation.min_spacing_fraction)
-    cuts = np.sort(
-        _rng(augmentation.seed, parent_name, child_index, "grid").uniform(
-            0.0,
-            remaining_duration,
-            augmentation.n_time_points - 2,
-        )
-    )
-    interior = t0 + np.arange(1, n_intervals) * min_spacing + cuts
-    grid = np.concatenate(([t0], interior, [t_end]))
-    diffs = np.diff(grid)
     resolution = np.spacing(max(abs(t0), abs(t_end)))
-    if (
-        np.any(diffs <= 0.0)
-        or min_spacing <= _MIN_SPACING_MIN_ULPS * resolution
-        or np.any(diffs < min_spacing * (1.0 - _MIN_SPACING_REL_TOL))
-    ):
+    if min_spacing <= _MIN_SPACING_MIN_ULPS * resolution:
         raise ValueError(
             f"{_child_name(parent_name, child_index)}: cannot represent the "
             "requested minimum child-grid spacing"
         )
-    return grid
+
+    samples = np.asarray(sampling_times)
+    for attempt in range(_MAX_GRID_ATTEMPTS):
+        identity = (
+            (augmentation.seed, parent_name, child_index, "grid")
+            if attempt == 0
+            else (augmentation.seed, parent_name, child_index, "grid", attempt)
+        )
+        cuts = np.sort(
+            _rng(*identity).uniform(
+                0.0,
+                remaining_duration,
+                augmentation.n_time_points - 2,
+            )
+        )
+        interior = t0 + np.arange(1, n_intervals) * min_spacing + cuts
+        grid = np.concatenate(([t0], interior, [t_end]))
+        diffs = np.diff(grid)
+        if np.any(diffs <= 0.0) or np.any(
+            diffs < min_spacing * (1.0 - _MIN_SPACING_REL_TOL)
+        ):
+            raise ValueError(
+                f"{_child_name(parent_name, child_index)}: cannot represent the "
+                "requested minimum child-grid spacing"
+            )
+        if samples.size == 0:
+            return grid
+        deltas = grid[:, None] - samples[None, :]
+        if not np.any(
+            (deltas > 0.0) & (deltas <= _SAMPLING_NEAR_MISS_REL_THRESHOLD * duration)
+        ):
+            return grid
+
+    raise ValueError(
+        f"{_child_name(parent_name, child_index)}: could not sample a child grid "
+        "away from sampling-event near-misses"
+    )
 
 
 def _state_series(process, state_name: str) -> Any:
@@ -87,6 +114,15 @@ def _parent_processes(collection: BioProcessCollection) -> list[tuple[str, Any]]
         for name, process in collection.processes.items()
         if not isinstance(process, AugmentedBioProcess)
     ]
+
+
+def _sampling_times(process) -> tuple[float, ...]:
+    return tuple(
+        float(t)
+        for change in process.volume.volume_changes.values()
+        if isinstance(change, SampleVolumeChange)
+        for t in change.values.times
+    )
 
 
 def _set_state_series(process, state_name: str, series: TimeSeries) -> None:
@@ -220,9 +256,14 @@ def augment_process_collection(
 
     child_times = {
         (parent_name, child_index): _child_grid(
-            augmentation, parent_name, child_index, t0, t_end
+            augmentation,
+            parent_name,
+            child_index,
+            t0,
+            t_end,
+            _sampling_times(parent),
         )
-        for parent_name, _, _, t0, t_end, _ in validated_parents
+        for parent_name, parent, _, t0, t_end, _ in validated_parents
         for child_index in range(augmentation.n_children_per_process)
     }
     children = {}

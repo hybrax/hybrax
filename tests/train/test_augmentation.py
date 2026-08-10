@@ -8,6 +8,7 @@ import warnings
 
 import numpy as np
 import pytest
+from bp_format import validate_measurement_sampling_alignment
 from bp_format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
@@ -608,6 +609,94 @@ def test_full_min_spacing_fraction_makes_child_grid_evenly_spaced(n_time_points,
     )
 
 
+def test_child_grid_retries_sampling_event_near_misses():
+    augmentation = _config(n_time_points=20).prepare.augmentation
+    assert augmentation is not None
+    first = augmentation_module._child_grid(augmentation, "p1", 0, 0.0, 4.0)
+    sampling_time = first[10] - 2e-4
+
+    retried = augmentation_module._child_grid(
+        augmentation,
+        "p1",
+        0,
+        0.0,
+        4.0,
+        (sampling_time,),
+    )
+
+    assert not np.array_equal(retried, first)
+    np.testing.assert_array_equal(
+        retried,
+        augmentation_module._child_grid(
+            augmentation,
+            "p1",
+            0,
+            0.0,
+            4.0,
+            (sampling_time,),
+        ),
+    )
+    assert np.all(np.diff(retried) >= 0.1 * 4.0 / 19.0)
+    deltas = retried - sampling_time
+    assert not np.any((deltas > 0.0) & (deltas <= 4e-4))
+
+    for allowed_sampling_time in (first[10], first[10] + 2e-4):
+        np.testing.assert_array_equal(
+            augmentation_module._child_grid(
+                augmentation,
+                "p1",
+                0,
+                0.0,
+                4.0,
+                (allowed_sampling_time,),
+            ),
+            first,
+        )
+
+
+def test_child_grid_sampling_event_retries_are_bounded(monkeypatch):
+    augmentation = _config(
+        n_time_points=20, min_spacing_fraction=1.0
+    ).prepare.augmentation
+    assert augmentation is not None
+    first = augmentation_module._child_grid(augmentation, "p1", 0, 0.0, 4.0)
+    monkeypatch.setattr(augmentation_module, "_MAX_GRID_ATTEMPTS", 2)
+
+    with pytest.raises(ValueError, match="away from sampling-event near-misses"):
+        augmentation_module._child_grid(
+            augmentation,
+            "p1",
+            0,
+            0.0,
+            4.0,
+            (first[10] - 2e-4,),
+        )
+
+
+def test_augmentation_passes_sampling_times_to_child_grid_retry():
+    collection = _collection()
+    augmentation = _config(n_time_points=20).prepare.augmentation
+    assert augmentation is not None
+    first = augmentation_module._child_grid(augmentation, "p1", 0, 0.0, 4.0)
+    sampling_time = first[10] - 2e-4
+    collection.processes["p1"].volume.volume_changes["sample"] = SampleVolumeChange(
+        name="sample",
+        unit="L",
+        is_controlled=False,
+        is_continuous=False,
+        values=TimeSeries(times=[sampling_time], values=[-0.01]),
+    )
+
+    child = augment_process_collection(collection, _config(n_time_points=20)).processes[
+        "p1__aug_000"
+    ]
+    deltas = np.asarray(_state_series(child, "biomass").times) - sampling_time
+
+    assert not np.any((deltas > 0.0) & (deltas <= 4e-4))
+    valid, message = validate_measurement_sampling_alignment(child)
+    assert valid, message
+
+
 def test_even_grid_allows_relative_rounding_at_nonzero_origin():
     augmentation = _config(
         n_time_points=20, min_spacing_fraction=1.0
@@ -665,8 +754,8 @@ def test_unrepresentable_minimum_child_grid_spacing_fails_fast(
 def test_child_grid_failure_leaves_collection_unchanged(monkeypatch):
     collection = _collection()
 
-    def build_grid(augmentation, parent_name, child_index, t0, t_end):
-        del parent_name
+    def build_grid(augmentation, parent_name, child_index, t0, t_end, sampling_times):
+        del parent_name, sampling_times
         if child_index == 2:
             raise ValueError(
                 "cannot represent the requested minimum child-grid spacing"
