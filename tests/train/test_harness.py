@@ -33,6 +33,7 @@ from bp_format.dataclasses import (
 )
 from bp_format.mechanistic import build_rhs_ode
 
+import bp_train.harness as harness_module
 from bp_train.controls_store import ControlsStore
 from bp_train.harness import (
     TrainHarnessConfig,
@@ -1043,7 +1044,16 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
     assert sampled_logs == []
 
 
-def test_holdout_runs_once_at_periodic_final_collision(tmp_path):
+def test_holdout_runs_once_at_periodic_final_collision(tmp_path, monkeypatch):
+    assert harness_module._BATCHED_LOSS_FN_JIT is not harness_module._BATCHED_LOSS_FN
+    jit_calls = []
+    batched_loss_jit = harness_module._BATCHED_LOSS_FN_JIT
+
+    def record_jit_call(*args, **kwargs):
+        jit_calls.append(kwargs)
+        return batched_loss_jit(*args, **kwargs)
+
+    monkeypatch.setattr(harness_module, "_BATCHED_LOSS_FN_JIT", record_jit_call)
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
         collection,
@@ -1066,6 +1076,7 @@ def test_holdout_runs_once_at_periodic_final_collision(tmp_path):
     )
 
     assert set(result.holdout_loss_by_step) == {2}
+    assert sum("step" in kwargs for kwargs in jit_calls) == 1
     assert [p.name for p in (tmp_path / "checkpoints").glob("step_*")] == ["step_00002"]
     state = json.loads(
         (tmp_path / "checkpoints" / "latest" / "train_state.json").read_text()

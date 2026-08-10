@@ -72,8 +72,8 @@ from .postprocessing import (
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
 _BATCHED_LOSS_FN = build_batched_loss_fn()
-# JIT'd once at import; reused by every dense-export call so matching batch shapes
-# share one compilation.
+# JIT'd once at import; reused by holdout evaluation and dense exports. Each
+# distinct fixed batch shape compiles once, then parameter updates reuse it.
 _BATCHED_LOSS_FN_JIT = eqx.filter_jit(_BATCHED_LOSS_FN)
 
 logger = logging.getLogger(__name__)
@@ -1623,7 +1623,7 @@ def train_collection(
     def _evaluate_holdout(step: int):
         if holdout_batch is None:
             return None, None
-        total, per_sample_per_target, _per_sample, *_ = effective_batched_loss_fn(
+        total, per_sample_per_target, _per_sample, *_ = _BATCHED_LOSS_FN_JIT(
             wrapper,
             holdout_batch,
             batched_Cin,
