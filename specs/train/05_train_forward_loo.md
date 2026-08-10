@@ -100,8 +100,8 @@ ensemble) plus optional `data` and `output` blocks.
   prediction_grid_n=200)` runs one batched solve and returns per-process
   [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories
   (time, species, volume, rates, auxiliary). It is *the* single source of dense
-  predictions — forward and the training-checkpoint `predictions.csv` writer
-  both call it, so exported predictions always match the training solve.
+  predictions for forward evaluation and final training exports, so exported
+  predictions always match the training solve.
 - For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
   into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
   own `models/<name>/predictions.csv` and `losses.csv`.
@@ -189,7 +189,9 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
   artifact-identity/fold-ID binding fails loudly before that fold is deleted.
 - **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
-  `checkpoints/`, `trained_wrapper.eqx`, `losses.csv`, predictions, plots).
+  lightweight model-state checkpoints plus final `trained_wrapper.eqx`,
+  `losses.csv`, predictions, and plots). Checkpoints contain loss and gradient
+  plots when enabled, but not dense prediction exports or trajectory plots.
 - **Aggregation** ([`LOOResult`](../bp_train/loo.py)): the orchestrator reads each
   fold's `losses.csv` back from disk and writes `loo_summary.csv` +
   `loo_aggregate.json` (holdout metrics averaged over each fold's `test` set;

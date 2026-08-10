@@ -62,7 +62,6 @@ from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
     ProcessPlotSource,
-    build_process_plot_data,
     extract_process_plot_sources,
     dense_exports_from_save_outputs,
     export_predictions_csv,
@@ -73,8 +72,8 @@ from .postprocessing import (
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
 _BATCHED_LOSS_FN = build_batched_loss_fn()
-# JIT'd once at import; reused by every dense-export call (forward + each training
-# checkpoint) so they share one compile per batch shape.
+# JIT'd once at import; reused by every dense-export call so matching batch shapes
+# share one compilation.
 _BATCHED_LOSS_FN_JIT = eqx.filter_jit(_BATCHED_LOSS_FN)
 
 logger = logging.getLogger(__name__)
@@ -93,9 +92,8 @@ def compute_dense_exports(
 ) -> tuple[np.ndarray, np.ndarray, dict[str, DenseProcessExport]]:
     """One batched, jitted solve over ``process_names`` → per-process dense exports.
 
-    THE single source of dense prediction trajectories: forward evaluation and the
-    training-checkpoint ``predictions.csv`` writer both call this instead of
-    solving per process. The prediction grid is harvested from the same loss solve
+    The single source of dense prediction trajectories for forward and final
+    training exports. The prediction grid is harvested from the same loss solve
     (``BatchControls`` + ``discrete_events`` ``jump_ts``), so predictions match
     training and there is no second simulation. Returns ``(per_sample_total,
     per_sample_per_target, dense_exports)`` (loss arrays are ``np``, aligned with
@@ -266,10 +264,9 @@ class TrainHarnessConfig:
     # Checkpointing. ``checkpoint_every`` is measured in epochs; None selects an
     # automatic cadence of at least five epochs and at most 20 checkpoints. Zero
     # disables periodic writes, while a final checkpoint remains mandatory when
-    # configured. ``plots`` gates background plot rendering; ``prepared_path`` is
-    # the resolved prepared.json(.gz) bundled into every checkpoint (so each is
-    # self-contained) and the source of measured-point overlays for per-checkpoint
-    # process plots.
+    # configured. ``plots`` gates checkpoint loss/gradient plots and final
+    # process plots. ``prepared_path`` is the resolved prepared.json(.gz) bundled
+    # into every checkpoint so each is self-contained.
     checkpoint_dir: Path | None = None
     checkpoint_every: float | None = None
     plots: bool = True
@@ -977,6 +974,8 @@ def train_collection(
     used.
     """
     cfg = config or TrainHarnessConfig()
+    if cfg.checkpoint_dir is not None and cfg.plots and plot_sources is None:
+        raise ValueError("plot_sources are required when plots are enabled")
     _require_stateful_opt_in(reaction_module, cfg.allow_stateful_models)
     if loss_module is None:
         loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
@@ -1642,41 +1641,6 @@ def train_collection(
         )
         return float(total), per_target
 
-    checkpoint_per_target_losses = None
-    checkpoint_dense_exports = None
-
-    def _render_predictions(path: Path):
-        nonlocal checkpoint_per_target_losses, checkpoint_dense_exports
-        _, checkpoint_per_target_losses, checkpoint_dense_exports = (
-            compute_dense_exports(
-                wrapper,
-                store,
-                selected_processes,
-                solver_max_steps=int(cfg.solver_max_steps),
-                solver_rtol=float(cfg.solver_rtol),
-                solver_atol=float(cfg.solver_atol),
-                solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-            )
-        )
-        export_predictions_csv(
-            wrapper,
-            checkpoint_dense_exports,
-            path,
-            process_names=selected_processes,
-        )
-        if not cfg.plots:
-            return None
-        if plot_sources is None:
-            raise ValueError("plot sources were not prepared")
-        return build_process_plot_data(
-            wrapper,
-            plot_sources,
-            store,
-            checkpoint_dense_exports,
-            selected_processes,
-            training_process_names=selected_processes,
-        )
-
     try:
         with RunLogger(
             log_process_losses=cfg.log_process_losses,
@@ -1803,7 +1767,6 @@ def train_collection(
                         opt_state=optimizer_state,
                         mean_loss=float(loss),
                         holdout_loss=holdout_loss,
-                        render_predictions_fn=_render_predictions,
                         loss_by_step=loss_so_far,
                         grad_norm_by_step=grad_norm_so_far,
                         per_target_loss_by_step=per_target_loss_so_far,
@@ -1824,13 +1787,15 @@ def train_collection(
             if cfg.checkpoint_dir is not None:
                 run_dir = Path(cfg.checkpoint_dir).parent
                 try:
-                    if (
-                        checkpoint_per_target_losses is None
-                        or checkpoint_dense_exports is None
-                    ):
-                        raise RuntimeError("final checkpoint exports are unavailable")
-                    _final_per_target = checkpoint_per_target_losses
-                    _final_dense = checkpoint_dense_exports
+                    _, _final_per_target, _final_dense = compute_dense_exports(
+                        wrapper,
+                        store,
+                        selected_processes,
+                        solver_max_steps=int(cfg.solver_max_steps),
+                        solver_rtol=float(cfg.solver_rtol),
+                        solver_atol=float(cfg.solver_atol),
+                        solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
+                    )
                     export_predictions_csv(
                         wrapper,
                         _final_dense,

@@ -6,14 +6,9 @@ import gzip
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
-from .postprocessing import (
-    ProcessPlotData,
-    plot_grad_norm_curve,
-    plot_loss_curve,
-    render_process_figures,
-)
+from .postprocessing import plot_grad_norm_curve, plot_loss_curve
 from .serialization import save_model, save_opt_state, write_json
 
 
@@ -49,7 +44,6 @@ class CheckpointWriter:
         opt_state: Any,
         mean_loss: float,
         holdout_loss: float | None,
-        render_predictions_fn: Callable[[Path], list[ProcessPlotData] | None],
         loss_by_step: Sequence[float],
         grad_norm_by_step: Sequence[float] | None = None,
         per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
@@ -83,7 +77,6 @@ class CheckpointWriter:
         if self._prepared_src is not None and self._prepared_src.is_file():
             _bundle_prepared_gz(self._prepared_src, d / "prepared.json.gz")
 
-        plot_data = render_predictions_fn(d / "predictions.csv")
         if self._plots_enabled and self._plotter is not None:
             self._plotter.submit(
                 plot_loss_curve,
@@ -111,8 +104,6 @@ class CheckpointWriter:
                     d / "grad_norm_curve.png",
                     title=f"Gradient norm (through step {step})",
                 )
-            if plot_data:
-                self._plotter.submit(render_process_figures, plot_data, d)
         self._update_latest(d)
         return d
 

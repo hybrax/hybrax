@@ -30,7 +30,7 @@ from bp_train.model_api import (
     partition_trainable,
     trainable_field,
 )
-from bp_train.postprocessing import plot_loss_curve
+from bp_train.postprocessing import extract_process_plot_sources, plot_loss_curve
 from bp_train.serialization import load_trained_wrapper
 from bp_train.training_data import TrainingDataStore
 
@@ -89,10 +89,6 @@ def _opt_state_for(module: eqx.Module):
     return optax.adam(1e-2).init(trainable)
 
 
-def _dummy_predictions(path: Path) -> None:
-    Path(path).write_text("process,t,c_x\np1,0.0,1.0\n", encoding="utf-8")
-
-
 def test_fractional_checkpoint_boundaries_are_exact_and_distinct():
     from bp_train.harness import _checkpoint_update_boundaries
 
@@ -147,7 +143,6 @@ def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
             opt_state=_opt_state_for(module),
             mean_loss=1.0 / step,
             holdout_loss=0.25 if step == 4 else None,
-            render_predictions_fn=_dummy_predictions,
             loss_by_step=[1.0],
         )
     checkpoints = tmp_path / "checkpoints"
@@ -164,6 +159,7 @@ def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
         checkpoints / "latest" / "params.eqx", template=_TrainableModule()
     )
     assert jnp.allclose(reloaded.w, module.w)
+    assert not list(checkpoints.glob("step_*/predictions.csv"))
 
 
 def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
@@ -178,7 +174,6 @@ def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
         opt_state=_opt_state_for(module),
         mean_loss=float("inf"),
         holdout_loss=float("nan"),
-        render_predictions_fn=_dummy_predictions,
         loss_by_step=[float("inf")],
     )
 
@@ -187,29 +182,6 @@ def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
     assert "Infinity" not in text and "NaN" not in text
     assert json.loads(text)["mean_loss"] is None
     assert json.loads(text)["holdout_loss"] is None
-
-
-def test_checkpoint_writer_export_failure_does_not_publish(tmp_path: Path):
-    module = _TrainableModule()
-    writer = CheckpointWriter(
-        tmp_path / "checkpoints", plotter=None, plots_enabled=False
-    )
-
-    def boom(_path):
-        raise RuntimeError("export failed")
-
-    with pytest.raises(RuntimeError, match="export failed"):
-        writer.write(
-            step=1,
-            samples_seen=1,
-            wrapper=module,
-            opt_state=_opt_state_for(module),
-            mean_loss=1.0,
-            holdout_loss=None,
-            render_predictions_fn=boom,
-            loss_by_step=[1.0],
-        )
-    assert not (tmp_path / "checkpoints" / "latest").exists()
 
 
 # --------------------------------------------------------------------------
@@ -320,6 +292,11 @@ def _run_train(
             plots=plots,
             metrics_csv=metrics_csv,
         ),
+        plot_sources=(
+            extract_process_plot_sources(collection, store.rhs_ode, ("p1",))
+            if plots
+            else None
+        ),
     )
 
 
@@ -342,6 +319,20 @@ def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     ]
     assert (checkpoints / "latest").resolve().name == "step_00005"
     assert not (checkpoints / "best").exists()
+
+
+def test_checkpoint_plots_exclude_predictions_and_trajectories(tmp_path: Path):
+    checkpoints = tmp_path / "checkpoints"
+    _run_train(checkpoint_dir=checkpoints, checkpoint_every=1, epochs=1, plots=True)
+
+    step_dir = checkpoints / "step_00001"
+    assert {path.name for path in step_dir.glob("*.png")} == {
+        "grad_norm_curve.png",
+        "loss_curve.png",
+    }
+    assert not (step_dir / "predictions.csv").exists()
+    assert (tmp_path / "predictions.csv").is_file()
+    assert (tmp_path / "p1.png").is_file()
 
 
 def test_automatic_checkpoint_cadence_is_logged(tmp_path: Path, caplog):
