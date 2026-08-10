@@ -239,18 +239,43 @@ def _check_unique_slugs(folds: list[Fold]) -> None:
 
 
 def _require_known(
-    names: tuple[str, ...], known: set[str], *, what: str, idx: int
+    names: tuple[str, ...],
+    known: set[str],
+    *,
+    what: str,
+    idx: int | None = None,
+    full: set[str] | None = None,
 ) -> None:
     unknown = [n for n in names if n not in known]
-    if unknown:
+    if not unknown:
+        return
+    prefix = f"loo fold {idx}: " if idx is not None else ""
+    if full is not None:
+        excluded = sorted(n for n in unknown if n in full)
+        absent = sorted(n for n in unknown if n not in full)
+        parts = []
+        if excluded:
+            parts.append(
+                f"{excluded} present in the collection but excluded by data.processes"
+            )
+        if absent:
+            parts.append(f"{absent} not present in the collection at all")
         raise ValueError(
-            f"loo fold {idx}: '{what}' contains unknown process name(s) "
-            f"{unknown}; available={sorted(known)}"
+            f"{prefix}'{what}' contains unknown process name(s): "
+            + "; ".join(parts)
+            + f"; available={sorted(known)}"
         )
+    raise ValueError(
+        f"{prefix}'{what}' contains unknown process name(s) {unknown}; "
+        f"available={sorted(known)}"
+    )
 
 
 def resolve_folds(
-    collection: BioProcessCollection, loo_cfg: LooConfig | None
+    collection: BioProcessCollection,
+    loo_cfg: LooConfig | None,
+    *,
+    data_processes: tuple[str, ...] | None = None,
 ) -> tuple[Fold, ...]:
     """Resolve config into concrete folds.
 
@@ -258,14 +283,56 @@ def resolve_folds(
     parent group). Otherwise each :class:`HoldoutSet` becomes a fold:
     ``test = entry.test``; ``train = entry.train`` or everything not in ``test``.
     Augmentation is corrected in both modes (see :func:`_apply_augmentation`).
+
+    ``data_processes`` (from ``DataConfig.processes``), when given, restricts
+    the process universe available to fold construction *before*
+    ``per_fold_holdout_sets``/classic-LOO see it: names outside it can never
+    end up in a fold's ``test``/``train``, and ``per_fold_holdout_sets``
+    entries that reference such a name raise instead of silently including
+    it.
     """
-    process_order = tuple(collection.processes.keys())
-    known = set(process_order)
+    process_order_full = tuple(collection.processes.keys())
+    full_names = set(process_order_full)
+
+    if data_processes is not None:
+        _require_known(tuple(data_processes), full_names, what="data.processes")
+        restrict = set(data_processes)
+    else:
+        restrict = full_names
+
+    # Parent resolution is always derived from the full collection — an
+    # augmented child's parent must resolve even if only one of the two
+    # survives the data_processes restriction.
+    parent_of = _augmented_parent_map(collection)
+    for child, parent in parent_of.items():
+        if child in restrict and parent not in restrict:
+            raise ValueError(
+                f"data.processes includes augmented process '{child}' but "
+                f"excludes its parent process '{parent}'; augmented "
+                "processes must be restricted together with their "
+                f"non-augmented parent (add '{parent}' to data.processes, "
+                f"or remove '{child}')."
+            )
+
+    process_order = tuple(p for p in process_order_full if p in restrict)
+    known = restrict
+
+    loo_collection = collection
+    if data_processes is not None:
+        loo_collection = BioProcessCollection(
+            processes={
+                name: proc
+                for name, proc in collection.processes.items()
+                if name in restrict
+            },
+            metadata=collection.metadata,
+        )
+
     group_of = _augmentation_group_of(collection)
     folds: list[Fold] = []
 
     if loo_cfg is None or loo_cfg.per_fold_holdout_sets is None:
-        groups = _build_fold_groups(collection)
+        groups = _build_fold_groups(loo_collection)
         if len(groups) < 2:
             raise ValueError(
                 f"leave-one-out requires >= 2 parent processes; got {len(groups)}"
@@ -283,11 +350,11 @@ def resolve_folds(
 
     for idx, hs in enumerate(loo_cfg.per_fold_holdout_sets):
         test = tuple(hs.test)
-        _require_known(test, known, what="test", idx=idx)
+        _require_known(test, known, what="test", idx=idx, full=full_names)
         explicit_train = None
         if hs.train is not None:
             explicit_train = tuple(hs.train)
-            _require_known(explicit_train, known, what="train", idx=idx)
+            _require_known(explicit_train, known, what="train", idx=idx, full=full_names)
             overlap = sorted(set(test) & set(explicit_train))
             if overlap:
                 raise ValueError(
@@ -469,7 +536,7 @@ def prepare_single_fold(
     custom_py: str | Path | None = None,
 ) -> PreparedFold:
     """Resolve and prepare one fold without starting its training."""
-    folds = resolve_folds(collection, cfg.loo)
+    folds = resolve_folds(collection, cfg.loo, data_processes=cfg.data.processes)
     if not 0 <= fold_idx < len(folds):
         raise ValueError(
             f"--fold {fold_idx} out of range; {len(folds)} fold(s) resolved"
@@ -700,7 +767,7 @@ def run_loo_cv(
     folds that already wrote ``folds/<slug>/losses.csv`` are skipped and only the
     missing/partial ones are re-run.
     """
-    folds = resolve_folds(collection, cfg.loo)
+    folds = resolve_folds(collection, cfg.loo, data_processes=cfg.data.processes)
     n_folds = len(folds)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

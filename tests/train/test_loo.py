@@ -300,6 +300,82 @@ def test_resolve_folds_explicit_overlap_raises():
 
 
 # ---------------------------------------------------------------------------
+# resolve_folds — data_processes restriction
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_folds_classic_respects_data_processes():
+    folds = resolve_folds(
+        _three_parent_collection(), None, data_processes=("p1", "p2")
+    )
+    assert [f.slug for f in folds] == ["p1", "p2"]
+    assert all("p3" not in (*f.test, *f.train) for f in folds)
+
+
+def test_resolve_folds_classic_data_processes_default_train_excludes_restricted():
+    folds = resolve_folds(
+        _three_parent_collection(), None, data_processes=("p1", "p2")
+    )
+    assert folds[0].train == ("p2",)
+
+
+def test_resolve_folds_data_processes_child_without_parent_raises():
+    with pytest.raises(ValueError, match="excludes its parent process 'P0'"):
+        resolve_folds(
+            _augmented_collection(), None, data_processes=("P0_aug", "P1")
+        )
+
+
+def test_resolve_folds_data_processes_parent_without_child_is_allowed():
+    folds = resolve_folds(
+        _augmented_collection(), None, data_processes=("P0", "P1")
+    )
+    assert [f.slug for f in folds] == ["P0", "P1"]
+    assert folds[0].test == ("P0",)
+    assert folds[0].train == ("P1",)
+
+
+def test_resolve_folds_data_processes_unknown_name_raises():
+    with pytest.raises(ValueError, match="data.processes.*unknown process name"):
+        resolve_folds(
+            _three_parent_collection(), None, data_processes=("p1", "ghost")
+        )
+
+
+def test_resolve_folds_per_fold_test_outside_data_processes_raises():
+    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p3",)),))
+    with pytest.raises(ValueError, match="excluded by data.processes"):
+        resolve_folds(
+            _three_parent_collection(), loo_cfg, data_processes=("p1", "p2")
+        )
+
+
+def test_resolve_folds_per_fold_train_outside_data_processes_raises():
+    loo_cfg = LooConfig(
+        per_fold_holdout_sets=(HoldoutSet(test=("p1",), train=("p3",)),)
+    )
+    with pytest.raises(ValueError, match="excluded by data.processes"):
+        resolve_folds(
+            _three_parent_collection(), loo_cfg, data_processes=("p1", "p2")
+        )
+
+
+def test_resolve_folds_per_fold_default_train_restricted_by_data_processes():
+    loo_cfg = LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p1",)),))
+    folds = resolve_folds(
+        _three_parent_collection(), loo_cfg, data_processes=("p1", "p2")
+    )
+    assert folds[0].train == ("p2",)
+
+
+def test_resolve_folds_data_processes_none_matches_unrestricted():
+    collection = _three_parent_collection()
+    assert resolve_folds(collection, None, data_processes=None) == resolve_folds(
+        collection, None
+    )
+
+
+# ---------------------------------------------------------------------------
 # compute_parallel_split
 # ---------------------------------------------------------------------------
 
@@ -548,6 +624,28 @@ def test_run_single_fold_out_of_range(monkeypatch, tmp_path):
         )
 
 
+def test_run_single_fold_respects_data_processes_restriction(monkeypatch, tmp_path):
+    collection = _three_parent_collection()
+    captured = _patch_worker_internals(monkeypatch)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json"), processes=("p1", "p2")),
+        train=TrainConfig(epochs=2, seed=10),
+    )
+
+    result = run_single_fold(
+        collection, cfg=cfg, custom_module=None, output_dir=tmp_path, fold_idx=1
+    )
+
+    assert result.fold.test == ("p2",)
+    assert captured["process_names"] == ("p1",)
+    assert "p3" not in captured["process_names"]
+
+    with pytest.raises(ValueError, match="out of range"):
+        run_single_fold(
+            collection, cfg=cfg, custom_module=None, output_dir=tmp_path, fold_idx=2
+        )
+
+
 def test_prepare_single_fold_merges_only_missing_holdout_plot_sources(
     monkeypatch, tmp_path
 ):
@@ -664,6 +762,27 @@ def test_run_loo_cv_runs_all_folds_and_aggregates(monkeypatch, tmp_path):
     assert result.parallel_folds == 2
     assert (tmp_path / "loo_summary.csv").exists()
     assert result.aggregate["n_folds"] == 3
+
+
+def test_run_loo_cv_respects_data_processes_restriction(monkeypatch, tmp_path):
+    collection = _three_parent_collection()
+    seen = _patch_dispatch(monkeypatch)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json"), processes=("p1", "p2")),
+        train=TrainConfig(epochs=2, seed=10),
+        loo=LooConfig(parallel_folds=2),
+    )
+
+    result = run_loo_cv(
+        collection,
+        cfg=cfg,
+        config_path=tmp_path / "loo-config.json",
+        output_dir=tmp_path,
+    )
+
+    assert seen["pool_folds"] == ["p1", "p2"]
+    assert result.aggregate["n_folds"] == 2
+    assert len(result.fold_dirs) == 2
 
 
 def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
