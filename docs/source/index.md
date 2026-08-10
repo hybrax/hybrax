@@ -103,6 +103,7 @@ gallery/index
 gallery/fed_batch
 gallery/structured_rates
 gallery/dense_loss
+gallery/stateful
 ```
 
 ```{toctree}

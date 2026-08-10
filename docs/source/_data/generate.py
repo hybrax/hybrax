@@ -173,6 +173,11 @@ def build_demo_batch() -> None:
     )
     bp.serialization.save_case_study(case_study, out / "data.json")
 
+    (out / "ground_truth.json").write_text(json.dumps({
+        "mu_max": MU_MAX, "Ks": KS, "Y_XS": Y_XS, "m_s": M_S,
+        "alpha": ALPHA, "beta": BETA,
+    }, indent=2) + "\n")
+
 
 # ===========================================================================
 # demo_fedbatch

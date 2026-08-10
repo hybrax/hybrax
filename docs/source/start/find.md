@@ -89,4 +89,5 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 |---|---|
 | Continuous feed, boluses and sampling in one run | [Fed-batch](../gallery/fed_batch.md) |
 | Mechanistic rate laws, partially trainable | [Structured rate laws](../gallery/structured_rates.md) |
-| Custom loss terms on a dense grid | [Dense losses](../gallery/dense_loss.md) |
+| Bounds and smoothness penalties between measurements | [Dense losses](../gallery/dense_loss.md) |
+| A reaction module with memory (latent-ODE / LSTM) | [Stateful reaction modules](../gallery/stateful.md) |

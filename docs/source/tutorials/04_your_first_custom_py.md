@@ -26,7 +26,7 @@ is just a module.
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, re, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys, textwrap
 from pathlib import Path
 %matplotlib inline
 
@@ -47,14 +47,39 @@ def bp_train(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-def losses(text):
-    m = re.search(r"first_mean_loss=([\d.eE+-]+) last_mean_loss=([\d.eE+-]+)", text)
-    return float(m.group(1)), float(m.group(2))
-
 (WORK / "prepare-config.json").write_text(
     '{ "prepare": { "raw_input": "data.json" } }\n')
 bp_train("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
+
+import numpy as np
+import bp_format as bp
+
+_case_study = bp.serialization.load_case_study(WORK / "data.json")
+
+def r2_by_target(run_dir):
+    """Physical-space R^2 per target, averaged over processes. Scale-free, so
+    it is the fair way to compare a scaled run against an unscaled one — their
+    SCL losses live in different units and are not otherwise comparable."""
+    import csv
+    rows_by_process = {}
+    with (WORK / run_dir / "predictions.csv").open() as fh:
+        for row in csv.DictReader(fh):
+            rows_by_process.setdefault(row["process"], []).append(row)
+    per_target = {}
+    for name, process in _case_study.processes.items():
+        rows = rows_by_process[name]
+        t_pred = np.array([float(r["t"]) for r in rows])
+        for species in ("biomass", "glucose", "product"):
+            comp = process.reactor_medium.components[species].concentration
+            t_meas = np.asarray(comp.times)
+            y_meas = np.asarray(comp.values)
+            y_pred = np.interp(t_meas, t_pred,
+                               np.array([float(r[f"c_{species}"]) for r in rows]))
+            ss_res = np.sum((y_meas - y_pred) ** 2)
+            ss_tot = np.sum((y_meas - y_meas.mean()) ** 2)
+            per_target.setdefault(species, []).append(1 - ss_res / ss_tot)
+    return {k: float(np.mean(v)) for k, v in per_target.items()}
 ```
 
 ## First: SCL and RAW
@@ -127,10 +152,16 @@ Point the config at the file — one extra key:
 {
   "data": { "prepared": "prepared" },
   "custom_py": "custom.py",
-  "train": { "epochs": 300, "seed": 0 },
+  "train": { "epochs": 300, "seed": 0, "learning_rate": 0.01 },
   "output": { "dir": "run_custom" }
 }
 ```
+
+The learning rate is ten times the default's. That is deliberate, and the point of the
+comparison below: it is only *safe* to raise it because the state is scaled. Try the same
+learning rate on the unscaled defaults and the solve diverges to `inf` within the first
+few steps — conditioning is not a nice-to-have, it is what lets you use a normal
+optimizer setting at all.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -146,7 +177,7 @@ Point the config at the file — one extra key:
     {
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
-      "train": { "epochs": 300, "seed": 0 },
+      "train": { "epochs": 300, "seed": 0, "learning_rate": 0.01 },
       "output": { "dir": "run_custom" }
     }
     """))
@@ -154,27 +185,39 @@ Point the config at the file — one extra key:
 
 ## Did it help?
 
-Same data, same seed, same epoch count — the only difference is this `custom.py`.
+Same data, same seed, same epoch budget. Two things differ: this `custom.py`, and the
+learning rate it makes safe to use.
+
+Loss values are not the fair comparison here — the default run's loss lives in raw g/L,
+the scaled run's in relative units, and those are not the same number. The fair,
+scale-free comparison is **R² in physical space**, computed by re-interpolating each
+run's predictions back onto the actual measurement times:
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-first_d, last_d = losses(bp_train("train", "--config", "train-default.json",
-                                  "--overwrite", "--no-plot"))
-first_c, last_c = losses(bp_train("train", "--config", "train-custom.json",
-                                  "--overwrite"))
+bp_train("train", "--config", "train-default.json", "--overwrite", "--no-plot")
+bp_train("train", "--config", "train-custom.json", "--overwrite")
 
-print(f"{'':22s} {'initial loss':>14s} {'final loss':>12s}")
-print(f"{'defaults (no scaling)':22s} {first_d:14.4f} {last_d:12.4f}")
-print(f"{'with custom.py':22s} {first_c:14.4f} {last_c:12.4f}")
-print()
-print(f"initial loss is {first_d / first_c:.0f}x smaller before a single step is taken")
-print(f"final loss is   {last_d / last_c:.1f}x smaller")
+r2_default = r2_by_target("run_default")
+r2_custom = r2_by_target("run_custom")
+
+print(f"{'target':10s} {'defaults':>10s} {'custom.py':>10s}")
+for name in ("biomass", "glucose", "product"):
+    print(f"{name:10s} {r2_default[name]:10.4f} {r2_custom[name]:10.4f}")
 ```
 
-The interesting number is the **initial** one. Nothing has been learned yet — that gap is
-purely conditioning. The default run spends much of its budget climbing out of a badly
-scaled starting point; the scaled run begins near the answer.
+Biomass and glucose are close either way — this dataset is small enough that the defaults
+already fit them well. **Product is where the two diverge.** It is the smallest-magnitude
+target (peaking around 0.5 g/L against glucose's 10 g/L), and with no scaling the loss is
+implicitly dominated by whichever axis has the largest raw magnitude — glucose. Product's
+error barely moves the unscaled loss, so the optimizer has little reason to fit it well.
+Once every axis is normalised to O(1), each target pulls equally, and product stops being
+the one that got left behind.
+
+That is the actual argument for scaling: not "converges faster" in general, but "every
+target gets a fair share of the gradient" — which matters most for whichever quantity in
+your dataset happens to be smallest.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -222,7 +265,11 @@ effect, check the spelling first. See
 - `custom.py` is plain Python; hooks are found by name, and missing ones use defaults.
 - The ODE is integrated in **SCL** space; if your input was SCL, your output is SCL.
 - `trainable_field()` opts a field in; everything untagged is frozen.
-- Scaling is optional, has no error when omitted, and matters a lot.
+- Scaling is optional, has no error when omitted, and buys you two things: an optimizer
+  setting that would otherwise diverge, and a loss where your smallest-magnitude target
+  isn't drowned out by your largest.
+- Compare runs by **R² in physical space**, not by raw loss — an unscaled and a scaled
+  run don't share loss units.
 
 ## What's next
 

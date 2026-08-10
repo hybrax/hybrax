@@ -34,8 +34,8 @@ class BatchReactionModule(UserReactionModule):
         self.mlp = eqx.nn.MLP(
             in_size=self.n_modeled_RMCs,                    # biomass, glucose, product
             out_size=self.n_modeled_BiologicalOde_rates,    # q_biomass, q_glucose, q_product
-            width_size=16,
-            depth=2,
+            width_size=32,
+            depth=3,
             # Use a SMOOTH activation. eqx.nn.MLP defaults to relu, which makes
             # the predicted rates piecewise linear — kinks the solver has to
             # chase, and a derivative that jumps. tanh is what the built-in
