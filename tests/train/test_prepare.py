@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 
@@ -729,6 +730,37 @@ def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
         prepared.metadata["bp-train"]["transform_hooks"]["transform_process_collection"]
         == "transform_process_collection"
     )
+
+
+def test_prepare_artifact_logs_default_hooks_by_default(tmp_path, caplog):
+    output_dir = tmp_path / "prepared-hooks-default"
+    with caplog.at_level(logging.INFO, logger="bp_train.prepare"):
+        _prepare_from_collection(_make_two_process_collection(), tmp_path, output_dir)
+    assert "prepare hooks detected: none" in caplog.text
+    assert (
+        "prepare hooks default: transform_process_collection, augment_state_values"
+        in caplog.text
+    )
+
+
+def test_prepare_artifact_logs_custom_hooks_when_supplied(tmp_path, caplog):
+    custom_py = tmp_path / "custom-hooks-detected.py"
+    custom_py.write_text(
+        "\n".join(
+            [
+                "def transform_process_collection(collection, config):",
+                "    return collection",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "prepared-hooks-custom"
+    with caplog.at_level(logging.INFO, logger="bp_train.prepare"):
+        _prepare_from_collection(
+            _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
+        )
+    assert "prepare hooks detected: transform_process_collection" in caplog.text
+    assert "prepare hooks default: augment_state_values" in caplog.text
 
 
 def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):

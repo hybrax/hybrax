@@ -33,7 +33,7 @@ from .controls import select_control_sources
 from .defaults import default_transform_process_collection
 from .run_config import LoadedRunConfig, PrepareConfig
 from .serialization import content_hash, environment_versions
-from .utils import get_hook
+from .utils import get_hook, split_hooks_by_customization
 from .validation import (
     ensure_prepared_training_semantics,
     ensure_required_controls,
@@ -303,6 +303,12 @@ def prepare_artifact(
         default_transform_process_collection,
     )
     augment_state_values = get_hook(custom_module, "augment_state_values", None)
+    customized_hooks, default_hooks = split_hooks_by_customization(
+        custom_module,
+        ("transform_process_collection", "augment_state_values"),
+    )
+    logger.info("prepare hooks detected: %s", ", ".join(customized_hooks) or "none")
+    logger.info("prepare hooks default: %s", ", ".join(default_hooks) or "none")
     raw_semantics = {
         process_name: summarize_process_semantics(process)
         for process_name, process in collection.processes.items()

@@ -1109,6 +1109,11 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
 
     assert result == "train-result"
     assert "Training targets: ('biomass',)" in caplog.text
+    assert "train hooks detected: none" in caplog.text
+    assert (
+        "train hooks default: estimate_all_scales, build_reaction_module, "
+        "build_learning_rate, build_optimizer, build_loss_module" in caplog.text
+    )
 
 
 def test_train_from_collection_uses_custom_config_targets_without_warning(

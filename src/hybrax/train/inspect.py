@@ -16,12 +16,12 @@ Two responsibilities:
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING, Any
 
 import equinox as eqx
+import jax.tree_util as jtu
 
-from .model_api import TRAINABLE_METADATA_KEY
+from .model_api import _resolve_effective_tag
 
 if TYPE_CHECKING:
     from bp_format.mechanistic import RhsOde
@@ -35,49 +35,46 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-_ANSI_RED = "\x1b[31m"
-_ANSI_RESET = "\x1b[0m"
-
-
 def _shape_str(leaf: Any) -> str:
     if eqx.is_array(leaf):
         return str(tuple(leaf.shape))
     return "()"
 
 
-def _collect_structure_rows(
-    value: Any,
-    prefix: str,
-    inherited_tag: bool | None,
-) -> list[tuple[str, str, str]]:
-    """Walk recursively and emit one row per ``jax.Array``-like leaf.
+def _path_to_name(path: tuple) -> str:
+    name = ""
+    for entry in path:
+        if isinstance(entry, jtu.GetAttrKey):
+            name = f"{name}.{entry.name}" if name else entry.name
+        elif isinstance(entry, jtu.SequenceKey):
+            name = f"{name}[{entry.idx}]"
+        elif isinstance(entry, jtu.DictKey):
+            name = f"{name}[{entry.key!r}]"
+        else:
+            name = f"{name}.{entry}" if name else str(entry)
+    return name
 
-    Module / list / tuple containers do not emit their own row; their
-    structure is visible through the dotted/indexed names of the leaves
-    they contain. Non-array leaves (ints, callables, dtypes, etc.) are
-    skipped entirely.
+
+def _collect_structure_rows(module: eqx.Module) -> list[tuple[str, str, str]]:
+    """Walk every array leaf of ``module`` via JAX's own pytree flattening.
+
+    Tag resolution is delegated to ``_resolve_effective_tag`` (model_api.py)
+    — the same function ``partition_trainable`` uses to build the
+    optimizer's filter spec — so this display can't drift from what
+    actually gets trained, and no container type (list, tuple, dict, ...)
+    can hide a leaf the way a hand-rolled isinstance walk could. Non-array
+    leaves (ints, callables, dtypes, etc.) and ``None`` fields are skipped
+    entirely, matching what JAX's own flattening already treats as leafless.
     """
     rows: list[tuple[str, str, str]] = []
-
-    if isinstance(value, eqx.Module):
-        for fname, finfo in value.__dataclass_fields__.items():
-            child = getattr(value, fname)
-            child_name = f"{prefix}.{fname}" if prefix else fname
-            field_tag = finfo.metadata.get(TRAINABLE_METADATA_KEY)
-            child_inherited = inherited_tag if inherited_tag is not None else field_tag
-            rows.extend(_collect_structure_rows(child, child_name, child_inherited))
-        return rows
-
-    if isinstance(value, (list, tuple)):
-        for i, item in enumerate(value):
-            rows.extend(_collect_structure_rows(item, f"{prefix}[{i}]", inherited_tag))
-        return rows
-
-    if eqx.is_array(value):
-        leaf_tag = inherited_tag if eqx.is_inexact_array(value) else False
+    leaves_with_paths, _ = jtu.tree_flatten_with_path(module)
+    for path, leaf in leaves_with_paths:
+        if not eqx.is_array(leaf):
+            continue
+        tag = _resolve_effective_tag(module, path)
+        leaf_tag = tag if eqx.is_inexact_array(leaf) else False
         status = "trainable" if leaf_tag is True else "frozen"
-        rows.append((prefix, _shape_str(value), status))
-
+        rows.append((_path_to_name(path), _shape_str(leaf), status))
     return rows
 
 
@@ -87,16 +84,13 @@ def format_trainable_structure(
     name_width: int | None = None,
     shape_width: int | None = None,
     status_width: int | None = None,
-    color: bool = False,
     title: str = "UserReactionModule",
 ) -> str:
     """Return a tabular string of (name, shape, status) for the full module.
 
-    Submodules render as ``(Module)`` rows and their fields nest below. Status
-    is ``trainable`` or ``frozen``. With ``color=True``, only the status cell
-    of trainable rows is wrapped in ANSI red so the table borders stay plain.
+    Status is ``trainable`` or ``frozen``.
     """
-    rows = _collect_structure_rows(module, "", None)
+    rows = _collect_structure_rows(module)
 
     header = ("name", "shape", "status")
     width_floor = 3
@@ -109,21 +103,10 @@ def format_trainable_structure(
 
     total_width = name_width + shape_width + status_width + 10
 
-    def _wrap(text: str) -> str:
-        return f"{_ANSI_RED}{text}{_ANSI_RESET}"
-
-    def _fmt_row(name: str, shape: str, status: str, *, colorize: bool) -> str:
-        name_pad = " " * (name_width - len(name))
-        shape_pad = " " * (shape_width - len(shape))
-        status_pad = " " * (status_width - len(status))
-        if colorize and status == "trainable":
-            name_cell = _wrap(name) + name_pad
-            shape_cell = shape_pad + _wrap(shape)
-            status_cell = status_pad + _wrap(status)
-        else:
-            name_cell = name + name_pad
-            shape_cell = shape_pad + shape
-            status_cell = status_pad + status
+    def _fmt_row(name: str, shape: str, status: str) -> str:
+        name_cell = name + " " * (name_width - len(name))
+        shape_cell = " " * (shape_width - len(shape)) + shape
+        status_cell = " " * (status_width - len(status)) + status
         return f"| {name_cell} | {shape_cell} | {status_cell} |"
 
     divider = "+" + "-" * (total_width - 2) + "+"
@@ -134,11 +117,11 @@ def format_trainable_structure(
     title_line = "+" + "-" * title_left + title + "-" * title_right + "+"
 
     lines: list[str] = [title_line]
-    lines.append(_fmt_row(header[0], header[1], header[2], colorize=False))
+    lines.append(_fmt_row(header[0], header[1], header[2]))
     lines.append(divider)
     if rows:
         for name, shape, status in rows:
-            lines.append(_fmt_row(name, shape, status, colorize=color))
+            lines.append(_fmt_row(name, shape, status))
     else:
         msg = "no array leaves"
         pad = total_width - 4 - len(msg)
@@ -150,16 +133,10 @@ def format_trainable_structure(
 def print_trainable_structure(
     module: eqx.Module,
     *,
-    color: bool | None = None,
     title: str = "UserReactionModule",
 ) -> None:
-    """Print the trainable-structure table.
-
-    ``color=None`` auto-detects with ``sys.stdout.isatty()``.
-    """
-    if color is None:
-        color = bool(getattr(sys.stdout, "isatty", lambda: False)())
-    print(format_trainable_structure(module, color=color, title=title), flush=True)
+    """Print the trainable-structure table."""
+    print(format_trainable_structure(module, title=title), flush=True)
 
 
 # ---------------------------------------------------------------------------

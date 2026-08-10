@@ -86,6 +86,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Overwrite an existing prepared.json in --output-dir.",
     )
+    prepare_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Python logging level.",
+    )
     prepare_parser.set_defaults(handler=_handle_prepare)
 
     # ---- train ----
@@ -232,6 +238,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _handle_prepare(args: argparse.Namespace) -> int:
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     output_dir = Path(args.output_dir)
     prepared = output_dir / "prepared.json"
     if prepared.exists() and not args.overwrite:

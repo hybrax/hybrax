@@ -51,7 +51,7 @@ from .training_data import (
     TrainingDataStore,
 )
 from .run_config import RunConfig
-from .utils import get_hook, load_custom_module, resolve_config
+from .utils import get_hook, load_custom_module, resolve_config, split_hooks_by_customization
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
@@ -1942,6 +1942,18 @@ def prepare_training(
         if run_config is not None
         else resolve_config(custom_module, runtime_config)
     )
+    customized_hooks, default_hooks = split_hooks_by_customization(
+        custom_module,
+        (
+            "estimate_all_scales",
+            "build_reaction_module",
+            "build_learning_rate",
+            "build_optimizer",
+            "build_loss_module",
+        ),
+    )
+    logger.info("train hooks detected: %s", ", ".join(customized_hooks) or "none")
+    logger.info("train hooks default: %s", ", ".join(default_hooks) or "none")
     config_targets = None
     if run_config is not None and run_config.data is not None:
         config_targets = run_config.data.targets

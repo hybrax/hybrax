@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 import numpy as np
 import pytest
 
@@ -297,41 +295,6 @@ def test_format_trainable_structure_auto_widths():
     # Header lines should be at least as wide as the longest name plus borders.
     lines = text.splitlines()
     assert all(len(line) == len(lines[0]) for line in lines if line.startswith("|"))
-
-
-def test_format_trainable_structure_color_off_by_default():
-    module = _MixedTagsModule()
-    text = format_trainable_structure(module)
-
-    assert "\x1b" not in text
-
-
-def test_format_trainable_structure_color_on_wraps_trainable_rows():
-    module = _MixedTagsModule()
-    text = format_trainable_structure(module, color=True)
-
-    ansi_strip = re.compile(r"\x1b\[[0-9;]*m")
-    rows = [
-        line for line in text.splitlines() if ansi_strip.sub("", line).startswith("|")
-    ]
-
-    has_red_trainable = any(
-        "\x1b[31m" in row and "trainable" in ansi_strip.sub("", row) for row in rows
-    )
-    no_red_on_frozen = all(
-        "\x1b[31m" not in row
-        for row in rows
-        if "frozen" in ansi_strip.sub("", row)
-        and "trainable" not in ansi_strip.sub("", row)
-    )
-    assert has_red_trainable
-    assert no_red_on_frozen
-
-    # Stripping ANSI from colored rows yields the uncolored render verbatim.
-    plain_text = format_trainable_structure(module, color=False)
-    plain_rows = [line for line in plain_text.splitlines() if line.startswith("|")]
-    stripped = [ansi_strip.sub("", r) for r in rows]
-    assert stripped == plain_rows
 
 
 def test_user_reaction_module_default_observe_is_identity():

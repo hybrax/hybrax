@@ -50,3 +50,17 @@ def get_hook(module: ModuleType | None, name: str, default: Any) -> Any:
     if module is None:
         return default
     return getattr(module, name, default)
+
+
+def hook_is_customized(module: ModuleType | None, name: str) -> bool:
+    """Whether custom.py defines an attribute named ``name`` (vs. using the default)."""
+    return module is not None and hasattr(module, name)
+
+
+def split_hooks_by_customization(
+    module: ModuleType | None, hook_names: tuple[str, ...]
+) -> tuple[list[str], list[str]]:
+    """Split ``hook_names`` into (customized, default) buckets for logging."""
+    customized = [name for name in hook_names if hook_is_customized(module, name)]
+    default = [name for name in hook_names if name not in customized]
+    return customized, default

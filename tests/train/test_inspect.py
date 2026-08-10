@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
+from bp_train.defaults import DefaultStatefulReactionModule
 from bp_train.inspect import (
     format_reaction_schema,
     format_trainable_structure,
@@ -15,6 +16,7 @@ from bp_train.model_api import (
     frozen_field,
     trainable_field,
 )
+from stateful_helpers import default_stateful_scale_kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -132,3 +134,48 @@ def test_format_trainable_structure_works_from_inspect_module():
     assert "bias_frozen" in text
     assert "trainable" in text
     assert "frozen" in text
+
+
+class _DictFieldFixture(UserReactionModule):
+    heads: dict[str, jax.Array] = trainable_field()
+
+    def __init__(self):
+        super().__init__()
+        self.heads = {"a": jnp.zeros((2,)), "b": jnp.zeros((3,))}
+
+    def __call__(self, t, inputs):
+        del t, inputs
+        return ReactionOutputs(
+            SCL_modeled_BiologicalOde_rates=jnp.zeros((0,)),
+            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
+        )
+
+
+def test_format_trainable_structure_reveals_dict_valued_trainable_fields():
+    # Container types the old hand-rolled walker didn't special-case (e.g.
+    # dict) used to vanish silently; the jtu.tree_flatten_with_path-based
+    # walk finds every array leaf regardless of container type.
+    module = _DictFieldFixture()
+    text = format_trainable_structure(module)
+
+    assert "heads['a']" in text
+    assert "heads['b']" in text
+    assert "trainable" in text
+
+
+def test_format_trainable_structure_omits_none_valued_optional_field():
+    # A trainable_field() declared as `X | None` and currently unset (e.g.
+    # feed_head when n_modeled_FVCs == 0) has zero children under JAX's
+    # pytree flattening, so it produces no row -- concise by design, not a
+    # bug: nothing about a None field could ever be an array leaf.
+    module = DefaultStatefulReactionModule(
+        key=jax.random.key(0),
+        n_latent=2,
+        **default_stateful_scale_kwargs(n_controlled_fvcs=0),
+    )
+    assert module.feed_head is None
+    text = format_trainable_structure(module)
+
+    assert "feed_head" not in text
+    assert "gru_cell.weight_ih" in text
+    assert "rate_head.weight" in text
