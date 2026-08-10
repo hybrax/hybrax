@@ -1367,7 +1367,7 @@ def test_build_loss_module_defaults_when_no_hook():
 
 
 def test_prepare_training_from_runtime_context_never_constructs_or_scales(
-    monkeypatch,
+    monkeypatch, caplog
 ):
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -1385,6 +1385,7 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
         lambda **_kwargs: pytest.fail("estimated scales"),
     )
 
+    caplog.set_level(logging.INFO, logger="bp_train.harness")
     prepared = prepare_training_from_runtime_context(
         _runtime_context(store),
         config=TrainHarnessConfig(process_names=("p1",), epochs=1),
@@ -1394,6 +1395,11 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
 
     assert prepared.store is store
     assert prepared.config.process_names == ("p1",)
+    assert "train hooks detected: none" in caplog.text
+    assert (
+        "train hooks default: estimate_all_scales, build_reaction_module, "
+        "build_learning_rate, build_optimizer, build_loss_module" in caplog.text
+    )
 
 
 def test_resolve_estimated_scales_receives_runtime_data():

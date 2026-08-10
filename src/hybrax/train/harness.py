@@ -1912,6 +1912,23 @@ class PreparedTraining:
     plot_sources: Mapping[str, ProcessPlotSource] | None
 
 
+_TRAIN_HOOK_NAMES = (
+    "estimate_all_scales",
+    "build_reaction_module",
+    "build_learning_rate",
+    "build_optimizer",
+    "build_loss_module",
+)
+
+
+def _log_train_hooks(custom_module: Any) -> None:
+    customized_hooks, default_hooks = split_hooks_by_customization(
+        custom_module, _TRAIN_HOOK_NAMES
+    )
+    logger.info("train hooks detected: %s", ", ".join(customized_hooks) or "none")
+    logger.info("train hooks default: %s", ", ".join(default_hooks) or "none")
+
+
 def prepare_training_from_runtime_context(
     runtime_context: RuntimeContext,
     *,
@@ -1923,6 +1940,7 @@ def prepare_training_from_runtime_context(
     """Prepare training solely from an already-loaded runtime context."""
     if not isinstance(runtime_context, RuntimeContext):
         raise TypeError("runtime_context must be a RuntimeContext")
+    _log_train_hooks(custom_module)
     store = runtime_context.training_data
     selected_processes = _ensure_process_names(store, config.process_names)
     train_cfg = dataclasses.replace(config, process_names=selected_processes)
@@ -1975,18 +1993,6 @@ def prepare_training(
         if run_config is not None
         else resolve_config(custom_module, runtime_config)
     )
-    customized_hooks, default_hooks = split_hooks_by_customization(
-        custom_module,
-        (
-            "estimate_all_scales",
-            "build_reaction_module",
-            "build_learning_rate",
-            "build_optimizer",
-            "build_loss_module",
-        ),
-    )
-    logger.info("train hooks detected: %s", ", ".join(customized_hooks) or "none")
-    logger.info("train hooks default: %s", ", ".join(default_hooks) or "none")
     config_targets = None
     if run_config is not None and run_config.data is not None:
         config_targets = run_config.data.targets
