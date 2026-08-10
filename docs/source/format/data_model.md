@@ -19,12 +19,12 @@ kernelspec:
 > **You can skip it if** your data is already in bp-format.
 
 Exhaustive field lists live in the [API reference](../autoapi/bp_format/dataclasses/index).
-This page is about the *decisions* — the ones that are hard to reverse later.
+This page is about the *decisions*: the ones that are hard to reverse later.
 
 ## The one question that decides everything
 
 **What physical role does this measurement play?** Not what instrument produced it, not
-whether it is dense or sparse — its role in the vessel.
+whether it is dense or sparse: its role in the vessel.
 
 | Your measurement | Goes in | Why |
 |---|---|---|
@@ -65,8 +65,8 @@ Four positional arguments are required on `BioProcess`: `metadata` (may be `None
 :::{admonition} Why dicts keyed by name, not lists
 :class: note
 `reactor_medium.components["glucose"]` is O(1), produces readable JSON, and keeps the
-biological name attached to the data. The cost is that names are load-bearing — see the
-collision rules in [The mechanistic ODE](mechanistic_ode.md).
+biological name attached to the data. The cost is that names are load-bearing: see the
+collision rules in [The Bioprocess ODE](bioprocess_ode.md).
 :::
 
 ### `CaseStudy` or `BioProcessCollection`?
@@ -79,7 +79,7 @@ Both hold the same `BioProcess` objects.
 - **`BioProcessCollection`** requires nothing but the processes. Use it for raw or
   intermediate data that is not a case study yet.
 
-They are not interchangeable at every API boundary — notably `model_predict` wants a
+They are not interchangeable at every API boundary: notably `model_predict` wants a
 collection. Converting is one line:
 
 ```{code-cell} ipython3
@@ -106,7 +106,7 @@ known    = bp.StaticVariable(400.0)      # e.g. a feed concentration
 
 - `times` strictly increasing.
 - `times` and `values` supplied **together** or not at all.
-- At least one of {samples, spline} must be present — an empty `TimeSeries` is an error.
+- At least one of {samples, spline} must be present: an empty `TimeSeries` is an error.
 - float64. Importing `bp_format` turns on JAX's x64 mode; float32 input raises rather
   than silently upcasting.
 
@@ -130,7 +130,7 @@ produce a derivative for it*. A modeled quantity therefore needs a time axis:
 :::{admonition} A `StaticVariable` cannot be modeled
 :class: warning
 `ProcessVariable(values=StaticVariable(...), is_controlled=False)` is rejected when the
-process ordering is built — a state with no time axis cannot be integrated. Either mark
+process ordering is built: a state with no time axis cannot be integrated. Either mark
 it controlled, or give it real dynamics.
 :::
 
@@ -148,7 +148,7 @@ component = bp.ReactorMediumComponent(
 ```
 
 **Bounds are metadata.** Nothing in bp-format enforces them, and no solver clips to them.
-They exist so downstream consumers — bp-train's loss module in particular — can build
+They exist so downstream consumers (bp-train's loss module in particular) can build
 soft penalties from a declaration you made once, in the data, instead of duplicating it
 in every training config.
 
@@ -164,7 +164,7 @@ a mismatch. Pick a spelling and stay with it.
 ## Where the biology goes
 
 There are no biological flags on components. There is no `is_intracellular` switch. If a
-species behaves unusually, you write it out in `biological_ode` — including the algebraic
+species behaves unusually, you write it out in `biological_ode`: including the algebraic
 relationships:
 
 ```python
@@ -176,7 +176,7 @@ BiologicalOde(
 ```
 
 This is deliberate: one place to look for what the model does, rather than behaviour
-scattered across boolean fields. See [The mechanistic ODE](mechanistic_ode.md).
+scattered across boolean fields. See [The Bioprocess ODE](bioprocess_ode.md).
 
 ## Gotchas
 
@@ -185,12 +185,12 @@ scattered across boolean fields. See [The mechanistic ODE](mechanistic_ode.md).
   are using augmentation.
 - **`DiscreteEvents` is a convenience mirror.** The authoritative source of events is
   always `volume.volume_changes` entries with `is_continuous=False`.
-- **`metadata` on `BioProcess` may be `None`**, but it is positional — you must pass
+- **`metadata` on `BioProcess` may be `None`**, but it is positional: you must pass
   something.
 
 ## See also
 
-- [Volume, feeds and events](volume_feeds_events.md) — the part with the most sharp edges.
-- [The mechanistic ODE](mechanistic_ode.md) — what gets derived from all of this.
-- [Tutorial 1](../tutorials/01_your_first_dataset.md) — building one step by step.
-- [API reference](../autoapi/bp_format/dataclasses/index) — every field.
+- [Volume, feeds and events](volume_feeds_events.md): the part with the most sharp edges.
+- [The Bioprocess ODE](bioprocess_ode.md): what gets derived from all of this.
+- [Tutorial 1](../tutorials/01_your_first_dataset.md): building one step by step.
+- [API reference](../autoapi/bp_format/dataclasses/index): every field.

@@ -15,7 +15,7 @@ kernelspec:
 > **In one sentence.** Make the package report what it understood, before you spend a day
 > training against a misdescribed dataset.
 >
-> **You need this if** you have data. **You can skip it if** — you can't. This is the
+> **You need this if** you have data. **You can skip it if**: you can't. This is the
 > cheapest page in the guide.
 
 ## Validation is non-raising and exhaustive
@@ -36,7 +36,7 @@ for line in messages:
     print(" ", line)
 ```
 
-`validate_case_study` runs the same per-process checks and adds cross-process ones —
+`validate_case_study` runs the same per-process checks and adds cross-process ones: 
 principally that every run has the same structure, so a model trained on one can be
 applied to another.
 
@@ -53,7 +53,7 @@ Note the two synthetic sections: `__consistency__` holds the cross-process resul
 | Check | The real-world bug |
 |---|---|
 | `validate_volume_change_sign` | A feed imported as negative or a sample as positive. The single most common import bug. |
-| `validate_volume_change_states` | A feed medium that omits a reactor species — "not present" silently confused with "not recorded". |
+| `validate_volume_change_states` | A feed medium that omits a reactor species: "not present" silently confused with "not recorded". |
 | `validate_measurement_sampling_alignment` | An offline measurement timestamped just *after* its own sample draw. Corrupts the dilution factor and every spline built on it. |
 | `validate_biomass_in_reactor_medium` | Auto-generated dynamics with nothing to be specific *to*. |
 | `validate_timeseries_shape` | Mismatched `times`/`values` lengths. |
@@ -62,7 +62,7 @@ Note the two synthetic sections: `__consistency__` holds the cross-process resul
 
 :::{admonition} Measurements exactly *at* a sampling time are correct
 :class: note
-The alignment check is not complaining that a measurement coincides with a sample — that
+The alignment check is not complaining that a measurement coincides with a sample, that
 is the normal case, since the sample is where the measurement came from. It flags
 measurements timestamped *just after*, which implies the offline value describes
 post-removal broth. Usually that is a timestamp-rounding artifact in the export.
@@ -70,7 +70,7 @@ post-removal broth. Usually that is a timestamp-rounding artifact in the export.
 
 ### The one that is not in the aggregate
 
-`validate_volume_consistency` needs a number only you know — the measured final volume —
+`validate_volume_consistency` needs a number only you know (the measured final volume) 
 so it is not part of `validate_process`:
 
 ```{code-cell} ipython3
@@ -121,7 +121,7 @@ The most under-used call in the package:
 bp.print_rhs_ode(process)
 ```
 
-This is the assembled right-hand side — the biological half you must supply, and the
+This is the assembled right-hand side: the biological half you must supply, and the
 physical half bp-format already wrote. Compare it against the fed-batch structure you
 described: every feed should appear, every sample should appear, and nothing should
 appear twice.
@@ -131,7 +131,7 @@ appear twice.
 - **`bp.inspect` is not a module handle.** `bp.inspect.plot_process` raises
   `AttributeError` on a fresh import (it starts working only after some other access has
   pulled the submodule in). Always use `bp.plot_process(...)` on the root.
-- **`plot_timeseries` is not root-exported** — import it as
+- **`plot_timeseries` is not root-exported**: import it as
   `from bp_format.inspect import plot_timeseries`.
 - **`validate_process` raises `TypeError`** if handed something that is not a
   `BioProcess`. That one *is* a hard error, because it is a programming mistake rather
@@ -140,6 +140,6 @@ appear twice.
 
 ## See also
 
-- [Tutorial 2](../tutorials/02_look_at_it.md) — the same four calls as a walkthrough.
-- [Errors](../troubleshooting/errors.md) — when a check fails and you need the fix.
-- [The mechanistic ODE](mechanistic_ode.md) — reading `print_rhs_ode` output properly.
+- [Tutorial 2](../tutorials/02_look_at_it.md): the same four calls as a walkthrough.
+- [Errors](../troubleshooting/errors.md), when a check fails and you need the fix.
+- [The Bioprocess ODE](bioprocess_ode.md): reading `print_rhs_ode` output properly.

@@ -19,7 +19,7 @@ For each process in the batch:
 2. Save states and rates at the measurement times (and on a dense grid, if the loss module
    asked for one).
 3. Hand those to the loss module; take the **mean** of its named losses.
-4. Differentiate the whole thing — solver steps, event jumps, spline evaluations — with
+4. Differentiate the whole thing (solver steps, event jumps, spline evaluations) with
    respect to the trainable parameters.
 5. Clip the **raw** gradient by global norm, then apply the optimizer.
 
@@ -46,12 +46,12 @@ interpolant evaluations, not extra solver steps.
 ```
 
 **`grad_clip_norm`** defaults to 1000, which is effectively off. Once your scales are
-right, a real value — 1 to 10 — is usually what stabilises a stiff run. Check
+right, a real value (1 to 10) is usually what stabilises a stiff run. Check
 `grad_norm_curve.png` to pick it: clip somewhere around the bulk of the distribution, not
 below it.
 
 **`solver.max_steps`** is the first thing to raise when solves start failing. Failures are
-not fatal — points after the bail are masked out of the loss — but a run where most
+not fatal (points after the bail are masked out of the loss) but a run where most
 samples bail is fitting almost nothing. If raising it does not help, the problem is
 usually stiffness caused by bad scaling, not the solver.
 
@@ -88,7 +88,7 @@ run rather than guessed at.
 **Signature:** `(custom_cfg, train_cfg) -> optax.GradientTransformation`
 **Default:** `clip_by_global_norm(train.grad_clip_norm)` then `adam` or `sgd`.
 
-Replace it when you need per-parameter treatment that field tags cannot express — the
+Replace it when you need per-parameter treatment that field tags cannot express: the
 usual case being "train the output layer, freeze the rest":
 
 ```python
@@ -144,7 +144,7 @@ file; and if `XLA_FLAGS` already sets `xla_force_host_platform_device_count`, th
 bootstrap is skipped and your value stands.
 :::
 
-The default is **1** — bp-train never quietly takes over your machine. `"max"`
+The default is **1**: bp-train never quietly takes over your machine. `"max"`
 deliberately does not mean "all cores": surplus idle devices can deadlock the `pmap`
 rendezvous on an AllReduce timeout, so it is capped at the process count. Requesting more
 devices than you have cores is capped, with a warning to stderr.
@@ -163,7 +163,7 @@ machines, get OOM-killed. Run one at a time, or shard within one run using `devi
 { "checkpoint": { "every": 100 } }
 ```
 
-Each checkpoint directory is **self-contained** — parameters, optimizer state, config,
+Each checkpoint directory is **self-contained**: parameters, optimizer state, config,
 `custom.py`, the prepared data, and a `predictions.csv` for that step. You can point
 `forward` at a checkpoint exactly as at a run directory.
 
@@ -178,13 +178,13 @@ See [Saving, loading and predicting](save_load_predict.md).
 |---|---|
 | `metrics.csv` | Per-epoch loss and gradient norm. The source of truth. |
 | `loss_curve.png` | Is it converging? |
-| `grad_norm_curve.png` | Raw gradient norm — is the clip active all the time? |
+| `grad_norm_curve.png` | Raw gradient norm: is the clip active all the time? |
 | `<process>.png` | Fit and inferred rates, per process. |
 | `predictions.csv` | Dense trajectories at the end of training. |
 | `config.json`, `custom.py` | Exactly what was run. |
 
 **Judge the fit by the rates**, not only the trajectories. A model can match
-concentrations beautifully with rates that are physically impossible — growth and death
+concentrations beautifully with rates that are physically impossible: growth and death
 both far too high, or uptake compensating for a transport error. Compensating errors are
 invisible in the left column and obvious in the right one.
 
@@ -195,12 +195,12 @@ invisible in the left column and obvious in the right one.
 - **`batch_size` greater than the process count** raises rather than clamping.
 - **Stateful modules need `train.allow_stateful_models: true`.**
 - **`BP_GSPMD=1`** switches sharding to GSPMD auto-sharding. It is correct but roughly
-  sixty times slower — a debugging tool, not an option.
+  sixty times slower: a debugging tool, not an option.
 - **x64 is on globally.** Importing the packages enables JAX double precision.
 
 ## See also
 
-- [Scaling](scaling.md) — fix this before tuning anything here.
-- [Forward](forward.md) — what to do with the result.
-- [Cross-validation](loo.md) — whether it generalises.
+- [Scaling](scaling.md): fix this before tuning anything here.
+- [Forward](forward.md): what to do with the result.
+- [Cross-validation](loo.md), whether it generalises.
 - [Errors](../troubleshooting/errors.md).

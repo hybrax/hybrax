@@ -1,12 +1,12 @@
-# Bioprocess modeling with bp-format and bp-train
+# Bioprocess Modeling with Hybrax
 
 **Get your fermentation data into one shape, then fit models to it without
 re-implementing the physics.**
 
 Two packages, one stack:
 
-- **bp-format** is the data model. It describes a bioprocess run — what was in the
-  reactor, what was fed, what was sampled, what was measured — and turns that
+- **bp-format** is the data model. It describes a bioprocess run (what was in the
+  reactor, what was fed, what was sampled, what was measured) and turns that
   description into a differentiable ODE right-hand side. It knows about dilution,
   feed composition, boluses and sampling, so you don't have to write those terms
   again.
@@ -23,7 +23,7 @@ If you have measurements and you want rates, this is the stack.
 | If you… | Go to |
 |---|---|
 | have never used this before | [Why this exists](start/why.md), then the [Quickstart](start/quickstart.md) |
-| want to see it work in 10 minutes | [Quickstart](start/quickstart.md) — three commands, no code |
+| want to see it work in 10 minutes | [Quickstart](start/quickstart.md): three commands, no code |
 | have your own data to load | [Tutorial 1: your first dataset](tutorials/01_your_first_dataset.md) |
 | keep hitting unfamiliar words | [Concepts and vocabulary](start/concepts.md) |
 | know what you want but not where it is | [Which page do I need?](start/find.md) |
@@ -31,7 +31,7 @@ If you have measurements and you want rates, this is the stack.
 
 New readers: the five [tutorials](tutorials/01_your_first_dataset.md) are meant to be
 read in order and take about an hour end to end. They deliberately use one small
-batch dataset and nothing else — feeds, boluses, cross-validation and custom losses
+batch dataset and nothing else: feeds, boluses, cross-validation and custom losses
 all wait until the [gallery](gallery/index.md).
 
 :::{note}
@@ -72,7 +72,7 @@ format/load_and_save
 format/validate_and_inspect
 format/volume_feeds_events
 format/time_series_and_splines
-format/mechanistic_ode
+format/bioprocess_ode
 format/limits_and_gotchas
 format/further_reading
 ```
@@ -101,7 +101,7 @@ train/further_reading
 :hidden:
 gallery/index
 gallery/fed_batch
-gallery/structured_rates
+gallery/mechanistic_rates
 gallery/dense_loss
 gallery/stateful
 ```

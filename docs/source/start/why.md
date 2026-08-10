@@ -1,7 +1,7 @@
 # Why this exists
 
 > **In one sentence.** There is no shared format for bioprocess data and no shared
-> implementation of bioprocess physics, so every project pays the same tax twice —
+> implementation of bioprocess physics, so every project pays the same tax twice: 
 > once reading the data, once re-deriving the mass balance.
 
 ## The problem
@@ -16,7 +16,7 @@ total.
 So the first two weeks of every modeling project look the same:
 
 1. Write a bespoke parser for this dataset.
-2. Re-derive the mass balance — dilution from feeds, mass added by each feed stream,
+2. Re-derive the mass balance: dilution from feeds, mass added by each feed stream,
    volume removed by sampling, discontinuities at boluses.
 3. Discover a sign convention error somewhere in step 2.
 4. Only then start on the actual modeling question.
@@ -37,8 +37,8 @@ what came out and when, on what clock. It is real work, and [Tutorial
 1](../tutorials/01_your_first_dataset.md) is exactly that work.
 
 **After that, everything else is available.** Because the description is complete,
-bp-format can assemble the mechanistic right-hand side for you — feed inflow, dilution,
-sample outflow, volume dynamics, discrete event jumps — and hand bp-train a
+bp-format can assemble the mechanistic right-hand side for you (feed inflow, dilution,
+sample outflow, volume dynamics, discrete event jumps) and hand bp-train a
 differentiable ODE where the only thing left undetermined is the biology. You supply
 the part that is actually your research question: how fast do the cells do things, and
 how do you want to be scored on it.
@@ -54,7 +54,7 @@ and leave-one-process-out cross-validation, with no further data work.
   in the same object, so the same model can be trained across them.
 - **Errors surface at load time, not in your results.** A feed with no composition, a
   sample with a positive volume, a measurement timestamped just after a sampling
-  event — these are caught by validators instead of quietly biasing a fit.
+  event: these are caught by validators instead of quietly biasing a fit.
 - **Swapping the model is cheap.** The reaction module and the loss module are two
   small, replaceable objects. Everything else stays.
 
@@ -70,7 +70,7 @@ and leave-one-process-out cross-validation, with no further data work.
 
 ## See also
 
-- [Quickstart](quickstart.md) — see the whole loop run in ten minutes.
-- [Concepts and vocabulary](concepts.md) — the terms used throughout these docs.
-- [Design rationale](../under_the_hood/design_rationale.md) — the architectural
+- [Quickstart](quickstart.md): see the whole loop run in ten minutes.
+- [Concepts and vocabulary](concepts.md): the terms used throughout these docs.
+- [Design rationale](../under_the_hood/design_rationale.md): the architectural
   decisions and why they were made that way.

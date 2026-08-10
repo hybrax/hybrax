@@ -13,19 +13,29 @@ kernelspec:
 # Custom losses on the dense grid
 
 > **Demonstrates.** A loss module that constrains the trajectory *between*
-> measurements — bounds on states and rates, and a smoothness penalty on rate
-> curvature — using bp-format's own `Bounds` metadata and bp-train's jump-aware
+> measurements (bounds on states and rates, and a smoothness penalty on rate
+> curvature) using bp-format's own `Bounds` metadata and bp-train's jump-aware
 > dense-grid helpers.
 
 By default, a loss only ever looks at measurement times. Between them, the model is free
-to do anything that reproduces the endpoints — including going negative, or oscillating
+to do anything that reproduces the endpoints: including going negative, or oscillating
 wildly. The [dense grid](../train/loss_module.md#the-dense-grid) exists to close that
 gap: opt in, and the trainer also saves on a uniform time linspace, which the loss can
 then penalise.
 
 This example adds three terms on top of [Tutorial 4](../tutorials/04_your_first_custom_py.md)'s
-reaction module and scales, none of which change the fit — they change what the model is
+reaction module and scales, none of which change the fit: they change what the model is
 *allowed* to do while fitting.
+
+The walkthrough below shows the file in pieces, next to the reasoning for each one. For
+the whole thing at once: to copy, diff against your own, or just read top to bottom:
+
+:::{dropdown} Full `custom.py`
+```{literalinclude} _files/dense_loss_custom.py
+:language: python
+:linenos:
+```
+:::
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -108,7 +118,7 @@ def dense_diagnostics(run_dir):
 
 ## 1. Bounds, from the data itself
 
-`ReactorMediumComponent.bounds` is metadata bp-format already carries — `demo_batch`
+`ReactorMediumComponent.bounds` is metadata bp-format already carries: `demo_batch`
 declares `(0.0, None)` on every species, because a concentration cannot be negative. But
 `BiologicalOde.rates` bounds default to unbounded, since auto-generation has no way to
 know what a plausible rate range is. Attaching them is one `transform_process_collection`
@@ -120,10 +130,10 @@ hook:
 :lines: 115-122
 ```
 
-This is exactly the use bp-format's docs describe for `Bounds`: *"pure metadata — not
+This is exactly the use bp-format's docs describe for `Bounds`: *"pure metadata (not
 enforced inside RhsOde or the integrator; downstream consumers read them off the process
 to build soft-constraint penalties."* Nothing threads these bounds into bp-train
-automatically — the loss module below reads them itself, once, at construction:
+automatically) the loss module below reads them itself, once, at construction:
 
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
@@ -141,8 +151,8 @@ automatically — the loss module below reads them itself, once, at construction
 
 `-inf`/`+inf` for an unbounded side falls straight out of the `clip`, so there is no
 branching on which bounds are set. The penalty is evaluated on `dense_RAW_states` and
-`dense_RAW_modeled_BiologicalOde_rates` — **RAW**, because "negative" and "above 1.0 1/h"
-only mean something in physical units — and masked by `dense_valid_time`, the dense
+`dense_RAW_modeled_BiologicalOde_rates` (**RAW**, because "negative" and "above 1.0 1/h"
+only mean something in physical units) and masked by `dense_valid_time`, the dense
 grid's own post-solver-failure mask.
 
 ## 3. Smoothness, without penalising real jumps
@@ -161,11 +171,11 @@ triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
     inputs.dense_t, inputs.jump_ts, jump_epsilon_h=2.0 * dt)
 ```
 
-A bolus creates a real, physical kink in concentration — and therefore in the inferred
+A bolus creates a real, physical kink in concentration (and therefore in the inferred
 rate. Penalising curvature there would fight the data. `dense_triple_mask_away_from_jumps`
 is shipped by bp-train for exactly this: it excludes any three-point window whose span
 straddles a jump time, so smoothness is only asked for where the process is actually
-smooth. `demo_batch` has no events, so this mask is a no-op here — see
+smooth. `demo_batch` has no events, so this mask is a no-op here) see
 [Fed-batch](fed_batch.md) for where it matters.
 
 ## Training
@@ -175,7 +185,8 @@ smooth. `demo_batch` has no events, so this mask is a no-op here — see
 
 bp_train("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-bp_train("train", "--config", "train-full.json", "--overwrite")
+out = bp_train("train", "--config", "train-full.json", "--overwrite")
+print([l for l in out.splitlines() if "training complete" in l][0])
 ```
 
 ## Did it cost anything?
@@ -196,7 +207,7 @@ print(f"curvature(q_glucose)  : {curvature['q_glucose']:.4f}")
 ```
 
 Compare against [Tutorial 4](../tutorials/04_your_first_custom_py.md)'s plain fit on the
-same data, same epochs, same learning rate — everything below used the *unconstrained*
+same data, same epochs, same learning rate: everything below used the *unconstrained*
 loss:
 
 ```{code-cell} ipython3
@@ -227,7 +238,7 @@ print(f"{'curv(q_X)':10s} {curvature_base['q_biomass']:12.4f} {curvature['q_biom
 print(f"{'curv(q_S)':10s} {curvature_base['q_glucose']:12.4f} {curvature['q_glucose']:14.4f}")
 ```
 
-Fit quality is essentially unchanged — every R² moves by less than a percentage point.
+Fit quality is essentially unchanged: every R² moves by less than a percentage point.
 What changed is what happens *between* measurements: the worst glucose excursion goes
 from clearly negative to essentially zero, and both rate trajectories are visibly less
 wiggly. This is the actual case for dense-grid penalties: they are close to free when the
@@ -243,9 +254,9 @@ Image(filename=str(WORK / "run_full/run_1.png"))
 
 ## See also
 
-- [The loss module](../train/loss_module.md#the-dense-grid) — `dense_grid_n` and every
+- [The loss module](../train/loss_module.md#the-dense-grid): `dense_grid_n` and every
   `dense_*` field.
-- [Tutorial 4](../tutorials/04_your_first_custom_py.md) — the reaction module and scales
+- [Tutorial 4](../tutorials/04_your_first_custom_py.md): the reaction module and scales
   this builds on.
-- [Fed-batch](fed_batch.md) — a process with real jumps, where the away-from-jumps
+- [Fed-batch](fed_batch.md): a process with real jumps, where the away-from-jumps
   masking actually does something.

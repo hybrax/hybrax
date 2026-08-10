@@ -13,7 +13,7 @@ bp-train loo --resume RUN_DIR
 
 ## Why it matters here more than usual
 
-Bioprocess datasets are small — often fewer than ten runs — and the measurements within
+Bioprocess datasets are small (often fewer than ten runs) and the measurements within
 one run are strongly correlated. A model can fit every run it was shown and be useless on
 the next one, and a train-set loss will not tell you. Leave-one-process-out is the
 smallest honest answer available.
@@ -35,7 +35,7 @@ The config is a train config plus a `loo` section:
 ```
 
 With no `per_fold_holdout_sets`, you get classic leave-one-out: one fold per process.
-To hold out groups instead — replicates of one condition, say:
+To hold out groups instead: replicates of one condition, say:
 
 ```json
 {
@@ -49,7 +49,7 @@ To hold out groups instead — replicates of one condition, say:
 
 ```
 loo_run/
-├── loo-config.json      bundled verbatim — this is what --resume reads
+├── loo-config.json      bundled verbatim: this is what --resume reads
 ├── custom.py
 ├── prepared.json
 ├── folds/
@@ -59,8 +59,8 @@ loo_run/
 └── loo_aggregate.json   metrics across folds
 ```
 
-Each fold is a full run directory, so anything you can do to a training run — `forward`,
-`model_load`, plotting — you can do to a fold.
+Each fold is a full run directory, so anything you can do to a training run (`forward`,
+`model_load`, plotting) you can do to a fold.
 
 Aggregate metrics include R², NMAE, MAE and RMSE on the held-out processes. Read the
 **spread across folds**, not just the mean: one fold much worse than the others usually
@@ -92,7 +92,7 @@ gets processes OOM-killed.
 bp-train loo --resume loo_run
 ```
 
-Reloads the bundled `loo-config.json` verbatim — **no overrides** — and re-runs only the
+Reloads the bundled `loo-config.json` verbatim (**no overrides**) and re-runs only the
 folds that have no `losses.csv`. That is what the self-contained run directory buys you:
 an interrupted twelve-hour cross-validation picks up where it stopped.
 
@@ -111,7 +111,7 @@ augmentation, use bp-train's LOO rather than rolling your own splits.
 ## Holdout without cross-validation
 
 For a quick check without N full trainings, the Python API supports a plain holdout
-(`holdout_processes` on `TrainHarnessConfig`). It has no config-file equivalent —
+(`holdout_processes` on `TrainHarnessConfig`). It has no config-file equivalent: 
 API-only. `losses.csv` then labels each process `train` or `holdout`.
 
 ## Gotchas
@@ -125,6 +125,6 @@ API-only. `losses.csv` then labels each process `train` or `holdout`.
 
 ## See also
 
-- [Training](train.md) — get one fold right first.
-- [Forward](forward.md) — ensembles, which pair naturally with folds.
-- [Prepare](prepare.md) — augmentation and why grouping matters.
+- [Training](train.md): get one fold right first.
+- [Forward](forward.md): ensembles, which pair naturally with folds.
+- [Prepare](prepare.md): augmentation and why grouping matters.

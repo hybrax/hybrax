@@ -1,6 +1,6 @@
 # The reaction module
 
-> **In one sentence.** The object that predicts biological rates inside the ODE solve —
+> **In one sentence.** The object that predicts biological rates inside the ODE solve: 
 > the half of the model that is actually yours.
 >
 > **You need this if** the default MLP is not what you want, which on real data it is not.
@@ -15,8 +15,8 @@ def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
 ```
 
 It is called *inside* the solve, at every step the solver takes. It reads the current
-state and controls, and returns the rates. Everything else — the mass balance, the
-dilution, the events — is bp-format's.
+state and controls, and returns the rates. Everything else (the mass balance, the
+dilution, the events) is bp-format's.
 
 ```python
 from bp_train import (
@@ -58,13 +58,13 @@ def build_reaction_module(*, seed, **kwargs):
 ```
 
 `scale_kwargs` carries the `SCALE_*` axes produced by
-[`estimate_all_scales`](scaling.md). Forward them to `super().__init__` — the reaction
+[`estimate_all_scales`](scaling.md). Forward them to `super().__init__`: the reaction
 module is the **single source of truth** for every scale in bp-train, and the wrapper,
 trainer and loss module all read them off it.
 
 ## What you get in `ReactionInputs`
 
-Everything is in SCL space. Stop guessing at shapes — ask:
+Everything is in SCL space. Stop guessing at shapes, ask:
 
 ```python
 bp_train.print_reaction_schema(wrapper)
@@ -76,16 +76,16 @@ which prints each axis with its shape *and its biological names*, so you know th
 
 | Field | What it is |
 |---|---|
-| `SCL_modeled_RMCs` | The modeled concentrations — usually your main features. |
+| `SCL_modeled_RMCs` | The modeled concentrations: usually your main features. |
 | `SCL_modeled_PVs` | Modeled process variables. |
 | `SCL_modeled_V` | Reactor volume (scalar). |
-| `SCL_controlled_PVs` | Controlled process variables at this `t` — pH, temperature, DO. Real inputs to the biology. |
+| `SCL_controlled_PVs` | Controlled process variables at this `t`: pH, temperature, DO. Real inputs to the biology. |
 | `SCL_controlled_FVCs_rates` | Current flow rate of each controlled feed. |
 | `SCL_controlled_FVCs_cumulative` | Cumulative volume delivered so far. |
 | `SCL_controlled_FVCs_Cin` | Feed composition matrix (feeds × species). |
 | `SCL_modeled_FVCs_*` | The same, for feeds the model itself predicts. |
 
-`t` is passed separately. Most models ignore it — an explicit time dependence is a model
+`t` is passed separately. Most models ignore it: an explicit time dependence is a model
 that knows what hour it is, which is rarely what you mean.
 
 ## What you must return
@@ -100,11 +100,11 @@ ReactionOutputs(
 :::{admonition} Both fields are required, even when empty
 :class: warning
 There is no default for `SCL_modeled_FVCs_rates`. A process with no modeled feeds still
-needs `jnp.zeros(0)`. Omitting it is a `TypeError` at the first solve — not at import,
+needs `jnp.zeros(0)`. Omitting it is a `TypeError` at the first solve: not at import,
 so it surfaces a few seconds into a run.
 :::
 
-The rate vector is **flat and positional**, aligned with `rhs_ode.name_modeled_rates` —
+The rate vector is **flat and positional**, aligned with `rhs_ode.name_modeled_rates`: 
 not a dict, not a `(q, r)` tuple. Its order is the insertion order of
 `BiologicalOde.rates`.
 
@@ -123,9 +123,9 @@ directly.**
 
 The wrapper unscales your output by `SCALE_modeled_*_rates` on the way back to physical
 units. If you *also* call a `scale_*` helper on the output, the two cancel and your rates
-are off by the scale factor — with no error, just a model that will not fit.
+are off by the scale factor: with no error, just a model that will not fit.
 
-When you *do* need physical units — a Monod term with a real `K_s` in g/L, say — unscale
+When you *do* need physical units (a Monod term with a real `K_s` in g/L, say) unscale
 the inputs, compute in RAW, then scale the result back:
 
 ```python
@@ -142,7 +142,7 @@ def __call__(self, t, inputs):
 ```
 
 Both conventions are correct; what is not correct is mixing them. Ask "what space is this
-number in?" at every line. See [Gallery: structured rate laws](../gallery/structured_rates.md)
+number in?" at every line. See [Gallery: mechanistic models](../gallery/mechanistic_rates.md)
 for the full mechanistic version.
 
 ## Trainable and frozen
@@ -157,7 +157,7 @@ n_in:   int = eqx.field(static=True)     # not an array at all
 
 **Untagged array leaves default to frozen.** This is the rule that catches people: a
 field you forgot to tag is silently never optimized. The resolution rule is *first
-explicit tag on the path wins*, and it applies to the whole wrapper — including the loss
+explicit tag on the path wins*, and it applies to the whole wrapper: including the loss
 module, so trainable loss parameters are optimized alongside the model.
 
 Check before committing to a long run:
@@ -166,14 +166,14 @@ Check before committing to a long run:
 bp_train.print_trainable_structure(wrapper)
 ```
 
-For finer control — freezing individual layers of an MLP — use
+For finer control (freezing individual layers of an MLP) use
 [`build_optimizer`](train.md) with `optax.masked`.
 
 ## Passing auxiliary values to the loss
 
 `ReactionOutputs` can carry an `auxiliary` dict, which reappears on `LossInputs`. Use it
-when the loss needs an internal quantity the model computed anyway — a latent, an
-intermediate flux — rather than recomputing it.
+when the loss needs an internal quantity the model computed anyway (a latent, an
+intermediate flux) rather than recomputing it.
 
 ## Stateful (latent-ODE) modules
 
@@ -197,7 +197,7 @@ Without it you get a clear `ValueError`. See [Gallery](../gallery/index.md).
 
 ## See also
 
-- [Scaling](scaling.md) — where `scale_kwargs` comes from. Read it next.
-- [The loss module](loss_module.md) — the other half.
-- [Gallery: structured rate laws](../gallery/structured_rates.md) — real kinetics.
+- [Scaling](scaling.md), where `scale_kwargs` comes from. Read it next.
+- [The loss module](loss_module.md): the other half.
+- [Gallery: mechanistic models](../gallery/mechanistic_rates.md): real kinetics.
 - [API reference](../autoapi/bp_train/model_api/index).

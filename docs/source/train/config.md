@@ -27,21 +27,21 @@ you change constantly while iterating.
 Exactly one key is mandatory per command.
 
 ```json
-// prepare-config.json — the whole file
+// prepare-config.json: the whole file
 { "prepare": { "raw_input": "data.json" } }
 ```
 
 ```json
-// train-config.json — the whole file
+// train-config.json: the whole file
 { "data": { "prepared": "prepared" } }
 ```
 
 ```json
-// forward-config.json — the whole file
+// forward-config.json: the whole file
 { "models": ["run"] }
 ```
 
-Everything else — including `custom_py` — has a default. What you get from that minimal
+Everything else (including `custom_py`) has a default. What you get from that minimal
 train config: 5 epochs, Adam at 1e-3, gradient clipping at norm 1000, full batch, one
 device, the default MLP and MSE modules, **no scaling**, and output in `./output`.
 
@@ -56,7 +56,7 @@ checked explicitly, so `"epocs": 300` is a hard error rather than a silently ign
 setting. This is the single most useful piece of strictness in the package.
 
 **3. Each command reads only its own sections.** A `prepare` block in a train config is
-*ignored*, not rejected — which is what lets you keep one config file for the whole
+*ignored*, not rejected, which is what lets you keep one config file for the whole
 pipeline if you want to.
 
 ## The sections
@@ -76,7 +76,7 @@ pipeline if you want to.
 | `models` | forward | list of run or checkpoint directories |
 
 Exact fields, types and defaults are in the
-[API reference](../autoapi/bp_train/run_config/index) — not repeated here, because they
+[API reference](../autoapi/bp_train/run_config/index): not repeated here, because they
 change and this page would be wrong first.
 
 ## A realistic config
@@ -116,7 +116,7 @@ Which measurements the loss is computed against.
 | `combined` | Both. |
 | `auto` (default) | Decide from what the dataset actually has. |
 
-Set it explicitly as soon as you have modeled process variables — `auto` is a
+Set it explicitly as soon as you have modeled process variables: `auto` is a
 convenience, not a decision you want made implicitly on a dataset you care about.
 
 ## The `custom` block
@@ -164,13 +164,13 @@ for defaults you do not want to repeat in every config file.
 - **`--config` and `--resume` are mutually exclusive** on `loo`.
 - **`prepare` fails rather than clobbering** an existing `prepared.json` without
   `--overwrite`.
-- **A missing `custom_py` path is a `FileNotFoundError`** — but a missing *hook inside* a
+- **A missing `custom_py` path is a `FileNotFoundError`**, but a missing *hook inside* a
   present file is silent. Different failure modes, and only one of them is loud.
 - **`bp-train loo` has a hidden `--fold` flag.** It is internal worker dispatch. Do not
   use it.
 
 ## See also
 
-- [custom.py at a glance](hooks_cheatsheet.md) — every hook in one table.
-- [Prepare](prepare.md) · [Training](train.md) · [Forward](forward.md) — per-stage detail.
-- [Errors](../troubleshooting/errors.md) — config errors and their fixes.
+- [custom.py at a glance](hooks_cheatsheet.md): every hook in one table.
+- [Prepare](prepare.md) · [Training](train.md) · [Forward](forward.md): per-stage detail.
+- [Errors](../troubleshooting/errors.md): config errors and their fixes.

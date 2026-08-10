@@ -4,28 +4,12 @@
 > the biology, and fits it by differentiating through an ODE solve.
 >
 > **You need this if** you want to fit anything. **You can skip it if** you only handle
-> data — that is [bp-format](../format/index.md).
+> data, that is [bp-format](../format/index.md).
 
 ## The pipeline
 
-```
-data.json                  a bp-format CaseStudy or BioProcessCollection
-    │
-    │  bp-train prepare        + custom.py: transform_process_collection
-    ▼                                       augment_state_values
-prepared/                  the training problem: layouts, control splines, targets
-    │
-    │  bp-train train         + custom.py: estimate_all_scales
-    ▼                                      build_reaction_module
-run/                                       build_loss_module
-    ├── model/params.eqx                   build_learning_rate
-    ├── metrics.csv                        build_optimizer
-    ├── predictions.csv
-    └── <process>.png
-    │
-    ├── bp-train forward      re-simulate, export dense trajectories, ensemble
-    └── bp-train loo          cross-validate (wraps train + forward per fold)
-```
+<img class="theme-diagram diagram-light" src="../_static/diagram_train_pipeline_light.svg" alt="data.json, through bp-train prepare, becomes prepared/; through bp-train train, becomes a run/ directory; bp-train forward and bp-train loo both consume a run/ directory.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_train_pipeline_dark.svg" alt="data.json, through bp-train prepare, becomes prepared/; through bp-train train, becomes a run/ directory; bp-train forward and bp-train loo both consume a run/ directory.">
 
 Four commands. Everything you customise happens through one optional `custom.py`, and
 every hook in it has a working default.
@@ -37,8 +21,8 @@ d(state)/dt  =  biology(rates)                              ← the reaction mod
               + transport(feeds, dilution, samples, volume)  ← bp-format, already written
 ```
 
-Training differentiates the *whole solve* — solver steps, event jumps, spline
-evaluations — with respect to the reaction module's parameters, and descends. That is why
+Training differentiates the *whole solve* (solver steps, event jumps, spline
+evaluations) with respect to the reaction module's parameters, and descends. That is why
 the stack is built on JAX and Diffrax, and why numerical conditioning matters more here
 than in ordinary supervised learning.
 
@@ -51,7 +35,7 @@ than in ordinary supervised learning.
 | [Configuration](config.md) | Always. It is the surface you actually touch. |
 | [Prepare](prepare.md) | You want to know what happens between data and training. |
 
-**The model — the two halves you write**
+**The model: the two halves you write**
 
 | Page | Read it when |
 |---|---|
@@ -83,13 +67,13 @@ You can train with no `custom.py` at all. These are what you get:
 |---|---|---|
 | Reaction module | 2-layer MLP over the modeled state | a first look |
 | Loss module | per-target mean squared error | a first look |
-| **Scales** | **all ones — no scaling** | small, well-behaved datasets only |
+| **Scales** | **all ones: no scaling** | small, well-behaved datasets only |
 | Optimizer | Adam, lr 1e-3, gradient clipping at norm 1000 | most things |
 | Learning rate | constant | most things |
 | Batching | full batch, shuffled | small process counts |
 
 The one to fix first is scaling. It is optional, it fails silently, and it is the
-difference between a model that trains and one that thrashes — see
+difference between a model that trains and one that thrashes: see
 [Scaling](scaling.md) and [Tutorial 4](../tutorials/04_your_first_custom_py.md), which
 measures the gap.
 
@@ -105,13 +89,13 @@ drop it from the targets.
 
 :::{admonition} A misspelled hook name is silent
 :class: warning
-Hooks are found by plain attribute lookup. `build_reaction_modul` is not an error — it is
+Hooks are found by plain attribute lookup. `build_reaction_modul` is not an error: it is
 a silent fall back to the default. If an edit to `custom.py` appears to change nothing,
 check the spelling first.
 :::
 
 ## See also
 
-- [Quickstart](../start/quickstart.md) — the whole pipeline in three commands.
-- [Concepts and vocabulary](../start/concepts.md) — SCL, RAW, targets, folds.
-- [Design rationale](../under_the_hood/design_rationale.md) — why it is built this way.
+- [Quickstart](../start/quickstart.md): the whole pipeline in three commands.
+- [Concepts and vocabulary](../start/concepts.md): SCL, RAW, targets, folds.
+- [Design rationale](../under_the_hood/design_rationale.md): why it is built this way.

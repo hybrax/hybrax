@@ -4,7 +4,7 @@
 > human-sized version.
 
 These docs are deliberately not exhaustive. They cover concepts, runnable examples and
-gotchas, and stop before the field-by-field tables — because those rot, and because two
+gotchas, and stop before the field-by-field tables, because those rot, and because two
 places to look is one too many.
 
 ## The three layers
@@ -38,7 +38,7 @@ In `bp-format/documentation/`:
 :class: warning
 The `specs/` directory in the repository says so itself. It contains plans, some never
 built, several predating the current API. Mine it for *rationale* if you are curious why
-something is the way it is — never for behaviour.
+something is the way it is: never for behaviour.
 :::
 
 ## Worked examples in the repository
@@ -49,20 +49,20 @@ counterpart to [Tutorial 1](../tutorials/01_your_first_dataset.md).
 
 Good starting points:
 
-- **`15_biogas/`** — the smallest and clearest: a single batch process, hand-written
+- **`15_biogas/`**: the smallest and clearest, a single batch process, hand-written
   `biological_ode`, full validate → plot → save → reload cycle.
-- **`13_volume_integration/`** — the fed-batch counterpart, with real volume events.
-- **`01_kittler_2022/`, `02_gotsmy_2023/`, `05`–`10_martens_2025_*`** — real published
+- **`13_volume_integration/`**: the fed-batch counterpart, with real volume events.
+- **`01_kittler_2022/`, `02_gotsmy_2023/`, `05`–`10_martens_2025_*`**: real published
   data, including the messy preprocessing step that precedes bp-format.
 
 ## Background
 
-- **Pseudobatch transform** — Hesselberg-Thomsen et al. (2024). The method behind `c*`
+- **Pseudobatch transform**: Hesselberg-Thomsen et al. (2024). The method behind `c*`
   and the accumulated dilution factor.
-- **JAX** and **Equinox** — the array and module libraries everything is built on.
+- **JAX** and **Equinox**: the array and module libraries everything is built on.
   Worth twenty minutes if you are going to write a reaction module.
 
 ## See also
 
-- [bp-train guide](../train/index.md) — the other half of the stack.
-- [Design rationale](../under_the_hood/design_rationale.md) — the architectural decisions.
+- [bp-train guide](../train/index.md): the other half of the stack.
+- [Design rationale](../under_the_hood/design_rationale.md): the architectural decisions.

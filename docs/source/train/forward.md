@@ -1,7 +1,7 @@
 # Forward
 
 > **In one sentence.** Re-simulate with a trained model and export dense trajectories,
-> rates and per-target losses — optionally averaging several models.
+> rates and per-target losses: optionally averaging several models.
 >
 > **You need this if** you have a run directory and want something to plot or publish.
 > **You can skip it if** the training plots were enough.
@@ -25,12 +25,12 @@ Output defaults to `<first model>/forward`.
 | `predictions.csv` | Dense trajectory per process: `t`, `c_<species>`, `q_<rate>`, `V_real`. |
 | `losses.csv` | Per-process, per-target loss, with the train/holdout split. |
 | `<process>.png` | Fit and inferred rates. |
-| `predictions_std.csv` | Ensembles only — spread across models. |
-| `models/<name>/` | Ensembles only — each member's own predictions and losses. |
+| `predictions_std.csv` | Ensembles only: spread across models. |
+| `models/<name>/` | Ensembles only: each member's own predictions and losses. |
 
 ## Why it is separate from training
 
-Training reports a number. `forward` reports a **trajectory** — dense states, the inferred
+Training reports a number. `forward` reports a **trajectory**: dense states, the inferred
 rates, the real volume. That is what you plot, hand to a colleague, or compare between
 models.
 
@@ -40,7 +40,7 @@ the same in-memory state that produced the claim.
 
 ## Pointing it at a checkpoint
 
-`models` entries are run directories **or** checkpoint directories — both are
+`models` entries are run directories **or** checkpoint directories: both are
 self-contained, so both work:
 
 ```json
@@ -62,7 +62,7 @@ More than one entry turns it into an ensemble:
 
 `predictions.csv` holds the mean and `predictions_std.csv` the standard deviation across
 members. Training the same configuration under several seeds and reading the spread is
-the cheapest uncertainty estimate available here — and it is genuinely informative,
+the cheapest uncertainty estimate available here, and it is genuinely informative,
 because neural ODE fits on sparse bioprocess data are often seed-sensitive in the rates
 even when the concentrations agree.
 
@@ -90,7 +90,7 @@ Give `data` a different prepared artifact, or restrict to particular processes:
 is given. On a *different* dataset that produces *different* scales, and the trained
 weights then sit in a different scaled space than they were fitted in.
 
-Sometimes that is what you want — scales are a property of the data. Often it is not. The
+Sometimes that is what you want: scales are a property of the data. Often it is not. The
 Python-level `model_predict` does **not** re-estimate. Know which one you are using; see
 [Silent failures](../troubleshooting/silent_failures.md).
 :::
@@ -116,13 +116,13 @@ raises `AttributeError`. See [Tutorial 5](../tutorials/05_predict.md).
 ## Gotchas
 
 - **`--overwrite` is required** for a forward directory that already has results.
-- **`--config` is mandatory** for `forward` — unlike `train`, there is no implicit default.
+- **`--config` is mandatory** for `forward`: unlike `train`, there is no implicit default.
 - **`losses.csv` labels each process `train` or `holdout`.** On a plain forward over the
   training data everything says `train`; that is not a bug.
 - **`grid_n` only affects the export**, not the solve accuracy.
 
 ## See also
 
-- [Tutorial 5](../tutorials/05_predict.md) — a walkthrough.
-- [Cross-validation](loo.md) — for held-out performance done properly.
+- [Tutorial 5](../tutorials/05_predict.md): a walkthrough.
+- [Cross-validation](loo.md): for held-out performance done properly.
 - [Saving, loading and predicting](save_load_predict.md).

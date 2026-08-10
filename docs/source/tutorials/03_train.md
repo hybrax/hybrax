@@ -16,7 +16,7 @@ kernelspec:
 > read what came out.
 >
 > **You need this if** you have a validated dataset. **You can skip it if** you did the
-> [quickstart](../start/quickstart.md) and only want the custom parts — go to
+> [quickstart](../start/quickstart.md) and only want the custom parts: go to
 > [Tutorial 4](04_your_first_custom_py.md).
 
 The quickstart ran these commands. This tutorial explains them.
@@ -61,7 +61,7 @@ d(state)/dt  =  biology(rates)          ← your model predicts this
 ```
 
 Training adjusts the first half so the integrated trajectory matches your measurements.
-For `demo_batch` the second half is nearly empty — a batch run has no feeds — so
+For `demo_batch` the second half is nearly empty (a batch run has no feeds) so
 everything the model does is visible in three specific rates.
 
 ## Step 1: prepare
@@ -135,7 +135,7 @@ Everything not named in that config is a default, and each one is replaceable:
 |---|---|---|
 | reaction module | A 2-layer MLP over the modeled state | [`build_reaction_module`](../train/reaction_module.md) |
 | loss module | Per-target mean squared error | [`build_loss_module`](../train/loss_module.md) |
-| scales | **All ones — i.e. no scaling** | [`estimate_all_scales`](../train/scaling.md) |
+| scales | **All ones: i.e. no scaling** | [`estimate_all_scales`](../train/scaling.md) |
 | optimizer | Adam, lr 1e-3, gradient clipping at norm 1000 | [`build_optimizer`](../train/train.md) |
 | batching | Full batch, shuffled | `train.batch_size` |
 
@@ -164,7 +164,7 @@ from IPython.display import Image
 Image(filename=str(WORK / "run/loss_curve.png"))
 ```
 
-Then the fit itself — measurements against the integrated trajectory on the left,
+Then the fit itself: measurements against the integrated trajectory on the left,
 the inferred rates on the right:
 
 ```{code-cell} ipython3
@@ -176,11 +176,11 @@ Image(filename=str(WORK / "run/run_1.png"))
 ### What to look at, in order
 
 1. **Does the loss go down and stay down?** A curve that drops then explodes usually
-   means the solve is struggling, not that the model is wrong — try tightening
+   means the solve is struggling, not that the model is wrong: try tightening
    `solver.rtol`/`atol` or lowering the learning rate.
 2. **Do the trajectories track the dots?** R² per target is printed in each panel.
 3. **Are the rates physically plausible?** This is the check people skip. A model can fit
-   concentrations beautifully with rates that are nonsense — growth and death both far
+   concentrations beautifully with rates that are nonsense: growth and death both far
    too high, or uptake compensating for a transport error. The right-hand column is where
    that shows up.
 
@@ -188,7 +188,7 @@ Image(filename=str(WORK / "run/run_1.png"))
 :class: tip
 `grad_norm_curve.png` shows the **raw** gradient norm, before clipping. If it sits
 permanently at the clip threshold (`grad_clip_norm`, default 1000), your effective step
-size is not what you think it is — and that is usually a scaling problem, which is
+size is not what you think it is, and that is usually a scaling problem, which is
 [Tutorial 4](04_your_first_custom_py.md).
 :::
 
@@ -211,7 +211,7 @@ bp-train train --config train-config.json --epochs 50    # flags beat the config
 
 ## What's next
 
-- **[Tutorial 4](04_your_first_custom_py.md)** — replace the two most important defaults
+- **[Tutorial 4](04_your_first_custom_py.md)**: replace the two most important defaults
   and measure the difference.
 - Config in full: [Configuration](../train/config.md).
 - What `prepare` does in detail: [Prepare](../train/prepare.md).

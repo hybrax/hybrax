@@ -12,7 +12,7 @@ kernelspec:
 
 # Tutorial 5: predict
 
-> **In one sentence.** Use a trained model — from the command line for exports, and from
+> **In one sentence.** Use a trained model: from the command line for exports, and from
 > Python when you want the arrays.
 >
 > **You need this if** you have a run directory. **You can skip it if** the training
@@ -50,7 +50,7 @@ def bp_train_cli(*args):
     {
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
-      "train": { "epochs": 300, "seed": 0 },
+      "train": { "epochs": 300, "seed": 0, "learning_rate": 0.01 },
       "output": { "dir": "run" }
     }
     """))
@@ -88,7 +88,7 @@ print((WORK / "run/forward/losses.csv").read_text())
 :::{admonition} Why `forward` exists separately from `train`
 :class: note
 Training reports a loss. `forward` reports a *trajectory*: dense states, the inferred
-rates, and the real volume — the things you plot, hand to a colleague, or compare
+rates, and the real volume: the things you plot, hand to a colleague, or compare
 against another model. It also re-solves from scratch, so it is an honest check that the
 saved model reproduces what training claimed.
 :::
@@ -108,19 +108,6 @@ print("rows   :", len(rows))
 `c_*` are concentrations, `q_*` are the inferred specific rates, `V_real` is the physical
 volume. One row per process per grid point.
 
-### Averaging several models
-
-`models` takes a list. With more than one entry, `forward` also writes
-`predictions_std.csv` — the spread across models, which is the cheapest uncertainty
-estimate available here:
-
-```json
-{ "models": ["run_seed0", "run_seed1", "run_seed2"], "data": { "prepared": "prepared" } }
-```
-
-More than one model **requires** an explicit `data.prepared`, since the runs no longer
-agree on a single source.
-
 ## The Python way: `model_load` and `model_predict`
 
 When you want arrays rather than CSVs:
@@ -134,7 +121,7 @@ type(wrapper).__name__
 ```
 
 `model_load` rebuilds the whole model: only the trainable parameters were saved, and
-everything else — the controls, the assembled ODE, the scales — is reconstructed from
+everything else (the controls, the assembled ODE, the scales) is reconstructed from
 the `prepared.json` and `custom.py` bundled inside the run directory. That is why a run
 directory is self-contained and why you can move it between machines.
 
@@ -165,7 +152,7 @@ print("q_rates    ", export.q_rates.shape,   "  the inferred rates")
 print("v_real     ", export.v_real.shape)
 ```
 
-Which lets you do your own analysis — for example, checking a rate against the value the
+Which lets you do your own analysis: for example, checking a rate against the value the
 data was generated with:
 
 ```{code-cell} ipython3
@@ -178,7 +165,9 @@ print(f"learned q_biomass(t=0) : {learned_mu:.3f} 1/h")
 print(f"true mu_max            : {truth['mu_max']:.3f} 1/h")
 ```
 
-And to plot it yourself:
+And to plot it yourself. `run_1` is one of the three processes the model was **trained**
+on: this is checking the fit, not testing generalisation to new data (that is what
+[cross-validation](../train/loo.md) is for):
 
 ```{code-cell} ipython3
 import matplotlib.pyplot as plt
@@ -193,7 +182,8 @@ for ax, (i, name) in zip(axes, enumerate(["biomass", "glucose", "product"])):
     ax.set_title(name)
     ax.set_xlabel("time [h]")
 axes[0].set_ylabel("g/L")
-axes[0].legend()
+fig.suptitle("run_1: fit on training data")
+axes[0].legend();
 ```
 
 ## One thing to be careful about
@@ -205,7 +195,7 @@ There are two ways to load a model, and they are not interchangeable:
 | `model_load(run_dir)` | the run directory's own bundled data | anything |
 | `model_reload(...)` | **whatever you pass it** | only the data it was trained on |
 
-`model_reload` keeps the static half — including the scales — from the object you hand
+`model_reload` keeps the static half (including the scales) from the object you hand
 it. Point it at a different dataset and it will load the weights into a *different scaled
 space*, then predict confidently and wrongly. No exception, no NaN. See
 [Silent failures](../troubleshooting/silent_failures.md).
@@ -224,6 +214,8 @@ You have now seen the whole loop. Everything the tutorials deliberately left out
 the gallery, each as a self-contained example:
 
 - [Fed-batch: feeds, boluses and samples](../gallery/fed_batch.md)
-- [Structured rate laws](../gallery/structured_rates.md) — real kinetics, partially trained
+- [Mechanistic models](../gallery/mechanistic_rates.md): real kinetics, partially trained
 - [Custom losses on the dense grid](../gallery/dense_loss.md)
-- [Cross-validation](../train/loo.md) — how well does this generalise to a run it never saw?
+- [Cross-validation](../train/loo.md): how well does this generalise to a run it never saw?
+- [Ensembles](../train/forward.md#ensembles): averaging several trained models for a
+  cheap uncertainty estimate

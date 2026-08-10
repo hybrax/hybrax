@@ -10,14 +10,14 @@ kernelspec:
   name: python3
 ---
 
-# The mechanistic ODE
+# The Bioprocess ODE
 
 > **In one sentence.** What bp-format assembles from your description, how to read it,
 > and how to replace the biological half with your own equations.
 >
 > **You need this if** the default dynamics are not what you mean, or you want to know
 > exactly what is being solved. **You can skip it if** the auto-generated ODE is right
-> for your process — but read the first two sections anyway.
+> for your process, but read the first two sections anyway.
 
 ## The split
 
@@ -27,7 +27,7 @@ d(state)/dt  =  BIOLOGICAL          ← yours: BiologicalOde, in terms of named 
 ```
 
 Everything bp-format does here is in service of that line. You never write the physical
-half, and you cannot get it wrong by forgetting a term — but you *can* get it wrong by
+half, and you cannot get it wrong by forgetting a term, but you *can* get it wrong by
 describing the volume badly, which is why [Volume, feeds and
 events](volume_feeds_events.md) comes first.
 
@@ -65,7 +65,7 @@ The rule is:
 
 :::{admonition} Auto-generation requires a component named `biomass`
 :class: warning
-Every generated rate is *specific* — per unit biomass — so there has to be a biomass to
+Every generated rate is *specific* (per unit biomass) so there has to be a biomass to
 be specific to. Without one (case-insensitive match), constructing the `BioProcess`
 raises immediately, and the message tells you to supply your own `biological_ode`.
 :::
@@ -92,13 +92,13 @@ print(ok, "|", message)
 | Field | Meaning |
 |---|---|
 | `algebraic` | `name -> expression`. Recomputed every RHS call, never integrated. Must be acyclic. |
-| `rates` | `name -> (lower, upper)`. Declares the rate vector — its length *is* the rate dimension. Bounds are metadata. |
+| `rates` | `name -> (lower, upper)`. Declares the rate vector: its length *is* the rate dimension. Bounds are metadata. |
 | `derivatives` | `state -> expression` for the **biological** contribution only. |
 
 That example is the standard intracellular-product pattern: measured biomass includes the
 product accumulating inside the cells, so growth is driven by the *active* fraction, and
 the measured biomass derivative picks up both growth and product accumulation. There is
-no `is_intracellular` flag — you write what you mean.
+no `is_intracellular` flag: you write what you mean.
 
 :::{admonition} Every dynamic state needs a derivative entry
 :class: warning
@@ -108,7 +108,7 @@ explicitly. Silence and "zero" must not look the same.
 
 Expressions are parsed with sympy, so ordinary arithmetic works, and names must refer to
 states, algebraic quantities, or declared rates. Quantities added together must share a
-unit — `biomass - product` with `g/L` against `mg/L` is rejected.
+unit: `biomass - product` with `g/L` against `mg/L` is rejected.
 
 ## Layout: `ProcessOrdering`
 
@@ -134,7 +134,7 @@ control u = [ controlled FVCs | controlled SVCs | controlled PVs ]
 The first `len(FVCs) + len(SVCs)` entries of `u` are **flow rates** (spline derivatives);
 the rest are direct values.
 
-Ordering rules: rates keep your insertion order — so a rate vector you build matches the
+Ordering rules: rates keep your insertion order, so a rate vector you build matches the
 order you declared. Algebraic names are topologically sorted by dependency. Everything
 else is alphabetical.
 
@@ -154,7 +154,7 @@ print("feed composition matrix:", rhs.Cin_controlled_FVCs.shape,
 ```
 
 `RhsOde` is a JAX-compatible callable: given time, state, controls and a rate vector it
-returns `d(state)/dt`. It does **not** integrate — bp-format has no solver. Handing it to
+returns `d(state)/dt`. It does **not** integrate: bp-format has no solver. Handing it to
 a solver is [bp-train](../train/index.md)'s job.
 
 Related helpers, for when you are building your own integrator:
@@ -167,15 +167,15 @@ Related helpers, for when you are building your own integrator:
   raises when the ordering is built.
 - **Cyclic `algebraic` entries** are rejected.
 - **The rate vector is flat and positional.** One `jnp.ndarray` aligned with
-  `name_modeled_rates` — not a dict, not a `(q, r)` tuple.
+  `name_modeled_rates`: not a dict, not a `(q, r)` tuple.
 - **Reactor volume must stay above `1e-10`.** Dilution divides by `V`, so the solve
   aborts loudly rather than producing infinities.
 - **Bounds in `rates` are metadata.** `RhsOde` will not clip a rate to them.
 
 ## See also
 
-- [Volume, feeds and events](volume_feeds_events.md) — where the physical half comes from.
-- [The reaction module](../train/reaction_module.md) — what supplies the rates.
-- [Gallery: structured rate laws](../gallery/structured_rates.md) — real kinetics in place
+- [Volume, feeds and events](volume_feeds_events.md), where the physical half comes from.
+- [The reaction module](../train/reaction_module.md): what supplies the rates.
+- [Gallery: mechanistic models](../gallery/mechanistic_rates.md): real kinetics in place
   of a bare network.
 - [API reference](../autoapi/bp_format/mechanistic/index).

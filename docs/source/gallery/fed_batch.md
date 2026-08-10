@@ -14,10 +14,20 @@ kernelspec:
 
 > **Demonstrates.** A continuous feed, two boluses and sampling events in one run, and a
 > reaction module that reads the feed rate and a controlled process variable as real
-> biological inputs — not just transport bookkeeping.
+> biological inputs: not just transport bookkeeping.
 
 The tutorials used a pure batch: no feeds, no boluses, no sampling volume. This dataset
 has all three at once, which is the normal case for real fermentation data.
+
+The walkthrough below shows the file in pieces, next to the reasoning for each one. For
+the whole thing at once: to copy, diff against your own, or just read top to bottom:
+
+:::{dropdown} Full `custom.py`
+```{literalinclude} _files/fed_batch_custom.py
+:language: python
+:linenos:
+```
+:::
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -75,12 +85,12 @@ sampling at every offline measurement. See the assembled ODE:
 bp.print_rhs_ode(process)
 ```
 
-Compare this to a batch process's `print_rhs_ode` output — every feed and sample now
+Compare this to a batch process's `print_rhs_ode` output: every feed and sample now
 contributes a real transport term, generated for you.
 
 ## The reaction module
 
-The interesting change from the tutorials is not really about feeds — it is that the
+The interesting change from the tutorials is not really about feeds: it is that the
 model now has real controlled inputs beyond the state:
 
 ```{literalinclude} _files/fed_batch_custom.py
@@ -91,7 +101,7 @@ model now has real controlled inputs beyond the state:
 
 `SCL_controlled_FVCs_rates` (the feed) and `SCL_controlled_PVs` (dissolved oxygen) are
 concatenated onto the state before the network sees it. Nothing about the *mechanics* of
-writing a reaction module changed — you still emit rates in SCL space — but the module
+writing a reaction module changed (you still emit rates in SCL space) but the module
 can now respond to what is happening to the process, not just its own current
 concentrations.
 
@@ -128,20 +138,20 @@ from IPython.display import Image
 Image(filename=str(WORK / "run/forward/fedbatch_1.png"))
 ```
 
-Look at the bottom-right panel — `volume_changes` — before anything else. It plots every
+Look at the bottom-right panel (`volume_changes`) before anything else. It plots every
 feed, bolus and sample bp-format extracted from the description, on one axis. This is
 the fastest way to confirm your event bookkeeping is what you think it is, on real data,
 before trusting anything about the fit above it.
 
 In the top two rows, the glucose boluses are visible as sharp jumps, both in the
-concentration itself and in the inferred `q_glucose` — the model has to represent a
+concentration itself and in the inferred `q_glucose`: the model has to represent a
 discontinuity twice in one run, which is a meaningfully harder fit than the smooth batch
 case. Biomass is the hardest target here (a real, honest R² in the low 0.9s at this
 epoch budget); glucose and product are markedly easier.
 
 ## What made this example different from the tutorials
 
-- **A feed medium with every species declared**, including the zeros — see
+- **A feed medium with every species declared**, including the zeros: see
   [Volume, feeds and events](../format/volume_feeds_events.md).
 - **Sample-then-bolus ordering** at the coincident timestamps was handled for you by the
   solve; you never wrote it.
@@ -150,8 +160,8 @@ epoch budget); glucose and product are markedly easier.
 
 ## See also
 
-- [Volume, feeds and events](../format/volume_feeds_events.md) — the concepts behind this
+- [Volume, feeds and events](../format/volume_feeds_events.md): the concepts behind this
   dataset.
-- [Time series and splines](../format/time_series_and_splines.md) — the pseudobatch
+- [Time series and splines](../format/time_series_and_splines.md): the pseudobatch
   transform, which this dataset is exactly the motivating case for.
-- [The reaction module](../train/reaction_module.md) — `ReactionInputs` in full.
+- [The reaction module](../train/reaction_module.md): `ReactionInputs` in full.

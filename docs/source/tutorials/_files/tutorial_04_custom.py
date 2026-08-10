@@ -37,7 +37,7 @@ class BatchReactionModule(UserReactionModule):
             width_size=32,
             depth=3,
             # Use a SMOOTH activation. eqx.nn.MLP defaults to relu, which makes
-            # the predicted rates piecewise linear — kinks the solver has to
+            # the predicted rates piecewise linear: kinks the solver has to
             # chase, and a derivative that jumps. tanh is what the built-in
             # default module uses, for the same reason.
             activation=jax.nn.tanh,
@@ -47,7 +47,7 @@ class BatchReactionModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t  # this model has no explicit time dependence
         # The network reads SCL inputs, so its output is ALREADY in SCL space.
-        # Emit it directly — do not re-apply scale_*, or it cancels on the
+        # Emit it directly: do not re-apply scale_*, or it cancels on the
         # wrapper's unscale round trip. See the note in the tutorial text.
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
@@ -83,7 +83,7 @@ def estimate_all_scales(collection, target_names, config):
     }
 
     # Rate scales are estimated from the data too. The average specific rate of a
-    # species is its total change divided by the integrated biomass exposure —
+    # species is its total change divided by the integrated biomass exposure,
     # which is exactly what "specific" means. Do NOT use max(biomass): biomass
     # grows by two orders of magnitude over a batch, so dividing by its peak
     # underestimates the rate several-fold.

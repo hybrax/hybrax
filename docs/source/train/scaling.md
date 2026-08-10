@@ -4,7 +4,7 @@
 > solve roughly 1, which is the difference between a model that trains and one that
 > thrashes.
 >
-> **You need this if** you are training on real data. **You can skip it if** — you should
+> **You need this if** you are training on real data. **You can skip it if**: you should
 > not. This hook is optional and silent, and it is the most consequential thing you can
 > add.
 
@@ -14,7 +14,7 @@ A bioprocess state vector might hold biomass at 5 g/L, glucose at 20 g/L, produc
 0.4 g/L, volume at 1 L and cumulative feed at 0.001 L. Spread: four orders of magnitude.
 
 Gradients through an ODE solve are dominated by whichever axis is largest. The solver's
-own error control — `rtol`, `atol` — also applies across a shared state vector, so an
+own error control (`rtol`, `atol`) also applies across a shared state vector, so an
 absolute tolerance appropriate for glucose is meaningless for a trace species. Everything
 downstream inherits the conditioning of the worst axis.
 
@@ -36,14 +36,14 @@ which means one number per axis handles both states and rates, and the `scale_*`
 
 **Fires:** at training setup, before the reaction module is built.
 **Signature:** `(collection, target_names, config) -> EstimatedScales`
-**Default:** none — and that is the problem below.
+**Default:** none, and that is the problem below.
 **Type-checked:** returning something other than `EstimatedScales` raises `TypeError`.
 
 :::{admonition} No hook means every scale is 1.0
 :class: danger
 
 Omitting `estimate_all_scales` does not raise, does not warn, and does not disable
-anything. It leaves SCL identical to RAW — the exact ill-conditioning the architecture
+anything. It leaves SCL identical to RAW: the exact ill-conditioning the architecture
 exists to prevent.
 
 Training still runs. The loss still goes down. It is just much worse than it should be,
@@ -56,7 +56,7 @@ than two orders of magnitude, before a single optimizer step.
 
 The whole job is: for each axis, what is a characteristic magnitude?
 
-**State axes** are easy — how big does this species get, anywhere in the data:
+**State axes** are easy: how big does this species get, anywhere in the data:
 
 ```python
 rmc_scale = {
@@ -97,7 +97,7 @@ def estimate_all_scales(collection, target_names, config, *, controls_store):
     ...
 ```
 
-Declaring `controls_store` in the signature is what makes bp-train pass it — the harness
+Declaring `controls_store` in the signature is what makes bp-train pass it: the harness
 inspects your signature and supplies optional arguments only if you asked for them. Both
 the three- and four-argument forms are valid.
 
@@ -113,7 +113,7 @@ matrices, controlled PVs, and the biological rate vector. `SCALE_modeled_PVs` de
 empty; the rest are required.
 
 Exact field names and shapes are in the
-[API reference](../autoapi/bp_train/model_api/index) — and `print_reaction_schema` will
+[API reference](../autoapi/bp_train/model_api/index), and `print_reaction_schema` will
 show you the shapes for *your* dataset, which is faster than reading either.
 
 For a process with no feeds and no process variables, most axes are `jnp.zeros(0)`. That
@@ -121,7 +121,7 @@ is normal, not a sign you did something wrong.
 
 ## Linear or affine
 
-By default a bare array becomes a `LinearScaler` — plain division, bit-identical to doing
+By default a bare array becomes a `LinearScaler`: plain division, bit-identical to doing
 it by hand. Returning an `AffineScaler(scale, offset)` for one axis opts that axis into
 affine scaling, useful when a quantity varies over a narrow band far from zero
 (temperature around 37 °C, pH around 7).
@@ -156,12 +156,12 @@ Three signals, in order of usefulness:
 - **Do not duplicate scales onto your inputs.** They live on the reaction module; read
   them via `inputs.reaction_module.SCALE_*` or its helpers.
 - **`forward_from_collection` re-runs this hook** on whatever collection you hand it;
-  `model_predict` does not. Two paths, two behaviours — see
+  `model_predict` does not. Two paths, two behaviours: see
   [Silent failures](../troubleshooting/silent_failures.md).
 
 ## See also
 
-- [Tutorial 4](../tutorials/04_your_first_custom_py.md) — a working hook, with the
+- [Tutorial 4](../tutorials/04_your_first_custom_py.md): a working hook, with the
   before/after numbers.
-- [The reaction module](reaction_module.md) — the consumer of these scales.
+- [The reaction module](reaction_module.md): the consumer of these scales.
 - [Silent failures](../troubleshooting/silent_failures.md).

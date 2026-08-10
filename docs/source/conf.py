@@ -26,6 +26,7 @@ extensions = [
     "sphinx.ext.viewcode",     # [source] links
     "sphinx.ext.intersphinx",  # external refs only (python/numpy/jax)
     "sphinx_copybutton",
+    "sphinx_design",           # dropdown directive (full-file listings in the gallery)
 ]
 
 # myst-nb owns .md and .ipynb. Files without {code-cell} blocks are parsed as
@@ -41,10 +42,19 @@ exclude_patterns = [
     "_data/**",          # dataset generator + generated data — not documents
     "**/.ipynb_checkpoints",
 ]
+# Project-local template overrides (e.g. sidebar/brand.html). Sphinx checks this
+# before the theme's own templates, so it's the supported way to customize furo
+# without touching the installed package.
+templates_path = ["_templates"]
 
 # --- Furo ---
 html_theme = "furo"
-html_title = "Bioprocess Modeling docs"
+# Drives the browser <title>. The homepage renders this verbatim; every other
+# page renders "{page title} - {this}". The sidebar brand text is a SEPARATE
+# string, overridden in _templates/sidebar/brand.html — furo reads both from
+# the same `docstitle` value by default, which is why a template override was
+# needed to make them read differently on purpose.
+html_title = "Bioprocess Modeling with Hybrax"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_logo = "_static/hybrax_logo.png"

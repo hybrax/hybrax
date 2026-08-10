@@ -12,15 +12,15 @@ kernelspec:
 
 # Tutorial 4: your first `custom.py`
 
-> **In one sentence.** Replace the two defaults that matter most — the network that
-> predicts rates, and the scaling — and measure what it bought you.
+> **In one sentence.** Replace the two defaults that matter most (the network that
+> predicts rates, and the scaling) and measure what it bought you.
 >
 > **You need this if** you want to control the model. **You can skip it if** you are only
 > ever going to use the defaults, which on real data you are not.
 
 Everything you customise in bp-train lives in one optional file, `custom.py`. bp-train
 looks in it for functions with specific names; anything it does not find falls back to a
-default. There is no registration and no base class to inherit for the file itself — it
+default. There is no registration and no base class to inherit for the file itself: it
 is just a module.
 
 ```{code-cell} ipython3
@@ -59,7 +59,7 @@ _case_study = bp.serialization.load_case_study(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Physical-space R^2 per target, averaged over processes. Scale-free, so
-    it is the fair way to compare a scaled run against an unscaled one — their
+    it is the fair way to compare a scaled run against an unscaled one: their
     SCL losses live in different units and are not otherwise comparable."""
     import csv
     rows_by_process = {}
@@ -94,12 +94,12 @@ The ODE is **integrated in SCL**. A state vector holding biomass (~5), glucose (
 cumulative feed (~0.001) is badly conditioned; gradients through the solve are dominated
 by whichever axis happens to be largest. Dividing each axis by a characteristic magnitude
 fixes that, and because the scaling is linear the *same* factor converts a value and its
-time derivative — so one number per axis handles both states and rates.
+time derivative, so one number per axis handles both states and rates.
 
 :::{admonition} The double-scaling trap
 :class: warning
 
-Your network reads `inputs.SCL_*` — already-scaled values — so whatever it emits is
+Your network reads `inputs.SCL_*` (already-scaled values) so whatever it emits is
 *already in SCL space*. Return it directly.
 
 If you additionally call a `scale_*` helper on the output, it cancels against the
@@ -123,8 +123,8 @@ whole partitioning mechanism: tagged fields are trainable, and **untagged array 
 default to frozen**. There is no separate partition function to write.
 
 **`super().__init__(**scale_kwargs)`** must be called. The reaction module is the single
-source of truth for every scale in bp-train — the wrapper, the trainer and the loss
-module all read them off it — so the base class needs them.
+source of truth for every scale in bp-train (the wrapper, the trainer and the loss
+module all read them off it) so the base class needs them.
 
 **`SCL_modeled_FVCs_rates=jnp.zeros(0)`** is required even though `demo_batch` has no
 modeled feeds. `ReactionOutputs` has no default for it; omitting it is a `TypeError` at
@@ -146,7 +146,7 @@ direction and the concentrations blow up on the first solve, before any training
 
 ## Train it
 
-Point the config at the file — one extra key:
+Point the config at the file: one extra key:
 
 ```json
 {
@@ -160,7 +160,7 @@ Point the config at the file — one extra key:
 The learning rate is ten times the default's. That is deliberate, and the point of the
 comparison below: it is only *safe* to raise it because the state is scaled. Try the same
 learning rate on the unscaled defaults and the solve diverges to `inf` within the first
-few steps — conditioning is not a nice-to-have, it is what lets you use a normal
+few steps: conditioning is not a nice-to-have, it is what lets you use a normal
 optimizer setting at all.
 
 ```{code-cell} ipython3
@@ -188,7 +188,7 @@ optimizer setting at all.
 Same data, same seed, same epoch budget. Two things differ: this `custom.py`, and the
 learning rate it makes safe to use.
 
-Loss values are not the fair comparison here — the default run's loss lives in raw g/L,
+Loss values are not the fair comparison here: the default run's loss lives in raw g/L,
 the scaled run's in relative units, and those are not the same number. The fair,
 scale-free comparison is **R² in physical space**, computed by re-interpolating each
 run's predictions back onto the actual measurement times:
@@ -207,16 +207,16 @@ for name in ("biomass", "glucose", "product"):
     print(f"{name:10s} {r2_default[name]:10.4f} {r2_custom[name]:10.4f}")
 ```
 
-Biomass and glucose are close either way — this dataset is small enough that the defaults
+Biomass and glucose are close either way (this dataset is small enough that the defaults
 already fit them well. **Product is where the two diverge.** It is the smallest-magnitude
 target (peaking around 0.5 g/L against glucose's 10 g/L), and with no scaling the loss is
-implicitly dominated by whichever axis has the largest raw magnitude — glucose. Product's
+implicitly dominated by whichever axis has the largest raw magnitude) glucose. Product's
 error barely moves the unscaled loss, so the optimizer has little reason to fit it well.
 Once every axis is normalised to O(1), each target pulls equally, and product stops being
 the one that got left behind.
 
 That is the actual argument for scaling: not "converges faster" in general, but "every
-target gets a fair share of the gradient" — which matters most for whichever quantity in
+target gets a fair share of the gradient", which matters most for whichever quantity in
 your dataset happens to be smallest.
 
 ```{code-cell} ipython3
@@ -239,7 +239,7 @@ wrapper, cfg = bp_train.model_load(str(WORK / "run_custom"))
 bp_train.print_trainable_structure(wrapper)
 ```
 
-The other half of that question — *which array index is which species* — has its own
+The other half of that question (*which array index is which species*) has its own
 printer, and it is the fastest way to stop guessing at slicing:
 
 ```{code-cell} ipython3
@@ -254,7 +254,7 @@ came from, and it confirms the output order is `q_biomass, q_glucose, q_product`
 :::{admonition} A misspelled hook name is silent
 :class: warning
 bp-train looks up hooks by name with a plain attribute lookup. `build_reaction_modul`
-(one letter short) is not an error — it is a silent fall back to the default MLP, and
+(one letter short) is not an error: it is a silent fall back to the default MLP, and
 your carefully written module never runs. If a change to `custom.py` seems to have had no
 effect, check the spelling first. See
 [Silent failures](../troubleshooting/silent_failures.md).
@@ -268,12 +268,12 @@ effect, check the spelling first. See
 - Scaling is optional, has no error when omitted, and buys you two things: an optimizer
   setting that would otherwise diverge, and a loss where your smallest-magnitude target
   isn't drowned out by your largest.
-- Compare runs by **R² in physical space**, not by raw loss — an unscaled and a scaled
+- Compare runs by **R² in physical space**, not by raw loss: an unscaled and a scaled
   run don't share loss units.
 
 ## What's next
 
-- **[Tutorial 5](05_predict.md)** — use the trained model.
-- Real kinetics instead of a bare MLP: [Gallery: structured rate laws](../gallery/structured_rates.md).
+- **[Tutorial 5](05_predict.md)**: use the trained model.
+- Real kinetics instead of a bare MLP: [Gallery: mechanistic models](../gallery/mechanistic_rates.md).
 - Every hook, with signatures: [custom.py at a glance](../train/hooks_cheatsheet.md).
 - More on scales: [Scaling](../train/scaling.md).

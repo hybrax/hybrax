@@ -1,6 +1,30 @@
 code, .sig, .pre { font-size: 0.92em; }
 article dl.field-list > dd { margin-bottom: 0.6em; }
 
+/* --- executed-cell output ------------------------------------------------
+   Long stdout from a code-cell (a training log, a big table) previously grew
+   the page indefinitely and only scrolled horizontally. Cap it to roughly 10
+   lines and let it scroll vertically instead, like a terminal pane. Scoped to
+   `.cell_output` so it never touches ordinary code blocks or literalinclude
+   listings, which should stay fully visible. */
+.cell_output pre {
+  max-height: 17em;
+  overflow-y: auto;
+}
+
+/* --- theme-aware diagrams -------------------------------------------------
+   Each diagram ships as two transparent SVGs (dark ink / light ink); show
+   only the one that matches the current theme. Same light/dark switching
+   logic as the sidebar logo above. */
+.theme-diagram { max-width: 100%; height: auto; }
+.theme-diagram.diagram-dark { display: none; }
+body[data-theme="dark"] .theme-diagram.diagram-light { display: none; }
+body[data-theme="dark"] .theme-diagram.diagram-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .theme-diagram.diagram-light { display: none; }
+  body:not([data-theme="light"]) .theme-diagram.diagram-dark { display: block; }
+}
+
 /* --- logo ---------------------------------------------------------------
    The artwork is a transparent cutout with dark navy outlines, which all but
    disappears against furo's dark background. Give it a light backdrop in dark

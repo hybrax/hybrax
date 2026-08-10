@@ -4,7 +4,7 @@
 > with no exception anywhere.
 >
 > **You need this if** something ran fine and the result is off. **You can skip it if**
-> you got an error — that is [Errors](errors.md), and it is the better outcome.
+> you got an error, that is [Errors](errors.md), and it is the better outcome.
 
 Both packages are built on "fail fast over silent fallbacks", and mostly they do. What
 follows is the residue: the cases that cannot or do not raise. They are worth knowing
@@ -38,12 +38,12 @@ changed nothing at all. Check the spelling first, every time.
 
 ## 2. No `estimate_all_scales`
 
-**The failure.** The hook is optional. Omit it and every `SCALE_*` axis is 1.0 — SCL space
+**The failure.** The hook is optional. Omit it and every `SCALE_*` axis is 1.0: SCL space
 is identical to RAW space, and the entire scaled-integration design is inert.
 
 **Why it is hard to spot.** Nothing errors. On a small, well-conditioned dataset it even
 converges. On real data it produces a model that trains badly for reasons that look like
-stiffness, bad architecture or a bad learning rate — anything except the actual cause.
+stiffness, bad architecture or a bad learning rate: anything except the actual cause.
 
 **How to catch it.** Look at the **initial** loss, before any learning has happened. A
 well-scaled model starts within an order of magnitude or two of the data.
@@ -59,7 +59,7 @@ whole run means your effective step size is not the learning rate.
 
 ## 3. `model_reload` across datasets
 
-**The failure.** `model_reload` reuses the static half — including every `SCALE_*` — from
+**The failure.** `model_reload` reuses the static half (including every `SCALE_*`) from
 whatever you hand it, instead of rebuilding it from the run directory. Point it at a
 different dataset and the trained weights are loaded into a **different scaled space**.
 
@@ -84,7 +84,7 @@ On the training data they agree. On a *different* dataset they do not, and neith
 complains.
 
 **Why it is hard to spot.** Both produce sensible-looking trajectories. You only notice
-when the two paths disagree — and then it is not obvious which one is right.
+when the two paths disagree, and then it is not obvious which one is right.
 
 **Which is correct?** It depends what you mean. Scales are a property of the dataset, so
 re-estimating is defensible for a genuinely new campaign; but the weights were fitted
@@ -107,7 +107,7 @@ because they depend on what the network is defined to emit:
 - `tests/fixtures/martens_single/custom.py` computes in RAW and *does* call
   `scale_modeled_BiologicalOde_rates`.
 
-A beginner comparing the two concludes the code is inconsistent. It is not — they are
+A beginner comparing the two concludes the code is inconsistent. It is not: they are
 answering different questions.
 
 **The rule.**
@@ -123,7 +123,7 @@ Never mix. Ask "what space is this number in?" at every line of `__call__`. See
 ## 6. `build_pseudobatch_transform` does not attach itself
 
 **The failure.** It writes `c_star_concentration` onto every component *in place*, and
-**returns** the transform bundle — but does not set `process.pseudobatch_transform`.
+**returns** the transform bundle, but does not set `process.pseudobatch_transform`.
 Ignore the return value and the components look transformed while the process has no
 transform attached.
 
@@ -144,7 +144,7 @@ whether that means "absent" or "not recorded", so the dilution term for that spe
 simply not generated.
 
 **Why it is hard to spot.** The run integrates fine. One species is just never diluted by
-that feed, and the model absorbs the discrepancy into its rates — which then look
+that feed, and the model absorbs the discrepancy into its rates, which then look
 physically wrong for reasons that are not obvious.
 
 **How to catch it.** `validate_process` reports it. Run it.
@@ -161,7 +161,7 @@ nothing. That is a claim, and usually a false one.
 **Why it matters.** Volume is the denominator of every concentration and of every dilution
 term. Ten 8 mL samples out of 1 L is nearly 8% of the vessel.
 
-**Fix.** If sample volumes are unknown, that is under-specified metadata — treat it as
+**Fix.** If sample volumes are unknown, that is under-specified metadata: treat it as
 such rather than encoding a zero. If they are known, record them.
 
 ---
@@ -171,8 +171,7 @@ such rather than encoding a zero. If they are known, record them.
 **The failure.** `bounds=(0.0, None)` on a concentration looks like a constraint. Nothing
 in bp-format or the solver enforces it.
 
-**Why it exists.** Bounds are *metadata*, so downstream consumers — bp-train's loss module
-— can build soft penalties from a declaration you made once in the data.
+**Why it exists.** Bounds are *metadata*, so downstream consumers (bp-train's loss module) can build soft penalties from a declaration you made once in the data.
 
 **Fix.** If you want the constraint enforced, write the penalty. See
 [The loss module](../train/loss_module.md#adding-a-physical-penalty).
@@ -183,7 +182,7 @@ in bp-format or the solver enforces it.
 
 When a model fits the concentrations but something feels wrong, **plot the rates**.
 
-A model can match every measurement with rates that are physically impossible — growth and
+A model can match every measurement with rates that are physically impossible: growth and
 death both far too high, uptake compensating for a missing transport term, formation and
 degradation cancelling. Compensating errors are invisible in a concentration plot and
 obvious in a rate plot. That is why every bp-train process figure puts the rates in the
@@ -195,6 +194,6 @@ sampling. Anything else that moves is a bookkeeping bug, found before you fit an
 
 ## See also
 
-- [Errors](errors.md) — the loud failures.
-- [Limits and gotchas](../format/limits_and_gotchas.md) — the bp-format equivalent.
-- [Scaling](../train/scaling.md) — the source of items 2, 3, 4 and 5.
+- [Errors](errors.md): the loud failures.
+- [Limits and gotchas](../format/limits_and_gotchas.md): the bp-format equivalent.
+- [Scaling](../train/scaling.md): the source of items 2, 3, 4 and 5.

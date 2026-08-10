@@ -10,15 +10,25 @@ kernelspec:
   name: python3
 ---
 
-# Structured rate laws
+# Mechanistic models
 
-> **Demonstrates.** Mechanistic kinetics — Monod growth, Luedeking-Piret product
-> formation — instead of a bare MLP, with named, trainable, physically interpretable
+> **Demonstrates.** Mechanistic kinetics (Monod growth, Luedeking-Piret product
+> formation) instead of a bare MLP, with named, trainable, physically interpretable
 > constants. And where those constants trade off against each other.
 
 Every tutorial so far let an MLP discover the rates. Nothing requires that. A reaction
-module is any function from the state to the rates — it can just as easily be the kinetic
+module is any function from the state to the rates: it can just as easily be the kinetic
 law you already believe in, with a handful of trainable scalars instead of a network.
+
+The walkthrough below shows the file in pieces, next to the reasoning for each one. For
+the whole thing at once: to copy, diff against your own, or just read top to bottom:
+
+:::{dropdown} Full `custom.py`
+```{literalinclude} _files/structured_rates_custom.py
+:language: python
+:linenos:
+```
+:::
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -69,16 +79,16 @@ Three things worth noting.
 **Every constant is `jnp.exp(log_x)`.** An unconstrained optimizer can push a plain
 trainable scalar negative, and a negative `Ks` or `Y_xs` is not just wrong, it makes the
 kinetics nonsensical. Training the *log* of each constant is the cheapest way to impose
-positivity — no clipping, no penalty term, the constraint is structural.
+positivity: no clipping, no penalty term, the constraint is structural.
 
 **Uptake is gated by the same saturation term as growth.** `q_glucose` includes `sigma`
 in both its growth-linked and maintenance-linked parts, so uptake tapers smoothly as
 glucose depletes rather than being driven to some fixed rate and clipped afterwards. This
 is the mechanistic-modeling equivalent of the "concentrations must not go negative"
-problem in [Dense losses](dense_loss.md) — here it is built into the rate law instead of
+problem in [Dense losses](dense_loss.md): here it is built into the rate law instead of
 enforced by a penalty.
 
-**State indices are read off the assembled ODE, never hard-coded** —
+**State indices are read off the assembled ODE, never hard-coded**: 
 `names.index("glucose")` in `build_reaction_module`, not a bare `1`. If someone reorders
 the dataset's components, this still works.
 
@@ -102,7 +112,7 @@ Image(filename=str(WORK / "run/run_1.png"))
 
 ## Did it recover the true parameters?
 
-The dataset was simulated from known kinetics — nobody told the model this while
+The dataset was simulated from known kinetics: nobody told the model this while
 training.
 
 ```{code-cell} ipython3
@@ -129,11 +139,11 @@ for name in truth:
     print(f"{name:10s} {fitted[name]:10.4f} {truth[name]:10.4f}")
 ```
 
-`mu_max` and `Y_XS` — the parameters that dominate the exponential growth phase, where
-most of the data's information lives — come back close to their true values. `Ks`, `m_s`,
+`mu_max` and `Y_XS` (the parameters that dominate the exponential growth phase, where
+most of the data's information lives) come back close to their true values. `Ks`, `m_s`,
 `alpha` and `beta` do not, and that is not a bug in the fit.
 
-## Why the rest don't match — and why the fit is still good
+## Why the rest don't match, and why the fit is still good
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -143,22 +153,22 @@ true_combo = truth["alpha"] * truth["mu_max"] + truth["beta"]
 print(f"alpha*mu_max + beta   fitted={fitted_combo:.4f}   true={true_combo:.4f}")
 ```
 
-During the growth phase — where nearly every measurement sits — glucose is saturating, so
+During the growth phase (where nearly every measurement sits), glucose is saturating, so
 `sigma ≈ 1` and the product rate collapses to `q_product ≈ alpha·mu_max + beta`: a single
 number. The data constrains *that combination* tightly; it says almost nothing about how
 much of it comes from `alpha` versus `beta` individually. Two different splits that sum to
 the same combination fit equally well, so the optimizer finds whichever split its
-initialisation happened to favour — this is a textbook **structural identifiability**
+initialisation happened to favour: this is a textbook **structural identifiability**
 problem, not an optimizer failure.
 
 `Ks` is a milder version of the same story: `demo_batch` never lingers at low, resolving
-glucose concentrations — the culture consumes it and moves on — so there is little data
+glucose concentrations (the culture consumes it and moves on) so there is little data
 constraining exactly where the saturation curve bends.
 
 This is the actual, practical argument for structured rate laws over an MLP: an MLP would
 have absorbed this same ambiguity invisibly, inside weights with no physical meaning. Here
 it is visible, in a number you can name, and you know exactly which two experiments would
-resolve it — a longer low-glucose tail for `Ks`, a run with product measured *after*
+resolve it: a longer low-glucose tail for `Ks`, a run with product measured *after*
 growth stops for `alpha`/`beta`.
 
 ## Gotchas
@@ -166,16 +176,16 @@ growth stops for `alpha`/`beta`.
 - **Positivity via `log`, not `clip`.** A `jnp.clip` on a rate is a dead gradient region;
   the log-parameterisation has none.
 - **Multiple valid initializations exist.** Try a few seeds if a parameter estimate looks
-  implausible — you may be seeing one identifiability trade-off rather than a wrong fit.
+  implausible: you may be seeing one identifiability trade-off rather than a wrong fit.
 - **Adding a state that *is* well constrained resolves the ambiguity.** If DO or another
   process variable independently informs the split, adding it as a modeled PV changes the
   identifiability picture.
 
 ## See also
 
-- [The reaction module](../train/reaction_module.md) — the general SCL/RAW contract this
+- [The reaction module](../train/reaction_module.md): the general SCL/RAW contract this
   module follows.
-- [Tutorial 4](../tutorials/04_your_first_custom_py.md) — the MLP version of the same
+- [Tutorial 4](../tutorials/04_your_first_custom_py.md): the MLP version of the same
   problem, for comparison.
-- [Dense losses](dense_loss.md) — bounds and smoothness as an alternative way to encode
+- [Dense losses](dense_loss.md): bounds and smoothness as an alternative way to encode
   what you know about the biology.

@@ -12,7 +12,7 @@ The two packages form one stack:
 - **bp-train** consumes those structures and adds the training machinery: it lets you
   plug a neural / mechanistic **reaction module** and a **loss module** in via `custom.py`
   hooks and runs the prepare → train → forward / loo pipeline on JAX + Diffrax + optax.
-  bp-train never re-derives layout — `RhsOde` is the single source of truth for axis
+  bp-train never re-derives layout: `RhsOde` is the single source of truth for axis
   names and ordering.
 
 ---
@@ -53,15 +53,15 @@ separates static (non-differentiable) fields from dynamic (array) leaves.
 ### 1. Hierarchical data model
 
 Bioprocess experiments are organized in a three-level hierarchy. The top-level
-artifact — one file on disk — is either a strict `CaseStudy` or a loose
+artifact (one file on disk) is either a strict `CaseStudy` or a loose
 `BioProcessCollection`:
 
 ```
-CaseStudy             (one publication / experimental campaign — strict metadata)
+CaseStudy             (one publication / experimental campaign: strict metadata)
   -> BioProcess       (one experimental run)
     -> Components      (reactor medium, volume, process variables)
 
-BioProcessCollection  (raw / intermediate processes — no strict metadata)
+BioProcessCollection  (raw / intermediate processes: no strict metadata)
   -> BioProcess
     -> Components
 ```
@@ -75,7 +75,7 @@ BioProcessCollection  (raw / intermediate processes — no strict metadata)
 - **BioProcess** is a single fermentation run: time axis, volume operations, reactor
   medium concentrations, and process variables.
 - **Components** within a process are organized by physical role: `ReactorMedium`
-  (concentration time series — biomass, substrates, products), `Volume` (all
+  (concentration time series: biomass, substrates, products), `Volume` (all
   volume-change operations), and `ProcessVariable` (non-concentration signals: pH,
   temperature, dissolved oxygen, off-gas).
 
@@ -107,7 +107,7 @@ arrays, and optionally carries fitted spline coefficients (`breaks`, `coeffs`,
 `segment_start_piece_idx`) for continuous-time interpolation.
 
 `TimeSeries` itself is agnostic about whether its data represents continuous or discrete
-quantities — that semantic is set by the parent object (e.g., a `VolumeChange` with
+quantities, that semantic is set by the parent object (e.g., a `VolumeChange` with
 `is_continuous=True` uses it for a continuous flow profile; `is_continuous=False` means
 discrete event data such as bolus feeds or sampling, where fitting splines is not
 meaningful).
@@ -120,7 +120,7 @@ longer meaningful.
 
 **Why power-basis storage (not B-spline basis)?** Power-basis polynomials
 `c[0]*h^3 + c[1]*h^2 + c[2]*h + c[3]` (with `h = t - t_break`) evaluate with Horner's
-method in a few multiply-adds — simple, fast, and clean to vectorize in JAX. B-spline
+method in a few multiply-adds: simple, fast, and clean to vectorize in JAX. B-spline
 basis evaluation requires recursive knot-vector lookups that are harder to vectorize.
 
 ### 4. Pseudobatch normalization
@@ -128,7 +128,7 @@ basis evaluation requires recursive knot-vector lookups that are harder to vecto
 Fed-batch processes change volume over time, so observed concentrations are affected by
 dilution in addition to biological activity. The **pseudobatch transform**
 (Hesselberg-Thomsen et al., 2024) converts measured concentrations `c(t)` to
-pseudo-concentrations `c*(t)` — what concentrations *would have been* in a batch process
+pseudo-concentrations `c*(t)`: what concentrations *would have been* in a batch process
 with the same biological activity:
 
 ```
@@ -172,7 +172,7 @@ bp-train consumes the data structures and mechanistic RHS from bp-format and add
 
 Neural-ODE training is numerically fragile when state magnitudes span orders of magnitude
 (biomass ~g/L, volume ~L, cumulative feed ~L). bp-train integrates the ODE in **scaled
-space (SCL)** so every axis is O(1) — keeping gradients well-conditioned — then converts
+space (SCL)** so every axis is O(1) (keeping gradients well-conditioned) then converts
 to **physical space (RAW)** only where the chemistry needs real units.
 
 Scaling is a single linear factor per semantic axis (13 `SCALE_*` axes on
@@ -186,7 +186,7 @@ SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumula
 Because scaling is linear, the same factor converts a value and its time-derivative
 (`d(x/k)/dt = (dx/dt)/k`), so `scale_*` / `unscale_*` work for states and rates alike.
 **Single source of truth:** every `SCALE_*` vector lives on the `UserReactionModule`
-(frozen fields); the wrapper, trainer, and loss module all read them there — scales are
+(frozen fields); the wrapper, trainer, and loss module all read them there: scales are
 never duplicated onto inputs.
 
 ### 3. Bounded physical-state solve
@@ -200,7 +200,7 @@ with explicit event jumps keeps the adjoint well-behaved.
 ### 4. One shared ODE solve feeds both reaction and loss
 
 Each sample is solved **once**. The solver saves states/rates at the measurement times
-(and, when a loss module opts in, at a dense grid — see
+(and, when a loss module opts in, at a dense grid: see
 [the loss module](../train/loss_module.md)). The reaction module
 produces rates *inside* that solve; the loss module reads the saved outputs *after* it.
 Adding dense save points costs extra `SaveAt` evaluations, not extra solver steps.
@@ -212,7 +212,7 @@ What gets optimized is declared with field metadata, not a partition function:
 `frozen_field()` marks them frozen; **untagged array leaves default to frozen**.
 `partition_trainable(module)` splits any module (including the whole wrapper) into
 `(trainable, static)` pytrees, with the rule *first explicit tag on the path wins*. This
-is the single mechanism — no per-module override. The loss module is partitioned by the
+is the single mechanism: no per-module override. The loss module is partitioned by the
 same rule, so trainable loss parameters (e.g. Kendall uncertainty weights) are optimized
 alongside the reaction module. For sub-field control (e.g. freezing some MLP layers), use
 the `build_optimizer` hook with `optax.masked` / `optax.multi_transform`.
@@ -231,14 +231,14 @@ on stiff neural-ODE problems. For weighted-sum behavior, scale individual terms 
 ### 7. Discrete events as differentiable state jumps
 
 Boluses and samples are applied at their known event times as **discrete, differentiable
-state jumps** — not continuous ramps in the RHS. The bounded solve (§3) runs as a sequence
+state jumps** (not continuous ramps in the RHS. The bounded solve (§3) runs as a sequence
 of segment solves with jumps applied *between* segments via `diffrax_callbacks`
 (`PresetTimeCallback`), so the adjoint stays standard and correct (gradient through a
 preset jump matches the analytic value to ~9 digits). At a coincident timestamp the jump
 is ordered **sample first** (well-mixed removal: concentrations unchanged, volume drops)
 **then bolus** (dilute from the post-sample volume and add the fed mass). Loss is sampled
 only at measurement timestamps, so a measurement strictly before a bolus is unaffected by
-it. Continuous controlled feeds are not events — they are piecewise-linear signals
+it. Continuous controlled feeds are not events) they are piecewise-linear signals
 evaluated inside the RHS at each `t`.
 
 ### 8. Trainable-partition-only serialization

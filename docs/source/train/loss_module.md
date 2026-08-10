@@ -3,7 +3,7 @@
 > **In one sentence.** Turns one solved trajectory into a dict of **named** scalar losses,
 > whose **mean** is what gets differentiated.
 >
-> **You need this if** plain MSE on every target is not what you want — weighting,
+> **You need this if** plain MSE on every target is not what you want: weighting,
 > penalties, physical constraints. **You can skip it if** it is.
 
 ## What it is
@@ -26,14 +26,14 @@ class MyLossModule(UserLossModule):
 ```
 
 `loss_names` is declared up front and `__call__` must return **exactly** those keys, in
-that order. Mismatch is a hard error — the names are what label the plot panels and the
+that order. Mismatch is a hard error: the names are what label the plot panels and the
 metrics columns, so they cannot vary between steps.
 
 ## The hook
 
 **Fires:** at training setup, last.
 **Signature:** `(*, target_names, process_names, config, seed, collection) -> UserLossModule`
-**Default:** `DefaultLossModule` — one MSE term per measured target.
+**Default:** `DefaultLossModule`: one MSE term per measured target.
 **Type-checked:** yes.
 
 ## Mean, not sum
@@ -42,7 +42,7 @@ The total loss for backprop is `mean(named_losses.values())`.
 
 This is deliberate and it matters. bp-train clips the **raw** gradient before Adam, so
 with a sum, adding a loss term scales the gradient by the term count, pushes it past the
-clip threshold, and — because the clip sits before Adam — holds the step size large near
+clip threshold, and (because the clip sits before Adam) holds the step size large near
 the optimum. On a stiff neural ODE that overshoots and diverges.
 
 With a mean, a `grad_clip_norm` you tuned once keeps behaving the same as you add terms.
@@ -74,7 +74,7 @@ sparsely measured species is not diluted by padding rows.
 
 ## What you get in `LossInputs`
 
-Predictions arrive in **both** SCL and RAW space — the conversion is a cheap elementwise
+Predictions arrive in **both** SCL and RAW space: the conversion is a cheap elementwise
 broadcast, so you pick whichever the term needs. Fit residuals belong in SCL, where
 targets are comparable; physical penalties belong in RAW, where the units mean something.
 
@@ -85,8 +85,8 @@ targets are comparable; physical penalties belong in RAW, where the units mean s
 | `SCL_states` / `RAW_states` | Full trajectories. |
 | `SCL_modeled_BiologicalOde_rates` / `RAW_…` | The rates over time. |
 | `SCL_V` / `RAW_V` | Volume. |
-| `mask_measured` | `(n_meas, n_target)` — is this cell a real measurement? |
-| `mask_measured_any` | `(n_meas,)` float — is this *row* real? Multiply trajectory-wide penalties by it. |
+| `mask_measured` | `(n_meas, n_target)`: is this cell a real measurement? |
+| `mask_measured_any` | `(n_meas,)` float: is this *row* real? Multiply trajectory-wide penalties by it. |
 | `t_measured`, `n_measured` | Times, and the unpadded row count. |
 | `reaction_module` | The scales, via `inputs.reaction_module.SCALE_*`. |
 | `step` | Training step, or −1 outside training. For annealing. |
@@ -111,7 +111,7 @@ multiply by `mask_measured_any`.
 
 :::{admonition} `penalty * mask` is safe
 :class: note
-If a solve bailed partway — a stiff segment hitting the step cap — every point past the
+If a solve bailed partway (a stiff segment hitting the step cap) every point past the
 failure is masked out *before* `LossInputs` is built, and the trajectory values carry a
 finite fallback rather than `inf`/`nan`. So the `penalty * mask` idiom cannot produce
 `0 * inf`. Dense penalties are the exception: gate those by `dense_valid_time`.
@@ -127,7 +127,7 @@ def __call__(self, inputs):
         inputs.mask_measured, inputs.SCL_target_measured, 0.0)
     fit = self.residual_reduction(residual, inputs.mask_measured)
 
-    # Concentrations must not go negative — in RAW space, where it means something.
+    # Concentrations must not go negative: in RAW space, where it means something.
     below = jnp.clip(-inputs.RAW_states, a_min=0.0)
     hinge = jnp.mean(jnp.square(below) * inputs.mask_measured_any[:, None])
 
@@ -161,13 +161,13 @@ def dense_grid_n(self):
     return 200
 ```
 
-This is how you penalise behaviour *between* measurements — smoothness, curvature, bounds
+This is how you penalise behaviour *between* measurements: smoothness, curvature, bounds
 across the whole trajectory.
 
 :::{admonition} Dense points are cheap, but not free
 :class: note
 A dense time is **not** a segment boundary. The solve still splits only at bolus and
-sample events and reads the grid off `SaveAt` inside each segment — interpolation, not
+sample events and reads the grid off `SaveAt` inside each segment: interpolation, not
 extra solver steps. So a finer grid does not subdivide the integration or change which
 samples bail. It does cost one interpolant evaluation per point per segment, and the
 `dense_*` arrays are real arrays in the loss.
@@ -190,7 +190,7 @@ See [Gallery: dense losses](../gallery/dense_loss.md).
 
 ## See also
 
-- [The reaction module](reaction_module.md) — the other half.
-- [Gallery: dense losses](../gallery/dense_loss.md) — a full custom loss.
-- [Design rationale](../under_the_hood/design_rationale.md) — the mean-versus-sum argument.
+- [The reaction module](reaction_module.md): the other half.
+- [Gallery: dense losses](../gallery/dense_loss.md): a full custom loss.
+- [Design rationale](../under_the_hood/design_rationale.md): the mean-versus-sum argument.
 - [API reference](../autoapi/bp_train/model_api/index).

@@ -90,10 +90,10 @@ def get_custom_config(raw_custom, config):
     return MyConfig(**raw_custom)
 ```
 
-**`CONFIG` / `get_config()`** — a module-level dict, or a function returning one, merged
+**`CONFIG` / `get_config()`**: a module-level dict, or a function returning one, merged
 into the config. `get_config()` wins if both exist.
 
-**`dense_grid_n`** is a *property on your loss module*, not a hook — but it behaves like
+**`dense_grid_n`** is a *property on your loss module*, not a hook, but it behaves like
 an extension point: declaring it makes the trainer populate every `dense_*` field on
 `LossInputs`. See [The loss module](loss_module.md#the-dense-grid).
 
@@ -137,7 +137,7 @@ def build_reaction_module(*, seed, **kwargs):
                     **{k: v for k, v in kwargs.items() if k.startswith("SCALE_")})
 
 def estimate_all_scales(collection, target_names, config):
-    ...   # see the Scaling page — this one is worth writing properly
+    ...   # see the Scaling page: this one is worth writing properly
 ```
 
 A runnable version, with the scale hook filled in, is in
@@ -154,7 +154,7 @@ A runnable version, with the scale hook filled in, is in
 
 ## See also
 
-- [Configuration](config.md) — how `custom_py` and `custom` are wired in.
+- [Configuration](config.md): how `custom_py` and `custom` are wired in.
 - [The reaction module](reaction_module.md) · [Scaling](scaling.md) ·
-  [The loss module](loss_module.md) — the hooks that do the work.
+  [The loss module](loss_module.md): the hooks that do the work.
 - [Silent failures](../troubleshooting/silent_failures.md).

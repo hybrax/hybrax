@@ -3,7 +3,7 @@
 > **In one sentence.** Where the exhaustive reference and the real example projects live.
 
 These docs cover concepts, runnable examples and gotchas, and stop before the
-field-by-field tables — because those change, and two places to look is one too many.
+field-by-field tables, because those change, and two places to look is one too many.
 
 ## The three layers
 
@@ -22,7 +22,7 @@ In `bp-train/documentation/`:
 
 | File | Covers |
 |---|---|
-| `01_design_rationale.md` | SCL/RAW, the shared solve, field-tag partitioning, mean aggregation — at length. |
+| `01_design_rationale.md` | SCL/RAW, the shared solve, field-tag partitioning, mean aggregation: at length. |
 | `02_cli_and_config.md` | Every subcommand flag, the full run-config schema, the complete hooks reference. |
 | `03_data_preparation.md` | Prepare internals, scale-axis table, SCL state and control layout, target selection. |
 | `04_reaction_and_loss.md` | Every `ReactionInputs` / `LossInputs` field, the default modules, dense-grid losses. |
@@ -32,14 +32,14 @@ In `bp-train/documentation/`:
 :::{admonition} `specs/` is not documentation
 :class: warning
 Its own README says so: it holds plans, some never built, several predating the current
-API. Two are genuinely good background — `pseudo_diagnosis.md` on why the pseudobatch
+API. Two are genuinely good background: `pseudo_diagnosis.md` on why the pseudobatch
 solve was replaced by the bounded physical solve, and `two_tier_integration_grid.md` on
 the dense-grid benchmark. Read those for *rationale*, never for behaviour.
 :::
 
 ## Example projects
 
-`bp-train/examples/` — real configs, real `custom.py` files, committed outputs.
+`bp-train/examples/`: real configs, real `custom.py` files, committed outputs.
 
 | Example | Worth reading for |
 |---|---|
@@ -50,10 +50,10 @@ the dense-grid benchmark. Read those for *rationale*, never for behaviour.
 | **`11_tub_2026/fba_hyb/`** | A bounds-hinge loss on a real dataset. |
 | **`12_martens_2025_expanded/vanilla/`** | Learning-rate schedules, and a three-line `get_custom_config`. |
 
-Several have committed `.log` files next to their run scripts — real console output,
+Several have committed `.log` files next to their run scripts: real console output,
 useful as "what you should see".
 
-`bp-train/tests/fixtures/martens_single/` is the smallest complete fixture — config,
+`bp-train/tests/fixtures/martens_single/` is the smallest complete fixture: config,
 `custom.py` and data that run prepare → train → forward. It makes a good blank-project
 template.
 
@@ -66,13 +66,13 @@ the top-level `custom.py`.
 
 ## Background
 
-- **JAX** — autodiff and JIT. **Equinox** — the module system; `eqx.Module`, `filter_jit`,
-  `tree_at`. **Diffrax** — the ODE solver and adjoint. **optax** — optimizers, schedules,
+- **JAX**: autodiff and JIT. **Equinox**: the module system; `eqx.Module`, `filter_jit`,
+  `tree_at`. **Diffrax**: the ODE solver and adjoint. **optax**: optimizers, schedules,
   `masked` / `multi_transform`.
 - `bp-train/diffrax_callbacks/` has three standalone runnable scripts for the discrete-event
   layer, if you want to understand how bolus and sample jumps are applied.
 
 ## See also
 
-- [bp-format guide](../format/index.md) — the other half of the stack.
+- [bp-format guide](../format/index.md): the other half of the stack.
 - [Design rationale](../under_the_hood/design_rationale.md).

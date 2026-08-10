@@ -14,12 +14,12 @@ here is the design working. Search this page for a fragment of your message.
 
 Raised when you construct a `BioProcess`.
 
-**Why.** Auto-generated dynamics use *specific* rates — per unit biomass — so there has to
+**Why.** Auto-generated dynamics use *specific* rates (per unit biomass) so there has to
 be a biomass to be specific to. The lookup is case-insensitive on the component name.
 
 **Fix.** Either name your biomass component `biomass`, or write
-[`biological_ode`](../format/mechanistic_ode.md#writing-your-own) yourself. A dataset with
-no biomass at all — a chemical process, an abiotic control — needs the explicit form.
+[`biological_ode`](../format/bioprocess_ode.md#writing-your-own) yourself. A dataset with
+no biomass at all (a chemical process, an abiotic control) needs the explicit form.
 
 ### `Provide discrete samples and/or spline representation`
 
@@ -67,7 +67,7 @@ into separate streams. See [Limits and gotchas](../format/limits_and_gotchas.md)
 **Why.** The same name used as both a state and a rate has no unambiguous slot in the
 layout; a cycle in `algebraic` cannot be evaluated.
 
-**Fix.** Rename. See [The mechanistic ODE](../format/mechanistic_ode.md).
+**Fix.** Rename. See [The Bioprocess ODE](../format/bioprocess_ode.md).
 
 ## Validation reports (these do not raise)
 
@@ -76,10 +76,10 @@ layout; a cycle in `algebraic` cannot be evaluated.
 | Report | Meaning | Fix |
 |---|---|---|
 | volume change sign | A feed has negative values, or a sample positive | Flip the sign, or the type |
-| feed medium missing species | A reactor species has no declared feed concentration | Declare it — including `StaticVariable(0.0)` |
+| feed medium missing species | A reactor species has no declared feed concentration | Declare it, including `StaticVariable(0.0)` |
 | measurement / sampling alignment | A measurement is timestamped just *after* its own sample draw | Usually rounding in the export; move it to the sample time |
 | missing derivative | A dynamic state has no `derivatives` entry | Add one; write `"0"` if it has no biological dynamics |
-| additive unit mismatch | `biomass - product` with different units | Make units consistent — they are strings, never converted |
+| additive unit mismatch | `biomass - product` with different units | Make units consistent: they are strings, never converted |
 
 `validate_process` **does** raise `TypeError` if handed something that is not a
 `BioProcess`. That is a programming error, not a data-quality one.
@@ -95,7 +95,7 @@ the first time point.
 
 **Fix**, in the message itself:
 
-- supply a t₀ measurement — often you *know* it, from the medium recipe;
+- supply a t₀ measurement: often you *know* it, from the medium recipe;
 - represent the quantity as a `StaticVariable` if it genuinely does not vary;
 - drop it from the targets.
 
@@ -108,7 +108,7 @@ Real datasets frequently start offline sampling at t = 1 h. Either backfill t = 
 typo is fatal rather than ignored.
 
 **Fix.** Check spelling against [Configuration](../train/config.md). Note that a section
-belonging to *another command* — a `prepare` block in a train config — is ignored rather
+belonging to *another command* (a `prepare` block in a train config) is ignored rather
 than rejected; that is not this error.
 
 ### `batch_size` greater than the number of processes
@@ -146,7 +146,7 @@ There is no default.
 
 ### An offset was rejected on a rate axis
 
-**Why.** Rate scaling must be a pure multiplication — that is what makes one factor work
+**Why.** Rate scaling must be a pure multiplication, that is what makes one factor work
 for both a value and its derivative.
 
 **Fix.** Use a `LinearScaler` (or a bare array) for `SCALE_*_rates`. Affine scaling is for
@@ -154,7 +154,7 @@ value axes. See [Scaling](../train/scaling.md).
 
 ### `FileNotFoundError` on `custom.py`
 
-**Why.** `custom_py` points at a file that is not there — remembering that config paths
+**Why.** `custom_py` points at a file that is not there: remembering that config paths
 resolve relative to *the config file*.
 
 **Fix.** Check the path. Note the asymmetry: a missing *file* raises; a missing *hook
@@ -165,7 +165,7 @@ inside* the file is silent.
 Not one error, but the common cluster.
 
 1. Raise `solver.max_steps` (default 2048).
-2. Check `grad_norm_curve.png` — if it is pinned at `grad_clip_norm`, your step size is
+2. Check `grad_norm_curve.png`, if it is pinned at `grad_clip_norm`, your step size is
    not what you think.
 3. **Suspect scaling before anything else.** Most apparent stiffness on these problems is
    an axis four orders of magnitude away from the others. See [Scaling](../train/scaling.md).
@@ -184,7 +184,7 @@ launch parallel `bp-train` commands from a shell loop.
 
 **Why.** Dilution divides by volume. Rather than producing infinities, the solve aborts.
 
-**Fix.** Usually a volume description that removes more than it adds — check
+**Fix.** Usually a volume description that removes more than it adds: check
 `validate_volume_consistency`.
 
 ### `|ADF| ≤ 1e-12`
@@ -209,5 +209,5 @@ are on `bp.serialization`, not the root.
 
 ## See also
 
-- [Silent failures](silent_failures.md) — no exception, wrong answer.
-- [Limits and gotchas](../format/limits_and_gotchas.md) — what is simply not implemented.
+- [Silent failures](silent_failures.md): no exception, wrong answer.
+- [Limits and gotchas](../format/limits_and_gotchas.md): what is simply not implemented.

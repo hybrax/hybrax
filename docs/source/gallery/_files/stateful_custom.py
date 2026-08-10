@@ -1,6 +1,6 @@
 """A stateful reaction module: a continuous-time LSTM.
 
-Every reaction module so far has been memoryless — its rates depend only on
+Every reaction module so far has been memoryless: its rates depend only on
 the CURRENT state. A stateful module (``n_latent > 0``) adds its own hidden
 state, integrated as extra ODE dimensions alongside the physical ones, so the
 rates can depend on the process's recent history too.
@@ -56,7 +56,7 @@ class LSTMReactionModule(UserReactionModule):
         # latent toward the cell's one-step target, rather than the discrete
         # jump an LSTM normally takes. At convergence h tracks h_new.
         latent_derivative = jnp.concatenate([h_new, c_new]) - inputs.SCL_latent
-        # Read out from h (not h_new) — the CURRENT hidden state, consistent
+        # Read out from h (not h_new): the CURRENT hidden state, consistent
         # with every other input the reaction module receives at time t.
         readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs])
         return ReactionOutputs(

@@ -19,7 +19,7 @@ kernelspec:
 > handed you a bp-format file.
 
 This is the one genuinely manual step in the whole stack, and it is worth doing
-carefully — everything downstream is derived from what you write here. We build the
+carefully: everything downstream is derived from what you write here. We build the
 simplest possible thing: a **batch** run with three measured species and no volume
 changes at all. Feeds, boluses and sampling come later, in the
 [gallery](../gallery/fed_batch.md).
@@ -71,14 +71,14 @@ biomass
 Two rules worth knowing now:
 
 - `times` must be **strictly increasing**.
-- A `TimeSeries` needs discrete samples, or a fitted spline, or both — but not neither.
+- A `TimeSeries` needs discrete samples, or a fitted spline, or both, but not neither.
 
 For a quantity that genuinely does not change, use `bp.StaticVariable(value)` instead.
 
 ## Step 2: species become reactor medium components
 
 The **reactor medium** is what is in the vessel. Each component carries its own unit,
-because bp-format never converts units for you — it only checks that you were
+because bp-format never converts units for you: it only checks that you were
 consistent.
 
 ```{code-cell} ipython3
@@ -107,7 +107,7 @@ list(reactor_medium.components)
 :::{admonition} `bounds` are metadata, not constraints
 :class: note
 Nothing in bp-format or the ODE solver enforces bounds. They are recorded so downstream
-consumers — bp-train's loss module, for instance — can build soft penalties from them.
+consumers (bp-train's loss module, for instance) can build soft penalties from them.
 :::
 
 ## Step 3: the clock and the vessel
@@ -123,13 +123,13 @@ time_axis = bp.TimeAxis(
 volume = bp.Volume(initial_volume=1.0, unit="L")   # batch: nothing moves volume
 ```
 
-`time_reference` is what makes runs from different sources alignable — "t = 0 is
+`time_reference` is what makes runs from different sources alignable: "t = 0 is
 inoculation" and "t = 0 is first feed" are different clocks, and later you will want to
 know which one you had.
 
 `Volume` with no `volume_changes` is a true batch. Note what this claims: no feeds, no
 boluses, **and no sampling volume**. That is a real assertion about the experiment. If
-your samples removed a non-negligible volume, say so — see
+your samples removed a non-negligible volume, say so: see
 [Volume, feeds and events](../format/volume_feeds_events.md).
 
 ## Step 4: assemble the run
@@ -160,10 +160,10 @@ Each species gets a specific rate `q_<species>`, and its derivative is
 
 :::{admonition} This is why a component must be called `biomass`
 :class: warning
-Auto-generation makes every rate *specific* — per unit biomass — so it needs to know
+Auto-generation makes every rate *specific* (per unit biomass) so it needs to know
 which component the biomass is. Without one, constructing the `BioProcess` raises
 immediately. If your data has no biomass, or you want different dynamics, write
-`biological_ode` yourself: [The mechanistic ODE](../format/mechanistic_ode.md).
+`biological_ode` yourself: [The Bioprocess ODE](../format/bioprocess_ode.md).
 :::
 
 ## Step 5: group and save
@@ -175,7 +175,7 @@ for cross-validation later.
 case_study = bp.CaseStudy(
     case_id="my_first_dataset",
     organism="Escherichia coli",
-    citation="Simulated data — tutorial only.",
+    citation="Simulated data: tutorial only.",
     processes={"run_1": process},
 )
 
@@ -208,9 +208,9 @@ print("first 3 X   :", np.asarray(run.reactor_medium.components["biomass"].conce
 
 ## What's next
 
-- **[Tutorial 2](02_look_at_it.md)** — check that the package understood your data the
+- **[Tutorial 2](02_look_at_it.md)**: check that the package understood your data the
   way you meant it.
 - Measuring something that is not a concentration (pH, DO, off-gas)? That is a
-  **process variable** — [The data model](../format/data_model.md).
+  **process variable**: [The data model](../format/data_model.md).
 - Fed-batch? [Volume, feeds and events](../format/volume_feeds_events.md), then
   [Gallery: fed-batch](../gallery/fed_batch.md).

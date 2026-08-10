@@ -4,7 +4,7 @@
 > what it does.
 >
 > **You need this if** something you expected to work does not. **You can skip it if**
-> nothing is surprising you yet — but the first section is worth knowing before you
+> nothing is surprising you yet, but the first section is worth knowing before you
 > design a dataset around an assumption that does not hold.
 
 ## Not implemented
@@ -20,7 +20,7 @@ them, you need to know now rather than halfway through.
 | **Rate inversion** | There is no facility for computing rates analytically from measured concentrations. Rates come from a model. |
 | **Unit conversion** | Units are free-form strings. Nothing is parsed and nothing is converted. |
 
-The last one deserves emphasis: units are used for exactly two checks — that quantities
+The last one deserves emphasis: units are used for exactly two checks, that quantities
 you *add* in a `biological_ode` expression share a unit, and that processes in a case
 study agree. `"g/L"` and `"g/l"` are different strings. Pick one spelling.
 
@@ -39,16 +39,16 @@ alternative.
 
 **When the process ordering is built**
 
-- A **`StaticVariable` process variable with `is_controlled=False`** — a state with no
+- A **`StaticVariable` process variable with `is_controlled=False`**: a state with no
   time axis cannot be integrated.
 - A **`FeedVolumeChange` with no `feed_medium`**.
 - A **feed naming a species not in `reactor_medium.components`**.
-- **Name collisions across groups** — the same name used as both a state and a rate.
+- **Name collisions across groups**: the same name used as both a state and a rate.
 - **Cyclic `algebraic` dependencies.**
 
 **During a solve**
 
-- **Reactor volume at or below `1e-10`** — dilution divides by `V`, so this aborts rather
+- **Reactor volume at or below `1e-10`**: dilution divides by `V`, so this aborts rather
   than producing infinities.
 - **`|ADF| ≤ 1e-12`** in the pseudobatch machinery, for the same reason.
 
@@ -73,7 +73,7 @@ numbers.
 - **Pseudobatch on unfitted control traces.** If continuous-feed `TimeSeries` carry no
   spline, the transform ends up with roughly one polynomial piece per raw sample. On a
   densely logged online trace that is tens of thousands of pieces and seconds per
-  species. Fit the control splines first — it is about a hundredfold difference.
+  species. Fit the control splines first: it is about a hundredfold difference.
 
 ## API surprises
 
@@ -93,7 +93,7 @@ numbers.
 
 ## See also
 
-- [Errors](../troubleshooting/errors.md) — message-to-fix index.
-- [Silent failures](../troubleshooting/silent_failures.md) — the bp-train equivalent of
+- [Errors](../troubleshooting/errors.md): message-to-fix index.
+- [Silent failures](../troubleshooting/silent_failures.md): the bp-train equivalent of
   this page's middle section.
-- [Further reading](further_reading.md) — where the exhaustive reference lives.
+- [Further reading](further_reading.md), where the exhaustive reference lives.

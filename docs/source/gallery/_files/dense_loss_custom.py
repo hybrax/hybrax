@@ -1,6 +1,6 @@
 """A loss module that constrains the trajectory BETWEEN measurements.
 
-Builds on the reaction module and scale estimation from Tutorial 4 — those two
+Builds on the reaction module and scale estimation from Tutorial 4: those two
 hooks are unchanged. This file adds three more things, all evaluated on a
 dense grid rather than only at the sparse measurement times:
 
@@ -35,7 +35,7 @@ from bp_train.defaults import DefaultLossModule
 
 
 # --------------------------------------------------------------------------
-# 1 & 2. Reaction module and scale estimation — identical to Tutorial 4.
+# 1 & 2. Reaction module and scale estimation: identical to Tutorial 4.
 # --------------------------------------------------------------------------
 class BatchReactionModule(UserReactionModule):
     mlp: eqx.nn.MLP = trainable_field()

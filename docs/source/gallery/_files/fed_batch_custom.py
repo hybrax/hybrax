@@ -2,7 +2,7 @@
 
 Unlike the batch tutorials, this process has a continuous feed, two boluses, a
 controlled process variable (dissolved oxygen), and sampling events. None of
-that changes how you write the reaction module in principle — but the module
+that changes how you write the reaction module in principle, but the module
 now has real inputs beyond the state, and the scale hook has real controlled
 axes to estimate.
 """
@@ -39,7 +39,7 @@ class FedBatchModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         # The feed rate and DO are real biological inputs here, not just
-        # transport bookkeeping — the model is allowed to respond to them.
+        # transport bookkeeping: the model is allowed to respond to them.
         features = jnp.concatenate([
             inputs.SCL_modeled_RMCs,
             inputs.SCL_controlled_FVCs_rates,
@@ -58,7 +58,7 @@ def build_reaction_module(*, seed, **kwargs):
 
 def estimate_all_scales(collection, target_names, config, *, controls_store):
     """Note the 4th argument: declaring `controls_store` is what makes
-    bp-train pass it. Needed here because — unlike the batch tutorials —
+    bp-train pass it. Needed here because (unlike the batch tutorials)
     there is a real controlled feed and a real controlled PV to scale."""
     del target_names, config
     processes = list(collection.processes.values())

@@ -40,7 +40,7 @@ The two halves have different jobs, and keeping both is the point:
   whatever `t` it lands on, and re-interpolating at every step would be both slow and
   non-differentiable in the way JAX needs.
 
-A `TimeSeries` may be spline-only — that happens in pseudobatch workflows where the
+A `TimeSeries` may be spline-only, that happens in pseudobatch workflows where the
 original samples no longer mean anything on their own.
 
 ### Evaluating
@@ -64,7 +64,7 @@ print("spline at t=3:", float(fitted.evaluate(3.0)))
 ```
 
 `smoothing_s=0.0` interpolates exactly; larger values smooth. For **controlled** signals
-— a noisy pump trace, an online pH — smoothing is usually what you want, because you are
+ (a noisy pump trace, an online pH) smoothing is usually what you want, because you are
 going to differentiate the result and noise differentiates badly.
 
 :::{admonition} Why power-basis polynomials
@@ -87,7 +87,7 @@ accepts them via `boundaries=`.
 
 ## The pseudobatch transform
 
-In a fed-batch run a measured concentration moves for two reasons — the cells did
+In a fed-batch run a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The pseudobatch transform removes the second.
 
 ```
@@ -120,7 +120,7 @@ because that is what the cells are actually doing to it.
 Three uses:
 
 1. **Smoother curves**, so cubic splines fit better.
-2. **Comparability** — batch and fed-batch runs become directly comparable.
+2. **Comparability**: batch and fed-batch runs become directly comparable.
 3. **Segmentation** at bolus discontinuities becomes meaningful.
 
 :::{admonition} The transform mutates, and also returns
@@ -142,7 +142,7 @@ a hundredfold difference in wall time.
 ### Going back
 
 `build_backtransform_spline(process, species)` returns a `BacktransformSpline` that maps
-`c*` back to real concentration — including the derivative, via the quotient rule — and
+`c*` back to real concentration (including the derivative, via the quotient rule) and
 is JIT-safe, so a model can be trained in pseudobatch space and evaluated in physical
 space.
 
@@ -167,7 +167,7 @@ does this correctly; it matters if you build your own.
 
 ## See also
 
-- [Volume, feeds and events](volume_feeds_events.md) — where the dilution comes from.
-- [Gallery: fed-batch](../gallery/fed_batch.md) — the transform on a real process.
+- [Volume, feeds and events](volume_feeds_events.md): where the dilution comes from.
+- [Gallery: fed-batch](../gallery/fed_batch.md): the transform on a real process.
 - [API reference](../autoapi/bp_format/splines/index).
 - Hesselberg-Thomsen et al. (2024) for the pseudobatch method itself.

@@ -1,7 +1,7 @@
 # Saving, loading and predicting
 
 > **In one sentence.** Only the trainable parameters are saved; everything else is rebuilt
-> — which is what makes run directories portable, and what makes one loading function
+>, which is what makes run directories portable, and what makes one loading function
 > dangerous.
 >
 > **You need this if** you are reloading models, resuming runs, or moving results between
@@ -9,8 +9,7 @@
 
 ## What is on disk
 
-`save_model` writes **only the trainable partition** to `params.eqx`. The static half —
-the controls store, the assembled `RhsOde`, the index tables, every `SCALE_*` — is
+`save_model` writes **only the trainable partition** to `params.eqx`. The static half (the controls store, the assembled `RhsOde`, the index tables, every `SCALE_*`) is
 **always rebuilt** at load time from the `prepared.json.gz` and `custom.py` bundled
 alongside.
 
@@ -54,7 +53,7 @@ want, essentially always.
 
 There is a second entry point, `model_reload`, which reuses an existing static half rather
 than rebuilding from a directory. Point it at a *different* dataset and it will load the
-trained weights into a **different scaled space** — the model was fitted with one set of
+trained weights into a **different scaled space**: the model was fitted with one set of
 `SCALE_*` values and is now evaluated under another.
 
 There is no exception, no shape error and no `NaN`. The predictions are simply wrong, and
@@ -78,7 +77,7 @@ export.t, export.c_species, export.q_rates, export.v_real, export.auxiliary
 'CaseStudy' object has no attribute 'metadata'`.
 
 **`model_predict` does not re-estimate scales.** The CLI `forward` path does. That
-difference is deliberate but easy to trip over — see
+difference is deliberate but easy to trip over: see
 [Forward](forward.md) and [Silent failures](../troubleshooting/silent_failures.md).
 
 ## Resuming training
@@ -91,7 +90,7 @@ optimizer's momentum intact rather than restarting cold. Checkpoint frequency:
 ```
 
 Because each checkpoint is self-contained, it re-exports predictions and re-writes the
-bundled data. On a fast run that can dominate the wall clock — set `every` coarse enough
+bundled data. On a fast run that can dominate the wall clock: set `every` coarse enough
 that checkpointing is not the bottleneck.
 
 For LOO, resuming is a first-class command: `bp-train loo --resume RUN_DIR` re-runs only
@@ -100,7 +99,7 @@ the folds that never finished. See [Cross-validation](loo.md).
 ## Provenance
 
 Runs record content hashes and environment versions alongside the config. Given a result,
-you can tell which data and which code produced it — worth checking before you conclude
+you can tell which data and which code produced it: worth checking before you conclude
 that two runs disagree, because most of the time they were not run on the same thing.
 
 ## Inspection
@@ -116,7 +115,7 @@ never move. Run the second whenever you are about to index into a state or rate 
 ## Gotchas
 
 - **A run directory without its `custom.py` cannot be loaded.** Reconstruction needs it.
-- **Checkpoint directories work anywhere a run directory does** — including as `models`
+- **Checkpoint directories work anywhere a run directory does**: including as `models`
   entries for `forward`.
 - **Loading resolves paths in a fixed order**, preferring the directory's own bundled
   data. That is what makes a copied directory work.
@@ -124,9 +123,9 @@ never move. Run the second whenever you are about to index into a state or rate 
 
 ## See also
 
-- [Tutorial 5](../tutorials/05_predict.md) — the walkthrough.
-- [Forward](forward.md) — the CLI path.
-- [Silent failures](../troubleshooting/silent_failures.md) — the `model_reload` hazard in
+- [Tutorial 5](../tutorials/05_predict.md): the walkthrough.
+- [Forward](forward.md): the CLI path.
+- [Silent failures](../troubleshooting/silent_failures.md): the `model_reload` hazard in
   context.
-- [Design rationale](../under_the_hood/design_rationale.md) — why only the trainable
+- [Design rationale](../under_the_hood/design_rationale.md): why only the trainable
   partition is saved.

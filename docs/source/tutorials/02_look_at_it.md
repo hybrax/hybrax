@@ -36,7 +36,7 @@ process = case_study.processes["run_1"]
 
 ## 1. Validate
 
-`validate_process` returns `(ok, messages)` and — importantly — **collects every issue
+`validate_process` returns `(ok, messages)` and (importantly) **collects every issue
 in one pass** rather than raising on the first one. You get a full report, not a
 whack-a-mole session.
 
@@ -47,7 +47,7 @@ for line in messages:
     print(" ", line)
 ```
 
-Across a whole case study, `validate_case_study` adds cross-process checks — that every
+Across a whole case study, `validate_case_study` adds cross-process checks, that every
 run has the same structure, so a model trained on one can be applied to another:
 
 ```{code-cell} ipython3
@@ -61,7 +61,7 @@ The checks that catch real bugs most often:
 | Check | The bug it catches |
 |---|---|
 | volume change sign | A feed recorded as negative, or a sample as positive. |
-| feed medium covers all species | A feed whose composition omits a reactor species — "absent" confused with "unrecorded". |
+| feed medium covers all species | A feed whose composition omits a reactor species: "absent" confused with "unrecorded". |
 | measurement / sampling alignment | An offline measurement timestamped just *after* its own sample draw, which corrupts every dilution correction built on it. |
 | biomass present | Auto-generated dynamics need a biomass component. |
 | additive unit consistency | `biomass - product` where one is `g/L` and the other `mg/L`. |
@@ -93,7 +93,7 @@ your description means what you think.
 bp.print_rhs_ode(process)
 ```
 
-Read it as two halves. The **biological** half is what a model will predict — here the
+Read it as two halves. The **biological** half is what a model will predict: here the
 three `q_*` rates. The **physical** half is what bp-format already wrote for you: feed
 inflow, dilution, sample outflow, volume dynamics. In a batch run the physical half is
 nearly empty, which is exactly why batch is the right place to start.
@@ -104,13 +104,13 @@ feed metadata is wrong.
 
 ## What you learned
 
-- Validation is non-raising and exhaustive — run it, read all of it.
+- Validation is non-raising and exhaustive: run it, read all of it.
 - `print_rhs_ode` shows the boundary between "what you must model" and "what is already
   handled".
 - Four calls, before any training: validate, print, plot, print the ODE.
 
 ## What's next
 
-- **[Tutorial 3](03_train.md)** — train a model on this dataset.
+- **[Tutorial 3](03_train.md)**: train a model on this dataset.
 - A check failed? [Errors](../troubleshooting/errors.md).
 - More on these tools: [Validating and inspecting](../format/validate_and_inspect.md).

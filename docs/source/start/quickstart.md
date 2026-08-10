@@ -12,7 +12,7 @@ kernelspec:
 
 # Quickstart
 
-> **In one sentence.** Three commands, two small config files, no Python — train a
+> **In one sentence.** Three commands, two small config files, no Python: train a
 > hybrid model on a dataset that ships with these docs and look at what came out.
 >
 > **You need this if** you have never run bp-train. **You can skip it if** you already
@@ -57,7 +57,7 @@ def tail(text, n=6, match=None):
 
 These docs ship a simulated case study, `demo_batch`: **three batch runs** of *E. coli*
 on glucose, each with offline measurements of biomass, glucose and product roughly every
-hour for 14 hours. No feeds, no boluses, no sampling volume — the simplest thing that is
+hour for 14 hours. No feeds, no boluses, no sampling volume: the simplest thing that is
 still a real bioprocess.
 
 It is one file:
@@ -73,7 +73,7 @@ print("runs    :", list(raw["processes"]))
 p = raw["processes"]["run_1"]
 print("run_1 measures:", list(p["reactor_medium"]["components"]))
 print("run_1 volume   :", p["volume"]["initial_volume"], p["volume"]["unit"],
-      "— no volume changes")
+      ": no volume changes")
 ```
 
 Everything below assumes that file is in your working directory.
@@ -132,7 +132,7 @@ tail(bp_train("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=3)
 ```
 
-`prepare` reads your bp-format file and writes a **prepared artifact** — the dataset
+`prepare` reads your bp-format file and writes a **prepared artifact**: the dataset
 plus everything derived from it that training needs: the control splines, the state and
 control layout, which measured quantities are the fit targets. Training never touches
 the raw file again, so a prepared artifact is a reproducible starting point.
@@ -154,7 +154,7 @@ tail(out, n=1, match="training complete")
 ```
 
 That is a hybrid ODE model: bp-format supplies the mass balance, and a small neural
-network — the default reaction module — supplies the three specific rates
+network (the default reaction module) supplies the three specific rates
 `q_biomass`, `q_glucose`, `q_product`. You did not choose the network, the loss, or the
 optimizer; every one of those is a default you can replace later.
 
@@ -188,7 +188,7 @@ Image(filename=str(WORK / "run/forward/run_1.png"))
 ```
 
 Left column: measurements (dots) against the integrated trajectory (line), with R² per
-target. Right column: the specific rates the network learned — these were never measured,
+target. Right column: the specific rates the network learned. These were never measured,
 they are what the model inferred.
 
 That right column is the payoff. The data was simulated with a maximum specific growth
@@ -221,7 +221,7 @@ for path in sorted((WORK / "run").rglob("*")):
 | `config.json`, `custom.py` | Exactly what was run. Every run directory is self-contained. |
 | `metrics.csv` | Per-epoch loss and gradient norm. |
 | `loss_curve.png`, `grad_norm_curve.png` | The same, plotted. |
-| `model/params.eqx` | The trained parameters — only the trainable ones. |
+| `model/params.eqx` | The trained parameters: only the trainable ones. |
 | `predictions.csv` | Dense trajectories and rates, at the end of training. |
 | `<run>.png` | One panel figure per process. |
 | `forward/` | The output of step 4. |
@@ -233,7 +233,7 @@ for path in sorted((WORK / "run").rglob("*")):
 
 This run used every default: a generic MLP for the rates, mean-squared error for the
 loss, **and no scaling at all**. It fits this small, well-behaved dataset anyway. On real
-data the scaling in particular matters a great deal — see
+data the scaling in particular matters a great deal: see
 [Tutorial 4](../tutorials/04_your_first_custom_py.md).
 :::
 

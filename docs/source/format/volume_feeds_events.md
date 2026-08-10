@@ -16,7 +16,7 @@ kernelspec:
 > rather than a state or a control.
 >
 > **You need this if** your process is not a pure batch. **You can skip it if** nothing
-> entered or left the vessel — but read the last section anyway, because sampling counts.
+> entered or left the vessel, but read the last section anyway, because sampling counts.
 
 This is where most real datasets go wrong, and where bp-format saves you the most work.
 
@@ -55,7 +55,7 @@ for name, vc in process.volume.volume_changes.items():
 
 Two rules that catch most import bugs:
 
-**Volume changes are stored in the volume unit — litres, kilograms — never as a rate.**
+**Volume changes are stored in the volume unit (litres, kilograms) never as a rate.**
 A continuous feed is the *cumulative* volume delivered; bp-format differentiates it to
 get the flow. If your control software exported a flow rate, integrate it first.
 
@@ -89,7 +89,7 @@ for name, comp in medium.components.items():
 :::{admonition} State every reactor species, including the zeros
 :class: warning
 
-A species missing from a feed medium is **ambiguous** — it could mean genuinely absent,
+A species missing from a feed medium is **ambiguous**: it could mean genuinely absent,
 or simply not recorded. bp-format will not guess, and `validate_volume_change_states`
 flags it.
 
@@ -111,7 +111,7 @@ Every offline measurement came from a physical sample, and every physical sample
 volume. If you have offline data, you had sample draws.
 
 A sample is a **well-mixed removal**: amount and volume drop together, so concentrations
-are *unchanged* at the instant of sampling. What changes is everything afterwards — a
+are *unchanged* at the instant of sampling. What changes is everything afterwards: a
 smaller vessel dilutes differently.
 
 Two things to get right:
@@ -127,8 +127,8 @@ Recording them as absent is defensible; recording them as `0.0` asserts somethin
 
 ## Event ordering at a shared timestamp
 
-When a sample and a bolus share a timestamp — which happens constantly, because you
-sample then feed — the order is fixed:
+When a sample and a bolus share a timestamp (which happens constantly, because you
+sample then feed) the order is fixed:
 
 1. **Sample first.** The offline row describes the pre-feed reactor state.
 2. **Bolus second.** It dilutes from the post-sample volume, then adds its mass.
@@ -154,8 +154,8 @@ volume you actually measured localises the error to one stream immediately.
 
 The strongest test available, and it costs nothing: set every biological rate to zero and
 integrate. With no biology, concentrations may only change through feed composition,
-dilution and sampling. If something moves that shouldn't — or a `c*` trace jumps at a pure
-sampling event — the volume accounting is wrong, and you have found it before fitting
+dilution and sampling. If something moves that shouldn't (or a `c*` trace jumps at a pure
+sampling event) the volume accounting is wrong, and you have found it before fitting
 anything.
 
 ## Gotchas
@@ -164,14 +164,14 @@ anything.
   implies negative flow.
 - **A `FeedVolumeChange` with no `feed_medium`** raises when the process ordering is
   built.
-- **A feed naming a species that is not in `reactor_medium.components`** also raises —
+- **A feed naming a species that is not in `reactor_medium.components`** also raises: 
   bp-format will not invent a state for it.
 - **Modeled feeds exist.** `is_controlled=False` on a feed means the *model* predicts the
   flow rate. That is an advanced case; see [the reaction module](../train/reaction_module.md).
 
 ## See also
 
-- [Gallery: fed-batch](../gallery/fed_batch.md) — all of this in one worked example.
-- [Time series and splines](time_series_and_splines.md) — the pseudobatch transform,
+- [Gallery: fed-batch](../gallery/fed_batch.md): all of this in one worked example.
+- [Time series and splines](time_series_and_splines.md): the pseudobatch transform,
   which exists precisely because of dilution.
-- [The mechanistic ODE](mechanistic_ode.md) — the terms generated from this description.
+- [The Bioprocess ODE](bioprocess_ode.md): the terms generated from this description.

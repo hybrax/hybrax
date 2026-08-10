@@ -37,7 +37,7 @@ class MonodModule(UserReactionModule):
     def __init__(self, *, i_biomass, i_glucose, **scale_kwargs):
         super().__init__(**scale_kwargs)
         self.i_biomass, self.i_glucose = i_biomass, i_glucose
-        # Deliberately mediocre starting guesses — the point is that they move.
+        # Deliberately mediocre starting guesses: the point is that they move.
         self.log_mu_max = jnp.log(jnp.asarray(0.20))
         self.log_Ks = jnp.log(jnp.asarray(0.50))
         self.log_Yxs = jnp.log(jnp.asarray(0.30))

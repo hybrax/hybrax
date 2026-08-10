@@ -31,8 +31,8 @@ print(case_study.case_id, "-", list(case_study.processes))
 
 | Function | For |
 |---|---|
-| `save_case_study(cs, path)` / `load_case_study(path)` | `CaseStudy` — a finished dataset |
-| `save_process_collection(coll, path)` / `load_process_collection(path)` | `BioProcessCollection` — raw or intermediate |
+| `save_case_study(cs, path)` / `load_case_study(path)` | `CaseStudy`: a finished dataset |
+| `save_process_collection(coll, path)` / `load_process_collection(path)` | `BioProcessCollection`: raw or intermediate |
 
 Loading is strict about *which* container is in the file: a `CaseStudy` file has
 `case_id` / `organism` / `citation` at the top level, a collection has `metadata`.
@@ -47,7 +47,7 @@ bp.serialization.load_case_study("datasets/kittler_2022")        # → .../data.
 bp.serialization.load_case_study("datasets/kittler_2022/data.json.gz")
 ```
 
-Gzip is decided by the `.gz` suffix. For anything above a few megabytes it is worth it —
+Gzip is decided by the `.gz` suffix. For anything above a few megabytes it is worth it: 
 these files are mostly numbers and compress by an order of magnitude.
 
 ## The on-disk shape
@@ -101,10 +101,10 @@ Absent and defaulted: `process_variables`, `volume_changes`, `biological_ode`,
 
 Rejected outright:
 
-- a `volume_changes` entry with no `"type"` — feed and sample cannot be guessed;
+- a `volume_changes` entry with no `"type"`: feed and sample cannot be guessed;
 - a partially written `pseudobatch_transform`;
 - legacy payloads that no longer exist, such as a stray `interpolator` sibling;
-- a component whose concentration is already the pseudobatch-transformed `c*` — the
+- a component whose concentration is already the pseudobatch-transformed `c*`: the
   loader will not accept a transformed carrier where a raw one belongs.
 
 That last one is the fail-fast design principle in action: silently accepting `c*` as if
@@ -168,11 +168,11 @@ print("values identical:", np.array_equal(np.asarray(before.values),
 - **Saving does not validate.** Call [`validate_process`](validate_and_inspect.md)
   yourself; nothing stops you writing a file with a sign-flipped feed.
 - **Fitted splines are saved too.** A `TimeSeries` that carries spline coefficients
-  round-trips with them, which is what makes a prepared dataset reproducible — and also
+  round-trips with them, which is what makes a prepared dataset reproducible, and also
   what makes files bigger than you expect.
 
 ## See also
 
-- [The data model](data_model.md) — what the JSON is a picture of.
-- [Validating and inspecting](validate_and_inspect.md) — do this after loading.
+- [The data model](data_model.md): what the JSON is a picture of.
+- [Validating and inspecting](validate_and_inspect.md): do this after loading.
 - [API reference](../autoapi/bp_format/serialization/index).

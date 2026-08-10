@@ -16,7 +16,7 @@ kernelspec:
 > description, and turns it into a differentiable ODE right-hand side.
 >
 > **You need this if** you are getting data in, or want to know what the package derived
-> from it. **You can skip it if** you only ever consume datasets someone else built —
+> from it. **You can skip it if** you only ever consume datasets someone else built, 
 > though [Validating and inspecting](validate_and_inspect.md) is still worth ten minutes.
 
 bp-format does **not** train models and does **not** integrate ODEs. It owns the
@@ -24,18 +24,11 @@ description and the physics; solving is [bp-train](../train/index.md)'s job.
 
 ## What it gives you
 
-```
-your description                    what bp-format derives from it
-─────────────────                   ──────────────────────────────
-reactor medium      ┐
-volume + feeds      ├──► ProcessOrdering   canonical name/index layout
-process variables   │    ControlSplines    controlled inputs, evaluable at any t
-biological ODE      ┘    RhsOde            dc/dt = biology + transport
-                         pseudobatch       dilution-corrected concentrations c*
-```
+<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your description (reactor medium, volume and feeds, process variables, biological ODE) feeds into what bp-format derives: ProcessOrdering, ControlSplines, RhsOde, pseudobatch.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your description (reactor medium, volume and feeds, process variables, biological ODE) feeds into what bp-format derives: ProcessOrdering, ControlSplines, RhsOde, pseudobatch.">
 
 You write the left column once. The right column is generated, and is the single source
-of truth for layout everywhere downstream — bp-train never re-derives it.
+of truth for layout everywhere downstream: bp-train never re-derives it.
 
 ## The pages
 
@@ -46,7 +39,7 @@ of truth for layout everywhere downstream — bp-train never re-derives it.
 | [Validating and inspecting](validate_and_inspect.md) | Always. Before modeling anything. |
 | [Volume, feeds and events](volume_feeds_events.md) | Your process is not a pure batch. |
 | [Time series and splines](time_series_and_splines.md) | You need continuous interpolation, or fed-batch dilution correction. |
-| [The mechanistic ODE](mechanistic_ode.md) | You want to see or change the assembled equations. |
+| [The Bioprocess ODE](bioprocess_ode.md) | You want to see or change the assembled equations. |
 | [Limits and gotchas](limits_and_gotchas.md) | Something you expected to work does not. |
 | [Further reading](further_reading.md) | You want the exhaustive reference. |
 
@@ -89,7 +82,7 @@ not what you meant.
 **Import as `bp`.** Every dataclass is re-exported from the package root
 (`bp.BioProcess`, `bp.TimeSeries`, …). Functions are grouped on module handles instead:
 `bp.serialization.*`, `bp.validate.*`, `bp.mechanistic.*`, `bp.splines.*`. The
-inspection helpers are the exception — `bp.plot_process` and friends are on the root.
+inspection helpers are the exception: `bp.plot_process` and friends are on the root.
 
 **Amounts, not concentrations, are what conserve.** bp-format tracks concentrations
 because that is what you measure, but every transport term it generates is derived from
@@ -97,6 +90,6 @@ an amount balance. When something looks wrong, check the volume first.
 
 ## See also
 
-- [Concepts and vocabulary](../start/concepts.md) — if any term above was unfamiliar.
-- [Tutorial 1](../tutorials/01_your_first_dataset.md) — the same material as a walkthrough.
-- [API reference](../autoapi/bp_format/index) — every signature.
+- [Concepts and vocabulary](../start/concepts.md), if any term above was unfamiliar.
+- [Tutorial 1](../tutorials/01_your_first_dataset.md): the same material as a walkthrough.
+- [API reference](../autoapi/bp_format/index): every signature.
