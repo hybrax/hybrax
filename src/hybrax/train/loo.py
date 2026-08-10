@@ -1119,14 +1119,15 @@ def run_loo_cv(
             parallel,
         )
     if resume:
-        pending = []
-        for fold, record in zip(folds, metadata.folds, strict=True):
+        complete = tuple(
+            _fold_complete(output_dir / "folds" / fold.slug, metadata.identity, record)
+            for fold, record in zip(folds, metadata.folds, strict=True)
+        )
+        pending = [fold for fold, done in zip(folds, complete, strict=True) if not done]
+        for fold in pending:
             fold_dir = output_dir / "folds" / fold.slug
-            if _fold_complete(fold_dir, metadata.identity, record):
-                continue
             if fold_dir.exists():
                 shutil.rmtree(fold_dir)
-            pending.append(fold)
         logger.info(
             "LOO resume: %d/%d fold(s) already complete, running %d remaining",
             n_folds - len(pending),

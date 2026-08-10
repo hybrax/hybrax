@@ -24,6 +24,7 @@ from .harness import (
 )
 from .loo import (
     _dispatch_producer,
+    _runtime_metadata,
     _validated_runtime_metadata,
     execute_trained_fold,
     prepare_single_fold_from_runtime_artifact,
@@ -881,11 +882,21 @@ def _handle_loo(args: argparse.Namespace) -> int:
                 resume_dir,
             )
             return 1
+        config_json = resume_dir / "config.json"
+        if not config_json.is_file():
+            log.error(
+                "loo --resume: %s has no config.json; initialization did not "
+                "complete, use --overwrite to replace it",
+                resume_dir,
+            )
+            return 1
         loaded = load_loo_config(bundle)
         cfg = loaded.config
         if cfg.data is None:
             raise ValueError("LOO run dir config is missing a data section")
-        config_json = resume_dir / "config.json"
+        # Validate before the first status write so a rejected resume leaves the
+        # run record untouched; run_loo_cv revalidates from the same manifest.
+        _runtime_metadata(resume_dir, bundle_path=bundle, custom_path=cfg.custom_py)
         update_json(config_json, status="running", resumed_at=_now_iso())
         try:
             result = run_loo_cv(

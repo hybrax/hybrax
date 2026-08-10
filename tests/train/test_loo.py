@@ -984,6 +984,47 @@ def test_fold_complete_reruns_interrupted_records(tmp_path, status, runtime, los
     assert not loo_mod._fold_complete(fold_dir, metadata.identity, record)
 
 
+def test_run_loo_cv_resume_validates_all_folds_before_deleting(monkeypatch, tmp_path):
+    metadata = _runtime_metadata(_three_parent_collection())
+    _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
+    first, second = metadata.folds[:2]
+    first_dir = tmp_path / "folds" / first.slug
+    first_dir.mkdir(parents=True)
+    sentinel = first_dir / "sentinel"
+    sentinel.write_text("keep", encoding="utf-8")
+    second_dir = tmp_path / "folds" / second.slug
+    second_dir.mkdir()
+    (second_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "status": "complete",
+                **loo_mod._fold_runtime_metadata("sha256:other", second.idx),
+            }
+        ),
+        encoding="utf-8",
+    )
+    (second_dir / "losses.csv").write_text("loss", encoding="utf-8")
+    monkeypatch.setattr(
+        loo_mod,
+        "_dispatch_pool",
+        lambda *_args: pytest.fail("workers dispatched after invalid completion"),
+    )
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(epochs=2, seed=10),
+    )
+
+    with pytest.raises(ValueError, match="does not match manifest"):
+        run_loo_cv(
+            cfg=cfg,
+            config_path=tmp_path / "loo-config.json",
+            output_dir=tmp_path,
+            resume=True,
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
 def _patch_dispatch(monkeypatch) -> dict[str, Any]:
     """Replace the subprocess pool with a stub-fold writer (no real training)."""
     seen: dict[str, Any] = {}
@@ -1584,6 +1625,11 @@ def test_loo_cli_resume_does_not_load_collection(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         cli,
+        "_runtime_metadata",
+        lambda *_a, **_kw: (run_dir / "runtime-artifact", None),
+    )
+    monkeypatch.setattr(
+        cli,
         "run_loo_cv",
         lambda **kwargs: LOOResult(
             fold_dirs=(),
@@ -1596,6 +1642,16 @@ def test_loo_cli_resume_does_not_load_collection(monkeypatch, tmp_path):
     )
 
     assert cli.main(["loo", "--resume", str(run_dir)]) == 0
+
+
+def test_loo_cli_resume_rejects_uninitialized_run_dir(caplog, tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_min_config(run_dir / "loo-config.json")
+
+    assert cli.main(["loo", "--resume", str(run_dir)]) == 1
+    assert "initialization did not complete" in caplog.text
+    assert "--overwrite" in caplog.text
 
 
 def test_loo_cli_rejects_config_and_resume_together(tmp_path):
