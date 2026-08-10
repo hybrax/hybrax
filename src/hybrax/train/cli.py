@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
 import time
@@ -23,12 +24,14 @@ from .harness import (
 )
 from .loo import (
     _dispatch_producer,
+    _validated_runtime_metadata,
     execute_trained_fold,
     prepare_single_fold_from_runtime_artifact,
     produce_runtime_artifact,
     run_loo_cv,
     train_prepared_fold,
 )
+from .runtime_artifact import FORMAT_VERSION
 from .postprocessing import (
     aggregate_dense_exports,
     export_predictions_csv,
@@ -47,11 +50,10 @@ from .run_config import (
 )
 from .serialization import (
     content_hash,
-    dumps_json,
     environment_versions as _environment_versions,
     read_run_config_json,
     run_config_to_jsonable,
-    update_run_config_status,
+    update_json,
     write_json,
 )
 
@@ -222,7 +224,7 @@ def _build_parser() -> argparse.ArgumentParser:
     loo_parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Allow re-running into a LOO output dir that already completed.",
+        help="Replace an existing LOO output directory.",
     )
     internal_loo_mode = loo_parser.add_mutually_exclusive_group()
     internal_loo_mode.add_argument(
@@ -305,13 +307,21 @@ def _write_train_results(
     )
 
 
-def _apply_train_cli_overrides(cfg: RunConfig, args: argparse.Namespace) -> RunConfig:
+def _apply_train_cli_overrides(
+    cfg: RunConfig,
+    args: argparse.Namespace,
+    *,
+    resolve_output_symlinks: bool = True,
+) -> RunConfig:
     """Apply the few CLI flags that override the config file (CLI wins)."""
     updates: dict[str, Any] = {}
     if args.output_dir is not None:
-        updates["output"] = cfg.output.model_copy(
-            update={"dir": Path(args.output_dir).resolve()}
-        )
+        output_dir = Path(args.output_dir)
+        if resolve_output_symlinks:
+            output_dir = output_dir.resolve()
+        else:
+            output_dir = Path(os.path.abspath(output_dir))
+        updates["output"] = cfg.output.model_copy(update={"dir": output_dir})
     if getattr(args, "plot", True) is False:  # --no-plot
         base = updates.get("output", cfg.output)
         updates["output"] = base.model_copy(update={"plots": False})
@@ -326,6 +336,9 @@ def _clear_output_dir_for_overwrite(
     input_paths: tuple[str | Path | None, ...],
 ) -> None:
     """Remove an old run without deleting inputs needed by the new run."""
+    if output_dir.is_symlink():
+        output_dir.unlink()
+        return
     root = output_dir.resolve()
     nested_inputs = [
         Path(path)
@@ -360,7 +373,7 @@ def _finalize_run_dir(run_dir: Path, result: Any, config_json: Path) -> None:
     final_mean = (
         float(result.mean_loss_by_step[-1]) if result.mean_loss_by_step else None
     )
-    update_run_config_status(
+    update_json(
         config_json,
         status="complete",
         finished_at=_now_iso(),
@@ -458,7 +471,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             plot_sources=prepared.plot_sources,
         )
     except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
-        update_run_config_status(
+        update_json(
             config_json,
             status="failed",
             error={"type": type(exc).__name__, "message": str(exc)},
@@ -822,7 +835,9 @@ def _handle_loo(args: argparse.Namespace) -> int:
             log.error("internal LOO modes require --config and cannot resume")
             return 1
         loaded = load_loo_config(args.config)
-        cfg = _apply_train_cli_overrides(loaded.config, args)
+        cfg = _apply_train_cli_overrides(
+            loaded.config, args, resolve_output_symlinks=False
+        )
         if cfg.data is None:
             raise ValueError("LOO command requires a data config section")
         output_dir = Path(cfg.output.dir)
@@ -871,7 +886,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
         if cfg.data is None:
             raise ValueError("LOO run dir config is missing a data section")
         config_json = resume_dir / "config.json"
-        update_run_config_status(config_json, status="running", resumed_at=_now_iso())
+        update_json(config_json, status="running", resumed_at=_now_iso())
         try:
             result = run_loo_cv(
                 cfg=cfg,
@@ -880,14 +895,14 @@ def _handle_loo(args: argparse.Namespace) -> int:
                 resume=True,
             )
         except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
-            update_run_config_status(
+            update_json(
                 config_json,
                 status="failed",
                 error={"type": type(exc).__name__, "message": str(exc)},
                 finished_at=_now_iso(),
             )
             raise
-        update_run_config_status(
+        update_json(
             config_json,
             status="complete",
             finished_at=_now_iso(),
@@ -908,32 +923,29 @@ def _handle_loo(args: argparse.Namespace) -> int:
         return 1
 
     loaded = load_loo_config(args.config)
-    cfg = _apply_train_cli_overrides(loaded.config, args)
+    cfg = _apply_train_cli_overrides(loaded.config, args, resolve_output_symlinks=False)
     if cfg.data is None:
         raise ValueError("loo command requires a data config section")
     output_dir = Path(cfg.output.dir)
 
     config_json = output_dir / "config.json"
-    if config_json.is_file():
-        try:
-            _, prior = read_run_config_json(config_json)
-        except Exception:  # noqa: BLE001 - treat unparsable as overwritable
-            prior = {}
-        if prior.get("status") == "complete" and not args.overwrite:
-            log.error(
-                "LOO output dir %s already holds a completed run; pass "
-                "--overwrite to re-run (or --resume to continue)",
-                output_dir,
-            )
-            return 1
-
     if args.overwrite:
         _clear_output_dir_for_overwrite(
             output_dir,
             input_paths=(args.config, cfg.data.prepared, cfg.custom_py),
         )
+        if output_dir.exists():
+            output_dir.rmdir()
+    try:
+        output_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        log.error(
+            "LOO output dir %s already exists; pass --overwrite to replace it "
+            "or --resume to continue it",
+            output_dir,
+        )
+        return 1
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     bundle_path = _bundle_loo_run_dir(
         raw_config_path=args.config, cfg=cfg, output_dir=output_dir
     )
@@ -959,19 +971,33 @@ def _handle_loo(args: argparse.Namespace) -> int:
         },
         "environment": _environment_versions(),
     }
-    write_json(config_json, document)
-
     try:
         producer_rc = _dispatch_producer(bundle_path, output_dir)
         if producer_rc != 0:
             raise RuntimeError(f"LOO runtime producer failed: exit {producer_rc}")
+        metadata = _validated_runtime_metadata(
+            output_dir / "runtime-artifact",
+            bundle_path=bundle_path,
+            custom_path=bundled_cfg.custom_py,
+        )
+        document["runtime_artifact"] = {
+            "format_version": FORMAT_VERSION,
+            "identity": metadata.identity,
+        }
+        write_json(config_json, document)
+    except Exception:
+        if not config_json.exists():
+            shutil.rmtree(output_dir / "runtime-artifact", ignore_errors=True)
+        raise
+
+    try:
         result = run_loo_cv(
             cfg=bundled_cfg,
             config_path=bundle_path,
             output_dir=output_dir,
         )
     except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
-        update_run_config_status(
+        update_json(
             config_json,
             status="failed",
             error={"type": type(exc).__name__, "message": str(exc)},
@@ -979,7 +1005,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
         )
         raise
 
-    update_run_config_status(
+    update_json(
         config_json,
         status="complete",
         finished_at=_now_iso(),
@@ -1029,7 +1055,7 @@ def _bundle_loo_run_dir(
     raw.setdefault("output", {})["dir"] = "."
 
     bundle_path = output_dir / "loo-config.json"
-    bundle_path.write_text(dumps_json(raw, indent=2) + "\n", encoding="utf-8")
+    write_json(bundle_path, raw)
     return bundle_path
 
 

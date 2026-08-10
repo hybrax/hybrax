@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
+import stat
 
 import equinox as eqx
 import jax
@@ -144,6 +146,128 @@ def test_write_json_emits_valid_json_and_preserves_finite_values(tmp_path: Path)
         "finite": 1.25,
         "values": [None, None, None],
     }
+
+
+def test_write_json_atomically_replaces_document(monkeypatch, tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('{"old": true}', encoding="utf-8")
+    replaced = []
+    real_replace = serialization.os.replace
+
+    def record_replace(source, destination):
+        replaced.append((Path(source), Path(destination)))
+        assert Path(source).parent == path.parent
+        assert Path(destination) == path
+        real_replace(source, destination)
+
+    monkeypatch.setattr(serialization.os, "replace", record_replace)
+
+    serialization.write_json(path, {"new": True})
+
+    assert json.loads(path.read_text()) == {"new": True}
+    assert len(replaced) == 1
+    assert not replaced[0][0].exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+def test_write_json_new_file_honors_umask(tmp_path: Path):
+    path = tmp_path / "config.json"
+    previous_umask = os.umask(0o027)
+    try:
+        serialization.write_json(path, {"new": True})
+    finally:
+        os.umask(previous_umask)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+def test_write_json_replacement_preserves_mode(tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('{"old": true}', encoding="utf-8")
+    path.chmod(0o664)
+
+    serialization.write_json(path, {"new": True})
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o664
+
+
+def test_write_json_dump_failure_preserves_old_document(monkeypatch, tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('{"old": true}', encoding="utf-8")
+
+    def fail_dump(*_args, **_kwargs):
+        raise OSError("dump failed")
+
+    monkeypatch.setattr(serialization.json, "dump", fail_dump)
+
+    with pytest.raises(OSError, match="dump failed"):
+        serialization.write_json(path, {"new": True})
+
+    assert path.read_text() == '{"old": true}'
+    assert list(tmp_path.glob(".config.json.*.tmp")) == []
+
+
+def test_write_json_cleanup_failure_preserves_write_error(monkeypatch, tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('{"old": true}', encoding="utf-8")
+
+    def fail_dump(*_args, **_kwargs):
+        raise ValueError("write failed")
+
+    def fail_cleanup(*_args, **_kwargs):
+        raise PermissionError("cleanup failed")
+
+    monkeypatch.setattr(serialization.json, "dump", fail_dump)
+    monkeypatch.setattr(Path, "unlink", fail_cleanup)
+
+    with pytest.raises(ValueError, match="write failed"):
+        serialization.write_json(path, {"new": True})
+
+    assert path.read_text() == '{"old": true}'
+
+
+def test_write_json_replace_failure_preserves_old_document(monkeypatch, tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('{"old": true}', encoding="utf-8")
+    monkeypatch.setattr(
+        serialization.os,
+        "replace",
+        lambda *_args: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+
+    with pytest.raises(OSError, match="replace failed"):
+        serialization.write_json(path, {"new": True})
+
+    assert path.read_text() == '{"old": true}'
+    assert list(tmp_path.glob(".config.json.*.tmp")) == []
+
+
+def test_update_json_is_shallow_and_preserves_other_fields(tmp_path: Path):
+    path = tmp_path / "config.json"
+    serialization.write_json(
+        path,
+        {"status": "running", "nested": {"keep": 1, "replace": 2}, "other": 3},
+    )
+
+    result = serialization.update_json(
+        path, status="complete", nested={"replacement": 4}
+    )
+
+    assert result == {
+        "status": "complete",
+        "nested": {"replacement": 4},
+        "other": 3,
+    }
+    assert serialization.read_json(path) == result
+
+
+def test_update_json_requires_existing_object(tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected a JSON object"):
+        serialization.update_json(path, status="complete")
 
 
 def test_read_json_accepts_whole_line_comments(tmp_path: Path):

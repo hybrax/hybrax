@@ -174,17 +174,19 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
   Fold workers load only this strict, collection-free artifact; they do not load
   prepared JSON or estimate scales. The internal producer/worker CLI modes are
   implementation details, not user-facing commands.
-- **Self-contained run dir**: the orchestrator writes true copies of `custom.py`
-  and the prepared artifact into `<output_dir>/` plus a loadable
-  `loo-config.json` with paths relative to the run dir. It also writes atomic
-  `loo-runtime.json`, binding the bundled-config/custom-hook fingerprint,
-  prepared-content hash, runtime-artifact identity, format version, and resolved
-  fold records. Editing or moving the source tree mid-run cannot desync workers.
+- **Self-contained run dir**: a fresh run atomically claims a nonexistent exact
+  `<output_dir>`; an existing directory requires `--overwrite` or `--resume`.
+  The orchestrator writes true copies of `custom.py` and the prepared artifact
+  plus a loadable `loo-config.json` with paths relative to the run dir. After the
+  producer publishes and validates the runtime artifact, top-level `config.json`
+  is atomically published with the expected artifact format and identity. The
+  manifest is authoritative for runtime inputs and resolved folds. Editing or
+  moving the source tree mid-run cannot desync workers.
 - **Resume** (`--resume <run_dir>`): reloads the bundled `loo-config.json`
   verbatim (no overrides — `parallel_folds` etc. come from the run dir), validates
-  `loo-runtime.json` and the runtime artifact, and re-runs only folds with no
-  matching completed record (`config.json` status, runtime identity, and
-  `losses.csv`), then re-aggregates.
+  the top-level artifact anchor and manifest, and re-runs folds with missing or
+  incomplete completion records. A present malformed or mismatched per-fold
+  artifact-identity/fold-ID binding fails loudly before that fold is deleted.
 - **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
   `checkpoints/`, `trained_wrapper.eqx`, `losses.csv`, predictions, plots).

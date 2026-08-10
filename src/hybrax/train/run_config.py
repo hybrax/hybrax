@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -307,7 +308,11 @@ def load_run_config(config_path: str | Path, *, command: _Command) -> LoadedRunC
     view = _command_view(raw, command=command)
     config = RunConfig.model_validate(view)
     _validate_required_sections(config, command=command)
-    config = _resolve_config_paths(config, base_dir=base_dir)
+    config = _resolve_config_paths(
+        config,
+        base_dir=base_dir,
+        resolve_output_symlinks=command != "loo",
+    )
 
     custom_module, custom_py_sha256 = _load_custom_module_and_hash(config.custom_py)
     resolved_custom = _resolve_custom(raw_custom, config, custom_module)
@@ -349,7 +354,12 @@ def _command_view(
     return view
 
 
-def _resolve_config_paths(config: RunConfig, *, base_dir: Path) -> RunConfig:
+def _resolve_config_paths(
+    config: RunConfig,
+    *,
+    base_dir: Path,
+    resolve_output_symlinks: bool,
+) -> RunConfig:
     updates: dict[str, Any] = {}
     if config.custom_py is not None:
         updates["custom_py"] = _resolve_path(config.custom_py, base_dir=base_dir)
@@ -370,9 +380,14 @@ def _resolve_config_paths(config: RunConfig, *, base_dir: Path) -> RunConfig:
                 )
             }
         )
-    updates["output"] = config.output.model_copy(
-        update={"dir": _resolve_path(config.output.dir, base_dir=base_dir)}
-    )
+    if resolve_output_symlinks:
+        output_dir = _resolve_path(config.output.dir, base_dir=base_dir)
+    else:
+        output_dir = config.output.dir
+        if not output_dir.is_absolute():
+            output_dir = base_dir / output_dir
+        output_dir = Path(os.path.abspath(output_dir))
+    updates["output"] = config.output.model_copy(update={"dir": output_dir})
     if not updates:
         return config
     return config.model_copy(update=updates)

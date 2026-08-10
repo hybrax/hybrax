@@ -126,7 +126,7 @@ load only that artifact, never the prepared collection.
 | `--config` | Run config JSON (train schema + a `loo` section). Required unless `--resume`. |
 | `--resume` | Continue an interrupted run from its output dir; reloads the bundled `loo-config.json` verbatim and re-runs only folds without a matching completed-fold record. Mutually exclusive with `--config`. |
 | `--output-dir` | Override `output.dir` (the LOO run directory). |
-| `--overwrite` | Re-run into an output dir that already completed. |
+| `--overwrite` | Replace an existing LOO output directory. |
 
 The `loo` config section:
 
@@ -137,12 +137,16 @@ The `loo` config section:
 | `devices_per_fold` | Optional positive JAX CPU-device count per fold. Omitted (`null`) → `n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold cannot expose more host devices than its `pmap` batch without deadlocking). |
 Each fold's holdout loss is evaluated whenever a checkpoint is written, including the mandatory final checkpoint.
 
+A fresh LOO run requires the exact output directory not to exist. Use
+`--overwrite` to replace an existing directory or `--resume` to continue it.
+
 Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, prepared
-artifact, `config.json`), strict `runtime-artifact/`, identity-bound
-`loo-runtime.json`, per-fold `folds/<slug>/`, and top-level `loo_summary.csv` /
-`loo_aggregate.json`. `loo-runtime.json` binds the bundled config/custom hook
-fingerprint, prepared-content hash, artifact identity, and resolved folds;
-resume rejects a mismatch.
+artifact, `config.json`), strict `runtime-artifact/`, per-fold
+`folds/<slug>/`, and top-level `loo_summary.csv` / `loo_aggregate.json`.
+Top-level `config.json` anchors the expected artifact identity; the artifact
+manifest is authoritative for runtime inputs and folds. Per-fold completion
+records bind to that identity and fold ID. Missing or incomplete records are
+rerun, while present malformed or mismatched identity records fail loudly.
 
 ## Run directory layout
 

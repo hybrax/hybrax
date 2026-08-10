@@ -21,12 +21,16 @@ Mirrors ``bp_format/serialization.py``. This module owns:
 
 from __future__ import annotations
 
+from contextlib import suppress
 import hashlib
 import json
 import logging
 import math
+import os
 from numbers import Integral, Real
 from pathlib import Path
+import secrets
+import stat
 from typing import Any
 
 import equinox as eqx
@@ -213,9 +217,41 @@ def dumps_json(document: Any, **kwargs: Any) -> str:
 def write_json(
     path: str | Path, document: Any, *, indent: int = 2, **kwargs: Any
 ) -> None:
+    """Atomically publish a normalized JSON document."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dumps_json(document, indent=indent, **kwargs), encoding="utf-8")
+    temporary: Path | None = None
+    kwargs["allow_nan"] = False
+    try:
+        try:
+            destination_mode = stat.S_IMODE(path.stat().st_mode)
+        except FileNotFoundError:
+            destination_mode = None
+        while True:
+            candidate = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+            try:
+                descriptor = os.open(
+                    candidate,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o666,
+                )
+            except FileExistsError:
+                continue
+            temporary = candidate
+            break
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            if destination_mode is not None:
+                if hasattr(os, "fchmod"):
+                    os.fchmod(stream.fileno(), destination_mode)
+                else:
+                    os.chmod(candidate, destination_mode)
+            json.dump(_json_safe(document), stream, indent=indent, **kwargs)
+            stream.flush()
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
 
 
 def read_json(path: str | Path) -> dict[str, Any]:
@@ -231,9 +267,11 @@ def read_run_config_json(path: str | Path) -> tuple[RunConfig, dict[str, Any]]:
     return config, document
 
 
-def update_run_config_status(path: str | Path, **fields: Any) -> dict[str, Any]:
-    """Merge ``fields`` into an existing ``config.json`` and rewrite it."""
+def update_json(path: str | Path, **fields: Any) -> dict[str, Any]:
+    """Shallow-merge fields into an existing JSON object and publish it."""
     document = read_json(path)
+    if not isinstance(document, dict):
+        raise ValueError(f"{path}: expected a JSON object")
     document.update(fields)
     write_json(path, document)
     return document
