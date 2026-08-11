@@ -20,6 +20,7 @@ dev = [
     "pip>=26.0.1",
     "plotly>=6.6.0",
     "pytest>=8.0",
+    "pytest-xdist>=3.6",
 ]
 
 [tool.setuptools]
