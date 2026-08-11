@@ -23,10 +23,10 @@ boundary untouched.
 
 **Only the numerical leaves are Equinox modules.** `TimeSeries`, `PPoly`,
 `ControlSplines`, `RhsOde`, and `BacktransformSpline` are `eqx.Module`.
-Everything else — `BioProcess`, `CaseStudy`, `ReactorMedium`, … — is a plain
-`@dataclass`. Those containers hold `Dict[str, ...]` fields that are edited by
-name outside any JIT boundary; making them pytrees would buy nothing and cost
-mutability.
+Everything else — `BioProcess`, `BioProcessCollection`, `ReactorMedium`, … —
+is a plain `@dataclass`. Those containers hold `Dict[str, ...]` fields that
+are edited by name outside any JIT boundary; making them pytrees would buy
+nothing and cost mutability.
 
 **Consequences to know about:**
 
@@ -46,23 +46,20 @@ cannot enter through the data.
 `__getattr__`, so `import bp_format` does not pull in JAX, sympy, or matplotlib
 until you touch something that needs them.
 
-## 2. Three levels: study → run → components
+## 2. Two levels: collection → run → components
 
 ```
-CaseStudy             one publication or campaign — strict metadata
+BioProcessCollection  one collection of processes, one file on disk
   └─ BioProcess       one experimental run
        └─ components  reactor medium, volume, process variables
-
-BioProcessCollection  same, minus the strict metadata
-  └─ BioProcess
 ```
 
-- **`CaseStudy`** carries `case_id`, `organism`, and `citation`. That is the
-  natural unit for leave-one-process-out cross-validation, and it is one file
-  on disk.
-- **`BioProcessCollection`** is the loose counterpart — a dict of processes plus
-  free-form metadata — for raw or intermediate data that is not yet a published
-  case study.
+- **`BioProcessCollection`** carries optional `case_id`, `organism`, and
+  `citation` fields alongside a free-form `metadata` dict. Set (all
+  non-empty), they mark the collection as a full, publication-linked case
+  study — the natural unit for leave-one-process-out cross-validation. Left
+  `None` (the default), the collection is raw or intermediate data that is
+  not yet a published case study.
 - **`BioProcess`** is a single fermentation run and holds everything needed to
   simulate it: time axis, volume operations, reactor concentrations, process
   variables, and the biological ODE.

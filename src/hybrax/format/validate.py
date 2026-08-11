@@ -9,7 +9,7 @@ from .dataclasses import (
     BioProcess,
     BioProcessCollection,
     Bounds,
-    CaseStudy,
+    StaticVariable,
     TimeSeries,
     FeedVolumeChange,
     SampleVolumeChange,
@@ -195,7 +195,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
 
 
 def validate_biological_ode_equivalence(
-    container: "CaseStudy | BioProcessCollection",
+    container: "BioProcessCollection",
 ) -> Tuple[bool, str]:
     """Verify all processes in *container* share the same ``biological_ode``.
 
@@ -205,9 +205,9 @@ def validate_biological_ode_equivalence(
 
     Returns ``(is_valid, message)``.
     """
-    if not isinstance(container, (CaseStudy, BioProcessCollection)):
+    if not isinstance(container, BioProcessCollection):
         raise TypeError(
-            "validate_biological_ode_equivalence() expects a CaseStudy or "
+            "validate_biological_ode_equivalence() expects a "
             f"BioProcessCollection, got {type(container).__name__!r}"
         )
 
@@ -270,6 +270,88 @@ def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
         bullets = "\n  - ".join(errors)
         return False, f"bounds invalid:\n  - {bullets}"
     return True, "bounds ok"
+
+
+def _check_data_against_bounds(value: object, bounds: Bounds, label: str) -> Tuple[bool, str]:
+    """Compare a raw measured value (StaticVariable or TimeSeries) against its
+    own declared Bounds tuple; report count/min/max of violations."""
+    if bounds is None or (bounds[0] is None and bounds[1] is None):
+        return True, f"{label}: bounds unset — data check skipped"
+    lo, hi = bounds
+
+    if isinstance(value, StaticVariable):
+        v = float(value.value)
+        if lo is not None and v < lo:
+            return False, f"{label}: value {v:g} is below lower bound {lo:g}"
+        if hi is not None and v > hi:
+            return False, f"{label}: value {v:g} is above upper bound {hi:g}"
+        return True, f"{label}: value within bounds"
+
+    if not _is_dynamic_series(value):
+        return True, f"{label}: not a TimeSeries/StaticVariable — data check skipped"
+
+    vals = jnp.asarray(value.values)
+    errors: List[str] = []
+    if lo is not None:
+        n_below = int(jnp.sum(vals < lo))
+        if n_below:
+            errors.append(
+                f"{n_below} datapoint(s) below lower bound {lo:g} "
+                f"(min observed {float(jnp.min(vals)):g})"
+            )
+    if hi is not None:
+        n_above = int(jnp.sum(vals > hi))
+        if n_above:
+            errors.append(
+                f"{n_above} datapoint(s) above upper bound {hi:g} "
+                f"(max observed {float(jnp.max(vals)):g})"
+            )
+    if errors:
+        return False, f"{label}: " + "; ".join(errors)
+    return True, f"{label}: all datapoints within bounds"
+
+
+def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
+    """Check measured/raw data values against their own declared Bounds.
+
+    For every ``ReactorMediumComponent.concentration``,
+    ``ProcessVariable.values``, and (when present) ``Volume.total_volume``
+    that carries a *set* Bounds tuple (either side non-``None``), compares
+    the actual scalar (``StaticVariable``) or ``TimeSeries.values`` array
+    against ``(lo, hi)`` and reports how many datapoints violate the bound.
+
+    Out of scope: ``BiologicalOde.rates`` bounds — no rate-inversion
+    machinery exists to compute a measured rate value to check against them
+    (see ``validate_biological_ode``'s tuple-only sanity check on rates).
+    """
+    errors: List[str] = []
+
+    if process.reactor_medium:
+        for cname, comp in process.reactor_medium.components.items():
+            ok, msg = _check_data_against_bounds(
+                comp.concentration, comp.bounds, f"reactor component {cname!r}"
+            )
+            if not ok:
+                errors.append(msg)
+
+    for pname, pv in process.process_variables.items():
+        ok, msg = _check_data_against_bounds(
+            pv.values, pv.bounds, f"process variable {pname!r}"
+        )
+        if not ok:
+            errors.append(msg)
+
+    if process.volume is not None and process.volume.total_volume is not None:
+        ok, msg = _check_data_against_bounds(
+            process.volume.total_volume, process.volume.bounds, "volume"
+        )
+        if not ok:
+            errors.append(msg)
+
+    if errors:
+        bullets = "\n  - ".join(errors)
+        return False, f"bounds-vs-data invalid:\n  - {bullets}"
+    return True, "bounds-vs-data ok"
 
 
 def _is_dynamic_series(value: object) -> bool:
@@ -490,6 +572,8 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     - Sign consistency for every volume change.
     - State-variable / feed-medium coverage for positive volume changes.
     - Presence of a ``biomass`` component in the reactor medium.
+    - Measured data falls within its own declared ``Bounds``
+      (:func:`validate_bounds_against_data`).
 
     Args:
         process: BioProcess object to validate.
@@ -558,6 +642,11 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
 
     # --- Bounds sanity ---
     ok, msg = validate_bounds(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    # --- Bounds vs. actual data ---
+    ok, msg = validate_bounds_against_data(process)
     messages.append(msg)
     all_valid = all_valid and ok
 
@@ -715,12 +804,12 @@ def validate_volume_consistency(
         return (True, "Volume balance OK:\n" + "\n".join(messages), delta)
 
 
-def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str]]]:
-    """
-    Validate all processes in a case study and check cross-process consistency.
+def validate_cross_process_consistency(
+    collection: BioProcessCollection,
+) -> Tuple[bool, List[str]]:
+    """Verify every process in *collection* shares identical structure.
 
-    Runs :func:`validate_process` for every process in the case study, then
-    verifies that all processes share identical structure:
+    Compares, against the first process as reference:
 
     - The same reactor-medium component names, each with the same concentration
       type (``TimeSeries`` or ``StaticVariable``) and unit.
@@ -728,42 +817,19 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
       (``TimeSeries`` or ``StaticVariable``) and unit.
     - The same volume-change names and units.
 
-    Args:
-        case_study: :class:`CaseStudy` object to validate.
+    Collections with zero or one process trivially pass.
 
-    Returns:
-        A tuple ``(all_valid, report)`` where ``all_valid`` is ``True`` only
-        when every per-process validation passes *and* the cross-process
-        structure is consistent, and ``report`` is a dict mapping each process
-        name to its list of validation messages.  Cross-process consistency
-        errors are stored under the key ``"__consistency__"``.
-
-    Raises:
-        TypeError: If ``case_study`` is not a :class:`CaseStudy` instance.
+    Returns ``(is_valid, messages)`` — ``messages`` lists each mismatch found,
+    empty when consistent.
     """
-    if not isinstance(case_study, CaseStudy):
-        raise TypeError(
-            f"validate_case_study() expects a CaseStudy instance, "
-            f"got {type(case_study).__name__!r}"
-        )
+    processes = collection.processes
+    if len(processes) <= 1:
+        return True, []
 
-    all_valid = True
-    report: Dict[str, List[str]] = {}
-
-    # --- Per-process validation ---
-    for proc_name, process in case_study.processes.items():
-        ok, messages = validate_process(process)
-        report[proc_name] = messages
-        all_valid = all_valid and ok
-
-    if not case_study.processes:
-        return all_valid, report
-
-    # --- Cross-process consistency ---
     consistency_errors: List[str] = []
 
     # Build a reference signature from the first process
-    first_name, first_process = next(iter(case_study.processes.items()))
+    first_name, first_process = next(iter(processes.items()))
 
     def _reactor_signature(process: BioProcess) -> Dict[str, Tuple[str, str]]:
         """Map each reactor medium component name to (concentration type name, unit)."""
@@ -791,7 +857,7 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
     ref_pv = _pv_signature(first_process)
     ref_vc = _vc_signature(first_process)
 
-    for proc_name, process in case_study.processes.items():
+    for proc_name, process in processes.items():
         if proc_name == first_name:
             continue
 
@@ -816,14 +882,65 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
                 f"'{first_name}': expected {ref_vc}, got {vc_sig}"
             )
 
-    if consistency_errors:
-        all_valid = False
-        report["__consistency__"] = consistency_errors
-    else:
-        report["__consistency__"] = ["Cross-process structure is consistent — OK"]
+    return not consistency_errors, consistency_errors
+
+
+def validate_for_publication(
+    collection: BioProcessCollection,
+) -> Tuple[bool, Dict[str, List[str]]]:
+    """
+    Validate a collection for storage/publication as a coherent case study.
+
+    This is bp-format's own concern — is this collection well-formed and
+    internally coherent — distinct from bp-train's training-readiness
+    concern (``bp_train.validation.validate_for_training``). Runs
+    :func:`validate_process` for every process, then
+    :func:`validate_cross_process_consistency` and
+    :func:`validate_augmented_parent_refs`.
+
+    Args:
+        collection: :class:`BioProcessCollection` object to validate.
+
+    Returns:
+        A tuple ``(all_valid, report)`` where ``all_valid`` is ``True`` only
+        when every per-process validation passes *and* the cross-process
+        structure is consistent, and ``report`` is a dict mapping each process
+        name to its list of validation messages.  Cross-process consistency
+        errors are stored under the key ``"__consistency__"``, augmented-parent
+        findings under the key ``"__augmented__"``.
+
+    Raises:
+        TypeError: If ``collection`` is not a :class:`BioProcessCollection`.
+    """
+    if not isinstance(collection, BioProcessCollection):
+        raise TypeError(
+            f"validate_for_publication() expects a BioProcessCollection "
+            f"instance, got {type(collection).__name__!r}"
+        )
+
+    all_valid = True
+    report: Dict[str, List[str]] = {}
+
+    # --- Per-process validation ---
+    for proc_name, process in collection.processes.items():
+        ok, messages = validate_process(process)
+        report[proc_name] = messages
+        all_valid = all_valid and ok
+
+    if not collection.processes:
+        return all_valid, report
+
+    # --- Cross-process consistency ---
+    consistency_ok, consistency_errors = validate_cross_process_consistency(collection)
+    report["__consistency__"] = (
+        consistency_errors
+        if consistency_errors
+        else ["Cross-process structure is consistent — OK"]
+    )
+    all_valid = all_valid and consistency_ok
 
     # --- Augmented parent-reference validation ---
-    aug_ok, aug_messages = validate_augmented_parent_refs(case_study)
+    aug_ok, aug_messages = validate_augmented_parent_refs(collection)
     report["__augmented__"] = aug_messages
     all_valid = all_valid and aug_ok
 
@@ -831,7 +948,7 @@ def validate_case_study(case_study: CaseStudy) -> Tuple[bool, Dict[str, List[str
 
 
 def validate_augmented_parent_refs(
-    container: "CaseStudy | BioProcessCollection",
+    container: "BioProcessCollection",
 ) -> Tuple[bool, List[str]]:
     """Verify ``AugmentedBioProcess.parent_process`` references in a container.
 
@@ -841,16 +958,16 @@ def validate_augmented_parent_refs(
     augmentation is not supported in v1).
 
     Args:
-        container: A :class:`CaseStudy` or :class:`BioProcessCollection`.
+        container: A :class:`BioProcessCollection`.
 
     Returns:
         ``(all_valid, messages)``. ``messages`` always contains at least one
         line summarising the result; on failure each problem is reported
         individually.
     """
-    if not isinstance(container, (CaseStudy, BioProcessCollection)):
+    if not isinstance(container, BioProcessCollection):
         raise TypeError(
-            "validate_augmented_parent_refs() expects a CaseStudy or "
+            "validate_augmented_parent_refs() expects a "
             f"BioProcessCollection instance, got {type(container).__name__!r}"
         )
 

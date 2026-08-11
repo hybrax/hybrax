@@ -30,23 +30,20 @@ Building models? Continue with:
 
 | Module | Source | Docs | What it does |
 |--------|--------|------|--------------|
-| Data model | `bp_format/dataclasses.py` | [02](02_data_model.md) | The dataclass hierarchy: `CaseStudy` → `BioProcess` → components |
+| Data model | `bp_format/dataclasses.py` | [02](02_data_model.md) | The dataclass hierarchy: `BioProcessCollection` → `BioProcess` → components |
 | TimeSeries | `bp_format/time_series/` | [06](06_time_series.md) | Measurements + optional fitted spline, as a JAX pytree |
 | Splines | `bp_format/splines.py` | [07](07_splines.md) | Pseudobatch transform, segmented spline fitting, backtransform |
 | Mechanistic | `bp_format/mechanistic.py` | [08](08_mechanistic.md) | `ProcessOrdering`, `ControlSplines`, `RhsOde` |
 | Serialization | `bp_format/serialization.py` | [03](03_serialization.md) | JSON save/load for the whole hierarchy |
-| Validation | `bp_format/validate.py` | [04](04_validation.md) | 12 integrity checks |
+| Validation | `bp_format/validate.py` | [04](04_validation.md) | 14 integrity checks |
 | Inspection | `bp_format/inspect.py` | [05](05_inspection.md) | Text summaries and matplotlib plots |
 | Simulation | `bp_format/simulation.py` | [09](09_simulation.md) | Event bookkeeping for synthetic datasets |
 
 ## Data Structure
 
 ```
-CaseStudy                        one publication or campaign
- ├─ case_id / organism / citation
- └─ processes: Dict[str, BioProcess]
-
-BioProcessCollection             loose alternative to CaseStudy
+BioProcessCollection              one collection of processes, one file on disk
+ ├─ case_id / organism / citation  optional — set marks a published case study
  ├─ metadata: Optional[Dict]
  └─ processes: Dict[str, BioProcess]
 

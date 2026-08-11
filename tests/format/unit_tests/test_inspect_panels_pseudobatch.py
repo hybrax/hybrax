@@ -20,8 +20,8 @@ import numpy as np
 
 from bp_format import (
     BioProcess,
+    BioProcessCollection,
     BioProcessMetadata,
-    CaseStudy,
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
@@ -33,7 +33,7 @@ from bp_format import (
     Volume,
 )
 from bp_format.inspect import _collect_process_panels
-from bp_format.serialization import load_case_study, save_case_study
+from bp_format.serialization import load_process_collection, save_process_collection
 from bp_format.splines import build_backtransform_spline, build_pseudobatch_transform
 
 
@@ -123,15 +123,15 @@ def test_plot_process_panel_scatter_matches_backtransform_after_roundtrip(tmp_pa
         f"{cstar_vals.tolist()} vs real={list(real_vals)}."
     )
 
-    case_study = CaseStudy(
+    collection = BioProcessCollection(
         case_id="cs",
         organism="test",
         citation="n/a",
         processes={"p": process},
     )
     out = tmp_path / "data.json"
-    save_case_study(case_study, str(out))
-    loaded_proc = load_case_study(str(out)).processes["p"]
+    save_process_collection(collection, str(out))
+    loaded_proc = load_process_collection(str(out)).processes["p"]
 
     panels = _collect_process_panels(loaded_proc)
     glucose = next(p for p in panels if p["title"].startswith("glucose"))

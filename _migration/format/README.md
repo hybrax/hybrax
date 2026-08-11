@@ -45,12 +45,12 @@ fig = bp.plot_process(process)
 
 | Module | Description |
 |--------|-------------|
-| [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (CaseStudy, BioProcessCollection, BioProcess, etc.) |
+| [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (BioProcessCollection, BioProcess, etc.) |
 | [`time_series`](documentation/06_time_series.md) | Time-series container with optional fitted spline coefficients (JAX pytree) |
 | [`splines`](documentation/07_splines.md) | Pseudobatch transformation and segmented spline fitting |
 | [`mechanistic`](documentation/08_mechanistic.md) | ODE right-hand side and control splines (integration lives in bp-train) |
 | [`serialization`](documentation/03_serialization.md) | JSON save/load for the full data hierarchy |
-| [`validate`](documentation/04_validation.md) | Data integrity checks (12 validators) |
+| [`validate`](documentation/04_validation.md) | Data integrity checks (14 validators) |
 | [`inspect`](documentation/05_inspection.md) | Text printing and matplotlib visualization |
 | [`simulation`](documentation/09_simulation.md) | Event bookkeeping for synthetic datasets |
 
@@ -59,10 +59,11 @@ fig = bp.plot_process(process)
 ### Hierarchy
 
 ```
-CaseStudy
- ├─ case_id: str
- ├─ organism: str
- ├─ citation: str
+BioProcessCollection
+ ├─ case_id: Optional[str]      set marks a published case study
+ ├─ organism: Optional[str]
+ ├─ citation: Optional[str]
+ ├─ metadata: Optional[Dict]
  └─ processes: Dict[str, BioProcess]
 
 BioProcess

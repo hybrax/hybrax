@@ -13,7 +13,7 @@ aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
 — see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-All 12 validators are exported from the package root: `bp.validate_process(...)`.
+All 14 validators are exported from the package root: `bp.validate_process(...)`.
 
 ## Individual validators
 
@@ -70,6 +70,22 @@ Measurements *exactly at* a sampling time are correct and are not flagged.
 Every `Bounds` tuple on the process — `ReactorMediumComponent.bounds`,
 `ProcessVariable.bounds`, `Volume.bounds` — has `lower <= upper` when both are
 set. (Bounds on `BiologicalOde.rates` are checked by `validate_biological_ode`.)
+This checks the tuple itself, not the data — see `validate_bounds_against_data`
+below for that.
+
+### `validate_bounds_against_data(process)`
+
+For every `ReactorMediumComponent.concentration`, `ProcessVariable.values`, and
+(when present) `Volume.total_volume` that carries a *set* `Bounds` tuple
+(either side non-`None`), compares the actual measured value(s) — a scalar for
+`StaticVariable`, the full array for `TimeSeries` — against `(lower, upper)`
+and reports how many datapoints violate the bound, with the observed min/max.
+
+`ReactorMediumComponent.bounds` defaults to `(0.0, None)` even when never set
+explicitly, so this check catches negative concentrations by default, not just
+on RMCs with an explicit bound. Out of scope: `BiologicalOde.rates` bounds — no
+rate-inversion machinery exists in bp-format to compute a measured rate value
+to check those against.
 
 ### `validate_biological_ode(process)`
 
@@ -91,13 +107,26 @@ The aggregate check for `process.biological_ode`. No-op when it is `None`.
 
 ### `validate_biological_ode_equivalence(container)`
 
-Given a `CaseStudy` or `BioProcessCollection`, checks that every process exposes
-an identical `BiologicalOde` (same `algebraic`, `rates`, and `derivatives`). One
-model has to describe every run in a study for the benchmark to mean anything.
-Containers with 0 or 1 process pass trivially.
+Given a `BioProcessCollection`, checks that every process exposes an identical
+`BiologicalOde` (same `algebraic`, `rates`, and `derivatives`). One model has to
+describe every run in a study for the benchmark to mean anything. Containers
+with 0 or 1 process pass trivially.
 
-Not part of `validate_case_study`; call it directly, or let
+Not part of `validate_for_publication`; call it directly, or let
 [`print_rhs_ode`](05_inspection.md) run it for you.
+
+### `validate_cross_process_consistency(collection)`
+
+Given a `BioProcessCollection`, checks that every process shares identical
+structure against the first process:
+
+- same reactor components, each with the same value type and unit
+- same process variables, each with the same value type and unit
+- same volume-change names and units
+
+Collections with 0 or 1 process pass trivially. This is the check
+`validate_for_publication` composes to build its `"__consistency__"` report
+entry; call it directly for just the structural-consistency signal.
 
 ### `validate_volume_consistency(process, final_volume)`
 
@@ -113,12 +142,12 @@ changes contribute `sum(values)`. Only the endpoints are used, because this runs
 
 ### `validate_augmented_parent_refs(container)`
 
-For every `AugmentedBioProcess` in a `CaseStudy` or `BioProcessCollection`:
-`parent_process` names a key in the same container, and that key resolves to a
+For every `AugmentedBioProcess` in a `BioProcessCollection`: `parent_process`
+names a key in the same container, and that key resolves to a
 **non-augmented** `BioProcess`. Chained augmentation is rejected.
 
 Returns `(bool, list[str])`, always with at least one summary line. Called
-automatically by `validate_case_study`.
+automatically by `validate_for_publication`.
 
 ## Aggregate validators
 
@@ -133,7 +162,8 @@ Runs, in order:
 4. `validate_biomass_in_reactor_medium`
 5. `validate_measurement_sampling_alignment`
 6. `validate_bounds`
-7. `validate_biological_ode`
+7. `validate_bounds_against_data`
+8. `validate_biological_ode`
 
 Returns one message per check — including the passing ones, so the output reads
 as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.
@@ -141,14 +171,14 @@ as a checklist. Raises `TypeError` if given something that is not a `BioProcess`
 `validate_volume_consistency` is **not** included (it needs a `final_volume`
 argument you have to supply).
 
-### `validate_case_study(case_study) -> (bool, dict[str, list[str]])`
+### `validate_for_publication(collection) -> (bool, dict[str, list[str]])`
 
-`validate_process` on every process, plus cross-process structure checks against
-the first process:
-
-- same reactor components, each with the same value type and unit
-- same process variables, each with the same value type and unit
-- same volume-change names and units
+`validate_process` on every process, plus `validate_cross_process_consistency`
+and `validate_augmented_parent_refs`. This is bp-format's own concern — is this
+collection well-formed and internally coherent enough to store or publish as a
+case study — distinct from bp-train's training-readiness concern
+(`bp_train.validation.validate_for_training`, which composes the same
+`validate_cross_process_consistency` check rather than duplicating it).
 
 Results are keyed by process name, with cross-process findings under
 `"__consistency__"` and augmented-parent findings under `"__augmented__"`.
@@ -160,8 +190,8 @@ Results are keyed by process name, with cross-process findings under
 ```python
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("data.json")
-process = case_study.processes["run_1"]
+collection = bp.serialization.load_process_collection("data.json")
+process = collection.processes["run_1"]
 
 ok, messages = bp.validate_process(process)
 for msg in messages:
@@ -171,7 +201,7 @@ for msg in messages:
 ### A whole case study
 
 ```python
-ok, report = bp.validate_case_study(case_study)
+ok, report = bp.validate_for_publication(collection)
 if not ok:
     for key, messages in report.items():
         print(f"\n{key}:")

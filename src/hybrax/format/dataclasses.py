@@ -384,7 +384,7 @@ class AugmentedBioProcess(BioProcess):
 
     Same fields as :class:`BioProcess` plus a mandatory ``parent_process``
     string referencing the parent's key in the enclosing
-    :class:`BioProcessCollection` / :class:`CaseStudy`. Augmented children
+    :class:`BioProcessCollection`. Augmented children
     inherit the parent's structural identity (control/state schema,
     medium semantics) and must be grouped with the parent for any
     train/eval split so synthetic siblings cannot leak into a fold whose
@@ -406,19 +406,17 @@ class AugmentedBioProcess(BioProcess):
 @dataclass
 class BioProcessCollection:
     """
-    Wrapper for a dict of `BioProcess` instances and optional metadata. Useful for raw
-    data that's not a full-fledged case-study.
+    Collection of processes, optionally identified as a published case study.
+
+    ``case_id``/``organism``/``citation`` set (all non-empty) mark this as a
+    full case study from one publication/dataset. Left ``None`` (the default),
+    this is raw/intermediate data with no case-study identity. ``metadata``
+    remains a free-form dict for arbitrary provenance (e.g. bp-train's
+    namespaced metadata block).
     """
 
+    case_id: Optional[str] = None
+    organism: Optional[str] = None
+    citation: Optional[str] = None
     metadata: Optional[Dict] = None
-    processes: Dict[str, BioProcess] = field(default_factory=dict)
-
-
-@dataclass
-class CaseStudy:
-    """Collection of processes from one publication/dataset"""
-
-    case_id: str
-    organism: str
-    citation: str
     processes: Dict[str, BioProcess] = field(default_factory=dict)

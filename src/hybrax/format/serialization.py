@@ -14,7 +14,6 @@ from .dataclasses import (
     AugmentedBioProcess,
     BiologicalOde,
     BioProcessCollection,
-    CaseStudy,
     BioProcess,
     Bounds,
     _DEFAULT_RMC_BOUNDS,
@@ -163,23 +162,6 @@ def _load_json(json_path: Path) -> Dict:
     return _restore_arrays(load_json(json_path))
 
 
-def save_case_study(case_study: CaseStudy, path: Path) -> None:
-    """Save a CaseStudy as JSON.
-
-    `path` may be a JSON file path or a directory, in which case `data.json`
-    is written inside it.
-    """
-    _save_json(_case_study_to_dict(case_study), _resolve_json_path(path))
-
-
-def load_case_study(path: Path) -> CaseStudy:
-    """Load a CaseStudy from JSON.
-
-    `path` may be a JSON file path or a directory containing `data.json`.
-    """
-    return _dict_to_case_study(_load_json(_resolve_existing_json_path(path)))
-
-
 def save_process_collection(collection: BioProcessCollection, path: Path) -> None:
     """Save a BioProcessCollection as JSON.
 
@@ -189,14 +171,19 @@ def save_process_collection(collection: BioProcessCollection, path: Path) -> Non
     _save_json(_process_collection_to_dict(collection), _resolve_json_path(path))
 
 
-def _read_collection_metadata(json_path: Path):
-    metadata = None
+def _read_collection_header(json_path: Path) -> Dict:
+    """Stream-read the top-level scalar/metadata fields of a collection JSON
+    (case_id, organism, citation, metadata) without materializing `processes`."""
+    header: Dict = {"case_id": None, "organism": None, "citation": None, "metadata": None}
+    seen = {"case_id": False, "organism": False, "citation": False, "metadata": False}
     metadata_builder = None
     metadata_depth = 0
     pending_key = None
     root_seen = False
-    metadata_seen = False
     processes_seen = False
+
+    def _all_seen() -> bool:
+        return processes_seen and all(seen.values())
 
     with _open_json_file(json_path, "rb") as f:
         for prefix, event, value in _parse(f, source=json_path):
@@ -217,16 +204,31 @@ def _read_collection_metadata(json_path: Path):
                     )
                 processes_seen = True
                 pending_key = None
-                if metadata_seen:
-                    return metadata
+                if _all_seen():
+                    return header
+                continue
+
+            if pending_key in ("case_id", "organism", "citation") and prefix == pending_key:
+                if event == "string":
+                    header[pending_key] = value
+                elif event == "null":
+                    header[pending_key] = None
+                else:
+                    raise ValueError(
+                        f"{json_path}: collection {pending_key} must be a string or null"
+                    )
+                seen[pending_key] = True
+                pending_key = None
+                if _all_seen():
+                    return header
                 continue
 
             if pending_key == "metadata" and prefix == "metadata":
                 if event == "null":
-                    metadata = None
-                    metadata_seen = True
-                    if processes_seen:
-                        return metadata
+                    header["metadata"] = None
+                    seen["metadata"] = True
+                    if _all_seen():
+                        return header
                 elif event == "start_map":
                     metadata_builder = ObjectBuilder()
                     metadata_builder.event(event, value)
@@ -247,26 +249,32 @@ def _read_collection_metadata(json_path: Path):
                 elif event in ("end_map", "end_array"):
                     metadata_depth -= 1
                     if metadata_depth == 0:
-                        metadata = _restore_arrays(metadata_builder.value)
+                        header["metadata"] = _restore_arrays(metadata_builder.value)
                         metadata_builder = None
-                        metadata_seen = True
-                        if processes_seen:
-                            return metadata
+                        seen["metadata"] = True
+                        if _all_seen():
+                            return header
 
     if not root_seen:
         raise ValueError(f"{json_path}: collection root must be an object")
     if not processes_seen:
         raise ValueError(f"{json_path}: collection must contain a processes object")
-    return metadata
+    return header
 
 
 def _stream_process_collection(json_path: Path) -> BioProcessCollection:
-    metadata = _read_collection_metadata(json_path)
+    header = _read_collection_header(json_path)
     processes = {}
     with _open_json_file(json_path, "rb") as f:
         for process_id, process_data in _kvitems(f, "processes", source=json_path):
             processes[process_id] = _dict_to_process(_restore_arrays(process_data))
-    return BioProcessCollection(metadata=metadata, processes=processes)
+    return BioProcessCollection(
+        case_id=header["case_id"],
+        organism=header["organism"],
+        citation=header["citation"],
+        metadata=header["metadata"],
+        processes=processes,
+    )
 
 
 def load_process_collection(path: Path) -> BioProcessCollection:
@@ -285,26 +293,18 @@ def load_process_collection(path: Path) -> BioProcessCollection:
 
 def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
     """Convert BioProcessCollection to nested dictionary."""
-    return {
-        "metadata": deepcopy(collection.metadata),
-        "processes": {
-            p_id: _process_to_dict(process)
-            for p_id, process in collection.processes.items()
-        },
+    result: Dict = {}
+    if collection.case_id is not None:
+        result["case_id"] = collection.case_id
+    if collection.organism is not None:
+        result["organism"] = collection.organism
+    if collection.citation is not None:
+        result["citation"] = collection.citation
+    result["metadata"] = deepcopy(collection.metadata)
+    result["processes"] = {
+        p_id: _process_to_dict(process) for p_id, process in collection.processes.items()
     }
-
-
-def _case_study_to_dict(case_study: CaseStudy) -> Dict:
-    """Convert CaseStudy to nested dictionary."""
-    return {
-        "case_id": case_study.case_id,
-        "organism": case_study.organism,
-        "citation": case_study.citation,
-        "processes": {
-            p_id: _process_to_dict(process)
-            for p_id, process in case_study.processes.items()
-        },
-    }
+    return result
 
 
 def _process_to_dict(process: BioProcess) -> Dict:
@@ -540,20 +540,10 @@ def _feed_component_to_dict(comp: FeedMediumComponent) -> Dict:
 def _dict_to_process_collection(data: Dict) -> BioProcessCollection:
     """Reconstruct BioProcessCollection from dictionary."""
     return BioProcessCollection(
+        case_id=data.get("case_id"),
+        organism=data.get("organism"),
+        citation=data.get("citation"),
         metadata=data.get("metadata"),
-        processes={
-            p_id: _dict_to_process(p_data)
-            for p_id, p_data in data.get("processes", {}).items()
-        },
-    )
-
-
-def _dict_to_case_study(data: Dict) -> CaseStudy:
-    """Reconstruct CaseStudy from dictionary."""
-    return CaseStudy(
-        case_id=data["case_id"],
-        organism=data["organism"],
-        citation=data["citation"],
         processes={
             p_id: _dict_to_process(p_data)
             for p_id, p_data in data.get("processes", {}).items()

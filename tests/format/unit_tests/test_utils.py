@@ -8,6 +8,7 @@ import numpy as np
 
 from bp_format import (
     BioProcess,
+    BioProcessCollection,
     BioProcessMetadata,
     TimeAxis,
     TimeSeries,
@@ -20,11 +21,10 @@ from bp_format import (
     FeedVolumeChange,
     SampleVolumeChange,
     Volume,
-    CaseStudy,
     print_process_structure,
-    print_case_study_structure,
+    print_collection_structure,
     plot_process,
-    plot_case_study,
+    plot_collection,
 )
 from bp_format.splines import build_pseudobatch_transform
 
@@ -321,7 +321,7 @@ def test_print_process_structure_verbosity1_no_metadata_uses_fallbacks(capsys):
 
 
 # ---------------------------------------------------------------------------
-# print_case_study_structure tests
+# print_collection_structure tests
 # ---------------------------------------------------------------------------
 
 
@@ -342,10 +342,10 @@ def _make_minimal_process(name):
 
 
 @pytest.fixture
-def sample_case_study():
+def sample_collection():
     p1 = _make_minimal_process("p1")
     p2 = _make_minimal_process("p2")
-    return CaseStudy(
+    return BioProcessCollection(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe 2024",
@@ -353,47 +353,49 @@ def sample_case_study():
     )
 
 
-def test_print_case_study_structure_header(sample_case_study, capsys):
-    print_case_study_structure(sample_case_study)
+def test_print_collection_structure_header(sample_collection, capsys):
+    print_collection_structure(sample_collection)
     captured = capsys.readouterr()
-    assert "Case Study Structure" in captured.out
+    assert "BioProcessCollection Structure" in captured.out
 
 
-def test_print_case_study_structure_identity(sample_case_study, capsys):
-    print_case_study_structure(sample_case_study)
+def test_print_collection_structure_identity(sample_collection, capsys):
+    print_collection_structure(sample_collection)
     captured = capsys.readouterr()
     assert "ecoli_study" in captured.out
     assert "Escherichia coli" in captured.out
     assert "Doe 2024" in captured.out
 
 
-def test_print_case_study_structure_processes(sample_case_study, capsys):
-    print_case_study_structure(sample_case_study)
+def test_print_collection_structure_processes(sample_collection, capsys):
+    print_collection_structure(sample_collection)
     captured = capsys.readouterr()
     assert "p1" in captured.out
     assert "p2" in captured.out
     assert "Processes: 2" in captured.out
 
 
-def test_print_case_study_structure_total_datapoints(sample_case_study, capsys):
-    print_case_study_structure(sample_case_study)
+def test_print_collection_structure_total_datapoints(sample_collection, capsys):
+    print_collection_structure(sample_collection)
     captured = capsys.readouterr()
     # Each process has 1 biomass TimeSeries with 2 points => 2 processes * 2 = 4 total
-    assert "Total datapoints in case study: 4" in captured.out
+    assert "Total datapoints in collection: 4" in captured.out
 
 
-def test_print_case_study_structure_empty(capsys):
-    case_study = CaseStudy(case_id="empty_study", organism="Unknown", citation="n/a")
-    print_case_study_structure(case_study)
+def test_print_collection_structure_empty(capsys):
+    collection = BioProcessCollection(
+        case_id="empty_study", organism="Unknown", citation="n/a"
+    )
+    print_collection_structure(collection)
     captured = capsys.readouterr()
-    assert "Case Study Structure" in captured.out
+    assert "BioProcessCollection Structure" in captured.out
     assert "(no processes)" in captured.out
 
 
-def test_print_case_study_structure_verbosity2(sample_case_study, capsys):
-    print_case_study_structure(sample_case_study, verbosity=2)
+def test_print_collection_structure_verbosity2(sample_collection, capsys):
+    print_collection_structure(sample_collection, verbosity=2)
     captured = capsys.readouterr()
-    assert "Case Study Structure" in captured.out
+    assert "BioProcessCollection Structure" in captured.out
     assert "ecoli_study" in captured.out
     assert "Escherichia coli" in captured.out
     assert "p1" in captured.out
@@ -402,7 +404,7 @@ def test_print_case_study_structure_verbosity2(sample_case_study, capsys):
     assert "datapoints:" not in captured.out
 
 
-def test_print_case_study_structure_handles_process_without_metadata(capsys):
+def test_print_collection_structure_handles_process_without_metadata(capsys):
     process = BioProcess(
         metadata=None,
         time_axis=TimeAxis(
@@ -411,21 +413,21 @@ def test_print_case_study_structure_handles_process_without_metadata(capsys):
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
-    case_study = CaseStudy(
+    collection = BioProcessCollection(
         case_id="raw_data",
         organism="Unknown",
         citation="n/a",
         processes={"p1": process},
     )
-    print_case_study_structure(case_study, verbosity=2)
+    print_collection_structure(collection, verbosity=2)
     captured = capsys.readouterr()
     assert "p1: <unnamed process>" in captured.out
 
 
-def test_print_case_study_structure_verbosity1(sample_case_study, capsys):
-    print_case_study_structure(sample_case_study, verbosity=1)
+def test_print_collection_structure_verbosity1(sample_collection, capsys):
+    print_collection_structure(sample_collection, verbosity=1)
     captured = capsys.readouterr()
-    assert "Case Study Structure" in captured.out
+    assert "BioProcessCollection Structure" in captured.out
     assert "ecoli_study" in captured.out
     # Organism, citation and process names should NOT appear at verbosity 1
     assert "Escherichia coli" not in captured.out
@@ -433,11 +435,13 @@ def test_print_case_study_structure_verbosity1(sample_case_study, capsys):
     assert "p1" not in captured.out
 
 
-def test_print_case_study_structure_empty_verbosity1(capsys):
-    case_study = CaseStudy(case_id="empty_study", organism="Unknown", citation="n/a")
-    print_case_study_structure(case_study, verbosity=1)
+def test_print_collection_structure_empty_verbosity1(capsys):
+    collection = BioProcessCollection(
+        case_id="empty_study", organism="Unknown", citation="n/a"
+    )
+    print_collection_structure(collection, verbosity=1)
     captured = capsys.readouterr()
-    assert "Case Study Structure" in captured.out
+    assert "BioProcessCollection Structure" in captured.out
     assert "(0 processes)" in captured.out
 
 
@@ -760,28 +764,28 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
 
 
 # ---------------------------------------------------------------------------
-# plot_case_study smoke tests
+# plot_collection smoke tests
 # ---------------------------------------------------------------------------
 
 
-def test_plot_case_study_returns_figure(sample_case_study):
+def test_plot_collection_returns_figure(sample_collection):
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig = plot_case_study(sample_case_study)
+    fig = plot_collection(sample_collection)
     assert fig is not None
     plt.close(fig)
 
 
-def test_plot_case_study_empty():
-    """A case study with no processes should still return a figure."""
+def test_plot_collection_empty():
+    """A collection with no processes should still return a figure."""
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    cs = CaseStudy(case_id="empty", organism="None", citation="None")
-    fig = plot_case_study(cs)
+    cs = BioProcessCollection(case_id="empty", organism="None", citation="None")
+    fig = plot_collection(cs)
     assert fig is not None
     plt.close(fig)
 

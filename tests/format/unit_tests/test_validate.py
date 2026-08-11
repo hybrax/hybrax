@@ -24,7 +24,6 @@ from bp_format import (
     BioProcess,
     AugmentedBioProcess,
     BioProcessCollection,
-    CaseStudy,
     validate_timeseries_shape,
     validate_volume_change_sign,
     validate_volume_change_states,
@@ -32,7 +31,9 @@ from bp_format import (
     validate_measurement_sampling_alignment,
     validate_process,
     validate_volume_consistency,
-    validate_case_study,
+    validate_for_publication,
+    validate_cross_process_consistency,
+    validate_bounds_against_data,
     validate_augmented_parent_refs,
     validate_biological_ode,
     validate_bounds,
@@ -468,7 +469,7 @@ class TestValidateVolumeConsistency:
 
 
 # ---------------------------------------------------------------------------
-# validate_case_study
+# validate_for_publication
 # ---------------------------------------------------------------------------
 
 
@@ -513,37 +514,37 @@ def _make_feed_medium(component_names):
     )
 
 
-class TestValidateCaseStudy:
-    def _case_study(self, processes):
-        return CaseStudy(
+class TestValidateForPublication:
+    def _collection(self, processes):
+        return BioProcessCollection(
             case_id="cs1",
             organism="E. coli",
             citation="Test et al.",
             processes=processes,
         )
 
-    def test_valid_case_study_all_ok(self):
+    def test_valid_collection_all_ok(self):
         ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
         p1 = _make_biomass_process(ts)
         p2 = _make_biomass_process(_ts([0.0, 1.0, 2.0], [0.2, 0.6, 1.1]))
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is True
         assert "run1" in report
         assert "run2" in report
         assert "OK" in report["__consistency__"][0]
 
-    def test_empty_case_study(self):
-        cs = self._case_study({})
-        all_valid, report = validate_case_study(cs)
+    def test_empty_collection(self):
+        cs = self._collection({})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is True
         assert report == {}
 
-    def test_single_process_case_study(self):
+    def test_single_process_collection(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         p = _make_biomass_process(ts)
-        cs = self._case_study({"run1": p})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is True
         assert "run1" in report
         assert "OK" in report["__consistency__"][0]
@@ -563,8 +564,8 @@ class TestValidateCaseStudy:
                 )
             },
         )
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("reactor medium" in e for e in report["__consistency__"])
 
@@ -579,8 +580,8 @@ class TestValidateCaseStudy:
         )
         p1 = _make_biomass_process(ts, process_variables={"temperature": pv})
         p2 = _make_biomass_process(ts)  # no process variables
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
@@ -601,8 +602,8 @@ class TestValidateCaseStudy:
         )
         p1 = _make_biomass_process(ts, process_variables={"temperature": pv_ts})
         p2 = _make_biomass_process(ts, process_variables={"temperature": pv_static})
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
@@ -619,18 +620,18 @@ class TestValidateCaseStudy:
         )
         p1 = _make_biomass_process(ts, volume_changes={"feed": vc})
         p2 = _make_biomass_process(ts)  # no volume changes
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("volume change" in e for e in report["__consistency__"])
 
     def test_wrong_type_raises_type_error(self):
-        with pytest.raises(TypeError, match="CaseStudy"):
-            validate_case_study("not a case study")
+        with pytest.raises(TypeError, match="BioProcessCollection"):
+            validate_for_publication("not a collection")
 
     def test_wrong_type_none_raises_type_error(self):
         with pytest.raises(TypeError):
-            validate_case_study(None)
+            validate_for_publication(None)
 
     def test_inconsistent_reactor_medium_units(self):
         """Same component name and type but different units should fail consistency."""
@@ -643,8 +644,8 @@ class TestValidateCaseStudy:
             unit="mmol/L",
             concentration=ts,
         )
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("reactor medium" in e for e in report["__consistency__"])
 
@@ -665,8 +666,8 @@ class TestValidateCaseStudy:
         )
         p1 = _make_biomass_process(ts, process_variables={"temperature": pv1})
         p2 = _make_biomass_process(ts, process_variables={"temperature": pv2})
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
@@ -691,10 +692,55 @@ class TestValidateCaseStudy:
         )
         p1 = _make_biomass_process(ts, volume_changes={"feed": vc1})
         p2 = _make_biomass_process(ts, volume_changes={"feed": vc2})
-        cs = self._case_study({"run1": p1, "run2": p2})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"run1": p1, "run2": p2})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert any("volume change" in e for e in report["__consistency__"])
+
+
+class TestValidateCrossProcessConsistency:
+    """Direct coverage for the extracted validate_cross_process_consistency
+    helper, independent of validate_for_publication's per-process checks."""
+
+    def test_trivial_pass_empty(self):
+        collection = BioProcessCollection(processes={})
+        ok, messages = validate_cross_process_consistency(collection)
+        assert ok is True
+        assert messages == []
+
+    def test_trivial_pass_single_process(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        collection = BioProcessCollection(processes={"run1": _make_biomass_process(ts)})
+        ok, messages = validate_cross_process_consistency(collection)
+        assert ok is True
+        assert messages == []
+
+    def test_consistent_multi_process(self):
+        ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(_ts([0.0, 1.0, 2.0], [0.2, 0.6, 1.1]))
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+        ok, messages = validate_cross_process_consistency(collection)
+        assert ok is True
+        assert messages == []
+
+    def test_inconsistent_reactor_medium_components(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(
+            ts,
+            extra_components={
+                "glucose": ReactorMediumComponent(
+                    name="glucose",
+                    unit="g/L",
+                    concentration=StaticVariable(value=10.0),
+                )
+            },
+        )
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+        ok, messages = validate_cross_process_consistency(collection)
+        assert ok is False
+        assert any("reactor medium" in m for m in messages)
 
 
 # ---------------------------------------------------------------------------
@@ -809,8 +855,8 @@ class TestValidateAugmentedParentRefs:
             parent_process=parent_process,
         )
 
-    def _case_study(self, processes):
-        return CaseStudy(
+    def _collection(self, processes):
+        return BioProcessCollection(
             case_id="cs1",
             organism="E. coli",
             citation="Test et al.",
@@ -821,7 +867,7 @@ class TestValidateAugmentedParentRefs:
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         parent = _make_biomass_process(ts)
         child = self._aug_child(parent_process="parent")
-        cs = self._case_study({"parent": parent, "child": child})
+        cs = self._collection({"parent": parent, "child": child})
         ok, messages = validate_augmented_parent_refs(cs)
         assert ok is True
         assert any("OK" in m for m in messages)
@@ -830,7 +876,7 @@ class TestValidateAugmentedParentRefs:
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         parent = _make_biomass_process(ts)
         child = self._aug_child(parent_process="ghost")
-        cs = self._case_study({"parent": parent, "child": child})
+        cs = self._collection({"parent": parent, "child": child})
         ok, messages = validate_augmented_parent_refs(cs)
         assert ok is False
         assert any("unknown parent_process" in m for m in messages)
@@ -840,7 +886,7 @@ class TestValidateAugmentedParentRefs:
         parent = _make_biomass_process(ts)
         first_aug = self._aug_child(parent_process="parent", name="first_aug")
         chained = self._aug_child(parent_process="first_aug", name="chained")
-        cs = self._case_study(
+        cs = self._collection(
             {
                 "parent": parent,
                 "first_aug": first_aug,
@@ -853,7 +899,7 @@ class TestValidateAugmentedParentRefs:
 
     def test_no_augmented_processes_ok(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        cs = self._case_study({"p1": _make_biomass_process(ts)})
+        cs = self._collection({"p1": _make_biomass_process(ts)})
         ok, messages = validate_augmented_parent_refs(cs)
         assert ok is True
         assert any("OK" in m for m in messages)
@@ -870,12 +916,12 @@ class TestValidateAugmentedParentRefs:
         with pytest.raises(TypeError):
             validate_augmented_parent_refs("not a collection")
 
-    def test_validate_case_study_runs_augmented_parent_refs(self):
+    def test_validate_for_publication_runs_augmented_parent_refs(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         parent = _make_biomass_process(ts)
         child = self._aug_child(parent_process="ghost")
-        cs = self._case_study({"parent": parent, "child": child})
-        all_valid, report = validate_case_study(cs)
+        cs = self._collection({"parent": parent, "child": child})
+        all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert "__augmented__" in report
         assert any("unknown parent_process" in m for m in report["__augmented__"])
@@ -1174,6 +1220,68 @@ class TestValidateBounds:
         ok, msg = validate_bounds(p)
         assert ok is False
         assert "pH" in msg
+
+
+class TestValidateBoundsAgainstData:
+    def test_in_bounds_passes(self):
+        ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
+        p = _make_biomass_process(ts)
+        ok, _ = validate_bounds_against_data(p)
+        assert ok is True
+
+    def test_below_lower_bound_fails_with_count(self):
+        # default RMC bounds are (0.0, None) even when never set explicitly
+        ts = _ts([0.0, 1.0, 2.0], [-0.5, 0.5, 1.0])
+        p = _make_biomass_process(ts)
+        ok, msg = validate_bounds_against_data(p)
+        assert ok is False
+        assert "1 datapoint" in msg
+        assert "biomass" in msg
+
+    def test_above_upper_bound_fails(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p = _make_biomass_process(ts)
+        p.reactor_medium.components["biomass"].bounds = (0.0, 0.3)
+        ok, msg = validate_bounds_against_data(p)
+        assert ok is False
+        assert "above upper bound" in msg
+
+    def test_unset_bounds_skips_check(self):
+        ts = _ts([0.0, 1.0], [-5.0, -3.0])
+        p = _make_biomass_process(ts)
+        p.reactor_medium.components["biomass"].bounds = (None, None)
+        ok, _ = validate_bounds_against_data(p)
+        assert ok is True
+
+    def test_static_variable_checked(self):
+        p = _make_intra_process()
+        p.reactor_medium.components["product"].bounds = (0.0, None)
+        p.reactor_medium.components["product"].concentration = StaticVariable(-1.0)
+        ok, msg = validate_bounds_against_data(p)
+        assert ok is False
+        assert "product" in msg
+
+    def test_process_variable_checked(self):
+        p = _make_intra_process()
+        p.process_variables = {
+            "pH": ProcessVariable(
+                "pH",
+                "",
+                is_controlled=False,
+                values=StaticVariable(20.0),
+                bounds=(0.0, 14.0),
+            )
+        }
+        ok, msg = validate_bounds_against_data(p)
+        assert ok is False
+        assert "pH" in msg
+
+    def test_wired_into_validate_process(self):
+        ts = _ts([0.0, 1.0], [-1.0, 0.5])
+        p = _make_biomass_process(ts)
+        ok, messages = validate_process(p)
+        assert ok is False
+        assert any("bounds-vs-data" in m for m in messages)
 
 
 if __name__ == "__main__":

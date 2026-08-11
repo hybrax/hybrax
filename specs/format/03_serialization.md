@@ -18,22 +18,20 @@ traces.
 
 | Function | Description |
 |----------|-------------|
-| `save_case_study(case_study, path)` | Write a `CaseStudy`. |
-| `load_case_study(path) -> CaseStudy` | Read a `CaseStudy`. |
 | `save_process_collection(collection, path)` | Write a `BioProcessCollection`. |
 | `load_process_collection(path) -> BioProcessCollection` | Read a `BioProcessCollection`. |
 
-One save/load pair per top-level type — there are no `*_json` variants.
+One save/load pair for the top-level type — there are no `*_json` variants.
 
 ### Path resolution
 
 `path` may be a file or a directory.
 
 ```python
-save_case_study(cs, Path("output/"))              # -> output/data.json
-save_case_study(cs, Path("output/data.json"))     # -> output/data.json
-save_case_study(cs, Path("output/custom.json"))   # -> output/custom.json
-save_case_study(cs, Path("output/data.json.gz"))  # -> gzipped
+save_process_collection(cs, Path("output/"))              # -> output/data.json
+save_process_collection(cs, Path("output/data.json"))     # -> output/data.json
+save_process_collection(cs, Path("output/custom.json"))   # -> output/custom.json
+save_process_collection(cs, Path("output/data.json.gz"))  # -> gzipped
 ```
 
 When loading from a directory, `data.json` is tried first, then `data.json.gz`.
@@ -44,10 +42,10 @@ an explicit message.
 
 All reads use ijson's YAJL backend with `allow_comments=True`, so whole-line and
 inline `//` comments and `/* ... */` block comments are accepted directly. No
-comment-stripping preprocessing is used. Ordinary documents are fully
-materialized; `BioProcessCollection` entries are instead restored and
-constructed one process at a time to limit peak memory. Both paths consume the
-complete document, so malformed suffixes and trailing garbage fail.
+comment-stripping preprocessing is used. `load_process_collection` streams the
+top-level scalar/metadata fields first, then restores and constructs each
+process one at a time, to limit peak memory. The complete document is
+consumed, so malformed suffixes and trailing garbage fail.
 
 Bare `NaN`, `Infinity`, and `-Infinity` tokens are invalid and rejected. Writers
 always emit valid JSON, replacing non-finite floating values with `null`.
@@ -88,8 +86,9 @@ The file mirrors the dataclass hierarchy directly.
 }
 ```
 
-A `BioProcessCollection` file has the same shape, with `metadata` and
-`processes` at the top level instead of `case_id`/`organism`/`citation`.
+`case_id`/`organism`/`citation` are omitted from the JSON entirely when unset
+(rather than written as `null`) — a loose, non-case-study collection's file
+has only `metadata` and `processes` at the top level.
 
 ### Arrays
 
@@ -255,8 +254,8 @@ Loading fails loudly rather than guessing, for:
 import bp_format as bp
 from pathlib import Path
 
-bp.serialization.save_case_study(case_study, Path("output/"))
-restored = bp.serialization.load_case_study(Path("output/"))
+bp.serialization.save_process_collection(case_study, Path("output/"))
+restored = bp.serialization.load_process_collection(Path("output/"))
 
 assert restored.case_id == case_study.case_id
 assert set(restored.processes) == set(case_study.processes)

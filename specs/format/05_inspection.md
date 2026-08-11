@@ -20,9 +20,11 @@ A hierarchical view of one `BioProcess`.
 | 2 | Adds data types and sizes |
 | 3 | Adds units, value ranges, and spline status (default) |
 
-### `print_case_study_structure(case_study, verbosity=3)`
+### `print_collection_structure(collection, verbosity=3)`
 
-`case_id`, organism, citation, and a per-process summary with data-point counts.
+`case_id`, organism, citation, and a per-process summary with data-point counts
+when `case_id` is set (a case study); otherwise a loose-collection summary
+(process count and `metadata` keys).
 
 ### `print_rhs_ode(target, ordering=None)`
 
@@ -37,8 +39,8 @@ box, with sub-tables for:
   `− dilution(...)` terms bp-format adds on top
 - **Volume** — additions from feeds, removals from samples
 
-Accepts a `BioProcess`, a `CaseStudy`, or a `BioProcessCollection`. For a
-container it first runs
+Accepts a `BioProcess` or a `BioProcessCollection`. For a container it first
+runs
 [`validate_biological_ode_equivalence`](04_validation.md#validate_biological_ode_equivalencecontainer)
 and raises `ValueError` if the processes do not share the same
 `biological_ode` — printing one process's ODE as if it described all of them
@@ -59,7 +61,7 @@ the curve is directly comparable to the measurements.
 
 Returns the matplotlib figure.
 
-### `plot_case_study(case_study, figsize_per_panel=(5, 3), save_path=None)`
+### `plot_collection(collection, figsize_per_panel=(5, 3), save_path=None)`
 
 A grid: one column per process, one row per variable. The fastest way to spot a
 run whose units, scale, or sampling schedule differ from the rest.
@@ -78,7 +80,7 @@ collection = bp.serialization.load_process_collection("data.json")
 process = collection.processes["run_1"]
 
 bp.print_process_structure(process, verbosity=1)
-bp.print_case_study_structure(case_study)
+bp.print_collection_structure(collection)
 
 # what will actually be integrated
 bp.print_rhs_ode(collection)
@@ -86,7 +88,7 @@ bp.print_rhs_ode(collection)
 fig = bp.plot_process(process)
 fig.savefig("run_1.png", dpi=150, bbox_inches="tight")
 
-bp.plot_case_study(case_study, figsize_per_panel=(4, 2.5),
+bp.plot_collection(collection, figsize_per_panel=(4, 2.5),
                    save_path="overview.png")
 ```
 

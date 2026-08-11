@@ -22,7 +22,6 @@ if TYPE_CHECKING:
         BioProcessCollection,
         BioProcessMetadata,
         Bounds,
-        CaseStudy,
         DiscreteEvents,
         FeedMedium,
         FeedMediumComponent,
@@ -40,9 +39,9 @@ if TYPE_CHECKING:
         VolumeChange,
     )
     from .inspect import (  # noqa: F401
-        plot_case_study,
+        plot_collection,
         plot_process,
-        print_case_study_structure,
+        print_collection_structure,
         print_process_structure,
         print_rhs_ode,
     )
@@ -53,7 +52,9 @@ if TYPE_CHECKING:
         validate_biological_ode_equivalence,
         validate_biomass_in_reactor_medium,
         validate_bounds,
-        validate_case_study,
+        validate_bounds_against_data,
+        validate_cross_process_consistency,
+        validate_for_publication,
         validate_measurement_sampling_alignment,
         validate_process,
         validate_timeseries_shape,
@@ -85,15 +86,14 @@ _EXPORT_MODULES = {
         "BioProcess",
         "AugmentedBioProcess",
         "BioProcessCollection",
-        "CaseStudy",
     ),
     ".simulation": ("Simulation", "SimulationEvent", "SimulationResult"),
     ".inspect": (
         "print_process_structure",
-        "print_case_study_structure",
+        "print_collection_structure",
         "print_rhs_ode",
         "plot_process",
-        "plot_case_study",
+        "plot_collection",
     ),
     ".validate": (
         "validate_timeseries_shape",
@@ -103,11 +103,13 @@ _EXPORT_MODULES = {
         "validate_measurement_sampling_alignment",
         "validate_process",
         "validate_volume_consistency",
-        "validate_case_study",
+        "validate_for_publication",
         "validate_augmented_parent_refs",
         "validate_biological_ode",
         "validate_biological_ode_equivalence",
         "validate_bounds",
+        "validate_bounds_against_data",
+        "validate_cross_process_consistency",
     ),
 }
 _EXPORTS = {

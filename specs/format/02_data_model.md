@@ -391,21 +391,19 @@ See [08_mechanistic.md](08_mechanistic.md) for what the factories do with them.
 
 ```python
 @dataclass
-class CaseStudy:
-    case_id: str
-    organism: str            # "E. coli", "CHO"
-    citation: str
-    processes: Dict[str, BioProcess]
-
-@dataclass
 class BioProcessCollection:
+    case_id: Optional[str] = None
+    organism: Optional[str] = None   # "E. coli", "CHO"
+    citation: Optional[str] = None
     metadata: Optional[Dict] = None
     processes: Dict[str, BioProcess] = {}
 ```
 
-One file on disk holds one of these. `CaseStudy` is the strict,
-publication-linked form; `BioProcessCollection` is the loose form for raw or
-intermediate data.
+One file on disk holds one collection. `case_id`/`organism`/`citation` set
+(all non-empty) mark it as a full, publication-linked case study — the
+strict form. Left `None` (the default), it is raw or intermediate data — the
+loose form. `metadata` remains a free-form dict for arbitrary provenance,
+independent of case-study identity.
 
 ## Examples
 

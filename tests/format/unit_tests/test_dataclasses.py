@@ -21,7 +21,6 @@ from bp_format import (
     BioProcess,
     AugmentedBioProcess,
     BioProcessCollection,
-    CaseStudy,
 )
 from bp_format.serialization import (
     save_process_collection,
@@ -322,7 +321,7 @@ def test_bioprocess_with_process_variables():
     assert "temperature" in process.process_variables
 
 
-def test_case_study_creation():
+def test_collection_case_study_fields():
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),
         time_axis=TimeAxis(
@@ -331,7 +330,7 @@ def test_case_study_creation():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
@@ -342,7 +341,7 @@ def test_case_study_creation():
     assert "p1" in cs.processes
 
 
-def test_case_study_multiple_processes():
+def test_collection_case_study_fields_multiple_processes():
     process_a = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="batch"),
         time_axis=TimeAxis(
@@ -359,7 +358,7 @@ def test_case_study_multiple_processes():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L"),
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="ecoli_study",
         organism="Escherichia coli",
         citation="Doe et al. 2024",
@@ -368,6 +367,17 @@ def test_case_study_multiple_processes():
     assert cs.case_id == "ecoli_study"
     assert "p1" in cs.processes
     assert len(cs.processes) == 2
+
+
+def test_collection_without_case_study_fields_is_loose():
+    """BioProcessCollection with all three case fields unset is raw/intermediate
+    data — analogous to the deleted CaseStudy vs. loose split."""
+    collection = BioProcessCollection()
+    assert collection.case_id is None
+    assert collection.organism is None
+    assert collection.citation is None
+    assert collection.metadata is None
+    assert collection.processes == {}
 
 
 # ---------------------------------------------------------------------------

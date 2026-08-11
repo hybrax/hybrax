@@ -5,7 +5,6 @@ import jax.numpy as jnp
 from .dataclasses import (
     BioProcess,
     BioProcessCollection,
-    CaseStudy,
     FeedVolumeChange,
     ProcessOrdering,
     SampleVolumeChange,
@@ -381,44 +380,50 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
     return total
 
 
-def print_case_study_structure(case_study: CaseStudy, verbosity: int = 3) -> None:
+def print_collection_structure(collection: BioProcessCollection, verbosity: int = 3) -> None:
     """
-    Print a hierarchical view of a CaseStudy.
+    Print a hierarchical view of a BioProcessCollection.
 
     Args:
-        case_study: CaseStudy object to inspect
+        collection: BioProcessCollection object to inspect
         verbosity: Detail level (1=minimal, 2=medium, 3=full)
 
-            - Level 3 (most verbose): organism, citation, per-process datapoint
-              counts, and total datapoints
+            - Level 3 (most verbose): organism, citation (when set),
+              per-process datapoint counts, and total datapoints
             - Level 2 (mid verbose): organism and process names listed
               (no citation, no datapoint counts)
-            - Level 1 (least verbose): case_id and process count only
+            - Level 1 (least verbose): case_id/label and process count only
     """
     print("=" * 80)
-    print("Case Study Structure")
+    print("BioProcessCollection Structure")
     print("=" * 80)
 
-    n_procs = len(case_study.processes) if case_study.processes else 0
+    n_procs = len(collection.processes) if collection.processes else 0
+    label = collection.case_id or "(untitled collection)"
 
     if verbosity == 1:
-        print(f"{case_study.case_id}  ({n_procs} processes)")
+        print(f"{label}  ({n_procs} processes)")
         print("=" * 80)
         return
 
-    print(f"Case ID:  {case_study.case_id}")
-    print(f"Organism: {case_study.organism}")
-    if verbosity == 3:
-        print(f"Citation: {case_study.citation}")
+    if collection.case_id:
+        print(f"Case ID:  {collection.case_id}")
+        print(f"Organism: {collection.organism}")
+        if verbosity == 3:
+            print(f"Citation: {collection.citation}")
+    else:
+        print(f"Collection: {label}")
+        if collection.metadata:
+            print(f"Metadata keys: {sorted(collection.metadata.keys())}")
     print(f"Processes: {n_procs}")
 
-    if not case_study.processes:
+    if not collection.processes:
         print("  (no processes)")
         print("=" * 80)
         return
 
     total_datapoints = 0
-    for p_key, proc in case_study.processes.items():
+    for p_key, proc in collection.processes.items():
         name = _get_process_name(proc)
         if verbosity == 2:
             print(f"  * {p_key}: {name}")
@@ -429,7 +434,7 @@ def print_case_study_structure(case_study: CaseStudy, verbosity: int = 3) -> Non
 
     if verbosity == 3:
         print("\n" + "-" * 80)
-        print(f"Total datapoints in case study: {total_datapoints}")
+        print(f"Total datapoints in collection: {total_datapoints}")
 
     print("=" * 80)
 
@@ -841,9 +846,9 @@ def _draw_panel(
         )
 
 
-def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=None):
+def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), save_path=None):
     """
-    Plot all dynamic and static variables for every process in a CaseStudy.
+    Plot all dynamic and static variables for every process in a BioProcessCollection.
 
     All unique variables are discovered across every process first.  Each
     variable gets its own subplot and all processes are overlaid using
@@ -851,7 +856,7 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
     longer series are lines only.
 
     Args:
-        case_study: CaseStudy object to plot.
+        collection: BioProcessCollection object to plot.
         figsize_per_panel: ``(width, height)`` in inches for each subplot.
 
     Returns:
@@ -866,7 +871,7 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
     t_global_end = float("-inf")
     time_unit = "time"
 
-    for proc_key, process in case_study.processes.items():
+    for proc_key, process in collection.processes.items():
         if process.time_axis is not None:
             time_unit = process.time_axis.unit
             t_global_start = min(t_global_start, float(process.time_axis.start))
@@ -960,7 +965,8 @@ def plot_case_study(case_study: CaseStudy, figsize_per_panel=(5, 3), save_path=N
     for j in range(len(panels), len(axes_flat)):
         axes_flat[j].set_visible(False)
 
-    fig.suptitle(f"Case Study: {case_study.case_id}", fontsize=12)
+    label = collection.case_id or (collection.metadata or {}).get("name", "BioProcessCollection")
+    fig.suptitle(f"BioProcessCollection: {label}", fontsize=12)
 
     if legend_handles_by_label:
         labels = list(legend_handles_by_label.keys())
@@ -1224,18 +1230,19 @@ def _format_v_removals(
 
 
 def _resolve_target(target):
-    """Return ``(process, title_label)`` from BioProcess / CaseStudy / Collection.
+    """Return ``(process, title_label)`` from BioProcess / BioProcessCollection.
 
     For multi-process containers, equivalence of ``biological_ode`` is
     enforced before the first process is selected. The returned label is
-    the case-study id (or collection name / fallback), never a process
-    name, so the printed title represents the whole container.
+    the collection's case-study id (or ``metadata["name"]`` / fallback),
+    never a process name, so the printed title represents the whole
+    container.
     """
     from .validate import validate_biological_ode_equivalence
 
     if isinstance(target, BioProcess):
         return target, _get_process_name(target)
-    if isinstance(target, (CaseStudy, BioProcessCollection)):
+    if isinstance(target, BioProcessCollection):
         if not target.processes:
             raise ValueError("print_rhs_ode: container has no processes.")
         ok, msg = validate_biological_ode_equivalence(target)
@@ -1243,16 +1250,13 @@ def _resolve_target(target):
             raise ValueError(f"Cannot print unified ODE structure: {msg}")
         process = next(iter(target.processes.values()))
         n = len(target.processes)
-        if isinstance(target, CaseStudy):
-            label = target.case_id
-        else:
-            label = (target.metadata or {}).get("name", "BioProcessCollection")
+        label = target.case_id or (target.metadata or {}).get("name", "BioProcessCollection")
         if n > 1:
             label = f"{label} ({n} processes)"
         return process, label
     raise TypeError(
-        "print_rhs_ode expects BioProcess, CaseStudy, or "
-        f"BioProcessCollection; got {type(target).__name__!r}"
+        "print_rhs_ode expects BioProcess or BioProcessCollection; "
+        f"got {type(target).__name__!r}"
     )
 
 
@@ -1263,7 +1267,7 @@ def print_rhs_ode(
     """Print the mechanistic ODE structure as a single ASCII box with two
     sub-tables (Algebraic, Derivatives).
 
-    Accepts a :class:`BioProcess`, a :class:`CaseStudy`, or a
+    Accepts a :class:`BioProcess` or a
     :class:`BioProcessCollection`. For multi-process containers,
     :func:`bp_format.validate.validate_biological_ode_equivalence` is
     invoked first and the title represents the whole container — the

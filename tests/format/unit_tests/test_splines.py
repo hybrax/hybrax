@@ -13,6 +13,7 @@ from scipy import interpolate
 
 from bp_format import (
     BioProcess,
+    BioProcessCollection,
     BioProcessMetadata,
     TimeAxis,
     TimeSeries,
@@ -48,10 +49,9 @@ from bp_format.splines import (
     _inverse_pseudobatch_derivative,
 )
 from bp_format.serialization import (
-    save_case_study,
-    load_case_study,
+    save_process_collection,
+    load_process_collection,
 )
-from bp_format import CaseStudy
 from bp_format.time_series import PPoly
 
 
@@ -348,15 +348,15 @@ def test_spline_json_roundtrip():
         reactor_medium=rm,
         process_variables={"test_var": pv},
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
-        save_case_study(cs, path)
+        save_process_collection(cs, path)
         payload = path.read_text()
-        loaded = load_case_study(path)
+        loaded = load_process_collection(path)
 
     assert '"interpolator"' not in payload
     assert '"breaks"' in payload
@@ -389,14 +389,14 @@ def test_discrete_events_json_roundtrip():
         reactor_medium=rm,
         discrete_events=de,
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
-        save_case_study(cs, path)
-        loaded = load_case_study(path)
+        save_process_collection(cs, path)
+        loaded = load_process_collection(path)
 
     loaded_proc = loaded.processes["p"]
     assert loaded_proc.discrete_events is not None
@@ -417,15 +417,15 @@ def test_no_interpolator_field():
         reactor_medium=rm,
         process_variables={"x": pv},
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
-        save_case_study(cs, path)
+        save_process_collection(cs, path)
         payload = path.read_text()
-        loaded = load_case_study(path)
+        loaded = load_process_collection(path)
 
     loaded_pv = loaded.processes["p"].process_variables["x"]
     assert '"interpolator"' not in payload
@@ -658,13 +658,13 @@ def test_smoothing_spline_metadata_round_trips_through_serialization():
     process.process_variables["temperature"] = ProcessVariable(
         name="temperature", unit="C", is_controlled=False, values=fitted
     )
-    case_study = CaseStudy(
+    case_study = BioProcessCollection(
         case_id="cs", organism="test", citation="test", processes={"p": process}
     )
 
     with tempfile.NamedTemporaryFile(suffix=".json", mode="w+", delete=False) as f:
-        save_case_study(case_study, f.name)
-        loaded = load_case_study(f.name)
+        save_process_collection(case_study, f.name)
+        loaded = load_process_collection(f.name)
 
     reloaded = loaded.processes["p"].process_variables["temperature"].values
     assert reloaded.metadata["fit_strategy"] == "smoothing_bspline"
@@ -1471,13 +1471,13 @@ def test_pseudobatch_spline_json_roundtrip():
     transform = _build_single_species_transform(proc, "glucose")
     proc.pseudobatch_transform = transform
 
-    cs = CaseStudy(case_id="cs", organism="CHO", citation="test", processes={"p": proc})
+    cs = BioProcessCollection(case_id="cs", organism="CHO", citation="test", processes={"p": proc})
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test_pb.json"
-        save_case_study(cs, path)
+        save_process_collection(cs, path)
         payload = path.read_text()
-        loaded = load_case_study(path)
+        loaded = load_process_collection(path)
 
     assert '"interpolator"' not in payload
     loaded_comp = loaded.processes["p"].reactor_medium.components["glucose"]
@@ -1571,13 +1571,13 @@ def test_load_rejects_legacy_process_variable_interpolator_payload():
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
         process_variables={"linear_var": pv},
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "legacy-pv.json"
-        save_case_study(cs, path)
+        save_process_collection(cs, path)
         payload = path.read_text()
         mutated = payload.replace(
             '"values": {',
@@ -1586,7 +1586,7 @@ def test_load_rejects_legacy_process_variable_interpolator_payload():
         )
         path.write_text(mutated)
         with pytest.raises(ValueError, match="Legacy sibling 'interpolator' payloads"):
-            load_case_study(path)
+            load_process_collection(path)
 
 
 def test_load_rejects_legacy_reactor_component_interpolator_payload():
@@ -1615,13 +1615,13 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "legacy-comp.json"
-        save_case_study(cs, path)
+        save_process_collection(cs, path)
         payload = path.read_text()
         mutated = payload.replace(
             '"concentration": {',
@@ -1631,7 +1631,7 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
         )
         path.write_text(mutated)
         with pytest.raises(ValueError, match="Legacy sibling 'interpolator' payloads"):
-            load_case_study(path)
+            load_process_collection(path)
 
 
 def test_load_rejects_legacy_volume_change_interpolator_payload():
@@ -1650,13 +1650,13 @@ def test_load_rejects_legacy_volume_change_interpolator_payload():
         volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": feed}),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
-    cs = CaseStudy(
+    cs = BioProcessCollection(
         case_id="cs", organism="E. coli", citation="test", processes={"p": proc}
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "legacy-vc.json"
-        save_case_study(cs, path)
+        save_process_collection(cs, path)
         payload = path.read_text()
         mutated = payload.replace(
             '"values": {',
@@ -1665,7 +1665,7 @@ def test_load_rejects_legacy_volume_change_interpolator_payload():
         )
         path.write_text(mutated)
         with pytest.raises(ValueError, match="Legacy sibling 'interpolator' payloads"):
-            load_case_study(path)
+            load_process_collection(path)
 
 
 # ---------------------------------------------------------------------------
