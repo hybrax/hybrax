@@ -209,7 +209,7 @@ print( "true    mu_max           : 0.450 1/h")
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(WORK / "run")
+print(f"./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 Everything below is a real directory on disk, self-contained: `cp -r` it anywhere and
@@ -236,6 +236,8 @@ for path in sorted((WORK / "run").rglob("*")):
 | `forward/` | The output of step 4. |
 
 ## What to do next
+
+Run the tutorial yourself at `./source/_data/out/runs/quickstart/`.
 
 :::{admonition} You have not seen any of the interesting parts yet
 :class: tip

@@ -181,7 +181,7 @@ which is more informative than an averaged score.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print("run directory:", WORK / "loo_run")
+print(f"run directory: ./{(WORK / 'loo_run').relative_to(WORK.parents[4])}")
 for path in sorted((WORK / "loo_run").iterdir()):
     print(("  " if path.is_file() else "  ") + path.name + ("/" if path.is_dir() else ""))
 ```
@@ -205,6 +205,8 @@ plotting all work on it exactly like any other trained run.
   is what you want if you edited the config.
 
 ## See also
+
+Run the example yourself at `./source/_data/out/runs/gallery_loo/`.
 
 - [Cross-validation](../train/loo.md): the full reference, including parallelism and
   resuming.

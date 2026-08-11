@@ -127,7 +127,7 @@ bp_train("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 out = bp_train("train", "--config", "train-config.json", "--overwrite", "--no-plot")
 print([l for l in out.splitlines() if "training complete" in l][0])
-print("run directory:", WORK / "run")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 ```{code-cell} ipython3
@@ -160,6 +160,8 @@ epoch budget); glucose and product are markedly easier.
 - **`estimate_all_scales` with the `controls_store` argument**, for the controlled axes.
 
 ## See also
+
+Run the example yourself at `./source/_data/out/runs/gallery_fed_batch/`.
 
 - [Volume, feeds and events](../format/volume_feeds_events.md): the concepts behind this
   dataset.

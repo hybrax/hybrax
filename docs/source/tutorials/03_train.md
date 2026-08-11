@@ -144,7 +144,7 @@ Everything not named in that config is a default, and each one is replaceable:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(WORK / "run")
+print(f"./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 Everything below lives in that directory, self-contained: `cp -r` it anywhere and
@@ -219,6 +219,8 @@ bp-train train --config train-config.json --epochs 50    # flags beat the config
 - Judge a fit by its **rates**, not only by its trajectories.
 
 ## What's next
+
+Run the tutorial yourself at `./source/_data/out/runs/tutorial_03/`.
 
 - **[Tutorial 4](04_your_first_custom_py.md)**: replace the two most important defaults
   and measure the difference.

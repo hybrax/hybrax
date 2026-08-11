@@ -172,6 +172,9 @@ A `CaseStudy` is one publication or campaign. Its `case_id` is also the natural 
 for cross-validation later.
 
 ```{code-cell} ipython3
+import contextlib
+import io
+
 case_study = bp.CaseStudy(
     case_id="my_first_dataset",
     organism="Escherichia coli",
@@ -181,7 +184,9 @@ case_study = bp.CaseStudy(
 
 out = Path("../_data/out/runs/tutorial_01").resolve()
 out.mkdir(parents=True, exist_ok=True)
-bp.serialization.save_case_study(case_study, out / "data.json")
+with contextlib.redirect_stdout(io.StringIO()):
+    bp.serialization.save_case_study(case_study, out / "data.json")
+print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 ```
 
 Note the import path: the save/load functions live on `bp.serialization`, not on the
@@ -207,6 +212,8 @@ print("first 3 X   :", np.asarray(run.reactor_medium.components["biomass"].conce
 - bp-format writes the default biology for you, in terms of specific rates.
 
 ## What's next
+
+Run the tutorial yourself at `./source/_data/out/runs/tutorial_01/`.
 
 - **[Tutorial 2](02_look_at_it.md)**: check that the package understood your data the
   way you meant it.

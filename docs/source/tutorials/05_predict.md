@@ -65,7 +65,7 @@ We start from a run directory trained exactly as in [Tutorial 4](04_your_first_c
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(WORK / "run")
+print(f"./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 Self-contained: `cp -r` it anywhere and keep working from the copy.
@@ -217,6 +217,8 @@ space*, then predict confidently and wrongly. No exception, no NaN. See
   directories portable.
 
 ## What's next
+
+Run the tutorial yourself at `./source/_data/out/runs/tutorial_05/`.
 
 You have now seen the whole loop. Everything the tutorials deliberately left out is in
 the gallery, each as a self-contained example:

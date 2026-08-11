@@ -111,6 +111,9 @@ feed metadata is wrong.
 
 ## What's next
 
+This tutorial has no output of its own: it reads the shared demo dataset directly from
+`./source/_data/out/demo_batch/`.
+
 - **[Tutorial 3](03_train.md)**: train a model on this dataset.
 - A check failed? [Errors](../troubleshooting/errors.md).
 - More on these tools: [Validating and inspecting](../format/validate_and_inspect.md).

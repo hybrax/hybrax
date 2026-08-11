@@ -147,12 +147,16 @@ passes validation.
 ## Round-tripping
 
 ```{code-cell} ipython3
+import contextlib
+import io
 from pathlib import Path
 import numpy as np
 
 out = Path("../_data/out/runs/roundtrip").resolve()
 out.mkdir(parents=True, exist_ok=True)
-bp.serialization.save_case_study(case_study, out / "data.json")
+with contextlib.redirect_stdout(io.StringIO()):
+    bp.serialization.save_case_study(case_study, out / "data.json")
+print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 
 again = bp.serialization.load_case_study(out / "data.json")
 before = case_study.processes["run_1"].reactor_medium.components["biomass"].concentration

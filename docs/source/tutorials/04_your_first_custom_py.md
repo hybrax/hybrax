@@ -199,7 +199,9 @@ run's predictions back onto the actual measurement times:
 bp_train("train", "--config", "train-default.json", "--overwrite", "--no-plot")
 bp_train("train", "--config", "train-custom.json", "--overwrite")
 
-print("run directories:", WORK / "run_default", "and", WORK / "run_custom")
+root = WORK.parents[4]
+print(f"run directories: ./{(WORK / 'run_default').relative_to(root)}"
+      f" and ./{(WORK / 'run_custom').relative_to(root)}")
 print("both self-contained: cp -r either one anywhere and keep working from the copy")
 
 r2_default = r2_by_target("run_default")
@@ -275,6 +277,8 @@ effect, check the spelling first. See
   run don't share loss units.
 
 ## What's next
+
+Run the tutorial yourself at `./source/_data/out/runs/tutorial_04/`.
 
 - **[Tutorial 5](05_predict.md)**: use the trained model.
 - Real kinetics instead of a bare MLP: [Gallery: mechanistic models](../gallery/mechanistic_rates.md).

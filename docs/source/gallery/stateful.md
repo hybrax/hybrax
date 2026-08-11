@@ -148,7 +148,7 @@ means that bp-train wants it to be a decision, not a side effect of adding a fie
 
 out = bp_train("train", "--config", "train.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
-print("run directory:", WORK / "run")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 ```{code-cell} ipython3
@@ -197,6 +197,8 @@ to reach for this.
   and [4](../tutorials/04_your_first_custom_py.md) for the memoryless baseline.
 
 ## See also
+
+Run the example yourself at `./source/_data/out/runs/gallery_stateful/`.
 
 - [The reaction module](../train/reaction_module.md): the general contract this module
   follows.

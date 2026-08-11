@@ -187,7 +187,7 @@ bp_train("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 out = bp_train("train", "--config", "train-full.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
-print("run directory:", WORK / "run")
+print(f"run directory: ./{(WORK / 'run_full').relative_to(WORK.parents[4])}")
 ```
 
 ## Did it cost anything?
@@ -226,6 +226,7 @@ shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data_ba
     }
     """))
 bp_train("train", "--config", "train-base.json", "--overwrite", "--no-plot")
+print(f"comparison run directory: ./{(WORK / 'run_base').relative_to(WORK.parents[4])}")
 
 r2_base = r2_by_target("run_base")
 min_glucose_base, curvature_base = dense_diagnostics("run_base")
@@ -254,6 +255,8 @@ Image(filename=str(WORK / "run_full/run_1.png"))
 ```
 
 ## See also
+
+Run the example yourself at `./source/_data/out/runs/gallery_dense_loss/`.
 
 - [The loss module](../train/loss_module.md#the-dense-grid): `dense_grid_n` and every
   `dense_*` field.

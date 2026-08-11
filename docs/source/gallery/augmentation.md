@@ -214,8 +214,9 @@ the time `train` runs, the synthetic children are just more processes in the sto
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print("run directory:", WORK / "run")
-print("prepared augmentation diagnostic:", WORK / "prepared/augmented-data.png")
+root = WORK.parents[4]
+print(f"run directory: ./{(WORK / 'run').relative_to(root)}")
+print(f"prepared augmentation diagnostic: ./{(WORK / 'prepared/augmented-data.png').relative_to(root)}")
 ```
 
 ## Gotchas
@@ -239,6 +240,8 @@ print("prepared augmentation diagnostic:", WORK / "prepared/augmented-data.png")
   already told you; it cannot substitute for an experiment you have not run.
 
 ## See also
+
+Run the example yourself at `./source/_data/out/runs/gallery_augmentation/`.
 
 - [Prepare](../train/prepare.md#augmentation): the config reference.
 - [Cross-validation, worked](loo.md): why augmented data needs group-aware folds.

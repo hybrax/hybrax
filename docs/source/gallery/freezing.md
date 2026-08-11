@@ -179,8 +179,9 @@ page freezes). Freezing arbitrary, never-trained weights just removes capacity.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(f"run directory: {WORK / 'run'}")
-print(f"comparison run: {WORK / 'run_unfrozen'}")
+root = WORK.parents[4]
+print(f"run directory: ./{(WORK / 'run').relative_to(root)}")
+print(f"comparison run: ./{(WORK / 'run_unfrozen').relative_to(root)}")
 ```
 
 ## Gotchas
@@ -196,6 +197,8 @@ print(f"comparison run: {WORK / 'run_unfrozen'}")
   frozen sub-module is not a shortcut.
 
 ## See also
+
+Run the example yourself at `./source/_data/out/runs/gallery_freezing/`.
 
 - [The reaction module](../train/reaction_module.md): the general contract every
   reaction module follows, including the field-tag rules in full.
