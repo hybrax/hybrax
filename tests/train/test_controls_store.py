@@ -504,6 +504,21 @@ def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
     assert pvs[:, 1] == pytest.approx([30.0, 31.0])  # T clamped to grid ends
 
 
+def test_dense_control_grid_excludes_source_times_outside_process():
+    collection = _make_two_process_collection()
+    for process in collection.processes.values():
+        process.process_variables["CF"].values = TimeSeries(
+            times=jnp.asarray([-1.0, 0.0, 1.0, 2.0]),
+            values=jnp.asarray([-1.0, 0.0, 1.0, 2.0]),
+        )
+
+    store = ControlsStore.from_collection(collection)
+
+    for process_name in collection.processes:
+        grid = np.asarray(store.get_controls(process_name).active_dense_grid)
+        assert grid[[0, -1]] == pytest.approx([0.0, 1.0])
+
+
 def test_controls_store_rejects_not_consistent_controls_at_init():
     """ControlsStore must reject collections whose processes disagree on
     categorised control layouts."""

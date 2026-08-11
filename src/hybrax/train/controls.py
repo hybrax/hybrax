@@ -500,7 +500,9 @@ def build_dense_payload(
 
     source_knots: list[float] = []
     for source in sources:
-        source_knots.extend(source.times.tolist())
+        source_knots.extend(
+            time for time in source.times.tolist() if start <= time <= end
+        )
 
     grid = np.unique(
         np.concatenate(
