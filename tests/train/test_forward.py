@@ -41,6 +41,7 @@ from bp_format.dataclasses import (
 )
 
 from bp_train import cli, postprocessing
+import bp_train.harness as harness_module
 from bp_train.controls_store import ControlsStore
 from bp_train.harness import ForwardConfig, ForwardResult
 from bp_train.defaults import DefaultLossModule
@@ -672,6 +673,96 @@ def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection
         "q_S",
     ]
     assert rows.empty
+
+
+@pytest.mark.parametrize("process_count", [3, 35])
+def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count):
+    process_names = tuple(f"p{i}" for i in range(process_count))
+
+    class _Store:
+        process_order = process_names
+        Cin_controlled_FVCs = jnp.zeros((process_count, 0, 1))
+        Cin_modeled_FVCs = jnp.zeros((process_count, 0, 1))
+
+        @staticmethod
+        def gather_batch(indices):
+            return SimpleNamespace(process_indices=indices)
+
+    seen_indices = []
+
+    def fake_batched_loss(
+        wrapper,
+        batch,
+        cin,
+        cin_modeled,
+        jump_ts_rows,
+        **kwargs,
+    ):
+        del wrapper, cin, cin_modeled, jump_ts_rows, kwargs
+        indices = jnp.asarray(batch.process_indices)
+        seen_indices.append(np.asarray(indices))
+        return (
+            jnp.mean(indices),
+            jnp.stack((indices, indices + 100), axis=1),
+            indices,
+            indices[:, None],
+            indices[:, None],
+            jnp.full(indices.shape, jnp.inf),
+        )
+
+    def fake_dense_exports(prediction_t, save_outputs, wrapper, names):
+        del wrapper
+        np.testing.assert_array_equal(prediction_t[:, 0], save_outputs[:, 0])
+        assert prediction_t.shape[0] == len(names)
+        return {name: int(prediction_t[i, 0]) for i, name in enumerate(names)}
+
+    monkeypatch.setattr(harness_module, "_BATCHED_LOSS_FN_JIT", fake_batched_loss)
+    monkeypatch.setattr(
+        harness_module,
+        "dense_exports_from_save_outputs",
+        fake_dense_exports,
+    )
+
+    totals, per_target, dense = harness_module.compute_dense_exports(
+        object(),
+        _Store(),
+        process_names,
+        solver_max_steps=10,
+        solver_rtol=1e-4,
+        solver_atol=1e-6,
+        solver_use_jump_ts=False,
+    )
+
+    assert [len(indices) for indices in seen_indices] == [32] * (
+        (process_count + 31) // 32
+    )
+    for batch_index, indices in enumerate(seen_indices):
+        start = batch_index * 32
+        valid = min(32, process_count - start)
+        np.testing.assert_array_equal(indices[:valid], np.arange(start, start + valid))
+        np.testing.assert_array_equal(
+            indices[valid:], np.full(32 - valid, process_count - 1)
+        )
+    np.testing.assert_array_equal(totals, np.arange(process_count))
+    np.testing.assert_array_equal(per_target[:, 0], np.arange(process_count))
+    assert list(dense) == list(process_names)
+    assert list(dense.values()) == list(range(process_count))
+
+
+def test_dense_exports_reject_duplicate_process_names():
+    class _Store:
+        process_order = ("p1",)
+
+    with pytest.raises(ValueError, match="duplicate process names.*p1"):
+        harness_module.compute_dense_exports(
+            object(),
+            _Store(),
+            ("p1", "p1"),
+            solver_max_steps=10,
+            solver_rtol=1e-4,
+            solver_atol=1e-6,
+            solver_use_jump_ts=False,
+        )
 
 
 def _single_dense_export(store, wrapper, *, prediction_grid_n):

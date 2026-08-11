@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import dataclasses
 import gc
 import json
@@ -1076,12 +1077,91 @@ def test_holdout_runs_once_at_periodic_final_collision(tmp_path, monkeypatch):
     )
 
     assert set(result.holdout_loss_by_step) == {2}
-    assert sum("step" in kwargs for kwargs in jit_calls) == 1
+    holdout_steps = [
+        kwargs["step"] for kwargs in jit_calls if kwargs["step"] is not None
+    ]
+    assert len(holdout_steps) == 1
+    assert int(holdout_steps[0]) == 2
     assert [p.name for p in (tmp_path / "checkpoints").glob("step_*")] == ["step_00002"]
     state = json.loads(
         (tmp_path / "checkpoints" / "latest" / "train_state.json").read_text()
     )
     assert state["holdout_loss"] == pytest.approx(result.holdout_loss_by_step[2])
+
+
+def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monkeypatch):
+    collection = _make_collection()
+    for name in ("p3", "p4"):
+        process = deepcopy(collection.processes["p2"])
+        process.metadata.name = name
+        collection.processes[name] = process
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    holdout_names = ("p2", "p3", "p4")
+
+    def fake_batches(wrapper, received_store, process_names, **kwargs):
+        del wrapper, kwargs
+        assert received_store is store
+        assert process_names == holdout_names
+        yield (
+            process_names[:2],
+            (
+                jnp.asarray(0.0),
+                jnp.asarray([[0.0], [0.0]]),
+                jnp.asarray([0.0, 0.0]),
+                None,
+                None,
+                jnp.asarray([jnp.inf, jnp.inf]),
+            ),
+        )
+        yield (
+            process_names[2:],
+            (
+                jnp.asarray(514.5),
+                jnp.asarray([[30.0], [999.0]]),
+                jnp.asarray([30.0, 999.0]),
+                None,
+                None,
+                jnp.asarray([jnp.inf, jnp.inf]),
+            ),
+        )
+
+    monkeypatch.setattr(harness_module, "_iter_batched_loss_outputs", fake_batches)
+    monkeypatch.setattr(
+        harness_module,
+        "compute_dense_exports",
+        lambda *args, **kwargs: (np.zeros(1), np.zeros((1, 1)), {}),
+    )
+    monkeypatch.setattr(harness_module, "export_predictions_csv", lambda *a, **k: None)
+    holdout_per_target = {}
+    original_write = harness_module.CheckpointWriter.write
+
+    def capture_write(writer, **kwargs):
+        holdout_per_target.update(kwargs["holdout_per_target_by_step"] or {})
+        return original_write(writer, **kwargs)
+
+    monkeypatch.setattr(harness_module.CheckpointWriter, "write", capture_write)
+
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p1",),
+            holdout_processes=holdout_names,
+            epochs=1,
+            batch_size=1,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=1.0,
+            plots=False,
+        ),
+    )
+
+    assert result.holdout_loss_by_step[1] == pytest.approx(10.0)
+    assert holdout_per_target[1] == pytest.approx((10.0,))
 
 
 def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, caplog):

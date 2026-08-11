@@ -78,6 +78,60 @@ _BATCHED_LOSS_FN_JIT = eqx.filter_jit(_BATCHED_LOSS_FN)
 
 logger = logging.getLogger(__name__)
 
+_EVALUATION_BATCH_SIZE = 32
+
+
+def _iter_batched_loss_outputs(
+    trained_wrapper: HybridOdeWrapper,
+    store: TrainingDataStore,
+    process_names: tuple[str, ...],
+    *,
+    solver_max_steps: int,
+    solver_rtol: float,
+    solver_atol: float,
+    solver_use_jump_ts: bool,
+    step: jax.Array | None = None,
+    prediction_grid_n: int | None = None,
+):
+    """Yield fixed-size JIT evaluation batches and their valid process names."""
+    if not process_names:
+        raise ValueError("process_names must not be empty")
+    unknown = [name for name in process_names if name not in store.process_order]
+    if unknown:
+        raise ValueError(
+            f"unknown process names: {unknown}; available={tuple(store.process_order)}"
+        )
+    duplicates = [name for name, count in Counter(process_names).items() if count > 1]
+    if duplicates:
+        raise ValueError(f"duplicate process names: {duplicates}")
+
+    batch_size = _EVALUATION_BATCH_SIZE
+    for start in range(0, len(process_names), batch_size):
+        valid_names = process_names[start : start + batch_size]
+        indices = [store.process_order.index(name) for name in valid_names]
+        indices.extend([indices[-1]] * (batch_size - len(indices)))
+        batch = store.gather_batch(jnp.asarray(indices, dtype=jnp.int32))
+        jump_ts_rows = None
+        if solver_use_jump_ts:
+            jump_ts_rows = clamp_padded_time_rows(
+                store.controls_store.jump_ts[batch.process_indices],
+                store.controls_store.jump_ts_lengths[batch.process_indices],
+            )
+        outputs = _BATCHED_LOSS_FN_JIT(
+            trained_wrapper,
+            batch,
+            store.Cin_controlled_FVCs,
+            store.Cin_modeled_FVCs,
+            jump_ts_rows,
+            max_solver_steps=int(solver_max_steps),
+            solver_rtol=float(solver_rtol),
+            solver_atol=float(solver_atol),
+            step=step,
+            prediction_grid_n=prediction_grid_n,
+        )
+        jax.block_until_ready(outputs[0])
+        yield valid_names, outputs
+
 
 def compute_dense_exports(
     trained_wrapper: HybridOdeWrapper,
@@ -90,7 +144,7 @@ def compute_dense_exports(
     solver_use_jump_ts: bool,
     prediction_grid_n: int = 200,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, DenseProcessExport]]:
-    """One batched, jitted solve over ``process_names`` → per-process dense exports.
+    """Evaluate ``process_names`` in padded JIT batches and build dense exports.
 
     The single source of dense prediction trajectories for forward and final
     training exports. The prediction grid is harvested from the same loss solve
@@ -98,40 +152,41 @@ def compute_dense_exports(
     training and there is no second simulation. Returns ``(per_sample_total,
     per_sample_per_target, dense_exports)`` (loss arrays are ``np``, aligned with
     ``process_names``)."""
-    eval_indices = jnp.asarray(
-        [store.process_order.index(name) for name in process_names], dtype=jnp.int32
-    )
-    batch = store.gather_batch(eval_indices)
-    jump_ts_rows = None
-    if solver_use_jump_ts:
-        jump_ts_rows = clamp_padded_time_rows(
-            store.controls_store.jump_ts[batch.process_indices],
-            store.controls_store.jump_ts_lengths[batch.process_indices],
-        )
-    (
-        _mean_total,
-        per_sample_per_target,
-        per_sample_total,
-        prediction_t,
-        prediction_save_outputs,
-        *_,  # trailing per-sample fail_time (unused on the forward/export path)
-    ) = _BATCHED_LOSS_FN_JIT(
+    per_sample_total_parts = []
+    per_sample_per_target_parts = []
+    dense_exports = {}
+    for valid_names, outputs in _iter_batched_loss_outputs(
         trained_wrapper,
-        batch,
-        store.Cin_controlled_FVCs,
-        store.Cin_modeled_FVCs,
-        jump_ts_rows,
-        max_solver_steps=int(solver_max_steps),
-        solver_rtol=float(solver_rtol),
-        solver_atol=float(solver_atol),
+        store,
+        process_names,
+        solver_max_steps=solver_max_steps,
+        solver_rtol=solver_rtol,
+        solver_atol=solver_atol,
+        solver_use_jump_ts=solver_use_jump_ts,
         prediction_grid_n=int(prediction_grid_n),
-    )
-    dense_exports = dense_exports_from_save_outputs(
-        prediction_t, prediction_save_outputs, trained_wrapper, process_names
-    )
+    ):
+        (
+            _mean_total,
+            per_sample_per_target,
+            per_sample_total,
+            prediction_t,
+            prediction_save_outputs,
+            *_,
+        ) = outputs
+        valid = len(valid_names)
+        per_sample_total_parts.append(np.asarray(per_sample_total[:valid]))
+        per_sample_per_target_parts.append(np.asarray(per_sample_per_target[:valid]))
+        dense_exports.update(
+            dense_exports_from_save_outputs(
+                prediction_t[:valid],
+                jtu.tree_map(lambda leaf: leaf[:valid], prediction_save_outputs),
+                trained_wrapper,
+                valid_names,
+            )
+        )
     return (
-        np.asarray(per_sample_total),
-        np.asarray(per_sample_per_target),
+        np.concatenate(per_sample_total_parts),
+        np.concatenate(per_sample_per_target_parts),
         dense_exports,
     )
 
@@ -1600,8 +1655,6 @@ def train_collection(
     holdout_loss_so_far: dict[int, float] = {}
     holdout_per_target_so_far: dict[int, tuple[float, ...]] = {}
 
-    holdout_batch = None
-    holdout_jump_ts_rows = None
     if cfg.holdout_processes:
         unknown = [n for n in cfg.holdout_processes if n not in store.process_order]
         if unknown:
@@ -1609,37 +1662,34 @@ def train_collection(
                 f"holdout_processes contains unknown names: {unknown}; "
                 f"available={tuple(store.process_order)}"
             )
-        holdout_indices = jnp.asarray(
-            [store.process_order.index(name) for name in cfg.holdout_processes],
-            dtype=jnp.int32,
-        )
-        holdout_batch = store.gather_batch(holdout_indices)
-        if cfg.solver_use_jump_ts:
-            holdout_jump_ts_rows = clamp_padded_time_rows(
-                store.controls_store.jump_ts[holdout_batch.process_indices],
-                store.controls_store.jump_ts_lengths[holdout_batch.process_indices],
-            )
 
     def _evaluate_holdout(step: int):
-        if holdout_batch is None:
+        if not cfg.holdout_processes:
             return None, None
-        total, per_sample_per_target, _per_sample, *_ = _BATCHED_LOSS_FN_JIT(
+        per_sample_total_parts = []
+        per_sample_per_target_parts = []
+        for valid_names, outputs in _iter_batched_loss_outputs(
             wrapper,
-            holdout_batch,
-            batched_Cin,
-            batched_Cin_modeled,
-            holdout_jump_ts_rows,
-            max_solver_steps=int(cfg.solver_max_steps),
+            store,
+            cfg.holdout_processes,
+            solver_max_steps=int(cfg.solver_max_steps),
             solver_rtol=float(cfg.solver_rtol),
             solver_atol=float(cfg.solver_atol),
+            solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
             step=jnp.asarray(step, dtype=jnp.int32),
+        ):
+            _, per_sample_per_target, per_sample_total, *_ = outputs
+            valid = len(valid_names)
+            per_sample_total_parts.append(np.asarray(per_sample_total[:valid]))
+            per_sample_per_target_parts.append(
+                np.asarray(per_sample_per_target[:valid])
+            )
+        per_sample_total = np.concatenate(per_sample_total_parts)
+        per_sample_per_target = np.concatenate(per_sample_per_target_parts)
+        return (
+            float(np.mean(per_sample_total)),
+            tuple(float(value) for value in np.mean(per_sample_per_target, axis=0)),
         )
-        jax.block_until_ready(total)
-        per_target = tuple(
-            float(value)
-            for value in np.asarray(jnp.mean(per_sample_per_target, axis=0)).tolist()
-        )
-        return float(total), per_target
 
     try:
         with RunLogger(
