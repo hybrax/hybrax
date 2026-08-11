@@ -369,20 +369,21 @@ def test_training_data_store_builds_y0_with_vcont_last(tmp_path):
     assert np.asarray(store.y0_measured[1]).tolist() == pytest.approx([0.1, 0.25, 1.5])
 
 
-def test_training_data_store_rejects_inconsistent_target_set(tmp_path):
+def test_prepare_rejects_inconsistent_process_variable_set(tmp_path):
+    """A process-variable mismatch between processes is now caught by
+    prepare_artifact's cross-process consistency check (bp_format's
+    validate_cross_process_consistency, wired into validate_for_training)
+    before TrainingDataStore is ever constructed — earlier and with more
+    detail than TrainingDataStore's own narrower target-only check."""
     collection = _make_two_process_collection()
     del collection.processes["p2"].process_variables["X"]
 
     custom_py = tmp_path / "custom.py"
     _write_custom(custom_py)
     output_dir = tmp_path / "prepared"
-    _prepare_from_collection(collection, tmp_path, output_dir, custom_py=custom_py)
 
-    with pytest.raises(
-        ValueError,
-        match="identical measured target names/order across processes",
-    ):
-        TrainingDataStore.from_json(output_dir / "prepared.json")
+    with pytest.raises(ValueError, match="process variables differ"):
+        _prepare_from_collection(collection, tmp_path, output_dir, custom_py=custom_py)
 
 
 def test_training_data_store_rejects_inconsistent_target_order(tmp_path):

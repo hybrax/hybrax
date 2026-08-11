@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 import numpy as np
-from bp_format import validate_process
+from bp_format import validate_cross_process_consistency, validate_process
 from bp_format.dataclasses import (
     BioProcessCollection,
     FeedMediumComponent,
@@ -14,12 +14,20 @@ from bp_format.dataclasses import (
 )
 
 
-def validate_collection(
+def validate_for_training(
     collection: BioProcessCollection,
     *,
     strict: bool = False,
     require_biological_ode: bool = False,
 ) -> dict[str, dict[str, object]]:
+    """bp-train's training-readiness validator.
+
+    Distinct from bp-format's own `validate_for_publication` (a
+    storage/publication concern), but composes the same
+    `validate_cross_process_consistency` structural check rather than
+    duplicating it — training data is expected to come from one coherent
+    case study by default.
+    """
     report: dict[str, dict[str, object]] = {}
 
     for process_name, process in collection.processes.items():
@@ -34,6 +42,14 @@ def validate_collection(
             "ok": bool(ok),
             "messages": process_messages,
         }
+
+    consistency_ok, consistency_messages = validate_cross_process_consistency(collection)
+    report["__consistency__"] = {
+        "ok": consistency_ok,
+        "messages": consistency_messages
+        if consistency_messages
+        else ["Cross-process structure is consistent — OK"],
+    }
 
     if strict:
         errors = [

@@ -374,7 +374,7 @@ directory.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `raw_input` | path (required) | Raw bp-format `BioProcessCollection` or `CaseStudy` JSON. |
+| `raw_input` | path (required) | Raw bp-format `BioProcessCollection` JSON. |
 | `augmentation` | null | Persist deterministic synthetic `AugmentedBioProcess` children; see below. |
 | `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
 | `required_control_names` | () | Continuous controlled-feed/PV names that must exist (tuple, or per-process dict). |

@@ -41,9 +41,10 @@ load_raw_collection(input_json) -> BioProcessCollection
 prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False) -> BioProcessCollection
 ```
 
-- `load_raw_collection` accepts a bp-format `BioProcessCollection` (file or
-  in-memory) or a `CaseStudy` (file or in-memory); a `CaseStudy`'s processes
-  are wrapped into a collection, with the case identity kept in `metadata`.
+- `load_raw_collection` accepts a bp-format `BioProcessCollection`, either
+  in-memory or as a path to its JSON file. `case_id`/`organism`/`citation`
+  (set when the collection is a published case study) are native fields on
+  `BioProcessCollection` itself.
 - `prepare_artifact` runs
   [`transform_process_collection`](02_cli_and_config.md#transform_process_collection)
   and the optional
@@ -204,8 +205,9 @@ loss fits whichever targets `target_source` selects (`TARGET_SOURCES`):
 
 ### Validation
 
-- `validate_collection(collection)` — bp-format validation plus post-transform
-  checks.
+- `validate_for_training(collection)` — bp-format per-process validation plus
+  cross-process structural consistency (`validate_cross_process_consistency`,
+  shared with bp-format's own `validate_for_publication`).
 - `ensure_required_controls(...)` — enforce `prepare.required_control_names`.
 - `summarize_process_semantics(process)` / `ensure_prepared_training_semantics`
   — structural diagnostics used during prepare; `strict_bp_format_validation`

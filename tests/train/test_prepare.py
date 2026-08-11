@@ -14,7 +14,6 @@ from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
-    CaseStudy,
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
@@ -29,7 +28,6 @@ from bp_format.dataclasses import (
 )
 from bp_format.serialization import (
     load_process_collection,
-    save_case_study,
     save_process_collection,
 )
 
@@ -119,14 +117,14 @@ def _make_feed_collection() -> BioProcessCollection:
 
 def test_load_raw_collection_accepts_commented_case_study(tmp_path: Path):
     collection = _make_feed_collection()
-    case_study = CaseStudy(
+    collection = BioProcessCollection(
         case_id="commented",
         organism="test",
         citation="test",
         processes=collection.processes,
     )
     path = tmp_path / "case-study.json"
-    save_case_study(case_study, path)
+    save_process_collection(collection, path)
     path.write_text(
         "  // raw case study\n" + path.read_text(encoding="utf-8"),
         encoding="utf-8",
@@ -134,7 +132,7 @@ def test_load_raw_collection_accepts_commented_case_study(tmp_path: Path):
 
     loaded = load_raw_collection(path)
 
-    assert loaded.metadata["case_study"]["case_id"] == "commented"
+    assert loaded.case_id == "commented"
     assert set(loaded.processes) == set(collection.processes)
 
 

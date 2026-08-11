@@ -13,13 +13,10 @@ import numpy as np
 from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import (
     BioProcessCollection,
-    CaseStudy,
     StaticVariable,
     TimeSeries,
 )
-from bp_format.json_io import has_top_level_key
 from bp_format.serialization import (
-    load_case_study,
     load_process_collection,
     save_process_collection,
 )
@@ -36,7 +33,7 @@ from .validation import (
     ensure_prepared_training_semantics,
     ensure_required_controls,
     summarize_process_semantics,
-    validate_collection,
+    validate_for_training,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,50 +64,17 @@ def _portable_input_path(input_path: Path | None, output_path: Path) -> str | No
     return os.path.relpath(input_path, output_dir)
 
 
-def _case_study_to_collection(case_study: CaseStudy) -> BioProcessCollection:
-    """Wrap a CaseStudy's processes into a BioProcessCollection, preserving the
-    case identity in the collection metadata."""
-    return BioProcessCollection(
-        processes=case_study.processes,
-        metadata={
-            "case_study": {
-                "case_id": case_study.case_id,
-                "organism": case_study.organism,
-                "citation": case_study.citation,
-            }
-        },
-    )
-
-
-def _raw_input_is_case_study(path: Path) -> bool:
-    """Peek a raw-input JSON file: ``True`` for a CaseStudy (top-level
-    ``case_id``), ``False`` for a BioProcessCollection."""
-    if path.is_dir():
-        for name in ("data.json", "data.json.gz"):
-            if (path / name).exists():
-                path = path / name
-                break
-    return has_top_level_key(path, "case_id")
-
-
 def load_raw_collection(
-    input_json: str | Path | BioProcessCollection | CaseStudy,
+    input_json: str | Path | BioProcessCollection,
 ) -> BioProcessCollection:
     """Load a BioProcessCollection from a file or object.
 
-    Accepts a ``BioProcessCollection`` (returned as-is), a ``CaseStudy`` (its
-    processes are wrapped into a collection, with the case identity preserved in
-    ``metadata``), or a path to a JSON file holding either.
+    Accepts a ``BioProcessCollection`` (returned as-is) or a path to a JSON
+    file holding one.
     """
     if isinstance(input_json, BioProcessCollection):
         return input_json
-    if isinstance(input_json, CaseStudy):
-        return _case_study_to_collection(input_json)
-
-    path = Path(input_json)
-    if _raw_input_is_case_study(path):
-        return _case_study_to_collection(load_case_study(path))
-    return load_process_collection(path)
+    return load_process_collection(Path(input_json))
 
 
 def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) -> None:
@@ -284,7 +248,7 @@ def prepare_artifact(
     output_path = output_dir / "prepared.json"
 
     raw_collection = load_raw_collection(input_path)
-    validation_report = validate_collection(
+    validation_report = validate_for_training(
         raw_collection,
         strict=prepare.strict_bp_format_validation,
     )
@@ -360,7 +324,7 @@ def prepare_artifact(
             "augmented parent validation failed:\n"
             + "\n".join(augmented_parent_messages)
         )
-    prepared_validation_report = validate_collection(
+    prepared_validation_report = validate_for_training(
         collection,
         strict=True,
         require_biological_ode=True,
