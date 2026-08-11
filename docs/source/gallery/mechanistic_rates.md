@@ -119,9 +119,9 @@ training.
 :tags: [remove-input]
 
 import jax.numpy as jnp
-import bp_train
+from bp_train import model_load
 
-wrapper, cfg = bp_train.model_load(str(WORK / "run"))
+wrapper, cfg = model_load(str(WORK / "run"))
 rm = wrapper.reaction_module
 truth = json.loads(Path("../_data/out/demo_batch/ground_truth.json").read_text())
 

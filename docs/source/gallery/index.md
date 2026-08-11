@@ -13,10 +13,9 @@ dataset or an extended version of the batch one.
 | [Mechanistic models](mechanistic_rates.md) | Mechanistic kinetics (Monod, Luedeking-Piret) instead of a bare MLP; recovering physical parameters, and where they trade off against each other. |
 | [Custom losses on the dense grid](dense_loss.md) | A loss module that constrains the trajectory *between* measurements: bounds on states and rates read from bp-format's own metadata, plus a rate-smoothness penalty. |
 | [Stateful reaction modules](stateful.md) | A continuous-time LSTM (a reaction module with its own memory, integrated as extra ODE latents) and the opt-in that guards it. |
-
-More reference-quality examples (real published datasets, LOO ensembles, multi-model
-comparisons) live in `bp-train/examples/` and are indexed in
-[bp-train further reading](../train/further_reading.md).
+| [Freezing parameters](freezing.md) | Splitting a reaction module into a frozen part and a trainable part with field tags, checked with `print_trainable_structure`, and what freezing actually costs. |
+| [Cross-validation, worked](loo.md) | A cheap `holdout_processes` check, then a full leave-one-out run: real folds, the corrected config schema, and the files it produces. |
+| [Augmentation](augmentation.md) | Generating synthetic sibling processes from a single run, and controlling what values they carry with `augment_state_values`. |
 
 ## See also
 

@@ -162,10 +162,11 @@ Image(filename=str(WORK / "run/run_1.png"))
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import bp_train
-wrapper, cfg = bp_train.model_load(str(WORK / "run"))
+from bp_train import model_load, print_trainable_structure
+
+wrapper, cfg = model_load(str(WORK / "run"))
 print("n_latent =", wrapper.reaction_module.n_latent)
-bp_train.print_trainable_structure(wrapper)
+print_trainable_structure(wrapper)
 ```
 
 `n_latent` is `2 * n_hidden` (hidden and cell state together) and both the LSTM's gates

@@ -35,15 +35,25 @@ The config is a train config plus a `loo` section:
 ```
 
 With no `per_fold_holdout_sets`, you get classic leave-one-out: one fold per process.
-To hold out groups instead: replicates of one condition, say:
+To hold out groups instead: replicates of one condition, say, each entry is a
+`HoldoutSet` object, not a bare list of names:
 
 ```json
 {
   "loo": {
-    "per_fold_holdout_sets": [["run_1", "run_2"], ["run_3", "run_4"]]
+    "per_fold_holdout_sets": [
+      {"test": ["run_1", "run_2"]},
+      {"test": ["run_3", "run_4"]}
+    ]
   }
 }
 ```
+
+`test` is required and is the held-out set for that fold. `name` (optional) labels the
+fold's output directory and summary row; without it, the directory is derived from the
+test process names. `train` (optional) pins the exact training set; omitted, it means
+every process not in `test`. See [Cross-validation, worked](../gallery/loo.md) for a
+full run of this.
 
 ## What it produces
 

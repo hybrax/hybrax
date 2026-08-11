@@ -1,6 +1,9 @@
 """Generate the demo datasets the documentation is written against.
 
-Two datasets, deterministic, regenerated on every ``docs_rebuild.sh``:
+Two datasets, deterministic, regenerated on every ``docs_rebuild.sh``. Together
+they are the site's two-organism spine: one bacterial, one mammalian, so every
+page can pick the shape (batch / fed-batch) and flavor (fast, simple / slow,
+byproduct-forming) that fits what it needs to demonstrate.
 
 ``demo_batch``
     The beginner spine. Three *batch* E. coli runs on glucose — biomass,
@@ -9,9 +12,10 @@ Two datasets, deterministic, regenerated on every ``docs_rebuild.sh``:
     from CSVs like the ones a user actually has.
 
 ``demo_fedbatch``
-    Introduced only in the gallery. One fed-batch run with an exponential
-    continuous feed, two boluses, sampling events that remove volume, and one
-    controlled process variable.
+    A CHO-like mammalian fed-batch: slower growth, a days-not-hours timescale,
+    a constant continuous feed, two boluses, sampling events that remove
+    volume, one controlled process variable, and lactate as a byproduct
+    alongside product (mAb-flavored) formation.
 
 Both are simulated on **amounts** and converted to concentrations at the end, so
 volume changes can never silently corrupt a mass balance. Substrate uptake is
@@ -35,7 +39,7 @@ from bp_format.time_series import TimeSeries
 
 OUT = Path(__file__).parent / "out"
 
-# --- kinetics (shared by both datasets) -------------------------------------
+# --- bacterial kinetics (demo_batch only) -----------------------------------
 MU_MAX = 0.45      # 1/h
 KS = 0.05          # g/L   — E. coli glucose Ks is genuinely this small
 Y_XS = 0.45        # g biomass / g glucose
@@ -179,52 +183,74 @@ def build_demo_batch() -> None:
     }, indent=2) + "\n")
 
 
+# --- mammalian kinetics (demo_fedbatch only, CHO-like) -----------------------
+# Slower growth, glucose diverted mostly to lactate (Warburg-like overflow
+# metabolism), product formation dominated by the non-growth-associated term,
+# the usual pattern for mAb production that continues into stationary phase.
+MAM_MU_MAX = 0.032   # 1/h   (~22 h doubling time)
+MAM_KS = 0.4         # g/L   glucose Ks — mammalian cells are far less glucose-avid
+MAM_Y_XS = 0.12      # g biomass / g glucose
+MAM_M_S = 0.0015     # g glucose / g biomass / h   (maintenance)
+MAM_Y_LAC = 0.28     # g lactate / g glucose consumed
+MAM_ALPHA = 0.004    # g product / g biomass       (growth-associated)
+MAM_BETA = 0.0009    # g product / g biomass / h   (non-growth-associated)
+
+
+def _rates_mammalian(x: float, s: float) -> tuple[float, float, float, float]:
+    """Specific rates (1/h and g/g/h) at biomass ``x`` and glucose ``s``."""
+    sigma = s / (MAM_KS + s) if s > 0.0 else 0.0
+    mu = MAM_MU_MAX * sigma
+    q_s = mu / MAM_Y_XS + MAM_M_S * sigma
+    q_lac = MAM_Y_LAC * q_s
+    q_p = MAM_ALPHA * mu + MAM_BETA * sigma
+    return mu, q_s, q_lac, q_p
+
+
 # ===========================================================================
 # demo_fedbatch
 # ===========================================================================
 
-FB_END = 24.0
-FB_SAMPLE_TIMES = np.array([0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0,
-                            15.0, 18.0, 21.0, 24.0])
-FB_BOLUS_TIMES = np.array([10.0, 16.0])
+FB_END = 240.0                  # 10 days: real CHO fed-batch runs are ~10-14 days
+FB_SAMPLE_TIMES = np.arange(0.0, FB_END + 12.0, 24.0)   # one offline sample per day
+FB_BOLUS_TIMES = np.array([120.0, 192.0])   # day 5, day 8
 FB_BOLUS_VOLUME = 0.05          # L per bolus
 FB_SAMPLE_VOLUME = 0.008        # L removed per offline sample
-FB_FEED_START = 6.0
-FB_FEED_C_GLUCOSE = 400.0       # g/L in both the continuous feed and the bolus
-FB_F0 = 0.004                   # L/h at feed start
-FB_MU_SET = 0.15                # 1/h exponential feed ramp
+FB_FEED_START = 48.0            # day 2
+FB_FEED_C_GLUCOSE = 300.0       # g/L in both the continuous feed and the bolus
+FB_F0 = 0.00055                 # L/h, constant once feeding starts
 
 
 def _feed_rate(t: float) -> float:
-    if t < FB_FEED_START:
-        return 0.0
-    return FB_F0 * np.exp(FB_MU_SET * (t - FB_FEED_START))
+    return 0.0 if t < FB_FEED_START else FB_F0
 
 
 def _simulate_fedbatch() -> dict[str, np.ndarray]:
     """RK4 on **amounts** (g) plus volume, with discrete events applied between
     segments. Sample first, then bolus, at a coincident timestamp."""
-    dt = 0.002
+    dt = 0.01
     n = int(round(FB_END / dt)) + 1
     t_grid = np.linspace(0.0, FB_END, n)
 
     v = 1.0
-    y = np.array([0.10 * v, 10.0 * v, 0.0])       # mX, mS, mP  (g)
+    y = np.array([0.15 * v, 8.0 * v, 0.0, 0.0])    # mX, mS, mLac, mP  (g)
     v_in_cum = 0.0
 
-    rec = {k: np.empty(n) for k in ("biomass", "glucose", "product", "volume", "v_in")}
+    rec = {k: np.empty(n) for k in
+           ("biomass", "glucose", "lactate", "product", "volume", "v_in")}
 
     def deriv(state: np.ndarray, vol: float, t: float) -> np.ndarray:
-        m_x, m_s, _ = state
+        m_x, m_s, _m_lac, _m_p = state
         x, s = m_x / vol, m_s / vol
-        mu, q_s, q_p = _rates(x, s)
+        mu, q_s, q_lac, q_p = _rates_mammalian(x, s)
         f = _feed_rate(t)
-        return np.array([mu * m_x, -q_s * m_x + f * FB_FEED_C_GLUCOSE, q_p * m_x])
+        return np.array([mu * m_x, -q_s * m_x + f * FB_FEED_C_GLUCOSE,
+                         q_lac * m_x, q_p * m_x])
 
     def record(i: int) -> None:
         rec["biomass"][i] = y[0] / v
         rec["glucose"][i] = y[1] / v
-        rec["product"][i] = y[2] / v
+        rec["lactate"][i] = y[2] / v
+        rec["product"][i] = y[3] / v
         rec["volume"][i] = v
         rec["v_in"][i] = v_in_cum
 
@@ -274,6 +300,7 @@ def build_demo_fedbatch() -> None:
     meas = {
         "biomass": _noisy(rng, at_samples("biomass"), 0.01),
         "glucose": _noisy(rng, at_samples("glucose"), 0.0),
+        "lactate": _noisy(rng, at_samples("lactate"), 0.0),
         "product": _noisy(rng, at_samples("product"), 0.0),
     }
     for species in meas:
@@ -299,13 +326,15 @@ def build_demo_fedbatch() -> None:
                 concentration=bp.StaticVariable(FB_FEED_C_GLUCOSE)),
             "biomass": bp.FeedMediumComponent(
                 name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
+            "lactate": bp.FeedMediumComponent(
+                name="lactate", unit="g/L", concentration=bp.StaticVariable(0.0)),
             "product": bp.FeedMediumComponent(
                 name="product", unit="g/L", concentration=bp.StaticVariable(0.0)),
         },
     )
 
     # Continuous feed: stored as a CUMULATIVE volume trace, not a rate.
-    online_t = np.arange(0.0, FB_END + 0.05, 0.1)
+    online_t = np.arange(0.0, FB_END + 0.25, 0.5)
     v_in_online = np.interp(online_t, t_grid, sim["v_in"])
 
     volume_changes = {
@@ -342,7 +371,8 @@ def build_demo_fedbatch() -> None:
     process = bp.BioProcess(
         metadata=bp.BioProcessMetadata(
             name="fedbatch_1", process_type="fed_batch",
-            notes="Simulated fed-batch: exponential feed + 2 boluses + sampling.",
+            notes="Simulated CHO-like mammalian fed-batch: constant feed + "
+                  "2 boluses + sampling, lactate as a byproduct.",
         ),
         time_axis=bp.TimeAxis(unit="h", start=0.0, end=FB_END,
                               time_reference="inoculation"),
@@ -355,15 +385,15 @@ def build_demo_fedbatch() -> None:
 
     case_study = bp.CaseStudy(
         case_id="demo_fedbatch",
-        organism="Escherichia coli",
+        organism="Chinese hamster ovary (CHO) cell line",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes={"fedbatch_1": process},
     )
     bp.serialization.save_case_study(case_study, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
-        "mu_max": MU_MAX, "Ks": KS, "Y_XS": Y_XS, "m_s": M_S,
-        "alpha": ALPHA, "beta": BETA,
+        "mu_max": MAM_MU_MAX, "Ks": MAM_KS, "Y_XS": MAM_Y_XS, "m_s": MAM_M_S,
+        "Y_lac": MAM_Y_LAC, "alpha": MAM_ALPHA, "beta": MAM_BETA,
         "final_volume": float(sim["volume"][-1]),
     }, indent=2) + "\n")
 

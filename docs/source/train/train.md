@@ -88,29 +88,13 @@ run rather than guessed at.
 **Signature:** `(custom_cfg, train_cfg) -> optax.GradientTransformation`
 **Default:** `clip_by_global_norm(train.grad_clip_norm)` then `adam` or `sgd`.
 
-Replace it when you need per-parameter treatment that field tags cannot express: the
-usual case being "train the output layer, freeze the rest":
-
-```python
-import equinox as eqx
-import jax
-import optax
-
-def build_optimizer(custom_cfg, train_cfg):
-    base = optax.chain(
-        optax.clip_by_global_norm(train_cfg.grad_clip_norm),
-        optax.adam(train_cfg.learning_rate),
-    )
-
-    def label(path, _leaf):
-        name = jax.tree_util.keystr(path)
-        return "train" if "layers[2]" in name else "freeze"
-
-    return optax.multi_transform(
-        {"train": base, "freeze": optax.set_to_zero()},
-        param_labels=lambda params: jax.tree_util.tree_map_with_path(label, params),
-    )
-```
+Replace it to change the optimizer itself (a different `optax` transform, extra
+gradient transforms in the chain). For **"train this part, freeze that part"**, do not
+reach for this hook: split the module into separate fields and tag them with
+`trainable_field()` / `frozen_field()` instead. That is a single-path mechanism that
+works for any module, is checked before training with `print_trainable_structure`, and
+needs no `optax` plumbing. See [Freezing parameters](../gallery/freezing.md) for a full
+worked example.
 
 :::{admonition} Order of operations
 :class: note

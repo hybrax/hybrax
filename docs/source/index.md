@@ -104,6 +104,9 @@ gallery/fed_batch
 gallery/mechanistic_rates
 gallery/dense_loss
 gallery/stateful
+gallery/freezing
+gallery/loo
+gallery/augmentation
 ```
 
 ```{toctree}

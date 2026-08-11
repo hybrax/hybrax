@@ -39,38 +39,20 @@ the dense-grid benchmark. Read those for *rationale*, never for behaviour.
 
 ## Example projects
 
-`bp-train/examples/`: real configs, real `custom.py` files, committed outputs.
-
-| Example | Worth reading for |
-|---|---|
-| **`00_e2e_sim/`** | The designated smallest complete set: prepare, train, forward and LOO configs, a well-commented three-hook `custom.py`, and `run_all.sh`. Start here. |
-| **`13_volume_integration/`** | Pedagogically the clearest: a no-op reaction module, which isolates transport so you can check the physics alone. |
-| **`01_kittler_2022/structured/`** | Structured rate laws instead of a bare MLP, with a README explaining the reasoning. |
-| **`01_kittler_2022/fba_hyb/`** | Kendall uncertainty weighting in a loss module. |
-| **`11_tub_2026/fba_hyb/`** | A bounds-hinge loss on a real dataset. |
-| **`12_martens_2025_expanded/vanilla/`** | Learning-rate schedules, and a three-line `get_custom_config`. |
-
-Several have committed `.log` files next to their run scripts: real console output,
-useful as "what you should see".
-
-`bp-train/tests/fixtures/martens_single/` is the smallest complete fixture: config,
-`custom.py` and data that run prepare → train → forward. It makes a good blank-project
-template.
-
-:::{admonition} Do not copy from `output_*` directories
-:class: warning
-`examples/*/output_*/custom.py` and the copies under `checkpoints/` are frozen provenance
-snapshots. Some carry stale signatures from older versions of the hook API. Always take
-the top-level `custom.py`.
-:::
+`bp-train/examples/` and `bp-format/examples/` hold real project configs and `custom.py`
+files from actual research work. They are not documentation: several are pinned to
+older hook signatures, none are guaranteed to run against the current API, and they are
+being superseded by this site's [Tutorials](../tutorials/01_your_first_dataset.md) and
+[Gallery](../gallery/index.md), which cover the same patterns as runnable, verified
+examples kept in sync with every release. Prefer those.
 
 ## Background
 
 - **JAX**: autodiff and JIT. **Equinox**: the module system; `eqx.Module`, `filter_jit`,
-  `tree_at`. **Diffrax**: the ODE solver and adjoint. **optax**: optimizers, schedules,
-  `masked` / `multi_transform`.
-- `bp-train/diffrax_callbacks/` has three standalone runnable scripts for the discrete-event
-  layer, if you want to understand how bolus and sample jumps are applied.
+  `tree_at`. **Diffrax**: the ODE solver and adjoint. **optax**: optimizers, schedules.
+- `diffrax_callbacks/` (a sibling package, not nested under bp-train) has three
+  standalone runnable scripts for the discrete-event layer, if you want to understand
+  how bolus and sample jumps are applied.
 
 ## See also
 

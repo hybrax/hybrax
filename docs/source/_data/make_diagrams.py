@@ -131,7 +131,7 @@ def make_train_diagram(theme):
 
     arrow(ax, (stage_x + stage_w / 2, 6.65), (stage_x + stage_w / 2, 5.95), c)
     ax.text(stage_x + stage_w + 0.35, 6.30, "bp-train prepare", fontsize=10,
-            weight="bold", color=c["accent"], va="center")
+            weight="bold", color=c["accent"], va="center", fontproperties=MONO)
     ax.text(stage_x + stage_w + 0.35, 6.00,
             "+ custom.py: transform_process_collection\n"
             "             augment_state_values",
@@ -145,7 +145,7 @@ def make_train_diagram(theme):
 
     arrow(ax, (stage_x + stage_w / 2, 5.10), (stage_x + stage_w / 2, 4.30), c)
     ax.text(stage_x + stage_w + 0.35, 4.75, "bp-train train", fontsize=10,
-            weight="bold", color=c["accent"], va="center")
+            weight="bold", color=c["accent"], va="center", fontproperties=MONO)
     ax.text(stage_x + stage_w + 0.35, 4.30,
             "+ custom.py: estimate_all_scales\n"
             "             build_reaction_module\n"
@@ -187,8 +187,100 @@ def make_train_diagram(theme):
     _save(fig, "diagram_train_pipeline", theme)
 
 
+# ---------------------------------------------------------------------------
+# Diagram 3: start/concepts.md — "the shape of the whole thing"
+# ---------------------------------------------------------------------------
+def make_shape_diagram(theme):
+    c = THEMES[theme]
+    fig, ax = plt.subplots(figsize=(9.6, 5.3))
+    ax.set_xlim(0, 9.6)
+    ax.set_ylim(1.25, 6.6)
+    ax.axis("off")
+
+    stage_x, stage_w = 0.2, 2.7
+    cx = stage_x + stage_w / 2
+    label_x = stage_x + stage_w + 0.3
+
+    ax.text(cx, 6.35, "your CSVs / exports", ha="center", va="center",
+            fontsize=10.5, style="italic", color=c["muted"])
+
+    arrow(ax, (cx, 6.18), (cx, 5.65), c)
+    ax.text(label_x, 5.915, "you write this part once\n(Tutorial 1)",
+            fontsize=9, color=c["muted"], va="center")
+
+    box(ax, (stage_x, 4.95), stage_w, 0.65, "", c)
+    ax.text(cx, 5.395, "bp-format", ha="center", va="center", fontsize=10.5,
+            color=c["ink"], fontproperties=MONO)
+    ax.text(cx, 5.105, "data model", ha="center", va="center", fontsize=10.5,
+            color=c["ink"])
+    ax.text(label_x, 5.375, "BioProcess", fontsize=9.2, color=c["muted"],
+            va="center", fontproperties=MONO)
+    ax.text(label_x, 5.15, "medium, volume, feeds,\nsamples, measurements",
+            fontsize=9, color=c["muted"], va="center")
+
+    arrow(ax, (cx, 4.95), (cx, 4.40), c)
+    ax.text(label_x, 4.775, "build_rhs_ode()", fontsize=9.2, color=c["muted"],
+            va="center", fontproperties=MONO)
+    ax.text(label_x, 4.575, "bp-format assembles the physics",
+            fontsize=9, color=c["muted"], va="center")
+
+    rhs_y = 3.75
+    rhs_cy = rhs_y + 0.325
+    box(ax, (stage_x, rhs_y), stage_w, 0.65, "RhsOde", c, fontsize=10.5, weight="bold",
+        mono=True)
+    ax.text(label_x, rhs_cy, "dc/dt = biology(rates)\n+ transport(feeds, dilution, samples)",
+            fontsize=8.8, color=c["muted"], va="center", fontproperties=MONO)
+
+    arrow(ax, (cx, rhs_y), (cx, 3.20), c)
+
+    train_y = 2.35
+    train_h = 0.85
+    train_cy = train_y + train_h / 2
+    box(ax, (stage_x, train_y), stage_w, train_h,
+        "bp-train\nprepare\N{RIGHTWARDS ARROW}train\n\N{RIGHTWARDS ARROW}forward/loo",
+        c, fontsize=10.5, mono=True)
+
+    arrow(ax, (cx, train_y), (cx, 1.80), c)
+    ax.text(cx, 1.55, "predictions, rates, metrics", ha="center", va="center",
+            fontsize=10, color=c["ink"])
+
+    # Right column: the two things you supply. The reaction module aligns
+    # with RhsOde (it feeds rates straight into the ODE); the loss module
+    # aligns with bp-train and reaches it via custom.py, mirroring how
+    # every hook is actually wired in (see train/index.md).
+    right_x, right_w = 6.1, 2.2
+
+    ax.text(right_x, rhs_y + 0.65 + 0.28, "you supply this part", fontsize=9.5,
+            weight="bold", style="italic", color=c["accent"], va="center")
+
+    rm_h = 0.6
+    rm_y = rhs_cy - rm_h / 2
+    box(ax, (right_x, rm_y), right_w, rm_h, "reaction\nmodule", c, fontsize=10)
+    ax.text(right_x + right_w / 2, rm_y - 0.24, "predicts the rates",
+            fontsize=8.7, color=c["muted"], ha="center", va="center")
+    arrow(ax, (right_x, rhs_cy), (stage_x + stage_w, rhs_cy), c, lw=1.4)
+
+    lm_h = 0.6
+    lm_y = train_cy - lm_h / 2
+    box(ax, (right_x, lm_y), right_w, lm_h, "loss\nmodule", c, fontsize=10)
+    ax.text(right_x + right_w / 2, lm_y - 0.24, "scores the trajectory",
+            fontsize=8.7, color=c["muted"], ha="center", va="center")
+
+    # loss module -> custom.py -> bp-train, all at bp-train's row height.
+    cpy_w, cpy_h = 1.45, 0.42
+    cpy_x = stage_x + stage_w + 0.75
+    cpy_y = train_cy - cpy_h / 2
+    arrow(ax, (right_x, train_cy), (cpy_x + cpy_w, train_cy), c, lw=1.4)
+    box(ax, (cpy_x, cpy_y), cpy_w, cpy_h, "custom.py", c, fontsize=9.5, mono=True)
+    arrow(ax, (cpy_x, train_cy), (stage_x + stage_w, train_cy), c, lw=1.6)
+
+    fig.tight_layout()
+    _save(fig, "diagram_concepts_shape", theme)
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     for theme in ("light", "dark"):
         make_format_diagram(theme)
         make_train_diagram(theme)
+        make_shape_diagram(theme)

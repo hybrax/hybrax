@@ -159,7 +159,7 @@ data was generated with:
 import json
 import numpy as np
 
-truth = json.loads(Path("../_data/out/demo_fedbatch/ground_truth.json").read_text())
+truth = json.loads(Path("../_data/out/demo_batch/ground_truth.json").read_text())
 learned_mu = float(export.q_rates[0, 0])     # q_biomass at t = 0
 print(f"learned q_biomass(t=0) : {learned_mu:.3f} 1/h")
 print(f"true mu_max            : {truth['mu_max']:.3f} 1/h")

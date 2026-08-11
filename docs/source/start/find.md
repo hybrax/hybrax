@@ -65,7 +65,8 @@ learned; scan for your row.
 |---|---|
 | re-simulate with a trained model | [Forward](../train/forward.md) |
 | get dense trajectories and rates as CSV | [Forward](../train/forward.md) |
-| cross-validate | [Cross-validation](../train/loo.md) |
+| cross-validate | [Cross-validation](../train/loo.md), worked: [Gallery](../gallery/loo.md) |
+| do a cheap holdout check without a full LOO run | `holdout_processes`: [Gallery: cross-validation](../gallery/loo.md) |
 | average several models and get a spread | [Forward](../train/forward.md) |
 | load a trained model in Python and predict | [Saving, loading and predicting](../train/save_load_predict.md) |
 | see which parameters are actually being trained | `print_trainable_structure`: [The reaction module](../train/reaction_module.md) |
@@ -91,3 +92,5 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 | Mechanistic rate laws, partially trainable | [Mechanistic models](../gallery/mechanistic_rates.md) |
 | Bounds and smoothness penalties between measurements | [Dense losses](../gallery/dense_loss.md) |
 | A reaction module with memory (latent-ODE / LSTM) | [Stateful reaction modules](../gallery/stateful.md) |
+| Freezing part of a reaction module, checked before training | [Freezing parameters](../gallery/freezing.md) |
+| A holdout check and a full leave-one-out run, executed | [Cross-validation, worked](../gallery/loo.md) |

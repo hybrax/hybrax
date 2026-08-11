@@ -10,31 +10,8 @@
 
 ## The shape of the whole thing
 
-```
-   your CSVs / exports
-          │
-          │  you write this part once  (Tutorial 1)
-          ▼
-   ┌─────────────────┐
-   │  bp-format      │   BioProcess: medium, volume, feeds, samples, measurements
-   │  data model     │
-   └────────┬────────┘
-            │  build_rhs_ode(): bp-format assembles the physics
-            ▼
-   ┌─────────────────┐
-   │  RhsOde         │   dc/dt = biology(rates) + transport(feeds, dilution, samples)
-   └────────┬────────┘                     ▲
-            │                              │ you supply this part
-            │                       ┌──────┴────────┐
-            │                       │ reaction      │  predicts the rates
-   ┌────────▼────────┐              │ module        │
-   │  bp-train       │◄─────────────┴───────────────┘
-   │  prepare→train  │              ┌───────────────┐
-   │  →forward/loo   │◄─────────────┤ loss module   │  scores the trajectory
-   └────────┬────────┘              └───────────────┘
-            ▼
-      predictions, rates, metrics
-```
+<img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="Your CSVs become a bp-format BioProcess, which build_rhs_ode() turns into RhsOde. A reaction module you supply feeds rates directly into RhsOde; a loss module you supply reaches bp-train via custom.py, which drives prepare, train, forward and loo, producing predictions, rates and metrics.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="Your CSVs become a bp-format BioProcess, which build_rhs_ode() turns into RhsOde. A reaction module you supply feeds rates directly into RhsOde; a loss module you supply reaches bp-train via custom.py, which drives prepare, train, forward and loo, producing predictions, rates and metrics.">
 
 The single most useful thing to internalise: **bp-format owns the transport, you own the
 biology.** Dilution, feed inflow, sample outflow and volume dynamics are already written.

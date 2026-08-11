@@ -166,8 +166,9 @@ Check before committing to a long run:
 bp_train.print_trainable_structure(wrapper)
 ```
 
-For finer control (freezing individual layers of an MLP) use
-[`build_optimizer`](train.md) with `optax.masked`.
+For "freeze these layers, train those" (e.g. a fixed encoder feeding a trainable head),
+split the MLP into separate fields with their own tags rather than one field mixing
+both. See [Freezing parameters](../gallery/freezing.md) for a full worked example.
 
 ## Passing auxiliary values to the loss
 

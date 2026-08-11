@@ -70,6 +70,7 @@ and leave-one-process-out cross-validation, with no further data work.
 
 ## See also
 
+- [Install](install.md): get bp-format and bp-train set up.
 - [Quickstart](quickstart.md): see the whole loop run in ten minutes.
 - [Concepts and vocabulary](concepts.md): the terms used throughout these docs.
 - [Design rationale](../under_the_hood/design_rationale.md): the architectural
