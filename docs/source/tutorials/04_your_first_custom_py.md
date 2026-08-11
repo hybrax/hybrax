@@ -199,6 +199,9 @@ run's predictions back onto the actual measurement times:
 bp_train("train", "--config", "train-default.json", "--overwrite", "--no-plot")
 bp_train("train", "--config", "train-custom.json", "--overwrite")
 
+print("run directories:", WORK / "run_default", "and", WORK / "run_custom")
+print("both self-contained: cp -r either one anywhere and keep working from the copy")
+
 r2_default = r2_by_target("run_default")
 r2_custom = r2_by_target("run_custom")
 

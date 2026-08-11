@@ -148,6 +148,7 @@ means that bp-train wants it to be a decision, not a side effect of adding a fie
 
 out = bp_train("train", "--config", "train.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
+print("run directory:", WORK / "run")
 ```
 
 ```{code-cell} ipython3

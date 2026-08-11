@@ -62,6 +62,14 @@ bp_train_cli("train", "--config", "train-config.json", "--overwrite", "--no-plot
 
 We start from a run directory trained exactly as in [Tutorial 4](04_your_first_custom_py.md).
 
+```{code-cell} ipython3
+:tags: [remove-input]
+
+print(WORK / "run")
+```
+
+Self-contained: `cp -r` it anywhere and keep working from the copy.
+
 ## The command-line way: `forward`
 
 ```bash

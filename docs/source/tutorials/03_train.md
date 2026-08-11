@@ -141,6 +141,15 @@ Everything not named in that config is a default, and each one is replaceable:
 
 ## Step 3: read the output
 
+```{code-cell} ipython3
+:tags: [remove-input]
+
+print(WORK / "run")
+```
+
+Everything below lives in that directory, self-contained: `cp -r` it anywhere and
+keep working from the copy.
+
 The per-epoch record:
 
 ```{code-cell} ipython3

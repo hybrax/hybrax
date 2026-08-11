@@ -187,6 +187,7 @@ bp_train("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 out = bp_train("train", "--config", "train-full.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
+print("run directory:", WORK / "run")
 ```
 
 ## Did it cost anything?

@@ -209,6 +209,15 @@ print( "true    mu_max           : 0.450 1/h")
 ```{code-cell} ipython3
 :tags: [remove-input]
 
+print(WORK / "run")
+```
+
+Everything below is a real directory on disk, self-contained: `cp -r` it anywhere and
+keep working from the copy, no other files needed.
+
+```{code-cell} ipython3
+:tags: [remove-input]
+
 for path in sorted((WORK / "run").rglob("*")):
     if "checkpoints" in path.parts:
         continue

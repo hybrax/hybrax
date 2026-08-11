@@ -127,6 +127,7 @@ bp_train("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 out = bp_train("train", "--config", "train-config.json", "--overwrite", "--no-plot")
 print([l for l in out.splitlines() if "training complete" in l][0])
+print("run directory:", WORK / "run")
 ```
 
 ```{code-cell} ipython3
