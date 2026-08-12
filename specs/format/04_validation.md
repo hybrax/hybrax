@@ -123,6 +123,7 @@ structure against the first process:
 - same reactor components, each with the same value type and unit
 - same process variables, each with the same value type and unit
 - same volume-change names and units
+- same time-axis unit and time reference (exact strings); start and end may differ
 
 Collections with 0 or 1 process pass trivially. This is the check
 `validate_for_publication` composes to build its `"__consistency__"` report

@@ -724,6 +724,35 @@ class TestValidateCrossProcessConsistency:
         assert ok is True
         assert messages == []
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("unit", "days"), ("time_reference", "first_feed")],
+    )
+    def test_inconsistent_time_axis(self, field, value):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(ts)
+        setattr(p2.time_axis, field, value)
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+
+        ok, messages = validate_cross_process_consistency(collection)
+
+        assert ok is False
+        assert any("time axis" in message for message in messages)
+
+    def test_different_time_axis_bounds_are_consistent(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(ts)
+        p2.time_axis.start = 1.0
+        p2.time_axis.end = 20.0
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+
+        ok, messages = validate_cross_process_consistency(collection)
+
+        assert ok is True
+        assert messages == []
+
     def test_inconsistent_reactor_medium_components(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         p1 = _make_biomass_process(ts)

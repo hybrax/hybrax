@@ -816,6 +816,7 @@ def validate_cross_process_consistency(
     - The same process-variable names, each with the same value type
       (``TimeSeries`` or ``StaticVariable``) and unit.
     - The same volume-change names and units.
+    - The same time-axis unit and reference. Start and end may differ.
 
     Collections with zero or one process trivially pass.
 
@@ -856,10 +857,21 @@ def validate_cross_process_consistency(
     ref_reactor = _reactor_signature(first_process)
     ref_pv = _pv_signature(first_process)
     ref_vc = _vc_signature(first_process)
+    ref_time_axis = (
+        first_process.time_axis.unit,
+        first_process.time_axis.time_reference,
+    )
 
     for proc_name, process in processes.items():
         if proc_name == first_name:
             continue
+
+        time_axis = (process.time_axis.unit, process.time_axis.time_reference)
+        if time_axis != ref_time_axis:
+            consistency_errors.append(
+                f"Process '{proc_name}' time axis differs from '{first_name}': "
+                f"expected {ref_time_axis}, got {time_axis}"
+            )
 
         reactor_sig = _reactor_signature(process)
         if reactor_sig != ref_reactor:
