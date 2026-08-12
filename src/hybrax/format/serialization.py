@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 from ijson.common import ObjectBuilder
 
+from ._logging import get_logger
 from .dataclasses import (
     AugmentedBioProcess,
     BiologicalOde,
@@ -25,14 +26,16 @@ from .dataclasses import (
     StaticVariable,
     BioProcessMetadata,
     Volume,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
     PseudobatchTransform,
     ReactorMedium,
     ReactorMediumComponent,
     ProcessVariable,
 )
 from .json_io import _kvitems, _parse, load_json
+
+_logger = get_logger(__name__)
 
 
 def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
@@ -132,7 +135,7 @@ def _save_json(data_dict: Dict, json_path: Path) -> None:
     _normalize_nonfinite(data_dict)
     with _open_json_file(json_path, "wt") as f:
         json.dump(data_dict, f, indent=2, cls=NumpyEncoder, allow_nan=False)
-    print(f"✓ Saved to {json_path}")
+    _logger.info("Saved to %s", json_path)
 
 
 def _restore_arrays(obj):
@@ -489,7 +492,7 @@ def _volume_to_dict(volume: Volume) -> Dict:
 
 
 def _volume_change_to_dict(vc) -> Dict:
-    """Convert FeedVolumeChange or SampleVolumeChange to dictionary"""
+    """Convert Inflow or Outflow to dictionary"""
     result = {
         "name": vc.name,
         "unit": vc.unit,
@@ -501,13 +504,14 @@ def _volume_change_to_dict(vc) -> Dict:
             else None
         ),
     }
-    if isinstance(vc, FeedVolumeChange):
-        result["type"] = "FeedVolumeChange"
+    if isinstance(vc, Inflow):
+        result["type"] = "Inflow"
         result["feed_medium"] = (
             _feed_medium_to_dict(vc.feed_medium) if vc.feed_medium else None
         )
-    elif isinstance(vc, SampleVolumeChange):
-        result["type"] = "SampleVolumeChange"
+    elif isinstance(vc, Outflow):
+        result["type"] = "Outflow"
+        result["retention"] = dict(vc.retention)
     else:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
 
@@ -819,7 +823,7 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
 
 
 def _dict_to_volume_change(vc_data: Dict):
-    """Reconstruct FeedVolumeChange or SampleVolumeChange from dictionary"""
+    """Reconstruct Inflow or Outflow from dictionary"""
     vc_type = vc_data.get("type")
     if vc_type is None:
         raise ValueError(
@@ -843,13 +847,16 @@ def _dict_to_volume_change(vc_data: Dict):
 
     _reject_legacy_interpolator_payload(vc_data.get("interpolator"), "VolumeChange")
 
-    if vc_type == "FeedVolumeChange":
+    if vc_type == "Inflow":
         feed_medium = None
         if vc_data.get("feed_medium"):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-        return FeedVolumeChange(**common, feed_medium=feed_medium)
-    elif vc_type == "SampleVolumeChange":
-        return SampleVolumeChange(**common)
+        return Inflow(**common, feed_medium=feed_medium)
+    elif vc_type == "Outflow":
+        return Outflow(
+            **common,
+            retention=dict(vc_data.get("retention") or {}),
+        )
     else:
         raise ValueError(f"Unknown volume change type: {vc_type}")
 

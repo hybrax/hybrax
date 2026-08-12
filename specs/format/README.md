@@ -58,7 +58,7 @@ BioProcess                       one experimental run
  ├─ volume: Volume                        every volume-changing operation
  │    ├─ initial_volume / unit / bounds
  │    ├─ total_volume: Optional[TimeSeries]
- │    └─ volume_changes: Dict[str, FeedVolumeChange | SampleVolumeChange]
+ │    └─ volume_changes: Dict[str, Inflow | Outflow]
  ├─ process_variables: Dict[str, ProcessVariable]    pH, temperature, DO, off-gas
  │    └─ is_controlled: bool              True = known input, False = modeled state
  ├─ biological_ode: BiologicalOde         dc/dt expressions (auto-filled if omitted)

@@ -586,7 +586,7 @@ def test_save_load_roundtrip_feed_medium(sample_case_study):
         ].concentration.value == pytest.approx(500.0)
 
 
-def test_save_load_roundtrip_outflow_component_retention():
+def test_save_load_roundtrip_outflow_retention():
     rm = ReactorMedium(
         name="medium",
         components={
@@ -607,7 +607,7 @@ def test_save_load_roundtrip_outflow_component_retention():
         values=TimeSeries(
             times=jnp.array([0.0, 1.0]), values=jnp.array([-0.1, -0.2])
         ),
-        component_retention={"biomass": 0.95},
+        retention={"biomass": 0.95},
     )
     process = BioProcess(
         metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
@@ -625,10 +625,10 @@ def test_save_load_roundtrip_outflow_component_retention():
         loaded = load_process_collection(save_path)
 
     loaded_outflow = loaded.processes["p"].volume.volume_changes["sample"]
-    assert loaded_outflow.component_retention == {"biomass": 0.95}
+    assert loaded_outflow.retention == {"biomass": 0.95}
 
 
-def test_load_old_outflow_json_without_component_retention_key_defaults_empty():
+def test_load_old_outflow_json_without_retention_key_defaults_empty():
     """Old serialized files predating this field must still load, with the
     field defaulting to an empty dict."""
     outflow = serialization._volume_change_to_dict(
@@ -642,9 +642,9 @@ def test_load_old_outflow_json_without_component_retention_key_defaults_empty():
             ),
         )
     )
-    del outflow["component_retention"]  # simulate a pre-existing on-disk file
+    del outflow["retention"]  # simulate a pre-existing on-disk file
     reconstructed = serialization._dict_to_volume_change(outflow)
-    assert reconstructed.component_retention == {}
+    assert reconstructed.retention == {}
 
 
 # ---------------------------------------------------------------------------

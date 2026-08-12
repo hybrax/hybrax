@@ -24,8 +24,8 @@ increasing (no duplicates). Fails if the series has no discrete samples at all.
 
 ### `validate_volume_change_sign(volume_change)`
 
-- `FeedVolumeChange`: all values ≥ 0 (inflow)
-- `SampleVolumeChange`: all values ≤ 0 (outflow)
+- `Inflow`: all values ≥ 0 (inflow)
+- `Outflow`: all values ≤ 0 (outflow)
 - Unknown type: values must be purely positive or purely negative, never mixed
 
 Uses a 1e-12 tolerance so exact zeros and float noise pass.
@@ -221,7 +221,7 @@ print(f"net change: {delta:+.3f} {process.volume.unit}")
 
 | Message | Cause | Fix |
 |---------|-------|-----|
-| `FeedVolumeChange contains negative values` | Sign convention flipped | Feeds are ≥ 0, samples ≤ 0 |
+| `Inflow contains negative values` | Sign convention flipped | Feeds are ≥ 0, samples ≤ 0 |
 | `does not contain a 'biomass' component` | Missing or renamed biomass | Rename it, or supply your own `biological_ode` |
 | `times length does not match values length` | Arrays misaligned during parsing | Rebuild the `TimeSeries` |
 | `missing feed components for state variable(s)` | Feed medium omits a reactor species | Add it, with the real concentration — `0.0` only if truly absent |

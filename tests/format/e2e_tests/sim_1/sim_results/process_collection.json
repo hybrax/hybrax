@@ -12268,7 +12268,7 @@
               "continuity_side": "right"
             },
             "type": "Outflow",
-            "component_retention": {}
+            "retention": {}
           },
           "bolus_feed": {
             "name": "bolus_feed",
@@ -24692,7 +24692,7 @@
               "continuity_side": "right"
             },
             "type": "Outflow",
-            "component_retention": {}
+            "retention": {}
           },
           "bolus_feed": {
             "name": "bolus_feed",

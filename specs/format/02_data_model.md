@@ -19,8 +19,8 @@ All classes are re-exported from the package root: `bp.TimeAxis`,
   O(1), makes clean JSON, and keeps iteration explicit.
 - **Volume is separate from states and controls** — see
   [Design Rationale §3](01_design_rationale.md#3-volume-is-its-own-category).
-- **Feed and sample are different types.** `FeedVolumeChange` and
-  `SampleVolumeChange` fix the sign convention at the type level, and only feeds
+- **Feed and sample are different types.** `Inflow` and
+  `Outflow` fix the sign convention at the type level, and only feeds
   carry a `FeedMedium`.
 - **`TimeSeries | StaticVariable` everywhere a value could be constant.** A
   measured concentration is a `TimeSeries`; a known feed concentration is a
@@ -204,11 +204,11 @@ class VolumeChange:              # base
     values: TimeSeries           # cumulative volume, or per-event deltas
 
 @dataclass
-class FeedVolumeChange(VolumeChange):
+class Inflow(VolumeChange):
     feed_medium: FeedMedium      # values >= 0
 
 @dataclass
-class SampleVolumeChange(VolumeChange):
+class Outflow(VolumeChange):
     pass                         # values <= 0
 ```
 
@@ -363,11 +363,11 @@ class ProcessOrdering:
     name_modeled_algebraic: Tuple[str, ...]  # topo-sorted
     name_modeled_RMCs: Tuple[str, ...]       # alphabetical
     name_modeled_PVs: Tuple[str, ...]        # alphabetical, is_controlled=False
-    name_modeled_FVCs: Tuple[str, ...]       # continuous + uncontrolled
-    name_modeled_SVCs: Tuple[str, ...]       # continuous + uncontrolled
+    name_modeled_Inflows: Tuple[str, ...]       # continuous + uncontrolled
+    name_modeled_Outflows: Tuple[str, ...]       # continuous + uncontrolled
     name_controlled_PVs: Tuple[str, ...]     # alphabetical, is_controlled=True
-    name_controlled_FVCs: Tuple[str, ...]    # continuous + controlled
-    name_controlled_SVCs: Tuple[str, ...]    # continuous + controlled
+    name_controlled_Inflows: Tuple[str, ...]    # continuous + controlled
+    name_controlled_Outflows: Tuple[str, ...]    # continuous + controlled
 ```
 
 Ordering rules:
@@ -382,7 +382,7 @@ Resulting layouts:
 
 ```
 state    c = [ modeled_RMCs... | modeled_PVs... | V ]
-control  u = [ controlled_FVCs... | controlled_SVCs... | controlled_PVs... ]
+control  u = [ controlled_Inflows... | controlled_Outflows... | controlled_PVs... ]
 ```
 
 See [08_mechanistic.md](08_mechanistic.md) for what the factories do with them.
@@ -462,14 +462,14 @@ feed_medium = bp.FeedMedium(
 process.volume = bp.Volume(
     initial_volume=1.0, unit="L",
     volume_changes={
-        "glucose_bolus": bp.FeedVolumeChange(
+        "glucose_bolus": bp.Inflow(
             name="glucose_bolus", unit="L",
             is_controlled=True, is_continuous=False,
             values=bp.TimeSeries(times=jnp.array([12.0]),
                                  values=jnp.array([0.1])),      # >= 0
             feed_medium=feed_medium,
         ),
-        "sampling": bp.SampleVolumeChange(
+        "sampling": bp.Outflow(
             name="sampling", unit="L",
             is_controlled=True, is_continuous=False,
             values=bp.TimeSeries(times=jnp.array([6.0, 18.0]),

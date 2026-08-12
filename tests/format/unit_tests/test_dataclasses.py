@@ -2,6 +2,8 @@
 Tests for bp-format data structures (current architecture).
 """
 
+import logging
+
 import pytest
 import jax.numpy as jnp
 
@@ -363,17 +365,18 @@ def _process_with_incomplete_feed(silence=False):
     return process, fm
 
 
-def test_missing_inflow_concentrations_filled_with_zero_and_announced(capsys):
-    process, fm = _process_with_incomplete_feed()
+def test_missing_inflow_concentrations_filled_with_zero_and_announced(caplog):
+    with caplog.at_level(logging.INFO, logger="bp_format"):
+        process, fm = _process_with_incomplete_feed()
     assert set(fm.components.keys()) == {"glucose", "biomass", "product"}
     assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
     assert fm.components["product"].concentration.value == pytest.approx(0.0)
-    out = capsys.readouterr().out
-    assert "[bp-format] Assumption:" in out
-    assert "biomass" in out and "product" in out
+    messages = [r.message for r in caplog.records]
+    assert any("Assumption:" in m for m in messages)
+    assert any("biomass" in m and "product" in m for m in messages)
 
 
-def test_fully_specified_feed_produces_no_assumption_print(capsys):
+def test_fully_specified_feed_produces_no_assumption_print(caplog):
     rm = ReactorMedium(
         name="medium",
         components={
@@ -402,14 +405,15 @@ def test_fully_specified_feed_produces_no_assumption_print(capsys):
         feed_medium=fm,
         values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
     )
-    BioProcess(
-        metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
-        reactor_medium=rm,
-    )
-    out = capsys.readouterr().out
-    assert "feed medium" not in out.lower() or "did not define" not in out.lower()
+    with caplog.at_level(logging.INFO, logger="bp_format"):
+        BioProcess(
+            metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
+            reactor_medium=rm,
+        )
+    messages = [r.message.lower() for r in caplog.records]
+    assert not any("feed medium" in m and "did not define" in m for m in messages)
 
 
 def test_missing_feed_medium_entirely_is_not_filled():
@@ -444,14 +448,14 @@ def test_missing_feed_medium_entirely_is_not_filled():
     assert process.volume.volume_changes["feed"].feed_medium is None
 
 
-def test_silence_assumptions_suppresses_inflow_fill_notice(capsys):
-    process, fm = _process_with_incomplete_feed(silence=True)
+def test_silence_assumptions_suppresses_inflow_fill_notice(caplog):
+    with caplog.at_level(logging.INFO, logger="bp_format"):
+        process, fm = _process_with_incomplete_feed(silence=True)
     assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
-    out = capsys.readouterr().out
-    assert out == ""
+    assert caplog.records == []
 
 
-def test_silence_assumptions_suppresses_biological_ode_notice(capsys):
+def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
     rm = ReactorMedium(
         name="medium",
         components={
@@ -464,17 +468,17 @@ def test_silence_assumptions_suppresses_biological_ode_notice(capsys):
             ),
         },
     )
-    with silence_assumptions():
-        BioProcess(
-            metadata=BioProcessMetadata(name="p", process_type="batch"),
-            time_axis=TimeAxis(
-                unit="hours", start=0.0, end=1.0, time_reference="inoculation"
-            ),
-            volume=Volume(initial_volume=1.0, unit="L"),
-            reactor_medium=rm,
-        )
-    out = capsys.readouterr().out
-    assert out == ""
+    with caplog.at_level(logging.INFO, logger="bp_format"):
+        with silence_assumptions():
+            BioProcess(
+                metadata=BioProcessMetadata(name="p", process_type="batch"),
+                time_axis=TimeAxis(
+                    unit="hours", start=0.0, end=1.0, time_reference="inoculation"
+                ),
+                volume=Volume(initial_volume=1.0, unit="L"),
+                reactor_medium=rm,
+            )
+    assert caplog.records == []
 
 
 def test_silence_assumptions_restores_state_after_exception():
@@ -499,19 +503,19 @@ def test_silence_assumptions_restores_state_after_exception():
     assert _ANNOUNCE_ASSUMPTIONS is True
 
 
-def test_density_defaults_are_silent(capsys):
-    """density/density_unit default to 1.0/kg/L without any print — unlike
-    the Inflow-concentration fill, this default never affects computed
-    results (mechanistic.py never reads it), so there's nothing for a
-    notice to usefully warn about."""
-    fm = FeedMedium(name="f")
-    rm = ReactorMedium(name="medium")
+def test_density_defaults_are_silent(caplog):
+    """density/density_unit default to 1.0/kg/L without any log record —
+    unlike the Inflow-concentration fill, this default never affects
+    computed results (mechanistic.py never reads it), so there's nothing
+    for a notice to usefully warn about."""
+    with caplog.at_level(logging.INFO, logger="bp_format"):
+        fm = FeedMedium(name="f")
+        rm = ReactorMedium(name="medium")
     assert fm.density == 1.0
     assert fm.density_unit == "kg/L"
     assert rm.density == 1.0
     assert rm.density_unit == "kg/L"
-    out = capsys.readouterr().out
-    assert out == ""
+    assert caplog.records == []
 
 
 def test_format_biological_ode_lines_direct():

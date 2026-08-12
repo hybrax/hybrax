@@ -659,8 +659,32 @@ class TestRhsOde:
 
 
 # ---------------------------------------------------------------------------
-# Outflow component_retention
+# Outflow retention + the base dilution formula
+#
+# Durable practice for this class (see rhs_ode_bug_report.html): any new
+# parameter or code path threaded through _apply_feed_dilution needs at
+# least one test asserting on reactor-component *concentrations* (dc[i] for
+# i < n_RMCs) under a nonzero value of that parameter — not only on dc[-1]
+# (volume) or a zeroed-out value of the new parameter. That gap (every
+# pre-existing Outflow test checked one or the other, never both at once)
+# is exactly how the original dilution-formula bug went unnoticed.
 # ---------------------------------------------------------------------------
+
+
+def _minimal_feed_medium(name, rmc_name, concentration=0.0):
+    return FeedMedium(
+        name=name,
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            rmc_name: FeedMediumComponent(
+                name=rmc_name,
+                unit="g/L",
+                concentration=StaticVariable(value=concentration),
+                is_controlled=False,
+            )
+        },
+    )
 
 
 class TestOutflowRetention:
@@ -679,16 +703,73 @@ class TestOutflowRetention:
             is_controlled=False,
             is_continuous=True,
             values=_ts([0.0, 10.0], [0.0, -0.02]),
-            component_retention={"biomass": 0.95},
+            retention={"biomass": 0.95},
         )
         rhs = build_rhs_ode(process)
         # RMCs alphabetical: (biomass, glucose)
         assert float(rhs.retention_modeled_Outflows[0, 0]) == pytest.approx(0.95)
         assert float(rhs.retention_modeled_Outflows[0, 1]) == pytest.approx(0.0)
 
+    def test_continuous_outflow_alone_leaves_concentration_unchanged_regression(self):
+        """Regression guard for the dilution-formula bug (rhs_ode_bug_report.html):
+        a continuous outflow with no inflow, no biology, and no retention must
+        leave concentration exactly unchanged, even though volume drops — removing
+        a well-mixed sample doesn't change what's left behind. Directly catches
+        any reintroduction of a spurious total_out term in the dilution formula."""
+        rm = ReactorMedium(
+            name="medium",
+            components={"glucose": ReactorMediumComponent(
+                name="glucose", unit="g/L", concentration=_ts([0.0, 1.0], [5.0, 5.0])
+            )},
+        )
+        process = BioProcess(
+            metadata=BioProcessMetadata(name="canary", process_type="continuous"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=2.0, unit="L", volume_changes={
+                "outflow": Outflow(name="outflow", unit="L", is_controlled=False,
+                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -1.0])),
+            }),
+            reactor_medium=rm,
+            biological_ode=BiologicalOde(rates={}, derivatives={"glucose": "0"}),
+        )
+        rhs = build_rhs_ode(process)
+        dc = rhs(jnp.array([5.0, 2.0]), jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array([-1.0]))
+        assert float(dc[0]) == pytest.approx(0.0, abs=1e-12)   # concentration: unchanged
+        assert float(dc[-1]) == pytest.approx(-1.0)              # volume: still drops 2L -> 1L
+        d_cV_dt = 5.0 * float(dc[-1]) + 2.0 * float(dc[0])
+        assert d_cV_dt == pytest.approx(-5.0, abs=1e-9)          # d(cV)/dt == -q*c
+
+    def test_continuous_controlled_outflow_alone_leaves_concentration_unchanged_regression(self):
+        """Controlled-Outflow twin of the sentinel above — retention/dilution
+        math must not depend on whether the Outflow is controlled or modeled."""
+        rm = ReactorMedium(
+            name="medium",
+            components={"glucose": ReactorMediumComponent(
+                name="glucose", unit="g/L", concentration=_ts([0.0, 1.0], [5.0, 5.0])
+            )},
+        )
+        process = BioProcess(
+            metadata=BioProcessMetadata(name="canary_controlled", process_type="continuous"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=2.0, unit="L", volume_changes={
+                "outflow": Outflow(name="outflow", unit="L", is_controlled=True,
+                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -1.0])),
+            }),
+            reactor_medium=rm,
+            biological_ode=BiologicalOde(rates={}, derivatives={"glucose": "0"}),
+        )
+        rhs = build_rhs_ode(process)
+        dc = rhs(jnp.array([5.0, 2.0]), jnp.zeros(0), jnp.array([-1.0]), jnp.zeros(0), jnp.zeros(0))
+        assert float(dc[0]) == pytest.approx(0.0, abs=1e-12)
+        assert float(dc[-1]) == pytest.approx(-1.0)
+        d_cV_dt = 5.0 * float(dc[-1]) + 2.0 * float(dc[0])
+        assert d_cV_dt == pytest.approx(-5.0, abs=1e-9)
+
     def test_zero_retention_matches_unretained_dilution(self):
-        """sigma=0 everywhere (the default) must reproduce the original
-        uniform-dilution formula exactly."""
+        """sigma=0 everywhere (the default) must give the corrected baseline
+        formula: dilution = -total_in/V*c, with no contribution from
+        total_out at all — a well-mixed Outflow alone has no dilution
+        effect of its own."""
         process = _make_process(
             with_controlled_Inflow=True,
             with_controlled_PV=False,
@@ -700,129 +781,221 @@ class TestOutflowRetention:
         u = jnp.array([0.05])
         f_modeled_Outflows = jnp.array([-0.02])
         dc = rhs(c, rates, u, jnp.zeros(0), f_modeled_Outflows)
-        total_in, total_out = 0.05, 0.02
-        expected_dilution = -(total_in + total_out) / 1.0 * c[:2]
+        total_in = 0.05
+        expected_dilution = -total_in / 1.0 * c[:2]
         # biomass gets no Cin addition (feed has biomass=0); glucose does.
         expected_addition = jnp.array([0.0, 0.05 * 500.0 / 1.0])
         expected = expected_dilution + expected_addition
         assert float(dc[0]) == pytest.approx(float(expected[0]), abs=1e-6)
         assert float(dc[1]) == pytest.approx(float(expected[1]), abs=1e-6)
 
-    def test_retention_scales_down_washout_proportionally(self):
-        """Comparing sigma=0.95 against sigma=0 for the same outflow in
-        isolation: the retention-aware dc/dt must differ from the
-        unretained dc/dt by exactly sigma * (the unretained outflow-dilution
-        contribution) — the defining, mechanically verifiable property of
-        the retention formula, independent of whatever the rest of the
-        dilution formula (e.g. its total_in term) does.
+    def test_balanced_chemostat_washout_enters_once_via_feed_term(self):
+        """q_in == q_out (balanced chemostat), sigma=0 everywhere: washout
+        must enter dc/dt exactly once, through the feed's dilution term —
+        never doubled by an additional contribution from the outflow. This
+        is the exact shape of the original dilution-formula bug: the
+        pre-fix formula included total_out as well as total_in in the
+        dilution term, which for a balanced chemostat with no retention
+        doubled the washout rate."""
+        rm = ReactorMedium(
+            name="medium",
+            components={"biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
+            )},
+        )
+        q, V, c_biomass = 0.3, 2.0, 4.0
+        process = BioProcess(
+            metadata=BioProcessMetadata(name="chemostat", process_type="continuous"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=V, unit="L", volume_changes={
+                "feed_in": Inflow(name="feed_in", unit="L", is_controlled=True,
+                                   is_continuous=True,
+                                   feed_medium=_minimal_feed_medium("fresh_medium", "biomass", 0.0),
+                                   values=_ts([0.0, 1.0], [0.0, q])),
+                "harvest": Outflow(name="harvest", unit="L", is_controlled=True,
+                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -q])),
+            }),
+            reactor_medium=rm,
+            biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+        )
+        rhs = build_rhs_ode(process)
+        c = jnp.array([c_biomass, V])
+        dc = rhs(c, jnp.zeros(0), jnp.array([q, -q]), jnp.zeros(0), jnp.zeros(0))
+        D = q / V
+        assert float(dc[0]) == pytest.approx(-D * c_biomass, abs=1e-9)
+        assert float(dc[-1]) == pytest.approx(0.0, abs=1e-9)
 
-        Note: this is a direct, formula-level check, not a from-scratch
-        physical mass-balance derivation. See the implementation note above
-        _apply_feed_dilution and the summary reported to the user: layering
-        the spec's retention formula onto bp-format's *existing*
-        (total_in + total_out)-based dilution — which predates this task
-        and is independently relied upon (test_feed_dilution_concentration)
-        — reproduces the old behavior exactly at sigma=0 (verified in
-        test_zero_retention_matches_unretained_dilution) and is internally
-        consistent for every sigma in [0, 1], but does not deliver the
-        "mass conserved at sigma=1" property the spec's own sanity check
-        claims — that claim assumed a from-scratch mass balance that the
-        pre-existing dilution formula does not actually match.
-        """
+    def test_feed_and_outlet_steady_state_concentration_constant(self):
+        """Feed concentration equals bulk concentration, sigma=0, balanced
+        in/out flow: dc/dt must be exactly zero (no biology) — a second,
+        orthogonal sentinel that the corrected dilution term is exactly
+        -total_in/V*c, not -(total_in+total_out)/V*c (which would not
+        cancel to zero here: -2D*c + D*c = -D*c != 0)."""
+        rm = ReactorMedium(
+            name="medium",
+            components={"biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
+            )},
+        )
+        q, V, c_biomass = 0.3, 2.0, 4.0
+        process = BioProcess(
+            metadata=BioProcessMetadata(name="steady_state", process_type="continuous"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=V, unit="L", volume_changes={
+                "feed_in": Inflow(name="feed_in", unit="L", is_controlled=True,
+                                   is_continuous=True,
+                                   feed_medium=_minimal_feed_medium("fresh_medium", "biomass", c_biomass),
+                                   values=_ts([0.0, 1.0], [0.0, q])),
+                "harvest": Outflow(name="harvest", unit="L", is_controlled=True,
+                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -q])),
+            }),
+            reactor_medium=rm,
+            biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+        )
+        rhs = build_rhs_ode(process)
+        c = jnp.array([c_biomass, V])
+        dc = rhs(c, jnp.zeros(0), jnp.array([q, -q]), jnp.zeros(0), jnp.zeros(0))
+        assert float(dc[0]) == pytest.approx(0.0, abs=1e-9)
+        assert float(dc[-1]) == pytest.approx(0.0, abs=1e-9)
+
+    def test_multi_outlet_heterogeneous_retention_aggregates_correctly(self):
+        """Two simultaneous Outflows (one controlled, one modeled), each
+        retaining a different RMC to a different degree: verify the
+        flow-weighted retained-mass aggregation sums correctly across both
+        outlets and that controlled/modeled ordering stays aligned with
+        each outlet's own retention matrix (not swapped)."""
         rm = ReactorMedium(
             name="medium",
             components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 1.0])
+                    name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [3.0, 3.0])
+                ),
+                "glucose": ReactorMediumComponent(
+                    name="glucose", unit="g/L", concentration=_ts([0.0, 1.0], [6.0, 6.0])
                 ),
             },
         )
-        q_out = 0.1
-        V = 2.0
-        c_biomass = 3.0
+        q_bleed, q_harvest, V = 0.2, 0.1, 2.0
+        process = BioProcess(
+            metadata=BioProcessMetadata(name="multi_outlet", process_type="continuous"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=V, unit="L", volume_changes={
+                "bleed": Outflow(name="bleed", unit="L", is_controlled=True,
+                                  is_continuous=True,
+                                  values=_ts([0.0, 1.0], [0.0, -q_bleed]),
+                                  retention={"biomass": 0.9}),
+                "harvest": Outflow(name="harvest", unit="L", is_controlled=False,
+                                    is_continuous=True,
+                                    values=_ts([0.0, 1.0], [0.0, -q_harvest]),
+                                    retention={"glucose": 0.5}),
+            }),
+            reactor_medium=rm,
+            biological_ode=BiologicalOde(
+                rates={}, derivatives={"biomass": "0", "glucose": "0"}
+            ),
+        )
+        rhs = build_rhs_ode(process)
+        c = jnp.array([3.0, 6.0, V])
+        dc = rhs(c, jnp.zeros(0), jnp.array([-q_bleed]), jnp.zeros(0), jnp.array([-q_harvest]))
+        # retained_biomass = 0.9*q_bleed = 0.18 -> dilution = 0.18*3/2 = 0.27
+        # retained_glucose = 0.5*q_harvest = 0.05 -> dilution = 0.05*6/2 = 0.15
+        assert float(dc[0]) == pytest.approx(0.27, abs=1e-9)
+        assert float(dc[1]) == pytest.approx(0.15, abs=1e-9)
+        assert float(dc[-1]) == pytest.approx(-(q_bleed + q_harvest), abs=1e-9)
 
-        def _dc_for_retention(sigma):
-            process = BioProcess(
-                metadata=BioProcessMetadata(name="perfusion", process_type="continuous"),
-                time_axis=TimeAxis(
-                    unit="hours", start=0.0, end=10.0, time_reference="x"
-                ),
-                volume=Volume(
-                    initial_volume=V,
-                    unit="L",
-                    volume_changes={
-                        "perfusion_out": Outflow(
-                            name="perfusion_out",
-                            unit="L",
-                            is_controlled=False,
-                            is_continuous=True,
-                            values=_ts([0.0, 10.0], [0.0, -q_out * 10.0]),
-                            component_retention={"biomass": sigma},
-                        ),
-                    },
-                ),
-                reactor_medium=rm,
-                biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
-            )
-            rhs = build_rhs_ode(process)
-            c = jnp.array([c_biomass, V])
-            dc = rhs(c, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array([-q_out]))
-            return float(dc[0])
+    def test_discrete_outflow_with_retention_raises(self):
+        """retention set on a discrete (non-continuous) Outflow must be
+        rejected at construction time (get_process_ordering), not silently
+        ignored — the RHS ODE only ever consults retention for continuous
+        Outflows (see _build_retention), so a discrete Outflow's retention
+        would otherwise never do anything."""
+        process = _make_process(with_controlled_Inflow=False, with_controlled_PV=False)
+        process.volume.volume_changes["bolus_sample"] = Outflow(
+            name="bolus_sample", unit="L", is_controlled=True, is_continuous=False,
+            values=_ts([5.0, 10.0], [-0.05, -0.05]), retention={"biomass": 0.5},
+        )
+        with pytest.raises(ValueError, match="retention"):
+            get_process_ordering(process)
 
-        dc_unretained = _dc_for_retention(0.0)
-        dc_retained = _dc_for_retention(0.95)
-        # eff_out_per_rmc = (1-sigma)*q_out, so dc/dt scales linearly in
-        # (1-sigma); the retained case must wash out 5% as fast.
-        assert dc_retained == pytest.approx(0.05 * dc_unretained, rel=1e-9)
-
-    def test_full_retention_zeroes_the_outflow_dilution_term(self):
-        """sigma=1 makes eff_out_per_rmc exactly 0 for that species, i.e.
-        dc/dt for that RMC becomes independent of the outflow magnitude
-        entirely (the mechanical guarantee the formula actually provides —
-        see the note in the previous test)."""
+    def test_synthetic_perfusion_reduces_biomass_washout(self):
+        """Constant-volume perfusion (Inflow == Outflow), sigma_biomass=0.95,
+        no biology: biomass must wash out at exactly (1-sigma)*D*c, the
+        textbook perfusion washout rate — the originally-derived,
+        physically-correct expectation for this feature (see
+        specs/_perfusion_evaporation_spec.md §6); only the base dilution
+        formula needed to catch up to it."""
         rm = ReactorMedium(
             name="medium",
-            components={
-                "solute": ReactorMediumComponent(
-                    name="solute", unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 1.0])
-                ),
-            },
+            components={"biomass": ReactorMediumComponent(
+                name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [3.0, 3.0])
+            )},
         )
-        V = 2.0
-        c_solute = 4.0
+        q_perf, V, c_biomass, sigma = 0.4, 2.0, 3.0, 0.95
+        process = BioProcess(
+            metadata=BioProcessMetadata(name="perfusion", process_type="continuous"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(initial_volume=V, unit="L", volume_changes={
+                "perfusion_in": Inflow(
+                    name="perfusion_in", unit="L", is_controlled=True, is_continuous=True,
+                    feed_medium=_minimal_feed_medium("perfusion_medium", "biomass", 0.0),
+                    values=_ts([0.0, 1.0], [0.0, q_perf]),
+                ),
+                "perfusion_out": Outflow(
+                    name="perfusion_out", unit="L", is_controlled=True, is_continuous=True,
+                    values=_ts([0.0, 1.0], [0.0, -q_perf]), retention={"biomass": sigma},
+                ),
+            }),
+            reactor_medium=rm,
+            biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+        )
+        rhs = build_rhs_ode(process)
+        c = jnp.array([c_biomass, V])
+        dc = rhs(c, jnp.zeros(0), jnp.array([q_perf, -q_perf]), jnp.zeros(0), jnp.zeros(0))
+        D = q_perf / V
+        expected = -(1.0 - sigma) * D * c_biomass
+        assert float(dc[0]) == pytest.approx(expected, abs=1e-9)
+        assert float(dc[-1]) == pytest.approx(0.0, abs=1e-9)  # constant volume
 
-        def _dc_for_outflow(q_evap):
+    def test_synthetic_evaporation_conserves_mass(self):
+        """Pure evaporation: single solute with sigma=1, no biology, no
+        inflow. d(c*V)/dt must be exactly zero regardless of the
+        evaporation rate — mass is conserved as volume drops and the
+        solute concentrates. Originally-derived expectation for this
+        feature (see specs/_perfusion_evaporation_spec.md §6); restored
+        now that the base dilution formula has been corrected to actually
+        deliver it, checked at two different evaporation rates to confirm
+        the invariant holds regardless of magnitude."""
+        rm = ReactorMedium(
+            name="medium",
+            components={"solute": ReactorMediumComponent(
+                name="solute", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
+            )},
+        )
+        V, c_solute = 2.0, 4.0
+
+        def _d_cV_dt(q_evap):
             process = BioProcess(
                 metadata=BioProcessMetadata(name="evap", process_type="continuous"),
-                time_axis=TimeAxis(
-                    unit="hours", start=0.0, end=10.0, time_reference="x"
-                ),
-                volume=Volume(
-                    initial_volume=V,
-                    unit="L",
-                    volume_changes={
-                        "evaporation": Outflow(
-                            name="evaporation",
-                            unit="L",
-                            is_controlled=False,
-                            is_continuous=True,
-                            values=_ts([0.0, 10.0], [0.0, -q_evap * 10.0]),
-                            component_retention={"solute": 1.0},
-                        ),
-                    },
-                ),
+                time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+                volume=Volume(initial_volume=V, unit="L", volume_changes={
+                    "evaporation": Outflow(
+                        name="evaporation", unit="L", is_controlled=False,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -q_evap]),
+                        retention={"solute": 1.0},
+                    ),
+                }),
                 reactor_medium=rm,
                 biological_ode=BiologicalOde(rates={}, derivatives={"solute": "0"}),
             )
             rhs = build_rhs_ode(process)
             c = jnp.array([c_solute, V])
             dc = rhs(c, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array([-q_evap]))
-            return float(dc[0])
+            dc_solute, dV = float(dc[0]), float(dc[-1])
+            return c_solute * dV + V * dc_solute  # product rule: d(c*V)/dt
 
-        # With full retention, dc/dt for "solute" must be the same
-        # regardless of how much is evaporating.
-        assert _dc_for_outflow(0.05) == pytest.approx(_dc_for_outflow(0.2), abs=1e-12)
-        assert _dc_for_outflow(0.05) == pytest.approx(0.0, abs=1e-12)
+        assert _d_cV_dt(0.05) == pytest.approx(0.0, abs=1e-12)
+        assert _d_cV_dt(0.2) == pytest.approx(0.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------

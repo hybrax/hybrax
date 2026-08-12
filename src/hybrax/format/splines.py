@@ -31,9 +31,9 @@ from scipy import interpolate
 from .dataclasses import (
     BioProcess,
     DiscreteEvents,
-    FeedVolumeChange,
+    Inflow,
     PseudobatchTransform,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeSeries,
 )
@@ -630,7 +630,7 @@ def _series_coeffs_on_breaks(series: TimeSeries, breaks: jnp.ndarray) -> jnp.nda
 
 
 def _feed_concentration_for_species(
-    vc: FeedVolumeChange,
+    vc: Inflow,
     species_name: str,
 ) -> float:
     """Return static feed concentration for ``species_name`` or fail fast."""
@@ -678,9 +678,9 @@ def _discrete_volume_events(process: BioProcess, species_name: str) -> dict:
         for t_ev, delta_v in zip(vc.values.times, vc.values.values):
             t_key = float(t_ev)
             record = events.setdefault(t_key, {"samples": [], "boluses": []})
-            if isinstance(vc, SampleVolumeChange):
+            if isinstance(vc, Outflow):
                 record["samples"].append((vc_name, float(delta_v)))
-            elif isinstance(vc, FeedVolumeChange):
+            elif isinstance(vc, Inflow):
                 record["boluses"].append(
                     (
                         vc_name,
@@ -801,7 +801,7 @@ def _build_direct_pseudobatch_series(
     continuous_volume_coeffs = jnp.zeros((n_pieces, 4), dtype=float)
 
     for vc_name, vc in process.volume.volume_changes.items():
-        if not isinstance(vc, FeedVolumeChange):
+        if not isinstance(vc, Inflow):
             continue
         feed_stream_names.append(vc_name)
         feed_concentrations[vc_name] = _feed_concentration_for_species(vc, species_name)
@@ -814,7 +814,7 @@ def _build_direct_pseudobatch_series(
     discrete_feed_names = [
         name
         for name, vc in process.volume.volume_changes.items()
-        if isinstance(vc, FeedVolumeChange) and not vc.is_continuous
+        if isinstance(vc, Inflow) and not vc.is_continuous
     ]
     discrete_feed_current = {name: 0.0 for name in discrete_feed_names}
     discrete_feed_interval_values = {
@@ -1033,7 +1033,7 @@ def _build_direct_pseudobatch_series(
     )
     meas_indices = jnp.asarray(meas_indices_np, dtype=int)
     has_discrete_feed = any(
-        isinstance(vc, FeedVolumeChange) and not vc.is_continuous
+        isinstance(vc, Inflow) and not vc.is_continuous
         for vc in process.volume.volume_changes.values()
     )
 

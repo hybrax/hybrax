@@ -11,8 +11,8 @@ from .dataclasses import (
     Bounds,
     StaticVariable,
     TimeSeries,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
 )
 
 
@@ -419,13 +419,13 @@ def validate_volume_change_sign(
     """
     Verify that a volume change has correct sign for its type.
 
-    For a ``FeedVolumeChange`` all values must be ≥ 0.
-    For a ``SampleVolumeChange`` all values must be ≤ 0.
+    For a ``Inflow`` all values must be ≥ 0.
+    For a ``Outflow`` all values must be ≤ 0.
     If the concrete type is unknown, fall back to verifying that the change is
     purely positive or purely negative (never mixed).
 
     Args:
-        volume_change: FeedVolumeChange or SampleVolumeChange object.
+        volume_change: Inflow or Outflow object.
 
     Returns:
         A tuple ``(is_valid, message)``.
@@ -433,22 +433,22 @@ def validate_volume_change_sign(
     vals = jnp.asarray(volume_change.values.values)
     eps = 1e-12
 
-    if isinstance(volume_change, FeedVolumeChange):
+    if isinstance(volume_change, Inflow):
         if bool(jnp.all(vals >= -eps)):
             return True, (
-                f"Volume change '{volume_change.name}' (FeedVolumeChange) has all non-negative values — OK"
+                f"Volume change '{volume_change.name}' (Inflow) has all non-negative values — OK"
             )
         return False, (
-            f"Volume change '{volume_change.name}' (FeedVolumeChange) contains negative values. "
+            f"Volume change '{volume_change.name}' (Inflow) contains negative values. "
             "Feed volume changes must have all values >= 0."
         )
-    elif isinstance(volume_change, SampleVolumeChange):
+    elif isinstance(volume_change, Outflow):
         if bool(jnp.all(vals <= eps)):
             return True, (
-                f"Volume change '{volume_change.name}' (SampleVolumeChange) has all non-positive values — OK"
+                f"Volume change '{volume_change.name}' (Outflow) has all non-positive values — OK"
             )
         return False, (
-            f"Volume change '{volume_change.name}' (SampleVolumeChange) contains positive values. "
+            f"Volume change '{volume_change.name}' (Outflow) contains positive values. "
             "Sample volume changes must have all values <= 0."
         )
     else:
@@ -508,8 +508,8 @@ def validate_volume_change_states(
             continue  # only check positive (inflowing) volume changes
 
         # Check that the feed medium defines all state variables
-        if not isinstance(vc, FeedVolumeChange):
-            continue  # SampleVolumeChange has no feed medium
+        if not isinstance(vc, Inflow):
+            continue  # Outflow has no feed medium
         feed = vc.feed_medium
         if feed is None:
             errors.append(
@@ -530,6 +530,65 @@ def validate_volume_change_states(
             f"  - {e}" for e in errors
         )
     return True, "All positive volume changes cover all dynamic state variables — OK"
+
+
+def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
+    """
+    For every Outflow's ``retention``, every key must be a declared
+    reactor-medium component name, every value must satisfy
+    ``0.0 <= sigma <= 1.0``, and a non-empty ``retention`` is only allowed
+    on a continuous Outflow — the RHS mechanistic model only ever consults
+    retention for continuous flows (see ``_build_retention`` in
+    ``mechanistic.py``), so retention set on a discrete Outflow would
+    otherwise be silently ignored rather than doing anything.
+
+    Args:
+        process: BioProcess object to validate.
+
+    Returns:
+        A tuple ``(is_valid, message)``.
+    """
+    rmc_names = (
+        set(process.reactor_medium.components.keys())
+        if process.reactor_medium
+        else set()
+    )
+    errors: List[str] = []
+
+    if process.volume and process.volume.volume_changes:
+        for vc_name, vc in process.volume.volume_changes.items():
+            if not isinstance(vc, Outflow) or not vc.retention:
+                continue
+            if not vc.is_continuous:
+                errors.append(
+                    f"Outflow '{vc_name}' sets retention {vc.retention!r} but "
+                    "is discrete (is_continuous=False) — retention is only "
+                    "implemented for continuous Outflows and would be "
+                    "silently ignored here."
+                )
+                continue
+            unknown = [k for k in vc.retention if k not in rmc_names]
+            if unknown:
+                errors.append(
+                    f"Outflow '{vc_name}' retention references "
+                    f"unknown reactor component(s): {unknown}."
+                )
+            out_of_range = {
+                k: v
+                for k, v in vc.retention.items()
+                if not (0.0 <= v <= 1.0)
+            }
+            if out_of_range:
+                errors.append(
+                    f"Outflow '{vc_name}' retention value(s) out "
+                    f"of [0, 1]: {out_of_range}."
+                )
+
+    if errors:
+        return False, "Outflow retention errors:\n" + "\n".join(
+            f"  - {e}" for e in errors
+        )
+    return True, "All Outflow retention values are valid — OK"
 
 
 def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
@@ -571,6 +630,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
       process variable that carries a TimeSeries.
     - Sign consistency for every volume change.
     - State-variable / feed-medium coverage for positive volume changes.
+    - Outflow ``retention`` keys/values (:func:`validate_outflow_retention`).
     - Presence of a ``biomass`` component in the reactor medium.
     - Measured data falls within its own declared ``Bounds``
       (:func:`validate_bounds_against_data`).
@@ -630,6 +690,11 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
         messages.append(msg)
         all_valid = all_valid and ok
 
+        # --- Outflow component retention ---
+        ok, msg = validate_outflow_retention(process)
+        messages.append(msg)
+        all_valid = all_valid and ok
+
     # --- Biomass check ---
     ok, msg = validate_biomass_in_reactor_medium(process)
     messages.append(msg)
@@ -685,11 +750,11 @@ def validate_measurement_sampling_alignment(
         A tuple ``(is_valid, message)`` where ``is_valid`` is ``False`` when
         at least one near-miss is detected.
     """
-    # Collect sampling times from SampleVolumeChange objects
+    # Collect sampling times from Outflow objects
     sampling_times_list: List[float] = []
     if process.volume and process.volume.volume_changes:
         for vc in process.volume.volume_changes.values():
-            if isinstance(vc, SampleVolumeChange) and _is_dynamic_series(vc.values):
+            if isinstance(vc, Outflow) and _is_dynamic_series(vc.values):
                 sampling_times_list.extend(float(t) for t in jnp.asarray(vc.values.times))
 
     if not sampling_times_list:

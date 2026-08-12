@@ -77,7 +77,7 @@ The file mirrors the dataclass hierarchy directly.
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
-        "volume_changes": { "feed": { "type": "FeedVolumeChange", "...": "..." } }
+        "volume_changes": { "feed": { "type": "Inflow", "...": "..." } }
       },
       "process_variables": {},
       "biological_ode": { "...": "see below" }
@@ -142,7 +142,7 @@ Discriminated by `"type"`:
 
 ```json
 "feed": {
-  "type": "FeedVolumeChange",
+  "type": "Inflow",
   "name": "feed", "unit": "L",
   "is_controlled": true, "is_continuous": true,
   "values": {"times": "...", "values": "..."},
@@ -154,7 +154,7 @@ Discriminated by `"type"`:
 }
 ```
 
-`SampleVolumeChange` is the same minus `feed_medium`. A payload with no `"type"`
+`Outflow` is the same minus `feed_medium`. A payload with no `"type"`
 key is rejected as an old schema.
 
 ### `pseudobatch_transform` payload

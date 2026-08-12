@@ -79,8 +79,8 @@ Volume is not a state, not a control, and not a process variable:
 - **It enters the ODE differently.** Every flow dilutes every reactor species by
   `-(inflow + outflow)/V · c`, while feeds additionally *add* mass at `q·Cin/V`.
   Volume itself follows `dV/dt = inflow − outflow`.
-- **It carries chemistry.** A `FeedVolumeChange` references a `FeedMedium` that
-  says what enters. A `SampleVolumeChange` removes broth at current
+- **It carries chemistry.** A `Inflow` references a `FeedMedium` that
+  says what enters. A `Outflow` removes broth at current
   concentrations, so it needs no medium.
 
 Signs are enforced by type: feeds store non-negative values, samples store

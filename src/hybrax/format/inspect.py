@@ -5,10 +5,12 @@ import jax.numpy as jnp
 from .dataclasses import (
     BioProcess,
     BioProcessCollection,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     ProcessOrdering,
-    SampleVolumeChange,
     StaticVariable,
+    _format_biological_ode_lines,
+    _format_bounds,
 )
 from .splines import _has_spline_state
 from .time_series import TimeSeries
@@ -194,31 +196,11 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                     _print_volume_change_info(change, "    ")
 
         if process.biological_ode is not None:
-            bo = process.biological_ode
-            print("\nBiological ODE (user-defined):")
-            if bo.algebraic:
-                print(f"  Algebraic ({len(bo.algebraic)}):")
-                for name, expr in bo.algebraic.items():
-                    print(f"    {name} = {expr}")
-            if bo.rates:
-                print(f"  Rates ({len(bo.rates)}):")
-                for name, bounds in bo.rates.items():
-                    print(f"    {name}: bounds={_format_bounds(bounds)}")
-            if bo.derivatives:
-                print(f"  Derivatives ({len(bo.derivatives)}):")
-                for name, expr in bo.derivatives.items():
-                    print(f"    d({name})/dt|biological = {expr}")
+            print("\nBiological ODE:")
+            for line in _format_biological_ode_lines(process.biological_ode, prefix="  "):
+                print(line)
 
     print("=" * 80)
-
-
-def _format_bounds(bounds) -> str:
-    """Format a bounds tuple for inspect output, hiding the unbounded default."""
-    if bounds is None or (bounds[0] is None and bounds[1] is None):
-        return "unbounded"
-    lo = "-inf" if bounds[0] is None else f"{bounds[0]:g}"
-    hi = "+inf" if bounds[1] is None else f"{bounds[1]:g}"
-    return f"[{lo}, {hi}]"
 
 
 def _print_process_variable_info(pv, prefix: str) -> None:
@@ -280,8 +262,11 @@ def _print_volume_change_info(change, prefix: str) -> None:
     )
     print(f"{prefix}  Unit: {change.unit}")
 
-    if isinstance(change, FeedVolumeChange) and change.feed_medium:
+    if isinstance(change, Inflow) and change.feed_medium:
         print(f"{prefix}  Feed Medium: {change.feed_medium.name}")
+
+    if isinstance(change, Outflow) and change.retention:
+        print(f"{prefix}  Retention: {change.retention}")
 
     if change.values is not None:
         if _is_dynamic_series(change.values):
@@ -372,7 +357,7 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
                 total += _count_datapoints_in_value(vc.values)
             # feed medium components
             if getattr(vc, "feed_medium", None) is not None and isinstance(
-                vc, FeedVolumeChange
+                vc, Inflow
             ):
                 for fcomp in vc.feed_medium.components.values():
                     total += _count_datapoints_in_value(fcomp.concentration)
@@ -1094,7 +1079,7 @@ def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None):
 
 def _cin_static_value(vc, rmc_name: str) -> float:
     """Static feed concentration of *rmc_name* in *vc*'s feed medium (0 if absent)."""
-    if not isinstance(vc, FeedVolumeChange) or vc.feed_medium is None:
+    if not isinstance(vc, Inflow) or vc.feed_medium is None:
         return 0.0
     comp = vc.feed_medium.components.get(rmc_name)
     if comp is None:
@@ -1165,67 +1150,67 @@ def _render_combined_box(title: str, sections: list) -> str:
 
 def _format_rmc_feed(
     rmc_name: str,
-    fvc_names: list,
+    inflow_names: list,
     process: BioProcess,
 ) -> str:
-    """``+ feed(<FVCs supplying Cin for this RMC>)`` or empty when none."""
+    """``+ feed(<Inflows supplying Cin for this RMC>)`` or empty when none."""
     feeders = [
         n
-        for n in fvc_names
+        for n in inflow_names
         if _cin_static_value(process.volume.volume_changes[n], rmc_name) != 0.0
     ]
     return "+ feed(" + ", ".join(feeders) + ")" if feeders else ""
 
 
-def _format_rmc_dilution(fvc_names: list, svc_names: list) -> str:
-    """``− dilution(<all FVC+SVC>)`` or empty when there are no flows."""
-    flows = list(fvc_names) + list(svc_names)
+def _format_rmc_dilution(inflow_names: list, outflow_names: list) -> str:
+    """``− dilution(<all Inflow+Outflow>)`` or empty when there are no flows."""
+    flows = list(inflow_names) + list(outflow_names)
     return "− dilution(" + ", ".join(flows) + ")" if flows else ""
 
 
 def _discrete_volume_changes(process: BioProcess):
-    """Return ``(discrete_FVCs, discrete_SVCs)`` — names of discrete (bolus
+    """Return ``(discrete_Inflows, discrete_Outflows)`` — names of discrete (bolus
     / discrete-sample) volume changes. ``ProcessOrdering`` only enumerates
     continuous volume changes, so the discrete ones are recovered here.
     """
-    disc_fvc = sorted(
+    disc_inflow = sorted(
         n
         for n, vc in process.volume.volume_changes.items()
-        if not vc.is_continuous and isinstance(vc, FeedVolumeChange)
+        if not vc.is_continuous and isinstance(vc, Inflow)
     )
-    disc_svc = sorted(
+    disc_outflow = sorted(
         n
         for n, vc in process.volume.volume_changes.items()
-        if not vc.is_continuous and isinstance(vc, SampleVolumeChange)
+        if not vc.is_continuous and isinstance(vc, Outflow)
     )
-    return disc_fvc, disc_svc
+    return disc_inflow, disc_outflow
 
 
 def _format_v_additions(
-    cont_fvc: list,
-    disc_fvc: list,
+    cont_inflow: list,
+    disc_inflow: list,
 ) -> str:
-    """V's positive contributions: continuous FVC flow rates and discrete
+    """V's positive contributions: continuous Inflow flow rates and discrete
     bolus events. Returns ``0`` when neither is present."""
     parts: list = []
-    if cont_fvc:
-        parts.append(" + ".join(cont_fvc))
-    if disc_fvc:
-        parts.append("bolus(" + ", ".join(disc_fvc) + ")")
+    if cont_inflow:
+        parts.append(" + ".join(cont_inflow))
+    if disc_inflow:
+        parts.append("bolus(" + ", ".join(disc_inflow) + ")")
     return " + ".join(parts) if parts else "0"
 
 
 def _format_v_removals(
-    cont_svc: list,
-    disc_svc: list,
+    cont_outflow: list,
+    disc_outflow: list,
 ) -> str:
-    """V's negative contributions: continuous SVC flow rates and discrete
+    """V's negative contributions: continuous Outflow flow rates and discrete
     sampling events. Returns ``0`` when neither is present."""
     parts: list = []
-    if cont_svc:
-        parts.append("− |" + " + ".join(cont_svc) + "|")
-    if disc_svc:
-        parts.append("− sample(" + ", ".join(disc_svc) + ")")
+    if cont_outflow:
+        parts.append("− |" + " + ".join(cont_outflow) + "|")
+    if disc_outflow:
+        parts.append("− sample(" + ", ".join(disc_outflow) + ")")
     return " ".join(parts) if parts else "0"
 
 
@@ -1275,10 +1260,10 @@ def print_rhs_ode(
 
     The Derivatives sub-table separates the *Biological* expression
     (verbatim from ``biological_ode.derivatives``) from the *Feed* and
-    *Dilution* contributions that bp-format adds on top: ``+ feed(<FVCs
-    with Cin>)`` and ``− dilution(<all FVC+SVC>)`` per RMC. The Volume
-    sub-table lists V separately with *Additions* (FVC sum) and
-    *Removals* (``− |<SVC sum>|``) columns.
+    *Dilution* contributions that bp-format adds on top: ``+ feed(<Inflows
+    with Cin>)`` and ``− dilution(<all Inflow+Outflow>)`` per RMC. The Volume
+    sub-table lists V separately with *Additions* (Inflow sum) and
+    *Removals* (``− |<Outflow sum>|``) columns.
 
     Raises:
         ValueError: if a multi-process container's processes do not share
@@ -1325,15 +1310,15 @@ def print_rhs_ode(
             )
         )
 
-    fvc_all = list(ordering.name_controlled_FVCs) + list(ordering.name_modeled_FVCs)
-    svc_all = list(ordering.name_controlled_SVCs) + list(ordering.name_modeled_SVCs)
+    inflow_all = list(ordering.name_controlled_Inflows) + list(ordering.name_modeled_Inflows)
+    outflow_all = list(ordering.name_controlled_Outflows) + list(ordering.name_modeled_Outflows)
 
     deriv_rows: list = []
     for n in ordering.name_modeled_RMCs:
         unit = process.reactor_medium.components[n].unit
         bio_str = bo.derivatives.get(n, "0")
-        feed = _format_rmc_feed(n, fvc_all, process)
-        dilution = _format_rmc_dilution(fvc_all, svc_all)
+        feed = _format_rmc_feed(n, inflow_all, process)
+        dilution = _format_rmc_dilution(inflow_all, outflow_all)
         deriv_rows.append([n, f"[{unit}]", bio_str, feed, dilution])
     for n in ordering.name_modeled_PVs:
         unit = process.process_variables[n].unit
@@ -1350,13 +1335,13 @@ def print_rhs_ode(
     )
 
     if process.volume is not None:
-        disc_fvc, disc_svc = _discrete_volume_changes(process)
+        disc_inflow, disc_outflow = _discrete_volume_changes(process)
         vol_rows = [
             [
                 "V",
                 f"[{process.volume.unit}]",
-                _format_v_additions(fvc_all, disc_fvc),
-                _format_v_removals(svc_all, disc_svc),
+                _format_v_additions(inflow_all, disc_inflow),
+                _format_v_removals(outflow_all, disc_outflow),
             ]
         ]
         sections.append(

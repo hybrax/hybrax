@@ -294,14 +294,14 @@ class TestValidateOutflowRetention:
             name=name, unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 2.0])
         )
 
-    def _outflow(self, component_retention=None):
+    def _outflow(self, retention=None, is_continuous=True):
         return Outflow(
             name="sample",
             unit="L",
             is_controlled=True,
-            is_continuous=True,
+            is_continuous=is_continuous,
             values=_ts([0.0, 1.0], [-0.1, -0.2]),
-            component_retention=component_retention or {},
+            retention=retention or {},
         )
 
     def test_empty_retention_is_valid(self):
@@ -316,7 +316,7 @@ class TestValidateOutflowRetention:
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={
-                "sample": self._outflow(component_retention={"biomass": 0.95})
+                "sample": self._outflow(retention={"biomass": 0.95})
             },
         )
         ok, msg = validate_outflow_retention(process)
@@ -326,7 +326,7 @@ class TestValidateOutflowRetention:
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={
-                "sample": self._outflow(component_retention={"biomass": 1.5})
+                "sample": self._outflow(retention={"biomass": 1.5})
             },
         )
         ok, msg = validate_outflow_retention(process)
@@ -337,7 +337,7 @@ class TestValidateOutflowRetention:
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={
-                "sample": self._outflow(component_retention={"biomass": -0.1})
+                "sample": self._outflow(retention={"biomass": -0.1})
             },
         )
         ok, msg = validate_outflow_retention(process)
@@ -347,16 +347,32 @@ class TestValidateOutflowRetention:
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={
-                "sample": self._outflow(component_retention={"typo_name": 0.5})
+                "sample": self._outflow(retention={"typo_name": 0.5})
             },
         )
         ok, msg = validate_outflow_retention(process)
         assert ok is False
         assert "typo_name" in msg
 
+    def test_discrete_retention_rejected(self):
+        """retention is only ever consulted for continuous Outflows — a
+        non-empty value on a discrete Outflow would otherwise be silently
+        ignored by the RHS ODE, so it must be rejected instead."""
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "sample": self._outflow(
+                    retention={"biomass": 0.5}, is_continuous=False
+                )
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+        assert "discrete" in msg.lower()
+
     def test_inflow_is_ignored(self):
-        """component_retention only exists on Outflow; an Inflow in the mix
-        must not confuse the check."""
+        """retention only exists on Outflow; an Inflow in the mix must not
+        confuse the check."""
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={
