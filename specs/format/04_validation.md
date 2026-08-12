@@ -13,7 +13,7 @@ aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
 — see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-All 14 validators are exported from the package root: `bp.validate_process(...)`.
+All 15 validators are exported from the package root: `bp.validate_process(...)`.
 
 ## Individual validators
 
@@ -29,6 +29,11 @@ increasing (no duplicates). Fails if the series has no discrete samples at all.
 - Unknown type: values must be purely positive or purely negative, never mixed
 
 Uses a 1e-12 tolerance so exact zeros and float noise pass.
+
+### `validate_volume_units(process)`
+
+Every volume change uses exactly the same unit string as `process.volume.unit`.
+Units are not parsed or converted, and no dimensional analysis is performed.
 
 ### `validate_volume_change_states(process)`
 
@@ -122,8 +127,13 @@ structure against the first process:
 
 - same reactor components, each with the same value type and unit
 - same process variables, each with the same value type and unit
+- same volume unit
 - same volume-change names and units
-- same time-axis unit and time reference (exact strings); start and end may differ
+- same time-axis unit and time reference
+
+All units and the time reference are compared as exact strings. Units are not
+parsed or converted, and no dimensional analysis is performed. Time-axis start
+and end may differ.
 
 Collections with 0 or 1 process pass trivially. This is the check
 `validate_for_publication` composes to build its `"__consistency__"` report
@@ -133,7 +143,8 @@ entry; call it directly for just the structural-consistency signal.
 
 Initial volume plus all volume changes should land within 5 % of the measured
 final volume. Returns `(bool, str, float)` — the third element is the net volume
-change.
+change. This numeric check assumes compatible units; call `validate_volume_units`
+first (or use `validate_process`) to check exact unit-string coherence.
 
 Continuous changes contribute `values[-1] - values[0]` (cumulative); discrete
 changes contribute `sum(values)`. Only the endpoints are used, because this runs
@@ -158,13 +169,14 @@ Runs, in order:
 
 1. `validate_timeseries_shape` on every reactor component, process variable, and
    volume change carrying a `TimeSeries`
-2. `validate_volume_change_sign` on every volume change
-3. `validate_volume_change_states`
-4. `validate_biomass_in_reactor_medium`
-5. `validate_measurement_sampling_alignment`
-6. `validate_bounds`
-7. `validate_bounds_against_data`
-8. `validate_biological_ode`
+2. `validate_volume_units`
+3. `validate_volume_change_sign` on every volume change
+4. `validate_volume_change_states`
+5. `validate_biomass_in_reactor_medium`
+6. `validate_measurement_sampling_alignment`
+7. `validate_bounds`
+8. `validate_bounds_against_data`
+9. `validate_biological_ode`
 
 Returns one message per check — including the passing ones, so the output reads
 as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.

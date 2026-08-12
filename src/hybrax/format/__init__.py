@@ -61,6 +61,7 @@ if TYPE_CHECKING:
         validate_volume_change_sign,
         validate_volume_change_states,
         validate_volume_consistency,
+        validate_volume_units,
     )
 
 _EXPORT_MODULES = {
@@ -99,6 +100,7 @@ _EXPORT_MODULES = {
         "validate_timeseries_shape",
         "validate_volume_change_sign",
         "validate_volume_change_states",
+        "validate_volume_units",
         "validate_biomass_in_reactor_medium",
         "validate_measurement_sampling_alignment",
         "validate_process",

@@ -562,6 +562,21 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
+def validate_volume_units(process: BioProcess) -> Tuple[bool, str]:
+    """Require every volume change to use the process volume unit."""
+    mismatches = [
+        f"{name!r} uses {change.unit!r}"
+        for name, change in process.volume.volume_changes.items()
+        if change.unit != process.volume.unit
+    ]
+    if mismatches:
+        return False, (
+            f"Volume changes must use volume unit {process.volume.unit!r}: "
+            + ", ".join(mismatches)
+        )
+    return True, f"Volume changes use volume unit {process.volume.unit!r} — OK"
+
+
 def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     """
     Run all available validation checks on a single BioProcess.
@@ -569,6 +584,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     Checks performed:
     - TimeSeries shape and ordering for every reactor-medium component and
       process variable that carries a TimeSeries.
+    - Every volume change uses the process volume unit.
     - Sign consistency for every volume change.
     - State-variable / feed-medium coverage for positive volume changes.
     - Presence of a ``biomass`` component in the reactor medium.
@@ -611,6 +627,10 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
             all_valid = all_valid and ok
 
     # Volume changes
+    ok, msg = validate_volume_units(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
     if process.volume and process.volume.volume_changes:
         for vc_name, vc in process.volume.volume_changes.items():
             if vc.values is not None:
@@ -815,6 +835,7 @@ def validate_cross_process_consistency(
       type (``TimeSeries`` or ``StaticVariable``) and unit.
     - The same process-variable names, each with the same value type
       (``TimeSeries`` or ``StaticVariable``) and unit.
+    - The same volume unit.
     - The same volume-change names and units.
     - The same time-axis unit and reference. Start and end may differ.
 
@@ -856,6 +877,7 @@ def validate_cross_process_consistency(
 
     ref_reactor = _reactor_signature(first_process)
     ref_pv = _pv_signature(first_process)
+    ref_volume_unit = first_process.volume.unit
     ref_vc = _vc_signature(first_process)
     ref_time_axis = (
         first_process.time_axis.unit,
@@ -871,6 +893,12 @@ def validate_cross_process_consistency(
             consistency_errors.append(
                 f"Process '{proc_name}' time axis differs from '{first_name}': "
                 f"expected {ref_time_axis}, got {time_axis}"
+            )
+
+        if process.volume.unit != ref_volume_unit:
+            consistency_errors.append(
+                f"Process '{proc_name}' volume unit differs from '{first_name}': "
+                f"expected {ref_volume_unit!r}, got {process.volume.unit!r}"
             )
 
         reactor_sig = _reactor_signature(process)

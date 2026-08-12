@@ -27,6 +27,7 @@ from bp_format import (
     validate_timeseries_shape,
     validate_volume_change_sign,
     validate_volume_change_states,
+    validate_volume_units,
     validate_biomass_in_reactor_medium,
     validate_measurement_sampling_alignment,
     validate_process,
@@ -173,6 +174,35 @@ class TestValidateVolumeChangeSign:
         ok, msg = validate_volume_change_sign(vc)
         assert ok is False
         assert "negative" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# validate_volume_units
+# ---------------------------------------------------------------------------
+
+
+class TestValidateVolumeUnits:
+    def _sample(self, unit):
+        return SampleVolumeChange(
+            name="sample",
+            unit=unit,
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([1.0], [-0.1]),
+        )
+
+    def test_matching_volume_change_unit(self):
+        process = _make_process(volume_changes={"sample": self._sample("L")})
+        ok, msg = validate_volume_units(process)
+        assert ok is True
+        assert "OK" in msg
+
+    def test_mismatched_volume_change_unit(self):
+        process = _make_process(volume_changes={"sample": self._sample("mL")})
+        ok, msg = validate_volume_units(process)
+        assert ok is False
+        assert "'sample' uses 'mL'" in msg
+        assert "volume unit 'L'" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +404,31 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
+
+    def test_mismatched_volume_change_unit_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            },
+            volume_changes={
+                "sample": SampleVolumeChange(
+                    name="sample",
+                    unit="mL",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=_ts([1.0], [-100.0]),
+                )
+            },
+        )
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("volume unit 'L'" in message for message in messages)
 
 
 # ---------------------------------------------------------------------------
@@ -752,6 +807,18 @@ class TestValidateCrossProcessConsistency:
 
         assert ok is True
         assert messages == []
+
+    def test_inconsistent_volume_units(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(ts)
+        p2.volume.unit = "mL"
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+
+        ok, messages = validate_cross_process_consistency(collection)
+
+        assert ok is False
+        assert any("volume unit" in message for message in messages)
 
     def test_inconsistent_reactor_medium_components(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
