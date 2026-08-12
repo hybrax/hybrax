@@ -94,3 +94,5 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 | A reaction module with memory (latent-ODE / LSTM) | [Stateful reaction modules](../gallery/stateful.md) |
 | Freezing part of a reaction module, checked before training | [Freezing parameters](../gallery/freezing.md) |
 | A holdout check and a full leave-one-out run, executed | [Cross-validation, worked](../gallery/loo.md) |
+| A Gaussian process as the reaction module | [Gaussian process reaction module](../gallery/gaussian_process.md) |
+| Pooling data across products to help a data-poor new one | [Knowledge transfer](../gallery/knowledge_transfer.md) |

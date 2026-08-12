@@ -62,7 +62,7 @@ def bp_train(*args):
     return proc.stdout + proc.stderr
 
 (WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
+    '{ "prepare": { "raw_input": "data.json" }, "custom_py": "custom.py" }\n')
 (WORK / "train-full.json").write_text(textwrap.dedent("""\
     {
       "data": { "prepared": "prepared" },

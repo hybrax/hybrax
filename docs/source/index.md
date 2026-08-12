@@ -107,6 +107,8 @@ gallery/stateful
 gallery/freezing
 gallery/loo
 gallery/augmentation
+gallery/gaussian_process
+gallery/knowledge_transfer
 ```
 
 ```{toctree}

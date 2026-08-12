@@ -1,9 +1,12 @@
 """Generate the demo datasets the documentation is written against.
 
-Two datasets, deterministic, regenerated on every ``docs_rebuild.sh``. Together
-they are the site's two-organism spine: one bacterial, one mammalian, so every
-page can pick the shape (batch / fed-batch) and flavor (fast, simple / slow,
-byproduct-forming) that fits what it needs to demonstrate.
+Three datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
+``demo_batch``/``demo_fedbatch`` are the site's two-organism spine: one
+bacterial, one mammalian, so every page can pick the shape (batch / fed-batch)
+and flavor (fast, simple / slow, byproduct-forming) that fits what it needs to
+demonstrate. ``demo_products`` is a separate family, only for the Gallery's
+knowledge-transfer page: neither spine shape fits pooling data *across*
+products, which needs several distinct products in the first place.
 
 ``demo_batch``
     The beginner spine. Three *batch* E. coli runs on glucose — biomass,
@@ -17,10 +20,17 @@ byproduct-forming) that fits what it needs to demonstrate.
     volume, one controlled process variable, and lactate as a byproduct
     alongside product (mAb-flavored) formation.
 
-Both are simulated on **amounts** and converted to concentrations at the end, so
-volume changes can never silently corrupt a mass balance. Substrate uptake is
-gated by the same Monod term as growth, so it tapers at depletion rather than
-being clipped afterwards.
+``demo_products``
+    Five batch products (four "historical," one "target"), same shape as
+    ``demo_batch``, kinetics clustered around the target's own phenotype but
+    each distinguishable. The target's two training runs sit in a narrow
+    initial-condition slice; its two held-out runs sit at the extremes of a
+    much wider design space the historical products actually cover.
+
+All three are simulated on **amounts** and converted to concentrations at the
+end, so volume changes can never silently corrupt a mass balance. Substrate
+uptake is gated by the same Monod term as growth, so it tapers at depletion
+rather than being clipped afterwards.
 
 Run directly to regenerate::
 
@@ -398,10 +408,142 @@ def build_demo_fedbatch() -> None:
     }, indent=2) + "\n")
 
 
+# --- demo_products: five batch products, for gallery/knowledge_transfer.md ---
+# Kinetics clustered around the target's own phenotype (slow growth, low
+# glucose affinity, product-forming): distinguishable cell lines, not the
+# fast/slow extremes demo_batch's own kinetics would give.
+PRODUCTS_KINETICS = {
+    #        mu_max  Ks    Y_XS  m_s    alpha  beta   end_h
+    "H1": (0.18, 0.25, 0.28, 0.012, 0.25, 0.0035, 22.0),
+    "H2": (0.12, 0.35, 0.22, 0.009, 0.34, 0.0025, 26.0),
+    "H3": (0.20, 0.22, 0.30, 0.014, 0.22, 0.0040, 20.0),
+    "H4": (0.13, 0.33, 0.23, 0.008, 0.32, 0.0028, 25.0),
+    "T":  (0.15, 0.30, 0.25, 0.010, 0.30, 0.0030, 24.0),
+}
+PRODUCTS_NOISE_REL = 0.06
+PRODUCTS_N_RUNS_HISTORICAL = 6
+# Historical products sample broadly, so pooled data covers regions a 2-run
+# target set never sees on its own.
+PRODUCTS_S0_RANGE = (5.0, 30.0)
+PRODUCTS_X0_RANGE = (0.04, 0.20)
+# The target's own runs: two training runs in a narrow mid-range slice, two
+# held-out runs at the extremes of PRODUCTS_S0_RANGE/PRODUCTS_X0_RANGE, well
+# outside what the two training runs cover.
+PRODUCTS_TARGET_RUNS = {
+    1: (12.0, 0.10),   # train: mid-range
+    2: (14.0, 0.09),   # train: mid-range, deliberately close to run 1
+    3: (26.0, 0.05),   # held out: high substrate, low inoculum
+    4: (6.0, 0.18),    # held out: low substrate, high inoculum
+}
+
+
+def _noisy_products(rng: np.random.Generator, values: np.ndarray, floor: float) -> np.ndarray:
+    noise = rng.normal(1.0, PRODUCTS_NOISE_REL, size=values.shape)
+    return np.maximum(values * noise, floor)
+
+
+def _products_rates(mu_max, ks, y_xs, m_s, alpha, beta, x, s):
+    sigma = s / (ks + s) if s > 0.0 else 0.0
+    mu = mu_max * sigma
+    q_s = mu / y_xs + m_s * sigma
+    q_p = alpha * mu + beta * sigma
+    return mu, q_s, q_p
+
+
+def _simulate_products(mu_max, ks, y_xs, m_s, alpha, beta, end, s0, x0):
+    dt = 0.002
+    n = int(round(end / dt)) + 1
+    t_grid = np.linspace(0.0, end, n)
+    y = np.array([x0, s0, 0.0])
+
+    def deriv(state):
+        x, s, _ = state
+        mu, q_s, q_p = _products_rates(mu_max, ks, y_xs, m_s, alpha, beta, x, s)
+        return np.array([mu * x, -q_s * x, q_p * x])
+
+    traj = np.empty((n, 3))
+    traj[0] = y
+    for i in range(1, n):
+        k1 = deriv(y)
+        k2 = deriv(y + 0.5 * dt * k1)
+        k3 = deriv(y + 0.5 * dt * k2)
+        k4 = deriv(y + dt * k3)
+        y = np.maximum(y + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4), 0.0)
+        traj[i] = y
+    return t_grid, traj
+
+
+def _products_process(name: str, meas: dict[str, np.ndarray], sample_times, end: float) -> bp.BioProcess:
+    components = {
+        species: bp.ReactorMediumComponent(
+            name=species, unit="g/L",
+            concentration=TimeSeries(times=np.asarray(sample_times, dtype=float),
+                                      values=np.asarray(values, dtype=float)),
+            bounds=(0.0, None),
+        )
+        for species, values in meas.items()
+    }
+    return bp.BioProcess(
+        metadata=bp.BioProcessMetadata(
+            name=name, process_type="batch",
+            notes="Simulated batch culture (documentation demo, knowledge transfer).",
+        ),
+        time_axis=bp.TimeAxis(unit="h", start=0.0, end=end, time_reference="inoculation"),
+        volume=bp.Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+                                        density_unit="kg/L", components=components),
+    )
+
+
+def build_demo_products() -> None:
+    out = OUT / "demo_products"
+    out.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(20260812)
+    processes = {}
+    for key, (mu_max, ks, y_xs, m_s, alpha, beta, end) in PRODUCTS_KINETICS.items():
+        n_runs = len(PRODUCTS_TARGET_RUNS) if key == "T" else PRODUCTS_N_RUNS_HISTORICAL
+        sample_times = np.arange(0.0, end + 0.5, end / 16.0)
+        for r in range(n_runs):
+            if key == "T":
+                s0, x0 = PRODUCTS_TARGET_RUNS[r + 1]
+            else:
+                s0 = float(rng.uniform(*PRODUCTS_S0_RANGE))
+                x0 = float(rng.uniform(*PRODUCTS_X0_RANGE))
+            t_grid, traj = _simulate_products(mu_max, ks, y_xs, m_s, alpha, beta, end, s0, x0)
+            truth = {
+                "biomass": np.interp(sample_times, t_grid, traj[:, 0]),
+                "glucose": np.interp(sample_times, t_grid, traj[:, 1]),
+                "product": np.interp(sample_times, t_grid, traj[:, 2]),
+            }
+            meas = {
+                "biomass": _noisy_products(rng, truth["biomass"], 0.01),
+                "glucose": _noisy_products(rng, truth["glucose"], 0.0),
+                "product": _noisy_products(rng, truth["product"], 0.0),
+            }
+            for species in meas:
+                meas[species][0] = truth[species][0]
+            run_name = f"{key}_run_{r + 1}"
+            processes[run_name] = _products_process(run_name, meas, sample_times, end)
+
+    collection = bp.BioProcessCollection(
+        case_id="demo_products",
+        organism="Five simulated E. coli-like product lines",
+        citation="Simulated data — bp-docs demo, not a real experiment.",
+        processes=processes,
+    )
+    bp.serialization.save_process_collection(collection, out / "data.json")
+
+    (out / "ground_truth.json").write_text(json.dumps(
+        {k: dict(zip(["mu_max", "Ks", "Y_XS", "m_s", "alpha", "beta", "end_h"], v))
+         for k, v in PRODUCTS_KINETICS.items()}, indent=2) + "\n")
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     build_demo_batch()
     build_demo_fedbatch()
+    build_demo_products()
     print(f"demo datasets written to {OUT}")
 
 
