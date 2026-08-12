@@ -302,9 +302,6 @@ class HybridOdeWrapper(eqx.Module):
         RAW_latent = y_phys[n_phys:]
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
-        n_FVC = self.n_controlled_FVCs
-        n_SVC_ctrl = len(self.rhs_ode.name_controlled_SVCs)
-
         RAW_controlled_FVCs_cumulative = self.controls.eval_controlled_FVCs_cumulative(
             t_arr, y_phys
         )
@@ -344,42 +341,17 @@ class HybridOdeWrapper(eqx.Module):
         )
 
         # RhsOde state c = [RMCs | PVs | V]; PVs pass through unclipped (they need
-        # not be non-negative). RhsOde's u = [FVC_flows | SVC_flows | PV_values];
-        # the wrapper zeroes the flows (it applies feed/dilution itself below) and
-        # forwards only the controlled PVs.
+        # not be non-negative). RhsOde owns continuous feed transport and dilution.
         RAW_RMCs_PVs_V = jnp.concatenate([RAW_RMC_rhs, RAW_PVs, RAW_V[None]])
-        RAW_u_bio = jnp.concatenate(
-            [jnp.zeros(n_FVC + n_SVC_ctrl, dtype=dtype), RAW_controlled_PVs]
-        )
-        RAW_zero_modeled_FVCs_rates = jnp.zeros_like(RAW_modeled_FVCs_rates)
-        RAW_modeled_SVCs_rates = jnp.zeros(
-            (len(self.rhs_ode.name_modeled_SVCs),), dtype=dtype
-        )
+        RAW_u = jnp.concatenate([RAW_controlled_FVCs_rates, RAW_controlled_PVs])
         RAW_d_dt = self.rhs_ode(
             RAW_RMCs_PVs_V,
             RAW_bio_rates,
-            RAW_u_bio,
-            RAW_zero_modeled_FVCs_rates,
-            RAW_modeled_SVCs_rates,
+            RAW_u,
+            RAW_modeled_FVCs_rates,
+            jnp.zeros((0,), dtype=dtype),
         )
-        dC = RAW_d_dt[:n_RMCs]
-        # Modeled PVs are biological-only — no feed/dilution term.
-        dPV = RAW_d_dt[n_RMCs : n_RMCs + n_PVs]
-        # Continuous-feed volume/dilution applies to RMCs only.
-        controlled_addition = jnp.sum(
-            RAW_controlled_FVCs_rates[:, None] * RAW_controlled_FVCs_Cin.astype(dtype),
-            axis=0,
-        )
-        modeled_addition = jnp.sum(
-            RAW_modeled_FVCs_rates[:, None] * RAW_modeled_FVCs_Cin.astype(dtype),
-            axis=0,
-        )
-        dV_cont = jnp.sum(RAW_controlled_FVCs_rates) + jnp.sum(RAW_modeled_FVCs_rates)
-        dilution = RAW_RMCs * (dV_cont / RAW_V)
-        dC = dC + (controlled_addition + modeled_addition) / RAW_V - dilution
-        RAW_d_phys_dt = jnp.concatenate(
-            [dC, dPV, jnp.atleast_1d(dV_cont).astype(dtype), RAW_modeled_FVCs_rates]
-        )
+        RAW_d_phys_dt = jnp.concatenate([RAW_d_dt, RAW_modeled_FVCs_rates])
         RAW_d_latent_dt = module.SCALE_latent.unscale_derivative(
             jnp.asarray(outputs.SCL_latent_derivative, dtype=dtype)
         )
