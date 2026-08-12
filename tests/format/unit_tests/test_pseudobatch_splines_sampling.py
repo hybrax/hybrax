@@ -2,8 +2,8 @@
 Tests for sampling-induced concentration jump fix in pseudo-batch splines.
 
 These tests verify that:
-1. Sampling (SampleVolumeChange) does NOT produce concentration jumps.
-2. Bolus feeds (FeedVolumeChange, is_continuous=False) DO produce jumps.
+1. Sampling (Outflow) does NOT produce concentration jumps.
+2. Bolus feeds (Inflow, is_continuous=False) DO produce jumps.
 3. Mixed scenarios (continuous feed + bolus + sampling) behave correctly:
    jumps only at bolus times, smooth across sampling times.
 """
@@ -17,10 +17,10 @@ from bp_format import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -86,7 +86,7 @@ def test_sampling_only_no_concentration_jump():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "sample": SampleVolumeChange(
+            "sample": Outflow(
                 name="sample",
                 unit="L",
                 is_controlled=True,
@@ -175,7 +175,7 @@ def test_bolus_only_has_concentration_jump():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "feed": FeedVolumeChange(
+            "feed": Inflow(
                 name="feed",
                 unit="L",
                 is_controlled=True,
@@ -270,7 +270,7 @@ def test_mixed_continuous_bolus_sampling():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "cont_feed": FeedVolumeChange(
+            "cont_feed": Inflow(
                 name="cont_feed",
                 unit="L",
                 is_controlled=True,
@@ -281,7 +281,7 @@ def test_mixed_continuous_bolus_sampling():
                     [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
                 ),
             ),
-            "bolus_feed": FeedVolumeChange(
+            "bolus_feed": Inflow(
                 name="bolus_feed",
                 unit="L",
                 is_controlled=True,
@@ -289,7 +289,7 @@ def test_mixed_continuous_bolus_sampling():
                 feed_medium=feed_medium_bolus,
                 values=_ts([3.0], [0.5]),
             ),
-            "sample": SampleVolumeChange(
+            "sample": Outflow(
                 name="sample",
                 unit="L",
                 is_controlled=True,

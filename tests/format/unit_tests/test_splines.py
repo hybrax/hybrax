@@ -22,8 +22,8 @@ from bp_format import (
     ReactorMediumComponent,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
     Volume,
     ProcessVariable,
     DiscreteEvents,
@@ -121,7 +121,7 @@ def _make_process_with_discrete():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "continuous_feed": FeedVolumeChange(
+            "continuous_feed": Inflow(
                 name="continuous_feed",
                 unit="L",
                 is_controlled=True,
@@ -129,7 +129,7 @@ def _make_process_with_discrete():
                 feed_medium=_make_feed("cont"),
                 values=_ts([0.0, 5.0, 10.0, 20.0], [0.0, 0.25, 0.5, 1.0]),
             ),
-            "bolus": FeedVolumeChange(
+            "bolus": Inflow(
                 name="bolus",
                 unit="L",
                 is_controlled=True,
@@ -189,7 +189,7 @@ def test_detect_discrete_events_no_discrete():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "feed": FeedVolumeChange(
+            "feed": Inflow(
                 name="feed",
                 unit="L",
                 is_controlled=True,
@@ -728,7 +728,7 @@ def _make_process_with_bolus_feed(
         initial_volume=V0,
         unit="L",
         volume_changes={
-            "bolus_feed": FeedVolumeChange(
+            "bolus_feed": Inflow(
                 name="bolus_feed",
                 unit="L",
                 is_controlled=True,
@@ -790,7 +790,7 @@ def _make_process_continuous_only(glucose_feed_conc=100.0):
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "cont_feed": FeedVolumeChange(
+            "cont_feed": Inflow(
                 name="cont_feed",
                 unit="L",
                 is_controlled=True,
@@ -849,7 +849,7 @@ def test_pseudobatch_sampling_does_not_disable_constant_concentration_bypass():
         [0.0, 5.0, 10.0, 15.0, 20.0],
         [0.0, 0.0, 0.0, 0.0, 0.0],
     )
-    proc.volume.volume_changes["sample"] = SampleVolumeChange(
+    proc.volume.volume_changes["sample"] = Outflow(
         name="sample",
         unit="L",
         is_controlled=True,
@@ -1320,14 +1320,14 @@ def test_backtransform_same_time_sampling_and_bolus_is_pre_event_at_tb():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "sampling": SampleVolumeChange(
+            "sampling": Outflow(
                 name="sampling",
                 unit="L",
                 is_controlled=True,
                 is_continuous=False,
                 values=_ts([10.0], [-0.2]),
             ),
-            "bolus": FeedVolumeChange(
+            "bolus": Inflow(
                 name="bolus",
                 unit="L",
                 is_controlled=True,
@@ -1636,7 +1636,7 @@ def test_load_rejects_legacy_reactor_component_interpolator_payload():
 
 def test_load_rejects_legacy_volume_change_interpolator_payload():
     """Loader should reject legacy sibling interpolator payloads on volume changes."""
-    feed = FeedVolumeChange(
+    feed = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -1674,7 +1674,7 @@ def test_load_rejects_legacy_volume_change_interpolator_payload():
 
 
 def test_pseudobatch_with_sample_volume_change():
-    """Process with SampleVolumeChange should be handled correctly."""
+    """Process with Outflow should be handled correctly."""
     feed_medium = FeedMedium(
         name="feed",
         density=1.0,
@@ -1715,7 +1715,7 @@ def test_pseudobatch_with_sample_volume_change():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "feed": FeedVolumeChange(
+            "feed": Inflow(
                 name="feed",
                 unit="L",
                 is_controlled=True,
@@ -1723,7 +1723,7 @@ def test_pseudobatch_with_sample_volume_change():
                 feed_medium=feed_medium,
                 values=_ts([10.0], [0.2]),
             ),
-            "sample": SampleVolumeChange(
+            "sample": Outflow(
                 name="sample",
                 unit="L",
                 is_controlled=True,
@@ -1806,7 +1806,7 @@ def test_pseudobatch_multiple_feed_streams():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "feed1": FeedVolumeChange(
+            "feed1": Inflow(
                 name="feed1",
                 unit="L",
                 is_controlled=True,
@@ -1814,7 +1814,7 @@ def test_pseudobatch_multiple_feed_streams():
                 feed_medium=feed_medium_1,
                 values=_ts([5.0], [0.1]),
             ),
-            "feed2": FeedVolumeChange(
+            "feed2": Inflow(
                 name="feed2",
                 unit="L",
                 is_controlled=True,

@@ -18,8 +18,8 @@ from bp_format import (
     FeedMediumComponent,
     FeedMedium,
     ReactorMedium,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
     Volume,
     BioProcess,
     AugmentedBioProcess,
@@ -27,6 +27,7 @@ from bp_format import (
     validate_timeseries_shape,
     validate_volume_change_sign,
     validate_volume_change_states,
+    validate_outflow_retention,
     validate_biomass_in_reactor_medium,
     validate_measurement_sampling_alignment,
     validate_process,
@@ -133,7 +134,7 @@ class TestValidateTimeSeriesShape:
 
 class TestValidateVolumeChangeSign:
     def _feed_vc(self, values, name="feed"):
-        return FeedVolumeChange(
+        return Inflow(
             name=name,
             unit="L",
             is_controlled=True,
@@ -143,7 +144,7 @@ class TestValidateVolumeChangeSign:
         )
 
     def _sample_vc(self, values, name="sample"):
-        return SampleVolumeChange(
+        return Outflow(
             name=name,
             unit="L",
             is_controlled=True,
@@ -202,7 +203,7 @@ class TestValidateVolumeChangeStates:
     def _vc(self, feed_medium, positive=True):
         vals = [0.1, 0.2] if positive else [-0.1, -0.2]
         if positive:
-            return FeedVolumeChange(
+            return Inflow(
                 name="feed_vc",
                 unit="L",
                 is_controlled=True,
@@ -211,7 +212,7 @@ class TestValidateVolumeChangeStates:
                 values=_ts([0.0, 1.0], vals),
             )
         else:
-            return SampleVolumeChange(
+            return Outflow(
                 name="feed_vc",
                 unit="L",
                 is_controlled=True,
@@ -230,7 +231,12 @@ class TestValidateVolumeChangeStates:
         ok, msg = validate_volume_change_states(process)
         assert ok is True
 
-    def test_missing_state_in_feed(self):
+    def test_missing_state_in_feed_gets_auto_filled(self):
+        """BioProcess.__post_init__ now fills any reactor component an
+        Inflow's feed medium omits with a static 0 (see
+        _fill_missing_inflow_concentrations), so a normally-constructed
+        process with an incomplete feed medium passes this check —
+        the medium is complete by the time validation runs."""
         process = _make_process(
             reactor_components={
                 "biomass": self._reactor_comp("biomass"),
@@ -240,6 +246,21 @@ class TestValidateVolumeChangeStates:
                 "f": self._vc(self._feed_medium(["glucose"]))  # biomass missing
             },
         )
+        ok, msg = validate_volume_change_states(process)
+        assert ok is True
+
+    def test_missing_state_in_feed_still_caught_if_mutated_after_construction(self):
+        """The check remains a useful defensive guard if a feed medium's
+        components are mutated after construction, bypassing the
+        __post_init__ fill."""
+        process = _make_process(
+            reactor_components={
+                "biomass": self._reactor_comp("biomass"),
+                "glucose": self._reactor_comp("glucose"),
+            },
+            volume_changes={"f": self._vc(self._feed_medium(["glucose", "biomass"]))},
+        )
+        del process.volume.volume_changes["f"].feed_medium.components["biomass"]
         ok, msg = validate_volume_change_states(process)
         assert ok is False
         assert "biomass" in msg
@@ -265,7 +286,101 @@ class TestValidateVolumeChangeStates:
         )
         ok, msg = validate_volume_change_states(process)
         assert ok is True
-        assert "skipped" in msg.lower()
+
+
+class TestValidateOutflowRetention:
+    def _reactor_comp(self, name):
+        return ReactorMediumComponent(
+            name=name, unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 2.0])
+        )
+
+    def _outflow(self, component_retention=None):
+        return Outflow(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
+            values=_ts([0.0, 1.0], [-0.1, -0.2]),
+            component_retention=component_retention or {},
+        )
+
+    def test_empty_retention_is_valid(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"sample": self._outflow()},
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is True
+
+    def test_in_range_retention_is_valid(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "sample": self._outflow(component_retention={"biomass": 0.95})
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is True
+
+    def test_out_of_range_retention_rejected(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "sample": self._outflow(component_retention={"biomass": 1.5})
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+        assert "biomass" in msg
+
+    def test_negative_retention_rejected(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "sample": self._outflow(component_retention={"biomass": -0.1})
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+
+    def test_unknown_component_rejected(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "sample": self._outflow(component_retention={"typo_name": 0.5})
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+        assert "typo_name" in msg
+
+    def test_inflow_is_ignored(self):
+        """component_retention only exists on Outflow; an Inflow in the mix
+        must not confuse the check."""
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "feed": Inflow(
+                    name="feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=True,
+                    feed_medium=FeedMedium(
+                        name="f",
+                        components={
+                            "biomass": FeedMediumComponent(
+                                name="biomass",
+                                unit="g/L",
+                                concentration=StaticVariable(value=10.0),
+                            )
+                        },
+                    ),
+                    values=_ts([0.0, 1.0], [0.0, 0.1]),
+                ),
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is True
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +440,7 @@ class TestValidateProcess:
                 ),
             },
         )
-        vc = FeedVolumeChange(
+        vc = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -387,7 +502,7 @@ class TestValidateVolumeConsistency:
         volume_changes = {}
         for name, (is_continuous, timepoints, values, feed_medium) in changes.items():
             if any(v < 0 for v in values):
-                volume_changes[name] = SampleVolumeChange(
+                volume_changes[name] = Outflow(
                     name=name,
                     unit="L",
                     is_controlled=True,
@@ -395,7 +510,7 @@ class TestValidateVolumeConsistency:
                     values=_ts(timepoints, values),
                 )
             else:
-                volume_changes[name] = FeedVolumeChange(
+                volume_changes[name] = Inflow(
                     name=name,
                     unit="L",
                     is_controlled=True,
@@ -610,7 +725,7 @@ class TestValidateForPublication:
     def test_inconsistent_volume_change_names(self):
         """Processes with different volume change names should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        vc = FeedVolumeChange(
+        vc = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -674,7 +789,7 @@ class TestValidateForPublication:
     def test_inconsistent_volume_change_units(self):
         """Same volume change name but different units should fail consistency."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        vc1 = FeedVolumeChange(
+        vc1 = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -682,7 +797,7 @@ class TestValidateForPublication:
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 0.1]),
         )
-        vc2 = FeedVolumeChange(
+        vc2 = Inflow(
             name="feed",
             unit="mL",
             is_controlled=True,
@@ -750,7 +865,7 @@ class TestValidateCrossProcessConsistency:
 
 class TestValidateMeasurementSamplingAlignment:
     def _sample_vc(self, times, values):
-        return SampleVolumeChange(
+        return Outflow(
             name="sample",
             unit="L",
             is_controlled=True,
@@ -816,7 +931,7 @@ class TestValidateMeasurementSamplingAlignment:
         assert ok is True
 
     def test_no_sampling_events_skipped(self):
-        """Process with no SampleVolumeChange — check should be skipped."""
+        """Process with no Outflow — check should be skipped."""
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(

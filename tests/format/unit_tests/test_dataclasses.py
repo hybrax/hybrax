@@ -16,12 +16,14 @@ from bp_format import (
     ReactorMediumComponent,
     FeedMedium,
     ReactorMedium,
-    FeedVolumeChange,
+    Inflow,
     Volume,
     BioProcess,
     AugmentedBioProcess,
     BioProcessCollection,
+    silence_assumptions,
 )
+from bp_format.dataclasses import _format_biological_ode_lines
 from bp_format.serialization import (
     save_process_collection,
     load_process_collection,
@@ -174,7 +176,7 @@ def test_volume_change_continuous():
         times=jnp.array([0.0, 5.0, 10.0]), values=jnp.array([0.0, 0.5, 1.0])
     )
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = FeedVolumeChange(
+    vc = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -190,7 +192,7 @@ def test_volume_change_continuous():
 def test_volume_change_discrete():
     ts = TimeSeries(times=jnp.array([2.0, 5.0]), values=jnp.array([0.5, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = FeedVolumeChange(
+    vc = Inflow(
         name="bolus",
         unit="L",
         is_controlled=True,
@@ -210,7 +212,7 @@ def test_volume_default_volume_changes():
 def test_volume_with_changes():
     ts = TimeSeries(times=jnp.array([0.0, 10.0]), values=jnp.array([0.0, 0.5]))
     fm = FeedMedium(name="f", density=1.0, density_unit="kg/L")
-    vc = FeedVolumeChange(
+    vc = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -304,6 +306,225 @@ def test_bioprocess_user_defined_biological_ode_skips_biomass_check():
         biological_ode=user_block,
     )
     assert process.biological_ode is user_block
+
+
+# ---------------------------------------------------------------------------
+# Smart defaults: assumption notices, silencing, Inflow-concentration fill
+# ---------------------------------------------------------------------------
+
+
+def _process_with_incomplete_feed(silence=False):
+    rm = ReactorMedium(
+        name="medium",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
+                ),
+            ),
+            "product": ReactorMediumComponent(
+                name="product",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 1.0])
+                ),
+            ),
+        },
+    )
+    fm = FeedMedium(
+        name="glucose_feed",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose", unit="g/L", concentration=StaticVariable(400.0)
+            )
+        },
+    )
+    vc = Inflow(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
+    )
+    kwargs = dict(
+        metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
+        reactor_medium=rm,
+    )
+    if silence:
+        with silence_assumptions():
+            process = BioProcess(**kwargs)
+    else:
+        process = BioProcess(**kwargs)
+    return process, fm
+
+
+def test_missing_inflow_concentrations_filled_with_zero_and_announced(capsys):
+    process, fm = _process_with_incomplete_feed()
+    assert set(fm.components.keys()) == {"glucose", "biomass", "product"}
+    assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
+    assert fm.components["product"].concentration.value == pytest.approx(0.0)
+    out = capsys.readouterr().out
+    assert "[bp-format] Assumption:" in out
+    assert "biomass" in out and "product" in out
+
+
+def test_fully_specified_feed_produces_no_assumption_print(capsys):
+    rm = ReactorMedium(
+        name="medium",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
+                ),
+            ),
+        },
+    )
+    fm = FeedMedium(
+        name="glucose_feed",
+        components={
+            "biomass": FeedMediumComponent(
+                name="biomass", unit="g/L", concentration=StaticVariable(0.0)
+            )
+        },
+    )
+    vc = Inflow(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=fm,
+        values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
+    )
+    BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
+        reactor_medium=rm,
+    )
+    out = capsys.readouterr().out
+    assert "feed medium" not in out.lower() or "did not define" not in out.lower()
+
+
+def test_missing_feed_medium_entirely_is_not_filled():
+    """feed_medium=None stays untouched by the fill — there's no reasonable
+    way to fabricate an entire medium's identity."""
+    rm = ReactorMedium(
+        name="medium",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
+                ),
+            ),
+        },
+    )
+    vc = Inflow(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=None,
+        values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
+        reactor_medium=rm,
+    )
+    assert process.volume.volume_changes["feed"].feed_medium is None
+
+
+def test_silence_assumptions_suppresses_inflow_fill_notice(capsys):
+    process, fm = _process_with_incomplete_feed(silence=True)
+    assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
+    out = capsys.readouterr().out
+    assert out == ""
+
+
+def test_silence_assumptions_suppresses_biological_ode_notice(capsys):
+    rm = ReactorMedium(
+        name="medium",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
+                ),
+            ),
+        },
+    )
+    with silence_assumptions():
+        BioProcess(
+            metadata=BioProcessMetadata(name="p", process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=1.0, time_reference="inoculation"
+            ),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=rm,
+        )
+    out = capsys.readouterr().out
+    assert out == ""
+
+
+def test_silence_assumptions_restores_state_after_exception():
+    with pytest.raises(RuntimeError):
+        with silence_assumptions():
+            raise RuntimeError("boom")
+    # Verify the flag was restored by checking a notice fires again.
+    rm = ReactorMedium(
+        name="medium",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
+                ),
+            ),
+        },
+    )
+    from bp_format.dataclasses import _ANNOUNCE_ASSUMPTIONS
+
+    assert _ANNOUNCE_ASSUMPTIONS is True
+
+
+def test_density_defaults_are_silent(capsys):
+    """density/density_unit default to 1.0/kg/L without any print — unlike
+    the Inflow-concentration fill, this default never affects computed
+    results (mechanistic.py never reads it), so there's nothing for a
+    notice to usefully warn about."""
+    fm = FeedMedium(name="f")
+    rm = ReactorMedium(name="medium")
+    assert fm.density == 1.0
+    assert fm.density_unit == "kg/L"
+    assert rm.density == 1.0
+    assert rm.density_unit == "kg/L"
+    out = capsys.readouterr().out
+    assert out == ""
+
+
+def test_format_biological_ode_lines_direct():
+    bo = BiologicalOde(
+        rates={"q_biomass": (None, None)},
+        derivatives={"biomass": "q_biomass * biomass"},
+    )
+    lines = _format_biological_ode_lines(bo, prefix="  ")
+    joined = "\n".join(lines)
+    assert "Rates (1):" in joined
+    assert "q_biomass" in joined
+    assert "Derivatives (1):" in joined
+    assert "q_biomass * biomass" in joined
 
 
 def test_bioprocess_with_process_variables():

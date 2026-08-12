@@ -21,12 +21,12 @@ from bp_format import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessOrdering,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -83,10 +83,10 @@ def _make_feed(name, glucose_conc=500.0, biomass_conc=0.0):
 
 def _make_process(
     *,
-    with_controlled_FVC=True,
+    with_controlled_Inflow=True,
     with_controlled_PV=True,
     with_modeled_PV=False,
-    with_modeled_SVC=False,
+    with_modeled_Outflow=False,
     with_discrete_VC=False,
 ):
     rm = ReactorMedium(
@@ -107,8 +107,8 @@ def _make_process(
         },
     )
     vc_dict = {}
-    if with_controlled_FVC:
-        vc_dict["feed"] = FeedVolumeChange(
+    if with_controlled_Inflow:
+        vc_dict["feed"] = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -116,8 +116,8 @@ def _make_process(
             feed_medium=_make_feed("glucose_feed"),
             values=_ts([0.0, 5.0, 10.0, 20.0], [0.0, 0.25, 0.5, 1.0]),
         )
-    if with_modeled_SVC:
-        vc_dict["evaporation"] = SampleVolumeChange(
+    if with_modeled_Outflow:
+        vc_dict["evaporation"] = Outflow(
             name="evaporation",
             unit="L",
             is_controlled=False,
@@ -125,7 +125,7 @@ def _make_process(
             values=_ts([0.0, 10.0, 20.0], [0.0, -0.01, -0.02]),
         )
     if with_discrete_VC:
-        vc_dict["sampling"] = SampleVolumeChange(
+        vc_dict["sampling"] = Outflow(
             name="sampling",
             unit="L",
             is_controlled=True,
@@ -200,10 +200,10 @@ def _apply_pseudobatch_transform(process, species_names=("biomass", "glucose")):
 class TestProcessOrdering:
     def test_fields_match_groups(self):
         process = _make_process(
-            with_controlled_FVC=True,
+            with_controlled_Inflow=True,
             with_controlled_PV=True,
             with_modeled_PV=True,
-            with_modeled_SVC=True,
+            with_modeled_Outflow=True,
             with_discrete_VC=True,
         )
         ordering = get_process_ordering(process)
@@ -211,10 +211,10 @@ class TestProcessOrdering:
         assert ordering.name_modeled_RMCs == ("biomass", "glucose")
         assert ordering.name_modeled_PVs == ("dissolved_O2",)
         assert ordering.name_controlled_PVs == ("pH",)
-        assert ordering.name_controlled_FVCs == ("feed",)
-        assert ordering.name_modeled_FVCs == ()
-        assert ordering.name_modeled_SVCs == ("evaporation",)
-        assert ordering.name_controlled_SVCs == ()
+        assert ordering.name_controlled_Inflows == ("feed",)
+        assert ordering.name_modeled_Inflows == ()
+        assert ordering.name_modeled_Outflows == ("evaporation",)
+        assert ordering.name_controlled_Outflows == ()
 
     def test_alphabetical_RMCs(self):
         rm = ReactorMedium(
@@ -293,9 +293,9 @@ class TestProcessOrdering:
         with pytest.raises(ValueError, match="StaticVariable"):
             get_process_ordering(process)
 
-    def test_FVC_missing_feed_medium_raises(self):
-        process = _make_process(with_controlled_FVC=False)
-        process.volume.volume_changes["feed"] = FeedVolumeChange(
+    def test_Inflow_missing_feed_medium_raises(self):
+        process = _make_process(with_controlled_Inflow=False)
+        process.volume.volume_changes["feed"] = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -306,9 +306,9 @@ class TestProcessOrdering:
         with pytest.raises(ValueError, match="feed_medium"):
             get_process_ordering(process)
 
-    def test_FVC_unknown_feed_component_raises(self):
-        process = _make_process(with_controlled_FVC=False)
-        process.volume.volume_changes["feed"] = FeedVolumeChange(
+    def test_Inflow_unknown_feed_component_raises(self):
+        process = _make_process(with_controlled_Inflow=False)
+        process.volume.volume_changes["feed"] = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -363,15 +363,15 @@ class TestControlSplines:
         assert isinstance(ctrl, ControlSplines)
         assert isinstance(ctrl, eqx.Module)
 
-    def test_output_layout_FVC_SVC_PV(self):
+    def test_output_layout_Inflow_Outflow_PV(self):
         process = _make_process(
-            with_controlled_FVC=True,
+            with_controlled_Inflow=True,
             with_controlled_PV=True,
-            with_modeled_SVC=True,  # uncontrolled SVC — not in ControlSplines
+            with_modeled_Outflow=True,  # uncontrolled Outflow — not in ControlSplines
         )
         ctrl = get_control_splines(process)
-        assert ctrl.name_controlled_FVCs == ("feed",)
-        assert ctrl.name_controlled_SVCs == ()
+        assert ctrl.name_controlled_Inflows == ("feed",)
+        assert ctrl.name_controlled_Outflows == ()
         assert ctrl.name_controlled_PVs == ("pH",)
 
         u = ctrl(jnp.array(7.5))
@@ -395,8 +395,8 @@ class TestControlSplines:
         u = eqx.filter_jit(ctrl)(jnp.array(7.5))
         assert u.shape[0] == 2
 
-    def test_only_FVCs_returns_flows(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+    def test_only_Inflows_returns_flows(self):
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         ctrl = get_control_splines(process)
         u = ctrl(jnp.array(5.0))
         assert u.shape == (1,)
@@ -404,14 +404,14 @@ class TestControlSplines:
         assert float(u[0]) == pytest.approx(0.05, abs=1e-3)
 
     def test_only_PVs_returns_values(self):
-        process = _make_process(with_controlled_FVC=False, with_controlled_PV=True)
+        process = _make_process(with_controlled_Inflow=False, with_controlled_PV=True)
         ctrl = get_control_splines(process)
         u = ctrl(jnp.array(5.0))
         assert u.shape == (1,)
         assert float(u[0]) == pytest.approx(7.0, abs=1e-3)
 
     def test_uses_original_control_splines_without_refit(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=True)
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=True)
         feed_poly = PPoly(
             jnp.array([0.0, 2.0, 20.0]),
             jnp.array(
@@ -440,7 +440,7 @@ class TestControlSplines:
             ),
         )
         process.volume.volume_changes["feed"].values = _ts_poly(feed_poly)
-        process.volume.volume_changes["sample"] = SampleVolumeChange(
+        process.volume.volume_changes["sample"] = Outflow(
             name="sample",
             unit="L",
             is_controlled=True,
@@ -453,8 +453,8 @@ class TestControlSplines:
         t = jnp.array([0.5, 1.5, 3.0, 12.0])
         u = ctrl(t)
 
-        assert ctrl.name_controlled_FVCs == ("feed",)
-        assert ctrl.name_controlled_SVCs == ("sample",)
+        assert ctrl.name_controlled_Inflows == ("feed",)
+        assert ctrl.name_controlled_Outflows == ("sample",)
         assert ctrl.name_controlled_PVs == ("pH",)
         for actual, expected in zip(
             ctrl._splines,
@@ -496,33 +496,33 @@ class TestRhsOde:
 
     def test_field_names(self):
         process = _make_process(
-            with_controlled_FVC=True,
+            with_controlled_Inflow=True,
             with_controlled_PV=True,
-            with_modeled_SVC=True,
+            with_modeled_Outflow=True,
         )
         rhs = build_rhs_ode(process)
         assert rhs.name_modeled_RMCs == ("biomass", "glucose")
         assert rhs.name_modeled_PVs == ()
         assert rhs.name_controlled_PVs == ("pH",)
-        assert rhs.name_controlled_FVCs == ("feed",)
-        assert rhs.name_controlled_SVCs == ()
-        assert rhs.name_modeled_SVCs == ("evaporation",)
-        assert rhs.name_modeled_FVCs == ()
+        assert rhs.name_controlled_Inflows == ("feed",)
+        assert rhs.name_controlled_Outflows == ()
+        assert rhs.name_modeled_Outflows == ("evaporation",)
+        assert rhs.name_modeled_Inflows == ()
         # auto-rates: q_biomass, q_glucose
         assert set(rhs.name_modeled_rates) == {"q_biomass", "q_glucose"}
 
     def test_Cin_shapes(self):
-        process = _make_process(with_controlled_FVC=True)
+        process = _make_process(with_controlled_Inflow=True)
         rhs = build_rhs_ode(process)
-        assert rhs.Cin_controlled_FVCs.shape == (1, 2)  # one feed × two RMCs
-        assert rhs.Cin_modeled_FVCs.shape == (0, 2)
+        assert rhs.Cin_controlled_Inflows.shape == (1, 2)  # one feed × two RMCs
+        assert rhs.Cin_modeled_Inflows.shape == (0, 2)
 
     def test_Cin_values(self):
-        process = _make_process(with_controlled_FVC=True)
+        process = _make_process(with_controlled_Inflow=True)
         rhs = build_rhs_ode(process)
         # biomass=0, glucose=500 in feed; RMC order is (biomass, glucose) alphabetical
-        assert float(rhs.Cin_controlled_FVCs[0, 0]) == pytest.approx(0.0)
-        assert float(rhs.Cin_controlled_FVCs[0, 1]) == pytest.approx(500.0)
+        assert float(rhs.Cin_controlled_Inflows[0, 0]) == pytest.approx(0.0)
+        assert float(rhs.Cin_controlled_Inflows[0, 1]) == pytest.approx(500.0)
 
     def test_call_output_shape(self):
         process = _make_process()
@@ -531,47 +531,47 @@ class TestRhsOde:
         c = jnp.array([1.0, 5.0, 1.0])  # biomass, glucose, V
         rates = jnp.array([0.1, -0.5])  # q_biomass, q_glucose (auto order)
         u = ctrl(jnp.array(5.0))
-        f_modeled_FVCs = jnp.zeros(0)
-        f_modeled_SVCs = jnp.zeros(0)
-        dc = rhs(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
+        f_modeled_Inflows = jnp.zeros(0)
+        f_modeled_Outflows = jnp.zeros(0)
+        dc = rhs(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
         assert dc.shape == (3,)  # 2 RMCs + 0 PVs + V
 
-    def test_dV_from_FVC(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+    def test_dV_from_Inflow(self):
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         rhs = build_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
-        u = jnp.array([0.05])  # FVC flow
+        u = jnp.array([0.05])  # Inflow flow
         dc = rhs(c, rates, u, jnp.zeros(0), jnp.zeros(0))
-        # dV should equal +0.05 (FVC inflow only)
+        # dV should equal +0.05 (Inflow inflow only)
         assert float(dc[-1]) == pytest.approx(0.05, abs=1e-6)
 
-    def test_dV_from_SVC_modeled(self):
+    def test_dV_from_Outflow_modeled(self):
         process = _make_process(
-            with_controlled_FVC=False,
+            with_controlled_Inflow=False,
             with_controlled_PV=False,
-            with_modeled_SVC=True,
+            with_modeled_Outflow=True,
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
-        f_modeled_SVCs = jnp.array([-0.001])  # outflow
-        dc = rhs(c, rates, jnp.zeros(0), jnp.zeros(0), f_modeled_SVCs)
+        f_modeled_Outflows = jnp.array([-0.001])  # outflow
+        dc = rhs(c, rates, jnp.zeros(0), jnp.zeros(0), f_modeled_Outflows)
         # dV = total_in - total_out = 0 - 0.001 = -0.001
         assert float(dc[-1]) == pytest.approx(-0.001, abs=1e-9)
 
-    def test_dV_balance_FVC_minus_SVC(self):
+    def test_dV_balance_Inflow_minus_Outflow(self):
         process = _make_process(
-            with_controlled_FVC=True,
+            with_controlled_Inflow=True,
             with_controlled_PV=False,
-            with_modeled_SVC=True,
+            with_modeled_Outflow=True,
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([1.0, 5.0, 1.0])
         rates = jnp.zeros(2)
         u = jnp.array([0.05])
-        f_modeled_SVCs = jnp.array([-0.02])
-        dc = rhs(c, rates, u, jnp.zeros(0), f_modeled_SVCs)
+        f_modeled_Outflows = jnp.array([-0.02])
+        dc = rhs(c, rates, u, jnp.zeros(0), f_modeled_Outflows)
         assert float(dc[-1]) == pytest.approx(0.05 - 0.02, abs=1e-9)
 
     def test_pure_batch_no_feed_term(self):
@@ -625,7 +625,7 @@ class TestRhsOde:
             build_rhs_ode(process)
 
     def test_feed_dilution_concentration(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         rhs = build_rhs_ode(process)
         c_biomass = 2.0
         c_glucose = 5.0
@@ -640,6 +640,189 @@ class TestRhsOde:
         # glucose:  -u/V*c + u*500/V = -0.25 + 25 = 24.75
         assert float(dc[0]) == pytest.approx(-0.1, abs=1e-5)
         assert float(dc[1]) == pytest.approx(24.75, abs=1e-3)
+
+    def test_fails_fast_if_inflow_medium_mutated_after_construction(self):
+        """The __post_init__ fill guarantees a complete feed medium; a gap
+        reaching build_rhs_ode after construction means the process was
+        mutated, and that must raise loudly, not silently default again."""
+        process = _make_process(with_controlled_Inflow=True)
+        feed_medium = process.volume.volume_changes["feed"].feed_medium
+        del feed_medium.components["glucose"]
+        with pytest.raises(ValueError, match="glucose"):
+            build_rhs_ode(process)
+
+    def test_fails_fast_if_inflow_medium_none_but_declared_continuous(self):
+        process = _make_process(with_controlled_Inflow=True)
+        process.volume.volume_changes["feed"].feed_medium = None
+        with pytest.raises(ValueError, match="feed_medium"):
+            build_rhs_ode(process)
+
+
+# ---------------------------------------------------------------------------
+# Outflow component_retention
+# ---------------------------------------------------------------------------
+
+
+class TestOutflowRetention:
+    def test_default_retention_is_zero(self):
+        process = _make_process(with_modeled_Outflow=True)
+        rhs = build_rhs_ode(process)
+        assert rhs.retention_modeled_Outflows.shape == (1, 2)
+        assert jnp.all(rhs.retention_modeled_Outflows == 0.0)
+        assert rhs.retention_controlled_Outflows.shape == (0, 2)
+
+    def test_retention_values_aligned_with_RMC_order(self):
+        process = _make_process(with_modeled_Outflow=False)
+        process.volume.volume_changes["evaporation"] = Outflow(
+            name="evaporation",
+            unit="L",
+            is_controlled=False,
+            is_continuous=True,
+            values=_ts([0.0, 10.0], [0.0, -0.02]),
+            component_retention={"biomass": 0.95},
+        )
+        rhs = build_rhs_ode(process)
+        # RMCs alphabetical: (biomass, glucose)
+        assert float(rhs.retention_modeled_Outflows[0, 0]) == pytest.approx(0.95)
+        assert float(rhs.retention_modeled_Outflows[0, 1]) == pytest.approx(0.0)
+
+    def test_zero_retention_matches_unretained_dilution(self):
+        """sigma=0 everywhere (the default) must reproduce the original
+        uniform-dilution formula exactly."""
+        process = _make_process(
+            with_controlled_Inflow=True,
+            with_controlled_PV=False,
+            with_modeled_Outflow=True,
+        )
+        rhs = build_rhs_ode(process)
+        c = jnp.array([2.0, 5.0, 1.0])
+        rates = jnp.zeros(2)
+        u = jnp.array([0.05])
+        f_modeled_Outflows = jnp.array([-0.02])
+        dc = rhs(c, rates, u, jnp.zeros(0), f_modeled_Outflows)
+        total_in, total_out = 0.05, 0.02
+        expected_dilution = -(total_in + total_out) / 1.0 * c[:2]
+        # biomass gets no Cin addition (feed has biomass=0); glucose does.
+        expected_addition = jnp.array([0.0, 0.05 * 500.0 / 1.0])
+        expected = expected_dilution + expected_addition
+        assert float(dc[0]) == pytest.approx(float(expected[0]), abs=1e-6)
+        assert float(dc[1]) == pytest.approx(float(expected[1]), abs=1e-6)
+
+    def test_retention_scales_down_washout_proportionally(self):
+        """Comparing sigma=0.95 against sigma=0 for the same outflow in
+        isolation: the retention-aware dc/dt must differ from the
+        unretained dc/dt by exactly sigma * (the unretained outflow-dilution
+        contribution) — the defining, mechanically verifiable property of
+        the retention formula, independent of whatever the rest of the
+        dilution formula (e.g. its total_in term) does.
+
+        Note: this is a direct, formula-level check, not a from-scratch
+        physical mass-balance derivation. See the implementation note above
+        _apply_feed_dilution and the summary reported to the user: layering
+        the spec's retention formula onto bp-format's *existing*
+        (total_in + total_out)-based dilution — which predates this task
+        and is independently relied upon (test_feed_dilution_concentration)
+        — reproduces the old behavior exactly at sigma=0 (verified in
+        test_zero_retention_matches_unretained_dilution) and is internally
+        consistent for every sigma in [0, 1], but does not deliver the
+        "mass conserved at sigma=1" property the spec's own sanity check
+        claims — that claim assumed a from-scratch mass balance that the
+        pre-existing dilution formula does not actually match.
+        """
+        rm = ReactorMedium(
+            name="medium",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 1.0])
+                ),
+            },
+        )
+        q_out = 0.1
+        V = 2.0
+        c_biomass = 3.0
+
+        def _dc_for_retention(sigma):
+            process = BioProcess(
+                metadata=BioProcessMetadata(name="perfusion", process_type="continuous"),
+                time_axis=TimeAxis(
+                    unit="hours", start=0.0, end=10.0, time_reference="x"
+                ),
+                volume=Volume(
+                    initial_volume=V,
+                    unit="L",
+                    volume_changes={
+                        "perfusion_out": Outflow(
+                            name="perfusion_out",
+                            unit="L",
+                            is_controlled=False,
+                            is_continuous=True,
+                            values=_ts([0.0, 10.0], [0.0, -q_out * 10.0]),
+                            component_retention={"biomass": sigma},
+                        ),
+                    },
+                ),
+                reactor_medium=rm,
+                biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+            )
+            rhs = build_rhs_ode(process)
+            c = jnp.array([c_biomass, V])
+            dc = rhs(c, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array([-q_out]))
+            return float(dc[0])
+
+        dc_unretained = _dc_for_retention(0.0)
+        dc_retained = _dc_for_retention(0.95)
+        # eff_out_per_rmc = (1-sigma)*q_out, so dc/dt scales linearly in
+        # (1-sigma); the retained case must wash out 5% as fast.
+        assert dc_retained == pytest.approx(0.05 * dc_unretained, rel=1e-9)
+
+    def test_full_retention_zeroes_the_outflow_dilution_term(self):
+        """sigma=1 makes eff_out_per_rmc exactly 0 for that species, i.e.
+        dc/dt for that RMC becomes independent of the outflow magnitude
+        entirely (the mechanical guarantee the formula actually provides —
+        see the note in the previous test)."""
+        rm = ReactorMedium(
+            name="medium",
+            components={
+                "solute": ReactorMediumComponent(
+                    name="solute", unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 1.0])
+                ),
+            },
+        )
+        V = 2.0
+        c_solute = 4.0
+
+        def _dc_for_outflow(q_evap):
+            process = BioProcess(
+                metadata=BioProcessMetadata(name="evap", process_type="continuous"),
+                time_axis=TimeAxis(
+                    unit="hours", start=0.0, end=10.0, time_reference="x"
+                ),
+                volume=Volume(
+                    initial_volume=V,
+                    unit="L",
+                    volume_changes={
+                        "evaporation": Outflow(
+                            name="evaporation",
+                            unit="L",
+                            is_controlled=False,
+                            is_continuous=True,
+                            values=_ts([0.0, 10.0], [0.0, -q_evap * 10.0]),
+                            component_retention={"solute": 1.0},
+                        ),
+                    },
+                ),
+                reactor_medium=rm,
+                biological_ode=BiologicalOde(rates={}, derivatives={"solute": "0"}),
+            )
+            rhs = build_rhs_ode(process)
+            c = jnp.array([c_solute, V])
+            dc = rhs(c, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array([-q_evap]))
+            return float(dc[0])
+
+        # With full retention, dc/dt for "solute" must be the same
+        # regardless of how much is evaporating.
+        assert _dc_for_outflow(0.05) == pytest.approx(_dc_for_outflow(0.2), abs=1e-12)
+        assert _dc_for_outflow(0.05) == pytest.approx(0.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -667,7 +850,7 @@ class TestExtractDiscreteEvents:
 
     def test_bolus_feed_alignment(self):
         process = _make_process(with_discrete_VC=False)
-        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+        process.volume.volume_changes["bolus"] = Inflow(
             name="bolus",
             unit="L",
             is_controlled=False,
@@ -689,14 +872,14 @@ class TestExtractDiscreteEvents:
 
     def test_sorted_by_time_sample_before_bolus(self):
         process = _make_process(with_discrete_VC=False)
-        process.volume.volume_changes["sampling"] = SampleVolumeChange(
+        process.volume.volume_changes["sampling"] = Outflow(
             name="sampling",
             unit="L",
             is_controlled=True,
             is_continuous=False,
             values=_ts([5.0], [-0.05]),
         )
-        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+        process.volume.volume_changes["bolus"] = Inflow(
             name="bolus",
             unit="L",
             is_controlled=False,
@@ -708,6 +891,36 @@ class TestExtractDiscreteEvents:
         events = extract_discrete_events(process, ordering)
         assert events[0]["kind"] == "sample"
         assert events[1]["kind"] == "bolus_feed"
+
+    def test_bolus_raises_if_feed_medium_none(self):
+        process = _make_process(with_discrete_VC=False)
+        process.volume.volume_changes["bolus"] = Inflow(
+            name="bolus",
+            unit="L",
+            is_controlled=False,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed"),
+            values=_ts([3.0], [0.1]),
+        )
+        process.volume.volume_changes["bolus"].feed_medium = None
+        ordering = get_process_ordering(process)
+        with pytest.raises(ValueError, match="feed_medium"):
+            extract_discrete_events(process, ordering)
+
+    def test_bolus_raises_if_feed_medium_mutated_after_construction(self):
+        process = _make_process(with_discrete_VC=False)
+        process.volume.volume_changes["bolus"] = Inflow(
+            name="bolus",
+            unit="L",
+            is_controlled=False,
+            is_continuous=False,
+            feed_medium=_make_feed("bolus_feed"),
+            values=_ts([3.0], [0.1]),
+        )
+        del process.volume.volume_changes["bolus"].feed_medium.components["glucose"]
+        ordering = get_process_ordering(process)
+        with pytest.raises(ValueError, match="glucose"):
+            extract_discrete_events(process, ordering)
 
 
 # ---------------------------------------------------------------------------
@@ -726,14 +939,14 @@ class TestBuildStateSplines:
             assert val is not None
 
     def test_pseudobatch_path(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         _apply_pseudobatch_transform(process)
         ordering = get_process_ordering(process)
         state_splines = build_state_splines(process, ordering)
         assert set(state_splines.keys()) == {"biomass", "glucose"}
 
     def test_pseudobatch_feed_correction_requires_c_star(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         _apply_pseudobatch_transform(process)
         process.reactor_medium.components["glucose"].c_star_concentration = None
         ordering = get_process_ordering(process)
@@ -742,7 +955,7 @@ class TestBuildStateSplines:
             build_state_splines(process, ordering)
 
     def test_pseudobatch_feed_correction_requires_c_star_for_unmodeled_component(self):
-        process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         _apply_pseudobatch_transform(process)
         process.reactor_medium.components["biomass"].c_star_concentration = None
         ordering = dataclasses.replace(

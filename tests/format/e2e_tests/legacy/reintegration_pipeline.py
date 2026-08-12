@@ -240,7 +240,7 @@ def _populate_exact_pseudobatch_transform(process: bp.BioProcess) -> None:
         for time, value in zip(change_times, change_values, strict=True):
             total_volume[times > time] += value
             discrete_deltas[float(time)] += float(value)
-            if isinstance(volume_change, bp.SampleVolumeChange):
+            if isinstance(volume_change, bp.Outflow):
                 sample_deltas[float(time)] += float(value)
 
     jump_times = np.asarray(sorted(discrete_deltas), dtype=float)
@@ -259,7 +259,7 @@ def _populate_exact_pseudobatch_transform(process: bp.BioProcess) -> None:
 
     accumulated_feeds = {}
     for name, volume_change in volume_changes.items():
-        if not isinstance(volume_change, bp.FeedVolumeChange):
+        if not isinstance(volume_change, bp.Inflow):
             continue
         change_times = np.asarray(volume_change.values.times, dtype=float)
         change_values = np.asarray(volume_change.values.values, dtype=float)
@@ -277,7 +277,7 @@ def _populate_exact_pseudobatch_transform(process: bp.BioProcess) -> None:
         feed_correction = np.zeros(len(times), dtype=float)
 
         for name, volume_change in volume_changes.items():
-            if not isinstance(volume_change, bp.FeedVolumeChange):
+            if not isinstance(volume_change, bp.Inflow):
                 continue
 
             feed_concentration = volume_change.feed_medium.components[
@@ -683,7 +683,7 @@ def _fit_real_space_segment_splines(
     times = segment["times"]
     continuous_feeds = {}
     for name, volume_change in process.volume.volume_changes.items():
-        if not isinstance(volume_change, bp.FeedVolumeChange):
+        if not isinstance(volume_change, bp.Inflow):
             continue
         if not volume_change.is_continuous:
             continue
@@ -715,7 +715,7 @@ def _real_space_continuous_feed_terms(
     terms = {name: 0.0 for name in EXPECTED_REACTOR_COMPONENT_ORDER}
     for change_name, feed_spline in splines["continuous_feeds"].items():
         volume_change = process.volume.volume_changes[change_name]
-        assert isinstance(volume_change, bp.FeedVolumeChange)
+        assert isinstance(volume_change, bp.Inflow)
         feed_rate = float(feed_spline.derivative()(time))
         for component_name in EXPECTED_REACTOR_COMPONENT_ORDER:
             feed_concentration = volume_change.feed_medium.components[
@@ -1000,7 +1000,7 @@ def _discrete_volume_delta_at(process: bp.BioProcess, time: float) -> float:
 def _sample_volume_delta_at(process: bp.BioProcess, time: float) -> float:
     delta = 0.0
     for volume_change in process.volume.volume_changes.values():
-        if not isinstance(volume_change, bp.SampleVolumeChange):
+        if not isinstance(volume_change, bp.Outflow):
             continue
         change_times = np.asarray(volume_change.values.times, dtype=float)
         change_values = np.asarray(volume_change.values.values, dtype=float)
@@ -1067,7 +1067,7 @@ def _feed_correction_jump_delta_at(
     for volume_change in process.volume.volume_changes.values():
         if volume_change.is_continuous:
             continue
-        if not isinstance(volume_change, bp.FeedVolumeChange):
+        if not isinstance(volume_change, bp.Inflow):
             continue
         change_times = np.asarray(volume_change.values.times, dtype=float)
         change_values = np.asarray(volume_change.values.values, dtype=float)
@@ -1303,7 +1303,7 @@ def _assert_transform_right_limits_are_event_local(process: bp.BioProcess) -> No
     bolus_index = int(np.flatnonzero(stored_times == bolus_time)[0])
     next_stored_value = stored_values[bolus_index + 1]
     continuous_component_feed = any(
-        isinstance(volume_change, bp.FeedVolumeChange)
+        isinstance(volume_change, bp.Inflow)
         and volume_change.is_continuous
         and volume_change.feed_medium.components[component_name].concentration.value
         != 0.0
@@ -1914,7 +1914,7 @@ def _assert_exact_pseudobatch_transform_sane(process: bp.BioProcess) -> None:
     assert set(transform.accumulated_feeds) == {
         name
         for name, volume_change in process.volume.volume_changes.items()
-        if isinstance(volume_change, bp.FeedVolumeChange)
+        if isinstance(volume_change, bp.Inflow)
     }
     for accumulated_feed in transform.accumulated_feeds.values():
         assert _series_times(accumulated_feed) == list(times)

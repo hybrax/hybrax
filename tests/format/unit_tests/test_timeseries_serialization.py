@@ -17,7 +17,7 @@ from bp_format import (
     PseudobatchTransform,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -89,7 +89,7 @@ def _build_process() -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample": SampleVolumeChange(
+                "sample": Outflow(
                     name="sample",
                     unit="L",
                     is_controlled=False,

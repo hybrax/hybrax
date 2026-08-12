@@ -12,7 +12,7 @@ from bp_format import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
@@ -124,7 +124,7 @@ def _build_process_with_spline_only_feed() -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed": FeedVolumeChange(
+                "feed": Inflow(
                     name="feed",
                     unit="L",
                     is_controlled=True,
@@ -191,7 +191,7 @@ def _build_process_with_discrete_continuous_feed() -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed": FeedVolumeChange(
+                "feed": Inflow(
                     name="feed",
                     unit="L",
                     is_controlled=True,
@@ -256,7 +256,7 @@ def test_mechanistic_control_splines_smoke_for_canonical_timeseries() -> None:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed": FeedVolumeChange(
+                "feed": Inflow(
                     name="feed",
                     unit="L",
                     is_controlled=True,
@@ -310,6 +310,6 @@ def test_mechanistic_control_splines_smoke_for_canonical_timeseries() -> None:
     )
     control = get_control_splines(process)
     values = control(jnp.array(5.0))
-    assert control.name_controlled_FVCs == ("feed",)
+    assert control.name_controlled_Inflows == ("feed",)
     assert control.name_controlled_PVs == ("pH",)
     assert values.shape == (2,)

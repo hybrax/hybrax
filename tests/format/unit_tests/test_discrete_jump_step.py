@@ -11,10 +11,10 @@ from bp_format import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -81,7 +81,7 @@ def _make_bolus_process(feed_time=10.0, delta_v=0.2, c_feed=500.0):
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "bolus": FeedVolumeChange(
+            "bolus": Inflow(
                 name="bolus",
                 unit="L",
                 is_controlled=True,
@@ -176,7 +176,7 @@ def test_no_jump_for_sampling():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "sample": SampleVolumeChange(
+            "sample": Outflow(
                 name="sample",
                 unit="L",
                 is_controlled=True,
@@ -243,14 +243,14 @@ def test_start_boundary_same_time_sample_bolus_physical_invariants():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "sample": SampleVolumeChange(
+            "sample": Outflow(
                 name="sample",
                 unit="L",
                 is_controlled=True,
                 is_continuous=False,
                 values=_ts([0.0], [-0.2]),
             ),
-            "bolus": FeedVolumeChange(
+            "bolus": Inflow(
                 name="bolus",
                 unit="L",
                 is_controlled=True,

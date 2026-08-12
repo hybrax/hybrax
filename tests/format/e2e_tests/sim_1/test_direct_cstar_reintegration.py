@@ -277,7 +277,7 @@ def _feed_concentration(process, species_name):
     """
     concentrations = set()
     for volume_change in process.volume.volume_changes.values():
-        if not isinstance(volume_change, bp.FeedVolumeChange):
+        if not isinstance(volume_change, bp.Inflow):
             continue
         component = volume_change.feed_medium.components[species_name]
         value = float(component.concentration.value)
@@ -297,7 +297,7 @@ def _sample_compensation_factors(process, event_pairs):
     pre_event_volume = {pre["time"]: pre["volume"] for pre, _post in event_pairs}
     factors = []
     for volume_change in process.volume.volume_changes.values():
-        if not isinstance(volume_change, bp.SampleVolumeChange):
+        if not isinstance(volume_change, bp.Outflow):
             continue
         times = np.asarray(volume_change.values.times, dtype=float)
         deltas = np.asarray(volume_change.values.values, dtype=float)
@@ -412,7 +412,7 @@ def _assert_public_feed_correction_bolus_jumps(process, factors):
     v_init = _initial_volume(process)
     checked = 0
     for volume_change in process.volume.volume_changes.values():
-        if not isinstance(volume_change, bp.FeedVolumeChange):
+        if not isinstance(volume_change, bp.Inflow):
             continue
         if volume_change.is_continuous:
             continue
@@ -444,13 +444,13 @@ def _assert_tracer_feed_streams(process):
     """Pin the tracer feed composition the A/C closed forms depend on, per stream.
 
     `_feed_concentration` only checks that nonzero streams agree; it would not catch a
-    stray tracer on base feed. So assert directly, on every FeedVolumeChange:
+    stray tracer on base feed. So assert directly, on every Inflow:
     - the unfed tracer is never fed (-> constant c*, check A);
     - the fed tracer rides exactly the nutrient streams (those carrying glucose) at
       TRACER_FED_FEED_CONCENTRATION and nothing else (-> species-independent G(t)).
     """
     for volume_change in process.volume.volume_changes.values():
-        if not isinstance(volume_change, bp.FeedVolumeChange):
+        if not isinstance(volume_change, bp.Inflow):
             continue
         components = volume_change.feed_medium.components
         assert components["tracer_unfed"].concentration.value == 0.0

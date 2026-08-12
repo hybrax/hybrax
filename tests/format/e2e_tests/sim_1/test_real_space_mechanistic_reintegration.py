@@ -60,11 +60,11 @@ EXPECTED_MODELED_RATES = (
     "q_lactate",
     "q_ammonia",
 )
-EXPECTED_MODELED_FVCS = ("base_feed",)
-EXPECTED_CONTROLLED_FVCS = ("conti_feed",)
-EXPECTED_MODELED_SVCS = ()
-EXPECTED_CONTROLLED_SVCS = ()
-MODELED_FVC_FLOW_COLUMNS = {"base_feed": "base_flow_l_per_h"}
+EXPECTED_MODELED_INFLOWS = ("base_feed",)
+EXPECTED_CONTROLLED_INFLOWS = ("conti_feed",)
+EXPECTED_MODELED_OUTFLOWS = ()
+EXPECTED_CONTROLLED_OUTFLOWS = ()
+MODELED_Inflow_FLOW_COLUMNS = {"base_feed": "base_flow_l_per_h"}
 RHS_REINTEGRATION_RTOL = 1e-7
 RHS_REINTEGRATION_ATOL = 5e-6
 SOLVER_RTOL = 1e-10
@@ -72,8 +72,8 @@ SOLVER_ATOL = 1e-12
 SOLVER_MAX_STEPS = 1_000_000
 CONTROL_RTOL = 1e-12
 CONTROL_ATOL = 1e-12
-MODELED_FVC_FLOW_RTOL = 5e-2
-MODELED_FVC_FLOW_ATOL = 2e-5
+MODELED_Inflow_FLOW_RTOL = 5e-2
+MODELED_Inflow_FLOW_ATOL = 2e-5
 BACKTRANSFORM_RTOL = 1e-7
 BACKTRANSFORM_ATOL = 5e-6
 BACKTRANSFORM_QUADRATURE_ORDER = 5
@@ -103,13 +103,13 @@ def _segment_rate_splines(
     return tuple(_ppoly_from_segment_rows(segment, name) for name in rate_names)
 
 
-def _process_modeled_fvc_splines(
+def _process_modeled_inflow_splines(
     process: BioProcess,
-    fvc_names: tuple[str, ...],
+    inflow_names: tuple[str, ...],
 ) -> tuple[PPoly, ...]:
     return tuple(
         _timeseries_to_ppoly(process.volume.volume_changes[name].values)
-        for name in fvc_names
+        for name in inflow_names
     )
 
 
@@ -150,10 +150,10 @@ def _assert_expected_sim_1_ordering(ordering: ProcessOrdering) -> None:
     assert ordering.name_modeled_PVs == EXPECTED_MODELED_PVS
     assert ordering.name_controlled_PVs == EXPECTED_CONTROLLED_PVS
     assert ordering.name_modeled_rates == EXPECTED_MODELED_RATES
-    assert ordering.name_modeled_FVCs == EXPECTED_MODELED_FVCS
-    assert ordering.name_controlled_FVCs == EXPECTED_CONTROLLED_FVCS
-    assert ordering.name_modeled_SVCs == EXPECTED_MODELED_SVCS
-    assert ordering.name_controlled_SVCs == EXPECTED_CONTROLLED_SVCS
+    assert ordering.name_modeled_Inflows == EXPECTED_MODELED_INFLOWS
+    assert ordering.name_controlled_Inflows == EXPECTED_CONTROLLED_INFLOWS
+    assert ordering.name_modeled_Outflows == EXPECTED_MODELED_OUTFLOWS
+    assert ordering.name_controlled_Outflows == EXPECTED_CONTROLLED_OUTFLOWS
 
 
 def _integrate_backtransform_derivative_for_segment(
@@ -264,7 +264,7 @@ def _rhs_truth_derivatives(
     ordering: ProcessOrdering,
     control_splines: ControlSplines,
     rhs_ode: RhsOde,
-    modeled_fvc_splines: tuple[PPoly, ...],
+    modeled_inflow_splines: tuple[PPoly, ...],
 ) -> tuple[np.ndarray, np.ndarray]:
     times = segment_times(segment)
     indices = np.flatnonzero(_pointwise_mask(segment))
@@ -281,27 +281,27 @@ def _rhs_truth_derivatives(
         )
     )
     controls = control_splines(jnp.asarray(eval_times))
-    modeled_fvc_flows = jnp.asarray(
+    modeled_inflow_flows = jnp.asarray(
         np.column_stack(
             [
                 np.asarray(spline(jnp.asarray(eval_times), nu=1), dtype=float)
-                for spline in modeled_fvc_splines
+                for spline in modeled_inflow_splines
             ]
         )
     )
     rhs_values = jax.vmap(
-        lambda y, rates, control, fvc_flows: rhs_ode(
+        lambda y, rates, control, inflow_flows: rhs_ode(
             y,
             rates,
             control,
-            fvc_flows,
+            inflow_flows,
             jnp.zeros(0),
         )
     )(
         jnp.asarray(truth),
         rate_values,
         controls,
-        modeled_fvc_flows,
+        modeled_inflow_flows,
     )
     physical_indices = _physical_state_indices(state_names)
     return eval_times, np.asarray(rhs_values, dtype=float)[:, physical_indices]
@@ -312,7 +312,7 @@ def _assert_pointwise_derivatives_match_references(
     ordering: ProcessOrdering,
     control_splines: ControlSplines,
     rhs_ode: RhsOde,
-    modeled_fvc_splines: tuple[PPoly, ...],
+    modeled_inflow_splines: tuple[PPoly, ...],
     backtransform_derivative_fns: dict[str, object],
 ) -> tuple[int, int]:
     fd_times, fd_reference = _truth_finite_difference_derivatives(segment)
@@ -321,7 +321,7 @@ def _assert_pointwise_derivatives_match_references(
         ordering,
         control_splines,
         rhs_ode,
-        modeled_fvc_splines,
+        modeled_inflow_splines,
     )
     assertion_errors = []
     if len(fd_times):
@@ -360,27 +360,27 @@ def _integrate_segment(
     ordering: ProcessOrdering,
     control_splines: ControlSplines,
     rhs_ode: RhsOde,
-    modeled_fvc_splines: tuple[PPoly, ...],
+    modeled_inflow_splines: tuple[PPoly, ...],
 ) -> tuple[np.ndarray, np.ndarray]:
     times = segment_times(segment)
     state_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs + ("volume",)
     truth = segment_state_matrix(segment, state_names)
     rate_splines = _segment_rate_splines(segment, ordering.name_modeled_rates)
-    no_modeled_svc_flows = jnp.zeros(0)
+    no_modeled_outflow_flows = jnp.zeros(0)
     solve_times = jnp.asarray(times)
-    assert ordering.name_modeled_SVCs == ()
+    assert ordering.name_modeled_Outflows == ()
 
     def rhs(t, y, args):
         rate_values = jnp.asarray([spline(t) for spline in rate_splines])
-        modeled_fvc_flows = jnp.asarray(
-            [spline(t, nu=1) for spline in modeled_fvc_splines]
+        modeled_inflow_flows = jnp.asarray(
+            [spline(t, nu=1) for spline in modeled_inflow_splines]
         )
         return rhs_ode(
             y,
             rate_values,
             control_splines(t),
-            modeled_fvc_flows,
-            no_modeled_svc_flows,
+            modeled_inflow_flows,
+            no_modeled_outflow_flows,
         )
 
     @jax.jit
@@ -412,8 +412,8 @@ def _assert_control_splines_match_dense_rows(
     times = segment_spline_times(segment)
     actual = np.asarray(control_splines(jnp.asarray(times)), dtype=float)
     flow_columns = (
-        *(f"cum_{name}" for name in ordering.name_controlled_FVCs),
-        *(f"cum_{name}" for name in ordering.name_controlled_SVCs),
+        *(f"cum_{name}" for name in ordering.name_controlled_Inflows),
+        *(f"cum_{name}" for name in ordering.name_controlled_Outflows),
     )
     expected_blocks = []
     if flow_columns:
@@ -444,21 +444,21 @@ def _assert_control_splines_match_dense_rows(
     )
 
 
-def _assert_modeled_fvc_splines_match_dense_rows(
+def _assert_modeled_inflow_splines_match_dense_rows(
     segment: RealSpaceSegment,
     ordering: ProcessOrdering,
-    modeled_fvc_splines: tuple[PPoly, ...],
+    modeled_inflow_splines: tuple[PPoly, ...],
 ) -> None:
     times = segment_spline_times(segment)
     actual = np.column_stack(
         [
             np.asarray(spline(jnp.asarray(times), nu=1), dtype=float)
-            for spline in modeled_fvc_splines
+            for spline in modeled_inflow_splines
         ]
     )
     expected = segment_state_matrix(
         segment,
-        [MODELED_FVC_FLOW_COLUMNS[name] for name in ordering.name_modeled_FVCs],
+        [MODELED_Inflow_FLOW_COLUMNS[name] for name in ordering.name_modeled_Inflows],
     )
     mask = np.ones(len(segment.rows), dtype=bool)
     if segment.starts_after_event:
@@ -473,8 +473,8 @@ def _assert_modeled_fvc_splines_match_dense_rows(
     np.testing.assert_allclose(
         actual[mask],
         expected[mask],
-        rtol=MODELED_FVC_FLOW_RTOL,
-        atol=MODELED_FVC_FLOW_ATOL,
+        rtol=MODELED_Inflow_FLOW_RTOL,
+        atol=MODELED_Inflow_FLOW_ATOL,
     )
 
 
@@ -491,9 +491,9 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
         _assert_expected_sim_1_ordering(ordering)
         control_splines = get_control_splines(process, ordering)
         rhs_ode = build_rhs_ode(process, ordering)
-        modeled_fvc_splines = _process_modeled_fvc_splines(
+        modeled_inflow_splines = _process_modeled_inflow_splines(
             process,
-            ordering.name_modeled_FVCs,
+            ordering.name_modeled_Inflows,
         )
         backtransform_process = copy.deepcopy(process)
         _add_dense_pseudobatch_transform(backtransform_process, process_id)
@@ -516,17 +516,17 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
                 ordering,
                 control_splines,
             )
-            _assert_modeled_fvc_splines_match_dense_rows(
+            _assert_modeled_inflow_splines_match_dense_rows(
                 segment,
                 ordering,
-                modeled_fvc_splines,
+                modeled_inflow_splines,
             )
             integrated, truth = _integrate_segment(
                 segment,
                 ordering,
                 control_splines,
                 rhs_ode,
-                modeled_fvc_splines,
+                modeled_inflow_splines,
             )
             np.testing.assert_allclose(
                 integrated,
@@ -540,7 +540,7 @@ def test_sim_1_real_space_mechanistic_rhs_reintegration():
                     ordering,
                     control_splines,
                     rhs_ode,
-                    modeled_fvc_splines,
+                    modeled_inflow_splines,
                     backtransform_derivative_fns,
                 )
             )

@@ -9133,7 +9133,7 @@
               },
               "continuity_side": "right"
             },
-            "type": "FeedVolumeChange",
+            "type": "Inflow",
             "feed_medium": {
               "name": "conti_feed_medium",
               "density": 1.0,
@@ -12137,7 +12137,7 @@
               },
               "continuity_side": "right"
             },
-            "type": "FeedVolumeChange",
+            "type": "Inflow",
             "feed_medium": {
               "name": "base_feed_medium",
               "density": 1.0,
@@ -12267,7 +12267,8 @@
               },
               "continuity_side": "right"
             },
-            "type": "SampleVolumeChange"
+            "type": "Outflow",
+            "component_retention": {}
           },
           "bolus_feed": {
             "name": "bolus_feed",
@@ -12298,7 +12299,7 @@
               },
               "continuity_side": "right"
             },
-            "type": "FeedVolumeChange",
+            "type": "Inflow",
             "feed_medium": {
               "name": "bolus_feed_medium",
               "density": 1.0,
@@ -21556,7 +21557,7 @@
               },
               "continuity_side": "right"
             },
-            "type": "FeedVolumeChange",
+            "type": "Inflow",
             "feed_medium": {
               "name": "conti_feed_medium",
               "density": 1.0,
@@ -24560,7 +24561,7 @@
               },
               "continuity_side": "right"
             },
-            "type": "FeedVolumeChange",
+            "type": "Inflow",
             "feed_medium": {
               "name": "base_feed_medium",
               "density": 1.0,
@@ -24690,7 +24691,8 @@
               },
               "continuity_side": "right"
             },
-            "type": "SampleVolumeChange"
+            "type": "Outflow",
+            "component_retention": {}
           },
           "bolus_feed": {
             "name": "bolus_feed",
@@ -24721,7 +24723,7 @@
               },
               "continuity_side": "right"
             },
-            "type": "FeedVolumeChange",
+            "type": "Inflow",
             "feed_medium": {
               "name": "bolus_feed_medium",
               "density": 1.0,

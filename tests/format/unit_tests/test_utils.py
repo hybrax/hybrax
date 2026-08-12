@@ -18,8 +18,8 @@ from bp_format import (
     ReactorMedium,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
     Volume,
     print_process_structure,
     print_collection_structure,
@@ -107,7 +107,7 @@ def complex_process():
         times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
-    vc = FeedVolumeChange(
+    vc = Inflow(
         name="glucose_feed",
         unit="L",
         is_controlled=True,
@@ -542,7 +542,7 @@ def test_plot_process_total_volume_integrates_continuous_and_discrete_changes():
     rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L")
     fm = FeedMedium(name="feed", density=1.0, density_unit="kg/L", components={})
 
-    feed = FeedVolumeChange(
+    feed = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -553,7 +553,7 @@ def test_plot_process_total_volume_integrates_continuous_and_discrete_changes():
             values=jnp.array([0.0, 0.2, 0.5]),
         ),
     )
-    sample = SampleVolumeChange(
+    sample = Outflow(
         name="sample",
         unit="L",
         is_controlled=False,
@@ -597,7 +597,7 @@ def test_plot_process_total_volume_supports_spline_only_volume_change():
         coeffs=jnp.array([[0.0, 0.05, 0.0, 0.0]]),
         segment_start_piece_idx=jnp.array([0]),
     )
-    feed = FeedVolumeChange(
+    feed = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -713,7 +713,7 @@ def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "bolus": FeedVolumeChange(
+                "bolus": Inflow(
                     name="bolus",
                     unit="L",
                     is_controlled=True,

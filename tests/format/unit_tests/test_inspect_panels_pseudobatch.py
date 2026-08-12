@@ -24,7 +24,7 @@ from bp_format import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ReactorMediumComponent,
     StaticVariable,
@@ -87,7 +87,7 @@ def _make_process_with_continuous_feed():
         initial_volume=1.0,
         unit="L",
         volume_changes={
-            "feed": FeedVolumeChange(
+            "feed": Inflow(
                 name="feed",
                 unit="L",
                 is_controlled=True,
