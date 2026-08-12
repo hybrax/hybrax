@@ -420,6 +420,38 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
     return True, f"TimeSeries {label}OK"
 
 
+def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
+    """Check event time shape, ordering, bounds, and label count."""
+    events = process.discrete_events
+    if events is None:
+        return True, "No discrete events — check skipped"
+
+    times = jnp.asarray(events.times)
+    errors = []
+    if times.ndim != 1:
+        errors.append(f"times must be 1-D, got shape {times.shape}")
+    else:
+        if times.shape[0] > 1 and not bool(jnp.all(jnp.diff(times) > 0)):
+            errors.append("times are not strictly monotonically increasing")
+
+        start = process.time_axis.start
+        end = process.time_axis.end
+        outside = ~((times >= start) & (times <= end))
+        count = int(jnp.sum(outside))
+        if count:
+            errors.append(f"{count} timestamp(s) outside [{start}, {end}]")
+
+        if events.labels is not None and len(events.labels) != times.shape[0]:
+            errors.append(
+                f"labels length ({len(events.labels)}) does not match "
+                f"times length ({times.shape[0]})"
+            )
+
+    if errors:
+        return False, "Discrete events invalid:\n  - " + "\n  - ".join(errors)
+    return True, "Discrete events valid — OK"
+
+
 def validate_mapping_names(process: BioProcess) -> Tuple[bool, str]:
     """Check that mapping keys match the embedded object names."""
     errors = []
@@ -684,6 +716,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     Run all available validation checks on a single BioProcess.
 
     Checks performed:
+    - Discrete-event time shape, ordering, bounds, and label count.
     - TimeSeries shape and ordering for every reactor-medium component,
       process variable, volume change, and measured total volume.
     - Mapping keys match embedded object names.
@@ -716,6 +749,10 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     messages: List[str] = []
 
     ok, msg = validate_mapping_names(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    ok, msg = validate_discrete_events(process)
     messages.append(msg)
     all_valid = all_valid and ok
 

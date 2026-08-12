@@ -13,7 +13,7 @@ aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
 — see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-All 18 validators are exported from the package root: `bp.validate_process(...)`.
+All 19 validators are exported from the package root: `bp.validate_process(...)`.
 
 ## Individual validators
 
@@ -23,6 +23,12 @@ Dictionary keys match their embedded object `name` for reactor-medium
 components, process variables, volume changes, and feed-medium components.
 Collection process keys are identifiers and are not compared with
 `process.metadata.name`.
+
+### `validate_discrete_events(process)`
+
+When discrete events are present, requires their timestamps to be one-dimensional,
+strictly increasing and unique, and within the inclusive process time axis.
+Optional event labels must have the same length as the timestamps.
 
 ### `validate_timeseries_shape(ts, name="")`
 
@@ -195,19 +201,20 @@ automatically by `validate_for_publication`.
 Runs, in order:
 
 1. `validate_mapping_names`
-2. `validate_timeseries_shape` on reactor components (including
+2. `validate_discrete_events`
+3. `validate_timeseries_shape` on reactor components (including
    `c_star_concentration`), process variables, volume changes, and measured total
    volume carrying a `TimeSeries`
-3. `validate_time_axis`
-4. `validate_timestamp_bounds`
-5. `validate_volume_units`
-6. `validate_volume_change_sign` on every volume change
-7. `validate_volume_change_states`
-8. `validate_biomass_in_reactor_medium`
-9. `validate_measurement_sampling_alignment`
-10. `validate_bounds`
-11. `validate_bounds_against_data`
-12. `validate_biological_ode`
+4. `validate_time_axis`
+5. `validate_timestamp_bounds`
+6. `validate_volume_units`
+7. `validate_volume_change_sign` on every volume change
+8. `validate_volume_change_states`
+9. `validate_biomass_in_reactor_medium`
+10. `validate_measurement_sampling_alignment`
+11. `validate_bounds`
+12. `validate_bounds_against_data`
+13. `validate_biological_ode`
 
 Returns one message per check — including the passing ones, so the output reads
 as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.

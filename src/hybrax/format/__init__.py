@@ -54,6 +54,7 @@ if TYPE_CHECKING:
         validate_bounds,
         validate_bounds_against_data,
         validate_cross_process_consistency,
+        validate_discrete_events,
         validate_for_publication,
         validate_mapping_names,
         validate_measurement_sampling_alignment,
@@ -102,6 +103,7 @@ _EXPORT_MODULES = {
     ".validate": (
         "validate_time_axis",
         "validate_timeseries_shape",
+        "validate_discrete_events",
         "validate_timestamp_bounds",
         "validate_volume_change_sign",
         "validate_volume_change_states",

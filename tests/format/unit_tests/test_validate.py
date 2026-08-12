@@ -9,6 +9,7 @@ import jax.numpy as jnp
 
 from bp_format import (
     BiologicalOde,
+    DiscreteEvents,
     TimeSeries,
     StaticVariable,
     BioProcessMetadata,
@@ -26,6 +27,7 @@ from bp_format import (
     BioProcessCollection,
     validate_time_axis,
     validate_timeseries_shape,
+    validate_discrete_events,
     validate_timestamp_bounds,
     validate_volume_change_sign,
     validate_volume_change_states,
@@ -78,6 +80,70 @@ def _make_process(
         ),
         process_variables=process_variables,
     )
+
+
+# ---------------------------------------------------------------------------
+# validate_discrete_events
+# ---------------------------------------------------------------------------
+
+
+class TestValidateDiscreteEvents:
+    def test_no_events(self):
+        ok, msg = validate_discrete_events(_make_process())
+
+        assert ok is True
+        assert "skipped" in msg
+
+    def test_valid_events_include_time_axis_boundaries(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(
+            times=jnp.array([0.0, 5.0, 10.0]),
+            labels=["start", "middle", "end"],
+        )
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is True
+        assert "OK" in msg
+
+    def test_times_must_be_one_dimensional(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(times=jnp.array([[1.0, 2.0]]))
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "times must be 1-D" in msg
+
+    @pytest.mark.parametrize("times", [[2.0, 1.0], [1.0, 1.0]])
+    def test_times_must_be_strictly_increasing(self, times):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(times=jnp.array(times))
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "strictly monotonically increasing" in msg
+
+    def test_times_must_be_within_process_time_axis(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(times=jnp.array([-1.0, 11.0]))
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "2 timestamp(s) outside [0.0, 10.0]" in msg
+
+    def test_labels_must_match_times_length(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(
+            times=jnp.array([1.0, 2.0]), labels=["only one"]
+        )
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "labels length (1) does not match times length (2)" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -671,6 +737,23 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
+
+    def test_invalid_discrete_events_fail_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.discrete_events = DiscreteEvents(times=jnp.array([2.0, 1.0]))
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Discrete events invalid" in message for message in messages)
 
     def test_mismatched_mapping_name_fails_process(self):
         process = _make_process(
