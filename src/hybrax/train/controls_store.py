@@ -42,17 +42,18 @@ def _offline_measurement_times(process: Any) -> np.ndarray:
     """Every timestamp an offline measurement could sit on, as a sorted array.
 
     Exactly ``{reactor components} ∪ {MEASURED process variables}`` — which is the
-    complete set of columns any ``target_source`` can select (``reactor_components``,
-    ``process_variables``, ``combined``, ``auto``), so it bounds the measurement block of
-    the output grid for every run.
+    complete set of columns any ``target_source`` can select
+    (``reactor_components``, ``process_variables``, ``combined``, ``auto``), so it
+    bounds the measurement block of the output grid for every run.
 
     ``is_controlled`` process variables are excluded, and that exclusion is the whole
     point of this helper. They are pH, temperature, gas flow, stirring speed — control
     INPUTS the RHS reads via ``eval_controlled_PVs``, logged online at thousands of
     points. They can never be measurement targets: ``training_data`` filters them out by
-    default (``_process_variable_targets``) and raises if one is configured explicitly.
-    Counting their timestamps as measurement rows inflated the output-window bound by two
-    orders of magnitude (G of 288/317/451 instead of 1/15/6 on the shipped examples),
+    default (``_process_variable_targets``) and raises if one is configured
+    explicitly. Counting their timestamps as measurement rows inflated the
+    output-window bound by two orders of magnitude (G of 288/317/451 instead of
+    1/15/6 on the shipped examples),
     which silently disabled the window on every real dataset.
     """
     times: set[float] = set()
@@ -99,11 +100,12 @@ def _output_window_bounds(
     batch.
 
     PRECONDITION: the solver's output grid spans the process's measurement window, which
-    every production path satisfies -- ``dense.build_union_time_grid`` linspaces over
-    ``[t_measured[0], t_measured[n_measured - 1]]``. ``f`` is a RELATIVE gap, so a caller
-    that hand-rolls a strictly narrower ``t_eval`` shrinks the denominator and can push
-    the true fraction above this bound. No tight bound exists that survives an arbitrary
-    sub-window (shrink the window around one gap and the fraction tends to 1), so this is
+    every production path satisfies -- ``dense.build_union_time_grid`` linspaces
+    over ``[t_measured[0], t_measured[n_measured - 1]]``. ``f`` is a RELATIVE gap,
+    so a caller that hand-rolls a strictly narrower ``t_eval`` shrinks the
+    denominator and can push the true fraction above this bound. No tight bound
+    exists that survives an arbitrary sub-window (shrink the window around one gap
+    and the fraction tends to 1), so this is
     a precondition rather than something to defend against, and
     ``CallbackSolution.output_overflow`` turns a violation into a loud error instead of
     silently dropped output rows.

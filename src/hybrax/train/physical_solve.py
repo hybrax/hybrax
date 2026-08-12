@@ -77,21 +77,23 @@ def _output_window(controls, n_linspace: int) -> int:
     Without a window each segment is handed the whole grid and diffrax writes every slot
     in every segment, so the save work is ``O(n_segments * n_output)`` — measured 10x
     SLOWER than a boundary save on a 160-event process under vmap. With it the work is
-    ``O(n_segments * window)``, and the per-segment cost scales with the window (10.6
-    us/segment for a plain ``SaveAt(t1=True)``, 14 at window 1, 68 at 25, 209 at 200), so
-    the window wants to be as tight as it can provably be.
+    ``O(n_segments * window)``, and the per-segment cost scales with the window
+    (10.6 us/segment for a plain ``SaveAt(t1=True)``, 14 at window 1, 68 at 25, 209
+    at 200), so the window wants to be as tight as it can provably be.
 
     The bound is exact, not an estimate. An output grid is the measurement block plus up
     to two ``linspace(t0, t1, N)`` blocks:
 
     - measurement block: at most ``max_measurements_per_event_gap`` per gap, counted
       exactly (on the PADDED grid) at prepare time.
-    - a linspace block of ``N`` points has spacing ``h = (t1 - t0) / (N - 1)``, so a gap
-      of length ``f * (t1 - t0)`` holds at most ``floor(f * (N - 1)) + 1`` of them. Two
-      blocks therefore contribute at most ``f * n_linspace + 2 <= ceil(f * n_linspace) + 2``.
+    - a linspace block of ``N`` points has spacing ``h = (t1 - t0) / (N - 1)``, so
+      a gap of length ``f * (t1 - t0)`` holds at most
+      ``floor(f * (N - 1)) + 1`` of them. Two blocks therefore contribute at most
+      ``f * n_linspace + 2 <= ceil(f * n_linspace) + 2``.
 
     ``n_linspace`` is a static Python int: the caller building the union grid knows
-    ``dense_grid_n`` and ``prediction_grid_n`` exactly. A caller that just has a grid and
+    ``dense_grid_n`` and ``prediction_grid_n`` exactly. A caller that just has a
+    grid and
     cannot say passes the whole grid length instead, which is a valid (looser) bound
     because the measurement block it double-counts is itself bounded by ``f``.
     """
@@ -134,7 +136,8 @@ def solve_physical_states(
     - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
       to ``inf``, so a failed forward is detectable and never reads back a stale value.
 
-    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole solve**: it
+    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole
+    solve**: it
     bounds each segment's inner solve and the running sum across segments, so exceeding
     it is the same failure as any segment bail (state poisoned to ``inf``, ``fail_time``
     recorded, later segments collapsed). It is grid-independent — chopping the same
@@ -280,7 +283,8 @@ def solve_physical_states(
         adjoint=diffrax.RecursiveCheckpointAdjoint(),
     )
 
-    # Assertion, not a safety net: the window bound is exact (see ``_output_window``), so
+    # Assertion, not a safety net: the window bound is exact (see
+    # ``_output_window``), so
     # this can only fire if that derivation is wrong. Left in because the alternative
     # failure mode is silent -- the excess rows would simply stay ``inf``.
     states = eqx.error_if(

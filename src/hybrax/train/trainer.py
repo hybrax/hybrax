@@ -71,8 +71,9 @@ def _solve_measurement_save_outputs_on_grid(
     measurements at ``t > fail_time`` out of the loss. Those rows carry a finite ``y0``
     placeholder here (the loss-facing solve is sanitized), not a real prediction.
 
-    ``n_linspace`` counts the evenly-spaced points ``build_union_time_grid`` spliced into
-    ``t_eval``; it only sizes the solver's per-segment output window. ``None`` (a bare
+    ``n_linspace`` counts the evenly-spaced points ``build_union_time_grid``
+    spliced into ``t_eval``; it only sizes the solver's per-segment output window.
+    ``None`` (a bare
     measurement grid) leaves the solver to bound it from the grid length.
     """
     # Bounded physical-state solve (manual jumps at events) — well-conditioned
