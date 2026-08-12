@@ -1,8 +1,18 @@
 # Why this exists
 
-> **In one sentence.** There is no shared format for bioprocess data and no shared
-> implementation of bioprocess physics, so every project pays the same tax twice: 
-> once reading the data, once re-deriving the mass balance.
+<!-- LOCK -->
+> There is no shared format for bioprocess data and no shared implementation of
+> bioprocess physics. Thus, every new bioprocess modeling project has to
+> reinvent the wheel in several places:
+> - parse, clean, and validate input data
+> - derive and enforce mass balance
+> - implement reactor dynamics as segmented ODEs: biological rates, dilution, sampling, boluses, ...
+> - set up loss function and training loop
+> - train a model ensemble with cross-validation
+>
+> This is a lot of code you have to write before you can even ask your modeling question.
+> The goal of this project is to abstract all of that away so that you can focus on your modeling idea, implemented as a single `equinox.Module`.
+<!-- UNLOCK -->
 
 ## The problem
 
@@ -21,30 +31,38 @@ So the first two weeks of every modeling project look the same:
 3. Discover a sign convention error somewhere in step 2.
 4. Only then start on the actual modeling question.
 
-Steps 2 and 3 are the expensive part, and they are *the same every time*. The dilution
-term `(f_k / V) · (C_in[k,i] − c_i)` does not depend on your organism or your
-hypothesis. Neither does "a sample is a well-mixed removal: concentrations unchanged,
-volume drops". Everybody re-implements them, and a meaningful fraction of published
-bioprocess models contain a quiet transport bug as a result.
+Step 1 will always require at least some bespoke work, but step 2 is the same
+every time. The term `(f_k / V) · (C_in[k,i] − c_i)` does not depend on your
+organism or your hypothesis. Neither do the mechanics of sampling
+(concentrations stay the same, volume drops) or of a bolus event. Yet, everybody
+has to implement them from scratch, and every implementation is a potential
+source of bugs.
 
 ## The idea
 
 Pay the cost once, at the boundary.
 
-**Get the data into bp-format once.** That means answering the questions the physics
-needs answered anyway: what was in the reactor, what went in and at what concentration,
-what came out and when, on what clock. It is real work, and [Tutorial
-1](../tutorials/01_your_first_dataset.md) is exactly that work.
+**Get the data into bp-format once.** That means answering the questions the
+physics needs answered anyway: what was in the reactor at `t=0` (and what does
+`t=0` actually mean: batch start, batch end, induction?), what went in later
+(and at what concentration), what came out? It is a little tedius, but when it's
+done, it's done. See [Tutorial 1](../tutorials/01_your_first_dataset.md) for
+details.
 
-**After that, everything else is available.** Because the description is complete,
+**After that, this package provides everything else.** Because the description is complete,
 bp-format can assemble the mechanistic right-hand side for you (feed inflow, dilution,
 sample outflow, volume dynamics, discrete event jumps) and hand bp-train a
-differentiable ODE where the only thing left undetermined is the biology. You supply
-the part that is actually your research question: how fast do the cells do things, and
-how do you want to be scored on it.
+differentiable ODE where the only thing left undetermined are the biological dynamics.
 
-The same dataset then feeds a mechanistic Monod fit, a neural ODE, a hybrid of the two,
-and leave-one-process-out cross-validation, with no further data work.
+Next, you supply the part that is actually your research question: what do the
+cells do and how do you want to model it? As long as you can write down the
+right-hand side of your ODEs as JAX code you're good to go.
+
+This means that, once a dataset is `bp-format`, you can easily swap out one
+model for another. It doesn't matter whether it's a [mechanistic Monod
+fit](../gallery/mechanistic_rates.md), a neural ODE, a [hybrid of the
+two](../gallery/fed_batch.md) (most popular), or a [hybrid models with
+GPs](../gallery/gaussian_process.md).
 
 ## What this buys you concretely
 
@@ -64,7 +82,7 @@ and leave-one-process-out cross-validation, with no further data work.
 - Not a unit engine. Units are recorded as strings and checked for consistency, never
   converted. See [Limits and gotchas](../format/limits_and_gotchas.md).
 - Not a general reactor simulator. The model is a well-mixed vessel. Perfusion with
-  cell retention and evaporation with solute retention are not implemented.
+  cell retention and evaporation with solute retention are not yet implemented.
 - Not automatic. Nothing here decides *which* model is right for your process. It
   removes the plumbing so you can spend your attention on that.
 
