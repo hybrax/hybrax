@@ -24,6 +24,7 @@ from bp_format import (
     BioProcess,
     AugmentedBioProcess,
     BioProcessCollection,
+    validate_time_axis,
     validate_timeseries_shape,
     validate_timestamp_bounds,
     validate_volume_change_sign,
@@ -126,6 +127,31 @@ class TestValidateTimeSeriesShape:
         ts = _ts([0.0, 1.0], [1.0, 2.0])
         _, msg = validate_timeseries_shape(ts, name="myvar")
         assert "myvar" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_time_axis
+# ---------------------------------------------------------------------------
+
+
+class TestValidateTimeAxis:
+    def test_equal_start_and_end_is_valid(self):
+        process = _make_process()
+        process.time_axis.end = process.time_axis.start
+
+        ok, msg = validate_time_axis(process)
+
+        assert ok is True
+        assert "OK" in msg
+
+    def test_start_after_end_is_invalid(self):
+        process = _make_process()
+        process.time_axis.start = 11.0
+
+        ok, msg = validate_time_axis(process)
+
+        assert ok is False
+        assert "start 11.0 is after end 10.0 hours" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +481,42 @@ class TestValidateBiomassInReactorMedium:
 
 
 class TestValidateProcess:
+    def test_checks_c_star_and_total_volume_timeseries_shapes(self):
+        malformed = SimpleNamespace(
+            times=jnp.array([0.0, 1.0]), values=jnp.array([1.0])
+        )
+        biomass = ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=StaticVariable(value=1.0),
+            c_star_concentration=malformed,
+        )
+        process = _make_process(reactor_components={"biomass": biomass})
+        process.volume.total_volume = malformed
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("'biomass c_star' invalid" in message for message in messages)
+        assert any("'measured total volume' invalid" in message for message in messages)
+
+    def test_invalid_time_axis_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.time_axis.start = 11.0
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Time axis invalid" in message for message in messages)
+
     def test_valid_process_returns_all_ok(self):
         biomass_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
         feed_medium = FeedMedium(

@@ -420,6 +420,16 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
     return True, f"TimeSeries {label}OK"
 
 
+def validate_time_axis(process: BioProcess) -> Tuple[bool, str]:
+    """Check that the process time axis starts no later than it ends."""
+    axis = process.time_axis
+    if axis.start > axis.end:
+        return False, (
+            f"Time axis invalid: start {axis.start} is after end {axis.end} {axis.unit}"
+        )
+    return True, f"Time axis [{axis.start}, {axis.end}] {axis.unit} — OK"
+
+
 def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
     """Check that process timestamps fall within its inclusive time-axis bounds."""
     series = []
@@ -651,8 +661,9 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     Run all available validation checks on a single BioProcess.
 
     Checks performed:
-    - TimeSeries shape and ordering for every reactor-medium component and
-      process variable that carries a TimeSeries.
+    - TimeSeries shape and ordering for every reactor-medium component,
+      process variable, volume change, and measured total volume.
+    - The process time axis starts no later than it ends.
     - Every timestamp falls within the process time-axis bounds.
     - Every volume change uses the process volume unit.
     - Sign consistency for every volume change.
@@ -688,6 +699,12 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
                 ok, msg = validate_timeseries_shape(comp.concentration, name=comp_name)
                 messages.append(msg)
                 all_valid = all_valid and ok
+            if _is_dynamic_series(comp.c_star_concentration):
+                ok, msg = validate_timeseries_shape(
+                    comp.c_star_concentration, name=f"{comp_name} c_star"
+                )
+                messages.append(msg)
+                all_valid = all_valid and ok
 
     # Process variables
     for pv_name, pv in process.process_variables.items():
@@ -704,7 +721,19 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
                 messages.append(msg)
                 all_valid = all_valid and ok
 
-    # --- Timestamp bounds check ---
+    # Measured total volume
+    if _is_dynamic_series(process.volume.total_volume):
+        ok, msg = validate_timeseries_shape(
+            process.volume.total_volume, name="measured total volume"
+        )
+        messages.append(msg)
+        all_valid = all_valid and ok
+
+    # --- Time-axis checks ---
+    ok, msg = validate_time_axis(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
     ok, msg = validate_timestamp_bounds(process)
     messages.append(msg)
     all_valid = all_valid and ok

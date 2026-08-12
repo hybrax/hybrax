@@ -57,6 +57,7 @@ if TYPE_CHECKING:
         validate_for_publication,
         validate_measurement_sampling_alignment,
         validate_process,
+        validate_time_axis,
         validate_timeseries_shape,
         validate_timestamp_bounds,
         validate_volume_change_sign,
@@ -98,6 +99,7 @@ _EXPORT_MODULES = {
         "plot_collection",
     ),
     ".validate": (
+        "validate_time_axis",
         "validate_timeseries_shape",
         "validate_timestamp_bounds",
         "validate_volume_change_sign",
