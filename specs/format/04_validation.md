@@ -13,7 +13,7 @@ aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
 — see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-All 15 validators are exported from the package root: `bp.validate_process(...)`.
+All 16 validators are exported from the package root: `bp.validate_process(...)`.
 
 ## Individual validators
 
@@ -21,6 +21,15 @@ All 15 validators are exported from the package root: `bp.validate_process(...)`
 
 `times` and `values` are both 1-D, the same length, and `times` is strictly
 increasing (no duplicates). Fails if the series has no discrete samples at all.
+
+### `validate_timestamp_bounds(process)`
+
+Every timestamp falls inclusively between `process.time_axis.start` and
+`process.time_axis.end`. This covers reactor-medium concentrations (including
+`c_star_concentration`), process variables, volume changes, and measured total
+volume. Timestamps are assumed to use `process.time_axis.unit`; no conversion is
+performed. This per-process check is separate from cross-process time-axis
+consistency.
 
 ### `validate_volume_change_sign(volume_change)`
 
@@ -172,14 +181,15 @@ Runs, in order:
 
 1. `validate_timeseries_shape` on every reactor component, process variable, and
    volume change carrying a `TimeSeries`
-2. `validate_volume_units`
-3. `validate_volume_change_sign` on every volume change
-4. `validate_volume_change_states`
-5. `validate_biomass_in_reactor_medium`
-6. `validate_measurement_sampling_alignment`
-7. `validate_bounds`
-8. `validate_bounds_against_data`
-9. `validate_biological_ode`
+2. `validate_timestamp_bounds`
+3. `validate_volume_units`
+4. `validate_volume_change_sign` on every volume change
+5. `validate_volume_change_states`
+6. `validate_biomass_in_reactor_medium`
+7. `validate_measurement_sampling_alignment`
+8. `validate_bounds`
+9. `validate_bounds_against_data`
+10. `validate_biological_ode`
 
 Returns one message per check — including the passing ones, so the output reads
 as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.

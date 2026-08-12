@@ -58,6 +58,7 @@ if TYPE_CHECKING:
         validate_measurement_sampling_alignment,
         validate_process,
         validate_timeseries_shape,
+        validate_timestamp_bounds,
         validate_volume_change_sign,
         validate_volume_change_states,
         validate_volume_consistency,
@@ -98,6 +99,7 @@ _EXPORT_MODULES = {
     ),
     ".validate": (
         "validate_timeseries_shape",
+        "validate_timestamp_bounds",
         "validate_volume_change_sign",
         "validate_volume_change_states",
         "validate_volume_units",

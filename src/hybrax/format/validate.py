@@ -420,6 +420,49 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
     return True, f"TimeSeries {label}OK"
 
 
+def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
+    """Check that process timestamps fall within its inclusive time-axis bounds."""
+    series = []
+    if process.reactor_medium:
+        for name, component in process.reactor_medium.components.items():
+            if _is_dynamic_series(component.concentration):
+                series.append((f"reactor component {name!r}", component.concentration))
+            if _is_dynamic_series(component.c_star_concentration):
+                series.append(
+                    (
+                        f"reactor component {name!r} c_star",
+                        component.c_star_concentration,
+                    )
+                )
+
+    for name, variable in process.process_variables.items():
+        if _is_dynamic_series(variable.values):
+            series.append((f"process variable {name!r}", variable.values))
+
+    for name, change in process.volume.volume_changes.items():
+        if _is_dynamic_series(change.values):
+            series.append((f"volume change {name!r}", change.values))
+
+    if _is_dynamic_series(process.volume.total_volume):
+        series.append(("measured total volume", process.volume.total_volume))
+
+    start = process.time_axis.start
+    end = process.time_axis.end
+    errors = []
+    for label, time_series in series:
+        times = jnp.asarray(time_series.times)
+        invalid = ~((times >= start) & (times <= end))
+        count = int(jnp.sum(invalid))
+        if count:
+            errors.append(f"{label}: {count} timestamp(s) outside [{start}, {end}]")
+
+    if errors:
+        return False, "Timestamp bounds invalid:\n  - " + "\n  - ".join(errors)
+    return True, (
+        f"All timestamps within [{start}, {end}] {process.time_axis.unit} — OK"
+    )
+
+
 def validate_volume_change_sign(
     volume_change,
 ) -> Tuple[bool, str]:
@@ -610,6 +653,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     Checks performed:
     - TimeSeries shape and ordering for every reactor-medium component and
       process variable that carries a TimeSeries.
+    - Every timestamp falls within the process time-axis bounds.
     - Every volume change uses the process volume unit.
     - Sign consistency for every volume change.
     - State-variable / feed-medium coverage for positive volume changes.
@@ -653,10 +697,6 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
             all_valid = all_valid and ok
 
     # Volume changes
-    ok, msg = validate_volume_units(process)
-    messages.append(msg)
-    all_valid = all_valid and ok
-
     if process.volume and process.volume.volume_changes:
         for vc_name, vc in process.volume.volume_changes.items():
             if vc.values is not None:
@@ -664,6 +704,16 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
                 messages.append(msg)
                 all_valid = all_valid and ok
 
+    # --- Timestamp bounds check ---
+    ok, msg = validate_timestamp_bounds(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    ok, msg = validate_volume_units(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    if process.volume and process.volume.volume_changes:
         # --- Volume change sign checks ---
         for vc_name, vc in process.volume.volume_changes.items():
             if vc.values is not None:

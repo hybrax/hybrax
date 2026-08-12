@@ -25,6 +25,7 @@ from bp_format import (
     AugmentedBioProcess,
     BioProcessCollection,
     validate_timeseries_shape,
+    validate_timestamp_bounds,
     validate_volume_change_sign,
     validate_volume_change_states,
     validate_volume_units,
@@ -125,6 +126,106 @@ class TestValidateTimeSeriesShape:
         ts = _ts([0.0, 1.0], [1.0, 2.0])
         _, msg = validate_timeseries_shape(ts, name="myvar")
         assert "myvar" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_timestamp_bounds
+# ---------------------------------------------------------------------------
+
+
+class TestValidateTimestampBounds:
+    def test_inclusive_bounds_are_valid(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 10.0], [1.0, 2.0]),
+                )
+            }
+        )
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is True
+        assert "[0.0, 10.0] hours" in msg
+
+    def test_reactor_component_timestamp_outside_bounds(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([-1.0, 1.0], [1.0, 2.0]),
+                )
+            }
+        )
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "reactor component 'biomass'" in msg
+
+    def test_reactor_c_star_timestamp_outside_bounds(self):
+        component = ReactorMediumComponent(
+            name="oxygen",
+            unit="mmol/L",
+            concentration=StaticVariable(value=1.0),
+            c_star_concentration=_ts([1.0, 11.0], [1.0, 2.0]),
+        )
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                ),
+                "oxygen": component,
+            }
+        )
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "reactor component 'oxygen' c_star" in msg
+
+    def test_process_variable_timestamp_outside_bounds(self):
+        variable = ProcessVariable(
+            name="temperature",
+            unit="degC",
+            is_controlled=True,
+            values=_ts([1.0, 11.0], [30.0, 31.0]),
+        )
+        process = _make_process(process_variables={"temperature": variable})
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "process variable 'temperature'" in msg
+
+    def test_volume_change_timestamp_outside_bounds(self):
+        change = SampleVolumeChange(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([-1.0, 1.0], [-0.1, -0.1]),
+        )
+        process = _make_process(volume_changes={"sample": change})
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "volume change 'sample'" in msg
+
+    def test_measured_total_volume_timestamp_outside_bounds(self):
+        process = _make_process()
+        process.volume.total_volume = _ts([1.0, 11.0], [1.0, 1.1])
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "measured total volume" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +519,22 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
+
+    def test_timestamp_outside_bounds_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 11.0], [1.0, 2.0]),
+                )
+            }
+        )
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Timestamp bounds invalid" in message for message in messages)
 
     def test_mismatched_volume_change_unit_fails_process(self):
         process = _make_process(
