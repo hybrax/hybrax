@@ -107,8 +107,7 @@ discrete events (applied as state jumps during the solve — not read by the mod
 
 ## Examples
 
-The `examples/` directory contains end-to-end case studies. Each has a
-`train-config.json`, a `custom.py` of hooks, and a prepared/output workflow.
+The `examples/` directory contains end-to-end case studies and focused demos.
 
 | Directory | Organism / data | Demonstrates |
 |-----------|-----------------|--------------|
@@ -120,6 +119,7 @@ The `examples/` directory contains end-to-end case studies. Each has a
 | [`12_martens_2025_expanded/structured/`](../examples/12_martens_2025_expanded/structured) | CHO (simulated) | Dense-grid curvature penalty + between-measurement bounds |
 | [`12_martens_2025_expanded/migration/`](../examples/12_martens_2025_expanded/migration) | CHO (simulated) | Migration from legacy bp-format |
 | [`13_volume_integration/`](../examples/13_volume_integration) | Synthetic | Volume integration / dilution tracking |
+| [`14_dense_bounds_tradeoff/`](../examples/14_dense_bounds_tradeoff) | Synthetic | Reconstruction-versus-dense-bounds weight trade-off |
 
 ## See also
 
