@@ -274,6 +274,20 @@ class TestValidateVolumeChangeStates:
         assert ok is False
         assert "biomass" in msg
 
+    def test_feed_component_unit_must_match_reactor_component(self):
+        feed = self._feed_medium(["biomass"])
+        feed.components["biomass"].unit = "mg/mL"
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"f": self._vc(feed)},
+        )
+
+        ok, msg = validate_volume_change_states(process)
+
+        assert ok is False
+        assert "'biomass' uses unit 'mg/mL'" in msg
+        assert "reactor medium uses 'g/L'" in msg
+
     def test_negative_volume_change_not_checked(self):
         """Negative (outflow) volume changes should skip state coverage check."""
         process = _make_process(

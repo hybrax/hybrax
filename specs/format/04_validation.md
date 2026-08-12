@@ -39,7 +39,10 @@ Units are not parsed or converted, and no dimensional analysis is performed.
 
 For every volume change that adds volume, checks that its `feed_medium` defines
 a concentration for **every dynamic species** in the reactor medium (any
-component whose concentration is a `TimeSeries`).
+component whose concentration is a `TimeSeries`) and uses the same unit string.
+Units are compared exactly; they are not parsed or converted, and no dimensional
+analysis is performed. Feed concentrations may be static even when the reactor
+concentration is dynamic.
 
 A missing entry is ambiguous — did the feed really contain none of that species,
 or was it just not recorded? The mass balance needs the answer, so state it

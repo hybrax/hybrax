@@ -471,7 +471,7 @@ def validate_volume_change_states(
     """
     For every *positive* volume change, verify that all dynamic state
     variables defined in the reactor medium are also present as components
-    in the referenced feed medium of that volume change.
+    in the referenced feed medium and use the same unit string.
 
     A "state variable" is a reactor-medium component whose concentration is
     a TimeSeries (i.e. it is measured dynamically over time), as opposed to a
@@ -482,7 +482,8 @@ def validate_volume_change_states(
 
     Returns:
         A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when
-        every positive volume change covers all dynamic state variables.
+        every positive volume change covers all dynamic state variables with
+        matching unit strings.
     """
     # Collect names of dynamic state variables in the reactor medium
     state_names: List[str] = []
@@ -507,7 +508,7 @@ def validate_volume_change_states(
         if not is_positive:
             continue  # only check positive (inflowing) volume changes
 
-        # Check that the feed medium defines all state variables
+        # Check that the feed medium defines all state variables with matching units
         if not isinstance(vc, FeedVolumeChange):
             continue  # SampleVolumeChange has no feed medium
         feed = vc.feed_medium
@@ -525,11 +526,26 @@ def validate_volume_change_states(
                 f"feed components for state variable(s): {missing}"
             )
 
+        for state_name in state_names:
+            if state_name not in feed_component_names:
+                continue
+            reactor_unit = process.reactor_medium.components[state_name].unit
+            feed_unit = feed.components[state_name].unit
+            if feed_unit != reactor_unit:
+                errors.append(
+                    f"Volume change '{vc_name}' (feed: '{feed.name}') component "
+                    f"'{state_name}' uses unit {feed_unit!r}; reactor medium uses "
+                    f"{reactor_unit!r}."
+                )
+
     if errors:
         return False, "State-variable/feed consistency errors:\n" + "\n".join(
             f"  - {e}" for e in errors
         )
-    return True, "All positive volume changes cover all dynamic state variables — OK"
+    return True, (
+        "All positive volume changes cover all dynamic state variables with matching "
+        "units — OK"
+    )
 
 
 def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
