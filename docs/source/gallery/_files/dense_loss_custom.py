@@ -19,7 +19,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_format.mechanistic import build_rhs_ode
 from bp_train import (
     EstimatedScales,
     LossInputs,
@@ -61,30 +60,28 @@ def build_reaction_module(*, seed, **kwargs):
     return BatchReactionModule(key=jax.random.key(seed), **scale_kwargs)
 
 
-def estimate_all_scales(collection, target_names, config):
+def estimate_all_scales(runtime_data, target_names, config):
     del target_names, config
-    processes = list(collection.processes.values())
-    rhs = build_rhs_ode(processes[0])
+    rhs = runtime_data.rhs_ode
+    n_processes = len(runtime_data.process_order)
 
-    rmc_scale = {
-        name: max(
-            max(float(np.max(np.abs(np.asarray(
-                p.reactor_medium.components[name].concentration.values, float))))
-                for p in processes),
-            1e-6,
-        )
-        for name in rhs.name_modeled_RMCs
-    }
+    def max_abs_state(name):
+        best = 0.0
+        for i in range(n_processes):
+            _, values = runtime_data.raw_state_trace(i, name)
+            if values.size:
+                best = max(best, float(np.max(np.abs(values))))
+        return max(best, 1e-6)
+
+    rmc_scale = {name: max_abs_state(name) for name in rhs.name_modeled_RMCs}
 
     def rate_scale_for(species):
         per_process = []
-        for p in processes:
-            c = p.reactor_medium.components[species].concentration
-            X = p.reactor_medium.components["biomass"].concentration
-            values = np.asarray(c.values, float)
-            exposure = np.trapezoid(np.asarray(X.values, float),
-                                    np.asarray(c.times, float))
-            per_process.append(abs(values[-1] - values[0]) / max(exposure, 1e-9))
+        for i in range(n_processes):
+            c_times, c_values = runtime_data.raw_state_trace(i, species)
+            x_times, x_values = runtime_data.raw_state_trace(i, "biomass")
+            exposure = np.trapezoid(x_values, x_times)
+            per_process.append(abs(c_values[-1] - c_values[0]) / max(exposure, 1e-9))
         return max(max(per_process), 1e-9)
 
     rate_scale = [rate_scale_for(name[2:]) for name in rhs.name_modeled_rates]
@@ -94,7 +91,7 @@ def estimate_all_scales(collection, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(float(p.volume.initial_volume) for p in processes)),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))),
         SCALE_modeled_FVCs_cumulative=empty,
         SCALE_modeled_FVCs_rates=empty,
         SCALE_controlled_FVCs_cumulative=empty,
@@ -192,19 +189,20 @@ class PhysicalConstraintsLoss(DefaultLossModule):
         })
 
 
-def build_loss_module(*, target_names, collection, **kwargs):
+def build_loss_module(*, target_names, runtime_context, **kwargs):
     # Bounds are read from the FIRST process. bp-format's cross-process
     # consistency check guarantees every process shares the same structure.
-    process = next(iter(collection.processes.values()))
-    rhs = build_rhs_ode(process)
+    rhs = runtime_context.training_data.rhs_ode
+    snapshot = runtime_context.data.bound_snapshots[0]
+    bounds_by_label = {label: (lower, upper)
+                       for label, source, axis, lower, upper in snapshot}
 
     def as_pair(bounds):
         lo, hi = bounds
         return (-jnp.inf if lo is None else lo), (jnp.inf if hi is None else hi)
 
-    state_bounds = [as_pair(process.reactor_medium.components[n].bounds)
-                    for n in rhs.name_modeled_RMCs]
-    rate_bounds = [as_pair(process.biological_ode.rates[n])
+    state_bounds = [as_pair(bounds_by_label[n]) for n in rhs.name_modeled_RMCs]
+    rate_bounds = [as_pair(bounds_by_label[f"rate/{n}"])
                    for n in rhs.name_modeled_rates]
 
     return PhysicalConstraintsLoss(

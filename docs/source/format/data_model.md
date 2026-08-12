@@ -43,9 +43,7 @@ faithfully dilute your pH, which is nonsense.
 ## The nesting
 
 ```
-CaseStudy(case_id, organism, citation)     one publication or campaign
-  └── processes: {name: BioProcess}
-BioProcessCollection(metadata)             the loose alternative
+BioProcessCollection(case_id, organism, citation, metadata)
   └── processes: {name: BioProcess}
 
 BioProcess
@@ -69,25 +67,24 @@ biological name attached to the data. The cost is that names are load-bearing: s
 collision rules in [The Bioprocess ODE](bioprocess_ode.md).
 :::
 
-### `CaseStudy` or `BioProcessCollection`?
+### Case study identity: optional, not a separate type
 
-Both hold the same `BioProcess` objects.
+There is one container, `BioProcessCollection`, not two. `case_id`, `organism` and
+`citation` are optional fields on it (all default `None`):
 
-- **`CaseStudy`** requires `case_id`, `organism` and `citation`. Use it for a finished
-  dataset: one publication, one campaign. `case_id` is the natural grouping for
-  cross-validation.
-- **`BioProcessCollection`** requires nothing but the processes. Use it for raw or
-  intermediate data that is not a case study yet.
+- Set all three (non-empty) to mark a finished dataset: one publication, one campaign.
+  `case_id` is the natural grouping for cross-validation.
+- Leave them unset for raw or intermediate data that is not a case study yet.
 
-They are not interchangeable at every API boundary: notably `model_predict` wants a
-collection. Converting is one line:
+Both shapes are the same type, so nothing needs converting at an API boundary like
+`model_predict`:
 
 ```{code-cell} ipython3
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("../_data/out/demo_batch/data.json")
-collection = bp.BioProcessCollection(processes=case_study.processes)
+collection = bp.serialization.load_process_collection("../_data/out/demo_batch/data.json")
 print(type(collection).__name__, "with", len(collection.processes), "processes")
+print("case_id:", collection.case_id)
 ```
 
 ## Values: `TimeSeries` or `StaticVariable`

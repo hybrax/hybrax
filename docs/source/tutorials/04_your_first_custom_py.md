@@ -55,7 +55,7 @@ bp_train("prepare", "--config", "prepare-config.json",
 import numpy as np
 import bp_format as bp
 
-_case_study = bp.serialization.load_case_study(WORK / "data.json")
+_collection = bp.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Physical-space R^2 per target, averaged over processes. Scale-free, so
@@ -67,7 +67,7 @@ def r2_by_target(run_dir):
         for row in csv.DictReader(fh):
             rows_by_process.setdefault(row["process"], []).append(row)
     per_target = {}
-    for name, process in _case_study.processes.items():
+    for name, process in _collection.processes.items():
         rows = rows_by_process[name]
         t_pred = np.array([float(r["t"]) for r in rows])
         for species in ("biomass", "glucose", "product"):

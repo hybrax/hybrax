@@ -71,8 +71,8 @@ def bp_train(*args):
 ```{code-cell} ipython3
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study(WORK / "data.json")
-process = case_study.processes["fedbatch_1"]
+collection = bp.serialization.load_process_collection(WORK / "data.json")
+process = collection.processes["fedbatch_1"]
 
 for name, vc in process.volume.volume_changes.items():
     print(f"{name:15s} {type(vc).__name__:20s} continuous={vc.is_continuous}")
@@ -110,12 +110,12 @@ concentrations.
 ```{literalinclude} _files/fed_batch_custom.py
 :language: python
 :linenos:
-:lines: 59-61
+:lines: 58-64
 ```
 
-This is the four-argument form of `estimate_all_scales`: declaring `controls_store` in
-the signature is what makes bp-train pass it. The batch tutorials never needed it,
-because a batch process has no controlled feed or PV axes to estimate. See
+`runtime_data.controls_store` is always reachable from `estimate_all_scales`, no
+special-cased argument needed. The batch tutorials never used it, because a batch
+process has no controlled feed or PV axes to estimate. See
 [Scaling](../train/scaling.md#writing-one).
 
 ## Training
@@ -157,7 +157,7 @@ epoch budget); glucose and product are markedly easier.
 - **Sample-then-bolus ordering** at the coincident timestamps was handled for you by the
   solve; you never wrote it.
 - **A reaction module that reads controlled inputs**, not just the state.
-- **`estimate_all_scales` with the `controls_store` argument**, for the controlled axes.
+- **`estimate_all_scales` reading `runtime_data.controls_store`**, for the controlled axes.
 
 ## See also
 

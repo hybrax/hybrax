@@ -32,7 +32,7 @@ metrics columns, so they cannot vary between steps.
 ## The hook
 
 **Fires:** at training setup, last.
-**Signature:** `(*, target_names, process_names, config, seed, collection) -> UserLossModule`
+**Signature:** `(*, target_names, process_names, config, seed, runtime_context) -> UserLossModule`
 **Default:** `DefaultLossModule`: one MSE term per measured target.
 **Type-checked:** yes.
 

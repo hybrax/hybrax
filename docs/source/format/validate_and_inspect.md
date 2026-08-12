@@ -27,8 +27,8 @@ discovering issues one failed run at a time.
 ```{code-cell} ipython3
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("../_data/out/demo_fedbatch/data.json")
-process = case_study.processes["fedbatch_1"]
+collection = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
+process = collection.processes["fedbatch_1"]
 
 ok, messages = bp.validate_process(process)
 print("ok:", ok)
@@ -36,12 +36,12 @@ for line in messages:
     print(" ", line)
 ```
 
-`validate_case_study` runs the same per-process checks and adds cross-process ones: 
-principally that every run has the same structure, so a model trained on one can be
-applied to another.
+`validate_for_publication` runs the same per-process checks and adds cross-process
+ones: principally that every run has the same structure, so a model trained on one can
+be applied to another.
 
 ```{code-cell} ipython3
-ok, per_process = bp.validate_case_study(case_study)
+ok, per_process = bp.validate_for_publication(collection)
 print("ok:", ok, "| sections:", list(per_process))
 ```
 
@@ -59,6 +59,7 @@ Note the two synthetic sections: `__consistency__` holds the cross-process resul
 | `validate_timeseries_shape` | Mismatched `times`/`values` lengths. |
 | `validate_biological_ode` | A dynamic state with no derivative entry. Omission is rejected; write `"0"` if you mean no dynamics. |
 | `validate_bounds` | An inverted or impossible `(lo, hi)`. |
+| `validate_bounds_against_data` | A declared bound the data itself already violates, e.g. negative biomass with a `(0.0, None)` bound: metadata that was never checked against what was actually measured. |
 
 :::{admonition} Measurements exactly *at* a sampling time are correct
 :class: note
@@ -94,8 +95,8 @@ When it does not, the discrepancy tells you which stream is mis-scaled.
 bp.print_process_structure(process, verbosity=1)
 ```
 
-`verbosity` runs 1 to 3: 1 is one line per object, 3 prints values. `print_case_study_structure`
-does the same across a whole study.
+`verbosity` runs 1 to 3: 1 is one line per object, 3 prints values.
+`print_collection_structure` does the same across a whole collection.
 
 ### As plots
 

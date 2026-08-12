@@ -35,7 +35,7 @@ which means one number per axis handles both states and rates, and the `scale_*`
 ## The hook
 
 **Fires:** at training setup, before the reaction module is built.
-**Signature:** `(collection, target_names, config) -> EstimatedScales`
+**Signature:** `(runtime_data, target_names, config) -> EstimatedScales`
 **Default:** none, and that is the problem below.
 **Type-checked:** returning something other than `EstimatedScales` raises `TypeError`.
 
@@ -56,18 +56,21 @@ than two orders of magnitude, before a single optimizer step.
 
 The whole job is: for each axis, what is a characteristic magnitude?
 
-**State axes** are easy: how big does this species get, anywhere in the data:
+**State axes** are easy: how big does this species get, anywhere in the data. The hook
+receives a `RuntimeDataContext`, collection-free numeric traces rather than raw
+bp-format objects: `raw_state_trace(process_index, name)` returns that state's exact
+`(times, values)`.
 
 ```python
-rmc_scale = {
-    name: max(
-        max(float(np.max(np.abs(np.asarray(
-            p.reactor_medium.components[name].concentration.values, float))))
-            for p in processes),
-        1e-6,                      # floor: never divide by zero
-    )
-    for name in rhs.name_modeled_RMCs
-}
+def max_abs_state(name):
+    best = 0.0
+    for i in range(len(runtime_data.process_order)):
+        _, values = runtime_data.raw_state_trace(i, name)
+        if values.size:
+            best = max(best, float(np.max(np.abs(values))))
+    return max(best, 1e-6)                      # floor: never divide by zero
+
+rmc_scale = {name: max_abs_state(name) for name in rhs.name_modeled_RMCs}
 ```
 
 **Rate axes** need one step of thought, and this is where a first attempt usually goes
@@ -90,20 +93,18 @@ scale(r_p)  ~  scale(p) / duration
 Get this wrong in the optimistic direction and the concentrations blow up on the very
 first solve, before anything is learned.
 
-**Controlled axes** come from the controls store, sampled over the run:
+**Controlled axes** come from the controls store, always reachable as
+`runtime_data.controls_store`, sampled over the run:
 
 ```python
-def estimate_all_scales(collection, target_names, config, *, controls_store):
+def estimate_all_scales(runtime_data, target_names, config):
+    controls_store = runtime_data.controls_store
     ...
 ```
 
-Declaring `controls_store` in the signature is what makes bp-train pass it: the harness
-inspects your signature and supplies optional arguments only if you asked for them. Both
-the three- and four-argument forms are valid.
-
 A complete, runnable minimal version is in
-[Tutorial 4](../tutorials/04_your_first_custom_py.md), and a full production-scale one is
-in `bp-train/examples/00_e2e_sim/custom.py`.
+[Tutorial 4](../tutorials/04_your_first_custom_py.md); [Fed-batch](../gallery/fed_batch.md)
+shows the controlled-axis case for real.
 
 ## The axes
 

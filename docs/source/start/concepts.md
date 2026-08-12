@@ -22,10 +22,7 @@ What you supply is how fast the cells do things, and how you want to be scored.
 One file on disk is one container.
 
 ```
-CaseStudy                 one publication or campaign: has organism + citation
-  └── processes: {name: BioProcess}
-
-BioProcessCollection      the loose alternative: no required metadata
+BioProcessCollection      case_id, organism, citation — all optional
   └── processes: {name: BioProcess}
 
 BioProcess                ONE experimental run
@@ -36,10 +33,11 @@ BioProcess                ONE experimental run
   └── biological_ode      the biology, as expressions
 ```
 
-Use a **`CaseStudy`** when the data belongs to one publication or campaign: `case_id` is
-also the natural grouping for cross-validation. Use a **`BioProcessCollection`** for raw
-or intermediate data that is not a full case study yet. Both hold the same
-`BioProcess` objects.
+Set `case_id`/`organism`/`citation` when the data belongs to one publication or
+campaign: `case_id` is also the natural grouping for cross-validation. Leave them
+unset (the default) for raw or intermediate data that is not a full case study yet.
+Either way it's the same `BioProcessCollection`, holding the same `BioProcess`
+objects.
 
 ## Two questions that classify everything
 

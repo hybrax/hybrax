@@ -109,16 +109,14 @@ import bp_format as bp
 import bp_train
 
 wrapper, config = bp_train.model_load("run")
-case_study = bp.serialization.load_case_study("data.json")
-collection = bp.BioProcessCollection(processes=case_study.processes)
+collection = bp.serialization.load_process_collection("data.json")
 
 predictions = bp_train.model_predict(wrapper, config, collection, grid_n=200)
 export = predictions["run_1"]      # DenseProcessExport
 export.t, export.c_species, export.q_rates, export.v_real
 ```
 
-Note the conversion: `model_predict` takes a `BioProcessCollection`, and a `CaseStudy`
-raises `AttributeError`. See [Tutorial 5](../tutorials/05_predict.md).
+`model_predict` takes a `BioProcessCollection`. See [Tutorial 5](../tutorials/05_predict.md).
 
 ## Gotchas
 

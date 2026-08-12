@@ -65,16 +65,12 @@ they look plausible. Use `model_load` unless you specifically know why you need 
 ```python
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("data.json")
-collection = bp.BioProcessCollection(processes=case_study.processes)   # note the wrap
+collection = bp.serialization.load_process_collection("data.json")
 
 predictions = bp_train.model_predict(wrapper, config, collection, grid_n=200)
 export = predictions["run_1"]
 export.t, export.c_species, export.q_rates, export.v_real, export.auxiliary
 ```
-
-`model_predict` takes a `BioProcessCollection`; a `CaseStudy` raises `AttributeError:
-'CaseStudy' object has no attribute 'metadata'`.
 
 **`model_predict` does not re-estimate scales.** The CLI `forward` path does. That
 difference is deliberate but easy to trip over: see

@@ -101,7 +101,7 @@ in a batch run with identical biology.
 ```{code-cell} ipython3
 from bp_format.splines import build_pseudobatch_transform
 
-cs = bp.serialization.load_case_study("../_data/out/demo_fedbatch/data.json")
+cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = cs.processes["fedbatch_1"]
 
 bundle = build_pseudobatch_transform(process)

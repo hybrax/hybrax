@@ -40,7 +40,8 @@ separates static (non-differentiable) fields from dynamic (array) leaves.
 
 - Array fields must be JAX arrays (`jnp.ndarray`), not plain NumPy.
 - Python dicts with string keys are not natural JAX pytree leaves. The outer container
-  classes (`BioProcess`, `CaseStudy`, etc.) use standard Python `@dataclass` rather than
+  classes (`BioProcess`, `BioProcessCollection`, etc.) use standard Python `@dataclass`
+  rather than
   `eqx.Module` because they hold `Dict[str, ...]` fields manipulated outside the JIT
   boundary. Only the inner numerical objects (e.g., `TimeSeries`) need to be `eqx.Module`.
 - Mutation is not allowed on `eqx.Module` instances (they are frozen). Use `eqx.tree_at`
@@ -53,25 +54,23 @@ separates static (non-differentiable) fields from dynamic (array) leaves.
 ### 1. Hierarchical data model
 
 Bioprocess experiments are organized in a three-level hierarchy. The top-level
-artifact (one file on disk) is either a strict `CaseStudy` or a loose
-`BioProcessCollection`:
+artifact (one file on disk) is always a `BioProcessCollection`; `case_id`, `organism`
+and `citation` are optional fields on it, not a separate stricter type:
 
 ```
-CaseStudy             (one publication / experimental campaign: strict metadata)
+BioProcessCollection
   -> BioProcess       (one experimental run)
     -> Components      (reactor medium, volume, process variables)
-
-BioProcessCollection  (raw / intermediate processes: no strict metadata)
-  -> BioProcess
-    -> Components
 ```
 
-- **CaseStudy** corresponds to one publication or experimental campaign. It carries
-  `organism`, `citation`, and a `case_id`, which is the natural grouping for
-  leave-one-process-out cross-validation. Each case study is its own file.
-- **BioProcessCollection** is the loose counterpart: a dict of processes plus
-  optional free-form metadata, for raw or intermediate data not yet a full-fledged
-  case study.
+- **BioProcessCollection** carries `case_id`/`organism`/`citation` when it represents
+  one publication or experimental campaign (`case_id` is then the natural grouping for
+  leave-one-process-out cross-validation), or leaves them `None` for raw or
+  intermediate data that is not yet a full-fledged case study. Either way it's the
+  same type, the same file shape, the same save/load functions: `CaseStudy` and
+  `BioProcessCollection` used to be two separate classes with this exact split; they
+  were merged once the split turned out to buy nothing but an extra conversion step at
+  API boundaries that wanted the collection shape specifically.
 - **BioProcess** is a single fermentation run: time axis, volume operations, reactor
   medium concentrations, and process variables.
 - **Components** within a process are organized by physical role: `ReactorMedium`
@@ -149,8 +148,8 @@ missing biomass component, mismatched times/values lengths, feed media that omit
 species, or measurement times coinciding with sampling events. bp-format validates early
 and explicitly. All validation functions return `(bool, str)` tuples, so callers can
 collect **all** issues in one pass and present a comprehensive report rather than failing
-on the first error. `validate_process()` runs single-process checks; `validate_case_study()`
-adds cross-process consistency checks.
+on the first error. `validate_process()` runs single-process checks;
+`validate_for_publication()` adds cross-process consistency checks.
 
 ---
 

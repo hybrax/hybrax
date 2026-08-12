@@ -169,13 +169,13 @@ def build_demo_batch() -> None:
     header = "run,time_h,biomass_gL,glucose_gL,product_gL"
     (out / "raw" / "offline.csv").write_text("\n".join([header, *csv_rows]) + "\n")
 
-    case_study = bp.CaseStudy(
+    collection = bp.BioProcessCollection(
         case_id="demo_batch",
         organism="Escherichia coli",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_case_study(case_study, out / "data.json")
+    bp.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
         "mu_max": MU_MAX, "Ks": KS, "Y_XS": Y_XS, "m_s": M_S,
@@ -383,13 +383,13 @@ def build_demo_fedbatch() -> None:
         process_variables=process_variables,
     )
 
-    case_study = bp.CaseStudy(
+    collection = bp.BioProcessCollection(
         case_id="demo_fedbatch",
         organism="Chinese hamster ovary (CHO) cell line",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes={"fedbatch_1": process},
     )
-    bp.serialization.save_case_study(case_study, out / "data.json")
+    bp.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
         "mu_max": MAM_MU_MAX, "Ks": MAM_KS, "Y_XS": MAM_Y_XS, "m_s": MAM_M_S,

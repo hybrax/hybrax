@@ -35,7 +35,7 @@ the same thing.
 
 | Extra | Command | Gives you |
 |---|---|---|
-| Plotting | `pip install -e "./bp-format[plotting]"` | `plot_process` / `plot_case_study` (matplotlib, plotly) |
+| Plotting | `pip install -e "./bp-format[plotting]"` | `plot_process` / `plot_collection` (matplotlib, plotly) |
 | Development | `pip install -e "./bp-format[dev]"` | pytest, ruff, black, jupyter, openpyxl |
 | Development | `pip install -e "./bp-train[dev]"` | pytest, ipdb, plotly |
 

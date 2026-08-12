@@ -134,21 +134,11 @@ the `prepared.json` and `custom.py` bundled inside the run directory. That is wh
 directory is self-contained and why you can move it between machines.
 
 ```{code-cell} ipython3
-case_study = bp.serialization.load_case_study(WORK / "data.json")
-
-# model_predict takes a BioProcessCollection, not a CaseStudy.
-collection = bp.BioProcessCollection(processes=case_study.processes)
+collection = bp.serialization.load_process_collection(WORK / "data.json")
 
 predictions = bp_train.model_predict(wrapper, config, collection, grid_n=200)
 list(predictions)
 ```
-
-:::{admonition} `CaseStudy` is not a `BioProcessCollection`
-:class: warning
-They hold the same processes, but only the collection carries the `metadata` attribute
-the prediction path expects. Passing a `CaseStudy` raises `AttributeError: 'CaseStudy'
-object has no attribute 'metadata'`. Wrap it as above.
-:::
 
 Each entry is a `DenseProcessExport`:
 
@@ -180,7 +170,7 @@ on: this is checking the fit, not testing generalisation to new data (that is wh
 ```{code-cell} ipython3
 import matplotlib.pyplot as plt
 
-measured = case_study.processes["run_1"].reactor_medium.components
+measured = collection.processes["run_1"].reactor_medium.components
 fig, axes = plt.subplots(1, 3, figsize=(12, 3.2), constrained_layout=True)
 for ax, (i, name) in zip(axes, enumerate(["biomass", "glucose", "product"])):
     ax.plot(export.t, export.c_species[:, i], label="predicted")
@@ -211,8 +201,8 @@ space*, then predict confidently and wrongly. No exception, no NaN. See
 ## What you learned
 
 - `forward` gives you dense trajectories, per-target losses and plots.
-- `model_load` + `model_predict` give you arrays; wrap a `CaseStudy` in a
-  `BioProcessCollection` first.
+- `model_load` + `model_predict` give you arrays straight from a loaded
+  `BioProcessCollection`, no extra wrapping needed.
 - Only trainable parameters are saved; the rest is rebuilt, which is what makes run
   directories portable.
 

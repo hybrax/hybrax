@@ -30,8 +30,8 @@ network. This tutorial is four function calls that catch that early.
 ```{code-cell} ipython3
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("../_data/out/demo_batch/data.json")
-process = case_study.processes["run_1"]
+collection = bp.serialization.load_process_collection("../_data/out/demo_batch/data.json")
+process = collection.processes["run_1"]
 ```
 
 ## 1. Validate
@@ -47,11 +47,11 @@ for line in messages:
     print(" ", line)
 ```
 
-Across a whole case study, `validate_case_study` adds cross-process checks, that every
-run has the same structure, so a model trained on one can be applied to another:
+Across a whole collection, `validate_for_publication` adds cross-process checks, that
+every run has the same structure, so a model trained on one can be applied to another:
 
 ```{code-cell} ipython3
-ok, per_process = bp.validate_case_study(case_study)
+ok, per_process = bp.validate_for_publication(collection)
 print("ok:", ok)
 print("checked:", list(per_process))
 ```

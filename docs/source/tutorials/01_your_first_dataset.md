@@ -13,7 +13,7 @@ kernelspec:
 # Tutorial 1: your first dataset
 
 > **In one sentence.** Turn a CSV of offline measurements into a bp-format
-> `CaseStudy` you can save, share and train on.
+> `BioProcessCollection` you can save, share and train on.
 >
 > **You need this if** you have your own data. **You can skip it if** someone already
 > handed you a bp-format file.
@@ -168,14 +168,16 @@ immediately. If your data has no biomass, or you want different dynamics, write
 
 ## Step 5: group and save
 
-A `CaseStudy` is one publication or campaign. Its `case_id` is also the natural grouping
-for cross-validation later.
+Setting `case_id`/`organism`/`citation` on a `BioProcessCollection` marks it as a full
+case study, one publication or campaign. `case_id` is also the natural grouping for
+cross-validation later. Leaving them unset (the default) is fine too: that is raw or
+intermediate data with no case-study identity yet, the same container either way.
 
 ```{code-cell} ipython3
 import contextlib
 import io
 
-case_study = bp.CaseStudy(
+collection = bp.BioProcessCollection(
     case_id="my_first_dataset",
     organism="Escherichia coli",
     citation="Simulated data: tutorial only.",
@@ -185,7 +187,7 @@ case_study = bp.CaseStudy(
 out = Path("../_data/out/runs/tutorial_01").resolve()
 out.mkdir(parents=True, exist_ok=True)
 with contextlib.redirect_stdout(io.StringIO()):
-    bp.serialization.save_case_study(case_study, out / "data.json")
+    bp.serialization.save_process_collection(collection, out / "data.json")
 print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 ```
 
@@ -195,7 +197,7 @@ package root.
 ## Check the round trip
 
 ```{code-cell} ipython3
-reloaded = bp.serialization.load_case_study(out / "data.json")
+reloaded = bp.serialization.load_process_collection(out / "data.json")
 run = reloaded.processes["run_1"]
 
 print("runs        :", list(reloaded.processes))

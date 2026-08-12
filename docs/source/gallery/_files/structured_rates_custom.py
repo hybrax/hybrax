@@ -9,7 +9,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_format.mechanistic import build_rhs_ode
 from bp_train import (
     EstimatedScales,
     ReactionOutputs,
@@ -67,9 +66,9 @@ class MonodModule(UserReactionModule):
         )
 
 
-def build_reaction_module(*, collection, **kwargs):
+def build_reaction_module(*, runtime_context, **kwargs):
     # Never hard-code state indices: read them off the assembled ODE.
-    rhs = build_rhs_ode(list(collection.processes.values())[0])
+    rhs = runtime_context.training_data.rhs_ode
     names = list(rhs.name_modeled_RMCs)
     return MonodModule(
         i_biomass=names.index("biomass"),
@@ -78,21 +77,22 @@ def build_reaction_module(*, collection, **kwargs):
     )
 
 
-def estimate_all_scales(collection, target_names, config):
+def estimate_all_scales(runtime_data, target_names, config):
     del target_names, config
-    processes = list(collection.processes.values())
-    rhs = build_rhs_ode(processes[0])
-    span = max(float(p.time_axis.end) - float(p.time_axis.start) for p in processes)
+    rhs = runtime_data.rhs_ode
+    n_processes = len(runtime_data.process_order)
+    span = max(end - start for start, end in
+              (runtime_data.time_bounds(i) for i in range(n_processes)))
 
-    rmc_scale = {
-        name: max(
-            max(float(np.max(np.abs(np.asarray(
-                p.reactor_medium.components[name].concentration.values, float))))
-                for p in processes),
-            1e-6,
-        )
-        for name in rhs.name_modeled_RMCs
-    }
+    def max_abs_state(name):
+        best = 0.0
+        for i in range(n_processes):
+            _, values = runtime_data.raw_state_trace(i, name)
+            if values.size:
+                best = max(best, float(np.max(np.abs(values))))
+        return max(best, 1e-6)
+
+    rmc_scale = {name: max_abs_state(name) for name in rhs.name_modeled_RMCs}
     biomass = rmc_scale["biomass"]
     empty = jnp.zeros(0)
     return EstimatedScales(
@@ -100,7 +100,7 @@ def estimate_all_scales(collection, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(
             [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(float(p.volume.initial_volume) for p in processes)),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))),
         SCALE_modeled_FVCs_cumulative=empty,
         SCALE_modeled_FVCs_rates=empty,
         SCALE_controlled_FVCs_cumulative=empty,

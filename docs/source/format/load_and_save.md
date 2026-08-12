@@ -12,30 +12,28 @@ kernelspec:
 
 # Loading and saving
 
-> **In one sentence.** Four functions, one JSON format that mirrors the dataclasses
+> **In one sentence.** Two functions, one JSON format that mirrors the dataclasses
 > exactly.
 >
 > **You need this if** you are reading or writing dataset files. **You can skip it if**
 > you build processes in memory and never persist them.
 
-## The four functions
+## The two functions
 
 They live on `bp.serialization`, not on the package root.
 
 ```{code-cell} ipython3
 import bp_format as bp
 
-case_study = bp.serialization.load_case_study("../_data/out/demo_batch/data.json")
-print(case_study.case_id, "-", list(case_study.processes))
+collection = bp.serialization.load_process_collection("../_data/out/demo_batch/data.json")
+print(collection.case_id, "-", list(collection.processes))
 ```
 
-| Function | For |
-|---|---|
-| `save_case_study(cs, path)` / `load_case_study(path)` | `CaseStudy`: a finished dataset |
-| `save_process_collection(coll, path)` / `load_process_collection(path)` | `BioProcessCollection`: raw or intermediate |
-
-Loading is strict about *which* container is in the file: a `CaseStudy` file has
-`case_id` / `organism` / `citation` at the top level, a collection has `metadata`.
+`save_process_collection(coll, path)` / `load_process_collection(path)` are the whole
+API: one container, `BioProcessCollection`. `case_id` / `organism` / `citation` are
+optional fields on it, not a separate stricter type — set all three (non-empty) and
+it's a full case study; leave them `None` (the default) for raw or intermediate data.
+Both shapes round-trip through the same two functions.
 
 ## Paths
 
@@ -43,8 +41,8 @@ A path may be a **file or a directory**. Given a directory, the loader looks for
 `data.json`, then `data.json.gz`.
 
 ```python
-bp.serialization.load_case_study("datasets/kittler_2022")        # → .../data.json
-bp.serialization.load_case_study("datasets/kittler_2022/data.json.gz")
+bp.serialization.load_process_collection("datasets/kittler_2022")        # → .../data.json
+bp.serialization.load_process_collection("datasets/kittler_2022/data.json.gz")
 ```
 
 Gzip is decided by the `.gz` suffix. For anything above a few megabytes it is worth it: 
@@ -155,11 +153,11 @@ import numpy as np
 out = Path("../_data/out/runs/roundtrip").resolve()
 out.mkdir(parents=True, exist_ok=True)
 with contextlib.redirect_stdout(io.StringIO()):
-    bp.serialization.save_case_study(case_study, out / "data.json")
+    bp.serialization.save_process_collection(collection, out / "data.json")
 print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 
-again = bp.serialization.load_case_study(out / "data.json")
-before = case_study.processes["run_1"].reactor_medium.components["biomass"].concentration
+again = bp.serialization.load_process_collection(out / "data.json")
+before = collection.processes["run_1"].reactor_medium.components["biomass"].concentration
 after  = again.processes["run_1"].reactor_medium.components["biomass"].concentration
 print("values identical:", np.array_equal(np.asarray(before.values),
                                           np.asarray(after.values)))
@@ -167,8 +165,8 @@ print("values identical:", np.array_equal(np.asarray(before.values),
 
 ## Gotchas
 
-- **`save_*` / `load_*` are not on the package root.** `bp.save_case_study` is an
-  `AttributeError`; use `bp.serialization.save_case_study`.
+- **`save_*` / `load_*` are not on the package root.** `bp.save_process_collection` is
+  an `AttributeError`; use `bp.serialization.save_process_collection`.
 - **Saving does not validate.** Call [`validate_process`](validate_and_inspect.md)
   yourself; nothing stops you writing a file with a sign-flipped feed.
 - **Fitted splines are saved too.** A `TimeSeries` that carries spline coefficients

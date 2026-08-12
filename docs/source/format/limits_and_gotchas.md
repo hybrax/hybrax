@@ -80,8 +80,8 @@ numbers.
 - **`bp.inspect` is not a module handle.** `bp.inspect.plot_process` raises
   `AttributeError` on a fresh import and only starts working after something else has
   pulled the submodule in. Use `bp.plot_process(...)`. Same for `bp.simulation`.
-- **Save/load are not on the root.** `bp.serialization.save_case_study`, not
-  `bp.save_case_study`.
+- **Save/load are not on the root.** `bp.serialization.save_process_collection`, not
+  `bp.save_process_collection`.
 - **`PPoly` is not root-exported.** `from bp_format.time_series import PPoly`.
 - **`plot_timeseries` is not root-exported.** `from bp_format.inspect import plot_timeseries`.
 - **Importing `bp_format` sets `JAX_ENABLE_X64=true` globally**, before JAX loads. If you

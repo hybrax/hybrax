@@ -76,7 +76,7 @@ import numpy as np
 import bp_format as bp
 import csv
 
-_case_study = bp.serialization.load_case_study(WORK / "data.json")
+_collection = bp.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     rows_by_process = {}
@@ -84,7 +84,7 @@ def r2_by_target(run_dir):
         for row in csv.DictReader(fh):
             rows_by_process.setdefault(row["process"], []).append(row)
     per_target = {}
-    for name, process in _case_study.processes.items():
+    for name, process in _collection.processes.items():
         rows = rows_by_process[name]
         t_pred = np.array([float(r["t"]) for r in rows])
         for species in ("biomass", "glucose", "product"):
@@ -127,7 +127,7 @@ hook:
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 115-122
+:lines: 112-119
 ```
 
 This is exactly the use bp-format's docs describe for `Bounds`: *"pure metadata (not
@@ -138,7 +138,7 @@ automatically) the loss module below reads them itself, once, at construction:
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 195-216
+:lines: 192-214
 ```
 
 ## 2. The hinge penalty, on the dense grid
@@ -146,7 +146,7 @@ automatically) the loss module below reads them itself, once, at construction:
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 160-174
+:lines: 157-171
 ```
 
 `-inf`/`+inf` for an unbounded side falls straight out of the `clip`, so there is no
@@ -160,7 +160,7 @@ grid's own post-solver-failure mask.
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 176-186
+:lines: 173-183
 ```
 
 The curvature is a plain central second difference; `dense_t` is a uniform linspace, so a

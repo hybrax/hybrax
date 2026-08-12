@@ -54,16 +54,18 @@ def augment_state_values(*, parent_name, child_name, state_name,
                          times, base_values, augmented_values, config): ...
     # -> ndarray of values for this synthetic child's state.
 
-def estimate_all_scales(collection, target_names, config): ...
-def estimate_all_scales(collection, target_names, config, *, controls_store): ...
-    # -> EstimatedScales.  Both forms valid; see "signature widening" below.
+def estimate_all_scales(runtime_data, target_names, config): ...
+    # -> EstimatedScales.  runtime_data is a RuntimeDataContext: collection-free
+    #    numeric traces (raw_state_trace, initial_volume, ...) plus
+    #    runtime_data.controls_store, always available, no separate argument needed.
 
 def build_reaction_module(*, target_names, process_names, config, seed,
-                          collection, **scale_kwargs): ...
-    # -> UserReactionModule
+                          runtime_context, **scale_kwargs): ...
+    # -> UserReactionModule.  runtime_context wraps the same RuntimeDataContext
+    #    plus the resolved EstimatedScales (also unpacked into **scale_kwargs).
 
 def build_loss_module(*, target_names, process_names, config, seed,
-                      collection): ...
+                      runtime_context): ...
     # -> UserLossModule
 
 def build_learning_rate(custom_cfg, train_cfg, total_updates): ...
@@ -97,22 +99,12 @@ into the config. `get_config()` wins if both exist.
 an extension point: declaring it makes the trainer populate every `dense_*` field on
 `LossInputs`. See [The loss module](loss_module.md#the-dense-grid).
 
-## Signature widening
-
-`estimate_all_scales` receives `controls_store` **only if it declares it**. bp-train
-inspects your signature and passes optional arguments only when asked for.
-
-This exists so that a frozen `custom.py` inside an old run directory keeps loading after
-the hook gains a parameter. You never have to do anything about it; just know that both
-forms are correct.
-
 ## A minimal complete `custom.py`
 
 The two hooks that matter most, for a batch process with no feeds:
 
 ```python
 import equinox as eqx, jax, jax.numpy as jnp, numpy as np
-from bp_format.mechanistic import build_rhs_ode
 from bp_train import (EstimatedScales, ReactionOutputs,
                       UserReactionModule, trainable_field)
 
@@ -136,7 +128,7 @@ def build_reaction_module(*, seed, **kwargs):
     return MyModule(key=jax.random.key(seed),
                     **{k: v for k, v in kwargs.items() if k.startswith("SCALE_")})
 
-def estimate_all_scales(collection, target_names, config):
+def estimate_all_scales(runtime_data, target_names, config):
     ...   # see the Scaling page: this one is worth writing properly
 ```
 
@@ -149,8 +141,6 @@ A runnable version, with the scale hook filled in, is in
   re-runs your hooks, so a run directory without it cannot be loaded.
 - **A missing `custom_py` *path*** is a `FileNotFoundError`; a missing *hook inside* it is
   silent. Two very different failure modes.
-- **Do not read frozen copies as examples.** `examples/*/output_*/custom.py` are provenance
-  snapshots, and some have stale signatures.
 
 ## See also
 

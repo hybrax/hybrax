@@ -40,7 +40,7 @@ wrong and they are all wrong together, quietly.
 import numpy as np
 import bp_format as bp
 
-cs = bp.serialization.load_case_study("../_data/out/demo_fedbatch/data.json")
+cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = cs.processes["fedbatch_1"]
 
 for name, vc in process.volume.volume_changes.items():

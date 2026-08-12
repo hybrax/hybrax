@@ -19,8 +19,8 @@ learned; scan for your row.
 | say what a feed contains | [Volume, feeds and events](../format/volume_feeds_events.md) |
 | store a value that never changes | `StaticVariable`: [The data model](../format/data_model.md) |
 | save or load a dataset, or read one someone sent me | [Loading and saving](../format/load_and_save.md) |
-| group runs from one publication | `CaseStudy`: [The data model](../format/data_model.md) |
-| handle raw data that is not a full case study yet | `BioProcessCollection`: [The data model](../format/data_model.md) |
+| group runs from one publication | `BioProcessCollection` with `case_id`/`organism`/`citation` set: [The data model](../format/data_model.md) |
+| handle raw data that is not a full case study yet | `BioProcessCollection` with those fields left `None`: [The data model](../format/data_model.md) |
 
 ## Checking and looking at data
 

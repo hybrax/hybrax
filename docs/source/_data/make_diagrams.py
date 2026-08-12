@@ -126,7 +126,7 @@ def make_train_diagram(theme):
     box(ax, (stage_x, 6.65), stage_w, 0.55,
         "data.json", c, fontsize=11, weight="bold", mono=True)
     ax.text(stage_x + stage_w + 0.35, 6.925,
-            "a bp-format CaseStudy or\nBioProcessCollection",
+            "a bp-format BioProcessCollection",
             fontsize=9, color=c["muted"], va="center")
 
     arrow(ax, (stage_x + stage_w / 2, 6.65), (stage_x + stage_w / 2, 5.95), c)

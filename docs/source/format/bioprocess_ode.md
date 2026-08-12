@@ -36,7 +36,7 @@ events](volume_feeds_events.md) comes first.
 ```{code-cell} ipython3
 import bp_format as bp
 
-cs = bp.serialization.load_case_study("../_data/out/demo_fedbatch/data.json")
+cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = cs.processes["fedbatch_1"]
 
 bp.print_rhs_ode(process)

@@ -64,8 +64,7 @@ import contextlib, io, warnings
 import bp_format as bp
 from bp_train import TrainHarnessConfig, train_from_collection
 
-case_study = bp.serialization.load_case_study(str(WORK / "data.json"))
-collection = bp.BioProcessCollection(processes=case_study.processes)
+collection = bp.serialization.load_process_collection(str(WORK / "data.json"))
 
 cfg = TrainHarnessConfig(
     epochs=300, seed=0, learning_rate=0.02,

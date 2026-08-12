@@ -47,7 +47,7 @@ A complete, runnable version is in [Tutorial 4](../tutorials/04_your_first_custo
 ## The hook
 
 **Fires:** at training setup, after `estimate_all_scales`.
-**Signature:** `(*, target_names, process_names, config, seed, collection, **scale_kwargs) -> UserReactionModule`
+**Signature:** `(*, target_names, process_names, config, seed, runtime_context, **scale_kwargs) -> UserReactionModule`
 **Default:** `DefaultReactionModule`, a 2-layer MLP.
 **Type-checked:** returning something that is not a `UserReactionModule` raises `TypeError`.
 

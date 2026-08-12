@@ -201,12 +201,6 @@ has pulled the submodule in, which makes it worse than a consistent failure.
 **Fix.** Use `bp.plot_process(...)` on the root. Same for `bp.simulation`. And save/load
 are on `bp.serialization`, not the root.
 
-### `'CaseStudy' object has no attribute 'metadata'`
-
-**Why.** `model_predict` takes a `BioProcessCollection`.
-
-**Fix.** `bp.BioProcessCollection(processes=case_study.processes)`.
-
 ## See also
 
 - [Silent failures](silent_failures.md): no exception, wrong answer.

@@ -54,8 +54,8 @@ later.
 }
 ```
 
-`raw_input` accepts a `CaseStudy` **or** a `BioProcessCollection`, as a file or a
-directory. `strict_bp_format_validation` decides whether bp-format validation failures
+`raw_input` accepts a `BioProcessCollection`, as a file or a directory.
+`strict_bp_format_validation` decides whether bp-format validation failures
 stop the run or are reported and tolerated: set it `true` for a dataset you intend to
 publish.
 
