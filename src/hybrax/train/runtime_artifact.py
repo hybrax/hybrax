@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import ctypes
 import errno
 import hashlib
 import json
@@ -498,29 +497,15 @@ def _validate_scales(scales: EstimatedScales, descriptor: RhsOdeDescriptor) -> N
 
 
 def _publish_directory(source: Path, destination: Path) -> None:
-    """Atomically publish a directory without replacing an existing path."""
-    renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
-    renameat2.argtypes = (
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_uint,
-    )
-    renameat2.restype = ctypes.c_int
-    result = renameat2(
-        -100,
-        os.fsencode(source),
-        -100,
-        os.fsencode(destination),
-        1,
-    )
-    if result == 0:
-        return
-    error = ctypes.get_errno()
-    if error == errno.EEXIST:
-        raise FileExistsError(error, os.strerror(error), destination)
-    raise OSError(error, os.strerror(error), destination)
+    """Atomically publish a completed, non-empty artifact directory."""
+    try:
+        os.replace(source, destination)
+    except OSError as error:
+        if error.errno in (errno.EEXIST, errno.ENOTEMPTY):
+            raise FileExistsError(
+                error.errno, os.strerror(error.errno), destination
+            ) from error
+        raise
 
 
 def write_runtime_artifact(
