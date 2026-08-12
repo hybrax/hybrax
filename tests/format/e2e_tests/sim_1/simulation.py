@@ -110,9 +110,10 @@ CONTROL_INDEX = {name: index for index, name in enumerate(CONTROL_NAMES)}
 # whose pseudobatch c* is constant by construction), not real biology. They are full
 # reactor-medium species (see REACTOR_MEDIUM_NAMES below) but have no rate model, so
 # they stay out of KINETIC_REACTOR_NAMES and get a "0" biological_ode derivative on the
-# parser side. The dense c* oracle test uses them as a closed-form, integrator-sourced
-# ground truth for the public ADF / feed-correction carriers (the inert-tracer oracle
-# checks A and C in test_direct_cstar_reintegration.py).
+# parser side. Vestigial now that bp-format's pseudobatch machinery and the dense c*
+# oracle test that consumed them have been removed; left in place pending a dedicated
+# fixture-regeneration pass (removing them means regenerating the checked-in
+# sim_results/ fixture and updating every test that hardcodes their names).
 TRACER_UNFED_NAME = "tracer_unfed"
 TRACER_FED_NAME = "tracer_fed"
 TRACER_REACTOR_NAMES = (TRACER_UNFED_NAME, TRACER_FED_NAME)

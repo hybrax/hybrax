@@ -9,6 +9,11 @@ from typing import Sequence
 
 import numpy as np
 
+SIM_1_DIR = Path(__file__).resolve().parent
+SIM_RESULTS_DIR = SIM_1_DIR / "sim_results"
+SIMULATION_DENSE_OUTPUT = SIM_RESULTS_DIR / "simulation_dense_output.csv"
+EXPECTED_PROCESS_IDS = {"sim_1_run_1", "sim_1_run_2"}
+
 ONLINE_ROW = "online"
 PRE_EVENT_ROW = "pre-event"
 POST_EVENT_ROW = "post-event"
@@ -53,10 +58,10 @@ def segment_times(segment: RealSpaceSegment) -> np.ndarray:
 def segment_spline_times(segment: RealSpaceSegment) -> np.ndarray:
     """Times to use when evaluating left-continuous state/transform splines.
 
-    A post-event row starts the right side of an event. Pseudobatch carriers are
-    stored as left-continuous series, so an exact event-time lookup would select the
-    pre-event branch. Shift only the first timestamp of post-event-start segments to
-    the next representable float toward the following row.
+    A post-event row starts the right side of an event. Left-continuous series
+    evaluated exactly at the event time would select the pre-event branch, so
+    shift only the first timestamp of post-event-start segments to the next
+    representable float toward the following row.
     """
     times = segment_times(segment)
     if segment.starts_after_event:

@@ -167,7 +167,7 @@ be interpreted as dense physical offline sampling.
 
 Sim 1 is mainly a verification fixture for:
 
-- direct pseudobatch `c*` reintegration from sparse offline observations
+- real-space mechanistic RHS reintegration against a known synthetic ground truth
 - explicit reactor/process-variable/volume state ordering
 - intracellular component subtraction from active biomass as rate basis
 - measured-biomass state and `q_biomass` semantics including intracellular mass

@@ -9,8 +9,6 @@ JAX-jit tests use ``eqx.filter_jit`` (the equinox-idiomatic way to JIT
 modules that contain JAX-array fields).
 """
 
-import dataclasses
-
 import equinox as eqx
 import jax.numpy as jnp
 import pytest
@@ -42,7 +40,6 @@ from bp_format.mechanistic import (
     get_control_splines,
     get_process_ordering,
 )
-from bp_format.splines import build_pseudobatch_transform
 from bp_format.time_series import PPoly
 
 
@@ -184,12 +181,6 @@ def _make_batch_process():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
     )
-
-
-def _apply_pseudobatch_transform(process, species_names=("biomass", "glucose")):
-    transform = build_pseudobatch_transform(process, list(species_names))
-    process.pseudobatch_transform = transform
-    return transform
 
 
 # ---------------------------------------------------------------------------
@@ -1110,34 +1101,6 @@ class TestBuildStateSplines:
         for sp_name, sp in state_splines.items():
             val = sp(jnp.array(5.0))
             assert val is not None
-
-    def test_pseudobatch_path(self):
-        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
-        _apply_pseudobatch_transform(process)
-        ordering = get_process_ordering(process)
-        state_splines = build_state_splines(process, ordering)
-        assert set(state_splines.keys()) == {"biomass", "glucose"}
-
-    def test_pseudobatch_feed_correction_requires_c_star(self):
-        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
-        _apply_pseudobatch_transform(process)
-        process.reactor_medium.components["glucose"].c_star_concentration = None
-        ordering = get_process_ordering(process)
-
-        with pytest.raises(ValueError, match="no c_star_concentration"):
-            build_state_splines(process, ordering)
-
-    def test_pseudobatch_feed_correction_requires_c_star_for_unmodeled_component(self):
-        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
-        _apply_pseudobatch_transform(process)
-        process.reactor_medium.components["biomass"].c_star_concentration = None
-        ordering = dataclasses.replace(
-            get_process_ordering(process),
-            name_modeled_RMCs=("glucose",),
-        )
-
-        with pytest.raises(ValueError, match="no matching c_star_concentration"):
-            build_state_splines(process, ordering)
 
 
 # ---------------------------------------------------------------------------

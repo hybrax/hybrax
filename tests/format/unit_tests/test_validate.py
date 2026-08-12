@@ -926,7 +926,7 @@ class TestValidateMeasurementSamplingAlignment:
         ok, msg = validate_measurement_sampling_alignment(process)
         assert ok is False
         assert "biomass" in msg
-        assert "ADF" in msg
+        assert "spline" in msg
 
     def test_large_gap_passes(self):
         """Measurements far from any sampling time — not a misalignment, should pass."""

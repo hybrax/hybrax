@@ -452,7 +452,7 @@ def test_silence_assumptions_suppresses_inflow_fill_notice(caplog):
     with caplog.at_level(logging.INFO, logger="bp_format"):
         process, fm = _process_with_incomplete_feed(silence=True)
     assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
-    assert caplog.records == []
+    assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
 
 
 def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
@@ -478,7 +478,7 @@ def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
                 volume=Volume(initial_volume=1.0, unit="L"),
                 reactor_medium=rm,
             )
-    assert caplog.records == []
+    assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
 
 
 def test_silence_assumptions_restores_state_after_exception():
@@ -515,7 +515,7 @@ def test_density_defaults_are_silent(caplog):
     assert fm.density_unit == "kg/L"
     assert rm.density == 1.0
     assert rm.density_unit == "kg/L"
-    assert caplog.records == []
+    assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
 
 
 def test_format_biological_ode_lines_direct():

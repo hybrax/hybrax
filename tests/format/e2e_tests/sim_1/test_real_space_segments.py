@@ -6,13 +6,14 @@ import pytest
 
 import bp_format as bp
 
-from .cstar_helpers import EXPECTED_PROCESS_IDS, SIMULATION_DENSE_OUTPUT
 from .real_space_segments import (
+    EXPECTED_PROCESS_IDS,
     FERMENTATION_END_ROW,
     OFFLINE_ROW,
     ONLINE_ROW,
     POST_EVENT_ROW,
     PRE_EVENT_ROW,
+    SIMULATION_DENSE_OUTPUT,
     RealSpaceSegment,
     build_real_space_segments,
     dense_rows_by_process,
