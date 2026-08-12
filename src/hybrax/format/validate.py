@@ -420,6 +420,29 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
     return True, f"TimeSeries {label}OK"
 
 
+def validate_mapping_names(process: BioProcess) -> Tuple[bool, str]:
+    """Check that mapping keys match the embedded object names."""
+    errors = []
+
+    def check(mapping, label):
+        errors.extend(
+            f"{label} key {key!r} does not match object name {value.name!r}"
+            for key, value in mapping.items()
+            if key != value.name
+        )
+
+    check(process.reactor_medium.components, "Reactor component")
+    check(process.process_variables, "Process variable")
+    check(process.volume.volume_changes, "Volume change")
+    for key, change in process.volume.volume_changes.items():
+        if isinstance(change, FeedVolumeChange) and change.feed_medium:
+            check(change.feed_medium.components, f"Feed components for {key!r}")
+
+    if errors:
+        return False, "Mapping name mismatches:\n  - " + "\n  - ".join(errors)
+    return True, "Mapping keys match object names — OK"
+
+
 def validate_time_axis(process: BioProcess) -> Tuple[bool, str]:
     """Check that the process time axis starts no later than it ends."""
     axis = process.time_axis
@@ -663,6 +686,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     Checks performed:
     - TimeSeries shape and ordering for every reactor-medium component,
       process variable, volume change, and measured total volume.
+    - Mapping keys match embedded object names.
     - The process time axis starts no later than it ends.
     - Every timestamp falls within the process time-axis bounds.
     - Every volume change uses the process volume unit.
@@ -690,6 +714,10 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
         )
     all_valid = True
     messages: List[str] = []
+
+    ok, msg = validate_mapping_names(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
 
     # --- TimeSeries shape checks ---
     # Reactor medium components

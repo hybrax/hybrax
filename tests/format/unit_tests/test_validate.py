@@ -36,6 +36,7 @@ from bp_format import (
     validate_volume_consistency,
     validate_for_publication,
     validate_cross_process_consistency,
+    validate_mapping_names,
     validate_bounds_against_data,
     validate_augmented_parent_refs,
     validate_biological_ode,
@@ -77,6 +78,95 @@ def _make_process(
         ),
         process_variables=process_variables,
     )
+
+
+# ---------------------------------------------------------------------------
+# validate_mapping_names
+# ---------------------------------------------------------------------------
+
+
+class TestValidateMappingNames:
+    def test_matching_names(self):
+        component = ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=StaticVariable(value=1.0),
+        )
+        variable = ProcessVariable(
+            name="temperature",
+            unit="°C",
+            is_controlled=True,
+            values=StaticVariable(value=30.0),
+        )
+        process = _make_process(
+            reactor_components={"biomass": component},
+            process_variables={"temperature": variable},
+        )
+
+        ok, msg = validate_mapping_names(process)
+
+        assert ok is True
+        assert "OK" in msg
+
+    @pytest.mark.parametrize(
+        ("mapping", "expected"),
+        [
+            ("reactor", "Reactor component key 'wrong'"),
+            ("variable", "Process variable key 'wrong'"),
+            ("volume", "Volume change key 'wrong'"),
+            ("feed", "Feed components for 'feed' key 'wrong'"),
+        ],
+    )
+    def test_mismatched_name(self, mapping, expected):
+        component = ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=StaticVariable(value=1.0),
+        )
+        variable = ProcessVariable(
+            name="temperature",
+            unit="°C",
+            is_controlled=True,
+            values=StaticVariable(value=30.0),
+        )
+        feed = FeedMedium(
+            name="medium",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": FeedMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=0.0),
+                )
+            },
+        )
+        change = FeedVolumeChange(
+            name="feed",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
+            values=_ts([0.0], [0.0]),
+            feed_medium=feed,
+        )
+        process = _make_process(
+            reactor_components={"biomass": component},
+            process_variables={"temperature": variable},
+            volume_changes={"feed": change},
+        )
+
+        target = {
+            "reactor": process.reactor_medium.components,
+            "variable": process.process_variables,
+            "volume": process.volume.volume_changes,
+            "feed": feed.components,
+        }[mapping]
+        target["wrong"] = target.pop(next(iter(target)))
+
+        ok, msg = validate_mapping_names(process)
+
+        assert ok is False
+        assert expected in msg
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +671,25 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
+
+    def test_mismatched_mapping_name_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.reactor_medium.components["wrong"] = (
+            process.reactor_medium.components.pop("biomass")
+        )
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Mapping name mismatches" in message for message in messages)
 
     def test_timestamp_outside_bounds_fails_process(self):
         process = _make_process(
