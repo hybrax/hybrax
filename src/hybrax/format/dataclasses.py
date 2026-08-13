@@ -500,6 +500,8 @@ class BioProcess:
     biological_ode: Optional[BiologicalOde] = None
 
     def __post_init__(self):
+        if self.volume is None:
+            raise ValueError("BioProcess.volume is required")
         if self.biological_ode is None:
             self.biological_ode = _auto_generate_biological_ode(self)
         _fill_missing_inflow_concentrations(self)

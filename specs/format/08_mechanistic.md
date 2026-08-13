@@ -244,14 +244,10 @@ dc_dt = step(c, rates, controls(t), jnp.zeros(0), jnp.zeros(0))
 
 - **Feed composition must be static.** A `TimeSeries` feed concentration raises
   `NotImplementedError`.
-- **Well-mixed CSTR only.** Every species leaves at the same rate through a
-  `Outflow`, so perfusion with cell retention and evaporation (where
-  solutes stay) cannot be expressed.
+- **Well-mixed CSTR only.** Each Outflow uses the reactor concentration, adjusted
+  only by its per-component `retention`; spatial gradients cannot be expressed.
 - **No rate inversion.** Recovering rate values from state splines is not
   implemented.
-
-Design notes on the last two live in [specs/](../specs/README.md); neither has
-code behind it.
 
 ## See also
 

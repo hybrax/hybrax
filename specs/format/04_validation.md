@@ -13,14 +13,45 @@ aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
 — see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-All 14 validators are exported from the package root: `bp.validate_process(...)`.
+All 18 validators are exported from the package root: `bp.validate_process(...)`.
+
+Mapping keys are canonical identifiers. Embedded object names may instead be
+human-facing or source labels, so validation does not require keys and names to
+match.
 
 ## Individual validators
+
+### `validate_discrete_events(process)`
+
+When discrete events are present, requires their timestamps to be one-dimensional,
+strictly increasing and unique, and within the inclusive process time axis.
+Bounds comparisons allow a relative tolerance of `1e-7` to accommodate legacy
+float32 timestamps widened during deserialization. Optional event labels must
+have the same length as the timestamps.
 
 ### `validate_timeseries_shape(ts, name="")`
 
 `times` and `values` are both 1-D, the same length, and `times` is strictly
 increasing (no duplicates). Fails if the series has no discrete samples at all.
+`validate_process` applies this to reactor-medium concentrations, process
+variables, volume changes, and measured total volume.
+
+### `validate_time_axis(process)`
+
+Requires `process.time_axis.start <= process.time_axis.end`. Equal bounds are
+valid.
+
+### `validate_timestamp_bounds(process)`
+
+Every timestamp falls inclusively between `process.time_axis.start` and
+`process.time_axis.end`. This covers reactor-medium concentrations, process
+variables, volume changes, and measured total volume. Bounds comparisons allow
+`1e-7 * max(1, abs(start), abs(end))` to
+accommodate legacy float32 timestamps widened during deserialization. Timestamps
+are assumed to use `process.time_axis.unit`; no conversion is performed. This
+per-process check is separate from cross-process time-axis consistency. An
+inverted time axis skips this policy-dependent check; the preceding
+`validate_time_axis` check reports the structural error.
 
 ### `validate_volume_change_sign(volume_change)`
 
@@ -30,11 +61,19 @@ increasing (no duplicates). Fails if the series has no discrete samples at all.
 
 Uses a 1e-12 tolerance so exact zeros and float noise pass.
 
+### `validate_volume_units(process)`
+
+Every volume change uses exactly the same unit string as `process.volume.unit`.
+Units are not parsed or converted, and no dimensional analysis is performed.
+
 ### `validate_volume_change_states(process)`
 
 For every volume change that adds volume, checks that its `feed_medium` defines
 a concentration for **every dynamic species** in the reactor medium (any
-component whose concentration is a `TimeSeries`).
+component whose concentration is a `TimeSeries`) and uses the same unit string.
+Units are compared exactly; they are not parsed or converted, and no dimensional
+analysis is performed. Feed concentrations may be static even when the reactor
+concentration is dynamic.
 
 A missing entry is ambiguous — did the feed really contain none of that species,
 or was it just not recorded? The mass balance needs the answer, so state it
@@ -123,7 +162,13 @@ structure against the first process:
 
 - same reactor components, each with the same value type and unit
 - same process variables, each with the same value type and unit
+- same volume unit
 - same volume-change names and units
+- same time-axis unit and time reference
+
+All units and the time reference are compared as exact strings. Units are not
+parsed or converted, and no dimensional analysis is performed. Time-axis start
+and end may differ.
 
 Collections with 0 or 1 process pass trivially. This is the check
 `validate_for_publication` composes to build its `"__consistency__"` report
@@ -133,7 +178,8 @@ entry; call it directly for just the structural-consistency signal.
 
 Initial volume plus all volume changes should land within 5 % of the measured
 final volume. Returns `(bool, str, float)` — the third element is the net volume
-change.
+change. This numeric check assumes compatible units; call `validate_volume_units`
+first (or use `validate_process`) to check exact unit-string coherence.
 
 Continuous changes contribute `values[-1] - values[0]` (cumulative); discrete
 changes contribute `sum(values)`. Only the endpoints are used, because this runs
@@ -156,18 +202,25 @@ automatically by `validate_for_publication`.
 
 Runs, in order:
 
-1. `validate_timeseries_shape` on every reactor component, process variable, and
-   volume change carrying a `TimeSeries`
-2. `validate_volume_change_sign` on every volume change
-3. `validate_volume_change_states`
-4. `validate_biomass_in_reactor_medium`
-5. `validate_measurement_sampling_alignment`
-6. `validate_bounds`
-7. `validate_bounds_against_data`
-8. `validate_biological_ode`
+1. `validate_discrete_events`
+2. `validate_timeseries_shape` on reactor components, process variables, volume
+   changes, and measured total volume carrying a `TimeSeries`
+3. `validate_time_axis`
+4. `validate_timestamp_bounds`
+5. `validate_volume_units`
+6. `validate_volume_change_sign` on every volume change
+7. `validate_volume_change_states`
+8. `validate_biomass_in_reactor_medium`
+9. `validate_measurement_sampling_alignment`
+10. `validate_bounds`
+11. `validate_bounds_against_data`
+12. `validate_biological_ode`
 
 Returns one message per check — including the passing ones, so the output reads
 as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.
+Required structure such as `BioProcess.volume` is enforced when a process is
+created or deserialized; missing required fields raise rather than becoming
+validation results.
 
 `validate_volume_consistency` is **not** included (it needs a `final_volume`
 argument you have to supply).

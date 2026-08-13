@@ -54,14 +54,18 @@ if TYPE_CHECKING:
         validate_bounds,
         validate_bounds_against_data,
         validate_cross_process_consistency,
+        validate_discrete_events,
         validate_for_publication,
         validate_measurement_sampling_alignment,
         validate_outflow_retention,
         validate_process,
+        validate_time_axis,
         validate_timeseries_shape,
+        validate_timestamp_bounds,
         validate_volume_change_sign,
         validate_volume_change_states,
         validate_volume_consistency,
+        validate_volume_units,
     )
 
 _EXPORT_MODULES = {
@@ -97,9 +101,13 @@ _EXPORT_MODULES = {
         "plot_collection",
     ),
     ".validate": (
+        "validate_time_axis",
         "validate_timeseries_shape",
+        "validate_discrete_events",
+        "validate_timestamp_bounds",
         "validate_volume_change_sign",
         "validate_volume_change_states",
+        "validate_volume_units",
         "validate_outflow_retention",
         "validate_biomass_in_reactor_medium",
         "validate_measurement_sampling_alignment",

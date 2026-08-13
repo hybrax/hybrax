@@ -78,13 +78,14 @@ def _require_reactor_volume_above_threshold(
     volume: jnp.ndarray,
     *,
     context: str,
+    V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
 ) -> jnp.ndarray:
-    """Fail when reactor volume reaches a physically invalid near-zero value."""
+    """Fail when reactor volume reaches its minimum valid value."""
     volume_arr = jnp.asarray(volume)
     return eqx.error_if(
         volume_arr,
-        jnp.any(volume_arr <= _MIN_REACTOR_VOLUME),
-        f"{context} reached zero or near-zero reactor volume.",
+        jnp.any(volume_arr <= V_min),
+        f"{context} reached minimum reactor volume.",
     )
 
 
@@ -139,6 +140,7 @@ def _apply_feed_dilution(
     retention_controlled_Outflows: jnp.ndarray,
     retention_modeled_Outflows: jnp.ndarray,
     n_RMCs: int,
+    V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Reactor-component mass balance from feed/sample flows + ``dV/dt``.
 
@@ -168,7 +170,7 @@ def _apply_feed_dilution(
       of retention — retention changes what leaves with the flow, not how
       much volume the flow removes.
     """
-    V = _require_reactor_volume_above_threshold(V, context="ODE state")
+    V = _require_reactor_volume_above_threshold(V, context="ODE state", V_min=V_min)
 
     total_in = jnp.sum(u_controlled_Inflows) + jnp.sum(f_modeled_Inflows)  # >= 0
     total_out = -(jnp.sum(u_controlled_Outflows) + jnp.sum(f_modeled_Outflows))  # >= 0
@@ -192,11 +194,13 @@ def _apply_feed_dilution(
     if Cin_controlled_Inflows.shape[0] > 0:
         addition = (
             addition
-            + jnp.sum(u_controlled_Inflows[:, None] * Cin_controlled_Inflows, axis=0) / V
+            + jnp.sum(u_controlled_Inflows[:, None] * Cin_controlled_Inflows, axis=0)
+            / V
         )
     if Cin_modeled_Inflows.shape[0] > 0:
         addition = (
-            addition + jnp.sum(f_modeled_Inflows[:, None] * Cin_modeled_Inflows, axis=0) / V
+            addition
+            + jnp.sum(f_modeled_Inflows[:, None] * Cin_modeled_Inflows, axis=0) / V
         )
 
     return dilution + addition, dV
@@ -302,6 +306,8 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     - Every continuous ``Inflow`` must define ``feed_medium`` and
       every component in that medium must exist in
       ``reactor_medium.components``.
+    - Every ``Outflow.retention`` key must name a reactor component, every
+      value must be in ``[0, 1]``, and discrete Outflows cannot set retention.
     - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``
       value carrier (static PVs must be ``is_controlled=True``).
     - The ``BiologicalOde.algebraic`` graph must be acyclic.
@@ -330,45 +336,33 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
                 "in name_controlled_PVs, not name_modeled_PVs."
             )
 
-    # ---- Volume changes — partition by Inflow/Outflow × controlled/modeled, alphabetical
+    # ---- Volume changes: Inflow/Outflow × controlled/modeled, alphabetical
     name_modeled_Inflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if (
-                isinstance(vc, Inflow)
-                and vc.is_continuous
-                and not vc.is_controlled
-            )
+            if (isinstance(vc, Inflow) and vc.is_continuous and not vc.is_controlled)
         )
     )
     name_controlled_Inflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if isinstance(vc, Inflow)
-            and vc.is_continuous
-            and vc.is_controlled
+            if isinstance(vc, Inflow) and vc.is_continuous and vc.is_controlled
         )
     )
     name_modeled_Outflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if (
-                isinstance(vc, Outflow)
-                and vc.is_continuous
-                and not vc.is_controlled
-            )
+            if (isinstance(vc, Outflow) and vc.is_continuous and not vc.is_controlled)
         )
     )
     name_controlled_Outflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if isinstance(vc, Outflow)
-            and vc.is_continuous
-            and vc.is_controlled
+            if isinstance(vc, Outflow) and vc.is_continuous and vc.is_controlled
         )
     )
 
@@ -377,9 +371,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     for vc_name in name_modeled_Inflows + name_controlled_Inflows:
         vc = process.volume.volume_changes[vc_name]
         if vc.feed_medium is None:
-            raise ValueError(
-                f"Inflow {vc_name!r} has no feed_medium defined."
-            )
+            raise ValueError(f"Inflow {vc_name!r} has no feed_medium defined.")
         unknown = [c for c in vc.feed_medium.components.keys() if c not in rmc_set]
         if unknown:
             raise ValueError(
@@ -388,18 +380,32 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
                 "components must exist in process.reactor_medium.components."
             )
 
-    # Discrete-Outflow retention validation: retention is only ever consulted
-    # for continuous Outflows (name_modeled_Outflows/name_controlled_Outflows
-    # above are both is_continuous-filtered), so a non-empty retention on a
-    # discrete Outflow would otherwise be silently ignored rather than doing
-    # anything — fail fast instead.
+    # Validate retention here because mechanistic factories must not silently
+    # turn invalid component names into zero-retention rows.
     for vc_name, vc in process.volume.volume_changes.items():
-        if isinstance(vc, Outflow) and not vc.is_continuous and vc.retention:
+        if not isinstance(vc, Outflow) or not vc.retention:
+            continue
+        if not vc.is_continuous:
             raise ValueError(
                 f"Outflow {vc_name!r} sets retention {vc.retention!r} but is "
                 "discrete (is_continuous=False). Retention is only "
                 "implemented for continuous Outflows; setting it on a "
                 "discrete Outflow would be silently ignored by the RHS ODE."
+            )
+        unknown = [name for name in vc.retention if name not in rmc_set]
+        if unknown:
+            raise ValueError(
+                f"Outflow {vc_name!r} retention references unknown reactor "
+                f"component(s): {unknown}."
+            )
+        out_of_range = {
+            name: value
+            for name, value in vc.retention.items()
+            if not 0.0 <= value <= 1.0
+        }
+        if out_of_range:
+            raise ValueError(
+                f"Outflow {vc_name!r} retention value(s) out of [0, 1]: {out_of_range}."
             )
 
     # ---- Biological ODE — rates (insertion order) and algebraic (topo-sorted)
@@ -607,9 +613,7 @@ def _build_retention(
             continue
         for j, sp_name in enumerate(name_modeled_RMCs):
             if sp_name in vc.retention:
-                retention = retention.at[k, j].set(
-                    float(vc.retention[sp_name])
-                )
+                retention = retention.at[k, j].set(float(vc.retention[sp_name]))
     return retention
 
 
@@ -675,6 +679,7 @@ class RhsOde(eqx.Module):
         u: jnp.ndarray,
         f_modeled_Inflows: jnp.ndarray,
         f_modeled_Outflows: jnp.ndarray,
+        V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
     ) -> jnp.ndarray:
         n_RMCs = len(self.name_modeled_RMCs)
         n_PVs = len(self.name_modeled_PVs)
@@ -718,6 +723,7 @@ class RhsOde(eqx.Module):
             self.retention_controlled_Outflows,
             self.retention_modeled_Outflows,
             n_RMCs,
+            V_min,
         )
 
         dc_RMCs = biol_dc[:n_RMCs] + feed_term

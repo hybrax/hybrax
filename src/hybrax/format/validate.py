@@ -16,6 +16,15 @@ from .dataclasses import (
 )
 
 
+_VOLUME_SIGN_EPS = 1e-12
+_TIMESTAMP_BOUNDS_RTOL = 1e-7
+
+
+def _timestamp_bounds_tolerance(start: float, end: float) -> float:
+    """Allow for legacy float32 timestamps widened during deserialization."""
+    return _TIMESTAMP_BOUNDS_RTOL * max(1.0, abs(start), abs(end))
+
+
 def _check_bounds_tuple(bounds: Bounds, label: str) -> Tuple[bool, str]:
     """Sanity-check a bounds tuple: lo <= hi when both are set."""
     if bounds is None:
@@ -68,7 +77,9 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     # Name-collision checks
     overlap_rate_state = rate_names & state_names
     if overlap_rate_state:
-        errors.append(f"rate names collide with state names: {sorted(overlap_rate_state)}")
+        errors.append(
+            f"rate names collide with state names: {sorted(overlap_rate_state)}"
+        )
     overlap_rate_algebraic = rate_names & algebraic_names
     if overlap_rate_algebraic:
         errors.append(
@@ -82,12 +93,14 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     overlap_algebraic_state = algebraic_names & state_names
     if overlap_algebraic_state:
         errors.append(
-            f"algebraic names collide with state names: {sorted(overlap_algebraic_state)}"
+            "algebraic names collide with state names: "
+            f"{sorted(overlap_algebraic_state)}"
         )
     overlap_algebraic_ctrl = algebraic_names & controlled_pv_names
     if overlap_algebraic_ctrl:
         errors.append(
-            f"algebraic names collide with controlled PV names: {sorted(overlap_algebraic_ctrl)}"
+            "algebraic names collide with controlled PV names: "
+            f"{sorted(overlap_algebraic_ctrl)}"
         )
 
     # Coverage of derivatives
@@ -96,7 +109,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     if missing:
         errors.append(
             f"derivatives missing entries for dynamic state(s): {sorted(missing)}. "
-            "Use \"0\" to declare no biological dynamics."
+            'Use "0" to declare no biological dynamics.'
         )
     extra = deriv_keys - state_names
     if extra:
@@ -123,7 +136,9 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
         return expr
 
     algebraic_exprs = {n: _parse(n, e, "algebraic") for n, e in bo.algebraic.items()}
-    derivative_exprs = {n: _parse(n, e, "derivatives") for n, e in bo.derivatives.items()}
+    derivative_exprs = {
+        n: _parse(n, e, "derivatives") for n, e in bo.derivatives.items()
+    }
 
     # Unit consistency: a sympy ``Add`` whose operands collectively reference
     # two or more dynamic states (reactor components or uncontrolled PVs) must
@@ -131,10 +146,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     # when biomass is g/L and product is mg/L (raw numerical subtraction would
     # be meaningless). This generalises the legacy intracellular unit check.
     def _state_unit(name: str) -> Optional[str]:
-        if (
-            process.reactor_medium
-            and name in process.reactor_medium.components
-        ):
+        if process.reactor_medium and name in process.reactor_medium.components:
             return process.reactor_medium.components[name].unit
         pv = process.process_variables.get(name)
         return pv.unit if pv is not None else None
@@ -159,7 +171,8 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
 
     # Cycle detection on algebraic-variable graph
     deps = {
-        n: {str(s) for s in (expr.free_symbols if expr is not None else set())} & algebraic_names
+        n: {str(s) for s in (expr.free_symbols if expr is not None else set())}
+        & algebraic_names
         for n, expr in algebraic_exprs.items()
     }
     visiting: set = set()
@@ -167,7 +180,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
 
     def _dfs(node: str, stack: List[str]) -> bool:
         if node in visiting:
-            cycle = stack[stack.index(node):] + [node]
+            cycle = stack[stack.index(node) :] + [node]
             errors.append(f"algebraic dependency cycle: {' -> '.join(cycle)}")
             return False
         if node in visited:
@@ -236,7 +249,8 @@ def validate_biological_ode_equivalence(
             )
         if dict(bo.derivatives) != dict(ref_bo.derivatives):
             errors.append(
-                f"Process '{name}' biological_ode.derivatives differs from '{first_name}'"
+                f"Process '{name}' biological_ode.derivatives differs from "
+                f"'{first_name}'"
             )
         if dict(bo.rates) != dict(ref_bo.rates):
             errors.append(
@@ -262,17 +276,18 @@ def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
         ok, msg = _check_bounds_tuple(pv.bounds, f"process variable {pname!r}")
         if not ok:
             errors.append(msg)
-    if process.volume is not None:
-        ok, msg = _check_bounds_tuple(process.volume.bounds, "volume")
-        if not ok:
-            errors.append(msg)
+    ok, msg = _check_bounds_tuple(process.volume.bounds, "volume")
+    if not ok:
+        errors.append(msg)
     if errors:
         bullets = "\n  - ".join(errors)
         return False, f"bounds invalid:\n  - {bullets}"
     return True, "bounds ok"
 
 
-def _check_data_against_bounds(value: object, bounds: Bounds, label: str) -> Tuple[bool, str]:
+def _check_data_against_bounds(
+    value: object, bounds: Bounds, label: str
+) -> Tuple[bool, str]:
     """Compare a raw measured value (StaticVariable or TimeSeries) against its
     own declared Bounds tuple; report count/min/max of violations."""
     if bounds is None or (bounds[0] is None and bounds[1] is None):
@@ -341,7 +356,7 @@ def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
         if not ok:
             errors.append(msg)
 
-    if process.volume is not None and process.volume.total_volume is not None:
+    if process.volume.total_volume is not None:
         ok, msg = _check_data_against_bounds(
             process.volume.total_volume, process.volume.bounds, "volume"
         )
@@ -396,6 +411,8 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
         errors.append(f"values must be 1-D, got shape {vals.shape}")
 
     if tp.ndim == 1 and vals.ndim == 1:
+        if tp.shape[0] == 0:
+            errors.append("times and values must not be empty")
         if tp.shape[0] != vals.shape[0]:
             errors.append(
                 f"times length ({tp.shape[0]}) does not match "
@@ -411,6 +428,93 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
             f"  - {e}" for e in errors
         )
     return True, f"TimeSeries {label}OK"
+
+
+def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
+    """Check event time shape, ordering, bounds, and label count."""
+    events = process.discrete_events
+    if events is None:
+        return True, "No discrete events — check skipped"
+
+    times = jnp.asarray(events.times)
+    errors = []
+    if times.ndim != 1:
+        errors.append(f"times must be 1-D, got shape {times.shape}")
+    else:
+        if times.shape[0] > 1 and not bool(jnp.all(jnp.diff(times) > 0)):
+            errors.append("times are not strictly monotonically increasing")
+
+        start = process.time_axis.start
+        end = process.time_axis.end
+        tolerance = _timestamp_bounds_tolerance(start, end)
+        outside = ~((times >= start - tolerance) & (times <= end + tolerance))
+        count = int(jnp.sum(outside))
+        if count:
+            errors.append(f"{count} timestamp(s) outside [{start}, {end}]")
+
+        if events.labels is not None and len(events.labels) != times.shape[0]:
+            errors.append(
+                f"labels length ({len(events.labels)}) does not match "
+                f"times length ({times.shape[0]})"
+            )
+
+    if errors:
+        return False, "Discrete events invalid:\n  - " + "\n  - ".join(errors)
+    return True, "Discrete events valid — OK"
+
+
+def validate_time_axis(process: BioProcess) -> Tuple[bool, str]:
+    """Check that the process time axis starts no later than it ends."""
+    axis = process.time_axis
+    if axis.start > axis.end:
+        return False, (
+            f"Time axis invalid: start {axis.start} is after end {axis.end} {axis.unit}"
+        )
+    return True, f"Time axis [{axis.start}, {axis.end}] {axis.unit} — OK"
+
+
+def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
+    """Check timestamps against valid inclusive time-axis bounds.
+
+    Skip this policy-dependent check when the time axis itself is inverted.
+    """
+    axis_ok, _ = validate_time_axis(process)
+    if not axis_ok:
+        return True, "Timestamp bounds check skipped — time axis invalid"
+
+    series = []
+    if process.reactor_medium:
+        for name, component in process.reactor_medium.components.items():
+            if _is_dynamic_series(component.concentration):
+                series.append((f"reactor component {name!r}", component.concentration))
+
+    for name, variable in process.process_variables.items():
+        if _is_dynamic_series(variable.values):
+            series.append((f"process variable {name!r}", variable.values))
+
+    for name, change in process.volume.volume_changes.items():
+        if _is_dynamic_series(change.values):
+            series.append((f"volume change {name!r}", change.values))
+
+    if _is_dynamic_series(process.volume.total_volume):
+        series.append(("measured total volume", process.volume.total_volume))
+
+    start = process.time_axis.start
+    end = process.time_axis.end
+    tolerance = _timestamp_bounds_tolerance(start, end)
+    errors = []
+    for label, time_series in series:
+        times = jnp.asarray(time_series.times)
+        invalid = ~((times >= start - tolerance) & (times <= end + tolerance))
+        count = int(jnp.sum(invalid))
+        if count:
+            errors.append(f"{label}: {count} timestamp(s) outside [{start}, {end}]")
+
+    if errors:
+        return False, "Timestamp bounds invalid:\n  - " + "\n  - ".join(errors)
+    return True, (
+        f"All timestamps within [{start}, {end}] {process.time_axis.unit} — OK"
+    )
 
 
 def validate_volume_change_sign(
@@ -431,25 +535,26 @@ def validate_volume_change_sign(
         A tuple ``(is_valid, message)``.
     """
     vals = jnp.asarray(volume_change.values.values)
-    eps = 1e-12
 
     if isinstance(volume_change, Inflow):
-        if bool(jnp.all(vals >= -eps)):
+        if bool(jnp.all(vals >= -_VOLUME_SIGN_EPS)):
             return True, (
-                f"Volume change '{volume_change.name}' (Inflow) has all non-negative values — OK"
+                f"Volume change '{volume_change.name}' (Inflow) has all "
+                "non-negative values — OK"
             )
         return False, (
-            f"Volume change '{volume_change.name}' (Inflow) contains negative values. "
-            "Feed volume changes must have all values >= 0."
+            f"Volume change '{volume_change.name}' (Inflow) contains negative "
+            "values. Inflows must have all values >= 0."
         )
     elif isinstance(volume_change, Outflow):
-        if bool(jnp.all(vals <= eps)):
+        if bool(jnp.all(vals <= _VOLUME_SIGN_EPS)):
             return True, (
-                f"Volume change '{volume_change.name}' (Outflow) has all non-positive values — OK"
+                f"Volume change '{volume_change.name}' (Outflow) has all "
+                "non-positive values — OK"
             )
         return False, (
-            f"Volume change '{volume_change.name}' (Outflow) contains positive values. "
-            "Sample volume changes must have all values <= 0."
+            f"Volume change '{volume_change.name}' (Outflow) contains positive "
+            "values. Outflows must have all values <= 0."
         )
     else:
         # Fallback for unknown types
@@ -461,7 +566,8 @@ def validate_volume_change_sign(
             return True, (f"Volume change '{volume_change.name}' is purely {sign} — OK")
         return False, (
             f"Volume change '{volume_change.name}' contains mixed positive and "
-            "negative values. Each volume change must be purely positive or purely negative."
+            "negative values. Each volume change must be purely positive or purely "
+            "negative."
         )
 
 
@@ -471,7 +577,7 @@ def validate_volume_change_states(
     """
     For every *positive* volume change, verify that all dynamic state
     variables defined in the reactor medium are also present as components
-    in the referenced feed medium of that volume change.
+    in the referenced feed medium and use the same unit string.
 
     A "state variable" is a reactor-medium component whose concentration is
     a TimeSeries (i.e. it is measured dynamically over time), as opposed to a
@@ -482,7 +588,8 @@ def validate_volume_change_states(
 
     Returns:
         A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when
-        every positive volume change covers all dynamic state variables.
+        every positive volume change covers all dynamic state variables with
+        matching unit strings.
     """
     # Collect names of dynamic state variables in the reactor medium
     state_names: List[str] = []
@@ -501,13 +608,13 @@ def validate_volume_change_states(
 
     for vc_name, vc in process.volume.volume_changes.items():
         vals = jnp.asarray(vc.values.values)
-        all_non_negative = bool(jnp.all(vals >= 0))
+        all_non_negative = bool(jnp.all(vals >= -_VOLUME_SIGN_EPS))
         has_positive = bool(jnp.any(vals > 0))
         is_positive = all_non_negative and has_positive
         if not is_positive:
             continue  # only check positive (inflowing) volume changes
 
-        # Check that the feed medium defines all state variables
+        # Check that the feed medium defines all state variables with matching units
         if not isinstance(vc, Inflow):
             continue  # Outflow has no feed medium
         feed = vc.feed_medium
@@ -525,11 +632,26 @@ def validate_volume_change_states(
                 f"feed components for state variable(s): {missing}"
             )
 
+        for state_name in state_names:
+            if state_name not in feed_component_names:
+                continue
+            reactor_unit = process.reactor_medium.components[state_name].unit
+            feed_unit = feed.components[state_name].unit
+            if feed_unit != reactor_unit:
+                errors.append(
+                    f"Volume change '{vc_name}' (feed: '{feed.name}') component "
+                    f"'{state_name}' uses unit {feed_unit!r}; reactor medium uses "
+                    f"{reactor_unit!r}."
+                )
+
     if errors:
         return False, "State-variable/feed consistency errors:\n" + "\n".join(
             f"  - {e}" for e in errors
         )
-    return True, "All positive volume changes cover all dynamic state variables — OK"
+    return True, (
+        "All positive volume changes cover all dynamic state variables with matching "
+        "units — OK"
+    )
 
 
 def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
@@ -574,9 +696,7 @@ def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
                     f"unknown reactor component(s): {unknown}."
                 )
             out_of_range = {
-                k: v
-                for k, v in vc.retention.items()
-                if not (0.0 <= v <= 1.0)
+                k: v for k, v in vc.retention.items() if not (0.0 <= v <= 1.0)
             }
             if out_of_range:
                 errors.append(
@@ -621,19 +741,40 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
+def validate_volume_units(process: BioProcess) -> Tuple[bool, str]:
+    """Require every volume change to use the process volume unit."""
+    mismatches = [
+        f"{name!r} uses {change.unit!r}"
+        for name, change in process.volume.volume_changes.items()
+        if change.unit != process.volume.unit
+    ]
+    if mismatches:
+        return False, (
+            f"Volume changes must use volume unit {process.volume.unit!r}: "
+            + ", ".join(mismatches)
+        )
+    return True, f"Volume changes use volume unit {process.volume.unit!r} — OK"
+
+
 def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     """
     Run all available validation checks on a single BioProcess.
 
-    Checks performed:
-    - TimeSeries shape and ordering for every reactor-medium component and
-      process variable that carries a TimeSeries.
+    Checks performed, in order:
+    - Discrete-event time shape, ordering, bounds, and label count.
+    - TimeSeries shape and ordering for every reactor-medium component,
+      process variable, volume change, and measured total volume.
+    - The process time axis starts no later than it ends.
+    - Every timestamp falls within the process time-axis bounds.
+    - Every volume change uses the process volume unit.
     - Sign consistency for every volume change.
     - State-variable / feed-medium coverage for positive volume changes.
     - Outflow ``retention`` keys/values (:func:`validate_outflow_retention`).
     - Presence of a ``biomass`` component in the reactor medium.
-    - Measured data falls within its own declared ``Bounds``
-      (:func:`validate_bounds_against_data`).
+    - Measurement/sampling timestamp alignment.
+    - Bounds tuple sanity.
+    - Measured data falls within its own declared ``Bounds``.
+    - Biological ODE structure.
 
     Args:
         process: BioProcess object to validate.
@@ -654,6 +795,10 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     all_valid = True
     messages: List[str] = []
 
+    ok, msg = validate_discrete_events(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
     # --- TimeSeries shape checks ---
     # Reactor medium components
     if process.reactor_medium:
@@ -671,13 +816,34 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
             all_valid = all_valid and ok
 
     # Volume changes
-    if process.volume and process.volume.volume_changes:
-        for vc_name, vc in process.volume.volume_changes.items():
-            if vc.values is not None:
-                ok, msg = validate_timeseries_shape(vc.values, name=vc_name)
-                messages.append(msg)
-                all_valid = all_valid and ok
+    for vc_name, vc in process.volume.volume_changes.items():
+        if vc.values is not None:
+            ok, msg = validate_timeseries_shape(vc.values, name=vc_name)
+            messages.append(msg)
+            all_valid = all_valid and ok
 
+    # Measured total volume
+    if _is_dynamic_series(process.volume.total_volume):
+        ok, msg = validate_timeseries_shape(
+            process.volume.total_volume, name="measured total volume"
+        )
+        messages.append(msg)
+        all_valid = all_valid and ok
+
+    # --- Time-axis checks ---
+    ok, msg = validate_time_axis(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    ok, msg = validate_timestamp_bounds(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    ok, msg = validate_volume_units(process)
+    messages.append(msg)
+    all_valid = all_valid and ok
+
+    if process.volume.volume_changes:
         # --- Volume change sign checks ---
         for vc_name, vc in process.volume.volume_changes.items():
             if vc.values is not None:
@@ -755,8 +921,14 @@ def validate_measurement_sampling_alignment(
     sampling_times_list: List[float] = []
     if process.volume and process.volume.volume_changes:
         for vc in process.volume.volume_changes.values():
-            if isinstance(vc, Outflow) and _is_dynamic_series(vc.values):
-                sampling_times_list.extend(float(t) for t in jnp.asarray(vc.values.times))
+            if (
+                isinstance(vc, Outflow)
+                and not vc.is_continuous
+                and _is_dynamic_series(vc.values)
+            ):
+                sampling_times_list.extend(
+                    float(t) for t in jnp.asarray(vc.values.times)
+                )
 
     if not sampling_times_list:
         return True, "No sampling events — measurement/sampling alignment check skipped"
@@ -764,7 +936,10 @@ def validate_measurement_sampling_alignment(
     sampling_times = jnp.array(sorted(sampling_times_list))
     proc_length = float(process.time_axis.end - process.time_axis.start)
     if proc_length <= 0:
-        return True, "Process length is zero — measurement/sampling alignment check skipped"
+        return (
+            True,
+            "Process length is zero — measurement/sampling alignment check skipped",
+        )
     abs_threshold = rel_threshold * proc_length
 
     warnings: List[str] = []
@@ -806,9 +981,9 @@ def validate_volume_consistency(
     is consistent with the expected final volume. It handles both continuous
     (cumulative time series) and discrete volume changes.
 
-    Note: as these values may be on different time-scale and this check is supposed to be
-    run _before_ any modeling or spline interpolation happens, here only the last time points
-    are considered.
+    Note: as these values may be on different time-scale and this check is
+    supposed to be run _before_ any modeling or spline interpolation happens,
+    here only the last time points are considered.
 
     Args:
         process: BioProcess object whose volume changes are validated.
@@ -880,7 +1055,9 @@ def validate_cross_process_consistency(
       type (``TimeSeries`` or ``StaticVariable``) and unit.
     - The same process-variable names, each with the same value type
       (``TimeSeries`` or ``StaticVariable``) and unit.
+    - The same volume unit.
     - The same volume-change names and units.
+    - The same time-axis unit and reference. Start and end may differ.
 
     Collections with zero or one process trivially pass.
 
@@ -914,17 +1091,33 @@ def validate_cross_process_consistency(
 
     def _vc_signature(process: BioProcess) -> Dict[str, str]:
         """Map each volume change name to its unit."""
-        if not process.volume or not process.volume.volume_changes:
-            return {}
         return {name: vc.unit for name, vc in process.volume.volume_changes.items()}
 
     ref_reactor = _reactor_signature(first_process)
     ref_pv = _pv_signature(first_process)
+    ref_volume_unit = first_process.volume.unit
     ref_vc = _vc_signature(first_process)
+    ref_time_axis = (
+        first_process.time_axis.unit,
+        first_process.time_axis.time_reference,
+    )
 
     for proc_name, process in processes.items():
         if proc_name == first_name:
             continue
+
+        time_axis = (process.time_axis.unit, process.time_axis.time_reference)
+        if time_axis != ref_time_axis:
+            consistency_errors.append(
+                f"Process '{proc_name}' time axis differs from '{first_name}': "
+                f"expected {ref_time_axis}, got {time_axis}"
+            )
+
+        if process.volume.unit != ref_volume_unit:
+            consistency_errors.append(
+                f"Process '{proc_name}' volume unit differs from '{first_name}': "
+                f"expected {ref_volume_unit!r}, got {process.volume.unit!r}"
+            )
 
         reactor_sig = _reactor_signature(process)
         if reactor_sig != ref_reactor:

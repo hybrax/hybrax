@@ -231,6 +231,20 @@ def test_volume_with_changes():
 # ---------------------------------------------------------------------------
 
 
+def test_bioprocess_requires_volume():
+    with pytest.raises(ValueError, match="BioProcess.volume is required"):
+        BioProcess(
+            metadata=BioProcessMetadata(name="batch_001", process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+            ),
+            volume=None,  # type: ignore[arg-type]
+            reactor_medium=ReactorMedium(
+                name="medium", density=1.0, density_unit="kg/L"
+            ),
+        )
+
+
 def test_bioprocess_minimal():
     process = BioProcess(
         metadata=BioProcessMetadata(name="batch_001", process_type="batch"),

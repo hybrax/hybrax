@@ -399,6 +399,24 @@ def test_load_process_collection_rejects_invalid_structure(tmp_path, document, m
         load_process_collection(path)
 
 
+@pytest.mark.parametrize("volume_payload", ["missing", None, {}])
+def test_load_process_collection_requires_volume(
+    sample_collection, tmp_path, volume_payload
+):
+    path = tmp_path / "collection.json"
+    save_process_collection(sample_collection, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    process = document["processes"]["fed_batch_001"]
+    if volume_payload == "missing":
+        del process["volume"]
+    else:
+        process["volume"] = volume_payload
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="BioProcess.volume is required"):
+        load_process_collection(path)
+
+
 def test_load_process_collection_validates_suffix_and_top_level_key_order(
     sample_collection, tmp_path
 ):
@@ -908,7 +926,9 @@ def test_rmc_bounds_default_missing_key_and_explicit_unbounded_roundtrip(
             ].values()
         )
         loaded_components = (
-            load_process_collection(path).processes["fed_batch_001"].reactor_medium.components
+            load_process_collection(path)
+            .processes["fed_batch_001"]
+            .reactor_medium.components
         )
         assert loaded_components["glucose"].bounds == (None, None)
         assert loaded_components["biomass"].bounds == (0.0, None)

@@ -527,6 +527,15 @@ class TestRhsOde:
         dc = rhs(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
         assert dc.shape == (3,)  # 2 RMCs + 0 PVs + V
 
+    def test_custom_minimum_volume(self):
+        process = _make_process()
+        rhs = build_rhs_ode(process)
+        c = jnp.array([1.0, 5.0, 0.5])
+        rates = jnp.zeros(2)
+
+        with pytest.raises(Exception, match="minimum reactor volume"):
+            rhs(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), V_min=0.5)
+
     def test_dV_from_Inflow(self):
         process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         rhs = build_rhs_ode(process)
@@ -709,48 +718,88 @@ class TestOutflowRetention:
         any reintroduction of a spurious total_out term in the dilution formula."""
         rm = ReactorMedium(
             name="medium",
-            components={"glucose": ReactorMediumComponent(
-                name="glucose", unit="g/L", concentration=_ts([0.0, 1.0], [5.0, 5.0])
-            )},
+            components={
+                "glucose": ReactorMediumComponent(
+                    name="glucose",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [5.0, 5.0]),
+                )
+            },
         )
         process = BioProcess(
             metadata=BioProcessMetadata(name="canary", process_type="continuous"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-            volume=Volume(initial_volume=2.0, unit="L", volume_changes={
-                "outflow": Outflow(name="outflow", unit="L", is_controlled=False,
-                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -1.0])),
-            }),
+            volume=Volume(
+                initial_volume=2.0,
+                unit="L",
+                volume_changes={
+                    "outflow": Outflow(
+                        name="outflow",
+                        unit="L",
+                        is_controlled=False,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -1.0]),
+                    ),
+                },
+            ),
             reactor_medium=rm,
             biological_ode=BiologicalOde(rates={}, derivatives={"glucose": "0"}),
         )
         rhs = build_rhs_ode(process)
-        dc = rhs(jnp.array([5.0, 2.0]), jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array([-1.0]))
-        assert float(dc[0]) == pytest.approx(0.0, abs=1e-12)   # concentration: unchanged
-        assert float(dc[-1]) == pytest.approx(-1.0)              # volume: still drops 2L -> 1L
+        dc = rhs(
+            jnp.array([5.0, 2.0]),
+            jnp.zeros(0),
+            jnp.zeros(0),
+            jnp.zeros(0),
+            jnp.array([-1.0]),
+        )
+        assert float(dc[0]) == pytest.approx(0.0, abs=1e-12)  # concentration: unchanged
+        assert float(dc[-1]) == pytest.approx(-1.0)  # volume: still drops 2L -> 1L
         d_cV_dt = 5.0 * float(dc[-1]) + 2.0 * float(dc[0])
-        assert d_cV_dt == pytest.approx(-5.0, abs=1e-9)          # d(cV)/dt == -q*c
+        assert d_cV_dt == pytest.approx(-5.0, abs=1e-9)  # d(cV)/dt == -q*c
 
-    def test_continuous_controlled_outflow_alone_leaves_concentration_unchanged_regression(self):
+    def test_controlled_outflow_alone_leaves_concentration_unchanged(self):
         """Controlled-Outflow twin of the sentinel above — retention/dilution
         math must not depend on whether the Outflow is controlled or modeled."""
         rm = ReactorMedium(
             name="medium",
-            components={"glucose": ReactorMediumComponent(
-                name="glucose", unit="g/L", concentration=_ts([0.0, 1.0], [5.0, 5.0])
-            )},
+            components={
+                "glucose": ReactorMediumComponent(
+                    name="glucose",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [5.0, 5.0]),
+                )
+            },
         )
         process = BioProcess(
-            metadata=BioProcessMetadata(name="canary_controlled", process_type="continuous"),
+            metadata=BioProcessMetadata(
+                name="canary_controlled", process_type="continuous"
+            ),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-            volume=Volume(initial_volume=2.0, unit="L", volume_changes={
-                "outflow": Outflow(name="outflow", unit="L", is_controlled=True,
-                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -1.0])),
-            }),
+            volume=Volume(
+                initial_volume=2.0,
+                unit="L",
+                volume_changes={
+                    "outflow": Outflow(
+                        name="outflow",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -1.0]),
+                    ),
+                },
+            ),
             reactor_medium=rm,
             biological_ode=BiologicalOde(rates={}, derivatives={"glucose": "0"}),
         )
         rhs = build_rhs_ode(process)
-        dc = rhs(jnp.array([5.0, 2.0]), jnp.zeros(0), jnp.array([-1.0]), jnp.zeros(0), jnp.zeros(0))
+        dc = rhs(
+            jnp.array([5.0, 2.0]),
+            jnp.zeros(0),
+            jnp.array([-1.0]),
+            jnp.zeros(0),
+            jnp.zeros(0),
+        )
         assert float(dc[0]) == pytest.approx(0.0, abs=1e-12)
         assert float(dc[-1]) == pytest.approx(-1.0)
         d_cV_dt = 5.0 * float(dc[-1]) + 2.0 * float(dc[0])
@@ -790,22 +839,41 @@ class TestOutflowRetention:
         doubled the washout rate."""
         rm = ReactorMedium(
             name="medium",
-            components={"biomass": ReactorMediumComponent(
-                name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
-            )},
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [4.0, 4.0]),
+                )
+            },
         )
         q, V, c_biomass = 0.3, 2.0, 4.0
         process = BioProcess(
             metadata=BioProcessMetadata(name="chemostat", process_type="continuous"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-            volume=Volume(initial_volume=V, unit="L", volume_changes={
-                "feed_in": Inflow(name="feed_in", unit="L", is_controlled=True,
-                                   is_continuous=True,
-                                   feed_medium=_minimal_feed_medium("fresh_medium", "biomass", 0.0),
-                                   values=_ts([0.0, 1.0], [0.0, q])),
-                "harvest": Outflow(name="harvest", unit="L", is_controlled=True,
-                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -q])),
-            }),
+            volume=Volume(
+                initial_volume=V,
+                unit="L",
+                volume_changes={
+                    "feed_in": Inflow(
+                        name="feed_in",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        feed_medium=_minimal_feed_medium(
+                            "fresh_medium", "biomass", 0.0
+                        ),
+                        values=_ts([0.0, 1.0], [0.0, q]),
+                    ),
+                    "harvest": Outflow(
+                        name="harvest",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -q]),
+                    ),
+                },
+            ),
             reactor_medium=rm,
             biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
         )
@@ -824,22 +892,41 @@ class TestOutflowRetention:
         cancel to zero here: -2D*c + D*c = -D*c != 0)."""
         rm = ReactorMedium(
             name="medium",
-            components={"biomass": ReactorMediumComponent(
-                name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
-            )},
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [4.0, 4.0]),
+                )
+            },
         )
         q, V, c_biomass = 0.3, 2.0, 4.0
         process = BioProcess(
             metadata=BioProcessMetadata(name="steady_state", process_type="continuous"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-            volume=Volume(initial_volume=V, unit="L", volume_changes={
-                "feed_in": Inflow(name="feed_in", unit="L", is_controlled=True,
-                                   is_continuous=True,
-                                   feed_medium=_minimal_feed_medium("fresh_medium", "biomass", c_biomass),
-                                   values=_ts([0.0, 1.0], [0.0, q])),
-                "harvest": Outflow(name="harvest", unit="L", is_controlled=True,
-                                    is_continuous=True, values=_ts([0.0, 1.0], [0.0, -q])),
-            }),
+            volume=Volume(
+                initial_volume=V,
+                unit="L",
+                volume_changes={
+                    "feed_in": Inflow(
+                        name="feed_in",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        feed_medium=_minimal_feed_medium(
+                            "fresh_medium", "biomass", c_biomass
+                        ),
+                        values=_ts([0.0, 1.0], [0.0, q]),
+                    ),
+                    "harvest": Outflow(
+                        name="harvest",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -q]),
+                    ),
+                },
+            ),
             reactor_medium=rm,
             biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
         )
@@ -859,10 +946,14 @@ class TestOutflowRetention:
             name="medium",
             components={
                 "biomass": ReactorMediumComponent(
-                    name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [3.0, 3.0])
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [3.0, 3.0]),
                 ),
                 "glucose": ReactorMediumComponent(
-                    name="glucose", unit="g/L", concentration=_ts([0.0, 1.0], [6.0, 6.0])
+                    name="glucose",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [6.0, 6.0]),
                 ),
             },
         )
@@ -870,16 +961,28 @@ class TestOutflowRetention:
         process = BioProcess(
             metadata=BioProcessMetadata(name="multi_outlet", process_type="continuous"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-            volume=Volume(initial_volume=V, unit="L", volume_changes={
-                "bleed": Outflow(name="bleed", unit="L", is_controlled=True,
-                                  is_continuous=True,
-                                  values=_ts([0.0, 1.0], [0.0, -q_bleed]),
-                                  retention={"biomass": 0.9}),
-                "harvest": Outflow(name="harvest", unit="L", is_controlled=False,
-                                    is_continuous=True,
-                                    values=_ts([0.0, 1.0], [0.0, -q_harvest]),
-                                    retention={"glucose": 0.5}),
-            }),
+            volume=Volume(
+                initial_volume=V,
+                unit="L",
+                volume_changes={
+                    "bleed": Outflow(
+                        name="bleed",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -q_bleed]),
+                        retention={"biomass": 0.9},
+                    ),
+                    "harvest": Outflow(
+                        name="harvest",
+                        unit="L",
+                        is_controlled=False,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -q_harvest]),
+                        retention={"glucose": 0.5},
+                    ),
+                },
+            ),
             reactor_medium=rm,
             biological_ode=BiologicalOde(
                 rates={}, derivatives={"biomass": "0", "glucose": "0"}
@@ -887,7 +990,13 @@ class TestOutflowRetention:
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([3.0, 6.0, V])
-        dc = rhs(c, jnp.zeros(0), jnp.array([-q_bleed]), jnp.zeros(0), jnp.array([-q_harvest]))
+        dc = rhs(
+            c,
+            jnp.zeros(0),
+            jnp.array([-q_bleed]),
+            jnp.zeros(0),
+            jnp.array([-q_harvest]),
+        )
         # retained_biomass = 0.9*q_bleed = 0.18 -> dilution = 0.18*3/2 = 0.27
         # retained_glucose = 0.5*q_harvest = 0.05 -> dilution = 0.05*6/2 = 0.15
         assert float(dc[0]) == pytest.approx(0.27, abs=1e-9)
@@ -902,11 +1011,34 @@ class TestOutflowRetention:
         would otherwise never do anything."""
         process = _make_process(with_controlled_Inflow=False, with_controlled_PV=False)
         process.volume.volume_changes["bolus_sample"] = Outflow(
-            name="bolus_sample", unit="L", is_controlled=True, is_continuous=False,
-            values=_ts([5.0, 10.0], [-0.05, -0.05]), retention={"biomass": 0.5},
+            name="bolus_sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([5.0, 10.0], [-0.05, -0.05]),
+            retention={"biomass": 0.5},
         )
         with pytest.raises(ValueError, match="retention"):
             get_process_ordering(process)
+
+    @pytest.mark.parametrize(
+        ("retention", "message"),
+        [({"biomas": 0.95}, "unknown reactor component"), ({"biomass": 1.5}, "out")],
+    )
+    def test_invalid_continuous_outflow_retention_blocks_rhs_build(
+        self, retention, message
+    ):
+        process = _make_process(with_controlled_Inflow=False, with_controlled_PV=False)
+        process.volume.volume_changes["harvest"] = Outflow(
+            name="harvest",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
+            values=_ts([0.0, 10.0], [0.0, -0.1]),
+            retention=retention,
+        )
+        with pytest.raises(ValueError, match=message):
+            build_rhs_ode(process)
 
     def test_synthetic_perfusion_reduces_biomass_washout(self):
         """Constant-volume perfusion (Inflow == Outflow), sigma_biomass=0.95,
@@ -917,31 +1049,50 @@ class TestOutflowRetention:
         formula needed to catch up to it."""
         rm = ReactorMedium(
             name="medium",
-            components={"biomass": ReactorMediumComponent(
-                name="biomass", unit="g/L", concentration=_ts([0.0, 1.0], [3.0, 3.0])
-            )},
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [3.0, 3.0]),
+                )
+            },
         )
         q_perf, V, c_biomass, sigma = 0.4, 2.0, 3.0, 0.95
         process = BioProcess(
             metadata=BioProcessMetadata(name="perfusion", process_type="continuous"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-            volume=Volume(initial_volume=V, unit="L", volume_changes={
-                "perfusion_in": Inflow(
-                    name="perfusion_in", unit="L", is_controlled=True, is_continuous=True,
-                    feed_medium=_minimal_feed_medium("perfusion_medium", "biomass", 0.0),
-                    values=_ts([0.0, 1.0], [0.0, q_perf]),
-                ),
-                "perfusion_out": Outflow(
-                    name="perfusion_out", unit="L", is_controlled=True, is_continuous=True,
-                    values=_ts([0.0, 1.0], [0.0, -q_perf]), retention={"biomass": sigma},
-                ),
-            }),
+            volume=Volume(
+                initial_volume=V,
+                unit="L",
+                volume_changes={
+                    "perfusion_in": Inflow(
+                        name="perfusion_in",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        feed_medium=_minimal_feed_medium(
+                            "perfusion_medium", "biomass", 0.0
+                        ),
+                        values=_ts([0.0, 1.0], [0.0, q_perf]),
+                    ),
+                    "perfusion_out": Outflow(
+                        name="perfusion_out",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=_ts([0.0, 1.0], [0.0, -q_perf]),
+                        retention={"biomass": sigma},
+                    ),
+                },
+            ),
             reactor_medium=rm,
             biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([c_biomass, V])
-        dc = rhs(c, jnp.zeros(0), jnp.array([q_perf, -q_perf]), jnp.zeros(0), jnp.zeros(0))
+        dc = rhs(
+            c, jnp.zeros(0), jnp.array([q_perf, -q_perf]), jnp.zeros(0), jnp.zeros(0)
+        )
         D = q_perf / V
         expected = -(1.0 - sigma) * D * c_biomass
         assert float(dc[0]) == pytest.approx(expected, abs=1e-9)
@@ -958,24 +1109,34 @@ class TestOutflowRetention:
         the invariant holds regardless of magnitude."""
         rm = ReactorMedium(
             name="medium",
-            components={"solute": ReactorMediumComponent(
-                name="solute", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
-            )},
+            components={
+                "solute": ReactorMediumComponent(
+                    name="solute", unit="g/L", concentration=_ts([0.0, 1.0], [4.0, 4.0])
+                )
+            },
         )
         V, c_solute = 2.0, 4.0
 
         def _d_cV_dt(q_evap):
             process = BioProcess(
                 metadata=BioProcessMetadata(name="evap", process_type="continuous"),
-                time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-                volume=Volume(initial_volume=V, unit="L", volume_changes={
-                    "evaporation": Outflow(
-                        name="evaporation", unit="L", is_controlled=False,
-                        is_continuous=True,
-                        values=_ts([0.0, 1.0], [0.0, -q_evap]),
-                        retention={"solute": 1.0},
-                    ),
-                }),
+                time_axis=TimeAxis(
+                    unit="hours", start=0.0, end=1.0, time_reference="x"
+                ),
+                volume=Volume(
+                    initial_volume=V,
+                    unit="L",
+                    volume_changes={
+                        "evaporation": Outflow(
+                            name="evaporation",
+                            unit="L",
+                            is_controlled=False,
+                            is_continuous=True,
+                            values=_ts([0.0, 1.0], [0.0, -q_evap]),
+                            retention={"solute": 1.0},
+                        ),
+                    },
+                ),
                 reactor_medium=rm,
                 biological_ode=BiologicalOde(rates={}, derivatives={"solute": "0"}),
             )

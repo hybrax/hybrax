@@ -9,6 +9,7 @@ import jax.numpy as jnp
 
 from bp_format import (
     BiologicalOde,
+    DiscreteEvents,
     TimeSeries,
     StaticVariable,
     BioProcessMetadata,
@@ -24,9 +25,13 @@ from bp_format import (
     BioProcess,
     AugmentedBioProcess,
     BioProcessCollection,
+    validate_time_axis,
     validate_timeseries_shape,
+    validate_discrete_events,
+    validate_timestamp_bounds,
     validate_volume_change_sign,
     validate_volume_change_states,
+    validate_volume_units,
     validate_outflow_retention,
     validate_biomass_in_reactor_medium,
     validate_measurement_sampling_alignment,
@@ -78,6 +83,80 @@ def _make_process(
 
 
 # ---------------------------------------------------------------------------
+# validate_discrete_events
+# ---------------------------------------------------------------------------
+
+
+class TestValidateDiscreteEvents:
+    def test_no_events(self):
+        ok, msg = validate_discrete_events(_make_process())
+
+        assert ok is True
+        assert "skipped" in msg
+
+    def test_valid_events_include_time_axis_boundaries(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(
+            times=jnp.array([0.0, 5.0, 10.0]),
+            labels=["start", "middle", "end"],
+        )
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is True
+        assert "OK" in msg
+
+    def test_times_must_be_one_dimensional(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(times=jnp.array([[1.0, 2.0]]))
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "times must be 1-D" in msg
+
+    @pytest.mark.parametrize("times", [[2.0, 1.0], [1.0, 1.0]])
+    def test_times_must_be_strictly_increasing(self, times):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(times=jnp.array(times))
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "strictly monotonically increasing" in msg
+
+    def test_times_must_be_within_process_time_axis(self):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(times=jnp.array([-1.0, 11.0]))
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert "2 timestamp(s) outside [0.0, 10.0]" in msg
+
+    def test_float32_rounding_at_boundary_is_allowed(self):
+        process = _make_process()
+        process.time_axis.end = 319.85985985985985
+        process.discrete_events = DiscreteEvents(times=jnp.array([319.85986328125]))
+
+        ok, _ = validate_discrete_events(process)
+
+        assert ok is True
+
+    @pytest.mark.parametrize("labels", [["only one"], ["a", "b", "c"]])
+    def test_labels_must_match_times_length(self, labels):
+        process = _make_process()
+        process.discrete_events = DiscreteEvents(
+            times=jnp.array([1.0, 2.0]), labels=labels
+        )
+
+        ok, msg = validate_discrete_events(process)
+
+        assert ok is False
+        assert f"labels length ({len(labels)}) does not match times length (2)" in msg
+
+
+# ---------------------------------------------------------------------------
 # validate_timeseries_shape
 # ---------------------------------------------------------------------------
 
@@ -93,6 +172,12 @@ class TestValidateTimeSeriesShape:
         ts = _ts([0.0], [1.0])
         ok, msg = validate_timeseries_shape(ts)
         assert ok is True
+
+    def test_empty_timeseries_is_invalid(self):
+        ok, msg = validate_timeseries_shape(_ts([], []))
+
+        assert ok is False
+        assert "must not be empty" in msg
 
     def test_unordered_timepoints(self):
         ts = SimpleNamespace(
@@ -125,6 +210,134 @@ class TestValidateTimeSeriesShape:
         ts = _ts([0.0, 1.0], [1.0, 2.0])
         _, msg = validate_timeseries_shape(ts, name="myvar")
         assert "myvar" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_time_axis
+# ---------------------------------------------------------------------------
+
+
+class TestValidateTimeAxis:
+    def test_equal_start_and_end_is_valid(self):
+        process = _make_process()
+        process.time_axis.end = process.time_axis.start
+
+        ok, msg = validate_time_axis(process)
+
+        assert ok is True
+        assert "OK" in msg
+
+    def test_start_after_end_is_invalid(self):
+        process = _make_process()
+        process.time_axis.start = 11.0
+
+        ok, msg = validate_time_axis(process)
+
+        assert ok is False
+        assert "start 11.0 is after end 10.0 hours" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_timestamp_bounds
+# ---------------------------------------------------------------------------
+
+
+class TestValidateTimestampBounds:
+    def test_inclusive_bounds_are_valid(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 10.0], [1.0, 2.0]),
+                )
+            }
+        )
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is True
+        assert "[0.0, 10.0] hours" in msg
+
+    def test_reactor_component_timestamp_outside_bounds(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([-1.0, 11.0], [1.0, 2.0]),
+                )
+            }
+        )
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "reactor component 'biomass': 2 timestamp(s) outside" in msg
+
+    def test_float32_rounding_at_boundary_is_allowed(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([319.85986328125], [1.0]),
+                )
+            }
+        )
+        process.time_axis.end = 319.85985985985985
+
+        ok, _ = validate_timestamp_bounds(process)
+
+        assert ok is True
+
+    def test_process_variable_timestamp_outside_bounds(self):
+        variable = ProcessVariable(
+            name="temperature",
+            unit="degC",
+            is_controlled=True,
+            values=_ts([1.0, 11.0], [30.0, 31.0]),
+        )
+        process = _make_process(process_variables={"temperature": variable})
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "process variable 'temperature'" in msg
+
+    def test_volume_change_timestamp_outside_bounds(self):
+        change = Outflow(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([-1.0, 1.0], [-0.1, -0.1]),
+        )
+        process = _make_process(volume_changes={"sample": change})
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "volume change 'sample'" in msg
+
+    def test_measured_total_volume_timestamp_outside_bounds(self):
+        process = _make_process()
+        process.volume.total_volume = _ts([1.0, 11.0], [1.0, 1.1])
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is False
+        assert "measured total volume" in msg
+
+    def test_invalid_time_axis_skips_check(self):
+        process = _make_process()
+        process.time_axis.start = 11.0
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is True
+        assert "skipped" in msg
+        assert "time axis invalid" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -169,11 +382,64 @@ class TestValidateVolumeChangeSign:
         ok, msg = validate_volume_change_sign(vc)
         assert ok is True
 
+    @pytest.mark.parametrize("volume_change", ["feed", "sample"])
+    def test_float_noise_within_sign_tolerance(self, volume_change):
+        vc = (
+            self._feed_vc([-1e-13, 1.0])
+            if volume_change == "feed"
+            else self._sample_vc([1e-13, -1.0])
+        )
+
+        ok, _ = validate_volume_change_sign(vc)
+
+        assert ok is True
+
+    @pytest.mark.parametrize("volume_change", ["feed", "sample"])
+    def test_values_outside_sign_tolerance_fail(self, volume_change):
+        vc = (
+            self._feed_vc([-1e-6, 1.0])
+            if volume_change == "feed"
+            else self._sample_vc([1e-6, -1.0])
+        )
+
+        ok, _ = validate_volume_change_sign(vc)
+
+        assert ok is False
+
     def test_mixed_signs_invalid(self):
         vc = self._feed_vc([0.1, -0.2])
         ok, msg = validate_volume_change_sign(vc)
         assert ok is False
         assert "negative" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# validate_volume_units
+# ---------------------------------------------------------------------------
+
+
+class TestValidateVolumeUnits:
+    def _sample(self, unit):
+        return Outflow(
+            name="sample",
+            unit=unit,
+            is_controlled=True,
+            is_continuous=False,
+            values=_ts([1.0], [-0.1]),
+        )
+
+    def test_matching_volume_change_unit(self):
+        process = _make_process(volume_changes={"sample": self._sample("L")})
+        ok, msg = validate_volume_units(process)
+        assert ok is True
+        assert "OK" in msg
+
+    def test_mismatched_volume_change_unit(self):
+        process = _make_process(volume_changes={"sample": self._sample("mL")})
+        ok, msg = validate_volume_units(process)
+        assert ok is False
+        assert "'sample' uses 'mL'" in msg
+        assert "volume unit 'L'" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +531,38 @@ class TestValidateVolumeChangeStates:
         assert ok is False
         assert "biomass" in msg
 
+    def test_feed_component_unit_must_match_reactor_component(self):
+        feed = self._feed_medium(["biomass"])
+        feed.components["biomass"].unit = "mg/mL"
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"f": self._vc(feed)},
+        )
+
+        ok, msg = validate_volume_change_states(process)
+
+        assert ok is False
+        assert "'biomass' uses unit 'mg/mL'" in msg
+        assert "reactor medium uses 'g/L'" in msg
+
+    def test_feed_unit_checked_with_tolerated_negative_noise(self):
+        feed = self._feed_medium(["biomass"])
+        feed.components["biomass"].unit = "mg/mL"
+        change = self._vc(feed)
+        change.values = _ts([0.0, 1.0], [-1e-13, 1.0])
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"f": change},
+        )
+
+        ok, msg = validate_volume_change_states(process)
+        all_valid, messages = validate_process(process)
+
+        assert ok is False
+        assert "'biomass' uses unit 'mg/mL'" in msg
+        assert all_valid is False
+        assert any("'biomass' uses unit 'mg/mL'" in message for message in messages)
+
     def test_negative_volume_change_not_checked(self):
         """Negative (outflow) volume changes should skip state coverage check."""
         process = _make_process(
@@ -315,9 +613,7 @@ class TestValidateOutflowRetention:
     def test_in_range_retention_is_valid(self):
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={
-                "sample": self._outflow(retention={"biomass": 0.95})
-            },
+            volume_changes={"sample": self._outflow(retention={"biomass": 0.95})},
         )
         ok, msg = validate_outflow_retention(process)
         assert ok is True
@@ -325,9 +621,7 @@ class TestValidateOutflowRetention:
     def test_out_of_range_retention_rejected(self):
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={
-                "sample": self._outflow(retention={"biomass": 1.5})
-            },
+            volume_changes={"sample": self._outflow(retention={"biomass": 1.5})},
         )
         ok, msg = validate_outflow_retention(process)
         assert ok is False
@@ -336,9 +630,7 @@ class TestValidateOutflowRetention:
     def test_negative_retention_rejected(self):
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={
-                "sample": self._outflow(retention={"biomass": -0.1})
-            },
+            volume_changes={"sample": self._outflow(retention={"biomass": -0.1})},
         )
         ok, msg = validate_outflow_retention(process)
         assert ok is False
@@ -346,9 +638,7 @@ class TestValidateOutflowRetention:
     def test_unknown_component_rejected(self):
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={
-                "sample": self._outflow(retention={"typo_name": 0.5})
-            },
+            volume_changes={"sample": self._outflow(retention={"typo_name": 0.5})},
         )
         ok, msg = validate_outflow_retention(process)
         assert ok is False
@@ -361,9 +651,7 @@ class TestValidateOutflowRetention:
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={
-                "sample": self._outflow(
-                    retention={"biomass": 0.5}, is_continuous=False
-                )
+                "sample": self._outflow(retention={"biomass": 0.5}, is_continuous=False)
             },
         )
         ok, msg = validate_outflow_retention(process)
@@ -441,6 +729,45 @@ class TestValidateBiomassInReactorMedium:
 
 
 class TestValidateProcess:
+    def test_checks_reactor_and_total_volume_timeseries_shapes(self):
+        malformed = SimpleNamespace(
+            times=jnp.array([0.0, 1.0]), values=jnp.array([1.0])
+        )
+        biomass = ReactorMediumComponent(
+            name="biomass",
+            unit="g/L",
+            concentration=_ts([0.0, 1.0], [1.0, 2.0]),
+        )
+        process = _make_process(reactor_components={"biomass": biomass})
+        process.volume.total_volume = malformed
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("TimeSeries 'biomass' OK" in message for message in messages)
+        assert any("'measured total volume' invalid" in message for message in messages)
+
+    def test_invalid_time_axis_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.time_axis.start = 11.0
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Time axis invalid" in message for message in messages)
+        assert any(
+            "Timestamp bounds check skipped — time axis invalid" in message
+            for message in messages
+        )
+
     def test_valid_process_returns_all_ok(self):
         biomass_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
         feed_medium = FeedMedium(
@@ -505,6 +832,84 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
+
+    def test_invalid_discrete_events_fail_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.discrete_events = DiscreteEvents(times=jnp.array([2.0, 1.0]))
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Discrete events invalid" in message for message in messages)
+
+    def test_empty_measured_total_volume_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.volume.total_volume = _ts([], [])
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any(
+            "measured total volume" in message and "empty" in message
+            for message in messages
+        )
+
+    def test_timestamp_outside_bounds_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 11.0], [1.0, 2.0]),
+                )
+            }
+        )
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("Timestamp bounds invalid" in message for message in messages)
+
+    def test_mismatched_volume_change_unit_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            },
+            volume_changes={
+                "sample": Outflow(
+                    name="sample",
+                    unit="mL",
+                    is_controlled=True,
+                    is_continuous=False,
+                    values=_ts([1.0], [-100.0]),
+                )
+            },
+        )
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any("volume unit 'L'" in message for message in messages)
 
 
 # ---------------------------------------------------------------------------
@@ -855,6 +1260,47 @@ class TestValidateCrossProcessConsistency:
         assert ok is True
         assert messages == []
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("unit", "days"), ("time_reference", "first_feed")],
+    )
+    def test_inconsistent_time_axis(self, field, value):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(ts)
+        setattr(p2.time_axis, field, value)
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+
+        ok, messages = validate_cross_process_consistency(collection)
+
+        assert ok is False
+        assert any("time axis" in message for message in messages)
+
+    def test_different_time_axis_bounds_are_consistent(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(ts)
+        p2.time_axis.start = 1.0
+        p2.time_axis.end = 20.0
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+
+        ok, messages = validate_cross_process_consistency(collection)
+
+        assert ok is True
+        assert messages == []
+
+    def test_inconsistent_volume_units(self):
+        ts = _ts([0.0, 1.0], [0.1, 0.5])
+        p1 = _make_biomass_process(ts)
+        p2 = _make_biomass_process(ts)
+        p2.volume.unit = "mL"
+        collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
+
+        ok, messages = validate_cross_process_consistency(collection)
+
+        assert ok is False
+        assert any("volume unit" in message for message in messages)
+
     def test_inconsistent_reactor_medium_components(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         p1 = _make_biomass_process(ts)
@@ -955,6 +1401,29 @@ class TestValidateMeasurementSamplingAlignment:
                     unit="g/L",
                     concentration=_ts([0.0, 5.0, 10.0], [0.1, 0.5, 1.0]),
                 ),
+            },
+        )
+        ok, msg = validate_measurement_sampling_alignment(process)
+        assert ok is True
+        assert "skipped" in msg.lower()
+
+    def test_continuous_outflow_is_not_a_sampling_event(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([5.0005], [0.5]),
+                ),
+            },
+            volume_changes={
+                "harvest": Outflow(
+                    name="harvest",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=_ts([0.0, 5.0, 10.0], [0.0, -0.5, -1.0]),
+                )
             },
         )
         ok, msg = validate_measurement_sampling_alignment(process)

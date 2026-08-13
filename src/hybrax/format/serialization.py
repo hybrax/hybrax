@@ -176,7 +176,12 @@ def save_process_collection(collection: BioProcessCollection, path: Path) -> Non
 def _read_collection_header(json_path: Path) -> Dict:
     """Stream-read the top-level scalar/metadata fields of a collection JSON
     (case_id, organism, citation, metadata) without materializing `processes`."""
-    header: Dict = {"case_id": None, "organism": None, "citation": None, "metadata": None}
+    header: Dict = {
+        "case_id": None,
+        "organism": None,
+        "citation": None,
+        "metadata": None,
+    }
     seen = {"case_id": False, "organism": False, "citation": False, "metadata": False}
     metadata_builder = None
     metadata_depth = 0
@@ -210,14 +215,18 @@ def _read_collection_header(json_path: Path) -> Dict:
                     return header
                 continue
 
-            if pending_key in ("case_id", "organism", "citation") and prefix == pending_key:
+            if (
+                pending_key in ("case_id", "organism", "citation")
+                and prefix == pending_key
+            ):
                 if event == "string":
                     header[pending_key] = value
                 elif event == "null":
                     header[pending_key] = None
                 else:
                     raise ValueError(
-                        f"{json_path}: collection {pending_key} must be a string or null"
+                        f"{json_path}: collection {pending_key} must be a string "
+                        "or null"
                     )
                 seen[pending_key] = True
                 pending_key = None
@@ -304,7 +313,8 @@ def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
         result["citation"] = collection.citation
     result["metadata"] = deepcopy(collection.metadata)
     result["processes"] = {
-        p_id: _process_to_dict(process) for p_id, process in collection.processes.items()
+        p_id: _process_to_dict(process)
+        for p_id, process in collection.processes.items()
     }
     return result
 
@@ -330,9 +340,7 @@ def _process_to_dict(process: BioProcess) -> Dict:
         },
     }
 
-    # Add volume if present
-    if process.volume is not None:
-        result["volume"] = _volume_to_dict(process.volume)
+    result["volume"] = _volume_to_dict(process.volume)
 
     # Add discrete events if present
     if process.discrete_events is not None:
