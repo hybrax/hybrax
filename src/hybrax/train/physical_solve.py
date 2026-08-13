@@ -151,7 +151,7 @@ def solve_physical_states(
     n_state = n_RMCs + n_PVs + 1 + n_FVCs + n_latent
     dtype = RAW_y0.dtype
     controls = wrapper.controls
-    min_V = jnp.asarray(wrapper.min_V, dtype=dtype)
+    min_V = jnp.asarray(controls.min_V, dtype=dtype)
     # Per-state characteristic scale (the user-definable ``SCALE_*`` hook). Integrate
     # ``SCL = (RAW - b) / s`` so a single rtol/atol is uniformly meaningful and the
     # adjoint stays O(1). Pure reparametrisation applied only at the solve
@@ -196,20 +196,8 @@ def solve_physical_states(
     # caller passing a raw zero-padded row is handled identically.
     output_times = jnp.where(meas_active, t_eval, t1)
 
-    def affect_fn(y_scl, t, args, preset_index):
-        # ``preset_index`` is the slot in ``preset_times`` the solver stopped at, so the
-        # firing node's time is looked up EXACTLY -- no tolerance, and no dependence on
-        # ``t`` (the solver's realised stop time) or on any dtype round-trip inside
-        # diffrax_callbacks. Matching ``|t - bt| < eps`` instead used to let an output
-        # node merely NEAR a feed re-apply it, double-counting the bolus and drifting
-        # volume/concentrations for the rest of the trajectory; that needed a separate
-        # guard parking such nodes. Exact lookup removes the failure mode outright.
-        #
-        # Co-timed events still group into ONE node: every bolus/sample whose stored
-        # time equals ``t_node`` fires together (e.g. a sample and a feed both at 24 h),
-        # which is required because the solver only accepts strictly-future nodes and
-        # would otherwise skip the duplicate slots.
-        t_node = preset_times[preset_index]
+    def apply_events(y_scl, t_node):
+        """Apply every sample and bolus stored at one exact event time."""
         y = y_scl * SCALE  # scaled -> physical (the jump is a physical mass balance)
         C = y[:n_RMCs]
         # Modeled PVs are intensive (ratios/observables), so volume jumps
@@ -228,10 +216,36 @@ def solve_physical_states(
         # post-sample volume and add fed mass). Bolus-before-sample dilutes fed species
         # from the larger pre-sample volume and systematically under-dilutes them.
         V_after_sample = V - sample_dv
+        V_after_sample = eqx.error_if(
+            V_after_sample,
+            jnp.any(s_on) & (V_after_sample <= min_V),
+            "sample reached minimum reactor volume.",
+        )
         V_after = V_after_sample + bolus_dv
-        C2 = (C * V_after_sample + bolus_mass) / jnp.maximum(V_after, min_V)
+        C2 = (C * V_after_sample + bolus_mass) / V_after
         # physical -> scaled; PVs and latent pass through unchanged.
         return jnp.concatenate([C2, PVs, V_after[None], cum, h]) / SCALE
+
+    def affect_fn(y_scl, t, args, preset_index):
+        # ``preset_index == -1`` means the dispatcher is being evaluated speculatively
+        # for a lane where no preset fired. This occurs when ``vmap`` batches lanes with
+        # different event progress; mask the event time rather than relying on
+        # ``lax.cond``, whose batched form evaluates both branches.
+        t_node = jnp.where(preset_index >= 0, preset_times[preset_index], jnp.inf)
+        # Otherwise, ``preset_index`` is the slot in ``preset_times`` where the
+        # solver stopped, so the firing node's time is looked up EXACTLY -- no
+        # tolerance, and no dependence on
+        # ``t`` (the solver's realised stop time) or on any dtype round-trip inside
+        # diffrax_callbacks. Matching ``|t - bt| < eps`` instead used to let an output
+        # node merely NEAR a feed re-apply it, double-counting the bolus and drifting
+        # volume/concentrations for the rest of the trajectory; that needed a separate
+        # guard parking such nodes. Exact lookup removes the failure mode outright.
+        #
+        # Co-timed events still group into ONE node: every bolus/sample whose stored
+        # time equals ``t_node`` fires together (e.g. a sample and a feed both at 24 h),
+        # which is required because the solver only accepts strictly-future nodes and
+        # would otherwise skip the duplicate slots.
+        return apply_events(y_scl, t_node)
 
     # ``jump_ts`` = genuine vector-field discontinuity times (from
     # ``BioProcess.discrete_events``); ``None``/empty ⇒ the controller behaves
@@ -241,6 +255,15 @@ def solve_physical_states(
 
     cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
+    V_index = n_RMCs + n_PVs
+    y0 = eqx.error_if(
+        y0,
+        y0[V_index] <= min_V,
+        "initial state reached minimum reactor volume.",
+    )
+    sample_at_t0 = jnp.sum(jnp.where((st == t0) & smask, sv, 0.0))
+    y0_report = y0.at[V_index].add(-sample_at_t0)
+    y0 = apply_events(y0 / SCALE, t0) * SCALE
     # RHS evaluated on the unscaled state (value unscale, ``yy * SCALE``); the
     # RAW derivative is rescaled via ``scale_derivative`` (offset-free: under an
     # affine scaler ``d((RAW-b)/s)/dt = (dRAW/dt)/s``, so the offset must NOT be
@@ -305,7 +328,7 @@ def solve_physical_states(
     s_here = (t_eval[:, None] == st[None, :]) & smask[None, :]
     sample_dv_here = jnp.sum(jnp.where(s_here, sv[None, :], 0.0), axis=1)
     states = states.at[:, n_RMCs + n_PVs].add(-sample_dv_here)
-    # Every grid point at t0 is the initial state (no event precedes t0). The dense /
+    # Every grid point at t0 reports the post-sample, pre-bolus state. The dense /
     # prediction export solves on a union grid that can carry t0 at *several* indices
     # (measurement-t0, dense-t0, prediction-t0), not only index 0 — so patch all of
     # them. The solve already seeds its t0 slots with ``y0``, but only in SCALED space,
@@ -314,7 +337,7 @@ def solve_physical_states(
     # Exact: ``t0`` IS ``t_eval[0]``, and every extra t0 row comes from a
     # ``linspace(t0, ...)`` whose first element is bitwise ``t0``.
     at_t0 = (t_eval == t0) & meas_active
-    states = jnp.where(at_t0[:, None], y0[None, :], states)
+    states = jnp.where(at_t0[:, None], y0_report[None, :], states)
 
     # Overwrite every post-failure row (``t > fail_time``) from ``fail_time``. Healthy
     # solve: ``fail_time == inf`` -> no-op.

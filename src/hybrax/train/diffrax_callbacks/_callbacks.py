@@ -118,8 +118,14 @@ class PresetTimeCallback(eqx.Module):
             time. ``preset_index`` is the index into **this callback's own**
             ``times`` (not into the merged/sorted array the solver scans), so an
             affect can identify *which* preset fired without comparing floats.
+            During speculative batched evaluation, ``preset_index`` may be ``-1``;
+            the returned state is then discarded. Affects must therefore be pure and
+            must mask validation or other JAX effects when ``preset_index < 0``.
+            Under ``vmap``, JAX may evaluate every callback branch, not only the one
+            selected for a lane.
 
-            Prefer the index over ``t``: ``t`` is the solver's *realised* stop time
+            Prefer the index over ``t`` when ``preset_index >= 0``: ``t`` is the
+            solver's *realised* stop time
             and the merged preset array is cast to the solve's working dtype, so
             neither is guaranteed bit-identical to the value in ``times``. Matching
             on ``times[preset_index]`` is exact by construction. Matching on ``t``
@@ -153,7 +159,7 @@ class PeriodicCallback(eqx.Module):
         affect_fn: ``(y, t, args, preset_index) -> new_y``. Applied at each trigger.
             ``to_preset`` hands this straight to a :class:`PresetTimeCallback`, so it
             takes the same 4-argument contract; ``preset_index`` is the slot in the
-            generated ``times``.
+            generated ``times``, or ``-1`` during speculative batched evaluation.
         t_start: First trigger time. Default: dt (skip t=0).
         t_end: Last possible trigger time. Must be set for array pre-allocation.
 
@@ -325,9 +331,11 @@ class CallbackSet(eqx.Module):
     def get_preset_local_indices(self) -> jnp.ndarray:
         """For each sorted preset slot: its index within its OWN callback's ``times``.
 
-        This is what gets handed to ``PresetTimeCallback.affect_fn`` as
-        ``preset_index``, letting an affect look the firing time up in the array it
-        supplied — exactly, with no float comparison and no dtype round-trip.
+        A firing preset's local index is handed to
+        ``PresetTimeCallback.affect_fn`` as ``preset_index``, letting an affect look
+        the time up in its own array exactly, with no float comparison or dtype
+        round-trip. The solver may instead pass ``-1`` during speculative batched
+        evaluation; see ``PresetTimeCallback``'s contract.
         """
         if not self.preset_callbacks:
             return jnp.array([], dtype=jnp.int32)

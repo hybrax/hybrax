@@ -96,8 +96,6 @@ class HybridOdeWrapper(eqx.Module):
     reaction_module: Any
     controls: PerProcessControls
 
-    min_V: float = eqx.field(static=True)
-
     modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
     modeled_PV_names: tuple[str, ...] = eqx.field(static=True)
     modeled_FVC_names: tuple[str, ...] = eqx.field(static=True)
@@ -125,7 +123,6 @@ class HybridOdeWrapper(eqx.Module):
         process: BioProcess,
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
-        min_V: float = 1e-8,
         loss_module: Any = None,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
@@ -134,7 +131,6 @@ class HybridOdeWrapper(eqx.Module):
             rhs_ode=build_rhs_ode(process),
             controls=controls,
             target_state_indices=target_state_indices,
-            min_V=min_V,
             loss_module=loss_module,
         )
 
@@ -146,7 +142,6 @@ class HybridOdeWrapper(eqx.Module):
         rhs_ode: RhsOde,
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
-        min_V: float = 1e-8,
         loss_module: Any = None,
     ) -> HybridOdeWrapper:
         """Build a wrapper from an existing RhsOde runtime template.
@@ -257,7 +252,6 @@ class HybridOdeWrapper(eqx.Module):
             rhs_ode=rhs_ode,
             reaction_module=reaction_module,
             controls=controls,
-            min_V=float(min_V),
             modeled_RMC_names=rhs_ode.name_modeled_RMCs,
             modeled_PV_names=rhs_ode.name_modeled_PVs,
             modeled_FVC_names=rhs_ode.name_modeled_FVCs,
@@ -295,9 +289,7 @@ class HybridOdeWrapper(eqx.Module):
         RAW_phys = y_phys[:n_phys]
         RAW_RMCs = RAW_phys[:n_RMCs]
         RAW_PVs = RAW_phys[n_RMCs : n_RMCs + n_PVs]
-        RAW_V = jnp.maximum(
-            RAW_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
-        )
+        RAW_V = RAW_phys[n_RMCs + n_PVs]
         RAW_modeled_cum = RAW_phys[n_RMCs + n_PVs + 1 : n_phys]
         RAW_latent = y_phys[n_phys:]
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
@@ -350,6 +342,7 @@ class HybridOdeWrapper(eqx.Module):
             RAW_u,
             RAW_modeled_FVCs_rates,
             jnp.zeros((0,), dtype=dtype),
+            self.controls.min_V,
         )
         RAW_d_phys_dt = jnp.concatenate([RAW_d_dt, RAW_modeled_FVCs_rates])
         RAW_d_latent_dt = module.SCALE_latent.unscale_derivative(
@@ -381,13 +374,7 @@ class HybridOdeWrapper(eqx.Module):
         RAW_phys = y_phys[:n_phys]
         RAW_RMCs = RAW_phys[:n_RMCs]
         RAW_PVs = RAW_phys[n_RMCs : n_RMCs + n_PVs]
-        # Clamped V feeds the reaction module (the concentration denominator can't
-        # go <= 0); the *export* keeps the true (possibly <min_V) volume so the
-        # human-facing v_real reflects the sampled volume directly.
-        RAW_V = jnp.maximum(
-            RAW_phys[n_RMCs + n_PVs], jnp.asarray(self.min_V, dtype=dtype)
-        )
-        RAW_V_export = RAW_phys[n_RMCs + n_PVs]
+        RAW_V = RAW_phys[n_RMCs + n_PVs]
         RAW_modeled_cum = RAW_phys[n_RMCs + n_PVs + 1 : n_phys]
         RAW_latent = y_phys[n_phys:]
 
@@ -443,7 +430,7 @@ class HybridOdeWrapper(eqx.Module):
                 )
         return SaveOutputs(
             SCL_states=module.scale_state(RAW_state),
-            RAW_V_export=RAW_V_export,
+            RAW_V_export=RAW_V,
             RAW_V=RAW_V,
             RAW_modeled_BiologicalOde_rates=RAW_bio_rates,
             RAW_modeled_FVCs_rates=RAW_modeled_FVCs_rates,

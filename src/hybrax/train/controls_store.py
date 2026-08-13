@@ -273,6 +273,7 @@ class PerProcessControls(eqx.Module):
     jump_ts: jax.Array
     grid_length: int = eqx.field(static=True)
     jump_ts_length: int = eqx.field(static=True)
+    min_V: jax.Array
     control_metadata: Mapping[str, Mapping[str, Any]] = eqx.field(static=True)
     sample_event_times: jax.Array
     sample_event_volumes: jax.Array
@@ -400,6 +401,7 @@ class BatchControls(eqx.Module):
     name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
+    min_V: jax.Array
     sample_event_times: jax.Array
     sample_event_volumes: jax.Array
     sample_event_mask: jax.Array
@@ -523,6 +525,7 @@ class ControlsStore(eqx.Module):
     grid_lengths: jax.Array
     # Active `jump_ts` lengths per process.
     jump_ts_lengths: jax.Array
+    min_V: jax.Array
     sample_event_times: jax.Array
     sample_event_volumes: jax.Array
     sample_event_mask: jax.Array
@@ -818,6 +821,7 @@ class ControlsStore(eqx.Module):
         jump_ts_rows = np.zeros((n_processes, max_jump_ts_length), dtype=np.float64)
         grid_lengths = np.empty(n_processes, dtype=np.int32)
         jump_ts_lengths = np.empty(n_processes, dtype=np.int32)
+        min_V_rows = np.empty(n_processes, dtype=np.float64)
         sample_event_time_rows = np.zeros(
             (n_processes, max_sample_events), dtype=np.float64
         )
@@ -867,6 +871,7 @@ class ControlsStore(eqx.Module):
             jump_ts_rows[process_index, :jump_ts_length] = jump_ts
             grid_lengths[process_index] = grid_length
             jump_ts_lengths[process_index] = jump_ts_length
+            min_V_rows[process_index] = process.volume.initial_volume * 1e-3
 
             event_md = collect_discrete_event_metadata(process, reference_species)
             n_samples = len(event_md["sample_times"])
@@ -928,6 +933,7 @@ class ControlsStore(eqx.Module):
             jump_ts=_as_jax_array(jump_ts_rows),
             grid_lengths=jnp.asarray(grid_lengths, dtype=jnp.int32),
             jump_ts_lengths=jnp.asarray(jump_ts_lengths, dtype=jnp.int32),
+            min_V=_as_jax_array(min_V_rows),
             sample_event_times=_as_jax_array(sample_event_time_rows),
             sample_event_volumes=_as_jax_array(sample_event_volume_rows),
             sample_event_mask=jnp.asarray(sample_event_mask_rows, dtype=bool),
@@ -978,6 +984,7 @@ class ControlsStore(eqx.Module):
             jump_ts=self.jump_ts[process_index],
             grid_length=int(self.grid_lengths[process_index]),
             jump_ts_length=int(self.jump_ts_lengths[process_index]),
+            min_V=self.min_V[process_index],
             control_metadata=process_md["control_metadata"],
             sample_event_times=self.sample_event_times[process_index],
             sample_event_volumes=self.sample_event_volumes[process_index],
@@ -1018,6 +1025,7 @@ class ControlsStore(eqx.Module):
             name_controlled_FVCs=self.name_controlled_FVCs,
             name_controlled_SVCs=self.name_controlled_SVCs,
             name_controlled_PVs=self.name_controlled_PVs,
+            min_V=self.min_V[indices],
             sample_event_times=self.sample_event_times[indices],
             sample_event_volumes=self.sample_event_volumes[indices],
             sample_event_mask=self.sample_event_mask[indices],

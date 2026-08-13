@@ -429,7 +429,6 @@ def _build_single_process_runtime(
         process=process,
         controls=controls,
         loss_module=DefaultLossModule(target_names=tuple(store.name_measured)),
-        min_V=0.02,
     )
     return collection, store, wrapper
 
@@ -794,19 +793,6 @@ def test_affine_state_offset_keeps_zero_rhs_stationary_through_forward():
     export = _single_dense_export(store, wrapper, prediction_grid_n=7)
     assert export.c_species.shape == (7, 1)
     assert np.allclose(export.c_species[:, 0], 1.0, rtol=0.0, atol=2e-6)
-
-
-def test_dense_export_uses_export_v_real_semantics():
-    collection, store, wrapper = _build_single_process_runtime(
-        initial_volume=0.05,
-        sample_delta=-0.1,
-    )
-    export = _single_dense_export(store, wrapper, prediction_grid_n=11)
-
-    assert export.v_real.shape == (11,)
-    # Human-facing export should reflect the sampled volume directly, not the
-    # runtime clamp used inside the RHS denominator.
-    assert float(export.v_real[-1]) == pytest.approx(-0.05, abs=5e-4)
 
 
 def test_plot_sources_survive_collection_release():

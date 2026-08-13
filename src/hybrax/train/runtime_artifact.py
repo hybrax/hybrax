@@ -35,6 +35,7 @@ _CONTROL_ARRAYS = (
     "jump_ts",
     "grid_lengths",
     "jump_ts_lengths",
+    "min_V",
     "sample_event_times",
     "sample_event_volumes",
     "sample_event_mask",
@@ -1205,6 +1206,7 @@ def _validate_semantic_arrays(
         "control_values": (n_processes, n_grid, len(fallback_indices)),
         "control_derivatives": (n_processes, n_grid, len(fallback_indices)),
         "jump_ts": (n_processes, n_jump),
+        "min_V": (n_processes,),
         "sample_event_times": (n_processes, n_sample),
         "sample_event_volumes": (n_processes, n_sample),
         "bolus_event_times": (n_processes, n_bolus),
@@ -1221,6 +1223,8 @@ def _validate_semantic_arrays(
         if name != "spline_breaks"
     ):
         raise ValueError("runtime controls contain non-finite values")
+    if np.any(validated_controls["min_V"] <= 0):
+        raise ValueError("shared.controls.min_V: values must be positive")
     breaks = validated_controls["spline_breaks"]
     if np.any(np.isnan(breaks)) or np.any(np.isneginf(breaks)):
         raise ValueError("runtime spline breaks contain invalid values")

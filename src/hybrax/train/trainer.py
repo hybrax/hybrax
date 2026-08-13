@@ -166,6 +166,10 @@ class _BatchIndexedControls(eqx.Module):
         return self.batch_controls.eval_controlled_PVs(self.row_idx, t_arr, states)
 
     @property
+    def min_V(self) -> jax.Array:
+        return self.batch_controls.min_V[self.row_idx]
+
+    @property
     def sample_event_times(self) -> jax.Array:
         return self.batch_controls.sample_event_times[self.row_idx]
 

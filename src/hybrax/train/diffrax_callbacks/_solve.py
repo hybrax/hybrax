@@ -129,7 +129,8 @@ def _wrap_preset_affect_dtype(affect_fn):
 
     Preset affects additionally receive ``preset_index`` (the slot within their own
     ``times``) so they can identify the firing preset exactly instead of comparing
-    floats against ``t``. See ``PresetTimeCallback``.
+    floats against ``t``. Speculative batched evaluation passes ``-1``; see
+    ``PresetTimeCallback``.
     """
 
     def wrapped(y, t, args, preset_index):
@@ -195,10 +196,11 @@ def diffeqsolve_with_callbacks(
         output_window: Optional static bound on how many ``output_times`` entries a
             single segment may own. Each segment then only sees a ``dynamic_slice``
             window of that size instead of the whole grid. Without it the per-segment
-            save work is ``O(max_events * n_output)``, because diffrax writes every slot
-            in every segment (out-of-range times pin onto the segment endpoints) -- which
-            makes an event-heavy process SLOWER than saving at boundaries. ``None`` uses
-            the whole grid. If a segment ever owns more than ``output_window`` points the
+            save work is ``O(max_events * n_output)``, because diffrax writes every
+            slot in every segment (out-of-range times pin onto the segment endpoints)
+            -- which makes an event-heavy process SLOWER than saving at boundaries.
+            ``None`` uses the whole grid. If a segment ever owns more than
+            ``output_window`` points the
             excess would be dropped, so ``output_overflow`` is raised instead.
         stepsize_controller: Diffrax step size controller.
         max_steps: Step budget for the WHOLE trajectory. Must be a static Python int --
@@ -244,7 +246,9 @@ def diffeqsolve_with_callbacks(
             # "Empty saveat -- nothing will be saved"; fail here with the real reason.
             raise ValueError("output_times must be non-empty; pass None to disable")
         n_output = output_times.shape[0]
-        window = n_output if output_window is None else min(int(output_window), n_output)
+        window = (
+            n_output if output_window is None else min(int(output_window), n_output)
+        )
     else:
         n_output = 0
         window = 0
@@ -349,8 +353,9 @@ def diffeqsolve_with_callbacks(
         )
 
         # Once a lane has ``terminated`` (a prior segment bailed — e.g. hit
-        # ``max_steps_per_segment`` on a stiff blow-up) OR is ``done`` (a healthy lane
-        # that consumed every preset and reached ``t1``), collapse every later segment to
+        # ``max_steps_per_segment`` on a stiff blow-up) OR is ``done`` (a healthy
+        # lane that consumed every preset and reached ``t1``), collapse every later
+        # segment to
         # zero length so the batched solve does ~0 steps for it. This is the vmap-safe
         # analogue of "skip the rest of the trajectory": under ``vmap`` the per-segment
         # ``diffeqsolve`` while-loop is paced by the slowest *live* lane, so a
@@ -361,7 +366,8 @@ def diffeqsolve_with_callbacks(
         # ``done`` must be in here, not just ``terminated``. The scan always runs
         # ``max_events`` iterations; without the collapse a finished lane still gets
         # ``segment_t1 = max(t1, t_current + tol)`` from the clamp just above — a
-        # tolerance-LENGTH (not zero-length) segment, which diffrax runs at >= 1 accepted
+        # tolerance-LENGTH (not zero-length) segment, which diffrax runs at >= 1
+        # accepted
         # step. Those steps are real: they cost a full 6-stage Tsit5 evaluation each AND
         # they accumulate into ``steps_used`` below, so they silently eat the
         # ``max_steps_total`` budget. Measured on a 2023_bayer-shaped process: 38 ODE
@@ -390,7 +396,8 @@ def diffeqsolve_with_callbacks(
             # times, so t0/t1 appear twice and measurement times coincide with events.
             # Slots no segment owns are then never counted, the pointer falls behind and
             # the window slides off the owned range, silently leaving ``inf`` rows.
-            # ``side="right"`` counts entries <= t, so ``hi - lo`` is exactly the count in
+            # ``side="right"`` counts entries <= t, so ``hi - lo`` is exactly the
+            # count in
             # the half-open ``(t_current, segment_t1]`` that ``owns`` selects below.
             lo = jnp.searchsorted(output_times, t_current, side="right")
             hi = jnp.searchsorted(output_times, segment_t1, side="right")
@@ -478,17 +485,20 @@ def diffeqsolve_with_callbacks(
         if has_output:
             # OWNERSHIP: half-open ``(t_current, segment_t1]``. Exactly one live segment
             # owns each output time, and a time landing ON an event is owned by the
-            # segment that ENDS there -- i.e. it reports the PRE-affect state, matching
-            # ``event_states_before``. Assigning it to the starting segment instead would
-            # return the post-jump state and silently shift volumes and concentrations at
+            # segment that ENDS there -- i.e. it reports the PRE-affect state,
+            # matching ``event_states_before``. Assigning it to the starting segment
+            # instead would return the post-jump state and silently shift volumes and
+            # concentrations at
             # exactly the times every yield and rate is anchored to.
             owns = (ts_window > t_current) & (ts_window <= segment_t1) & live
             seg_saved = sol.ys[:-1]
-            # A bailing segment's REACHED slots are genuine converged values, so they are
-            # kept (poisoning them would put ``inf`` into rows ``fail_time`` calls valid).
+            # A bailing segment's REACHED slots are genuine converged values, so
+            # they are kept (poisoning them would put ``inf`` into rows
+            # ``fail_time`` calls valid).
             # But today the only array read back from a failed segment is
-            # ``event_states_before``, which is ``inf`` -- so a failed lane contributes
-            # exactly ZERO gradient. ``stop_gradient`` preserves that contract; without it
+            # ``event_states_before``, which is ``inf`` -- so a failed lane
+            # contributes exactly ZERO gradient. ``stop_gradient`` preserves that
+            # contract; without it
             # the change would silently start backpropagating through a blow-up.
             seg_saved = jnp.where(
                 seg_failed, jax.lax.stop_gradient(seg_saved), seg_saved
@@ -512,11 +522,12 @@ def diffeqsolve_with_callbacks(
         # conservative cutoff: measurements at ``t > fail_time`` are past the failed
         # solve. Stays ``inf`` for a lane that never fails.
         first_failure = seg_failed & (~terminated)
-        # ``t_current`` — the START of the failing segment — stays the cutoff even though
-        # ``SaveAt(ts=...)`` could now report the last output time actually reached. That
-        # finer cutoff was implemented and rejected: on a blow-up the solver *does* reach
-        # output points past the last good node, but the values there are garbage (1e11
-        # on the ``_BlowUpReactionModule`` fixture), so a later cutoff stops masking them
+        # ``t_current`` — the START of the failing segment — stays the cutoff even
+        # though ``SaveAt(ts=...)`` could now report the last output time actually
+        # reached. That finer cutoff was implemented and rejected: on a blow-up the
+        # solver *does* reach output points past the last good node, but the values
+        # there are garbage (1e11 on the ``_BlowUpReactionModule`` fixture), so a
+        # later cutoff stops masking them
         # and presents them as real predictions. The conservative node-level cutoff is
         # the whole point of ``fail_time``.
         new_fail_time = jnp.where(first_failure, t_current, fail_time)
@@ -556,12 +567,17 @@ def diffeqsolve_with_callbacks(
             y_cont = _dispatch_continuous_affect(
                 y_at_stop, t_at_stop, args, sol.event_mask
             )
+            preset_index = jnp.where(
+                preset_triggered,
+                preset_local_indices[jnp.clip(next_preset_idx, 0)],
+                -1,
+            )
             y_pres = _dispatch_preset_affect(
                 y_at_stop,
                 t_at_stop,
                 args,
                 preset_affect_indices[jnp.clip(next_preset_idx, 0)],
-                preset_local_indices[jnp.clip(next_preset_idx, 0)],
+                preset_index,
             )
             y_after = jnp.where(
                 continuous_triggered,
@@ -574,12 +590,17 @@ def diffeqsolve_with_callbacks(
             )
             y_after = jnp.where(continuous_triggered, y_cont, y_at_stop)
         elif has_presets:
+            preset_index = jnp.where(
+                preset_triggered,
+                preset_local_indices[jnp.clip(next_preset_idx, 0)],
+                -1,
+            )
             y_pres = _dispatch_preset_affect(
                 y_at_stop,
                 t_at_stop,
                 args,
                 preset_affect_indices[jnp.clip(next_preset_idx, 0)],
-                preset_local_indices[jnp.clip(next_preset_idx, 0)],
+                preset_index,
             )
             y_after = jnp.where(preset_triggered, y_pres, y_at_stop)
         else:

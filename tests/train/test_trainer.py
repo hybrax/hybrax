@@ -219,9 +219,7 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     }
 
 
-def _build_wrapper_and_process(
-    module_cls=_LinearReactionModule, process_name="p2", min_V=1e-6
-):
+def _build_wrapper_and_process(module_cls=_LinearReactionModule, process_name="p2"):
     from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
 
     collection = _make_two_process_collection()
@@ -238,7 +236,6 @@ def _build_wrapper_and_process(
         process=collection.processes[process_name],
         controls=process_data.controls,
         loss_module=DefaultLossModule(target_names=["biomass"]),
-        min_V=min_V,
     )
     return wrapper, process_data
 
@@ -912,8 +909,8 @@ class _DenseFailLoss(DefaultLossModule):
         )
 
 
-def test_trainer_wires_unclamped_dense_volume_from_export():
-    wrapper, process_data = _build_wrapper_and_process(min_V=2.0)
+def test_trainer_wires_dense_volume_from_export():
+    wrapper, process_data = _build_wrapper_and_process()
     wrapper = eqx.tree_at(
         lambda w: w.loss_module,
         wrapper,
@@ -933,7 +930,7 @@ def test_trainer_wires_unclamped_dense_volume_from_export():
         solver_atol=1e-7,
     )
 
-    assert result.per_target_loss[1] == pytest.approx(2.0)
+    assert result.per_target_loss[1] == pytest.approx(31 / 30)
     assert result.per_target_loss[2] == pytest.approx(31.0 / 30.0)
 
 

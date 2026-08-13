@@ -444,8 +444,7 @@ class ReactionInputs(eqx.Module):
       survives transient negative excursions near depletion.
     - ``SCL_modeled_PVs``: modeled (uncontrolled, dynamic) process-variable
       states, integrated alongside the RMCs. Empty when the process has none.
-    - ``SCL_modeled_V``: real reactor volume at time t (already includes the
-      ``min_V`` floor applied by the wrapper).
+    - ``SCL_modeled_V``: real reactor volume at time t.
     - ``SCL_modeled_FVCs_cumulative``: per-feed cumulative volume of each
       MODELED feed (integrated state).
 
@@ -885,8 +884,7 @@ class LossInputs(eqx.Module):
     RAW_modeled_FVCs_rates: jax.Array
     SCL_V: jax.Array
     RAW_V: jax.Array
-    # Integrated volume before the wrapper's ``min_V`` floor. Use for physical
-    # constraint losses; ``RAW_V`` is the safe value passed to the reaction model.
+    # Integrated volume, also exposed explicitly for physical constraint losses.
     RAW_V_unclamped: jax.Array
     auxiliary: dict[str, jax.Array]
 

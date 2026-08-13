@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import pytest
 from bp_format.dataclasses import (
@@ -731,6 +732,213 @@ def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
     assert jnp.array_equal(outputs.SCL_states, jnp.asarray([1.0, 1.0]))
     assert outputs.auxiliary is not None
     assert jnp.array_equal(outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0]))
+
+
+def test_physical_rhs_passes_process_minimum_volume_to_bp_format():
+    process = _make_single_species_process(feed_rate=0.0)
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    with pytest.raises(Exception, match="minimum reactor volume"):
+        wrapper.physical_rhs(0.0, jnp.asarray([1.0, controls.min_V]))
+
+
+@pytest.mark.parametrize("initial_volume", [0.001, 0.0005])
+def test_solve_rejects_initial_volume_at_or_below_minimum(initial_volume):
+    from bp_train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    with pytest.raises(Exception, match="initial state reached minimum reactor volume"):
+        solve_physical_states(
+            wrapper,
+            t_eval=jnp.asarray([0.0, 1.0]),
+            n_measured=2,
+            RAW_y0=jnp.asarray([1.0, initial_volume]),
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+        )
+
+
+@pytest.mark.parametrize("event_time", [0.0, 1.0])
+@pytest.mark.parametrize("sample_volume", [0.999, 1.0])
+def test_solve_rejects_sample_volume_at_or_below_minimum(sample_volume, event_time):
+    from bp_train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process(feed_rate=0.0)
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    controls = eqx.tree_at(
+        lambda c: (
+            c.sample_event_times,
+            c.sample_event_volumes,
+            c.sample_event_mask,
+            c.min_V,
+        ),
+        controls,
+        (
+            jnp.asarray([event_time]),
+            jnp.asarray([sample_volume]),
+            jnp.asarray([True]),
+            jnp.asarray(1.0) - jnp.asarray(sample_volume),
+        ),
+    )
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    with pytest.raises(Exception, match="sample reached minimum reactor volume"):
+        solve_physical_states(
+            wrapper,
+            t_eval=jnp.asarray([0.0, 1.0, 2.0]),
+            n_measured=3,
+            RAW_y0=jnp.asarray([1.0, 1.0]),
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+        )
+
+
+@pytest.mark.parametrize("batched", [False, True])
+def test_valid_sample_is_not_speculatively_reapplied(batched):
+    from bp_train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process(feed_rate=0.0)
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    controls = eqx.tree_at(
+        lambda c: (
+            c.sample_event_times,
+            c.sample_event_volumes,
+            c.sample_event_mask,
+        ),
+        controls,
+        (jnp.asarray([1.0]), jnp.asarray([0.998]), jnp.asarray([True])),
+    )
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    def solve(y0):
+        return solve_physical_states(
+            wrapper,
+            t_eval=jnp.asarray([0.0, 1.0, 2.0]),
+            n_measured=3,
+            RAW_y0=y0,
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+        )
+
+    states = (
+        eqx.filter_jit(jax.vmap(solve))(jnp.asarray([[1.0, 1.0]]))[0]
+        if batched
+        else solve(jnp.asarray([1.0, 1.0]))
+    )
+
+    assert states[-1, 1] == pytest.approx(0.002, abs=1e-6)
+
+
+def test_vmap_masks_preset_affect_for_lane_without_trigger():
+    from bp_train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process(feed_rate=0.0)
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    def solve(event_time):
+        lane_controls = eqx.tree_at(
+            lambda c: (
+                c.sample_event_times,
+                c.sample_event_volumes,
+                c.sample_event_mask,
+            ),
+            controls,
+            (event_time[None], jnp.asarray([0.998]), jnp.asarray([True])),
+        )
+        lane_wrapper = eqx.tree_at(lambda w: w.controls, wrapper, lane_controls)
+        return solve_physical_states(
+            lane_wrapper,
+            t_eval=jnp.asarray([0.0, 1.0, 2.0]),
+            n_measured=3,
+            RAW_y0=jnp.asarray([1.0, 1.0]),
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+        )
+
+    states = eqx.filter_jit(jax.vmap(solve))(jnp.asarray([1.0, 2.0]))
+
+    assert jnp.allclose(states[:, -1, 1], jnp.asarray([0.002, 0.002]), atol=1e-6)
+
+
+def test_start_time_sample_and_bolus_are_applied_once():
+    from bp_train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process(feed_rate=0.0)
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    controls = eqx.tree_at(
+        lambda c: (
+            c.sample_event_times,
+            c.sample_event_volumes,
+            c.sample_event_mask,
+            c.bolus_event_times,
+            c.bolus_event_volumes,
+            c.bolus_event_Cin,
+            c.bolus_event_mask,
+        ),
+        controls,
+        (
+            jnp.asarray([0.0]),
+            jnp.asarray([0.2]),
+            jnp.asarray([True]),
+            jnp.asarray([0.0]),
+            jnp.asarray([0.1]),
+            jnp.asarray([[3.0]]),
+            jnp.asarray([True]),
+        ),
+    )
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    states = solve_physical_states(
+        wrapper,
+        t_eval=jnp.asarray([0.0, 0.0, 1.0]),
+        n_measured=3,
+        RAW_y0=jnp.asarray([1.0, 1.0]),
+        max_steps=10_000,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+
+    assert jnp.allclose(states[:2], jnp.asarray([[1.0, 0.8], [1.0, 0.8]]))
+    assert jnp.allclose(states[2], jnp.asarray([1.1 / 0.9, 0.9]), atol=1e-5)
 
 
 def test_continuous_feed_transport_volume_and_dilution():
