@@ -97,7 +97,7 @@ class CheckpointConfig(ConfigBase):
 
 class OutputConfig(ConfigBase):
     dir: Path = Path("output")
-    predictions: PredictionScope = "parents"
+    predictions: PredictionScope = "none"
 
 
 class LoggingConfig(ConfigBase):
@@ -233,7 +233,7 @@ class ModelRef(ConfigBase):
 
 class ForwardOutputConfig(ConfigBase):
     dir: Path | None = None  # None -> <first model>/forward
-    predictions: PredictionScope = "parents"
+    predictions: PredictionScope = "none"
 
 
 class ForwardRunConfig(ConfigBase):

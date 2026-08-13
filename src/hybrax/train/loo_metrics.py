@@ -1,9 +1,9 @@
 """Post-hoc LOO-CV goodness-of-fit metrics from per-fold predictions.csv.
 
-Hijacks the dense ``predictions.csv`` written by every fold (and by every
-``bp-train train`` run) so R², NMAE, MAE, and RMSE can be computed against
-the original measurements *without* reloading any model or rerunning the
-solver. Inputs:
+Uses dense ``predictions.csv`` files produced when a LOO run explicitly sets
+``output.predictions`` to ``"parents"`` or ``"all"``. This computes R², NMAE,
+MAE, and RMSE against the original measurements without reloading any model or
+rerunning the solver. Inputs:
 
 - ``<loo_output_dir>/folds/<parent>/predictions.csv`` — dense simulated
   trajectory of each process for that fold.
@@ -950,11 +950,9 @@ def compute_per_process_metrics(
     df = pd.DataFrame(rows)
     if df.empty:
         raise RuntimeError(
-            "no per-process metrics computed. Most common cause: each fold's "
-            "predictions.csv is missing rows for the holdout process(es). "
-            "Re-run training (cli._write_train_results was fixed to include "
-            "the eval set in predictions.csv) or run 'bp-train forward' per "
-            "fold to regenerate predictions covering every process."
+            "no per-process metrics computed. Each fold's predictions.csv "
+            "must include its holdout process(es). Re-run LOO with "
+            "output.predictions set to 'parents' or 'all'."
         )
     df.attrs.update(provenance)
     df.attrs["metrics_used"] = tuple(metric_registry.keys())
@@ -1027,11 +1025,9 @@ def compute_aggregated_metrics(
     df = pd.DataFrame(rows)
     if df.empty:
         raise RuntimeError(
-            "no aggregated metrics computed. Most common cause: each fold's "
-            "predictions.csv is missing rows for the holdout process(es). "
-            "Re-run training (cli._write_train_results was fixed to include "
-            "the eval set in predictions.csv) or run 'bp-train forward' per "
-            "fold to regenerate predictions covering every process."
+            "no aggregated metrics computed. Each fold's predictions.csv "
+            "must include its holdout process(es). Re-run LOO with "
+            "output.predictions set to 'parents' or 'all'."
         )
     df.attrs.update(provenance)
     df.attrs["metrics_used"] = tuple(metric_registry.keys())

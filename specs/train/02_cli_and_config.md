@@ -23,14 +23,14 @@ prepare dir (prepared.json, prepare_config.json, prepare_diagnostics/)
    │  bp-train train     (fit reaction + loss modules → run directory)
    ▼
 run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
-   │  bp-train forward   (re-simulate, export predictions)
+   │  bp-train forward   (re-simulate, optionally export predictions)
    │  bp-train loo       (leave-one-process-out cross-validation)
    ▼
-predictions.csv / loss curves / losses.csv / loo summary
+optional predictions.csv / loss curves / losses.csv / loo summary
 ```
 
-`prepare`, `train`, and `loo` are config-driven (`--config run.json`).
-`forward` accepts a config or direct flags. See
+All subcommands are config-driven (`--config run.json`), with documented CLI
+options for selected overrides. See
 [03_data_preparation.md](03_data_preparation.md) for prepare and
 [05_train_forward_loo.md](05_train_forward_loo.md) for train/forward/loo
 internals.
@@ -93,8 +93,8 @@ The `forward-config.json`:
     "processes": ["run_1"]         // subset; omit for all
   },
 
-  // Optional. predictions defaults to "parents"; also accepts "none" or "all".
-  "output": { "dir": null, "predictions": "parents" }
+  // Optional. predictions defaults to "none"; also accepts "parents" or "all".
+  "output": { "dir": null, "predictions": "none" }
 }
 ```
 
@@ -364,7 +364,7 @@ directory.
 | `every` | null | Periodic checkpoint cadence in epochs. Null selects `max(5, ceil(epochs / 20))`, giving at most 20 checkpoints; explicit fractional values are supported, and 0 disables periodic writes but not the mandatory final checkpoint. |
 
 **`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
-`output`) and `predictions` (`parents` by default; also `none` or `all`).
+`output`) and `predictions` (`none` by default; also `parents` or `all`).
 
 **`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `decimals` (4).
 

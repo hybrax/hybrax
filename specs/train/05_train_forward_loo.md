@@ -109,7 +109,7 @@ ensemble) plus optional `data` and `output` blocks.
 - For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
   into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
   own `models/<name>/predictions.csv` and `losses.csv`.
-- `output.predictions` selects `none`, non-augmented `parents` (the default),
+- `output.predictions` selects `none` (the default), non-augmented `parents`,
   or `all` evaluated processes. `none` skips dense prediction solves. When a
   rerun selects no processes, stale prediction CSVs are removed.
 - Outputs are written by `export_predictions_csv` in
@@ -196,16 +196,79 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 - **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
   lightweight model-state checkpoints plus final `trained_wrapper.eqx`,
-  `losses.csv`, configured predictions, and `loss_curve.png`). With the default
-  `parents` scope, exports include every evaluated original process, including
-  the holdout; aggregate metrics remain holdout-only. Checkpoints do not contain
-  prediction exports or plots.
+  `losses.csv`, optional configured predictions, and `loss_curve.png`). The
+  default `none` scope skips prediction exports; `parents` includes every evaluated
+  original process, including the holdout. Aggregate metrics remain holdout-only.
+  Checkpoints do not contain prediction exports or plots.
 - **Aggregation** ([`LOOResult`](../bp_train/loo.py)): the orchestrator reads each
   fold's `losses.csv` back from disk and writes `loo_summary.csv`,
   `loo_aggregate.json`, and `loo_loss_curves.png` (holdout metrics averaged over
   each fold's `test` set; a single-fold run reports `NaN` for the cross-fold
   std). Post-hoc metrics honor the stored prediction scope and do not score
   augmented holdout children omitted by `parents`.
+
+## Recreating predictions after training
+
+Prediction exports are opt-in. Point `forward` at a self-contained run or
+checkpoint directory and explicitly select `parents` or `all`:
+
+```json
+{
+  "models": ["output/checkpoints/latest"],
+  "output": {"dir": "output/forward", "predictions": "parents"}
+}
+```
+
+```bash
+bp-train forward --config forward-config.json --overwrite
+```
+
+The checkpoint's bundled configuration, custom module, and prepared data are
+reused. Add `data.prepared` to evaluate different prepared data, and
+`data.processes` to select processes.
+
+For a completed LOO run, run each held-out process through its fold's final
+checkpoint. For example:
+
+```json
+{
+  "models": ["output_loo/folds/DoE1_R1/checkpoints/latest"],
+  "data": {"processes": ["DoE1_R1"]},
+  "output": {
+    "dir": "output_loo/folds/DoE1_R1/forward",
+    "predictions": "parents"
+  }
+}
+```
+
+Repeat this config for each fold. For grouped holdouts, list every held-out
+process. Use `"all"` instead of `"parents"` when augmented processes are also
+wanted. This recreates fold-specific predictions without treating the fold
+models as an ensemble.
+
+`forward` does not create plots. Plot the exported columns directly; for example,
+this writes one plot for a selected variable across all exported processes:
+
+```python
+import csv
+from collections import defaultdict
+
+import matplotlib.pyplot as plt
+
+column = "c_biomass"
+series = defaultdict(list)
+with open("output/forward/predictions.csv", newline="") as file:
+    for row in csv.DictReader(file):
+        series[row["process"]].append((float(row["t"]), float(row[column])))
+
+for process, values in series.items():
+    t, y = zip(*values)
+    plt.plot(t, y, label=process)
+plt.xlabel("t")
+plt.ylabel(column)
+plt.legend()
+plt.savefig(f"output/forward/{column}.png", dpi=150, bbox_inches="tight")
+```
 
 ## Examples
 

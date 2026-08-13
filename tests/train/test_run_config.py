@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from bp_train.run_config import (
     DefaultCustomConfig,
+    ForwardRunConfig,
     RunConfig,
     load_forward_config,
     load_loo_config,
@@ -374,6 +375,11 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
 def test_removed_training_cadence_fields_are_rejected(section):
     with pytest.raises(ValueError):
         RunConfig.model_validate(section)
+
+
+def test_prediction_exports_default_to_none():
+    assert RunConfig().output.predictions == "none"
+    assert ForwardRunConfig(models=("model",)).output.predictions == "none"
 
 
 def test_checkpoint_every_defaults_to_auto_and_accepts_explicit_cadence():

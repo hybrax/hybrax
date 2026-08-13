@@ -575,7 +575,7 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert result.fold.test == ("p2",)
     assert captured["process_names"] == ("p1", "p3")
     assert captured["holdout"] == ("p2",)
-    assert captured["prediction_process_names"] == ("p1", "p3", "p2")
+    assert captured["prediction_process_names"] == ()
     assert captured["evaluation_wrapper"] is captured["reloaded_wrapper"]
     assert result.train_result.trained_wrapper is captured["reloaded_wrapper"]
     assert captured["reload_template"] is not result.train_result.trained_wrapper

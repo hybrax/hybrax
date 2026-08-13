@@ -135,7 +135,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "forward",
         help=(
             "Load a trained model and run one forward ODE pass per selected "
-            "process (no training). Writes predictions and a loss table."
+            "process (no training). Writes configured predictions and a loss table."
         ),
     )
     forward_parser.add_argument(
