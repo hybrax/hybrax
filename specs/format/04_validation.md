@@ -163,10 +163,13 @@ structure against the first process:
 - same reactor components, each with the same value type and unit
 - same process variables, each with the same value type and unit
 - same volume unit
-- same volume-change names and units
 - same time-axis unit and time reference
 
-All units and the time reference are compared as exact strings. Units are not
+Volume-change names may differ because processes in one case study can use
+different feed and sampling strategies. Each process's volume-change units are
+checked against its own volume unit by `validate_volume_units`.
+
+All compared units and the time reference are exact strings. Units are not
 parsed or converted, and no dimensional analysis is performed. Time-axis start
 and end may differ.
 

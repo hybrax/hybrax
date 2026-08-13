@@ -1047,8 +1047,8 @@ class TestValidateForPublication:
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
-    def test_inconsistent_volume_change_names(self):
-        """Processes with different volume change names should fail consistency."""
+    def test_different_volume_change_names_pass(self):
+        """Processes may use different feed or sampling strategies."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         vc = FeedVolumeChange(
             name="feed",
@@ -1062,8 +1062,10 @@ class TestValidateForPublication:
         p2 = _make_biomass_process(ts)  # no volume changes
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
-        assert all_valid is False
-        assert any("volume change" in e for e in report["__consistency__"])
+        assert all_valid is True
+        assert report["__consistency__"] == [
+            "Cross-process structure is consistent — OK"
+        ]
 
     def test_wrong_type_raises_type_error(self):
         with pytest.raises(TypeError, match="BioProcessCollection"):
@@ -1111,8 +1113,8 @@ class TestValidateForPublication:
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
-    def test_inconsistent_volume_change_units(self):
-        """Same volume change name but different units should fail consistency."""
+    def test_volume_change_units_are_checked_per_process(self):
+        """Cross-process consistency does not compare volume-change units."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         vc1 = FeedVolumeChange(
             name="feed",
@@ -1135,7 +1137,13 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("volume change" in e for e in report["__consistency__"])
+        assert report["__consistency__"] == [
+            "Cross-process structure is consistent — OK"
+        ]
+        assert any(
+            "Volume changes must use volume unit" in message
+            for message in report["run2"]
+        )
 
 
 class TestValidateCrossProcessConsistency:
