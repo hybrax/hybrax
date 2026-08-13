@@ -219,12 +219,12 @@ def _make_single_species_process(
             volume_changes={
                 "feed_A": FeedVolumeChange(
                     name="feed_A",
-                    unit="L/h",
+                    unit="L",
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.asarray([0.0, 2.0]),
-                        values=jnp.asarray([feed_rate, feed_rate]),
+                        values=jnp.asarray([0.0, 2.0 * feed_rate]),
                     ),
                     feed_medium=feed_medium,
                 ),
@@ -314,23 +314,23 @@ def _make_two_species_two_feed_process() -> BioProcess:
             volume_changes={
                 "feed_A": FeedVolumeChange(
                     name="feed_A",
-                    unit="L/h",
+                    unit="L",
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.asarray([0.0, 2.0]),
-                        values=jnp.asarray([0.2, 0.2]),
+                        values=jnp.asarray([0.0, 0.4]),
                     ),
                     feed_medium=feed_a,
                 ),
                 "feed_B": FeedVolumeChange(
                     name="feed_B",
-                    unit="L/h",
+                    unit="L",
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.asarray([0.0, 2.0]),
-                        values=jnp.asarray([0.3, 0.3]),
+                        values=jnp.asarray([0.0, 0.6]),
                     ),
                     feed_medium=feed_b,
                 ),

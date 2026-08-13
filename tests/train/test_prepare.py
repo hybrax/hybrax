@@ -86,12 +86,12 @@ def _make_feed_collection() -> BioProcessCollection:
             volume_changes={
                 "feed_A": FeedVolumeChange(
                     name="feed_A",
-                    unit="L/h",
+                    unit="L",
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.asarray([0.0, 1.0]),
-                        values=jnp.asarray([0.1, 0.1]),
+                        values=jnp.asarray([0.0, 0.1]),
                     ),
                     feed_medium=feed_medium,
                 )
@@ -176,12 +176,12 @@ def _make_explicit_ode_collection() -> BioProcessCollection:
             volume_changes={
                 "feed_A": FeedVolumeChange(
                     name="feed_A",
-                    unit="L/h",
+                    unit="L",
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.asarray([0.0, 1.0]),
-                        values=jnp.asarray([0.1, 0.1]),
+                        values=jnp.asarray([0.0, 0.1]),
                     ),
                     feed_medium=feed_medium,
                 )
@@ -991,12 +991,12 @@ def test_select_control_sources_handles_null_feed_medium():
             volume_changes={
                 "feed_A": FeedVolumeChange(
                     name="feed_A",
-                    unit="L/h",
+                    unit="L",
                     is_controlled=True,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.asarray([0.0, 1.0]),
-                        values=jnp.asarray([0.1, 0.1]),
+                        values=jnp.asarray([0.0, 0.1]),
                     ),
                     # feed_medium=None is allowed at runtime even though the
                     # type annotation forbids it; dataclasses do not enforce

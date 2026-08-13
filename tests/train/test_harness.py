@@ -392,12 +392,12 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                 volume_changes={
                     "feed_A": FeedVolumeChange(
                         name="feed_A",
-                        unit="L/h",
+                        unit="L",
                         is_controlled=True,
                         is_continuous=True,
                         values=TimeSeries(
                             times=jnp.asarray([0.0, 2.0]),
-                            values=jnp.asarray([0.2, 0.2]),
+                            values=jnp.asarray([0.0, 0.4]),
                         ),
                         feed_medium=feed_medium,
                     ),
