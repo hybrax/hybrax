@@ -80,13 +80,14 @@ def _require_reactor_volume_above_threshold(
     volume: jnp.ndarray,
     *,
     context: str,
+    V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
 ) -> jnp.ndarray:
-    """Fail when reactor volume reaches a physically invalid near-zero value."""
+    """Fail when reactor volume reaches its minimum valid value."""
     volume_arr = jnp.asarray(volume)
     return eqx.error_if(
         volume_arr,
-        jnp.any(volume_arr <= _MIN_REACTOR_VOLUME),
-        f"{context} reached zero or near-zero reactor volume.",
+        jnp.any(volume_arr <= V_min),
+        f"{context} reached minimum reactor volume.",
     )
 
 
@@ -139,6 +140,7 @@ def _apply_feed_dilution(
     Cin_controlled_FVCs: jnp.ndarray,
     Cin_modeled_FVCs: jnp.ndarray,
     n_RMCs: int,
+    V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Reactor-component mass balance from feed/sample flows + ``dV/dt``.
 
@@ -153,7 +155,7 @@ def _apply_feed_dilution(
     - SVCs contribute dilution only (no species addition); they push ``dV``
       downward.
     """
-    V = _require_reactor_volume_above_threshold(V, context="ODE state")
+    V = _require_reactor_volume_above_threshold(V, context="ODE state", V_min=V_min)
 
     total_in = jnp.sum(u_controlled_FVCs) + jnp.sum(f_modeled_FVCs)  # >= 0
     total_out = -(jnp.sum(u_controlled_SVCs) + jnp.sum(f_modeled_SVCs))  # >= 0
@@ -588,6 +590,7 @@ class RhsOde(eqx.Module):
         u: jnp.ndarray,
         f_modeled_FVCs: jnp.ndarray,
         f_modeled_SVCs: jnp.ndarray,
+        V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
     ) -> jnp.ndarray:
         n_RMCs = len(self.name_modeled_RMCs)
         n_PVs = len(self.name_modeled_PVs)
@@ -629,6 +632,7 @@ class RhsOde(eqx.Module):
             self.Cin_controlled_FVCs,
             self.Cin_modeled_FVCs,
             n_RMCs,
+            V_min,
         )
 
         dc_RMCs = biol_dc[:n_RMCs] + feed_term

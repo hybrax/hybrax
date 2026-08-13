@@ -536,6 +536,15 @@ class TestRhsOde:
         dc = rhs(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
         assert dc.shape == (3,)  # 2 RMCs + 0 PVs + V
 
+    def test_custom_minimum_volume(self):
+        process = _make_process()
+        rhs = build_rhs_ode(process)
+        c = jnp.array([1.0, 5.0, 0.5])
+        rates = jnp.zeros(2)
+
+        with pytest.raises(Exception, match="minimum reactor volume"):
+            rhs(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), V_min=0.5)
+
     def test_dV_from_FVC(self):
         process = _make_process(with_controlled_FVC=True, with_controlled_PV=False)
         rhs = build_rhs_ode(process)
