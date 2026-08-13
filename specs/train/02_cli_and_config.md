@@ -94,8 +94,8 @@ The `forward-config.json`:
     "processes": ["run_1"]         // subset; omit for all
   },
 
-  // Optional.
-  "output": { "dir": null, "plots": true }
+  // Optional. predictions defaults to "parents"; also accepts "none" or "all".
+  "output": { "dir": null, "plots": true, "predictions": "parents" }
 }
 ```
 
@@ -105,10 +105,10 @@ predicts on the same collection and the per-model outputs can be aligned.
 Outputs under `--output-dir`:
 
 ```
-predictions.csv          # mean across models (the single model itself, if one)
-predictions_std.csv      # ensembles only: per-point std across models
+predictions.csv          # selected-process mean; omitted for "none"
+predictions_std.csv      # ensemble std; omitted for "none" or one model
 losses.csv               # loss table of the first model
-models/<name>/           # per model: predictions.csv + losses.csv
+models/<name>/           # per model: losses.csv + optional predictions.csv
 <process>_*.png          # fit plots: mean line, ±std band, measured overlay
 ```
 
@@ -167,7 +167,7 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
         prepared.json.gz    # bundled data → self-contained
         custom.py           # bundled hooks
         loss_curve.png  grad_norm_curve.png
-        predictions.csv
+        predictions.csv       # omitted when output.predictions is "none"
         <process>_run_*.png # per-process fit plots
 ```
 
@@ -366,7 +366,8 @@ directory.
 | `every` | null | Periodic checkpoint cadence in epochs. Null selects `max(5, ceil(epochs / 20))`, giving at most 20 checkpoints; explicit fractional values are supported, and 0 disables periodic writes but not the mandatory final checkpoint. |
 
 **`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
-`output`), `plots` (default true).
+`output`), `plots` (default true), and `predictions` (`parents` by default;
+also `none` or `all`). Parent exports exclude augmented child processes.
 
 **`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `decimals` (4).
 

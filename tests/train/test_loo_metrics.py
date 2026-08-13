@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from bp_format.dataclasses import (
+    AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -36,6 +37,7 @@ from bp_train.loo_metrics import (
     DEFAULT_METRICS,
     _read_fold_sidecar,
     compute_aggregated_metrics,
+    compute_loo_metrics,
     compute_per_process_metrics,
     format_incompleteness_banner,
 )
@@ -117,6 +119,18 @@ def _make_process(
     )
 
 
+def _make_augmented_process(name: str, parent: str) -> AugmentedBioProcess:
+    base = _make_process(name)
+    return AugmentedBioProcess(
+        metadata=base.metadata,
+        time_axis=base.time_axis,
+        volume=base.volume,
+        reactor_medium=base.reactor_medium,
+        process_variables=base.process_variables,
+        parent_process=parent,
+    )
+
+
 def _two_process_collection() -> BioProcessCollection:
     return BioProcessCollection(
         processes={
@@ -155,6 +169,8 @@ def _write_fold(
     targets: tuple[str, ...],
     process_predictions: dict[str, dict[str, np.ndarray]],
     training_processes: tuple[str, ...] | None = None,
+    output_predictions: str | None = None,
+    legacy_sidecar_keys: bool = False,
 ) -> None:
     """Write a synthetic fold dir with sidecar + predictions.csv.
 
@@ -166,10 +182,16 @@ def _write_fold(
     sidecar = {
         "fold_idx": fold_idx,
         "holdout_parent": holdout_parent,
-        "holdout_group": list(holdout_group),
-        "training_processes": list(training_processes or ()),
         "targets": list(targets),
     }
+    if legacy_sidecar_keys:
+        sidecar["holdout_group"] = list(holdout_group)
+        sidecar["training_processes"] = list(training_processes or ())
+    else:
+        sidecar["test"] = list(holdout_group)
+        sidecar["train"] = list(training_processes or ())
+    if output_predictions is not None:
+        sidecar["output_predictions"] = output_predictions
     (fold_dir / "trained_wrapper.meta.json").write_text(
         json.dumps(sidecar), encoding="utf-8"
     )
@@ -244,6 +266,112 @@ def _perfect_loo_dir(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+def test_compute_loo_metrics_parent_scope_skips_augmented_holdout(tmp_path, caplog):
+    parent = _make_process("p1")
+    child = _make_augmented_process("p1_aug", "p1")
+    collection = BioProcessCollection(
+        processes={"p1": parent, "p1_aug": child}, metadata={}
+    )
+    out_dir = _build_loo_dir(
+        tmp_path,
+        folds=[
+            {
+                "fold_idx": 0,
+                "holdout_parent": "p1",
+                "holdout_group": ("p1", "p1_aug"),
+                "targets": ("biomass",),
+                "process_predictions": {"p1": _perfect_pred_for(parent)},
+                "output_predictions": "parents",
+            }
+        ],
+    )
+
+    with caplog.at_level(logging.WARNING, logger="bp_train.loo_metrics"):
+        result = compute_loo_metrics(out_dir, collection, write_outputs=False)
+
+    assert set(result.per_fold_target["holdout_process"]) == {"p1"}
+    assert not any("p1_aug" in record.message for record in caplog.records)
+
+
+def test_compute_loo_metrics_legacy_sidecar_scores_augmented_holdout(tmp_path):
+    parent = _make_process("p1")
+    child = _make_augmented_process("p1_aug", "p1")
+    collection = BioProcessCollection(
+        processes={"p1": parent, "p1_aug": child}, metadata={}
+    )
+    out_dir = _build_loo_dir(
+        tmp_path,
+        folds=[
+            {
+                "fold_idx": 0,
+                "holdout_parent": "p1",
+                "holdout_group": ("p1", "p1_aug"),
+                "targets": ("biomass",),
+                "process_predictions": {
+                    name: _perfect_pred_for(process)
+                    for name, process in collection.processes.items()
+                },
+            }
+        ],
+    )
+
+    result = compute_loo_metrics(out_dir, collection, write_outputs=False)
+
+    assert set(result.per_fold_target["holdout_process"]) == {"p1", "p1_aug"}
+
+
+def test_public_metrics_parent_scope_skips_augmented_holdout(tmp_path, caplog):
+    parent = _make_process("p1")
+    child = _make_augmented_process("p1_aug", "p1")
+    collection = BioProcessCollection(
+        processes={"p1": parent, "p1_aug": child}, metadata={}
+    )
+    out_dir = _build_loo_dir(
+        tmp_path,
+        folds=[
+            {
+                "fold_idx": 0,
+                "holdout_parent": "p1",
+                "holdout_group": ("p1", "p1_aug"),
+                "targets": ("biomass",),
+                "process_predictions": {"p1": _perfect_pred_for(parent)},
+                "output_predictions": "parents",
+            }
+        ],
+    )
+
+    with caplog.at_level(logging.WARNING, logger="bp_train.loo_metrics"):
+        result = compute_per_process_metrics(out_dir, collection)
+
+    assert set(result["holdout_process"]) == {"p1"}
+    assert not any("p1_aug" in record.message for record in caplog.records)
+
+
+def test_public_metrics_accept_legacy_sidecar_process_keys(tmp_path):
+    collection = _two_process_collection()
+    out_dir = _build_loo_dir(
+        tmp_path,
+        folds=[
+            {
+                "fold_idx": 0,
+                "holdout_parent": "p1",
+                "holdout_group": ("p1",),
+                "training_processes": ("p2",),
+                "targets": ("biomass",),
+                "process_predictions": {
+                    name: _perfect_pred_for(process)
+                    for name, process in collection.processes.items()
+                },
+                "legacy_sidecar_keys": True,
+            }
+        ],
+    )
+
+    result = compute_per_process_metrics(out_dir, collection, include_train=True)
+
+    assert set(result["holdout_process"]) == {"p1", "p2"}
 
 
 def test_per_process_single_dir_default_metrics(tmp_path):

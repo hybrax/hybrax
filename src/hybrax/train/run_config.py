@@ -45,6 +45,7 @@ _COMMAND_SECTIONS = {
 }
 _Command = Literal["prepare", "train", "loo"]
 InitialValueSource = Literal["measured", "spline", "augmented"]
+PredictionScope = Literal["none", "parents", "all"]
 
 
 class ConfigBase(BaseModel):
@@ -97,6 +98,7 @@ class CheckpointConfig(ConfigBase):
 class OutputConfig(ConfigBase):
     dir: Path = Path("output")
     plots: bool = True
+    predictions: PredictionScope = "parents"
 
 
 class LoggingConfig(ConfigBase):
@@ -233,6 +235,7 @@ class ModelRef(ConfigBase):
 class ForwardOutputConfig(ConfigBase):
     dir: Path | None = None  # None -> <first model>/forward
     plots: bool = True
+    predictions: PredictionScope = "parents"
 
 
 class ForwardRunConfig(ConfigBase):

@@ -28,6 +28,7 @@ def _write_config(
     run_dir: Path,
     epochs: int = 4,
     every: float = 2.0,
+    predictions: str = "parents",
 ) -> Path:
     config = {
         "data": {
@@ -38,7 +39,11 @@ def _write_config(
         "train": {"epochs": epochs, "learning_rate": 0.05, "seed": 0},
         "solver": {"max_steps": 2048},
         "checkpoint": {"every": every},
-        "output": {"dir": str(run_dir), "plots": False},
+        "output": {
+            "dir": str(run_dir),
+            "plots": False,
+            "predictions": predictions,
+        },
         "logging": {"decimals": 4},
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -52,6 +57,7 @@ def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypat
         prepared=prepared_path,
         run_dir=tmp_path / "run",
         epochs=1,
+        predictions="none",
     )
     collection_ref = None
 
@@ -65,10 +71,19 @@ def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypat
         gc.collect()
         assert collection_ref is not None
         assert collection_ref() is None
-        return SimpleNamespace(mean_loss_by_step=(1.0,), updates_completed=1)
+        return SimpleNamespace(
+            trained_wrapper=object(), mean_loss_by_step=(1.0,), updates_completed=1
+        )
 
     monkeypatch.setattr("bp_train.cli.load_process_collection", load_collection)
     monkeypatch.setattr("bp_train.cli.train_collection", execute)
+
+    def evaluate(*_args, **kwargs):
+        assert kwargs["prediction_process_names"] == ()
+        return object()
+
+    monkeypatch.setattr("bp_train.cli.evaluate_trained_wrapper", evaluate)
+    monkeypatch.setattr("bp_train.cli._write_train_results", lambda **_kwargs: None)
     monkeypatch.setattr("bp_train.cli._finalize_run_dir", lambda *_args: None)
 
     assert main(["train", "--config", str(config)]) == 0

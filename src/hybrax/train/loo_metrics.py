@@ -441,6 +441,10 @@ def compute_loo_metrics(
             logger.warning("fold '%s': %s; skipping", holdout_parent, exc)
             continue
         targets = _resolve_target_names(sidecar, pred_df, target_override)
+        # Missing metadata means legacy all-process exports. Early scoped runs
+        # that predate this field cannot be distinguished and may still warn
+        # about intentionally omitted augmented children.
+        prediction_scope = sidecar.get("output_predictions", "all")
         for proc_name in holdout_group:
             process = collection.processes.get(proc_name)
             if process is None:
@@ -449,6 +453,8 @@ def compute_loo_metrics(
                     proc_name,
                     holdout_parent,
                 )
+                continue
+            if prediction_scope == "parents" and _is_augmented_process(process):
                 continue
             sub = pred_df.loc[pred_df["process"] == proc_name]
             if sub.empty:
@@ -693,16 +699,19 @@ def _gather_paired_arrays(
 
         for fold_dir in fold_dirs:
             sidecar = _read_fold_sidecar(fold_dir)
-            holdout_group = tuple(sidecar.get("holdout_group") or ())
+            holdout_group = tuple(
+                sidecar.get("test") or sidecar.get("holdout_group") or ()
+            )
             if not holdout_group:
-                logger.warning(
-                    "fold '%s': no holdout_group in sidecar; skipping",
-                    fold_dir,
-                )
+                logger.warning("fold '%s': no test set in sidecar; skipping", fold_dir)
                 continue
             holdout_parent = sidecar.get("holdout_parent") or fold_dir.name
             fold_idx = int(sidecar.get("fold_idx", -1))
-            actual_holdouts.update(holdout_group)
+            actual_holdouts.update(
+                name
+                for name in holdout_group
+                if not _is_augmented_process(collection.processes.get(name))
+            )
 
             try:
                 pred_df = _read_predictions_csv(fold_dir)
@@ -712,13 +721,17 @@ def _gather_paired_arrays(
 
             targets = _resolve_target_names(sidecar, pred_df, target_names)
 
-            # Process set to score for this fold.
+            # Process set to score for this fold. Current sidecars use
+            # ``test``/``train``; retain the old names as read-only fallbacks.
             if include_train:
-                training_processes = tuple(sidecar.get("training_processes") or ())
+                training_processes = tuple(
+                    sidecar.get("train") or sidecar.get("training_processes") or ()
+                )
                 fold_processes = tuple(holdout_group) + training_processes
             else:
                 fold_processes = tuple(holdout_group)
 
+            prediction_scope = sidecar.get("output_predictions", "all")
             for proc_name in fold_processes:
                 process = collection.processes.get(proc_name)
                 if process is None:
@@ -727,6 +740,8 @@ def _gather_paired_arrays(
                         holdout_parent,
                         proc_name,
                     )
+                    continue
+                if prediction_scope == "parents" and _is_augmented_process(process):
                     continue
                 sub = pred_df.loc[pred_df["process"] == proc_name]
                 if sub.empty:

@@ -287,10 +287,6 @@ def model_predict(
     return dense_exports
 
 
-# Floor below which `np.var` is treated as "all measurements identical" when
-# computing per-target variance for loss normalization.
-
-
 @dataclass(frozen=True)
 class TrainHarnessConfig:
     """Configuration for collection-level training harness runs."""
@@ -839,6 +835,7 @@ def forward_from_collection(
     training_process_names: tuple[str, ...] | None = None,
     run_config: RunConfig | None = None,
     custom_module: Any | None = None,
+    prediction_process_names: tuple[str, ...] | None = None,
     prediction_grid_n: int = 200,
 ) -> ForwardResult:
     """Load a trained wrapper and run one forward pass per selected process.
@@ -926,6 +923,7 @@ def forward_from_collection(
         config=cfg,
         target_names=loss_names,
         training_process_names=training_process_names or (),
+        prediction_process_names=prediction_process_names,
         prediction_grid_n=prediction_grid_n,
     )
 
@@ -937,6 +935,7 @@ def evaluate_trained_wrapper(
     config: ForwardConfig,
     target_names: tuple[str, ...],
     training_process_names: tuple[str, ...] = (),
+    prediction_process_names: tuple[str, ...] | None = None,
     prediction_grid_n: int = 200,
 ) -> ForwardResult:
     """Evaluate an existing store and trained wrapper without reconstruction."""
@@ -958,22 +957,78 @@ def evaluate_trained_wrapper(
     if config.solver_atol <= 0.0:
         raise ValueError("solver_atol must be positive")
 
-    per_sample_total, per_sample_per_target, dense_exports = compute_dense_exports(
-        trained_wrapper,
-        store,
-        eval_processes,
-        solver_max_steps=int(config.solver_max_steps),
-        solver_rtol=float(config.solver_rtol),
-        solver_atol=float(config.solver_atol),
-        solver_use_jump_ts=config.solver_use_jump_ts,
-        prediction_grid_n=int(prediction_grid_n),
+    prediction_processes = (
+        eval_processes
+        if prediction_process_names is None
+        else tuple(prediction_process_names)
     )
-    per_process_total = {
-        name: float(per_sample_total[i]) for i, name in enumerate(eval_processes)
-    }
+    duplicates = [
+        name for name, count in Counter(prediction_processes).items() if count > 1
+    ]
+    if duplicates:
+        raise ValueError(f"duplicate prediction process names: {duplicates}")
+    unknown = [name for name in prediction_processes if name not in eval_processes]
+    if unknown:
+        raise ValueError(
+            f"prediction process names are not evaluated: {unknown}; "
+            f"evaluated={eval_processes}"
+        )
+
+    per_process_total: dict[str, float] = {}
+    per_process_per_target: dict[str, tuple[float, ...]] = {}
+    dense_exports: dict[str, DenseProcessExport] = {}
+
+    def _record_losses(
+        names: tuple[str, ...], total: np.ndarray, per_target: np.ndarray
+    ) -> None:
+        for i, name in enumerate(names):
+            per_process_total[name] = float(total[i])
+            per_process_per_target[name] = tuple(float(v) for v in per_target[i])
+
+    # A mixed scope intentionally uses two padded batches and JIT variants. This
+    # costs compute, but avoids the dense-grid peak memory for unexported processes.
+    if prediction_processes:
+        total, per_target, dense_exports = compute_dense_exports(
+            trained_wrapper,
+            store,
+            prediction_processes,
+            solver_max_steps=int(config.solver_max_steps),
+            solver_rtol=float(config.solver_rtol),
+            solver_atol=float(config.solver_atol),
+            solver_use_jump_ts=config.solver_use_jump_ts,
+            prediction_grid_n=int(prediction_grid_n),
+        )
+        _record_losses(prediction_processes, total, per_target)
+
+    prediction_set = set(prediction_processes)
+    loss_only_processes = tuple(
+        name for name in eval_processes if name not in prediction_set
+    )
+    if loss_only_processes:
+        total_parts = []
+        per_target_parts = []
+        for valid_names, outputs in _iter_batched_loss_outputs(
+            trained_wrapper,
+            store,
+            loss_only_processes,
+            solver_max_steps=int(config.solver_max_steps),
+            solver_rtol=float(config.solver_rtol),
+            solver_atol=float(config.solver_atol),
+            solver_use_jump_ts=config.solver_use_jump_ts,
+        ):
+            _, per_target, total, *_ = outputs
+            valid = len(valid_names)
+            total_parts.append(np.asarray(total[:valid]))
+            per_target_parts.append(np.asarray(per_target[:valid]))
+        _record_losses(
+            loss_only_processes,
+            np.concatenate(total_parts),
+            np.concatenate(per_target_parts),
+        )
+
+    per_process_total = {name: per_process_total[name] for name in eval_processes}
     per_process_per_target = {
-        name: tuple(float(v) for v in per_sample_per_target[i])
-        for i, name in enumerate(eval_processes)
+        name: per_process_per_target[name] for name in eval_processes
     }
 
     return ForwardResult(
@@ -1018,6 +1073,7 @@ def train_collection(
     config: TrainHarnessConfig | None = None,
     plot_sources: dict[str, ProcessPlotSource] | None = None,
     optimizer: optax.GradientTransformation | None = None,
+    write_final_model_outputs: bool = True,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
 
@@ -1830,48 +1886,49 @@ def train_collection(
 
             history = run_log.finalize()
 
-            # Run-root final-model outputs: predictions.csv + the complete final plot
-            # set (per-process simulations, loss curve, grad-norm curve) written
-            # directly to the run dir — synchronously, so they are reliable and not
-            # subject to the per-checkpoint background renderer.
+            # Run-root final outputs are synchronous so they are reliable and not
+            # subject to the per-checkpoint background renderer. The CLI disables
+            # final model outputs and evaluates the configured prediction scope itself.
             if cfg.checkpoint_dir is not None:
                 run_dir = Path(cfg.checkpoint_dir).parent
                 try:
-                    _, _final_per_target, _final_dense = compute_dense_exports(
-                        wrapper,
-                        store,
-                        selected_processes,
-                        solver_max_steps=int(cfg.solver_max_steps),
-                        solver_rtol=float(cfg.solver_rtol),
-                        solver_atol=float(cfg.solver_atol),
-                        solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-                    )
-                    export_predictions_csv(
-                        wrapper,
-                        _final_dense,
-                        run_dir / "predictions.csv",
-                        process_names=selected_processes,
-                    )
-                    if bool(cfg.plots):
-                        named = {
-                            p: dict(zip(_target_labels, _final_per_target[i]))
-                            for i, p in enumerate(selected_processes)
-                        }
-                        total = {
-                            p: float(sum(_final_per_target[i]))
-                            for i, p in enumerate(selected_processes)
-                        }
-                        plot_process_simulations(
+                    if write_final_model_outputs:
+                        _, _final_per_target, _final_dense = compute_dense_exports(
                             wrapper,
-                            plot_sources,
                             store,
-                            run_dir,
-                            _final_dense,
-                            process_names=selected_processes,
-                            training_process_names=selected_processes,
-                            per_process_named_losses=named,
-                            per_process_total_loss=total,
+                            selected_processes,
+                            solver_max_steps=int(cfg.solver_max_steps),
+                            solver_rtol=float(cfg.solver_rtol),
+                            solver_atol=float(cfg.solver_atol),
+                            solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
                         )
+                        export_predictions_csv(
+                            wrapper,
+                            _final_dense,
+                            run_dir / "predictions.csv",
+                            process_names=selected_processes,
+                        )
+                        if bool(cfg.plots):
+                            named = {
+                                p: dict(zip(_target_labels, _final_per_target[i]))
+                                for i, p in enumerate(selected_processes)
+                            }
+                            total = {
+                                p: float(sum(_final_per_target[i]))
+                                for i, p in enumerate(selected_processes)
+                            }
+                            plot_process_simulations(
+                                wrapper,
+                                plot_sources,
+                                store,
+                                run_dir,
+                                _final_dense,
+                                process_names=selected_processes,
+                                training_process_names=selected_processes,
+                                per_process_named_losses=named,
+                                per_process_total_loss=total,
+                            )
+                    if bool(cfg.plots):
                         if loss_so_far:
                             plot_loss_curve(
                                 list(loss_so_far),
@@ -1925,6 +1982,7 @@ class PreparedTraining:
     config: TrainHarnessConfig
     optimizer: optax.GradientTransformation
     plot_sources: Mapping[str, ProcessPlotSource] | None
+    parent_process_names: tuple[str, ...] = ()
 
 
 _TRAIN_HOOK_NAMES = (
@@ -1987,6 +2045,9 @@ def prepare_training_from_runtime_context(
         config=train_cfg,
         optimizer=optimizer,
         plot_sources=plot_sources,
+        parent_process_names=tuple(
+            store.process_order[index] for index in runtime_context.data.parent_indices
+        ),
     )
 
 

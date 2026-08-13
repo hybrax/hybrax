@@ -516,12 +516,22 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
             config=config,
             optimizer=object(),
             plot_sources=None,
+            parent_process_names=("p1", "p2", "p3"),
         )
 
-    def fake_evaluate(wrapper, store, *, config, training_process_names, **_kw):
+    def fake_evaluate(
+        wrapper,
+        store,
+        *,
+        config,
+        training_process_names,
+        prediction_process_names,
+        **_kw,
+    ):
         captured["evaluation_wrapper"] = wrapper
         captured["training_process_names"] = training_process_names
         captured["eval_process_names"] = config.process_names
+        captured["prediction_process_names"] = prediction_process_names
         return SimpleNamespace()
 
     def fake_write(*, output_dir, **_kw):
@@ -566,6 +576,7 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert result.fold.test == ("p2",)
     assert captured["process_names"] == ("p1", "p3")
     assert captured["holdout"] == ("p2",)
+    assert captured["prediction_process_names"] == ("p1", "p3", "p2")
     assert captured["evaluation_wrapper"] is captured["reloaded_wrapper"]
     assert result.train_result.trained_wrapper is captured["reloaded_wrapper"]
     assert captured["reload_template"] is not result.train_result.trained_wrapper

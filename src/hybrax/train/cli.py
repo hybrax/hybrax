@@ -16,6 +16,7 @@ import pandas as pd
 from .harness import (
     ForwardConfig,
     ForwardResult,
+    evaluate_trained_wrapper,
     forward_from_collection,
     forward_plot_losses,
     prepare_training,
@@ -42,6 +43,7 @@ from .postprocessing import (
 )
 from .prepare import prepare_artifact
 from .run_config import (
+    PredictionScope,
     RunConfig,
     load_forward_config,
     load_loo_config,
@@ -267,6 +269,22 @@ def _handle_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _select_prediction_processes(
+    scope: PredictionScope,
+    evaluated_processes: tuple[str, ...],
+    parent_processes: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Select prediction exports while preserving evaluation order."""
+    if scope == "none":
+        return ()
+    if scope == "all":
+        return evaluated_processes
+    if scope != "parents":
+        raise ValueError(f"unknown prediction scope: {scope!r}")
+    parents = set(parent_processes)
+    return tuple(name for name in evaluated_processes if name in parents)
+
+
 def _write_train_results(
     *,
     output_dir: Path,
@@ -274,6 +292,7 @@ def _write_train_results(
     train_result: Any,
     plot_sources: dict[str, Any] | None,
     render_plots: bool,
+    prediction_processes: tuple[str, ...],
 ) -> None:
     """Write losses, predictions, and optional plots for an evaluated model."""
     log = logging.getLogger(__name__)
@@ -282,8 +301,8 @@ def _write_train_results(
     _write_loss_csv(csv_rows, loss_csv_path)
     log.info("loss table saved to %s", loss_csv_path)
 
-    predictions_csv_path = output_dir / "predictions.csv"
-    if render_plots:
+    predictions_path = output_dir / "predictions.csv"
+    if render_plots and prediction_processes:
         if plot_sources is None:
             raise ValueError("plot sources are required when plots are enabled")
         named_losses, total_losses = forward_plot_losses(forward_result)
@@ -293,19 +312,22 @@ def _write_train_results(
             forward_result.store,
             output_dir,
             forward_result.dense_exports,
-            process_names=forward_result.process_names,
+            process_names=prediction_processes,
             per_process_named_losses=named_losses,
             per_process_total_loss=total_losses,
-            timeseries_csv_path=predictions_csv_path,
+            timeseries_csv_path=predictions_path,
         )
         return
 
-    export_predictions_csv(
-        forward_result.trained_wrapper,
-        forward_result.dense_exports,
-        predictions_csv_path,
-        process_names=forward_result.process_names,
-    )
+    if prediction_processes:
+        export_predictions_csv(
+            forward_result.trained_wrapper,
+            forward_result.dense_exports,
+            predictions_path,
+            process_names=prediction_processes,
+        )
+    else:
+        predictions_path.unlink(missing_ok=True)
 
 
 def _apply_train_cli_overrides(
@@ -470,6 +492,39 @@ def _handle_train(args: argparse.Namespace) -> int:
             config=prepared.config,
             optimizer=prepared.optimizer,
             plot_sources=prepared.plot_sources,
+            write_final_model_outputs=False,
+        )
+        eval_processes = tuple(
+            prepared.config.process_names or prepared.store.process_order
+        )
+        prediction_processes = _select_prediction_processes(
+            cfg.output.predictions,
+            eval_processes,
+            prepared.parent_process_names,
+        )
+        forward_result = evaluate_trained_wrapper(
+            result.trained_wrapper,
+            prepared.store,
+            config=ForwardConfig(
+                process_names=eval_processes,
+                target_variable_order=prepared.config.target_variable_order,
+                target_source=prepared.config.target_source,
+                solver_max_steps=prepared.config.solver_max_steps,
+                solver_rtol=prepared.config.solver_rtol,
+                solver_atol=prepared.config.solver_atol,
+                solver_use_jump_ts=prepared.config.solver_use_jump_ts,
+            ),
+            target_names=tuple(prepared.loss_module.loss_names),
+            training_process_names=eval_processes,
+            prediction_process_names=prediction_processes,
+        )
+        _write_train_results(
+            output_dir=run_dir,
+            forward_result=forward_result,
+            train_result=result,
+            plot_sources=prepared.plot_sources,
+            render_plots=cfg.output.plots,
+            prediction_processes=prediction_processes,
         )
     except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
         update_json(
@@ -700,13 +755,22 @@ def _handle_forward(args: argparse.Namespace) -> int:
             output_dir,
         )
         return 1
+    if args.overwrite:
+        _clear_output_dir_for_overwrite(
+            output_dir,
+            input_paths=(
+                args.config,
+                shared_prepared,
+                *(ref.path for ref in models),
+            ),
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Forward each model on its data ---
     per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
     overlay_collection = None
     overlay_store = None
-    eval_processes: tuple[str, ...] = ()
+    prediction_processes: tuple[str, ...] = ()
     for ref, name in zip(models, names):
         _run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)
         prepared = shared_prepared if shared_prepared is not None else own_prepared
@@ -730,6 +794,16 @@ def _handle_forward(args: argparse.Namespace) -> int:
             if config_processes
             else tuple(collection.processes.keys())
         )
+        unknown_processes = tuple(
+            name for name in eval_processes if name not in collection.processes
+        )
+        if unknown_processes:
+            log.error(
+                "forward: unknown process names %s; available=%s",
+                list(unknown_processes),
+                list(collection.processes),
+            )
+            return 1
         model_targets = model_cfg.data.targets if model_cfg.data is not None else None
         model_source = (
             model_cfg.data.target_source if model_cfg.data is not None else "auto"
@@ -748,6 +822,17 @@ def _handle_forward(args: argparse.Namespace) -> int:
             solver_atol=float(model_cfg.solver.atol),
             solver_use_jump_ts=bool(model_cfg.solver.jump_ts),
         )
+        parent_processes = tuple(
+            process_name
+            for process_name in eval_processes
+            if getattr(collection.processes[process_name], "parent_process", None)
+            is None
+        )
+        prediction_processes = _select_prediction_processes(
+            fcfg.output.predictions,
+            eval_processes,
+            parent_processes,
+        )
         result = forward_from_collection(
             collection,
             model_path=params_path,
@@ -755,6 +840,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             custom_py=custom_py,
             run_config=model_cfg,
             training_process_names=training_processes,
+            prediction_process_names=prediction_processes,
         )
         per_model.append((name, result))
         overlay_collection = collection
@@ -766,35 +852,47 @@ def _handle_forward(args: argparse.Namespace) -> int:
     for name, result in per_model:
         mdir = output_dir / "models" / name
         mdir.mkdir(parents=True, exist_ok=True)
-        export_predictions_csv(
-            result.trained_wrapper,
-            result.dense_exports,
-            mdir / "predictions.csv",
-            process_names=eval_processes,
-        )
+        model_predictions_path = mdir / "predictions.csv"
+        if prediction_processes:
+            export_predictions_csv(
+                result.trained_wrapper,
+                result.dense_exports,
+                model_predictions_path,
+                process_names=prediction_processes,
+            )
+        else:
+            model_predictions_path.unlink(missing_ok=True)
         _table, model_rows = _format_loss_table(result)
         _write_loss_csv(model_rows, mdir / "losses.csv")
 
     # --- Aggregate (mean + std across models) ---
-    per_model_dense = [r.dense_exports for _n, r in per_model]
-    if len(per_model_dense) > 1:
-        mean_exports, std_exports = aggregate_dense_exports(per_model_dense)
-    else:
-        mean_exports, std_exports = per_model_dense[0], None
-
-    export_predictions_csv(
-        wrapper0,
-        mean_exports,
-        output_dir / "predictions.csv",
-        process_names=eval_processes,
-    )
-    if std_exports is not None:
+    mean_exports: dict[str, Any] = {}
+    std_exports = None
+    if prediction_processes:
+        per_model_dense = [r.dense_exports for _n, r in per_model]
+        if len(per_model_dense) > 1:
+            mean_exports, std_exports = aggregate_dense_exports(per_model_dense)
+        else:
+            mean_exports = per_model_dense[0]
         export_predictions_csv(
             wrapper0,
-            std_exports,
-            output_dir / "predictions_std.csv",
-            process_names=eval_processes,
+            mean_exports,
+            output_dir / "predictions.csv",
+            process_names=prediction_processes,
         )
+        predictions_std_path = output_dir / "predictions_std.csv"
+        if std_exports is not None:
+            export_predictions_csv(
+                wrapper0,
+                std_exports,
+                predictions_std_path,
+                process_names=prediction_processes,
+            )
+        else:
+            predictions_std_path.unlink(missing_ok=True)
+    else:
+        (output_dir / "predictions.csv").unlink(missing_ok=True)
+        (output_dir / "predictions_std.csv").unlink(missing_ok=True)
 
     # --- Loss table (representative = first model; per-model in models/<name>/) ---
     table_str, csv_rows = _format_loss_table(per_model[0][1])
@@ -802,11 +900,11 @@ def _handle_forward(args: argparse.Namespace) -> int:
     _write_loss_csv(csv_rows, output_dir / "losses.csv")
 
     # --- Plots: mean line + ±std band + measured overlay ---
-    if fcfg.output.plots:
+    if fcfg.output.plots and prediction_processes:
         named_losses, total_losses = forward_plot_losses(per_model[0][1])
         assert overlay_collection is not None
         plot_sources = extract_process_plot_sources(
-            overlay_collection, overlay_store.rhs_ode, eval_processes
+            overlay_collection, overlay_store.rhs_ode, prediction_processes
         )
         plot_process_simulations(
             wrapper0,
@@ -814,7 +912,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             overlay_store,
             output_dir,
             mean_exports,
-            process_names=eval_processes,
+            process_names=prediction_processes,
             std_exports=std_exports,
             training_process_names=eval_processes,
             per_process_named_losses=named_losses,

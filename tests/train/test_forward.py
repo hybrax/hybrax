@@ -51,6 +51,26 @@ from bp_train.training_data import TrainingDataStore
 from bp_train.wrapper import HybridOdeWrapper
 
 
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("none", ()),
+        ("parents", ("parent-2", "parent-1")),
+        ("all", ("parent-2", "child", "parent-1")),
+    ],
+)
+def test_select_prediction_processes_preserves_evaluation_order(mode, expected):
+    evaluated = ("parent-2", "child", "parent-1")
+    parents = ("parent-1", "parent-2")
+
+    assert cli._select_prediction_processes(mode, evaluated, parents) == expected
+
+
+def test_select_prediction_processes_rejects_unknown_scope():
+    with pytest.raises(ValueError, match="unknown prediction scope"):
+        cli._select_prediction_processes("typo", ("p1",), ("p1",))
+
+
 def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypatch):
     store = SimpleNamespace(
         process_order=("train", "holdout"),
@@ -90,6 +110,100 @@ def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypat
         "train": (10.0, 11.0),
     }
     assert list(result.dense_exports) == ["holdout", "train"]
+
+
+def test_evaluate_trained_wrapper_skips_dense_solve_for_no_predictions(monkeypatch):
+    store = SimpleNamespace(
+        process_order=("p1",),
+        name_modeled_FVCs=(),
+        name_modeled_SVCs=(),
+    )
+    monkeypatch.setattr(
+        harness_module,
+        "compute_dense_exports",
+        lambda *_args, **_kwargs: pytest.fail("dense solve should be skipped"),
+    )
+    monkeypatch.setattr(
+        harness_module,
+        "_iter_batched_loss_outputs",
+        lambda *_args, **_kwargs: iter(
+            [
+                (
+                    ("p1",),
+                    (
+                        None,
+                        np.asarray([[2.0]]),
+                        np.asarray([2.0]),
+                        None,
+                        None,
+                        None,
+                    ),
+                )
+            ]
+        ),
+    )
+
+    result = evaluate_trained_wrapper(
+        object(),
+        store,
+        config=ForwardConfig(process_names=("p1",)),
+        target_names=("loss",),
+        prediction_process_names=(),
+    )
+
+    assert result.per_process_total_loss == {"p1": 2.0}
+    assert result.dense_exports == {}
+
+
+def test_evaluate_trained_wrapper_loss_only_batches_exclude_padding(monkeypatch):
+    process_names = tuple(f"p{i}" for i in range(35))
+
+    class _Store:
+        process_order = process_names
+        name_modeled_FVCs = ()
+        name_modeled_SVCs = ()
+        Cin_controlled_FVCs = jnp.zeros((35, 0, 1))
+        Cin_modeled_FVCs = jnp.zeros((35, 0, 1))
+
+        @staticmethod
+        def gather_batch(indices):
+            return SimpleNamespace(process_indices=indices)
+
+    seen_indices = []
+
+    def fake_batched_loss(wrapper, batch, *args, **kwargs):
+        del wrapper, args, kwargs
+        indices = jnp.asarray(batch.process_indices)
+        seen_indices.append(np.asarray(indices))
+        return (
+            jnp.mean(indices),
+            indices[:, None],
+            indices,
+            None,
+            None,
+            None,
+        )
+
+    monkeypatch.setattr(harness_module, "_BATCHED_LOSS_FN_JIT", fake_batched_loss)
+    monkeypatch.setattr(
+        harness_module,
+        "compute_dense_exports",
+        lambda *_args, **_kwargs: pytest.fail("dense solve should be skipped"),
+    )
+
+    result = evaluate_trained_wrapper(
+        object(),
+        _Store(),
+        config=ForwardConfig(process_names=process_names, solver_use_jump_ts=False),
+        target_names=("loss",),
+        prediction_process_names=(),
+    )
+
+    assert [len(indices) for indices in seen_indices] == [32, 32]
+    np.testing.assert_array_equal(seen_indices[1][:3], [32, 33, 34])
+    np.testing.assert_array_equal(seen_indices[1][3:], np.full(29, 34))
+    assert list(result.per_process_total_loss) == list(process_names)
+    assert list(result.per_process_total_loss.values()) == list(range(35))
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +334,7 @@ def test_write_train_results_consumes_forward_result_without_reconstruction(
         train_result=object(),
         plot_sources=None,
         render_plots=False,
+        prediction_processes=("p1", "p2"),
     )
 
     assert pd.read_csv(tmp_path / "losses.csv")["process"].iloc[:2].tolist() == [
@@ -227,6 +342,20 @@ def test_write_train_results_consumes_forward_result_without_reconstruction(
         "p2",
     ]
     assert exported["process_names"] == ("p1", "p2")
+
+
+def test_write_train_results_removes_stale_predictions_for_empty_scope(tmp_path):
+    predictions_path = tmp_path / "predictions.csv"
+    predictions_path.write_text("stale", encoding="utf-8")
+
+    cli._write_train_results(
+        output_dir=tmp_path,
+        forward_result=_make_forward_result(),
+        prediction_processes=(),
+    )
+
+    assert not predictions_path.exists()
+    assert (tmp_path / "losses.csv").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +380,11 @@ class _DummyStore:
 
 def _make_fake_collection():
     class _Coll:
-        processes = {"p1": object(), "p2": object(), "p3": object()}
+        processes = {
+            "p1": SimpleNamespace(),
+            "p2": SimpleNamespace(),
+            "p3": SimpleNamespace(),
+        }
 
     return _Coll()
 
@@ -441,6 +574,7 @@ def _write_forward_config(
     output_dir=None,
     prepared=None,
     plots=False,
+    predictions="parents",
     name="forward-config.json",
 ) -> Path:
     """Write a forward_config.json for the `--config`-only forward CLI."""
@@ -452,13 +586,28 @@ def _write_forward_config(
         data["processes"] = list(processes)
     if data:
         cfg["data"] = data
-    output: dict = {"plots": plots}
+    output: dict = {"plots": plots, "predictions": predictions}
     if output_dir is not None:
         output["dir"] = str(output_dir)
     cfg["output"] = output
     path = tmp_path / name
     path.write_text(json.dumps(cfg), encoding="utf-8")
     return path
+
+
+def test_forward_cli_rejects_unknown_process_before_evaluation(monkeypatch, tmp_path):
+    run_dir = _make_forward_run_dir(tmp_path, processes=("p1", "p2"))
+    monkeypatch.setattr(
+        cli, "load_process_collection", lambda _p: _make_fake_collection()
+    )
+    monkeypatch.setattr(
+        cli,
+        "forward_from_collection",
+        lambda *_args, **_kwargs: pytest.fail("unknown process reached evaluation"),
+    )
+    config = _write_forward_config(tmp_path, [run_dir], processes=("missing",))
+
+    assert cli.main(["forward", "--config", str(config)]) == 1
 
 
 def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Path):
@@ -476,6 +625,7 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
         captured["config"] = kwargs["config"]
         captured["custom_py"] = kwargs["custom_py"]
         captured["training_process_names"] = kwargs["training_process_names"]
+        captured["prediction_process_names"] = kwargs["prediction_process_names"]
         return _stub_forward_result()
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
@@ -484,6 +634,8 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     output_dir = tmp_path / "fwd"
+    output_dir.mkdir()
+    (output_dir / "predictions_std.csv").write_text("stale", encoding="utf-8")
     fwd_config = _write_forward_config(tmp_path, [run_dir], processes=("p1", "p2"))
     exit_code = cli.main(
         ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
@@ -500,13 +652,109 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert cfg.target_variable_order == ("X", "S")
     assert cfg.target_source == "reactor_components"
     assert captured["training_process_names"] == ("p1", "p2")
+    assert captured["prediction_process_names"] == ("p1", "p2")
     assert captured["model_path"] == run_dir / "model" / "params.eqx"
+    assert not (output_dir / "predictions_std.csv").exists()
 
     losses_csv = output_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
     assert rows.columns.tolist() == ["process", "total", "X", "S", "split"]
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_processes"),
+    [
+        ("none", ()),
+        ("parents", ("p1", "p3")),
+        ("all", ("p1", "p2", "p3")),
+    ],
+)
+def test_ensemble_forward_applies_prediction_scope(
+    monkeypatch, tmp_path: Path, mode, expected_processes
+):
+    run_dirs = (
+        _make_forward_run_dir(tmp_path / "first", processes=("p1", "p2", "p3")),
+        _make_forward_run_dir(tmp_path / "second", processes=("p1", "p2", "p3")),
+    )
+    collection = SimpleNamespace(
+        processes={
+            "p1": SimpleNamespace(parent_process=None),
+            "p2": SimpleNamespace(parent_process="p1"),
+            "p3": SimpleNamespace(parent_process=None),
+        }
+    )
+    monkeypatch.setattr(cli, "load_process_collection", lambda _path: collection)
+
+    forwarded = []
+
+    def fake_forward(_collection, **kwargs):
+        forwarded.append(kwargs["prediction_process_names"])
+        return _stub_forward_result(
+            process_names=("p1", "p2", "p3"),
+            training_process_names=("p1", "p2", "p3"),
+            per_process_total_loss={"p1": 0.1, "p2": 0.2, "p3": 0.3},
+            per_process_per_target_loss={
+                "p1": (0.05, 0.15),
+                "p2": (0.1, 0.3),
+                "p3": (0.15, 0.45),
+            },
+            dense_exports={name: object() for name in expected_processes},
+        )
+
+    monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
+    monkeypatch.setattr(
+        cli,
+        "aggregate_dense_exports",
+        lambda exports: (exports[0], exports[0]),
+    )
+    exported = []
+    monkeypatch.setattr(
+        cli,
+        "export_predictions_csv",
+        lambda _wrapper, _dense, path, *, process_names: exported.append(
+            (Path(path).relative_to(tmp_path / "output"), process_names)
+        ),
+    )
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text("{}", encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        run_dirs,
+        processes=("p1", "p2", "p3"),
+        output_dir=tmp_path / "output",
+        prepared=prepared,
+        predictions=mode,
+    )
+
+    output_dir = tmp_path / "output"
+    if not expected_processes:
+        stale_paths = [
+            output_dir / "predictions.csv",
+            output_dir / "predictions_std.csv",
+            *(
+                output_dir / "models" / name / "predictions.csv"
+                for name in cli._resolve_model_names(
+                    cli.load_forward_config(config).models
+                )
+            ),
+        ]
+        for path in stale_paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("stale", encoding="utf-8")
+
+    assert cli.main(["forward", "--config", str(config)]) == 0
+    assert forwarded == [expected_processes, expected_processes]
+    assert [processes for _path, processes in exported] == (
+        [expected_processes] * 4 if expected_processes else []
+    )
+    assert (output_dir / "losses.csv").is_file()
+    assert len(list((output_dir / "models").glob("*/losses.csv"))) == 2
+    if not expected_processes:
+        assert not (output_dir / "predictions.csv").exists()
+        assert not (output_dir / "predictions_std.csv").exists()
+        assert not list((output_dir / "models").glob("*/predictions.csv"))
 
 
 def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
@@ -530,7 +778,10 @@ def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
     # a second run without --overwrite is blocked
     assert cli.main(base) == 1
     # ...and allowed with it
+    stale = output_dir / "predictions.csv"
+    stale.write_text("stale")
     assert cli.main(base + ["--overwrite"]) == 0
+    assert not stale.exists()
 
 
 def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):

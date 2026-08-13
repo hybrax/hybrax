@@ -21,9 +21,10 @@ the leave-one-process-out cross-validation that wraps both.
   (or a prepared JSON), builds the wrapper from the hooks, partitions trainable
   leaves, and drives the optax loop — writing a self-contained, resumable
   [run directory](02_cli_and_config.md#run-directory-layout).
-- **One solve serves training, plotting, and CSV export.** Forward export reuses
-  the same batched solve as training, splicing a prediction grid into the union
-  time grid ([`build_union_time_grid`](04_reaction_and_loss.md#dense-grid-losses)).
+- **Dense solves only serve exported predictions.** Losses are evaluated for all
+  selected processes, while only exported processes splice a prediction grid
+  into the union time grid
+  ([`build_union_time_grid`](04_reaction_and_loss.md#dense-grid-losses)).
 - **LOO reuses the harness verbatim.** Each fold is an ordinary training run plus
   a forward on the holdout; folds are grouped so augmented children never leave
   their parent. A producer materializes collection-free runtime inputs before
@@ -84,6 +85,7 @@ per update, `updates_completed`, and timing (`compile_warmup_seconds`,
 forward_from_collection(collection, *, model_path, config=None, custom_py=None,
                        runtime_config=None, training_process_names=None,
                        run_config=None, custom_module=None,
+                       prediction_process_names=None,
                        prediction_grid_n=200) -> ForwardResult
 ```
 
@@ -94,7 +96,10 @@ gradient steps; `step = -1`). Driven by the CLI `forward` subcommand, which is
 ensemble) plus optional `data` and `output` blocks.
 
 - [`ForwardConfig`](../bp_train/harness.py) / [`ForwardResult`](../bp_train/harness.py)
-  carry the per-process losses and dense exports.
+  carry the per-process losses and selected dense exports. `output.predictions`
+  controls exports: `none` exports nothing, `parents` (the default) exports only
+  original processes, and `all` also exports augmented children. Losses still
+  cover every evaluated process.
 - `compute_dense_exports(trained_wrapper, store, process_names, *,
   solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts,
   prediction_grid_n=200)` runs one batched solve and returns per-process
@@ -102,9 +107,15 @@ ensemble) plus optional `data` and `output` blocks.
   (time, species, volume, rates, auxiliary). It is *the* single source of dense
   predictions for forward evaluation and final training exports, so exported
   predictions always match the training solve.
-- For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
-  into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
-  own `models/<name>/predictions.csv` and `losses.csv`.
+- For an ensemble, selected per-model exports are averaged
+  (`aggregate_dense_exports`) into `predictions.csv` plus a
+  `predictions_std.csv`; each model also keeps its own
+  `models/<name>/predictions.csv` and `losses.csv`.
+- `output.predictions` selects `none`, non-augmented `parents` (the default),
+  or `all` evaluated processes. `none` skips dense prediction solves. When a
+  rerun selects no processes, stale prediction CSVs are removed. Post-hoc LOO
+  metrics honor the stored scope and do not score augmented holdout children
+  omitted by `parents`.
 - Outputs ([`postprocessing.py`](../bp_train/postprocessing.py)):
   `plot_process_simulations` (per-process fit plots with measurement overlays,
   bolus annotations, and the ensemble ±std band) and `export_predictions_csv`.
@@ -190,8 +201,11 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 - **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
   lightweight model-state checkpoints plus final `trained_wrapper.eqx`,
-  `losses.csv`, predictions, and plots). Checkpoints contain loss and gradient
-  plots when enabled, but not dense prediction exports or trajectory plots.
+  `losses.csv`, selected predictions, and plots). With the default `parents`
+  scope, exports include every evaluated original process, including the
+  holdout; aggregate metrics remain holdout-only. Checkpoints contain loss and
+  gradient plots when enabled, but not dense prediction exports or trajectory
+  plots.
 - **Aggregation** ([`LOOResult`](../bp_train/loo.py)): the orchestrator reads each
   fold's `losses.csv` back from disk and writes `loo_summary.csv` +
   `loo_aggregate.json` (holdout metrics averaged over each fold's `test` set;

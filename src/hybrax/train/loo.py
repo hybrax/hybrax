@@ -60,7 +60,7 @@ from .runtime_artifact import (
     write_runtime_artifact,
 )
 from .runtime_context import RuntimeDataContext
-from .run_config import LooConfig, RunConfig
+from .run_config import LooConfig, PredictionScope, RunConfig
 from .serialization import (
     content_hash,
     load_trained_wrapper,
@@ -661,6 +661,8 @@ class TrainedFold:
     store: Any
     plot_sources: dict[str, Any] | None
     target_names: tuple[str, ...]
+    parent_process_names: tuple[str, ...]
+    output_predictions: PredictionScope
     render_plots: bool
     train_result: Any
 
@@ -922,6 +924,7 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
         config=harness_cfg,
         optimizer=prepared.training.optimizer,
         plot_sources=plot_sources,
+        write_final_model_outputs=False,
     )
 
     model_path = fold_dir / "trained_wrapper.eqx"
@@ -946,6 +949,7 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
             else None
         ),
         "target_source": harness_cfg.target_source,
+        "output_predictions": prepared.effective_cfg.output.predictions,
         "solver": {
             "max_steps": int(harness_cfg.solver_max_steps),
             "rtol": float(harness_cfg.solver_rtol),
@@ -969,6 +973,8 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
         store=store,
         plot_sources=plot_sources,
         target_names=target_names,
+        parent_process_names=prepared.training.parent_process_names,
+        output_predictions=prepared.effective_cfg.output.predictions,
         render_plots=prepared.effective_cfg.output.plots,
         train_result=train_result,
     )
@@ -976,11 +982,16 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
 
 def execute_trained_fold(trained: TrainedFold) -> FoldResult:
     """Evaluate and write one trained fold from its lean runtime inputs."""
-    from .cli import _now_iso, _write_train_results
+    from .cli import _now_iso, _select_prediction_processes, _write_train_results
 
     fold = trained.fold
     config = trained.config
     eval_processes = tuple(dict.fromkeys((*fold.train, *fold.test)))
+    prediction_processes = _select_prediction_processes(
+        trained.output_predictions,
+        eval_processes,
+        trained.parent_process_names,
+    )
     forward_result = evaluate_trained_wrapper(
         trained.train_result.trained_wrapper,
         trained.store,
@@ -995,6 +1006,7 @@ def execute_trained_fold(trained: TrainedFold) -> FoldResult:
         ),
         target_names=trained.target_names,
         training_process_names=fold.train,
+        prediction_process_names=prediction_processes,
     )
     _write_train_results(
         output_dir=trained.fold_dir,
@@ -1002,6 +1014,7 @@ def execute_trained_fold(trained: TrainedFold) -> FoldResult:
         train_result=trained.train_result,
         plot_sources=trained.plot_sources,
         render_plots=trained.render_plots,
+        prediction_processes=prediction_processes,
     )
     last_loss = float(trained.train_result.mean_loss_by_step[-1])
     update_json(

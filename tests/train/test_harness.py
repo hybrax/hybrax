@@ -65,7 +65,9 @@ from bp_train.training_data import TrainingDataStore
 
 def _runtime_context(store) -> RuntimeContext:
     return RuntimeContext(
-        RuntimeDataContext(store, (), (), (), (), (), ()),
+        RuntimeDataContext(
+            store, (None,) * len(store.process_order), (), (), (), (), ()
+        ),
         EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
 
@@ -1135,7 +1137,6 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
         "compute_dense_exports",
         lambda *args, **kwargs: (np.zeros(1), np.zeros((1, 1)), {}),
     )
-    monkeypatch.setattr(harness_module, "export_predictions_csv", lambda *a, **k: None)
     holdout_per_target = {}
     original_write = harness_module.CheckpointWriter.write
 
@@ -1188,7 +1189,9 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
     )
     monkeypatch.setattr(
         "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(store, (), (), (), (), (), ()),
+        lambda store, _collection: RuntimeDataContext(
+            store, (None,) * len(store.process_order), (), (), (), (), ()
+        ),
     )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
@@ -1252,7 +1255,9 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
     )
     monkeypatch.setattr(
         "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(store, (), (), (), (), (), ()),
+        lambda store, _collection: RuntimeDataContext(
+            store, (None,) * len(store.process_order), (), (), (), (), ()
+        ),
     )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
@@ -1310,7 +1315,9 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
     )
     monkeypatch.setattr(
         "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(store, (), (), (), (), (), ()),
+        lambda store, _collection: RuntimeDataContext(
+            store, (None,) * len(store.process_order), (), (), (), (), ()
+        ),
     )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
