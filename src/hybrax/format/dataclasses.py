@@ -374,6 +374,8 @@ class BioProcess:
     pseudobatch_transform: Optional[PseudobatchTransform] = None
 
     def __post_init__(self):
+        if self.volume is None:
+            raise ValueError("BioProcess.volume is required")
         if self.biological_ode is None:
             self.biological_ode = _auto_generate_biological_ode(self)
 

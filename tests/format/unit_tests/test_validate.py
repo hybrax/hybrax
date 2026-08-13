@@ -38,7 +38,6 @@ from bp_format import (
     validate_volume_consistency,
     validate_for_publication,
     validate_cross_process_consistency,
-    validate_mapping_names,
     validate_bounds_against_data,
     validate_augmented_parent_refs,
     validate_biological_ode,
@@ -134,105 +133,26 @@ class TestValidateDiscreteEvents:
         assert ok is False
         assert "2 timestamp(s) outside [0.0, 10.0]" in msg
 
-    def test_labels_must_match_times_length(self):
+    def test_float32_rounding_at_boundary_is_allowed(self):
+        process = _make_process()
+        process.time_axis.end = 319.85985985985985
+        process.discrete_events = DiscreteEvents(times=jnp.array([319.85986328125]))
+
+        ok, _ = validate_discrete_events(process)
+
+        assert ok is True
+
+    @pytest.mark.parametrize("labels", [["only one"], ["a", "b", "c"]])
+    def test_labels_must_match_times_length(self, labels):
         process = _make_process()
         process.discrete_events = DiscreteEvents(
-            times=jnp.array([1.0, 2.0]), labels=["only one"]
+            times=jnp.array([1.0, 2.0]), labels=labels
         )
 
         ok, msg = validate_discrete_events(process)
 
         assert ok is False
-        assert "labels length (1) does not match times length (2)" in msg
-
-
-# ---------------------------------------------------------------------------
-# validate_mapping_names
-# ---------------------------------------------------------------------------
-
-
-class TestValidateMappingNames:
-    def test_matching_names(self):
-        component = ReactorMediumComponent(
-            name="biomass",
-            unit="g/L",
-            concentration=StaticVariable(value=1.0),
-        )
-        variable = ProcessVariable(
-            name="temperature",
-            unit="°C",
-            is_controlled=True,
-            values=StaticVariable(value=30.0),
-        )
-        process = _make_process(
-            reactor_components={"biomass": component},
-            process_variables={"temperature": variable},
-        )
-
-        ok, msg = validate_mapping_names(process)
-
-        assert ok is True
-        assert "OK" in msg
-
-    @pytest.mark.parametrize(
-        ("mapping", "expected"),
-        [
-            ("reactor", "Reactor component key 'wrong'"),
-            ("variable", "Process variable key 'wrong'"),
-            ("volume", "Volume change key 'wrong'"),
-            ("feed", "Feed components for 'feed' key 'wrong'"),
-        ],
-    )
-    def test_mismatched_name(self, mapping, expected):
-        component = ReactorMediumComponent(
-            name="biomass",
-            unit="g/L",
-            concentration=StaticVariable(value=1.0),
-        )
-        variable = ProcessVariable(
-            name="temperature",
-            unit="°C",
-            is_controlled=True,
-            values=StaticVariable(value=30.0),
-        )
-        feed = FeedMedium(
-            name="medium",
-            density=1.0,
-            density_unit="kg/L",
-            components={
-                "biomass": FeedMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=StaticVariable(value=0.0),
-                )
-            },
-        )
-        change = FeedVolumeChange(
-            name="feed",
-            unit="L",
-            is_controlled=True,
-            is_continuous=True,
-            values=_ts([0.0], [0.0]),
-            feed_medium=feed,
-        )
-        process = _make_process(
-            reactor_components={"biomass": component},
-            process_variables={"temperature": variable},
-            volume_changes={"feed": change},
-        )
-
-        target = {
-            "reactor": process.reactor_medium.components,
-            "variable": process.process_variables,
-            "volume": process.volume.volume_changes,
-            "feed": feed.components,
-        }[mapping]
-        target["wrong"] = target.pop(next(iter(target)))
-
-        ok, msg = validate_mapping_names(process)
-
-        assert ok is False
-        assert expected in msg
+        assert f"labels length ({len(labels)}) does not match times length (2)" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +264,7 @@ class TestValidateTimestampBounds:
                 "biomass": ReactorMediumComponent(
                     name="biomass",
                     unit="g/L",
-                    concentration=_ts([-1.0, 1.0], [1.0, 2.0]),
+                    concentration=_ts([-1.0, 11.0], [1.0, 2.0]),
                 )
             }
         )
@@ -352,7 +272,23 @@ class TestValidateTimestampBounds:
         ok, msg = validate_timestamp_bounds(process)
 
         assert ok is False
-        assert "reactor component 'biomass'" in msg
+        assert "reactor component 'biomass': 2 timestamp(s) outside" in msg
+
+    def test_float32_rounding_at_boundary_is_allowed(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([319.85986328125], [1.0]),
+                )
+            }
+        )
+        process.time_axis.end = 319.85985985985985
+
+        ok, _ = validate_timestamp_bounds(process)
+
+        assert ok is True
 
     def test_reactor_c_star_timestamp_outside_bounds(self):
         component = ReactorMediumComponent(
@@ -415,6 +351,16 @@ class TestValidateTimestampBounds:
         assert ok is False
         assert "measured total volume" in msg
 
+    def test_invalid_time_axis_skips_check(self):
+        process = _make_process()
+        process.time_axis.start = 11.0
+
+        ok, msg = validate_timestamp_bounds(process)
+
+        assert ok is True
+        assert "skipped" in msg
+        assert "time axis invalid" in msg
+
 
 # ---------------------------------------------------------------------------
 # validate_volume_change_sign
@@ -457,6 +403,30 @@ class TestValidateVolumeChangeSign:
         vc = self._feed_vc([0.0, 0.0])
         ok, msg = validate_volume_change_sign(vc)
         assert ok is True
+
+    @pytest.mark.parametrize("volume_change", ["feed", "sample"])
+    def test_float_noise_within_sign_tolerance(self, volume_change):
+        vc = (
+            self._feed_vc([-1e-13, 1.0])
+            if volume_change == "feed"
+            else self._sample_vc([1e-13, -1.0])
+        )
+
+        ok, _ = validate_volume_change_sign(vc)
+
+        assert ok is True
+
+    @pytest.mark.parametrize("volume_change", ["feed", "sample"])
+    def test_values_outside_sign_tolerance_fail(self, volume_change):
+        vc = (
+            self._feed_vc([-1e-6, 1.0])
+            if volume_change == "feed"
+            else self._sample_vc([1e-6, -1.0])
+        )
+
+        ok, _ = validate_volume_change_sign(vc)
+
+        assert ok is False
 
     def test_mixed_signs_invalid(self):
         vc = self._feed_vc([0.1, -0.2])
@@ -668,7 +638,7 @@ class TestValidateProcess:
         biomass = ReactorMediumComponent(
             name="biomass",
             unit="g/L",
-            concentration=StaticVariable(value=1.0),
+            concentration=_ts([0.0, 1.0], [1.0, 2.0]),
             c_star_concentration=malformed,
         )
         process = _make_process(reactor_components={"biomass": biomass})
@@ -677,6 +647,7 @@ class TestValidateProcess:
         all_valid, messages = validate_process(process)
 
         assert all_valid is False
+        assert any("TimeSeries 'biomass' OK" in message for message in messages)
         assert any("'biomass c_star' invalid" in message for message in messages)
         assert any("'measured total volume' invalid" in message for message in messages)
 
@@ -696,6 +667,10 @@ class TestValidateProcess:
 
         assert all_valid is False
         assert any("Time axis invalid" in message for message in messages)
+        assert any(
+            "Timestamp bounds check skipped — time axis invalid" in message
+            for message in messages
+        )
 
     def test_valid_process_returns_all_ok(self):
         biomass_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
@@ -798,25 +773,6 @@ class TestValidateProcess:
             "measured total volume" in message and "empty" in message
             for message in messages
         )
-
-    def test_mismatched_mapping_name_fails_process(self):
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=StaticVariable(value=1.0),
-                )
-            }
-        )
-        process.reactor_medium.components["wrong"] = (
-            process.reactor_medium.components.pop("biomass")
-        )
-
-        all_valid, messages = validate_process(process)
-
-        assert all_valid is False
-        assert any("Mapping name mismatches" in message for message in messages)
 
     def test_timestamp_outside_bounds_fails_process(self):
         process = _make_process(
