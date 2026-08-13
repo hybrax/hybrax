@@ -154,7 +154,8 @@ bp-format uses **two** mechanisms, deliberately:
 **Validators return `(bool, str)`.** Everything in `bp_format/validate.py` reports
 rather than raises, so one pass collects every problem into a readable report
 instead of stopping at the first. `validate_process()` aggregates the
-per-process checks; `validate_case_study()` adds cross-process consistency.
+per-process checks; `validate_cross_process_consistency()` adds cross-process
+consistency.
 
 **Constructors and builders raise.** Anything that would produce silently wrong
 numbers fails immediately: a `TimeSeries` with unsorted times, a feed medium
