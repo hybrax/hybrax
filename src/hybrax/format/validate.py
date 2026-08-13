@@ -732,9 +732,10 @@ def validate_measurement_sampling_alignment(
     sampling times.
 
     When a concentration measurement is taken just *after* a sampling event
-    (e.g. 0.0003 h later), the accumulated dilution factor (ADF) in the
-    pseudobatch transform may use the wrong reactor volume, corrupting the
-    normalisation and downstream spline calculations.
+    (e.g. 0.0003 h later), it's ambiguous which side of the (discontinuous)
+    event it belongs to — the direct-space spline fit built from it may
+    sample the wrong side of the step, corrupting the spline's local shape
+    right where it matters most.
 
     This function flags every measurement time point that is close to (but not
     exactly at) a sampling time point, where "close" means within
@@ -789,8 +790,7 @@ def validate_measurement_sampling_alignment(
     if warnings:
         header = (
             "Measurement times are slightly offset from sampling times. "
-            "This can lead to incorrect ADF values in the pseudobatch "
-            "normalisation and errors in the spline calculation.\n"
+            "This can lead to errors in the spline calculation.\n"
         )
         return False, header + "\n".join(warnings)
     return True, "Measurement/sampling time alignment — OK"

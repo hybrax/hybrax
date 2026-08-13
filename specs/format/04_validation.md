@@ -59,9 +59,10 @@ strictly between the sample time and `sample_time + rel_threshold ·
 process_length` (0.01 % of the run by default).
 
 An offline measurement describes the broth **as drawn**, i.e. the pre-sample
-state. A timestamp a few seconds late makes the pseudobatch transform pick the
-post-sample volume, which corrupts the accumulated dilution factor and every
-spline built on it. Move such timestamps onto the sampling time exactly.
+state. A timestamp a few seconds late makes a direct-space spline fit sample
+the wrong side of the step discontinuity at the event, corrupting the spline's
+local shape right where it matters most. Move such timestamps onto the
+sampling time exactly.
 
 Measurements *exactly at* a sampling time are correct and are not flagged.
 

@@ -441,7 +441,7 @@ def _collect_process_panels(process: BioProcess):
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
       - optional: 'series': TimeSeries spline carrier (if available)
-      - optional: 'series_type': 'backtransform' | 'direct'
+      - optional: 'series_type': 'direct'
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0
     t_end = float(process.time_axis.end) if process.time_axis else 1.0
@@ -450,14 +450,8 @@ def _collect_process_panels(process: BioProcess):
 
     # Reactor medium components
     if process.reactor_medium and process.reactor_medium.components:
-        pseudobatch_transform = getattr(process, "pseudobatch_transform", None)
         for comp in process.reactor_medium.components.values():
             unit_label = f" [{comp.unit}]" if comp.unit else ""
-            has_transform = (
-                pseudobatch_transform is not None
-                and comp.c_star_concentration is not None
-                and comp.name in pseudobatch_transform.feed_corrections
-            )
             if _is_dynamic_series(comp.concentration):
                 panel = {
                     "title": f"{comp.name}{unit_label}",
@@ -467,12 +461,7 @@ def _collect_process_panels(process: BioProcess):
                     "y": comp.concentration.values,
                     "render": "line",
                 }
-                if has_transform:
-                    panel["series"] = comp.c_star_concentration
-                    panel["series_type"] = "backtransform"
-                    panel["process"] = process
-                    panel["species_name"] = comp.name
-                elif _has_spline_state(comp.concentration):
+                if _has_spline_state(comp.concentration):
                     panel["series"] = comp.concentration
                     panel["series_type"] = "direct"
                 panels.append(panel)
@@ -487,11 +476,8 @@ def _collect_process_panels(process: BioProcess):
                     "y": y,
                     "render": "line",
                     "series": comp.concentration,
-                    "series_type": "backtransform" if has_transform else "direct",
+                    "series_type": "direct",
                 }
-                if has_transform:
-                    panel["process"] = process
-                    panel["species_name"] = comp.name
                 panels.append(panel)
             elif hasattr(comp.concentration, "value"):
                 panels.append(
@@ -701,31 +687,10 @@ def _pad_constant_ylim(ax, values):
         ax.set_ylim(min(cur_lo, new_lo), max(cur_hi, new_hi))
 
 
-def _evaluate_series_curve(
-    series,
-    series_type,
-    t_start,
-    t_end,
-    n_points=500,
-    *,
-    pseudobatch_transform=None,
-    species_name=None,
-    process=None,
-):
+def _evaluate_series_curve(series, t_start, t_end, n_points=500):
     """Evaluate a spline-backed TimeSeries over [t_start, t_end]."""
-    from .splines import evaluate_pseudobatch_transform
-
     t_plot = np.linspace(t_start, t_end, n_points)
-    if series_type == "backtransform":
-        if process is None or species_name is None:
-            raise ValueError(
-                "Backtransform plotting requires process and species_name."
-            )
-        y_plot = np.asarray(
-            evaluate_pseudobatch_transform(process, species_name, jnp.asarray(t_plot))
-        )
-    else:
-        y_plot = np.asarray(series.evaluate_many(jnp.asarray(t_plot, dtype=float)))
+    y_plot = np.asarray(series.evaluate_many(jnp.asarray(t_plot, dtype=float)))
     return t_plot, y_plot
 
 
@@ -734,7 +699,7 @@ def _draw_panel(
 ):
     """Draw a single panel (dynamic or static) onto *ax*.
 
-    If the panel has a ``'series'`` key, the spline/backtransform curve is drawn and raw
+    If the panel has a ``'series'`` key, the spline curve is drawn and raw
     data is shown as scatter points (no connecting lines). Otherwise raw
     data is drawn with ``'o-'`` markers.
     """
@@ -793,17 +758,13 @@ def _draw_panel(
             fmt = "o-" if n <= 50 else "-"
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
 
-        # Draw spline/backtransform curve
+        # Draw spline curve
         if has_series and t_start is not None and t_end is not None:
             try:
                 t_plot, y_plot = _evaluate_series_curve(
                     panel["series"],
-                    panel.get("series_type", "direct"),
                     t_start,
                     t_end,
-                    pseudobatch_transform=panel.get("pseudobatch_transform"),
-                    species_name=panel.get("species_name"),
-                    process=panel.get("process"),
                 )
                 ax.plot(
                     t_plot,

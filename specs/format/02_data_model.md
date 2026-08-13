@@ -114,10 +114,9 @@ One species measured in the reactor.
 ```python
 @dataclass
 class ReactorMediumComponent:
-    name: str                                                 # "glucose", "biomass"
-    unit: str                                                 # "g/L", "mM"
-    concentration: TimeSeries | StaticVariable                # real, as measured
-    c_star_concentration: TimeSeries | StaticVariable | None  # pseudobatch trace
+    name: str                                     # "glucose", "biomass"
+    unit: str                                     # "g/L", "mM"
+    concentration: TimeSeries | StaticVariable    # real, as measured
     bounds: Bounds = (0.0, None)
 ```
 
@@ -125,11 +124,6 @@ RMC concentrations default to nonnegative. Pass `bounds=(None, None)` to opt
 out explicitly.
 
 `concentration` is *always* the real reactor concentration in physical units.
-When a pseudobatch transform has been built, the derived `c*` trace goes in
-`c_star_concentration` and the shared parts (ADF, feed corrections) go on
-`BioProcess.pseudobatch_transform`. Loaders reject a `c*` trace with no matching
-transform bundle, and reject feeding an already-transformed concentration back
-into the transform builder.
 
 ### `FeedMediumComponent`
 
@@ -145,8 +139,7 @@ class FeedMediumComponent:
 ```
 
 > The mechanistic code currently requires `StaticVariable` here. A `TimeSeries`
-> feed concentration raises `NotImplementedError` in `build_rhs_ode` and in the
-> pseudobatch feed correction.
+> feed concentration raises `NotImplementedError` in `build_rhs_ode`.
 
 ### `ReactorMedium` and `FeedMedium`
 
@@ -232,9 +225,8 @@ class Volume:
     bounds: Bounds = (None, None)         # e.g. (0, max_working_volume)
 ```
 
-`total_volume` is the full reactor-volume trace. It may be online measurement
-data, or it may be reconstructed from `initial_volume` plus the volume changes —
-`build_pseudobatch_transform` fills it in if it is still `None`.
+`total_volume` is the full reactor-volume trace, when available as online
+measurement data. It is optional — `None` unless a loader supplied it.
 
 ## The biological ODE
 
@@ -299,23 +291,7 @@ class BioProcess:
     process_variables: Dict[str, ProcessVariable] = {}
     discrete_events: Optional[DiscreteEvents] = None
     biological_ode: Optional[BiologicalOde] = None       # auto-filled
-    pseudobatch_transform: Optional[PseudobatchTransform] = None
 ```
-
-### `PseudobatchTransform`
-
-```python
-@dataclass
-class PseudobatchTransform:
-    adf: TimeSeries                              # shared accumulated dilution factor
-    feed_corrections: Dict[str, TimeSeries]      # per species
-    sample_compensation: Optional[TimeSeries]    # diagnostic
-    accumulated_feeds: Dict[str, TimeSeries]     # diagnostic, per feed stream
-```
-
-Only the parts shared across species live here. Per-species `c*` stays on
-`ReactorMediumComponent.c_star_concentration`. Details in
-[07_splines.md](07_splines.md).
 
 ### `AugmentedBioProcess`
 
