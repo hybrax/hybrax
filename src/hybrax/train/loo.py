@@ -49,7 +49,7 @@ from .harness import (
     train_collection,
     train_harness_config_from_run_config,
 )
-from .postprocessing import extract_process_plot_sources, save_model_metadata
+from .postprocessing import save_model_metadata
 from .runtime_artifact import (
     FORMAT_VERSION,
     RhsOdeDescriptor,
@@ -659,11 +659,9 @@ class TrainedFold:
     config_json: Path
     config: Any
     store: Any
-    plot_sources: dict[str, Any] | None
     target_names: tuple[str, ...]
     parent_process_names: tuple[str, ...]
     output_predictions: PredictionScope
-    render_plots: bool
     train_result: Any
 
 
@@ -750,13 +748,6 @@ def produce_runtime_artifact(
             "run_fingerprint": _fingerprint(bundle_path, cfg.custom_py),
             "prepared_content_hash": content_hash(collection),
         },
-        plot_sources=(
-            extract_process_plot_sources(
-                collection, store.rhs_ode, tuple(store.process_order)
-            )
-            if cfg.output.plots
-            else None
-        ),
     )
 
 
@@ -832,7 +823,6 @@ def prepare_single_fold_from_runtime_artifact(
             config=_fold_harness_config(effective_cfg, fold, fold_dir),
             custom_module=custom_module,
             custom_cfg=effective_cfg,
-            plot_sources=artifact.plot_sources,
         ),
     )
 
@@ -885,18 +875,6 @@ def prepare_single_fold(
         custom_module=custom_module,
         run_config=effective_cfg,
     )
-    if training.plot_sources is not None:
-        missing_holdouts = tuple(
-            name for name in fold.test if name not in training.plot_sources
-        )
-        if missing_holdouts:
-            holdout_sources = extract_process_plot_sources(
-                collection, training.store.rhs_ode, missing_holdouts
-            )
-            training = dataclasses.replace(
-                training,
-                plot_sources={**training.plot_sources, **holdout_sources},
-            )
     return PreparedFold(
         fold=fold,
         fold_seed=fold_seed,
@@ -915,7 +893,6 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
     fold_dir = prepared.fold_dir
     harness_cfg = prepared.training.config
     store = prepared.training.store
-    plot_sources = prepared.training.plot_sources
     target_names = tuple(prepared.training.loss_module.loss_names)
     train_result = train_collection(
         store,
@@ -923,8 +900,6 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
         loss_module=prepared.training.loss_module,
         config=harness_cfg,
         optimizer=prepared.training.optimizer,
-        plot_sources=plot_sources,
-        write_final_model_outputs=False,
     )
 
     model_path = fold_dir / "trained_wrapper.eqx"
@@ -971,11 +946,9 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
         config_json=prepared.config_json,
         config=harness_cfg,
         store=store,
-        plot_sources=plot_sources,
         target_names=target_names,
         parent_process_names=prepared.training.parent_process_names,
         output_predictions=prepared.effective_cfg.output.predictions,
-        render_plots=prepared.effective_cfg.output.plots,
         train_result=train_result,
     )
 
@@ -1011,9 +984,6 @@ def execute_trained_fold(trained: TrainedFold) -> FoldResult:
     _write_train_results(
         output_dir=trained.fold_dir,
         forward_result=forward_result,
-        train_result=trained.train_result,
-        plot_sources=trained.plot_sources,
-        render_plots=trained.render_plots,
         prediction_processes=prediction_processes,
     )
     last_loss = float(trained.train_result.mean_loss_by_step[-1])
@@ -1171,8 +1141,7 @@ def run_loo_cv(
         aggregate_json_path=aggregate_json_path,
         base_seed=int(cfg.train.seed),
     )
-    if cfg.output.plots:
-        _plot_cross_fold_losses(folds=folds, output_dir=output_dir)
+    _plot_cross_fold_losses(folds=folds, output_dir=output_dir)
     return LOOResult(
         fold_dirs=tuple(output_dir / "folds" / fold.slug for fold in folds),
         parallel_folds=parallel,
@@ -1263,7 +1232,11 @@ def _plot_cross_fold_losses(*, folds: tuple[Fold, ...], output_dir: Path) -> Non
     if not fold_curves:
         logger.warning("no fold loss history found; skipping cross-fold loss plot")
         return
-    plot_cross_fold_loss_curves(fold_curves, output_dir / "loo_loss_curves.png")
+    try:
+        plot_cross_fold_loss_curves(fold_curves, output_dir / "loo_loss_curves.png")
+    except Exception:
+        # Fold results are complete; an optional PNG must not fail the LOO run.
+        logger.exception("failed to write cross-fold loss curve")
 
 
 def _write_summary_and_aggregate(

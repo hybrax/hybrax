@@ -170,8 +170,9 @@ reaction module, unscales the rates, and feeds the physical mass balance;
 bp-train computes the training loss through a user-defined `UserLossModule`, the
 loss-side twin of `UserReactionModule`. You write one class that maps a
 `LossInputs` bundle to a dict of **named scalar losses**; the harness averages
-them for backprop, names every plot/log panel by the dict keys, and optimizes
-any `trainable_field()` you declare — all from the single shared ODE solve. There
+them for backprop, names every log column and loss-curve panel by the dict keys,
+and optimizes any `trainable_field()` you declare — all from the single shared
+ODE solve. There
 is no separate "default loss" callback: the default *is* a `UserLossModule`
 (`DefaultLossModule`), and you subclass or replace it.
 
@@ -524,8 +525,5 @@ Every named term flows, by its key, to:
 
 - the per-step console table,
 - `metrics.csv` (the per-step loss history in the run directory),
-- the checkpoint `loss_curve.png` (one panel per term, plus a `total` panel),
-- the per-process fit plot: each species/feed subplot is annotated with its
-  named term (when one matches by name) plus R²; the process's total loss is in
-  the figure title, and non-species terms (penalties, aux) are listed there.
-  Terms with no matching subplot simply don't annotate one — never an error.
+- the final run-level `loss_curve.png` (one panel per term, plus a `total`
+  panel).

@@ -114,7 +114,7 @@ def test_train_harness_config_from_run_config_maps_sections():
                 "jump_ts": False,
             },
             "checkpoint": {"every": 0.5},
-            "output": {"plots": False},
+            "output": {"predictions": "none"},
             "logging": {"decimals": 3},
         }
     )
@@ -138,7 +138,6 @@ def test_train_harness_config_from_run_config_maps_sections():
     assert h.solver_atol == 1e-6
     assert h.solver_use_jump_ts is False
     assert h.checkpoint_every == 0.5
-    assert h.plots is False
     assert h.checkpoint_dir == run_dir / "checkpoints"
     assert str(h.metrics_csv).endswith("metrics.csv")
     assert h.prepared_path is not None

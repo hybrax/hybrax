@@ -33,7 +33,12 @@ def _write_prepared(path: Path, biomass_values=(1.0, 0.8, 0.64), *, n_processes=
 
 
 def _write_config(
-    config_path: Path, *, prepared: Path, run_dir: Path, solver: dict | None = None
+    config_path: Path,
+    *,
+    prepared: Path,
+    run_dir: Path,
+    solver: dict | None = None,
+    predictions: str = "parents",
 ) -> Path:
     config = {
         "data": {
@@ -47,7 +52,7 @@ def _write_config(
         # substitutes a default instead of reading the run's own config.
         "solver": solver or {"max_steps": 3072, "rtol": 1e-4, "atol": 1e-6},
         "checkpoint": {"every": 1.0},
-        "output": {"dir": str(run_dir), "plots": False},
+        "output": {"dir": str(run_dir), "predictions": predictions},
         "logging": {"decimals": 4},
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -84,7 +89,6 @@ def _scale_leaves(wrapper):
     ]
 
 
-
 # The fixture collection measures biomass at these times; model_predict splices a
 # node onto each of them, so the returned grid is the union of the even grid and
 # the measurement times rather than a bare linspace.
@@ -102,9 +106,7 @@ def _assert_prediction_grid(t: np.ndarray, *, grid_n: int) -> None:
     for measured in _MEASUREMENT_TIMES:
         assert np.isclose(t, measured).any(), f"measurement node {measured} missing"
     # grid_n even nodes, plus the measurement times that do not coincide with one.
-    extra = sum(
-        0 if np.isclose(linspace, m).any() else 1 for m in _MEASUREMENT_TIMES
-    )
+    extra = sum(0 if np.isclose(linspace, m).any() else 1 for m in _MEASUREMENT_TIMES)
     assert t.shape == (grid_n + extra,)
 
 

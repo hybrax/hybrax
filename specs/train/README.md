@@ -39,7 +39,7 @@ Read in this order:
 | Dense grids | `bp_train/dense.py` | [04](04_reaction_and_loss.md) | Union-grid + jump-mask helpers for dense losses |
 | Harness | `bp_train/harness.py` | [05](05_train_forward_loo.md) | Training orchestrator, forward, dense exports |
 | Trainer | `bp_train/trainer.py` | [05](05_train_forward_loo.md) | Single-sample / batched loss evaluation |
-| Postprocessing | `bp_train/postprocessing.py` | [05](05_train_forward_loo.md) | Plots + `predictions.csv` export |
+| Postprocessing | `bp_train/postprocessing.py` | [05](05_train_forward_loo.md) | Loss curves + `predictions.csv` export |
 | LOO | `bp_train/loo.py`, `bp_train/loo_metrics.py` | [05](05_train_forward_loo.md) | Leave-one/some-process-out cross-validation + metrics |
 | Checkpointing / logging | `bp_train/checkpointing.py`, `bp_train/logging.py` | [05](05_train_forward_loo.md) | Resumable snapshots + telemetry |
 | Serialization | `bp_train/serialization.py` | [06](06_serialization_inspect.md) | Save/load, reconstruction, provenance |

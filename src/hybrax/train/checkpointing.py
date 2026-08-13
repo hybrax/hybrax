@@ -6,9 +6,8 @@ import gzip
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
-from .postprocessing import plot_grad_norm_curve, plot_loss_curve
 from .serialization import save_model, save_opt_state, write_json
 
 
@@ -25,14 +24,10 @@ class CheckpointWriter:
         self,
         checkpoints_dir: Path,
         *,
-        plotter: Any | None = None,
-        plots_enabled: bool = True,
         prepared_src: Path | None = None,
     ) -> None:
         self._dir = Path(checkpoints_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._plotter = plotter
-        self._plots_enabled = bool(plots_enabled)
         self._prepared_src = Path(prepared_src) if prepared_src is not None else None
 
     def write(
@@ -44,13 +39,6 @@ class CheckpointWriter:
         opt_state: Any,
         mean_loss: float,
         holdout_loss: float | None,
-        loss_by_step: Sequence[float],
-        grad_norm_by_step: Sequence[float] | None = None,
-        per_target_loss_by_step: Sequence[tuple[float, ...]] | None = None,
-        target_names: Sequence[str] | None = None,
-        holdout_loss_by_step: dict[int, float] | None = None,
-        holdout_per_target_by_step: dict[int, tuple[float, ...]] | None = None,
-        holdout_label: str | None = None,
     ) -> Path:
         d = self._dir / f"step_{step:05d}"
         d.mkdir(parents=True, exist_ok=True)
@@ -77,33 +65,6 @@ class CheckpointWriter:
         if self._prepared_src is not None and self._prepared_src.is_file():
             _bundle_prepared_gz(self._prepared_src, d / "prepared.json.gz")
 
-        if self._plots_enabled and self._plotter is not None:
-            self._plotter.submit(
-                plot_loss_curve,
-                list(loss_by_step),
-                d / "loss_curve.png",
-                title=f"Training loss (through step {step})",
-                per_target_loss_by_step=(
-                    list(per_target_loss_by_step) if per_target_loss_by_step else None
-                ),
-                target_names=tuple(target_names) if target_names else None,
-                monitor_loss_by_step=(
-                    dict(holdout_loss_by_step) if holdout_loss_by_step else None
-                ),
-                monitor_per_target_by_step=(
-                    dict(holdout_per_target_by_step)
-                    if holdout_per_target_by_step
-                    else None
-                ),
-                monitor_label=holdout_label,
-            )
-            if grad_norm_by_step:
-                self._plotter.submit(
-                    plot_grad_norm_curve,
-                    list(grad_norm_by_step),
-                    d / "grad_norm_curve.png",
-                    title=f"Gradient norm (through step {step})",
-                )
         self._update_latest(d)
         return d
 

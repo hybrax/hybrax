@@ -39,11 +39,7 @@ def _write_config(
         "train": {"epochs": epochs, "learning_rate": 0.05, "seed": 0},
         "solver": {"max_steps": 2048},
         "checkpoint": {"every": every},
-        "output": {
-            "dir": str(run_dir),
-            "plots": False,
-            "predictions": predictions,
-        },
+        "output": {"dir": str(run_dir), "predictions": predictions},
         "logging": {"decimals": 4},
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -72,7 +68,7 @@ def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypat
         assert collection_ref is not None
         assert collection_ref() is None
         return SimpleNamespace(
-            trained_wrapper=object(), mean_loss_by_step=(1.0,), updates_completed=1
+            mean_loss_by_step=(1.0,), updates_completed=1, trained_wrapper=object()
         )
 
     monkeypatch.setattr("bp_train.cli.load_process_collection", load_collection)
@@ -80,7 +76,7 @@ def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypat
 
     def evaluate(*_args, **kwargs):
         assert kwargs["prediction_process_names"] == ()
-        return object()
+        return SimpleNamespace()
 
     monkeypatch.setattr("bp_train.cli.evaluate_trained_wrapper", evaluate)
     monkeypatch.setattr("bp_train.cli._write_train_results", lambda **_kwargs: None)

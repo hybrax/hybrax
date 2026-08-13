@@ -17,7 +17,7 @@ class SaveOutputs(eqx.Module):
 
     ``SCL_states`` are in the solver's scaled state space; rates are RAW. Use
     ``module.unscale_state`` to convert ``SCL_states`` to physical units when
-    exporting to plots/CSV/JSONL.
+    exporting to CSV/JSONL.
     """
 
     SCL_states: jax.Array

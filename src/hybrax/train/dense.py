@@ -33,7 +33,7 @@ def build_union_time_grid(
 
     ``n_dense`` is the loss module's dense grid (consumed by its loss);
     ``n_prediction`` is an independent output grid (consumed by forward
-    evaluation for ``predictions.csv``/plots). Either may be ``None``; both
+    evaluation for ``predictions.csv``). Either may be ``None``; both
     spliced into the **same** sorted union so a single solve serves both. Both
     counts are static.
 

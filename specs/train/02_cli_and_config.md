@@ -23,10 +23,10 @@ prepare dir (prepared.json, prepare_config.json, prepare_diagnostics/)
    │  bp-train train     (fit reaction + loss modules → run directory)
    ▼
 run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
-   │  bp-train forward   (re-simulate, plot, export predictions)
+   │  bp-train forward   (re-simulate, export predictions)
    │  bp-train loo       (leave-one-process-out cross-validation)
    ▼
-predictions.csv / plots / losses.csv / loo summary
+predictions.csv / loss curves / losses.csv / loo summary
 ```
 
 `prepare`, `train`, and `loo` are config-driven (`--config run.json`).
@@ -57,7 +57,6 @@ Train one or more processes from a prepared artifact into a FAIR run directory.
 | `--output-dir` | config's `output.dir` | Override the run directory. |
 | `--overwrite` | off | Allow re-running into a completed run dir. |
 | `--epochs` | config's `train.epochs` | Override the epoch count. |
-| `--plot` / `--no-plot` | `--plot` | Per-process result plots. |
 | `--log-level` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR`. |
 
 Console numeric formatting is config-only. `metrics.csv` records every optimizer
@@ -66,11 +65,11 @@ update.
 ### `bp-train forward`
 
 Load one or more trained models and run one forward ODE pass per selected
-process (no training); regenerates plots and prints a loss table.
+process (no training); exports configured predictions and prints a loss table.
 
 **Fully config-driven** — everything that used to be a flag (`--model`,
-`--input`, `--process`, `--plot`, `--loss-csv`, `--timeseries-csv`) now lives in
-the `forward-config.json`.
+`--input`, `--process`, `--loss-csv`, `--timeseries-csv`) now lives in the
+`forward-config.json`.
 
 | Flag | Meaning |
 |---|---|
@@ -95,7 +94,7 @@ The `forward-config.json`:
   },
 
   // Optional. predictions defaults to "parents"; also accepts "none" or "all".
-  "output": { "dir": null, "plots": true, "predictions": "parents" }
+  "output": { "dir": null, "predictions": "parents" }
 }
 ```
 
@@ -109,7 +108,6 @@ predictions.csv          # selected-process mean; omitted for "none"
 predictions_std.csv      # ensemble std; omitted for "none" or one model
 losses.csv               # loss table of the first model
 models/<name>/           # per model: losses.csv + optional predictions.csv
-<process>_*.png          # fit plots: mean line, ±std band, measured overlay
 ```
 
 ### `bp-train loo`
@@ -142,7 +140,8 @@ A fresh LOO run requires the exact output directory not to exist. Use
 
 Outputs: the self-contained run dir (`loo-config.json`, `custom.py`, prepared
 artifact, `config.json`), strict `runtime-artifact/`, per-fold
-`folds/<slug>/`, and top-level `loo_summary.csv` / `loo_aggregate.json`.
+`folds/<slug>/`, and top-level `loo_summary.csv`, `loo_aggregate.json`, and
+`loo_loss_curves.png`.
 Top-level `config.json` anchors the expected artifact identity; the artifact
 manifest is authoritative for runtime inputs and folds. Per-fold completion
 records bind to that identity and fold ID. Missing or incomplete records are
@@ -157,6 +156,8 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
   config.json            # the resolved RunConfig (provenance)
   custom.py              # copied custom hooks (provenance)
   metrics.csv            # per-update loss, epoch, sample, and grad-norm history
+  loss_curve.png         # final training/holdout loss history
+  predictions.csv        # selected processes; omitted for "none"
   model/                 # final trained bundle
   checkpoints/
     latest/  step_00100/ …
@@ -166,9 +167,6 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
         config.json         # resolved config
         prepared.json.gz    # bundled data → self-contained
         custom.py           # bundled hooks
-        loss_curve.png  grad_norm_curve.png
-        predictions.csv       # omitted when output.predictions is "none"
-        <process>_run_*.png # per-process fit plots
 ```
 
 ## `custom.py` hooks reference
@@ -366,8 +364,7 @@ directory.
 | `every` | null | Periodic checkpoint cadence in epochs. Null selects `max(5, ceil(epochs / 20))`, giving at most 20 checkpoints; explicit fractional values are supported, and 0 disables periodic writes but not the mandatory final checkpoint. |
 
 **`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
-`output`), `plots` (default true), and `predictions` (`parents` by default;
-also `none` or `all`). Parent exports exclude augmented child processes.
+`output`) and `predictions` (`parents` by default; also `none` or `all`).
 
 **`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `decimals` (4).
 
@@ -448,7 +445,7 @@ with [examples/00_e2e_sim/forward-config.json](../examples/00_e2e_sim/forward-co
 ```json
 {
   "models": ["output_all"],
-  "output": { "plots": true }
+  "output": { "predictions": "parents" }
 }
 ```
 

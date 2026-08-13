@@ -1074,7 +1074,6 @@ def test_holdout_runs_once_at_periodic_final_collision(tmp_path, monkeypatch):
             batch_size=1,
             checkpoint_dir=tmp_path / "checkpoints",
             checkpoint_every=2.0,
-            plots=False,
         ),
     )
 
@@ -1137,15 +1136,6 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
         "compute_dense_exports",
         lambda *args, **kwargs: (np.zeros(1), np.zeros((1, 1)), {}),
     )
-    holdout_per_target = {}
-    original_write = harness_module.CheckpointWriter.write
-
-    def capture_write(writer, **kwargs):
-        holdout_per_target.update(kwargs["holdout_per_target_by_step"] or {})
-        return original_write(writer, **kwargs)
-
-    monkeypatch.setattr(harness_module.CheckpointWriter, "write", capture_write)
-
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(),
@@ -1157,12 +1147,11 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
             batch_size=1,
             checkpoint_dir=tmp_path / "checkpoints",
             checkpoint_every=1.0,
-            plots=False,
         ),
     )
 
     assert result.holdout_loss_by_step[1] == pytest.approx(10.0)
-    assert holdout_per_target[1] == pytest.approx((10.0,))
+    assert result.holdout_per_target_by_step[1] == pytest.approx((10.0,))
 
 
 def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, caplog):
@@ -1507,7 +1496,9 @@ def test_resolve_estimated_scales_receives_runtime_data():
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    runtime_data = RuntimeDataContext(store, (), (), (), (), (), ())
+    runtime_data = RuntimeDataContext(
+        store, (None,) * len(store.process_order), (), (), (), (), ()
+    )
     scales = EstimatedScales(
         **{field.name: jnp.zeros(()) for field in dataclasses.fields(EstimatedScales)}
     )

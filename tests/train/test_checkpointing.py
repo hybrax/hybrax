@@ -30,7 +30,7 @@ from bp_train.model_api import (
     partition_trainable,
     trainable_field,
 )
-from bp_train.postprocessing import extract_process_plot_sources, plot_loss_curve
+from bp_train.postprocessing import plot_loss_curve
 from bp_train.serialization import load_trained_wrapper
 from bp_train.training_data import TrainingDataStore
 
@@ -132,9 +132,7 @@ def test_automatic_checkpoint_cadence_uses_at_least_five_epochs_and_at_most_20()
 
 def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
     module = _TrainableModule()
-    writer = CheckpointWriter(
-        tmp_path / "checkpoints", plotter=None, plots_enabled=False
-    )
+    writer = CheckpointWriter(tmp_path / "checkpoints")
     for step in (2, 4):
         writer.write(
             step=step,
@@ -143,7 +141,6 @@ def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
             opt_state=_opt_state_for(module),
             mean_loss=1.0 / step,
             holdout_loss=0.25 if step == 4 else None,
-            loss_by_step=[1.0],
         )
     checkpoints = tmp_path / "checkpoints"
     assert {p.name for p in checkpoints.glob("step_*")} == {
@@ -164,9 +161,7 @@ def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
 
 def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
     module = _TrainableModule()
-    writer = CheckpointWriter(
-        tmp_path / "checkpoints", plotter=None, plots_enabled=False
-    )
+    writer = CheckpointWriter(tmp_path / "checkpoints")
     writer.write(
         step=1,
         samples_seen=1,
@@ -174,7 +169,6 @@ def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
         opt_state=_opt_state_for(module),
         mean_loss=float("inf"),
         holdout_loss=float("nan"),
-        loss_by_step=[float("inf")],
     )
 
     path = tmp_path / "checkpoints" / "latest" / "train_state.json"
@@ -269,7 +263,6 @@ def _run_train(
     checkpoint_dir: Path | None,
     checkpoint_every: float | None,
     epochs: int,
-    plots: bool = False,
     metrics_csv: str | None = None,
 ):
     collection = _make_collection()
@@ -289,13 +282,7 @@ def _run_train(
             learning_rate=5e-2,
             checkpoint_dir=checkpoint_dir,
             checkpoint_every=checkpoint_every,
-            plots=plots,
             metrics_csv=metrics_csv,
-        ),
-        plot_sources=(
-            extract_process_plot_sources(collection, store.rhs_ode, ("p1",))
-            if plots
-            else None
         ),
     )
 
@@ -308,9 +295,7 @@ def test_train_collection_with_no_checkpoint_dir_is_artifact_free(tmp_path: Path
 
 def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     checkpoints = tmp_path / "checkpoints"
-    result = _run_train(
-        checkpoint_dir=checkpoints, checkpoint_every=2, epochs=5, plots=False
-    )
+    result = _run_train(checkpoint_dir=checkpoints, checkpoint_every=2, epochs=5)
     assert result.updates_completed == 5
     assert sorted(p.name for p in checkpoints.glob("step_*")) == [
         "step_00002",
@@ -321,18 +306,27 @@ def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     assert not (checkpoints / "best").exists()
 
 
-def test_checkpoint_plots_exclude_predictions_and_trajectories(tmp_path: Path):
+def test_training_writes_only_final_loss_plot(tmp_path: Path):
     checkpoints = tmp_path / "checkpoints"
-    _run_train(checkpoint_dir=checkpoints, checkpoint_every=1, epochs=1, plots=True)
+    _run_train(checkpoint_dir=checkpoints, checkpoint_every=1, epochs=1)
 
-    step_dir = checkpoints / "step_00001"
-    assert {path.name for path in step_dir.glob("*.png")} == {
-        "grad_norm_curve.png",
-        "loss_curve.png",
-    }
-    assert not (step_dir / "predictions.csv").exists()
-    assert (tmp_path / "predictions.csv").is_file()
-    assert (tmp_path / "p1.png").is_file()
+    assert not tuple(checkpoints.rglob("*.png"))
+    assert (tmp_path / "loss_curve.png").is_file()
+    assert not (tmp_path / "predictions.csv").exists()
+
+
+def test_training_survives_final_loss_plot_failure(monkeypatch, tmp_path, caplog):
+    def fail_plot(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("bp_train.harness.plot_loss_curve", fail_plot)
+
+    result = _run_train(
+        checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=1
+    )
+
+    assert result.updates_completed == 1
+    assert "failed to write final loss curve" in caplog.text
 
 
 def test_automatic_checkpoint_cadence_is_logged(tmp_path: Path, caplog):
@@ -358,9 +352,7 @@ def test_checkpoint_every_zero_still_writes_final(tmp_path: Path):
 
 def test_train_collection_checkpoint_params_reload(tmp_path: Path):
     checkpoints = tmp_path / "checkpoints"
-    result = _run_train(
-        checkpoint_dir=checkpoints, checkpoint_every=2, epochs=2, plots=False
-    )
+    result = _run_train(checkpoint_dir=checkpoints, checkpoint_every=2, epochs=2)
     reloaded = load_trained_wrapper(
         checkpoints / "latest" / "params.eqx", template=result.trained_wrapper
     )

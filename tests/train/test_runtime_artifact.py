@@ -14,7 +14,6 @@ from bp_format.serialization import load_process_collection
 
 import bp_train.runtime_artifact as runtime_artifact
 from bp_train.harness import _resolve_estimated_scales
-from bp_train.postprocessing import extract_process_plot_sources
 from bp_train.model_api import AffineScaler
 from bp_train.runtime_artifact import (
     RhsOdeDescriptor,
@@ -167,65 +166,6 @@ def test_metadata_inspection_never_reads_numeric_arrays(
     assert metadata.folds == folds
     with pytest.raises(TypeError):
         metadata.identity_inputs["evil"] = "value"
-
-
-def test_plot_source_round_trip_is_immutable(tmp_path, runtime_context, descriptor):
-    collection = load_process_collection(_KITTLER)
-    process_order = tuple(runtime_context.training_data.process_order)
-    fold = RuntimeArtifactFold(1, (process_order[0],), (process_order[1],), "one", 1)
-    plot_sources = extract_process_plot_sources(
-        collection, runtime_context.training_data.rhs_ode, process_order
-    )
-    artifact = tmp_path / "artifact"
-    write_runtime_artifact(
-        artifact,
-        runtime_data=runtime_context.data,
-        folds=((fold, runtime_context.scales),),
-        rhs_descriptor=descriptor,
-        plot_sources=plot_sources,
-    )
-
-    loaded = load_runtime_artifact(artifact, fold_id=1).plot_sources
-
-    assert loaded is not None
-    assert tuple(loaded) == process_order
-    source = loaded[process_order[0]]
-    expected = plot_sources[process_order[0]]
-    assert source.time_unit == expected.time_unit
-    assert source.measured_series[0][:2] == expected.measured_series[0][:2]
-    np.testing.assert_array_equal(
-        source.measured_series[0][2], expected.measured_series[0][2]
-    )
-    with pytest.raises(TypeError):
-        loaded["evil"] = source
-    with pytest.raises(ValueError, match="read-only"):
-        source.measured_series[0][2][0] = 0.0
-
-
-def test_plot_source_arrays_are_validated(tmp_path, runtime_context, descriptor):
-    collection = load_process_collection(_KITTLER)
-    process_order = tuple(runtime_context.training_data.process_order)
-    fold = RuntimeArtifactFold(1, (process_order[0],), (process_order[1],), "one", 1)
-    plot_sources = extract_process_plot_sources(
-        collection, runtime_context.training_data.rhs_ode, process_order
-    )
-    artifact = tmp_path / "artifact"
-    write_runtime_artifact(
-        artifact,
-        runtime_data=runtime_context.data,
-        folds=((fold, runtime_context.scales),),
-        rhs_descriptor=descriptor,
-        plot_sources=plot_sources,
-    )
-    manifest = json.loads((artifact / "manifest.json").read_text())
-    name = "shared.plot.0.measured.0.times"
-    original = np.load(artifact / manifest["arrays"][name]["file"], allow_pickle=False)
-    corrupted = original.copy()
-    corrupted[1] = corrupted[0]
-    _rewrite_array(artifact, name, corrupted)
-
-    with pytest.raises(ValueError, match="invalid plot source arrays"):
-        load_runtime_artifact(artifact, fold_id=1)
 
 
 def test_round_trip_multiple_overlapping_sample_streams(

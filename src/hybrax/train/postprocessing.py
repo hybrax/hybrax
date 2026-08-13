@@ -1,4 +1,4 @@
-"""Post-training outputs: model serialization and result plots."""
+"""Post-training model serialization, prediction exports, and loss curves."""
 
 from __future__ import annotations
 
@@ -12,18 +12,12 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from bp_format.dataclasses import BioProcessCollection, FeedVolumeChange
 from bp_format.json_io import load_json
 
 from .serialization import write_json
-from .training_data import TrainingDataStore
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 logger = logging.getLogger(__name__)
-
-# Bolus bar width in `plot_process_simulations`, expressed as a fraction of the
-# process time span.
-BAR_WIDTH_FRACTION = 0.02
 
 
 @dataclass(frozen=True)
@@ -217,52 +211,6 @@ def load_model_metadata(path: str | Path) -> dict[str, Any]:
     return load_json(path)
 
 
-def _mse_and_r2(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, float]:
-    """Compute MSE and R² for two 1D arrays of equal length."""
-    y_true = np.asarray(y_true, dtype=float)
-    y_pred = np.asarray(y_pred, dtype=float)
-    mse = float(np.mean((y_pred - y_true) ** 2))
-    ss_res = float(np.sum((y_pred - y_true) ** 2))
-    var = float(np.var(y_true))
-    if var <= 0.0:
-        # Constant target: R² is undefined; report 1.0 if predictions also
-        # constant-equal, NaN otherwise.
-        r2 = float("nan") if ss_res > 0 else 1.0
-    else:
-        ss_tot = float(np.sum((y_true - np.mean(y_true)) ** 2))
-        r2 = 1.0 - ss_res / ss_tot
-    return mse, r2
-
-
-def _annotate_fit(
-    ax,
-    r2: float,
-    *,
-    loss_label: str | None = None,
-    loss_value: float | None = None,
-) -> None:
-    """Annotate an axis with R² and, when available, the named loss term.
-
-    The named loss term is the value actually optimized (SCL space, user's
-    reduction). When no term maps to this panel (``loss_value is None``), only
-    R² is shown — never raise on a missing name.
-    """
-    if loss_value is not None:
-        text = f"{loss_label}={loss_value:.4g}\nR²={r2:.4f}"
-    else:
-        text = f"R²={r2:.4f}"
-    ax.text(
-        0.02,
-        0.98,
-        text,
-        transform=ax.transAxes,
-        verticalalignment="top",
-        horizontalalignment="left",
-        fontsize=8,
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85),
-    )
-
-
 def plot_loss_curve(
     losses: Sequence[float],
     output_path: str | Path,
@@ -283,6 +231,9 @@ def plot_loss_curve(
     matching ``monitor_per_target_by_step`` term (dashed) so the holdout loss is
     broken down per target, not just in total.
     """
+    import matplotlib
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     output_path = Path(output_path)
@@ -392,35 +343,6 @@ def plot_loss_curve(
     logger.info("loss curve saved to %s", output_path)
 
 
-def plot_grad_norm_curve(
-    grad_norms: Sequence[float],
-    output_path: str | Path,
-    *,
-    title: str = "Gradient norm",
-) -> None:
-    """Draw global L2 gradient-norm vs step on a log-y axis and save as PNG."""
-    import matplotlib.pyplot as plt
-
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    steps = list(range(1, len(grad_norms) + 1))
-    fig, ax = plt.subplots(figsize=(6.0, 3.5))
-    if grad_norms:
-        ax.plot(steps, list(grad_norms), color="C2", linewidth=1.2, label="grad norm")
-    ax.set_yscale("log")
-    ax.set_xlabel("Step")
-    ax.set_ylabel("||grad||₂")
-    ax.grid(True, alpha=0.3)
-    if grad_norms:
-        ax.legend(loc="best", fontsize="small")
-    fig.suptitle(title)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=150)
-    plt.close(fig)
-    logger.info("grad-norm curve saved to %s", output_path)
-
-
 def plot_cross_fold_loss_curves(
     fold_curves: Sequence[
         tuple[str, Sequence[float], Sequence[float], Sequence[float], Sequence[float]]
@@ -437,6 +359,9 @@ def plot_cross_fold_loss_curves(
     curves are drawn solid and monitor (holdout) curves dashed in the same
     per-fold colour; folds with no usable history are skipped.
     """
+    import matplotlib
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
@@ -481,55 +406,6 @@ def plot_cross_fold_loss_curves(
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
     logger.info("cross-fold loss curves saved to %s", output_path)
-
-
-def plot_training_results(
-    result: Any,
-    plot_sources: dict[str, ProcessPlotSource],
-    store: TrainingDataStore,
-    output_dir: str | Path,
-    dense_exports: dict[str, DenseProcessExport],
-    process_names: tuple[str, ...] | None = None,
-    *,
-    per_process_named_losses: dict[str, dict[str, float]] | None = None,
-    per_process_total_loss: dict[str, float] | None = None,
-    timeseries_csv_path: str | Path | None = None,
-) -> None:
-    """Generate loss curve and per-process concentration / rate / volume plots.
-
-    Per-process trajectories come from precomputed ``dense_exports`` (no solve).
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    plot_loss_curve(
-        result.mean_loss_by_step,
-        output_dir / "loss_curve.png",
-        per_target_loss_by_step=getattr(result, "per_target_loss_by_step", None)
-        or None,
-        target_names=getattr(result, "target_names", None) or None,
-        monitor_loss_by_step=(getattr(result, "holdout_loss_by_step", None) or None),
-        monitor_label=getattr(result, "holdout_label", None),
-    )
-
-    grad_norm_by_step = getattr(result, "grad_norm_by_step", None) or None
-    if grad_norm_by_step:
-        plot_grad_norm_curve(
-            grad_norm_by_step,
-            output_dir / "grad_norm_curve.png",
-        )
-
-    plot_process_simulations(
-        result.trained_wrapper,
-        plot_sources,
-        store,
-        output_dir,
-        dense_exports,
-        process_names=process_names,
-        per_process_named_losses=per_process_named_losses,
-        per_process_total_loss=per_process_total_loss,
-        timeseries_csv_path=timeseries_csv_path,
-    )
 
 
 def export_predictions_csv(
@@ -625,247 +501,6 @@ def export_predictions_csv(
 
 
 @dataclass(frozen=True)
-class ProcessPlotSource:
-    """Raw, collection-independent inputs needed to materialize one plot."""
-
-    time_unit: str
-    t_start: float
-    t_end: float
-    v_unit: str
-    initial_volume: float
-    measured_series: tuple[tuple[str, str, np.ndarray, np.ndarray], ...]
-    volume_changes: tuple[tuple[str, str, bool, str, np.ndarray, np.ndarray], ...]
-
-
-@dataclass(frozen=True)
-class ProcessPlotData:
-    """Picklable per-process plotting inputs — plain numpy + str, no JAX/bp_format.
-
-    Built in the main process by :func:`build_process_plot_data` and consumed by
-    :func:`render_process_figures` (the single per-process renderer used by the
-    run-root/forward path AND the ``spawn`` background checkpoint worker).
-    """
-
-    process_name: str
-    is_train: bool | None
-    time_unit: str
-    t_start: float
-    t_end: float
-    v_unit: str
-    modeled_RMC_names: tuple[str, ...]
-    modeled_PV_names: tuple[str, ...]
-    modeled_FVC_names: tuple[str, ...]
-    rate_names: tuple[str, ...]
-    fvc_units: tuple[str, ...]
-    t_dense: np.ndarray
-    c_dense: np.ndarray
-    q_dense: np.ndarray
-    v_real_pred: np.ndarray
-    b_modeled_pred: np.ndarray
-    c_std: np.ndarray | None
-    q_std: np.ndarray | None
-    v_std: np.ndarray | None
-    v_real_true_dense: np.ndarray
-    b_modeled_true_dense: np.ndarray
-    measured_series: tuple[tuple[str, str, np.ndarray, np.ndarray], ...]
-    volume_changes: tuple[tuple[str, str, bool, np.ndarray, np.ndarray], ...]
-    named_losses: dict[str, float] | None
-    total_loss: float | None
-
-
-def _resolve_selected_processes(
-    store: TrainingDataStore, process_names: tuple[str, ...] | None
-) -> tuple[str, ...]:
-    if process_names is None:
-        return tuple(store.process_order)
-    missing = [name for name in process_names if name not in store.process_order]
-    if missing:
-        raise ValueError(
-            f"unknown process names: {missing}; available={store.process_order}"
-        )
-    return tuple(process_names)
-
-
-def extract_process_plot_sources(
-    collection: BioProcessCollection,
-    rhs_ode: Any,
-    process_names: tuple[str, ...],
-) -> dict[str, ProcessPlotSource]:
-    """Copy the raw plot inputs needed after the collection is released."""
-    modeled_RMC_names = tuple(rhs_ode.name_modeled_RMCs)
-    modeled_PV_names = tuple(rhs_ode.name_modeled_PVs)
-    sources: dict[str, ProcessPlotSource] = {}
-    for process_name in process_names:
-        process = collection.processes[process_name]
-        measured_series = tuple(
-            (
-                name,
-                process.reactor_medium.components[name].unit,
-                np.array(
-                    process.reactor_medium.components[name].concentration.times,
-                    dtype=float,
-                    copy=True,
-                ),
-                np.array(
-                    process.reactor_medium.components[name].concentration.values,
-                    dtype=float,
-                    copy=True,
-                ),
-            )
-            for name in modeled_RMC_names
-        ) + tuple(
-            (
-                name,
-                process.process_variables[name].unit,
-                np.array(
-                    process.process_variables[name].values.times,
-                    dtype=float,
-                    copy=True,
-                ),
-                np.array(
-                    process.process_variables[name].values.values,
-                    dtype=float,
-                    copy=True,
-                ),
-            )
-            for name in modeled_PV_names
-        )
-        volume_changes = tuple(
-            (
-                name,
-                "feed" if isinstance(change, FeedVolumeChange) else "sample",
-                bool(change.is_continuous),
-                change.unit,
-                np.array(change.values.times, dtype=float, copy=True),
-                np.array(change.values.values, dtype=float, copy=True),
-            )
-            for name, change in process.volume.volume_changes.items()
-        )
-        sources[process_name] = ProcessPlotSource(
-            time_unit=process.time_axis.unit,
-            t_start=float(process.time_axis.start),
-            t_end=float(process.time_axis.end),
-            v_unit=process.volume.unit,
-            initial_volume=float(process.volume.initial_volume),
-            measured_series=measured_series,
-            volume_changes=volume_changes,
-        )
-    return sources
-
-
-def build_process_plot_data(
-    trained_wrapper: HybridOdeWrapper,
-    plot_sources: dict[str, ProcessPlotSource],
-    store: TrainingDataStore,
-    dense_exports: dict[str, DenseProcessExport],
-    process_names: tuple[str, ...] | None = None,
-    *,
-    std_exports: dict[str, DenseProcessExport] | None = None,
-    training_process_names: tuple[str, ...] | None = None,
-    per_process_named_losses: dict[str, dict[str, float]] | None = None,
-    per_process_total_loss: dict[str, float] | None = None,
-) -> list[ProcessPlotData]:
-    """Materialize picklable plots from runtime exports and raw plot sources."""
-    modeled_RMC_names = tuple(trained_wrapper.modeled_RMC_names)
-    modeled_PV_names = tuple(trained_wrapper.modeled_PV_names)
-    modeled_FVC_names = tuple(trained_wrapper.modeled_FVC_names)
-    rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
-    n_modeled = len(modeled_FVC_names)
-    selected = _resolve_selected_processes(store, process_names)
-    training_set = (
-        set(training_process_names) if training_process_names is not None else None
-    )
-
-    out: list[ProcessPlotData] = []
-    for process_name in selected:
-        source = plot_sources[process_name]
-        dense_export = dense_exports[process_name]
-        std_export = std_exports.get(process_name) if std_exports else None
-        t_dense = np.asarray(dense_export.t, dtype=float)
-
-        # Ground-truth V_real(t): V0 + signed cumulative volume changes.
-        # Continuous feeds add their cumulative inflow; discrete events (bolus
-        # adds, sample removals) step at each event time by the signed delta
-        # (bolus > 0, sample < 0) — the same arithmetic the callbacks solve uses.
-        v_real_true_dense = np.full(t_dense.shape, source.initial_volume, dtype=float)
-        for _name, kind, is_continuous, _unit, vc_t, vc_v in source.volume_changes:
-            if kind == "feed" and is_continuous:
-                v_real_true_dense += np.interp(
-                    t_dense, vc_t, vc_v, left=float(vc_v[0]), right=float(vc_v[-1])
-                )
-            else:
-                cumulative = np.cumsum(vc_v, dtype=float)
-                idx = np.searchsorted(vc_t, t_dense, side="right") - 1
-                contribution = np.zeros_like(t_dense, dtype=float)
-                valid = idx >= 0
-                contribution[valid] = cumulative[idx[valid]]
-                v_real_true_dense += contribution
-
-        # Cumulative measured B_modeled per modeled flow on the dense grid.
-        b_modeled_true_dense = np.zeros((len(t_dense), n_modeled), dtype=float)
-        changes_by_name = {
-            name: (unit, times, values)
-            for name, _kind, _continuous, unit, times, values in source.volume_changes
-        }
-        for k, fn in enumerate(modeled_FVC_names):
-            _unit, vc_t, vc_v = changes_by_name[fn]
-            b_modeled_true_dense[:, k] = np.interp(
-                t_dense, vc_t, vc_v, left=float(vc_v[0]), right=float(vc_v[-1])
-            )
-
-        volume_changes = tuple(
-            (name, kind, is_continuous, times, values)
-            for name, kind, is_continuous, _unit, times, values in source.volume_changes
-        )
-        fvc_units = tuple(changes_by_name[name][0] for name in modeled_FVC_names)
-
-        out.append(
-            ProcessPlotData(
-                process_name=process_name,
-                is_train=(
-                    (process_name in training_set) if training_set is not None else None
-                ),
-                time_unit=source.time_unit,
-                t_start=source.t_start,
-                t_end=source.t_end,
-                v_unit=source.v_unit,
-                modeled_RMC_names=modeled_RMC_names,
-                modeled_PV_names=modeled_PV_names,
-                modeled_FVC_names=modeled_FVC_names,
-                rate_names=rate_names,
-                fvc_units=fvc_units,
-                t_dense=t_dense,
-                c_dense=np.asarray(dense_export.c_species, dtype=float),
-                q_dense=np.asarray(dense_export.q_rates, dtype=float),
-                v_real_pred=np.asarray(dense_export.v_real, dtype=float),
-                b_modeled_pred=np.asarray(dense_export.b_modeled_cum, dtype=float),
-                c_std=(
-                    np.asarray(std_export.c_species, dtype=float)
-                    if std_export is not None
-                    else None
-                ),
-                q_std=(
-                    np.asarray(std_export.q_rates, dtype=float)
-                    if std_export is not None
-                    else None
-                ),
-                v_std=(
-                    np.asarray(std_export.v_real, dtype=float)
-                    if std_export is not None
-                    else None
-                ),
-                v_real_true_dense=v_real_true_dense,
-                b_modeled_true_dense=b_modeled_true_dense,
-                measured_series=source.measured_series,
-                volume_changes=volume_changes,
-                named_losses=(per_process_named_losses or {}).get(process_name),
-                total_loss=(per_process_total_loss or {}).get(process_name),
-            )
-        )
-    return out
-
-
-@dataclass(frozen=True)
 class ControlDiagnostic:
     """One control's prepare-time diagnostic (picklable, plain numpy)."""
 
@@ -895,8 +530,7 @@ def render_control_diagnostics(
 ) -> None:
     """Render one figure overlaying, per control: the raw measured samples, the
     stored control curve the solver uses (fitted spline or linear interpolation),
-    and the dense-grid knot density. Pure numpy/matplotlib, picklable — safe in the
-    ``spawn`` background plot worker. Writes ``<process>_controls.png``.
+    and the dense-grid knot density. Writes ``<process>_controls.png``.
     """
     import matplotlib
 
@@ -951,258 +585,3 @@ def render_control_diagnostics(
     fig.tight_layout()
     fig.savefig(output_dir / f"{diagnostics.process_name}_controls.png", dpi=110)
     plt.close(fig)
-
-
-def render_process_figures(
-    plot_data: Sequence[ProcessPlotData],
-    output_dir: str | Path,
-    *,
-    filename_suffix: str = "",
-) -> None:
-    """The single per-process figure renderer — pure numpy/matplotlib, picklable.
-
-    Draws, per :class:`ProcessPlotData`: species rows (measured scatter + dense
-    integration + optional ±1σ, R²/loss annotation) beside rate panels, a volume
-    row (true vs integrated V_real + raw volume_changes), and cumulative
-    modeled-feed rows; writes ``<process>{filename_suffix}.png``. No JAX/bp_format
-    — safe to run in the ``spawn`` background plot worker.
-    """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Patch
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    for pdat in plot_data:
-        n_species = len(pdat.measured_series)
-        n_modeled = len(pdat.modeled_FVC_names)
-        n_rates = len(pdat.rate_names)
-        t_dense = pdat.t_dense
-        c_dense = pdat.c_dense
-        q_dense = pdat.q_dense
-        c_std, q_std, v_std = pdat.c_std, pdat.q_std, pdat.v_std
-        t_start, t_end, time_unit = pdat.t_start, pdat.t_end, pdat.time_unit
-        named_losses = pdat.named_losses
-
-        n_rows = n_species + 1 + n_modeled
-        fig, axes = plt.subplots(n_rows, 2, squeeze=False, figsize=(10, 3 * n_rows))
-
-        for i, (sp_name, sp_unit, t_meas, v_meas) in enumerate(pdat.measured_series):
-            ax_c = axes[i, 0]
-            ax_c.scatter(
-                t_meas, v_meas, s=16, zorder=5, color="black", label="measured"
-            )
-            ax_c.plot(
-                t_dense, c_dense[:, i], "-", lw=1.5, color="C0", label="integrated"
-            )
-            if c_std is not None:
-                ax_c.fill_between(
-                    t_dense,
-                    c_dense[:, i] - c_std[:, i],
-                    c_dense[:, i] + c_std[:, i],
-                    color="C0",
-                    alpha=0.2,
-                    lw=0,
-                    label="±1σ",
-                )
-            v_pred_at_meas = np.interp(t_meas, t_dense, c_dense[:, i])
-            _mse, r2 = _mse_and_r2(v_meas, v_pred_at_meas)
-            _sp_loss = named_losses.get(sp_name) if named_losses else None
-            _annotate_fit(ax_c, r2, loss_label=sp_name, loss_value=_sp_loss)
-            ax_c.set_title(f"{sp_name} [{sp_unit}]")
-            ax_c.set_xlabel(f"time [{time_unit}]")
-            ax_c.set_xlim(t_start, t_end)
-            ax_c.legend(fontsize="small")
-            ax_c.grid(True, alpha=0.3)
-
-            ax_q = axes[i, 1]
-            if i < n_rates:
-                ax_q.plot(t_dense, q_dense[:, i], "-", lw=1.5, color="black")
-                if q_std is not None:
-                    ax_q.fill_between(
-                        t_dense,
-                        q_dense[:, i] - q_std[:, i],
-                        q_dense[:, i] + q_std[:, i],
-                        color="black",
-                        alpha=0.15,
-                        lw=0,
-                    )
-                ax_q.axhline(0, color="gray", lw=0.5, ls="--")
-                ax_q.set_title(pdat.rate_names[i])
-                ax_q.set_xlabel(f"time [{time_unit}]")
-                ax_q.set_xlim(t_start, t_end)
-                ax_q.grid(True, alpha=0.3)
-            else:
-                ax_q.set_visible(False)
-
-        # ---- Volume row: true vs integrated V_real + raw volume_changes ----
-        ax_v = axes[n_species, 0]
-        ax_v.plot(
-            t_dense,
-            pdat.v_real_true_dense,
-            "-",
-            lw=1.5,
-            color="black",
-            label="measured",
-        )
-        ax_v.plot(
-            t_dense, pdat.v_real_pred, "--", lw=1.5, color="C0", label="integrated"
-        )
-        if v_std is not None:
-            ax_v.fill_between(
-                t_dense,
-                pdat.v_real_pred - v_std,
-                pdat.v_real_pred + v_std,
-                color="C0",
-                alpha=0.2,
-                lw=0,
-            )
-        _v_mse, v_r2 = _mse_and_r2(pdat.v_real_true_dense, pdat.v_real_pred)
-        _annotate_fit(ax_v, v_r2)
-        ax_v.set_title(f"V_real [{pdat.v_unit}]")
-        ax_v.set_xlabel(f"time [{time_unit}]")
-        ax_v.set_xlim(t_start, t_end)
-        ax_v.legend(fontsize="small")
-        ax_v.grid(True, alpha=0.3)
-
-        ax_vc = axes[n_species, 1]
-        bar_width = (t_end - t_start) * BAR_WIDTH_FRACTION
-        cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-        extra_handles: list[Any] = []
-        for idx, (vc_name, kind, is_continuous, vc_t, vc_v) in enumerate(
-            pdat.volume_changes
-        ):
-            label = f"{vc_name} ({kind})"
-            color = cycle_colors[idx % len(cycle_colors)]
-            if is_continuous:
-                ax_vc.plot(vc_t, vc_v, "-", lw=1.2, label=label, color=color)
-            elif vc_t.size == 0:
-                extra_handles.append(Patch(facecolor=color, edgecolor="k", label=label))
-            else:
-                ax_vc.bar(
-                    vc_t, vc_v, width=bar_width, label=label, edgecolor="k", color=color
-                )
-        ax_vc.set_title(f"volume_changes [{pdat.v_unit}]")
-        ax_vc.set_xlabel(f"time [{time_unit}]")
-        ax_vc.set_xlim(t_start, t_end)
-        ax_vc.grid(True, alpha=0.3)
-        if pdat.volume_changes:
-            handles, _ = ax_vc.get_legend_handles_labels()
-            ax_vc.legend(handles=handles + extra_handles, fontsize="small")
-
-        # ---- Cumulative modeled-feed rows ----
-        for k, fn in enumerate(pdat.modeled_FVC_names):
-            row = n_species + 1 + k
-            ax_b = axes[row, 0]
-            ax_b.plot(
-                t_dense,
-                pdat.b_modeled_true_dense[:, k],
-                "-",
-                lw=1.5,
-                color="black",
-                label="measured",
-            )
-            ax_b.plot(
-                t_dense,
-                pdat.b_modeled_pred[:, k],
-                "-",
-                lw=1.5,
-                color="C0",
-                label="integrated",
-            )
-            _b_mse, b_r2 = _mse_and_r2(
-                pdat.b_modeled_true_dense[:, k], pdat.b_modeled_pred[:, k]
-            )
-            _b_label = f"B_{fn}_cum"
-            _b_loss = named_losses.get(_b_label) if named_losses else None
-            _annotate_fit(ax_b, b_r2, loss_label=_b_label, loss_value=_b_loss)
-            ax_b.set_title(f"cumulative {fn} [{pdat.fvc_units[k]}]")
-            ax_b.set_xlabel(f"time [{time_unit}]")
-            ax_b.set_xlim(t_start, t_end)
-            ax_b.legend(fontsize="small")
-            ax_b.grid(True, alpha=0.3)
-            axes[row, 1].set_visible(False)
-
-        split_tag = (
-            ""
-            if pdat.is_train is None
-            else (" [train]" if pdat.is_train else " [holdout]")
-        )
-        suptitle = f"{pdat.process_name}{split_tag}"
-        if pdat.total_loss is not None:
-            suptitle += f" — total loss {pdat.total_loss:.4g}"
-            shown = (
-                set(pdat.modeled_RMC_names)
-                | set(pdat.modeled_PV_names)
-                | {f"B_{fn}_cum" for fn in pdat.modeled_FVC_names}
-            )
-            extras = [
-                f"{name}={value:.3g}"
-                for name, value in (named_losses or {}).items()
-                if name not in shown
-            ]
-            if extras:
-                suptitle += "\n" + "  ".join(extras)
-        fig.suptitle(suptitle, fontsize=12)
-        fig.tight_layout()
-        fig.savefig(
-            output_dir / f"{pdat.process_name}{filename_suffix}.png",
-            dpi=150,
-            bbox_inches="tight",
-        )
-        plt.close(fig)
-
-    logger.info("plots saved to %s", output_dir)
-
-
-def plot_process_simulations(
-    trained_wrapper: HybridOdeWrapper,
-    plot_sources: dict[str, ProcessPlotSource],
-    store: TrainingDataStore,
-    output_dir: str | Path,
-    dense_exports: dict[str, DenseProcessExport],
-    process_names: tuple[str, ...] | None = None,
-    *,
-    std_exports: dict[str, DenseProcessExport] | None = None,
-    training_process_names: tuple[str, ...] | None = None,
-    per_process_named_losses: dict[str, dict[str, float]] | None = None,
-    per_process_total_loss: dict[str, float] | None = None,
-    timeseries_csv_path: str | Path | None = None,
-    filename_suffix: str = "",
-) -> None:
-    """Write predictions.csv and/or render per-process plots from precomputed
-    dense exports — no ODE solve here.
-
-    Thin orchestration over the single per-process renderer: the merged CSV goes
-    to :func:`export_predictions_csv` (single writer), and the figures are built
-    by :func:`build_process_plot_data` (the JAX/bp_format extraction) and drawn by
-    :func:`render_process_figures` (the one renderer, shared with the background
-    checkpoint worker).
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    selected_processes = _resolve_selected_processes(store, process_names)
-
-    # CSV: delegate to the single writer (no solve, no per-process row logic here).
-    if timeseries_csv_path is not None:
-        export_predictions_csv(
-            trained_wrapper, dense_exports, timeseries_csv_path, selected_processes
-        )
-    if not selected_processes:
-        return
-
-    plot_data = build_process_plot_data(
-        trained_wrapper,
-        plot_sources,
-        store,
-        dense_exports,
-        selected_processes,
-        std_exports=std_exports,
-        training_process_names=training_process_names,
-        per_process_named_losses=per_process_named_losses,
-        per_process_total_loss=per_process_total_loss,
-    )
-    render_process_figures(plot_data, output_dir, filename_suffix=filename_suffix)

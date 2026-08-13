@@ -36,7 +36,7 @@ bp-train prepare --config prepare-config.json --output-dir prepared
 # 2. fit reaction + loss modules into a run directory
 bp-train train   --config train-config.json
 
-# 3. re-simulate a trained model, regenerate plots, export predictions
+# 3. re-simulate a trained model and export predictions
 #    (the config names the model dir(s); >1 = ensemble)
 bp-train forward --config forward-config.json
 

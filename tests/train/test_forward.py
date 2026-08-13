@@ -6,9 +6,7 @@ These tests exercise the pieces that do not require a real trained model:
 * the metadata sidecar helpers,
 * the CLI dispatch for `forward` (via monkeypatching ``forward_from_collection``),
 * the sidecar write performed by ``_handle_train``,
-* a light-touch check that ``plot_process_simulations`` is plumbed through and
-  accepts the new ``training_process_names`` / ``timeseries_csv_path`` /
-  ``filename_suffix`` parameters.
+* selective dense prediction export.
 
 End-to-end forward (with a real ODE solve) is covered by
 ``test_forward_end_to_end`` which runs on the kittler example fixture when
@@ -17,12 +15,9 @@ available. It is marked ``integration`` so it can be skipped in fast suites.
 
 from __future__ import annotations
 
-import gc
-import inspect
 import json
 from pathlib import Path
 from types import SimpleNamespace
-import weakref
 
 import jax.numpy as jnp
 import numpy as np
@@ -117,6 +112,9 @@ def test_evaluate_trained_wrapper_skips_dense_solve_for_no_predictions(monkeypat
         process_order=("p1",),
         name_modeled_FVCs=(),
         name_modeled_SVCs=(),
+        Cin_controlled_FVCs=jnp.zeros((1, 0, 1)),
+        Cin_modeled_FVCs=jnp.zeros((1, 0, 1)),
+        gather_batch=lambda indices: SimpleNamespace(process_indices=indices),
     )
     monkeypatch.setattr(
         harness_module,
@@ -331,9 +329,6 @@ def test_write_train_results_consumes_forward_result_without_reconstruction(
     cli._write_train_results(
         output_dir=tmp_path,
         forward_result=result,
-        train_result=object(),
-        plot_sources=None,
-        render_plots=False,
         prediction_processes=("p1", "p2"),
     )
 
@@ -573,7 +568,6 @@ def _write_forward_config(
     processes=None,
     output_dir=None,
     prepared=None,
-    plots=False,
     predictions="parents",
     name="forward-config.json",
 ) -> Path:
@@ -586,7 +580,7 @@ def _write_forward_config(
         data["processes"] = list(processes)
     if data:
         cfg["data"] = data
-    output: dict = {"plots": plots, "predictions": predictions}
+    output: dict = {"predictions": predictions}
     if output_dir is not None:
         output["dir"] = str(output_dir)
     cfg["output"] = output
@@ -629,7 +623,6 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
         return _stub_forward_result()
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     # the stub ForwardResult has no real wrapper/dense_exports; skip the writers
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
@@ -766,7 +759,6 @@ def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         cli, "forward_from_collection", lambda collection, **k: _stub_forward_result()
     )
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     output_dir = tmp_path / "fwd"
@@ -801,7 +793,6 @@ def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
         return _stub_forward_result()
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     fwd_config = _write_forward_config(tmp_path, [run_dir])
@@ -866,7 +857,6 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
         return _stub_forward_result(training_process_names=())
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
-    monkeypatch.setattr(cli, "plot_process_simulations", lambda *a, **k: None)
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
     fwd_config = _write_forward_config(tmp_path, [run_dir])
@@ -876,23 +866,7 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
     assert captured_tpn["tpn"] == ("p1", "p2", "p3")
 
 
-# ---------------------------------------------------------------------------
-# plot_process_simulations: light signature / stub test
-# ---------------------------------------------------------------------------
-
-
-def test_plot_process_simulations_is_exported_with_new_kwargs():
-    """Guard against accidental signature regressions."""
-    sig = inspect.signature(postprocessing.plot_process_simulations)
-    assert "dense_exports" in sig.parameters
-    assert "training_process_names" in sig.parameters
-    assert "per_process_named_losses" in sig.parameters
-    assert "per_process_total_loss" in sig.parameters
-    assert "timeseries_csv_path" in sig.parameters
-    assert "filename_suffix" in sig.parameters
-
-
-def test_plot_process_simulations_timeseries_csv_header_only_for_empty_selection(
+def test_export_predictions_csv_header_only_for_empty_selection(
     tmp_path: Path,
 ):
     class _RhsOde:
@@ -1046,45 +1020,6 @@ def test_affine_state_offset_keeps_zero_rhs_stationary_through_forward():
     assert np.allclose(export.c_species[:, 0], 1.0, rtol=0.0, atol=2e-6)
 
 
-def test_plot_sources_survive_collection_release():
-    collection, store, wrapper = _build_single_process_runtime(
-        initial_volume=1.0,
-        sample_delta=-0.2,
-    )
-    dense = _single_dense_export(store, wrapper, prediction_grid_n=5)
-    original_values = (
-        collection.processes["p1"]
-        .reactor_medium.components["biomass"]
-        .concentration.values
-    )
-    original_values_ref = weakref.ref(original_values)
-    sources = postprocessing.extract_process_plot_sources(
-        collection, store.rhs_ode, ("p1",)
-    )
-    del collection.processes["p1"]
-    del original_values
-    gc.collect()
-
-    assert original_values_ref() is None
-    assert sources["p1"].measured_series[0][3].flags.owndata
-
-    [plot_data] = postprocessing.build_process_plot_data(
-        wrapper,
-        sources,
-        store,
-        {"p1": dense},
-        ("p1",),
-    )
-
-    assert plot_data.time_unit == "h"
-    assert plot_data.v_unit == "L"
-    assert plot_data.measured_series[0][0:2] == ("biomass", "g/L")
-    assert np.array_equal(plot_data.measured_series[0][2], np.array([0.0, 2.0]))
-    assert plot_data.volume_changes[0][0:3] == ("sample_1", "sample", False)
-    assert plot_data.v_real_true_dense[0] == pytest.approx(1.0)
-    assert plot_data.v_real_true_dense[-1] == pytest.approx(0.8)
-
-
 def test_dense_export_returns_physical_q_values():
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
@@ -1152,44 +1087,6 @@ def test_loo_scored_value_equals_training_framework_solve():
     lin_c = np.interp(lin_t, export.t, c)
     ramp_val = float(np.interp(0.7, lin_t, lin_c))
     assert abs(ramp_val - train_val) > 0.01 * abs(train_val)
-
-
-def test_export_predictions_csv_does_not_depend_on_plot_process_simulations(
-    monkeypatch, tmp_path: Path
-):
-    collection, store, wrapper = _build_single_process_runtime(
-        q_scaled=1.5,
-        q_scale=2.0,
-    )
-
-    def _boom(*args, **kwargs):
-        raise AssertionError("plot_process_simulations should not be called")
-
-    monkeypatch.setattr(postprocessing, "plot_process_simulations", _boom)
-
-    _, _, dense_exports = compute_dense_exports(
-        wrapper,
-        store,
-        ("p1",),
-        solver_max_steps=256,
-        solver_rtol=1e-4,
-        solver_atol=1e-6,
-        solver_use_jump_ts=True,
-        prediction_grid_n=9,
-    )
-    out_path = tmp_path / "predictions.csv"
-    postprocessing.export_predictions_csv(wrapper, dense_exports, out_path, ("p1",))
-
-    rows = pd.read_csv(out_path)
-    assert rows.columns.tolist() == [
-        "process",
-        "t",
-        "c_biomass",
-        "V_real",
-        "q_biomass",
-    ]
-    assert not rows.empty
-    assert set(rows["process"]) == {"p1"}
 
 
 def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):

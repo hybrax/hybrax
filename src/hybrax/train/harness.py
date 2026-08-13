@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from functools import partial
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -25,7 +25,6 @@ from bp_format.inspect import print_rhs_ode
 from bp_format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
-from .plotting_worker import BackgroundPlotter
 from .defaults import (
     DefaultLossModule,
     _default_scale_kwargs,
@@ -61,13 +60,8 @@ from .utils import (
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
-    ProcessPlotSource,
-    extract_process_plot_sources,
     dense_exports_from_save_outputs,
-    export_predictions_csv,
-    plot_grad_norm_curve,
     plot_loss_curve,
-    plot_process_simulations,
 )
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
@@ -273,7 +267,6 @@ def model_predict(
         f"collection process {selected[0]!r}",
         store.rhs_ode,
     )
-
     _per_sample_total, _per_sample_per_target, dense_exports = compute_dense_exports(
         trained_wrapper,
         store,
@@ -315,12 +308,10 @@ class TrainHarnessConfig:
     # Checkpointing. ``checkpoint_every`` is measured in epochs; None selects an
     # automatic cadence of at least five epochs and at most 20 checkpoints. Zero
     # disables periodic writes, while a final checkpoint remains mandatory when
-    # configured. ``plots`` gates checkpoint loss/gradient plots and final
-    # process plots. ``prepared_path`` is the resolved prepared.json(.gz) bundled
+    # configured. ``prepared_path`` is the resolved prepared.json(.gz) bundled
     # into every checkpoint so each is self-contained.
     checkpoint_dir: Path | None = None
     checkpoint_every: float | None = None
-    plots: bool = True
     prepared_path: Path | None = None
     # Optional LOO holdout set, evaluated whenever a checkpoint is written.
     holdout_processes: tuple[str, ...] | None = None
@@ -343,6 +334,9 @@ class TrainHarnessResult:
     per_target_loss_by_step: tuple[tuple[float, ...], ...] = ()
     target_names: tuple[str, ...] = ()
     holdout_loss_by_step: dict[int, float] = dataclasses.field(default_factory=dict)
+    holdout_per_target_by_step: dict[int, tuple[float, ...]] = dataclasses.field(
+        default_factory=dict
+    )
     holdout_label: str | None = None
     grad_norm_by_step: tuple[float, ...] = ()
     updates_completed: int = 0
@@ -821,8 +815,10 @@ class ForwardResult:
     per_process_total_loss: dict[str, float]
     per_process_per_target_loss: dict[str, tuple[float, ...]]
     # Dense prediction trajectories harvested from the batched loss solve
-    # (``compute_dense_exports``); the source for predictions.csv + plots.
-    dense_exports: dict[str, DenseProcessExport] | None = None
+    # (``compute_dense_exports``); the source for predictions.csv.
+    dense_exports: dict[str, DenseProcessExport] = dataclasses.field(
+        default_factory=dict
+    )
 
 
 def forward_from_collection(
@@ -878,7 +874,6 @@ def forward_from_collection(
         target_variable_order=effective_target_order,
         target_source=cfg.target_source,
     )
-
     # Use ALL processes in the store for template construction so the pytree
     # matches training even if the caller selects a holdout subset below.
     template_processes = tuple(store.process_order)
@@ -1045,35 +1040,13 @@ def evaluate_trained_wrapper(
     )
 
 
-def forward_plot_losses(
-    result: ForwardResult,
-) -> tuple[dict[str, dict[str, float]], dict[str, float]]:
-    """Build per-process ``(named_losses, total_loss)`` dicts for plot annotations.
-
-    ``named_losses[p]`` maps each loss name → value; ``total_loss[p]`` is the SUM
-    of the named terms (matching the historical per-process plot annotation, which
-    differs from the mean reported in ``losses.csv``).
-    """
-    named = {
-        name: dict(zip(result.target_names, result.per_process_per_target_loss[name]))
-        for name in result.process_names
-    }
-    total = {
-        name: float(sum(result.per_process_per_target_loss[name]))
-        for name in result.process_names
-    }
-    return named, total
-
-
 def train_collection(
     store: TrainingDataStore,
     *,
     reaction_module: UserReactionModule,
     loss_module: UserLossModule | None = None,
     config: TrainHarnessConfig | None = None,
-    plot_sources: dict[str, ProcessPlotSource] | None = None,
     optimizer: optax.GradientTransformation | None = None,
-    write_final_model_outputs: bool = True,
 ) -> TrainHarnessResult:
     """Train one reaction module over one or many processes from one store.
 
@@ -1085,8 +1058,6 @@ def train_collection(
     used.
     """
     cfg = config or TrainHarnessConfig()
-    if cfg.checkpoint_dir is not None and cfg.plots and plot_sources is None:
-        raise ValueError("plot_sources are required when plots are enabled")
     _require_stateful_opt_in(reaction_module, cfg.allow_stateful_models)
     if loss_module is None:
         loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
@@ -1694,21 +1665,17 @@ def train_collection(
             resolved_checkpoint_every,
             len(checkpoint_boundaries),
         )
-    plotter = BackgroundPlotter() if (checkpoint_enabled and cfg.plots) else None
     checkpoint_writer = (
         CheckpointWriter(
             Path(cfg.checkpoint_dir),
-            plotter=plotter,
-            plots_enabled=cfg.plots,
             prepared_src=cfg.prepared_path,
         )
         if cfg.checkpoint_dir is not None
         else None
     )
-    loss_so_far: list[float] = []
-    per_target_loss_so_far: list[tuple[float, ...]] = []
-    grad_norm_so_far: list[float] = []
-    holdout_loss_so_far: dict[int, float] = {}
+    # The train/holdout loss series the final curve needs are already accumulated
+    # by ``RunLogger`` (see ``finalize()`` below); only the per-target holdout
+    # breakdown is tracked here, because it is a result field rather than history.
     holdout_per_target_so_far: dict[int, tuple[float, ...]] = {}
 
     if cfg.holdout_processes:
@@ -1747,227 +1714,153 @@ def train_collection(
             tuple(float(value) for value in np.mean(per_sample_per_target, axis=0)),
         )
 
-    try:
-        with RunLogger(
-            log_process_losses=cfg.log_process_losses,
-            metrics_csv=cfg.metrics_csv,
-            metrics_jsonl=cfg.metrics_jsonl,
-            log_decimals=cfg.log_decimals,
-        ) as run_log:
-            run_log.start(
-                target_names=_target_labels,
-                process_names=selected_processes,
-                total_updates=total_updates,
-                compile_warmup_seconds=warmup_compile_seconds,
+    with RunLogger(
+        log_process_losses=cfg.log_process_losses,
+        metrics_csv=cfg.metrics_csv,
+        metrics_jsonl=cfg.metrics_jsonl,
+        log_decimals=cfg.log_decimals,
+    ) as run_log:
+        run_log.start(
+            target_names=_target_labels,
+            process_names=selected_processes,
+            total_updates=total_updates,
+            compile_warmup_seconds=warmup_compile_seconds,
+        )
+        epoch_losses: list[float] = []
+        epoch_training_seconds = 0.0
+        for step_index in range(total_updates):
+            step = step_index + 1
+            epoch = step_index // batches_per_epoch + 1
+            batch_in_epoch = step_index % batches_per_epoch + 1
+            batch = store.gather_batch(batch_index_stream[step_index])
+            current_signature = summarize_train_step_input_signature(
+                wrapper,
+                trainable_params,
+                optimizer_state,
+                batch,
+                jnp.asarray(step, dtype=jnp.int32),
             )
-            epoch_losses: list[float] = []
-            epoch_training_seconds = 0.0
-            for step_index in range(total_updates):
-                step = step_index + 1
-                epoch = step_index // batches_per_epoch + 1
-                batch_in_epoch = step_index % batches_per_epoch + 1
-                batch = store.gather_batch(batch_index_stream[step_index])
-                current_signature = summarize_train_step_input_signature(
-                    wrapper,
-                    trainable_params,
-                    optimizer_state,
-                    batch,
-                    jnp.asarray(step, dtype=jnp.int32),
-                )
-                if current_signature != train_step_input_signature:
-                    step_fn = _make_step()
-                    rebuild_count += 1
-                    run_log.record_rebuild(step)
+            if current_signature != train_step_input_signature:
+                step_fn = _make_step()
+                rebuild_count += 1
+                run_log.record_rebuild(step)
 
-                t0 = time.perf_counter()
-                (
-                    wrapper,
-                    trainable_params,
-                    loss,
-                    per_target_loss,
-                    per_sample_loss,
-                    optimizer_state,
-                    grad_norm,
-                    per_sample_fail,
-                ) = step_fn(
-                    wrapper,
-                    trainable_params,
-                    optimizer_state,
-                    batch,
-                    jnp.asarray(step, dtype=jnp.int32),
-                )
-                jax.block_until_ready(loss)
-                step_dt = time.perf_counter() - t0
-                epoch_training_seconds += step_dt
-                epoch_losses.append(float(loss))
+            t0 = time.perf_counter()
+            (
+                wrapper,
+                trainable_params,
+                loss,
+                per_target_loss,
+                per_sample_loss,
+                optimizer_state,
+                grad_norm,
+                per_sample_fail,
+            ) = step_fn(
+                wrapper,
+                trainable_params,
+                optimizer_state,
+                batch,
+                jnp.asarray(step, dtype=jnp.int32),
+            )
+            jax.block_until_ready(loss)
+            step_dt = time.perf_counter() - t0
+            epoch_training_seconds += step_dt
+            epoch_losses.append(float(loss))
 
-                per_target_values = tuple(
-                    float(value) for value in np.asarray(per_target_loss).tolist()
+            per_target_values = tuple(
+                float(value) for value in np.asarray(per_target_loss).tolist()
+            )
+            per_process_values = tuple(
+                float(value) for value in np.asarray(per_sample_loss).tolist()
+            )
+            batch_names = tuple(
+                store.process_order[int(index)]
+                for index in np.asarray(batch.process_indices).tolist()
+            )
+            # A finite fail_time flags a sample whose ODE solve bailed mid-
+            # trajectory (post-failure points were dropped from the loss). Name
+            # the affected processes so the logger can report how often it happens.
+            failed_process_names = tuple(
+                name
+                for name, ft in zip(
+                    batch_names, np.asarray(per_sample_fail).reshape(-1).tolist()
                 )
-                per_process_values = tuple(
-                    float(value) for value in np.asarray(per_sample_loss).tolist()
+                if np.isfinite(ft)
+            )
+
+            holdout_loss, holdout_per_target = (None, None)
+            if step in checkpoint_boundaries:
+                holdout_loss, holdout_per_target = _evaluate_holdout(step)
+                if holdout_loss is not None:
+                    holdout_per_target_so_far[step] = holdout_per_target
+
+            epoch_end = batch_in_epoch == batches_per_epoch
+            epoch_mean_loss = (
+                sum(epoch_losses) / len(epoch_losses) if epoch_end else None
+            )
+            epoch_time_seconds = epoch_training_seconds if epoch_end else None
+            run_log.record_step(
+                StepRecord(
+                    step=step,
+                    total_updates=total_updates,
+                    epoch=epoch,
+                    batch_in_epoch=batch_in_epoch,
+                    samples_seen=step * effective_batch_size,
+                    mean_loss=float(loss),
+                    per_target_loss=per_target_values,
+                    per_process_loss=per_process_values,
+                    target_names=tuple(_target_labels),
+                    process_names=batch_names,
+                    step_dt=step_dt,
+                    rebuild_count=rebuild_count,
+                    holdout_loss=holdout_loss,
+                    holdout_label=(
+                        cfg.holdout_label if holdout_loss is not None else None
+                    ),
+                    epoch_mean_loss=epoch_mean_loss,
+                    epoch_time_seconds=epoch_time_seconds,
+                    grad_norm=float(grad_norm),
+                    failed_process_names=failed_process_names,
                 )
-                batch_names = tuple(
-                    store.process_order[int(index)]
-                    for index in np.asarray(batch.process_indices).tolist()
+            )
+            if epoch_end:
+                epoch_losses = []
+                epoch_training_seconds = 0.0
+
+            if checkpoint_writer is not None and step in checkpoint_boundaries:
+                checkpoint_writer.write(
+                    step=step,
+                    samples_seen=step * effective_batch_size,
+                    wrapper=wrapper,
+                    opt_state=optimizer_state,
+                    mean_loss=float(loss),
+                    holdout_loss=holdout_loss,
                 )
-                # A finite fail_time flags a sample whose ODE solve bailed mid-
-                # trajectory (post-failure points were dropped from the loss). Name
-                # the affected processes so the logger can report how often it happens.
-                failed_process_names = tuple(
-                    name
-                    for name, ft in zip(
-                        batch_names, np.asarray(per_sample_fail).reshape(-1).tolist()
-                    )
-                    if np.isfinite(ft)
+
+        history = run_log.finalize()
+
+        if cfg.checkpoint_dir is not None and history["mean_loss_by_step"]:
+            try:
+                plot_loss_curve(
+                    history["mean_loss_by_step"],
+                    Path(cfg.checkpoint_dir).parent / "loss_curve.png",
+                    title=f"Training loss (through step {total_updates})",
+                    per_target_loss_by_step=history["per_target_loss_by_step"],
+                    target_names=history["target_names"],
+                    monitor_loss_by_step=history["holdout_loss_by_step"] or None,
+                    monitor_per_target_by_step=holdout_per_target_so_far or None,
+                    monitor_label=history["holdout_label"],
                 )
-                loss_so_far.append(float(loss))
-                per_target_loss_so_far.append(per_target_values)
-                grad_norm_so_far.append(float(grad_norm))
-
-                holdout_loss, holdout_per_target = (None, None)
-                if step in checkpoint_boundaries:
-                    holdout_loss, holdout_per_target = _evaluate_holdout(step)
-                    if holdout_loss is not None:
-                        holdout_loss_so_far[step] = holdout_loss
-                        holdout_per_target_so_far[step] = holdout_per_target
-
-                epoch_end = batch_in_epoch == batches_per_epoch
-                epoch_mean_loss = (
-                    sum(epoch_losses) / len(epoch_losses) if epoch_end else None
-                )
-                epoch_time_seconds = epoch_training_seconds if epoch_end else None
-                run_log.record_step(
-                    StepRecord(
-                        step=step,
-                        total_updates=total_updates,
-                        epoch=epoch,
-                        batch_in_epoch=batch_in_epoch,
-                        samples_seen=step * effective_batch_size,
-                        mean_loss=float(loss),
-                        per_target_loss=per_target_values,
-                        per_process_loss=per_process_values,
-                        target_names=tuple(_target_labels),
-                        process_names=batch_names,
-                        step_dt=step_dt,
-                        rebuild_count=rebuild_count,
-                        holdout_loss=holdout_loss,
-                        holdout_label=(
-                            cfg.holdout_label if holdout_loss is not None else None
-                        ),
-                        epoch_mean_loss=epoch_mean_loss,
-                        epoch_time_seconds=epoch_time_seconds,
-                        grad_norm=float(grad_norm),
-                        failed_process_names=failed_process_names,
-                    )
-                )
-                if epoch_end:
-                    epoch_losses = []
-                    epoch_training_seconds = 0.0
-
-                if checkpoint_writer is not None and step in checkpoint_boundaries:
-                    checkpoint_writer.write(
-                        step=step,
-                        samples_seen=step * effective_batch_size,
-                        wrapper=wrapper,
-                        opt_state=optimizer_state,
-                        mean_loss=float(loss),
-                        holdout_loss=holdout_loss,
-                        loss_by_step=loss_so_far,
-                        grad_norm_by_step=grad_norm_so_far,
-                        per_target_loss_by_step=per_target_loss_so_far,
-                        target_names=tuple(_target_labels),
-                        holdout_loss_by_step=holdout_loss_so_far or None,
-                        holdout_per_target_by_step=holdout_per_target_so_far or None,
-                        holdout_label=(
-                            cfg.holdout_label if holdout_loss_so_far else None
-                        ),
-                    )
-
-            history = run_log.finalize()
-
-            # Run-root final outputs are synchronous so they are reliable and not
-            # subject to the per-checkpoint background renderer. The CLI disables
-            # final model outputs and evaluates the configured prediction scope itself.
-            if cfg.checkpoint_dir is not None:
-                run_dir = Path(cfg.checkpoint_dir).parent
-                try:
-                    if write_final_model_outputs:
-                        _, _final_per_target, _final_dense = compute_dense_exports(
-                            wrapper,
-                            store,
-                            selected_processes,
-                            solver_max_steps=int(cfg.solver_max_steps),
-                            solver_rtol=float(cfg.solver_rtol),
-                            solver_atol=float(cfg.solver_atol),
-                            solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
-                        )
-                        export_predictions_csv(
-                            wrapper,
-                            _final_dense,
-                            run_dir / "predictions.csv",
-                            process_names=selected_processes,
-                        )
-                        if bool(cfg.plots):
-                            named = {
-                                p: dict(zip(_target_labels, _final_per_target[i]))
-                                for i, p in enumerate(selected_processes)
-                            }
-                            total = {
-                                p: float(sum(_final_per_target[i]))
-                                for i, p in enumerate(selected_processes)
-                            }
-                            plot_process_simulations(
-                                wrapper,
-                                plot_sources,
-                                store,
-                                run_dir,
-                                _final_dense,
-                                process_names=selected_processes,
-                                training_process_names=selected_processes,
-                                per_process_named_losses=named,
-                                per_process_total_loss=total,
-                            )
-                    if bool(cfg.plots):
-                        if loss_so_far:
-                            plot_loss_curve(
-                                list(loss_so_far),
-                                run_dir / "loss_curve.png",
-                                title=f"Training loss (through step {total_updates})",
-                                per_target_loss_by_step=list(per_target_loss_so_far),
-                                target_names=tuple(_target_labels),
-                                monitor_loss_by_step=(
-                                    dict(holdout_loss_so_far)
-                                    if holdout_loss_so_far
-                                    else None
-                                ),
-                                monitor_per_target_by_step=(
-                                    dict(holdout_per_target_so_far)
-                                    if holdout_per_target_so_far
-                                    else None
-                                ),
-                                monitor_label=(
-                                    cfg.holdout_label if holdout_loss_so_far else None
-                                ),
-                            )
-                        if grad_norm_so_far:
-                            plot_grad_norm_curve(
-                                list(grad_norm_so_far),
-                                run_dir / "grad_norm_curve.png",
-                                title=f"Gradient norm (through step {total_updates})",
-                            )
-                except Exception:  # noqa: BLE001 - the trained model is already saved
-                    logger.exception("failed to write run-root final outputs")
-
-    finally:
-        if plotter is not None:
-            plotter.close()
+            except Exception:
+                # Training is complete; an optional PNG must not fail the run.
+                logger.exception("failed to write final loss curve")
 
     return TrainHarnessResult(
         trained_wrapper=wrapper,
         compile_warmup_seconds=float(warmup_compile_seconds),
         train_step_input_signature=train_step_input_signature,
         updates_completed=total_updates,
+        holdout_per_target_by_step=holdout_per_target_so_far,
         **history,
     )
 
@@ -1981,7 +1874,6 @@ class PreparedTraining:
     loss_module: UserLossModule
     config: TrainHarnessConfig
     optimizer: optax.GradientTransformation
-    plot_sources: Mapping[str, ProcessPlotSource] | None
     parent_process_names: tuple[str, ...] = ()
 
 
@@ -2008,7 +1900,6 @@ def prepare_training_from_runtime_context(
     config: TrainHarnessConfig,
     custom_module: Any,
     custom_cfg: Any,
-    plot_sources: Mapping[str, ProcessPlotSource] | None = None,
 ) -> PreparedTraining:
     """Prepare training solely from an already-loaded runtime context."""
     if not isinstance(runtime_context, RuntimeContext):
@@ -2044,7 +1935,6 @@ def prepare_training_from_runtime_context(
         loss_module=loss_module,
         config=train_cfg,
         optimizer=optimizer,
-        plot_sources=plot_sources,
         parent_process_names=tuple(
             store.process_order[index] for index in runtime_context.data.parent_indices
         ),
@@ -2118,17 +2008,11 @@ def prepare_training(
             custom_cfg=custom_cfg,
         ),
     )
-    plot_sources = (
-        extract_process_plot_sources(collection, store.rhs_ode, selected_processes)
-        if train_cfg.plots and train_cfg.checkpoint_dir is not None
-        else None
-    )
     return prepare_training_from_runtime_context(
         runtime_context,
         config=train_cfg,
         custom_module=custom_module,
         custom_cfg=custom_cfg,
-        plot_sources=plot_sources,
     )
 
 
@@ -2157,7 +2041,6 @@ def train_from_collection(
         loss_module=prepared.loss_module,
         config=prepared.config,
         optimizer=prepared.optimizer,
-        plot_sources=prepared.plot_sources,
     )
 
 
@@ -2192,7 +2075,6 @@ def train_harness_config_from_run_config(
         metrics_csv=str(Path(run_dir) / "metrics.csv"),
         checkpoint_dir=Path(run_dir) / "checkpoints",
         checkpoint_every=cfg.checkpoint.every,
-        plots=cfg.output.plots,
         prepared_path=cfg.data.prepared if cfg.data is not None else None,
         allow_stateful_models=cfg.train.allow_stateful_models,
     )

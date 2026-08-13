@@ -346,7 +346,7 @@ def evaluate_sample_with_loss_module(
             # Re-mark post-failure export rows as non-finite. The union solve was
             # sanitized to a finite ``y0`` fallback for the loss (fail_time path), so a
             # failed forward would otherwise present that fallback as a real prediction.
-            # ``inf`` keeps a failed export detectable in predictions.csv / plots / LOO.
+            # ``inf`` keeps a failed export detectable in predictions.csv and LOO.
             # Done here (AFTER ``physical_save_outputs`` ran the model on finite states)
             # so no ``inf`` is ever fed into the reaction module. No-op on a healthy
             # solve (fail_time == inf); ``prediction_t`` is finite, so the cutoff holds.

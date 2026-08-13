@@ -515,7 +515,6 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            plot_sources=None,
             parent_process_names=("p1", "p2", "p3"),
         )
 
@@ -665,78 +664,27 @@ def test_run_single_fold_respects_data_processes_restriction(monkeypatch, tmp_pa
         )
 
 
-def test_prepare_single_fold_merges_only_missing_holdout_plot_sources(
-    monkeypatch, tmp_path
-):
-    collection = _three_parent_collection()
-    extracted = []
-
+def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
     def fake_prepare(*_args, config, **_kwargs):
-        assert config.plots is True
-        return PreparedTraining(
-            store=SimpleNamespace(rhs_ode=object()),
-            reaction_module=object(),
-            loss_module=SimpleNamespace(loss_names=("X",)),
-            config=config,
-            optimizer=object(),
-            plot_sources={"p1": "train-1", "p3": "train-3"},
-        )
-
-    def fake_extract(_collection, _rhs, process_names):
-        extracted.append(process_names)
-        return {name: f"holdout-{name}" for name in process_names}
-
-    monkeypatch.setattr(loo_mod, "prepare_training", fake_prepare)
-    monkeypatch.setattr(loo_mod, "extract_process_plot_sources", fake_extract)
-    prepared = loo_mod.prepare_single_fold(
-        collection,
-        cfg=_run_config(),
-        custom_module=None,
-        output_dir=tmp_path,
-        fold_idx=1,
-    )
-
-    assert extracted == [("p2",)]
-    assert prepared.training.plot_sources == {
-        "p1": "train-1",
-        "p3": "train-3",
-        "p2": "holdout-p2",
-    }
-
-
-def test_prepare_single_fold_skips_holdout_sources_when_plots_are_off(
-    monkeypatch, tmp_path
-):
-    def fake_prepare(*_args, config, **_kwargs):
-        assert config.plots is False
         return PreparedTraining(
             store=object(),
             reaction_module=object(),
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            plot_sources=None,
+            parent_process_names=("p1", "p2", "p3"),
         )
 
     monkeypatch.setattr(loo_mod, "prepare_training", fake_prepare)
-    monkeypatch.setattr(
-        loo_mod,
-        "extract_process_plot_sources",
-        lambda *_a, **_k: pytest.fail("holdout sources extracted with plots off"),
-    )
-    cfg = _run_config()
-    cfg = cfg.model_copy(
-        update={"output": cfg.output.model_copy(update={"plots": False})}
-    )
     prepared = loo_mod.prepare_single_fold(
         _three_parent_collection(),
-        cfg=cfg,
+        cfg=_run_config(),
         custom_module=None,
         output_dir=tmp_path,
         fold_idx=1,
     )
 
-    assert prepared.training.plot_sources is None
+    assert prepared.training.parent_process_names == ("p1", "p2", "p3")
 
 
 # ---------------------------------------------------------------------------
@@ -779,7 +727,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     cfg = cfg.model_copy(
         update={
             "data": cfg.data.model_copy(update={"processes": ("p1", "p2")}),
-            "output": cfg.output.model_copy(update={"plots": False}),
+            "output": cfg.output.model_copy(update={"predictions": "none"}),
         }
     )
 
@@ -866,8 +814,12 @@ def test_runtime_metadata_rejects_replacement_artifact(monkeypatch, tmp_path):
     "anchor",
     [
         {"format_version": True, "identity": "sha256:artifact"},
-        {"format_version": 2, "identity": 1},
-        {"format_version": 2, "identity": "sha256:artifact", "extra": 1},
+        {"format_version": loo_mod.FORMAT_VERSION, "identity": 1},
+        {
+            "format_version": loo_mod.FORMAT_VERSION,
+            "identity": "sha256:artifact",
+            "extra": 1,
+        },
     ],
 )
 def test_runtime_metadata_requires_exact_typed_anchor(monkeypatch, tmp_path, anchor):
@@ -920,9 +872,12 @@ def test_runtime_metadata_rejects_config_fingerprint_mismatch(monkeypatch, tmp_p
     "runtime",
     [
         None,
-        {"artifact_format_version": 2, "artifact_identity": "sha256:artifact"},
         {
-            "artifact_format_version": 2,
+            "artifact_format_version": loo_mod.FORMAT_VERSION,
+            "artifact_identity": "sha256:artifact",
+        },
+        {
+            "artifact_format_version": loo_mod.FORMAT_VERSION,
             "artifact_identity": "sha256:artifact",
             "fold_id": 0,
             "extra": True,
@@ -933,22 +888,22 @@ def test_runtime_metadata_rejects_config_fingerprint_mismatch(monkeypatch, tmp_p
             "fold_id": 0,
         },
         {
-            "artifact_format_version": 2,
+            "artifact_format_version": loo_mod.FORMAT_VERSION,
             "artifact_identity": "sha256:artifact",
             "fold_id": False,
         },
         {
-            "artifact_format_version": 3,
+            "artifact_format_version": loo_mod.FORMAT_VERSION + 1,
             "artifact_identity": "sha256:artifact",
             "fold_id": 0,
         },
         {
-            "artifact_format_version": 2,
+            "artifact_format_version": loo_mod.FORMAT_VERSION,
             "artifact_identity": "sha256:other",
             "fold_id": 0,
         },
         {
-            "artifact_format_version": 2,
+            "artifact_format_version": loo_mod.FORMAT_VERSION,
             "artifact_identity": "sha256:artifact",
             "fold_id": 1,
         },
@@ -1159,7 +1114,9 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
         seed=901,
     )
     metadata = loo_mod.RuntimeArtifactMetadata(
-        metadata.identity, metadata.identity_inputs, (record,)
+        metadata.identity,
+        metadata.identity_inputs,
+        (record,),
     )
     artifact_path = _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
     monkeypatch.setattr(
@@ -1169,7 +1126,6 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
             identity=metadata.identity,
             fold=record,
             context=object(),
-            plot_sources=None,
         ),
     )
     captured = {}
@@ -1182,7 +1138,7 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            plot_sources=None,
+            parent_process_names=("p1", "p2", "p3"),
         )
 
     monkeypatch.setattr(loo_mod, "prepare_training_from_runtime_context", fake_prepare)
@@ -1231,6 +1187,26 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
     )
     summary = pd.read_csv(tmp_path / "loo_summary.csv")
     assert summary.iloc[0]["fold_seed"] == 901
+
+
+def test_loo_survives_cross_fold_loss_plot_failure(monkeypatch, tmp_path, caplog):
+    fold = Fold(idx=0, test=("p1",), train=("p2",), slug="p1", seed=1)
+    fold_dir = tmp_path / "folds" / fold.slug
+    fold_dir.mkdir(parents=True)
+    pd.DataFrame({"step": [1], "mean_loss": [0.5]}).to_csv(
+        fold_dir / "metrics.csv", index=False
+    )
+
+    def fail_plot(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        "bp_train.postprocessing.plot_cross_fold_loss_curves", fail_plot
+    )
+
+    loo_mod._plot_cross_fold_losses(folds=(fold,), output_dir=tmp_path)
+
+    assert "failed to write cross-fold loss curve" in caplog.text
 
 
 def test_worker_env_strips_inherited_host_device_pin(monkeypatch):

@@ -97,7 +97,6 @@ class CheckpointConfig(ConfigBase):
 
 class OutputConfig(ConfigBase):
     dir: Path = Path("output")
-    plots: bool = True
     predictions: PredictionScope = "parents"
 
 
@@ -234,7 +233,6 @@ class ModelRef(ConfigBase):
 
 class ForwardOutputConfig(ConfigBase):
     dir: Path | None = None  # None -> <first model>/forward
-    plots: bool = True
     predictions: PredictionScope = "parents"
 
 

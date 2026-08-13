@@ -47,7 +47,6 @@ def test_training_end_to_end_from_raw_json(tmp_path: Path):
         learning_rate=1e-2,
         solver_rtol=1e-4,
         solver_atol=1e-6,
-        plots=False,
     )
     training = prepare_training(collection, config=config)
 
