@@ -252,6 +252,12 @@ class TestValidateTimeSeriesShape:
         ok, msg = validate_timeseries_shape(ts)
         assert ok is True
 
+    def test_empty_timeseries_is_invalid(self):
+        ok, msg = validate_timeseries_shape(_ts([], []))
+
+        assert ok is False
+        assert "must not be empty" in msg
+
     def test_unordered_timepoints(self):
         ts = SimpleNamespace(
             times=jnp.array([0.0, 2.0, 1.0]),
@@ -571,6 +577,24 @@ class TestValidateVolumeChangeStates:
         assert "'biomass' uses unit 'mg/mL'" in msg
         assert "reactor medium uses 'g/L'" in msg
 
+    def test_feed_unit_checked_with_tolerated_negative_noise(self):
+        feed = self._feed_medium(["biomass"])
+        feed.components["biomass"].unit = "mg/mL"
+        change = self._vc(feed)
+        change.values = _ts([0.0, 1.0], [-1e-13, 1.0])
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"f": change},
+        )
+
+        ok, msg = validate_volume_change_states(process)
+        all_valid, messages = validate_process(process)
+
+        assert ok is False
+        assert "'biomass' uses unit 'mg/mL'" in msg
+        assert all_valid is False
+        assert any("'biomass' uses unit 'mg/mL'" in message for message in messages)
+
     def test_negative_volume_change_not_checked(self):
         """Negative (outflow) volume changes should skip state coverage check."""
         process = _make_process(
@@ -754,6 +778,26 @@ class TestValidateProcess:
 
         assert all_valid is False
         assert any("Discrete events invalid" in message for message in messages)
+
+    def test_empty_measured_total_volume_fails_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            }
+        )
+        process.volume.total_volume = _ts([], [])
+
+        all_valid, messages = validate_process(process)
+
+        assert all_valid is False
+        assert any(
+            "measured total volume" in message and "empty" in message
+            for message in messages
+        )
 
     def test_mismatched_mapping_name_fails_process(self):
         process = _make_process(

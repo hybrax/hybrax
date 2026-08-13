@@ -16,6 +16,9 @@ from .dataclasses import (
 )
 
 
+_VOLUME_SIGN_EPS = 1e-12
+
+
 def _check_bounds_tuple(bounds: Bounds, label: str) -> Tuple[bool, str]:
     """Sanity-check a bounds tuple: lo <= hi when both are set."""
     if bounds is None:
@@ -403,6 +406,8 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
         errors.append(f"values must be 1-D, got shape {vals.shape}")
 
     if tp.ndim == 1 and vals.ndim == 1:
+        if tp.shape[0] == 0:
+            errors.append("times and values must not be empty")
         if tp.shape[0] != vals.shape[0]:
             errors.append(
                 f"times length ({tp.shape[0]}) does not match "
@@ -546,10 +551,9 @@ def validate_volume_change_sign(
         A tuple ``(is_valid, message)``.
     """
     vals = jnp.asarray(volume_change.values.values)
-    eps = 1e-12
 
     if isinstance(volume_change, FeedVolumeChange):
-        if bool(jnp.all(vals >= -eps)):
+        if bool(jnp.all(vals >= -_VOLUME_SIGN_EPS)):
             return True, (
                 f"Volume change '{volume_change.name}' (FeedVolumeChange) has all "
                 "non-negative values — OK"
@@ -559,7 +563,7 @@ def validate_volume_change_sign(
             "negative values. Feed volume changes must have all values >= 0."
         )
     elif isinstance(volume_change, SampleVolumeChange):
-        if bool(jnp.all(vals <= eps)):
+        if bool(jnp.all(vals <= _VOLUME_SIGN_EPS)):
             return True, (
                 f"Volume change '{volume_change.name}' (SampleVolumeChange) has all "
                 "non-positive values — OK"
@@ -620,7 +624,7 @@ def validate_volume_change_states(
 
     for vc_name, vc in process.volume.volume_changes.items():
         vals = jnp.asarray(vc.values.values)
-        all_non_negative = bool(jnp.all(vals >= 0))
+        all_non_negative = bool(jnp.all(vals >= -_VOLUME_SIGN_EPS))
         has_positive = bool(jnp.any(vals > 0))
         is_positive = all_non_negative and has_positive
         if not is_positive:
