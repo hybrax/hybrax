@@ -25,6 +25,7 @@ each page runs top to bottom exactly as shown here, no rendering required.
 | [Knowledge transfer](knowledge_transfer.md) | Pooling data across products to help a data-poor new one, using a controlled process variable as a product-identity feature. |
 | [FBA-Hyb](fba_hyb.md) | A frozen, pole-free surrogate of a real flux-balance-analysis solution inside a reaction module, so no LP solve ever happens during training. |
 | [PLS-dFBA](pls_dfba.md) | FBA-Hyb extended with an actual PLS-shaped component (linear, low-rank, no neural network) that reads media composition alongside state. |
+| [A Kolmogorov-Arnold Network (KAN) model](kan.md) | Learnable univariate functions on edges, summed at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve read out directly after training. |
 
 ## See also
 

@@ -111,6 +111,7 @@ gallery/gaussian_process
 gallery/knowledge_transfer
 gallery/fba_hyb
 gallery/pls_dfba
+gallery/kan
 ```
 
 ```{toctree}

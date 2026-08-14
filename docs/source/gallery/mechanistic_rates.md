@@ -166,11 +166,11 @@ problem, not an optimizer failure.
 glucose concentrations (the culture consumes it and moves on) so there is little data
 constraining exactly where the saturation curve bends.
 
-This is the actual, practical argument for structured rate laws over an MLP: an MLP would
-have absorbed this same ambiguity invisibly, inside weights with no physical meaning. Here
-it is visible, in a number you can name, and you know exactly which two experiments would
-resolve it: a longer low-glucose tail for `Ks`, a run with product measured *after*
-growth stops for `alpha`/`beta`.
+That is the practical payoff of naming the rate law's terms explicitly: the ambiguity
+shows up as a number you can name, `alpha`, `beta`, `Ks`, rather than staying invisible
+inside unlabeled weights. You know exactly which two experiments would resolve it: a
+longer low-glucose tail for `Ks`, a run with product measured *after* growth stops for
+`alpha`/`beta`.
 
 ## Gotchas
 

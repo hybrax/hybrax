@@ -162,10 +162,9 @@ for name, value in r2.items():
     print(f"{name:10s} R2 = {value:.4f}")
 ```
 
-Fit quality is on par with the plain MLP in [Tutorial 4](../tutorials/04_your_first_custom_py.md#did-it-help)
-on this dataset: the GP's inductive bias (smoothness, via the kernel) is not a
-handicap here, it is a reasonable prior for a biological rate that genuinely varies
-smoothly with state.
+The GP's inductive bias, smoothness via the kernel, is a reasonable prior here: the
+R² values above are what that prior achieves against this page's own data, which is
+the question this page sets out to answer.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -255,7 +254,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_gaussian_process/`.
 - [Knowledge transfer](knowledge_transfer.md): the same GP, extended to pool data
   across products.
 - [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
-  kinetics instead, the other end of the inductive-bias spectrum from a GP.
+  kinetics instead.
 - [The reaction module](../train/reaction_module.md): `auxiliary`, and everything else
   a `UserReactionModule` can return.
 

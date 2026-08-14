@@ -202,7 +202,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_stateful/`.
 
 - [The reaction module](../train/reaction_module.md): the general contract this module
   follows.
-- [Mechanistic models](mechanistic_rates.md): the opposite direction, less capacity,
-  more structure.
+- [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
+  kinetics, no latent state at all.
 - `DefaultStatefulReactionModule` in `bp_train/defaults.py`: the built-in GRU version of
   this same pattern.

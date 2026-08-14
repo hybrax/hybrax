@@ -117,11 +117,11 @@ working copy.
 
 ## The ensemble
 
-A single GP with free-floating trainable inducing points (the [previous page](gaussian_process.md))
-works fine alone, but pooling exposed a real weakness: with 12 free points shared
-across the whole pooled set, capacity gets spent wherever gradient descent happens to
-push it, not necessarily where the data-poor target needs it. `EnsembleGPReactionModule`
-fixes this two ways: several independent GP heads instead of one, and every head's
+Pooling several products' data behind one model raises a specific risk for the
+data-poor target: with free-floating trainable inducing points shared across the
+whole pooled set, capacity can get spent wherever gradient descent happens to push
+it, not necessarily where the target needs it. `EnsembleGPReactionModule` addresses
+this two ways: several independent GP heads instead of one, and every head's
 inducing points anchored to a real bootstrap subsample of training data instead of
 free vectors.
 

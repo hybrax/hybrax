@@ -98,3 +98,4 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 | Pooling data across products to help a data-poor new one | [Knowledge transfer](../gallery/knowledge_transfer.md) |
 | A frozen surrogate of a real FBA solution, no LP solve during training | [FBA-Hyb](../gallery/fba_hyb.md) |
 | A PLS-shaped component reading media composition alongside state | [PLS-dFBA](../gallery/pls_dfba.md) |
+| Learnable per-edge functions (a KAN) instead of a neural network's fixed activations | [A Kolmogorov-Arnold Network (KAN) model](../gallery/kan.md) |
