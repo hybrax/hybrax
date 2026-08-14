@@ -30,7 +30,7 @@ from bp_train.model_api import (
     partition_trainable,
     trainable_field,
 )
-from bp_train.postprocessing import plot_loss_curve
+from bp_train.postprocessing import plot_grad_norm_curve, plot_loss_curve
 from bp_train.serialization import load_trained_wrapper
 from bp_train.training_data import TrainingDataStore
 
@@ -52,6 +52,12 @@ def test_plot_loss_curve_accepts_empty(tmp_path: Path):
     out = tmp_path / "curve_empty.png"
     plot_loss_curve([], out)
     assert out.exists()
+
+
+def test_plot_grad_norm_curve_writes_png(tmp_path: Path):
+    out = tmp_path / "grad_norm_curve.png"
+    plot_grad_norm_curve([2.0, 1.0, 0.5], out)
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_plot_loss_curve_with_per_target_holdout(tmp_path: Path):
@@ -306,27 +312,37 @@ def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     assert not (checkpoints / "best").exists()
 
 
-def test_training_writes_only_final_loss_plot(tmp_path: Path):
+def test_training_writes_only_final_training_plots(tmp_path: Path):
     checkpoints = tmp_path / "checkpoints"
     _run_train(checkpoint_dir=checkpoints, checkpoint_every=1, epochs=1)
 
     assert not tuple(checkpoints.rglob("*.png"))
     assert (tmp_path / "loss_curve.png").is_file()
+    assert (tmp_path / "grad_norm_curve.png").is_file()
     assert not (tmp_path / "predictions.csv").exists()
 
 
-def test_training_survives_final_loss_plot_failure(monkeypatch, tmp_path, caplog):
+@pytest.mark.parametrize(
+    ("plotter", "message"),
+    [
+        ("plot_loss_curve", "failed to write final loss curve"),
+        ("plot_grad_norm_curve", "failed to write final gradient norm curve"),
+    ],
+)
+def test_training_survives_final_plot_failure(
+    monkeypatch, tmp_path, caplog, plotter, message
+):
     def fail_plot(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr("bp_train.harness.plot_loss_curve", fail_plot)
+    monkeypatch.setattr(f"bp_train.harness.{plotter}", fail_plot)
 
     result = _run_train(
         checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=1
     )
 
     assert result.updates_completed == 1
-    assert "failed to write final loss curve" in caplog.text
+    assert message in caplog.text
 
 
 def test_automatic_checkpoint_cadence_is_logged(tmp_path: Path, caplog):

@@ -61,6 +61,7 @@ from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
 from .postprocessing import (
     DenseProcessExport,
     dense_exports_from_save_outputs,
+    plot_grad_norm_curve,
     plot_loss_curve,
 )
 
@@ -1854,6 +1855,15 @@ def train_collection(
             except Exception:
                 # Training is complete; an optional PNG must not fail the run.
                 logger.exception("failed to write final loss curve")
+
+            try:
+                plot_grad_norm_curve(
+                    history["grad_norm_by_step"],
+                    Path(cfg.checkpoint_dir).parent / "grad_norm_curve.png",
+                    title=f"Gradient norm (through step {total_updates})",
+                )
+            except Exception:
+                logger.exception("failed to write final gradient norm curve")
 
     return TrainHarnessResult(
         trained_wrapper=wrapper,

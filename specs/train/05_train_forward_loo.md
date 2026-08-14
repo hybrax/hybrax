@@ -69,7 +69,7 @@ in.
 - **Logging** ([`logging.py`](../bp_train/logging.py), `RunLogger`): every update
   writes a console row and `metrics.csv` row with epoch, batch, and sample
   counters. Epoch mean loss and training-only duration appear on epoch-end rows.
-  The completed run also writes one final loss curve.
+  The completed run also writes final loss and global gradient-norm curves.
 - **Holdout set (LOO only):** evaluated whenever a checkpoint is written. It is
   diagnostic and never drives optimizer updates.
 
@@ -196,7 +196,8 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 - **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
   lightweight model-state checkpoints plus final `trained_wrapper.eqx`,
-  `losses.csv`, optional configured predictions, and `loss_curve.png`). The
+  `losses.csv`, optional configured predictions, `loss_curve.png`, and
+  `grad_norm_curve.png`). The
   default `none` scope skips prediction exports; `parents` includes every evaluated
   original process, including the holdout. Aggregate metrics remain holdout-only.
   Checkpoints do not contain prediction exports or plots.

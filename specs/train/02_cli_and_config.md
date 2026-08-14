@@ -157,6 +157,7 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
   custom.py              # copied custom hooks (provenance)
   metrics.csv            # per-update loss, epoch, sample, and grad-norm history
   loss_curve.png         # final training/holdout loss history
+  grad_norm_curve.png    # final global gradient-norm history
   predictions.csv        # selected processes; omitted for "none"
   model/                 # final trained bundle
   checkpoints/

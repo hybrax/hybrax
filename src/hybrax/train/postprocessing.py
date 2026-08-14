@@ -343,6 +343,37 @@ def plot_loss_curve(
     logger.info("loss curve saved to %s", output_path)
 
 
+def plot_grad_norm_curve(
+    grad_norms: Sequence[float],
+    output_path: str | Path,
+    *,
+    title: str = "Gradient norm",
+) -> None:
+    """Draw global L2 gradient norm against training step and save as PNG."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    steps = range(1, len(grad_norms) + 1)
+    fig, ax = plt.subplots(figsize=(6.0, 3.5))
+    if grad_norms:
+        ax.plot(steps, grad_norms, color="C2", linewidth=1.2, label="grad norm")
+        ax.legend(loc="best", fontsize="small")
+    ax.set_yscale("log")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("||grad||₂")
+    ax.grid(True, alpha=0.3)
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    logger.info("gradient norm curve saved to %s", output_path)
+
+
 def plot_cross_fold_loss_curves(
     fold_curves: Sequence[
         tuple[str, Sequence[float], Sequence[float], Sequence[float], Sequence[float]]
