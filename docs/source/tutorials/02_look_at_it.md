@@ -10,7 +10,9 @@ kernelspec:
   name: python3
 ---
 
-# Tutorial 2: look at it
+<!-- LOCK -->
+# Tutorial 2: View your Dataset
+<!-- UNLOCK -->
 
 > **In one sentence.** Before modeling anything, make the package tell you what it
 > understood from your data.

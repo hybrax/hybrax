@@ -10,7 +10,9 @@ kernelspec:
   name: python3
 ---
 
-# Tutorial 1: your first dataset
+<!-- LOCK -->
+# Tutorial 1: Create a Dataset
+<!-- UNLOCK -->
 
 > **In one sentence.** Turn a CSV of offline measurements into a bp-format
 > `BioProcessCollection` you can save, share and train on.

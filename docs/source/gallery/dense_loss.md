@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# Custom losses on the dense grid
+# Custom losses
 
 > **Demonstrates.** A loss module that constrains the trajectory *between*
 > measurements (bounds on states and rates, and a smoothness penalty on rate

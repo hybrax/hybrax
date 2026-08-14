@@ -10,7 +10,9 @@ kernelspec:
   name: python3
 ---
 
-# Tutorial 4: your first `custom.py`
+<!-- LOCK -->
+# Tutorial 4: Custom Models
+<!-- UNLOCK -->
 
 > **In one sentence.** Replace the two defaults that matter most (the network that
 > predicts rates, and the scaling) and measure what it bought you.

@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# Knowledge transfer: pooling data across products
+# Knowledge transfer
 
 > **Demonstrates.** Pooling data from several products to help a data-poor new one,
 > using a constant-valued controlled process variable as a one-hot product-identity

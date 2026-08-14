@@ -1,12 +1,12 @@
 """Generate the demo datasets the documentation is written against.
 
-Three datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
+Five datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
 ``demo_batch``/``demo_fedbatch`` are the site's two-organism spine: one
 bacterial, one mammalian, so every page can pick the shape (batch / fed-batch)
 and flavor (fast, simple / slow, byproduct-forming) that fits what it needs to
-demonstrate. ``demo_products`` is a separate family, only for the Gallery's
-knowledge-transfer page: neither spine shape fits pooling data *across*
-products, which needs several distinct products in the first place.
+demonstrate. ``demo_products``, ``demo_ecoli_fba`` and ``demo_ecoli_blend`` are
+separate, single-purpose families, each for one Gallery page whose teaching
+point neither spine shape can carry.
 
 ``demo_batch``
     The beginner spine. Three *batch* E. coli runs on glucose — biomass,
@@ -27,9 +27,22 @@ products, which needs several distinct products in the first place.
     initial-condition slice; its two held-out runs sit at the extremes of a
     much wider design space the historical products actually cover.
 
-All three are simulated on **amounts** and converted to concentrations at the
+``demo_ecoli_fba``
+    Three batch E. coli runs (biomass, glucose, acetate) forward-simulated
+    from a real, frozen surrogate-FBA model on ``e_coli_core.xml`` (Orth,
+    Fleming & Palsson 2010), not from hand-written kinetics. For
+    ``gallery/fba_hyb.md``.
+
+``demo_ecoli_blend``
+    Four batch E. coli runs (biomass, glucose, acetate, succinate) from the
+    same surrogate, each under a different ``media_blend_fraction``. For
+    ``gallery/pls_dfba.md``, which builds on ``fba_hyb.md``.
+
+All five are simulated on **amounts** and converted to concentrations at the
 end, so volume changes can never silently corrupt a mass balance. Substrate
-uptake is gated by the same Monod term as growth, so it tapers at depletion
+uptake is gated by the same Monod term as growth (``demo_batch``/
+``demo_fedbatch``/``demo_products``) or the surrogate's own glucose-uptake
+term (``demo_ecoli_fba``/``demo_ecoli_blend``), so it tapers at depletion
 rather than being clipped afterwards.
 
 Run directly to regenerate::
@@ -539,11 +552,216 @@ def build_demo_products() -> None:
          for k, v in PRODUCTS_KINETICS.items()}, indent=2) + "\n")
 
 
+# --- demo_ecoli_fba / demo_ecoli_blend: forward-simulated from a real,
+# frozen surrogate-FBA model, for gallery/fba_hyb.md and gallery/pls_dfba.md ---
+#
+# The surrogate itself (coefficients below) was fit offline against 10,000 real
+# pFBA solves on e_coli_core.xml (Orth, Fleming & Palsson 2010), using the
+# method from Gotsmy & Guillen-Gosalbez's FBA-Hyb
+# (bioRxiv:10.64898/2026.04.22.720062v1): see
+# gallery/_files/01_generate_fba_data.py and 02_fit_surrogate.py for the full,
+# reproducible chain. Validation R^2 >= 0.999 on all four fitted fluxes;
+# boundedness certificate passed (max overshoot 1.7x over the sampling box,
+# min denominator 0.199 > 0 -- pole-free). Fixed here, not re-fit on every
+# docs build: solving 10,000 LPs takes minutes and needs `cobra`, neither of
+# which a doc build should pay for.
+ECOLI_AVG_QG = 10.250012796042299
+ECOLI_AVG_N = np.array([1.00000008, 1.00000023, 1.00000072, 0.99999969])
+ECOLI_MW_GLC = 180.156
+ECOLI_MW_ACE = 60.05
+ECOLI_MW_SUC = 118.09
+ECOLI_QG_MAX = 6.0
+ECOLI_KM_GLC = 0.05
+
+
+def _ecoli_pos(B: float) -> float:
+    return 0.5 * (B + np.sqrt(B * B + 1.5))
+
+
+def _ecoli_surrogate_fba(qG_raw: float, n_X: float, n_M: float, n_A: float, n_S: float):
+    """RAW inputs -> RAW [q_glc, qX, qM, qA, qS], mmol/(gX.h) except q_glc.
+
+    Identical math to the ``surrogate_fba`` embedded in fba_hyb_custom.py /
+    pls_dfba_custom.py; duplicated here (not imported) because every
+    Tutorial/Gallery ``custom.py`` is a standalone, self-contained file a
+    reader can copy on its own, and generate.py is not distributed with them.
+    """
+    qG = qG_raw / ECOLI_AVG_QG
+    n_X, n_M, n_A, n_S = np.array([n_X, n_M, n_A, n_S]) / ECOLI_AVG_N
+    pos = _ecoli_pos
+    q_glc = -ECOLI_AVG_QG * qG
+    qX = qG * (-40.05086*n_X -0.011743758*n_M +0.014346741*n_A -0.0052064408*n_S +0.0082783369) * (-49.319124*n_X -0.41473128*n_M +2.1157595*n_A -1.6528906*n_S -3.5412292) / ((pos(24.688972*n_X +0.20074873*n_M -1.0261536*n_A +0.79800013*n_S +1.7869275) + 0.05) * (pos(85.331771*n_X +0.48121828*n_M +1.7234505*n_A +4.5642331*n_S -0.46385535) + 0.05))
+    qM = qG * (-30.549273*n_X -0.26807454*n_M +0.60650343*n_A -1.143952*n_S -0.92775662) * (-0.037824693*n_X -24.825578*n_M +0.027984563*n_A +0.0020666315*n_S -0.007740588) / ((pos(17.512874*n_X +0.16739751*n_M -0.27899872*n_A +0.67477612*n_S +0.76306517) + 0.05) * (pos(46.415016*n_X +0.22525384*n_M +0.68795142*n_A +2.3243431*n_S -0.91656303) + 0.05))
+    qA = qG * (0.11560359*n_X +0.025412058*n_M +24.333516*n_A +0.037186754*n_S -0.094942148) * (20.777323*n_X -0.40676165*n_M +3.1964066*n_A +0.9569548*n_S -0.19868886) / ((pos(41.246274*n_X -0.34994074*n_M +4.3166512*n_A +2.1503221*n_S -1.9194144) + 0.05) * (pos(13.35614*n_X -0.041404912*n_M +0.72777261*n_A +0.64795735*n_S +0.29150121) + 0.05))
+    qS = qG * (-0.028994836*n_X +0.00034001442*n_M +0.018303022*n_A -17.239703*n_S -0.0048146897) * (-55.150953*n_X -0.50212877*n_M +1.331242*n_A -1.9245035*n_S -1.8896264) / ((pos(44.312184*n_X +0.20545498*n_M +0.56363208*n_A +2.2376853*n_S -0.70094854) + 0.05) * (pos(22.984164*n_X +0.22825551*n_M -0.41448157*n_A +0.81603398*n_S +1.0517311) + 0.05))
+    return float(q_glc), float(qX), float(qM), float(qA), float(qS)
+
+
+def _ecoli_obj_weights_fba(t: float, t_end: float) -> tuple[float, float, float, float]:
+    """Growth-focused early, tapering; acetate weight rises over the batch
+    (real overflow-metabolism trade-off); no deliberate product (n_S=0)."""
+    frac = t / t_end
+    return 1.6 - 1.0 * frac, 0.35, 0.1 + 0.8 * frac, 0.0
+
+
+def _ecoli_obj_weights_blend(t: float, t_end: float, blend: float):
+    """Same growth/maintenance/acetate shape as _ecoli_obj_weights_fba, lightly
+    reduced by the blend fraction (competing for the same carbon), plus a
+    succinate weight driven directly by the blend: this is the page's whole
+    point, a controllable recipe choice shifting the kinetic corridor."""
+    n_X, n_M, n_A, _ = _ecoli_obj_weights_fba(t, t_end)
+    return n_X * (1.0 - 0.25 * blend), n_M, n_A * (1.0 - 0.4 * blend), blend * 1.5
+
+
+def _ecoli_simulate(S0: float, X0: float, blend: float | None, t_end: float = 11.0,
+                     dt: float = 0.002) -> tuple[np.ndarray, np.ndarray]:
+    """Forward-Euler through the surrogate. blend=None -> demo_ecoli_fba (no
+    succinate tracking); blend=0..1 -> demo_ecoli_blend."""
+    n = int(round(t_end / dt)) + 1
+    t_grid = np.linspace(0.0, t_end, n)
+    X, G, A, S = X0, S0, 0.0, 0.0
+    n_cols = 3 if blend is None else 4
+    traj = np.empty((n, n_cols))
+    traj[0] = [X, G, A] if blend is None else [X, G, A, S]
+    for i in range(1, n):
+        if blend is None:
+            n_X, n_M, n_A, n_S = _ecoli_obj_weights_fba(t_grid[i - 1], t_end)
+        else:
+            n_X, n_M, n_A, n_S = _ecoli_obj_weights_blend(t_grid[i - 1], t_end, blend)
+        qG_raw = ECOLI_QG_MAX * max(G, 0.0) / (ECOLI_KM_GLC + max(G, 0.0))
+        q_glc, qX, qM, qA, qS = _ecoli_surrogate_fba(qG_raw, n_X, n_M, n_A, n_S)
+        X = max(X + dt * (qX * X), 0.0)
+        G = max(G + dt * (q_glc * ECOLI_MW_GLC / 1000.0) * X, 0.0)
+        A = max(A + dt * (qA * ECOLI_MW_ACE / 1000.0) * X, 0.0)
+        if blend is not None:
+            S = max(S + dt * (qS * ECOLI_MW_SUC / 1000.0) * X, 0.0)
+        traj[i] = [X, G, A] if blend is None else [X, G, A, S]
+    return t_grid, traj
+
+
+ECOLI_NOISE_REL = 0.04
+ECOLI_T_END = 11.0
+ECOLI_SAMPLE_TIMES = np.arange(0.0, ECOLI_T_END + 0.5, ECOLI_T_END / 16.0)
+
+
+def _noisy_ecoli(rng: np.random.Generator, values: np.ndarray, floor: float) -> np.ndarray:
+    noise = rng.normal(1.0, ECOLI_NOISE_REL, size=values.shape)
+    return np.maximum(values * noise, floor)
+
+
+def build_demo_ecoli_fba() -> None:
+    out = OUT / "demo_ecoli_fba"
+    out.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(20260813)
+    runs = {"run_1": (15.0, 0.05), "run_2": (12.0, 0.04), "run_3": (18.0, 0.06)}
+    processes = {}
+    for name, (s0, x0) in runs.items():
+        t_grid, traj = _ecoli_simulate(s0, x0, blend=None, t_end=ECOLI_T_END)
+        truth = {
+            "biomass": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 0]),
+            "glucose": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 1]),
+            "acetate": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 2]),
+        }
+        meas = {
+            "biomass": _noisy_ecoli(rng, truth["biomass"], 0.005),
+            "glucose": _noisy_ecoli(rng, truth["glucose"], 0.0),
+            "acetate": _noisy_ecoli(rng, truth["acetate"], 0.0),
+        }
+        for species in meas:
+            meas[species][0] = truth[species][0]
+        components = {
+            species: bp.ReactorMediumComponent(
+                name=species, unit="g/L",
+                concentration=TimeSeries(times=ECOLI_SAMPLE_TIMES.astype(float),
+                                          values=values.astype(float)),
+                bounds=(0.0, None),
+            )
+            for species, values in meas.items()
+        }
+        processes[name] = bp.BioProcess(
+            metadata=bp.BioProcessMetadata(
+                name=name, process_type="batch",
+                notes="Forward-simulated from a real surrogate-FBA model (documentation demo).",
+            ),
+            time_axis=bp.TimeAxis(unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"),
+            volume=bp.Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=bp.ReactorMedium(name="M9_glucose", density=1.0,
+                                            density_unit="kg/L", components=components),
+        )
+
+    collection = bp.BioProcessCollection(
+        case_id="demo_ecoli_fba",
+        organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
+        citation="Simulated via a surrogate-FBA forward model — bp-docs demo, not a real experiment.",
+        processes=processes,
+    )
+    bp.serialization.save_process_collection(collection, out / "data.json")
+
+
+ECOLI_BLEND_RUNS = {
+    # name          S0     X0     blend
+    "blend_00":  (15.0, 0.05, 0.0),
+    "blend_33":  (14.0, 0.05, 0.33),
+    "blend_67":  (16.0, 0.05, 0.67),
+    "blend_100": (15.0, 0.06, 1.0),
+}
+
+
+def build_demo_ecoli_blend() -> None:
+    out = OUT / "demo_ecoli_blend"
+    out.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(20260813)
+    processes = {}
+    for name, (s0, x0, blend) in ECOLI_BLEND_RUNS.items():
+        t_grid, traj = _ecoli_simulate(s0, x0, blend=blend, t_end=ECOLI_T_END)
+        truth = {
+            "biomass": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 0]),
+            "glucose": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 1]),
+            "acetate": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 2]),
+            "succinate": np.interp(ECOLI_SAMPLE_TIMES, t_grid, traj[:, 3]),
+        }
+        meas = {k: _noisy_ecoli(rng, v, 0.005 if k == "biomass" else 0.0)
+                for k, v in truth.items()}
+        for species in meas:
+            meas[species][0] = truth[species][0]
+        components = {
+            species: bp.ReactorMediumComponent(
+                name=species, unit="g/L",
+                concentration=TimeSeries(times=ECOLI_SAMPLE_TIMES.astype(float),
+                                          values=values.astype(float)),
+                bounds=(0.0, None),
+            )
+            for species, values in meas.items()
+        }
+        processes[name] = bp.BioProcess(
+            metadata=bp.BioProcessMetadata(
+                name=name, process_type="batch",
+                notes="Forward-simulated from a real surrogate-FBA model, blend-dependent (documentation demo).",
+            ),
+            time_axis=bp.TimeAxis(unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"),
+            volume=bp.Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=bp.ReactorMedium(name="M9_glucose_blend", density=1.0,
+                                            density_unit="kg/L", components=components),
+        )
+
+    collection = bp.BioProcessCollection(
+        case_id="demo_ecoli_blend",
+        organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
+        citation="Simulated via a surrogate-FBA forward model — bp-docs demo, not a real experiment.",
+        processes=processes,
+    )
+    bp.serialization.save_process_collection(collection, out / "data.json")
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     build_demo_batch()
     build_demo_fedbatch()
     build_demo_products()
+    build_demo_ecoli_fba()
+    build_demo_ecoli_blend()
     print(f"demo datasets written to {OUT}")
 
 

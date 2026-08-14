@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# A Gaussian-process reaction module
+# A Gaussian-process model
 
 > **Demonstrates.** A sparse Gaussian process, mean and variance both, occupying the
 > reaction module's slot instead of a neural network, trained end to end by bp-train's

@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# Stateful reaction modules
+# Stateful models
 
 > **Demonstrates.** A reaction module with its own memory (a continuous-time LSTM whose
 > hidden and cell state are integrated as extra ODE dimensions) and the opt-in that

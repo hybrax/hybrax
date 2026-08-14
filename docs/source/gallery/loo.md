@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# Cross-validation, worked
+# Cross-validation
 
 > **Demonstrates.** A cheap holdout check with no fold loop, then a full leave-one-out
 > run: real folds, the corrected `per_fold_holdout_sets` schema, and the files it

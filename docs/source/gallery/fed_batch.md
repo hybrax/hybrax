@@ -10,7 +10,9 @@ kernelspec:
   name: python3
 ---
 
-# Fed-batch: feeds, boluses and samples
+<!-- LOCK -->
+# Feeds, boluses and samples
+<!-- UNLOCK -->
 
 > **Demonstrates.** A continuous feed, two boluses and sampling events in one run, and a
 > reaction module that reads the feed rate and a controlled process variable as real

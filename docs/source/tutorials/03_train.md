@@ -10,7 +10,9 @@ kernelspec:
   name: python3
 ---
 
-# Tutorial 3: train a model
+<!-- LOCK -->
+# Tutorial 3: Train a Model
+<!-- UNLOCK -->
 
 > **In one sentence.** Fit a hybrid ODE to the dataset using every default, and learn to
 > read what came out.

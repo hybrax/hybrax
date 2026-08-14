@@ -10,7 +10,9 @@ kernelspec:
   name: python3
 ---
 
-# Tutorial 5: predict
+<!-- LOCK -->
+# Tutorial 5: Predict Processes
+<!-- UNLOCK -->
 
 > **In one sentence.** Use a trained model: from the command line for exports, and from
 > Python when you want the arrays.
