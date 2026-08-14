@@ -212,7 +212,7 @@ def test_mixed_direct_raw_static_controls_preserve_order_and_batch_rows():
     )
 
 
-def test_control_is_direct_only_when_spline_backed_in_every_process():
+def test_control_rejects_mixed_spline_availability_across_processes():
     p1 = _process_with_controls(
         "p1", {"u": ProcessVariable("u", "-", True, _global_cubic([0.0, 1.0]))}
     )
@@ -224,14 +224,38 @@ def test_control_is_direct_only_when_spline_backed_in_every_process():
             )
         },
     )
-    store = ControlsStore.from_collection(
-        BioProcessCollection(processes={"p1": p1, "p2": p2})
-    )
 
-    assert store.spline_indices == ()
-    assert store.fallback_indices == (0,)
-    assert store.spline_coeffs.shape == (2, 0, 0, 4)
-    assert store.control_values.shape[-1] == 1
+    with pytest.raises(
+        ValueError,
+        match="'u' must be spline-backed in every process or no process",
+    ) as exc_info:
+        ControlsStore.from_collection(
+            BioProcessCollection(processes={"p1": p1, "p2": p2})
+        )
+
+    assert "spline-backed in ['p1'], but not ['p2']" in str(exc_info.value)
+
+
+def test_control_rejects_mixed_spline_continuity_across_processes():
+    processes = {
+        name: _process_with_controls(
+            name,
+            {
+                "u": ProcessVariable(
+                    "u", "-", True, _global_cubic([0.0, 1.0], side=side)
+                )
+            },
+        )
+        for name, side in (("p1", "left"), ("p2", "right"))
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="'u' must use one spline continuity side across processes",
+    ) as exc_info:
+        ControlsStore.from_collection(BioProcessCollection(processes=processes))
+
+    assert "{'p1': 'left', 'p2': 'right'}" in str(exc_info.value)
 
 
 def test_no_spline_store_has_zero_width_direct_payload():

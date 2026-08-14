@@ -737,11 +737,33 @@ class ControlsStore(eqx.Module):
                 process_bundles[process_name].sources_by_name[control_name]
                 for process_name in process_order
             ]
-            sides = {source.continuity_side for source in sources}
-            if (
-                all(source.spline_coeffs is not None for source in sources)
-                and len(sides) == 1
-            ):
+            spline_processes = [
+                process_name
+                for process_name, source in zip(process_order, sources, strict=True)
+                if source.spline_coeffs is not None
+            ]
+            non_spline_processes = [
+                process_name
+                for process_name, source in zip(process_order, sources, strict=True)
+                if source.spline_coeffs is None
+            ]
+            if spline_processes and non_spline_processes:
+                raise ValueError(
+                    f"control {control_name!r} must be spline-backed in every "
+                    "process or no process; spline-backed in "
+                    f"{spline_processes!r}, but not {non_spline_processes!r}"
+                )
+            if spline_processes:
+                side_by_process = {
+                    name: source.continuity_side
+                    for name, source in zip(process_order, sources, strict=True)
+                }
+                sides = set(side_by_process.values())
+                if len(sides) != 1:
+                    raise ValueError(
+                        f"control {control_name!r} must use one spline continuity "
+                        f"side across processes; found {side_by_process!r}"
+                    )
                 side = sides.pop()
                 assert side is not None
                 direct_by_side[side].append(control_name)
