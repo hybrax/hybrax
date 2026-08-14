@@ -10,9 +10,11 @@ kernelspec:
   name: python3
 ---
 
-# A Kolmogorov-Arnold Network (KAN) model
+<!-- LOCK -->
+# A KAN model
+<!-- UNLOCK -->
 
-> **Demonstrates.** A Kolmogorov-Arnold Network occupying the reaction module's
+> **Demonstrates.** A Kolmogorov-Arnold Network (KAN) occupying the reaction module's
 > slot: every edge between an input and a hidden or output node carries its own
 > learnable univariate function (a SiLU base term plus a small Gaussian
 > radial-basis expansion), summed at each node, instead of an MLP's fixed

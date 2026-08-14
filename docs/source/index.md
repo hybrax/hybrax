@@ -112,6 +112,7 @@ gallery/knowledge_transfer
 gallery/fba_hyb
 gallery/pls_dfba
 gallery/kan
+gallery/optfed
 ```
 
 ```{toctree}
@@ -127,6 +128,7 @@ troubleshooting/silent_failures
 :caption: Under the hood
 :hidden:
 under_the_hood/design_rationale
+contributors
 ```
 
 ```{toctree}

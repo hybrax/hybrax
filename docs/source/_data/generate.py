@@ -38,6 +38,13 @@ point neither spine shape can carry.
     same surrogate, each under a different ``media_blend_fraction``. For
     ``gallery/pls_dfba.md``, which builds on ``fba_hyb.md``.
 
+``demo_optfed``
+    Six fed-batch runs (biomass, glucose, product) forward-simulated from a
+    non-competitive-inhibition Michaelis-Menten rate law with an Eyring-equation
+    temperature dependence (Schlögl et al. 2024, OptFed), under a central
+    -composite-design-inspired spread of exponential feed rates and constant
+    per-run ``temperature``. For ``gallery/optfed.md``.
+
 All five are simulated on **amounts** and converted to concentrations at the
 end, so volume changes can never silently corrupt a mass balance. Substrate
 uptake is gated by the same Monod term as growth (``demo_batch``/
@@ -755,6 +762,227 @@ def build_demo_ecoli_blend() -> None:
     bp.serialization.save_process_collection(collection, out / "data.json")
 
 
+# ===========================================================================
+# demo_optfed
+# ===========================================================================
+# Reduced from OptFed's own equations (4a-4e): inhibition/activation over a
+# smaller variable set ({P/X, X} inhibiting uptake and production, {q_glucose,
+# X} activating maintenance), no "number of generations" term, yields frozen at
+# their true value rather than fitted (matching the paper's own statement that
+# yields come from a genome-scale model, not the fitted parameters).
+
+def _optfed_eyring(T_K: float, A: float, Ea_R: float, Teq: float, dHeq_R: float) -> float:
+    return A * T_K * np.exp(-Ea_R / T_K) / (1.0 + np.exp(dHeq_R * (1.0 / Teq - 1.0 / T_K)))
+
+
+OPTFED_E_DEG = dict(Ea_R=2200.0, Teq=309.0, dHeq_R=18000.0)
+OPTFED_E_PI = dict(Ea_R=2000.0, Teq=306.0, dHeq_R=16000.0)
+OPTFED_E_ALPHA = dict(Ea_R=1500.0, Teq=320.0, dHeq_R=15000.0)
+# A is picked so each rate hits a target magnitude at a 305.15 K reference.
+for _E, _target in ((OPTFED_E_DEG, 0.7), (OPTFED_E_PI, 0.18), (OPTFED_E_ALPHA, 0.05)):
+    _E["A"] = _target / _optfed_eyring(305.15, A=1.0, **_E)
+
+OPTFED_K_DEG_M = 0.5     # glucose half-saturation for gamma_deg, g/L
+OPTFED_K_PI_M = 0.05     # (gamma_deg - gamma_alpha) half-saturation for gamma_pi
+OPTFED_K_DEG_PX, OPTFED_K_DEG_X = 0.3, 60.0   # inhibition constants, gamma_deg
+OPTFED_K_PI_PX, OPTFED_K_PI_X = 0.2, 40.0     # inhibition constants, gamma_pi
+OPTFED_K_A_DEG, OPTFED_K_A_X = 2.0, 50.0      # activation constants, gamma_alpha
+OPTFED_Y_XR_G = 0.45     # g active biomass / g glucose (frozen, not fitted)
+OPTFED_Y_P_G = 0.25      # g product / g glucose (frozen, not fitted)
+
+OPTFED_GF = 400.0        # g/L glucose in the feed
+OPTFED_F0 = 0.02         # L/h feed-rate prefactor
+OPTFED_END = 12.0
+OPTFED_SAMPLE_TIMES = np.arange(0.0, OPTFED_END + 1.0, 2.0)   # every 2 h
+OPTFED_NOISE_REL = 0.03
+
+# name -> (X0 g/L, feed_mu 1/h, temperature degC), a small center + star +
+# corner spread echoing OptFed's own central-composite design, not a literal
+# reproduction of it.
+OPTFED_RUNS = {
+    "center":    (20.0, 0.05, 32.0),
+    "T_low":     (20.0, 0.05, 28.0),
+    "T_high":    (20.0, 0.05, 40.0),
+    "feed_low":  (20.0, 0.01, 32.0),
+    "feed_high": (20.0, 0.10, 32.0),
+    "corner":    (20.0, 0.09, 38.0),
+}
+
+
+def _optfed_rates(X: float, P: float, G: float, T_K: float) -> tuple[float, float, float]:
+    """(q_biomass, q_product, q_glucose), per unit active biomass except
+    q_glucose (per unit total biomass, matching Eq. 1c's own X multiplier)."""
+    px = P / max(X, 1e-9)
+
+    gdeg_max = _optfed_eyring(T_K, **OPTFED_E_DEG)
+    gdeg = (gdeg_max * (G / (OPTFED_K_DEG_M + G))
+            * (1.0 / (1.0 + px / OPTFED_K_DEG_PX)) * (1.0 / (1.0 + X / OPTFED_K_DEG_X)))
+
+    galpha_min = _optfed_eyring(T_K, **OPTFED_E_ALPHA)
+    galpha = galpha_min * (1.0 + gdeg / OPTFED_K_A_DEG) * (1.0 + X / OPTFED_K_A_X)
+
+    gpi_max = _optfed_eyring(T_K, **OPTFED_E_PI)
+    driver = max(gdeg - galpha, 0.0)
+    gpi = (gpi_max * (driver / (OPTFED_K_PI_M + driver))
+           * (1.0 / (1.0 + px / OPTFED_K_PI_PX)) * (1.0 / (1.0 + X / OPTFED_K_PI_X)))
+
+    gmu = gdeg - gpi - galpha
+    return gmu * OPTFED_Y_XR_G, gpi * OPTFED_Y_P_G, gdeg
+
+
+def _simulate_optfed(x0: float, feed_mu: float, temperature_c: float) -> dict[str, np.ndarray]:
+    """RK4 on amounts (g) plus volume, exponential feed rate."""
+    t_k = temperature_c + 273.15
+    dt = 0.01
+    n = int(round(OPTFED_END / dt)) + 1
+    t_grid = np.linspace(0.0, OPTFED_END, n)
+
+    def feed_rate(t: float) -> float:
+        return OPTFED_F0 * np.exp(feed_mu * t)
+
+    v = 1.0
+    y = np.array([x0 * v, 0.5 * v, 0.0])   # mX, mG, mP (g)
+    rec = {k: np.empty(n) for k in ("biomass", "glucose", "product", "volume", "v_in")}
+    v_in_cum = 0.0
+
+    def deriv(state: np.ndarray, vol: float, t: float) -> np.ndarray:
+        m_x, m_g, m_p = state
+        X, G, P = m_x / vol, m_g / vol, m_p / vol
+        q_b, q_p, q_g = _optfed_rates(X, P, G, t_k)
+        m_xr = max(m_x - m_p, 0.0)
+        f = feed_rate(t)
+        return np.array([q_b * m_xr + q_p * m_xr, -q_g * m_x + f * OPTFED_GF, q_p * m_xr])
+
+    def record(i: int) -> None:
+        rec["biomass"][i] = y[0] / v
+        rec["glucose"][i] = y[1] / v
+        rec["product"][i] = y[2] / v
+        rec["volume"][i] = v
+        rec["v_in"][i] = v_in_cum
+
+    record(0)
+    for i in range(1, n):
+        t = t_grid[i - 1]
+        k1 = deriv(y, v, t)
+        k2 = deriv(y + 0.5 * dt * k1, v, t + 0.5 * dt)
+        k3 = deriv(y + 0.5 * dt * k2, v, t + 0.5 * dt)
+        k4 = deriv(y + dt * k3, v, t + dt)
+        y = np.maximum(y + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4), 0.0)
+
+        f_mid = feed_rate(t + 0.5 * dt)
+        v += f_mid * dt
+        v_in_cum += f_mid * dt
+        record(i)
+
+    rec["t"] = t_grid
+    return rec
+
+
+def build_demo_optfed() -> None:
+    out = OUT / "demo_optfed"
+    out.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(20260814)
+
+    feed_medium = bp.FeedMedium(
+        name="optfed_feed", density=1.0, density_unit="kg/L",
+        components={
+            "glucose": bp.FeedMediumComponent(
+                name="glucose", unit="g/L", concentration=bp.StaticVariable(OPTFED_GF)),
+            "biomass": bp.FeedMediumComponent(
+                name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
+            "product": bp.FeedMediumComponent(
+                name="product", unit="g/L", concentration=bp.StaticVariable(0.0)),
+        },
+    )
+
+    processes = {}
+    for name, (x0, feed_mu, temperature_c) in OPTFED_RUNS.items():
+        sim = _simulate_optfed(x0, feed_mu, temperature_c)
+        t_grid = sim["t"]
+
+        def at_samples(key: str, t_grid=t_grid, sim=sim) -> np.ndarray:
+            idx = [int(np.argmin(np.abs(t_grid - t))) for t in OPTFED_SAMPLE_TIMES]
+            return sim[key][idx]
+
+        meas = {
+            "biomass": _noisy(rng, at_samples("biomass"), 0.05),
+            "glucose": _noisy(rng, at_samples("glucose"), 0.0),
+            "product": _noisy(rng, at_samples("product"), 0.0),
+        }
+        for species in meas:
+            meas[species][0] = at_samples(species)[0]
+
+        components = {
+            species: bp.ReactorMediumComponent(
+                name=species, unit="g/L",
+                concentration=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
+                                         values=values.astype(float)),
+                bounds=(0.0, None),
+            )
+            for species, values in meas.items()
+        }
+
+        v_in_online = np.interp(OPTFED_SAMPLE_TIMES, t_grid, sim["v_in"])
+        volume_changes = {
+            "glucose_feed": bp.FeedVolumeChange(
+                name="glucose_feed", unit="L", is_controlled=True, is_continuous=True,
+                values=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
+                                  values=v_in_online.astype(float)),
+                feed_medium=feed_medium,
+            ),
+        }
+
+        process_variables = {
+            "temperature": bp.ProcessVariable(
+                name="temperature", unit="degC", is_controlled=True,
+                values=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
+                                  values=np.full(OPTFED_SAMPLE_TIMES.shape, temperature_c)),
+                bounds=(0.0, 60.0),
+            ),
+        }
+
+        processes[name] = bp.BioProcess(
+            metadata=bp.BioProcessMetadata(
+                name=name, process_type="fed_batch",
+                notes="Simulated from OptFed's non-competitive-inhibition rate "
+                      "law with Eyring temperature dependence (documentation demo).",
+            ),
+            time_axis=bp.TimeAxis(unit="h", start=0.0, end=OPTFED_END,
+                                  time_reference="inoculation"),
+            volume=bp.Volume(initial_volume=1.0, unit="L", volume_changes=volume_changes),
+            reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+                                            density_unit="kg/L", components=components),
+            process_variables=process_variables,
+        )
+        processes[name].biological_ode = bp.BiologicalOde(
+            algebraic={"X_active": "biomass - product"},
+            rates={"q_biomass": (None, None), "q_glucose": (None, None),
+                   "q_product": (None, None)},
+            derivatives={
+                "biomass": "q_biomass * X_active + q_product * X_active",
+                "glucose": "-q_glucose * biomass",
+                "product": "q_product * X_active",
+            },
+        )
+
+    collection = bp.BioProcessCollection(
+        case_id="demo_optfed",
+        organism="Escherichia coli (recombinant protein production, OptFed-inspired)",
+        citation="Simulated data — bp-docs demo, not a real experiment.",
+        processes=processes,
+    )
+    bp.serialization.save_process_collection(collection, out / "data.json")
+
+    (out / "ground_truth.json").write_text(json.dumps({
+        "eyring_deg": OPTFED_E_DEG, "eyring_pi": OPTFED_E_PI, "eyring_alpha": OPTFED_E_ALPHA,
+        "K_deg_m": OPTFED_K_DEG_M, "K_pi_m": OPTFED_K_PI_M,
+        "K_deg_px": OPTFED_K_DEG_PX, "K_deg_x": OPTFED_K_DEG_X,
+        "K_pi_px": OPTFED_K_PI_PX, "K_pi_x": OPTFED_K_PI_X,
+        "K_a_deg": OPTFED_K_A_DEG, "K_a_x": OPTFED_K_A_X,
+        "Y_XrG": OPTFED_Y_XR_G, "Y_PG": OPTFED_Y_P_G,
+    }, indent=2))
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     build_demo_batch()
@@ -762,6 +990,7 @@ def main() -> None:
     build_demo_products()
     build_demo_ecoli_fba()
     build_demo_ecoli_blend()
+    build_demo_optfed()
     print(f"demo datasets written to {OUT}")
 
 
