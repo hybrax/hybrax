@@ -29,13 +29,16 @@ Bounds comparisons allow a relative tolerance of `1e-7` to accommodate legacy
 float32 timestamps widened during deserialization. Optional event labels must
 have the same length as the timestamps.
 
-### `validate_timeseries_shape(ts, name="")`
+### `validate_timeseries_shape(ts, name="", *, allow_empty=False)`
 
 `times` and `values` are both 1-D, the same length, and `times` is strictly
-increasing (no duplicates). Fails if the series has no discrete samples at all.
-`validate_process` applies this to reactor-medium concentrations (including
-`c_star_concentration`), process variables, volume changes, and measured total
-volume.
+increasing (no duplicates). Empty matching arrays are valid only when
+`allow_empty=True`.
+
+`validate_process` requires nonempty reactor-medium concentrations (including
+`c_star_concentration`), process variables, continuous volume changes, and
+measured total volume. Empty discrete volume-change series are valid and mean
+that no events of that type occur in the process.
 
 ### `validate_time_axis(process)`
 

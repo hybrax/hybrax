@@ -178,6 +178,12 @@ class TestValidateTimeSeriesShape:
         assert ok is False
         assert "must not be empty" in msg
 
+    def test_empty_timeseries_can_be_allowed(self):
+        ok, msg = validate_timeseries_shape(_ts([], []), allow_empty=True)
+
+        assert ok is True
+        assert "OK" in msg
+
     def test_unordered_timepoints(self):
         ts = SimpleNamespace(
             times=jnp.array([0.0, 2.0, 1.0]),
@@ -772,6 +778,33 @@ class TestValidateProcess:
         assert any(
             "measured total volume" in message and "empty" in message
             for message in messages
+        )
+
+    @pytest.mark.parametrize(
+        ("is_continuous", "expect_empty_error"),
+        [(False, False), (True, True)],
+    )
+    def test_only_empty_discrete_volume_changes_are_valid(
+        self,
+        is_continuous,
+        expect_empty_error,
+    ):
+        process = _make_process(
+            volume_changes={
+                "sampling": SampleVolumeChange(
+                    name="sampling",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=is_continuous,
+                    values=_ts([], []),
+                )
+            }
+        )
+
+        _, messages = validate_process(process)
+
+        assert any("must not be empty" in message for message in messages) is (
+            expect_empty_error
         )
 
     def test_timestamp_outside_bounds_fails_process(self):

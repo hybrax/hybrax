@@ -376,18 +376,22 @@ def _is_dynamic_series(value: object) -> bool:
     return times is not None and values is not None
 
 
-def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
+def validate_timeseries_shape(
+    ts: TimeSeries, name: str = "", *, allow_empty: bool = False
+) -> Tuple[bool, str]:
     """
     Check that a TimeSeries has consistent shapes and ordered times.
 
     Verifies:
     - ``times`` and ``values`` are 1-D arrays.
     - Both arrays have the same length.
+    - ``times`` are nonempty unless ``allow_empty`` is true.
     - ``times`` are strictly monotonically increasing (no duplicates).
 
     Args:
         ts: TimeSeries object to validate.
         name: Optional label used in error messages (e.g. the variable name).
+        allow_empty: Whether matching empty arrays represent a valid event sequence.
 
     Returns:
         A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when all
@@ -411,7 +415,7 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
         errors.append(f"values must be 1-D, got shape {vals.shape}")
 
     if tp.ndim == 1 and vals.ndim == 1:
-        if tp.shape[0] == 0:
+        if tp.shape[0] == 0 and not allow_empty:
             errors.append("times and values must not be empty")
         if tp.shape[0] != vals.shape[0]:
             errors.append(
@@ -773,7 +777,11 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     # Volume changes
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.values is not None:
-            ok, msg = validate_timeseries_shape(vc.values, name=vc_name)
+            ok, msg = validate_timeseries_shape(
+                vc.values,
+                name=vc_name,
+                allow_empty=not vc.is_continuous,
+            )
             messages.append(msg)
             all_valid = all_valid and ok
 
