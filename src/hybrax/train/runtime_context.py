@@ -34,6 +34,31 @@ class ControlScaleEvidence:
     modeled_FVC_Cin: np.ndarray
 
 
+def select_parent_collection(
+    collection: BioProcessCollection,
+    parent_names: tuple[str, ...],
+) -> BioProcessCollection:
+    """Copy a collection and retain the requested parents in canonical order."""
+    copied_collection = deepcopy(collection)
+    parent_collection = replace(
+        copied_collection,
+        processes={name: copied_collection.processes[name] for name in parent_names},
+    )
+    bp_train_metadata = (parent_collection.metadata or {}).get("bp-train")
+    if bp_train_metadata is not None:
+        if not isinstance(bp_train_metadata, dict):
+            raise ValueError("bp-train metadata must be a mapping")
+        if "process_order" in bp_train_metadata:
+            bp_train_metadata["process_order"] = list(parent_names)
+        if "processes" in bp_train_metadata:
+            if not isinstance(bp_train_metadata["processes"], dict):
+                raise ValueError("bp-train process metadata must be a mapping")
+            bp_train_metadata["processes"] = {
+                name: bp_train_metadata["processes"][name] for name in parent_names
+            }
+    return parent_collection
+
+
 def original_parent_processes(
     process_order: tuple[str, ...],
     augmentation_parents: tuple[str | None, ...],
@@ -116,22 +141,7 @@ class RuntimeDataContext:
         parent_names = canonical_training_parents(
             self.process_order, self.augmentation_parents, selected_processes
         )
-        copied_collection = deepcopy(collection)
-        selected_parent_processes = {
-            name: copied_collection.processes[name] for name in parent_names
-        }
-        parent_collection = replace(
-            copied_collection,
-            processes=selected_parent_processes,
-        )
-        bp_train_metadata = (parent_collection.metadata or {}).get("bp-train")
-        if bp_train_metadata is not None:
-            if "process_order" in bp_train_metadata:
-                bp_train_metadata["process_order"] = list(parent_names)
-            if "processes" in bp_train_metadata:
-                bp_train_metadata["processes"] = {
-                    name: bp_train_metadata["processes"][name] for name in parent_names
-                }
+        parent_collection = select_parent_collection(collection, parent_names)
         indices = tuple(self.process_order.index(name) for name in parent_names)
         selected = RuntimeDataContext(
             training_data=self.training_data.select_processes(

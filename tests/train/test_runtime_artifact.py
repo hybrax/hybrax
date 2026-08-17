@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
+from functools import cache
 import hashlib
 import json
 from pathlib import Path
@@ -9,8 +11,8 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import SampleVolumeChange
-from bp_format.serialization import load_process_collection
+from bp_format.dataclasses import AugmentedBioProcess, SampleVolumeChange
+from bp_format.serialization import load_process_collection, save_process_collection
 
 import bp_train.runtime_artifact as runtime_artifact
 from bp_train.harness import _resolve_estimated_scales
@@ -21,15 +23,54 @@ from bp_train.runtime_artifact import (
     _rhs,
     load_runtime_artifact,
     read_runtime_artifact_metadata,
-    write_runtime_artifact,
+    write_runtime_artifact as _write_runtime_artifact,
 )
-from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
+from bp_train.runtime_context import (
+    RuntimeContext,
+    RuntimeDataContext,
+    canonical_training_parents,
+    original_parent_processes,
+    select_parent_collection,
+)
 from bp_train.training_data import TrainingDataStore
 from bp_train.utils import load_custom_module
 
 
 _KITTLER = Path("examples/01_kittler_2022/prepared/prepared.json")
 _CUSTOM = Path("examples/01_kittler_2022/structured/custom.py")
+
+
+@cache
+def _source_collection():
+    return load_process_collection(_KITTLER)
+
+
+def write_runtime_artifact(
+    path,
+    *,
+    runtime_data,
+    folds,
+    rhs_descriptor,
+    training_parent_collection=None,
+    **kwargs,
+):
+    """Write a test artifact with all canonical original parents."""
+    folds = tuple(folds)
+    if training_parent_collection is None:
+        parent_names = original_parent_processes(
+            runtime_data.process_order, runtime_data.augmentation_parents
+        )
+        training_parent_collection = select_parent_collection(
+            _source_collection(), parent_names
+        )
+    return _write_runtime_artifact(
+        path,
+        runtime_data=runtime_data,
+        folds=folds,
+        rhs_descriptor=rhs_descriptor,
+        training_parent_collection=training_parent_collection,
+        **kwargs,
+    )
 
 
 def _write_manifest(artifact: Path, manifest: dict) -> None:
@@ -52,6 +93,16 @@ def _rewrite_array(artifact: Path, name: str, array: np.ndarray) -> None:
         dtype=array.dtype.str,
         shape=list(array.shape),
         sha256="sha256:" + hashlib.sha256(array_path.read_bytes()).hexdigest(),
+    )
+    _write_manifest(artifact, manifest)
+
+
+def _rewrite_parent_collection(artifact: Path, collection) -> None:
+    parent_path = artifact / "training-parents.json"
+    save_process_collection(collection, parent_path)
+    manifest = json.loads((artifact / "manifest.json").read_text())
+    manifest["training_parent_collection"]["sha256"] = runtime_artifact._file_digest(
+        parent_path
     )
     _write_manifest(artifact, manifest)
 
@@ -89,6 +140,69 @@ def descriptor(runtime_context: RuntimeContext) -> RhsOdeDescriptor:
         rhs.name_controlled_SVCs,
         (),
         ("q_biomass", "q_glycerol", "q_product"),
+    )
+
+
+def test_round_trip_parent_collection_is_filtered(
+    tmp_path, runtime_context, descriptor
+):
+    source = deepcopy(_source_collection())
+    process_order = runtime_context.data.process_order
+    child = "DoE1_R1__aug_000"
+    other_parent = "DoE1_R2"
+    source.metadata["trusted-test-metadata"] = {
+        "process-shaped": list(process_order),
+        "held-out": process_order[-1],
+    }
+    trusted_metadata = deepcopy(source.metadata["trusted-test-metadata"])
+    parent_collection = select_parent_collection(
+        source,
+        original_parent_processes(
+            process_order, runtime_context.data.augmentation_parents
+        ),
+    )
+    fold = RuntimeArtifactFold(
+        0,
+        (process_order[-1],),
+        (child, other_parent),
+        "selected-parents",
+        0,
+    )
+    expected_parents = ("DoE1_R1", "DoE1_R2")
+    assert (
+        canonical_training_parents(
+            process_order,
+            runtime_context.data.augmentation_parents,
+            fold.train,
+        )
+        == expected_parents
+    )
+    artifact = tmp_path / "artifact"
+
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+        training_parent_collection=parent_collection,
+    )
+    serialized = load_process_collection(artifact / "training-parents.json")
+    loaded = load_runtime_artifact(artifact, fold_id=0)
+
+    assert tuple(serialized.processes) == original_parent_processes(
+        process_order, runtime_context.data.augmentation_parents
+    )
+    assert tuple(loaded.training_parent_collection.processes) == expected_parents
+    assert loaded.training_parent_collection.metadata["bp-train"][
+        "process_order"
+    ] == list(expected_parents)
+    assert (
+        tuple(loaded.training_parent_collection.metadata["bp-train"]["processes"])
+        == expected_parents
+    )
+    assert (
+        loaded.training_parent_collection.metadata["trusted-test-metadata"]
+        == trusted_metadata
     )
 
 
@@ -138,7 +252,7 @@ def test_round_trip_affine_scales_and_selected_fold(
         trace[0] = 0.0
 
 
-def test_metadata_inspection_never_reads_numeric_arrays(
+def test_metadata_inspection_never_parses_parent_collection_or_reads_arrays(
     tmp_path, runtime_context, descriptor, monkeypatch
 ):
     artifact = tmp_path / "artifact"
@@ -160,6 +274,13 @@ def test_metadata_inspection_never_reads_numeric_arrays(
         "_read_array",
         lambda *_args: pytest.fail("metadata inspection read a numeric array"),
     )
+    monkeypatch.setattr(
+        runtime_artifact,
+        "load_process_collection",
+        lambda *_args, **_kwargs: pytest.fail(
+            "metadata inspection parsed the parent collection"
+        ),
+    )
     metadata = read_runtime_artifact_metadata(artifact)
 
     assert metadata.identity == identity
@@ -167,6 +288,286 @@ def test_metadata_inspection_never_reads_numeric_arrays(
     assert metadata.folds == folds
     with pytest.raises(TypeError):
         metadata.identity_inputs["evil"] = "value"
+
+
+def test_parent_collection_checksum_is_checked_before_parsing(
+    tmp_path, runtime_context, descriptor, monkeypatch
+):
+    artifact = tmp_path / "artifact"
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    with (artifact / "training-parents.json").open("a") as stream:
+        stream.write("\n")
+    calls = 0
+
+    def fail_if_called(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        pytest.fail("parent collection parsed before checksum validation")
+
+    monkeypatch.setattr(runtime_artifact, "load_process_collection", fail_if_called)
+
+    with pytest.raises(ValueError, match="collection checksum mismatch"):
+        load_runtime_artifact(artifact, fold_id=0)
+    assert calls == 0
+
+
+def test_missing_parent_collection_is_rejected(tmp_path, runtime_context, descriptor):
+    artifact = tmp_path / "artifact"
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    (artifact / "training-parents.json").unlink()
+
+    with pytest.raises(ValueError, match="collection checksum mismatch"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+def test_parent_collection_symlink_is_rejected(tmp_path, runtime_context, descriptor):
+    artifact = tmp_path / "artifact"
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    parent_path = artifact / "training-parents.json"
+    outside_path = tmp_path / "outside-training-parents.json"
+    parent_path.rename(outside_path)
+    parent_path.symlink_to(outside_path)
+
+    with pytest.raises(ValueError, match="collection checksum mismatch"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+def test_parent_collection_is_parsed_once(
+    tmp_path, runtime_context, descriptor, monkeypatch
+):
+    artifact = tmp_path / "artifact"
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    original_loader = runtime_artifact.load_process_collection
+    calls = 0
+
+    def counting_loader(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_loader(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_artifact, "load_process_collection", counting_loader)
+
+    load_runtime_artifact(artifact, fold_id=0)
+    assert calls == 1
+
+
+def test_writer_requires_all_original_parents(tmp_path, runtime_context, descriptor):
+    parent_names = original_parent_processes(
+        runtime_context.data.process_order,
+        runtime_context.data.augmentation_parents,
+    )
+    parent_collection = select_parent_collection(_source_collection(), parent_names)
+    parent_collection.processes.pop(parent_names[-1])
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+
+    with pytest.raises(ValueError, match="exactly the original parents"):
+        write_runtime_artifact(
+            tmp_path / "artifact",
+            runtime_data=runtime_context.data,
+            folds=((fold, runtime_context.scales),),
+            rhs_descriptor=descriptor,
+            training_parent_collection=parent_collection,
+        )
+
+
+@pytest.mark.parametrize("mode", ["missing", "extra"])
+def test_loader_rejects_parent_collection_key_mismatch(
+    tmp_path, runtime_context, descriptor, mode
+):
+    artifact = tmp_path / "artifact"
+    process_order = tuple(runtime_context.training_data.process_order)
+    fold = RuntimeArtifactFold(1, (process_order[0],), (process_order[1],), "one", 1)
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    parent_names = original_parent_processes(
+        runtime_context.data.process_order,
+        runtime_context.data.augmentation_parents,
+    )
+    collection = select_parent_collection(_source_collection(), parent_names)
+    if mode == "missing":
+        collection.processes.pop(parent_names[0])
+    else:
+        process_name, process = next(iter(collection.processes.items()))
+        collection.processes[f"{process_name}_extra"] = deepcopy(process)
+    _rewrite_parent_collection(artifact, collection)
+
+    with pytest.raises(ValueError, match="must contain exactly all original parents"):
+        load_runtime_artifact(artifact, fold_id=1)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "augmented",
+        "process_order",
+        "process_order_type",
+        "processes",
+        "processes_type",
+    ],
+)
+def test_loader_rejects_invalid_parent_collection_identity(
+    tmp_path, runtime_context, descriptor, mode
+):
+    artifact = tmp_path / "artifact"
+    process_order = runtime_context.data.process_order
+    augmentation_parents = runtime_context.data.augmentation_parents
+    parent_names = original_parent_processes(process_order, augmentation_parents)
+    fold = RuntimeArtifactFold(0, (parent_names[0],), (parent_names[1],), "one", 1)
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    collection = select_parent_collection(_source_collection(), parent_names)
+    if mode == "augmented":
+        child_name = process_order[
+            next(i for i, p in enumerate(augmentation_parents) if p)
+        ]
+        child = deepcopy(_source_collection().processes[child_name])
+        assert isinstance(child, AugmentedBioProcess)
+        collection.processes[parent_names[0]] = child
+        error = "contains an augmented process"
+    elif mode == "process_order":
+        collection.metadata["bp-train"]["process_order"] = list(reversed(parent_names))
+        error = "structural metadata"
+    elif mode == "process_order_type":
+        collection.metadata["bp-train"]["process_order"] = None
+        error = "structural metadata"
+    elif mode == "processes":
+        process_metadata = collection.metadata["bp-train"]["processes"]
+        process_metadata["wrong-parent"] = process_metadata.pop(parent_names[0])
+        error = "structural metadata"
+    else:
+        collection.metadata["bp-train"]["processes"] = None
+        error = "structural metadata"
+    _rewrite_parent_collection(artifact, collection)
+
+    with pytest.raises(ValueError, match=error):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+def test_parent_collection_changes_artifact_identity(
+    tmp_path, runtime_context, descriptor
+):
+    parent_names = original_parent_processes(
+        runtime_context.data.process_order,
+        runtime_context.data.augmentation_parents,
+    )
+    first = select_parent_collection(_source_collection(), parent_names)
+    second = select_parent_collection(_source_collection(), parent_names)
+    first.metadata["trusted-test-value"] = "first"
+    second.metadata["trusted-test-value"] = "second"
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+
+    first_identity = write_runtime_artifact(
+        tmp_path / "first",
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+        training_parent_collection=first,
+    )
+    second_identity = write_runtime_artifact(
+        tmp_path / "second",
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+        training_parent_collection=second,
+    )
+
+    assert first_identity != second_identity
+
+
+@pytest.mark.parametrize("extra_path", ["unexpected.json", "arrays/unexpected.npy"])
+def test_rejects_extra_artifact_files(
+    tmp_path, runtime_context, descriptor, extra_path
+):
+    artifact = tmp_path / "artifact"
+    fold = RuntimeArtifactFold(
+        0,
+        (runtime_context.data.process_order[0],),
+        (runtime_context.data.process_order[1],),
+        "fold",
+        0,
+    )
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    extra_file = artifact / extra_path
+    extra_file.parent.mkdir(parents=True, exist_ok=True)
+    extra_file.write_text("{}")
+
+    with pytest.raises(ValueError, match="missing or extra files"):
+        read_runtime_artifact_metadata(artifact)
+    with pytest.raises(ValueError, match="missing or extra files"):
+        load_runtime_artifact(artifact, fold_id=0)
 
 
 def test_round_trip_multiple_overlapping_sample_streams(
@@ -750,6 +1151,80 @@ def test_rejects_invalid_active_sample_events(tmp_path, runtime_context, descrip
             load_runtime_artifact(artifact, fold_id=1)
         _rewrite_array(artifact, name, original)
         manifest = json.loads((artifact / "manifest.json").read_text())
+
+
+@pytest.mark.parametrize(
+    ("record", "message"),
+    [
+        ({"file": "training-parents.json"}, "record must contain exactly"),
+        (
+            {"file": "other.json", "sha256": "sha256:" + "0" * 64},
+            "must use file",
+        ),
+        (
+            {"file": "../training-parents.json", "sha256": "sha256:" + "0" * 64},
+            "must use file",
+        ),
+        (
+            {"file": "training-parents.json", "sha256": "bad"},
+            "invalid digest",
+        ),
+        (
+            {"file": "training-parents.json", "sha256": f"sha256:{'g' * 64}"},
+            "invalid digest",
+        ),
+    ],
+)
+def test_rejects_invalid_parent_collection_record(
+    tmp_path, runtime_context, descriptor, record, message
+):
+    artifact = tmp_path / "artifact"
+    process_order = tuple(runtime_context.training_data.process_order)
+    fold = RuntimeArtifactFold(1, (process_order[0],), (process_order[1],), "one", 1)
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    manifest_path = artifact / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["training_parent_collection"] = record
+    manifest.pop("identity")
+    manifest["identity"] = runtime_artifact._digest(
+        runtime_artifact._canonical_json(manifest)
+    )
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(ValueError, match=message):
+        load_runtime_artifact(artifact, fold_id=1)
+
+
+def test_rejects_unsupported_artifact_format(tmp_path, runtime_context, descriptor):
+    process_order = tuple(runtime_context.training_data.process_order)
+    artifact = tmp_path / "artifact"
+    fold = RuntimeArtifactFold(
+        1,
+        (process_order[0],),
+        (process_order[1],),
+        "one",
+        1,
+    )
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+    )
+    manifest_path = artifact / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["format_version"] = 2
+    _write_manifest(artifact, manifest)
+
+    with pytest.raises(ValueError, match="unsupported runtime artifact format"):
+        read_runtime_artifact_metadata(artifact)
+    with pytest.raises(ValueError, match="unsupported runtime artifact format"):
+        load_runtime_artifact(artifact, fold_id=1)
 
 
 def test_rejects_manifest_schema_changes(tmp_path, runtime_context, descriptor):

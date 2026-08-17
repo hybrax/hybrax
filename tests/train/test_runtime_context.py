@@ -241,6 +241,21 @@ def test_selected_scale_context_exposes_only_deep_copied_parents():
     assert collection.metadata == original_metadata
 
 
+@pytest.mark.parametrize(
+    "metadata",
+    (
+        {"bp-train": []},
+        {"bp-train": {"processes": []}},
+    ),
+)
+def test_selected_parent_context_rejects_malformed_structural_metadata(metadata):
+    collection, runtime_data = _runtime_data()
+    collection = replace(collection, metadata=metadata)
+
+    with pytest.raises(ValueError, match="must be a mapping"):
+        runtime_data.select_training_parents(collection, ("P0", "P1"))
+
+
 def test_selected_stores_gather_every_process_aligned_array():
     collection, runtime_data = _runtime_data()
     selected = runtime_data.select_training_parents(collection, ("P0", "P1"))

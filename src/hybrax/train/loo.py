@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from bp_format.json_io import load_json
 
@@ -59,7 +60,11 @@ from .runtime_artifact import (
     read_runtime_artifact_metadata,
     write_runtime_artifact,
 )
-from .runtime_context import RuntimeDataContext
+from .runtime_context import (
+    RuntimeDataContext,
+    original_parent_processes,
+    select_parent_collection,
+)
 from .run_config import LooConfig, PredictionScope, RunConfig
 from .serialization import (
     content_hash,
@@ -69,6 +74,7 @@ from .serialization import (
     update_json,
     write_json,
 )
+from .validation import ensure_prepared_training_semantics, validate_for_training
 from .training_data import TrainingDataStore
 
 logger = logging.getLogger(__name__)
@@ -718,6 +724,14 @@ def produce_runtime_artifact(
     from bp_format.serialization import load_process_collection
 
     collection = load_process_collection(cfg.data.prepared)
+    augmented_parents_ok, augmented_parent_messages = validate_augmented_parent_refs(
+        collection
+    )
+    if not augmented_parents_ok:
+        raise ValueError(
+            "augmented parent validation failed:\n"
+            + "\n".join(augmented_parent_messages)
+        )
     folds = resolve_folds(
         collection,
         cfg.loo,
@@ -730,6 +744,16 @@ def produce_runtime_artifact(
         target_source=cfg.data.target_source,
     )
     runtime_data = RuntimeDataContext.from_collection(store, collection)
+    parent_names = original_parent_processes(
+        runtime_data.process_order, runtime_data.augmentation_parents
+    )
+    training_parent_collection = select_parent_collection(collection, parent_names)
+    ensure_prepared_training_semantics(training_parent_collection)
+    validate_for_training(
+        training_parent_collection,
+        strict=True,
+        require_biological_ode=True,
+    )
     records = []
     for fold in folds:
         effective, _dir, _custom = _effective_fold_config(
@@ -745,6 +769,7 @@ def produce_runtime_artifact(
     return write_runtime_artifact(
         output_dir / _RUNTIME_ARTIFACT_NAME,
         runtime_data=runtime_data,
+        training_parent_collection=training_parent_collection,
         folds=tuple(records),
         rhs_descriptor=_rhs_descriptor(collection, store),
         identity_inputs={

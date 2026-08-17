@@ -700,10 +700,15 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     store = object()
 
     selected_scale_processes = []
+    validation_calls = []
 
     class _RuntimeData:
+        process_order = ("p1", "p2", "p3")
+        augmentation_parents = (None, None, None)
+
         def select_training_parents(self, _collection, process_names):
             selected_scale_processes.append(tuple(process_names))
+            validation_calls.append(("scale", tuple(process_names)))
             return self
 
     runtime_data = _RuntimeData()
@@ -711,6 +716,22 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "bp_format.serialization.load_process_collection", lambda _path: collection
     )
+    monkeypatch.setattr(
+        loo_mod,
+        "ensure_prepared_training_semantics",
+        lambda candidate: validation_calls.append(("semantics", candidate)),
+    )
+
+    def validate_parents(candidate):
+        validation_calls.append(("parents", candidate))
+        return True, ()
+
+    monkeypatch.setattr(loo_mod, "validate_augmented_parent_refs", validate_parents)
+
+    def validate_training(candidate, **kwargs):
+        validation_calls.append(("training", candidate, kwargs))
+
+    monkeypatch.setattr(loo_mod, "validate_for_training", validate_training)
     monkeypatch.setattr(
         loo_mod.TrainingDataStore,
         "from_collection",
@@ -750,12 +771,35 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     )
 
     assert identity == "sha256:artifact"
+    assert validation_calls[0] == ("parents", collection)
+    assert validation_calls[1][0] == "semantics"
+    assert validation_calls[2] == (
+        "training",
+        validation_calls[1][1],
+        {"strict": True, "require_biological_ode": True},
+    )
+    assert [call[0] for call in validation_calls] == [
+        "parents",
+        "semantics",
+        "training",
+        "scale",
+        "scale",
+    ]
+    validated_parent_collection = validation_calls[1][1]
+    assert validated_parent_collection is captured["training_parent_collection"]
+    assert validated_parent_collection is not collection
+    assert tuple(validated_parent_collection.processes) == ("p1", "p2", "p3")
     folds = tuple(record for record, _scales in captured["folds"])
     assert [(fold.test, fold.train, fold.seed) for fold in folds] == [
         (("p1",), ("p2",), 37),
         (("p2",), ("p1",), 38),
     ]
     assert selected_scale_processes == [("p2",), ("p1",)]
+    assert tuple(captured["training_parent_collection"].processes) == (
+        "p1",
+        "p2",
+        "p3",
+    )
 
     cfg = cfg.model_copy(
         update={"loo": LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p3",)),))}
@@ -763,6 +807,30 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="excluded by data.processes"):
         loo_mod.produce_runtime_artifact(
             cfg=cfg,
+            custom_module=None,
+            output_dir=tmp_path,
+            bundle_path=bundle,
+        )
+
+
+def test_produce_runtime_artifact_validates_augmented_parent_refs(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "bp_format.serialization.load_process_collection",
+        lambda _path: _three_parent_collection(),
+    )
+    monkeypatch.setattr(
+        loo_mod,
+        "validate_augmented_parent_refs",
+        lambda _collection: (False, ("bad parent",)),
+    )
+    bundle = tmp_path / "loo-config.json"
+    bundle.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="bad parent"):
+        loo_mod.produce_runtime_artifact(
+            cfg=_run_config(),
             custom_module=None,
             output_dir=tmp_path,
             bundle_path=bundle,

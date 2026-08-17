@@ -1,4 +1,4 @@
-"""Strict, collection-free runtime artifact format."""
+"""Strict runtime artifact format."""
 
 from __future__ import annotations
 
@@ -17,14 +17,22 @@ from typing import Any, Mapping
 import jax.numpy as jnp
 import numpy as np
 import sympy
+from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from bp_format.mechanistic import RhsOde
+from bp_format.serialization import load_process_collection, save_process_collection
 
 from .controls_store import ControlsStore
 from .model_api import AffineScaler, EstimatedScales, LinearScaler, Scaler
-from .runtime_context import RuntimeContext, RuntimeDataContext
+from .runtime_context import (
+    RuntimeContext,
+    RuntimeDataContext,
+    canonical_training_parents,
+    original_parent_processes,
+    select_parent_collection,
+)
 from .training_data import TrainingDataStore
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 _CONTROL_ARRAYS = (
     "spline_breaks",
     "spline_coeffs",
@@ -107,6 +115,7 @@ class RuntimeArtifact:
     identity: str
     context: RuntimeContext
     fold: RuntimeArtifactFold
+    training_parent_collection: BioProcessCollection
 
 
 @dataclass(frozen=True)
@@ -138,6 +147,11 @@ def _digest(value: bytes) -> str:
     return "sha256:" + hashlib.sha256(value).hexdigest()
 
 
+def _file_digest(path: Path) -> str:
+    with path.open("rb") as file:
+        return "sha256:" + hashlib.file_digest(file, "sha256").hexdigest()
+
+
 def _json_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
@@ -166,7 +180,7 @@ def _array_record(root: Path, name: str, value: Any) -> dict[str, Any]:
         "file": filename,
         "dtype": array.dtype.str,
         "shape": list(array.shape),
-        "sha256": _digest(path.read_bytes()),
+        "sha256": _file_digest(path),
     }
 
 
@@ -454,6 +468,7 @@ def write_runtime_artifact(
     path: str | Path,
     *,
     runtime_data: RuntimeDataContext,
+    training_parent_collection: BioProcessCollection,
     folds: tuple[tuple[RuntimeArtifactFold, EstimatedScales], ...],
     rhs_descriptor: RhsOdeDescriptor,
     identity_inputs: dict[str, str] | None = None,
@@ -476,6 +491,13 @@ def write_runtime_artifact(
     ):
         raise TypeError("identity_inputs must contain string keys and values")
     _validate_runtime_data(runtime_data, rhs_descriptor)
+    expected_parent_names = original_parent_processes(
+        runtime_data.process_order, runtime_data.augmentation_parents
+    )
+    if tuple(training_parent_collection.processes) != expected_parent_names:
+        raise ValueError(
+            "training parent collection must contain exactly the original parents"
+        )
     for fold, scales in folds:
         _validate_fold(
             fold,
@@ -515,10 +537,17 @@ def write_runtime_artifact(
             )
             fold_records.append({"fold": _json_value(fold.__dict__), "scales": scales})
         base = _base_metadata(runtime_data, rhs_descriptor, identity_inputs)
+        parent_collection_path = temporary / "training-parents.json"
+        save_process_collection(training_parent_collection, parent_collection_path)
+        parent_collection_record = {
+            "file": parent_collection_path.name,
+            "sha256": _file_digest(parent_collection_path),
+        }
         manifest = {
             "format_version": FORMAT_VERSION,
             "base": base,
             "arrays": records,
+            "training_parent_collection": parent_collection_record,
             "folds": fold_records,
         }
         manifest["identity"] = _digest(_canonical_json(manifest))
@@ -539,6 +568,7 @@ def _read_manifest(root: Path) -> dict[str, Any]:
         "format_version",
         "base",
         "arrays",
+        "training_parent_collection",
         "folds",
         "identity",
     }:
@@ -550,6 +580,89 @@ def _read_manifest(root: Path) -> dict[str, Any]:
         raise ValueError("runtime artifact identity mismatch")
     manifest["identity"] = identity
     return manifest
+
+
+def _verified_parent_collection_path(root: Path, record: Any) -> Path:
+    if not isinstance(record, dict) or set(record) != {"file", "sha256"}:
+        raise ValueError(
+            "training parent collection record must contain exactly file and sha256"
+        )
+    if record["file"] != "training-parents.json":
+        raise ValueError(
+            "training parent collection record must use file training-parents.json"
+        )
+    digest = record["sha256"]
+    if (
+        not isinstance(digest, str)
+        or not digest.startswith("sha256:")
+        or len(digest) != 71
+        or any(character not in "0123456789abcdef" for character in digest[7:])
+    ):
+        raise ValueError("training parent collection record has invalid digest")
+    path = root / record["file"]
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or _file_digest(path) != record["sha256"]
+    ):
+        raise ValueError("training parent collection checksum mismatch")
+    return path
+
+
+def _validate_training_parent_collection_identity(
+    collection: BioProcessCollection,
+    required_parent_names: tuple[str, ...],
+) -> None:
+    if tuple(collection.processes) != required_parent_names:
+        raise ValueError(
+            "training parent collection must contain exactly all original parents "
+            "in canonical order"
+        )
+    if any(
+        isinstance(process, AugmentedBioProcess)
+        for process in collection.processes.values()
+    ):
+        raise ValueError("training parent collection contains an augmented process")
+
+    bp_train_metadata = (collection.metadata or {}).get("bp-train")
+    if bp_train_metadata is None:
+        return
+    if not isinstance(bp_train_metadata, dict):
+        raise ValueError("invalid training parent collection structural metadata")
+    if "process_order" in bp_train_metadata:
+        process_order = bp_train_metadata["process_order"]
+        if (
+            not isinstance(process_order, list)
+            or tuple(process_order) != required_parent_names
+        ):
+            raise ValueError("invalid training parent collection structural metadata")
+    if "processes" in bp_train_metadata:
+        process_metadata = bp_train_metadata["processes"]
+        if (
+            not isinstance(process_metadata, dict)
+            or tuple(process_metadata) != required_parent_names
+        ):
+            raise ValueError("invalid training parent collection structural metadata")
+
+
+def _load_training_parent_collection(
+    path: Path,
+    *,
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+    selected_processes: tuple[str, ...],
+) -> BioProcessCollection:
+    try:
+        collection = load_process_collection(path)
+    except Exception as error:
+        raise ValueError("invalid training parent collection") from error
+    _validate_training_parent_collection_identity(
+        collection, original_parent_processes(process_order, augmentation_parents)
+    )
+    selected_parent_names = canonical_training_parents(
+        process_order, augmentation_parents, selected_processes
+    )
+    return select_parent_collection(collection, selected_parent_names)
 
 
 def _array_filename(name: str, record: Any) -> str:
@@ -586,7 +699,7 @@ def _array_filename(name: str, record: Any) -> str:
 def _read_array(root: Path, name: str, record: Any) -> np.ndarray:
     filename = _array_filename(name, record)
     path = root / filename
-    if not path.is_file() or _digest(path.read_bytes()) != record["sha256"]:
+    if not path.is_file() or _file_digest(path) != record["sha256"]:
         raise ValueError(f"{name}: checksum mismatch")
     try:
         array = np.load(path, allow_pickle=False)
@@ -596,6 +709,14 @@ def _read_array(root: Path, name: str, record: Any) -> np.ndarray:
         raise ValueError(f"{name}: dtype or shape mismatch")
     array.setflags(write=False)
     return array
+
+
+def _validate_exact_file_inventory(root: Path, expected_files: set[str]) -> None:
+    actual_files = {
+        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
+    }
+    if actual_files != expected_files:
+        raise ValueError("runtime artifact has missing or extra files")
 
 
 def _descriptor_from_payload(raw: Any) -> RhsOdeDescriptor:
@@ -1378,12 +1499,23 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     }
     if len(set(filenames.values())) != len(filenames):
         raise ValueError("runtime artifact arrays must use distinct files")
-    expected_files = {"manifest.json", *filenames.values()}
-    actual_files = {
-        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
-    }
-    if actual_files != expected_files:
-        raise ValueError("runtime artifact has missing or extra files")
+    parent_collection_path = _verified_parent_collection_path(
+        root, manifest["training_parent_collection"]
+    )
+    _validate_exact_file_inventory(
+        root,
+        {
+            "manifest.json",
+            parent_collection_path.name,
+            *filenames.values(),
+        },
+    )
+    training_parent_collection = _load_training_parent_collection(
+        parent_collection_path,
+        process_order=process_order,
+        augmentation_parents=augmentation_parents,
+        selected_processes=fold.train,
+    )
     required = {
         name for name in expected_all if name.startswith("shared.")
     } | selected_scale_keys
@@ -1473,6 +1605,7 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
         manifest["identity"],
         RuntimeContext(data, EstimatedScales(**scales)),
         fold,
+        training_parent_collection,
     )
 
 
@@ -1508,11 +1641,17 @@ def read_runtime_artifact_metadata(path: str | Path) -> RuntimeArtifactMetadata:
     }
     if len(set(filenames.values())) != len(filenames):
         raise ValueError("runtime artifact arrays must use distinct files")
-    actual_files = {
-        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
-    }
-    if actual_files != {"manifest.json", *filenames.values()}:
-        raise ValueError("runtime artifact has missing or extra files")
+    parent_collection_path = _verified_parent_collection_path(
+        root, manifest["training_parent_collection"]
+    )
+    _validate_exact_file_inventory(
+        root,
+        {
+            "manifest.json",
+            parent_collection_path.name,
+            *filenames.values(),
+        },
+    )
     return RuntimeArtifactMetadata(
         manifest["identity"],
         MappingProxyType(dict(manifest["base"]["identity_inputs"])),
