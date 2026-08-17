@@ -846,7 +846,7 @@ def _draw_panel(
         )
 
 
-def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), save_path=None):
+def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), save_path=None, show=True):
     """
     Plot all dynamic and static variables for every process in a BioProcessCollection.
 
@@ -858,9 +858,13 @@ def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), 
     Args:
         collection: BioProcessCollection object to plot.
         figsize_per_panel: ``(width, height)`` in inches for each subplot.
+        save_path: optional path to save the figure to.
+        show: if True (default), return the Figure for display/inspection.
+              if False, the figure is saved (if save_path given) and then
+              closed immediately, freeing its memory; nothing is returned.
 
     Returns:
-        matplotlib.figure.Figure
+        matplotlib.figure.Figure, or None if show=False.
     """
     import matplotlib.pyplot as plt
 
@@ -989,7 +993,11 @@ def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), 
 
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
-    # fig.show()
+    
+    if not show:
+        plt.close(fig)
+        return None
+    
     return fig
 
 
@@ -1008,7 +1016,7 @@ def _make_figure(n_panels, figsize_per_panel):
     return fig, axes.flatten()
 
 
-def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
+def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None, show=True):
     """
     Plot all dynamic and static variables of a BioProcess in a two-column figure.
 
@@ -1022,9 +1030,13 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     Args:
         process: BioProcess object to plot.
         figsize_per_panel: ``(width, height)`` in inches for each subplot.
+        save_path: optional path to save the figure to.
+        show: if True (default), return the Figure for display/inspection.
+              if False, the figure is saved (if save_path given) and then
+              closed immediately, freeing its memory; nothing is returned.
 
     Returns:
-        matplotlib.figure.Figure
+        matplotlib.figure.Figure, or None if show=False.
     """
     import matplotlib.pyplot as plt
 
@@ -1072,11 +1084,15 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None):
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
-    # fig.show()
+    
+    if not show:
+        plt.close(fig)
+        return None
+
     return fig
 
 
-def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None):
+def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None, show=True):
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=figsize)
@@ -1084,6 +1100,11 @@ def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None):
 
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    if not show:
+        plt.close(fig)
+        return None
+    
     return fig
 
 
