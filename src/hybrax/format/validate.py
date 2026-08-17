@@ -575,9 +575,9 @@ def validate_volume_change_states(
     process: BioProcess,
 ) -> Tuple[bool, str]:
     """
-    For every *positive* volume change, verify that all dynamic state
-    variables defined in the reactor medium are also present as components
-    in the referenced feed medium and use the same unit string.
+    For every *positive* volume change, verify that explicitly declared feed
+    components corresponding to dynamic reactor states use the same unit string.
+    Omitted reactor components are valid and mean zero concentration.
 
     A "state variable" is a reactor-medium component whose concentration is
     a TimeSeries (i.e. it is measured dynamically over time), as opposed to a
@@ -588,8 +588,7 @@ def validate_volume_change_states(
 
     Returns:
         A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when
-        every positive volume change covers all dynamic state variables with
-        matching unit strings.
+        every declared dynamic feed component uses the matching unit string.
     """
     # Collect names of dynamic state variables in the reactor medium
     state_names: List[str] = []
@@ -625,13 +624,6 @@ def validate_volume_change_states(
             continue
 
         feed_component_names = set(feed.components.keys()) if feed.components else set()
-        missing = [s for s in state_names if s not in feed_component_names]
-        if missing:
-            errors.append(
-                f"Volume change '{vc_name}' (feed: '{feed.name}') is missing "
-                f"feed components for state variable(s): {missing}"
-            )
-
         for state_name in state_names:
             if state_name not in feed_component_names:
                 continue
@@ -649,8 +641,7 @@ def validate_volume_change_states(
             f"  - {e}" for e in errors
         )
     return True, (
-        "All positive volume changes cover all dynamic state variables with matching "
-        "units — OK"
+        "All declared dynamic feed components use matching reactor units — OK"
     )
 
 

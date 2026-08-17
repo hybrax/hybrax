@@ -551,13 +551,8 @@ def _build_cin(
     """Build a ``(len(vc_names), len(RMCs))`` feed-composition matrix.
 
     Each row is the static feed concentration of every reactor component in
-    the corresponding ``Inflow.feed_medium``. Every reactor component is
-    expected to have an explicit concentration by this point —
-    ``BioProcess.__post_init__`` fills any component an Inflow's feed medium
-    doesn't declare with a static 0, once, and announces it. A component
-    still missing here means the process was mutated after construction
-    (bypassing ``__post_init__``); that's a bug to surface, not paper over
-    a second time with another silent zero.
+    the corresponding ``Inflow.feed_medium``. Components omitted from the
+    sparse feed mapping remain zero in the preinitialized row.
     """
     n = len(vc_names)
     n_RMCs = len(name_modeled_RMCs)
@@ -569,15 +564,7 @@ def _build_cin(
         feed = vc.feed_medium
         for j, sp_name in enumerate(name_modeled_RMCs):
             if sp_name not in feed.components:
-                raise ValueError(
-                    f"feed medium {feed.name!r} of Inflow {vc_name!r} has no "
-                    f"concentration entry for reactor component {sp_name!r}. "
-                    "BioProcess.__post_init__ fills every reactor component "
-                    "with an explicit concentration on construction, so this "
-                    "means the process was mutated after construction rather "
-                    "than genuinely left unset — fix the data, don't rely on "
-                    "this function to paper over it."
-                )
+                continue
             conc = feed.components[sp_name].concentration
             if isinstance(conc, StaticVariable):
                 Cin = Cin.at[k, j].set(float(conc.value))
@@ -904,17 +891,7 @@ def extract_discrete_events(
                 Cin_event = jnp.zeros(n_RMCs)
                 for j, sp_name in enumerate(ordering.name_modeled_RMCs):
                     if sp_name not in vc.feed_medium.components:
-                        raise ValueError(
-                            f"feed medium {vc.feed_medium.name!r} of Inflow "
-                            f"{vc_name!r} has no concentration entry for "
-                            f"reactor component {sp_name!r}. "
-                            "BioProcess.__post_init__ fills every reactor "
-                            "component with an explicit concentration on "
-                            "construction, so this means the process was "
-                            "mutated after construction rather than "
-                            "genuinely left unset — fix the data, don't "
-                            "rely on this function to paper over it."
-                        )
+                        continue
                     conc = vc.feed_medium.components[sp_name].concentration
                     if isinstance(conc, StaticVariable):
                         Cin_event = Cin_event.at[j].set(float(conc.value))

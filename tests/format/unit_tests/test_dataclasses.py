@@ -7,6 +7,7 @@ import logging
 import pytest
 import jax.numpy as jnp
 
+import bp_format.dataclasses as dataclasses
 from bp_format import (
     TimeAxis,
     TimeSeries,
@@ -26,6 +27,7 @@ from bp_format import (
     silence_assumptions,
 )
 from bp_format.dataclasses import _format_biological_ode_lines
+from bp_format.mechanistic import get_process_ordering
 from bp_format.serialization import (
     save_process_collection,
     load_process_collection,
@@ -379,15 +381,61 @@ def _process_with_incomplete_feed(silence=False):
     return process, fm
 
 
-def test_missing_inflow_concentrations_filled_with_zero_and_announced(caplog):
+def test_missing_inflow_concentrations_remain_sparse_and_are_announced(caplog):
     with caplog.at_level(logging.INFO, logger="bp_format"):
         process, fm = _process_with_incomplete_feed()
-    assert set(fm.components.keys()) == {"glucose", "biomass", "product"}
-    assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
-    assert fm.components["product"].concentration.value == pytest.approx(0.0)
+    assert set(fm.components) == {"glucose"}
     messages = [r.message for r in caplog.records]
     assert any("Assumption:" in m for m in messages)
     assert any("biomass" in m and "product" in m for m in messages)
+
+
+def test_caller_owned_inflow_can_be_reused_across_reactor_schemas():
+    feed_components = {
+        "biomass": FeedMediumComponent(
+            name="biomass", unit="g/L", concentration=StaticVariable(0.0)
+        )
+    }
+    feed = FeedMedium(name="feed", components=feed_components)
+    inflow = Inflow(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        feed_medium=feed,
+        values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
+    )
+
+    def make_process(component_names):
+        return BioProcess(
+            metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
+            time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+            volume=Volume(
+                initial_volume=1.0, unit="L", volume_changes={"feed": inflow}
+            ),
+            reactor_medium=ReactorMedium(
+                name="medium",
+                components={
+                    name: ReactorMediumComponent(
+                        name=name,
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.array([0.0, 1.0]),
+                            values=jnp.array([1.0, 2.0]),
+                        ),
+                    )
+                    for name in component_names
+                },
+            ),
+        )
+
+    process_a = make_process(("biomass", "glucose"))
+    process_b = make_process(("biomass",))
+
+    assert feed.components is feed_components
+    assert set(feed_components) == {"biomass"}
+    assert get_process_ordering(process_a).name_modeled_RMCs == ("biomass", "glucose")
+    assert get_process_ordering(process_b).name_modeled_RMCs == ("biomass",)
 
 
 def test_fully_specified_feed_produces_no_assumption_print(caplog):
@@ -431,8 +479,7 @@ def test_fully_specified_feed_produces_no_assumption_print(caplog):
 
 
 def test_missing_feed_medium_entirely_is_not_filled():
-    """feed_medium=None stays untouched by the fill — there's no reasonable
-    way to fabricate an entire medium's identity."""
+    """feed_medium=None stays untouched; no medium identity can be inferred."""
     rm = ReactorMedium(
         name="medium",
         components={
@@ -462,10 +509,10 @@ def test_missing_feed_medium_entirely_is_not_filled():
     assert process.volume.volume_changes["feed"].feed_medium is None
 
 
-def test_silence_assumptions_suppresses_inflow_fill_notice(caplog):
+def test_silence_assumptions_suppresses_inflow_notice(caplog):
     with caplog.at_level(logging.INFO, logger="bp_format"):
         process, fm = _process_with_incomplete_feed(silence=True)
-    assert fm.components["biomass"].concentration.value == pytest.approx(0.0)
+    assert set(fm.components) == {"glucose"}
     assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
 
 
@@ -499,27 +546,12 @@ def test_silence_assumptions_restores_state_after_exception():
     with pytest.raises(RuntimeError):
         with silence_assumptions():
             raise RuntimeError("boom")
-    # Verify the flag was restored by checking a notice fires again.
-    rm = ReactorMedium(
-        name="medium",
-        components={
-            "biomass": ReactorMediumComponent(
-                name="biomass",
-                unit="g/L",
-                concentration=TimeSeries(
-                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
-                ),
-            ),
-        },
-    )
-    from bp_format.dataclasses import _ANNOUNCE_ASSUMPTIONS
-
-    assert _ANNOUNCE_ASSUMPTIONS is True
+    assert dataclasses._ANNOUNCE_ASSUMPTIONS is True
 
 
 def test_density_defaults_are_silent(caplog):
     """density/density_unit default to 1.0/kg/L without any log record —
-    unlike the Inflow-concentration fill, this default never affects
+    unlike omitted Inflow concentrations, this default never affects
     computed results (mechanistic.py never reads it), so there's nothing
     for a notice to usefully warn about."""
     with caplog.at_level(logging.INFO, logger="bp_format"):

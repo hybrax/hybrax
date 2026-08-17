@@ -641,15 +641,17 @@ class TestRhsOde:
         assert float(dc[0]) == pytest.approx(-0.1, abs=1e-5)
         assert float(dc[1]) == pytest.approx(24.75, abs=1e-3)
 
-    def test_fails_fast_if_inflow_medium_mutated_after_construction(self):
-        """The __post_init__ fill guarantees a complete feed medium; a gap
-        reaching build_rhs_ode after construction means the process was
-        mutated, and that must raise loudly, not silently default again."""
-        process = _make_process(with_controlled_Inflow=True)
+    def test_omitted_inflow_component_is_zero(self):
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
         feed_medium = process.volume.volume_changes["feed"].feed_medium
         del feed_medium.components["glucose"]
-        with pytest.raises(ValueError, match="glucose"):
-            build_rhs_ode(process)
+
+        rhs = build_rhs_ode(process)
+        c = jnp.array([2.0, 5.0, 1.0])
+        dc = rhs(c, jnp.zeros(2), jnp.array([0.05]), jnp.zeros(0), jnp.zeros(0))
+
+        assert rhs.Cin_controlled_Inflows[0] == pytest.approx([0.0, 0.0])
+        assert float(dc[1]) == pytest.approx(-0.25, abs=1e-6)
 
     def test_fails_fast_if_inflow_medium_none_but_declared_continuous(self):
         process = _make_process(with_controlled_Inflow=True)
@@ -1232,7 +1234,7 @@ class TestExtractDiscreteEvents:
         with pytest.raises(ValueError, match="feed_medium"):
             extract_discrete_events(process, ordering)
 
-    def test_bolus_raises_if_feed_medium_mutated_after_construction(self):
+    def test_omitted_bolus_component_is_zero(self):
         process = _make_process(with_discrete_VC=False)
         process.volume.volume_changes["bolus"] = Inflow(
             name="bolus",
@@ -1243,9 +1245,10 @@ class TestExtractDiscreteEvents:
             values=_ts([3.0], [0.1]),
         )
         del process.volume.volume_changes["bolus"].feed_medium.components["glucose"]
-        ordering = get_process_ordering(process)
-        with pytest.raises(ValueError, match="glucose"):
-            extract_discrete_events(process, ordering)
+
+        events = extract_discrete_events(process, get_process_ordering(process))
+
+        assert events[0]["Cin"] == pytest.approx([0.0, 0.0])
 
 
 # ---------------------------------------------------------------------------

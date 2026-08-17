@@ -438,44 +438,24 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
     return bo
 
 
-def _fill_missing_inflow_concentrations(process: "BioProcess") -> None:
-    """Fill missing per-reactor-component concentrations in every Inflow's
-    feed medium with a static 0, announcing each fill.
+def _announce_missing_inflow_concentrations(process: "BioProcess") -> None:
+    """Announce reactor components omitted from each Inflow feed medium.
 
-    An Inflow's ``feed_medium`` only needs to declare the reactor components
-    it actually contains; any reactor component it omits is filled here,
-    once, with a static 0 concentration. This is the only place "we don't
-    know, so we assume 0" is allowed to happen — consumers such as
-    ``mechanistic._build_cin`` and ``mechanistic.extract_discrete_events``
-    assume every Inflow's feed medium is complete by the time they run, and
-    fail fast rather than silently defaulting again if it ever isn't.
-
-    An Inflow with ``feed_medium is None`` entirely is left untouched —
-    there's no reasonable way to fabricate an entire medium's identity
-    (name, density) from nothing; that stays a hard error elsewhere
-    (:func:`bp_format.mechanistic.get_process_ordering`).
+    Omitted components remain absent from the caller-owned mapping and are
+    interpreted as zero when mechanistic feed-composition vectors are built.
+    An entirely missing ``feed_medium`` remains a hard error elsewhere.
     """
-    rmc_names = tuple(process.reactor_medium.components.keys())
-    if not rmc_names:
-        return
+    rmc_names = tuple(process.reactor_medium.components)
     for vc_name, vc in process.volume.volume_changes.items():
         if not isinstance(vc, Inflow) or vc.feed_medium is None:
             continue
         feed = vc.feed_medium
         missing = [rmc for rmc in rmc_names if rmc not in feed.components]
-        if not missing:
-            continue
-        for rmc in missing:
-            feed.components[rmc] = FeedMediumComponent(
-                name=rmc,
-                unit=process.reactor_medium.components[rmc].unit,
-                concentration=StaticVariable(0.0),
-                is_controlled=False,
+        if missing:
+            _announce_assumption(
+                f"feed medium {feed.name!r} of Inflow {vc_name!r} did not define "
+                f"a concentration for reactor component(s) {missing}; assuming 0."
             )
-        _announce_assumption(
-            f"feed medium {feed.name!r} of Inflow {vc_name!r} did not define "
-            f"a concentration for reactor component(s) {missing}; assuming 0."
-        )
 
 
 # ============================================================
@@ -504,7 +484,7 @@ class BioProcess:
             raise ValueError("BioProcess.volume is required")
         if self.biological_ode is None:
             self.biological_ode = _auto_generate_biological_ode(self)
-        _fill_missing_inflow_concentrations(self)
+        _announce_missing_inflow_concentrations(self)
 
 
 @dataclass(kw_only=True)

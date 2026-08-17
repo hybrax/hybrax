@@ -497,39 +497,20 @@ class TestValidateVolumeChangeStates:
         ok, msg = validate_volume_change_states(process)
         assert ok is True
 
-    def test_missing_state_in_feed_gets_auto_filled(self):
-        """BioProcess.__post_init__ now fills any reactor component an
-        Inflow's feed medium omits with a static 0 (see
-        _fill_missing_inflow_concentrations), so a normally-constructed
-        process with an incomplete feed medium passes this check —
-        the medium is complete by the time validation runs."""
+    def test_missing_state_in_feed_means_zero(self):
         process = _make_process(
             reactor_components={
                 "biomass": self._reactor_comp("biomass"),
                 "glucose": self._reactor_comp("glucose"),
             },
             volume_changes={
-                "f": self._vc(self._feed_medium(["glucose"]))  # biomass missing
+                "f": self._vc(self._feed_medium(["glucose"]))  # biomass omitted
             },
         )
-        ok, msg = validate_volume_change_states(process)
-        assert ok is True
 
-    def test_missing_state_in_feed_still_caught_if_mutated_after_construction(self):
-        """The check remains a useful defensive guard if a feed medium's
-        components are mutated after construction, bypassing the
-        __post_init__ fill."""
-        process = _make_process(
-            reactor_components={
-                "biomass": self._reactor_comp("biomass"),
-                "glucose": self._reactor_comp("glucose"),
-            },
-            volume_changes={"f": self._vc(self._feed_medium(["glucose", "biomass"]))},
-        )
-        del process.volume.volume_changes["f"].feed_medium.components["biomass"]
         ok, msg = validate_volume_change_states(process)
-        assert ok is False
-        assert "biomass" in msg
+
+        assert ok is True
 
     def test_feed_component_unit_must_match_reactor_component(self):
         feed = self._feed_medium(["biomass"])
