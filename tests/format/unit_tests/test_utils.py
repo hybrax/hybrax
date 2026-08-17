@@ -10,6 +10,7 @@ from bp_format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    BiologicalOde,
     TimeAxis,
     TimeSeries,
     StaticVariable,
@@ -23,6 +24,7 @@ from bp_format import (
     Volume,
     print_process_structure,
     print_collection_structure,
+    print_rhs_ode,
     plot_process,
     plot_collection,
 )
@@ -442,6 +444,49 @@ def test_print_collection_structure_empty_verbosity1(capsys):
     captured = capsys.readouterr()
     assert "BioProcessCollection Structure" in captured.out
     assert "(0 processes)" in captured.out
+
+
+def test_print_rhs_ode_shows_component_specific_outflow_retention(
+    complex_process, capsys
+):
+    complex_process.biological_ode = BiologicalOde(
+        derivatives={"biomass": "growth", "glucose": "uptake"}
+    )
+    complex_process.process_variables["pH"].is_controlled = True
+    outflow_values = TimeSeries(
+        times=jnp.array([0.0, 48.0]), values=jnp.array([0.0, -1.0])
+    )
+    complex_process.volume.volume_changes.update(
+        {
+            "perfusion": Outflow(
+                name="perfusion",
+                unit="L",
+                is_controlled=True,
+                is_continuous=True,
+                values=outflow_values,
+                retention={"biomass": 0.75},
+            ),
+            "unretained": Outflow(
+                name="unretained",
+                unit="L",
+                is_controlled=True,
+                is_continuous=True,
+                values=outflow_values,
+            ),
+        }
+    )
+
+    print_rhs_ode(complex_process)
+
+    lines = capsys.readouterr().out.splitlines()
+    biomass_row = next(line for line in lines if line.startswith("| biomass "))
+    glucose_row = next(line for line in lines if line.startswith("| glucose "))
+    assert "Dilution / retention" in "\n".join(lines)
+    assert "− dilution(glucose_feed) + retention(perfusion=0.75)" in biomass_row
+    assert "− dilution(glucose_feed)" in glucose_row
+    assert "retention(" not in glucose_row
+    assert "unretained" not in biomass_row
+    assert "unretained" not in glucose_row
 
 
 # ---------------------------------------------------------------------------

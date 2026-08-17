@@ -197,7 +197,9 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
 
         if process.biological_ode is not None:
             print("\nBiological ODE:")
-            for line in _format_biological_ode_lines(process.biological_ode, prefix="  "):
+            for line in _format_biological_ode_lines(
+                process.biological_ode, prefix="  "
+            ):
                 print(line)
 
     print("=" * 80)
@@ -356,16 +358,16 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
             if getattr(vc, "values", None) is not None:
                 total += _count_datapoints_in_value(vc.values)
             # feed medium components
-            if getattr(vc, "feed_medium", None) is not None and isinstance(
-                vc, Inflow
-            ):
+            if getattr(vc, "feed_medium", None) is not None and isinstance(vc, Inflow):
                 for fcomp in vc.feed_medium.components.values():
                     total += _count_datapoints_in_value(fcomp.concentration)
 
     return total
 
 
-def print_collection_structure(collection: BioProcessCollection, verbosity: int = 3) -> None:
+def print_collection_structure(
+    collection: BioProcessCollection, verbosity: int = 3
+) -> None:
     """
     Print a hierarchical view of a BioProcessCollection.
 
@@ -792,7 +794,9 @@ def _draw_panel(
         )
 
 
-def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), save_path=None):
+def plot_collection(
+    collection: BioProcessCollection, figsize_per_panel=(5, 3), save_path=None
+):
     """
     Plot all dynamic and static variables for every process in a BioProcessCollection.
 
@@ -911,7 +915,9 @@ def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), 
     for j in range(len(panels), len(axes_flat)):
         axes_flat[j].set_visible(False)
 
-    label = collection.case_id or (collection.metadata or {}).get("name", "BioProcessCollection")
+    label = collection.case_id or (collection.metadata or {}).get(
+        "name", "BioProcessCollection"
+    )
     fig.suptitle(f"BioProcessCollection: {label}", fontsize=12)
 
     if legend_handles_by_label:
@@ -1123,10 +1129,24 @@ def _format_rmc_feed(
     return "+ feed(" + ", ".join(feeders) + ")" if feeders else ""
 
 
-def _format_rmc_dilution(inflow_names: list, outflow_names: list) -> str:
-    """``− dilution(<all Inflow+Outflow>)`` or empty when there are no flows."""
-    flows = list(inflow_names) + list(outflow_names)
-    return "− dilution(" + ", ".join(flows) + ")" if flows else ""
+def _format_rmc_flow(
+    rmc_name: str,
+    inflow_names: list,
+    outflow_names: list,
+    process: BioProcess,
+) -> str:
+    """Format concentration changes from continuous volume flows for one RMC."""
+    terms = []
+    if inflow_names:
+        terms.append("− dilution(" + ", ".join(inflow_names) + ")")
+    retained = []
+    for name in outflow_names:
+        retention = process.volume.volume_changes[name].retention.get(rmc_name, 0.0)
+        if retention:
+            retained.append(f"{name}={retention:g}")
+    if retained:
+        terms.append("+ retention(" + ", ".join(retained) + ")")
+    return " ".join(terms)
 
 
 def _discrete_volume_changes(process: BioProcess):
@@ -1196,7 +1216,9 @@ def _resolve_target(target):
             raise ValueError(f"Cannot print unified ODE structure: {msg}")
         process = next(iter(target.processes.values()))
         n = len(target.processes)
-        label = target.case_id or (target.metadata or {}).get("name", "BioProcessCollection")
+        label = target.case_id or (target.metadata or {}).get(
+            "name", "BioProcessCollection"
+        )
         if n > 1:
             label = f"{label} ({n} processes)"
         return process, label
@@ -1220,11 +1242,13 @@ def print_rhs_ode(
     individual process picked to render is not exposed.
 
     The Derivatives sub-table separates the *Biological* expression
-    (verbatim from ``biological_ode.derivatives``) from the *Feed* and
-    *Dilution* contributions that bp-format adds on top: ``+ feed(<Inflows
-    with Cin>)`` and ``− dilution(<all Inflow+Outflow>)`` per RMC. The Volume
-    sub-table lists V separately with *Additions* (Inflow sum) and
-    *Removals* (``− |<Outflow sum>|``) columns.
+    (verbatim from ``biological_ode.derivatives``) from the physical flow
+    contributions that bp-format adds on top. Inflows contribute
+    ``+ feed(...)`` and ``− dilution(...)``. Retained material contributes
+    ``+ retention(<Outflow>=<fraction>)`` for each affected RMC; unretained
+    Outflows have no concentration contribution. The Volume sub-table lists
+    V separately with *Additions* (Inflow sum) and *Removals*
+    (``− |<Outflow sum>|``) columns.
 
     Raises:
         ValueError: if a multi-process container's processes do not share
@@ -1271,16 +1295,20 @@ def print_rhs_ode(
             )
         )
 
-    inflow_all = list(ordering.name_controlled_Inflows) + list(ordering.name_modeled_Inflows)
-    outflow_all = list(ordering.name_controlled_Outflows) + list(ordering.name_modeled_Outflows)
+    inflow_all = list(ordering.name_controlled_Inflows) + list(
+        ordering.name_modeled_Inflows
+    )
+    outflow_all = list(ordering.name_controlled_Outflows) + list(
+        ordering.name_modeled_Outflows
+    )
 
     deriv_rows: list = []
     for n in ordering.name_modeled_RMCs:
         unit = process.reactor_medium.components[n].unit
         bio_str = bo.derivatives.get(n, "0")
         feed = _format_rmc_feed(n, inflow_all, process)
-        dilution = _format_rmc_dilution(inflow_all, outflow_all)
-        deriv_rows.append([n, f"[{unit}]", bio_str, feed, dilution])
+        flow = _format_rmc_flow(n, inflow_all, outflow_all, process)
+        deriv_rows.append([n, f"[{unit}]", bio_str, feed, flow])
     for n in ordering.name_modeled_PVs:
         unit = process.process_variables[n].unit
         bio_str = bo.derivatives.get(n, "0")
@@ -1289,7 +1317,7 @@ def print_rhs_ode(
     sections.append(
         (
             "Derivatives",
-            ["State", "Unit", "Biological", "Feed", "Dilution"],
+            ["State", "Unit", "Biological", "Feed", "Dilution / retention"],
             deriv_rows,
             ["l", "l", "l", "l", "l"],
         )
