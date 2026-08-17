@@ -660,7 +660,7 @@ class TrainedFold:
     config: Any
     store: Any
     target_names: tuple[str, ...]
-    parent_process_names: tuple[str, ...]
+    prediction_parent_process_names: tuple[str, ...]
     output_predictions: PredictionScope
     train_result: Any
 
@@ -735,8 +735,11 @@ def produce_runtime_artifact(
         effective, _dir, _custom = _effective_fold_config(
             cfg, fold, output_dir, cfg.custom_py
         )
+        scale_data = runtime_data.select_training_parents(collection, fold.train)
         scales = _resolve_estimated_scales(
-            custom_module=custom_module, runtime_data=runtime_data, custom_cfg=effective
+            custom_module=custom_module,
+            runtime_data=scale_data,
+            custom_cfg=effective,
         )
         records.append((_fold_record(fold), scales))
     return write_runtime_artifact(
@@ -947,7 +950,9 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
         config=harness_cfg,
         store=store,
         target_names=target_names,
-        parent_process_names=prepared.training.parent_process_names,
+        prediction_parent_process_names=(
+            prepared.training.prediction_parent_process_names
+        ),
         output_predictions=prepared.effective_cfg.output.predictions,
         train_result=train_result,
     )
@@ -963,7 +968,7 @@ def execute_trained_fold(trained: TrainedFold) -> FoldResult:
     prediction_processes = _select_prediction_processes(
         trained.output_predictions,
         eval_processes,
-        trained.parent_process_names,
+        trained.prediction_parent_process_names,
     )
     forward_result = evaluate_trained_wrapper(
         trained.train_result.trained_wrapper,

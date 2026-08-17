@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 
 import numpy as np
 from bp_format.dataclasses import (
@@ -19,11 +20,66 @@ RawTrace = tuple[np.ndarray, np.ndarray]
 BoundDeclaration = tuple[str, str, int, float | None, float | None]
 BoundSnapshot = tuple[BoundDeclaration, ...]
 BoundRecord = tuple[str, str, int, float, float]
+SPLINE_SCALE_SAMPLE_COUNT = 200
+
+
+@dataclass(frozen=True)
+class ControlScaleEvidence:
+    """Raw-first control observations used by producer-side scale hooks."""
+
+    cumulative_FVCs: tuple[np.ndarray, ...]
+    FVC_rates: tuple[np.ndarray, ...]
+    PVs: tuple[np.ndarray, ...]
+    controlled_FVC_Cin: np.ndarray
+    modeled_FVC_Cin: np.ndarray
+
+
+def original_parent_processes(
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+) -> tuple[str, ...]:
+    """Return every non-augmented process in canonical order."""
+    if len(process_order) != len(augmentation_parents):
+        raise ValueError("augmentation parent metadata must align with process order")
+    return tuple(
+        name
+        for name, parent in zip(process_order, augmentation_parents, strict=True)
+        if parent is None
+    )
+
+
+def canonical_training_parents(
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+    selected_processes: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Map a training selection to unique parents in canonical process order."""
+    if len(process_order) != len(augmentation_parents):
+        raise ValueError("process and augmentation-parent metadata differ in length")
+    parent_by_process = dict(zip(process_order, augmentation_parents, strict=True))
+    try:
+        represented = {parent_by_process[name] or name for name in selected_processes}
+    except KeyError as error:
+        raise KeyError(f"unknown selected process {error.args[0]!r}") from error
+
+    parent_names = tuple(
+        name
+        for name, parent in zip(process_order, augmentation_parents, strict=True)
+        if parent is None and name in represented
+    )
+    missing = represented.difference(parent_names)
+    if missing:
+        raise ValueError(
+            f"selected processes reference unknown parents: {sorted(missing)!r}"
+        )
+    if not parent_names:
+        raise ValueError("training selection contains no processes")
+    return parent_names
 
 
 @dataclass(frozen=True)
 class RuntimeDataContext:
-    """Prepared collection-free numeric data available to runtime hooks."""
+    """Prepared producer-side data available to runtime hooks."""
 
     training_data: TrainingDataStore
     augmentation_parents: tuple[str | None, ...]
@@ -32,6 +88,8 @@ class RuntimeDataContext:
     raw_state_traces: tuple[tuple[RawTrace, ...], ...]
     sample_volume_event_traces: tuple[RawTrace, ...]
     bound_snapshots: tuple[BoundSnapshot, ...]
+    training_parent_collection: BioProcessCollection | None = None
+    _control_scale_evidence: ControlScaleEvidence | None = None
 
     @property
     def rhs_ode(self):
@@ -45,16 +103,99 @@ class RuntimeDataContext:
     def process_order(self) -> tuple[str, ...]:
         return tuple(self.training_data.process_order)
 
-    @property
-    def parent_indices(self) -> tuple[int, ...]:
-        indices = tuple(
-            index
-            for index, parent in enumerate(self.augmentation_parents)
-            if parent is None
+    def select_training_parents(
+        self,
+        collection: BioProcessCollection,
+        selected_processes: tuple[str, ...],
+    ) -> RuntimeDataContext:
+        """Return the canonical unique parents represented by a train selection."""
+        if tuple(collection.processes) != self.process_order:
+            raise ValueError(
+                "parent selection collection order differs from runtime data"
+            )
+        parent_names = canonical_training_parents(
+            self.process_order, self.augmentation_parents, selected_processes
         )
-        if not indices:
-            raise ValueError("runtime data contains no non-augmented processes")
-        return indices
+        copied_collection = deepcopy(collection)
+        selected_parent_processes = {
+            name: copied_collection.processes[name] for name in parent_names
+        }
+        parent_collection = replace(
+            copied_collection,
+            processes=selected_parent_processes,
+        )
+        bp_train_metadata = (parent_collection.metadata or {}).get("bp-train")
+        if bp_train_metadata is not None:
+            if "process_order" in bp_train_metadata:
+                bp_train_metadata["process_order"] = list(parent_names)
+            if "processes" in bp_train_metadata:
+                bp_train_metadata["processes"] = {
+                    name: bp_train_metadata["processes"][name] for name in parent_names
+                }
+        indices = tuple(self.process_order.index(name) for name in parent_names)
+        selected = RuntimeDataContext(
+            training_data=self.training_data.select_processes(
+                parent_names, parent_collection
+            ),
+            augmentation_parents=tuple(None for _ in parent_names),
+            training_parent_collection=parent_collection,
+            process_time_bounds=tuple(self.process_time_bounds[i] for i in indices),
+            modeled_volume_change_traces=tuple(
+                self.modeled_volume_change_traces[i] for i in indices
+            ),
+            raw_state_traces=tuple(self.raw_state_traces[i] for i in indices),
+            sample_volume_event_traces=tuple(
+                self.sample_volume_event_traces[i] for i in indices
+            ),
+            bound_snapshots=tuple(self.bound_snapshots[i] for i in indices),
+        )
+        return replace(
+            selected,
+            _control_scale_evidence=selected.control_scale_evidence(),
+        )
+
+    def control_scale_evidence(self) -> ControlScaleEvidence:
+        """Collect raw-first control evidence from selected training parents."""
+        if self._control_scale_evidence is not None:
+            return self._control_scale_evidence
+        if self.training_parent_collection is None:
+            raise ValueError("training parent collection is unavailable")
+        collection = self.training_parent_collection
+        controls = self.controls_store
+        cumulative = [[] for _ in controls.name_controlled_FVCs]
+        rates = [[] for _ in controls.name_controlled_FVCs]
+        pvs = [[] for _ in controls.name_controlled_PVs]
+
+        for process in collection.processes.values():
+            for index, name in enumerate(controls.name_controlled_FVCs):
+                values, derivatives = _series_scale_evidence(
+                    process.volume.volume_changes[name].values,
+                    derivative=True,
+                )
+                cumulative[index].append(values)
+                rates[index].append(derivatives)
+            for index, name in enumerate(controls.name_controlled_PVs):
+                series = process.process_variables[name].values
+                if isinstance(series, StaticVariable):
+                    values = np.asarray([series.value], dtype=float)
+                else:
+                    values, _ = _series_scale_evidence(series, derivative=False)
+                pvs[index].append(values)
+
+        def concatenate(traces):
+            return tuple(np.concatenate(values) for values in traces)
+
+        return ControlScaleEvidence(
+            cumulative_FVCs=concatenate(cumulative),
+            FVC_rates=concatenate(rates),
+            PVs=concatenate(pvs),
+            controlled_FVC_Cin=np.asarray(
+                self.training_data.Cin_controlled_FVCs, dtype=float
+            ),
+            modeled_FVC_Cin=np.asarray(
+                self.training_data.Cin_modeled_FVCs, dtype=float
+            ),
+        )
 
     def time_bounds(self, process_index: int) -> tuple[float, float]:
         return self.process_time_bounds[process_index]
@@ -108,7 +249,8 @@ class RuntimeDataContext:
             raise ValueError("runtime context requires a non-empty collection")
         if tuple(collection.processes) != process_order:
             raise ValueError(
-                "runtime context process order differs between collection and training data"
+                "runtime context process order differs between collection and "
+                "training data"
             )
 
         rhs_ode = training_data.rhs_ode
@@ -150,12 +292,39 @@ class RuntimeDataContext:
         return cls(
             training_data=training_data,
             augmentation_parents=tuple(parents),
+            training_parent_collection=None,
             process_time_bounds=tuple(time_bounds),
             modeled_volume_change_traces=tuple(modeled_traces),
             raw_state_traces=tuple(state_traces),
             sample_volume_event_traces=tuple(sample_traces),
             bound_snapshots=tuple(bound_snapshots),
         )
+
+
+def _series_scale_evidence(
+    series: TimeSeries,
+    *,
+    derivative: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    if series.times is not None and series.values is not None:
+        times = np.asarray(series.times, dtype=float)
+        values = np.asarray(series.values, dtype=float)
+        slopes = np.diff(values) / np.diff(times) if derivative else np.empty(0)
+        return values, slopes
+    if series.breaks is None:
+        raise ValueError("control TimeSeries has neither raw samples nor spline breaks")
+    grid = np.linspace(
+        float(series.breaks[0]),
+        float(series.breaks[-1]),
+        SPLINE_SCALE_SAMPLE_COUNT,
+    )
+    values = np.asarray(series.evaluate_many(grid), dtype=float)
+    slopes = (
+        np.asarray(series.deriv().evaluate_many(grid), dtype=float)
+        if derivative
+        else np.empty(0)
+    )
+    return values, slopes
 
 
 @dataclass(frozen=True)
@@ -191,11 +360,13 @@ def collect_bound_records(
                 other = snapshot[index]
             except IndexError as error:
                 raise ValueError(
-                    f"Bounds source {label!r} is missing from process index {process_index}"
+                    f"Bounds source {label!r} is missing from process index "
+                    f"{process_index}"
                 ) from error
             if other != declaration:
                 raise ValueError(
-                    f"Bounds for {label!r} differ across processes: {declaration[3:]!r} "
+                    f"Bounds for {label!r} differ across processes: "
+                    f"{declaration[3:]!r} "
                     f"vs {other[3:]!r}"
                 )
         for description, threshold in (("Lower", lower), ("Upper", upper)):

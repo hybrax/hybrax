@@ -50,7 +50,11 @@ from .training_data import (
     TrainingDataStore,
 )
 from .run_config import RunConfig
-from .runtime_context import RuntimeContext, RuntimeDataContext
+from .runtime_context import (
+    RuntimeContext,
+    RuntimeDataContext,
+    original_parent_processes,
+)
 from .utils import (
     get_hook,
     load_custom_module,
@@ -680,13 +684,16 @@ def _build_runtime_modules(
     custom_config: Any,
     build_loss: bool = True,
 ) -> tuple[UserReactionModule, UserLossModule | None]:
-    """Build collection-free runtime hook modules once."""
+    """Build runtime hook modules once from parent-selected scale evidence."""
     runtime_data = RuntimeDataContext.from_collection(store, collection)
+    scale_data = runtime_data.select_training_parents(
+        collection, _ensure_process_names(store, config.process_names)
+    )
     runtime_context = RuntimeContext(
         runtime_data,
         _resolve_estimated_scales(
             custom_module=custom_module,
-            runtime_data=runtime_data,
+            runtime_data=scale_data,
             custom_cfg=custom_config,
         ),
     )
@@ -1876,7 +1883,7 @@ class PreparedTraining:
     loss_module: UserLossModule
     config: TrainHarnessConfig
     optimizer: optax.GradientTransformation
-    parent_process_names: tuple[str, ...] = ()
+    prediction_parent_process_names: tuple[str, ...] = ()
 
 
 _TRAIN_HOOK_NAMES = (
@@ -1937,8 +1944,9 @@ def prepare_training_from_runtime_context(
         loss_module=loss_module,
         config=train_cfg,
         optimizer=optimizer,
-        parent_process_names=tuple(
-            store.process_order[index] for index in runtime_context.data.parent_indices
+        prediction_parent_process_names=original_parent_processes(
+            runtime_context.data.process_order,
+            runtime_context.data.augmentation_parents,
         ),
     )
 
@@ -2002,11 +2010,12 @@ def prepare_training(
         target_variable_order=effective_target_order,
     )
     runtime_data = RuntimeDataContext.from_collection(store, collection)
+    scale_data = runtime_data.select_training_parents(collection, selected_processes)
     runtime_context = RuntimeContext(
         runtime_data,
         _resolve_estimated_scales(
             custom_module=custom_module,
-            runtime_data=runtime_data,
+            runtime_data=scale_data,
             custom_cfg=custom_cfg,
         ),
     )

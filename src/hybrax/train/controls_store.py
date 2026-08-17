@@ -1053,6 +1053,86 @@ class ControlsStore(eqx.Module):
             _process_md_by_name=processes_metadata,
         )
 
+    def select_processes(
+        self,
+        process_names: tuple[str, ...],
+        collection: BioProcessCollection,
+    ) -> ControlsStore:
+        """Return a closed row-selected store without rebuilding controls."""
+        if not process_names:
+            raise ValueError("selected controls store must be non-empty")
+        if tuple(collection.processes) != process_names:
+            raise ValueError("selected collection order must match process_names")
+        try:
+            indices = jnp.asarray(
+                [self.process_order.index(name) for name in process_names],
+                dtype=jnp.int32,
+            )
+        except ValueError as error:
+            raise KeyError(f"unknown selected process: {error.args[0]}") from error
+
+        def rows(array):
+            return array[indices]
+
+        spline_breaks = rows(self.spline_breaks)
+        grid_lengths = rows(self.grid_lengths)
+        jump_ts_lengths = rows(self.jump_ts_lengths)
+        sample_event_mask = rows(self.sample_event_mask)
+        bolus_event_mask = rows(self.bolus_event_mask)
+        max_grid_length = int(np.max(np.asarray(grid_lengths)))
+        max_spline_breaks = (
+            int(np.max(np.sum(np.isfinite(np.asarray(spline_breaks)), axis=1)))
+            if spline_breaks.shape[1]
+            else 0
+        )
+        max_jump_ts_length = int(np.max(np.asarray(jump_ts_lengths)))
+        max_sample_events = int(np.max(np.sum(np.asarray(sample_event_mask), axis=1)))
+        max_bolus_events = int(np.max(np.sum(np.asarray(bolus_event_mask), axis=1)))
+
+        gap_fraction, measurements_per_gap = _output_window_bounds(
+            collection, process_names
+        )
+        shape_metadata = {
+            **self.shape_metadata,
+            "n_processes": len(process_names),
+            "max_grid_length": max_grid_length,
+            "max_spline_breaks": max_spline_breaks,
+            "max_jump_ts_length": max_jump_ts_length,
+            "max_sample_events": max_sample_events,
+            "max_bolus_events": max_bolus_events,
+        }
+        return ControlsStore(
+            process_order=list(process_names),
+            name_controlled_FVCs=self.name_controlled_FVCs,
+            name_controlled_SVCs=self.name_controlled_SVCs,
+            name_controlled_PVs=self.name_controlled_PVs,
+            shape_metadata=shape_metadata,
+            spline_indices=self.spline_indices,
+            linear_indices=self.linear_indices,
+            continuity_side=self.continuity_side,
+            spline_breaks=spline_breaks[:, :max_spline_breaks],
+            spline_coeffs=rows(self.spline_coeffs)[:, : max(0, max_spline_breaks - 1)],
+            linear_grid=rows(self.linear_grid)[:, :max_grid_length],
+            control_values=rows(self.control_values)[:, :max_grid_length],
+            control_derivatives=rows(self.control_derivatives)[:, :max_grid_length],
+            jump_ts=rows(self.jump_ts)[:, :max_jump_ts_length],
+            grid_lengths=grid_lengths,
+            jump_ts_lengths=jump_ts_lengths,
+            min_V=rows(self.min_V),
+            sample_event_times=rows(self.sample_event_times)[:, :max_sample_events],
+            sample_event_volumes=rows(self.sample_event_volumes)[:, :max_sample_events],
+            sample_event_mask=sample_event_mask[:, :max_sample_events],
+            bolus_event_times=rows(self.bolus_event_times)[:, :max_bolus_events],
+            bolus_event_volumes=rows(self.bolus_event_volumes)[:, :max_bolus_events],
+            bolus_event_Cin=rows(self.bolus_event_Cin)[:, :max_bolus_events],
+            bolus_event_mask=bolus_event_mask[:, :max_bolus_events],
+            max_event_gap_fraction=gap_fraction,
+            max_measurements_per_event_gap=measurements_per_gap,
+            _process_md_by_name={
+                name: self._process_md_by_name[name] for name in process_names
+            },
+        )
+
     @classmethod
     def from_json(
         cls,

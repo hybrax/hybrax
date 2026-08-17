@@ -515,7 +515,7 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            parent_process_names=("p1", "p2", "p3"),
+            prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
     def fake_evaluate(
@@ -559,6 +559,9 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     collection = _three_parent_collection()
     captured = _patch_worker_internals(monkeypatch)
     cfg = _run_config(seed=10)
+    cfg = cfg.model_copy(
+        update={"output": cfg.output.model_copy(update={"predictions": "parents"})}
+    )
     custom_py = tmp_path / "shared-custom.py"
     custom_py.write_text("VALUE = 1\n")
 
@@ -575,7 +578,7 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert result.fold.test == ("p2",)
     assert captured["process_names"] == ("p1", "p3")
     assert captured["holdout"] == ("p2",)
-    assert captured["prediction_process_names"] == ()
+    assert captured["prediction_process_names"] == ("p1", "p3", "p2")
     assert captured["evaluation_wrapper"] is captured["reloaded_wrapper"]
     assert result.train_result.trained_wrapper is captured["reloaded_wrapper"]
     assert captured["reload_template"] is not result.train_result.trained_wrapper
@@ -664,7 +667,7 @@ def test_run_single_fold_respects_data_processes_restriction(monkeypatch, tmp_pa
         )
 
 
-def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
+def test_prepare_single_fold_preserves_prediction_parent_names(monkeypatch, tmp_path):
     def fake_prepare(*_args, config, **_kwargs):
         return PreparedTraining(
             store=object(),
@@ -672,7 +675,7 @@ def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            parent_process_names=("p1", "p2", "p3"),
+            prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
     monkeypatch.setattr(loo_mod, "prepare_training", fake_prepare)
@@ -684,7 +687,7 @@ def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
         fold_idx=1,
     )
 
-    assert prepared.training.parent_process_names == ("p1", "p2", "p3")
+    assert prepared.training.prediction_parent_process_names == ("p1", "p2", "p3")
 
 
 # ---------------------------------------------------------------------------
@@ -695,7 +698,15 @@ def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
 def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path):
     collection = _three_parent_collection()
     store = object()
-    runtime_data = object()
+
+    selected_scale_processes = []
+
+    class _RuntimeData:
+        def select_training_parents(self, _collection, process_names):
+            selected_scale_processes.append(tuple(process_names))
+            return self
+
+    runtime_data = _RuntimeData()
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "bp_format.serialization.load_process_collection", lambda _path: collection
@@ -744,6 +755,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
         (("p1",), ("p2",), 37),
         (("p2",), ("p1",), 38),
     ]
+    assert selected_scale_processes == [("p2",), ("p1",)]
 
     cfg = cfg.model_copy(
         update={"loo": LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p3",)),))}
@@ -1138,7 +1150,7 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            parent_process_names=("p1", "p2", "p3"),
+            prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
     monkeypatch.setattr(loo_mod, "prepare_training_from_runtime_context", fake_prepare)

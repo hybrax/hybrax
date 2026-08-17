@@ -33,6 +33,7 @@ from .loo import (
     train_prepared_fold,
 )
 from .runtime_artifact import FORMAT_VERSION
+from .runtime_context import original_parent_processes
 from .postprocessing import aggregate_dense_exports, export_predictions_csv
 from .prepare import prepare_artifact
 from .run_config import (
@@ -453,7 +454,7 @@ def _handle_train(args: argparse.Namespace) -> int:
         prediction_processes = _select_prediction_processes(
             cfg.output.predictions,
             eval_processes,
-            prepared.parent_process_names,
+            prepared.prediction_parent_process_names,
         )
         forward_result = evaluate_trained_wrapper(
             result.trained_wrapper,
@@ -771,11 +772,12 @@ def _handle_forward(args: argparse.Namespace) -> int:
             solver_atol=float(model_cfg.solver.atol),
             solver_use_jump_ts=bool(model_cfg.solver.jump_ts),
         )
-        parent_processes = tuple(
-            process_name
-            for process_name in eval_processes
-            if getattr(collection.processes[process_name], "parent_process", None)
-            is None
+        parent_processes = original_parent_processes(
+            tuple(collection.processes),
+            tuple(
+                getattr(process, "parent_process", None)
+                for process in collection.processes.values()
+            ),
         )
         prediction_processes = _select_prediction_processes(
             fcfg.output.predictions, eval_processes, parent_processes

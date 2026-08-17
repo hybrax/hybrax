@@ -63,9 +63,10 @@ def runtime_context() -> RuntimeContext:
         collection, target_source="reactor_components"
     )
     data = RuntimeDataContext.from_collection(store, collection)
+    scale_data = data.select_training_parents(collection, store.process_order)
     scales = _resolve_estimated_scales(
         custom_module=load_custom_module(_CUSTOM),
-        runtime_data=data,
+        runtime_data=scale_data,
         custom_cfg=SimpleNamespace(
             custom=SimpleNamespace(ratios_softmax_temp=2.0, Y_XS=0.627, Y_PS=0.652)
         ),

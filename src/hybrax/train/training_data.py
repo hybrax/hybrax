@@ -736,6 +736,55 @@ class TrainingDataStore(eqx.Module):
             target_source=target_source,
         )
 
+    def select_processes(
+        self,
+        process_names: tuple[str, ...],
+        collection: BioProcessCollection,
+    ) -> TrainingDataStore:
+        """Return a closed parent-aligned row selection in the requested order."""
+        if not process_names:
+            raise ValueError("selected training store must be non-empty")
+        if tuple(collection.processes) != process_names:
+            raise ValueError("selected collection order must match process_names")
+        try:
+            indices = jnp.asarray(
+                [self.process_order.index(name) for name in process_names],
+                dtype=jnp.int32,
+            )
+        except ValueError as error:
+            raise KeyError(f"unknown selected process: {error.args[0]}") from error
+
+        def rows(array):
+            return array[indices]
+
+        controlled_cin = rows(self.Cin_controlled_FVCs)
+        modeled_cin = rows(self.Cin_modeled_FVCs)
+        n_measured = rows(self.n_measured)
+        max_measurements = int(np.max(np.asarray(n_measured)))
+        rhs_ode = eqx.tree_at(
+            lambda rhs: (rhs.Cin_controlled_FVCs, rhs.Cin_modeled_FVCs),
+            self.rhs_ode,
+            (controlled_cin[0], modeled_cin[0]),
+        )
+        return TrainingDataStore(
+            process_order=list(process_names),
+            name_measured_RMCs=self.name_measured_RMCs,
+            name_measured_PVs=self.name_measured_PVs,
+            name_modeled_FVCs=self.name_modeled_FVCs,
+            name_modeled_SVCs=self.name_modeled_SVCs,
+            rhs_ode=rhs_ode,
+            controls_store=self.controls_store.select_processes(
+                process_names, collection
+            ),
+            Cin_controlled_FVCs=controlled_cin,
+            Cin_modeled_FVCs=modeled_cin,
+            t_measured=rows(self.t_measured)[:, :max_measurements],
+            y_measured=rows(self.y_measured)[:, :max_measurements],
+            mask_measured=rows(self.mask_measured)[:, :max_measurements],
+            n_measured=n_measured,
+            y0_measured=rows(self.y0_measured),
+        )
+
     def validate_control_support(self, process_names: tuple[str, ...]) -> None:
         """Validate measured solve spans for the processes about to be solved."""
         spans = {}

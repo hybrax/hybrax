@@ -1183,6 +1183,10 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
         ),
     )
     monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.select_training_parents",
+        lambda self, *_args: self,
+    )
+    monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
         lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
@@ -1249,6 +1253,10 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         ),
     )
     monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.select_training_parents",
+        lambda self, *_args: self,
+    )
+    monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
         lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
@@ -1308,6 +1316,15 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
             store, (None,) * len(store.process_order), (), (), (), (), ()
         ),
     )
+
+    def select_training_parents(runtime_data, _collection, process_names):
+        captured["scale_process_names"] = tuple(process_names)
+        return runtime_data
+
+    monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.select_training_parents",
+        select_training_parents,
+    )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
         lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
@@ -1347,6 +1364,7 @@ def test_train_from_collection_wires_build_optimizer_hook(monkeypatch):
     )
 
     assert result == "train-result"
+    assert captured["scale_process_names"] == ("p1",)
     assert captured["optimizer"] is sentinel
 
 
@@ -1487,6 +1505,86 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
         "train hooks default: estimate_all_scales, build_reaction_module, "
         "build_learning_rate, build_optimizer, build_loss_module" in caplog.text
     )
+
+
+def test_prepare_training_preserves_all_original_prediction_parents():
+    collection = _make_multi_process_collection(3)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    runtime_context = _runtime_context(store)
+    runtime_context = dataclasses.replace(
+        runtime_context,
+        data=dataclasses.replace(
+            runtime_context.data,
+            augmentation_parents=(None, None, "p1"),
+        ),
+    )
+
+    prepared = prepare_training_from_runtime_context(
+        runtime_context,
+        config=TrainHarnessConfig(process_names=("p3",), epochs=1),
+        custom_module=None,
+        custom_cfg={},
+    )
+
+    assert prepared.config.process_names == ("p3",)
+    assert prepared.prediction_parent_process_names == ("p1", "p2")
+
+
+def test_build_runtime_modules_selects_scale_processes(monkeypatch):
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    seen = {}
+    select_training_parents = RuntimeDataContext.select_training_parents
+
+    def select(self, received_collection, process_names):
+        seen["selection"] = (received_collection, process_names)
+        return select_training_parents(self, received_collection, process_names)
+
+    monkeypatch.setattr(
+        "bp_train.harness.RuntimeDataContext.from_collection",
+        lambda *_args: runtime_data,
+    )
+    monkeypatch.setattr(RuntimeDataContext, "select_training_parents", select)
+    scales = EstimatedScales(**_DEFAULT_LINEAR_SCALES)
+
+    def resolve_scales(**kwargs):
+        seen["scale_data"] = kwargs["runtime_data"]
+        return scales
+
+    monkeypatch.setattr("bp_train.harness._resolve_estimated_scales", resolve_scales)
+    sentinel = object()
+
+    def build_reaction_module(**kwargs):
+        seen["runtime_context"] = kwargs["runtime_context"]
+        return sentinel
+
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", build_reaction_module
+    )
+
+    reaction_module, loss_module = harness_module._build_runtime_modules(
+        store=store,
+        collection=collection,
+        config=TrainHarnessConfig(process_names=("p1",), epochs=1),
+        custom_module=None,
+        custom_config={},
+        build_loss=False,
+    )
+
+    assert reaction_module is sentinel
+    assert loss_module is None
+    assert seen["selection"] == (collection, ("p1",))
+    assert seen["scale_data"].process_order == ("p1",)
+    assert seen["runtime_context"].data is runtime_data
 
 
 def test_resolve_estimated_scales_receives_runtime_data():
