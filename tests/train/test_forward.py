@@ -632,10 +632,10 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
 
     output_dir = tmp_path / "fwd"
     output_dir.mkdir()
-    (output_dir / "predictions_std.csv").write_text("stale", encoding="utf-8")
-    plot_dir = output_dir / "plots"
-    plot_dir.mkdir()
-    (plot_dir / "stale.png").write_bytes(b"stale")
+    reference_dir = output_dir / "reference-dir"
+    reference_dir.mkdir()
+    unrelated = output_dir / "unrelated.txt"
+    unrelated.write_text("keep", encoding="utf-8")
     fwd_config = _write_forward_config(tmp_path, [run_dir], processes=("p1", "p2"))
     exit_code = cli.main(
         ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
@@ -654,14 +654,108 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert captured["training_process_names"] == ("p1", "p2")
     assert captured["prediction_process_names"] == ("p1", "p2")
     assert captured["model_path"] == run_dir / "model" / "params.eqx"
-    assert not (output_dir / "predictions_std.csv").exists()
-    assert not plot_dir.exists()
+    assert unrelated.read_text(encoding="utf-8") == "keep"
 
-    losses_csv = output_dir / "losses.csv"
+    results_dir = output_dir / "forward-results"
+    assert (results_dir.stat().st_mode & 0o7777) == (
+        reference_dir.stat().st_mode & 0o7777
+    )
+    losses_csv = results_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
     assert rows.columns.tolist() == ["process", "total", "X", "S", "split"]
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
+
+
+def test_forward_preserves_prior_results_when_result_writing_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    run_dir = _make_forward_run_dir(tmp_path)
+    output_dir = tmp_path / "forward"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    prior = results_dir / "prior.txt"
+    prior.write_text("prior", encoding="utf-8")
+    unrelated = output_dir / "unrelated.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+    config = _write_forward_config(tmp_path, [run_dir], output_dir=output_dir)
+
+    monkeypatch.setattr(
+        cli, "load_process_collection", lambda _path: _make_fake_collection()
+    )
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *_args, **_kwargs: _stub_forward_result()
+    )
+
+    def fail_writing(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cli, "_write_forward_results", fail_writing)
+
+    with pytest.raises(OSError, match="disk full"):
+        cli.main(["forward", "--config", str(config), "--overwrite"])
+
+    assert list(output_dir.glob(".forward-results-*")) == []
+    assert prior.read_text(encoding="utf-8") == "prior"
+    assert unrelated.read_text(encoding="utf-8") == "keep"
+
+
+def test_publish_forward_results_restores_prior_results(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    results_dir = tmp_path / "forward-results"
+    results_dir.mkdir()
+    (results_dir / "prior.txt").write_text("prior", encoding="utf-8")
+    staging_dir = tmp_path / ".forward-results-new"
+    staging_dir.mkdir()
+    (staging_dir / "new.txt").write_text("new", encoding="utf-8")
+    replace = Path.replace
+
+    def fail_staged_publication(path, target):
+        if path == staging_dir:
+            raise OSError("publication failed")
+        return replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staged_publication)
+
+    with pytest.raises(OSError, match="publication failed"):
+        cli._publish_forward_results(staging_dir, results_dir)
+
+    assert (results_dir / "prior.txt").read_text(encoding="utf-8") == "prior"
+    assert staging_dir.is_dir()
+    assert list(tmp_path.glob(".forward-results-old-*")) == []
+
+
+def test_publish_forward_results_reports_backup_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    results_dir = tmp_path / "forward-results"
+    results_dir.mkdir()
+    (results_dir / "prior.txt").write_text("prior", encoding="utf-8")
+    staging_dir = tmp_path / ".forward-results-new"
+    staging_dir.mkdir()
+    (staging_dir / "new.txt").write_text("new", encoding="utf-8")
+    rmtree = cli.shutil.rmtree
+
+    def fail_backup_cleanup(path, *args, **kwargs):
+        if Path(path).name.startswith(".forward-results-old-"):
+            raise OSError("cleanup failed")
+        return rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.shutil, "rmtree", fail_backup_cleanup)
+
+    with pytest.raises(OSError, match="cleanup failed"):
+        cli._publish_forward_results(staging_dir, results_dir)
+
+    assert (results_dir / "new.txt").read_text(encoding="utf-8") == "new"
+    backups = list(tmp_path.glob(".forward-results-old-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "forward-results" / "prior.txt").read_text(
+        encoding="utf-8"
+    ) == "prior"
 
 
 def test_forward_cli_plots_selected_predictions(monkeypatch, tmp_path: Path):
@@ -690,19 +784,240 @@ def test_forward_cli_plots_selected_predictions(monkeypatch, tmp_path: Path):
     )
 
     assert cli.main(["forward", "--config", str(config)]) == 0
-    assert calls == [
-        (
-            collection,
-            result.trained_wrapper,
-            dense_exports,
-            None,
-            {
-                "p1": (0.1, {"X": 0.05, "S": 0.15}),
-                "p2": (0.2, {"X": 0.1, "S": 0.3}),
-            },
-            output_dir,
-        )
-    ]
+    assert len(calls) == 1
+    assert calls[0][:-1] == (
+        collection,
+        result.trained_wrapper,
+        dense_exports,
+        None,
+        {
+            "p1": (0.1, {"X": 0.05, "S": 0.15}),
+            "p2": (0.2, {"X": 0.1, "S": 0.3}),
+        },
+    )
+    staged_results = Path(calls[0][-1])
+    assert staged_results.name == "forward-results"
+    assert staged_results.parent.parent == output_dir
+    assert staged_results.parent.name.startswith(".forward-results-")
+
+
+def test_forward_model_names_are_unique_across_explicit_suffixes():
+    refs = (
+        SimpleNamespace(name="foo", path="first"),
+        SimpleNamespace(name="foo#2", path="second"),
+        SimpleNamespace(name="foo", path="third"),
+    )
+
+    assert cli._resolve_model_names(refs) == ["foo", "foo#2", "foo#3"]
+
+
+@pytest.mark.parametrize("unsafe_name", ["../..", "bad\0name"])
+def test_forward_rejects_unsafe_model_name_before_writing(
+    monkeypatch, tmp_path, unsafe_name
+):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    unrelated = output_dir / "losses.csv"
+    unrelated.write_text("keep", encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        name="unsafe-name-config.json",
+    )
+    document = json.loads(config.read_text(encoding="utf-8"))
+    document["models"] = [{"name": unsafe_name, "path": str(run_dir)}]
+    config.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        cli,
+        "forward_from_collection",
+        lambda *_args, **_kwargs: pytest.fail("unsafe model reached evaluation"),
+    )
+
+    assert cli.main(["forward", "--config", str(config), "--overwrite"]) == 1
+    assert unrelated.read_text(encoding="utf-8") == "keep"
+    assert results_dir.is_dir()
+
+
+@pytest.mark.parametrize("input_kind", ["prepared", "custom_py"])
+def test_forward_overwrite_preserves_model_config_input(tmp_path, input_kind):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    nested_input = results_dir / f"input-{input_kind}"
+    nested_input.write_text("{}", encoding="utf-8")
+    run_config = run_dir / "config.json"
+    document = json.loads(run_config.read_text(encoding="utf-8"))
+    if input_kind == "prepared":
+        (run_dir / "prepared.json").unlink()
+        document["config"]["data"]["prepared"] = str(nested_input)
+    else:
+        document["config"]["custom_py"] = str(nested_input)
+    run_config.write_text(json.dumps(document), encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        name=f"nested-{input_kind}-config.json",
+    )
+
+    with pytest.raises(ValueError, match="contains input file"):
+        cli.main(["forward", "--config", str(config), "--overwrite"])
+    assert nested_input.is_file()
+
+
+@pytest.mark.parametrize("input_kind", ["prepared", "custom_py"])
+def test_forward_overwrite_normalizes_input_spelled_through_results(
+    monkeypatch, tmp_path, input_kind
+):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    retained_input = output_dir / f"input-{input_kind}"
+    retained_input.write_text("{}", encoding="utf-8")
+    indirect_input = results_dir / ".." / retained_input.name
+    run_config = run_dir / "config.json"
+    document = json.loads(run_config.read_text(encoding="utf-8"))
+    if input_kind == "prepared":
+        (run_dir / "prepared.json").unlink()
+        document["config"]["data"]["prepared"] = str(indirect_input)
+    else:
+        document["config"]["custom_py"] = str(indirect_input)
+    run_config.write_text(json.dumps(document), encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        predictions="none",
+        name=f"indirect-{input_kind}-config.json",
+    )
+    seen = {}
+
+    def fake_load(path):
+        if input_kind == "prepared":
+            seen["input"] = Path(path)
+        return _make_fake_collection()
+
+    def fake_forward(*_args, **kwargs):
+        if input_kind == "custom_py":
+            seen["input"] = Path(kwargs["custom_py"])
+        return _stub_forward_result()
+
+    monkeypatch.setattr(cli, "load_process_collection", fake_load)
+    monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
+
+    assert cli.main(["forward", "--config", str(config), "--overwrite"]) == 0
+    assert seen["input"] == retained_input
+    assert retained_input.is_file()
+
+
+def test_forward_overwrite_preserves_prepared_resolved_from_directory(tmp_path):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    nested_prepared = results_dir / "prepared-target.json"
+    nested_prepared.write_text("{}", encoding="utf-8")
+    external_prepared_dir = tmp_path / "external-prepared"
+    external_prepared_dir.mkdir()
+    (external_prepared_dir / "prepared.json").symlink_to(nested_prepared)
+    (run_dir / "prepared.json").unlink()
+    run_config = run_dir / "config.json"
+    document = json.loads(run_config.read_text(encoding="utf-8"))
+    document["config"]["data"]["prepared"] = str(external_prepared_dir)
+    run_config.write_text(json.dumps(document), encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        name="prepared-directory-config.json",
+    )
+
+    with pytest.raises(ValueError, match="contains input file"):
+        cli.main(["forward", "--config", str(config), "--overwrite"])
+    assert nested_prepared.is_file()
+
+
+def test_forward_overwrite_preserves_resolved_params_input(tmp_path):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    nested_params = results_dir / "params-input.eqx"
+    params = run_dir / "model" / "params.eqx"
+    nested_params.write_bytes(params.read_bytes())
+    params.unlink()
+    params.symlink_to(nested_params)
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        name="nested-params-config.json",
+    )
+
+    with pytest.raises(ValueError, match="contains input file"):
+        cli.main(["forward", "--config", str(config), "--overwrite"])
+    assert nested_params.is_file()
+    assert params.is_file()
+
+
+def test_forward_overwrite_preserves_input_symlink_in_results(tmp_path):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    results_dir = output_dir / "forward-results"
+    results_dir.mkdir(parents=True)
+    external_prepared = tmp_path / "external-prepared.json"
+    external_prepared.write_text("{}", encoding="utf-8")
+    nested_link = results_dir / "prepared-link.json"
+    nested_link.symlink_to(external_prepared)
+    (run_dir / "prepared.json").unlink()
+    run_config = run_dir / "config.json"
+    document = json.loads(run_config.read_text(encoding="utf-8"))
+    document["config"]["data"]["prepared"] = str(nested_link)
+    run_config.write_text(json.dumps(document), encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        name="nested-symlink-config.json",
+    )
+
+    with pytest.raises(ValueError, match="contains input file"):
+        cli.main(["forward", "--config", str(config), "--overwrite"])
+    assert nested_link.is_symlink()
+    assert external_prepared.is_file()
+
+
+def test_forward_overwrite_preserves_input_through_results_symlink(tmp_path):
+    run_dir = _make_forward_run_dir(tmp_path / "model")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    external_results = tmp_path / "existing-forward-results"
+    external_results.mkdir()
+    prepared = external_results / "prepared.json"
+    prepared.write_text("{}", encoding="utf-8")
+    results_dir = output_dir / "forward-results"
+    results_dir.symlink_to(external_results, target_is_directory=True)
+    (run_dir / "prepared.json").unlink()
+    run_config = run_dir / "config.json"
+    document = json.loads(run_config.read_text(encoding="utf-8"))
+    document["config"]["data"]["prepared"] = str(results_dir / "prepared.json")
+    run_config.write_text(json.dumps(document), encoding="utf-8")
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        name="results-symlink-config.json",
+    )
+
+    with pytest.raises(ValueError, match="contains input file"):
+        cli.main(["forward", "--config", str(config), "--overwrite"])
+    assert results_dir.is_symlink()
+    assert prepared.is_file()
 
 
 def test_forward_plot_losses_keep_named_total_separate():
@@ -736,39 +1051,7 @@ def test_forward_plot_losses_align_ensemble_members_by_name():
     }
 
 
-def test_forward_plot_cleanup_failure_is_nonfatal(monkeypatch, tmp_path: Path):
-    run_dir = _make_forward_run_dir(tmp_path)
-    monkeypatch.setattr(
-        cli, "load_process_collection", lambda _path: _make_fake_collection()
-    )
-    monkeypatch.setattr(
-        cli,
-        "forward_from_collection",
-        lambda *_args, **_kwargs: _stub_forward_result(
-            dense_exports={"p1": object(), "p2": object()}
-        ),
-    )
-    monkeypatch.setattr(cli, "export_predictions_csv", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        cli,
-        "clear_forward_prediction_plots",
-        lambda *_args: (_ for _ in ()).throw(OSError("disk full")),
-    )
-    output_dir = tmp_path / "forward"
-    config = _write_forward_config(
-        tmp_path,
-        [run_dir],
-        output_dir=output_dir,
-        plots=False,
-    )
-
-    assert cli.main(["forward", "--config", str(config)]) == 0
-    assert (output_dir / "losses.csv").is_file()
-
-
-def test_forward_clears_plots_when_scope_selects_no_process(
-    monkeypatch, tmp_path: Path
-):
+def test_forward_omits_plots_when_scope_selects_no_process(monkeypatch, tmp_path: Path):
     run_dir = _make_forward_run_dir(tmp_path)
     collection = SimpleNamespace(
         processes={
@@ -787,12 +1070,6 @@ def test_forward_clears_plots_when_scope_selects_no_process(
         "export_predictions_csv",
         lambda *_args, **_kwargs: pytest.fail("empty scope exported predictions"),
     )
-    cleared = []
-    monkeypatch.setattr(
-        cli,
-        "clear_forward_prediction_plots",
-        lambda output_dir: cleared.append(output_dir),
-    )
     monkeypatch.setattr(
         cli,
         "plot_forward_predictions",
@@ -808,7 +1085,7 @@ def test_forward_clears_plots_when_scope_selects_no_process(
     )
 
     assert cli.main(["forward", "--config", str(config)]) == 0
-    assert cleared == [output_dir]
+    assert not (output_dir / "forward-results" / "plots").exists()
 
 
 def test_forward_cli_plot_failure_is_nonfatal(monkeypatch, tmp_path: Path):
@@ -838,7 +1115,7 @@ def test_forward_cli_plot_failure_is_nonfatal(monkeypatch, tmp_path: Path):
     )
 
     assert cli.main(["forward", "--config", str(config)]) == 0
-    assert (output_dir / "losses.csv").is_file()
+    assert (output_dir / "forward-results" / "losses.csv").is_file()
 
 
 @pytest.mark.parametrize(
@@ -891,8 +1168,8 @@ def test_ensemble_forward_applies_prediction_scope(
     monkeypatch.setattr(
         cli,
         "export_predictions_csv",
-        lambda _wrapper, _dense, path, *, process_names: exported.append(
-            (Path(path).relative_to(tmp_path / "output"), process_names)
+        lambda _wrapper, _dense, _path, *, process_names: exported.append(
+            process_names
         ),
     )
     prepared = tmp_path / "prepared.json"
@@ -907,36 +1184,20 @@ def test_ensemble_forward_applies_prediction_scope(
     )
 
     output_dir = tmp_path / "output"
-    if not expected_processes:
-        stale_paths = [
-            output_dir / "predictions.csv",
-            output_dir / "predictions_std.csv",
-            *(
-                output_dir / "models" / name / "predictions.csv"
-                for name in cli._resolve_model_names(
-                    cli.load_forward_config(config).models
-                )
-            ),
-        ]
-        for path in stale_paths:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("stale", encoding="utf-8")
-
     assert cli.main(["forward", "--config", str(config)]) == 0
     assert forwarded == [expected_processes, expected_processes]
-    assert [processes for _path, processes in exported] == (
-        [expected_processes] * 4 if expected_processes else []
-    )
-    assert (output_dir / "losses.csv").is_file()
-    assert len(list((output_dir / "models").glob("*/losses.csv"))) == 2
+    assert exported == ([expected_processes] * 4 if expected_processes else [])
+    results_dir = output_dir / "forward-results"
+    assert (results_dir / "losses.csv").is_file()
+    assert len(list((results_dir / "models").glob("*/losses.csv"))) == 2
     if not expected_processes:
-        assert not (output_dir / "predictions.csv").exists()
-        assert not (output_dir / "predictions_std.csv").exists()
-        assert not list((output_dir / "models").glob("*/predictions.csv"))
+        assert not (results_dir / "predictions.csv").exists()
+        assert not (results_dir / "predictions_std.csv").exists()
+        assert not list((results_dir / "models").glob("*/predictions.csv"))
 
 
 def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
-    """A second forward into a populated --output-dir is refused unless --overwrite."""
+    """Only forward-results is replaced by --overwrite."""
     run_dir = _make_forward_run_dir(tmp_path, processes=("p1", "p2"))
     monkeypatch.setattr(
         cli, "load_process_collection", lambda p: _make_fake_collection()
@@ -951,14 +1212,24 @@ def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
     base = ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
 
     assert cli.main(base) == 0
-    assert (output_dir / "losses.csv").is_file()
-    # a second run without --overwrite is blocked
+    results_dir = output_dir / "forward-results"
+    assert (results_dir / "losses.csv").is_file()
+    unrelated = output_dir / "keep.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+
     assert cli.main(base) == 1
-    # ...and allowed with it
-    stale = output_dir / "predictions.csv"
-    stale.write_text("stale")
+    stale = results_dir / "stale.txt"
+    stale.write_text("stale", encoding="utf-8")
+    write_results = cli._write_forward_results
+
+    def write_while_prior_results_exist(*args, **kwargs):
+        assert stale.is_file()
+        write_results(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "_write_forward_results", write_while_prior_results_exist)
     assert cli.main(base + ["--overwrite"]) == 0
     assert not stale.exists()
+    assert unrelated.read_text(encoding="utf-8") == "keep"
 
 
 def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
@@ -1331,9 +1602,7 @@ def test_plot_forward_predictions_removes_partial_png_on_failure(
     collection, store, wrapper = _build_single_process_runtime(q_scaled=0.5)
     export = _single_dense_export(store, wrapper, prediction_grid_n=7)
     plot_dir = tmp_path / "plots"
-    plot_dir.mkdir()
     output_path = plot_dir / "p1.png"
-    output_path.write_bytes(b"stale")
 
     def fail_savefig(_figure, path, **_kwargs):
         Path(path).write_bytes(b"partial")
@@ -1352,124 +1621,6 @@ def test_plot_forward_predictions_removes_partial_png_on_failure(
 
     assert not output_path.exists()
     assert not (plot_dir / ".p1.png.tmp").exists()
-
-
-def test_plot_forward_predictions_restores_previous_plots_when_publish_fails(
-    monkeypatch, tmp_path: Path
-):
-    plot_dir = tmp_path / "plots"
-    plot_dir.mkdir()
-    old_plot = plot_dir / "old.png"
-    old_plot.write_bytes(b"old")
-
-    def fake_plot(_process_name, *_args):
-        Path(_args[-1]).write_bytes(b"new")
-
-    original_replace = Path.replace
-
-    def fail_publication(path, target):
-        target = Path(target)
-        if path.parent == tmp_path and path.name.startswith(".plots-"):
-            if target == plot_dir:
-                raise OSError("publication failed")
-        return original_replace(path, target)
-
-    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
-    monkeypatch.setattr(Path, "replace", fail_publication)
-    collection = SimpleNamespace(processes={"p1": object()})
-
-    with pytest.raises(OSError, match="publication failed"):
-        plot_forward_predictions(
-            collection,
-            object(),
-            {"p1": object()},
-            None,
-            {},
-            tmp_path,
-        )
-
-    assert old_plot.read_bytes() == b"old"
-    assert not any(path.name.startswith(".plots-") for path in tmp_path.iterdir())
-
-
-def test_plot_forward_predictions_restores_relative_symlink_when_publish_fails(
-    monkeypatch, tmp_path: Path
-):
-    real_plot_dir = tmp_path / "real-plots"
-    real_plot_dir.mkdir()
-    old_plot = real_plot_dir / "old.png"
-    old_plot.write_bytes(b"old")
-    plot_dir = tmp_path / "plots"
-    plot_dir.symlink_to("real-plots", target_is_directory=True)
-
-    def fake_plot(_process_name, *_args):
-        Path(_args[-1]).write_bytes(b"new")
-
-    original_replace = Path.replace
-
-    def fail_publication(path, target):
-        target = Path(target)
-        if path.parent == tmp_path and path.name.startswith(".plots-"):
-            if target == plot_dir:
-                raise OSError("publication failed")
-        return original_replace(path, target)
-
-    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
-    monkeypatch.setattr(Path, "replace", fail_publication)
-    collection = SimpleNamespace(processes={"p1": object()})
-
-    with pytest.raises(OSError, match="publication failed"):
-        plot_forward_predictions(
-            collection,
-            object(),
-            {"p1": object()},
-            None,
-            {},
-            tmp_path,
-        )
-
-    assert plot_dir.is_symlink()
-    assert old_plot.read_bytes() == b"old"
-    assert not any(path.name.startswith(".plots-") for path in tmp_path.iterdir())
-
-
-def test_plot_forward_predictions_keeps_backup_when_restore_fails(
-    monkeypatch, tmp_path: Path
-):
-    plot_dir = tmp_path / "plots"
-    plot_dir.mkdir()
-    (plot_dir / "old.png").write_bytes(b"old")
-
-    def fake_plot(_process_name, *_args):
-        Path(_args[-1]).write_bytes(b"new")
-
-    original_replace = Path.replace
-
-    def fail_publication_and_restore(path, target):
-        target = Path(target)
-        if path.parent == tmp_path and path.name.startswith(".plots-"):
-            raise OSError("publication failed")
-        if path.name == "plots" and path.parent.name.startswith(".plots-old-"):
-            raise OSError("restoration failed")
-        return original_replace(path, target)
-
-    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
-    monkeypatch.setattr(Path, "replace", fail_publication_and_restore)
-    collection = SimpleNamespace(processes={"p1": object()})
-
-    with pytest.raises(OSError, match="restoration failed"):
-        plot_forward_predictions(
-            collection,
-            object(),
-            {"p1": object()},
-            None,
-            {},
-            tmp_path,
-        )
-
-    backups = list(tmp_path.glob(".plots-old-*/plots/old.png"))
-    assert len(backups) == 1
-    assert backups[0].read_bytes() == b"old"
 
 
 def test_plot_forward_predictions_continues_after_process_failure(

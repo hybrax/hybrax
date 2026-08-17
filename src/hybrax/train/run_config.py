@@ -232,7 +232,9 @@ class ModelRef(ConfigBase):
 
 
 class ForwardOutputConfig(ConfigBase):
-    dir: Path | None = None  # None -> <first model>/forward
+    dir: Path | None = (
+        None  # Parent of forward-results/; default: <first model>/forward
+    )
     predictions: PredictionScope = "none"
     plots: bool = False
 

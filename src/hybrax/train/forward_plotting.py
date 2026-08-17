@@ -2,8 +2,6 @@
 
 import logging
 from pathlib import Path
-import shutil
-import tempfile
 
 import numpy as np
 from bp_format import BioProcess, BioProcessCollection, FeedVolumeChange
@@ -23,81 +21,28 @@ def plot_forward_predictions(
     output_dir: Path,
 ) -> None:
     """Write one prediction figure per dense export, continuing after failures."""
-    staging_dir = Path(tempfile.mkdtemp(prefix=".plots-", dir=output_dir))
-    try:
-        for process_name, mean in mean_exports.items():
-            try:
-                if (
-                    not process_name
-                    or process_name in {".", ".."}
-                    or "/" in process_name
-                    or "\\" in process_name
-                ):
-                    raise ValueError(
-                        f"process name is not filename-safe: {process_name!r}"
-                    )
-                _plot_process(
-                    process_name,
-                    collection.processes[process_name],
-                    wrapper,
-                    mean,
-                    std_exports.get(process_name) if std_exports else None,
-                    losses.get(process_name, (float("nan"), {})),
-                    staging_dir / f"{process_name}.png",
-                )
-            except Exception:
-                log.exception("failed to plot predictions for process %s", process_name)
-        _publish_plot_directory(staging_dir, output_dir)
-    finally:
-        _remove_tree_best_effort(staging_dir)
-
-
-def clear_forward_prediction_plots(output_dir: Path) -> None:
-    """Remove plots from a previous or interrupted forward run."""
     plot_dir = output_dir / "plots"
-    if plot_dir.is_symlink() or plot_dir.is_file():
-        plot_dir.unlink()
-    elif plot_dir.exists():
-        shutil.rmtree(plot_dir)
-
-
-def _publish_plot_directory(staging_dir: Path, output_dir: Path) -> None:
-    """Replace the published plot directory without exposing stale figures."""
-    plot_dir = output_dir / "plots"
-    backup_root = Path(tempfile.mkdtemp(prefix=".plots-old-", dir=output_dir))
-    backup_dir = backup_root / "plots"
-    had_previous = plot_dir.is_symlink() or plot_dir.exists()
-    published = False
-    try:
-        if had_previous:
-            plot_dir.replace(backup_dir)
+    plot_dir.mkdir()
+    for process_name, mean in mean_exports.items():
         try:
-            staging_dir.replace(plot_dir)
-            published = True
+            if (
+                not process_name
+                or process_name in {".", ".."}
+                or "/" in process_name
+                or "\\" in process_name
+            ):
+                raise ValueError(f"process name is not filename-safe: {process_name!r}")
+            _plot_process(
+                process_name,
+                collection.processes[process_name],
+                wrapper,
+                mean,
+                std_exports.get(process_name) if std_exports else None,
+                losses.get(process_name, (float("nan"), {})),
+                plot_dir / f"{process_name}.png",
+            )
         except Exception:
-            if backup_dir.is_symlink() or backup_dir.exists():
-                try:
-                    backup_dir.replace(plot_dir)
-                except Exception:
-                    log.exception(
-                        "failed to restore previous prediction plots; "
-                        "backup remains at %s",
-                        backup_dir,
-                    )
-                    raise
-            raise
-    finally:
-        if published or not (backup_dir.is_symlink() or backup_dir.exists()):
-            _remove_tree_best_effort(backup_root)
-
-
-def _remove_tree_best_effort(path: Path) -> None:
-    if not path.exists():
-        return
-    try:
-        shutil.rmtree(path)
-    except Exception:
-        log.exception("failed to remove temporary prediction-plot directory %s", path)
+            log.exception("failed to plot predictions for process %s", process_name)
 
 
 def _plot_process(

@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -13,10 +14,7 @@ from bp_format.json_io import load_json
 from bp_format.serialization import load_process_collection
 import pandas as pd
 
-from .forward_plotting import (
-    clear_forward_prediction_plots,
-    plot_forward_predictions,
-)
+from .forward_plotting import plot_forward_predictions
 from .harness import (
     ForwardConfig,
     ForwardResult,
@@ -148,21 +146,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "forward_config.json: a `models` list of self-contained run/checkpoint "
             "dirs (len 1 = single, >1 = ensemble), plus optional `data` "
-            "(prepared / processes) and `output` (dir / predictions)."
+            "(prepared / processes) and `output` (dir / predictions / plots)."
         ),
     )
     forward_parser.add_argument(
         "--output-dir",
         default=None,
         help=(
-            "Directory for forward outputs (overrides output.dir). Defaults to "
-            "<first model>/forward."
+            "Parent directory for forward outputs (overrides output.dir); results "
+            "are written under forward-results/. Defaults to <first model>/forward."
         ),
     )
     forward_parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Allow re-running into a forward output dir that already has results.",
+        help=(
+            "Replace existing forward-results/ while preserving other files in "
+            "the parent output directory."
+        ),
     )
     forward_parser.add_argument(
         "--log-level",
@@ -312,6 +313,40 @@ def _apply_train_cli_overrides(
     return cfg.model_copy(update=updates) if updates else cfg
 
 
+def _check_output_dir_overwrite_safe(
+    output_dir: Path,
+    *,
+    input_paths: tuple[str | Path | None, ...],
+    follow_symlinks: bool = True,
+) -> None:
+    """Reject replacing an output directory that contains a required input."""
+    lexical_root = Path(os.path.abspath(output_dir))
+    roots = (
+        (lexical_root, lexical_root.resolve()) if follow_symlinks else (lexical_root,)
+    )
+    nested_inputs = []
+    for path in input_paths:
+        if path is None:
+            continue
+        input_path = Path(path)
+        lexical_input = Path(os.path.abspath(input_path))
+        inputs = (
+            (lexical_input, lexical_input.resolve())
+            if follow_symlinks
+            else (lexical_input,)
+        )
+        if any(
+            candidate.is_relative_to(root) for candidate in inputs for root in roots
+        ):
+            nested_inputs.append(input_path)
+    if nested_inputs:
+        paths = ", ".join(str(path) for path in nested_inputs)
+        raise ValueError(
+            f"cannot overwrite output directory {output_dir}: "
+            f"it contains input file(s): {paths}"
+        )
+
+
 def _clear_output_dir_for_overwrite(
     output_dir: Path,
     *,
@@ -319,20 +354,17 @@ def _clear_output_dir_for_overwrite(
 ) -> None:
     """Remove an old run without deleting inputs needed by the new run."""
     if output_dir.is_symlink():
+        _check_output_dir_overwrite_safe(
+            output_dir,
+            input_paths=input_paths,
+            follow_symlinks=False,
+        )
         output_dir.unlink()
         return
-    root = output_dir.resolve()
-    nested_inputs = [
-        Path(path)
-        for path in input_paths
-        if path is not None and Path(path).resolve().is_relative_to(root)
-    ]
-    if nested_inputs:
-        paths = ", ".join(str(path) for path in nested_inputs)
-        raise ValueError(
-            f"cannot overwrite output directory {output_dir}: "
-            f"it contains input file(s): {paths}"
-        )
+    _check_output_dir_overwrite_safe(output_dir, input_paths=input_paths)
+    if output_dir.is_file():
+        output_dir.unlink()
+        return
     if not output_dir.exists():
         return
     for child in output_dir.iterdir():
@@ -648,8 +680,7 @@ def _resolve_model_bundle(
 
 
 def _resolve_model_names(models: tuple[Any, ...]) -> list[str]:
-    """Per-model name: explicit ``name`` else basename of the bundle's
-    ``config.output.dir`` (run identity); de-duplicated with ``#2``/``#3``."""
+    """Return unique, filename-safe names for per-model output directories."""
     raw: list[str] = []
     for ref in models:
         if ref.name:
@@ -664,11 +695,19 @@ def _resolve_model_names(models: tuple[Any, ...]) -> list[str]:
             except Exception:  # noqa: BLE001 - fall back to the path basename
                 nm = None
         raw.append(nm or Path(ref.path).name)
-    seen: dict[str, int] = {}
+
+    assigned: set[str] = set()
     out: list[str] = []
-    for nm in raw:
-        seen[nm] = seen.get(nm, 0) + 1
-        out.append(nm if seen[nm] == 1 else f"{nm}#{seen[nm]}")
+    for name in raw:
+        if name in {"", ".", ".."} or "\0" in name or "/" in name or "\\" in name:
+            raise ValueError(f"forward model name is not filename-safe: {name!r}")
+        candidate = name
+        suffix = 2
+        while candidate in assigned:
+            candidate = f"{name}#{suffix}"
+            suffix += 1
+        assigned.add(candidate)
+        out.append(candidate)
     return out
 
 
@@ -693,7 +732,36 @@ def _handle_forward(args: argparse.Namespace) -> int:
         )
         return 1
 
-    names = _resolve_model_names(models)
+    try:
+        names = _resolve_model_names(models)
+    except ValueError as exc:
+        log.error("forward: %s", exc)
+        return 1
+
+    bundles: list[tuple[str, Path, Path, Any, Path, str | None]] = []
+    for ref, name in zip(models, names, strict=True):
+        run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)
+        run_dir = Path(os.path.abspath(run_dir))
+        params_path = Path(os.path.abspath(params_path))
+        prepared_value = (
+            shared_prepared if shared_prepared is not None else own_prepared
+        )
+        if prepared_value is None:
+            log.error("forward: could not resolve a prepared.json for model %s", name)
+            return 1
+        prepared = Path(os.path.abspath(resolve_prepared_path(Path(prepared_value))))
+        # The custom.py rebuilds the model's reaction module / loss hooks; without
+        # it forward_from_collection builds the default module (wrong pytree).
+        # Prefer the original recorded path (its sibling helper modules are on
+        # disk on this machine); fall back to the bundled copy for a checkpoint
+        # that was sent elsewhere.
+        if model_cfg.custom_py is not None and Path(model_cfg.custom_py).is_file():
+            custom_py: str | None = os.path.abspath(model_cfg.custom_py)
+        elif (run_dir / "custom.py").is_file():
+            custom_py = os.path.abspath(run_dir / "custom.py")
+        else:
+            custom_py = None
+        bundles.append((name, run_dir, params_path, model_cfg, prepared, custom_py))
 
     # --- Output directory (resolved up-front so the re-run guard fails fast) ---
     if args.output_dir is not None:
@@ -701,53 +769,36 @@ def _handle_forward(args: argparse.Namespace) -> int:
     elif fcfg.output.dir is not None:
         output_dir = Path(fcfg.output.dir)
     else:
-        first_run_dir, *_ = _resolve_model_bundle(models[0].path)
-        output_dir = first_run_dir / "forward"
-    if (output_dir / "losses.csv").is_file() and not args.overwrite:
+        output_dir = bundles[0][1] / "forward"
+    results_dir = output_dir / "forward-results"
+    results_exist = results_dir.is_symlink() or results_dir.exists()
+    if results_exist and not args.overwrite:
         log.error(
-            "forward output dir %s already holds results; pass --overwrite to "
-            "replace them",
-            output_dir,
+            "forward results already exist at %s; pass --overwrite to replace them",
+            results_dir,
         )
         return 1
-    if args.overwrite:
-        _clear_output_dir_for_overwrite(
-            output_dir,
+    if results_exist:
+        _check_output_dir_overwrite_safe(
+            results_dir,
             input_paths=(
                 args.config,
                 shared_prepared,
                 *(ref.path for ref in models),
+                *(bundle[1] / "config.json" for bundle in bundles),
+                *(bundle[2] for bundle in bundles),
+                *(bundle[4] for bundle in bundles),
+                *(bundle[5] for bundle in bundles),
             ),
         )
     output_dir.mkdir(parents=True, exist_ok=True)
-    if not fcfg.output.plots:
-        try:
-            clear_forward_prediction_plots(output_dir)
-        except Exception:
-            log.exception("failed to clear old forward prediction plots")
 
     # --- Forward each model on its data ---
     per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
     prediction_processes: tuple[str, ...] = ()
     plot_collection = None
-    for ref, name in zip(models, names):
-        _run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)
-        prepared = shared_prepared if shared_prepared is not None else own_prepared
-        if prepared is None:
-            log.error("forward: could not resolve a prepared.json for model %s", name)
-            return 1
-        # The custom.py rebuilds the model's reaction module / loss hooks; without
-        # it forward_from_collection builds the default module (wrong pytree).
-        # Prefer the original recorded path (its sibling helper modules are on
-        # disk on this machine); fall back to the bundled copy for a checkpoint
-        # that was sent elsewhere.
-        if model_cfg.custom_py is not None and Path(model_cfg.custom_py).is_file():
-            custom_py: str | None = str(model_cfg.custom_py)
-        elif (_run_dir / "custom.py").is_file():
-            custom_py = str(_run_dir / "custom.py")
-        else:
-            custom_py = None
-        collection = load_process_collection(resolve_prepared_path(Path(prepared)))
+    for name, _run_dir, params_path, model_cfg, prepared, custom_py in bundles:
+        collection = load_process_collection(prepared)
         if plot_collection is None:
             plot_collection = collection
         eval_processes = (
@@ -803,28 +854,93 @@ def _handle_forward(args: argparse.Namespace) -> int:
         )
         per_model.append((name, result))
 
+    staging_root = Path(tempfile.mkdtemp(prefix=".forward-results-", dir=output_dir))
+    staging_dir = staging_root / results_dir.name
+    staging_dir.mkdir()
+    try:
+        _write_forward_results(
+            staging_dir,
+            per_model,
+            prediction_processes,
+            plot_collection,
+            plots=fcfg.output.plots,
+        )
+        _publish_forward_results(staging_dir, results_dir)
+    finally:
+        if staging_root.exists():
+            shutil.rmtree(staging_root)
+
+    return 0
+
+
+def _publish_forward_results(staging_dir: Path, results_dir: Path) -> None:
+    """Publish staged results, restoring prior results if publication fails."""
+    if not (results_dir.is_symlink() or results_dir.exists()):
+        staging_dir.replace(results_dir)
+        return
+
+    backup_root = Path(
+        tempfile.mkdtemp(prefix=".forward-results-old-", dir=results_dir.parent)
+    )
+    backup_dir = backup_root / results_dir.name
+    try:
+        results_dir.replace(backup_dir)
+    except Exception:
+        backup_root.rmdir()
+        raise
+
+    try:
+        staging_dir.replace(results_dir)
+    except Exception:
+        try:
+            backup_dir.replace(results_dir)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "failed to restore prior forward results; backup remains at %s",
+                backup_dir,
+            )
+            raise
+        backup_root.rmdir()
+        raise
+    else:
+        try:
+            shutil.rmtree(backup_root)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "published new forward results but failed to remove prior "
+                "results at %s",
+                backup_root,
+            )
+            raise
+
+
+def _write_forward_results(
+    results_dir: Path,
+    per_model: list[tuple[str, ForwardResult]],
+    prediction_processes: tuple[str, ...],
+    plot_collection: Any,
+    *,
+    plots: bool,
+) -> None:
+    """Write a complete forward result set into a fresh staging directory."""
+    log = logging.getLogger(__name__)
     wrapper0 = per_model[0][1].trained_wrapper
 
-    # --- Per-model predictions + loss tables ---
     for name, result in per_model:
-        mdir = output_dir / "models" / name
-        mdir.mkdir(parents=True, exist_ok=True)
-        model_predictions_path = mdir / "predictions.csv"
+        model_dir = results_dir / "models" / name
+        model_dir.mkdir(parents=True, exist_ok=True)
         if prediction_processes:
             export_predictions_csv(
                 result.trained_wrapper,
                 result.dense_exports,
-                model_predictions_path,
+                model_dir / "predictions.csv",
                 process_names=prediction_processes,
             )
-        else:
-            model_predictions_path.unlink(missing_ok=True)
         _table, model_rows = _format_loss_table(result)
-        _write_loss_csv(model_rows, mdir / "losses.csv")
+        _write_loss_csv(model_rows, model_dir / "losses.csv")
 
-    # --- Aggregate (mean + std across models) ---
     if prediction_processes:
-        per_model_dense = [r.dense_exports for _n, r in per_model]
+        per_model_dense = [result.dense_exports for _name, result in per_model]
         if len(per_model_dense) > 1:
             mean_exports, std_exports = aggregate_dense_exports(per_model_dense)
         else:
@@ -832,21 +948,17 @@ def _handle_forward(args: argparse.Namespace) -> int:
         export_predictions_csv(
             wrapper0,
             mean_exports,
-            output_dir / "predictions.csv",
+            results_dir / "predictions.csv",
             process_names=prediction_processes,
         )
-        predictions_std_path = output_dir / "predictions_std.csv"
         if std_exports is not None:
             export_predictions_csv(
                 wrapper0,
                 std_exports,
-                predictions_std_path,
+                results_dir / "predictions_std.csv",
                 process_names=prediction_processes,
             )
-        else:
-            predictions_std_path.unlink(missing_ok=True)
-
-        if fcfg.output.plots:
+        if plots:
             try:
                 plot_forward_predictions(
                     plot_collection,
@@ -856,25 +968,14 @@ def _handle_forward(args: argparse.Namespace) -> int:
                     _aggregate_forward_plot_losses(
                         [result for _name, result in per_model]
                     ),
-                    output_dir,
+                    results_dir,
                 )
             except Exception:
                 log.exception("failed to create forward prediction plots")
-    else:
-        (output_dir / "predictions.csv").unlink(missing_ok=True)
-        (output_dir / "predictions_std.csv").unlink(missing_ok=True)
-        if fcfg.output.plots:
-            try:
-                clear_forward_prediction_plots(output_dir)
-            except Exception:
-                log.exception("failed to clear old forward prediction plots")
 
-    # --- Loss table (representative = first model; per-model in models/<name>/) ---
     table_str, csv_rows = _format_loss_table(per_model[0][1])
     log.info("\n%s", table_str)
-    _write_loss_csv(csv_rows, output_dir / "losses.csv")
-
-    return 0
+    _write_loss_csv(csv_rows, results_dir / "losses.csv")
 
 
 def _aggregate_forward_plot_losses(

@@ -37,8 +37,8 @@ bp-train prepare --config prepare-config.json --output-dir prepared
 bp-train train   --config train-config.json
 
 # 3. re-simulate a trained model and optionally export predictions and plots
-#    (set output.predictions to parents or all; output.plots writes
-#    <output-dir>/plots/<process>.png)
+#    (results go under <output-dir>/forward-results/; set output.predictions to
+#    parents or all, and output.plots to true for per-process PNGs)
 bp-train forward --config forward-config.json
 
 # 4. (optional) leave-one-process-out cross-validation

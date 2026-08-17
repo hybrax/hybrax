@@ -106,17 +106,19 @@ ensemble) plus optional `data` and `output` blocks.
   (time, species, volume, rates, auxiliary). It is *the* single source of dense
   predictions for forward evaluation and final training exports, so exported
   predictions always match the training solve.
-- For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
+- All forward artifacts are contained in `<output-dir>/forward-results/`.
+  For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
   into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
-  own `models/<name>/predictions.csv` and `losses.csv`.
+  own `models/<name>/predictions.csv` and `losses.csv` there.
 - `output.predictions` selects `none` (the default), non-augmented `parents`,
   or `all` evaluated processes. `none` skips dense prediction solves. When a
   rerun selects no processes, stale prediction CSVs are removed.
 - Outputs are written by `export_predictions_csv` in
   [`postprocessing.py`](../bp_train/postprocessing.py). Set `output.plots` to
-  `true` to also write `<output-dir>/plots/<process>.png` for every exported
-  process. Plotting requires `output.predictions` to be `parents` or `all` and
-  is best-effort: rendering failures are logged without failing forward.
+  `true` to also write
+  `<output-dir>/forward-results/plots/<process>.png` for every exported process.
+  Plotting requires `output.predictions` to be `parents` or `all` and is
+  best-effort: rendering failures are logged without failing forward.
 
 ### Programmatic forward
 
@@ -270,7 +272,7 @@ import matplotlib.pyplot as plt
 
 column = "c_biomass"
 series = defaultdict(list)
-with open("output/forward/predictions.csv", newline="") as file:
+with open("output/forward/forward-results/predictions.csv", newline="") as file:
     for row in csv.DictReader(file):
         series[row["process"]].append((float(row["t"]), float(row[column])))
 
