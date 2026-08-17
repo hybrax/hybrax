@@ -154,8 +154,27 @@ Discriminated by `"type"`:
 }
 ```
 
-`Outflow` is the same minus `feed_medium`. A payload with no `"type"`
-key is rejected as an old schema.
+An `Outflow` omits `feed_medium` and includes `retention`:
+
+```json
+"perfusion": {
+  "type": "Outflow",
+  "name": "perfusion", "unit": "L",
+  "is_controlled": true, "is_continuous": true,
+  "values": {"times": "...", "values": "..."},
+  "retention": {"biomass": 0.95, "product": 0.25}
+}
+```
+
+`retention` is a JSON object mapping reactor-component names to retained
+fractions in `[0, 1]`. Every key must name a component declared in the process's
+reactor medium. An empty object means zero retention for every component and is
+the default; omitted component names also mean zero. A non-empty mapping is valid
+only when `is_continuous` is `true`. The writer always emits the
+object, including `{}`; the loader defaults an absent `retention` key to `{}`
+but rejects a present non-object value.
+
+A payload with no `"type"` key is rejected as an old schema.
 
 ### `bounds` payloads
 

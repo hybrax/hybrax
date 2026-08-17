@@ -202,8 +202,20 @@ class Inflow(VolumeChange):
 
 @dataclass
 class Outflow(VolumeChange):
-    pass                         # values <= 0
+    retention: Dict[str, float] = field(default_factory=dict)
 ```
+
+`Outflow.values` must be non-positive. `Outflow.retention` maps
+reactor-component names to the fraction retained in the reactor instead of
+leaving through that outflow. Values are in the inclusive range `[0, 1]`: `0`
+means the component leaves at the bulk reactor concentration, while `1` means
+it is fully retained. The mapping defaults to `{}`, and omitted component names
+also mean zero retention. Every key must name a component declared in the
+process's reactor medium.
+
+Retention is supported only for continuous outflows. A discrete outflow, such as
+a sample, must use the default empty mapping because it removes well-mixed broth
+at the reactor concentrations.
 
 How `values` is read depends on `is_continuous`:
 
