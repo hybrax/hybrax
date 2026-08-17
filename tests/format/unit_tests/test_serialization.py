@@ -622,17 +622,13 @@ def test_save_load_roundtrip_outflow_retention():
         unit="L",
         is_controlled=True,
         is_continuous=True,
-        values=TimeSeries(
-            times=jnp.array([0.0, 1.0]), values=jnp.array([-0.1, -0.2])
-        ),
+        values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([-0.1, -0.2])),
         retention={"biomass": 0.95},
     )
     process = BioProcess(
         metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
         time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-        volume=Volume(
-            initial_volume=1.0, unit="L", volume_changes={"sample": outflow}
-        ),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"sample": outflow}),
         reactor_medium=rm,
     )
     collection = BioProcessCollection(processes={"p": process})
@@ -663,6 +659,26 @@ def test_load_old_outflow_json_without_retention_key_defaults_empty():
     del outflow["retention"]  # simulate a pre-existing on-disk file
     reconstructed = serialization._dict_to_volume_change(outflow)
     assert reconstructed.retention == {}
+
+
+@pytest.mark.parametrize(
+    "retention",
+    [None, False, 0, [], ""],
+    ids=["null", "false", "zero", "array", "string"],
+)
+def test_load_outflow_rejects_non_object_retention(retention):
+    outflow = {
+        "type": "Outflow",
+        "name": "sample",
+        "unit": "L",
+        "is_controlled": True,
+        "is_continuous": True,
+        "values": None,
+        "retention": retention,
+    }
+
+    with pytest.raises(ValueError, match="Outflow 'retention' must be an object"):
+        serialization._dict_to_volume_change(outflow)
 
 
 # ---------------------------------------------------------------------------

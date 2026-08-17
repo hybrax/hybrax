@@ -744,10 +744,10 @@ def _dict_to_volume_change(vc_data: Dict):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
         return Inflow(**common, feed_medium=feed_medium)
     elif vc_type == "Outflow":
-        return Outflow(
-            **common,
-            retention=dict(vc_data.get("retention") or {}),
-        )
+        retention = vc_data.get("retention", {})
+        if not isinstance(retention, dict):
+            raise ValueError("Outflow 'retention' must be an object")
+        return Outflow(**common, retention=dict(retention))
     else:
         raise ValueError(f"Unknown volume change type: {vc_type}")
 
