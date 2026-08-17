@@ -234,6 +234,15 @@ class ModelRef(ConfigBase):
 class ForwardOutputConfig(ConfigBase):
     dir: Path | None = None  # None -> <first model>/forward
     predictions: PredictionScope = "none"
+    plots: bool = False
+
+    @model_validator(mode="after")
+    def _plots_require_predictions(self):
+        if self.plots and self.predictions == "none":
+            raise ValueError(
+                "output.plots requires output.predictions to be parents or all"
+            )
+        return self
 
 
 class ForwardRunConfig(ConfigBase):

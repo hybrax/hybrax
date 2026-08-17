@@ -23,10 +23,10 @@ prepare dir (prepared.json, prepare_config.json, prepare_diagnostics/)
    │  bp-train train     (fit reaction + loss modules → run directory)
    ▼
 run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
-   │  bp-train forward   (re-simulate, optionally export predictions)
+   │  bp-train forward   (re-simulate, optionally export predictions and plots)
    │  bp-train loo       (leave-one-process-out cross-validation)
    ▼
-optional predictions.csv / loss curves / losses.csv / loo summary
+optional predictions.csv / prediction plots / loss curves / losses.csv / loo summary
 ```
 
 All subcommands are config-driven (`--config run.json`), with documented CLI
@@ -65,7 +65,8 @@ update.
 ### `bp-train forward`
 
 Load one or more trained models and run one forward ODE pass per selected
-process (no training); exports configured predictions and prints a loss table.
+process (no training); exports configured predictions and plots and prints a loss
+table.
 
 **Fully config-driven** — everything that used to be a flag (`--model`,
 `--input`, `--process`, `--loss-csv`, `--timeseries-csv`) now lives in the
@@ -94,7 +95,8 @@ The `forward-config.json`:
   },
 
   // Optional. predictions defaults to "none"; also accepts "parents" or "all".
-  "output": { "dir": null, "predictions": "none" }
+  // plots defaults to false and requires predictions to be "parents" or "all".
+  "output": { "dir": null, "predictions": "none", "plots": false }
 }
 ```
 
@@ -106,6 +108,7 @@ Outputs under `--output-dir`:
 ```
 predictions.csv          # selected-process mean; omitted for "none"
 predictions_std.csv      # ensemble std; omitted for "none" or one model
+plots/<process>.png      # optional aggregate prediction figures
 losses.csv               # loss table of the first model
 models/<name>/           # per model: losses.csv + optional predictions.csv
 ```

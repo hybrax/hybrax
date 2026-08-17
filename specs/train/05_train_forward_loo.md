@@ -113,7 +113,10 @@ ensemble) plus optional `data` and `output` blocks.
   or `all` evaluated processes. `none` skips dense prediction solves. When a
   rerun selects no processes, stale prediction CSVs are removed.
 - Outputs are written by `export_predictions_csv` in
-  [`postprocessing.py`](../bp_train/postprocessing.py); forward creates no plots.
+  [`postprocessing.py`](../bp_train/postprocessing.py). Set `output.plots` to
+  `true` to also write `<output-dir>/plots/<process>.png` for every exported
+  process. Plotting requires `output.predictions` to be `parents` or `all` and
+  is best-effort: rendering failures are logged without failing forward.
 
 ### Programmatic forward
 
@@ -216,7 +219,11 @@ checkpoint directory and explicitly select `parents` or `all`:
 ```json
 {
   "models": ["output/checkpoints/latest"],
-  "output": {"dir": "output/forward", "predictions": "parents"}
+  "output": {
+    "dir": "output/forward",
+    "predictions": "parents",
+    "plots": true
+  }
 }
 ```
 
@@ -247,8 +254,13 @@ process. Use `"all"` instead of `"parents"` when augmented processes are also
 wanted. This recreates fold-specific predictions without treating the fold
 models as an ensemble.
 
-`forward` does not create plots. Plot the exported columns directly; for example,
-this writes one plot for a selected variable across all exported processes:
+With `output.plots` enabled, forward plots measured values and dense predictions
+for every modeled reactor-medium component and process variable, plus every
+inferred rate and `V_real`. Raw feed, bolus, and sampling events are separate
+from cumulative modeled-feed trajectories. Figures include R², named and total
+losses, and ensemble standard-deviation bands when available. For custom
+figures, plot the exported columns directly; for example, this writes one plot
+for a selected variable across all exported processes:
 
 ```python
 import csv

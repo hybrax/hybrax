@@ -23,6 +23,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.figure import Figure
 from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -36,10 +37,12 @@ from bp_format.dataclasses import (
 )
 
 from bp_train import cli, postprocessing
+import bp_train.forward_plotting as forward_plotting
 import bp_train.harness as harness_module
 from bp_train.controls_store import ControlsStore
 from bp_train.harness import ForwardConfig, ForwardResult
 from bp_train.defaults import DefaultLossModule
+from bp_train.forward_plotting import plot_forward_predictions
 from bp_train.harness import compute_dense_exports, evaluate_trained_wrapper
 from bp_train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
 from bp_train.training_data import TrainingDataStore
@@ -569,6 +572,7 @@ def _write_forward_config(
     output_dir=None,
     prepared=None,
     predictions="parents",
+    plots=False,
     name="forward-config.json",
 ) -> Path:
     """Write a forward_config.json for the `--config`-only forward CLI."""
@@ -580,7 +584,7 @@ def _write_forward_config(
         data["processes"] = list(processes)
     if data:
         cfg["data"] = data
-    output: dict = {"predictions": predictions}
+    output: dict = {"predictions": predictions, "plots": plots}
     if output_dir is not None:
         output["dir"] = str(output_dir)
     cfg["output"] = output
@@ -629,6 +633,9 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     output_dir = tmp_path / "fwd"
     output_dir.mkdir()
     (output_dir / "predictions_std.csv").write_text("stale", encoding="utf-8")
+    plot_dir = output_dir / "plots"
+    plot_dir.mkdir()
+    (plot_dir / "stale.png").write_bytes(b"stale")
     fwd_config = _write_forward_config(tmp_path, [run_dir], processes=("p1", "p2"))
     exit_code = cli.main(
         ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
@@ -648,12 +655,190 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert captured["prediction_process_names"] == ("p1", "p2")
     assert captured["model_path"] == run_dir / "model" / "params.eqx"
     assert not (output_dir / "predictions_std.csv").exists()
+    assert not plot_dir.exists()
 
     losses_csv = output_dir / "losses.csv"
     assert losses_csv.exists()
     rows = pd.read_csv(losses_csv)
     assert rows.columns.tolist() == ["process", "total", "X", "S", "split"]
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
+
+
+def test_forward_cli_plots_selected_predictions(monkeypatch, tmp_path: Path):
+    run_dir = _make_forward_run_dir(tmp_path)
+    collection = _make_fake_collection()
+    dense_exports = {"p1": object(), "p2": object()}
+    result = _stub_forward_result(dense_exports=dense_exports)
+    monkeypatch.setattr(cli, "load_process_collection", lambda _path: collection)
+    monkeypatch.setattr(
+        cli, "forward_from_collection", lambda *_args, **_kwargs: result
+    )
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *_args, **_kwargs: None)
+
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "plot_forward_predictions",
+        lambda *args: calls.append(args),
+    )
+    output_dir = tmp_path / "forward"
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        plots=True,
+    )
+
+    assert cli.main(["forward", "--config", str(config)]) == 0
+    assert calls == [
+        (
+            collection,
+            result.trained_wrapper,
+            dense_exports,
+            None,
+            {
+                "p1": (0.1, {"X": 0.05, "S": 0.15}),
+                "p2": (0.2, {"X": 0.1, "S": 0.3}),
+            },
+            output_dir,
+        )
+    ]
+
+
+def test_forward_plot_losses_keep_named_total_separate():
+    result = _stub_forward_result(
+        target_names=("total",),
+        per_process_per_target_loss={"p1": (0.05,), "p2": (0.1,)},
+    )
+
+    assert cli._aggregate_forward_plot_losses([result]) == {
+        "p1": (0.1, {"total": 0.05}),
+        "p2": (0.2, {"total": 0.1}),
+    }
+
+
+def test_forward_plot_losses_align_ensemble_members_by_name():
+    first = _stub_forward_result(
+        process_names=("p1",),
+        target_names=("X", "S"),
+        per_process_total_loss={"p1": 3.0},
+        per_process_per_target_loss={"p1": (1.0, 5.0)},
+    )
+    second = _stub_forward_result(
+        process_names=("p1",),
+        target_names=("S", "X"),
+        per_process_total_loss={"p1": 3.0},
+        per_process_per_target_loss={"p1": (5.0, 1.0)},
+    )
+
+    assert cli._aggregate_forward_plot_losses([first, second]) == {
+        "p1": (3.0, {"X": 1.0, "S": 5.0})
+    }
+
+
+def test_forward_plot_cleanup_failure_is_nonfatal(monkeypatch, tmp_path: Path):
+    run_dir = _make_forward_run_dir(tmp_path)
+    monkeypatch.setattr(
+        cli, "load_process_collection", lambda _path: _make_fake_collection()
+    )
+    monkeypatch.setattr(
+        cli,
+        "forward_from_collection",
+        lambda *_args, **_kwargs: _stub_forward_result(
+            dense_exports={"p1": object(), "p2": object()}
+        ),
+    )
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        cli,
+        "clear_forward_prediction_plots",
+        lambda *_args: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    output_dir = tmp_path / "forward"
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        plots=False,
+    )
+
+    assert cli.main(["forward", "--config", str(config)]) == 0
+    assert (output_dir / "losses.csv").is_file()
+
+
+def test_forward_clears_plots_when_scope_selects_no_process(
+    monkeypatch, tmp_path: Path
+):
+    run_dir = _make_forward_run_dir(tmp_path)
+    collection = SimpleNamespace(
+        processes={
+            "p1": SimpleNamespace(parent_process="parent"),
+            "p2": SimpleNamespace(parent_process="parent"),
+        }
+    )
+    monkeypatch.setattr(cli, "load_process_collection", lambda _path: collection)
+    monkeypatch.setattr(
+        cli,
+        "forward_from_collection",
+        lambda *_args, **_kwargs: _stub_forward_result(dense_exports={}),
+    )
+    monkeypatch.setattr(
+        cli,
+        "export_predictions_csv",
+        lambda *_args, **_kwargs: pytest.fail("empty scope exported predictions"),
+    )
+    cleared = []
+    monkeypatch.setattr(
+        cli,
+        "clear_forward_prediction_plots",
+        lambda output_dir: cleared.append(output_dir),
+    )
+    monkeypatch.setattr(
+        cli,
+        "plot_forward_predictions",
+        lambda *_args: pytest.fail("empty scope rendered plots"),
+    )
+    output_dir = tmp_path / "forward"
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        predictions="parents",
+        plots=True,
+    )
+
+    assert cli.main(["forward", "--config", str(config)]) == 0
+    assert cleared == [output_dir]
+
+
+def test_forward_cli_plot_failure_is_nonfatal(monkeypatch, tmp_path: Path):
+    run_dir = _make_forward_run_dir(tmp_path)
+    monkeypatch.setattr(
+        cli, "load_process_collection", lambda _path: _make_fake_collection()
+    )
+    monkeypatch.setattr(
+        cli,
+        "forward_from_collection",
+        lambda *_args, **_kwargs: _stub_forward_result(
+            dense_exports={"p1": object(), "p2": object()}
+        ),
+    )
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        cli,
+        "plot_forward_predictions",
+        lambda *_args: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    output_dir = tmp_path / "forward"
+    config = _write_forward_config(
+        tmp_path,
+        [run_dir],
+        output_dir=output_dir,
+        plots=True,
+    )
+
+    assert cli.main(["forward", "--config", str(config)]) == 0
+    assert (output_dir / "losses.csv").is_file()
 
 
 @pytest.mark.parametrize(
@@ -1003,6 +1188,339 @@ def _single_dense_export(store, wrapper, *, prediction_grid_n):
     return dense_exports["p1"]
 
 
+def test_plot_forward_predictions_writes_process_png(tmp_path: Path):
+    collection, store, wrapper = _build_single_process_runtime(q_scaled=0.5)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=7)
+
+    plot_forward_predictions(
+        collection,
+        wrapper,
+        {"p1": export},
+        None,
+        {"p1": (0.1, {"biomass": 0.1})},
+        tmp_path,
+    )
+
+    path = tmp_path / "plots" / "p1.png"
+    assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_plot_forward_predictions_plots_every_rate(monkeypatch, tmp_path: Path):
+    collection, store, wrapper = _build_single_process_runtime(q_scaled=0.5)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=7)
+    rate_values = np.column_stack(
+        [np.full(export.t.shape, value) for value in (1.0, 2.0, 3.0)]
+    )
+    export = postprocessing.DenseProcessExport(
+        t=export.t,
+        c_species=export.c_species,
+        v_real=export.v_real,
+        b_modeled_cum=export.b_modeled_cum,
+        q_rates=rate_values,
+    )
+    plot_wrapper = SimpleNamespace(
+        modeled_RMC_names=wrapper.modeled_RMC_names,
+        modeled_PV_names=wrapper.modeled_PV_names,
+        modeled_FVC_names=wrapper.modeled_FVC_names,
+        rhs_ode=SimpleNamespace(name_modeled_rates=("r1", "r2", "r3")),
+    )
+    plotted = []
+    original = forward_plotting._plot_prediction
+
+    def record_prediction(axis, t, mean, std, measured, **kwargs):
+        plotted.append(np.asarray(mean))
+        return original(axis, t, mean, std, measured, **kwargs)
+
+    monkeypatch.setattr(forward_plotting, "_plot_prediction", record_prediction)
+
+    plot_forward_predictions(
+        collection,
+        plot_wrapper,
+        {"p1": export},
+        None,
+        {"p1": (float("nan"), {})},
+        tmp_path,
+    )
+
+    assert len(plotted) == 4  # one modeled state plus three independent rates
+    for index, value in enumerate((1.0, 2.0, 3.0), start=1):
+        assert np.all(plotted[index] == value)
+
+
+@pytest.mark.parametrize("measured_y", [np.array([1.0]), np.array([1.0, 1.0])])
+def test_fit_title_marks_undefined_r_squared(measured_y):
+    axis = SimpleNamespace(
+        plot=lambda *_args, **_kwargs: None,
+        scatter=lambda *_args, **_kwargs: None,
+        legend=lambda *_args, **_kwargs: None,
+    )
+    measured_t = np.arange(len(measured_y), dtype=float)
+
+    r_squared = forward_plotting._plot_prediction(
+        axis,
+        np.array([0.0, 1.0]),
+        np.array([1.0, 1.0]),
+        None,
+        (measured_t, measured_y),
+    )
+
+    assert np.isnan(r_squared)
+    title = forward_plotting._fit_title("biomass", loss=0.1, r_squared=r_squared)
+    assert "R²=undefined" in title
+    assert "loss[biomass]=0.1" in title
+
+
+def test_plot_prediction_keeps_measured_points():
+    figure = Figure()
+    axis = figure.subplots()
+
+    forward_plotting._plot_prediction(
+        axis,
+        np.array([0.0, 1.0]),
+        np.array([1.0, 2.0]),
+        None,
+        (np.array([0.0, 1.0]), np.array([1.1, 1.9])),
+    )
+
+    assert len(axis.collections) == 1
+
+
+def test_continuous_volume_change_is_relative_to_process_start():
+    change = SimpleNamespace(
+        is_continuous=True,
+        values=SimpleNamespace(
+            breaks=None,
+            times=np.array([0.0, 10.0]),
+            values=np.array([100.0, 102.0]),
+        ),
+    )
+
+    cumulative = forward_plotting._volume_change_cumulative(
+        change, np.array([5.0, 10.0]), process_start=5.0
+    )
+
+    np.testing.assert_allclose(cumulative, [0.0, 1.0])
+
+
+def test_plot_volume_changes_samples_nonlinear_spline_on_dense_grid():
+    t = np.linspace(0.0, 2.0, 5)
+    change = SimpleNamespace(
+        is_continuous=True,
+        values=SimpleNamespace(
+            breaks=np.array([0.0, 1.0, 2.0]),
+            times=None,
+            values=None,
+            evaluate_many=lambda values: np.asarray(values) ** 2,
+        ),
+    )
+    process = SimpleNamespace(
+        time_axis=SimpleNamespace(start=0.0, end=2.0),
+        volume=SimpleNamespace(volume_changes={"feed": change}, unit="L"),
+    )
+    axis = Figure().subplots()
+
+    forward_plotting._plot_volume_changes(axis, process, t)
+
+    np.testing.assert_array_equal(axis.lines[0].get_xdata(), t)
+    np.testing.assert_allclose(axis.lines[0].get_ydata(), t**2)
+
+
+def test_plot_forward_predictions_removes_partial_png_on_failure(
+    monkeypatch, tmp_path: Path
+):
+    collection, store, wrapper = _build_single_process_runtime(q_scaled=0.5)
+    export = _single_dense_export(store, wrapper, prediction_grid_n=7)
+    plot_dir = tmp_path / "plots"
+    plot_dir.mkdir()
+    output_path = plot_dir / "p1.png"
+    output_path.write_bytes(b"stale")
+
+    def fail_savefig(_figure, path, **_kwargs):
+        Path(path).write_bytes(b"partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Figure, "savefig", fail_savefig)
+
+    plot_forward_predictions(
+        collection,
+        wrapper,
+        {"p1": export},
+        None,
+        {"p1": (0.1, {"biomass": 0.1})},
+        tmp_path,
+    )
+
+    assert not output_path.exists()
+    assert not (plot_dir / ".p1.png.tmp").exists()
+
+
+def test_plot_forward_predictions_restores_previous_plots_when_publish_fails(
+    monkeypatch, tmp_path: Path
+):
+    plot_dir = tmp_path / "plots"
+    plot_dir.mkdir()
+    old_plot = plot_dir / "old.png"
+    old_plot.write_bytes(b"old")
+
+    def fake_plot(_process_name, *_args):
+        Path(_args[-1]).write_bytes(b"new")
+
+    original_replace = Path.replace
+
+    def fail_publication(path, target):
+        target = Path(target)
+        if path.parent == tmp_path and path.name.startswith(".plots-"):
+            if target == plot_dir:
+                raise OSError("publication failed")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
+    monkeypatch.setattr(Path, "replace", fail_publication)
+    collection = SimpleNamespace(processes={"p1": object()})
+
+    with pytest.raises(OSError, match="publication failed"):
+        plot_forward_predictions(
+            collection,
+            object(),
+            {"p1": object()},
+            None,
+            {},
+            tmp_path,
+        )
+
+    assert old_plot.read_bytes() == b"old"
+    assert not any(path.name.startswith(".plots-") for path in tmp_path.iterdir())
+
+
+def test_plot_forward_predictions_restores_relative_symlink_when_publish_fails(
+    monkeypatch, tmp_path: Path
+):
+    real_plot_dir = tmp_path / "real-plots"
+    real_plot_dir.mkdir()
+    old_plot = real_plot_dir / "old.png"
+    old_plot.write_bytes(b"old")
+    plot_dir = tmp_path / "plots"
+    plot_dir.symlink_to("real-plots", target_is_directory=True)
+
+    def fake_plot(_process_name, *_args):
+        Path(_args[-1]).write_bytes(b"new")
+
+    original_replace = Path.replace
+
+    def fail_publication(path, target):
+        target = Path(target)
+        if path.parent == tmp_path and path.name.startswith(".plots-"):
+            if target == plot_dir:
+                raise OSError("publication failed")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
+    monkeypatch.setattr(Path, "replace", fail_publication)
+    collection = SimpleNamespace(processes={"p1": object()})
+
+    with pytest.raises(OSError, match="publication failed"):
+        plot_forward_predictions(
+            collection,
+            object(),
+            {"p1": object()},
+            None,
+            {},
+            tmp_path,
+        )
+
+    assert plot_dir.is_symlink()
+    assert old_plot.read_bytes() == b"old"
+    assert not any(path.name.startswith(".plots-") for path in tmp_path.iterdir())
+
+
+def test_plot_forward_predictions_keeps_backup_when_restore_fails(
+    monkeypatch, tmp_path: Path
+):
+    plot_dir = tmp_path / "plots"
+    plot_dir.mkdir()
+    (plot_dir / "old.png").write_bytes(b"old")
+
+    def fake_plot(_process_name, *_args):
+        Path(_args[-1]).write_bytes(b"new")
+
+    original_replace = Path.replace
+
+    def fail_publication_and_restore(path, target):
+        target = Path(target)
+        if path.parent == tmp_path and path.name.startswith(".plots-"):
+            raise OSError("publication failed")
+        if path.name == "plots" and path.parent.name.startswith(".plots-old-"):
+            raise OSError("restoration failed")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
+    monkeypatch.setattr(Path, "replace", fail_publication_and_restore)
+    collection = SimpleNamespace(processes={"p1": object()})
+
+    with pytest.raises(OSError, match="restoration failed"):
+        plot_forward_predictions(
+            collection,
+            object(),
+            {"p1": object()},
+            None,
+            {},
+            tmp_path,
+        )
+
+    backups = list(tmp_path.glob(".plots-old-*/plots/old.png"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == b"old"
+
+
+def test_plot_forward_predictions_continues_after_process_failure(
+    monkeypatch, tmp_path: Path
+):
+    calls = []
+
+    def fake_plot(process_name, *_args):
+        calls.append(process_name)
+        if process_name == "p1":
+            raise OSError("disk full")
+
+    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
+    collection = SimpleNamespace(processes={"p1": object(), "p2": object()})
+
+    plot_forward_predictions(
+        collection,
+        object(),
+        {"p1": object(), "p2": object()},
+        None,
+        {},
+        tmp_path,
+    )
+
+    assert calls == ["p1", "p2"]
+
+
+@pytest.mark.parametrize("unsafe_name", ["../escaped", "/tmp/escaped"])
+def test_plot_forward_predictions_rejects_unsafe_process_filename(
+    monkeypatch, tmp_path: Path, unsafe_name: str
+):
+    calls = []
+
+    def fake_plot(process_name, *_args):
+        calls.append(process_name)
+
+    monkeypatch.setattr(forward_plotting, "_plot_process", fake_plot)
+    collection = SimpleNamespace(processes={unsafe_name: object(), "safe": object()})
+
+    plot_forward_predictions(
+        collection,
+        object(),
+        {unsafe_name: object(), "safe": object()},
+        None,
+        {},
+        tmp_path,
+    )
+
+    assert calls == ["safe"]
+
+
 def test_affine_state_offset_keeps_zero_rhs_stationary_through_forward():
     # Test 2 solver path + end-to-end forward: q=0 means dRAW/dt=0. A wrong
     # value-scale on the derivative would subtract offset/scale and drift the
@@ -1148,6 +1666,23 @@ def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
             auxiliary={"latent_pair": np.asarray([[1.0, 2.0], [1.0, 2.0]])},
         ),
     }
+
+
+def test_aggregate_dense_exports_rejects_mismatched_time_grids():
+    def export(t):
+        rows = len(t)
+        return postprocessing.DenseProcessExport(
+            t=np.asarray(t, dtype=float),
+            c_species=np.zeros((rows, 1)),
+            v_real=np.zeros(rows),
+            b_modeled_cum=np.zeros((rows, 0)),
+            q_rates=np.zeros((rows, 1)),
+        )
+
+    with pytest.raises(ValueError, match="different time grids for process 'p1'"):
+        postprocessing.aggregate_dense_exports(
+            [{"p1": export([0.0, 1.0])}, {"p1": export([0.0, 1.5])}]
+        )
 
 
 def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(tmp_path: Path):

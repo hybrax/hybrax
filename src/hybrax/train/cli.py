@@ -13,6 +13,10 @@ from bp_format.json_io import load_json
 from bp_format.serialization import load_process_collection
 import pandas as pd
 
+from .forward_plotting import (
+    clear_forward_prediction_plots,
+    plot_forward_predictions,
+)
 from .harness import (
     ForwardConfig,
     ForwardResult,
@@ -716,10 +720,16 @@ def _handle_forward(args: argparse.Namespace) -> int:
             ),
         )
     output_dir.mkdir(parents=True, exist_ok=True)
+    if not fcfg.output.plots:
+        try:
+            clear_forward_prediction_plots(output_dir)
+        except Exception:
+            log.exception("failed to clear old forward prediction plots")
 
     # --- Forward each model on its data ---
     per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
     prediction_processes: tuple[str, ...] = ()
+    plot_collection = None
     for ref, name in zip(models, names):
         _run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)
         prepared = shared_prepared if shared_prepared is not None else own_prepared
@@ -738,6 +748,8 @@ def _handle_forward(args: argparse.Namespace) -> int:
         else:
             custom_py = None
         collection = load_process_collection(resolve_prepared_path(Path(prepared)))
+        if plot_collection is None:
+            plot_collection = collection
         eval_processes = (
             tuple(config_processes)
             if config_processes
@@ -833,9 +845,29 @@ def _handle_forward(args: argparse.Namespace) -> int:
             )
         else:
             predictions_std_path.unlink(missing_ok=True)
+
+        if fcfg.output.plots:
+            try:
+                plot_forward_predictions(
+                    plot_collection,
+                    wrapper0,
+                    mean_exports,
+                    std_exports,
+                    _aggregate_forward_plot_losses(
+                        [result for _name, result in per_model]
+                    ),
+                    output_dir,
+                )
+            except Exception:
+                log.exception("failed to create forward prediction plots")
     else:
         (output_dir / "predictions.csv").unlink(missing_ok=True)
         (output_dir / "predictions_std.csv").unlink(missing_ok=True)
+        if fcfg.output.plots:
+            try:
+                clear_forward_prediction_plots(output_dir)
+            except Exception:
+                log.exception("failed to clear old forward prediction plots")
 
     # --- Loss table (representative = first model; per-model in models/<name>/) ---
     table_str, csv_rows = _format_loss_table(per_model[0][1])
@@ -843,6 +875,44 @@ def _handle_forward(args: argparse.Namespace) -> int:
     _write_loss_csv(csv_rows, output_dir / "losses.csv")
 
     return 0
+
+
+def _aggregate_forward_plot_losses(
+    results: list[ForwardResult],
+) -> dict[str, tuple[float, dict[str, float]]]:
+    """Average named and total losses across ensemble members by process."""
+    loss_names = results[0].target_names
+    losses_by_result = [
+        {
+            process_name: dict(
+                zip(
+                    result.target_names,
+                    result.per_process_per_target_loss[process_name],
+                    strict=True,
+                )
+            )
+            for process_name in result.process_names
+        }
+        for result in results
+    ]
+    if any(set(result.target_names) != set(loss_names) for result in results[1:]):
+        raise ValueError("ensemble members have different named losses")
+
+    losses: dict[str, tuple[float, dict[str, float]]] = {}
+    for process_name in results[0].process_names:
+        total_loss = sum(
+            result.per_process_total_loss[process_name] for result in results
+        ) / len(results)
+        named_losses = {
+            loss_name: sum(
+                result_losses[process_name][loss_name]
+                for result_losses in losses_by_result
+            )
+            / len(results)
+            for loss_name in loss_names
+        }
+        losses[process_name] = total_loss, named_losses
+    return losses
 
 
 def _handle_loo(args: argparse.Namespace) -> int:

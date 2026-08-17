@@ -379,7 +379,23 @@ def test_removed_training_cadence_fields_are_rejected(section):
 
 def test_prediction_exports_default_to_none():
     assert RunConfig().output.predictions == "none"
-    assert ForwardRunConfig(models=("model",)).output.predictions == "none"
+    forward_output = ForwardRunConfig(models=("model",)).output
+    assert forward_output.predictions == "none"
+    assert not forward_output.plots
+
+
+def test_forward_plots_require_prediction_exports():
+    with pytest.raises(
+        ValidationError,
+        match="output.plots requires output.predictions to be parents or all",
+    ):
+        ForwardRunConfig(models=("model",), output={"plots": True})
+
+    config = ForwardRunConfig(
+        models=("model",),
+        output={"predictions": "parents", "plots": True},
+    )
+    assert config.output.plots
 
 
 def test_checkpoint_every_defaults_to_auto_and_accepts_explicit_cadence():

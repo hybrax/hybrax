@@ -42,8 +42,8 @@ def aggregate_dense_exports(
 ) -> tuple[dict[str, DenseProcessExport], dict[str, DenseProcessExport]]:
     """Stack per-model dense exports into per-process (mean, std) exports.
 
-    All models must share the same processes and dense ``t`` grid (guaranteed
-    when every model forwards the same prepared data); mismatched shapes raise.
+    All models must share the same processes and dense ``t`` grid. Mismatched
+    time grids are rejected before any values are combined.
     """
     if not per_model:
         raise ValueError("aggregate_dense_exports: empty model list")
@@ -52,6 +52,11 @@ def aggregate_dense_exports(
     std_out: dict[str, DenseProcessExport] = {}
     for proc in processes:
         exports = [m[proc] for m in per_model]
+        t = exports[0].t
+        if any(not np.array_equal(export.t, t) for export in exports[1:]):
+            raise ValueError(
+                f"ensemble members have different time grids for process {proc!r}"
+            )
 
         def _mean_std(attr: str) -> tuple[np.ndarray, np.ndarray]:
             stacked = np.stack([getattr(e, attr) for e in exports], axis=0)
@@ -68,7 +73,6 @@ def aggregate_dense_exports(
         aux_s = {
             k: np.stack([e.auxiliary[k] for e in exports]).std(0) for k in aux_keys
         } or None
-        t = exports[0].t
         mean_out[proc] = DenseProcessExport(t, c_m, v_m, b_m, q_m, aux_m)
         std_out[proc] = DenseProcessExport(t, c_s, v_s, b_s, q_s, aux_s)
     return mean_out, std_out
