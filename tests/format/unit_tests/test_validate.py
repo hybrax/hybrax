@@ -179,6 +179,12 @@ class TestValidateTimeSeriesShape:
         assert ok is False
         assert "must not be empty" in msg
 
+    def test_empty_timeseries_can_be_allowed(self):
+        ok, msg = validate_timeseries_shape(_ts([], []), allow_empty=True)
+
+        assert ok is True
+        assert "OK" in msg
+
     def test_unordered_timepoints(self):
         ts = SimpleNamespace(
             times=jnp.array([0.0, 2.0, 1.0]),
@@ -851,6 +857,33 @@ class TestValidateProcess:
             for message in messages
         )
 
+    @pytest.mark.parametrize(
+        ("is_continuous", "expect_empty_error"),
+        [(False, False), (True, True)],
+    )
+    def test_only_empty_discrete_volume_changes_are_valid(
+        self,
+        is_continuous,
+        expect_empty_error,
+    ):
+        process = _make_process(
+            volume_changes={
+                "sampling": Outflow(
+                    name="sampling",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=is_continuous,
+                    values=_ts([], []),
+                )
+            }
+        )
+
+        _, messages = validate_process(process)
+
+        assert any("must not be empty" in message for message in messages) is (
+            expect_empty_error
+        )
+
     def test_timestamp_outside_bounds_fails_process(self):
         process = _make_process(
             reactor_components={
@@ -1124,8 +1157,8 @@ class TestValidateForPublication:
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
-    def test_inconsistent_volume_change_names(self):
-        """Processes with different volume change names should fail consistency."""
+    def test_different_volume_change_names_pass(self):
+        """Processes may use different feed or sampling strategies."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         vc = Inflow(
             name="feed",
@@ -1139,8 +1172,10 @@ class TestValidateForPublication:
         p2 = _make_biomass_process(ts)  # no volume changes
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
-        assert all_valid is False
-        assert any("volume change" in e for e in report["__consistency__"])
+        assert all_valid is True
+        assert report["__consistency__"] == [
+            "Cross-process structure is consistent — OK"
+        ]
 
     def test_wrong_type_raises_type_error(self):
         with pytest.raises(TypeError, match="BioProcessCollection"):
@@ -1188,8 +1223,8 @@ class TestValidateForPublication:
         assert all_valid is False
         assert any("process variables" in e for e in report["__consistency__"])
 
-    def test_inconsistent_volume_change_units(self):
-        """Same volume change name but different units should fail consistency."""
+    def test_volume_change_units_are_checked_per_process(self):
+        """Cross-process consistency does not compare volume-change units."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         vc1 = Inflow(
             name="feed",
@@ -1212,7 +1247,13 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("volume change" in e for e in report["__consistency__"])
+        assert report["__consistency__"] == [
+            "Cross-process structure is consistent — OK"
+        ]
+        assert any(
+            "Volume changes must use volume unit" in message
+            for message in report["run2"]
+        )
 
 
 class TestValidateCrossProcessConsistency:

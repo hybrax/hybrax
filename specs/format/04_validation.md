@@ -13,7 +13,7 @@ aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
 — see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
 
-All 18 validators are exported from the package root: `bp.validate_process(...)`.
+All 19 validators are exported from the package root: `bp.validate_process(...)`.
 
 Mapping keys are canonical identifiers. Embedded object names may instead be
 human-facing or source labels, so validation does not require keys and names to
@@ -29,12 +29,16 @@ Bounds comparisons allow a relative tolerance of `1e-7` to accommodate legacy
 float32 timestamps widened during deserialization. Optional event labels must
 have the same length as the timestamps.
 
-### `validate_timeseries_shape(ts, name="")`
+### `validate_timeseries_shape(ts, name="", *, allow_empty=False)`
 
 `times` and `values` are both 1-D, the same length, and `times` is strictly
-increasing (no duplicates). Fails if the series has no discrete samples at all.
-`validate_process` applies this to reactor-medium concentrations, process
-variables, volume changes, and measured total volume.
+increasing (no duplicates). Empty matching arrays are valid only when
+`allow_empty=True`.
+
+`validate_process` requires nonempty reactor-medium concentrations, process
+variables, continuous volume changes, and measured total volume. Empty discrete
+volume-change series are valid and mean that no events of that type occur in the
+process.
 
 ### `validate_time_axis(process)`
 
@@ -68,16 +72,21 @@ Units are not parsed or converted, and no dimensional analysis is performed.
 
 ### `validate_volume_change_states(process)`
 
-For every volume change that adds volume, checks that its `feed_medium` defines
-a concentration for **every dynamic species** in the reactor medium (any
-component whose concentration is a `TimeSeries`) and uses the same unit string.
-Units are compared exactly; they are not parsed or converted, and no dimensional
-analysis is performed. Feed concentrations may be static even when the reactor
-concentration is dynamic.
+For every volume change that adds volume, checks that its `feed_medium` is
+present and that each explicitly declared feed component corresponding to a
+dynamic reactor-medium species uses the same unit string. Omitted reactor
+components mean zero concentration in the feed and are valid. Units are compared
+exactly; they are not parsed or converted, and no dimensional analysis is
+performed. Feed concentrations may be static even when the reactor concentration
+is dynamic.
 
-A missing entry is ambiguous — did the feed really contain none of that species,
-or was it just not recorded? The mass balance needs the answer, so state it
-explicitly with `StaticVariable(0.0)` when the species is genuinely absent.
+### `validate_outflow_retention(process)`
+
+For every `Outflow`, requires each `retention` key to name a reactor-medium
+component and each retention fraction to fall within the inclusive range
+`[0.0, 1.0]`. A nonempty retention mapping is valid only for continuous
+outflows; discrete outflows remove reactor medium through state jumps and do not
+apply retention factors.
 
 ### `validate_biomass_in_reactor_medium(process)`
 
@@ -163,10 +172,13 @@ structure against the first process:
 - same reactor components, each with the same value type and unit
 - same process variables, each with the same value type and unit
 - same volume unit
-- same volume-change names and units
 - same time-axis unit and time reference
 
-All units and the time reference are compared as exact strings. Units are not
+Volume-change names may differ because processes in one case study can use
+different feed and sampling strategies. Each process's volume-change units are
+checked against its own volume unit by `validate_volume_units`.
+
+All compared units and the time reference are exact strings. Units are not
 parsed or converted, and no dimensional analysis is performed. Time-axis start
 and end may differ.
 
@@ -210,11 +222,12 @@ Runs, in order:
 5. `validate_volume_units`
 6. `validate_volume_change_sign` on every volume change
 7. `validate_volume_change_states`
-8. `validate_biomass_in_reactor_medium`
-9. `validate_measurement_sampling_alignment`
-10. `validate_bounds`
-11. `validate_bounds_against_data`
-12. `validate_biological_ode`
+8. `validate_outflow_retention`
+9. `validate_biomass_in_reactor_medium`
+10. `validate_measurement_sampling_alignment`
+11. `validate_bounds`
+12. `validate_bounds_against_data`
+13. `validate_biological_ode`
 
 Returns one message per check — including the passing ones, so the output reads
 as a checklist. Raises `TypeError` if given something that is not a `BioProcess`.
@@ -278,7 +291,6 @@ print(f"net change: {delta:+.3f} {process.volume.unit}")
 | `Inflow contains negative values` | Sign convention flipped | Feeds are ≥ 0, samples ≤ 0 |
 | `does not contain a 'biomass' component` | Missing or renamed biomass | Rename it, or supply your own `biological_ode` |
 | `times length does not match values length` | Arrays misaligned during parsing | Rebuild the `TimeSeries` |
-| `missing feed components for state variable(s)` | Feed medium omits a reactor species | Add it, with the real concentration — `0.0` only if truly absent |
 | `measurement at t=… is … after sampling` | Offline timestamp nudged past the sample | Snap it onto the sampling time |
 | `derivatives missing entries for dynamic state(s)` | A state has no `d/dt` | Add an entry; `"0"` if there is no biology |
 | `references undeclared symbol(s)` | Typo, or a symbol that is not a state / control / algebraic / rate | Declare it or fix the name |

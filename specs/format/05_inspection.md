@@ -35,8 +35,8 @@ box, with sub-tables for:
 - **Rates** — name, lower bound, upper bound, in declaration order (this *is*
   `name_modeled_rates`, the layout of the rate vector you must supply)
 - **Derivatives** — per state: unit, the biological expression verbatim from
-  `biological_ode.derivatives`, and separately the `+ feed(...)` and
-  `− dilution(...)` terms bp-format adds on top
+  `biological_ode.derivatives`, and separately the `+ feed(...)`,
+  `− dilution(...)`, and `+ retention(...)` terms bp-format adds on top
 - **Volume** — additions from feeds, removals from samples
 
 Accepts a `BioProcess` or a `BioProcessCollection`. For a container it first
@@ -52,14 +52,14 @@ part of `dc/dt` you wrote and which part came from the volume machinery.
 
 ## Plotting
 
-### `plot_process(process, figsize_per_panel=(5, 3), save_path=None)`
+### `plot_process(process, figsize_per_panel=(5, 3), save_path=None, show=True)`
 
 One panel per variable — reactor components, process variables, total volume —
 with discrete samples as markers and any fitted spline drawn through them.
 
 Returns the matplotlib figure.
 
-### `plot_collection(collection, figsize_per_panel=(5, 3), save_path=None)`
+### `plot_collection(collection, figsize_per_panel=(5, 3), save_path=None, show=True)`
 
 A grid: one column per process, one row per variable. The fastest way to spot a
 run whose units, scale, or sampling schedule differ from the rest.
@@ -67,7 +67,9 @@ run whose units, scale, or sampling schedule differ from the rest.
 Returns the matplotlib figure.
 
 Both take `figsize_per_panel` as `(width, height)` in inches per panel, and
-write the figure to `save_path` if given.
+write the figure to `save_path` if given. With `show=True`, they return the
+matplotlib figure. With `show=False`, they save first when requested, close the
+figure immediately, and return `None`.
 
 ## Examples
 
@@ -125,7 +127,8 @@ Read it as: only `glucose` gets a `+ feed(...)` term because it is the only
 species with a non-zero concentration in the feed medium; every reactor species
 is diluted by the continuous feed; the discrete sampling events appear under
 Volume rather than Dilution because they are applied as state jumps, not as a
-continuous flow.
+continuous flow. For a continuous `Outflow` with component retention,
+`print_rhs_ode` also shows the corresponding `+ retention(...)` term separately.
 
 ## See also
 

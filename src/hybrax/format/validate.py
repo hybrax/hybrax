@@ -376,18 +376,22 @@ def _is_dynamic_series(value: object) -> bool:
     return times is not None and values is not None
 
 
-def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str]:
+def validate_timeseries_shape(
+    ts: TimeSeries, name: str = "", *, allow_empty: bool = False
+) -> Tuple[bool, str]:
     """
     Check that a TimeSeries has consistent shapes and ordered times.
 
     Verifies:
     - ``times`` and ``values`` are 1-D arrays.
     - Both arrays have the same length.
+    - ``times`` are nonempty unless ``allow_empty`` is true.
     - ``times`` are strictly monotonically increasing (no duplicates).
 
     Args:
         ts: TimeSeries object to validate.
         name: Optional label used in error messages (e.g. the variable name).
+        allow_empty: Whether matching empty arrays represent a valid event sequence.
 
     Returns:
         A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when all
@@ -411,7 +415,7 @@ def validate_timeseries_shape(ts: TimeSeries, name: str = "") -> Tuple[bool, str
         errors.append(f"values must be 1-D, got shape {vals.shape}")
 
     if tp.ndim == 1 and vals.ndim == 1:
-        if tp.shape[0] == 0:
+        if tp.shape[0] == 0 and not allow_empty:
             errors.append("times and values must not be empty")
         if tp.shape[0] != vals.shape[0]:
             errors.append(
@@ -809,7 +813,11 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[str]]:
     # Volume changes
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.values is not None:
-            ok, msg = validate_timeseries_shape(vc.values, name=vc_name)
+            ok, msg = validate_timeseries_shape(
+                vc.values,
+                name=vc_name,
+                allow_empty=not vc.is_continuous,
+            )
             messages.append(msg)
             all_valid = all_valid and ok
 
@@ -1047,8 +1055,10 @@ def validate_cross_process_consistency(
     - The same process-variable names, each with the same value type
       (``TimeSeries`` or ``StaticVariable``) and unit.
     - The same volume unit.
-    - The same volume-change names and units.
     - The same time-axis unit and reference. Start and end may differ.
+
+    Volume-change names may differ because processes in one study can use
+    different feed and sampling strategies.
 
     Collections with zero or one process trivially pass.
 
@@ -1080,14 +1090,9 @@ def validate_cross_process_consistency(
             for name, pv in process.process_variables.items()
         }
 
-    def _vc_signature(process: BioProcess) -> Dict[str, str]:
-        """Map each volume change name to its unit."""
-        return {name: vc.unit for name, vc in process.volume.volume_changes.items()}
-
     ref_reactor = _reactor_signature(first_process)
     ref_pv = _pv_signature(first_process)
     ref_volume_unit = first_process.volume.unit
-    ref_vc = _vc_signature(first_process)
     ref_time_axis = (
         first_process.time_axis.unit,
         first_process.time_axis.time_reference,
@@ -1122,13 +1127,6 @@ def validate_cross_process_consistency(
             consistency_errors.append(
                 f"Process '{proc_name}' process variables differ from "
                 f"'{first_name}': expected {ref_pv}, got {pv_sig}"
-            )
-
-        vc_sig = _vc_signature(process)
-        if vc_sig != ref_vc:
-            consistency_errors.append(
-                f"Process '{proc_name}' volume changes differ from "
-                f"'{first_name}': expected {ref_vc}, got {vc_sig}"
             )
 
     return not consistency_errors, consistency_errors

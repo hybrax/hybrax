@@ -232,6 +232,13 @@ process_1,2.0,online,0.4,1.0
 """
 
 
+def test_rel_is_repo_relative_inside_repo_and_absolute_outside(tmp_path):
+    inside = validate_example.REPO_ROOT / "examples" / "01_kittler_2022"
+
+    assert validate_example.rel(inside) == "examples/01_kittler_2022"
+    assert validate_example.rel(tmp_path) == str(tmp_path.resolve())
+
+
 def test_check_structure_passes_and_creates_output_dirs(tmp_path, capsys):
     root = _make_example(tmp_path)
 
@@ -343,6 +350,38 @@ def test_sparse_real_diagnostics_plot_created(tmp_path, capsys):
     assert Path(plot_paths[0]).is_file()
     assert Path(plot_paths[0]).parent == root / "03_validate" / "output" / "plots"
     capsys.readouterr()
+
+
+def test_reports_are_identical_when_regenerated(tmp_path, capsys):
+    """A committed report must not depend on whether the run is the first one."""
+    root = _make_example(tmp_path)
+    txt = root / "03_validate" / "output" / "validation.txt"
+    summary = root / "03_validate" / "output" / "validation_summary.json"
+
+    assert validate_example.main([str(root)]) == 0
+    first = (txt.read_text(), summary.read_text())
+
+    assert validate_example.main([str(root)]) == 0
+
+    assert (txt.read_text(), summary.read_text()) == first
+    capsys.readouterr()
+
+
+def test_clear_sparse_real_plots_is_ordered(tmp_path):
+    plots_dir = tmp_path / "plots"
+    plots_dir.mkdir()
+    for name in ("sparse_real_c.png", "sparse_real_a.png", "sparse_real_b.png"):
+        (plots_dir / name).write_bytes(b"stale")
+    (plots_dir / "keep_me.png").write_bytes(b"other")
+
+    cleared = validate_example.clear_sparse_real_plots(plots_dir)
+
+    assert [Path(p).name for p in cleared] == [
+        "sparse_real_a.png",
+        "sparse_real_b.png",
+        "sparse_real_c.png",
+    ]
+    assert (plots_dir / "keep_me.png").is_file()
 
 
 def test_sparse_real_diagnostics_does_not_parse_raw_csv(tmp_path, capsys):

@@ -28,10 +28,10 @@ One save/load pair for the top-level type — there are no `*_json` variants.
 `path` may be a file or a directory.
 
 ```python
-save_process_collection(cs, Path("output/"))              # -> output/data.json
-save_process_collection(cs, Path("output/data.json"))     # -> output/data.json
-save_process_collection(cs, Path("output/custom.json"))   # -> output/custom.json
-save_process_collection(cs, Path("output/data.json.gz"))  # -> gzipped
+save_process_collection(collection, Path("output/"))              # -> output/data.json
+save_process_collection(collection, Path("output/data.json"))     # -> output/data.json
+save_process_collection(collection, Path("output/custom.json"))   # -> output/custom.json
+save_process_collection(collection, Path("output/data.json.gz"))  # -> gzipped
 ```
 
 When loading from a directory, `data.json` is tried first, then `data.json.gz`.
@@ -247,11 +247,11 @@ Loading fails loudly rather than guessing, for:
 import bp_format as bp
 from pathlib import Path
 
-bp.serialization.save_process_collection(case_study, Path("output/"))
+bp.serialization.save_process_collection(collection, Path("output/"))
 restored = bp.serialization.load_process_collection(Path("output/"))
 
-assert restored.case_id == case_study.case_id
-assert set(restored.processes) == set(case_study.processes)
+assert restored.case_id == collection.case_id
+assert set(restored.processes) == set(collection.processes)
 ```
 
 ### Intermediate data

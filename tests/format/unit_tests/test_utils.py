@@ -759,5 +759,38 @@ def test_plot_collection_empty():
     plt.close(fig)
 
 
+def test_plot_collection_show_false_saves_closes_and_returns_none(
+    sample_collection, tmp_path
+):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    open_figures = set(plt.get_fignums())
+    save_path = tmp_path / "collection.png"
+
+    result = plot_collection(sample_collection, save_path=save_path, show=False)
+
+    assert result is None
+    assert save_path.is_file()
+    assert set(plt.get_fignums()) == open_figures
+
+
+def test_plot_collection_empty_show_false_saves_closes_and_returns_none(tmp_path):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    collection = BioProcessCollection(case_id="empty", organism="None", citation="None")
+    open_figures = set(plt.get_fignums())
+    save_path = tmp_path / "empty-collection.png"
+
+    result = plot_collection(collection, save_path=save_path, show=False)
+
+    assert result is None
+    assert save_path.is_file()
+    assert set(plt.get_fignums()) == open_figures
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

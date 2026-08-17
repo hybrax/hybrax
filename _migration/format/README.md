@@ -22,14 +22,14 @@ pip install -e ".[dev]"
 ```python
 import bp_format as bp
 
-# Load a case study from JSON
-case_study = bp.serialization.load_case_study("data.json")
+# Load a process collection from JSON
+collection = bp.serialization.load_process_collection("data.json")
 
-# Explore the case study
-bp.print_case_study_structure(case_study, verbosity=1)
+# Explore the collection
+bp.print_collection_structure(collection, verbosity=1)
 
 # Access a specific process
-process = case_study.processes["run_1"]
+process = collection.processes["run_1"]
 
 # Validate data integrity
 is_valid, messages = bp.validate_process(process)
