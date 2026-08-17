@@ -176,17 +176,9 @@ def _apply_feed_dilution(
     total_out = -(jnp.sum(u_controlled_Outflows) + jnp.sum(f_modeled_Outflows))  # >= 0
     dV = total_in - total_out
 
-    retained_out_per_rmc = jnp.zeros(n_RMCs)
-    if retention_controlled_Outflows.shape[0] > 0:
-        retained_out_per_rmc = retained_out_per_rmc + jnp.sum(
-            retention_controlled_Outflows * (-u_controlled_Outflows)[:, None],
-            axis=0,
-        )
-    if retention_modeled_Outflows.shape[0] > 0:
-        retained_out_per_rmc = retained_out_per_rmc + jnp.sum(
-            retention_modeled_Outflows * (-f_modeled_Outflows)[:, None],
-            axis=0,
-        )
+    retained_out_per_rmc = jnp.sum(
+        retention_controlled_Outflows * (-u_controlled_Outflows)[:, None], axis=0
+    ) + jnp.sum(retention_modeled_Outflows * (-f_modeled_Outflows)[:, None], axis=0)
 
     dilution = -(total_in - retained_out_per_rmc) * c_RMCs / V
 
