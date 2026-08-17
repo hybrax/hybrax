@@ -663,9 +663,10 @@ class TestRhsOde:
 # ---------------------------------------------------------------------------
 # Outflow retention + the base dilution formula
 #
-# Durable practice for this class (see rhs_ode_bug_report.html): any new
-# parameter or code path threaded through _apply_feed_dilution needs at
-# least one test asserting on reactor-component *concentrations* (dc[i] for
+# Durable practice for this class (see documentation/08_mechanistic.md,
+# "What it computes"): any new parameter or code path threaded through
+# _apply_feed_dilution needs at least one test asserting on reactor-component
+# *concentrations* (dc[i] for
 # i < n_RMCs) under a nonzero value of that parameter — not only on dc[-1]
 # (volume) or a zeroed-out value of the new parameter. That gap (every
 # pre-existing Outflow test checked one or the other, never both at once)
@@ -713,9 +714,10 @@ class TestOutflowRetention:
         assert float(rhs.retention_modeled_Outflows[0, 1]) == pytest.approx(0.0)
 
     def test_continuous_outflow_alone_leaves_concentration_unchanged_regression(self):
-        """Regression guard for the dilution-formula bug (rhs_ode_bug_report.html):
-        a continuous outflow with no inflow, no biology, and no retention must
-        leave concentration exactly unchanged, even though volume drops — removing
+        """Regression guard for the dilution formula documented in
+        documentation/08_mechanistic.md: a continuous outflow with no inflow,
+        no biology, and no retention must leave concentration exactly unchanged,
+        even though volume drops — removing
         a well-mixed sample doesn't change what's left behind. Directly catches
         any reintroduction of a spurious total_out term in the dilution formula."""
         rm = ReactorMedium(
