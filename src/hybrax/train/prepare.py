@@ -26,7 +26,7 @@ from .augmentation_plot import AUGMENTATION_PLOT_FILENAME, render_augmentation_p
 from .constants import METADATA_NAMESPACE
 from .controls import select_control_sources
 from .defaults import default_transform_process_collection
-from .run_config import LoadedRunConfig, PrepareConfig
+from .run_config import LoadedRunConfig
 from .serialization import content_hash, environment_versions, write_json
 from .utils import get_hook, split_hooks_by_customization
 from .validation import (
@@ -217,15 +217,6 @@ def _validate_prepared_control_contract(
                 )
 
 
-def _runtime_controls_config(prepare: PrepareConfig) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
-        "initial_grid_points": prepare.initial_grid_points,
-        "max_rel_error": prepare.max_rel_error,
-        "max_refinement_rounds": prepare.max_refinement_rounds,
-    }
-    return cfg
-
-
 def prepare_artifact(
     loaded_config: LoadedRunConfig,
     output_dir: str | Path,
@@ -366,7 +357,6 @@ def prepare_artifact(
 
     source_hash = _sha256_hex(_read_bytes(input_path))
 
-    controls_config = _runtime_controls_config(prepare)
     existing_metadata = dict(collection.metadata or {})
     transform_hooks = {
         "transform_process_collection": getattr(
@@ -397,12 +387,6 @@ def prepare_artifact(
             "processes": semantics_provenance,
         },
         "process_order": process_order,
-        "runtime_controls_config": {
-            "initial_grid_points": int(controls_config["initial_grid_points"]),
-            "max_rel_error": float(controls_config["max_rel_error"]),
-            "max_refinement_rounds": int(controls_config["max_refinement_rounds"]),
-            "require_consistent_controls": bool(prepare.require_consistent_controls),
-        },
         "processes": {},
     }
 
@@ -514,7 +498,7 @@ def _render_control_diagnostics(
             np.concatenate(
                 [
                     spline_grid[np.isfinite(spline_grid)],
-                    np.asarray(per.active_dense_grid, dtype=float),
+                    np.asarray(per.active_linear_grid, dtype=float),
                 ]
             )
         )

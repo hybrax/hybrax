@@ -444,6 +444,47 @@ def test_training_data_store_supports_reactor_component_targets():
     assert np.asarray(store.y0_measured[1]).tolist() == pytest.approx([0.25, 0.02, 1.2])
 
 
+def test_control_support_validation_only_checks_selected_processes():
+    collection = _make_reactor_target_collection()
+    collection.processes["p2"].process_variables["temperature"].values = TimeSeries(
+        times=jnp.asarray([0.0, 0.5]),
+        values=jnp.asarray([299.0, 300.0]),
+    )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass", "product"],
+        target_source="reactor_components",
+    )
+
+    store.validate_control_support(("p1",))
+    with pytest.raises(ValueError, match=r"process='p2'.*control='temperature'"):
+        store.validate_control_support(("p2",))
+
+
+def test_control_support_validation_aggregates_process_failures():
+    collection = _make_reactor_target_collection()
+    for process in collection.processes.values():
+        process.process_variables["temperature"].values = TimeSeries(
+            times=jnp.asarray([0.0, 0.5]),
+            values=jnp.asarray([299.0, 300.0]),
+        )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass", "product"],
+        target_source="reactor_components",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        store.validate_control_support(("p1", "p2"))
+
+    message = str(exc_info.value)
+    assert "process='p1'" in message
+    assert "process='p2'" in message
+    assert "control='temperature'" in message
+    assert "representation='raw'" in message
+    assert "violated_side='right'" in message
+
+
 def test_training_data_store_auto_falls_back_to_reactor_components():
     store = TrainingDataStore.from_collection(
         _make_reactor_target_collection(),

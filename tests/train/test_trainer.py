@@ -1055,6 +1055,24 @@ def test_fail_time_prediction_export_marks_post_failure_rows_nonfinite():
     )
 
 
+def test_simulate_measurement_states_validates_control_support(monkeypatch):
+    wrapper, pd = _build_wrapper_and_process()
+    checked = []
+
+    def validate_support(_controls, t0, t1):
+        checked.append((t0, t1))
+        raise ValueError("support sentinel")
+
+    monkeypatch.setattr(type(pd.controls), "validate_support", validate_support)
+
+    with pytest.raises(ValueError, match="support sentinel"):
+        simulate_measurement_states(wrapper, pd)
+
+    assert checked == [
+        (float(pd.active_t_measured[0]), float(pd.active_t_measured[-1]))
+    ]
+
+
 def test_simulate_measurement_states_preserves_failure_sentinel_on_bail():
     """Forward/export callers (which do not request ``fail_time``) keep the diagnostic
     non-finite sentinel on a failed solve, rather than silently reading back as ``y0``

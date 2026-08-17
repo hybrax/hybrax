@@ -110,11 +110,11 @@ def _build_wrapper(collection: BioProcessCollection):
 
 def _grow_controls(wrapper):
     """Return a copy whose controls store has a STRUCTURALLY DIFFERENT (longer)
-    dense_grid leaf — simulating a controls store "initialized differently"
+    linear_grid leaf — simulating a controls store "initialized differently"
     (e.g. trainable DoE values / different grid padding)."""
-    grid = wrapper.controls.dense_grid
+    grid = wrapper.controls.linear_grid
     grown = jnp.concatenate([grid, jnp.zeros((3,), dtype=grid.dtype)])
-    return eqx.tree_at(lambda m: m.controls.dense_grid, wrapper, grown)
+    return eqx.tree_at(lambda m: m.controls.linear_grid, wrapper, grown)
 
 
 def _trainable_arrays(module):
@@ -359,7 +359,8 @@ def test_load_into_structurally_different_controls_template(tmp_path: Path):
     save_model(wrapper, path)
     loaded = load_trained_wrapper(path, template=different_template)
     assert (
-        loaded.controls.dense_grid.shape == different_template.controls.dense_grid.shape
+        loaded.controls.linear_grid.shape
+        == different_template.controls.linear_grid.shape
     )
     src = _trainable_arrays(wrapper)
     dst = _trainable_arrays(loaded)

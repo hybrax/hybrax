@@ -172,9 +172,10 @@ as state jumps during the solve (below).
 [`PerProcessControls`](../bp_train/controls_store.py) hold per-process control
 accessors built from the bp-format collection, of two kinds:
 
-- **Continuous controlled feeds** → a refined piecewise-linear dense signal
-  (`build_dense_payload`) the RHS evaluates at each `t` (rates / cumulative /
-  `Cin`).
+- **Continuous controlled feeds and process variables** → exact process-local
+  piecewise-linear signals (`build_linear_payload`) evaluated by the RHS at each
+  `t` (rates / cumulative / `Cin`). Valid bp-format splines are evaluated
+  directly instead.
 - **Discrete controlled bolus & sample events** → event arrays
   (`bolus_event_times/volumes/Cin`, `sample_event_times/volumes`) applied as
   **differentiable state jumps** at their event times during the segmented solve

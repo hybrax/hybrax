@@ -377,9 +377,6 @@ directory.
 | `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
 | `required_control_names` | () | Continuous controlled-feed/PV names that must exist (tuple, or per-process dict). |
 | `require_consistent_controls` | true | All processes share the same continuous controlled-feed/PV names. |
-| `initial_grid_points` | 16 (>0) | Starting dense control-grid resolution. |
-| `max_rel_error` | 1e-4 (>0) | Control-grid refinement tolerance. |
-| `max_refinement_rounds` | 8 (≥0) | Refinement round cap. |
 | `process_rename_map` | {} | Old→new process-name map (used by the default transform). |
 | `diagnostics` | true | Write per-process control diagnostic plots into `prepare_diagnostics/`; rendering failures only warn. |
 

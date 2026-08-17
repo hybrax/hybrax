@@ -533,7 +533,7 @@ def test_rejects_active_nonfinite_values(tmp_path, runtime_context, descriptor):
     mutations = (
         ("shared.store.y0_measured", (0, 0)),
         ("shared.controls.sample_event_times", (0, 0)),
-        ("shared.controls.dense_grid", (0, 0)),
+        ("shared.controls.linear_grid", (0, 0)),
         ("shared.store.t_measured", (0, 0)),
     )
     manifest = json.loads((artifact / "manifest.json").read_text())
@@ -566,7 +566,7 @@ def test_rejects_invalid_control_lengths_and_masks(
         ("shared.controls.grid_lengths", -1),
         (
             "shared.controls.grid_lengths",
-            runtime_context.training_data.controls_store.dense_grid.shape[1] + 1,
+            runtime_context.training_data.controls_store.linear_grid.shape[1] + 1,
         ),
         ("shared.controls.jump_ts_lengths", -1),
         (
@@ -661,7 +661,7 @@ def test_rejects_invalid_ordered_time_axes(tmp_path, runtime_context, descriptor
         rhs_descriptor=descriptor,
     )
     names = (
-        "shared.controls.dense_grid",
+        "shared.controls.linear_grid",
         "shared.controls.spline_breaks",
         "shared.store.t_measured",
         "shared.trace.modeled.0.0.times",

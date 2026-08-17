@@ -736,6 +736,16 @@ class TrainingDataStore(eqx.Module):
             target_source=target_source,
         )
 
+    def validate_control_support(self, process_names: tuple[str, ...]) -> None:
+        """Validate measured solve spans for the processes about to be solved."""
+        spans = {}
+        for process_name in process_names:
+            _, process_index = _coerce_process_index(process_name, self.process_order)
+            n_measured = int(np.asarray(self.n_measured[process_index]))
+            active_ts = np.asarray(self.t_measured[process_index, :n_measured])
+            spans[process_name] = (float(active_ts[0]), float(active_ts[-1]))
+        self.controls_store.validate_supports(spans)
+
     def get_process(self, process: str | int) -> PerProcessTrainingData:
         """Return per-process training data by canonical name or integer index."""
         process_name, process_index = _coerce_process_index(process, self.process_order)

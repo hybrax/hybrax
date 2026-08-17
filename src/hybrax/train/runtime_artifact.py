@@ -28,7 +28,7 @@ FORMAT_VERSION = 2
 _CONTROL_ARRAYS = (
     "spline_breaks",
     "spline_coeffs",
-    "dense_grid",
+    "linear_grid",
     "control_values",
     "control_derivatives",
     "jump_ts",
@@ -339,8 +339,8 @@ def _base_metadata(
                     "name_controlled_PVs",
                     "shape_metadata",
                     "spline_indices",
-                    "fallback_indices",
-                    "spline_side",
+                    "linear_indices",
+                    "continuity_side",
                     "max_event_gap_fraction",
                     "max_measurements_per_event_gap",
                     "_process_md_by_name",
@@ -713,8 +713,8 @@ def _validate_base_metadata(
         "name_controlled_PVs",
         "shape_metadata",
         "spline_indices",
-        "fallback_indices",
-        "spline_side",
+        "linear_indices",
+        "continuity_side",
         "max_event_gap_fraction",
         "max_measurements_per_event_gap",
         "_process_md_by_name",
@@ -737,12 +737,12 @@ def _validate_base_metadata(
     if (
         not isinstance(controls["shape_metadata"], dict)
         or not isinstance(controls["spline_indices"], list)
-        or not isinstance(controls["fallback_indices"], list)
+        or not isinstance(controls["linear_indices"], list)
         or any(
             type(index) is not int
-            for index in controls["spline_indices"] + controls["fallback_indices"]
+            for index in controls["spline_indices"] + controls["linear_indices"]
         )
-        or controls["spline_side"] not in {"left", "right"}
+        or controls["continuity_side"] not in {"left", "right"}
         or type(controls["max_measurements_per_event_gap"]) is not int
         or not isinstance(controls["max_event_gap_fraction"], (int, float))
         or not np.isfinite(controls["max_event_gap_fraction"])
@@ -766,13 +766,33 @@ def _validate_base_metadata(
         process_metadata = controls["_process_md_by_name"][process_name]
         if (
             not isinstance(process_metadata, dict)
-            or set(process_metadata) != {*control_name_keys, "control_metadata"}
+            or set(process_metadata)
+            != {*control_name_keys, "control_metadata", "control_supports"}
             or any(process_metadata[key] != controls[key] for key in control_name_keys)
             or not isinstance(process_metadata["control_metadata"], dict)
             or set(process_metadata["control_metadata"]) != canonical_control_names
             or not _valid_json_metadata(process_metadata["control_metadata"])
+            or not isinstance(process_metadata["control_supports"], dict)
+            or set(process_metadata["control_supports"]) != canonical_control_names
         ):
             raise ValueError("invalid per-process control metadata")
+        for support in process_metadata["control_supports"].values():
+            if (
+                not isinstance(support, list)
+                or len(support) != 2
+                or any(
+                    bound is not None
+                    and (not isinstance(bound, (int, float)) or not np.isfinite(bound))
+                    for bound in support
+                )
+                or (support[0] is None) != (support[1] is None)
+                or (
+                    support[0] is not None
+                    and support[1] is not None
+                    and support[0] > support[1]
+                )
+            ):
+                raise ValueError("invalid per-process control metadata")
     if not isinstance(runtime, dict) or set(runtime) != {
         "augmentation_parents",
         "process_time_bounds",
@@ -983,12 +1003,12 @@ def _validate_semantic_arrays(
         raise ValueError("runtime metadata differs from RhsOde descriptor")
 
     spline_indices = tuple(controls["spline_indices"])
-    fallback_indices = tuple(controls["fallback_indices"])
-    if sorted(spline_indices + fallback_indices) != list(range(n_controls)):
+    linear_indices = tuple(controls["linear_indices"])
+    if sorted(spline_indices + linear_indices) != list(range(n_controls)):
         raise ValueError("invalid runtime control indices")
 
     spline_breaks = np.asarray(arrays["shared.controls.spline_breaks"])
-    dense_grid = np.asarray(arrays["shared.controls.dense_grid"])
+    linear_grid = np.asarray(arrays["shared.controls.linear_grid"])
     jump_ts = np.asarray(arrays["shared.controls.jump_ts"])
     sample_times = np.asarray(arrays["shared.controls.sample_event_times"])
     bolus_times = np.asarray(arrays["shared.controls.bolus_event_times"])
@@ -996,7 +1016,7 @@ def _validate_semantic_arrays(
         array.ndim != 2 or array.shape[0] != n_processes
         for array in (
             spline_breaks,
-            dense_grid,
+            linear_grid,
             jump_ts,
             sample_times,
             bolus_times,
@@ -1004,7 +1024,7 @@ def _validate_semantic_arrays(
     ):
         raise ValueError("invalid runtime control process axes")
     n_spline_breaks = spline_breaks.shape[1]
-    n_grid = dense_grid.shape[1]
+    n_grid = linear_grid.shape[1]
     n_jump = jump_ts.shape[1]
     n_sample = sample_times.shape[1]
     n_bolus = bolus_times.shape[1]
@@ -1028,9 +1048,9 @@ def _validate_semantic_arrays(
             len(spline_indices),
             4,
         ),
-        "dense_grid": (n_processes, n_grid),
-        "control_values": (n_processes, n_grid, len(fallback_indices)),
-        "control_derivatives": (n_processes, n_grid, len(fallback_indices)),
+        "linear_grid": (n_processes, n_grid),
+        "control_values": (n_processes, n_grid, len(linear_indices)),
+        "control_derivatives": (n_processes, n_grid, len(linear_indices)),
         "jump_ts": (n_processes, n_jump),
         "min_V": (n_processes,),
         "sample_event_times": (n_processes, n_sample),
@@ -1087,12 +1107,12 @@ def _validate_semantic_arrays(
 
     process_bounds = runtime["process_time_bounds"]
     for row, (start, end) in enumerate(process_bounds):
-        active_grid = dense_grid[row, : int(grid_lengths[row])]
+        active_grid = linear_grid[row, : int(grid_lengths[row])]
         active_jumps = jump_ts[row, : int(jump_lengths[row])]
         if not _strictly_increasing(active_grid) or _outside_time_window(
             active_grid, start, end
         ):
-            raise ValueError("shared.controls.dense_grid: invalid active time axis")
+            raise ValueError("shared.controls.linear_grid: invalid active time axis")
         if not _strictly_increasing(active_jumps) or _outside_time_window(
             active_jumps, start, end
         ):

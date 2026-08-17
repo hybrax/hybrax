@@ -164,6 +164,10 @@ def test_evaluate_trained_wrapper_loss_only_batches_exclude_padding(monkeypatch)
         Cin_modeled_FVCs = jnp.zeros((35, 0, 1))
 
         @staticmethod
+        def validate_control_support(process_names):
+            del process_names
+
+        @staticmethod
         def gather_batch(indices):
             return SimpleNamespace(process_indices=indices)
 
@@ -907,6 +911,10 @@ def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count)
         process_order = process_names
         Cin_controlled_FVCs = jnp.zeros((process_count, 0, 1))
         Cin_modeled_FVCs = jnp.zeros((process_count, 0, 1))
+
+        @staticmethod
+        def validate_control_support(process_names):
+            del process_names
 
         @staticmethod
         def gather_batch(indices):

@@ -150,8 +150,8 @@ def _strip_provenance(collection_dict: dict[str, Any]) -> dict[str, Any]:
 
     The provenance keys carry timestamps / hashes / validation reports and are
     excluded from ``content_hash`` so that re-preparing identical data yields an
-    identical hash. The prepared *science* (process_order, per-process control
-    layouts, runtime_controls_config) is retained.
+    identical hash. The prepared *science* (process order and per-process
+    control layouts) is retained.
     """
     metadata = collection_dict.get("metadata")
     if not isinstance(metadata, dict):

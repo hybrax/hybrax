@@ -29,6 +29,14 @@ class SignalSource:
     spline_breaks: np.ndarray | None = None
     spline_coeffs: np.ndarray | None = None
     continuity_side: str | None = None
+    is_static: bool = False
+
+    @property
+    def support(self) -> tuple[float, float]:
+        """Closed source support; static controls are unbounded."""
+        if self.is_static:
+            return (-float("inf"), float("inf"))
+        return (float(self.times[0]), float(self.times[-1]))
 
 
 def _as_numpy(values: Any) -> np.ndarray:
@@ -42,15 +50,14 @@ def _safe_interp(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.ndarray:
 
 
 def _piecewise_linear_derivative(
-    x: np.ndarray, xp: np.ndarray, fp: np.ndarray
+    x: np.ndarray, xp: np.ndarray, fp: np.ndarray, side: str
 ) -> np.ndarray:
-    if xp.size <= 1:
-        return np.zeros_like(x, dtype=float)
-
     dx = np.diff(xp)
     slopes = np.divide(np.diff(fp), dx, out=np.zeros_like(dx), where=dx != 0)
-    indices = np.searchsorted(xp[1:], x, side="right")
+    indices = np.searchsorted(xp, x, side=side) - 1
     indices = np.clip(indices, 0, slopes.size - 1)
+    # Validated solves cannot query outside support; clamping preserves the only
+    # in-domain interval rate at each closed support endpoint.
     return slopes[indices]
 
 
@@ -60,7 +67,7 @@ def _make_source_from_xy(
     times: np.ndarray,
     values: np.ndarray,
     metadata: dict[str, Any] | None = None,
-    fallback_end: float | None = None,
+    continuity_side: str = "right",
 ) -> SignalSource:
     times = _as_numpy(times)
     values = _as_numpy(values)
@@ -72,15 +79,9 @@ def _make_source_from_xy(
     if times.size == 0:
         raise ValueError(f"{name}: empty time series")
     if times.size == 1:
-        end = (
-            times[0] + 1.0
-            if fallback_end is None
-            else max(float(fallback_end), float(times[0]))
+        raise ValueError(
+            f"{name}: continuous-control TimeSeries must contain at least two points"
         )
-        if end == times[0]:
-            end = float(times[0]) + 1.0
-        times = np.asarray([times[0], end], dtype=float)
-        values = np.asarray([values[0], values[0]], dtype=float)
 
     return SignalSource(
         name=name,
@@ -89,9 +90,10 @@ def _make_source_from_xy(
         values=values,
         evaluator=lambda ts: _safe_interp(_as_numpy(ts), times, values),
         derivative=lambda ts: _piecewise_linear_derivative(
-            _as_numpy(ts), times, values
+            _as_numpy(ts), times, values, continuity_side
         ),
         metadata=dict(metadata or {}),
+        continuity_side=continuity_side,
     )
 
 
@@ -102,7 +104,7 @@ def _eval_ppoly_numpy(
 
     Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with
     ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. This
-    NumPy evaluator is used during preparation and by dense-fallback splines.
+    NumPy evaluator is used during preparation and scale estimation.
     """
     ts_arr = np.atleast_1d(_as_numpy(ts))
     idx = np.clip(np.searchsorted(breaks, ts_arr, side=side) - 1, 0, len(breaks) - 2)
@@ -166,24 +168,20 @@ def _make_source_from_process_variable(
             times=process_variable.values.times,
             values=process_variable.values.values,
             metadata={"source": "timeseries"},
-            fallback_end=float(process.time_axis.end),
+            continuity_side=str(process_variable.values.continuity_side),
         )
 
     if isinstance(process_variable.values, StaticVariable):
-        t_start = float(process.time_axis.start)
-        t_end = float(process.time_axis.end)
-        return _make_source_from_xy(
+        value = float(process_variable.values.value)
+        return SignalSource(
             name=name,
             kind="process_variable",
-            times=np.asarray([t_start, t_end], dtype=float),
-            values=np.asarray(
-                [
-                    float(process_variable.values.value),
-                    float(process_variable.values.value),
-                ],
-                dtype=float,
-            ),
+            times=np.asarray([-np.inf, np.inf]),
+            values=np.asarray([value, value]),
+            evaluator=lambda ts: np.full_like(_as_numpy(ts), value, dtype=float),
+            derivative=lambda ts: np.zeros_like(_as_numpy(ts), dtype=float),
             metadata={"source": "static"},
+            is_static=True,
         )
 
     raise TypeError(f"Unsupported process-variable value type for {name}")
@@ -248,6 +246,7 @@ def _make_source_from_volume_change(
         times=volume_change.values.times,
         values=volume_change.values.values,
         metadata=metadata,
+        continuity_side=str(volume_change.values.continuity_side),
     )
 
 
@@ -427,35 +426,6 @@ def select_control_sources(process: BioProcess) -> ControlSourceBundle:
     )
 
 
-def compute_signal_spreads(
-    process_sources: dict[str, list[SignalSource]],
-) -> dict[str, float]:
-    values_by_name: dict[str, list[float]] = {}
-
-    for sources in process_sources.values():
-        for source in sources:
-            values_by_name.setdefault(source.name, []).extend(source.values.tolist())
-
-    spreads: dict[str, float] = {}
-    for name, values in values_by_name.items():
-        arr = np.asarray(values, dtype=float)
-        spread = float(np.max(arr) - np.min(arr)) if arr.size else 0.0
-        spreads[name] = spread if spread > 0 else 1.0
-    return spreads
-
-
-def _linear_interp_from_grid(
-    ts: np.ndarray, grid: np.ndarray, values: np.ndarray
-) -> np.ndarray:
-    if values.ndim == 1:
-        return _safe_interp(ts, grid, values)
-
-    out = np.empty((ts.size, values.shape[1]), dtype=float)
-    for idx in range(values.shape[1]):
-        out[:, idx] = _safe_interp(ts, grid, values[:, idx])
-    return out
-
-
 def build_spline_payload(sources: list[SignalSource]) -> dict[str, Any]:
     """Rebase spline sources onto one union break grid."""
     if not sources:
@@ -486,67 +456,39 @@ def build_spline_payload(sources: list[SignalSource]) -> dict[str, Any]:
     return {"breaks": breaks.tolist(), "coeffs": coeffs.tolist()}
 
 
-def build_dense_payload(
+def build_linear_payload(
     process: BioProcess,
     sources: list[SignalSource],
-    spreads: dict[str, float],
-    config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Build an exact process-local payload for raw and static controls."""
     start = float(process.time_axis.start)
     end = float(process.time_axis.end)
-    initial_grid_points = int(config.get("initial_grid_points", 16))
-    max_rel_error = float(config.get("max_rel_error", 1e-4))
-    max_refinement_rounds = int(config.get("max_refinement_rounds", 8))
-
-    source_knots: list[float] = []
-    for source in sources:
-        source_knots.extend(
-            time for time in source.times.tolist() if start <= time <= end
-        )
-
-    grid = np.unique(
-        np.concatenate(
-            [
-                np.asarray(source_knots, dtype=float),
-                np.linspace(start, end, num=max(initial_grid_points, 2), dtype=float),
-            ]
-        )
-    )
+    raw_knots = [
+        time
+        for source in sources
+        if not source.is_static
+        for time in source.times.tolist()
+        if start <= time <= end
+    ]
+    grid = np.unique(np.asarray([start, end, *raw_knots], dtype=float))
 
     if not sources:
-        # A process with no continuous control sources (e.g. driven only by
-        # discrete bolus/sample events handled in the callbacks solve). Emit a
-        # zero-width control payload on the base grid — there is nothing to
-        # refine and ``np.column_stack`` would reject the empty source list.
         return {
             "grid": grid.tolist(),
             "values": [[] for _ in range(grid.size)],
             "derivatives": [[] for _ in range(grid.size)],
         }
 
-    for _ in range(max_refinement_rounds):
-        mids = 0.5 * (grid[:-1] + grid[1:])
-        if mids.size == 0:
-            break
-
-        source_values = np.column_stack([source.evaluator(mids) for source in sources])
-        grid_values = np.column_stack([source.evaluator(grid) for source in sources])
-        interp_values = _linear_interp_from_grid(mids, grid, grid_values)
-
-        rel_errors = np.zeros_like(source_values)
-        for idx, source in enumerate(sources):
-            denom = spreads.get(source.name, 1.0)
-            rel_errors[:, idx] = (
-                np.abs(source_values[:, idx] - interp_values[:, idx]) / denom
-            )
-
-        failing = np.any(rel_errors > max_rel_error, axis=1)
-        if not np.any(failing):
-            break
-        grid = np.unique(np.concatenate([grid, mids[failing]]))
-
     values = np.column_stack([source.evaluator(grid) for source in sources])
-    derivatives = np.column_stack([source.derivative(grid) for source in sources])
+    if grid.size > 1:
+        interval_midpoints = 0.5 * (grid[:-1] + grid[1:])
+        interval_rates = np.column_stack(
+            [source.derivative(interval_midpoints) for source in sources]
+        )
+        # BatchControls may index padded grid tails, so repeat the final interval rate.
+        derivatives = np.concatenate([interval_rates, interval_rates[-1:]], axis=0)
+    else:
+        derivatives = np.zeros_like(values)
 
     return {
         "grid": grid.tolist(),

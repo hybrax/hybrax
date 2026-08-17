@@ -237,7 +237,7 @@ def test_controls_store_loads_by_process_name_and_index(tmp_path):
     assert by_name.name_controlled_SVCs == ()
     assert by_name.name_controlled_PVs == ("CF", "T")
     assert np.array_equal(
-        np.asarray(by_name.dense_grid), np.asarray(by_index.dense_grid)
+        np.asarray(by_name.linear_grid), np.asarray(by_index.linear_grid)
     )
     assert _column_index(by_name, "CF") == 0
     assert _column_index(by_name, "T") == 1
@@ -276,7 +276,7 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
 
 
 def _partial_split_store() -> ControlsStore:
-    """A store with a real split: spline at column 0, fallbacks at columns 1-2."""
+    """A store with a real split: spline at column 0, linear controls at columns 1-2."""
     collection = _make_two_process_collection()
     for process in collection.processes.values():
         process.process_variables["CF"].values = _spline_control_values()
@@ -292,13 +292,13 @@ def _partial_split_store() -> ControlsStore:
     return ControlsStore.from_collection(collection)
 
 
-def test_controls_store_preserves_partial_spline_fallback_column_order():
+def test_controls_store_preserves_partial_spline_linear_column_order():
     store = _partial_split_store()
     controls = store.get_controls("p1")
 
     assert controls.name_controlled_PVs == ("CF", "T", "Z")
     assert controls.spline_indices == (0,)
-    assert controls.fallback_indices == (1, 2)
+    assert controls.linear_indices == (1, 2)
     np.testing.assert_allclose(
         np.asarray(controls.active_control_values)[[0, -1]],
         [[30.0, 100.0], [31.0, 200.0]],
@@ -315,16 +315,16 @@ def test_controls_store_preserves_partial_spline_fallback_column_order():
         # A float or bool index compares equal to an int and would otherwise
         # fail far away, at JAX indexing time.
         ({"spline_indices": (0.0,)}, "exact ints"),
-        ({"fallback_indices": (True, 2)}, "exact ints"),
+        ({"linear_indices": (True, 2)}, "exact ints"),
         # A permutation keeps the partition intact but decouples the indices
         # from the column order their arrays were built in.
-        ({"fallback_indices": (2, 1)}, "ascending"),
-        ({"spline_side": "middle"}, "spline_side"),
-        ({"fallback_indices": (1,)}, "partition"),
+        ({"linear_indices": (2, 1)}, "ascending"),
+        ({"continuity_side": "middle"}, "continuity_side"),
+        ({"linear_indices": (1,)}, "partition"),
         # A list is mutable, so it could be edited after construction; it also
         # changes the treedef, and mixing list with tuple fails obscurely later.
         ({"spline_indices": [0]}, "must be a tuple"),
-        ({"fallback_indices": [1, 2]}, "must be a tuple"),
+        ({"linear_indices": [1, 2]}, "must be a tuple"),
     ],
 )
 def test_controls_store_rejects_corrupt_dispatch_split(overrides, match):
@@ -342,7 +342,7 @@ def test_controls_store_rejects_payload_width_disagreeing_with_indices(field_nam
     # a static-metadata/array desync is what a non-deriving construction path
     # (a future deserializer) would plausibly get wrong.
     store = _partial_split_store()
-    # Slice the addressed axis to width 0: the fixture has 1 spline and 2 fallback
+    # Slice the addressed axis to width 0: the fixture has 1 spline and 2 linear
     # columns, so a narrower-but-nonzero slice would not move the spline width.
     array = getattr(store, field_name)
     narrowed = array[..., :0, :] if field_name == "spline_coeffs" else array[..., :0]
@@ -356,8 +356,8 @@ def test_controls_store_dispatch_validation_accepts_a_valid_store():
     store = _partial_split_store()
     rebuilt = dataclasses.replace(store)
     assert rebuilt.spline_indices == store.spline_indices
-    assert rebuilt.fallback_indices == store.fallback_indices
-    assert rebuilt.spline_side == store.spline_side
+    assert rebuilt.linear_indices == store.linear_indices
+    assert rebuilt.continuity_side == store.continuity_side
 
 
 def test_controls_store_exposes_discrete_event_metadata():
@@ -492,7 +492,7 @@ def test_controls_store_rejects_different_control_order(tmp_path):
         ControlsStore.from_json(prepared_json)
 
 
-def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
+def test_controls_store_eval_clamps_outside_linear_grid(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
     store = ControlsStore.from_json(prepared_json)
     controls = store.get_controls("p1")
@@ -515,7 +515,7 @@ def test_dense_control_grid_excludes_source_times_outside_process():
     store = ControlsStore.from_collection(collection)
 
     for process_name in collection.processes:
-        grid = np.asarray(store.get_controls(process_name).active_dense_grid)
+        grid = np.asarray(store.get_controls(process_name).active_linear_grid)
         assert grid[[0, -1]] == pytest.approx([0.0, 1.0])
 
 
@@ -588,7 +588,7 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
     assert loaded.process_name == template.process_name
     assert loaded.process_index == template.process_index
     # Dynamic arrays carry the saved process's values.
-    assert np.array_equal(np.asarray(loaded.dense_grid), np.asarray(saved.dense_grid))
+    assert np.array_equal(np.asarray(loaded.linear_grid), np.asarray(saved.linear_grid))
     assert np.array_equal(
         np.asarray(loaded.control_values), np.asarray(saved.control_values)
     )
@@ -637,7 +637,7 @@ def test_controls_store_gather_batch_preserves_order_duplicates_and_events():
     for field in (
         "spline_breaks",
         "spline_coeffs",
-        "dense_grid",
+        "linear_grid",
         "control_values",
         "control_derivatives",
         "sample_event_times",
@@ -669,7 +669,7 @@ def test_controls_store_batch_controls_eval_by_index():
     store = ControlsStore.from_collection(collection)
     batch_controls = store.gather_batch(jnp.asarray([0, 1], dtype=jnp.int32))
 
-    assert store.grid_lengths.tolist() == [16, 17]
+    assert store.grid_lengths.tolist() == [2, 3]
 
     ts = jnp.asarray([0.25, 1.5])
     pvs = batch_controls.eval_controlled_PVs(0, ts, None)

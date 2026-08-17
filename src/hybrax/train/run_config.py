@@ -149,9 +149,6 @@ class PrepareConfig(ConfigBase):
     strict_bp_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True
-    initial_grid_points: int = Field(16, gt=0)
-    max_rel_error: float = Field(1e-4, gt=0)
-    max_refinement_rounds: int = Field(8, ge=0)
     process_rename_map: dict[str, str] = Field(default_factory=dict)
     # Emit per-process control diagnostic plots (raw data vs stored control spline) into
     # ``<output-dir>/prepare_diagnostics/`` at the end of prepare.

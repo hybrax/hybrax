@@ -563,7 +563,6 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     metadata = prepared.metadata["bp-train"]
 
     assert metadata["process_order"] == list(prepared.processes.keys())
-    assert metadata["runtime_controls_config"]["initial_grid_points"] >= 2
     # The raw input lives one level above the output dir (tmp_path/prepared-raw.json
     # vs tmp_path/prepared/), so the portable path is recorded relative to output_dir.
     assert metadata["source_input_path"] == "../prepared-raw.json"
@@ -964,7 +963,10 @@ def test_prepare_config_rejects_nonfinite_input(tmp_path):
             _make_two_process_collection(),
             tmp_path,
             tmp_path / "prepared-nonfinite",
-            prepare_config={"diagnostics": False, "max_rel_error": float("inf")},
+            prepare_config={
+                "diagnostics": False,
+                "augmentation": {"noise_std": {"x": float("inf")}},
+            },
         )
 
 

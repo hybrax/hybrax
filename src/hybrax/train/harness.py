@@ -98,6 +98,7 @@ def _iter_batched_loss_outputs(
     duplicates = [name for name, count in Counter(process_names).items() if count > 1]
     if duplicates:
         raise ValueError(f"duplicate process names: {duplicates}")
+    store.validate_control_support(process_names)
 
     batch_size = _EVALUATION_BATCH_SIZE
     for start in range(0, len(process_names), batch_size):
@@ -1063,6 +1064,7 @@ def train_collection(
         loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
     effective_batched_loss_fn = _BATCHED_LOSS_FN
     selected_processes = _ensure_process_names(store, cfg.process_names)
+    store.validate_control_support(selected_processes)
 
     effective_batch_size, batches_per_epoch, total_updates = derive_update_budget(
         cfg, selected_process_count=len(selected_processes)

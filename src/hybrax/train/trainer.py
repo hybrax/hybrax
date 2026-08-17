@@ -125,6 +125,7 @@ def simulate_measurement_states(
     ts = process_data.active_t_measured
     if ts.size == 0:
         raise ValueError("process has no active measurement timestamps")
+    process_data.controls.validate_support(float(ts[0]), float(ts[-1]))
     sample_wrapper = eqx.tree_at(lambda w: w.controls, wrapper, process_data.controls)
     return solve_physical_states(
         sample_wrapper,
