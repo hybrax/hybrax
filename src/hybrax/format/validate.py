@@ -142,9 +142,15 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
 
     # Unit consistency: a sympy ``Add`` whose operands collectively reference
     # two or more dynamic states (reactor components or uncontrolled PVs) must
-    # have those states share a unit. Catches things like ``biomass - product``
-    # when biomass is g/L and product is mg/L (raw numerical subtraction would
-    # be meaningless). This generalises the legacy intracellular unit check.
+    # have those states share a unit, UNLESS a term is individually scaled by
+    # a declared rate. A lone ``rate * state`` (a ``Mul``, never inspected
+    # here at all) is already trusted to bridge units via the rate; the same
+    # trust extends per-addend so ``-q_a * a - r_b * b`` (each term its own
+    # rate) is fine even when ``a`` and ``b`` differ, while a genuinely bare
+    # ``a - b`` (no rate anywhere) still isn't. Catches things like
+    # ``biomass - product`` when biomass is g/L and product is mg/L (raw
+    # numerical subtraction would be meaningless). This generalises the
+    # legacy intracellular unit check.
     def _state_unit(name: str) -> Optional[str]:
         if process.reactor_medium and name in process.reactor_medium.components:
             return process.reactor_medium.components[name].unit
@@ -157,12 +163,15 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
         for node in sympy.preorder_traversal(expr):
             if not isinstance(node, sympy.Add):
                 continue
-            state_syms = {str(s) for s in node.free_symbols} & state_names
-            if len(state_syms) < 2:
-                continue
-            units = {s: _state_unit(s) for s in state_syms}
-            if len(set(units.values())) > 1:
-                pretty = ", ".join(f"{s}={u!r}" for s, u in sorted(units.items()))
+            bare_units = {}
+            for addend in node.args:
+                addend_syms = {str(s) for s in addend.free_symbols}
+                if addend_syms & rate_names:
+                    continue  # this term's unit is rate-mediated; exempt
+                for s in addend_syms & state_names:
+                    bare_units[s] = _state_unit(s)
+            if len(set(bare_units.values())) > 1:
+                pretty = ", ".join(f"{s}={u!r}" for s, u in sorted(bare_units.items()))
                 errors.append(
                     f"{expr_name!r}: state variables combined additively with "
                     f"mismatched units ({pretty})"
