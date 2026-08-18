@@ -99,3 +99,19 @@ check the spelling first.
 - [Quickstart](../start/quickstart.md): the whole pipeline in three commands.
 - [Concepts and vocabulary](../start/concepts.md): SCL, RAW, targets, folds.
 - [Design rationale](../under_the_hood/design_rationale.md): why it is built this way.
+
+```{toctree}
+:maxdepth: 1
+:hidden:
+config
+prepare
+reaction_module
+scaling
+loss_module
+train
+forward
+loo
+save_load_predict
+hooks_cheatsheet
+further_reading
+```

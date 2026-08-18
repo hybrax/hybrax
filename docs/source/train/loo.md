@@ -64,7 +64,7 @@ loo_run/
 ├── prepared.json
 ├── folds/
 │   └── <slug>/          a complete run directory per fold
-│       ├── model/ metrics.csv predictions.csv losses.csv …
+│       ├── model/ metrics.csv losses.csv predictions.csv (if output.predictions is set) …
 ├── loo_summary.csv      one row per fold
 └── loo_aggregate.json   metrics across folds
 ```

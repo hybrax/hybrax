@@ -85,6 +85,7 @@ for variant in ("local", "pooled"):
           "data": {{ "prepared": "prepared_{variant}" }},
           "custom_py": "custom.py",
           "train": {{ "epochs": 400, "seed": 0, "learning_rate": 0.01 }},
+          "checkpoint": {{ "every": 0 }},
           "output": {{ "dir": "run_{variant}" }}
         }}
         """))
@@ -169,7 +170,7 @@ to the same SCL space the module will see at call time.
 for variant in ("local", "pooled"):
     bp_train_cli("prepare", "--config", f"prepare-{variant}.json",
              "--output-dir", f"prepared_{variant}", "--overwrite")
-    out = bp_train_cli("train", "--config", f"train-{variant}.json", "--overwrite", "--no-plot")
+    out = bp_train_cli("train", "--config", f"train-{variant}.json", "--overwrite")
     print(variant, [l for l in out.splitlines() if "training complete" in l][0])
 print(f"run directory: ./{(WORK).relative_to(WORK.parents[4])}")
 ```

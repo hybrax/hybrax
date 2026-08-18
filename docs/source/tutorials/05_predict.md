@@ -56,10 +56,11 @@ def bp_train_cli(*args):
       "output": { "dir": "run" }
     }
     """))
-(WORK / "forward-config.json").write_text('{ "models": ["run"] }\n')
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 bp_train_cli("prepare", "--config", "prepare-config.json",
              "--output-dir", "prepared", "--overwrite")
-bp_train_cli("train", "--config", "train-config.json", "--overwrite", "--no-plot")
+bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 ```
 
 We start from a run directory trained exactly as in [Tutorial 4](04_your_first_custom_py.md).
@@ -78,10 +79,11 @@ Self-contained: `cp -r` it anywhere and keep working from the copy.
 bp-train forward --config forward-config.json
 ```
 
-where the config names the run directories to use:
+where the config names the run directories to use, and requests predictions and plots
+explicitly (both default to off):
 
 ```json
-{ "models": ["run"] }
+{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }
 ```
 
 ```{code-cell} ipython3
@@ -89,11 +91,12 @@ where the config names the run directories to use:
 
 bp_train_cli("forward", "--config", "forward-config.json",
              "--output-dir", "run/forward", "--overwrite")
-print((WORK / "run/forward/losses.csv").read_text())
+print((WORK / "run/forward/forward-results/losses.csv").read_text())
 ```
 
 `forward` re-solves each process with the trained model on a dense time grid and writes
-`predictions.csv`, `losses.csv`, and one figure per process.
+`forward-results/predictions.csv`, `forward-results/losses.csv`, and (with `plots: true`)
+one figure per process under `forward-results/plots/`.
 
 :::{admonition} Why `forward` exists separately from `train`
 :class: note
@@ -106,13 +109,10 @@ saved model reproduces what training claimed.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import csv
-with (WORK / "run/forward/predictions.csv").open() as fh:
-    reader = csv.reader(fh)
-    header = next(reader)
-    rows = [r for r in reader]
-print("columns:", ", ".join(header))
-print("rows   :", len(rows))
+import pandas as pd
+df = pd.read_csv(WORK / "run/forward/forward-results/predictions.csv")
+print("columns:", ", ".join(df.columns))
+print("rows   :", len(df))
 ```
 
 `c_*` are concentrations, `q_*` are the inferred specific rates, `V_real` is the physical

@@ -45,9 +45,17 @@ point neither spine shape can carry.
     -composite-design-inspired spread of exponential feed rates and constant
     per-run ``temperature``. For ``gallery/optfed.md``.
 
+``demo_glutamine_decay``
+    Three CHO-like batch runs (biomass, Gln, NH4) over a 120 h window, where
+    one rate constant (``r_Gln``, the real value from Ulonska et al. 2018)
+    feeds two coupled derivatives at once: it drains Gln and, in the same
+    equation, produces NH4. For ``gallery/glutamine_decay.md``.
+
 All five are simulated on **amounts** and converted to concentrations at the
-end, so volume changes can never silently corrupt a mass balance. Substrate
-uptake is gated by the same Monod term as growth (``demo_batch``/
+end, so volume changes can never silently corrupt a mass balance.
+``demo_glutamine_decay`` is, like ``demo_batch``, a true batch with no volume
+changes at all, so it is simulated directly on concentrations instead.
+Substrate uptake is gated by the same Monod term as growth (``demo_batch``/
 ``demo_fedbatch``/``demo_products``) or the surrogate's own glucose-uptake
 term (``demo_ecoli_fba``/``demo_ecoli_blend``), so it tapers at depletion
 rather than being clipped afterwards.
@@ -983,6 +991,138 @@ def build_demo_optfed() -> None:
     }, indent=2))
 
 
+# ===========================================================================
+# demo_glutamine_decay
+# ===========================================================================
+# One physical rate, r_Gln, feeds two different derivatives at once: it
+# drains Gln (a sink) and produces NH4 (a source), the same non-enzymatic
+# decomposition Ulonska et al. 2018 report at a real, cited rate (Table 1,
+# rNH4,gln). Reduced from the paper's own ammonia balance (Eq. 20), which
+# also has a metabolic production term (qNH4 * VCC) and a feed-release term;
+# this dataset keeps only the chemical-decomposition term, since that is the
+# one rate this demo is actually about. Gln/NH4 are tracked in mol/L (unlike
+# the rest of this file's g/L convention) so the coupling is exactly
+# d(NH4)/dt = r_Gln * Gln, one shared rate, no separate yield constant — a
+# deliberate, disclosed per-page unit choice, not a claim that mol/L is more
+# correct than the paper's own g/L-plus-yield-constant approach.
+
+GLN_Q_BIOMASS = 0.012     # 1/h
+GLN_Q_GLN = 4.0e-5        # mol glutamine / (g biomass * h), uptake magnitude
+GLN_R_GLN = 0.0036        # 1/h — Ulonska et al. 2018, Table 1 (rNH4,gln)
+
+GLN_END = 120.0
+GLN_SAMPLE_TIMES = np.arange(0.0, GLN_END + 0.5, 12.0)   # 11 samples
+
+GLN_RUNS = {
+    #  name      X0     Gln0     NH4_0
+    "run_1": (0.30, 0.0060, 0.0005),
+    "run_2": (0.25, 0.0070, 0.0004),
+    "run_3": (0.35, 0.0050, 0.0006),
+}
+
+
+def _simulate_glutamine_decay(x0: float, gln0: float, nh4_0: float) -> dict[str, np.ndarray]:
+    dt = 0.005
+    n = int(round(GLN_END / dt)) + 1
+    t_grid = np.linspace(0.0, GLN_END, n)
+    y = np.array([x0, gln0, nh4_0])
+
+    def deriv(state: np.ndarray) -> np.ndarray:
+        x, gln, _nh4 = state
+        dX = GLN_Q_BIOMASS * x
+        dGln = -GLN_Q_GLN * x - GLN_R_GLN * gln
+        dNH4 = GLN_R_GLN * gln
+        return np.array([dX, dGln, dNH4])
+
+    traj = np.empty((n, 3))
+    traj[0] = y
+    for i in range(1, n):
+        k1 = deriv(y)
+        k2 = deriv(y + 0.5 * dt * k1)
+        k3 = deriv(y + 0.5 * dt * k2)
+        k4 = deriv(y + dt * k3)
+        y = y + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+        y[1] = max(y[1], 0.0)
+        traj[i] = y
+
+    return {
+        "biomass": np.interp(GLN_SAMPLE_TIMES, t_grid, traj[:, 0]),
+        "Gln": np.interp(GLN_SAMPLE_TIMES, t_grid, traj[:, 1]),
+        "NH4": np.interp(GLN_SAMPLE_TIMES, t_grid, traj[:, 2]),
+    }
+
+
+def build_demo_glutamine_decay() -> None:
+    out = OUT / "demo_glutamine_decay"
+    out.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(20260817)
+
+    processes = {}
+    for name, (x0, gln0, nh4_0) in GLN_RUNS.items():
+        sim = _simulate_glutamine_decay(x0, gln0, nh4_0)
+        meas = {
+            "biomass": _noisy(rng, sim["biomass"], 0.005),
+            "Gln": _noisy(rng, sim["Gln"], 1e-5),
+            "NH4": _noisy(rng, sim["NH4"], 1e-5),
+        }
+        for species in meas:
+            meas[species][0] = sim[species][0]   # first sample noise-free
+
+        components = {
+            "biomass": bp.ReactorMediumComponent(
+                name="biomass", unit="g/L",
+                concentration=TimeSeries(times=GLN_SAMPLE_TIMES.astype(float),
+                                         values=meas["biomass"].astype(float)),
+                bounds=(0.0, None),
+            ),
+            "Gln": bp.ReactorMediumComponent(
+                name="Gln", unit="mol/L",
+                concentration=TimeSeries(times=GLN_SAMPLE_TIMES.astype(float),
+                                         values=meas["Gln"].astype(float)),
+                bounds=(0.0, None),
+            ),
+            "NH4": bp.ReactorMediumComponent(
+                name="NH4", unit="mol/L",
+                concentration=TimeSeries(times=GLN_SAMPLE_TIMES.astype(float),
+                                         values=meas["NH4"].astype(float)),
+                bounds=(0.0, None),
+            ),
+        }
+
+        processes[name] = bp.BioProcess(
+            metadata=bp.BioProcessMetadata(
+                name=name, process_type="batch",
+                notes="Simulated CHO-like batch culture; glutamine decomposes "
+                      "to NH4 at a first-order rate (documentation demo).",
+            ),
+            time_axis=bp.TimeAxis(unit="h", start=0.0, end=GLN_END,
+                                  time_reference="inoculation"),
+            volume=bp.Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+                                            density_unit="kg/L", components=components),
+        )
+        processes[name].biological_ode = bp.BiologicalOde(
+            rates={"q_biomass": (None, None), "q_Gln": (None, None),
+                   "r_Gln": (None, None)},
+            derivatives={
+                "biomass": "q_biomass * biomass",
+                "Gln": "-q_Gln * biomass - r_Gln * Gln",
+                "NH4": "r_Gln * Gln",
+            },
+        )
+
+    collection = bp.BioProcessCollection(
+        case_id="demo_glutamine_decay",
+        organism="CHO cell culture (Ulonska et al. 2018-inspired)",
+        citation="Simulated data — bp-docs demo, not a real experiment.",
+        processes=processes,
+    )
+    bp.serialization.save_process_collection(collection, out / "data.json")
+    (out / "ground_truth.json").write_text(json.dumps({
+        "q_biomass": GLN_Q_BIOMASS, "q_Gln": GLN_Q_GLN, "r_Gln": GLN_R_GLN,
+    }, indent=2))
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     build_demo_batch()
@@ -991,6 +1131,7 @@ def main() -> None:
     build_demo_ecoli_fba()
     build_demo_ecoli_blend()
     build_demo_optfed()
+    build_demo_glutamine_decay()
     print(f"demo datasets written to {OUT}")
 
 

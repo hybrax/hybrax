@@ -22,7 +22,7 @@ machinery, not the model, so this page trains the plain default MLP throughout.
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import csv, json, os, shutil, subprocess, sys, textwrap
+import json, os, shutil, subprocess, sys, textwrap
 from pathlib import Path
 %matplotlib inline
 
@@ -35,7 +35,7 @@ shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.js
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -44,7 +44,7 @@ def bp_train(*args):
 
 (WORK / "prepare-config.json").write_text(
     '{ "prepare": { "raw_input": "data.json" } }\n')
-bp_train("prepare", "--config", "prepare-config.json",
+bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
@@ -71,7 +71,6 @@ cfg = TrainHarnessConfig(
     holdout_processes=("run_3",),
     checkpoint_dir=str(WORK / "holdout_check/checkpoints"),
     checkpoint_every=50,
-    plots=False,
 )
 with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()):
     warnings.simplefilter("ignore")
@@ -112,7 +111,7 @@ One fold per process, via the CLI. The config is a train config plus a `loo` sec
 (WORK / "loo-config.json").write_text(textwrap.dedent("""\
     {
       "data": { "prepared": "prepared" },
-      "train": { "epochs": 600, "seed": 0, "learning_rate": 0.02 },
+      "train": { "epochs": 550, "seed": 0, "learning_rate": 0.02 },
       "output": { "dir": "loo_run" },
       "loo": {
         "per_fold_holdout_sets": [
@@ -146,7 +145,7 @@ per process.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train("loo", "--config", "loo-config.json", "--overwrite")
+out = bp_train_cli("loo", "--config", "loo-config.json", "--overwrite")
 print([l for l in out.splitlines() if "LOO complete" in l][0])
 ```
 
@@ -155,15 +154,14 @@ print([l for l in out.splitlines() if "LOO complete" in l][0])
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-with (WORK / "loo_run/loo_summary.csv").open() as fh:
-    rows = list(csv.DictReader(fh))
-cols = ["fold_slug", "test", "holdout_total", "train_mean_total"]
+import pandas as pd
+
+summary = pd.read_csv(WORK / "loo_run/loo_summary.csv")
+folds = summary[summary["fold_idx"] != "mean"]
 print(f"{'fold':10s} {'held out':10s} {'holdout loss':>13s} {'train loss':>11s}")
-for r in rows:
-    if r["fold_idx"] == "mean":
-        continue
+for _, r in folds.iterrows():
     print(f"{r['fold_slug']:10s} {r['test']:10s} "
-          f"{float(r['holdout_total']):13.4f} {float(r['train_mean_total']):11.4f}")
+          f"{r['holdout_total']:13.4f} {r['train_mean_total']:11.4f}")
 ```
 
 ```{code-cell} ipython3

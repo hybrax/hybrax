@@ -47,7 +47,7 @@ shutil.copy(Path("_files/structured_rates_custom.py").resolve(), WORK / "custom.
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -60,10 +60,12 @@ def bp_train(*args):
     {
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
-      "train": { "epochs": 600, "seed": 0, "learning_rate": 0.02 },
+      "train": { "epochs": 250, "seed": 0, "learning_rate": 0.02 },
       "output": { "dir": "run" }
     }
     """))
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 ```
 
 ## The reaction module
@@ -97,9 +99,9 @@ the dataset's components, this still works.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train("prepare", "--config", "prepare-config.json",
+bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train("train", "--config", "train-config.json", "--overwrite")
+out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
@@ -107,8 +109,10 @@ print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```{code-cell} ipython3
 :tags: [remove-input]
 
+bp_train_cli("forward", "--config", "forward-config.json",
+         "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/run_1.png"))
+Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```
 
 ## Did it recover the true parameters?
@@ -192,3 +196,5 @@ Run the example yourself at `./source/_data/out/runs/gallery_structured_rates/`.
   problem, for comparison.
 - [Dense losses](dense_loss.md): bounds and smoothness as an alternative way to encode
   what you know about the biology.
+- [Glutamine decay](glutamine_decay.md): a single declared rate feeding two coupled
+  derivatives at once, the same "did it recover the true parameters" check.

@@ -49,6 +49,11 @@ templates_path = ["_templates"]
 
 # --- Furo ---
 html_theme = "furo"
+# Without both of these, Sphinx generates only one static pygments.css (light),
+# so Furo has nothing to swap in for dark mode and every code block stays light
+# regardless of theme.
+pygments_style = "sphinx"
+pygments_dark_style = "monokai"
 # Drives the browser <title>. The homepage renders this verbatim; every other
 # page renders "{page title} - {this}". The sidebar brand text is a SEPARATE
 # string, overridden in _templates/sidebar/brand.html — furo reads both from

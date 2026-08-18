@@ -76,14 +76,15 @@ def bp_train_cli(*args):
     {
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
-      "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run" }
+      "train": { "epochs": 650, "seed": 0, "learning_rate": 0.01 },
+      "output": { "dir": "run", "predictions": "parents" }
     }
     """))
-(WORK / "forward-config.json").write_text('{ "models": ["run"] }\n')
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 
-import csv
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import bp_format as bp
 import bp_train
@@ -91,19 +92,18 @@ import bp_train
 _collection = bp.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
-    rows_by_process = {}
-    with (WORK / run_dir / "predictions.csv").open() as fh:
-        for row in csv.DictReader(fh):
-            rows_by_process.setdefault(row["process"], []).append(row)
+    """Pooled R2: concatenate every process's residuals/variance before
+    dividing, so one narrow-range process can't make an otherwise-good fit
+    look catastrophic."""
+    df = pd.read_csv(WORK / run_dir / "predictions.csv")
     per_target = {s: ([], []) for s in ("biomass", "glucose", "acetate", "succinate")}
     for name, process in _collection.processes.items():
-        rows = rows_by_process[name]
-        t_pred = np.array([float(r["t"]) for r in rows])
+        proc_df = df[df["process"] == name]
+        t_pred = proc_df["t"].to_numpy()
         for species in per_target:
             comp = process.reactor_medium.components[species].concentration
             t_meas, y_meas = np.asarray(comp.times), np.asarray(comp.values)
-            y_pred = np.interp(t_meas, t_pred,
-                               np.array([float(r[f"c_{species}"]) for r in rows]))
+            y_pred = np.interp(t_meas, t_pred, proc_df[f"c_{species}"].to_numpy())
             per_target[species][0].append(y_meas)
             per_target[species][1].append(y_pred)
     out = {}
@@ -182,7 +182,7 @@ for name, value in r2.items():
 bp_train_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/blend_67.png"))
+Image(filename=str(WORK / "run/forward/forward-results/plots/blend_67.png"))
 ```
 
 Every predictor passes through only three latent scores before the final linear

@@ -11,7 +11,7 @@
 ```bash
 bp-train prepare --config prepare-config.json --output-dir prepared [--overwrite]
 bp-train train   --config train-config.json [--output-dir DIR] [--overwrite]
-                 [--epochs N] [--plot|--no-plot] [--log-level LEVEL]
+                 [--epochs N] [--log-level LEVEL]
 bp-train forward --config forward-config.json [--output-dir DIR] [--overwrite]
 bp-train loo     --config loo-config.json [--output-dir DIR] [--overwrite]
 bp-train loo     --resume RUN_DIR        # mutually exclusive with --config

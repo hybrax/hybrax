@@ -50,7 +50,7 @@ shutil.copy(Path("_files/freezing_custom.py").resolve(), WORK / "custom.py")
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -67,8 +67,10 @@ def bp_train(*args):
       "output": { "dir": "run" }
     }
     """))
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 
-bp_train("prepare", "--config", "prepare-config.json",
+bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
@@ -92,15 +94,17 @@ module changes: this is still an ordinary `__call__` over `ReactionInputs`.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train("train", "--config", "train-config.json", "--overwrite")
+out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
+bp_train_cli("forward", "--config", "forward-config.json",
+         "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/run_1.png"))
+Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```
 
 ## Checking the split actually took
@@ -149,19 +153,17 @@ unfrozen_src = (WORK / "custom.py").read_text().replace(
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train("train", "--config", "train-config-unfrozen.json", "--overwrite")
+out = bp_train_cli("train", "--config", "train-config-unfrozen.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import csv
+import pandas as pd
 
 def final_loss(run_dir):
-    with (WORK / run_dir / "metrics.csv").open() as fh:
-        rows = list(csv.DictReader(fh))
-    return float(rows[-1]["mean_loss"])
+    return float(pd.read_csv(WORK / run_dir / "metrics.csv")["mean_loss"].iloc[-1])
 
 print(f"frozen encoder    final mean_loss = {final_loss('run'):.5f}")
 print(f"trainable encoder final mean_loss = {final_loss('run_unfrozen'):.5f}")

@@ -48,7 +48,7 @@ shutil.copy(Path("_files/augmentation_custom.py").resolve(), WORK / "custom.py")
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -111,7 +111,7 @@ spline"` rather than guessing. `custom_py` must be set at the top level of the c
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train("prepare", "--config", "prepare-config.json",
+out = bp_train_cli("prepare", "--config", "prepare-config.json",
                "--output-dir", "prepared", "--overwrite")
 for line in out.splitlines():
     if "UserWarning: " in line:
@@ -204,7 +204,7 @@ for name in children[:3]:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train("train", "--config", "train-config.json", "--overwrite")
+out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 ```
 

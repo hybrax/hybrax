@@ -11,22 +11,24 @@ kernelspec:
 ---
 
 <!-- LOCK -->
-# Tutorial 1: Create a Dataset
-<!-- UNLOCK -->
+# Tutorial 1: Import your Data
 
-> **In one sentence.** Turn a CSV of offline measurements into a bp-format
+
+> **In one sentence.** Turn a CSV of experimental measurements into a bp-format
 > `BioProcessCollection` you can save, share and train on.
->
-> **You need this if** you have your own data. **You can skip it if** someone already
-> handed you a bp-format file.
 
-This is the one genuinely manual step in the whole stack, and it is worth doing
-carefully: everything downstream is derived from what you write here. We build the
-simplest possible thing: a **batch** run with three measured species and no volume
-changes at all. Feeds, boluses and sampling come later, in the
-[gallery](../gallery/fed_batch.md).
 
-## The data you have
+`Hybrax` only requires you to import your training data once into its JSON format. Everything downstream 
+is derived from your data entered in this step.
+Here, we build a simple **batch** run with three measured species and no volume
+changes. However, the `Hybrax` data format is designed to accomodate a diverse set of bioprocess conditions, for example
+* [feeds, boluses and sampling volume changes](../gallery/fed_batch.md),
+<!-- UNLOCK -->
+* [chemical decay rates](../gallery/<placeholder! please fix once the glu lands>), and
+* [modeled process variables](../gallery/<placeholder! please fix once the glu lands>).
+
+
+## Example data
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -40,44 +42,45 @@ print("...")
 One row per sample, one column per assay. Three runs share the file; we build `run_1`.
 
 ```{code-cell} ipython3
-import csv
-from collections import defaultdict
+import pandas as pd
 
-rows = defaultdict(list)
-with RAW.open() as fh:
-    for row in csv.DictReader(fh):
-        if row["run"] == "run_1":
-            rows["time"].append(float(row["time_h"]))
-            rows["biomass"].append(float(row["biomass_gL"]))
-            rows["glucose"].append(float(row["glucose_gL"]))
-            rows["product"].append(float(row["product_gL"]))
+df = pd.read_csv(RAW)
+run_1 = (
+    df[df["run"] == "run_1"]
+    .sort_values("time_h")
+    .rename(columns={"time_h": "time", "biomass_gL": "biomass",
+                      "glucose_gL": "glucose", "product_gL": "product"})
+)
 
-print(len(rows["time"]), "samples from", rows["time"][0], "to", rows["time"][-1], "h")
+print(len(run_1), "samples from", run_1["time"].iloc[0], "to", run_1["time"].iloc[-1], "h")
 ```
 
-## Step 1: measurements become `TimeSeries`
+## Measurements become `TimeSeries`
 
-Every time-varying quantity in bp-format is a `TimeSeries`: paired `times` and `values`.
+Every time-varying quantity in bp-format is a `TimeSeries` which pairs `times` and `values`.
 
 ```{code-cell} ipython3
 import numpy as np
 import bp_format as bp
 
 biomass = bp.TimeSeries(
-    times=np.asarray(rows["time"]),
-    values=np.asarray(rows["biomass"]),
+    times=run_1["time"].to_numpy(),
+    values=run_1["biomass"].to_numpy(),
 )
 biomass
 ```
 
-Two rules worth knowing now:
+<!-- LOCK -->
+:::{admonition} Notes
+:class: note
+- Each measured species is its own `TimeSeries` naturally enabling irregular sampling.
+- The `times` vector must be **strictly increasing**.
+- For a quantity that genuinely does not change, use `bp.StaticVariable(value)` instead.
+:::
 
-- `times` must be **strictly increasing**.
-- A `TimeSeries` needs discrete samples, or a fitted spline, or both, but not neither.
 
-For a quantity that genuinely does not change, use `bp.StaticVariable(value)` instead.
-
-## Step 2: species become reactor medium components
+## Concentrations become `ReactorMediumComponents`
+<!-- UNLOCK -->
 
 The **reactor medium** is what is in the vessel. Each component carries its own unit,
 because bp-format never converts units for you: it only checks that you were
@@ -89,8 +92,8 @@ components = {
         name=name,
         unit="g/L",
         concentration=bp.TimeSeries(
-            times=np.asarray(rows["time"]),
-            values=np.asarray(rows[name]),
+            times=run_1["time"].to_numpy(),
+            values=run_1[name].to_numpy(),
         ),
         bounds=(0.0, None),      # metadata: a concentration cannot be negative
     )
@@ -106,13 +109,13 @@ reactor_medium = bp.ReactorMedium(
 list(reactor_medium.components)
 ```
 
-:::{admonition} `bounds` are metadata, not constraints
+:::{admonition} Notes
 :class: note
-Nothing in bp-format or the ODE solver enforces bounds. They are recorded so downstream
-consumers (bp-train's loss module, for instance) can build soft penalties from them.
+- The `bounds` are metadata, not constraints. Nothing in `Hybrax` enforces bounds per default. They are recorded so downstream consumers (bp-train's loss module, for instance) can build soft penalties from them.
+- The units are explicitly required. This avoids ambiguity and enables validation downstream.
 :::
 
-## Step 3: the clock and the vessel
+## The clock and the vessel
 
 ```{code-cell} ipython3
 time_axis = bp.TimeAxis(
@@ -129,12 +132,14 @@ volume = bp.Volume(initial_volume=1.0, unit="L")   # batch: nothing moves volume
 inoculation" and "t = 0 is first feed" are different clocks, and later you will want to
 know which one you had.
 
+<!-- LOCK -->
 `Volume` with no `volume_changes` is a true batch. Note what this claims: no feeds, no
-boluses, **and no sampling volume**. That is a real assertion about the experiment. If
-your samples removed a non-negligible volume, say so: see
+boluses, and no sampling volume. That is a real assertion about the simulated experiment. If
+your real world data contains volume changes, see
 [Volume, feeds and events](../format/volume_feeds_events.md).
+<!-- UNLOCK -->
 
-## Step 4: assemble the run
+## Assemble the ``BioProcess``
 
 ```{code-cell} ipython3
 process = bp.BioProcess(
@@ -149,7 +154,7 @@ process = bp.BioProcess(
 )
 ```
 
-That is the whole run. Notice what you did **not** write: any dynamics. bp-format
+That is the whole process. Notice what you did **not** write: any dynamics. bp-format
 generated a default biological ODE for you:
 
 ```{code-cell} ipython3
@@ -168,7 +173,7 @@ immediately. If your data has no biomass, or you want different dynamics, write
 `biological_ode` yourself: [The Bioprocess ODE](../format/bioprocess_ode.md).
 :::
 
-## Step 5: group and save
+## Collect and save
 
 Setting `case_id`/`organism`/`citation` on a `BioProcessCollection` marks it as a full
 case study, one publication or campaign. `case_id` is also the natural grouping for

@@ -42,7 +42,7 @@ shutil.copy(Path("_files/tutorial_04_custom.py").resolve(), WORK / "custom.py")
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -51,10 +51,11 @@ def bp_train(*args):
 
 (WORK / "prepare-config.json").write_text(
     '{ "prepare": { "raw_input": "data.json" } }\n')
-bp_train("prepare", "--config", "prepare-config.json",
+bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 
 import numpy as np
+import pandas as pd
 import bp_format as bp
 
 _collection = bp.serialization.load_process_collection(WORK / "data.json")
@@ -63,21 +64,16 @@ def r2_by_target(run_dir):
     """Physical-space R^2 per target, averaged over processes. Scale-free, so
     it is the fair way to compare a scaled run against an unscaled one: their
     SCL losses live in different units and are not otherwise comparable."""
-    import csv
-    rows_by_process = {}
-    with (WORK / run_dir / "predictions.csv").open() as fh:
-        for row in csv.DictReader(fh):
-            rows_by_process.setdefault(row["process"], []).append(row)
+    df = pd.read_csv(WORK / run_dir / "predictions.csv")
     per_target = {}
     for name, process in _collection.processes.items():
-        rows = rows_by_process[name]
-        t_pred = np.array([float(r["t"]) for r in rows])
+        proc_df = df[df["process"] == name]
+        t_pred = proc_df["t"].to_numpy()
         for species in ("biomass", "glucose", "product"):
             comp = process.reactor_medium.components[species].concentration
             t_meas = np.asarray(comp.times)
             y_meas = np.asarray(comp.values)
-            y_pred = np.interp(t_meas, t_pred,
-                               np.array([float(r[f"c_{species}"]) for r in rows]))
+            y_pred = np.interp(t_meas, t_pred, proc_df[f"c_{species}"].to_numpy())
             ss_res = np.sum((y_meas - y_pred) ** 2)
             ss_tot = np.sum((y_meas - y_meas.mean()) ** 2)
             per_target.setdefault(species, []).append(1 - ss_res / ss_tot)
@@ -172,7 +168,7 @@ optimizer setting at all.
     {
       "data": { "prepared": "prepared" },
       "train": { "epochs": 300, "seed": 0 },
-      "output": { "dir": "run_default" }
+      "output": { "dir": "run_default", "predictions": "parents" }
     }
     """))
 (WORK / "train-custom.json").write_text(textwrap.dedent("""\
@@ -180,9 +176,11 @@ optimizer setting at all.
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
       "train": { "epochs": 300, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run_custom" }
+      "output": { "dir": "run_custom", "predictions": "parents" }
     }
     """))
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run_custom"], "output": { "predictions": "parents", "plots": true } }\n')
 ```
 
 ## Did it help?
@@ -198,8 +196,8 @@ run's predictions back onto the actual measurement times:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train("train", "--config", "train-default.json", "--overwrite", "--no-plot")
-bp_train("train", "--config", "train-custom.json", "--overwrite")
+bp_train_cli("train", "--config", "train-default.json", "--overwrite")
+bp_train_cli("train", "--config", "train-custom.json", "--overwrite")
 
 root = WORK.parents[4]
 print(f"run directories: ./{(WORK / 'run_default').relative_to(root)}"
@@ -229,8 +227,10 @@ your dataset happens to be smallest.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
+bp_train_cli("forward", "--config", "forward-config.json",
+         "--output-dir", "run_custom/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run_custom/run_1.png"))
+Image(filename=str(WORK / "run_custom/forward/forward-results/plots/run_1.png"))
 ```
 
 ## Check what is actually being trained

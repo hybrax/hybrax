@@ -48,7 +48,7 @@ shutil.copy(Path("_files/fed_batch_custom.py").resolve(), WORK / "custom.py")
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -65,7 +65,8 @@ def bp_train(*args):
       "output": { "dir": "run" }
     }
     """))
-(WORK / "forward-config.json").write_text('{ "models": ["run"] }\n')
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 ```
 
 ## The dataset
@@ -125,9 +126,9 @@ process has no controlled feed or PV axes to estimate. See
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train("prepare", "--config", "prepare-config.json",
+bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train("train", "--config", "train-config.json", "--overwrite", "--no-plot")
+out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
@@ -135,10 +136,10 @@ print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train("forward", "--config", "forward-config.json",
+bp_train_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/fedbatch_1.png"))
+Image(filename=str(WORK / "run/forward/forward-results/plots/fedbatch_1.png"))
 ```
 
 Look at the bottom-right panel (`volume_changes`) before anything else. It plots every

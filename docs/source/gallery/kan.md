@@ -91,13 +91,14 @@ def bp_train_cli(*args):
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
       "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run" }
+      "output": { "dir": "run", "predictions": "parents" }
     }
     """))
-(WORK / "forward-config.json").write_text('{ "models": ["run"] }\n')
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 
-import csv
 import numpy as np
+import pandas as pd
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -107,19 +108,15 @@ import bp_train
 _collection = bp.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
-    rows_by_process = {}
-    with (WORK / run_dir / "predictions.csv").open() as fh:
-        for row in csv.DictReader(fh):
-            rows_by_process.setdefault(row["process"], []).append(row)
+    df = pd.read_csv(WORK / run_dir / "predictions.csv")
     per_target = {}
     for name, process in _collection.processes.items():
-        rows = rows_by_process[name]
-        t_pred = np.array([float(r["t"]) for r in rows])
+        proc_df = df[df["process"] == name]
+        t_pred = proc_df["t"].to_numpy()
         for species in ("biomass", "glucose", "product"):
             comp = process.reactor_medium.components[species].concentration
             t_meas, y_meas = np.asarray(comp.times), np.asarray(comp.values)
-            y_pred = np.interp(t_meas, t_pred,
-                               np.array([float(r[f"c_{species}"]) for r in rows]))
+            y_pred = np.interp(t_meas, t_pred, proc_df[f"c_{species}"].to_numpy())
             ss_res = np.sum((y_meas - y_pred) ** 2)
             ss_tot = np.sum((y_meas - y_meas.mean()) ** 2)
             per_target.setdefault(species, []).append(1 - ss_res / ss_tot)
@@ -168,7 +165,7 @@ cold-start pattern other reaction modules in this gallery use.
 
 bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite", "--no-plot")
+out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
@@ -187,7 +184,7 @@ for name, value in r2.items():
 bp_train_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/run_1.png"))
+Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```
 
 R² above 0.99 on all three species: the KAN found a good fit to this page's own
@@ -207,7 +204,7 @@ l1 = kan.l1
 names = list(wrapper.modeled_RMC_names)
 scale = np.asarray(kan.SCALE_modeled_RMCs.scale)
 
-rows = list(csv.DictReader((WORK / "run" / "predictions.csv").open()))
+df = pd.read_csv(WORK / "run" / "predictions.csv")
 
 def edge_curve(o, i, xs_scl):
     xb = jnp.tanh(xs_scl)
@@ -219,7 +216,7 @@ def edge_curve(o, i, xs_scl):
 fig, axes = plt.subplots(1, 3, figsize=(11, 3))
 for ax, species in zip(axes, names):
     i = names.index(species)
-    vals = np.array([float(r[f"c_{species}"]) for r in rows])
+    vals = df[f"c_{species}"].to_numpy()
     lo, hi = max(float(vals.min()), 0.0), float(vals.max())
     xs_raw = np.linspace(lo, hi, 60)
     xs_scl = jnp.asarray(xs_raw / scale[i])

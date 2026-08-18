@@ -7,7 +7,7 @@
 > skip it if** the defaults are converging.
 
 ```bash
-bp-train train --config train-config.json [--overwrite] [--epochs N] [--no-plot]
+bp-train train --config train-config.json [--overwrite] [--epochs N]
 ```
 
 ## What one step does
@@ -148,11 +148,9 @@ machines, get OOM-killed. Run one at a time, or shard within one run using `devi
 ```
 
 Each checkpoint directory is **self-contained**: parameters, optimizer state, config,
-`custom.py`, the prepared data, and a `predictions.csv` for that step. You can point
-`forward` at a checkpoint exactly as at a run directory.
-
-That self-containment costs time: every checkpoint re-exports predictions. On a fast run
-the checkpointing can dominate the wall clock, so set `every` to something coarse.
+`custom.py`, and the prepared data. You can point `forward` at a checkpoint exactly as
+at a run directory to get that step's predictions or plots; checkpoints themselves
+carry neither, by design (see [Forward](forward.md)).
 
 See [Saving, loading and predicting](save_load_predict.md).
 
@@ -163,14 +161,15 @@ See [Saving, loading and predicting](save_load_predict.md).
 | `metrics.csv` | Per-epoch loss and gradient norm. The source of truth. |
 | `loss_curve.png` | Is it converging? |
 | `grad_norm_curve.png` | Raw gradient norm: is the clip active all the time? |
-| `<process>.png` | Fit and inferred rates, per process. |
-| `predictions.csv` | Dense trajectories at the end of training. |
 | `config.json`, `custom.py` | Exactly what was run. |
 
-**Judge the fit by the rates**, not only the trajectories. A model can match
-concentrations beautifully with rates that are physically impossible: growth and death
-both far too high, or uptake compensating for a transport error. Compensating errors are
-invisible in the left column and obvious in the right one.
+Trajectories, rates and per-process figures are not part of `train`'s own output:
+point [`forward`](forward.md) at the run directory (`output.predictions` and
+`output.plots`) to get those. **Judge the fit by the rates**, not only the
+trajectories, once you have them: a model can match concentrations beautifully with
+rates that are physically impossible: growth and death both far too high, or uptake
+compensating for a transport error. Compensating errors are invisible in the
+concentration plot and obvious in the rate one.
 
 ## Gotchas
 

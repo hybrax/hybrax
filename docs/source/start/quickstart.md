@@ -38,7 +38,7 @@ shutil.copy(DATA / "data.json", WORK / "data.json")
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     """Run the bp-train CLI in WORK and return its combined output."""
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
@@ -116,7 +116,8 @@ Two things to know now, and no more:
       "output": { "dir": "run" }
     }
     """))
-(WORK / "forward-config.json").write_text('{ "models": ["run"] }\n')
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 ```
 
 ## 2. Prepare
@@ -128,7 +129,7 @@ bp-train prepare --config prepare-config.json --output-dir prepared
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-tail(bp_train("prepare", "--config", "prepare-config.json",
+tail(bp_train_cli("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=3)
 ```
 
@@ -149,7 +150,7 @@ bp-train train --config train-config.json
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train("train", "--config", "train-config.json", "--overwrite")
+out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
 tail(out, n=1, match="training complete")
 ```
 
@@ -164,19 +165,20 @@ optimizer; every one of those is a default you can replace later.
 bp-train forward --config forward-config.json
 ```
 
-with `forward-config.json` being just `{ "models": ["run"] }`.
+with `forward-config.json` requesting predictions and plots explicitly: both default to
+off, since a dense re-solve and a rendered figure cost more than a bare loss number does.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train("forward", "--config", "forward-config.json",
+bp_train_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
-print((WORK / "run/forward/losses.csv").read_text())
+print((WORK / "run/forward/forward-results/losses.csv").read_text())
 ```
 
 `forward` re-simulates each run with the trained model and writes a dense trajectory to
-`predictions.csv` plus these per-process, per-target losses. Training gives you a number;
-forward gives you something you can plot and hand to a colleague.
+`forward-results/predictions.csv` plus these per-process, per-target losses. Training
+gives you a number; forward gives you something you can plot and hand to a colleague.
 
 ## 5. Look at it
 
@@ -184,7 +186,7 @@ forward gives you something you can plot and hand to a colleague.
 :tags: [remove-input]
 
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/run_1.png"))
+Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```
 
 Left column: measurements (dots) against the integrated trajectory (line), with R² per
@@ -197,10 +199,10 @@ rate of **0.45 1/h**, and nobody told the model that:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import csv
-with (WORK / "run/forward/predictions.csv").open() as fh:
-    first = next(r for r in csv.DictReader(fh) if r["process"] == "run_1")
-print(f"learned q_biomass at t=0 : {float(first['q_biomass']):.3f} 1/h")
+import pandas as pd
+df = pd.read_csv(WORK / "run/forward/forward-results/predictions.csv")
+first = df[df["process"] == "run_1"].iloc[0]
+print(f"learned q_biomass at t=0 : {first['q_biomass']:.3f} 1/h")
 print( "true    mu_max           : 0.450 1/h")
 ```
 
@@ -231,9 +233,7 @@ for path in sorted((WORK / "run").rglob("*")):
 | `metrics.csv` | Per-epoch loss and gradient norm. |
 | `loss_curve.png`, `grad_norm_curve.png` | The same, plotted. |
 | `model/params.eqx` | The trained parameters: only the trainable ones. |
-| `predictions.csv` | Dense trajectories and rates, at the end of training. |
-| `<run>.png` | One panel figure per process. |
-| `forward/` | The output of step 4. |
+| `forward/` | The output of step 4: dense trajectories, rates, and (when requested) one panel figure per process. |
 
 ## What to do next
 

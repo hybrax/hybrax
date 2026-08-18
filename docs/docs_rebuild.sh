@@ -16,7 +16,13 @@ rm -rf "$SRC/narrative"             # legacy: bp-docs no longer copies the packa
 "$PYTHON" "$SRC/_data/generate.py"
 
 LOG="$SCRATCH/build.log"
-"$PYTHON" -m sphinx -b html -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
+echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
+BUILD_START=$(date +%s)
+# -j 4: each page's setup cell isolates its own WORK dir and subprocess, so
+# parallel pages don't share state, only CPU/memory. 4 matches the cap that
+# kept bp-train's own pytest -n from OOM-killing this WSL box; raise with
+# caution, not by default.
+"$PYTHON" -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
 
 # myst-nb writes every executed cell's image output flat into jupyter_execute/,
 # hash-named for content-addressed dedup (see myst_nb.core.render.render_image) —
@@ -42,4 +48,4 @@ if grep -E "WARNING|ERROR" "$LOG" | grep -v "source/autoapi/" > "$SCRATCH/our_wa
     exit 1
 fi
 
-echo "Built: $OUT/index.html"
+echo "Built: $OUT/index.html  ($(( $(date +%s) - BUILD_START ))s)"

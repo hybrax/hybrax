@@ -8,3 +8,4 @@ sphinx-design>=0.6    # dropdown directive, used for full-file listings in the g
 jupyter-cache>=1.0    # only re-execute pages whose source changed
 ipykernel>=6.29
 matplotlib>=3.8
+pandas>=2.0            # Tutorial 1: loading a raw CSV of offline measurements

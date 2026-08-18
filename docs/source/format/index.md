@@ -93,3 +93,16 @@ an amount balance. When something looks wrong, check the volume first.
 - [Concepts and vocabulary](../start/concepts.md), if any term above was unfamiliar.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): the same material as a walkthrough.
 - [API reference](../autoapi/bp_format/index): every signature.
+
+```{toctree}
+:maxdepth: 1
+:hidden:
+data_model
+load_and_save
+validate_and_inspect
+volume_feeds_events
+time_series_and_splines
+bioprocess_ode
+limits_and_gotchas
+further_reading
+```

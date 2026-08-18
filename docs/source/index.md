@@ -67,14 +67,6 @@ tutorials/05_predict
 :caption: bp-format guide
 :hidden:
 format/index
-format/data_model
-format/load_and_save
-format/validate_and_inspect
-format/volume_feeds_events
-format/time_series_and_splines
-format/bioprocess_ode
-format/limits_and_gotchas
-format/further_reading
 ```
 
 ```{toctree}
@@ -82,17 +74,6 @@ format/further_reading
 :caption: bp-train guide
 :hidden:
 train/index
-train/config
-train/prepare
-train/reaction_module
-train/scaling
-train/loss_module
-train/train
-train/forward
-train/loo
-train/save_load_predict
-train/hooks_cheatsheet
-train/further_reading
 ```
 
 ```{toctree}
@@ -100,19 +81,6 @@ train/further_reading
 :caption: Gallery
 :hidden:
 gallery/index
-gallery/fed_batch
-gallery/mechanistic_rates
-gallery/dense_loss
-gallery/stateful
-gallery/freezing
-gallery/loo
-gallery/augmentation
-gallery/gaussian_process
-gallery/knowledge_transfer
-gallery/fba_hyb
-gallery/pls_dfba
-gallery/kan
-gallery/optfed
 ```
 
 ```{toctree}

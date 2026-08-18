@@ -54,7 +54,7 @@ shutil.copy(Path("_files/dense_loss_custom.py").resolve(), WORK / "custom.py")
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -68,30 +68,28 @@ def bp_train(*args):
       "data": { "prepared": "prepared" },
       "custom_py": "custom.py",
       "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run_full" }
+      "output": { "dir": "run_full", "predictions": "parents" }
     }
     """))
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run_full"], "output": { "predictions": "parents", "plots": true } }\n')
 
 import numpy as np
+import pandas as pd
 import bp_format as bp
-import csv
 
 _collection = bp.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
-    rows_by_process = {}
-    with (WORK / run_dir / "predictions.csv").open() as fh:
-        for row in csv.DictReader(fh):
-            rows_by_process.setdefault(row["process"], []).append(row)
+    df = pd.read_csv(WORK / run_dir / "predictions.csv")
     per_target = {}
     for name, process in _collection.processes.items():
-        rows = rows_by_process[name]
-        t_pred = np.array([float(r["t"]) for r in rows])
+        proc_df = df[df["process"] == name]
+        t_pred = proc_df["t"].to_numpy()
         for species in ("biomass", "glucose", "product"):
             comp = process.reactor_medium.components[species].concentration
             t_meas, y_meas = np.asarray(comp.times), np.asarray(comp.values)
-            y_pred = np.interp(t_meas, t_pred,
-                               np.array([float(r[f"c_{species}"]) for r in rows]))
+            y_pred = np.interp(t_meas, t_pred, proc_df[f"c_{species}"].to_numpy())
             ss_res = np.sum((y_meas - y_pred) ** 2)
             ss_tot = np.sum((y_meas - y_meas.mean()) ** 2)
             per_target.setdefault(species, []).append(1 - ss_res / ss_tot)
@@ -99,18 +97,14 @@ def r2_by_target(run_dir):
 
 def dense_diagnostics(run_dir):
     """Worst glucose excursion and RMS curvature per rate, in physical space."""
-    rows_by_process = {}
-    with (WORK / run_dir / "predictions.csv").open() as fh:
-        for row in csv.DictReader(fh):
-            rows_by_process.setdefault(row["process"], []).append(row)
-    min_glucose = float("inf")
+    df = pd.read_csv(WORK / run_dir / "predictions.csv")
+    min_glucose = float(df["c_glucose"].min())
     curvature = {"q_biomass": [], "q_glucose": []}
-    for rows in rows_by_process.values():
-        t = np.array([float(r["t"]) for r in rows])
-        min_glucose = min(min_glucose, min(float(r["c_glucose"]) for r in rows))
+    for _, proc_df in df.groupby("process"):
+        t = proc_df["t"].to_numpy()
         dt = t[1] - t[0]
         for rate in curvature:
-            y = np.array([float(r[rate]) for r in rows])
+            y = proc_df[rate].to_numpy()
             d2 = (y[2:] - 2 * y[1:-1] + y[:-2]) / dt**2
             curvature[rate].append(float(np.sqrt(np.mean(d2**2))))
     return min_glucose, {k: float(np.mean(v)) for k, v in curvature.items()}
@@ -183,9 +177,9 @@ smooth. `demo_batch` has no events, so this mask is a no-op here) see
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train("prepare", "--config", "prepare-config.json",
+bp_train_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train("train", "--config", "train-full.json", "--overwrite")
+out = bp_train_cli("train", "--config", "train-full.json", "--overwrite")
 print([l for l in out.splitlines() if "training complete" in l][0])
 print(f"run directory: ./{(WORK / 'run_full').relative_to(WORK.parents[4])}")
 ```
@@ -222,10 +216,10 @@ shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data_ba
       "data": { "prepared": "prepared" },
       "custom_py": "base.py",
       "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run_base" }
+      "output": { "dir": "run_base", "predictions": "parents" }
     }
     """))
-bp_train("train", "--config", "train-base.json", "--overwrite", "--no-plot")
+bp_train_cli("train", "--config", "train-base.json", "--overwrite")
 print(f"comparison run directory: ./{(WORK / 'run_base').relative_to(WORK.parents[4])}")
 
 r2_base = r2_by_target("run_base")
@@ -250,8 +244,10 @@ measurement-only losses cannot see.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
+bp_train_cli("forward", "--config", "forward-config.json",
+         "--output-dir", "run_full/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run_full/run_1.png"))
+Image(filename=str(WORK / "run_full/forward/forward-results/plots/run_1.png"))
 ```
 
 ## See also

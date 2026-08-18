@@ -27,8 +27,28 @@ each page runs top to bottom exactly as shown here, no rendering required.
 | [PLS-dFBA](pls_dfba.md) | FBA-Hyb extended with an actual PLS-shaped component (linear, low-rank, no neural network) that reads media composition alongside state. |
 | [A KAN model](kan.md) | Learnable univariate functions on edges, summed at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve read out directly after training. |
 | [OptFed](optfed.md) | A real, published non-competitive-inhibition Michaelis-Menten rate law with Eyring-equation temperature dependence, `temperature` feeding straight into the kinetics as a controlled process variable. |
+| [Glutamine decay](glutamine_decay.md) | One declared rate feeding two coupled derivatives at once, a sink in one, a source in the other, recovered from data as a single shared number. |
 
 ## See also
 
 - [Tutorials](../tutorials/01_your_first_dataset.md): start here if you have not yet.
 - [Which page do I need?](../start/find.md): the full feature routing table.
+
+```{toctree}
+:maxdepth: 1
+:hidden:
+fed_batch
+mechanistic_rates
+dense_loss
+stateful
+freezing
+loo
+augmentation
+gaussian_process
+knowledge_transfer
+fba_hyb
+pls_dfba
+kan
+optfed
+glutamine_decay
+```

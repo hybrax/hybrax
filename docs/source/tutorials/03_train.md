@@ -39,7 +39,7 @@ shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.js
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train(*args):
+def bp_train_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -82,7 +82,7 @@ everything the model does is visible in three specific rates.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-show(bp_train("prepare", "--config", "prepare-config.json",
+show(bp_train_cli("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=2)
 ```
 
@@ -122,12 +122,14 @@ print("top-level keys:", sorted(prep)[:8])
       "output": { "dir": "run" }
     }
     """))
+(WORK / "forward-config.json").write_text(
+    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-show(bp_train("train", "--config", "train-config.json", "--overwrite"),
+show(bp_train_cli("train", "--config", "train-config.json", "--overwrite"),
      n=1, match="training complete")
 ```
 
@@ -157,13 +159,12 @@ The per-epoch record:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import csv
-with (WORK / "run/metrics.csv").open() as fh:
-    rows = list(csv.DictReader(fh))
-print("columns:", ", ".join(rows[0]))
+import pandas as pd
+metrics = pd.read_csv(WORK / "run/metrics.csv")
+print("columns:", ", ".join(metrics.columns))
 print()
-for r in [rows[0], rows[len(rows)//2], rows[-1]]:
-    print({k: r[k] for k in list(r)[:4]})
+for i in (0, len(metrics) // 2, len(metrics) - 1):
+    print(metrics.iloc[i, :4].to_dict())
 ```
 
 And the loss curve:
@@ -181,7 +182,9 @@ the inferred rates on the right:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-Image(filename=str(WORK / "run/run_1.png"))
+bp_train_cli("forward", "--config", "forward-config.json",
+         "--output-dir", "run/forward", "--overwrite")
+Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```
 
 ### What to look at, in order

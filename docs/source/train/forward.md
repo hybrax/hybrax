@@ -10,23 +10,37 @@
 bp-train forward --config forward-config.json [--output-dir DIR] [--overwrite]
 ```
 
-The whole config can be one line:
+The whole config can be one line, but produces only a loss table: predictions and
+plots are both opt-in, since a dense re-solve and a rendered figure cost more than a
+bare loss number does.
 
 ```json
 { "models": ["run"] }
 ```
 
-Output defaults to `<first model>/forward`.
+To also get dense trajectories and one figure per process:
+
+```json
+{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }
+```
+
+`predictions` accepts `"none"` (default), `"parents"` (every non-augmented evaluated
+process), or `"all"`. `plots` requires `predictions` to be `"parents"` or `"all"`, and
+is best-effort: a rendering failure is logged, not raised.
+
+Output defaults to `<first model>/forward`. Everything the command writes lands under
+one `forward-results/` subdirectory inside that, so overwriting never touches
+unrelated files sitting next to it.
 
 ## What it produces
 
 | File | Contents |
 |---|---|
-| `predictions.csv` | Dense trajectory per process: `t`, `c_<species>`, `q_<rate>`, `V_real`. |
-| `losses.csv` | Per-process, per-target loss, with the train/holdout split. |
-| `<process>.png` | Fit and inferred rates. |
-| `predictions_std.csv` | Ensembles only: spread across models. |
-| `models/<name>/` | Ensembles only: each member's own predictions and losses. |
+| `forward-results/losses.csv` | Per-process, per-target loss, with the train/holdout split. Always written. |
+| `forward-results/predictions.csv` | Dense trajectory per process: `t`, `c_<species>`, `q_<rate>`, `V_real`. Needs `output.predictions`. |
+| `forward-results/plots/<process>.png` | Fit, inferred rates, `V_real` and volume events, per process. Needs `output.plots`. |
+| `forward-results/predictions_std.csv` | Ensembles only: spread across models. |
+| `forward-results/models/<name>/` | Ensembles only: each member's own predictions and losses. |
 
 ## Why it is separate from training
 
@@ -67,7 +81,7 @@ More than one entry turns it into an ensemble:
 }
 ```
 
-`predictions.csv` holds the mean and `predictions_std.csv` the standard deviation across
+`forward-results/predictions.csv` holds the mean and `predictions_std.csv` the standard deviation across
 members. Training the same configuration under several seeds and reading the spread is
 the cheapest uncertainty estimate available here, and it is genuinely informative,
 because neural ODE fits on sparse bioprocess data are often seed-sensitive in the rates

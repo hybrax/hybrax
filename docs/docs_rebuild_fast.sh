@@ -33,7 +33,9 @@ mkdir -p "$SCRATCH"
 "$PYTHON" "$SRC/_data/generate.py"
 
 LOG="$SCRATCH/build.log"
-"$PYTHON" -m sphinx -b html -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
+echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
+BUILD_START=$(date +%s)
+"$PYTHON" -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
 
 if compgen -G "$JUPYTER_EXECUTE"/*.png > /dev/null; then
     mkdir -p "$JUPYTER_EXECUTE/figures"
@@ -48,4 +50,4 @@ if grep -E "WARNING|ERROR" "$LOG" | grep -v "source/autoapi/" > "$SCRATCH/our_wa
     exit 1
 fi
 
-echo "Built (incremental): $OUT/index.html"
+echo "Built (incremental): $OUT/index.html  ($(( $(date +%s) - BUILD_START ))s)"
