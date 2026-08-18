@@ -11,7 +11,7 @@ nonsense during ODE integration.
 Every validator returns `(bool, str)` (or `(bool, list[str])` for the
 aggregates) instead of raising, so one pass collects **all** problems into a
 report rather than stopping at the first. Structural impossibilities still raise
-— see [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly).
+— see [Design Rationale §5](01_design_rationale.md#5-check-the-data-then-fail-loudly).
 
 All 19 validators are exported from the package root: `bp.validate_process(...)`.
 
@@ -300,4 +300,4 @@ print(f"net change: {delta:+.3f} {process.volume.unit}")
 
 - [Data Model](02_data_model.md) — what is being validated
 - [Serialization](03_serialization.md) — validate after loading
-- [Design Rationale §6](01_design_rationale.md#6-check-the-data-then-fail-loudly)
+- [Design Rationale §5](01_design_rationale.md#5-check-the-data-then-fail-loudly)
