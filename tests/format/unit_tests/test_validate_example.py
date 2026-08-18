@@ -969,7 +969,7 @@ def test_structural_validation_failure_fails_and_writes_reports(tmp_path, capsys
     assert summary["single_process"]["ok"] is False
     assert summary["all_processes"]["ok"] is False
     text = text_path.read_text()
-    assert "Reactor medium has no components" in text
+    assert "reactor medium has no components" in text
     capsys.readouterr()
 
 

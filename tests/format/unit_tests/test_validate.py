@@ -33,6 +33,7 @@ from bp_format import (
     validate_volume_change_states,
     validate_volume_units,
     validate_biomass_in_reactor_medium,
+    validate_initial_state_alignment,
     validate_measurement_sampling_alignment,
     validate_process,
     validate_volume_consistency,
@@ -81,6 +82,13 @@ def _make_process(
     )
 
 
+def _find(results, contains: str):
+    """Return the single (ok, message) entry whose message contains *contains*."""
+    matches = [r for r in results if contains in r[1]]
+    assert len(matches) == 1, f"expected exactly one match for {contains!r}, got {matches}"
+    return matches[0]
+
+
 # ---------------------------------------------------------------------------
 # validate_discrete_events
 # ---------------------------------------------------------------------------
@@ -103,7 +111,7 @@ class TestValidateDiscreteEvents:
         ok, msg = validate_discrete_events(process)
 
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS discrete_events:")
 
     def test_times_must_be_one_dimensional(self):
         process = _make_process()
@@ -165,7 +173,7 @@ class TestValidateTimeSeriesShape:
         ts = _ts([0.0, 1.0, 2.0], [1.0, 2.0, 3.0])
         ok, msg = validate_timeseries_shape(ts, name="glucose")
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS timeseries_shape:")
 
     def test_single_point_is_valid(self):
         ts = _ts([0.0], [1.0])
@@ -182,7 +190,7 @@ class TestValidateTimeSeriesShape:
         ok, msg = validate_timeseries_shape(_ts([], []), allow_empty=True)
 
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS timeseries_shape:")
 
     def test_unordered_timepoints(self):
         ts = SimpleNamespace(
@@ -230,7 +238,7 @@ class TestValidateTimeAxis:
         ok, msg = validate_time_axis(process)
 
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS time_axis:")
 
     def test_start_after_end_is_invalid(self):
         process = _make_process()
@@ -364,8 +372,8 @@ class TestValidateTimestampBounds:
         ok, msg = validate_timestamp_bounds(process)
 
         assert ok is True
-        assert "skipped" in msg
-        assert "time axis invalid" in msg
+        assert msg.startswith("SKIP timestamp_bounds:")
+        assert "time_axis is invalid" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +468,7 @@ class TestValidateVolumeUnits:
         process = _make_process(volume_changes={"sample": self._sample("L")})
         ok, msg = validate_volume_units(process)
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS volume_units:")
 
     def test_mismatched_volume_change_unit(self):
         process = _make_process(volume_changes={"sample": self._sample("mL")})
@@ -564,12 +572,12 @@ class TestValidateVolumeChangeStates:
         )
 
         ok, msg = validate_volume_change_states(process)
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert ok is False
         assert "'biomass' uses unit 'mg/mL'" in msg
         assert all_valid is False
-        assert any("'biomass' uses unit 'mg/mL'" in message for message in messages)
+        assert any("'biomass' uses unit 'mg/mL'" in message for _, message in results)
 
     def test_negative_volume_change_not_checked(self):
         """Negative (outflow) volume changes should skip state coverage check."""
@@ -592,7 +600,7 @@ class TestValidateVolumeChangeStates:
         )
         ok, msg = validate_volume_change_states(process)
         assert ok is True
-        assert "skipped" in msg.lower()
+        assert msg.startswith("SKIP volume_change_states:")
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +640,110 @@ class TestValidateBiomassInReactorMedium:
 
 
 # ---------------------------------------------------------------------------
+# validate_initial_state_alignment
+# ---------------------------------------------------------------------------
+
+
+class TestValidateInitialStateAlignment:
+    def test_all_states_measured_at_time_axis_start_passes(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0]),
+                ),
+            },
+            process_variables={
+                "agitation": ProcessVariable(
+                    name="agitation",
+                    unit="rpm",
+                    is_controlled=True,
+                    values=_ts([0.0, 5.0], [200.0, 250.0]),
+                ),
+            },
+        )
+
+        ok, msg = validate_initial_state_alignment(process)
+
+        assert ok is True
+        assert msg.startswith("PASS initial_state_alignment:")
+
+    def test_reactor_component_missing_t0_measurement_fails(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([1.0, 2.0], [0.1, 0.5]),  # no t=0.0 point
+                ),
+            },
+        )
+
+        ok, msg = validate_initial_state_alignment(process)
+
+        assert ok is False
+        assert "reactor component 'biomass'" in msg
+
+    def test_process_variable_missing_t0_measurement_fails(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                )
+            },
+            process_variables={
+                "temperature": ProcessVariable(
+                    name="temperature",
+                    unit="degC",
+                    is_controlled=True,
+                    values=_ts([0.5, 1.0], [30.0, 31.0]),  # no t=0.0 point
+                ),
+            },
+        )
+
+        ok, msg = validate_initial_state_alignment(process)
+
+        assert ok is False
+        assert "process variable 'temperature'" in msg
+
+    def test_static_variable_states_are_exempt(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(value=1.0),
+                ),
+            },
+        )
+
+        ok, _ = validate_initial_state_alignment(process)
+
+        assert ok is True
+
+    def test_wired_into_validate_process(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([1.0, 2.0], [0.1, 0.5]),
+                ),
+            },
+        )
+
+        all_valid, results = validate_process(process)
+
+        assert all_valid is False
+        assert any(
+            not ok and "initial_state_alignment" in msg for ok, msg in results
+        )
+
+
+# ---------------------------------------------------------------------------
 # validate_process (integration)
 # ---------------------------------------------------------------------------
 
@@ -650,12 +762,15 @@ class TestValidateProcess:
         process = _make_process(reactor_components={"biomass": biomass})
         process.volume.total_volume = malformed
 
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert all_valid is False
-        assert any("TimeSeries 'biomass' OK" in message for message in messages)
-        assert any("'biomass c_star' invalid" in message for message in messages)
-        assert any("'measured total volume' invalid" in message for message in messages)
+        ok_biomass, _ = _find(results, "TimeSeries 'biomass' —")
+        assert ok_biomass is True
+        ok_cstar, _ = _find(results, "TimeSeries 'biomass c_star'")
+        assert ok_cstar is False
+        ok_vol, _ = _find(results, "TimeSeries 'measured total volume'")
+        assert ok_vol is False
 
     def test_invalid_time_axis_fails_process(self):
         process = _make_process(
@@ -669,14 +784,14 @@ class TestValidateProcess:
         )
         process.time_axis.start = 11.0
 
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert all_valid is False
-        assert any("Time axis invalid" in message for message in messages)
-        assert any(
-            "Timestamp bounds check skipped — time axis invalid" in message
-            for message in messages
-        )
+        ok_axis, msg_axis = _find(results, "start 11.0 is after end 10.0")
+        assert ok_axis is False
+        ok_bounds, msg_bounds = _find(results, "SKIP timestamp_bounds")
+        assert ok_bounds is True
+        assert "time_axis is invalid" in msg_bounds
 
     def test_valid_process_returns_all_ok(self):
         biomass_ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
@@ -711,9 +826,10 @@ class TestValidateProcess:
             },
             volume_changes={"feed": vc},
         )
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
         assert all_valid is True
-        assert all("invalid" not in m.lower() for m in messages)
+        assert all(ok for ok, _ in results)
+        assert all(msg.startswith(("PASS ", "SKIP ")) for _, msg in results)
 
     def test_wrong_type_raises_type_error(self):
         """validate_process() must raise TypeError for non-BioProcess arguments."""
@@ -739,7 +855,7 @@ class TestValidateProcess:
                 ),
             },
         )
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
 
@@ -755,10 +871,13 @@ class TestValidateProcess:
         )
         process.discrete_events = DiscreteEvents(times=jnp.array([2.0, 1.0]))
 
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert all_valid is False
-        assert any("Discrete events invalid" in message for message in messages)
+        assert any(
+            not ok and "strictly monotonically increasing" in msg
+            for ok, msg in results
+        )
 
     def test_empty_measured_total_volume_fails_process(self):
         process = _make_process(
@@ -772,12 +891,12 @@ class TestValidateProcess:
         )
         process.volume.total_volume = _ts([], [])
 
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert all_valid is False
         assert any(
             "measured total volume" in message and "empty" in message
-            for message in messages
+            for _, message in results
         )
 
     @pytest.mark.parametrize(
@@ -801,9 +920,9 @@ class TestValidateProcess:
             }
         )
 
-        _, messages = validate_process(process)
+        _, results = validate_process(process)
 
-        assert any("must not be empty" in message for message in messages) is (
+        assert any("must not be empty" in message for _, message in results) is (
             expect_empty_error
         )
 
@@ -818,10 +937,12 @@ class TestValidateProcess:
             }
         )
 
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert all_valid is False
-        assert any("Timestamp bounds invalid" in message for message in messages)
+        ok_bounds, msg_bounds = _find(results, "FAIL timestamp_bounds")
+        assert ok_bounds is False
+        assert "outside" in msg_bounds
 
     def test_mismatched_volume_change_unit_fails_process(self):
         process = _make_process(
@@ -843,10 +964,50 @@ class TestValidateProcess:
             },
         )
 
-        all_valid, messages = validate_process(process)
+        all_valid, results = validate_process(process)
 
         assert all_valid is False
-        assert any("volume unit 'L'" in message for message in messages)
+        assert any("volume unit 'L'" in message for _, message in results)
+
+    def test_every_message_follows_verdict_check_name_template(self):
+        """Regression test: every check's message follows the shared
+        '<VERDICT> <check_name>: <detail>' template, and ok always agrees
+        with the verdict."""
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([0.0, 1.0], [0.1, 0.5]),
+                ),
+            },
+        )
+        known_checks = {
+            "discrete_events",
+            "timeseries_shape",
+            "time_axis",
+            "timestamp_bounds",
+            "volume_units",
+            "volume_change_sign",
+            "volume_change_states",
+            "biomass_in_reactor_medium",
+            "initial_state_alignment",
+            "measurement_sampling_alignment",
+            "bounds",
+            "bounds_against_data",
+            "biological_ode",
+        }
+
+        _, results = validate_process(process)
+
+        assert results  # sanity: the process exercises at least one check
+        for ok, msg in results:
+            verdict, rest = msg.split(" ", 1)
+            assert verdict in ("PASS", "FAIL", "SKIP")
+            check_name, sep, _detail = rest.partition(": ")
+            assert sep == ": "
+            assert check_name in known_checks, check_name
+            assert ok == (verdict != "FAIL")
 
 
 # ---------------------------------------------------------------------------
@@ -902,7 +1063,7 @@ class TestValidateVolumeConsistency:
         )
         ok, msg, delta = validate_volume_consistency(process, final_volume=2.0)
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS volume_consistency:")
         assert abs(delta - 1.0) < 1e-6
 
     def test_discrete_volume_balance_ok(self):
@@ -927,7 +1088,7 @@ class TestValidateVolumeConsistency:
         )
         ok, msg, delta = validate_volume_consistency(process, final_volume=3.0)
         assert ok is False
-        assert "inconsistency" in msg.lower()
+        assert msg.startswith("FAIL volume_consistency:")
 
     def test_negative_volume_change(self):
         # Sampling: cumulative removal 0 -> -0.2 L; initial=2, expected final=1.8
@@ -1005,7 +1166,9 @@ class TestValidateForPublication:
         assert all_valid is True
         assert "run1" in report
         assert "run2" in report
-        assert "OK" in report["__consistency__"][0]
+        ok0, msg0 = report["__consistency__"][0]
+        assert ok0 is True
+        assert msg0.startswith("PASS cross_process_consistency:")
 
     def test_empty_collection(self):
         cs = self._collection({})
@@ -1020,7 +1183,9 @@ class TestValidateForPublication:
         all_valid, report = validate_for_publication(cs)
         assert all_valid is True
         assert "run1" in report
-        assert "OK" in report["__consistency__"][0]
+        ok0, msg0 = report["__consistency__"][0]
+        assert ok0 is True
+        assert msg0.startswith("PASS cross_process_consistency:")
 
     def test_inconsistent_reactor_medium_components(self):
         """Processes with different reactor medium components fail consistency."""
@@ -1040,7 +1205,7 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("reactor medium" in e for e in report["__consistency__"])
+        assert any("reactor medium" in msg for _, msg in report["__consistency__"])
 
     def test_inconsistent_process_variable_names(self):
         """Processes with different process variable names should fail consistency."""
@@ -1056,7 +1221,7 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("process variables" in e for e in report["__consistency__"])
+        assert any("process variables" in msg for _, msg in report["__consistency__"])
 
     def test_inconsistent_process_variable_types(self):
         """Same variable name but different type fails."""
@@ -1078,7 +1243,7 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("process variables" in e for e in report["__consistency__"])
+        assert any("process variables" in msg for _, msg in report["__consistency__"])
 
     def test_different_volume_change_names_pass(self):
         """Processes may use different feed or sampling strategies."""
@@ -1096,9 +1261,10 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is True
-        assert report["__consistency__"] == [
-            "Cross-process structure is consistent — OK"
-        ]
+        assert len(report["__consistency__"]) == 1
+        ok0, msg0 = report["__consistency__"][0]
+        assert ok0 is True
+        assert msg0.startswith("PASS cross_process_consistency:")
 
     def test_wrong_type_raises_type_error(self):
         with pytest.raises(TypeError, match="BioProcessCollection"):
@@ -1122,7 +1288,7 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("reactor medium" in e for e in report["__consistency__"])
+        assert any("reactor medium" in msg for _, msg in report["__consistency__"])
 
     def test_inconsistent_process_variable_units(self):
         """Same process variable name and type but different units should fail."""
@@ -1144,7 +1310,7 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert any("process variables" in e for e in report["__consistency__"])
+        assert any("process variables" in msg for _, msg in report["__consistency__"])
 
     def test_volume_change_units_are_checked_per_process(self):
         """Cross-process consistency does not compare volume-change units."""
@@ -1170,12 +1336,13 @@ class TestValidateForPublication:
         cs = self._collection({"run1": p1, "run2": p2})
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
-        assert report["__consistency__"] == [
-            "Cross-process structure is consistent — OK"
-        ]
+        assert len(report["__consistency__"]) == 1
+        ok0, msg0 = report["__consistency__"][0]
+        assert ok0 is True
+        assert msg0.startswith("PASS cross_process_consistency:")
         assert any(
-            "Volume changes must use volume unit" in message
-            for message in report["run2"]
+            "volume changes must use volume unit" in message
+            for _, message in report["run2"]
         )
 
 
@@ -1185,25 +1352,29 @@ class TestValidateCrossProcessConsistency:
 
     def test_trivial_pass_empty(self):
         collection = BioProcessCollection(processes={})
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
         assert ok is True
-        assert messages == []
+        assert len(results) == 1
+        assert results[0][0] is True
+        assert results[0][1].startswith("PASS cross_process_consistency:")
 
     def test_trivial_pass_single_process(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         collection = BioProcessCollection(processes={"run1": _make_biomass_process(ts)})
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
         assert ok is True
-        assert messages == []
+        assert len(results) == 1
+        assert results[0][0] is True
 
     def test_consistent_multi_process(self):
         ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
         p1 = _make_biomass_process(ts)
         p2 = _make_biomass_process(_ts([0.0, 1.0, 2.0], [0.2, 0.6, 1.1]))
         collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
         assert ok is True
-        assert messages == []
+        assert len(results) == 1
+        assert results[0][0] is True
 
     @pytest.mark.parametrize(
         ("field", "value"),
@@ -1216,10 +1387,10 @@ class TestValidateCrossProcessConsistency:
         setattr(p2.time_axis, field, value)
         collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
 
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
 
         assert ok is False
-        assert any("time axis" in message for message in messages)
+        assert any("time axis" in message for _, message in results)
 
     def test_different_time_axis_bounds_are_consistent(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
@@ -1229,10 +1400,11 @@ class TestValidateCrossProcessConsistency:
         p2.time_axis.end = 20.0
         collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
 
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
 
         assert ok is True
-        assert messages == []
+        assert len(results) == 1
+        assert results[0][0] is True
 
     def test_inconsistent_volume_units(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
@@ -1241,10 +1413,10 @@ class TestValidateCrossProcessConsistency:
         p2.volume.unit = "mL"
         collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
 
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
 
         assert ok is False
-        assert any("volume unit" in message for message in messages)
+        assert any("volume unit" in message for _, message in results)
 
     def test_inconsistent_reactor_medium_components(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
@@ -1260,9 +1432,9 @@ class TestValidateCrossProcessConsistency:
             },
         )
         collection = BioProcessCollection(processes={"run1": p1, "run2": p2})
-        ok, messages = validate_cross_process_consistency(collection)
+        ok, results = validate_cross_process_consistency(collection)
         assert ok is False
-        assert any("reactor medium" in m for m in messages)
+        assert any("reactor medium" in msg for _, msg in results)
 
 
 # ---------------------------------------------------------------------------
@@ -1296,7 +1468,7 @@ class TestValidateMeasurementSamplingAlignment:
         )
         ok, msg = validate_measurement_sampling_alignment(process)
         assert ok is True
-        assert "OK" in msg
+        assert msg.startswith("PASS measurement_sampling_alignment:")
 
     def test_small_delay_detected(self):
         """Measurement shortly after sampling should warn."""
@@ -1350,7 +1522,7 @@ class TestValidateMeasurementSamplingAlignment:
         )
         ok, msg = validate_measurement_sampling_alignment(process)
         assert ok is True
-        assert "skipped" in msg.lower()
+        assert msg.startswith("SKIP measurement_sampling_alignment:")
 
 
 # ---------------------------------------------------------------------------
@@ -1390,18 +1562,18 @@ class TestValidateAugmentedParentRefs:
         parent = _make_biomass_process(ts)
         child = self._aug_child(parent_process="parent")
         cs = self._collection({"parent": parent, "child": child})
-        ok, messages = validate_augmented_parent_refs(cs)
+        ok, results = validate_augmented_parent_refs(cs)
         assert ok is True
-        assert any("OK" in m for m in messages)
+        assert any(r_ok for r_ok, _ in results)
 
     def test_unknown_parent_fails(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         parent = _make_biomass_process(ts)
         child = self._aug_child(parent_process="ghost")
         cs = self._collection({"parent": parent, "child": child})
-        ok, messages = validate_augmented_parent_refs(cs)
+        ok, results = validate_augmented_parent_refs(cs)
         assert ok is False
-        assert any("unknown parent_process" in m for m in messages)
+        assert any("unknown parent_process" in msg for _, msg in results)
 
     def test_rejects_augmented_of_augmented(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
@@ -1415,16 +1587,16 @@ class TestValidateAugmentedParentRefs:
                 "chained": chained,
             }
         )
-        ok, messages = validate_augmented_parent_refs(cs)
+        ok, results = validate_augmented_parent_refs(cs)
         assert ok is False
-        assert any("itself augmented" in m for m in messages)
+        assert any("itself augmented" in msg for _, msg in results)
 
     def test_no_augmented_processes_ok(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
         cs = self._collection({"p1": _make_biomass_process(ts)})
-        ok, messages = validate_augmented_parent_refs(cs)
+        ok, results = validate_augmented_parent_refs(cs)
         assert ok is True
-        assert any("OK" in m for m in messages)
+        assert any(r_ok for r_ok, _ in results)
 
     def test_works_on_bioprocess_collection(self):
         ts = _ts([0.0, 1.0], [0.1, 0.5])
@@ -1446,7 +1618,7 @@ class TestValidateAugmentedParentRefs:
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert "__augmented__" in report
-        assert any("unknown parent_process" in m for m in report["__augmented__"])
+        assert any("unknown parent_process" in msg for _, msg in report["__augmented__"])
 
 
 # ---------------------------------------------------------------------------
@@ -1580,7 +1752,8 @@ class TestValidateBiologicalOde:
         )
         ok, msg = validate_biological_ode(p)
         assert ok is False
-        assert "invalid" in msg.lower()
+        assert "lo=2.0" in msg
+        assert "hi=1.0" in msg
 
     def test_unit_consistent_state_subtraction_passes(self):
         """X_active = biomass - product with both g/L: accepted."""
@@ -1801,9 +1974,9 @@ class TestValidateBoundsAgainstData:
     def test_wired_into_validate_process(self):
         ts = _ts([0.0, 1.0], [-1.0, 0.5])
         p = _make_biomass_process(ts)
-        ok, messages = validate_process(p)
+        ok, results = validate_process(p)
         assert ok is False
-        assert any("bounds-vs-data" in m for m in messages)
+        assert any("bounds_against_data" in message for _, message in results)
 
 
 if __name__ == "__main__":
