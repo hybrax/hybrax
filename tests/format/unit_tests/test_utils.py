@@ -514,8 +514,9 @@ def test_plot_process_simple(simple_process):
     plt.close(fig)
 
 
-def test_plot_process_empty():
+def test_plot_process_empty(monkeypatch):
     """A process with no plottable variables should still return a figure."""
+    monkeypatch.setattr("bp_format.inspect._collect_process_panels", lambda _: [])
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -531,6 +532,32 @@ def test_plot_process_empty():
     fig = plot_process(process)
     assert fig is not None
     plt.close(fig)
+
+
+def test_plot_process_empty_show_false_saves_closes_and_returns_none(
+    monkeypatch, tmp_path
+):
+    matplotlib = pytest.importorskip("matplotlib")
+    monkeypatch.setattr("bp_format.inspect._collect_process_panels", lambda _: [])
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="empty", process_type="batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    open_figures = set(plt.get_fignums())
+    save_path = tmp_path / "empty-process.png"
+
+    result = plot_process(process, save_path=save_path, show=False)
+
+    assert result is None
+    assert save_path.is_file()
+    assert set(plt.get_fignums()) == open_figures
 
 
 def test_plot_process_no_metadata_uses_fallback_title():

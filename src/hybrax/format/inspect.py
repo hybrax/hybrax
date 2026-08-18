@@ -1017,6 +1017,11 @@ def plot_process(
             va="center",
             transform=ax.transAxes,
         )
+        if save_path is not None:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        if not show:
+            plt.close(fig)
+            return None
         return fig
 
     fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
