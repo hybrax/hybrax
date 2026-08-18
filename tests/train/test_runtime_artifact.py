@@ -4,13 +4,28 @@ from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import SampleVolumeChange
+from bp_format.dataclasses import (
+    BioProcess,
+    BioProcessCollection,
+    BioProcessMetadata,
+    FeedMedium,
+    FeedMediumComponent,
+    FeedVolumeChange,
+    ProcessVariable,
+    ReactorMedium,
+    ReactorMediumComponent,
+    SampleVolumeChange,
+    StaticVariable,
+    TimeAxis,
+    TimeSeries,
+    Volume,
+)
 from bp_format.serialization import load_process_collection
+from bp_format.time_series import PPoly
 
 import bp_train.runtime_artifact as runtime_artifact
 from bp_train.harness import _resolve_estimated_scales
@@ -25,11 +40,130 @@ from bp_train.runtime_artifact import (
 )
 from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
 from bp_train.training_data import TrainingDataStore
-from bp_train.utils import load_custom_module
+
+from test_prepare import _prepare_from_collection
 
 
-_KITTLER = Path("examples/01_kittler_2022/prepared/prepared.json")
-_CUSTOM = Path("examples/01_kittler_2022/structured/custom.py")
+_FEED_TIMES = jnp.asarray([0.0, 0.5, 1.0])
+_FEED_VOLUMES = jnp.asarray([0.0, 0.03, 0.1])
+
+
+def _make_runtime_artifact_collection() -> BioProcessCollection:
+    feed_medium = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "substrate": FeedMediumComponent(
+                name="substrate",
+                unit="g/L",
+                concentration=StaticVariable(200.0),
+                is_controlled=False,
+            ),
+            "biomass": FeedMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            ),
+            "product": FeedMediumComponent(
+                name="product",
+                unit="g/L",
+                concentration=StaticVariable(0.0),
+                is_controlled=False,
+            ),
+        },
+    )
+    processes = {}
+    for name in ("p1", "p2"):
+        processes[name] = BioProcess(
+            metadata=BioProcessMetadata(name=name, process_type="fed_batch"),
+            time_axis=TimeAxis(unit="h", start=0.0, end=1.0, time_reference="start"),
+            volume=Volume(
+                initial_volume=1.0,
+                unit="L",
+                volume_changes={
+                    "sample_1": SampleVolumeChange(
+                        name="sample_1",
+                        unit="L",
+                        is_controlled=False,
+                        is_continuous=False,
+                        values=TimeSeries(
+                            times=jnp.asarray([0.3, 0.7]),
+                            values=jnp.asarray([-0.05, -0.05]),
+                        ),
+                    ),
+                    "feed_A": FeedVolumeChange(
+                        name="feed_A",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=TimeSeries(
+                            times=_FEED_TIMES,
+                            values=_FEED_VOLUMES,
+                            poly=PPoly.from_samples_pchip(_FEED_TIMES, _FEED_VOLUMES),
+                            segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
+                        ),
+                        feed_medium=feed_medium,
+                    ),
+                    "feed_B": FeedVolumeChange(
+                        name="feed_B",
+                        unit="L",
+                        is_controlled=False,
+                        is_continuous=True,
+                        values=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0]), values=jnp.asarray([0.0, 0.02])
+                        ),
+                        feed_medium=feed_medium,
+                    ),
+                },
+            ),
+            reactor_medium=ReactorMedium(
+                name="rm",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 0.5, 1.0]),
+                            values=jnp.asarray([0.1, 0.15, 0.2]),
+                        ),
+                    ),
+                    "substrate": ReactorMediumComponent(
+                        name="substrate",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 0.5, 1.0]),
+                            values=jnp.asarray([20.0, 15.0, 10.0]),
+                        ),
+                    ),
+                    "product": ReactorMediumComponent(
+                        name="product",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 0.5, 1.0]),
+                            values=jnp.asarray([0.0, 0.5, 1.0]),
+                        ),
+                    ),
+                },
+            ),
+            process_variables={
+                "temperature": ProcessVariable(
+                    name="temperature",
+                    unit="C",
+                    is_controlled=True,
+                    values=TimeSeries(
+                        times=jnp.asarray([0.0, 1.0]), values=jnp.asarray([30.0, 31.0])
+                    ),
+                )
+            },
+        )
+    return BioProcessCollection(
+        metadata={"case_study": {"case_id": "runtime-artifact-synthetic"}},
+        processes=processes,
+    )
 
 
 def _write_manifest(artifact: Path, manifest: dict) -> None:
@@ -57,18 +191,22 @@ def _rewrite_array(artifact: Path, name: str, array: np.ndarray) -> None:
 
 
 @pytest.fixture(scope="module")
-def runtime_context() -> RuntimeContext:
-    collection = load_process_collection(_KITTLER)
+def _prepared_collection_path(tmp_path_factory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("runtime_artifact")
+    output_dir = tmp_path / "prepared"
+    _prepare_from_collection(_make_runtime_artifact_collection(), tmp_path, output_dir)
+    return output_dir / "prepared.json"
+
+
+@pytest.fixture(scope="module")
+def runtime_context(_prepared_collection_path: Path) -> RuntimeContext:
+    collection = load_process_collection(_prepared_collection_path)
     store = TrainingDataStore.from_collection(
         collection, target_source="reactor_components"
     )
     data = RuntimeDataContext.from_collection(store, collection)
     scales = _resolve_estimated_scales(
-        custom_module=load_custom_module(_CUSTOM),
-        runtime_data=data,
-        custom_cfg=SimpleNamespace(
-            custom=SimpleNamespace(ratios_softmax_temp=2.0, Y_XS=0.627, Y_PS=0.652)
-        ),
+        custom_module=None, runtime_data=data, custom_cfg=None
     )
     return RuntimeContext(data, scales)
 
@@ -87,7 +225,7 @@ def descriptor(runtime_context: RuntimeContext) -> RhsOdeDescriptor:
         rhs.name_controlled_FVCs,
         rhs.name_controlled_SVCs,
         (),
-        ("q_biomass", "q_glycerol", "q_product"),
+        rhs.name_modeled_rates,
     )
 
 
@@ -169,9 +307,9 @@ def test_metadata_inspection_never_reads_numeric_arrays(
 
 
 def test_round_trip_multiple_overlapping_sample_streams(
-    tmp_path, runtime_context, descriptor
+    tmp_path, runtime_context, descriptor, _prepared_collection_path
 ):
-    collection = load_process_collection(_KITTLER)
+    collection = load_process_collection(_prepared_collection_path)
     process = next(iter(collection.processes.values()))
     name, sample = next(
         (name, change)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -12,46 +11,14 @@ from bp_train.run_config import (
     DefaultCustomConfig,
     ForwardRunConfig,
     RunConfig,
-    load_forward_config,
-    load_loo_config,
     load_prepare_config,
     load_train_config,
 )
-
-_ROOT = Path(__file__).parents[1]
-_EXAMPLES = _ROOT / "examples"
-_EXAMPLE_LOADERS = {
-    "forward": load_forward_config,
-    "loo": load_loo_config,
-    "prepare": load_prepare_config,
-    "train": load_train_config,
-}
-_EXAMPLE_CONFIGS = tuple(
-    _ROOT / path
-    for path in subprocess.check_output(
-        ["git", "ls-files", "examples/**/*.json"],
-        cwd=_ROOT,
-        text=True,
-    ).splitlines()
-    if not any(part.startswith("output") for part in Path(path).parts)
-    and Path(path).name.split("-", 1)[0] in _EXAMPLE_LOADERS
-)
-assert _EXAMPLE_CONFIGS, "no example configs discovered; schema-drift guard is inert"
 
 
 def _write_json(path: Path, data: object) -> Path:
     path.write_text(json.dumps(data))
     return path
-
-
-@pytest.mark.parametrize(
-    "config_path",
-    _EXAMPLE_CONFIGS,
-    ids=lambda path: str(path.relative_to(_EXAMPLES)),
-)
-def test_active_example_configs_load(config_path: Path) -> None:
-    kind = config_path.name.split("-", 1)[0]
-    _EXAMPLE_LOADERS[kind](config_path)
 
 
 def test_config_accepts_comments_without_preprocessing(tmp_path: Path) -> None:

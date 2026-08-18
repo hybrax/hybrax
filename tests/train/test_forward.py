@@ -7,10 +7,6 @@ These tests exercise the pieces that do not require a real trained model:
 * the CLI dispatch for `forward` (via monkeypatching ``forward_from_collection``),
 * the sidecar write performed by ``_handle_train``,
 * selective dense prediction export.
-
-End-to-end forward (with a real ODE solve) is covered by
-``test_forward_end_to_end`` which runs on the kittler example fixture when
-available. It is marked ``integration`` so it can be skipped in fast suites.
 """
 
 from __future__ import annotations
