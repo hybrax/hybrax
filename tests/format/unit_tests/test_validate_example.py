@@ -713,6 +713,24 @@ def test_modeled_flow_sign_check_fails_for_negative_inflow_slope():
     assert any("flow is negative" in error for error in errors)
 
 
+@pytest.mark.parametrize("times", [(0.0, 12.0), (0.0, 1.0, 11.0, 12.0)])
+def test_segment_diagnostic_times_use_interval_thirds(times):
+    segment = validate_example.DenseReferenceSegment(
+        start_time=0.0,
+        end_time=12.0,
+        start_row_type="online",
+        end_row_type="pre-event",
+        times=times,
+        values=jnp.empty((len(times), 2)),
+        row_types=tuple("online" for _ in times),
+        spline=None,
+    )
+
+    assert validate_example.segment_diagnostic_times(segment) == pytest.approx(
+        [4.0, 8.0]
+    )
+
+
 def test_dense_trajectory_reports_rank_deficiency():
     process = BioProcess(
         metadata=BioProcessMetadata(name="rank", process_type="batch"),
