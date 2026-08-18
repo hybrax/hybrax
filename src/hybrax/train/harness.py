@@ -53,6 +53,7 @@ from .run_config import RunConfig
 from .runtime_context import (
     RuntimeContext,
     RuntimeDataContext,
+    canonical_training_parents,
     original_parent_processes,
 )
 from .utils import (
@@ -578,14 +579,27 @@ def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> No
         )
 
 
+def _validate_training_parent_collection(
+    collection: BioProcessCollection,
+    expected_parent_names: tuple[str, ...],
+) -> None:
+    actual_parent_names = tuple(collection.processes)
+    if actual_parent_names != expected_parent_names:
+        raise ValueError(
+            "training parent collection keys differ from represented parents: "
+            f"expected {expected_parent_names!r}, got {actual_parent_names!r}"
+        )
+
+
 def _build_reaction_module(
     *,
     config: TrainHarnessConfig,
     custom_module,
     custom_config: Any,
-    runtime_context: RuntimeContext,
+    store: TrainingDataStore,
+    scales: EstimatedScales,
+    training_parent_collection: BioProcessCollection,
 ) -> UserReactionModule:
-    store = runtime_context.training_data
     hook = get_hook(
         custom_module,
         "build_reaction_module",
@@ -593,12 +607,12 @@ def _build_reaction_module(
     )
     module = hook(
         target_names=list(store.name_measured),
-        process_names=list(store.process_order),
+        process_names=list(_ensure_process_names(store, config.process_names)),
         config=custom_config,
         seed=int(config.seed),
-        runtime_context=runtime_context,
+        training_parent_collection=training_parent_collection,
         **{
-            field.name: getattr(runtime_context.scales, field.name)
+            field.name: getattr(scales, field.name)
             for field in dataclasses.fields(EstimatedScales)
         },
     )
@@ -626,16 +640,16 @@ def _build_loss_module(
     config: TrainHarnessConfig,
     custom_module,
     custom_config: Any,
-    runtime_context: RuntimeContext,
+    store: TrainingDataStore,
+    training_parent_collection: BioProcessCollection,
 ) -> UserLossModule:
-    store = runtime_context.training_data
     hook = get_hook(custom_module, "build_loss_module", default_build_loss_module)
     module = hook(
         target_names=_loss_target_labels(store),
-        process_names=list(store.process_order),
+        process_names=list(_ensure_process_names(store, config.process_names)),
         config=custom_config,
         seed=int(config.seed),
-        runtime_context=runtime_context,
+        training_parent_collection=training_parent_collection,
     )
     if not isinstance(module, UserLossModule):
         raise TypeError("build_loss_module(...) must return a UserLossModule instance")
@@ -697,18 +711,26 @@ def _build_runtime_modules(
             custom_cfg=custom_config,
         ),
     )
+    training_parent_collection = scale_data.training_parent_collection
+    if training_parent_collection is None:
+        raise ValueError("training parent collection is unavailable")
+    expected_parents = tuple(scale_data.process_order)
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
     reaction_module = _build_reaction_module(
         config=config,
         custom_module=custom_module,
         custom_config=custom_config,
-        runtime_context=runtime_context,
+        store=store,
+        scales=runtime_context.scales,
+        training_parent_collection=training_parent_collection,
     )
     loss_module = (
         _build_loss_module(
             config=config,
             custom_module=custom_module,
             custom_config=custom_config,
-            runtime_context=runtime_context,
+            store=store,
+            training_parent_collection=training_parent_collection,
         )
         if build_loss
         else None
@@ -1906,6 +1928,7 @@ def _log_train_hooks(custom_module: Any) -> None:
 def prepare_training_from_runtime_context(
     runtime_context: RuntimeContext,
     *,
+    training_parent_collection: BioProcessCollection,
     config: TrainHarnessConfig,
     custom_module: Any,
     custom_cfg: Any,
@@ -1917,17 +1940,26 @@ def prepare_training_from_runtime_context(
     store = runtime_context.training_data
     selected_processes = _ensure_process_names(store, config.process_names)
     train_cfg = dataclasses.replace(config, process_names=selected_processes)
+    expected_parents = canonical_training_parents(
+        runtime_context.data.process_order,
+        runtime_context.data.augmentation_parents,
+        selected_processes,
+    )
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
     reaction_module = _build_reaction_module(
         config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
-        runtime_context=runtime_context,
+        store=store,
+        scales=runtime_context.scales,
+        training_parent_collection=training_parent_collection,
     )
     loss_module = _build_loss_module(
         config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
-        runtime_context=runtime_context,
+        store=store,
+        training_parent_collection=training_parent_collection,
     )
     _, _, total_updates = derive_update_budget(
         train_cfg, selected_process_count=len(selected_processes)
@@ -2019,8 +2051,11 @@ def prepare_training(
             custom_cfg=custom_cfg,
         ),
     )
+    if scale_data.training_parent_collection is None:
+        raise ValueError("training parent collection is unavailable")
     return prepare_training_from_runtime_context(
         runtime_context,
+        training_parent_collection=scale_data.training_parent_collection,
         config=train_cfg,
         custom_module=custom_module,
         custom_cfg=custom_cfg,

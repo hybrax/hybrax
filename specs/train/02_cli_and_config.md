@@ -280,11 +280,14 @@ the numeric inputs used by scale hooks without rebuilding or retaining a
 
 ```python
 def build_reaction_module(*, target_names, process_names, config, seed,
-                          runtime_context, **scale_kwargs) -> UserReactionModule
+                          training_parent_collection,
+                          **scale_kwargs) -> UserReactionModule
 ```
-Construct the reaction module. `runtime_context` contains the prepared
-`RuntimeDataContext` as `.data` and the resolved scalers as `.scales`.
-`scale_kwargs` carries those same promoted `SCALE_*` scaler instances from
+Construct the reaction module. `process_names` is the exact selected training
+process list, including augmented children.
+`training_parent_collection` contains only the ordered unique original parents
+those processes represent; augmented children and held-out parents are excluded. `scale_kwargs` carries the promoted `SCALE_*`
+scaler instances from
 `estimate_all_scales`; pass them unchanged to `super().__init__(**scale_kwargs)`.
 Default is `DefaultReactionModule` (a 2-layer MLP). See
 [04_reaction_and_loss.md](04_reaction_and_loss.md#the-reaction-module).
@@ -293,10 +296,11 @@ Default is `DefaultReactionModule` (a 2-layer MLP). See
 
 ```python
 def build_loss_module(*, target_names, process_names, config, seed,
-                      runtime_context) -> UserLossModule
+                      training_parent_collection) -> UserLossModule
 ```
-Construct the loss module. `runtime_context` is the same resolved context passed
-to the reaction-module hook. Default is `DefaultLossModule` (per-target MSE). See
+Construct the loss module. `training_parent_collection` is the same filtered
+parent collection passed to the reaction-module hook. Default is
+`DefaultLossModule` (per-target MSE). See
 [04_reaction_and_loss.md](04_reaction_and_loss.md#the-loss-module).
 
 ### `build_learning_rate`

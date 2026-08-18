@@ -6,27 +6,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import build_rhs_ode
 from bp_train.defaults import DefaultReactionModule, default_build_reaction_module
-from bp_train.harness import _resolve_estimated_scales
-from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
-from bp_train.training_data import TrainingDataStore
-from test_harness import _make_collection
-
-
-def _runtime_context(collection):
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=["biomass"],
-        target_source="reactor_components",
-    )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
-    scales = _resolve_estimated_scales(
-        custom_module=None,
-        runtime_data=runtime_data,
-        custom_cfg=None,
-    )
-    return RuntimeContext(runtime_data, scales)
+from test_harness import _make_collection, _make_multi_process_collection
 
 
 def _reaction_module(*, key, depth=2, width_size=None, n_in=2, n_out=1):
@@ -156,7 +139,7 @@ def test_default_reaction_module_scale_follows_modeled_state_not_targets():
         process_names=list(collection.processes),
         config=None,
         seed=0,
-        runtime_context=_runtime_context(collection),
+        training_parent_collection=collection,
     )
 
     assert module.SCALE_modeled_RMCs.shape[0] == n_rmc
@@ -174,7 +157,7 @@ def test_default_reaction_module_scale_independent_of_target_count():
             process_names=list(collection.processes),
             config=None,
             seed=0,
-            runtime_context=_runtime_context(collection),
+            training_parent_collection=collection,
         ).SCALE_modeled_RMCs.shape[0]
         for targets in (
             ["biomass"],
@@ -184,3 +167,35 @@ def test_default_reaction_module_scale_independent_of_target_count():
     }
 
     assert shapes == {n_rmc}
+
+
+def test_default_reaction_module_rejects_disagreeing_training_parents():
+    """The default builder speaks for all parents via the first one's RhsOde.
+
+    That is only sound if every parent declares an equivalent BiologicalOde, so
+    disagreement must be rejected rather than silently resolved by ordering.
+    """
+    collection = _make_multi_process_collection(2)
+    p2 = collection.processes["p2"]
+    p2.biological_ode.rates = {"q_other": (None, None)}
+    p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
+
+    with pytest.raises(ValueError, match="biological_ode mismatch across processes"):
+        default_build_reaction_module(
+            target_names=["biomass"],
+            process_names=list(collection.processes),
+            config=None,
+            seed=0,
+            training_parent_collection=collection,
+        )
+
+
+def test_default_reaction_module_requires_a_training_parent():
+    with pytest.raises(ValueError, match="requires a training parent"):
+        default_build_reaction_module(
+            target_names=["biomass"],
+            process_names=["p1"],
+            config=None,
+            seed=0,
+            training_parent_collection=BioProcessCollection(processes={}),
+        )

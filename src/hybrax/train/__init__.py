@@ -205,6 +205,8 @@ _EXPORTS = {
     "DefaultReactionModule": "defaults",
     "DefaultLossModule": "defaults",
     "BoundsViolationLossModule": "bounds_loss",
+    "bound_records_from_collection": "runtime_context",
+    "rhs_ode_from_training_parents": "runtime_context",
     "ForwardConfig": "harness",
     "ForwardResult": "harness",
     "TrainHarnessConfig": "harness",

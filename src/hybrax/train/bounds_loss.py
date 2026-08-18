@@ -9,7 +9,7 @@ import jax.numpy as jnp
 
 from .defaults import DefaultLossModule
 from .model_api import LossInputs, LossOutputs
-from .runtime_context import BoundSnapshot, collect_bound_records
+from .runtime_context import BoundRecord
 
 
 class BoundsViolationLossModule(DefaultLossModule):
@@ -32,7 +32,7 @@ class BoundsViolationLossModule(DefaultLossModule):
         self,
         *,
         target_names,
-        bound_snapshots: tuple[BoundSnapshot, ...],
+        bound_records: tuple[BoundRecord, ...],
         weight,
         dense_grid_n=None,
     ):
@@ -46,7 +46,7 @@ class BoundsViolationLossModule(DefaultLossModule):
             if dense_grid_n < 2:
                 raise ValueError("dense_grid_n must be at least 2")
             dense_grid_n = int(dense_grid_n)
-        self.bound_records = collect_bound_records(bound_snapshots)
+        self.bound_records = tuple(bound_records)
         self.weight = weight
         self._dense_grid_n = dense_grid_n
         own_loss_names = self.target_names + tuple(

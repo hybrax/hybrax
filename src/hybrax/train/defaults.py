@@ -5,6 +5,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from bp_format.dataclasses import BioProcessCollection
 
 from .model_api import (
     LinearScaler,
@@ -18,6 +19,7 @@ from .model_api import (
     trainable_field,
 )
 from .run_config import RunConfig
+from .runtime_context import rhs_ode_from_training_parents
 
 
 def default_transform_process_collection(collection, config: RunConfig):
@@ -263,7 +265,7 @@ def default_build_reaction_module(
     process_names: list[str],
     config: RunConfig,
     seed: int,
-    runtime_context: Any,
+    training_parent_collection: BioProcessCollection,
     **scale_kwargs: Any,
 ) -> UserReactionModule:
     """Default train hook for reaction-module construction.
@@ -279,7 +281,10 @@ def default_build_reaction_module(
     del config, target_names
     if not process_names:
         raise ValueError("default_build_reaction_module requires at least one process")
-    rhs_ode = runtime_context.training_data.rhs_ode
+    rhs_ode = rhs_ode_from_training_parents(
+        training_parent_collection,
+        empty_message=("default_build_reaction_module requires a training parent"),
+    )
     # Scales are sized by the modeled RMC state slice, not by measured targets:
     # combined/PV target sets have their own SCALE_modeled_PVs axis.
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
@@ -350,10 +355,10 @@ def default_build_loss_module(
     process_names: list[str],
     config: RunConfig,
     seed: int,
-    runtime_context: Any,
+    training_parent_collection: BioProcessCollection,
 ) -> UserLossModule:
     """Default train hook for loss-module construction (per-target MSE)."""
-    del process_names, config, seed, runtime_context
+    del process_names, config, seed, training_parent_collection
     return DefaultLossModule(target_names=list(target_names))
 
 

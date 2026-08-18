@@ -35,13 +35,17 @@ MLP.
 
 ```python
 def build_reaction_module(*, target_names, process_names, config, seed,
-                          runtime_context, **scale_kwargs):
+                          training_parent_collection, **scale_kwargs):
     return MyReactionModule(key=jax.random.key(seed), **scale_kwargs)
 ```
 
-`runtime_context` provides collection-free prepared data as `.data` and the
-resolved `EstimatedScales` as `.scales`. `scale_kwargs` carries those same
-promoted `SCALE_*` scaler instances from
+`process_names` is the exact list of selected training processes, **including
+any augmented children**. `training_parent_collection` contains the ordered
+unique original parents those processes represent, so it is generally shorter
+and in a different order; augmented children and held-out parents are not
+included. Size a module by the collection when it must match the model's
+structure, and by `process_names` only when it must match the training batch.
+`scale_kwargs` carries the promoted `SCALE_*` scaler instances from
 [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales); pass them to
 `super().__init__(**scale_kwargs)`. Bare hook arrays become `LinearScaler`;
 `AffineScaler(scale, offset)` opts one value axis into affine scaling. The hook
@@ -183,7 +187,7 @@ default per-target MSE.
 
 ```python
 def build_loss_module(
-    *, target_names, process_names, config, seed, runtime_context
+    *, target_names, process_names, config, seed, training_parent_collection
 ):
     return MyLossModule(...)
 ```
@@ -191,8 +195,8 @@ def build_loss_module(
 - `target_names` — the loss target-column labels: measured species followed by
   cumulative modeled-feed columns (`B_<feed>_cum`). These name the columns of
   `LossInputs.SCL_target_pred`, so a per-target module emits one term per label.
-- `process_names`, `config` (your `CONFIG` dict), `seed`, and `runtime_context` —
-  same as `build_reaction_module`.
+- `process_names`, `config` (your `CONFIG` dict), `seed`, and
+  `training_parent_collection` — same as `build_reaction_module`.
 
 The hook is discovered the same way as `build_reaction_module`
 ([`get_hook`](02_cli_and_config.md#custompy-hooks-reference), falling back to
@@ -322,17 +326,25 @@ squared-hinge term for each finite bp-format bound on a modeled reactor-medium
 component, modeled process variable, reactor volume, or `BiologicalOde` rate:
 
 ```python
-from bp_train import BoundsViolationLossModule
+from bp_train import BoundsViolationLossModule, bound_records_from_collection
 
 
-def build_loss_module(*, target_names, runtime_context, config, **_):
+def build_loss_module(
+    *, target_names, process_names, config, seed, training_parent_collection
+):
+    del process_names, seed
     return BoundsViolationLossModule(
         target_names=target_names,
-        bound_snapshots=runtime_context.data.bound_snapshots,
+        bound_records=bound_records_from_collection(training_parent_collection),
         weight=config.custom.bounds_weight,
         dense_grid_n=64,  # optional; omit for measurement-time bounds only
     )
 ```
+
+`bound_records_from_collection` requires every training parent to declare an
+equivalent `BiologicalOde` and to agree on each bound, and raises otherwise. It sees
+only the training parents, so a bound declared on an augmented child is never read —
+children are governed by their parent's bounds.
 
 bp-format defaults reactor-medium component bounds to `(0.0, None)`; process
 variables, reactor volume, and rates default to `(None, None)`. Set an RMC's

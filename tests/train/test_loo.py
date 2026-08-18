@@ -1206,6 +1206,7 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
             identity=metadata.identity,
             fold=record,
             context=object(),
+            training_parent_collection=object(),
         ),
     )
     captured = {}

@@ -15,7 +15,12 @@ from bp_format.dataclasses import AugmentedBioProcess, SampleVolumeChange
 from bp_format.serialization import load_process_collection, save_process_collection
 
 import bp_train.runtime_artifact as runtime_artifact
-from bp_train.harness import _resolve_estimated_scales
+from bp_train.defaults import default_build_reaction_module
+from bp_train.harness import (
+    TrainHarnessConfig,
+    _resolve_estimated_scales,
+    prepare_training_from_runtime_context,
+)
 from bp_train.model_api import AffineScaler
 from bp_train.runtime_artifact import (
     RhsOdeDescriptor,
@@ -204,6 +209,62 @@ def test_round_trip_parent_collection_is_filtered(
         loaded.training_parent_collection.metadata["trusted-test-metadata"]
         == trusted_metadata
     )
+
+
+def test_artifact_fold_parents_are_accepted_by_the_harness(
+    tmp_path, runtime_context, descriptor
+):
+    """The fold-narrowed sidecar is exactly what the training harness expects.
+
+    Covers the junction in `prepare_single_fold_from_runtime_artifact`, where a
+    loaded artifact's parent collection is handed to
+    `prepare_training_from_runtime_context`. The writer stores every original
+    parent while the harness derives only the parents represented by the fold's
+    training processes, so the two agree only because the loader re-narrows.
+    Parent names are literal here so the assertion does not re-derive them
+    through `canonical_training_parents`.
+    """
+    parent_collection = select_parent_collection(
+        _source_collection(),
+        original_parent_processes(
+            runtime_context.data.process_order,
+            runtime_context.data.augmentation_parents,
+        ),
+    )
+    fold = RuntimeArtifactFold(
+        0, ("DoE3_R4",), ("DoE1_R1__aug_000", "DoE1_R2"), "junction", 0
+    )
+    artifact = tmp_path / "artifact"
+    write_runtime_artifact(
+        artifact,
+        runtime_data=runtime_context.data,
+        folds=((fold, runtime_context.scales),),
+        rhs_descriptor=descriptor,
+        training_parent_collection=parent_collection,
+    )
+    loaded = load_runtime_artifact(artifact, fold_id=0)
+    seen = []
+
+    class _CustomModule:
+        @staticmethod
+        def build_reaction_module(*, training_parent_collection, **kwargs):
+            seen.append(tuple(training_parent_collection.processes))
+            return default_build_reaction_module(
+                training_parent_collection=training_parent_collection, **kwargs
+            )
+
+    prepared = prepare_training_from_runtime_context(
+        loaded.context,
+        training_parent_collection=loaded.training_parent_collection,
+        config=TrainHarnessConfig(
+            process_names=fold.train, holdout_processes=fold.test, epochs=1
+        ),
+        custom_module=_CustomModule,
+        custom_cfg={},
+    )
+
+    assert seen == [("DoE1_R1", "DoE1_R2")]
+    assert prepared.config.process_names == ("DoE1_R1__aug_000", "DoE1_R2")
 
 
 def test_round_trip_affine_scales_and_selected_fold(

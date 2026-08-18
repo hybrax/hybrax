@@ -660,6 +660,43 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
 
 
+def test_forward_cli_training_processes_fall_back_to_full_prepared_order(
+    monkeypatch, tmp_path: Path
+):
+    """A run that recorded no data.processes was trained on every process.
+
+    The evaluation selection must not stand in for the training selection: it
+    drives the constructor-hook process_names (so the hook template must match
+    training) as well as the train/holdout split in the loss table.
+    """
+    captured: dict[str, object] = {}
+    run_dir = _make_forward_run_dir(tmp_path, processes=None, targets=("X", "S"))
+    monkeypatch.setattr(
+        cli, "load_process_collection", lambda p: _make_fake_collection()
+    )
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
+
+    def fake_forward(collection, **kwargs):
+        captured["training_process_names"] = kwargs["training_process_names"]
+        captured["config"] = kwargs["config"]
+        return _stub_forward_result()
+
+    monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
+
+    output_dir = tmp_path / "fwd"
+    output_dir.mkdir()
+    fwd_config = _write_forward_config(tmp_path, [run_dir], processes=("p1",))
+    assert (
+        cli.main(
+            ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
+        )
+        == 0
+    )
+
+    assert captured["config"].process_names == ("p1",)
+    assert captured["training_process_names"] == ("p1", "p2", "p3")
+
+
 @pytest.mark.parametrize(
     ("mode", "expected_processes"),
     [

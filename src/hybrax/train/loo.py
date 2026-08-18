@@ -848,6 +848,7 @@ def prepare_single_fold_from_runtime_artifact(
         effective_cfg=effective_cfg,
         training=prepare_training_from_runtime_context(
             artifact.context,
+            training_parent_collection=artifact.training_parent_collection,
             config=_fold_harness_config(effective_cfg, fold, fold_dir),
             custom_module=custom_module,
             custom_cfg=effective_cfg,

@@ -50,7 +50,11 @@ from bp_train.harness import (
     train_collection,
 )
 from bp_train.defaults import DefaultLossModule, default_build_reaction_module
-from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
+from bp_train.runtime_context import (
+    RuntimeContext,
+    RuntimeDataContext,
+    select_parent_collection,
+)
 from bp_train.model_api import (
     AffineScaler,
     EstimatedScales,
@@ -159,9 +163,15 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
 class _StatefulCustomModule:
     @staticmethod
     def build_reaction_module(
-        *, target_names, process_names, config, seed, runtime_context, **scale_kwargs
+        *,
+        target_names,
+        process_names,
+        config,
+        seed,
+        training_parent_collection,
+        **scale_kwargs,
     ):
-        del target_names, process_names, config, seed, runtime_context
+        del target_names, process_names, config, seed, training_parent_collection
         return _StatefulHarnessModule(**scale_kwargs)
 
 
@@ -178,7 +188,9 @@ def test_build_reaction_module_rejects_stateful_without_opt_in():
             config=TrainHarnessConfig(),
             custom_module=_StatefulCustomModule,
             custom_config={},
-            runtime_context=_runtime_context(store),
+            store=store,
+            scales=_runtime_context(store).scales,
+            training_parent_collection=collection,
         )
 
 
@@ -194,7 +206,9 @@ def test_build_reaction_module_accepts_stateful_with_opt_in():
         config=TrainHarnessConfig(allow_stateful_models=True),
         custom_module=_StatefulCustomModule,
         custom_config={},
-        runtime_context=_runtime_context(store),
+        store=store,
+        scales=_runtime_context(store).scales,
+        training_parent_collection=collection,
     )
 
     assert module.n_latent == 1
@@ -492,14 +506,13 @@ def test_target_state_indices_map_pv_only_targets_to_pv_state_column():
 
 def test_default_reaction_module_scales_rmc_axis_not_combined_targets():
     collection = _make_combined_target_collection()
-    store = TrainingDataStore.from_collection(collection, target_source="combined")
 
     module = default_build_reaction_module(
         target_names=["biomass", "ratio"],
         process_names=["p1"],
         config=TrainHarnessConfig(),
         seed=0,
-        runtime_context=_runtime_context(store),
+        training_parent_collection=collection,
     )
 
     assert module.SCALE_modeled_RMCs.shape == (1,)
@@ -517,7 +530,7 @@ def test_train_collection_process_variable_target_uses_full_initial_state():
         process_names=list(store.process_order),
         config=TrainHarnessConfig(),
         seed=0,
-        runtime_context=_runtime_context(store),
+        training_parent_collection=collection,
     )
 
     result = train_collection(
@@ -1184,7 +1197,10 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
     )
     monkeypatch.setattr(
         "bp_train.harness.RuntimeDataContext.select_training_parents",
-        lambda self, *_args: self,
+        lambda self, collection, *_args: dataclasses.replace(
+            self,
+            training_parent_collection=select_parent_collection(collection, ("p1",)),
+        ),
     )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
@@ -1254,7 +1270,10 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
     )
     monkeypatch.setattr(
         "bp_train.harness.RuntimeDataContext.select_training_parents",
-        lambda self, *_args: self,
+        lambda self, collection, *_args: dataclasses.replace(
+            self,
+            training_parent_collection=select_parent_collection(collection, ("p1",)),
+        ),
     )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
@@ -1317,9 +1336,14 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
         ),
     )
 
-    def select_training_parents(runtime_data, _collection, process_names):
+    def select_training_parents(runtime_data, collection, process_names):
         captured["scale_process_names"] = tuple(process_names)
-        return runtime_data
+        return dataclasses.replace(
+            runtime_data,
+            training_parent_collection=select_parent_collection(
+                collection, tuple(process_names)
+            ),
+        )
 
     monkeypatch.setattr(
         "bp_train.harness.RuntimeDataContext.select_training_parents",
@@ -1436,9 +1460,14 @@ def test_build_loss_module_discovers_custom_hook():
     class _CustomModule:
         @staticmethod
         def build_loss_module(
-            *, target_names, process_names, config, seed, runtime_context
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
         ):
-            del process_names, config, seed, runtime_context
+            del process_names, config, seed, training_parent_collection
             seen["target_names"] = tuple(target_names)
             return sentinel
 
@@ -1446,7 +1475,8 @@ def test_build_loss_module_discovers_custom_hook():
         config=TrainHarnessConfig(epochs=1),
         custom_module=_CustomModule(),
         custom_config={},
-        runtime_context=_runtime_context(store),
+        store=store,
+        training_parent_collection=collection,
     )
     assert module is sentinel
     assert seen["target_names"] == ("biomass",)
@@ -1465,7 +1495,8 @@ def test_build_loss_module_defaults_when_no_hook():
         config=TrainHarnessConfig(epochs=1),
         custom_module=None,
         custom_config={},
-        runtime_context=_runtime_context(store),
+        store=store,
+        training_parent_collection=collection,
     )
     assert isinstance(module, DefaultLossModule)
     assert tuple(module.loss_names) == ("biomass",)
@@ -1493,6 +1524,7 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
     caplog.set_level(logging.INFO, logger="bp_train.harness")
     prepared = prepare_training_from_runtime_context(
         _runtime_context(store),
+        training_parent_collection=select_parent_collection(collection, ("p1",)),
         config=TrainHarnessConfig(process_names=("p1",), epochs=1),
         custom_module=None,
         custom_cfg={},
@@ -1525,6 +1557,7 @@ def test_prepare_training_preserves_all_original_prediction_parents():
 
     prepared = prepare_training_from_runtime_context(
         runtime_context,
+        training_parent_collection=select_parent_collection(collection, ("p1",)),
         config=TrainHarnessConfig(process_names=("p3",), epochs=1),
         custom_module=None,
         custom_cfg={},
@@ -1532,6 +1565,128 @@ def test_prepare_training_preserves_all_original_prediction_parents():
 
     assert prepared.config.process_names == ("p3",)
     assert prepared.prediction_parent_process_names == ("p1", "p2")
+
+
+def test_constructor_hooks_receive_selected_processes_and_represented_parents():
+    collection = _make_multi_process_collection(3)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    runtime_context = _runtime_context(store)
+    runtime_context = dataclasses.replace(
+        runtime_context,
+        data=dataclasses.replace(
+            runtime_context.data,
+            augmentation_parents=(None, None, "p1"),
+        ),
+    )
+    seen = []
+
+    class CustomModule:
+        @staticmethod
+        def build_reaction_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+            **scale_kwargs,
+        ):
+            seen.append(
+                (
+                    "reaction",
+                    tuple(process_names),
+                    tuple(training_parent_collection.processes),
+                )
+            )
+            return default_build_reaction_module(
+                target_names=target_names,
+                process_names=process_names,
+                config=config,
+                seed=seed,
+                training_parent_collection=training_parent_collection,
+                **scale_kwargs,
+            )
+
+        @staticmethod
+        def build_loss_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+        ):
+            del config, seed
+            seen.append(
+                (
+                    "loss",
+                    tuple(process_names),
+                    tuple(training_parent_collection.processes),
+                )
+            )
+            return DefaultLossModule(target_names=target_names)
+
+    prepare_training_from_runtime_context(
+        runtime_context,
+        training_parent_collection=select_parent_collection(collection, ("p1", "p2")),
+        config=TrainHarnessConfig(process_names=("p3", "p2"), epochs=1),
+        custom_module=CustomModule,
+        custom_cfg={},
+    )
+
+    # process_names keeps the caller's order and its augmented child; the parents
+    # are deduplicated into canonical order, so the two tuples differ in order as
+    # well as in content.
+    assert seen == [
+        ("reaction", ("p3", "p2"), ("p1", "p2")),
+        ("loss", ("p3", "p2"), ("p1", "p2")),
+    ]
+
+
+def test_parent_collection_mismatch_fails_before_constructor_hooks():
+    collection = _make_multi_process_collection(2)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    class CustomModule:
+        @staticmethod
+        def build_reaction_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+            **scale_kwargs,
+        ):
+            pytest.fail("reaction hook called")
+
+        @staticmethod
+        def build_loss_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+        ):
+            pytest.fail("loss hook called")
+
+    with pytest.raises(ValueError, match="keys differ from represented parents"):
+        prepare_training_from_runtime_context(
+            _runtime_context(store),
+            training_parent_collection=select_parent_collection(collection, ("p2",)),
+            config=TrainHarnessConfig(process_names=("p1",), epochs=1),
+            custom_module=CustomModule,
+            custom_cfg={},
+        )
 
 
 def test_build_runtime_modules_selects_scale_processes(monkeypatch):
@@ -1564,7 +1719,8 @@ def test_build_runtime_modules_selects_scale_processes(monkeypatch):
     sentinel = object()
 
     def build_reaction_module(**kwargs):
-        seen["runtime_context"] = kwargs["runtime_context"]
+        seen["scales"] = kwargs["scales"]
+        seen["training_parent_collection"] = kwargs["training_parent_collection"]
         return sentinel
 
     monkeypatch.setattr(
@@ -1584,7 +1740,53 @@ def test_build_runtime_modules_selects_scale_processes(monkeypatch):
     assert loss_module is None
     assert seen["selection"] == (collection, ("p1",))
     assert seen["scale_data"].process_order == ("p1",)
-    assert seen["runtime_context"].data is runtime_data
+    assert seen["scales"] is scales
+    assert tuple(seen["training_parent_collection"].processes) == ("p1",)
+
+
+def test_scale_hook_mutating_parent_collection_fails_before_constructor_hooks():
+    """The guard in `_build_runtime_modules` exists for exactly this case.
+
+    `estimate_all_scales` runs before the constructor hooks and is handed the same
+    mutable parent collection, so it can desynchronize the collection from the
+    process order the scales were selected for. `TrainingDataStore.select_processes`
+    has already run by then, so nothing else catches it.
+    """
+    collection = _make_multi_process_collection(2)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    class CustomModule:
+        @staticmethod
+        def estimate_all_scales(data, target_names, config):
+            del target_names, config
+            data.training_parent_collection.processes.pop("p2")
+            return EstimatedScales(
+                **{
+                    field.name: jnp.zeros(())
+                    for field in dataclasses.fields(EstimatedScales)
+                }
+            )
+
+        @staticmethod
+        def build_reaction_module(**kwargs):
+            pytest.fail("reaction hook called")
+
+        @staticmethod
+        def build_loss_module(**kwargs):
+            pytest.fail("loss hook called")
+
+    with pytest.raises(ValueError, match="keys differ from represented parents"):
+        harness_module._build_runtime_modules(
+            store=store,
+            collection=collection,
+            config=TrainHarnessConfig(process_names=("p1", "p2"), epochs=1),
+            custom_module=CustomModule,
+            custom_config={},
+        )
 
 
 def test_resolve_estimated_scales_receives_runtime_data():

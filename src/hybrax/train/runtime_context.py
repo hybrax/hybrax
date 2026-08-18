@@ -10,7 +10,9 @@ from bp_format.dataclasses import (
     SampleVolumeChange,
     StaticVariable,
 )
+from bp_format.mechanistic import build_rhs_ode
 from bp_format.time_series.timeseries import TimeSeries
+from bp_format.validate import validate_biological_ode_equivalence
 
 from .model_api import EstimatedScales
 from .training_data import TrainingDataStore
@@ -297,7 +299,7 @@ class RuntimeDataContext:
                 )
             )
             sample_traces.append(_sample_volume_events(process, process_name))
-            bound_snapshots.append(_bound_snapshot(process, training_data))
+            bound_snapshots.append(_bound_snapshot(process, training_data.rhs_ode))
 
         return cls(
             training_data=training_data,
@@ -395,8 +397,39 @@ def collect_bound_records(
     return tuple(records)
 
 
-def _bound_snapshot(process, store: TrainingDataStore) -> BoundSnapshot:
-    rhs_ode = store.rhs_ode
+def rhs_ode_from_training_parents(
+    collection: BioProcessCollection,
+    *,
+    empty_message: str = "requires a non-empty collection",
+):
+    """Build the shared RhsOde of a parent collection, rejecting disagreement.
+
+    Every parent must declare an equivalent `BiologicalOde`, so the first one's
+    `RhsOde` speaks for all of them. `empty_message` is raised verbatim when there
+    is no parent, so the diagnostic reads in the caller's terms.
+    """
+    if not collection.processes:
+        raise ValueError(empty_message)
+    equivalent, message = validate_biological_ode_equivalence(collection)
+    if not equivalent:
+        raise ValueError(message)
+    return build_rhs_ode(next(iter(collection.processes.values())))
+
+
+def bound_records_from_collection(
+    collection: BioProcessCollection,
+) -> tuple[BoundRecord, ...]:
+    """Resolve consistent bound-loss records from represented parents."""
+    rhs_ode = rhs_ode_from_training_parents(
+        collection, empty_message="bounds loss requires a non-empty collection"
+    )
+    snapshots = tuple(
+        _bound_snapshot(process, rhs_ode) for process in collection.processes.values()
+    )
+    return collect_bound_records(snapshots)
+
+
+def _bound_snapshot(process, rhs_ode) -> BoundSnapshot:
     declarations: list[BoundDeclaration] = []
     for index, name in enumerate(rhs_ode.name_modeled_RMCs):
         declarations.append(
