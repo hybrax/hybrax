@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 from ijson.common import ObjectBuilder
 
+from ._logging import get_logger
 from .dataclasses import (
     AugmentedBioProcess,
     BiologicalOde,
@@ -25,14 +26,15 @@ from .dataclasses import (
     StaticVariable,
     BioProcessMetadata,
     Volume,
-    FeedVolumeChange,
-    SampleVolumeChange,
-    PseudobatchTransform,
+    Inflow,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
     ProcessVariable,
 )
 from .json_io import _kvitems, _parse, load_json
+
+_logger = get_logger(__name__)
 
 
 def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
@@ -132,7 +134,7 @@ def _save_json(data_dict: Dict, json_path: Path) -> None:
     _normalize_nonfinite(data_dict)
     with _open_json_file(json_path, "wt") as f:
         json.dump(data_dict, f, indent=2, cls=NumpyEncoder, allow_nan=False)
-    print(f"✓ Saved to {json_path}")
+    _logger.info("Saved to %s", json_path)
 
 
 def _restore_arrays(obj):
@@ -347,11 +349,6 @@ def _process_to_dict(process: BioProcess) -> Dict:
     if process.biological_ode is not None:
         result["biological_ode"] = _biological_ode_to_dict(process.biological_ode)
 
-    if process.pseudobatch_transform is not None:
-        result["pseudobatch_transform"] = _pseudobatch_transform_to_dict(
-            process.pseudobatch_transform
-        )
-
     if isinstance(process, AugmentedBioProcess):
         result["__type__"] = "AugmentedBioProcess"
         result["parent_process"] = process.parent_process
@@ -390,10 +387,6 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
         "unit": comp.unit,
         "concentration": _timeseries_or_static_to_dict(comp.concentration),
     }
-    if comp.c_star_concentration is not None:
-        result["c_star_concentration"] = _timeseries_or_static_to_dict(
-            comp.c_star_concentration
-        )
     if comp.bounds != _DEFAULT_RMC_BOUNDS:
         # Preserve explicit unbounded bounds instead of reloading the RMC default.
         result["bounds"] = _bounds_to_dict(comp.bounds)
@@ -411,27 +404,6 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
     bounds_dict = _bounds_to_dict(pv.bounds)
     if bounds_dict is not None:
         result["bounds"] = bounds_dict
-    return result
-
-
-def _pseudobatch_transform_to_dict(transform: PseudobatchTransform) -> Dict:
-    """Convert PseudobatchTransform to dictionary."""
-    result = {
-        "adf": _timeseries_to_dict_payload(transform.adf, include_type=False),
-        "feed_corrections": {
-            name: _timeseries_to_dict_payload(ts, include_type=False)
-            for name, ts in transform.feed_corrections.items()
-        },
-        "accumulated_feeds": {
-            name: _timeseries_to_dict_payload(ts, include_type=False)
-            for name, ts in transform.accumulated_feeds.items()
-        },
-    }
-    if transform.sample_compensation is not None:
-        result["sample_compensation"] = _timeseries_to_dict_payload(
-            transform.sample_compensation,
-            include_type=False,
-        )
     return result
 
 
@@ -497,7 +469,7 @@ def _volume_to_dict(volume: Volume) -> Dict:
 
 
 def _volume_change_to_dict(vc) -> Dict:
-    """Convert FeedVolumeChange or SampleVolumeChange to dictionary"""
+    """Convert Inflow or Outflow to dictionary"""
     result = {
         "name": vc.name,
         "unit": vc.unit,
@@ -509,13 +481,14 @@ def _volume_change_to_dict(vc) -> Dict:
             else None
         ),
     }
-    if isinstance(vc, FeedVolumeChange):
-        result["type"] = "FeedVolumeChange"
+    if isinstance(vc, Inflow):
+        result["type"] = "Inflow"
         result["feed_medium"] = (
             _feed_medium_to_dict(vc.feed_medium) if vc.feed_medium else None
         )
-    elif isinstance(vc, SampleVolumeChange):
-        result["type"] = "SampleVolumeChange"
+    elif isinstance(vc, Outflow):
+        result["type"] = "Outflow"
+        result["retention"] = dict(vc.retention)
     else:
         raise ValueError(f"Unknown volume change type: {type(vc)}")
 
@@ -605,14 +578,6 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     if p_data.get("biological_ode") is not None:
         biological_ode = _dict_to_biological_ode(p_data["biological_ode"])
 
-    # Absent key means no pseudobatch transform. Present malformed entries fail
-    # fast so old or partial bundle payloads do not silently load.
-    pseudobatch_transform = None
-    if "pseudobatch_transform" in p_data:
-        transform_data = p_data["pseudobatch_transform"]
-        if transform_data is not None:
-            pseudobatch_transform = _dict_to_pseudobatch_transform(transform_data)
-
     if p_data.get("__type__") == "AugmentedBioProcess":
         parent = p_data.get("parent_process")
         if not isinstance(parent, str) or not parent:
@@ -627,7 +592,6 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
             process_variables=process_variables,
             discrete_events=discrete_events,
             biological_ode=biological_ode,
-            pseudobatch_transform=pseudobatch_transform,
             parent_process=parent,
         )
 
@@ -639,77 +603,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
         process_variables=process_variables,
         discrete_events=discrete_events,
         biological_ode=biological_ode,
-        pseudobatch_transform=pseudobatch_transform,
     )
-
-
-def _require_mapping(value, context: str) -> Dict:
-    """Return a dict-like payload or raise a clear loader error."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{context} must be a dictionary.")
-    return value
-
-
-def _require_keys(data: Dict, required: tuple[str, ...], context: str) -> None:
-    """Validate required keys for a strict serialized payload."""
-    missing = [key for key in required if key not in data]
-    if missing:
-        missing_keys = ", ".join(missing)
-        raise ValueError(f"{context} missing required key(s): {missing_keys}.")
-
-
-def _dict_to_pseudobatch_transform(data: Dict) -> PseudobatchTransform:
-    """Reconstruct PseudobatchTransform from dictionary."""
-    data = _require_mapping(data, "pseudobatch_transform")
-    _require_keys(
-        data,
-        (
-            "adf",
-            "feed_corrections",
-        ),
-        "pseudobatch_transform",
-    )
-
-    feed_corrections_data = _require_mapping(
-        data["feed_corrections"],
-        "pseudobatch_transform.feed_corrections",
-    )
-    accumulated_feeds_data = _require_mapping(
-        data.get("accumulated_feeds", {}),
-        "pseudobatch_transform.accumulated_feeds",
-    )
-
-    sample_compensation = None
-    if data.get("sample_compensation") is not None:
-        sample_compensation = _dict_to_pseudobatch_timeseries(
-            data["sample_compensation"],
-            "pseudobatch_transform.sample_compensation",
-        )
-
-    return PseudobatchTransform(
-        adf=_dict_to_pseudobatch_timeseries(data["adf"], "pseudobatch_transform.adf"),
-        feed_corrections={
-            name: _dict_to_pseudobatch_timeseries(
-                ts_data,
-                f"pseudobatch_transform.feed_corrections.{name}",
-            )
-            for name, ts_data in feed_corrections_data.items()
-        },
-        sample_compensation=sample_compensation,
-        accumulated_feeds={
-            name: _dict_to_pseudobatch_timeseries(
-                ts_data,
-                f"pseudobatch_transform.accumulated_feeds.{name}",
-            )
-            for name, ts_data in accumulated_feeds_data.items()
-        },
-    )
-
-
-def _dict_to_pseudobatch_timeseries(data: Dict, context: str) -> TimeSeries:
-    """Reconstruct one strict TimeSeries payload in a pseudobatch bundle."""
-    data = _require_mapping(data, context)
-    return _timeseries_from_dict_payload(data)
 
 
 def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
@@ -732,11 +626,6 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     _reject_legacy_interpolator_payload(
         comp_data.get("interpolator"), "ReactorMediumComponent"
     )
-    c_star_concentration = None
-    if comp_data.get("c_star_concentration") is not None:
-        c_star_concentration = _dict_to_timeseries_or_static(
-            comp_data["c_star_concentration"]
-        )
     kwargs = {}
     if "bounds" in comp_data:
         kwargs["bounds"] = _dict_to_bounds(comp_data["bounds"])
@@ -744,7 +633,6 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
         name=comp_data["name"],
         unit=comp_data["unit"],
         concentration=_dict_to_timeseries_or_static(comp_data["concentration"]),
-        c_star_concentration=c_star_concentration,
         **kwargs,
     )
 
@@ -766,7 +654,6 @@ def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
     times = value_data.get("times")
     values = value_data.get("values")
     metadata = value_data.get("metadata")
-    _reject_nested_pseudobatch_metadata(metadata)
 
     kwargs: Dict = {"values": values}
     if values is not None:
@@ -827,7 +714,7 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
 
 
 def _dict_to_volume_change(vc_data: Dict):
-    """Reconstruct FeedVolumeChange or SampleVolumeChange from dictionary"""
+    """Reconstruct Inflow or Outflow from dictionary"""
     vc_type = vc_data.get("type")
     if vc_type is None:
         raise ValueError(
@@ -851,13 +738,16 @@ def _dict_to_volume_change(vc_data: Dict):
 
     _reject_legacy_interpolator_payload(vc_data.get("interpolator"), "VolumeChange")
 
-    if vc_type == "FeedVolumeChange":
+    if vc_type == "Inflow":
         feed_medium = None
         if vc_data.get("feed_medium"):
             feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
-        return FeedVolumeChange(**common, feed_medium=feed_medium)
-    elif vc_type == "SampleVolumeChange":
-        return SampleVolumeChange(**common)
+        return Inflow(**common, feed_medium=feed_medium)
+    elif vc_type == "Outflow":
+        retention = vc_data.get("retention", {})
+        if not isinstance(retention, dict):
+            raise ValueError("Outflow 'retention' must be an object")
+        return Outflow(**common, retention=dict(retention))
     else:
         raise ValueError(f"Unknown volume change type: {vc_type}")
 
@@ -868,20 +758,6 @@ def _reject_legacy_interpolator_payload(interpolator_data: Dict | None, owner: s
         raise ValueError(
             "Legacy sibling 'interpolator' payloads are no longer supported for "
             f"{owner}. Regenerate datasets with TimeSeries-only spline storage."
-        )
-
-
-def _reject_nested_pseudobatch_metadata(metadata) -> None:
-    """Reject executable pseudobatch transform payloads embedded in metadata."""
-    if not isinstance(metadata, dict):
-        return
-    transform = metadata.get("transform")
-    if not isinstance(transform, dict):
-        return
-    if "series" in transform:
-        raise ValueError(
-            "TimeSeries metadata contains nested executable pseudobatch transform "
-            "series. Store pseudobatch state in process.pseudobatch_transform."
         )
 
 

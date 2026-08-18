@@ -22,7 +22,7 @@ Read in this order:
 Building models? Continue with:
 
 6. [TimeSeries](06_time_series.md) — the measurement container.
-7. [Splines](07_splines.md) — pseudobatch transform and spline fitting.
+7. [Splines](07_splines.md) — discrete-event detection and spline fitting.
 8. [Mechanistic](08_mechanistic.md) — building the ODE right-hand side.
 9. [Simulation](09_simulation.md) — helpers for generating synthetic ground truth.
 
@@ -32,7 +32,7 @@ Building models? Continue with:
 |--------|--------|------|--------------|
 | Data model | `bp_format/dataclasses.py` | [02](02_data_model.md) | The dataclass hierarchy: `BioProcessCollection` → `BioProcess` → components |
 | TimeSeries | `bp_format/time_series/` | [06](06_time_series.md) | Measurements + optional fitted spline, as a JAX pytree |
-| Splines | `bp_format/splines.py` | [07](07_splines.md) | Pseudobatch transform, segmented spline fitting, backtransform |
+| Splines | `bp_format/splines.py` | [07](07_splines.md) | Discrete-event detection, segmented spline fitting |
 | Mechanistic | `bp_format/mechanistic.py` | [08](08_mechanistic.md) | `ProcessOrdering`, `ControlSplines`, `RhsOde` |
 | Serialization | `bp_format/serialization.py` | [03](03_serialization.md) | JSON save/load for the whole hierarchy |
 | Validation | `bp_format/validate.py` | [04](04_validation.md) | 14 integrity checks |
@@ -53,16 +53,14 @@ BioProcess                       one experimental run
  ├─ reactor_medium: ReactorMedium         what is in the reactor
  │    └─ components: Dict[str, ReactorMediumComponent]
  │         ├─ concentration          TimeSeries | StaticVariable   (real, measured)
- │         ├─ c_star_concentration   optional pseudobatch trace
  │         └─ bounds                 optional (lo, hi) metadata
  ├─ volume: Volume                        every volume-changing operation
  │    ├─ initial_volume / unit / bounds
  │    ├─ total_volume: Optional[TimeSeries]
- │    └─ volume_changes: Dict[str, FeedVolumeChange | SampleVolumeChange]
+ │    └─ volume_changes: Dict[str, Inflow | Outflow]
  ├─ process_variables: Dict[str, ProcessVariable]    pH, temperature, DO, off-gas
  │    └─ is_controlled: bool              True = known input, False = modeled state
  ├─ biological_ode: BiologicalOde         dc/dt expressions (auto-filled if omitted)
- ├─ pseudobatch_transform: Optional[PseudobatchTransform]
  └─ discrete_events: Optional[DiscreteEvents]
 
 AugmentedBioProcess(BioProcess)  synthetic sibling of a real run
@@ -87,10 +85,7 @@ ok, messages = bp.validate_process(process)
 bp.print_process_structure(process, verbosity=2)
 bp.print_rhs_ode(collection)
 
-# 4. build the pseudobatch transform (optional, fed-batch)
-process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
-
-# 5. build the ODE pieces — bp-train integrates them
+# 4. build the ODE pieces — bp-train integrates them
 ordering = bp.mechanistic.get_process_ordering(process)
 rhs_ode  = bp.mechanistic.build_rhs_ode(process, ordering)
 controls = bp.mechanistic.get_control_splines(process, ordering)

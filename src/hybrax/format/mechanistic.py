@@ -9,14 +9,14 @@ Public API
 ----------
 get_process_ordering(process) -> ProcessOrdering
     Single source of truth for canonical name ordering across all derived
-    modules (states, controls, rates, algebraic, FVCs, SVCs).
+    modules (states, controls, rates, algebraic, Inflows, Outflows).
 
 get_control_splines(process, ordering=None) -> ControlSplines
     ``ControlSplines.__call__(t)`` evaluates all controlled signals at *t*.
     The output layout is
-    ``[FVC_flows | SVC_flows | PV_values]``: the first
-    ``len(FVCs)+len(SVCs)`` entries are flow rates (spline derivatives), the
-    remaining ``len(PVs)`` entries are direct values. SVC flow rates carry
+    ``[Inflow_flows | Outflow_flows | PV_values]``: the first
+    ``len(Inflows)+len(Outflows)`` entries are flow rates (spline derivatives), the
+    remaining ``len(PVs)`` entries are direct values. Outflow flow rates carry
     the storage sign (negative cumulative volume → negative flow rate); the
     feed-dilution machinery interprets them as signed quantities.
 
@@ -25,7 +25,7 @@ build_rhs_ode(process, ordering=None) -> RhsOde
     (auto-generated in ``BioProcess.__post_init__`` when not user-supplied).
     Call signature::
 
-        dc_dt = rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
+        dc_dt = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
 
     where ``u`` is the full control vector (output of ``ControlSplines``)
     and ``f_modeled_*`` are uncontrolled (modeled) flow vectors.
@@ -35,8 +35,8 @@ extract_discrete_events(process, ordering) -> list[dict]
     ``ordering.name_modeled_RMCs``.
 
 build_state_splines(process, ordering) -> dict
-    Spline callables for every non-volume state. Pseudobatch-transformed
-    reactor components return a backtransform spline.
+    Spline callables for every non-volume state, built directly from the
+    stored real-concentration TimeSeries.
 
 build_algebraic_func(process) -> Callable
     Returns ``f(state_values, ctrl_pv_values, rates) -> {name: scalar}`` for
@@ -44,8 +44,7 @@ build_algebraic_func(process) -> Callable
 
 Forward integration of the process lives in ``bp-train``; this module does
 not integrate. Rate inversion (recovering rate values from state splines)
-is not implemented; the design proposal is in
-``specs/_analytical_rates_spec.md``.
+is not implemented.
 """
 
 from __future__ import annotations
@@ -57,15 +56,14 @@ import jax.numpy as jnp
 
 from .dataclasses import (
     BioProcess,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     ProcessOrdering,
-    SampleVolumeChange,
     StaticVariable,
     TimeSeries,
 )
 from .splines import (
     _MIN_REACTOR_VOLUME,
-    build_backtransform_spline,
     make_cubic_ppoly,
 )
 from .time_series import PPoly
@@ -133,45 +131,68 @@ def _value_to_ppoly(
 def _apply_feed_dilution(
     c_RMCs: jnp.ndarray,
     V: jnp.ndarray,
-    u_controlled_FVCs: jnp.ndarray,
-    u_controlled_SVCs: jnp.ndarray,
-    f_modeled_FVCs: jnp.ndarray,
-    f_modeled_SVCs: jnp.ndarray,
-    Cin_controlled_FVCs: jnp.ndarray,
-    Cin_modeled_FVCs: jnp.ndarray,
+    u_controlled_Inflows: jnp.ndarray,
+    u_controlled_Outflows: jnp.ndarray,
+    f_modeled_Inflows: jnp.ndarray,
+    f_modeled_Outflows: jnp.ndarray,
+    Cin_controlled_Inflows: jnp.ndarray,
+    Cin_modeled_Inflows: jnp.ndarray,
+    retention_controlled_Outflows: jnp.ndarray,
+    retention_modeled_Outflows: jnp.ndarray,
     n_RMCs: int,
     V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Reactor-component mass balance from feed/sample flows + ``dV/dt``.
 
     Convention: every flow-rate vector carries the storage sign of its
-    underlying volume change. FVC values are stored as cumulative volumes
-    with ``values >= 0``, so ``u_controlled_FVCs`` and ``f_modeled_FVCs``
-    are non-negative. SVC values are stored as ``values <= 0``, so
-    ``u_controlled_SVCs`` and ``f_modeled_SVCs`` are non-positive.
+    underlying volume change. Inflow values are stored as cumulative volumes
+    with ``values >= 0``, so ``u_controlled_Inflows`` and ``f_modeled_Inflows``
+    are non-negative. Outflow values are stored as ``values <= 0``, so
+    ``u_controlled_Outflows`` and ``f_modeled_Outflows`` are non-positive.
 
-    - FVCs contribute dilution (``-q/V·c``) **and** species addition
+    Standard well-mixed reactor mass balance: a species leaving with an
+    outflow at the reactor's own bulk concentration does not, by itself,
+    change that concentration — only feeding (which adds material at a
+    *different* concentration, ``Cin``) does. So an unretained outflow
+    (retention sigma=0, the default) contributes no dilution term of its
+    own; it only shrinks ``V``, which concentrates whatever is left. Each
+    Outflow's per-component ``retention`` (sigma in [0, 1]) inverts this:
+    the retained fraction of a component does *not* leave with the flow,
+    so as volume drops around it, its concentration rises — sigma=1 means
+    that component is fully retained (e.g. cells in perfusion; solutes in
+    evaporation) and concentrates exactly in step with the volume loss.
+
+    - Inflows contribute dilution (``-q/V·c``) **and** species addition
       (``q·Cin/V``); they push ``dV`` upward.
-    - SVCs contribute dilution only (no species addition); they push ``dV``
-      downward.
+    - Outflows contribute a dilution term only through what they *retain*
+      (``+retained_q/V·c``); an outflow with sigma=0 everywhere has no
+      effect on ``dilution`` at all. They push ``dV`` downward regardless
+      of retention — retention changes what leaves with the flow, not how
+      much volume the flow removes.
     """
     V = _require_reactor_volume_above_threshold(V, context="ODE state", V_min=V_min)
 
-    total_in = jnp.sum(u_controlled_FVCs) + jnp.sum(f_modeled_FVCs)  # >= 0
-    total_out = -(jnp.sum(u_controlled_SVCs) + jnp.sum(f_modeled_SVCs))  # >= 0
+    total_in = jnp.sum(u_controlled_Inflows) + jnp.sum(f_modeled_Inflows)  # >= 0
+    total_out = -(jnp.sum(u_controlled_Outflows) + jnp.sum(f_modeled_Outflows))  # >= 0
     dV = total_in - total_out
 
-    dilution = -(total_in + total_out) / V * c_RMCs
+    retained_out_per_rmc = jnp.sum(
+        retention_controlled_Outflows * (-u_controlled_Outflows)[:, None], axis=0
+    ) + jnp.sum(retention_modeled_Outflows * (-f_modeled_Outflows)[:, None], axis=0)
+
+    dilution = -(total_in - retained_out_per_rmc) * c_RMCs / V
 
     addition = jnp.zeros(n_RMCs)
-    if Cin_controlled_FVCs.shape[0] > 0:
+    if Cin_controlled_Inflows.shape[0] > 0:
         addition = (
             addition
-            + jnp.sum(u_controlled_FVCs[:, None] * Cin_controlled_FVCs, axis=0) / V
+            + jnp.sum(u_controlled_Inflows[:, None] * Cin_controlled_Inflows, axis=0)
+            / V
         )
-    if Cin_modeled_FVCs.shape[0] > 0:
+    if Cin_modeled_Inflows.shape[0] > 0:
         addition = (
-            addition + jnp.sum(f_modeled_FVCs[:, None] * Cin_modeled_FVCs, axis=0) / V
+            addition
+            + jnp.sum(f_modeled_Inflows[:, None] * Cin_modeled_Inflows, axis=0) / V
         )
 
     return dilution + addition, dV
@@ -274,14 +295,16 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
 
     Validations performed here:
 
-    - Every continuous ``FeedVolumeChange`` must define ``feed_medium`` and
+    - Every continuous ``Inflow`` must define ``feed_medium`` and
       every component in that medium must exist in
       ``reactor_medium.components``.
+    - Every ``Outflow.retention`` key must name a reactor component, every
+      value must be in ``[0, 1]``, and discrete Outflows cannot set retention.
     - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``
       value carrier (static PVs must be ``is_controlled=True``).
     - The ``BiologicalOde.algebraic`` graph must be acyclic.
     - All names across every group must be unique (no shared names between
-      states, rates, algebraic, controlled PVs, FVCs, SVCs).
+      states, rates, algebraic, controlled PVs, Inflows, Outflows).
     """
     # ---- Reactor components (RMCs) — alphabetical
     name_modeled_RMCs = tuple(sorted(process.reactor_medium.components.keys()))
@@ -305,62 +328,76 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
                 "in name_controlled_PVs, not name_modeled_PVs."
             )
 
-    # ---- Volume changes — partition by FVC/SVC × controlled/modeled, alphabetical
-    name_modeled_FVCs = tuple(
+    # ---- Volume changes: Inflow/Outflow × controlled/modeled, alphabetical
+    name_modeled_Inflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if (
-                isinstance(vc, FeedVolumeChange)
-                and vc.is_continuous
-                and not vc.is_controlled
-            )
+            if (isinstance(vc, Inflow) and vc.is_continuous and not vc.is_controlled)
         )
     )
-    name_controlled_FVCs = tuple(
+    name_controlled_Inflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if isinstance(vc, FeedVolumeChange)
-            and vc.is_continuous
-            and vc.is_controlled
+            if isinstance(vc, Inflow) and vc.is_continuous and vc.is_controlled
         )
     )
-    name_modeled_SVCs = tuple(
+    name_modeled_Outflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if (
-                isinstance(vc, SampleVolumeChange)
-                and vc.is_continuous
-                and not vc.is_controlled
-            )
+            if (isinstance(vc, Outflow) and vc.is_continuous and not vc.is_controlled)
         )
     )
-    name_controlled_SVCs = tuple(
+    name_controlled_Outflows = tuple(
         sorted(
             n
             for n, vc in process.volume.volume_changes.items()
-            if isinstance(vc, SampleVolumeChange)
-            and vc.is_continuous
-            and vc.is_controlled
+            if isinstance(vc, Outflow) and vc.is_continuous and vc.is_controlled
         )
     )
 
-    # FVC feed-medium validation (across modeled and controlled)
+    # Inflow feed-medium validation (across modeled and controlled)
     rmc_set = set(name_modeled_RMCs)
-    for vc_name in name_modeled_FVCs + name_controlled_FVCs:
+    for vc_name in name_modeled_Inflows + name_controlled_Inflows:
         vc = process.volume.volume_changes[vc_name]
         if vc.feed_medium is None:
-            raise ValueError(
-                f"FeedVolumeChange {vc_name!r} has no feed_medium defined."
-            )
+            raise ValueError(f"Inflow {vc_name!r} has no feed_medium defined.")
         unknown = [c for c in vc.feed_medium.components.keys() if c not in rmc_set]
         if unknown:
             raise ValueError(
-                f"FeedVolumeChange {vc_name!r} references unknown reactor "
+                f"Inflow {vc_name!r} references unknown reactor "
                 f"component(s) in its feed_medium: {unknown}. All feed "
                 "components must exist in process.reactor_medium.components."
+            )
+
+    # Validate retention here because mechanistic factories must not silently
+    # turn invalid component names into zero-retention rows.
+    for vc_name, vc in process.volume.volume_changes.items():
+        if not isinstance(vc, Outflow) or not vc.retention:
+            continue
+        if not vc.is_continuous:
+            raise ValueError(
+                f"Outflow {vc_name!r} sets retention {vc.retention!r} but is "
+                "discrete (is_continuous=False). Retention is only "
+                "implemented for continuous Outflows; setting it on a "
+                "discrete Outflow would be silently ignored by the RHS ODE."
+            )
+        unknown = [name for name in vc.retention if name not in rmc_set]
+        if unknown:
+            raise ValueError(
+                f"Outflow {vc_name!r} retention references unknown reactor "
+                f"component(s): {unknown}."
+            )
+        out_of_range = {
+            name: value
+            for name, value in vc.retention.items()
+            if not 0.0 <= value <= 1.0
+        }
+        if out_of_range:
+            raise ValueError(
+                f"Outflow {vc_name!r} retention value(s) out of [0, 1]: {out_of_range}."
             )
 
     # ---- Biological ODE — rates (insertion order) and algebraic (topo-sorted)
@@ -388,10 +425,10 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
         "name_modeled_RMCs": name_modeled_RMCs,
         "name_modeled_PVs": name_modeled_PVs,
         "name_controlled_PVs": name_controlled_PVs,
-        "name_modeled_FVCs": name_modeled_FVCs,
-        "name_controlled_FVCs": name_controlled_FVCs,
-        "name_modeled_SVCs": name_modeled_SVCs,
-        "name_controlled_SVCs": name_controlled_SVCs,
+        "name_modeled_Inflows": name_modeled_Inflows,
+        "name_controlled_Inflows": name_controlled_Inflows,
+        "name_modeled_Outflows": name_modeled_Outflows,
+        "name_controlled_Outflows": name_controlled_Outflows,
         "name_modeled_rates": name_modeled_rates,
         "name_modeled_algebraic": name_modeled_algebraic,
     }
@@ -414,11 +451,11 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
         name_modeled_algebraic=name_modeled_algebraic,
         name_modeled_RMCs=name_modeled_RMCs,
         name_modeled_PVs=name_modeled_PVs,
-        name_modeled_FVCs=name_modeled_FVCs,
-        name_modeled_SVCs=name_modeled_SVCs,
+        name_modeled_Inflows=name_modeled_Inflows,
+        name_modeled_Outflows=name_modeled_Outflows,
         name_controlled_PVs=name_controlled_PVs,
-        name_controlled_FVCs=name_controlled_FVCs,
-        name_controlled_SVCs=name_controlled_SVCs,
+        name_controlled_Inflows=name_controlled_Inflows,
+        name_controlled_Outflows=name_controlled_Outflows,
     )
 
 
@@ -434,24 +471,24 @@ class ControlSplines(eqx.Module):
 
     Output layout of ``__call__(t)``::
 
-        u = [FVC_flow_rates... | SVC_flow_rates... | PV_values...]
+        u = [Inflow_flow_rates... | Outflow_flow_rates... | PV_values...]
 
-    The first ``len(name_controlled_FVCs) + len(name_controlled_SVCs)``
+    The first ``len(name_controlled_Inflows) + len(name_controlled_Outflows)``
     entries are spline derivatives (flow rates carrying the storage sign of
     the underlying cumulative-volume series). The remaining entries are
     direct PV values.
     """
 
-    name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
-    name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_Inflows: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_Outflows: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
-    # Original control PPolys in canonical [FVC | SVC | PV] order.
+    # Original control PPolys in canonical [Inflow | Outflow | PV] order.
     _splines: tuple[PPoly, ...]
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
         if not self._splines:
             return jnp.zeros(jnp.shape(t) + (0,))
-        n_flows = len(self.name_controlled_FVCs) + len(self.name_controlled_SVCs)
+        n_flows = len(self.name_controlled_Inflows) + len(self.name_controlled_Outflows)
         values = [
             spline(t, nu=1) if i < n_flows else spline(t)
             for i, spline in enumerate(self._splines)
@@ -465,7 +502,7 @@ def get_control_splines(
 ) -> ControlSplines:
     """Build a :class:`ControlSplines` module for *process*.
 
-    Block layout (FVCs → SVCs → PVs) is enforced by the canonical ordering
+    Block layout (Inflows → Outflows → PVs) is enforced by the canonical ordering
     in :class:`ProcessOrdering`.
     """
     if ordering is None:
@@ -475,10 +512,10 @@ def get_control_splines(
     t_end = float(process.time_axis.end)
     splines: list[PPoly] = []
 
-    for vc_name in ordering.name_controlled_FVCs:
+    for vc_name in ordering.name_controlled_Inflows:
         vc = process.volume.volume_changes[vc_name]
         splines.append(_timeseries_to_ppoly(vc.values))
-    for vc_name in ordering.name_controlled_SVCs:
+    for vc_name in ordering.name_controlled_Outflows:
         vc = process.volume.volume_changes[vc_name]
         splines.append(_timeseries_to_ppoly(vc.values))
     for pv_name in ordering.name_controlled_PVs:
@@ -486,8 +523,8 @@ def get_control_splines(
         splines.append(_value_to_ppoly(pv.values, t_start=t_start, t_end=t_end))
 
     return ControlSplines(
-        name_controlled_FVCs=ordering.name_controlled_FVCs,
-        name_controlled_SVCs=ordering.name_controlled_SVCs,
+        name_controlled_Inflows=ordering.name_controlled_Inflows,
+        name_controlled_Outflows=ordering.name_controlled_Outflows,
         name_controlled_PVs=ordering.name_controlled_PVs,
         _splines=tuple(splines),
     )
@@ -505,16 +542,16 @@ def _build_cin(
 ) -> jnp.ndarray:
     """Build a ``(len(vc_names), len(RMCs))`` feed-composition matrix.
 
-    Each row is the static feed concentration of every reactor component
-    in the corresponding ``FeedVolumeChange.feed_medium`` (zero when the
-    feed does not carry that component).
+    Each row is the static feed concentration of every reactor component in
+    the corresponding ``Inflow.feed_medium``. Components omitted from the
+    sparse feed mapping remain zero in the preinitialized row.
     """
     n = len(vc_names)
     n_RMCs = len(name_modeled_RMCs)
     Cin = jnp.zeros((n, n_RMCs), dtype=float)
     for k, vc_name in enumerate(vc_names):
         vc = process.volume.volume_changes[vc_name]
-        if not isinstance(vc, FeedVolumeChange) or vc.feed_medium is None:
+        if not isinstance(vc, Inflow) or vc.feed_medium is None:
             continue
         feed = vc.feed_medium
         for j, sp_name in enumerate(name_modeled_RMCs):
@@ -530,6 +567,33 @@ def _build_cin(
                     f"{feed.name!r} of volume change {vc_name!r}."
                 )
     return Cin
+
+
+def _build_retention(
+    process: BioProcess,
+    vc_names: Tuple[str, ...],
+    name_modeled_RMCs: Tuple[str, ...],
+) -> jnp.ndarray:
+    """Build a ``(len(vc_names), len(RMCs))`` retention matrix.
+
+    Each row is the per-component retention fraction (sigma in [0, 1]) of
+    the corresponding ``Outflow.retention``. Unlike ``_build_cin``,
+    a missing entry here is deliberately left at 0 (not an error) — an
+    empty/partial ``retention`` is the ordinary, correct state for
+    the overwhelming majority of processes (no perfusion/evaporation
+    modeling), not a data gap standing in for something unknown.
+    """
+    n = len(vc_names)
+    n_RMCs = len(name_modeled_RMCs)
+    retention = jnp.zeros((n, n_RMCs), dtype=float)
+    for k, vc_name in enumerate(vc_names):
+        vc = process.volume.volume_changes[vc_name]
+        if not isinstance(vc, Outflow):
+            continue
+        for j, sp_name in enumerate(name_modeled_RMCs):
+            if sp_name in vc.retention:
+                retention = retention.at[k, j].set(float(vc.retention[sp_name]))
+    return retention
 
 
 # ---------------------------------------------------------------------------
@@ -548,18 +612,18 @@ class RhsOde(eqx.Module):
 
     Call signature::
 
-        dc_dt = rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
+        dc_dt = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
 
     where:
 
     - ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``.
     - ``rates`` aligns with :attr:`name_modeled_rates`.
     - ``u`` is the full control vector (output of ``ControlSplines``):
-      ``[FVC_flows | SVC_flows | PV_values]``.
-    - ``f_modeled_FVCs`` are uncontrolled FVC flow rates aligned with
-      :attr:`name_modeled_FVCs` (non-negative).
-    - ``f_modeled_SVCs`` are uncontrolled SVC flow rates aligned with
-      :attr:`name_modeled_SVCs` (non-positive, signed).
+      ``[Inflow_flows | Outflow_flows | PV_values]``.
+    - ``f_modeled_Inflows`` are uncontrolled Inflow flow rates aligned with
+      :attr:`name_modeled_Inflows` (non-negative).
+    - ``f_modeled_Outflows`` are uncontrolled Outflow flow rates aligned with
+      :attr:`name_modeled_Outflows` (non-positive, signed).
 
     Returns ``dc/dt`` of shape ``(len(RMCs) + len(PVs) + 1,)``.
     """
@@ -569,43 +633,47 @@ class RhsOde(eqx.Module):
     name_modeled_algebraic: tuple = eqx.field(static=True)
     name_modeled_RMCs: tuple = eqx.field(static=True)
     name_modeled_PVs: tuple = eqx.field(static=True)
-    name_modeled_FVCs: tuple = eqx.field(static=True)
-    name_modeled_SVCs: tuple = eqx.field(static=True)
+    name_modeled_Inflows: tuple = eqx.field(static=True)
+    name_modeled_Outflows: tuple = eqx.field(static=True)
     name_controlled_PVs: tuple = eqx.field(static=True)
-    name_controlled_FVCs: tuple = eqx.field(static=True)
-    name_controlled_SVCs: tuple = eqx.field(static=True)
+    name_controlled_Inflows: tuple = eqx.field(static=True)
+    name_controlled_Outflows: tuple = eqx.field(static=True)
 
     # --- Compiled callables
     algebraic_funcs: tuple = eqx.field(static=True)
     derivative_funcs: tuple = eqx.field(static=True)
 
     # --- Feed compositions
-    Cin_controlled_FVCs: jnp.ndarray
-    Cin_modeled_FVCs: jnp.ndarray
+    Cin_controlled_Inflows: jnp.ndarray
+    Cin_modeled_Inflows: jnp.ndarray
+
+    # --- Outflow component retention (sigma in [0, 1], default 0)
+    retention_controlled_Outflows: jnp.ndarray
+    retention_modeled_Outflows: jnp.ndarray
 
     def __call__(
         self,
         c: jnp.ndarray,
         rates: jnp.ndarray,
         u: jnp.ndarray,
-        f_modeled_FVCs: jnp.ndarray,
-        f_modeled_SVCs: jnp.ndarray,
+        f_modeled_Inflows: jnp.ndarray,
+        f_modeled_Outflows: jnp.ndarray,
         V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
     ) -> jnp.ndarray:
         n_RMCs = len(self.name_modeled_RMCs)
         n_PVs = len(self.name_modeled_PVs)
-        n_fvc_ctrl = len(self.name_controlled_FVCs)
-        n_svc_ctrl = len(self.name_controlled_SVCs)
+        n_inflow_ctrl = len(self.name_controlled_Inflows)
+        n_outflow_ctrl = len(self.name_controlled_Outflows)
 
         # Unpack state
         c_RMCs = c[:n_RMCs]
         c_PVs = c[n_RMCs : n_RMCs + n_PVs]
         V = c[n_RMCs + n_PVs]
 
-        # Unpack control vector (FVC flows | SVC flows | PV values)
-        u_controlled_FVCs = u[:n_fvc_ctrl]
-        u_controlled_SVCs = u[n_fvc_ctrl : n_fvc_ctrl + n_svc_ctrl]
-        ctrl_PVs = u[n_fvc_ctrl + n_svc_ctrl :]
+        # Unpack control vector (Inflow flows | Outflow flows | PV values)
+        u_controlled_Inflows = u[:n_inflow_ctrl]
+        u_controlled_Outflows = u[n_inflow_ctrl : n_inflow_ctrl + n_outflow_ctrl]
+        ctrl_PVs = u[n_inflow_ctrl + n_outflow_ctrl :]
 
         state_and_ctrl = jnp.concatenate([c_RMCs, c_PVs, ctrl_PVs])
 
@@ -625,12 +693,14 @@ class RhsOde(eqx.Module):
         feed_term, dV = _apply_feed_dilution(
             c_RMCs,
             V,
-            u_controlled_FVCs,
-            u_controlled_SVCs,
-            f_modeled_FVCs,
-            f_modeled_SVCs,
-            self.Cin_controlled_FVCs,
-            self.Cin_modeled_FVCs,
+            u_controlled_Inflows,
+            u_controlled_Outflows,
+            f_modeled_Inflows,
+            f_modeled_Outflows,
+            self.Cin_controlled_Inflows,
+            self.Cin_modeled_Inflows,
+            self.retention_controlled_Outflows,
+            self.retention_modeled_Outflows,
             n_RMCs,
             V_min,
         )
@@ -692,11 +762,17 @@ def build_rhs_ode(
         for n in state_names
     )
 
-    Cin_controlled_FVCs = _build_cin(
-        process, ordering.name_controlled_FVCs, ordering.name_modeled_RMCs
+    Cin_controlled_Inflows = _build_cin(
+        process, ordering.name_controlled_Inflows, ordering.name_modeled_RMCs
     )
-    Cin_modeled_FVCs = _build_cin(
-        process, ordering.name_modeled_FVCs, ordering.name_modeled_RMCs
+    Cin_modeled_Inflows = _build_cin(
+        process, ordering.name_modeled_Inflows, ordering.name_modeled_RMCs
+    )
+    retention_controlled_Outflows = _build_retention(
+        process, ordering.name_controlled_Outflows, ordering.name_modeled_RMCs
+    )
+    retention_modeled_Outflows = _build_retention(
+        process, ordering.name_modeled_Outflows, ordering.name_modeled_RMCs
     )
 
     return RhsOde(
@@ -704,15 +780,17 @@ def build_rhs_ode(
         name_modeled_algebraic=ordering.name_modeled_algebraic,
         name_modeled_RMCs=ordering.name_modeled_RMCs,
         name_modeled_PVs=ordering.name_modeled_PVs,
-        name_modeled_FVCs=ordering.name_modeled_FVCs,
-        name_modeled_SVCs=ordering.name_modeled_SVCs,
+        name_modeled_Inflows=ordering.name_modeled_Inflows,
+        name_modeled_Outflows=ordering.name_modeled_Outflows,
         name_controlled_PVs=ordering.name_controlled_PVs,
-        name_controlled_FVCs=ordering.name_controlled_FVCs,
-        name_controlled_SVCs=ordering.name_controlled_SVCs,
+        name_controlled_Inflows=ordering.name_controlled_Inflows,
+        name_controlled_Outflows=ordering.name_controlled_Outflows,
         algebraic_funcs=algebraic_funcs,
         derivative_funcs=derivative_funcs,
-        Cin_controlled_FVCs=Cin_controlled_FVCs,
-        Cin_modeled_FVCs=Cin_modeled_FVCs,
+        Cin_controlled_Inflows=Cin_controlled_Inflows,
+        Cin_modeled_Inflows=Cin_modeled_Inflows,
+        retention_controlled_Outflows=retention_controlled_Outflows,
+        retention_modeled_Outflows=retention_modeled_Outflows,
     )
 
 
@@ -794,14 +872,28 @@ def extract_discrete_events(
             if abs(dV_event) < 1e-15:
                 continue
 
-            if dV_event > 0 and isinstance(vc, FeedVolumeChange):
+            if dV_event > 0 and isinstance(vc, Inflow):
+                if vc.feed_medium is None:
+                    raise ValueError(
+                        f"Inflow {vc_name!r} has a positive discrete (bolus) "
+                        "event but no feed_medium defined. There's no "
+                        "reasonable way to fabricate an entire medium's "
+                        "identity from nothing — define feed_medium explicitly."
+                    )
                 Cin_event = jnp.zeros(n_RMCs)
-                if vc.feed_medium is not None:
-                    for j, sp_name in enumerate(ordering.name_modeled_RMCs):
-                        if sp_name in vc.feed_medium.components:
-                            conc = vc.feed_medium.components[sp_name].concentration
-                            if isinstance(conc, StaticVariable):
-                                Cin_event = Cin_event.at[j].set(float(conc.value))
+                for j, sp_name in enumerate(ordering.name_modeled_RMCs):
+                    if sp_name not in vc.feed_medium.components:
+                        continue
+                    conc = vc.feed_medium.components[sp_name].concentration
+                    if isinstance(conc, StaticVariable):
+                        Cin_event = Cin_event.at[j].set(float(conc.value))
+                    else:
+                        raise NotImplementedError(
+                            "TimeSeries feed concentrations are not yet "
+                            f"supported. Found TimeSeries for species "
+                            f"{sp_name!r} in feed {vc.feed_medium.name!r} of "
+                            f"volume change {vc_name!r}."
+                        )
                 events.append(
                     dict(
                         t=float(t_event),
@@ -855,25 +947,8 @@ def extract_discrete_events(
 
 
 # ---------------------------------------------------------------------------
-# State splines + pseudobatch validation
+# State splines
 # ---------------------------------------------------------------------------
-
-
-def _is_pseudobatch_carrier(value: Any) -> bool:
-    """Whether a TimeSeries carries lightweight pseudobatch metadata."""
-    if not isinstance(value, TimeSeries) or not isinstance(value.metadata, dict):
-        return False
-    transform = value.metadata.get("transform")
-    return isinstance(transform, dict) and transform.get("name") == "pseudo_batch"
-
-
-def _reject_orphan_pseudobatch_metadata(value: Any, species_name: str) -> None:
-    """Fail when ``c*`` metadata exists without process-level transform bundle."""
-    if _is_pseudobatch_carrier(value):
-        raise ValueError(
-            f"Species {species_name!r} carries pseudobatch c* metadata but is "
-            "not present in process.pseudobatch_transform."
-        )
 
 
 def _timeseries_samples_match(left: TimeSeries, right: TimeSeries) -> bool:
@@ -896,90 +971,27 @@ def _timeseries_samples_match(left: TimeSeries, right: TimeSeries) -> bool:
     )
 
 
-def _validate_process_pseudobatch_transform(
-    process: BioProcess,
-    ordering: ProcessOrdering,
-):
-    """Validate the process-level pseudobatch bundle before runtime use."""
-    transform = getattr(process, "pseudobatch_transform", None)
-    if transform is None:
-        for sp_name in ordering.name_modeled_RMCs:
-            comp = process.reactor_medium.components[sp_name]
-            _reject_orphan_pseudobatch_metadata(comp.c_star_concentration, sp_name)
-        return None
-
-    for sp_name in ordering.name_modeled_RMCs:
-        comp = process.reactor_medium.components[sp_name]
-        if comp.c_star_concentration is None:
-            if sp_name in transform.feed_corrections:
-                raise ValueError(
-                    f"Pseudobatch species {sp_name!r} has a feed_corrections "
-                    "entry but no c_star_concentration."
-                )
-            _reject_orphan_pseudobatch_metadata(comp.concentration, sp_name)
-            continue
-        if sp_name not in transform.feed_corrections:
-            raise ValueError(
-                f"Pseudobatch species {sp_name!r} has c_star_concentration "
-                "but no matching feed_corrections entry."
-            )
-        if not isinstance(comp.c_star_concentration, (TimeSeries, StaticVariable)):
-            raise TypeError(
-                f"Pseudobatch species {sp_name!r} c_star_concentration must be "
-                "a TimeSeries or StaticVariable."
-            )
-
-    for species_key in transform.feed_corrections:
-        if species_key not in process.reactor_medium.components:
-            raise ValueError(
-                f"Pseudobatch feed correction {species_key!r} is not a reactor "
-                "component."
-            )
-        comp = process.reactor_medium.components[species_key]
-        if comp.c_star_concentration is None:
-            raise ValueError(
-                f"Pseudobatch feed correction {species_key!r} has no matching "
-                "c_star_concentration."
-            )
-
-    return transform
-
-
 def build_state_splines(
     process: BioProcess,
     ordering: ProcessOrdering,
 ) -> Dict[str, Any]:
     """Build state splines from stored TimeSeries spline state.
 
-    Pseudobatch-transformed reactor components (identified through the
-    process-level ``pseudobatch_transform`` bundle) are returned as
-    real-space backtransform splines. Other reactor-component and
-    process-variable states are converted directly from their TimeSeries
-    or StaticVariable carriers.
+    Reactor-component and process-variable states are converted directly
+    from their TimeSeries or StaticVariable carriers.
 
     Returns ``{state_name: spline_callable}`` for every non-volume state
     in ``ordering.name_modeled_RMCs + ordering.name_modeled_PVs``.
     """
     state_splines: Dict[str, Any] = {}
-    pseudobatch_transform = _validate_process_pseudobatch_transform(process, ordering)
 
     for sp_name in ordering.name_modeled_RMCs:
         comp = process.reactor_medium.components[sp_name]
-        concentration = comp.concentration
-        if (
-            pseudobatch_transform is not None
-            and comp.c_star_concentration is not None
-            and sp_name in pseudobatch_transform.feed_corrections
-        ):
-            state_splines[sp_name] = build_backtransform_spline(process, sp_name)
-        else:
-            _reject_orphan_pseudobatch_metadata(comp.c_star_concentration, sp_name)
-            _reject_orphan_pseudobatch_metadata(concentration, sp_name)
-            state_splines[sp_name] = _value_to_ppoly(
-                concentration,
-                t_start=float(process.time_axis.start),
-                t_end=float(process.time_axis.end),
-            )
+        state_splines[sp_name] = _value_to_ppoly(
+            comp.concentration,
+            t_start=float(process.time_axis.start),
+            t_end=float(process.time_axis.end),
+        )
 
     for pv_name in ordering.name_modeled_PVs:
         pv = process.process_variables[pv_name]

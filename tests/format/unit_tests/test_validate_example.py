@@ -10,11 +10,11 @@ from bp_format import (
     BioProcessMetadata,
     BiologicalOde,
     FeedMedium,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -140,7 +140,7 @@ def _simulation_dense_output_for_process(
     )
 
 
-def _flow_process(*, modeled_fvc_values=(0.0, 0.2, 0.4)):
+def _flow_process(*, modeled_inflow_values=(0.0, 0.2, 0.4)):
     feed_medium = FeedMedium(
         name="feed",
         density=1.0,
@@ -159,7 +159,7 @@ def _flow_process(*, modeled_fvc_values=(0.0, 0.2, 0.4)):
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "controlled_feed": FeedVolumeChange(
+                "controlled_feed": Inflow(
                     name="controlled_feed",
                     unit="L",
                     is_controlled=True,
@@ -170,18 +170,18 @@ def _flow_process(*, modeled_fvc_values=(0.0, 0.2, 0.4)):
                     ),
                     feed_medium=feed_medium,
                 ),
-                "modeled_feed": FeedVolumeChange(
+                "modeled_feed": Inflow(
                     name="modeled_feed",
                     unit="L",
                     is_controlled=False,
                     is_continuous=True,
                     values=TimeSeries(
                         times=jnp.array([0.0, 1.0, 2.0]),
-                        values=jnp.array(modeled_fvc_values),
+                        values=jnp.array(modeled_inflow_values),
                     ),
                     feed_medium=feed_medium,
                 ),
-                "modeled_sample": SampleVolumeChange(
+                "modeled_sample": Outflow(
                     name="modeled_sample",
                     unit="L",
                     is_controlled=False,
@@ -455,7 +455,7 @@ def test_dense_state_close_uses_tolerance_floor_for_small_states():
 
 def test_dense_event_warning_when_pre_event_online_check_never_runs():
     process = _make_process("process_1")
-    process.volume.volume_changes["sample"] = SampleVolumeChange(
+    process.volume.volume_changes["sample"] = Outflow(
         name="sample",
         unit="L",
         is_controlled=True,
@@ -679,38 +679,56 @@ def test_modeled_flow_evaluator_and_sign_checks_cover_controlled_and_modeled_flo
     )
 
     u = control_splines(1.0)
-    modeled_fvc, modeled_svc = modeled_flow_evaluator(1.0)
+    modeled_inflow, modeled_outflow = modeled_flow_evaluator(1.0)
     checks, errors = validate_example.evaluate_flow_signs(
         ordering,
         u,
-        modeled_fvc,
-        modeled_svc,
+        modeled_inflow,
+        modeled_outflow,
     )
 
     assert checks == 3
     assert errors == []
-    assert modeled_fvc.tolist() == pytest.approx([0.2])
-    assert modeled_svc.tolist() == pytest.approx([-0.05])
+    assert modeled_inflow.tolist() == pytest.approx([0.2])
+    assert modeled_outflow.tolist() == pytest.approx([-0.05])
 
 
-def test_modeled_flow_sign_check_fails_for_negative_fvc_slope():
-    process = _flow_process(modeled_fvc_values=(0.0, 0.2, -0.2))
+def test_modeled_flow_sign_check_fails_for_negative_inflow_slope():
+    process = _flow_process(modeled_inflow_values=(0.0, 0.2, -0.2))
     ordering = validate_example.get_process_ordering(process)
     modeled_flow_evaluator = validate_example.build_modeled_flow_evaluator(
         process,
         ordering,
     )
     u = validate_example.get_control_splines(process, ordering)(1.5)
-    modeled_fvc, modeled_svc = modeled_flow_evaluator(1.5)
+    modeled_inflow, modeled_outflow = modeled_flow_evaluator(1.5)
 
     _, errors = validate_example.evaluate_flow_signs(
         ordering,
         u,
-        modeled_fvc,
-        modeled_svc,
+        modeled_inflow,
+        modeled_outflow,
     )
 
     assert any("flow is negative" in error for error in errors)
+
+
+@pytest.mark.parametrize("times", [(0.0, 12.0), (0.0, 1.0, 11.0, 12.0)])
+def test_segment_diagnostic_times_use_interval_thirds(times):
+    segment = validate_example.DenseReferenceSegment(
+        start_time=0.0,
+        end_time=12.0,
+        start_row_type="online",
+        end_row_type="pre-event",
+        times=times,
+        values=jnp.empty((len(times), 2)),
+        row_types=tuple("online" for _ in times),
+        spline=None,
+    )
+
+    assert validate_example.segment_diagnostic_times(segment) == pytest.approx(
+        [4.0, 8.0]
+    )
 
 
 def test_dense_trajectory_reports_rank_deficiency():

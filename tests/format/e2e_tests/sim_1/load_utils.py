@@ -287,7 +287,7 @@ def _build_volume_changes(
         row for row in event_rows if row["event_type"] == "sample"
     )
     volume_changes: dict[str, bp.VolumeChange] = {
-        "conti_feed": bp.FeedVolumeChange(
+        "conti_feed": bp.Inflow(
             name="conti_feed",
             unit="L",
             is_controlled=True,
@@ -310,7 +310,7 @@ def _build_volume_changes(
                 ),
             ),
         ),
-        "base_feed": bp.FeedVolumeChange(
+        "base_feed": bp.Inflow(
             name="base_feed",
             unit="L",
             is_controlled=False,
@@ -325,7 +325,7 @@ def _build_volume_changes(
         ),
     }
     if sample_rows:
-        volume_changes["sampling"] = bp.SampleVolumeChange(
+        volume_changes["sampling"] = bp.Outflow(
             name="sampling",
             unit="L",
             is_controlled=True,
@@ -338,7 +338,7 @@ def _build_volume_changes(
     bolus_groups = _bolus_rows_by_feed_id(bolus_rows)
     for feed_id, rows in bolus_groups.items():
         change_name = _bolus_change_name(feed_id, single_group=len(bolus_groups) == 1)
-        volume_changes[change_name] = bp.FeedVolumeChange(
+        volume_changes[change_name] = bp.Inflow(
             name=change_name,
             unit="L",
             is_controlled=True,

@@ -5,8 +5,8 @@ Source: `bp_format/time_series/`
 ## Purpose
 
 `TimeSeries` is the container for everything that varies over time: measured
-concentrations, cumulative feed traces, process signals, and the pseudobatch
-helper trajectories. It holds **discrete samples, a fitted spline, or both**.
+concentrations, cumulative feed traces, and process signals. It holds
+**discrete samples, a fitted spline, or both**.
 
 It is an `eqx.Module`, so it passes through `jax.jit` / `jax.grad` / `jax.vmap`
 untouched — an ODE solver can evaluate a stored spline inside a compiled step
@@ -28,9 +28,8 @@ meaningless.
   them from the volume changes.
 - **`continuity_side`** decides which piece wins exactly at a breakpoint.
   `"right"` (default) gives the post-event value; `"left"` gives the pre-event
-  value. Pseudobatch ADF and feed-correction traces use `"left"`, so reading
-  them *at* an event time returns the pre-event value and the jump applies
-  immediately after.
+  value — useful for any series that must read as its pre-event value exactly
+  at an event time, with the jump applying immediately after.
 - **`derived`** marks a series as computed rather than measured, so downstream
   code can tell a fitted rate from raw experimental data.
 - **float64 only.** Constructing a `TimeSeries` from float32 arrays raises
@@ -117,8 +116,7 @@ with `breaks` and `coeffs` and no measurement data.
 | `__call__(t, nu=0, side=None)` | Evaluate; `nu` is the derivative order. |
 | `derivative(order=1)` | New `PPoly` of the derivative. |
 
-`TimeSeries.poly` returns one of these; `ControlSplines` and
-`BacktransformSpline` store them.
+`TimeSeries.poly` returns one of these; `ControlSplines` stores them.
 
 ## Helper modules
 
@@ -217,5 +215,5 @@ restored = TimeSeries.from_dict(ts.to_dict())
 ## See also
 
 - [Data Model](02_data_model.md) — where `TimeSeries` sits in the hierarchy
-- [Splines](07_splines.md) — fitting and the pseudobatch transform
+- [Splines](07_splines.md) — segmented spline fitting
 - [Serialization](03_serialization.md) — dataset-level JSON I/O

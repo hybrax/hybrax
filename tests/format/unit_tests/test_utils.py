@@ -10,6 +10,7 @@ from bp_format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    BiologicalOde,
     TimeAxis,
     TimeSeries,
     StaticVariable,
@@ -18,15 +19,15 @@ from bp_format import (
     ReactorMedium,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
     Volume,
     print_process_structure,
     print_collection_structure,
+    print_rhs_ode,
     plot_process,
     plot_collection,
 )
-from bp_format.splines import build_pseudobatch_transform
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ def complex_process():
         times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
-    vc = FeedVolumeChange(
+    vc = Inflow(
         name="glucose_feed",
         unit="L",
         is_controlled=True,
@@ -445,6 +446,49 @@ def test_print_collection_structure_empty_verbosity1(capsys):
     assert "(0 processes)" in captured.out
 
 
+def test_print_rhs_ode_shows_component_specific_outflow_retention(
+    complex_process, capsys
+):
+    complex_process.biological_ode = BiologicalOde(
+        derivatives={"biomass": "growth", "glucose": "uptake"}
+    )
+    complex_process.process_variables["pH"].is_controlled = True
+    outflow_values = TimeSeries(
+        times=jnp.array([0.0, 48.0]), values=jnp.array([0.0, -1.0])
+    )
+    complex_process.volume.volume_changes.update(
+        {
+            "perfusion": Outflow(
+                name="perfusion",
+                unit="L",
+                is_controlled=True,
+                is_continuous=True,
+                values=outflow_values,
+                retention={"biomass": 0.75},
+            ),
+            "unretained": Outflow(
+                name="unretained",
+                unit="L",
+                is_controlled=True,
+                is_continuous=True,
+                values=outflow_values,
+            ),
+        }
+    )
+
+    print_rhs_ode(complex_process)
+
+    lines = capsys.readouterr().out.splitlines()
+    biomass_row = next(line for line in lines if line.startswith("| biomass "))
+    glucose_row = next(line for line in lines if line.startswith("| glucose "))
+    assert "Dilution / retention" in "\n".join(lines)
+    assert "− dilution(glucose_feed) + retention(perfusion=0.75)" in biomass_row
+    assert "− dilution(glucose_feed)" in glucose_row
+    assert "retention(" not in glucose_row
+    assert "unretained" not in biomass_row
+    assert "unretained" not in glucose_row
+
+
 # ---------------------------------------------------------------------------
 # plot_process smoke tests
 # ---------------------------------------------------------------------------
@@ -470,8 +514,9 @@ def test_plot_process_simple(simple_process):
     plt.close(fig)
 
 
-def test_plot_process_empty():
+def test_plot_process_empty(monkeypatch):
     """A process with no plottable variables should still return a figure."""
+    monkeypatch.setattr("bp_format.inspect._collect_process_panels", lambda _: [])
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -487,6 +532,32 @@ def test_plot_process_empty():
     fig = plot_process(process)
     assert fig is not None
     plt.close(fig)
+
+
+def test_plot_process_empty_show_false_saves_closes_and_returns_none(
+    monkeypatch, tmp_path
+):
+    matplotlib = pytest.importorskip("matplotlib")
+    monkeypatch.setattr("bp_format.inspect._collect_process_panels", lambda _: [])
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="empty", process_type="batch"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=10.0, time_reference="inoculation"
+        ),
+        volume=Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
+    )
+    open_figures = set(plt.get_fignums())
+    save_path = tmp_path / "empty-process.png"
+
+    result = plot_process(process, save_path=save_path, show=False)
+
+    assert result is None
+    assert save_path.is_file()
+    assert set(plt.get_fignums()) == open_figures
 
 
 def test_plot_process_no_metadata_uses_fallback_title():
@@ -542,7 +613,7 @@ def test_plot_process_total_volume_integrates_continuous_and_discrete_changes():
     rm = ReactorMedium(name="medium", density=1.0, density_unit="kg/L")
     fm = FeedMedium(name="feed", density=1.0, density_unit="kg/L", components={})
 
-    feed = FeedVolumeChange(
+    feed = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -553,7 +624,7 @@ def test_plot_process_total_volume_integrates_continuous_and_discrete_changes():
             values=jnp.array([0.0, 0.2, 0.5]),
         ),
     )
-    sample = SampleVolumeChange(
+    sample = Outflow(
         name="sample",
         unit="L",
         is_controlled=False,
@@ -597,7 +668,7 @@ def test_plot_process_total_volume_supports_spline_only_volume_change():
         coeffs=jnp.array([[0.0, 0.05, 0.0, 0.0]]),
         segment_start_piece_idx=jnp.array([0]),
     )
-    feed = FeedVolumeChange(
+    feed = Inflow(
         name="feed",
         unit="L",
         is_controlled=True,
@@ -688,81 +759,6 @@ def test_plot_process_draws_curve_for_spline_only_series():
     plt.close(fig)
 
 
-def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
-    matplotlib = pytest.importorskip("matplotlib")
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    feed = FeedMedium(
-        name="feed",
-        density=1.0,
-        density_unit="kg/L",
-        components={
-            "glucose": FeedMediumComponent(
-                name="glucose",
-                unit="g/L",
-                concentration=StaticVariable(value=100.0),
-                is_controlled=True,
-            )
-        },
-    )
-    process = BioProcess(
-        metadata=BioProcessMetadata(name="pb_plot", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="h", start=0.0, end=6.0, time_reference="t0"),
-        volume=Volume(
-            initial_volume=1.0,
-            unit="L",
-            volume_changes={
-                "bolus": FeedVolumeChange(
-                    name="bolus",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=False,
-                    feed_medium=feed,
-                    values=TimeSeries(
-                        times=jnp.array([3.0]),
-                        values=jnp.array([0.2]),
-                    ),
-                )
-            },
-        ),
-        reactor_medium=ReactorMedium(
-            name="medium",
-            density=1.0,
-            density_unit="kg/L",
-            components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=TimeSeries(
-                        times=jnp.array([0.0, 2.0, 4.0, 6.0]),
-                        values=jnp.array([0.5, 1.0, 1.5, 2.0]),
-                    ),
-                ),
-                "glucose": ReactorMediumComponent(
-                    name="glucose",
-                    unit="g/L",
-                    concentration=TimeSeries(
-                        times=jnp.array([0.0, 2.0, 4.0, 6.0]),
-                        values=jnp.array([10.0, 9.0, 8.0, 7.0]),
-                    ),
-                ),
-            },
-        ),
-    )
-    transform = build_pseudobatch_transform(process, ["glucose"])
-    process.pseudobatch_transform = transform
-
-    fig = plot_process(process)
-    axes = [ax for ax in fig.axes if ax.get_visible()]
-    glucose_ax = next(
-        ax for ax in axes if ax.get_title() == "glucose [g/L] (ReactorMedium)"
-    )
-    assert len(glucose_ax.get_lines()) >= 1
-    assert len(glucose_ax.get_lines()[0].get_xdata()) == 500
-    plt.close(fig)
-
-
 # ---------------------------------------------------------------------------
 # plot_collection smoke tests
 # ---------------------------------------------------------------------------
@@ -788,6 +784,39 @@ def test_plot_collection_empty():
     fig = plot_collection(cs)
     assert fig is not None
     plt.close(fig)
+
+
+def test_plot_collection_show_false_saves_closes_and_returns_none(
+    sample_collection, tmp_path
+):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    open_figures = set(plt.get_fignums())
+    save_path = tmp_path / "collection.png"
+
+    result = plot_collection(sample_collection, save_path=save_path, show=False)
+
+    assert result is None
+    assert save_path.is_file()
+    assert set(plt.get_fignums()) == open_figures
+
+
+def test_plot_collection_empty_show_false_saves_closes_and_returns_none(tmp_path):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    collection = BioProcessCollection(case_id="empty", organism="None", citation="None")
+    open_figures = set(plt.get_fignums())
+    save_path = tmp_path / "empty-collection.png"
+
+    result = plot_collection(collection, save_path=save_path, show=False)
+
+    assert result is None
+    assert save_path.is_file()
+    assert set(plt.get_fignums()) == open_figures
 
 
 if __name__ == "__main__":

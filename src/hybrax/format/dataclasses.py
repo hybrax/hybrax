@@ -3,11 +3,15 @@ Bioprocess Benchmarking Dataset Structure
 JAX-compatible dataclasses for standardized bioprocess data
 """
 
+import contextlib
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 import jax.numpy as jnp
 
+from ._logging import get_logger
 from .time_series import TimeSeries
+
+_logger = get_logger(__name__)
 
 # Bounds metadata: ``(lower, upper)`` with ``None`` on either side meaning
 # unbounded. RMCs default to nonnegative; other carriers default unbounded.
@@ -17,6 +21,57 @@ from .time_series import TimeSeries
 Bounds = Tuple[Optional[float], Optional[float]]
 _NO_BOUNDS: Bounds = (None, None)
 _DEFAULT_RMC_BOUNDS: Bounds = (0.0, None)
+
+
+def _format_bounds(bounds: Bounds) -> str:
+    """Format a bounds tuple for display, hiding the unbounded default.
+
+    Shared by ``inspect.print_process_structure`` and this module's own
+    auto-assumption notices — kept here (rather than in ``inspect.py``)
+    since ``inspect.py`` already imports from this module and the reverse
+    would be a circular import.
+    """
+    if bounds is None or (bounds[0] is None and bounds[1] is None):
+        return "unbounded"
+    lo = "-inf" if bounds[0] is None else f"{bounds[0]:g}"
+    hi = "+inf" if bounds[1] is None else f"{bounds[1]:g}"
+    return f"[{lo}, {hi}]"
+
+
+# ============================================================
+# Auto-assumption notices
+# ============================================================
+#
+# bp-format fills a small number of required-but-unspecified values with a
+# documented default (e.g. a feed medium's missing reactor-component
+# concentration) instead of erroring. Every such fill is announced through
+# `_announce_assumption` so it is never silent. Use `silence_assumptions()`
+# to suppress these notices when constructing/loading many processes in a
+# loop, where a per-process notice would otherwise repeat once per dataset.
+
+_ANNOUNCE_ASSUMPTIONS = True
+
+
+def _announce_assumption(message: str) -> None:
+    if _ANNOUNCE_ASSUMPTIONS:
+        _logger.info("Assumption: %s", message)
+
+
+@contextlib.contextmanager
+def silence_assumptions():
+    """Temporarily suppress bp-format's auto-assumption notices.
+
+    Useful when constructing or loading many ``BioProcess`` objects in a
+    loop (e.g. building a ``BioProcessCollection``), where a per-process
+    notice would otherwise repeat once per dataset.
+    """
+    global _ANNOUNCE_ASSUMPTIONS
+    previous = _ANNOUNCE_ASSUMPTIONS
+    _ANNOUNCE_ASSUMPTIONS = False
+    try:
+        yield
+    finally:
+        _ANNOUNCE_ASSUMPTIONS = previous
 
 
 @dataclass(frozen=True)
@@ -42,10 +97,10 @@ class ProcessOrdering:
         ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``
 
     Control vector layout (output of ``ControlSplines.__call__``):
-        ``u = [name_controlled_FVCs... | name_controlled_SVCs... |
+        ``u = [name_controlled_Inflows... | name_controlled_Outflows... |
         name_controlled_PVs...]``
 
-    The first ``len(FVCs)+len(SVCs)`` entries of ``u`` are flow rates (spline
+    The first ``len(Inflows)+len(Outflows)`` entries of ``u`` are flow rates (spline
     derivatives); the remaining ``len(PVs)`` entries are direct values.
     """
 
@@ -53,11 +108,11 @@ class ProcessOrdering:
     name_modeled_algebraic: Tuple[str, ...]
     name_modeled_RMCs: Tuple[str, ...]
     name_modeled_PVs: Tuple[str, ...]
-    name_modeled_FVCs: Tuple[str, ...]
-    name_modeled_SVCs: Tuple[str, ...]
+    name_modeled_Inflows: Tuple[str, ...]
+    name_modeled_Outflows: Tuple[str, ...]
     name_controlled_PVs: Tuple[str, ...]
-    name_controlled_FVCs: Tuple[str, ...]
-    name_controlled_SVCs: Tuple[str, ...]
+    name_controlled_Inflows: Tuple[str, ...]
+    name_controlled_Outflows: Tuple[str, ...]
 
 
 # TODO for later: standardize unit spelling so it might be used for unit checks
@@ -138,7 +193,6 @@ class ReactorMediumComponent:
     name: str  # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
-    c_star_concentration: TimeSeries | StaticVariable | None = None
     bounds: Bounds = _DEFAULT_RMC_BOUNDS
 
 
@@ -146,12 +200,15 @@ class ReactorMediumComponent:
 class FeedMedium:
     """
     Feed medium definition for ODE RHS calculations.
+
+    ``density``/``density_unit`` are bookkeeping metadata only — never read
+    by the RHS/mass-balance math (mechanistic.py) — so they default to the
+    common aqueous-solution assumption (1 kg/L) rather than being required.
     """
 
     name: str
-    # Often assumed as 1 kg/L for aqueous solutions, but can be specified.
-    density: float
-    density_unit: str  # typically "kg/L"
+    density: float = 1.0
+    density_unit: str = "kg/L"
     components: Dict[str, FeedMediumComponent] = field(default_factory=dict)
 
 
@@ -159,11 +216,14 @@ class FeedMedium:
 class ReactorMedium:
     """
     Reactor medium definition for ODE RHS calculations.
+
+    ``density``/``density_unit`` are bookkeeping metadata only (see
+    :class:`FeedMedium`) — same default.
     """
 
     name: str
-    density: float
-    density_unit: str  # typically "kg/L"
+    density: float = 1.0
+    density_unit: str = "kg/L"
     components: Dict[str, ReactorMediumComponent] = field(default_factory=dict)
 
 
@@ -195,7 +255,7 @@ class VolumeChange:
 
 
 @dataclass
-class FeedVolumeChange(VolumeChange):
+class Inflow(VolumeChange):
     """
     Volume change from a feed (inflow). Includes the feed medium composition.
 
@@ -206,16 +266,28 @@ class FeedVolumeChange(VolumeChange):
 
 
 @dataclass
-class SampleVolumeChange(VolumeChange):
+class Outflow(VolumeChange):
     """
-    Volume change from sampling (outflow). No feed medium.
+    Volume change from sampling/removal (outflow). No feed medium.
 
     All delta values should be <= 0.
     """
 
+    retention: Dict[str, float] = field(default_factory=dict)
+    # sigma in [0, 1] per reactor-medium component name. Missing key => 0
+    # (species fully leaves with the outflow — sampling/harvest, the only
+    # behavior before this field existed). sigma=1 => fully retained (e.g.
+    # cells in perfusion; solutes in evaporation). sigma models *reduced
+    # removal relative to a well-mixed outlet only* — it cannot represent a
+    # component being enriched in the outflow above bulk concentration (e.g.
+    # preferential stripping/volatilization). Only meaningful on a
+    # continuous Outflow (is_continuous=True); a non-empty value here on a
+    # discrete Outflow is rejected at construction/validation time. No
+    # physical meaning on Inflow (feeds add, never retain).
+
 
 # Union type alias for convenience
-VolumeChange = Union[FeedVolumeChange, SampleVolumeChange]
+VolumeChange = Union[Inflow, Outflow]
 
 
 @dataclass
@@ -270,6 +342,29 @@ class BiologicalOde:
     algebraic: Dict[str, str] = field(default_factory=dict)
     rates: Dict[str, Bounds] = field(default_factory=dict)
     derivatives: Dict[str, str] = field(default_factory=dict)
+
+
+def _format_biological_ode_lines(bo: BiologicalOde, prefix: str = "") -> List[str]:
+    """Render a BiologicalOde's algebraic/rates/derivatives as display lines.
+
+    Shared by `_auto_generate_biological_ode`'s assumption notice and
+    `inspect.print_process_structure` — kept here, next to `BiologicalOde`
+    itself, for the same import-direction reason as `_format_bounds`.
+    """
+    lines: List[str] = []
+    if bo.algebraic:
+        lines.append(f"{prefix}Algebraic ({len(bo.algebraic)}):")
+        for name, expr in bo.algebraic.items():
+            lines.append(f"{prefix}  {name} = {expr}")
+    if bo.rates:
+        lines.append(f"{prefix}Rates ({len(bo.rates)}):")
+        for name, bounds in bo.rates.items():
+            lines.append(f"{prefix}  {name}: bounds={_format_bounds(bounds)}")
+    if bo.derivatives:
+        lines.append(f"{prefix}Derivatives ({len(bo.derivatives)}):")
+        for name, expr in bo.derivatives.items():
+            lines.append(f"{prefix}  d({name})/dt|biological = {expr}")
+    return lines
 
 
 def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
@@ -331,29 +426,41 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
     }
     derivatives.update({pv: f"r_{pv}" for pv in pv_dynamic})
 
-    return BiologicalOde(algebraic={}, rates=rates, derivatives=derivatives)
+    bo = BiologicalOde(algebraic={}, rates=rates, derivatives=derivatives)
+    if _ANNOUNCE_ASSUMPTIONS:
+        detail = "\n".join(_format_biological_ode_lines(bo, prefix="  "))
+        _logger.info(
+            "Assumption: process.biological_ode not provided; auto-generating "
+            f"a default using reactor component {biomass_name!r} as the "
+            f"biomass/growth driver. Pass an explicit BioProcess.biological_ode "
+            f"to override:\n{detail}"
+        )
+    return bo
+
+
+def _announce_missing_inflow_concentrations(process: "BioProcess") -> None:
+    """Announce reactor components omitted from each Inflow feed medium.
+
+    Omitted components remain absent from the caller-owned mapping and are
+    interpreted as zero when mechanistic feed-composition vectors are built.
+    An entirely missing ``feed_medium`` remains a hard error elsewhere.
+    """
+    rmc_names = tuple(process.reactor_medium.components)
+    for vc_name, vc in process.volume.volume_changes.items():
+        if not isinstance(vc, Inflow) or vc.feed_medium is None:
+            continue
+        feed = vc.feed_medium
+        missing = [rmc for rmc in rmc_names if rmc not in feed.components]
+        if missing:
+            _announce_assumption(
+                f"feed medium {feed.name!r} of Inflow {vc_name!r} did not define "
+                f"a concentration for reactor component(s) {missing}; assuming 0."
+            )
 
 
 # ============================================================
 # Process Level
 # ============================================================
-
-
-@dataclass
-class PseudobatchTransform:
-    """
-    Process-level pseudobatch transform bundle.
-
-    `adf` stores the shared accumulated dilution factor. `feed_corrections`
-    stores species-specific feed corrections needed to map between transformed
-    and real concentration. `sample_compensation` and `accumulated_feeds` store
-    optional helper traces for transparency/debugging.
-    """
-
-    adf: TimeSeries
-    feed_corrections: Dict[str, TimeSeries]
-    sample_compensation: Optional[TimeSeries] = None
-    accumulated_feeds: Dict[str, TimeSeries] = field(default_factory=dict)
 
 
 @dataclass
@@ -371,13 +478,13 @@ class BioProcess:
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     discrete_events: Optional[DiscreteEvents] = None
     biological_ode: Optional[BiologicalOde] = None
-    pseudobatch_transform: Optional[PseudobatchTransform] = None
 
     def __post_init__(self):
         if self.volume is None:
             raise ValueError("BioProcess.volume is required")
         if self.biological_ode is None:
             self.biological_ode = _auto_generate_biological_ode(self)
+        _announce_missing_inflow_concentrations(self)
 
 
 @dataclass(kw_only=True)

@@ -40,17 +40,17 @@ Resulting layouts:
 
 ```
 c = [ modeled_RMCs... | modeled_PVs... | V ]
-u = [ controlled_FVCs... | controlled_SVCs... | controlled_PVs... ]
+u = [ controlled_Inflows... | controlled_Outflows... | controlled_PVs... ]
 ```
 
-In `u`, the first `len(FVCs) + len(SVCs)` entries are **flow rates** (spline
+In `u`, the first `len(Inflows) + len(Outflows)` entries are **flow rates** (spline
 derivatives of the cumulative-volume traces); the rest are direct process
 variable values. Feed flows are non-negative; sample flows keep their stored
 negative sign, and the mass balance treats them as signed.
 
 `get_process_ordering` raises if:
 
-- a continuous `FeedVolumeChange` has no `feed_medium`, or names a species that
+- a continuous `Inflow` has no `feed_medium`, or names a species that
   is not in `reactor_medium.components`;
 - an uncontrolled `ProcessVariable` holds a `StaticVariable` (a state with no
   time axis cannot be integrated — mark it `is_controlled=True`);
@@ -63,7 +63,7 @@ Field list: [02_data_model.md](02_data_model.md#processordering).
 
 ```python
 controls = bp.mechanistic.get_control_splines(process, ordering)
-u = controls(t)            # shape (n_controlled_FVCs + n_controlled_SVCs + n_controlled_PVs,)
+u = controls(t)            # shape (n_controlled_Inflows + n_controlled_Outflows + n_controlled_PVs,)
 ```
 
 Evaluates every controlled signal at time `t`, in `ProcessOrdering` layout.
@@ -78,7 +78,7 @@ constant piece over the time axis.
 
 ```python
 rhs_ode = bp.mechanistic.build_rhs_ode(process, ordering)
-dc_dt   = rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
+dc_dt   = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
 ```
 
 | Argument | Shape | Meaning |
@@ -86,8 +86,8 @@ dc_dt   = rhs_ode(c, rates, u, f_modeled_FVCs, f_modeled_SVCs)
 | `c` | `(n_RMCs + n_PVs + 1,)` | State: `[RMCs…, PVs…, V]` |
 | `rates` | `(len(name_modeled_rates),)` | Rate values, in declaration order |
 | `u` | full control vector | Output of `ControlSplines(t)` |
-| `f_modeled_FVCs` | `(len(name_modeled_FVCs),)` | Uncontrolled feed flow rates, ≥ 0 |
-| `f_modeled_SVCs` | `(len(name_modeled_SVCs),)` | Uncontrolled sample flow rates, ≤ 0 |
+| `f_modeled_Inflows` | `(len(name_modeled_Inflows),)` | Uncontrolled feed flow rates, ≥ 0 |
+| `f_modeled_Outflows` | `(len(name_modeled_Outflows),)` | Uncontrolled sample flow rates, ≤ 0 |
 
 Returns `dc/dt` with the same shape as `c`. Pass `jnp.zeros(0)` for the modeled
 flow vectors when there are none.
@@ -107,12 +107,22 @@ with `rhs_ode.name_modeled_rates`.
    ```
    total_in  = Σ controlled feed flows + Σ modeled feed flows        (≥ 0)
    total_out = −(Σ controlled sample flows + Σ modeled sample flows) (≥ 0)
+   retained_out_per_rmc = Σ_Outflows retention · |q_outflow|          (per RMC)
 
-   dilution  = −(total_in + total_out) / V · c_RMCs
+   dilution  = −(total_in − retained_out_per_rmc) / V · c_RMCs
    addition  =  Σ_k flow_k · Cin[k, :] / V
    ```
 
-   Every flow dilutes; only feeds add mass, at their medium composition.
+   A component leaving with a well-mixed Outflow at the reactor's own bulk
+   concentration does not, on its own, change that concentration — removing
+   a sample doesn't alter what's left behind. Only feeding (which adds mass
+   at a *different* concentration, `Cin`) dilutes. An Outflow's per-RMC
+   `retention` (σ ∈ [0, 1], default 0 on every Outflow) inverts this for the
+   retained fraction: as volume drops around what's retained, its
+   concentration rises — σ=1 reproduces exact mass conservation as `V`
+   shrinks (perfusion bleed retaining biomass; evaporation retaining
+   solutes). `retention` is only implemented for continuous Outflows; a
+   discrete Outflow is required to have empty `retention`.
 4. **Volume**: `dV/dt = total_in − total_out`.
 
 **Process-variable states get no physical term.** Their dynamics are entirely
@@ -142,13 +152,13 @@ actually built.
 ### Fields
 
 Name tuples (all static): `name_modeled_rates`, `name_modeled_algebraic`,
-`name_modeled_RMCs`, `name_modeled_PVs`, `name_modeled_FVCs`,
-`name_modeled_SVCs`, `name_controlled_PVs`, `name_controlled_FVCs`,
-`name_controlled_SVCs`.
+`name_modeled_RMCs`, `name_modeled_PVs`, `name_modeled_Inflows`,
+`name_modeled_Outflows`, `name_controlled_PVs`, `name_controlled_Inflows`,
+`name_controlled_Outflows`.
 
 Compiled callables: `algebraic_funcs`, `derivative_funcs`.
 
-Feed composition matrices: `Cin_controlled_FVCs`, `Cin_modeled_FVCs`, each
+Feed composition matrices: `Cin_controlled_Inflows`, `Cin_modeled_Inflows`, each
 `(n_feeds, n_RMCs)` of static feed concentrations, zero where a feed does not
 carry a species.
 
@@ -195,15 +205,8 @@ undefined ordering.
 ### `build_state_splines(process, ordering)`
 
 Returns `{state_name: callable}` for every non-volume state, giving the measured
-trajectory as a continuous function.
-
-- Pseudobatch-transformed reactor components return a `BacktransformSpline`, so
-  the callable yields **real-space** concentration.
-- Everything else returns the stored `PPoly` directly; a `StaticVariable`
-  becomes a constant piece.
-
-The pseudobatch bundle is validated first: a `c*` trace without a matching
-`feed_corrections` entry (or the reverse) raises.
+trajectory as a continuous function, built directly from each state's stored
+`PPoly`; a `StaticVariable` becomes a constant piece.
 
 ## Example
 
@@ -223,8 +226,8 @@ rates = jnp.zeros(len(ordering.name_modeled_rates))
 
 dc_dt = rhs_ode(
     c, rates, controls(t),
-    jnp.zeros(len(ordering.name_modeled_FVCs)),
-    jnp.zeros(len(ordering.name_modeled_SVCs)),
+    jnp.zeros(len(ordering.name_modeled_Inflows)),
+    jnp.zeros(len(ordering.name_modeled_Outflows)),
 )
 ```
 
@@ -241,14 +244,10 @@ dc_dt = step(c, rates, controls(t), jnp.zeros(0), jnp.zeros(0))
 
 - **Feed composition must be static.** A `TimeSeries` feed concentration raises
   `NotImplementedError`.
-- **Well-mixed CSTR only.** Every species leaves at the same rate through a
-  `SampleVolumeChange`, so perfusion with cell retention and evaporation (where
-  solutes stay) cannot be expressed.
+- **Well-mixed CSTR only.** Each Outflow uses the reactor concentration, adjusted
+  only by its per-component `retention`; spatial gradients cannot be expressed.
 - **No rate inversion.** Recovering rate values from state splines is not
   implemented.
-
-Design notes on the last two live in [specs/](../specs/README.md); neither has
-code behind it.
 
 ## See also
 

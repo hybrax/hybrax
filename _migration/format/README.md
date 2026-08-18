@@ -83,8 +83,7 @@ BioProcess
  │    └─ components: Dict[str, ReactorMediumComponent]
  │         ├─ name: str
  │         ├─ unit: str
- │         ├─ concentration: TimeSeries | StaticVariable
- │         └─ c_star_concentration: Optional[TimeSeries | StaticVariable]
+ │         └─ concentration: TimeSeries | StaticVariable
  ├─ biological_ode: Optional[BiologicalOde]
  │    ├─ algebraic: Dict[str, str]
  │    ├─ rates: Dict[str, tuple[Optional[float], Optional[float]]]

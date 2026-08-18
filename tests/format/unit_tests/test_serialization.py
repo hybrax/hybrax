@@ -25,7 +25,8 @@ from bp_format import (
     ReactorMedium,
     FeedMediumComponent,
     FeedMedium,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     Volume,
 )
 from bp_format.serialization import (
@@ -83,7 +84,7 @@ def sample_process():
         times=jnp.array([0.0, 12.0, 24.0, 36.0, 48.0]),
         values=jnp.array([0.0, 0.05, 0.10, 0.15, 0.20]),
     )
-    volume_change = FeedVolumeChange(
+    volume_change = Inflow(
         name="glucose_feed",
         unit="L",
         is_controlled=True,
@@ -601,6 +602,83 @@ def test_save_load_roundtrip_feed_medium(sample_case_study):
         assert vc.feed_medium.components[
             "glucose"
         ].concentration.value == pytest.approx(500.0)
+
+
+def test_save_load_roundtrip_outflow_retention():
+    rm = ReactorMedium(
+        name="medium",
+        components={
+            "biomass": ReactorMediumComponent(
+                name="biomass",
+                unit="g/L",
+                concentration=TimeSeries(
+                    times=jnp.array([0.0, 1.0]), values=jnp.array([1.0, 2.0])
+                ),
+            ),
+        },
+    )
+    outflow = Outflow(
+        name="sample",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([-0.1, -0.2])),
+        retention={"biomass": 0.95},
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"sample": outflow}),
+        reactor_medium=rm,
+    )
+    collection = BioProcessCollection(processes={"p": process})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = Path(tmpdir) / "collection.json"
+        save_process_collection(collection, save_path)
+        loaded = load_process_collection(save_path)
+
+    loaded_outflow = loaded.processes["p"].volume.volume_changes["sample"]
+    assert loaded_outflow.retention == {"biomass": 0.95}
+
+
+def test_load_old_outflow_json_without_retention_key_defaults_empty():
+    """Old serialized files predating this field must still load, with the
+    field defaulting to an empty dict."""
+    outflow = serialization._volume_change_to_dict(
+        Outflow(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=True,
+            values=TimeSeries(
+                times=jnp.array([0.0, 1.0]), values=jnp.array([-0.1, -0.2])
+            ),
+        )
+    )
+    del outflow["retention"]  # simulate a pre-existing on-disk file
+    reconstructed = serialization._dict_to_volume_change(outflow)
+    assert reconstructed.retention == {}
+
+
+@pytest.mark.parametrize(
+    "retention",
+    [None, False, 0, [], ""],
+    ids=["null", "false", "zero", "array", "string"],
+)
+def test_load_outflow_rejects_non_object_retention(retention):
+    outflow = {
+        "type": "Outflow",
+        "name": "sample",
+        "unit": "L",
+        "is_controlled": True,
+        "is_continuous": True,
+        "values": None,
+        "retention": retention,
+    }
+
+    with pytest.raises(ValueError, match="Outflow 'retention' must be an object"):
+        serialization._dict_to_volume_change(outflow)
 
 
 # ---------------------------------------------------------------------------

@@ -5,10 +5,12 @@ import jax.numpy as jnp
 from .dataclasses import (
     BioProcess,
     BioProcessCollection,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     ProcessOrdering,
-    SampleVolumeChange,
     StaticVariable,
+    _format_biological_ode_lines,
+    _format_bounds,
 )
 from .splines import _has_spline_state
 from .time_series import TimeSeries
@@ -194,31 +196,13 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                     _print_volume_change_info(change, "    ")
 
         if process.biological_ode is not None:
-            bo = process.biological_ode
-            print("\nBiological ODE (user-defined):")
-            if bo.algebraic:
-                print(f"  Algebraic ({len(bo.algebraic)}):")
-                for name, expr in bo.algebraic.items():
-                    print(f"    {name} = {expr}")
-            if bo.rates:
-                print(f"  Rates ({len(bo.rates)}):")
-                for name, bounds in bo.rates.items():
-                    print(f"    {name}: bounds={_format_bounds(bounds)}")
-            if bo.derivatives:
-                print(f"  Derivatives ({len(bo.derivatives)}):")
-                for name, expr in bo.derivatives.items():
-                    print(f"    d({name})/dt|biological = {expr}")
+            print("\nBiological ODE:")
+            for line in _format_biological_ode_lines(
+                process.biological_ode, prefix="  "
+            ):
+                print(line)
 
     print("=" * 80)
-
-
-def _format_bounds(bounds) -> str:
-    """Format a bounds tuple for inspect output, hiding the unbounded default."""
-    if bounds is None or (bounds[0] is None and bounds[1] is None):
-        return "unbounded"
-    lo = "-inf" if bounds[0] is None else f"{bounds[0]:g}"
-    hi = "+inf" if bounds[1] is None else f"{bounds[1]:g}"
-    return f"[{lo}, {hi}]"
 
 
 def _print_process_variable_info(pv, prefix: str) -> None:
@@ -280,8 +264,11 @@ def _print_volume_change_info(change, prefix: str) -> None:
     )
     print(f"{prefix}  Unit: {change.unit}")
 
-    if isinstance(change, FeedVolumeChange) and change.feed_medium:
+    if isinstance(change, Inflow) and change.feed_medium:
         print(f"{prefix}  Feed Medium: {change.feed_medium.name}")
+
+    if isinstance(change, Outflow) and change.retention:
+        print(f"{prefix}  Retention: {change.retention}")
 
     if change.values is not None:
         if _is_dynamic_series(change.values):
@@ -371,16 +358,16 @@ def _count_datapoints_in_process(process: BioProcess) -> int:
             if getattr(vc, "values", None) is not None:
                 total += _count_datapoints_in_value(vc.values)
             # feed medium components
-            if getattr(vc, "feed_medium", None) is not None and isinstance(
-                vc, FeedVolumeChange
-            ):
+            if getattr(vc, "feed_medium", None) is not None and isinstance(vc, Inflow):
                 for fcomp in vc.feed_medium.components.values():
                     total += _count_datapoints_in_value(fcomp.concentration)
 
     return total
 
 
-def print_collection_structure(collection: BioProcessCollection, verbosity: int = 3) -> None:
+def print_collection_structure(
+    collection: BioProcessCollection, verbosity: int = 3
+) -> None:
     """
     Print a hierarchical view of a BioProcessCollection.
 
@@ -456,7 +443,7 @@ def _collect_process_panels(process: BioProcess):
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
       - optional: 'series': TimeSeries spline carrier (if available)
-      - optional: 'series_type': 'backtransform' | 'direct'
+      - optional: 'series_type': 'direct'
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0
     t_end = float(process.time_axis.end) if process.time_axis else 1.0
@@ -465,14 +452,8 @@ def _collect_process_panels(process: BioProcess):
 
     # Reactor medium components
     if process.reactor_medium and process.reactor_medium.components:
-        pseudobatch_transform = getattr(process, "pseudobatch_transform", None)
         for comp in process.reactor_medium.components.values():
             unit_label = f" [{comp.unit}]" if comp.unit else ""
-            has_transform = (
-                pseudobatch_transform is not None
-                and comp.c_star_concentration is not None
-                and comp.name in pseudobatch_transform.feed_corrections
-            )
             if _is_dynamic_series(comp.concentration):
                 panel = {
                     "title": f"{comp.name}{unit_label}",
@@ -482,12 +463,7 @@ def _collect_process_panels(process: BioProcess):
                     "y": comp.concentration.values,
                     "render": "line",
                 }
-                if has_transform:
-                    panel["series"] = comp.c_star_concentration
-                    panel["series_type"] = "backtransform"
-                    panel["process"] = process
-                    panel["species_name"] = comp.name
-                elif _has_spline_state(comp.concentration):
+                if _has_spline_state(comp.concentration):
                     panel["series"] = comp.concentration
                     panel["series_type"] = "direct"
                 panels.append(panel)
@@ -502,11 +478,8 @@ def _collect_process_panels(process: BioProcess):
                     "y": y,
                     "render": "line",
                     "series": comp.concentration,
-                    "series_type": "backtransform" if has_transform else "direct",
+                    "series_type": "direct",
                 }
-                if has_transform:
-                    panel["process"] = process
-                    panel["species_name"] = comp.name
                 panels.append(panel)
             elif hasattr(comp.concentration, "value"):
                 panels.append(
@@ -716,31 +689,10 @@ def _pad_constant_ylim(ax, values):
         ax.set_ylim(min(cur_lo, new_lo), max(cur_hi, new_hi))
 
 
-def _evaluate_series_curve(
-    series,
-    series_type,
-    t_start,
-    t_end,
-    n_points=500,
-    *,
-    pseudobatch_transform=None,
-    species_name=None,
-    process=None,
-):
+def _evaluate_series_curve(series, t_start, t_end, n_points=500):
     """Evaluate a spline-backed TimeSeries over [t_start, t_end]."""
-    from .splines import evaluate_pseudobatch_transform
-
     t_plot = np.linspace(t_start, t_end, n_points)
-    if series_type == "backtransform":
-        if process is None or species_name is None:
-            raise ValueError(
-                "Backtransform plotting requires process and species_name."
-            )
-        y_plot = np.asarray(
-            evaluate_pseudobatch_transform(process, species_name, jnp.asarray(t_plot))
-        )
-    else:
-        y_plot = np.asarray(series.evaluate_many(jnp.asarray(t_plot, dtype=float)))
+    y_plot = np.asarray(series.evaluate_many(jnp.asarray(t_plot, dtype=float)))
     return t_plot, y_plot
 
 
@@ -749,7 +701,7 @@ def _draw_panel(
 ):
     """Draw a single panel (dynamic or static) onto *ax*.
 
-    If the panel has a ``'series'`` key, the spline/backtransform curve is drawn and raw
+    If the panel has a ``'series'`` key, the spline curve is drawn and raw
     data is shown as scatter points (no connecting lines). Otherwise raw
     data is drawn with ``'o-'`` markers.
     """
@@ -808,17 +760,13 @@ def _draw_panel(
             fmt = "o-" if n <= 50 else "-"
             ax.plot(x, y, fmt, markersize=4, label=label, **plot_kwargs)
 
-        # Draw spline/backtransform curve
+        # Draw spline curve
         if has_series and t_start is not None and t_end is not None:
             try:
                 t_plot, y_plot = _evaluate_series_curve(
                     panel["series"],
-                    panel.get("series_type", "direct"),
                     t_start,
                     t_end,
-                    pseudobatch_transform=panel.get("pseudobatch_transform"),
-                    species_name=panel.get("species_name"),
-                    process=panel.get("process"),
                 )
                 ax.plot(
                     t_plot,
@@ -846,7 +794,12 @@ def _draw_panel(
         )
 
 
-def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), save_path=None, show=True):
+def plot_collection(
+    collection: BioProcessCollection,
+    figsize_per_panel=(5, 3),
+    save_path=None,
+    show=True,
+):
     """
     Plot all dynamic and static variables for every process in a BioProcessCollection.
 
@@ -908,6 +861,11 @@ def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), 
             va="center",
             transform=ax.transAxes,
         )
+        if save_path is not None:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        if not show:
+            plt.close(fig)
+            return None
         return fig
 
     panels = list(variable_map.values())
@@ -969,7 +927,9 @@ def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), 
     for j in range(len(panels), len(axes_flat)):
         axes_flat[j].set_visible(False)
 
-    label = collection.case_id or (collection.metadata or {}).get("name", "BioProcessCollection")
+    label = collection.case_id or (collection.metadata or {}).get(
+        "name", "BioProcessCollection"
+    )
     fig.suptitle(f"BioProcessCollection: {label}", fontsize=12)
 
     if legend_handles_by_label:
@@ -993,11 +953,11 @@ def plot_collection(collection: BioProcessCollection, figsize_per_panel=(5, 3), 
 
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
-    
+
     if not show:
         plt.close(fig)
         return None
-    
+
     return fig
 
 
@@ -1016,7 +976,9 @@ def _make_figure(n_panels, figsize_per_panel):
     return fig, axes.flatten()
 
 
-def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None, show=True):
+def plot_process(
+    process: BioProcess, figsize_per_panel=(5, 3), save_path=None, show=True
+):
     """
     Plot all dynamic and static variables of a BioProcess in a two-column figure.
 
@@ -1055,6 +1017,11 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None, 
             va="center",
             transform=ax.transAxes,
         )
+        if save_path is not None:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        if not show:
+            plt.close(fig)
+            return None
         return fig
 
     fig, axes_flat = _make_figure(len(panels), figsize_per_panel)
@@ -1084,7 +1051,7 @@ def plot_process(process: BioProcess, figsize_per_panel=(5, 3), save_path=None, 
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
-    
+
     if not show:
         plt.close(fig)
         return None
@@ -1104,7 +1071,7 @@ def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None, show=True):
     if not show:
         plt.close(fig)
         return None
-    
+
     return fig
 
 
@@ -1115,7 +1082,7 @@ def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None, show=True):
 
 def _cin_static_value(vc, rmc_name: str) -> float:
     """Static feed concentration of *rmc_name* in *vc*'s feed medium (0 if absent)."""
-    if not isinstance(vc, FeedVolumeChange) or vc.feed_medium is None:
+    if not isinstance(vc, Inflow) or vc.feed_medium is None:
         return 0.0
     comp = vc.feed_medium.components.get(rmc_name)
     if comp is None:
@@ -1186,67 +1153,81 @@ def _render_combined_box(title: str, sections: list) -> str:
 
 def _format_rmc_feed(
     rmc_name: str,
-    fvc_names: list,
+    inflow_names: list,
     process: BioProcess,
 ) -> str:
-    """``+ feed(<FVCs supplying Cin for this RMC>)`` or empty when none."""
+    """``+ feed(<Inflows supplying Cin for this RMC>)`` or empty when none."""
     feeders = [
         n
-        for n in fvc_names
+        for n in inflow_names
         if _cin_static_value(process.volume.volume_changes[n], rmc_name) != 0.0
     ]
     return "+ feed(" + ", ".join(feeders) + ")" if feeders else ""
 
 
-def _format_rmc_dilution(fvc_names: list, svc_names: list) -> str:
-    """``− dilution(<all FVC+SVC>)`` or empty when there are no flows."""
-    flows = list(fvc_names) + list(svc_names)
-    return "− dilution(" + ", ".join(flows) + ")" if flows else ""
+def _format_rmc_flow(
+    rmc_name: str,
+    inflow_names: list,
+    outflow_names: list,
+    process: BioProcess,
+) -> str:
+    """Format concentration changes from continuous volume flows for one RMC."""
+    terms = []
+    if inflow_names:
+        terms.append("− dilution(" + ", ".join(inflow_names) + ")")
+    retained = []
+    for name in outflow_names:
+        retention = process.volume.volume_changes[name].retention.get(rmc_name, 0.0)
+        if retention:
+            retained.append(f"{name}={retention:g}")
+    if retained:
+        terms.append("+ retention(" + ", ".join(retained) + ")")
+    return " ".join(terms)
 
 
 def _discrete_volume_changes(process: BioProcess):
-    """Return ``(discrete_FVCs, discrete_SVCs)`` — names of discrete (bolus
+    """Return ``(discrete_Inflows, discrete_Outflows)`` — names of discrete (bolus
     / discrete-sample) volume changes. ``ProcessOrdering`` only enumerates
     continuous volume changes, so the discrete ones are recovered here.
     """
-    disc_fvc = sorted(
+    disc_inflow = sorted(
         n
         for n, vc in process.volume.volume_changes.items()
-        if not vc.is_continuous and isinstance(vc, FeedVolumeChange)
+        if not vc.is_continuous and isinstance(vc, Inflow)
     )
-    disc_svc = sorted(
+    disc_outflow = sorted(
         n
         for n, vc in process.volume.volume_changes.items()
-        if not vc.is_continuous and isinstance(vc, SampleVolumeChange)
+        if not vc.is_continuous and isinstance(vc, Outflow)
     )
-    return disc_fvc, disc_svc
+    return disc_inflow, disc_outflow
 
 
 def _format_v_additions(
-    cont_fvc: list,
-    disc_fvc: list,
+    cont_inflow: list,
+    disc_inflow: list,
 ) -> str:
-    """V's positive contributions: continuous FVC flow rates and discrete
+    """V's positive contributions: continuous Inflow flow rates and discrete
     bolus events. Returns ``0`` when neither is present."""
     parts: list = []
-    if cont_fvc:
-        parts.append(" + ".join(cont_fvc))
-    if disc_fvc:
-        parts.append("bolus(" + ", ".join(disc_fvc) + ")")
+    if cont_inflow:
+        parts.append(" + ".join(cont_inflow))
+    if disc_inflow:
+        parts.append("bolus(" + ", ".join(disc_inflow) + ")")
     return " + ".join(parts) if parts else "0"
 
 
 def _format_v_removals(
-    cont_svc: list,
-    disc_svc: list,
+    cont_outflow: list,
+    disc_outflow: list,
 ) -> str:
-    """V's negative contributions: continuous SVC flow rates and discrete
+    """V's negative contributions: continuous Outflow flow rates and discrete
     sampling events. Returns ``0`` when neither is present."""
     parts: list = []
-    if cont_svc:
-        parts.append("− |" + " + ".join(cont_svc) + "|")
-    if disc_svc:
-        parts.append("− sample(" + ", ".join(disc_svc) + ")")
+    if cont_outflow:
+        parts.append("− |" + " + ".join(cont_outflow) + "|")
+    if disc_outflow:
+        parts.append("− sample(" + ", ".join(disc_outflow) + ")")
     return " ".join(parts) if parts else "0"
 
 
@@ -1271,7 +1252,9 @@ def _resolve_target(target):
             raise ValueError(f"Cannot print unified ODE structure: {msg}")
         process = next(iter(target.processes.values()))
         n = len(target.processes)
-        label = target.case_id or (target.metadata or {}).get("name", "BioProcessCollection")
+        label = target.case_id or (target.metadata or {}).get(
+            "name", "BioProcessCollection"
+        )
         if n > 1:
             label = f"{label} ({n} processes)"
         return process, label
@@ -1295,11 +1278,13 @@ def print_rhs_ode(
     individual process picked to render is not exposed.
 
     The Derivatives sub-table separates the *Biological* expression
-    (verbatim from ``biological_ode.derivatives``) from the *Feed* and
-    *Dilution* contributions that bp-format adds on top: ``+ feed(<FVCs
-    with Cin>)`` and ``− dilution(<all FVC+SVC>)`` per RMC. The Volume
-    sub-table lists V separately with *Additions* (FVC sum) and
-    *Removals* (``− |<SVC sum>|``) columns.
+    (verbatim from ``biological_ode.derivatives``) from the physical flow
+    contributions that bp-format adds on top. Inflows contribute
+    ``+ feed(...)`` and ``− dilution(...)``. Retained material contributes
+    ``+ retention(<Outflow>=<fraction>)`` for each affected RMC; unretained
+    Outflows have no concentration contribution. The Volume sub-table lists
+    V separately with *Additions* (Inflow sum) and *Removals*
+    (``− |<Outflow sum>|``) columns.
 
     Raises:
         ValueError: if a multi-process container's processes do not share
@@ -1346,16 +1331,20 @@ def print_rhs_ode(
             )
         )
 
-    fvc_all = list(ordering.name_controlled_FVCs) + list(ordering.name_modeled_FVCs)
-    svc_all = list(ordering.name_controlled_SVCs) + list(ordering.name_modeled_SVCs)
+    inflow_all = list(ordering.name_controlled_Inflows) + list(
+        ordering.name_modeled_Inflows
+    )
+    outflow_all = list(ordering.name_controlled_Outflows) + list(
+        ordering.name_modeled_Outflows
+    )
 
     deriv_rows: list = []
     for n in ordering.name_modeled_RMCs:
         unit = process.reactor_medium.components[n].unit
         bio_str = bo.derivatives.get(n, "0")
-        feed = _format_rmc_feed(n, fvc_all, process)
-        dilution = _format_rmc_dilution(fvc_all, svc_all)
-        deriv_rows.append([n, f"[{unit}]", bio_str, feed, dilution])
+        feed = _format_rmc_feed(n, inflow_all, process)
+        flow = _format_rmc_flow(n, inflow_all, outflow_all, process)
+        deriv_rows.append([n, f"[{unit}]", bio_str, feed, flow])
     for n in ordering.name_modeled_PVs:
         unit = process.process_variables[n].unit
         bio_str = bo.derivatives.get(n, "0")
@@ -1364,20 +1353,20 @@ def print_rhs_ode(
     sections.append(
         (
             "Derivatives",
-            ["State", "Unit", "Biological", "Feed", "Dilution"],
+            ["State", "Unit", "Biological", "Feed", "Dilution / retention"],
             deriv_rows,
             ["l", "l", "l", "l", "l"],
         )
     )
 
     if process.volume is not None:
-        disc_fvc, disc_svc = _discrete_volume_changes(process)
+        disc_inflow, disc_outflow = _discrete_volume_changes(process)
         vol_rows = [
             [
                 "V",
                 f"[{process.volume.unit}]",
-                _format_v_additions(fvc_all, disc_fvc),
-                _format_v_removals(svc_all, disc_svc),
+                _format_v_additions(inflow_all, disc_inflow),
+                _format_v_removals(outflow_all, disc_outflow),
             ]
         ]
         sections.append(

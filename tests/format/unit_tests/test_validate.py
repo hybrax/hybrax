@@ -19,8 +19,8 @@ from bp_format import (
     FeedMediumComponent,
     FeedMedium,
     ReactorMedium,
-    FeedVolumeChange,
-    SampleVolumeChange,
+    Inflow,
+    Outflow,
     Volume,
     BioProcess,
     AugmentedBioProcess,
@@ -32,6 +32,7 @@ from bp_format import (
     validate_volume_change_sign,
     validate_volume_change_states,
     validate_volume_units,
+    validate_outflow_retention,
     validate_biomass_in_reactor_medium,
     validate_measurement_sampling_alignment,
     validate_process,
@@ -296,29 +297,6 @@ class TestValidateTimestampBounds:
 
         assert ok is True
 
-    def test_reactor_c_star_timestamp_outside_bounds(self):
-        component = ReactorMediumComponent(
-            name="oxygen",
-            unit="mmol/L",
-            concentration=StaticVariable(value=1.0),
-            c_star_concentration=_ts([1.0, 11.0], [1.0, 2.0]),
-        )
-        process = _make_process(
-            reactor_components={
-                "biomass": ReactorMediumComponent(
-                    name="biomass",
-                    unit="g/L",
-                    concentration=StaticVariable(value=1.0),
-                ),
-                "oxygen": component,
-            }
-        )
-
-        ok, msg = validate_timestamp_bounds(process)
-
-        assert ok is False
-        assert "reactor component 'oxygen' c_star" in msg
-
     def test_process_variable_timestamp_outside_bounds(self):
         variable = ProcessVariable(
             name="temperature",
@@ -334,7 +312,7 @@ class TestValidateTimestampBounds:
         assert "process variable 'temperature'" in msg
 
     def test_volume_change_timestamp_outside_bounds(self):
-        change = SampleVolumeChange(
+        change = Outflow(
             name="sample",
             unit="L",
             is_controlled=True,
@@ -375,7 +353,7 @@ class TestValidateTimestampBounds:
 
 class TestValidateVolumeChangeSign:
     def _feed_vc(self, values, name="feed"):
-        return FeedVolumeChange(
+        return Inflow(
             name=name,
             unit="L",
             is_controlled=True,
@@ -385,7 +363,7 @@ class TestValidateVolumeChangeSign:
         )
 
     def _sample_vc(self, values, name="sample"):
-        return SampleVolumeChange(
+        return Outflow(
             name=name,
             unit="L",
             is_controlled=True,
@@ -448,7 +426,7 @@ class TestValidateVolumeChangeSign:
 
 class TestValidateVolumeUnits:
     def _sample(self, unit):
-        return SampleVolumeChange(
+        return Outflow(
             name="sample",
             unit=unit,
             is_controlled=True,
@@ -497,7 +475,7 @@ class TestValidateVolumeChangeStates:
     def _vc(self, feed_medium, positive=True):
         vals = [0.1, 0.2] if positive else [-0.1, -0.2]
         if positive:
-            return FeedVolumeChange(
+            return Inflow(
                 name="feed_vc",
                 unit="L",
                 is_controlled=True,
@@ -506,7 +484,7 @@ class TestValidateVolumeChangeStates:
                 values=_ts([0.0, 1.0], vals),
             )
         else:
-            return SampleVolumeChange(
+            return Outflow(
                 name="feed_vc",
                 unit="L",
                 is_controlled=True,
@@ -525,19 +503,20 @@ class TestValidateVolumeChangeStates:
         ok, msg = validate_volume_change_states(process)
         assert ok is True
 
-    def test_missing_state_in_feed(self):
+    def test_missing_state_in_feed_means_zero(self):
         process = _make_process(
             reactor_components={
                 "biomass": self._reactor_comp("biomass"),
                 "glucose": self._reactor_comp("glucose"),
             },
             volume_changes={
-                "f": self._vc(self._feed_medium(["glucose"]))  # biomass missing
+                "f": self._vc(self._feed_medium(["glucose"]))  # biomass omitted
             },
         )
+
         ok, msg = validate_volume_change_states(process)
-        assert ok is False
-        assert "biomass" in msg
+
+        assert ok is True
 
     def test_feed_component_unit_must_match_reactor_component(self):
         feed = self._feed_medium(["biomass"])
@@ -592,7 +571,107 @@ class TestValidateVolumeChangeStates:
         )
         ok, msg = validate_volume_change_states(process)
         assert ok is True
-        assert "skipped" in msg.lower()
+
+
+class TestValidateOutflowRetention:
+    def _reactor_comp(self, name):
+        return ReactorMediumComponent(
+            name=name, unit="g/L", concentration=_ts([0.0, 1.0], [1.0, 2.0])
+        )
+
+    def _outflow(self, retention=None, is_continuous=True):
+        return Outflow(
+            name="sample",
+            unit="L",
+            is_controlled=True,
+            is_continuous=is_continuous,
+            values=_ts([0.0, 1.0], [-0.1, -0.2]),
+            retention=retention or {},
+        )
+
+    def test_empty_retention_is_valid(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"sample": self._outflow()},
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is True
+
+    def test_in_range_retention_is_valid(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"sample": self._outflow(retention={"biomass": 0.95})},
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is True
+
+    def test_out_of_range_retention_rejected(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"sample": self._outflow(retention={"biomass": 1.5})},
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+        assert "biomass" in msg
+
+    def test_negative_retention_rejected(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"sample": self._outflow(retention={"biomass": -0.1})},
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+
+    def test_unknown_component_rejected(self):
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={"sample": self._outflow(retention={"typo_name": 0.5})},
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+        assert "typo_name" in msg
+
+    def test_discrete_retention_rejected(self):
+        """retention is only ever consulted for continuous Outflows — a
+        non-empty value on a discrete Outflow would otherwise be silently
+        ignored by the RHS ODE, so it must be rejected instead."""
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "sample": self._outflow(retention={"biomass": 0.5}, is_continuous=False)
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is False
+        assert "discrete" in msg.lower()
+
+    def test_inflow_is_ignored(self):
+        """retention only exists on Outflow; an Inflow in the mix must not
+        confuse the check."""
+        process = _make_process(
+            reactor_components={"biomass": self._reactor_comp("biomass")},
+            volume_changes={
+                "feed": Inflow(
+                    name="feed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=True,
+                    feed_medium=FeedMedium(
+                        name="f",
+                        components={
+                            "biomass": FeedMediumComponent(
+                                name="biomass",
+                                unit="g/L",
+                                concentration=StaticVariable(value=10.0),
+                            )
+                        },
+                    ),
+                    values=_ts([0.0, 1.0], [0.0, 0.1]),
+                ),
+            },
+        )
+        ok, msg = validate_outflow_retention(process)
+        assert ok is True
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +716,7 @@ class TestValidateBiomassInReactorMedium:
 
 
 class TestValidateProcess:
-    def test_checks_c_star_and_total_volume_timeseries_shapes(self):
+    def test_checks_reactor_and_total_volume_timeseries_shapes(self):
         malformed = SimpleNamespace(
             times=jnp.array([0.0, 1.0]), values=jnp.array([1.0])
         )
@@ -645,7 +724,6 @@ class TestValidateProcess:
             name="biomass",
             unit="g/L",
             concentration=_ts([0.0, 1.0], [1.0, 2.0]),
-            c_star_concentration=malformed,
         )
         process = _make_process(reactor_components={"biomass": biomass})
         process.volume.total_volume = malformed
@@ -654,7 +732,6 @@ class TestValidateProcess:
 
         assert all_valid is False
         assert any("TimeSeries 'biomass' OK" in message for message in messages)
-        assert any("'biomass c_star' invalid" in message for message in messages)
         assert any("'measured total volume' invalid" in message for message in messages)
 
     def test_invalid_time_axis_fails_process(self):
@@ -693,7 +770,7 @@ class TestValidateProcess:
                 ),
             },
         )
-        vc = FeedVolumeChange(
+        vc = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -791,7 +868,7 @@ class TestValidateProcess:
     ):
         process = _make_process(
             volume_changes={
-                "sampling": SampleVolumeChange(
+                "sampling": Outflow(
                     name="sampling",
                     unit="L",
                     is_controlled=True,
@@ -833,7 +910,7 @@ class TestValidateProcess:
                 )
             },
             volume_changes={
-                "sample": SampleVolumeChange(
+                "sample": Outflow(
                     name="sample",
                     unit="mL",
                     is_controlled=True,
@@ -860,7 +937,7 @@ class TestValidateVolumeConsistency:
         volume_changes = {}
         for name, (is_continuous, timepoints, values, feed_medium) in changes.items():
             if any(v < 0 for v in values):
-                volume_changes[name] = SampleVolumeChange(
+                volume_changes[name] = Outflow(
                     name=name,
                     unit="L",
                     is_controlled=True,
@@ -868,7 +945,7 @@ class TestValidateVolumeConsistency:
                     values=_ts(timepoints, values),
                 )
             else:
-                volume_changes[name] = FeedVolumeChange(
+                volume_changes[name] = Inflow(
                     name=name,
                     unit="L",
                     is_controlled=True,
@@ -1083,7 +1160,7 @@ class TestValidateForPublication:
     def test_different_volume_change_names_pass(self):
         """Processes may use different feed or sampling strategies."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        vc = FeedVolumeChange(
+        vc = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -1149,7 +1226,7 @@ class TestValidateForPublication:
     def test_volume_change_units_are_checked_per_process(self):
         """Cross-process consistency does not compare volume-change units."""
         ts = _ts([0.0, 1.0], [0.1, 0.5])
-        vc1 = FeedVolumeChange(
+        vc1 = Inflow(
             name="feed",
             unit="L",
             is_controlled=True,
@@ -1157,7 +1234,7 @@ class TestValidateForPublication:
             feed_medium=_make_feed_medium(["biomass"]),
             values=_ts([0.0, 1.0], [0.0, 0.1]),
         )
-        vc2 = FeedVolumeChange(
+        vc2 = Inflow(
             name="feed",
             unit="mL",
             is_controlled=True,
@@ -1272,7 +1349,7 @@ class TestValidateCrossProcessConsistency:
 
 class TestValidateMeasurementSamplingAlignment:
     def _sample_vc(self, times, values):
-        return SampleVolumeChange(
+        return Outflow(
             name="sample",
             unit="L",
             is_controlled=True,
@@ -1317,7 +1394,7 @@ class TestValidateMeasurementSamplingAlignment:
         ok, msg = validate_measurement_sampling_alignment(process)
         assert ok is False
         assert "biomass" in msg
-        assert "ADF" in msg
+        assert "spline" in msg
 
     def test_large_gap_passes(self):
         """Measurements far from any sampling time — not a misalignment, should pass."""
@@ -1338,7 +1415,7 @@ class TestValidateMeasurementSamplingAlignment:
         assert ok is True
 
     def test_no_sampling_events_skipped(self):
-        """Process with no SampleVolumeChange — check should be skipped."""
+        """Process with no Outflow — check should be skipped."""
         process = _make_process(
             reactor_components={
                 "biomass": ReactorMediumComponent(
@@ -1346,6 +1423,29 @@ class TestValidateMeasurementSamplingAlignment:
                     unit="g/L",
                     concentration=_ts([0.0, 5.0, 10.0], [0.1, 0.5, 1.0]),
                 ),
+            },
+        )
+        ok, msg = validate_measurement_sampling_alignment(process)
+        assert ok is True
+        assert "skipped" in msg.lower()
+
+    def test_continuous_outflow_is_not_a_sampling_event(self):
+        process = _make_process(
+            reactor_components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=_ts([5.0005], [0.5]),
+                ),
+            },
+            volume_changes={
+                "harvest": Outflow(
+                    name="harvest",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=_ts([0.0, 5.0, 10.0], [0.0, -0.5, -1.0]),
+                )
             },
         )
         ok, msg = validate_measurement_sampling_alignment(process)

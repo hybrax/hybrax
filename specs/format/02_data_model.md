@@ -19,8 +19,8 @@ All classes are re-exported from the package root: `bp.TimeAxis`,
   O(1), makes clean JSON, and keeps iteration explicit.
 - **Volume is separate from states and controls** — see
   [Design Rationale §3](01_design_rationale.md#3-volume-is-its-own-category).
-- **Feed and sample are different types.** `FeedVolumeChange` and
-  `SampleVolumeChange` fix the sign convention at the type level, and only feeds
+- **Feed and sample are different types.** `Inflow` and
+  `Outflow` fix the sign convention at the type level, and only feeds
   carry a `FeedMedium`.
 - **`TimeSeries | StaticVariable` everywhere a value could be constant.** A
   measured concentration is a `TimeSeries`; a known feed concentration is a
@@ -114,10 +114,9 @@ One species measured in the reactor.
 ```python
 @dataclass
 class ReactorMediumComponent:
-    name: str                                                 # "glucose", "biomass"
-    unit: str                                                 # "g/L", "mM"
-    concentration: TimeSeries | StaticVariable                # real, as measured
-    c_star_concentration: TimeSeries | StaticVariable | None  # pseudobatch trace
+    name: str                                     # "glucose", "biomass"
+    unit: str                                     # "g/L", "mM"
+    concentration: TimeSeries | StaticVariable    # real, as measured
     bounds: Bounds = (0.0, None)
 ```
 
@@ -125,11 +124,6 @@ RMC concentrations default to nonnegative. Pass `bounds=(None, None)` to opt
 out explicitly.
 
 `concentration` is *always* the real reactor concentration in physical units.
-When a pseudobatch transform has been built, the derived `c*` trace goes in
-`c_star_concentration` and the shared parts (ADF, feed corrections) go on
-`BioProcess.pseudobatch_transform`. Loaders reject a `c*` trace with no matching
-transform bundle, and reject feeding an already-transformed concentration back
-into the transform builder.
 
 ### `FeedMediumComponent`
 
@@ -145,8 +139,7 @@ class FeedMediumComponent:
 ```
 
 > The mechanistic code currently requires `StaticVariable` here. A `TimeSeries`
-> feed concentration raises `NotImplementedError` in `build_rhs_ode` and in the
-> pseudobatch feed correction.
+> feed concentration raises `NotImplementedError` in `build_rhs_ode`.
 
 ### `ReactorMedium` and `FeedMedium`
 
@@ -204,13 +197,25 @@ class VolumeChange:              # base
     values: TimeSeries           # cumulative volume, or per-event deltas
 
 @dataclass
-class FeedVolumeChange(VolumeChange):
+class Inflow(VolumeChange):
     feed_medium: FeedMedium      # values >= 0
 
 @dataclass
-class SampleVolumeChange(VolumeChange):
-    pass                         # values <= 0
+class Outflow(VolumeChange):
+    retention: Dict[str, float] = field(default_factory=dict)
 ```
+
+`Outflow.values` must be non-positive. `Outflow.retention` maps
+reactor-component names to the fraction retained in the reactor instead of
+leaving through that outflow. Values are in the inclusive range `[0, 1]`: `0`
+means the component leaves at the bulk reactor concentration, while `1` means
+it is fully retained. The mapping defaults to `{}`, and omitted component names
+also mean zero retention. Every key must name a component declared in the
+process's reactor medium.
+
+Retention is supported only for continuous outflows. A discrete outflow, such as
+a sample, must use the default empty mapping because it removes well-mixed broth
+at the reactor concentrations.
 
 How `values` is read depends on `is_continuous`:
 
@@ -232,9 +237,8 @@ class Volume:
     bounds: Bounds = (None, None)         # e.g. (0, max_working_volume)
 ```
 
-`total_volume` is the full reactor-volume trace. It may be online measurement
-data, or it may be reconstructed from `initial_volume` plus the volume changes —
-`build_pseudobatch_transform` fills it in if it is still `None`.
+`total_volume` is the full reactor-volume trace, when available as online
+measurement data. It is optional — `None` unless a loader supplied it.
 
 ## The biological ODE
 
@@ -299,23 +303,7 @@ class BioProcess:
     process_variables: Dict[str, ProcessVariable] = {}
     discrete_events: Optional[DiscreteEvents] = None
     biological_ode: Optional[BiologicalOde] = None       # auto-filled
-    pseudobatch_transform: Optional[PseudobatchTransform] = None
 ```
-
-### `PseudobatchTransform`
-
-```python
-@dataclass
-class PseudobatchTransform:
-    adf: TimeSeries                              # shared accumulated dilution factor
-    feed_corrections: Dict[str, TimeSeries]      # per species
-    sample_compensation: Optional[TimeSeries]    # diagnostic
-    accumulated_feeds: Dict[str, TimeSeries]     # diagnostic, per feed stream
-```
-
-Only the parts shared across species live here. Per-species `c*` stays on
-`ReactorMediumComponent.c_star_concentration`. Details in
-[07_splines.md](07_splines.md).
 
 ### `AugmentedBioProcess`
 
@@ -363,11 +351,11 @@ class ProcessOrdering:
     name_modeled_algebraic: Tuple[str, ...]  # topo-sorted
     name_modeled_RMCs: Tuple[str, ...]       # alphabetical
     name_modeled_PVs: Tuple[str, ...]        # alphabetical, is_controlled=False
-    name_modeled_FVCs: Tuple[str, ...]       # continuous + uncontrolled
-    name_modeled_SVCs: Tuple[str, ...]       # continuous + uncontrolled
+    name_modeled_Inflows: Tuple[str, ...]       # continuous + uncontrolled
+    name_modeled_Outflows: Tuple[str, ...]       # continuous + uncontrolled
     name_controlled_PVs: Tuple[str, ...]     # alphabetical, is_controlled=True
-    name_controlled_FVCs: Tuple[str, ...]    # continuous + controlled
-    name_controlled_SVCs: Tuple[str, ...]    # continuous + controlled
+    name_controlled_Inflows: Tuple[str, ...]    # continuous + controlled
+    name_controlled_Outflows: Tuple[str, ...]    # continuous + controlled
 ```
 
 Ordering rules:
@@ -382,7 +370,7 @@ Resulting layouts:
 
 ```
 state    c = [ modeled_RMCs... | modeled_PVs... | V ]
-control  u = [ controlled_FVCs... | controlled_SVCs... | controlled_PVs... ]
+control  u = [ controlled_Inflows... | controlled_Outflows... | controlled_PVs... ]
 ```
 
 See [08_mechanistic.md](08_mechanistic.md) for what the factories do with them.
@@ -462,14 +450,14 @@ feed_medium = bp.FeedMedium(
 process.volume = bp.Volume(
     initial_volume=1.0, unit="L",
     volume_changes={
-        "glucose_bolus": bp.FeedVolumeChange(
+        "glucose_bolus": bp.Inflow(
             name="glucose_bolus", unit="L",
             is_controlled=True, is_continuous=False,
             values=bp.TimeSeries(times=jnp.array([12.0]),
                                  values=jnp.array([0.1])),      # >= 0
             feed_medium=feed_medium,
         ),
-        "sampling": bp.SampleVolumeChange(
+        "sampling": bp.Outflow(
             name="sampling", unit="L",
             is_controlled=True, is_continuous=False,
             values=bp.TimeSeries(times=jnp.array([6.0, 18.0]),
