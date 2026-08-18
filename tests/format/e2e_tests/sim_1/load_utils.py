@@ -81,9 +81,9 @@ def parse_all_processes(
             [row for row in dense_rows if row[PROCESS_ID_COLUMN] == process_id],
             [row for row in event_rows if row[PROCESS_ID_COLUMN] == process_id],
         )
-        is_valid, messages = bp.validate.validate_process(process)
+        is_valid, results = bp.validate.validate_process(process)
         if not is_valid:
-            raise ValueError("\n".join(messages))
+            raise ValueError("\n".join(msg for _, msg in results))
         processes[process_id] = process
 
     return bp.BioProcessCollection(

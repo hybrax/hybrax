@@ -35,7 +35,7 @@ Building models? Continue with:
 | Splines | `bp_format/splines.py` | [07](07_splines.md) | Discrete-event detection, segmented spline fitting |
 | Mechanistic | `bp_format/mechanistic.py` | [08](08_mechanistic.md) | `ProcessOrdering`, `ControlSplines`, `RhsOde` |
 | Serialization | `bp_format/serialization.py` | [03](03_serialization.md) | JSON save/load for the whole hierarchy |
-| Validation | `bp_format/validate.py` | [04](04_validation.md) | 14 integrity checks |
+| Validation | `bp_format/validate.py` | [04](04_validation.md) | 20 validators |
 | Inspection | `bp_format/inspect.py` | [05](05_inspection.md) | Text summaries and matplotlib plots |
 | Simulation | `bp_format/simulation.py` | [09](09_simulation.md) | Event bookkeeping for synthetic datasets |
 
