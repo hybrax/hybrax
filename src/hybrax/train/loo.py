@@ -77,7 +77,7 @@ from .serialization import (
     update_json,
     write_json,
 )
-from .validation import ensure_prepared_training_semantics, validate_for_training
+from .validate import ensure_prepared_training_semantics, validate_for_training
 from .training_data import TrainingDataStore
 
 logger = logging.getLogger(__name__)

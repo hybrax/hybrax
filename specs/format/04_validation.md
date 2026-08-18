@@ -314,7 +314,7 @@ argument you have to supply).
 and `validate_augmented_parent_refs`. This is hybrax.format's own concern — is this
 collection well-formed and internally coherent enough to store or publish as a
 case study — distinct from hybrax.train's training-readiness concern
-(`hybrax.train.validation.validate_for_training`, which composes the same
+(`hybrax.train.validate.validate_for_training`, which composes the same
 `validate_cross_process_consistency` check rather than duplicating it).
 
 Results are keyed by process name, with cross-process findings under

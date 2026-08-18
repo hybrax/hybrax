@@ -579,6 +579,14 @@ def test_prepare_artifact_writes_hybrax_train_metadata(tmp_path):
     assert all(entry["ok"] for entry in metadata["format_validation"].values())
     assert all(entry["ok"] for entry in metadata["format_validation_prepared"].values())
     assert metadata["prepared_semantics_validation"][first_name]["ok"] is True
+    # Validation pairs become two-element lists in JSON. They must still unpack
+    # into the same boolean and message values after loading the artifact.
+    reloaded_messages = metadata["format_validation"][first_name]["messages"]
+    assert reloaded_messages
+    assert all(
+        isinstance(ok, bool) and isinstance(message, str)
+        for ok, message in reloaded_messages
+    )
     semantics = metadata["semantics_provenance"]["processes"][first_name]
     assert semantics["changed_by_hooks"] == ["transform_process_collection"]
     assert semantics["reactor_components_added"] == ["biomass"]

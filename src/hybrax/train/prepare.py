@@ -30,7 +30,7 @@ from .defaults import default_transform_process_collection
 from .run_config import LoadedRunConfig
 from .serialization import content_hash, environment_versions, write_json
 from .utils import get_hook, split_hooks_by_customization
-from .validation import (
+from .validate import (
     ensure_prepared_training_semantics,
     ensure_required_controls,
     summarize_process_semantics,
@@ -308,13 +308,13 @@ def prepare_artifact(
         prepared_semantics[process_name] = summarize_process_semantics(process)
 
     semantics_validation_report = ensure_prepared_training_semantics(collection)
-    augmented_parents_ok, augmented_parent_messages = validate_augmented_parent_refs(
+    augmented_parents_ok, augmented_parent_results = validate_augmented_parent_refs(
         collection
     )
     if not augmented_parents_ok:
         raise ValueError(
             "augmented parent validation failed:\n"
-            + "\n".join(message for _, message in augmented_parent_messages)
+            + "\n".join(message for _, message in augmented_parent_results)
         )
     prepared_validation_report = validate_for_training(
         collection,

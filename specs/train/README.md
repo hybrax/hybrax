@@ -32,7 +32,7 @@ Read in this order:
 | Prepare | `src/hybrax/train/prepare.py` | [03](03_data_preparation.md) | Raw collection → `prepared.json` artifact |
 | Training data | `src/hybrax/train/training_data.py` | [03](03_data_preparation.md) | Batch assembly, target selection |
 | Controls | `src/hybrax/train/controls_store.py`, `src/hybrax/train/controls.py` | [03](03_data_preparation.md) | Runtime control evaluation + event sources |
-| Validation | `src/hybrax/train/validation.py` | [03](03_data_preparation.md) | hybrax.format + prepared-semantics checks |
+| Validation | `src/hybrax/train/validate.py` | [03](03_data_preparation.md) | hybrax.format + prepared-semantics checks |
 | Model API | `src/hybrax/train/model_api.py` | [04](04_reaction_and_loss.md) | `UserReactionModule` / `UserLossModule`, scales, field tags |
 | Defaults | `src/hybrax/train/defaults.py` | [04](04_reaction_and_loss.md) | `DefaultReactionModule` (MLP) / `DefaultLossModule` (MSE) |
 | Wrapper | `src/hybrax/train/wrapper.py` | [04](04_reaction_and_loss.md) | `HybridOdeWrapper` — ODE RHS bridge |

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
+
 from hybrax.format import validate_cross_process_consistency, validate_process
 from hybrax.format.dataclasses import (
     BioProcessCollection,
@@ -12,6 +13,12 @@ from hybrax.format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
+
+
+def _check_result(verdict: str, check_name: str, detail: str) -> tuple[bool, str]:
+    """Return a result using hybrax.format's validation message convention."""
+    ok = verdict != "FAIL"
+    return ok, f"{verdict} {check_name}: {detail}"
 
 
 def validate_for_training(
@@ -31,31 +38,32 @@ def validate_for_training(
     report: dict[str, dict[str, object]] = {}
 
     for process_name, process in collection.processes.items():
-        ok, messages = validate_process(process)
-        process_messages = [message for _, message in messages]
+        ok, results = validate_process(process)
+        process_results = list(results)
         if require_biological_ode and process.biological_ode is None:
             ok = False
-            process_messages.append(
-                "biological_ode is missing after transform_process_collection"
+            process_results.append(
+                _check_result(
+                    "FAIL",
+                    "biological_ode_required",
+                    "biological_ode is missing after transform_process_collection",
+                )
             )
         report[process_name] = {
             "ok": bool(ok),
-            "messages": process_messages,
+            "messages": process_results,
         }
 
-    consistency_ok, consistency_messages = validate_cross_process_consistency(
-        collection
-    )
+    consistency_ok, consistency_results = validate_cross_process_consistency(collection)
     report["__consistency__"] = {
         "ok": consistency_ok,
-        "messages": [message for _, message in consistency_messages]
-        if consistency_messages
-        else ["Cross-process structure is consistent — OK"],
+        "messages": consistency_results,
     }
 
     if strict:
         errors = [
-            f"{process_name}: {'; '.join(entry['messages'])}"
+            f"{process_name}: "
+            + "; ".join(message for ok, message in entry["messages"] if not ok)
             for process_name, entry in report.items()
             if not entry["ok"]
         ]
@@ -175,35 +183,82 @@ def ensure_prepared_training_semantics(
 
     for process_name, process in collection.processes.items():
         summary = summarize_process_semantics(process)
-        process_errors: list[str] = []
+        results: list[tuple[bool, str]] = []
 
-        if not summary["reactor_component_names"]:
-            process_errors.append("reactor_medium.components is empty after prep")
+        if summary["reactor_component_names"]:
+            results.append(
+                _check_result(
+                    "PASS",
+                    "reactor_medium_components_present",
+                    f"{len(summary['reactor_component_names'])} reactor-medium "
+                    "component(s) present after prep",
+                )
+            )
+        else:
+            results.append(
+                _check_result(
+                    "FAIL",
+                    "reactor_medium_components_present",
+                    "reactor_medium.components is empty after prep",
+                )
+            )
 
-        if not summary["has_biomass"]:
-            process_errors.append(
-                "reactor medium does not define a biomass component after prep"
+        if summary["has_biomass"]:
+            results.append(
+                _check_result(
+                    "PASS",
+                    "biomass_component_present",
+                    "reactor medium defines a biomass component after prep",
+                )
+            )
+        else:
+            results.append(
+                _check_result(
+                    "FAIL",
+                    "biomass_component_present",
+                    "reactor medium does not define a biomass component after prep",
+                )
             )
 
         for change_name in summary["all_feed_changes"]:
             if not summary["feed_medium_present_by_change"].get(change_name, False):
-                process_errors.append(
-                    f"feed '{change_name}' has no feed_medium after prep"
+                results.append(
+                    _check_result(
+                        "FAIL",
+                        "feed_medium_populated",
+                        f"feed {change_name!r} has no feed_medium after prep",
+                    )
                 )
                 continue
             if not summary["feed_component_names_by_change"].get(change_name):
-                process_errors.append(
-                    f"feed '{change_name}' has no "
-                    "feed-medium component metadata after prep"
+                results.append(
+                    _check_result(
+                        "FAIL",
+                        "feed_medium_populated",
+                        f"feed {change_name!r} has no feed-medium component "
+                        "metadata after prep",
+                    )
                 )
+                continue
+            results.append(
+                _check_result(
+                    "PASS",
+                    "feed_medium_populated",
+                    f"feed {change_name!r} has feed-medium component metadata after prep",
+                )
+            )
 
+        ok = all(check_ok for check_ok, _ in results)
         report[process_name] = {
-            "ok": not process_errors,
-            "messages": process_errors,
+            "ok": ok,
+            "messages": results,
             "summary": summary,
         }
-        if process_errors:
-            errors.append(f"{process_name}: {'; '.join(process_errors)}")
+        if not ok:
+            errors.append(
+                f"{process_name}: "
+                + "; ".join(message for check_ok, message in results if not check_ok)
+            )
 
     if errors:
         raise ValueError("prepared semantics validation failed:\n" + "\n".join(errors))

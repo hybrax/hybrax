@@ -5,7 +5,7 @@ Source: [`src/hybrax/train/prepare.py`](../../src/hybrax/train/prepare.py),
 [`src/hybrax/train/training_data.py`](../../src/hybrax/train/training_data.py),
 [`src/hybrax/train/controls_store.py`](../../src/hybrax/train/controls_store.py),
 [`src/hybrax/train/controls.py`](../../src/hybrax/train/controls.py),
-[`src/hybrax/train/validation.py`](../../src/hybrax/train/validation.py),
+[`src/hybrax/train/validate.py`](../../src/hybrax/train/validate.py),
 [`src/hybrax/train/model_api.py`](../../src/hybrax/train/model_api.py)
 
 ## Purpose
@@ -228,6 +228,14 @@ loss fits whichever targets `target_source` selects (`TARGET_SOURCES`):
 - `summarize_process_semantics(process)` / `ensure_prepared_training_semantics`
   — structural diagnostics used during prepare; `strict_format_validation`
   promotes warnings to failures.
+
+Both report-style checks return
+`{"ok": bool, "messages": list[tuple[bool, str]]}` for each process. Each
+message follows hybrax.format's
+`"<PASS|FAIL|SKIP> <check_name>: <detail>"` convention. See the
+[validation reference](../format/04_validation.md). Callers can select failures
+with `[message for ok, message in entry["messages"] if not ok]` without parsing
+the message text.
 
 ## Examples
 
