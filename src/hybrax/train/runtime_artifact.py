@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import numpy as np
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
@@ -154,7 +155,7 @@ def _json_value(value: Any) -> Any:
     raise TypeError(f"manifest metadata has unsupported type {type(value).__name__}")
 
 
-def _array_record(root: Path, name: str, value: Any) -> dict[str, Any]:
+def _array_record(root: Path, name: str, value: jax.Array) -> dict[str, Any]:
     array = np.asarray(value)
     if array.dtype.hasobject or array.dtype.kind not in "biuf?":
         raise TypeError(f"{name}: unsupported dtype {array.dtype}")
@@ -170,7 +171,7 @@ def _array_record(root: Path, name: str, value: Any) -> dict[str, Any]:
     }
 
 
-def _scaler(value: Scaler, name: str, arrays: dict[str, Any]) -> dict[str, str]:
+def _scaler(value: Scaler, name: str, arrays: dict[str, jax.Array]) -> dict[str, str]:
     if type(value) is LinearScaler:
         arrays[f"scale.{name}.scale"] = value.scale
         return {"kind": "linear", "scale": f"scale.{name}.scale"}
@@ -185,7 +186,7 @@ def _scaler(value: Scaler, name: str, arrays: dict[str, Any]) -> dict[str, str]:
     raise TypeError(f"{name}: unsupported scaler {type(value).__name__}")
 
 
-def _shared_arrays(store: TrainingDataStore) -> dict[str, Any]:
+def _shared_arrays(store: TrainingDataStore) -> dict[str, jax.Array]:
     """Every canonical array the artifact stores once for all folds."""
     arrays = {
         f"controls.{name}": getattr(store.controls_store, name)
@@ -411,7 +412,7 @@ def write_runtime_artifact(
         }
         fold_records = []
         for fold, estimated_scales in folds:
-            scale_arrays: dict[str, Any] = {}
+            scale_arrays: dict[str, jax.Array] = {}
             scales = {
                 name: _scaler(getattr(estimated_scales, name), name, scale_arrays)
                 for name in _SCALE_NAMES

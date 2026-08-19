@@ -42,7 +42,10 @@ from bp_format.json_io import load_json
 
 from .harness import (
     ForwardConfig,
+    ForwardResult,
     PreparedTraining,
+    TrainHarnessConfig,
+    TrainHarnessResult,
     _resolve_estimated_scales,
     evaluate_trained_wrapper,
     prepare_training,
@@ -109,8 +112,8 @@ class FoldResult:
 
     fold: Fold
     fold_seed: int
-    train_result: Any
-    forward_result: Any
+    train_result: TrainHarnessResult
+    forward_result: ForwardResult
     fold_dir: Path
 
 
@@ -663,12 +666,12 @@ class TrainedFold:
     fold_seed: int
     fold_dir: Path
     config_json: Path
-    config: Any
-    store: Any
+    config: TrainHarnessConfig
+    store: TrainingDataStore
     target_names: tuple[str, ...]
     prediction_parent_process_names: tuple[str, ...]
     output_predictions: PredictionScope
-    train_result: Any
+    train_result: TrainHarnessResult
 
 
 def _effective_fold_config(

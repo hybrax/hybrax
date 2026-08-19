@@ -9,8 +9,10 @@ from typing import Any
 import numpy as np
 from bp_format.dataclasses import (
     AugmentedBioProcess,
+    BioProcess,
     BioProcessCollection,
     SampleVolumeChange,
+    StaticVariable,
     TimeSeries,
 )
 from bp_format.mechanistic import get_process_ordering
@@ -102,13 +104,15 @@ def _child_grid(
     )
 
 
-def _state_series(process, state_name: str) -> Any:
+def _state_series(process, state_name: str) -> TimeSeries | StaticVariable:
     if state_name in process.reactor_medium.components:
         return process.reactor_medium.components[state_name].concentration
     return process.process_variables[state_name].values
 
 
-def _parent_processes(collection: BioProcessCollection) -> list[tuple[str, Any]]:
+def _parent_processes(
+    collection: BioProcessCollection,
+) -> list[tuple[str, BioProcess]]:
     return [
         (name, process)
         for name, process in collection.processes.items()

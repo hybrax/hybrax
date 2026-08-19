@@ -12,6 +12,7 @@ import warnings
 import numpy as np
 from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import (
+    BioProcess,
     BioProcessCollection,
     StaticVariable,
     TimeSeries,
@@ -24,7 +25,7 @@ from bp_format.serialization import (
 from .augmentation import augment_process_collection
 from .augmentation_plot import AUGMENTATION_PLOT_FILENAME, render_augmentation_plot
 from .constants import METADATA_NAMESPACE
-from .controls import select_control_sources
+from .controls import ControlSourceBundle, select_control_sources
 from .defaults import default_transform_process_collection
 from .run_config import LoadedRunConfig
 from .serialization import content_hash, environment_versions, write_json
@@ -186,7 +187,7 @@ def _build_semantics_provenance(
 
 
 def _validate_prepared_control_contract(
-    process_bundles: dict[str, Any],
+    process_bundles: dict[str, ControlSourceBundle],
     *,
     require_consistent_controls: bool,
 ) -> None:
@@ -327,7 +328,7 @@ def prepare_artifact(
         augmentation_created_names=augmentation_created_names,
     )
 
-    process_bundles: dict[str, Any] = {}
+    process_bundles: dict[str, ControlSourceBundle] = {}
 
     required_control_names = prepare.required_control_names
     if isinstance(required_control_names, dict):
@@ -446,7 +447,9 @@ def prepare_artifact(
     return collection
 
 
-def _raw_control_samples(process: Any, name: str) -> tuple[np.ndarray, np.ndarray]:
+def _raw_control_samples(
+    process: BioProcess, name: str
+) -> tuple[np.ndarray, np.ndarray]:
     """Raw measured samples for a control (TimeSeries knots or a static level)."""
     if name in process.process_variables:
         value = process.process_variables[name].values
@@ -462,7 +465,7 @@ def _raw_control_samples(process: Any, name: str) -> tuple[np.ndarray, np.ndarra
     return np.asarray([]), np.asarray([])
 
 
-def _control_unit(process: Any, name: str) -> str:
+def _control_unit(process: BioProcess, name: str) -> str:
     if name in process.process_variables:
         return str(getattr(process.process_variables[name], "unit", ""))
     vc = process.volume.volume_changes.get(name)
@@ -471,7 +474,7 @@ def _control_unit(process: Any, name: str) -> str:
 
 def _render_control_diagnostics(
     collection: BioProcessCollection,
-    process_bundles: dict[str, Any],
+    process_bundles: dict[str, ControlSourceBundle],
     output_dir: Path,
 ) -> None:
     """Build per-process control diagnostics and render them (prepare is one-shot)."""

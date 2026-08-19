@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.dataclasses import BioProcessCollection
+from bp_format.dataclasses import BioProcess, BioProcessCollection
+from bp_format.mechanistic import RhsOde
 
 from .model_api import (
     LinearScaler,
@@ -32,7 +31,7 @@ def default_transform_process_collection(collection, config: RunConfig):
     if not isinstance(rename_map, dict):
         raise TypeError("process_rename_map must be a dict from old name to new name")
 
-    renamed_processes: dict[str, Any] = {}
+    renamed_processes: dict[str, BioProcess] = {}
     for process_name, process in collection.processes.items():
         new_name = process_name
         if process_name in rename_map:
@@ -266,7 +265,7 @@ def default_build_reaction_module(
     config: RunConfig,
     seed: int,
     training_parent_collection: BioProcessCollection,
-    **scale_kwargs: Any,
+    **scale_kwargs: Scaler,
 ) -> UserReactionModule:
     """Default train hook for reaction-module construction.
 
@@ -368,7 +367,7 @@ def _default_scale_kwargs(
     n_rates: int,
     n_modeled_FVCs: int,
     n_controlled_FVCs: int,
-    rhs_ode: Any,
+    rhs_ode: RhsOde,
 ) -> dict[str, Scaler]:
     """All-ones defaults for every SCALE_* axis, as ``LinearScaler``.
 

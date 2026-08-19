@@ -34,6 +34,7 @@ import stat
 from typing import Any
 
 import equinox as eqx
+import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.json_io import load_json
 from bp_format.serialization import (
@@ -43,8 +44,10 @@ from bp_format.serialization import (
 )
 
 from .constants import METADATA_NAMESPACE
-from .model_api import partition_trainable
+from .model_api import UserLossModule, UserReactionModule, partition_trainable
 from .run_config import RunConfig
+from .training_data import TrainingDataStore
+from .wrapper import HybridOdeWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def save_model(wrapper: Any, path: str | Path) -> None:
+def save_model(wrapper: HybridOdeWrapper, path: str | Path) -> None:
     """Serialise the **trainable** leaves of a wrapper to disk.
 
     Only the trainable partition is written; the frozen/static half (controls,
@@ -68,7 +71,9 @@ def save_model(wrapper: Any, path: str | Path) -> None:
     logger.info("trained model (trainable leaves) saved to %s", path)
 
 
-def load_trained_wrapper(path: str | Path, *, template: Any) -> Any:
+def load_trained_wrapper(
+    path: str | Path, *, template: HybridOdeWrapper
+) -> HybridOdeWrapper:
     """Load trainable leaves from disk into ``template``'s structure.
 
     The static half is taken verbatim from ``template`` (rebuilt fresh), so a
@@ -80,14 +85,14 @@ def load_trained_wrapper(path: str | Path, *, template: Any) -> Any:
     return eqx.combine(trainable, static)
 
 
-def save_opt_state(opt_state: Any, path: str | Path) -> None:
+def save_opt_state(opt_state: optax.OptState, path: str | Path) -> None:
     """Serialise optimizer state leaf-by-leaf."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     eqx.tree_serialise_leaves(path, opt_state)
 
 
-def load_opt_state(path: str | Path, *, template: Any) -> Any:
+def load_opt_state(path: str | Path, *, template: optax.OptState) -> optax.OptState:
     """Deserialise optimizer state into an optimizer-state ``template``."""
     return eqx.tree_deserialise_leaves(Path(path), like=template)
 
@@ -321,7 +326,7 @@ def reconstruct_run(
     run_dir: str | Path,
     config: RunConfig,
     document: dict[str, Any] | None = None,
-) -> tuple[Any, Any, Any, BioProcessCollection]:
+) -> tuple[UserReactionModule, UserLossModule, TrainingDataStore, BioProcessCollection]:
     """THE single reconstruction path — forward, resume, and model_load all use it.
 
     Verifies the prepared ``content_hash`` against ``config.json`` first, then
@@ -433,7 +438,7 @@ def _resolve_model_path(path: str | Path) -> tuple[Path, Path]:
     return run_dir, params_path
 
 
-def model_load(path: str | Path) -> tuple[Any, RunConfig]:
+def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     """Load a trained model and the run config it was trained under.
 
     ``path`` is a run directory, a checkpoint directory, or a ``params.eqx`` —
@@ -470,7 +475,9 @@ def model_load(path: str | Path) -> tuple[Any, RunConfig]:
     return load_trained_wrapper(params_path, template=template), config
 
 
-def model_reload(path: str | Path, trained_wrapper: Any) -> tuple[Any, RunConfig]:
+def model_reload(
+    path: str | Path, trained_wrapper: HybridOdeWrapper
+) -> tuple[HybridOdeWrapper, RunConfig]:
     """Refresh **only** the trainable leaves from ``path`` into an existing wrapper.
 
     Returns the same ``(trained_wrapper, config)`` pair as :func:`model_load`, so

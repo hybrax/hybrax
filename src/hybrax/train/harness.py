@@ -22,6 +22,7 @@ import numpy as np
 import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.inspect import print_rhs_ode
+from bp_format.mechanistic import RhsOde
 from bp_format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
@@ -299,7 +300,7 @@ class TrainHarnessConfig:
     shuffle_batches: bool = True
     batch_seed: int | None = None
     optimizer_name: str = "adam"
-    learning_rate: Any = 1e-3
+    learning_rate: float | optax.Schedule = 1e-3
     grad_clip_norm: float = 1000.0
     seed: int = 0
     solver_max_steps: int = 2048
@@ -329,7 +330,7 @@ class TrainHarnessConfig:
 class TrainHarnessResult:
     """Summary object returned by the training harness."""
 
-    trained_wrapper: Any
+    trained_wrapper: HybridOdeWrapper
     mean_loss_by_step: tuple[float, ...]
     batch_process_names_by_step: tuple[tuple[str, ...], ...]
     per_process_loss_by_step: tuple[tuple[float, ...], ...]
@@ -735,7 +736,7 @@ def _build_runtime_modules(
     return reaction_module, loss_module
 
 
-def _target_state_indices(store: TrainingDataStore, rhs_ode: Any) -> jax.Array:
+def _target_state_indices(store: TrainingDataStore, rhs_ode: RhsOde) -> jax.Array:
     """Map measured target columns to physical state columns."""
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_PVs = len(rhs_ode.name_modeled_PVs)
@@ -1154,8 +1155,8 @@ def train_collection(
     def _make_batched_step():
         def _step_fn(
             current_wrapper: HybridOdeWrapper,
-            current_trainable_params: Any,
-            current_optimizer_state: Any,
+            current_trainable_params: eqx.Module,
+            current_optimizer_state: optax.OptState,
             current_batch,
             step: jax.Array,
         ):
@@ -1168,7 +1169,7 @@ def train_collection(
 
             del current_wrapper  # whole-wrapper partition: combine reconstructs it
 
-            def _loss_fn(trainable_params: Any) -> jax.Array:
+            def _loss_fn(trainable_params: eqx.Module) -> jax.Array:
                 candidate_wrapper = eqx.combine(trainable_params, trainable_static)
                 # `*_pred` swallows the prediction outputs (unused in training);
                 # the trailing element is the per-sample fail_time (see

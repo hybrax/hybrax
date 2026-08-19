@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from bp_format.dataclasses import (
+    BioProcess,
     BioProcessCollection,
 )
 from bp_format.mechanistic import build_rhs_ode
@@ -31,7 +32,7 @@ def _as_jax_array(values: Any, *, dtype: Any = jnp.float64) -> jax.Array:
     return jnp.asarray(np.asarray(values, dtype=dtype))
 
 
-def _offline_measurement_times(process: Any) -> np.ndarray:
+def _offline_measurement_times(process: BioProcess) -> np.ndarray:
     """Every timestamp an offline measurement could sit on, as a sorted array.
 
     Exactly ``{reactor components} ∪ {MEASURED process variables}`` — which is the
@@ -69,7 +70,7 @@ def _offline_measurement_times(process: Any) -> np.ndarray:
 
 
 def _output_window_bounds(
-    collection: Any, process_order: list[str]
+    collection: BioProcessCollection, process_order: list[str]
 ) -> tuple[float, int]:
     """Collection-wide constants that size the solver's per-segment output window.
 
@@ -141,7 +142,7 @@ def _output_window_bounds(
     return gap_fraction, measurements_per_gap
 
 
-def _discrete_event_jump_ts(process: Any) -> list[float]:
+def _discrete_event_jump_ts(process: BioProcess) -> list[float]:
     """Sorted unique vector-field discontinuity times from ``discrete_events``.
 
     These are genuine jumps in the controls/vector field (e.g. discrete steps in

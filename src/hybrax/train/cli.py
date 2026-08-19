@@ -16,6 +16,7 @@ import pandas as pd
 from .harness import (
     ForwardConfig,
     ForwardResult,
+    TrainHarnessResult,
     evaluate_trained_wrapper,
     forward_from_collection,
     prepare_training,
@@ -37,6 +38,7 @@ from .runtime_context import original_parent_processes
 from .postprocessing import aggregate_dense_exports, export_predictions_csv
 from .prepare import prepare_artifact
 from .run_config import (
+    ModelRef,
     PredictionScope,
     RunConfig,
     load_forward_config,
@@ -339,7 +341,9 @@ def _clear_output_dir_for_overwrite(
             child.unlink()
 
 
-def _finalize_run_dir(run_dir: Path, result: Any, config_json: Path) -> None:
+def _finalize_run_dir(
+    run_dir: Path, result: TrainHarnessResult, config_json: Path
+) -> None:
     """Copy the mandatory latest checkpoint to model/, then mark complete."""
     model_dir = run_dir / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -644,7 +648,7 @@ def _resolve_model_bundle(
     return run_dir, params, model_cfg, own_prepared
 
 
-def _resolve_model_names(models: tuple[Any, ...]) -> list[str]:
+def _resolve_model_names(models: tuple[ModelRef, ...]) -> list[str]:
     """Per-model name: explicit ``name`` else basename of the bundle's
     ``config.output.dir`` (run identity); de-duplicated with ``#2``/``#3``."""
     raw: list[str] = []
@@ -719,7 +723,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Forward each model on its data ---
-    per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
+    per_model: list[tuple[str, ForwardResult]] = []
     prediction_processes: tuple[str, ...] = ()
     for ref, name in zip(models, names):
         _run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)

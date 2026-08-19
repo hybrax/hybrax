@@ -9,7 +9,12 @@ from bp_format.dataclasses import BioProcess
 from bp_format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
-from .model_api import ReactionInputs, UserReactionModule
+from .model_api import (
+    ReactionInputs,
+    ReactionOutputs,
+    UserLossModule,
+    UserReactionModule,
+)
 
 
 class SaveOutputs(eqx.Module):
@@ -57,7 +62,9 @@ def _normalize_auxiliary_outputs(
     return normalized
 
 
-def _validate_reaction_output_shapes(module: Any, outputs: Any) -> Any:
+def _validate_reaction_output_shapes(
+    module: UserReactionModule, outputs: ReactionOutputs
+) -> ReactionOutputs:
     expected_shapes = {
         "SCL_modeled_BiologicalOde_rates": (module.n_modeled_BiologicalOde_rates,),
         "SCL_modeled_FVCs_rates": (module.n_modeled_FVCs,),
@@ -93,7 +100,7 @@ class HybridOdeWrapper(eqx.Module):
     """
 
     rhs_ode: RhsOde
-    reaction_module: Any
+    reaction_module: UserReactionModule
     controls: PerProcessControls
 
     modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
@@ -113,17 +120,17 @@ class HybridOdeWrapper(eqx.Module):
     # partition_trainable walk reads its own trainable_field()/frozen_field()
     # tags. Default None for direct constructors / forward-only paths; the
     # train harness always attaches a real module.
-    loss_module: Any = None
+    loss_module: UserLossModule | None = None
 
     @classmethod
     def from_process(
         cls,
         *,
-        reaction_module: Any,
+        reaction_module: UserReactionModule,
         process: BioProcess,
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
-        loss_module: Any = None,
+        loss_module: UserLossModule | None = None,
     ) -> HybridOdeWrapper:
         """Build a wrapper from a BioProcess and per-process controls."""
         return cls.from_rhs_ode(
@@ -138,11 +145,11 @@ class HybridOdeWrapper(eqx.Module):
     def from_rhs_ode(
         cls,
         *,
-        reaction_module: Any,
+        reaction_module: UserReactionModule,
         rhs_ode: RhsOde,
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
-        loss_module: Any = None,
+        loss_module: UserLossModule | None = None,
     ) -> HybridOdeWrapper:
         """Build a wrapper from an existing RhsOde runtime template.
 

@@ -36,6 +36,7 @@ import jax
 import jax.numpy as jnp
 
 from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
+from .wrapper import HybridOdeWrapper
 
 # Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first
 # segment that bailed, i.e. the last node the solver actually reached — so a point
@@ -105,7 +106,7 @@ def _output_window(controls, n_linspace: int) -> int:
 
 
 def solve_physical_states(
-    wrapper,
+    wrapper: HybridOdeWrapper,
     *,
     t_eval: jax.Array,
     n_measured: jax.Array,
