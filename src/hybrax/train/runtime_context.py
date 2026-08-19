@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from dataclasses import dataclass, replace
 
@@ -14,14 +13,10 @@ from bp_format.mechanistic import build_rhs_ode
 from bp_format.time_series.timeseries import TimeSeries
 from bp_format.validate import validate_biological_ode_equivalence
 
-from .model_api import EstimatedScales
 from .training_data import TrainingDataStore
 
 
 RawTrace = tuple[np.ndarray, np.ndarray]
-BoundDeclaration = tuple[str, str, int, float | None, float | None]
-BoundSnapshot = tuple[BoundDeclaration, ...]
-BoundRecord = tuple[str, str, int, float, float]
 SPLINE_SCALE_SAMPLE_COUNT = 200
 
 
@@ -105,8 +100,13 @@ def canonical_training_parents(
 
 
 @dataclass(frozen=True)
-class RuntimeDataContext:
-    """Prepared producer-side data available to runtime hooks."""
+class ProducerCollectionData:
+    """Unfiltered producer-side view of one whole prepared collection.
+
+    This is the broad intermediate the producer builds once. It is never handed
+    to a hook: `select_training_parents()` narrows it to the fold's represented
+    parents first, and only that narrowed `RuntimeDataContext` is hook-visible.
+    """
 
     training_data: TrainingDataStore
     augmentation_parents: tuple[str | None, ...]
@@ -114,21 +114,68 @@ class RuntimeDataContext:
     modeled_volume_change_traces: tuple[tuple[RawTrace, ...], ...]
     raw_state_traces: tuple[tuple[RawTrace, ...], ...]
     sample_volume_event_traces: tuple[RawTrace, ...]
-    bound_snapshots: tuple[BoundSnapshot, ...]
-    training_parent_collection: BioProcessCollection | None = None
-    _control_scale_evidence: ControlScaleEvidence | None = None
-
-    @property
-    def rhs_ode(self):
-        return self.training_data.rhs_ode
-
-    @property
-    def controls_store(self):
-        return self.training_data.controls_store
 
     @property
     def process_order(self) -> tuple[str, ...]:
         return tuple(self.training_data.process_order)
+
+    @classmethod
+    def from_collection(
+        cls,
+        training_data: TrainingDataStore,
+        collection: BioProcessCollection,
+    ) -> ProducerCollectionData:
+        process_order = tuple(training_data.process_order)
+        if not process_order:
+            raise ValueError("producer collection data requires a non-empty collection")
+        if tuple(collection.processes) != process_order:
+            raise ValueError(
+                "producer collection data process order differs between "
+                "collection and training data"
+            )
+
+        rhs_ode = training_data.rhs_ode
+        state_names = rhs_ode.name_modeled_RMCs + rhs_ode.name_modeled_PVs
+        volume_change_names = (
+            training_data.name_modeled_FVCs + training_data.name_modeled_SVCs
+        )
+        parents: list[str | None] = []
+        time_bounds: list[tuple[float, float]] = []
+        modeled_traces: list[tuple[RawTrace, ...]] = []
+        state_traces: list[tuple[RawTrace, ...]] = []
+        sample_traces: list[RawTrace] = []
+
+        for process_name in process_order:
+            process = collection.processes[process_name]
+            start = float(process.time_axis.start)
+            end = float(process.time_axis.end)
+            parents.append(getattr(process, "parent_process", None))
+            time_bounds.append((start, end))
+            modeled_traces.append(
+                tuple(
+                    _trace(
+                        process.volume.volume_changes[name].values,
+                        process_name,
+                        f"modeled volume change {name!r}",
+                    )
+                    for name in volume_change_names
+                )
+            )
+            state_traces.append(
+                tuple(
+                    _raw_state_trace(process, name, start, end) for name in state_names
+                )
+            )
+            sample_traces.append(_sample_volume_events(process, process_name))
+
+        return cls(
+            training_data=training_data,
+            augmentation_parents=tuple(parents),
+            process_time_bounds=tuple(time_bounds),
+            modeled_volume_change_traces=tuple(modeled_traces),
+            raw_state_traces=tuple(state_traces),
+            sample_volume_event_traces=tuple(sample_traces),
+        )
 
     def select_training_parents(
         self,
@@ -149,7 +196,6 @@ class RuntimeDataContext:
             training_data=self.training_data.select_processes(
                 parent_names, parent_collection
             ),
-            augmentation_parents=tuple(None for _ in parent_names),
             training_parent_collection=parent_collection,
             process_time_bounds=tuple(self.process_time_bounds[i] for i in indices),
             modeled_volume_change_traces=tuple(
@@ -159,19 +205,45 @@ class RuntimeDataContext:
             sample_volume_event_traces=tuple(
                 self.sample_volume_event_traces[i] for i in indices
             ),
-            bound_snapshots=tuple(self.bound_snapshots[i] for i in indices),
         )
         return replace(
             selected,
             _control_scale_evidence=selected.control_scale_evidence(),
         )
 
+
+@dataclass(frozen=True)
+class RuntimeDataContext:
+    """One fold's training parents, as seen by the producer-side scale hook.
+
+    Every row is a unique non-augmented parent represented by `fold.train`, in
+    canonical parent order, so there is no augmentation mapping to carry.
+    """
+
+    training_data: TrainingDataStore
+    training_parent_collection: BioProcessCollection
+    process_time_bounds: tuple[tuple[float, float], ...]
+    modeled_volume_change_traces: tuple[tuple[RawTrace, ...], ...]
+    raw_state_traces: tuple[tuple[RawTrace, ...], ...]
+    sample_volume_event_traces: tuple[RawTrace, ...]
+    _control_scale_evidence: ControlScaleEvidence | None = None
+
+    @property
+    def rhs_ode(self):
+        return self.training_data.rhs_ode
+
+    @property
+    def controls_store(self):
+        return self.training_data.controls_store
+
+    @property
+    def process_order(self) -> tuple[str, ...]:
+        return tuple(self.training_data.process_order)
+
     def control_scale_evidence(self) -> ControlScaleEvidence:
         """Collect raw-first control evidence from selected training parents."""
         if self._control_scale_evidence is not None:
             return self._control_scale_evidence
-        if self.training_parent_collection is None:
-            raise ValueError("training parent collection is unavailable")
         collection = self.training_parent_collection
         controls = self.controls_store
         cumulative = [[] for _ in controls.name_controlled_FVCs]
@@ -250,68 +322,6 @@ class RuntimeDataContext:
             raise KeyError(f"unknown modeled volume change {name!r}") from error
         return self.modeled_volume_change_traces[process_index][column]
 
-    @classmethod
-    def from_collection(
-        cls,
-        training_data: TrainingDataStore,
-        collection: BioProcessCollection,
-    ) -> RuntimeDataContext:
-        process_order = tuple(training_data.process_order)
-        if not process_order:
-            raise ValueError("runtime context requires a non-empty collection")
-        if tuple(collection.processes) != process_order:
-            raise ValueError(
-                "runtime context process order differs between collection and "
-                "training data"
-            )
-
-        rhs_ode = training_data.rhs_ode
-        state_names = rhs_ode.name_modeled_RMCs + rhs_ode.name_modeled_PVs
-        volume_change_names = (
-            training_data.name_modeled_FVCs + training_data.name_modeled_SVCs
-        )
-        parents: list[str | None] = []
-        time_bounds: list[tuple[float, float]] = []
-        modeled_traces: list[tuple[RawTrace, ...]] = []
-        state_traces: list[tuple[RawTrace, ...]] = []
-        sample_traces: list[RawTrace] = []
-        bound_snapshots: list[BoundSnapshot] = []
-
-        for process_name in process_order:
-            process = collection.processes[process_name]
-            start = float(process.time_axis.start)
-            end = float(process.time_axis.end)
-            parents.append(getattr(process, "parent_process", None))
-            time_bounds.append((start, end))
-            modeled_traces.append(
-                tuple(
-                    _trace(
-                        process.volume.volume_changes[name].values,
-                        process_name,
-                        f"modeled volume change {name!r}",
-                    )
-                    for name in volume_change_names
-                )
-            )
-            state_traces.append(
-                tuple(
-                    _raw_state_trace(process, name, start, end) for name in state_names
-                )
-            )
-            sample_traces.append(_sample_volume_events(process, process_name))
-            bound_snapshots.append(_bound_snapshot(process, training_data.rhs_ode))
-
-        return cls(
-            training_data=training_data,
-            augmentation_parents=tuple(parents),
-            training_parent_collection=None,
-            process_time_bounds=tuple(time_bounds),
-            modeled_volume_change_traces=tuple(modeled_traces),
-            raw_state_traces=tuple(state_traces),
-            sample_volume_event_traces=tuple(sample_traces),
-            bound_snapshots=tuple(bound_snapshots),
-        )
-
 
 def _series_scale_evidence(
     series: TimeSeries,
@@ -339,64 +349,6 @@ def _series_scale_evidence(
     return values, slopes
 
 
-@dataclass(frozen=True)
-class RuntimeContext:
-    """Prepared runtime data plus fully resolved semantic-axis scales."""
-
-    data: RuntimeDataContext
-    scales: EstimatedScales
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.data, RuntimeDataContext):
-            raise TypeError("data must be a RuntimeDataContext")
-        if not isinstance(self.scales, EstimatedScales):
-            raise TypeError("scales must be an EstimatedScales")
-
-    @property
-    def training_data(self) -> TrainingDataStore:
-        return self.data.training_data
-
-
-def collect_bound_records(
-    snapshots: tuple[BoundSnapshot, ...],
-) -> tuple[BoundRecord, ...]:
-    """Validate per-process bound declarations when bounds loss is requested."""
-    if not snapshots:
-        raise ValueError("bounds loss requires a non-empty bounds snapshot")
-    records: list[BoundRecord] = []
-    reference = snapshots[0]
-    for index, declaration in enumerate(reference):
-        label, source, axis, lower, upper = declaration
-        for process_index, snapshot in enumerate(snapshots[1:], start=1):
-            try:
-                other = snapshot[index]
-            except IndexError as error:
-                raise ValueError(
-                    f"Bounds source {label!r} is missing from process index "
-                    f"{process_index}"
-                ) from error
-            if other != declaration:
-                raise ValueError(
-                    f"Bounds for {label!r} differ across processes: "
-                    f"{declaration[3:]!r} "
-                    f"vs {other[3:]!r}"
-                )
-        for description, threshold in (("Lower", lower), ("Upper", upper)):
-            if threshold is not None and not math.isfinite(threshold):
-                raise ValueError(
-                    f"{description} bound for {label!r} must be finite or None"
-                )
-        if lower is not None and upper is not None and lower > upper:
-            raise ValueError(
-                f"Lower bound for {label!r} must not exceed its upper bound"
-            )
-        if lower is not None:
-            records.append((f"lwr_bnd/{label}", source, axis, 1.0, lower))
-        if upper is not None:
-            records.append((f"upr_bnd/{label}", source, axis, -1.0, upper))
-    return tuple(records)
-
-
 def rhs_ode_from_training_parents(
     collection: BioProcessCollection,
     *,
@@ -414,63 +366,6 @@ def rhs_ode_from_training_parents(
     if not equivalent:
         raise ValueError(message)
     return build_rhs_ode(next(iter(collection.processes.values())))
-
-
-def bound_records_from_collection(
-    collection: BioProcessCollection,
-) -> tuple[BoundRecord, ...]:
-    """Resolve consistent bound-loss records from represented parents."""
-    rhs_ode = rhs_ode_from_training_parents(
-        collection, empty_message="bounds loss requires a non-empty collection"
-    )
-    snapshots = tuple(
-        _bound_snapshot(process, rhs_ode) for process in collection.processes.values()
-    )
-    return collect_bound_records(snapshots)
-
-
-def _bound_snapshot(process, rhs_ode) -> BoundSnapshot:
-    declarations: list[BoundDeclaration] = []
-    for index, name in enumerate(rhs_ode.name_modeled_RMCs):
-        declarations.append(
-            (
-                name,
-                "state",
-                index,
-                *_bounds(process.reactor_medium.components[name].bounds),
-            )
-        )
-    pv_offset = len(rhs_ode.name_modeled_RMCs)
-    for index, name in enumerate(rhs_ode.name_modeled_PVs, start=pv_offset):
-        declarations.append(
-            (name, "state", index, *_bounds(process.process_variables[name].bounds))
-        )
-    state_names = rhs_ode.name_modeled_RMCs + rhs_ode.name_modeled_PVs
-    volume_label = "volume/V" if "V" in state_names else "V"
-    declarations.append(
-        (
-            volume_label,
-            "volume",
-            pv_offset + len(rhs_ode.name_modeled_PVs),
-            *_bounds(process.volume.bounds),
-        )
-    )
-    for index, name in enumerate(rhs_ode.name_modeled_rates):
-        bounds = (
-            (None, None)
-            if process.biological_ode is None
-            else process.biological_ode.rates[name]
-        )
-        declarations.append((f"rate/{name}", "rate", index, *_bounds(bounds)))
-    return tuple(declarations)
-
-
-def _bounds(bounds) -> tuple[float | None, float | None]:
-    lower, upper = tuple(bounds)
-    return (
-        None if lower is None else float(lower),
-        None if upper is None else float(upper),
-    )
 
 
 def _raw_state_trace(process, name: str, start: float, end: float) -> RawTrace:

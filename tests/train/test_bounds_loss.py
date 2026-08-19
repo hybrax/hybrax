@@ -20,7 +20,7 @@ from bp_format.dataclasses import (
 
 from bp_train import BoundsViolationLossModule, DefaultLossModule
 from bp_train.model_api import AffineScaler, LinearScaler, LossInputs
-from bp_train.runtime_context import bound_records_from_collection
+from bp_train.bounds_loss import bound_records_from_collection
 
 
 NO_BOUNDS = (None, None)

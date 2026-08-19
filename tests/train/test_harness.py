@@ -44,14 +44,15 @@ from bp_train.harness import (
     _ensure_process_names,
     _resolve_estimated_scales,
     _target_state_indices,
-    prepare_training_from_runtime_context,
+    prepare_training_from_runtime_artifact,
     _validate_batching_config,
     train_from_collection,
     train_collection,
 )
 from bp_train.defaults import DefaultLossModule, default_build_reaction_module
+from bp_train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
 from bp_train.runtime_context import (
-    RuntimeContext,
+    ProducerCollectionData,
     RuntimeDataContext,
     select_parent_collection,
 )
@@ -67,12 +68,22 @@ from bp_train.model_api import (
 from bp_train.training_data import TrainingDataStore
 
 
-def _runtime_context(store) -> RuntimeContext:
-    return RuntimeContext(
-        RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
-        ),
+def _runtime_artifact(
+    store,
+    collection,
+    parent_names,
+    augmentation_parents=None,
+) -> RuntimeArtifact:
+    """A loaded artifact standing in for one produced by `write_runtime_artifact`."""
+    return RuntimeArtifact(
+        "sha256:" + "0" * 64,
+        store,
         EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+        RuntimeArtifactFold(0, ("holdout",), tuple(store.process_order), "fold-0", 0),
+        select_parent_collection(collection, parent_names),
+        augmentation_parents
+        if augmentation_parents is not None
+        else (None,) * len(store.process_order),
     )
 
 
@@ -189,7 +200,7 @@ def test_build_reaction_module_rejects_stateful_without_opt_in():
             custom_module=_StatefulCustomModule,
             custom_config={},
             store=store,
-            scales=_runtime_context(store).scales,
+            scales=EstimatedScales(**_DEFAULT_LINEAR_SCALES),
             training_parent_collection=collection,
         )
 
@@ -207,7 +218,7 @@ def test_build_reaction_module_accepts_stateful_with_opt_in():
         custom_module=_StatefulCustomModule,
         custom_config={},
         store=store,
-        scales=_runtime_context(store).scales,
+        scales=EstimatedScales(**_DEFAULT_LINEAR_SCALES),
         training_parent_collection=collection,
     )
 
@@ -1190,16 +1201,20 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda store, _collection: ProducerCollectionData(
+            store, (None,) * len(store.process_order), (), (), (), ()
         ),
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.select_training_parents",
-        lambda self, collection, *_args: dataclasses.replace(
-            self,
-            training_parent_collection=select_parent_collection(collection, ("p1",)),
+        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        lambda self, collection, *_args: RuntimeDataContext(
+            self.training_data,
+            select_parent_collection(collection, ("p1",)),
+            (),
+            (),
+            (),
+            (),
         ),
     )
     monkeypatch.setattr(
@@ -1263,16 +1278,20 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda store, _collection: ProducerCollectionData(
+            store, (None,) * len(store.process_order), (), (), (), ()
         ),
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.select_training_parents",
-        lambda self, collection, *_args: dataclasses.replace(
-            self,
-            training_parent_collection=select_parent_collection(collection, ("p1",)),
+        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        lambda self, collection, *_args: RuntimeDataContext(
+            self.training_data,
+            select_parent_collection(collection, ("p1",)),
+            (),
+            (),
+            (),
+            (),
         ),
     )
     monkeypatch.setattr(
@@ -1330,23 +1349,25 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda store, _collection: ProducerCollectionData(
+            store, (None,) * len(store.process_order), (), (), (), ()
         ),
     )
 
     def select_training_parents(runtime_data, collection, process_names):
         captured["scale_process_names"] = tuple(process_names)
-        return dataclasses.replace(
-            runtime_data,
-            training_parent_collection=select_parent_collection(
-                collection, tuple(process_names)
-            ),
+        return RuntimeDataContext(
+            runtime_data.training_data,
+            select_parent_collection(collection, tuple(process_names)),
+            (),
+            (),
+            (),
+            (),
         )
 
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.select_training_parents",
+        "bp_train.harness.ProducerCollectionData.select_training_parents",
         select_training_parents,
     )
     monkeypatch.setattr(
@@ -1502,7 +1523,7 @@ def test_build_loss_module_defaults_when_no_hook():
     assert tuple(module.loss_names) == ("biomass",)
 
 
-def test_prepare_training_from_runtime_context_never_constructs_or_scales(
+def test_prepare_training_from_runtime_artifact_never_constructs_or_scales(
     monkeypatch, caplog
 ):
     collection = _make_collection()
@@ -1513,7 +1534,7 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
     )
 
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
+        "bp_train.harness.ProducerCollectionData.from_collection",
         lambda *_args, **_kwargs: pytest.fail("constructed runtime data"),
     )
     monkeypatch.setattr(
@@ -1522,9 +1543,8 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
     )
 
     caplog.set_level(logging.INFO, logger="bp_train.harness")
-    prepared = prepare_training_from_runtime_context(
-        _runtime_context(store),
-        training_parent_collection=select_parent_collection(collection, ("p1",)),
+    prepared = prepare_training_from_runtime_artifact(
+        _runtime_artifact(store, collection, ("p1",)),
         config=TrainHarnessConfig(process_names=("p1",), epochs=1),
         custom_module=None,
         custom_cfg={},
@@ -1546,18 +1566,12 @@ def test_prepare_training_preserves_all_original_prediction_parents():
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    runtime_context = _runtime_context(store)
-    runtime_context = dataclasses.replace(
-        runtime_context,
-        data=dataclasses.replace(
-            runtime_context.data,
-            augmentation_parents=(None, None, "p1"),
-        ),
+    artifact = _runtime_artifact(
+        store, collection, ("p1",), augmentation_parents=(None, None, "p1")
     )
 
-    prepared = prepare_training_from_runtime_context(
-        runtime_context,
-        training_parent_collection=select_parent_collection(collection, ("p1",)),
+    prepared = prepare_training_from_runtime_artifact(
+        artifact,
         config=TrainHarnessConfig(process_names=("p3",), epochs=1),
         custom_module=None,
         custom_cfg={},
@@ -1574,13 +1588,8 @@ def test_constructor_hooks_receive_selected_processes_and_represented_parents():
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    runtime_context = _runtime_context(store)
-    runtime_context = dataclasses.replace(
-        runtime_context,
-        data=dataclasses.replace(
-            runtime_context.data,
-            augmentation_parents=(None, None, "p1"),
-        ),
+    artifact = _runtime_artifact(
+        store, collection, ("p1", "p2"), augmentation_parents=(None, None, "p1")
     )
     seen = []
 
@@ -1630,9 +1639,8 @@ def test_constructor_hooks_receive_selected_processes_and_represented_parents():
             )
             return DefaultLossModule(target_names=target_names)
 
-    prepare_training_from_runtime_context(
-        runtime_context,
-        training_parent_collection=select_parent_collection(collection, ("p1", "p2")),
+    prepare_training_from_runtime_artifact(
+        artifact,
         config=TrainHarnessConfig(process_names=("p3", "p2"), epochs=1),
         custom_module=CustomModule,
         custom_cfg={},
@@ -1680,9 +1688,8 @@ def test_parent_collection_mismatch_fails_before_constructor_hooks():
             pytest.fail("loss hook called")
 
     with pytest.raises(ValueError, match="keys differ from represented parents"):
-        prepare_training_from_runtime_context(
-            _runtime_context(store),
-            training_parent_collection=select_parent_collection(collection, ("p2",)),
+        prepare_training_from_runtime_artifact(
+            _runtime_artifact(store, collection, ("p2",)),
             config=TrainHarnessConfig(process_names=("p1",), epochs=1),
             custom_module=CustomModule,
             custom_cfg={},
@@ -1696,19 +1703,19 @@ def test_build_runtime_modules_selects_scale_processes(monkeypatch):
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    runtime_data = ProducerCollectionData.from_collection(store, collection)
     seen = {}
-    select_training_parents = RuntimeDataContext.select_training_parents
+    select_training_parents = ProducerCollectionData.select_training_parents
 
     def select(self, received_collection, process_names):
         seen["selection"] = (received_collection, process_names)
         return select_training_parents(self, received_collection, process_names)
 
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
+        "bp_train.harness.ProducerCollectionData.from_collection",
         lambda *_args: runtime_data,
     )
-    monkeypatch.setattr(RuntimeDataContext, "select_training_parents", select)
+    monkeypatch.setattr(ProducerCollectionData, "select_training_parents", select)
     scales = EstimatedScales(**_DEFAULT_LINEAR_SCALES)
 
     def resolve_scales(**kwargs):
@@ -1797,7 +1804,7 @@ def test_resolve_estimated_scales_receives_runtime_data():
         target_source="reactor_components",
     )
     runtime_data = RuntimeDataContext(
-        store, (None,) * len(store.process_order), (), (), (), (), ()
+        store, select_parent_collection(collection, ("p1",)), (), (), (), ()
     )
     scales = EstimatedScales(
         **{field.name: jnp.zeros(()) for field in dataclasses.fields(EstimatedScales)}

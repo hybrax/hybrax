@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +153,146 @@ def _discrete_event_jump_ts(process: Any) -> list[float]:
     if de is None or de.times is None:
         return []
     return sorted({float(t) for t in np.asarray(de.times).reshape(-1).tolist()})
+
+
+_DEFAULT_CONTINUITY_SIDE = "right"
+
+
+@dataclass(frozen=True)
+class ControlPartition:
+    """Canonical control layout implied by a collection's own control sources.
+
+    `continuity_side` is `None` when no time-varying control constrains it, so a
+    caller comparing against a stored side can tell "undetermined" apart from a
+    genuine disagreement.
+    """
+
+    name_controlled_FVCs: tuple[str, ...]
+    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_PVs: tuple[str, ...]
+    spline_indices: tuple[int, ...]
+    linear_indices: tuple[int, ...]
+    continuity_side: str | None
+
+
+def _control_partition(
+    process_order: tuple[str, ...],
+    process_bundles: Mapping[str, ControlSourceBundle],
+) -> ControlPartition:
+    """Categorise controls and split them into spline- and linear-backed columns."""
+    reference_categorised: (
+        tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] | None
+    ) = None
+    for process_name in process_order:
+        bundle = process_bundles[process_name]
+        categorised = (
+            bundle.name_controlled_FVCs,
+            bundle.name_controlled_SVCs,
+            bundle.name_controlled_PVs,
+        )
+        if reference_categorised is None:
+            reference_categorised = categorised
+        elif categorised != reference_categorised:
+            raise ValueError(
+                "controls store requires identical categorised control "
+                f"layouts across processes; {process_name!r} has "
+                f"{categorised!r} but expected {reference_categorised!r}"
+            )
+    if reference_categorised is None:
+        raise ValueError("process collection is empty")
+
+    (
+        name_controlled_FVCs,
+        name_controlled_SVCs,
+        name_controlled_PVs,
+    ) = reference_categorised
+    canonical_names = list(
+        name_controlled_FVCs + name_controlled_SVCs + name_controlled_PVs
+    )
+
+    spline_names: list[str] = []
+    sides_by_control: dict[str, dict[str, str]] = {}
+    for control_name in canonical_names:
+        sources = [
+            process_bundles[process_name].sources_by_name[control_name]
+            for process_name in process_order
+        ]
+        spline_processes = [
+            process_name
+            for process_name, source in zip(process_order, sources, strict=True)
+            if source.spline_coeffs is not None
+        ]
+        non_spline_processes = [
+            process_name
+            for process_name, source in zip(process_order, sources, strict=True)
+            if source.spline_coeffs is None
+        ]
+        if spline_processes and non_spline_processes:
+            raise ValueError(
+                f"control {control_name!r} must be spline-backed in every "
+                "process or no process; spline-backed in "
+                f"{spline_processes!r}, but not {non_spline_processes!r}"
+            )
+        if spline_processes:
+            spline_names.append(control_name)
+        for process_name, source in zip(process_order, sources, strict=True):
+            if not source.is_static:
+                assert source.continuity_side is not None
+                sides_by_control.setdefault(control_name, {})[process_name] = (
+                    source.continuity_side
+                )
+
+    all_sides = {
+        side
+        for sides_by_process in sides_by_control.values()
+        for side in sides_by_process.values()
+    }
+    if len(all_sides) > 1:
+        side_summary = {
+            name: {
+                side: next(
+                    process
+                    for process, process_side in sides.items()
+                    if process_side == side
+                )
+                for side in sorted(set(sides.values()))
+            }
+            for name, sides in sides_by_control.items()
+        }
+        raise ValueError(
+            "all time-varying controls must use one continuity side; found "
+            f"{side_summary!r}"
+        )
+    spline_name_set = set(spline_names)
+    canonical_index = {name: index for index, name in enumerate(canonical_names)}
+    return ControlPartition(
+        name_controlled_FVCs=name_controlled_FVCs,
+        name_controlled_SVCs=name_controlled_SVCs,
+        name_controlled_PVs=name_controlled_PVs,
+        spline_indices=tuple(canonical_index[name] for name in spline_names),
+        linear_indices=tuple(
+            canonical_index[name]
+            for name in canonical_names
+            if name not in spline_name_set
+        ),
+        continuity_side=next(iter(all_sides), None),
+    )
+
+
+def derive_control_partition(collection: BioProcessCollection) -> ControlPartition:
+    """Derive the canonical control layout from a collection's processes alone.
+
+    Used at the runtime-artifact trust boundary, where control arrays are loaded
+    straight from disk and therefore bypass `ControlsStore.__post_init__`.
+    """
+    process_order = tuple(collection.processes)
+    return _control_partition(
+        process_order,
+        {
+            name: select_control_sources(collection.processes[name])
+            for name in process_order
+        },
+    )
 
 
 def _control_representation(metadata: Mapping[str, Any]) -> str:
@@ -760,9 +901,6 @@ class ControlsStore(eqx.Module):
 
         process_bundles: dict[str, ControlSourceBundle] = {}
         process_control_metadata: dict[str, dict[str, Any]] = {}
-        reference_categorised: (
-            tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] | None
-        ) = None
 
         for process_name in process_order:
             process = collection.processes[process_name]
@@ -773,97 +911,23 @@ class ControlsStore(eqx.Module):
                 bundle=bundle,
                 process_md=prepared_md,
             )
-
-            categorised = (
-                bundle.name_controlled_FVCs,
-                bundle.name_controlled_SVCs,
-                bundle.name_controlled_PVs,
-            )
-            if reference_categorised is None:
-                reference_categorised = categorised
-            elif categorised != reference_categorised:
-                raise ValueError(
-                    "controls store requires identical categorised control "
-                    f"layouts across processes; {process_name!r} has "
-                    f"{categorised!r} but expected {reference_categorised!r}"
-                )
-
             process_bundles[process_name] = bundle
             process_control_metadata[process_name] = {
                 source.name: source.metadata for source in bundle.all_sources
             }
 
-        if reference_categorised is None:
-            raise ValueError("process collection is empty")
-
-        (
-            name_controlled_FVCs,
-            name_controlled_SVCs,
-            name_controlled_PVs,
-        ) = reference_categorised
+        partition = _control_partition(tuple(process_order), process_bundles)
+        name_controlled_FVCs = partition.name_controlled_FVCs
+        name_controlled_SVCs = partition.name_controlled_SVCs
+        name_controlled_PVs = partition.name_controlled_PVs
         canonical_names: list[str] = list(
             name_controlled_FVCs + name_controlled_SVCs + name_controlled_PVs
         )
-
-        spline_names: list[str] = []
-        sides_by_control: dict[str, dict[str, str]] = {}
-        for control_name in canonical_names:
-            sources = [
-                process_bundles[process_name].sources_by_name[control_name]
-                for process_name in process_order
-            ]
-            spline_processes = [
-                process_name
-                for process_name, source in zip(process_order, sources, strict=True)
-                if source.spline_coeffs is not None
-            ]
-            non_spline_processes = [
-                process_name
-                for process_name, source in zip(process_order, sources, strict=True)
-                if source.spline_coeffs is None
-            ]
-            if spline_processes and non_spline_processes:
-                raise ValueError(
-                    f"control {control_name!r} must be spline-backed in every "
-                    "process or no process; spline-backed in "
-                    f"{spline_processes!r}, but not {non_spline_processes!r}"
-                )
-            if spline_processes:
-                spline_names.append(control_name)
-            for process_name, source in zip(process_order, sources, strict=True):
-                if not source.is_static:
-                    assert source.continuity_side is not None
-                    sides_by_control.setdefault(control_name, {})[process_name] = (
-                        source.continuity_side
-                    )
-
-        all_sides = {
-            side
-            for sides_by_process in sides_by_control.values()
-            for side in sides_by_process.values()
-        }
-        if len(all_sides) > 1:
-            side_summary = {
-                name: {
-                    side: next(
-                        process
-                        for process, process_side in sides.items()
-                        if process_side == side
-                    )
-                    for side in sorted(set(sides.values()))
-                }
-                for name, sides in sides_by_control.items()
-            }
-            raise ValueError(
-                "all time-varying controls must use one continuity side; found "
-                f"{side_summary!r}"
-            )
-        continuity_side = next(iter(all_sides), "right")
-        spline_name_set = set(spline_names)
-        linear_names = [name for name in canonical_names if name not in spline_name_set]
-        canonical_index = {name: index for index, name in enumerate(canonical_names)}
-        spline_indices = tuple(canonical_index[name] for name in spline_names)
-        linear_indices = tuple(canonical_index[name] for name in linear_names)
+        spline_indices = partition.spline_indices
+        linear_indices = partition.linear_indices
+        continuity_side = partition.continuity_side or _DEFAULT_CONTINUITY_SIDE
+        spline_names = [canonical_names[index] for index in spline_indices]
+        linear_names = [canonical_names[index] for index in linear_indices]
 
         reference_species: tuple[str, ...] | None = None
         max_grid_length = 0

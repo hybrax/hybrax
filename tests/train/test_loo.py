@@ -697,12 +697,12 @@ def test_prepare_single_fold_preserves_prediction_parent_names(monkeypatch, tmp_
 
 def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path):
     collection = _three_parent_collection()
-    store = object()
+    store = SimpleNamespace(rhs_ode=object())
 
     selected_scale_processes = []
     validation_calls = []
 
-    class _RuntimeData:
+    class _ProducerData:
         process_order = ("p1", "p2", "p3")
         augmentation_parents = (None, None, None)
 
@@ -711,7 +711,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
             validation_calls.append(("scale", tuple(process_names)))
             return self
 
-    runtime_data = _RuntimeData()
+    producer_data = _ProducerData()
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "bp_format.serialization.load_process_collection", lambda _path: collection
@@ -738,14 +738,16 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
         lambda *_args, **_kwargs: store,
     )
     monkeypatch.setattr(
-        loo_mod.RuntimeDataContext,
+        loo_mod.ProducerCollectionData,
         "from_collection",
-        lambda *_args: runtime_data,
+        lambda *_args: producer_data,
     )
     monkeypatch.setattr(
         loo_mod, "_resolve_estimated_scales", lambda **_kwargs: object()
     )
-    monkeypatch.setattr(loo_mod, "_rhs_descriptor", lambda *_args: object())
+    monkeypatch.setattr(
+        loo_mod.RhsNames, "from_rhs_ode", classmethod(lambda _cls, _rhs: object())
+    )
     monkeypatch.setattr(loo_mod, "content_hash", lambda _collection: "sha256:data")
 
     def fake_write(path, **kwargs):
@@ -786,7 +788,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
         "scale",
     ]
     validated_parent_collection = validation_calls[1][1]
-    assert validated_parent_collection is captured["training_parent_collection"]
+    assert validated_parent_collection is captured["parent_collection"]
     assert validated_parent_collection is not collection
     assert tuple(validated_parent_collection.processes) == ("p1", "p2", "p3")
     folds = tuple(record for record, _scales in captured["folds"])
@@ -795,11 +797,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
         (("p2",), ("p1",), 38),
     ]
     assert selected_scale_processes == [("p2",), ("p1",)]
-    assert tuple(captured["training_parent_collection"].processes) == (
-        "p1",
-        "p2",
-        "p3",
-    )
+    assert tuple(captured["parent_collection"].processes) == ("p1", "p2", "p3")
 
     cfg = cfg.model_copy(
         update={"loo": LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p3",)),))}
@@ -1205,13 +1203,15 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
         lambda *_args, **_kwargs: SimpleNamespace(
             identity=metadata.identity,
             fold=record,
-            context=object(),
+            training_data=object(),
+            scales=object(),
             training_parent_collection=object(),
+            augmentation_parents=(None, None, None),
         ),
     )
     captured = {}
 
-    def fake_prepare(_context, *, config, **_kwargs):
+    def fake_prepare(_artifact, *, config, **_kwargs):
         captured["harness_seed"] = config.seed
         return PreparedTraining(
             store=object(),
@@ -1222,7 +1222,7 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
             prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
-    monkeypatch.setattr(loo_mod, "prepare_training_from_runtime_context", fake_prepare)
+    monkeypatch.setattr(loo_mod, "prepare_training_from_runtime_artifact", fake_prepare)
     prepared = loo_mod.prepare_single_fold_from_runtime_artifact(
         cfg=_run_config(seed=10),
         custom_module=None,

@@ -6,10 +6,16 @@ from numbers import Integral
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from bp_format.dataclasses import BioProcessCollection
 
 from .defaults import DefaultLossModule
 from .model_api import LossInputs, LossOutputs
-from .runtime_context import BoundRecord
+from .runtime_context import rhs_ode_from_training_parents
+
+
+BoundDeclaration = tuple[str, str, int, float | None, float | None]
+BoundSnapshot = tuple[BoundDeclaration, ...]
+BoundRecord = tuple[str, str, int, float, float]
 
 
 class BoundsViolationLossModule(DefaultLossModule):
@@ -111,3 +117,100 @@ class BoundsViolationLossModule(DefaultLossModule):
             named_losses[label] = self.weight * squared_sum / n_active
 
         return LossOutputs(named_losses=named_losses)
+
+
+def bound_records_from_collection(
+    collection: BioProcessCollection,
+) -> tuple[BoundRecord, ...]:
+    """Resolve consistent bound-loss records from represented parents."""
+    rhs_ode = rhs_ode_from_training_parents(
+        collection, empty_message="bounds loss requires a non-empty collection"
+    )
+    snapshots = tuple(
+        _bound_snapshot(process, rhs_ode) for process in collection.processes.values()
+    )
+    return collect_bound_records(snapshots)
+
+
+def _bound_snapshot(process, rhs_ode) -> BoundSnapshot:
+    declarations: list[BoundDeclaration] = []
+    for index, name in enumerate(rhs_ode.name_modeled_RMCs):
+        declarations.append(
+            (
+                name,
+                "state",
+                index,
+                *_bounds(process.reactor_medium.components[name].bounds),
+            )
+        )
+    pv_offset = len(rhs_ode.name_modeled_RMCs)
+    for index, name in enumerate(rhs_ode.name_modeled_PVs, start=pv_offset):
+        declarations.append(
+            (name, "state", index, *_bounds(process.process_variables[name].bounds))
+        )
+    state_names = rhs_ode.name_modeled_RMCs + rhs_ode.name_modeled_PVs
+    volume_label = "volume/V" if "V" in state_names else "V"
+    declarations.append(
+        (
+            volume_label,
+            "volume",
+            pv_offset + len(rhs_ode.name_modeled_PVs),
+            *_bounds(process.volume.bounds),
+        )
+    )
+    for index, name in enumerate(rhs_ode.name_modeled_rates):
+        bounds = (
+            (None, None)
+            if process.biological_ode is None
+            else process.biological_ode.rates[name]
+        )
+        declarations.append((f"rate/{name}", "rate", index, *_bounds(bounds)))
+    return tuple(declarations)
+
+
+def _bounds(bounds) -> tuple[float | None, float | None]:
+    lower, upper = tuple(bounds)
+    return (
+        None if lower is None else float(lower),
+        None if upper is None else float(upper),
+    )
+
+
+def collect_bound_records(
+    snapshots: tuple[BoundSnapshot, ...],
+) -> tuple[BoundRecord, ...]:
+    """Validate per-process bound declarations when bounds loss is requested."""
+    if not snapshots:
+        raise ValueError("bounds loss requires a non-empty bounds snapshot")
+    records: list[BoundRecord] = []
+    reference = snapshots[0]
+    for index, declaration in enumerate(reference):
+        label, source, axis, lower, upper = declaration
+        for process_index, snapshot in enumerate(snapshots[1:], start=1):
+            try:
+                other = snapshot[index]
+            except IndexError as error:
+                raise ValueError(
+                    f"Bounds source {label!r} is missing from process index "
+                    f"{process_index}"
+                ) from error
+            if other != declaration:
+                raise ValueError(
+                    f"Bounds for {label!r} differ across processes: "
+                    f"{declaration[3:]!r} "
+                    f"vs {other[3:]!r}"
+                )
+        for description, threshold in (("Lower", lower), ("Upper", upper)):
+            if threshold is not None and not math.isfinite(threshold):
+                raise ValueError(
+                    f"{description} bound for {label!r} must be finite or None"
+                )
+        if lower is not None and upper is not None and lower > upper:
+            raise ValueError(
+                f"Lower bound for {label!r} must not exceed its upper bound"
+            )
+        if lower is not None:
+            records.append((f"lwr_bnd/{label}", source, axis, 1.0, lower))
+        if upper is not None:
+            records.append((f"upr_bnd/{label}", source, axis, -1.0, upper))
+    return tuple(records)

@@ -46,14 +46,14 @@ from .harness import (
     _resolve_estimated_scales,
     evaluate_trained_wrapper,
     prepare_training,
-    prepare_training_from_runtime_context,
+    prepare_training_from_runtime_artifact,
     train_collection,
     train_harness_config_from_run_config,
 )
 from .postprocessing import save_model_metadata
 from .runtime_artifact import (
     FORMAT_VERSION,
-    RhsOdeDescriptor,
+    RhsNames,
     RuntimeArtifactFold,
     RuntimeArtifactMetadata,
     load_runtime_artifact,
@@ -61,7 +61,7 @@ from .runtime_artifact import (
     write_runtime_artifact,
 )
 from .runtime_context import (
-    RuntimeDataContext,
+    ProducerCollectionData,
     original_parent_processes,
     select_parent_collection,
 )
@@ -687,34 +687,6 @@ def _effective_fold_config(
     return effective_cfg, fold_dir, fold_custom
 
 
-def _rhs_descriptor(
-    collection: BioProcessCollection, store: TrainingDataStore
-) -> RhsOdeDescriptor:
-    process = next(iter(collection.processes.values()))
-    ode = process.biological_ode
-    if ode is None:
-        raise ValueError("runtime artifact requires a biological_ode")
-    rhs = store.rhs_ode
-    return RhsOdeDescriptor(
-        name_modeled_rates=tuple(rhs.name_modeled_rates),
-        name_modeled_algebraic=tuple(rhs.name_modeled_algebraic),
-        name_modeled_RMCs=tuple(rhs.name_modeled_RMCs),
-        name_modeled_PVs=tuple(rhs.name_modeled_PVs),
-        name_modeled_FVCs=tuple(rhs.name_modeled_FVCs),
-        name_modeled_SVCs=tuple(rhs.name_modeled_SVCs),
-        name_controlled_PVs=tuple(rhs.name_controlled_PVs),
-        name_controlled_FVCs=tuple(rhs.name_controlled_FVCs),
-        name_controlled_SVCs=tuple(rhs.name_controlled_SVCs),
-        algebraic_expressions=tuple(
-            ode.algebraic[name] for name in rhs.name_modeled_algebraic
-        ),
-        derivative_expressions=tuple(
-            ode.derivatives[name]
-            for name in (*rhs.name_modeled_RMCs, *rhs.name_modeled_PVs)
-        ),
-    )
-
-
 def produce_runtime_artifact(
     *, cfg: RunConfig, custom_module: Any, output_dir: Path, bundle_path: Path
 ) -> str:
@@ -743,9 +715,9 @@ def produce_runtime_artifact(
         target_variable_order=cfg.data.targets,
         target_source=cfg.data.target_source,
     )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    producer_data = ProducerCollectionData.from_collection(store, collection)
     parent_names = original_parent_processes(
-        runtime_data.process_order, runtime_data.augmentation_parents
+        producer_data.process_order, producer_data.augmentation_parents
     )
     training_parent_collection = select_parent_collection(collection, parent_names)
     ensure_prepared_training_semantics(training_parent_collection)
@@ -759,7 +731,7 @@ def produce_runtime_artifact(
         effective, _dir, _custom = _effective_fold_config(
             cfg, fold, output_dir, cfg.custom_py
         )
-        scale_data = runtime_data.select_training_parents(collection, fold.train)
+        scale_data = producer_data.select_training_parents(collection, fold.train)
         scales = _resolve_estimated_scales(
             custom_module=custom_module,
             runtime_data=scale_data,
@@ -768,10 +740,11 @@ def produce_runtime_artifact(
         records.append((_fold_record(fold), scales))
     return write_runtime_artifact(
         output_dir / _RUNTIME_ARTIFACT_NAME,
-        runtime_data=runtime_data,
-        training_parent_collection=training_parent_collection,
+        training_data=store,
+        parent_collection=training_parent_collection,
+        augmentation_parents=producer_data.augmentation_parents,
         folds=tuple(records),
-        rhs_descriptor=_rhs_descriptor(collection, store),
+        rhs_names=RhsNames.from_rhs_ode(store.rhs_ode),
         identity_inputs={
             "run_fingerprint": _fingerprint(bundle_path, cfg.custom_py),
             "prepared_content_hash": content_hash(collection),
@@ -846,9 +819,8 @@ def prepare_single_fold_from_runtime_artifact(
         fold_custom=fold_custom,
         config_json=config_json,
         effective_cfg=effective_cfg,
-        training=prepare_training_from_runtime_context(
-            artifact.context,
-            training_parent_collection=artifact.training_parent_collection,
+        training=prepare_training_from_runtime_artifact(
+            artifact,
             config=_fold_harness_config(effective_cfg, fold, fold_dir),
             custom_module=custom_module,
             custom_cfg=effective_cfg,

@@ -50,8 +50,9 @@ from .training_data import (
     TrainingDataStore,
 )
 from .run_config import RunConfig
+from .runtime_artifact import RuntimeArtifact
 from .runtime_context import (
-    RuntimeContext,
+    ProducerCollectionData,
     RuntimeDataContext,
     canonical_training_parents,
     original_parent_processes,
@@ -699,21 +700,17 @@ def _build_runtime_modules(
     build_loss: bool = True,
 ) -> tuple[UserReactionModule, UserLossModule | None]:
     """Build runtime hook modules once from parent-selected scale evidence."""
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
-    scale_data = runtime_data.select_training_parents(
+    scale_data = ProducerCollectionData.from_collection(
+        store, collection
+    ).select_training_parents(
         collection, _ensure_process_names(store, config.process_names)
     )
-    runtime_context = RuntimeContext(
-        runtime_data,
-        _resolve_estimated_scales(
-            custom_module=custom_module,
-            runtime_data=scale_data,
-            custom_cfg=custom_config,
-        ),
+    scales = _resolve_estimated_scales(
+        custom_module=custom_module,
+        runtime_data=scale_data,
+        custom_cfg=custom_config,
     )
     training_parent_collection = scale_data.training_parent_collection
-    if training_parent_collection is None:
-        raise ValueError("training parent collection is unavailable")
     expected_parents = tuple(scale_data.process_order)
     _validate_training_parent_collection(training_parent_collection, expected_parents)
     reaction_module = _build_reaction_module(
@@ -721,7 +718,7 @@ def _build_runtime_modules(
         custom_module=custom_module,
         custom_config=custom_config,
         store=store,
-        scales=runtime_context.scales,
+        scales=scales,
         training_parent_collection=training_parent_collection,
     )
     loss_module = (
@@ -1925,25 +1922,23 @@ def _log_train_hooks(custom_module: Any) -> None:
     logger.info("train hooks default: %s", ", ".join(default_hooks) or "none")
 
 
-def prepare_training_from_runtime_context(
-    runtime_context: RuntimeContext,
+def _prepare_training_from_selected_parents(
     *,
+    store: TrainingDataStore,
+    scales: EstimatedScales,
+    augmentation_parents: tuple[str | None, ...],
     training_parent_collection: BioProcessCollection,
     config: TrainHarnessConfig,
     custom_module: Any,
     custom_cfg: Any,
 ) -> PreparedTraining:
-    """Prepare training solely from an already-loaded runtime context."""
-    if not isinstance(runtime_context, RuntimeContext):
-        raise TypeError("runtime_context must be a RuntimeContext")
+    """Build every hook-visible object from one selected training-parent set."""
     _log_train_hooks(custom_module)
-    store = runtime_context.training_data
+    process_order = tuple(store.process_order)
     selected_processes = _ensure_process_names(store, config.process_names)
     train_cfg = dataclasses.replace(config, process_names=selected_processes)
     expected_parents = canonical_training_parents(
-        runtime_context.data.process_order,
-        runtime_context.data.augmentation_parents,
-        selected_processes,
+        process_order, augmentation_parents, selected_processes
     )
     _validate_training_parent_collection(training_parent_collection, expected_parents)
     reaction_module = _build_reaction_module(
@@ -1951,7 +1946,7 @@ def prepare_training_from_runtime_context(
         custom_module=custom_module,
         custom_config=custom_cfg,
         store=store,
-        scales=runtime_context.scales,
+        scales=scales,
         training_parent_collection=training_parent_collection,
     )
     loss_module = _build_loss_module(
@@ -1977,9 +1972,29 @@ def prepare_training_from_runtime_context(
         config=train_cfg,
         optimizer=optimizer,
         prediction_parent_process_names=original_parent_processes(
-            runtime_context.data.process_order,
-            runtime_context.data.augmentation_parents,
+            process_order, augmentation_parents
         ),
+    )
+
+
+def prepare_training_from_runtime_artifact(
+    artifact: RuntimeArtifact,
+    *,
+    config: TrainHarnessConfig,
+    custom_module: Any,
+    custom_cfg: Any,
+) -> PreparedTraining:
+    """Prepare training solely from an already-loaded runtime artifact."""
+    if not isinstance(artifact, RuntimeArtifact):
+        raise TypeError("artifact must be a RuntimeArtifact")
+    return _prepare_training_from_selected_parents(
+        store=artifact.training_data,
+        scales=artifact.scales,
+        augmentation_parents=artifact.augmentation_parents,
+        training_parent_collection=artifact.training_parent_collection,
+        config=config,
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
     )
 
 
@@ -2041,20 +2056,16 @@ def prepare_training(
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
-    scale_data = runtime_data.select_training_parents(collection, selected_processes)
-    runtime_context = RuntimeContext(
-        runtime_data,
-        _resolve_estimated_scales(
+    producer_data = ProducerCollectionData.from_collection(store, collection)
+    scale_data = producer_data.select_training_parents(collection, selected_processes)
+    return _prepare_training_from_selected_parents(
+        store=store,
+        scales=_resolve_estimated_scales(
             custom_module=custom_module,
             runtime_data=scale_data,
             custom_cfg=custom_cfg,
         ),
-    )
-    if scale_data.training_parent_collection is None:
-        raise ValueError("training parent collection is unavailable")
-    return prepare_training_from_runtime_context(
-        runtime_context,
+        augmentation_parents=producer_data.augmentation_parents,
         training_parent_collection=scale_data.training_parent_collection,
         config=train_cfg,
         custom_module=custom_module,

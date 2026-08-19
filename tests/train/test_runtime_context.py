@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from copy import deepcopy
+from pathlib import Path
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -18,22 +19,28 @@ from bp_format.dataclasses import (
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
+    SampleVolumeChange,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 
+from bp_format.serialization import load_process_collection
+
 from bp_train.harness import _resolve_estimated_scales
 from bp_train.model_api import EstimatedScales
 from bp_train.runtime_context import (
     SPLINE_SCALE_SAMPLE_COUNT,
-    RuntimeDataContext,
+    ProducerCollectionData,
     _series_scale_evidence,
     canonical_training_parents,
     original_parent_processes,
 )
 from bp_train.training_data import TrainingDataStore
+
+
+_KITTLER = Path("examples/01_kittler_2022/prepared/prepared.json")
 
 
 def _process(
@@ -105,7 +112,7 @@ def _runtime_data(
     p0_feed_cin: float = 10.0,
     child_value: float = 1000.0,
     held_out_value: float = 2000.0,
-) -> tuple[BioProcessCollection, RuntimeDataContext]:
+) -> tuple[BioProcessCollection, ProducerCollectionData]:
     collection = BioProcessCollection(
         processes={
             "P0": _process(
@@ -135,7 +142,7 @@ def _runtime_data(
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    return collection, RuntimeDataContext.from_collection(store, collection)
+    return collection, ProducerCollectionData.from_collection(store, collection)
 
 
 def test_original_parent_processes_keeps_all_non_augmented_processes():
@@ -168,7 +175,7 @@ def test_selected_parent_context_is_closed_and_parent_aligned():
 
     assert selected.process_order == ("P0", "P1")
     assert tuple(selected.training_parent_collection.processes) == ("P0", "P1")
-    assert selected.augmentation_parents == (None, None)
+    assert not hasattr(selected, "augmentation_parents")
     assert selected.training_data.t_measured.shape[0] == 2
     assert selected.controls_store.control_values.shape[0] == 2
     np.testing.assert_allclose(
@@ -184,7 +191,7 @@ def test_selected_parent_context_is_closed_and_parent_aligned():
     )
     np.testing.assert_allclose(
         selected.controls_store.min_V,
-        np.asarray(runtime_data.controls_store.min_V)[[0, 2]],
+        np.asarray(runtime_data.training_data.controls_store.min_V)[[0, 2]],
     )
 
     with pytest.raises(KeyError, match="unknown process"):
@@ -194,11 +201,15 @@ def test_selected_parent_context_is_closed_and_parent_aligned():
 
 
 def test_unselected_scale_context_does_not_expose_collection():
+    """The broad intermediate has no collection to leak and no evidence to give.
+
+    Scale evidence is reachable only through `select_training_parents()`, so an
+    unfiltered context cannot be handed to a hook by accident.
+    """
     _collection, runtime_data = _runtime_data()
 
-    assert runtime_data.training_parent_collection is None
-    with pytest.raises(ValueError, match="unavailable"):
-        runtime_data.control_scale_evidence()
+    assert not hasattr(runtime_data, "training_parent_collection")
+    assert not hasattr(runtime_data, "control_scale_evidence")
 
 
 def test_selected_scale_context_exposes_only_deep_copied_parents():
@@ -261,7 +272,7 @@ def test_selected_stores_gather_every_process_aligned_array():
     selected = runtime_data.select_training_parents(collection, ("P0", "P1"))
     source_store = runtime_data.training_data
     selected_store = selected.training_data
-    source_controls = runtime_data.controls_store
+    source_controls = runtime_data.training_data.controls_store
     selected_controls = selected.controls_store
     source_indices = np.asarray([0, 2])
 
@@ -437,8 +448,8 @@ def test_equivalent_training_selections_produce_identical_scale_evidence():
 
 
 def _with_rich_row_values(
-    runtime_data: RuntimeDataContext, values: tuple[float, ...]
-) -> RuntimeDataContext:
+    runtime_data: ProducerCollectionData, values: tuple[float, ...]
+) -> ProducerCollectionData:
     """Make every producer-side process-aligned scale input distinguishable."""
     y0 = np.asarray(runtime_data.training_data.y0_measured).copy()
     y0[:] = np.asarray(values)[:, None]
@@ -460,15 +471,12 @@ def _with_rich_row_values(
         modeled_volume_change_traces=tuple(((trace(value)),) for value in values),
         raw_state_traces=tuple(((trace(value)),) for value in values),
         sample_volume_event_traces=tuple(trace(value) for value in values),
-        bound_snapshots=tuple(
-            (("biomass", "state", 0, value, value + 1.0),) for value in values
-        ),
     )
 
 
 def _resolve_rich_scales(
     collection: BioProcessCollection,
-    runtime_data: RuntimeDataContext,
+    runtime_data: ProducerCollectionData,
     selected_processes: tuple[str, ...],
 ) -> tuple[np.ndarray, ...]:
     selected = runtime_data.select_training_parents(collection, selected_processes)
@@ -486,11 +494,6 @@ def _resolve_rich_scales(
                 signature += float(np.sum(times) + np.sum(values))
         for times, values in data.sample_volume_event_traces:
             signature += float(np.sum(times) + np.sum(values))
-        for snapshot in data.bound_snapshots:
-            for _, _, axis, lower, upper in snapshot:
-                signature += axis
-                signature += 0.0 if lower is None else lower
-                signature += 0.0 if upper is None else upper
         for traces in (
             evidence.cumulative_FVCs,
             evidence.FVC_rates,
@@ -580,3 +583,40 @@ def test_scale_series_uses_raw_samples_before_spline_and_samples_splines_at_200(
     np.testing.assert_allclose(values, 0.75 + grid - grid**2)
     np.testing.assert_allclose(slopes, 1.0 - 2.0 * grid)
     assert np.max(values) > max(values[0], values[-1])
+
+
+def test_overlapping_sample_streams_merge_into_one_ordered_trace():
+    """Two sample streams on one process share a timestamp without being dropped.
+
+    `_sample_volume_events` concatenates every `SampleVolumeChange` series and
+    stable-sorts them, so equal timestamps are legal here even though every other
+    producer time axis is strictly increasing.
+    """
+    collection = load_process_collection(_KITTLER)
+    process = next(iter(collection.processes.values()))
+    name, sample = next(
+        (name, change)
+        for name, change in process.volume.volume_changes.items()
+        if isinstance(change, SampleVolumeChange)
+    )
+    duplicate = replace(sample, name=f"{name}_overlap")
+    process.volume.volume_changes[duplicate.name] = duplicate
+
+    store = TrainingDataStore.from_collection(
+        collection, target_source="reactor_components"
+    )
+    times, values = ProducerCollectionData.from_collection(
+        store, collection
+    ).sample_volume_event_traces[0]
+
+    source_times = np.asarray(sample.values.times, dtype=float)
+    source_values = np.asarray(sample.values.values, dtype=float)
+
+    # The duplicated stream shares every timestamp, so the merged trace must be
+    # the source doubled: ordered, with each timestamp appearing twice and each
+    # volume carried along with it rather than merely counted.
+    assert times.size == 2 * source_times.size
+    assert np.all(np.diff(times) >= 0)
+    assert np.any(np.diff(times) == 0)
+    np.testing.assert_array_equal(times, np.repeat(source_times, 2))
+    np.testing.assert_array_equal(values, np.repeat(source_values, 2))
