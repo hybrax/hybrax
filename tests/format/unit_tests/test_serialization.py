@@ -417,6 +417,82 @@ def test_load_process_collection_requires_volume(
         load_process_collection(path)
 
 
+@pytest.mark.parametrize("reactor_medium_payload", ["missing", None])
+def test_load_process_collection_requires_reactor_medium(
+    sample_collection, tmp_path, reactor_medium_payload
+):
+    path = tmp_path / "collection.json"
+    save_process_collection(sample_collection, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    process = document["processes"]["fed_batch_001"]
+    if reactor_medium_payload == "missing":
+        del process["reactor_medium"]
+    else:
+        process["reactor_medium"] = reactor_medium_payload
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="reactor_medium"):
+        load_process_collection(path)
+
+
+@pytest.mark.parametrize("time_axis_payload", ["missing", None])
+def test_load_process_collection_requires_time_axis(
+    sample_collection, tmp_path, time_axis_payload
+):
+    path = tmp_path / "collection.json"
+    save_process_collection(sample_collection, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    process = document["processes"]["fed_batch_001"]
+    if time_axis_payload == "missing":
+        del process["time_axis"]
+    else:
+        process["time_axis"] = time_axis_payload
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="time_axis"):
+        load_process_collection(path)
+
+
+@pytest.mark.parametrize("values_payload", ["missing", None])
+def test_load_volume_change_requires_values(
+    sample_collection, tmp_path, values_payload
+):
+    path = tmp_path / "collection.json"
+    save_process_collection(sample_collection, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    vc = document["processes"]["fed_batch_001"]["volume"]["volume_changes"][
+        "glucose_feed"
+    ]
+    if values_payload == "missing":
+        del vc["values"]
+    else:
+        vc["values"] = values_payload
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="'values'"):
+        load_process_collection(path)
+
+
+@pytest.mark.parametrize("feed_medium_payload", ["missing", None])
+def test_load_inflow_requires_feed_medium(
+    sample_collection, tmp_path, feed_medium_payload
+):
+    path = tmp_path / "collection.json"
+    save_process_collection(sample_collection, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    vc = document["processes"]["fed_batch_001"]["volume"]["volume_changes"][
+        "glucose_feed"
+    ]
+    if feed_medium_payload == "missing":
+        del vc["feed_medium"]
+    else:
+        vc["feed_medium"] = feed_medium_payload
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="feed_medium"):
+        load_process_collection(path)
+
+
 def test_load_process_collection_validates_suffix_and_top_level_key_order(
     sample_collection, tmp_path
 ):
@@ -673,7 +749,7 @@ def test_load_outflow_rejects_non_object_retention(retention):
         "unit": "L",
         "is_controlled": True,
         "is_continuous": True,
-        "values": None,
+        "values": {"times": [0.0, 1.0], "values": [0.0, -0.1]},
         "retention": retention,
     }
 

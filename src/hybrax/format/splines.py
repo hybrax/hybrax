@@ -29,8 +29,6 @@ _CONSTANT_SPLINE_DT = 1e-6
 _MIN_REACTOR_VOLUME = 1e-10
 _MIN_SMOOTHING_BSPLINE_SAMPLES = 4
 
-DEFAULT_MAX_SEGMENTS = 16
-
 
 # ---------------------------------------------------------------------------
 # Discrete-event detection and segmentation

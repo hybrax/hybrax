@@ -247,6 +247,30 @@ def test_bioprocess_requires_volume():
         )
 
 
+def test_bioprocess_requires_reactor_medium():
+    with pytest.raises(ValueError, match="BioProcess.reactor_medium is required"):
+        BioProcess(
+            metadata=BioProcessMetadata(name="batch_001", process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=24.0, time_reference="inoculation"
+            ),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=None,  # type: ignore[arg-type]
+        )
+
+
+def test_bioprocess_requires_time_axis():
+    with pytest.raises(ValueError, match="BioProcess.time_axis is required"):
+        BioProcess(
+            metadata=BioProcessMetadata(name="batch_001", process_type="batch"),
+            time_axis=None,  # type: ignore[arg-type]
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=ReactorMedium(
+                name="medium", density=1.0, density_unit="kg/L"
+            ),
+        )
+
+
 def test_bioprocess_minimal():
     process = BioProcess(
         metadata=BioProcessMetadata(name="batch_001", process_type="batch"),

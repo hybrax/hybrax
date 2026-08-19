@@ -614,10 +614,15 @@ class TestValidateOutflowRetention:
         assert ok is True
 
     def test_out_of_range_retention_rejected(self):
+        # BioProcess.__post_init__ now rejects invalid retention at
+        # construction time too, so an invalid Outflow can only reach
+        # validate_outflow_retention via a post-construction mutation
+        # (e.g. a loaded process patched in place) — exercise that path.
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={"sample": self._outflow(retention={"biomass": 1.5})},
+            volume_changes={"sample": self._outflow()},
         )
+        process.volume.volume_changes["sample"].retention = {"biomass": 1.5}
         ok, msg = validate_outflow_retention(process)
         assert ok is False
         assert "biomass" in msg
@@ -625,16 +630,18 @@ class TestValidateOutflowRetention:
     def test_negative_retention_rejected(self):
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={"sample": self._outflow(retention={"biomass": -0.1})},
+            volume_changes={"sample": self._outflow()},
         )
+        process.volume.volume_changes["sample"].retention = {"biomass": -0.1}
         ok, msg = validate_outflow_retention(process)
         assert ok is False
 
     def test_unknown_component_rejected(self):
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={"sample": self._outflow(retention={"typo_name": 0.5})},
+            volume_changes={"sample": self._outflow()},
         )
+        process.volume.volume_changes["sample"].retention = {"typo_name": 0.5}
         ok, msg = validate_outflow_retention(process)
         assert ok is False
         assert "typo_name" in msg
@@ -645,13 +652,44 @@ class TestValidateOutflowRetention:
         ignored by the RHS ODE, so it must be rejected instead."""
         process = _make_process(
             reactor_components={"biomass": self._reactor_comp("biomass")},
-            volume_changes={
-                "sample": self._outflow(retention={"biomass": 0.5}, is_continuous=False)
-            },
+            volume_changes={"sample": self._outflow(is_continuous=False)},
         )
+        process.volume.volume_changes["sample"].retention = {"biomass": 0.5}
         ok, msg = validate_outflow_retention(process)
         assert ok is False
         assert "discrete" in msg.lower()
+
+    def test_construction_rejects_out_of_range_retention(self):
+        """The same rule set is enforced at BioProcess construction time
+        (dataclasses._check_outflow_retention via __post_init__), not just
+        by this opt-in validator."""
+        with pytest.raises(ValueError, match="biomass"):
+            _make_process(
+                reactor_components={"biomass": self._reactor_comp("biomass")},
+                volume_changes={
+                    "sample": self._outflow(retention={"biomass": 1.5})
+                },
+            )
+
+    def test_construction_rejects_unknown_component_retention(self):
+        with pytest.raises(ValueError, match="typo_name"):
+            _make_process(
+                reactor_components={"biomass": self._reactor_comp("biomass")},
+                volume_changes={
+                    "sample": self._outflow(retention={"typo_name": 0.5})
+                },
+            )
+
+    def test_construction_rejects_discrete_retention(self):
+        with pytest.raises(ValueError, match="discrete"):
+            _make_process(
+                reactor_components={"biomass": self._reactor_comp("biomass")},
+                volume_changes={
+                    "sample": self._outflow(
+                        retention={"biomass": 0.5}, is_continuous=False
+                    )
+                },
+            )
 
     def test_inflow_is_ignored(self):
         """retention only exists on Outflow; an Inflow in the mix must not

@@ -61,6 +61,7 @@ from .dataclasses import (
     ProcessOrdering,
     StaticVariable,
     TimeSeries,
+    _check_outflow_retention,
 )
 from .splines import (
     _MIN_REACTOR_VOLUME,
@@ -373,32 +374,17 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
             )
 
     # Validate retention here because mechanistic factories must not silently
-    # turn invalid component names into zero-retention rows.
-    for vc_name, vc in process.volume.volume_changes.items():
-        if not isinstance(vc, Outflow) or not vc.retention:
-            continue
-        if not vc.is_continuous:
-            raise ValueError(
-                f"Outflow {vc_name!r} sets retention {vc.retention!r} but is "
-                "discrete (is_continuous=False). Retention is only "
-                "implemented for continuous Outflows; setting it on a "
-                "discrete Outflow would be silently ignored by the RHS ODE."
-            )
-        unknown = [name for name in vc.retention if name not in rmc_set]
-        if unknown:
-            raise ValueError(
-                f"Outflow {vc_name!r} retention references unknown reactor "
-                f"component(s): {unknown}."
-            )
-        out_of_range = {
-            name: value
-            for name, value in vc.retention.items()
-            if not 0.0 <= value <= 1.0
-        }
-        if out_of_range:
-            raise ValueError(
-                f"Outflow {vc_name!r} retention value(s) out of [0, 1]: {out_of_range}."
-            )
+    # turn invalid component names into zero-retention rows. BioProcess is a
+    # mutable dataclass, so __post_init__ having already checked this once
+    # does not guarantee it still holds.
+    retention_errors = [
+        error
+        for vc_name, vc in process.volume.volume_changes.items()
+        if isinstance(vc, Outflow)
+        for error in _check_outflow_retention(vc_name, vc, rmc_set)
+    ]
+    if retention_errors:
+        raise ValueError("\n".join(retention_errors))
 
     # ---- Biological ODE — rates (insertion order) and algebraic (topo-sorted)
     bo = process.biological_ode
@@ -546,27 +532,20 @@ def _build_cin(
     the corresponding ``Inflow.feed_medium``. Components omitted from the
     sparse feed mapping remain zero in the preinitialized row.
     """
-    n = len(vc_names)
-    n_RMCs = len(name_modeled_RMCs)
-    Cin = jnp.zeros((n, n_RMCs), dtype=float)
-    for k, vc_name in enumerate(vc_names):
-        vc = process.volume.volume_changes[vc_name]
-        if not isinstance(vc, Inflow) or vc.feed_medium is None:
-            continue
-        feed = vc.feed_medium
-        for j, sp_name in enumerate(name_modeled_RMCs):
-            if sp_name not in feed.components:
-                continue
-            conc = feed.components[sp_name].concentration
-            if isinstance(conc, StaticVariable):
-                Cin = Cin.at[k, j].set(float(conc.value))
-            else:
-                raise NotImplementedError(
-                    "TimeSeries feed concentrations are not yet supported. "
-                    f"Found TimeSeries for species {sp_name!r} in feed "
-                    f"{feed.name!r} of volume change {vc_name!r}."
-                )
-    return Cin
+
+    def cell(vc: Inflow, vc_name: str, sp_name: str) -> Optional[float]:
+        if vc.feed_medium is None or sp_name not in vc.feed_medium.components:
+            return None
+        conc = vc.feed_medium.components[sp_name].concentration
+        if isinstance(conc, StaticVariable):
+            return float(conc.value)
+        raise NotImplementedError(
+            "TimeSeries feed concentrations are not yet supported. "
+            f"Found TimeSeries for species {sp_name!r} in feed "
+            f"{vc.feed_medium.name!r} of volume change {vc_name!r}."
+        )
+
+    return _build_vc_matrix(process, vc_names, name_modeled_RMCs, Inflow, cell)
 
 
 def _build_retention(
@@ -583,17 +562,43 @@ def _build_retention(
     the overwhelming majority of processes (no perfusion/evaporation
     modeling), not a data gap standing in for something unknown.
     """
+
+    def cell(vc: Outflow, vc_name: str, sp_name: str) -> Optional[float]:
+        if sp_name in vc.retention:
+            return float(vc.retention[sp_name])
+        return None
+
+    return _build_vc_matrix(process, vc_names, name_modeled_RMCs, Outflow, cell)
+
+
+def _build_vc_matrix(
+    process: BioProcess,
+    vc_names: Tuple[str, ...],
+    name_modeled_RMCs: Tuple[str, ...],
+    vc_type: type,
+    cell_value: Callable[[Any, str, str], Optional[float]],
+) -> jnp.ndarray:
+    """Shared ``(len(vc_names), len(RMCs))`` matrix builder.
+
+    For each ``vc_name`` whose volume change is an instance of ``vc_type``,
+    fills row ``k`` with ``cell_value(vc, vc_name, sp_name)`` for every RMC
+    column where it returns a value; other cells stay 0. Used by
+    ``_build_cin``/``_build_retention``, which differ only in per-cell
+    extraction semantics (see their docstrings for why a missing entry means
+    different things in each).
+    """
     n = len(vc_names)
     n_RMCs = len(name_modeled_RMCs)
-    retention = jnp.zeros((n, n_RMCs), dtype=float)
+    matrix = jnp.zeros((n, n_RMCs), dtype=float)
     for k, vc_name in enumerate(vc_names):
         vc = process.volume.volume_changes[vc_name]
-        if not isinstance(vc, Outflow):
+        if not isinstance(vc, vc_type):
             continue
         for j, sp_name in enumerate(name_modeled_RMCs):
-            if sp_name in vc.retention:
-                retention = retention.at[k, j].set(float(vc.retention[sp_name]))
-    return retention
+            value = cell_value(vc, vc_name, sp_name)
+            if value is not None:
+                matrix = matrix.at[k, j].set(value)
+    return matrix
 
 
 # ---------------------------------------------------------------------------
@@ -859,7 +864,6 @@ def extract_discrete_events(
     timestamp. At most one sample and one bolus per timestamp.
     """
     events: List[Dict[str, Any]] = []
-    n_RMCs = len(ordering.name_modeled_RMCs)
 
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.is_continuous:
@@ -880,20 +884,7 @@ def extract_discrete_events(
                         "reasonable way to fabricate an entire medium's "
                         "identity from nothing — define feed_medium explicitly."
                     )
-                Cin_event = jnp.zeros(n_RMCs)
-                for j, sp_name in enumerate(ordering.name_modeled_RMCs):
-                    if sp_name not in vc.feed_medium.components:
-                        continue
-                    conc = vc.feed_medium.components[sp_name].concentration
-                    if isinstance(conc, StaticVariable):
-                        Cin_event = Cin_event.at[j].set(float(conc.value))
-                    else:
-                        raise NotImplementedError(
-                            "TimeSeries feed concentrations are not yet "
-                            f"supported. Found TimeSeries for species "
-                            f"{sp_name!r} in feed {vc.feed_medium.name!r} of "
-                            f"volume change {vc_name!r}."
-                        )
+                Cin_event = _build_cin(process, (vc_name,), ordering.name_modeled_RMCs)[0]
                 events.append(
                     dict(
                         t=float(t_event),

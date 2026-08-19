@@ -13,6 +13,7 @@ from .dataclasses import (
     TimeSeries,
     Inflow,
     Outflow,
+    _check_outflow_retention,
 )
 
 
@@ -730,30 +731,8 @@ def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
 
     if process.volume and process.volume.volume_changes:
         for vc_name, vc in process.volume.volume_changes.items():
-            if not isinstance(vc, Outflow) or not vc.retention:
-                continue
-            if not vc.is_continuous:
-                errors.append(
-                    f"Outflow '{vc_name}' sets retention {vc.retention!r} but is "
-                    "discrete (is_continuous=False) — retention is only "
-                    "implemented for continuous Outflows and would be silently "
-                    "ignored here"
-                )
-                continue
-            unknown = [k for k in vc.retention if k not in rmc_names]
-            if unknown:
-                errors.append(
-                    f"Outflow '{vc_name}' retention references unknown reactor "
-                    f"component(s): {unknown}"
-                )
-            out_of_range = {
-                k: v for k, v in vc.retention.items() if not (0.0 <= v <= 1.0)
-            }
-            if out_of_range:
-                errors.append(
-                    f"Outflow '{vc_name}' retention value(s) out of [0, 1]: "
-                    f"{out_of_range}"
-                )
+            if isinstance(vc, Outflow):
+                errors.extend(_check_outflow_retention(vc_name, vc, rmc_names))
 
     if errors:
         return _check_result("FAIL", "outflow_retention", _join_details(errors))

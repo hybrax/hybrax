@@ -47,7 +47,7 @@ fig = bp.plot_process(process)
 |--------|-------------|
 | [`dataclasses`](documentation/02_data_model.md) | Hierarchical data structures (BioProcessCollection, BioProcess, etc.) |
 | [`time_series`](documentation/06_time_series.md) | Time-series container with optional fitted spline coefficients (JAX pytree) |
-| [`splines`](documentation/07_splines.md) | Pseudobatch transformation and segmented spline fitting |
+| [`splines`](documentation/07_splines.md) | Segmented spline fitting |
 | [`mechanistic`](documentation/08_mechanistic.md) | ODE right-hand side and control splines (integration lives in bp-train) |
 | [`serialization`](documentation/03_serialization.md) | JSON save/load for the full data hierarchy |
 | [`validate`](documentation/04_validation.md) | Data integrity checks (14 validators) |

@@ -5,7 +5,7 @@ JAX-compatible dataclasses for standardized bioprocess data
 
 import contextlib
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 import jax.numpy as jnp
 
 from ._logging import get_logger
@@ -286,6 +286,44 @@ class Outflow(VolumeChange):
     # physical meaning on Inflow (feeds add, never retain).
 
 
+def _check_outflow_retention(
+    vc_name: str, vc: "Outflow", rmc_names: Union[Set[str], frozenset]
+) -> List[str]:
+    """Return validation errors for one Outflow's retention (empty = valid).
+
+    Single source of truth for the three retention rules, shared by
+    :func:`BioProcess.__post_init__`, :func:`mechanistic.get_process_ordering`,
+    and :func:`validate.validate_outflow_retention` — each enforces it at a
+    different point (construction, RHS-build, opt-in audit) since ``Outflow``
+    is a plain mutable dataclass and construction-time validity does not
+    guarantee ongoing validity.
+    """
+    if not vc.retention:
+        return []
+    if not vc.is_continuous:
+        return [
+            f"Outflow {vc_name!r} sets retention {vc.retention!r} but is "
+            "discrete (is_continuous=False). Retention is only implemented "
+            "for continuous Outflows; setting it on a discrete Outflow would "
+            "be silently ignored by the RHS ODE."
+        ]
+    errors: List[str] = []
+    unknown = [name for name in vc.retention if name not in rmc_names]
+    if unknown:
+        errors.append(
+            f"Outflow {vc_name!r} retention references unknown reactor "
+            f"component(s): {unknown}."
+        )
+    out_of_range = {
+        name: value for name, value in vc.retention.items() if not 0.0 <= value <= 1.0
+    }
+    if out_of_range:
+        errors.append(
+            f"Outflow {vc_name!r} retention value(s) out of [0, 1]: {out_of_range}."
+        )
+    return errors
+
+
 # Union type alias for convenience
 VolumeChange = Union[Inflow, Outflow]
 
@@ -482,9 +520,22 @@ class BioProcess:
     def __post_init__(self):
         if self.volume is None:
             raise ValueError("BioProcess.volume is required")
+        if self.reactor_medium is None:
+            raise ValueError("BioProcess.reactor_medium is required")
+        if self.time_axis is None:
+            raise ValueError("BioProcess.time_axis is required")
         if self.biological_ode is None:
             self.biological_ode = _auto_generate_biological_ode(self)
         _announce_missing_inflow_concentrations(self)
+        rmc_names = set(self.reactor_medium.components)
+        retention_errors = [
+            error
+            for vc_name, vc in self.volume.volume_changes.items()
+            if isinstance(vc, Outflow)
+            for error in _check_outflow_retention(vc_name, vc, rmc_names)
+        ]
+        if retention_errors:
+            raise ValueError("\n".join(retention_errors))
 
 
 @dataclass(kw_only=True)

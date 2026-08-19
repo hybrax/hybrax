@@ -543,20 +543,21 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
             notes=p_data["metadata"].get("notes"),
         )
 
-    # Reconstruct time axis
-    time_axis = None
-    if p_data.get("time_axis"):
-        time_axis = TimeAxis(
-            unit=p_data["time_axis"]["unit"],
-            start=p_data["time_axis"]["start"],
-            end=p_data["time_axis"]["end"],
-            time_reference=p_data["time_axis"]["time_reference"],
-        )
+    # Reconstruct time axis (required — no default on BioProcess.time_axis)
+    if p_data.get("time_axis") is None:
+        raise ValueError("BioProcess payload is missing required 'time_axis'.")
+    ta_data = p_data["time_axis"]
+    time_axis = TimeAxis(
+        unit=ta_data["unit"],
+        start=ta_data["start"],
+        end=ta_data["end"],
+        time_reference=ta_data["time_reference"],
+    )
 
-    # Reconstruct reactor medium
-    reactor_medium = None
-    if p_data.get("reactor_medium"):
-        reactor_medium = _dict_to_reactor_medium(p_data["reactor_medium"])
+    # Reconstruct reactor medium (required — no default on BioProcess.reactor_medium)
+    if p_data.get("reactor_medium") is None:
+        raise ValueError("BioProcess payload is missing required 'reactor_medium'.")
+    reactor_medium = _dict_to_reactor_medium(p_data["reactor_medium"])
 
     # Reconstruct process variables
     process_variables = {
@@ -724,9 +725,12 @@ def _dict_to_volume_change(vc_data: Dict):
             "examples/*/02_load_all_processes.ipynb."
         )
 
-    values = None
-    if vc_data.get("values"):
-        values = _timeseries_from_dict_payload(vc_data["values"])
+    # required — no default on VolumeChange.values
+    if vc_data.get("values") is None:
+        raise ValueError(
+            f"VolumeChange {vc_data.get('name')!r} is missing required 'values'."
+        )
+    values = _timeseries_from_dict_payload(vc_data["values"])
 
     common = dict(
         name=vc_data["name"],
@@ -739,9 +743,12 @@ def _dict_to_volume_change(vc_data: Dict):
     _reject_legacy_interpolator_payload(vc_data.get("interpolator"), "VolumeChange")
 
     if vc_type == "Inflow":
-        feed_medium = None
-        if vc_data.get("feed_medium"):
-            feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
+        # required — no default on Inflow.feed_medium
+        if vc_data.get("feed_medium") is None:
+            raise ValueError(
+                f"Inflow {vc_data.get('name')!r} is missing required 'feed_medium'."
+            )
+        feed_medium = _dict_to_feed_medium(vc_data["feed_medium"])
         return Inflow(**common, feed_medium=feed_medium)
     elif vc_type == "Outflow":
         retention = vc_data.get("retention", {})
