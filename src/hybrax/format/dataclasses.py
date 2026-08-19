@@ -193,6 +193,7 @@ class ReactorMediumComponent:
     name: str  # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"
     concentration: TimeSeries | StaticVariable
+    pseudobatch_concentration: TimeSeries | StaticVariable | None = None
     bounds: Bounds = _DEFAULT_RMC_BOUNDS
 
 
@@ -496,6 +497,23 @@ def _announce_missing_inflow_concentrations(process: "BioProcess") -> None:
             )
 
 
+@dataclass
+class PseudobatchTransform:
+    """
+    Process-level pseudobatch transform bundle.
+
+    `adf` stores the shared accumulated dilution factor. `feed_corrections`
+    stores species-specific feed corrections needed to map between transformed
+    and real concentration. `sample_compensation` and `accumulated_feeds` store
+    optional helper traces for transparency/debugging.
+    """
+
+    adf: TimeSeries
+    feed_corrections: Dict[str, TimeSeries]
+    sample_compensation: Optional[TimeSeries] = None
+    accumulated_feeds: Dict[str, TimeSeries] = field(default_factory=dict)
+
+
 # ============================================================
 # Process Level
 # ============================================================
@@ -516,6 +534,7 @@ class BioProcess:
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     discrete_events: Optional[DiscreteEvents] = None
     biological_ode: Optional[BiologicalOde] = None
+    pseudobatch_transform: Optional[PseudobatchTransform] = None
 
     def __post_init__(self):
         if self.volume is None:

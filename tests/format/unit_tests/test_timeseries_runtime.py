@@ -23,6 +23,7 @@ from bp_format import (
 )
 from bp_format.inspect import print_process_structure
 from bp_format.mechanistic import get_control_splines
+from bp_format.splines import build_pseudobatch_inputs
 
 
 def _legacy_timepoints_usages(path: Path) -> list[str]:
@@ -214,6 +215,19 @@ def _build_process_with_discrete_continuous_feed() -> BioProcess:
         ),
         process_variables={},
     )
+
+
+def test_pseudobatch_uses_spline_evaluation_for_feed_series() -> None:
+    process = _build_process_with_spline_only_feed()
+    inputs = build_pseudobatch_inputs(process, "biomass")
+
+    dense_times = inputs["dense_times"]
+    accumulated_feed = inputs["accumulated_feed_dense"]
+
+    assert dense_times.shape[0] >= 3
+    assert accumulated_feed.shape == dense_times.shape
+    assert float(accumulated_feed[0]) == 0.0
+    assert jnp.isclose(accumulated_feed[-1], 1.0, atol=1e-6)
 
 
 def test_inspect_prints_integral_for_continuous_spline_series(capsys) -> None:

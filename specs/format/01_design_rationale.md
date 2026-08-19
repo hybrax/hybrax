@@ -22,7 +22,7 @@ pytree, so a `TimeSeries`, `ControlSplines`, or `RhsOde` can cross a JIT
 boundary untouched.
 
 **Only the numerical leaves are Equinox modules.** `TimeSeries`, `PPoly`,
-`ControlSplines`, and `RhsOde` are `eqx.Module`.
+`ControlSplines`, `RhsOde`, and `BacktransformSpline` are `eqx.Module`.
 Everything else — `BioProcess`, `BioProcessCollection`, `ReactorMedium`, … —
 is a plain `@dataclass`. Those containers hold `Dict[str, ...]` fields that
 are edited by name outside any JIT boundary; making them pytrees would buy
@@ -34,13 +34,14 @@ nothing and cost mutability.
 - `eqx.Module` instances are immutable. Use `dataclasses.replace` or
   `eqx.tree_at` for functional updates.
 - Plain dataclasses (`BioProcess` and friends) *are* mutable — pipeline steps
-  assign fields like `process.biological_ode = ...` in place.
+  assign `process.pseudobatch_transform = ...` in place.
 
 **float64 everywhere.** Importing `bp_format` sets `JAX_ENABLE_X64=true` before
-JAX loads. Spline fitting and differentiation, and the mechanistic RHS's ODE
-integration, both compound floating-point error over many steps; float32 loses
-too much there. A `TimeSeries` constructed from float32 arrays raises rather
-than silently upcasting, so precision loss cannot enter through the data.
+JAX loads. Pseudobatch math divides by an accumulated dilution factor and
+differentiates splines, and the mechanistic RHS's ODE integration compounds
+floating-point error over many steps; float32 loses too much in both. A
+`TimeSeries` constructed from float32 arrays raises rather than silently
+upcasting, so precision loss cannot enter through the data.
 
 **Importing is cheap.** `bp_format/__init__.py` resolves its exports lazily via
 `__getattr__`, so `import bp_format` does not pull in JAX, sympy, or matplotlib
@@ -98,9 +99,10 @@ present.
 - Raw samples are ground truth for loss computation and validation.
 - The spline lets an ODE solver evaluate a signal at arbitrary times without
   re-interpolating at every step.
-- A spline-only series is legitimate: `make_constant_spline` and
-  `make_cubic_ppoly` build spline state directly from known values or arrays,
-  with no underlying "measurements".
+- A spline-only series is legitimate: pseudobatch helper traces such as ADF
+  are built directly as exact polynomial pieces, and `make_constant_spline`/
+  `make_cubic_ppoly` build spline state directly from known values or arrays —
+  neither has underlying "measurements".
 
 **`TimeSeries` does not know if its data is continuous.** That comes from the
 parent. A `VolumeChange` with `is_continuous=True` means the series is a
@@ -112,7 +114,48 @@ discrete bolus or sampling events, where fitting a spline would be meaningless.
 a few fused multiply-adds that map directly onto JAX. B-spline evaluation needs
 recursive knot-vector lookups that vectorize poorly.
 
-## 5. Check the data, then fail loudly
+## 5. Pseudobatch normalization
+
+In a fed-batch run, a measured concentration changes for two unrelated reasons:
+the cells did something, and the broth got diluted or sampled. That makes raw
+`c(t)` jump at every bolus and behave badly under spline fitting.
+
+The pseudobatch transform (Hesselberg-Thomsen et al., 2024) separates the two:
+
+```
+c*(t) = c(t) · ADF(t) − fc(t)          forward
+c(t)  = (c*(t) + fc(t)) / ADF(t)       inverse
+```
+
+- **`ADF(t)`** — accumulated dilution factor — normalizes to the initial volume.
+- **`fc(t)`** — feed correction — subtracts mass that arrived via feeds.
+- **`c*(t)`** is what the concentration *would have been* in a batch with the
+  same biology: smooth across feeds and samples, and therefore a good spline
+  target.
+
+**Why this is central:** smooth curves fit well, batch and fed-batch runs become
+comparable, and the discontinuities stay where they belong — in `ADF` and `fc`,
+not smeared through the concentration spline.
+
+`ADF` and `fc` are **not step functions.** Continuous feed makes both vary
+smoothly; only boluses cause true jumps. They are stored as exact piecewise
+polynomials with `continuity_side="left"`, so a value at an event time is the
+pre-event value and the jump takes effect immediately after. Treating them as
+globally piecewise-constant would be wrong for any continuously fed process.
+
+**Scope: Inflow and discrete Outflow (sampling) only.** The `ADF(t) = V(t) ·
+S(t) / V_init` identity above only solves the required growth-rate ODE because
+`V(t)` is built from continuous Inflows alone (`dV/dt = Fin`) — a continuous
+Outflow (perfusion, continuous harvest/bleed) changes real reactor volume too
+(`dV/dt = Fin − Fout`) and the required ADF growth rate would then need
+`1/V(t)` for a genuine cubic `V(t)`, which does not integrate to a polynomial
+in general — regardless of `Outflow.retention`. Rather than produce silently
+wrong numbers, `build_pseudobatch_transform`/`build_pseudobatch_inputs` raise
+`NotImplementedError` for any process containing a continuous Outflow.
+
+Details: [07_splines.md](07_splines.md).
+
+## 6. Check the data, then fail loudly
 
 Bioprocess data arrives from many labs with many conventions. The recurring
 problems are always the same: sign confusion on feeds, a missing biomass
@@ -130,7 +173,8 @@ consistency.
 **Constructors and builders raise.** Anything that would produce silently wrong
 numbers fails immediately: a `TimeSeries` with unsorted times, a feed medium
 naming a species that is not in the reactor, a name used by both a state and a
-rate, a cyclic algebraic definition. Inside JIT, `eqx.error_if` guards the same
+rate, a cyclic algebraic definition, a `pseudobatch_concentration` trace with
+no matching transform bundle. Inside JIT, `eqx.error_if` guards the same
 invariants at runtime — a reactor volume at or below `1e-10` aborts the solve
 instead of dividing by nearly zero.
 

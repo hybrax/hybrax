@@ -205,8 +205,15 @@ undefined ordering.
 ### `build_state_splines(process, ordering)`
 
 Returns `{state_name: callable}` for every non-volume state, giving the measured
-trajectory as a continuous function, built directly from each state's stored
-`PPoly`; a `StaticVariable` becomes a constant piece.
+trajectory as a continuous function.
+
+- Pseudobatch-transformed reactor components return a `BacktransformSpline`, so
+  the callable yields **real-space** concentration.
+- Everything else returns the stored `PPoly` directly; a `StaticVariable`
+  becomes a constant piece.
+
+The pseudobatch bundle is validated first: a `c*` trace without a matching
+`feed_corrections` entry (or the reverse) raises.
 
 ## Example
 

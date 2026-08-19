@@ -127,8 +127,8 @@ floating arrays, `null` remains Python `None`.
 - `times` and `values` may be absent for a spline-only series.
 - The `"type": "TimeSeries"` tag is present only where the field could also hold
   a `StaticVariable` (component concentrations, process-variable values).
-  Fields that are always a `TimeSeries` — volume-change `values` and
-  `total_volume` — omit it.
+  Fields that are always a `TimeSeries` — volume-change `values`,
+  `total_volume`, and everything in `pseudobatch_transform` — omit it.
 
 ### `StaticVariable` payloads
 
@@ -175,6 +175,30 @@ object, including `{}`; the loader defaults an absent `retention` key to `{}`
 but rejects a present non-object value.
 
 A payload with no `"type"` key is rejected as an old schema.
+
+### `pseudobatch_transform` payload
+
+Process-level, holding only what is shared across species:
+
+```json
+"pseudobatch_transform": {
+  "adf": {"breaks": "...", "coeffs": "...", "continuity_side": "left", "...": "..."},
+  "feed_corrections":  {"glucose": {"...": "..."}},
+  "sample_compensation": {"...": "..."},
+  "accumulated_feeds": {"feed": {"...": "..."}}
+}
+```
+
+Per-species `pseudobatch_concentration` is *not* here — it lives on each
+component, tagged with
+
+```json
+"metadata": {"transform": {"name": "pseudo_batch", "component": "glucose",
+                           "is_constant": false, "constant_value": null}}
+```
+
+`adf` and `feed_corrections` are required whenever the key is present; a partial
+bundle raises on load rather than loading silently.
 
 ### `bounds` payloads
 
@@ -238,6 +262,8 @@ Loading fails loudly rather than guessing, for:
 |---------|---------|
 | Sibling `"interpolator"` object on a component, PV, or volume change | Regenerate with TimeSeries-only spline storage |
 | `VolumeChange` with no `"type"` key | Old schema; regenerate the dataset |
+| `metadata.transform.series` (executable transform nested in metadata) | Store pseudobatch state in `process.pseudobatch_transform` |
+| `pseudobatch_transform` missing `adf` or `feed_corrections` | Missing required key |
 
 ## Examples
 

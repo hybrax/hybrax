@@ -56,6 +56,8 @@ part of `dc/dt` you wrote and which part came from the volume machinery.
 
 One panel per variable — reactor components, process variables, total volume —
 with discrete samples as markers and any fitted spline drawn through them.
+Pseudobatch-transformed species are shown backtransformed into real space, so
+the curve is directly comparable to the measurements.
 
 Returns the matplotlib figure.
 

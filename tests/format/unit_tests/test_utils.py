@@ -28,6 +28,7 @@ from bp_format import (
     plot_process,
     plot_collection,
 )
+from bp_format.splines import build_pseudobatch_transform
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +757,81 @@ def test_plot_process_draws_curve_for_spline_only_series():
     idx_right = int(np.argmin(np.abs(x_dense - 1.5)))
     assert y_dense[idx_mid] == pytest.approx(0.25, abs=5e-3)
     assert y_dense[idx_right] == pytest.approx(2.25, abs=5e-3)
+    plt.close(fig)
+
+
+def test_plot_process_draws_pseudobatch_bundle_backtransform_curve():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    feed = FeedMedium(
+        name="feed",
+        density=1.0,
+        density_unit="kg/L",
+        components={
+            "glucose": FeedMediumComponent(
+                name="glucose",
+                unit="g/L",
+                concentration=StaticVariable(value=100.0),
+                is_controlled=True,
+            )
+        },
+    )
+    process = BioProcess(
+        metadata=BioProcessMetadata(name="pb_plot", process_type="fed_batch"),
+        time_axis=TimeAxis(unit="h", start=0.0, end=6.0, time_reference="t0"),
+        volume=Volume(
+            initial_volume=1.0,
+            unit="L",
+            volume_changes={
+                "bolus": Inflow(
+                    name="bolus",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=False,
+                    feed_medium=feed,
+                    values=TimeSeries(
+                        times=jnp.array([3.0]),
+                        values=jnp.array([0.2]),
+                    ),
+                )
+            },
+        ),
+        reactor_medium=ReactorMedium(
+            name="medium",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": ReactorMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.array([0.0, 2.0, 4.0, 6.0]),
+                        values=jnp.array([0.5, 1.0, 1.5, 2.0]),
+                    ),
+                ),
+                "glucose": ReactorMediumComponent(
+                    name="glucose",
+                    unit="g/L",
+                    concentration=TimeSeries(
+                        times=jnp.array([0.0, 2.0, 4.0, 6.0]),
+                        values=jnp.array([10.0, 9.0, 8.0, 7.0]),
+                    ),
+                ),
+            },
+        ),
+    )
+    transform = build_pseudobatch_transform(process, ["glucose"])
+    process.pseudobatch_transform = transform
+
+    fig = plot_process(process)
+    axes = [ax for ax in fig.axes if ax.get_visible()]
+    glucose_ax = next(
+        ax for ax in axes if ax.get_title() == "glucose [g/L] (ReactorMedium)"
+    )
+    assert len(glucose_ax.get_lines()) >= 1
+    assert len(glucose_ax.get_lines()[0].get_xdata()) == 500
     plt.close(fig)
 
 

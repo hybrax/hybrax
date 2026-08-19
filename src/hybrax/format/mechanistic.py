@@ -35,8 +35,8 @@ extract_discrete_events(process, ordering) -> list[dict]
     ``ordering.name_modeled_RMCs``.
 
 build_state_splines(process, ordering) -> dict
-    Spline callables for every non-volume state, built directly from the
-    stored real-concentration TimeSeries.
+    Spline callables for every non-volume state. Pseudobatch-transformed
+    reactor components return a backtransform spline.
 
 build_algebraic_func(process) -> Callable
     Returns ``f(state_values, ctrl_pv_values, rates) -> {name: scalar}`` for
@@ -65,6 +65,7 @@ from .dataclasses import (
 )
 from .splines import (
     _MIN_REACTOR_VOLUME,
+    build_backtransform_spline,
     make_cubic_ppoly,
 )
 from .time_series import PPoly
@@ -938,8 +939,25 @@ def extract_discrete_events(
 
 
 # ---------------------------------------------------------------------------
-# State splines
+# State splines + pseudobatch validation
 # ---------------------------------------------------------------------------
+
+
+def _is_pseudobatch_carrier(value: Any) -> bool:
+    """Whether a TimeSeries carries lightweight pseudobatch metadata."""
+    if not isinstance(value, TimeSeries) or not isinstance(value.metadata, dict):
+        return False
+    transform = value.metadata.get("transform")
+    return isinstance(transform, dict) and transform.get("name") == "pseudo_batch"
+
+
+def _reject_orphan_pseudobatch_metadata(value: Any, species_name: str) -> None:
+    """Fail when pseudobatch metadata exists without process-level transform bundle."""
+    if _is_pseudobatch_carrier(value):
+        raise ValueError(
+            f"Species {species_name!r} carries pseudobatch metadata but is "
+            "not present in process.pseudobatch_transform."
+        )
 
 
 def _timeseries_samples_match(left: TimeSeries, right: TimeSeries) -> bool:
@@ -962,27 +980,90 @@ def _timeseries_samples_match(left: TimeSeries, right: TimeSeries) -> bool:
     )
 
 
+def _validate_process_pseudobatch_transform(
+    process: BioProcess,
+    ordering: ProcessOrdering,
+):
+    """Validate the process-level pseudobatch bundle before runtime use."""
+    transform = getattr(process, "pseudobatch_transform", None)
+    if transform is None:
+        for sp_name in ordering.name_modeled_RMCs:
+            comp = process.reactor_medium.components[sp_name]
+            _reject_orphan_pseudobatch_metadata(comp.pseudobatch_concentration, sp_name)
+        return None
+
+    for sp_name in ordering.name_modeled_RMCs:
+        comp = process.reactor_medium.components[sp_name]
+        if comp.pseudobatch_concentration is None:
+            if sp_name in transform.feed_corrections:
+                raise ValueError(
+                    f"Pseudobatch species {sp_name!r} has a feed_corrections "
+                    "entry but no pseudobatch_concentration."
+                )
+            _reject_orphan_pseudobatch_metadata(comp.concentration, sp_name)
+            continue
+        if sp_name not in transform.feed_corrections:
+            raise ValueError(
+                f"Pseudobatch species {sp_name!r} has pseudobatch_concentration "
+                "but no matching feed_corrections entry."
+            )
+        if not isinstance(comp.pseudobatch_concentration, (TimeSeries, StaticVariable)):
+            raise TypeError(
+                f"Pseudobatch species {sp_name!r} pseudobatch_concentration must be "
+                "a TimeSeries or StaticVariable."
+            )
+
+    for species_key in transform.feed_corrections:
+        if species_key not in process.reactor_medium.components:
+            raise ValueError(
+                f"Pseudobatch feed correction {species_key!r} is not a reactor "
+                "component."
+            )
+        comp = process.reactor_medium.components[species_key]
+        if comp.pseudobatch_concentration is None:
+            raise ValueError(
+                f"Pseudobatch feed correction {species_key!r} has no matching "
+                "pseudobatch_concentration."
+            )
+
+    return transform
+
+
 def build_state_splines(
     process: BioProcess,
     ordering: ProcessOrdering,
 ) -> Dict[str, Any]:
     """Build state splines from stored TimeSeries spline state.
 
-    Reactor-component and process-variable states are converted directly
-    from their TimeSeries or StaticVariable carriers.
+    Pseudobatch-transformed reactor components (identified through the
+    process-level ``pseudobatch_transform`` bundle) are returned as
+    real-space backtransform splines. Other reactor-component and
+    process-variable states are converted directly from their TimeSeries
+    or StaticVariable carriers.
 
     Returns ``{state_name: spline_callable}`` for every non-volume state
     in ``ordering.name_modeled_RMCs + ordering.name_modeled_PVs``.
     """
     state_splines: Dict[str, Any] = {}
+    pseudobatch_transform = _validate_process_pseudobatch_transform(process, ordering)
 
     for sp_name in ordering.name_modeled_RMCs:
         comp = process.reactor_medium.components[sp_name]
-        state_splines[sp_name] = _value_to_ppoly(
-            comp.concentration,
-            t_start=float(process.time_axis.start),
-            t_end=float(process.time_axis.end),
-        )
+        concentration = comp.concentration
+        if (
+            pseudobatch_transform is not None
+            and comp.pseudobatch_concentration is not None
+            and sp_name in pseudobatch_transform.feed_corrections
+        ):
+            state_splines[sp_name] = build_backtransform_spline(process, sp_name)
+        else:
+            _reject_orphan_pseudobatch_metadata(comp.pseudobatch_concentration, sp_name)
+            _reject_orphan_pseudobatch_metadata(concentration, sp_name)
+            state_splines[sp_name] = _value_to_ppoly(
+                concentration,
+                t_start=float(process.time_axis.start),
+                t_end=float(process.time_axis.end),
+            )
 
     for pv_name in ordering.name_modeled_PVs:
         pv = process.process_variables[pv_name]
