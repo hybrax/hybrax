@@ -45,11 +45,11 @@ model_predict(trained_wrapper, config, collection, *, process_names=None, grid_n
     -> {process_name: DenseProcessExport}
 reconstruct_training(run_dir, config=None, document=None, *, custom_module=None,
                      custom_py=None, training_process_names=None) -> ReconstructedTraining
-reconstruct_run(run_dir, config, document=None) -> (reaction_module, loss_module, store, collection)
 ```
 
-**Addressing a model.** All three take a **path**, not a run dir plus a selector
-string. `path` may be a run directory, a checkpoint directory, or a `params.eqx`.
+**Addressing a model.** `model_load` and `model_reload` take a **path**, not a
+run dir plus a selector string. `path` may be a run directory, a checkpoint
+directory, or a `params.eqx`.
 A directory resolves its weights in one ordered pass:
 
 ```
@@ -62,6 +62,13 @@ checkpoint. Name a specific checkpoint by its path —
 checkpoint dir bundles its own `config.json`, `custom.py` and `prepared.json.gz`.
 A file that is not named `params.eqx` raises rather than silently falling through
 to the run's final weights.
+
+Standalone `forward` shares that directory precedence and run-directory lookup,
+but deliberately accepts any existing weights filename, including historical
+fold and notebook checkpoints. When a referenced subdirectory has no weights,
+`forward` may fall back to the owning run's weights; direct model loading does
+not. These distinct file contracts are implemented by one shared resolver in
+`serialization.py`.
 
 - `model_load` reconstructs a trained model from a run directory **alone**. It
   loads the run's prepared collection to rebuild the **static** half of the wrapper
@@ -94,9 +101,6 @@ to the run's final weights.
   did. A missing, tampered, or stale hash is an error: there is no optional bypass
   and no forward-only variant. Every loadable run record carries that hash —
   `train` writes it, and each LOO fold config inherits the producer-validated one.
-  `reconstruct_run` is a thin caller returning only
-  `(reaction_module, loss_module, store, collection)`.
-
   `model_reload` is deliberately **not** on this path: it reuses the caller's
   wrapper structure and never reads a collection at all (see the danger note).
 

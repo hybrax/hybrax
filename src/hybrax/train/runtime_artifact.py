@@ -1291,6 +1291,8 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
         augmentation_parents=augmentation_parents,
         selected_processes=fold.train,
     )
+    # Fold isolation is intentional: validate every declaration and filename,
+    # but open and checksum only shared arrays plus the selected fold's scales.
     required = {
         name for name in expected_all if name.startswith("shared.")
     } | selected_scale_keys

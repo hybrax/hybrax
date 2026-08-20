@@ -87,12 +87,12 @@ def estimate_all_scales(runtime_data, target_names, config):
 # ---------------------------------------------------------------------------
 
 
-def _controlled_feed(cin: float) -> FeedVolumeChange:
+def _controlled_feed(cin: float, final_amount: float = 0.1) -> FeedVolumeChange:
     """A controlled continuous feed carrying biomass at ``cin`` g/L.
 
     A feed is what makes the reference-process choice observable: the
-    deserialisation template bakes ONE process's ``Cin`` row, and without a feed
-    every ``Cin`` matrix is zero-width and every reference is indistinguishable.
+    deserialisation template bakes ONE process's ``Cin`` row and controls, and
+    without a feed every reference is indistinguishable.
     """
     return FeedVolumeChange(
         name="feed_A",
@@ -101,7 +101,7 @@ def _controlled_feed(cin: float) -> FeedVolumeChange:
         is_continuous=True,
         values=TimeSeries(
             times=jnp.asarray([0.0, 1.0, 2.0]),
-            values=jnp.asarray([0.0, 0.05, 0.1]),
+            values=jnp.asarray([0.0, final_amount / 2, final_amount]),
         ),
         feed_medium=FeedMedium(
             name="feed",
@@ -123,6 +123,7 @@ def _collection_with(
     levels: dict[str, tuple[float, ...]],
     *,
     feed_cin: dict[str, float] | None = None,
+    feed_amount: dict[str, float] | None = None,
 ) -> BioProcessCollection:
     """A collection with one process per entry, each at its own biomass level.
 
@@ -145,7 +146,10 @@ def _collection_with(
                 volume,
                 volume_changes={
                     **volume.volume_changes,
-                    "feed_A": _controlled_feed(feed_cin[name]),
+                    "feed_A": _controlled_feed(
+                        feed_cin[name],
+                        0.1 if feed_amount is None else feed_amount[name],
+                    ),
                 },
             )
         processes[name] = replace(
@@ -164,8 +168,11 @@ def _write_prepared(
     levels: dict[str, tuple[float, ...]],
     *,
     feed_cin: dict[str, float] | None = None,
+    feed_amount: dict[str, float] | None = None,
 ) -> Path:
-    save_process_collection(_collection_with(levels, feed_cin=feed_cin), path)
+    save_process_collection(
+        _collection_with(levels, feed_cin=feed_cin, feed_amount=feed_amount), path
+    )
     return path
 
 
@@ -278,6 +285,7 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
         tmp_path / "prepared.json",
         {"p1": (1.0, 0.8, 0.64), "p2": (2.0, 1.6, 1.28)},
         feed_cin={"p1": 3.0, "p2": 40.0},
+        feed_amount={"p1": 0.1, "p2": 0.8},
     )
     run_dir = _train(tmp_path, name="feed", prepared=prepared, processes=("p1", "p2"))
 
@@ -288,6 +296,12 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
     )
     np.testing.assert_allclose(
         np.asarray(rebuilt.template_wrapper.rhs_ode.Cin_controlled_FVCs), [[3.0]]
+    )
+    np.testing.assert_allclose(
+        rebuilt.template_wrapper.controls.eval_controlled_FVCs_cumulative(
+            jnp.asarray(2.0), None
+        ),
+        [0.1],
     )
     assert rebuilt.training_process_names == ("p1", "p2")
 
@@ -300,10 +314,20 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
         np.asarray(reversed_selection.template_wrapper.rhs_ode.Cin_controlled_FVCs),
         [[40.0]],
     )
+    np.testing.assert_allclose(
+        reversed_selection.template_wrapper.controls.eval_controlled_FVCs_cumulative(
+            jnp.asarray(2.0), None
+        ),
+        [0.8],
+    )
 
     # Both loaders resolve the same reference process from the same record.
     loaded, _config = bp_train.model_load(run_dir)
     np.testing.assert_allclose(np.asarray(loaded.rhs_ode.Cin_controlled_FVCs), [[3.0]])
+    np.testing.assert_allclose(
+        loaded.controls.eval_controlled_FVCs_cumulative(jnp.asarray(2.0), None),
+        [0.1],
+    )
     result = forward_from_collection(
         load_process_collection(prepared),
         model_path=_params(run_dir),
@@ -314,6 +338,12 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
     assert result.training_process_names == ("p1", "p2")
     np.testing.assert_allclose(
         np.asarray(result.trained_wrapper.rhs_ode.Cin_controlled_FVCs), [[3.0]]
+    )
+    np.testing.assert_allclose(
+        result.trained_wrapper.controls.eval_controlled_FVCs_cumulative(
+            jnp.asarray(2.0), None
+        ),
+        [0.1],
     )
 
 

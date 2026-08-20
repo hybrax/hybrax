@@ -36,7 +36,10 @@ from bp_train.serialization import (
     content_hash,
     load_opt_state,
     load_trained_wrapper,
-    reconstruct_run,
+    reconstruct_training,
+    resolve_forward_model_path,
+    resolve_model_path,
+    resolve_run_dir,
     save_model,
     save_opt_state,
 )
@@ -44,6 +47,31 @@ from bp_train.training_data import TrainingDataStore
 
 # Reuse the tiny single-process reaction module + collection fixtures.
 from test_checkpointing import _LinearReactionModule
+
+
+def test_shared_model_resolvers_preserve_forward_and_load_file_contracts(tmp_path):
+    run_dir = tmp_path / "run"
+    model_dir = run_dir / "model"
+    checkpoint_dir = run_dir / "checkpoints" / "step_1"
+    model_dir.mkdir(parents=True)
+    checkpoint_dir.mkdir(parents=True)
+    (run_dir / "config.json").write_text("{}", encoding="utf-8")
+    final_weights = model_dir / "params.eqx"
+    final_weights.write_bytes(b"final")
+    notebook_weights = checkpoint_dir / "notebook.eqx"
+    notebook_weights.write_bytes(b"notebook")
+
+    assert resolve_run_dir(checkpoint_dir) == run_dir
+    assert resolve_model_path(run_dir) == (run_dir, final_weights)
+    assert resolve_forward_model_path(notebook_weights) == (
+        run_dir,
+        notebook_weights,
+    )
+    assert resolve_forward_model_path(checkpoint_dir) == (run_dir, final_weights)
+    with pytest.raises(FileNotFoundError, match="must be a params.eqx"):
+        resolve_model_path(notebook_weights)
+    with pytest.raises(FileNotFoundError, match="no params.eqx"):
+        resolve_model_path(checkpoint_dir)
 
 
 def _collection(
@@ -293,7 +321,7 @@ def test_run_config_rejects_bare_nonfinite_tokens(tmp_path: Path, token: str):
         load_train_config(source_path)
 
 
-def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
+def test_reconstruct_training_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
     collection = _collection()
     prepared = tmp_path / "prepared.json"
     prepared.write_text("{}", encoding="utf-8")
@@ -324,7 +352,7 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
         harness, "_build_template_wrapper", lambda *_args, **_kwargs: object()
     )
 
-    reconstruct_run(tmp_path, config, document)
+    reconstruct_training(tmp_path, config, document)
 
     assert seen["allow_stateful_models"] is True
 

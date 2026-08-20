@@ -231,7 +231,6 @@ _EXPORTS = {
     "model_load": "serialization",
     "model_reload": "serialization",
     "model_predict": "harness",
-    "reconstruct_run": "serialization",
     "reconstruct_training": "serialization",
     "save_model": "serialization",
     "load_trained_wrapper": "serialization",

@@ -45,6 +45,12 @@ unique original parents those processes represent, so it is generally shorter
 and in a different order; augmented children and held-out parents are not
 included. Size a module by the collection when it must match the model's
 structure, and by `process_names` only when it must match the training batch.
+For artifact-backed LOO workers, the manifest declares every fold, but loading
+opens and checksums only shared arrays and the selected fold's scale arrays.
+Unselected-fold scale files therefore cannot supply constructor inputs; the
+selected fold alone determines `process_names`, scales, and
+`training_parent_collection`.
+
 `scale_kwargs` carries the promoted `SCALE_*` scaler instances from
 [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales); pass them to
 `super().__init__(**scale_kwargs)`. Bare hook arrays become `LinearScaler`;

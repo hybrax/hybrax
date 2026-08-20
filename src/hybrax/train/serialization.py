@@ -15,7 +15,7 @@ Mirrors ``bp_format/serialization.py``. This module owns:
 - ``reconstruct_training`` — the single model-reconstruction path shared by
   model loading, forward, ensembles, and notebooks. It rebuilds a model from the
   data *it* trained on, with that input's recorded ``content_hash`` verified
-  before any hook runs. ``reconstruct_run`` is a thin caller of it.
+  before any hook runs.
 - ``model_load`` / ``model_reload`` — the user-facing loaders. Both return
   ``(trained_wrapper, config)``; ``model_reload`` skips the collection and only
   swaps trainable leaves.
@@ -49,7 +49,7 @@ from bp_format.serialization import (
 from .constants import METADATA_NAMESPACE
 from .model_api import UserLossModule, UserReactionModule, partition_trainable
 from .run_config import RunConfig
-from .training_data import TrainingDataStore
+from .training_data import TARGET_SOURCE_AUTO, TrainingDataStore
 from .wrapper import HybridOdeWrapper
 
 logger = logging.getLogger(__name__)
@@ -390,7 +390,6 @@ def reconstruct_training(
         _build_template_wrapper,
     )
     from .run_config import reresolve_custom
-    from .training_data import TrainingDataStore
     from .utils import load_custom_module
 
     run_dir = Path(run_dir)
@@ -414,7 +413,9 @@ def reconstruct_training(
     config = reresolve_custom(config, custom_module)
 
     targets = config.data.targets if config.data is not None else None
-    target_source = config.data.target_source if config.data is not None else "auto"
+    target_source = (
+        config.data.target_source if config.data is not None else TARGET_SOURCE_AUTO
+    )
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=targets,
@@ -463,28 +464,9 @@ def reconstruct_training(
     )
 
 
-def reconstruct_run(
-    run_dir: str | Path,
-    config: RunConfig,
-    document: dict[str, Any] | None = None,
-) -> tuple[UserReactionModule, UserLossModule, TrainingDataStore, BioProcessCollection]:
-    """The four training-time objects, from :func:`reconstruct_training`.
-
-    A thin caller of the shared path, kept for callers that only want
-    ``(reaction_module, loss_module, store, collection)`` and build their own
-    wrapper.
-    """
-    rebuilt = reconstruct_training(run_dir, config, document)
-    return (
-        rebuilt.reaction_module,
-        rebuilt.loss_module,
-        rebuilt.store,
-        rebuilt.collection,
-    )
-
-
-def _resolve_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
+def resolve_run_dir(path: str | Path, *, max_levels: int = 4) -> Path | None:
     """Nearest directory at/above ``path`` that holds a ``config.json``."""
+    path = Path(path)
     current = path if path.is_dir() else path.parent
     for _ in range(max_levels + 1):
         if (current / "config.json").is_file():
@@ -495,37 +477,77 @@ def _resolve_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
     return None
 
 
-def _resolve_weights_file(path: Path) -> Path:
-    """Resolve a model reference to an existing weights file, permissively.
-
-    Forward deliberately accepts more than :func:`_resolve_model_path` does: any
-    existing *file* is taken verbatim, so fold ``trained_wrapper.eqx`` files and
-    notebook checkpoints keep loading. A *directory* resolves through the same
-    ordered pass :func:`_resolve_model_path` uses. Anything else raises here,
-    naming the path the caller actually gave — equinox would otherwise append
-    ``.eqx`` and report a file nobody ever wrote.
-    """
-    if path.is_file():
-        return path
-    if path.is_dir():
-        for candidate in (
-            path / "params.eqx",
-            path / "model" / "params.eqx",
-            path / "checkpoints" / "latest" / "params.eqx",
-        ):
-            if candidate.is_file():
-                return candidate
-        raise FileNotFoundError(
-            f"no model weights in directory {path}; expected params.eqx, "
-            "model/params.eqx or checkpoints/latest/params.eqx"
-        )
+def _resolve_directory_weights(path: Path) -> Path:
+    """Resolve directory weights with the canonical precedence."""
+    for candidate in (
+        path / "params.eqx",
+        path / "model" / "params.eqx",
+        path / "checkpoints" / "latest" / "params.eqx",
+    ):
+        if candidate.is_file():
+            return candidate
     raise FileNotFoundError(
-        f"model path does not exist: {path}; pass a run directory, a checkpoint "
-        "directory, or a weights file such as <run>/model/params.eqx"
+        f"no model weights in directory {path}; expected params.eqx, "
+        "model/params.eqx or checkpoints/latest/params.eqx"
     )
 
 
-def _resolve_model_path(path: str | Path) -> tuple[Path, Path]:
+def _resolve_model_reference(
+    path: str | Path,
+    *,
+    require_params_filename: bool,
+    fall_back_to_run_weights: bool,
+) -> tuple[Path, Path]:
+    """Resolve a model reference while preserving its caller's file contract."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"model path does not exist: {path}")
+
+    run_dir = None
+    if path.is_file():
+        if require_params_filename and path.name != "params.eqx":
+            raise FileNotFoundError(f"model file must be a params.eqx, got {path}")
+        params_path = path
+    else:
+        try:
+            params_path = _resolve_directory_weights(path)
+        except FileNotFoundError:
+            if not fall_back_to_run_weights:
+                raise FileNotFoundError(
+                    f"no params.eqx found for model {path}"
+                ) from None
+            run_dir = resolve_run_dir(path)
+            if run_dir is None or path == run_dir:
+                raise
+            params_path = _resolve_directory_weights(run_dir)
+
+    if run_dir is None:
+        run_dir = resolve_run_dir(path)
+    if run_dir is None:
+        raise FileNotFoundError(
+            f"no config.json at or above {path}; pass a trained run directory "
+            "or a self-contained checkpoint dir."
+        )
+    return run_dir, params_path
+
+
+def resolve_forward_model_path(path: str | Path) -> tuple[Path, Path]:
+    """Resolve permissive forward weights and their owning run directory.
+
+    Forward accepts any existing file, including historical fold
+    ``trained_wrapper.eqx`` files and notebook checkpoints. Direct model loading
+    uses :func:`resolve_model_path`, which deliberately accepts only files named
+    ``params.eqx``. Directory references share one weight precedence in both
+    paths.
+    """
+    return _resolve_model_reference(
+        path,
+        require_params_filename=False,
+        fall_back_to_run_weights=True,
+    )
+
+
+def resolve_model_path(path: str | Path) -> tuple[Path, Path]:
     """Resolve a model reference to ``(run_dir, params_path)``.
 
     ``path`` is a run directory, a checkpoint directory, or a ``params.eqx``. A
@@ -536,40 +558,18 @@ def _resolve_model_path(path: str | Path) -> tuple[Path, Path]:
     ``trained_wrapper.eqx`` raises instead of silently falling through to the run's
     final weights.
     """
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"model path does not exist: {path}")
-
-    if path.is_file():
-        if path.name != "params.eqx":
-            raise FileNotFoundError(f"model file must be a params.eqx, got {path}")
-        params_path = path
-    else:
-        for candidate in (
-            path / "params.eqx",
-            path / "model" / "params.eqx",
-            path / "checkpoints" / "latest" / "params.eqx",
-        ):
-            if candidate.is_file():
-                params_path = candidate
-                break
-        else:
-            raise FileNotFoundError(f"no params.eqx found for model {path}")
-
-    run_dir = _resolve_run_dir(path)
-    if run_dir is None:
-        raise FileNotFoundError(
-            f"no config.json at or above {path}; pass a trained run directory "
-            "or a self-contained checkpoint dir."
-        )
-    return run_dir, params_path
+    return _resolve_model_reference(
+        path,
+        require_params_filename=True,
+        fall_back_to_run_weights=False,
+    )
 
 
 def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     """Load a trained model and the run config it was trained under.
 
     ``path`` is a run directory, a checkpoint directory, or a ``params.eqx`` —
-    see :func:`_resolve_model_path` for the ordered rule. Address a specific
+    see :func:`resolve_model_path` for the ordered rule. Address a specific
     checkpoint by its path, e.g. ``model_load(run_dir / "checkpoints" / "step_00300")``.
 
     The run's own prepared collection is loaded — with its recorded
@@ -583,7 +583,7 @@ def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     Returns ``(trained_wrapper, config)``. ``config.solver`` carries the solver
     settings the model was fitted under; pass it to :func:`~bp_train.model_predict`.
     """
-    run_dir, params_path = _resolve_model_path(path)
+    run_dir, params_path = resolve_model_path(path)
     config, document = read_run_config_json(run_dir / "config.json")
     rebuilt = reconstruct_training(run_dir, config, document)
     return load_trained_wrapper(params_path, template=rebuilt.template_wrapper), config
@@ -610,7 +610,7 @@ def model_reload(
        exception, no NaN. Only use this to move between checkpoints of the **same**
        run. When in doubt, pay for :func:`model_load`.
     """
-    run_dir, params_path = _resolve_model_path(path)
+    run_dir, params_path = resolve_model_path(path)
     config, _document = read_run_config_json(run_dir / "config.json")
     logger.warning(
         "model_reload(%s): refreshing trainable leaves only. The static half "

@@ -51,7 +51,7 @@ from .training_data import (
     TrainingDataStore,
 )
 from .run_config import RunConfig
-from .runtime_artifact import RhsNames, RuntimeArtifact
+from .runtime_artifact import RuntimeArtifact
 from .runtime_context import (
     ProducerCollectionData,
     RuntimeDataContext,
@@ -690,6 +690,40 @@ def _resolve_estimated_scales(
     return EstimatedScales(**resolved)
 
 
+def _build_modules_from_selected_parents(
+    *,
+    store: TrainingDataStore,
+    scales: EstimatedScales,
+    training_parent_collection: BioProcessCollection,
+    expected_parents: tuple[str, ...],
+    config: TrainHarnessConfig,
+    custom_module: Any,
+    custom_config: Any,
+    build_loss: bool,
+) -> tuple[UserReactionModule, UserLossModule | None]:
+    """Build reaction and loss modules behind the same parent-key guards."""
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
+    reaction_module = _build_reaction_module(
+        config=config,
+        custom_module=custom_module,
+        custom_config=custom_config,
+        store=store,
+        scales=scales,
+        training_parent_collection=training_parent_collection,
+    )
+    if not build_loss:
+        return reaction_module, None
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
+    loss_module = _build_loss_module(
+        config=config,
+        custom_module=custom_module,
+        custom_config=custom_config,
+        store=store,
+        training_parent_collection=training_parent_collection,
+    )
+    return reaction_module, loss_module
+
+
 def _build_runtime_modules(
     *,
     store: TrainingDataStore,
@@ -710,33 +744,16 @@ def _build_runtime_modules(
         runtime_data=scale_data,
         custom_cfg=custom_config,
     )
-    training_parent_collection = scale_data.training_parent_collection
-    expected_parents = tuple(scale_data.process_order)
-    _validate_training_parent_collection(training_parent_collection, expected_parents)
-    reaction_module = _build_reaction_module(
+    return _build_modules_from_selected_parents(
+        store=store,
+        scales=scales,
+        training_parent_collection=scale_data.training_parent_collection,
+        expected_parents=tuple(scale_data.process_order),
         config=config,
         custom_module=custom_module,
         custom_config=custom_config,
-        store=store,
-        scales=scales,
-        training_parent_collection=training_parent_collection,
+        build_loss=build_loss,
     )
-    if build_loss:
-        _validate_training_parent_collection(
-            training_parent_collection, expected_parents
-        )
-    loss_module = (
-        _build_loss_module(
-            config=config,
-            custom_module=custom_module,
-            custom_config=custom_config,
-            store=store,
-            training_parent_collection=training_parent_collection,
-        )
-        if build_loss
-        else None
-    )
-    return reaction_module, loss_module
 
 
 def _target_state_indices(store: TrainingDataStore, rhs_ode: RhsOde) -> jax.Array:
@@ -759,8 +776,6 @@ _EVALUATION_COMPATIBILITY_FIELDS = (
     "name_measured",
     "name_measured_RMCs",
     "name_measured_PVs",
-    "name_modeled_FVCs",
-    "name_modeled_SVCs",
 )
 
 
@@ -784,22 +799,24 @@ def _require_evaluation_compatibility(
                 f"{field}: model trained on {list(trained)}, "
                 f"evaluation data has {list(evaluated)}"
             )
-    trained_axes = RhsNames.from_rhs_ode(training_store.rhs_ode)
-    evaluated_axes = RhsNames.from_rhs_ode(evaluation_store.rhs_ode)
-    for axis in dataclasses.fields(RhsNames):
-        trained = getattr(trained_axes, axis.name)
-        evaluated = getattr(evaluated_axes, axis.name)
-        if trained != evaluated:
-            differences.append(
-                f"{axis.name}: model trained on {list(trained)}, "
-                f"evaluation data has {list(evaluated)}"
-            )
     if differences:
         raise ValueError(
             "forward: the evaluation collection is incompatible with the data this "
             "model was trained on, so the trained wrapper cannot evaluate it:\n  - "
             + "\n  - ".join(differences)
         )
+    try:
+        validate_rhs_ode_compatibility(
+            "training data",
+            training_store.rhs_ode,
+            "evaluation data",
+            evaluation_store.rhs_ode,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "forward: the evaluation collection is incompatible with the data this "
+            f"model was trained on: {exc}"
+        ) from exc
 
 
 def _validate_batched_loss_outputs(
@@ -926,25 +943,18 @@ def forward_from_collection(
     same order — or the call fails with an explicit error.
     """
     from .serialization import (
-        _resolve_run_dir,
-        _resolve_weights_file,
         content_hash,
         load_trained_wrapper,
         read_run_config_json,
         reconstruct_training,
+        resolve_forward_model_path,
     )
 
     cfg = config or ForwardConfig()
     # Resolve (and existence-check) the weights before the reconstruction: it
     # costs seconds on a real input, and failing afterwards reports a path the
     # caller never wrote.
-    model_path = _resolve_weights_file(Path(model_path))
-    run_dir = _resolve_run_dir(model_path)
-    if run_dir is None:
-        raise FileNotFoundError(
-            f"forward: no config.json at or above {model_path}; a model can only be "
-            "evaluated from a run dir that records the input it trained on"
-        )
+    run_dir, model_path = resolve_forward_model_path(model_path)
     document: dict[str, Any] | None = None
     if run_config is None:
         run_config, document = read_run_config_json(run_dir / "config.json")
@@ -1996,23 +2006,17 @@ def _prepare_training_from_selected_parents(
     expected_parents = canonical_training_parents(
         process_order, augmentation_parents, selected_processes
     )
-    _validate_training_parent_collection(training_parent_collection, expected_parents)
-    reaction_module = _build_reaction_module(
-        config=train_cfg,
-        custom_module=custom_module,
-        custom_config=custom_cfg,
+    reaction_module, loss_module = _build_modules_from_selected_parents(
         store=store,
         scales=scales,
         training_parent_collection=training_parent_collection,
-    )
-    _validate_training_parent_collection(training_parent_collection, expected_parents)
-    loss_module = _build_loss_module(
+        expected_parents=expected_parents,
         config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
-        store=store,
-        training_parent_collection=training_parent_collection,
+        build_loss=True,
     )
+    assert loss_module is not None
     _, _, total_updates = derive_update_budget(
         train_cfg, selected_process_count=len(selected_processes)
     )
