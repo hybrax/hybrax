@@ -1696,6 +1696,62 @@ def test_parent_collection_mismatch_fails_before_constructor_hooks():
         )
 
 
+@pytest.mark.parametrize("construction_path", ["runtime", "artifact"])
+def test_reaction_hook_mutating_parent_collection_fails_before_loss_hook(
+    construction_path,
+):
+    collection = _make_multi_process_collection(2)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    class CustomModule:
+        @staticmethod
+        def build_reaction_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+            **scale_kwargs,
+        ):
+            module = default_build_reaction_module(
+                target_names=target_names,
+                process_names=process_names,
+                config=config,
+                seed=seed,
+                training_parent_collection=training_parent_collection,
+                **scale_kwargs,
+            )
+            training_parent_collection.processes.pop("p2")
+            return module
+
+        @staticmethod
+        def build_loss_module(**kwargs):
+            pytest.fail("loss hook called")
+
+    config = TrainHarnessConfig(process_names=("p1", "p2"), epochs=1)
+    with pytest.raises(ValueError, match="keys differ from represented parents"):
+        if construction_path == "runtime":
+            harness_module._build_runtime_modules(
+                store=store,
+                collection=collection,
+                config=config,
+                custom_module=CustomModule,
+                custom_config={},
+            )
+        else:
+            prepare_training_from_runtime_artifact(
+                _runtime_artifact(store, collection, ("p1", "p2")),
+                config=config,
+                custom_module=CustomModule,
+                custom_cfg={},
+            )
+
+
 def test_build_runtime_modules_selects_scale_processes(monkeypatch):
     collection = _make_collection()
     store = TrainingDataStore.from_collection(

@@ -721,6 +721,10 @@ def _build_runtime_modules(
         scales=scales,
         training_parent_collection=training_parent_collection,
     )
+    if build_loss:
+        _validate_training_parent_collection(
+            training_parent_collection, expected_parents
+        )
     loss_module = (
         _build_loss_module(
             config=config,
@@ -2001,6 +2005,7 @@ def _prepare_training_from_selected_parents(
         scales=scales,
         training_parent_collection=training_parent_collection,
     )
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
     loss_module = _build_loss_module(
         config=train_cfg,
         custom_module=custom_module,
