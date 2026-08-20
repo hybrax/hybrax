@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
-import tempfile
 from copy import deepcopy
 from dataclasses import replace
 from functools import cache
@@ -45,22 +44,9 @@ from test_wrapper import _make_mixed_flow_process
 _KITTLER = Path("examples/01_kittler_2022/prepared/prepared.json")
 
 
-def _load_unmigrated_example(path: Path):
-    """Load a still-unmigrated example without changing Phase 5 sources."""
-    payload = (
-        path.read_text()
-        .replace('"FeedVolumeChange"', '"Inflow"')
-        .replace('"SampleVolumeChange"', '"Outflow"')
-    )
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as file:
-        file.write(payload)
-        file.flush()
-        return load_process_collection(file.name)
-
-
 @cache
 def _source_collection():
-    return _load_unmigrated_example(_KITTLER)
+    return load_process_collection(_KITTLER)
 
 
 def write_runtime_artifact(
@@ -1205,7 +1191,7 @@ def _piecewise_collection():
     artifact never serializes the expression at all: bp-format rebuilds it from
     the parents, so an expression bp-train could not have parsed still works.
     """
-    collection = _load_unmigrated_example(_E2E_SIM)
+    collection = load_process_collection(_E2E_SIM)
     for process in collection.processes.values():
         process.biological_ode.algebraic["X_active"] = (
             "Piecewise((biomass - product_intracellular, biomass > 1), (0.0, True))"

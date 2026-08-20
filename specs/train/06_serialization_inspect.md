@@ -134,6 +134,21 @@ environment_versions() -> dict[str, str]   # JAX / Diffrax / bp-format / … ver
 These are recorded in the run's `config.json` and the prepared artifact so a
 reload can detect a data/code mismatch and fail fast.
 
+### Runtime artifacts
+
+Distributed workers consume runtime artifact format 4. Its shared arrays store
+all four process-aligned transport matrices: controlled and modeled Inflow
+composition, plus controlled and modeled Outflow retention. The loader rebuilds
+canonical parent RHS objects through bp-format, verifies biological-expression
+agreement and every cached parent/augmented row, then applies the selected
+process row before hooks or dynamics run. Format 3 is rejected rather than
+compatibility-mapped.
+
+Only the selected fold's numeric scale payload is read. Integrity checks cover
+identity, inventory, checksums, axes, shapes, dtypes, finite values, positive
+scales, retention in `[0, 1]`, non-negative Inflow values/rates, and
+non-positive Outflow values/rates. The worker context remains collection-free.
+
 ## Introspection
 
 Print the two structure tables (the harness prints both at training start):

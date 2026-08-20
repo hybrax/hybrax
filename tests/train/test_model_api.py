@@ -290,8 +290,9 @@ def test_format_trainable_structure_auto_widths():
         def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
             del t, c_species, controls_vector
             return ReactionOutputs(
-                specific_rates=jnp.asarray([0.0]),
-                modeled_feed_rates=jnp.zeros((0,)),
+                SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+                SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+                SCL_modeled_Outflows_rates=jnp.zeros((0,)),
             )
 
     module = _LongName()

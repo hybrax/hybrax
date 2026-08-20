@@ -34,13 +34,15 @@ ODE in **scaled space (SCL)** so every axis is O(1), which keeps gradients
 well-conditioned, then converts to **physical space (RAW)** only where the
 chemistry needs real units.
 
-Scaling is a single linear factor per semantic axis. The 11 data-derived
+Scaling is a single linear factor per semantic axis. The data-derived
 `SCALE_*` axes (see [`EstimatedScales`](../bp_train/model_api.py)) cover states,
-rates, cumulative volumes, feed compositions, and process variables. Stateful
+rates, cumulative volumes, feed-media compositions, and process variables.
+Stateful
 reaction modules additionally own `SCALE_latent`. The physical SCL state is
 
 ```
-SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative ]
+SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative |
+              modeled_Inflows_cumulative | modeled_Outflows_cumulative ]
 SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 

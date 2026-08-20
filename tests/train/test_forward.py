@@ -464,26 +464,26 @@ _FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
 
 class _ConstantReactionModule(UserReactionModule):
     SCL_specific_rates: jnp.ndarray
-    SCL_feed_rates: jnp.ndarray
+    SCL_Inflow_rates: jnp.ndarray
     aux: dict[str, jnp.ndarray] | None
 
     def __init__(
         self,
         specific_rates: jnp.ndarray,
-        modeled_feed_rates: jnp.ndarray,
+        modeled_Inflows_rates: jnp.ndarray,
         auxiliary: dict[str, jnp.ndarray] | None = None,
         **scale_kwargs,
     ):
         super().__init__(**{**_FORWARD_DEFAULT_SCALES, **scale_kwargs})
         self.SCL_specific_rates = specific_rates
-        self.SCL_feed_rates = modeled_feed_rates
+        self.SCL_Inflow_rates = modeled_Inflows_rates
         self.aux = auxiliary
 
     def __call__(self, t, inputs):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
-            SCL_modeled_Inflows_rates=self.SCL_feed_rates,
+            SCL_modeled_Inflows_rates=self.SCL_Inflow_rates,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             auxiliary=self.aux,
         )
@@ -564,7 +564,7 @@ def _build_single_process_runtime(
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=_ConstantReactionModule(
             specific_rates=jnp.asarray([q_scaled]),
-            modeled_feed_rates=jnp.zeros((0,)),
+            modeled_Inflows_rates=jnp.zeros((0,)),
             auxiliary=auxiliary,
             **scale_kwargs,
         ),

@@ -118,37 +118,50 @@ A stateful reaction module also supplies `SCALE_latent`; `SCALE_state`,
 `SCALE_modeled_V`, and `SCALE_integrated_state` are derived scaler properties.
 Without the hook, every data-derived axis is a unit `LinearScaler` (no scaling).
 
-Offsets are prohibited on the three rate axes: controlled-FVC rates, modeled
-biological rates, and modeled-FVC rates. Derivatives are always transformed
+Offsets are prohibited on the controlled Inflow/Outflow and modeled
+biological/Inflow/Outflow rate axes. Derivatives are always transformed
 offset-free (`dSCL/dt = dRAW/dt / scale`); using a value transform on a
-derivative would spuriously subtract the offset. Integrated-state axes must use the built-in elementwise `LinearScaler` or
-`AffineScaler`, because the state scaler composes their scale/offset arrays in
+derivative would spuriously subtract the offset. Integrated-state axes must use
+the built-in elementwise `LinearScaler` or `AffineScaler`, because the state
+scaler composes their scale/offset arrays in
 the exact state layout below. Custom non-affine scalers are supported only on
 non-state axes; accepting one on a state axis would silently reinterpret its
 transform as affine.
 
-| `SCALE_*` axis | Shape | Scales |
-|---|---|---|
-| `SCALE_modeled_RMCs` | `(n_RMC,)` | modeled species concentrations |
-| `SCALE_modeled_PVs` | `(n_modeled_PV,)` | modeled (dynamic) process-variable states |
-| `SCALE_V_in_cumulative` | scalar | cumulative inflow volume (and real volume) |
-| `SCALE_modeled_FVCs_cumulative` | `(n_modeled_FVC,)` | per-modeled-feed cumulative volume |
-| `SCALE_controlled_FVCs_cumulative` | `(n_ctrl_FVC,)` | per-controlled-feed cumulative volume |
-| `SCALE_controlled_FVCs_rates` | `(n_ctrl_FVC,)` | per-controlled-feed flow rate |
-| `SCALE_controlled_FVCs_Cin` | `(n_ctrl_FVC, n_RMC)` | controlled-feed composition |
-| `SCALE_controlled_PVs` | `(n_ctrl_PV,)` | controlled PV signals (pH, DO, T, …) |
-| `SCALE_modeled_FVCs_Cin` | `(n_modeled_FVC, n_RMC)` | modeled-feed composition |
-| `SCALE_modeled_BiologicalOde_rates` | `(n_rates,)` | reaction rates |
-| `SCALE_modeled_FVCs_rates` | `(n_modeled_FVC,)` | modeled-feed flow rates |
-| `SCALE_latent` | `(n_latent,)` | integrated latent state (set by a stateful module) |
+The scale axes are:
+
+- `SCALE_modeled_RMCs` (`n_RMC`): modeled species concentrations.
+- `SCALE_modeled_PVs` (`n_modeled_PV`): modeled dynamic process variables.
+- `SCALE_V_in_cumulative` (scalar): cumulative inflow volume and real volume.
+- `SCALE_modeled_Inflows_cumulative` (`n_modeled_Inflow`): modeled cumulative
+  inflow volumes.
+- `SCALE_modeled_Outflows_cumulative` (`n_modeled_Outflow`): modeled cumulative
+  removals.
+- `SCALE_controlled_Inflows_cumulative` (`n_ctrl_Inflow`): controlled cumulative
+  inflow volumes.
+- `SCALE_controlled_Inflows_rates` (`n_ctrl_Inflow`): controlled inflow rates.
+- `SCALE_controlled_Inflows_Cin` (`n_ctrl_Inflow × n_RMC`): feed compositions.
+- `SCALE_controlled_Outflows_cumulative` (`n_ctrl_Outflow`): controlled
+  cumulative removals.
+- `SCALE_controlled_Outflows_rates` (`n_ctrl_Outflow`): controlled outflow
+  rates.
+- `SCALE_controlled_PVs` (`n_ctrl_PV`): controlled PV signals.
+- `SCALE_modeled_Inflows_Cin` (`n_modeled_Inflow × n_RMC`): modeled feed
+  compositions.
+- `SCALE_modeled_BiologicalOde_rates` (`n_rates`): reaction rates.
+- `SCALE_modeled_Inflows_rates` (`n_modeled_Inflow`): modeled inflow rates.
+- `SCALE_modeled_Outflows_rates` (`n_modeled_Outflow`): modeled outflow rates.
+- `SCALE_latent` (`n_latent`): integrated latent state for stateful modules.
 
 ### State and control layout
 
 The physical **SCL state vector**:
 
 ```
-SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative ]
-            └ species ─────┘└ dyn. PVs ──┘└ scalar ───────┘└ per modeled feed ─────┘
+SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative |
+              modeled_Inflows_cumulative | modeled_Outflows_cumulative ]
+            [ species | dynamic PVs | scalar volume ]
+            [ modeled inflows | modeled outflows ]
 SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 
@@ -161,8 +174,10 @@ controlled membership comes from bp-format's `RhsOde` (`name_modeled_*` /
 `name_controlled_*`).
 
 The **continuous controls** the reaction module reads at time `t` (in SCL
-space): the continuous controlled feeds (`cumulative`, `rates`, `Cin`),
-controlled process variables, and the modeled-feed composition (`modeled_FVCs_Cin`).
+space) are ordered `[controlled Inflows | controlled Outflows | controlled
+PVs]`. Inflow composition comes from feed media. Outflow retention remains raw
+with 0 = removed and 1 = retained; it has no scale axis. Modeled Inflow
+composition (`SCL_modeled_Inflows_Cin`) is also available.
 Discrete bolus/sample events are **not** part of this vector — they are applied
 as state jumps during the solve (below).
 

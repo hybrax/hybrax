@@ -15,7 +15,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -186,14 +186,18 @@ def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):
 _DEFAULT_CHECKPOINTING_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_RMCs": jnp.ones(1),
     "SCALE_V_in_cumulative": jnp.asarray(1.0),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_modeled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_rates": jnp.ones(0),
+    "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
+    "SCALE_controlled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Outflows_rates": jnp.ones(0),
     "SCALE_controlled_PVs": jnp.ones(0),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0),
+    "SCALE_modeled_Inflows_rates": jnp.ones(0),
+    "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
@@ -214,7 +218,8 @@ class _LinearReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
         )
 
 
@@ -226,7 +231,7 @@ def _make_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,

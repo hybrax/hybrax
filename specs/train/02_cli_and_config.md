@@ -264,10 +264,12 @@ return EstimatedScales(
 )
 ```
 
-Rate axes (`SCALE_controlled_FVCs_rates`,
-`SCALE_modeled_BiologicalOde_rates`, `SCALE_modeled_FVCs_rates`) reject non-zero
-offsets. Runs once at train setup; the scalers are baked into the reaction
-module. No default hook — when absent, every axis is a unit `LinearScaler` (no
+Rate axes (`SCALE_controlled_Inflows_rates`,
+`SCALE_controlled_Outflows_rates`, `SCALE_modeled_BiologicalOde_rates`,
+`SCALE_modeled_Inflows_rates`, and `SCALE_modeled_Outflows_rates`) reject
+non-zero offsets. This runs once at train setup; the scalers are baked into the
+reaction module. No default hook — when absent, every axis is a unit
+`LinearScaler` (no
 scaling). See [03_data_preparation.md](03_data_preparation.md#scale-estimation).
 
 `runtime_data` is a collection-free

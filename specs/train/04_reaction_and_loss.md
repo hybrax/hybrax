@@ -69,18 +69,19 @@ def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
 
 - Inputs arrive in SCL space; return rates in SCL space. Use `self.unscale_*`
   when you need RAW physical **values** (chemistry / FBA / kinetic laws), then
-  `self.scale_*` on the way back out. All helpers except the three `*_rates`
+  `self.scale_*` on the way back out. All helpers except the five `*_rates`
   pairs have value semantics, so an affine value transform subtracts/adds the
   offset. The rate pairs use offset-free derivative semantics
   (`d((RAW-b)/s)/dt = dRAW/dt/s`); call the scaler's explicit
   `scale_derivative` / `unscale_derivative` for any other derivative. In
   particular, `ReactionOutputs.SCL_latent_derivative` is a derivative, not a
   value.
-- The 12 stored `SCALE_*` fields (including `SCALE_latent`) are inherited frozen
+- The 16 stored `SCALE_*` fields (including `SCALE_latent`) are inherited frozen
   `Scaler` fields; **do not redeclare** them — pass values to
   `super().__init__()`. Rate-axis scalers cannot have non-zero offsets. Axis
   dimensions are available as properties (`n_modeled_RMCs`, `n_modeled_PVs`,
-  `n_modeled_BiologicalOde_rates`, `n_modeled_FVCs`, `n_controlled_FVCs`,
+  `n_modeled_BiologicalOde_rates`, `n_modeled_Inflows`,
+  `n_modeled_Outflows`, `n_controlled_Inflows`, `n_controlled_Outflows`,
   `n_controlled_PVs`, `n_latent`) so you size MLPs after `super().__init__()`
   without threading `n_*` kwargs.
 
@@ -98,34 +99,56 @@ stateless one:
 Built by the wrapper at each RHS evaluation; all in SCL space. Read only the
 axes you need — unused fields cost nothing under JIT.
 
-| Field | Shape | Meaning |
-|---|---|---|
-| `SCL_modeled_RMCs` | `(n_RMC,)` | species concentrations (UNCLIPPED — gradient flow survives negative excursions) |
-| `SCL_modeled_PVs` | `(n_modeled_PV,)` | modeled (dynamic) process-variable states |
-| `SCL_modeled_V` | scalar | real reactor volume at `t` (incl. `min_V` floor) |
-| `SCL_modeled_FVCs_cumulative` | `(n_modeled_FVC,)` | per-modeled-feed cumulative volume |
-| `SCL_controlled_FVCs_cumulative` | `(n_ctrl_FVC,)` | per-controlled-feed cumulative volume |
-| `SCL_controlled_FVCs_rates` | `(n_ctrl_FVC,)` | per-controlled-feed flow rate |
-| `SCL_controlled_FVCs_Cin` | `(n_ctrl_FVC, n_RMC)` | controlled-feed composition |
-| `SCL_controlled_PVs` | `(n_ctrl_PV,)` | controlled PV signals (pH, DO, T, …) |
-| `SCL_modeled_FVCs_Cin` | `(n_modeled_FVC, n_RMC)` | modeled-feed composition |
-| `SCL_latent` | `(n_latent,)` | integrated latent state (empty for stateless modules) |
+The input fields are:
+
+- `SCL_modeled_RMCs` (`n_RMC`): species concentrations, unclipped for gradient
+  flow.
+- `SCL_modeled_PVs` (`n_modeled_PV`): modeled dynamic PV states.
+- `SCL_modeled_V` (scalar): reactor volume at `t`, including the `min_V` floor.
+- `SCL_modeled_Inflows_cumulative` (`n_modeled_Inflow`): non-negative
+  cumulative inflows.
+- `SCL_modeled_Outflows_cumulative` (`n_modeled_Outflow`): non-positive
+  cumulative outflows.
+- `SCL_controlled_Inflows_cumulative` (`n_ctrl_Inflow`): controlled cumulative
+  inflows.
+- `SCL_controlled_Inflows_rates` (`n_ctrl_Inflow`): non-negative controlled
+  inflow rates.
+- `SCL_controlled_Inflows_Cin` (`n_ctrl_Inflow × n_RMC`): feed compositions.
+- `SCL_controlled_Outflows_cumulative` (`n_ctrl_Outflow`): controlled cumulative
+  outflows.
+- `SCL_controlled_Outflows_rates` (`n_ctrl_Outflow`): non-positive controlled
+  outflow rates.
+- `RAW_controlled_Outflows_retention` (`n_controlled_Outflows × n_RMC`): raw
+  retention, where 0 means removed and 1 means retained.
+- `SCL_controlled_PVs` (`n_ctrl_PV`): controlled PV signals.
+- `SCL_modeled_Inflows_Cin` (`n_modeled_Inflow × n_RMC`): modeled feed
+  compositions.
+- `RAW_modeled_Outflows_retention` (`n_modeled_Outflows × n_RMC`): raw
+  retention, where 0 means removed and 1 means retained.
+- `SCL_latent` (`n_latent`): integrated latent state; empty for stateless
+  modules.
 
 ### `ReactionOutputs`
 
-| Field | Shape | Meaning |
-|---|---|---|
-| `SCL_modeled_BiologicalOde_rates` | `(n_rates,)` | rates aligned with `rhs_ode.name_modeled_rates`; **not** 1:1 with RMCs (algebraic rates like `q_X_active` live here) |
-| `SCL_modeled_FVCs_rates` | `(n_modeled_FVC,)` | modeled-feed flow rates; **must be ≥ 0** — apply your own positivity transform (e.g. softplus) before scaling |
-| `SCL_latent_derivative` | `(n_latent,)` | derivative aligned with `SCL_latent` (empty for stateless modules) |
-| `auxiliary` | `dict[str, array] \| None` | optional model-defined observables saved at solver times (see [Using auxiliary](#using-auxiliary)) |
+The output fields are:
+
+- `SCL_modeled_BiologicalOde_rates` (`n_rates`): aligned with
+  `rhs_ode.name_modeled_rates`, not one-to-one with RMCs.
+- `SCL_modeled_Inflows_rates` (`n_modeled_Inflow`): non-negative modeled inflow
+  rates; apply a positivity transform before scaling.
+- `SCL_modeled_Outflows_rates` (`n_modeled_Outflow`): non-positive modeled
+  outflow rates.
+- `SCL_latent_derivative` (`n_latent`): derivative aligned with `SCL_latent`.
+- `auxiliary` (`dict[str, array] | None`): optional observables saved at solver
+  times.
 
 ### `DefaultReactionModule`
 
 An `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
 `SCL_modeled_BiologicalOde_rates` (includes any `r_<pv>` PV rates). It ignores
-controls and emits zero-valued modeled-feed rates. The defaults remain two hidden
-layers and width `max(8, 2 * max(n_inputs, n_outputs))`; pass `depth` and
+controls and emits zero-valued modeled Inflow and Outflow rates. Defaults use
+two hidden layers with width `max(8, 2 * max(n_inputs, n_outputs))`; pass
+`depth` and
 `width_size` to override them. Networks through three hidden layers use tanh with
 Glorot-uniform weights; deeper networks use SiLU with He-uniform weights. Biases
 are zero, and the output weights use `0.01 × Glorot uniform` to start the ODE
@@ -148,10 +171,11 @@ Each reset/keep/candidate input-kernel block starts from independent
 Glorot-uniform weights, and each recurrent block from independent orthogonal
 weights. The GRU's trainable `bias` and `bias_n` both start at zero. Its signed
 biological-rate head uses `0.01 × Glorot` weights and a zero bias, giving a
-near-zero initial output. When modeled feeds exist, their Softplus head also
+near-zero initial output. When modeled Inflows exist, their Softplus head also
 uses `0.01 × Glorot` weights, but its trainable bias is calibrated so a zero
-readout emits `0.01` in SCL derivative units. That nonzero feed-head bias is
-separate from, and does not change, the zero initialization of internal GRU
+readout emits `0.01` in SCL derivative units. The separate modeled Outflow
+head uses `-softplus`, so its rates remain non-positive. These flow-head biases
+are separate from, and do not change, the zero initialization of internal GRU
 biases.
 
 ### Field tagging
@@ -214,38 +238,54 @@ One per sample, evaluated on the measurement-time grid. Predicted trajectories
 come in both SCL and RAW space (scaling is a cheap elementwise broadcast); pick
 whichever you need.
 
-| Field | Shape | Meaning |
-|---|---|---|
-| `SCL_states` / `RAW_states` | `(n_meas, n_state)` | integrated state, scaled / physical |
-| `SCL_modeled_BiologicalOde_rates` / `RAW_…` | `(n_meas, n_rates)` | reaction rates over time |
-| `SCL_modeled_FVCs_rates` / `RAW_…` | `(n_meas, n_modeled_FVCs)` | modeled-feed flow rates |
-| `SCL_V` / `RAW_V` | `(n_meas,)` | reactor volume |
-| `auxiliary` | `dict[str, (n_meas, …)]` | model-defined observables (see below); empty dict if none |
-| `SCL_target_pred` | `(n_meas, n_target)` | predicted target columns (`SCL_states[:, target_state_indices]`) |
-| `SCL_target_measured` | `(n_meas, n_target)` | ground-truth measurements, SCL-scaled |
-| `mask_measured` | `(n_meas, n_target)` | **per-cell** validity (see below) |
-| `mask_measured_any` | `(n_meas,)` | **per-row** validity, float — `any(mask_measured, axis=1)` |
-| `t_measured` | `(n_meas,)` | measurement times |
-| `n_measured` | scalar | unpadded row count |
-| `reaction_module` | — | the `UserReactionModule` (single source of `SCALE_*`) |
-| `step` | scalar | training step (−1 in forward eval) |
-| `jump_ts` | `(n_jump_ts,)` or `None` | genuine vector-field discontinuity times (`controls.active_jump_ts`, sourced from `BioProcess.discrete_events`); use to mask dense points / triples near jumps |
+The measurement-grid fields are:
+
+- `SCL_states` / `RAW_states` (`n_meas × n_state`): scaled and physical
+  integrated states.
+- `SCL_modeled_BiologicalOde_rates` / `RAW_…` (`n_meas × n_rates`): reaction
+  rates over time.
+- `SCL_modeled_Inflows_rates` / `RAW_…` (`n_meas × n_modeled_Inflows`): modeled
+  inflow rates.
+- `SCL_modeled_Outflows_rates` / `RAW_…` (`n_meas × n_modeled_Outflows`):
+  modeled outflow rates.
+- `SCL_V` / `RAW_V` (`n_meas`): reactor volume.
+- `auxiliary` (`dict[str, (n_meas, …)]`): model-defined observables; empty if
+  none.
+- `SCL_target_pred` (`n_meas × n_target`): predicted target columns selected as
+  `SCL_states[:, target_state_indices]`.
+- `SCL_target_measured` (`n_meas × n_target`): SCL-scaled measurements.
+- `mask_measured` (`n_meas × n_target`): per-cell validity; see below.
+- `mask_measured_any` (`n_meas`): per-row validity as float values, equivalent
+  to `any(mask_measured, axis=1)`.
+- `t_measured` (`n_meas`): measurement times.
+- `n_measured` (scalar): unpadded row count.
+- `reaction_module`: the `UserReactionModule`, the source of all `SCALE_*`.
+- `step` (scalar): training step, or −1 during forward evaluation.
+- `jump_ts` (`n_jump_ts` or `None`): genuine vector-field discontinuity times
+  from `controls.active_jump_ts`, sourced from `BioProcess.discrete_events`;
+  use them to mask dense points or triples near jumps.
 
 **Dense-grid view** — populated iff the loss module declares
 `dense_grid_n: int` (see [Dense-grid losses](#dense-grid-losses)); otherwise all
 dense fields are `None`. Same dtypes and column layout as the measurement-grid
 fields above, leading dim `n_dense`:
 
-| Field | Shape | Mirror of |
-|---|---|---|
-| `dense_t` | `(n_dense,)` | `t_measured` (but evenly spaced inside `[t_start, t_end]`) |
-| `dense_SCL_states` / `dense_RAW_states` | `(n_dense, n_state)` | `SCL_states` / `RAW_states` |
-| `dense_SCL_modeled_BiologicalOde_rates` / `dense_RAW_…` | `(n_dense, n_rates)` | rates pair |
-| `dense_SCL_modeled_FVCs_rates` / `dense_RAW_…` | `(n_dense, n_modeled_FVCs)` | feed-rates pair |
-| `dense_SCL_V` / `dense_RAW_V` | `(n_dense,)` | floored volume pair |
-| `dense_RAW_V_unclamped` | `(n_dense,)` | integrated volume before the `min_V` safety floor |
-| `dense_auxiliary` | `dict[str, (n_dense, …)]` | `auxiliary` |
-| `dense_valid_time` | `(n_dense,)` bool | which dense rows are real predictions — see below |
+The dense-grid fields are:
+
+- `dense_t` (`n_dense`): evenly spaced times inside `[t_start, t_end]`.
+- `dense_SCL_states` / `dense_RAW_states` (`n_dense × n_state`): mirrors the
+  measurement-grid state pair.
+- `dense_SCL_modeled_BiologicalOde_rates` / `dense_RAW_…`
+  (`n_dense × n_rates`): reaction-rate pair.
+- `dense_SCL_modeled_Inflows_rates` / `dense_RAW_…`
+  (`n_dense × n_modeled_Inflows`): modeled inflow-rate pair.
+- `dense_SCL_modeled_Outflows_rates` / `dense_RAW_…`
+  (`n_dense × n_modeled_Outflows`): modeled outflow-rate pair.
+- `dense_SCL_V` / `dense_RAW_V` (`n_dense`): floored volume pair.
+- `dense_RAW_V_unclamped` (`n_dense`): volume before the `min_V` safety floor.
+- `dense_auxiliary` (`dict[str, (n_dense, …)]`): mirrors `auxiliary`.
+- `dense_valid_time` (`n_dense`, Boolean): marks real prediction rows; see
+  below.
 
 #### Failed solves
 
@@ -427,7 +467,8 @@ Emit observables from the reaction module:
 ```python
 return ReactionOutputs(
     SCL_modeled_BiologicalOde_rates=...,
-    SCL_modeled_FVCs_rates=...,
+    SCL_modeled_Inflows_rates=...,
+    SCL_modeled_Outflows_rates=...,
     auxiliary={"q_glucose_signed": some_scalar},
 )
 ```

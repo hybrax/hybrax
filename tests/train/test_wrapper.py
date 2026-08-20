@@ -107,14 +107,14 @@ class ConstantReactionModule(UserReactionModule):
     """
 
     SCL_specific_rates: jnp.ndarray
-    SCL_feed_rates: jnp.ndarray
+    SCL_Inflow_rates: jnp.ndarray
     SCL_outflow_rates: jnp.ndarray
     aux: dict[str, jnp.ndarray] | None
 
     def __init__(
         self,
         specific_rates: jnp.ndarray,
-        modeled_feed_rates: jnp.ndarray,
+        modeled_Inflows_rates: jnp.ndarray,
         modeled_outflow_rates: jnp.ndarray | None = None,
         auxiliary: dict[str, jnp.ndarray] | None = None,
         **scale_kwargs,
@@ -122,7 +122,7 @@ class ConstantReactionModule(UserReactionModule):
         scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
         super().__init__(**scale_kwargs)
         self.SCL_specific_rates = specific_rates
-        self.SCL_feed_rates = modeled_feed_rates
+        self.SCL_Inflow_rates = modeled_Inflows_rates
         self.SCL_outflow_rates = (
             jnp.zeros(0) if modeled_outflow_rates is None else modeled_outflow_rates
         )
@@ -132,7 +132,7 @@ class ConstantReactionModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
-            SCL_modeled_Inflows_rates=self.SCL_feed_rates,
+            SCL_modeled_Inflows_rates=self.SCL_Inflow_rates,
             SCL_modeled_Outflows_rates=self.SCL_outflow_rates,
             auxiliary=self.aux,
         )
@@ -558,7 +558,7 @@ def test_wrapper_rejects_nonzero_rate_offset_for_direct_module(
     n_modeled_feeds = 1 if modeled_feed else 0
     module = ConstantReactionModule(
         specific_rates=jnp.zeros(1),
-        modeled_feed_rates=jnp.zeros(n_modeled_feeds),
+        modeled_Inflows_rates=jnp.zeros(n_modeled_feeds),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales[rate_field] = AffineScaler(
@@ -608,7 +608,7 @@ def test_physical_rhs_uses_custom_rate_derivative_semantics():
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.asarray([2.0]),
-        modeled_feed_rates=jnp.zeros(0),
+        modeled_Inflows_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales["SCALE_modeled_BiologicalOde_rates"] = DivergentRateScaler()
@@ -657,7 +657,7 @@ def test_wrapper_accepts_custom_offset_free_rate_scaler_without_offset_metadata(
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.zeros(1),
-        modeled_feed_rates=jnp.zeros(0),
+        modeled_Inflows_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(jnp.ones(1))
@@ -800,7 +800,7 @@ def test_physical_rhs_passes_process_minimum_volume_to_bp_format():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -817,7 +817,7 @@ def test_solve_rejects_initial_volume_at_or_below_minimum(initial_volume):
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -858,7 +858,7 @@ def test_solve_rejects_sample_volume_at_or_below_minimum(sample_volume, event_ti
         ),
     )
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -892,7 +892,7 @@ def test_valid_sample_is_not_speculatively_reapplied(batched):
         (jnp.asarray([1.0]), jnp.asarray([0.998]), jnp.asarray([True])),
     )
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -924,7 +924,7 @@ def test_vmap_masks_preset_affect_for_lane_without_trigger():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -983,7 +983,7 @@ def test_start_time_sample_and_bolus_are_applied_once():
         ),
     )
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -1020,7 +1020,7 @@ def test_mixed_flow_rhs_matches_direct_rhs_and_hand_mass_balance():
     ).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.zeros(1),
-        modeled_feed_rates=jnp.asarray([0.4]),
+        modeled_Inflows_rates=jnp.asarray([0.4]),
         modeled_outflow_rates=jnp.asarray([-0.2]),
     )
     wrapper = _build_wrapper(process, controls, module)
@@ -1160,7 +1160,7 @@ def test_continuous_feed_transport_volume_and_dilution():
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.zeros((1,)),  # zero reaction
-        modeled_feed_rates=jnp.zeros((0,)),
+        modeled_Inflows_rates=jnp.zeros((0,)),
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -1260,7 +1260,7 @@ def test_wrapper_supports_modeled_pv():
     # q_biomass = 0 (biomass constant); r_ratio = 0.5 (PV grows 0.5 / h).
     module = ConstantReactionModule(
         specific_rates=jnp.asarray([0.0, 0.5]),
-        modeled_feed_rates=jnp.zeros((0,)),
+        modeled_Inflows_rates=jnp.zeros((0,)),
     )
     wrapper = _build_wrapper(process, controls, module)  # must NOT raise
     assert wrapper.modeled_PV_names == ("ratio",)
