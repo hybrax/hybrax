@@ -425,13 +425,13 @@ class BatchTrainingData(eqx.Module):
 class TrainingDataStore(eqx.Module):
     """Collection-level training-data store built from a prepared collection.
 
-    The y_measured columns are ``[targets..., B_modeled_cum_per_modeled_feed...]``
-    where targets may be RMCs, PVs, or both. V is in the ODE state but not in
-    the loss targets.
+    The y_measured columns are ``[targets..., modeled Inflow cumulative...,
+    modeled Outflow cumulative...]``, where targets may be RMCs, PVs, or both.
+    V is in the ODE state but not in the loss targets.
 
-    The y0 vector has layout
-    ``[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`` matching
-    the physical ODE state shape that the wrapper expects.
+    The y0 vector has layout ``[all RMCs..., all PVs..., V(0), modeled Inflow
+    cumulative..., modeled Outflow cumulative...]``, matching the physical ODE
+    state order expected by the wrapper.
     """
 
     # Stable process order across all stacked arrays.

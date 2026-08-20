@@ -1239,9 +1239,12 @@ def _differing_parent_augmented_collection():
     p1.metadata.name = "p1"
     p2 = deepcopy(p1)
     p2.metadata.name = "p2"
-    p2.volume.volume_changes["feed_A"].feed_medium.components[
-        "biomass"
-    ].concentration.value = 3.0
+    controlled_feed = p2.volume.volume_changes["feed_A"]
+    modeled_feed = p2.volume.volume_changes["modeled_feed"]
+    controlled_feed.feed_medium = deepcopy(controlled_feed.feed_medium)
+    modeled_feed.feed_medium = deepcopy(modeled_feed.feed_medium)
+    controlled_feed.feed_medium.components["biomass"].concentration.value = 3.0
+    modeled_feed.feed_medium.components["biomass"].concentration.value = 5.0
     p2.volume.volume_changes["perfusion"].retention["biomass"] = 0.75
     augmented = AugmentedBioProcess(
         metadata=deepcopy(p2.metadata),
@@ -1258,6 +1261,45 @@ def _differing_parent_augmented_collection():
     return BioProcessCollection(
         processes={"p1": p1, "p2": p2, "p2_aug": augmented}, metadata={}
     )
+
+
+def test_mixed_flow_artifact_rhs_matches_direct_process_matrices(tmp_path):
+    collection = _differing_parent_augmented_collection()
+    artifact = tmp_path / "artifact"
+    _artifact_from_collection(artifact, collection, ("p1",), ("p2",))
+
+    reconstructed = load_runtime_artifact(artifact, fold_id=0).training_data.rhs_ode
+    direct_p2 = build_rhs_ode(collection.processes["p2"])
+    state = jnp.asarray([10.0, 2.0])
+    rates = jnp.zeros(len(direct_p2.name_modeled_rates))
+    controlled_rates = {
+        "feed_A": 0.2,
+        "harvest": -0.1,
+        "evaporation": -0.3,
+    }
+    controls = jnp.asarray(
+        [
+            controlled_rates[name]
+            for name in (
+                direct_p2.name_controlled_Inflows + direct_p2.name_controlled_Outflows
+            )
+        ]
+    )
+    modeled_Inflows = jnp.asarray([0.4])
+    modeled_Outflows = jnp.asarray([-0.2])
+
+    reconstructed_derivative = reconstructed(
+        state, rates, controls, modeled_Inflows, modeled_Outflows
+    )
+    direct_p2_derivative = direct_p2(
+        state, rates, controls, modeled_Inflows, modeled_Outflows
+    )
+
+    np.testing.assert_allclose(reconstructed_derivative, direct_p2_derivative)
+    # At V=2, retained removal is 0.3 + 0.75*0.2 = 0.45 L/h.
+    # Dilution is -0.75; controlled and modeled additions are 0.3 and 1.0.
+    # Swapping their distinct Cin rows would instead produce dc/dt=0.35.
+    np.testing.assert_allclose(reconstructed_derivative, [0.55, 0.0])
 
 
 def test_runtime_artifact_writer_rejects_noncanonical_augmented_matrix(tmp_path):

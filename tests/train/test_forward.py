@@ -44,7 +44,7 @@ from bp_train.defaults import DefaultLossModule
 from bp_train.harness import compute_dense_exports, evaluate_trained_wrapper
 from bp_train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
 from bp_train.training_data import TrainingDataStore
-from bp_train.wrapper import HybridOdeWrapper
+from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
 
 
 @pytest.mark.parametrize(
@@ -964,6 +964,7 @@ def test_export_predictions_csv_header_only_for_empty_selection(
         "B_F_cum",
         "q_X",
         "q_S",
+        "B_F_rate",
     ]
     assert rows.empty
 
@@ -1164,6 +1165,67 @@ def test_loo_scored_value_equals_training_framework_solve():
     assert abs(ramp_val - train_val) > 0.01 * abs(train_val)
 
 
+def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
+    wrapper = SimpleNamespace(
+        modeled_RMC_names=(),
+        modeled_PV_names=(),
+        modeled_Inflow_names=("feed",),
+        modeled_Outflow_names=("perfusion",),
+        rhs_ode=SimpleNamespace(name_modeled_rates=()),
+        reaction_module=SimpleNamespace(unscale_state=lambda values: values),
+    )
+
+    def exports(cumulative, inflow_rates, outflow_rates):
+        save_outputs = SaveOutputs(
+            SCL_states=jnp.asarray([[[1.0, 0.0, 0.0], [0.9, *cumulative]]]),
+            RAW_V_export=jnp.asarray([[1.0, 0.9]]),
+            RAW_V=jnp.asarray([[1.0, 0.9]]),
+            RAW_modeled_BiologicalOde_rates=jnp.empty((1, 2, 0)),
+            RAW_modeled_Inflows_rates=jnp.asarray(inflow_rates)[None, :, None],
+            RAW_modeled_Outflows_rates=jnp.asarray(outflow_rates)[None, :, None],
+            auxiliary=None,
+        )
+        return postprocessing.dense_exports_from_save_outputs(
+            jnp.asarray([[0.0, 1.0]]), save_outputs, wrapper, ("p1",)
+        )
+
+    mean_exports, std_exports = postprocessing.aggregate_dense_exports(
+        [
+            exports((0.2, -0.3), (0.1, 0.2), (-0.1, -0.3)),
+            exports((0.6, -0.7), (0.5, 0.6), (-0.3, -0.7)),
+        ]
+    )
+    header = [
+        "process",
+        "t",
+        "V_real",
+        "B_feed_cum",
+        "B_perfusion_cum",
+        "B_feed_rate",
+        "B_perfusion_rate",
+    ]
+    columns = header[3:]
+    mean_path = tmp_path / "predictions.csv"
+    std_path = tmp_path / "predictions_std.csv"
+
+    postprocessing.export_predictions_csv(wrapper, mean_exports, mean_path, ("p1",))
+    postprocessing.export_predictions_csv(wrapper, std_exports, std_path, ("p1",))
+
+    mean_rows = pd.read_csv(mean_path)
+    std_rows = pd.read_csv(std_path)
+    assert mean_rows.columns.tolist() == header
+    assert std_rows.columns.tolist() == header
+    np.testing.assert_allclose(
+        np.vstack((mean_rows[columns], std_rows[columns])),
+        [
+            [0.0, 0.0, 0.3, -0.2],
+            [0.4, -0.5, 0.4, -0.5],
+            [0.0, 0.0, 0.2, 0.1],
+            [0.2, 0.2, 0.2, 0.2],
+        ],
+    )
+
+
 def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
@@ -1212,6 +1274,8 @@ def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
             q_rates=np.asarray([[0.0], [0.0]], dtype=float),
+            modeled_Inflow_rates=np.zeros((2, 0), dtype=float),
+            modeled_Outflow_rates=np.zeros((2, 0), dtype=float),
             auxiliary={"mu_raw": np.asarray([-1.0, -1.0], dtype=float)},
         ),
         "p2": postprocessing.DenseProcessExport(
@@ -1220,6 +1284,8 @@ def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
             q_rates=np.asarray([[0.0], [0.0]], dtype=float),
+            modeled_Inflow_rates=np.zeros((2, 0), dtype=float),
+            modeled_Outflow_rates=np.zeros((2, 0), dtype=float),
             auxiliary={"latent_pair": np.asarray([[1.0, 2.0], [1.0, 2.0]])},
         ),
     }

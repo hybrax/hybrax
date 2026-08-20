@@ -223,7 +223,7 @@ def build_loss_module(
 ```
 
 - `target_names` — the loss target-column labels: measured species followed by
-  cumulative modeled-feed columns (`B_<feed>_cum`). These name the columns of
+  cumulative modeled Inflow/Outflow columns (`B_<flow>_cum`). These label
   `LossInputs.SCL_target_pred`, so a per-target module emits one term per label.
 - `process_names`, `config` (your `CONFIG` dict), `seed`, and
   `training_parent_collection` — same as `build_reaction_module`.

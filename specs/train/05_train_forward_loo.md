@@ -104,10 +104,11 @@ ensemble) plus optional `data` and `output` blocks.
 - `compute_dense_exports(trained_wrapper, store, process_names, *,
   solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts,
   prediction_grid_n=200)` runs one batched solve and returns per-process
-  [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories
-  (time, species, volume, rates, auxiliary). It is *the* single source of dense
-  predictions for forward evaluation and final training exports, so exported
-  predictions always match the training solve.
+  [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories: time,
+  species, volume, cumulative modeled Inflows/Outflows, biological rates,
+  separate physical modeled Inflow/Outflow rates, and auxiliary values. It is
+  *the* single source of dense predictions for forward evaluation and final
+  training exports, so exported predictions always match the training solve.
 - For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
   into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
   own `models/<name>/predictions.csv` and `losses.csv`.
@@ -116,6 +117,10 @@ ensemble) plus optional `data` and `output` blocks.
   rerun selects no processes, stale prediction CSVs are removed.
 - Outputs are written by `export_predictions_csv` in
   [`postprocessing.py`](../bp_train/postprocessing.py); forward creates no plots.
+  Modeled flow columns use `B_<name>_cum` for cumulative values and
+  `B_<name>_rate` for physical rates. Per-model and ensemble-mean Inflow
+  values/rates remain non-negative; Outflow values/rates remain non-positive.
+  `predictions_std.csv` contains non-negative standard deviations.
 
 ### Programmatic forward
 

@@ -95,5 +95,7 @@ def test_training_end_to_end_from_raw_json(tmp_path: Path):
         export.v_real,
         export.b_modeled_cum,
         export.q_rates,
+        export.modeled_Inflow_rates,
+        export.modeled_Outflow_rates,
     ):
         assert np.all(np.isfinite(values))
