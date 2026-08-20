@@ -22,11 +22,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -273,7 +273,7 @@ def _make_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -309,7 +309,7 @@ def _make_collection() -> BioProcessCollection:
             initial_volume=1.1,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -356,7 +356,7 @@ def _make_multi_process_collection(n: int) -> BioProcessCollection:
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "sample_1": SampleVolumeChange(
+                    "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
                         is_controlled=False,
@@ -417,7 +417,7 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "feed_A": FeedVolumeChange(
+                    "feed_A": Inflow(
                         name="feed_A",
                         unit="L",
                         is_controlled=True,
@@ -428,7 +428,7 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                         ),
                         feed_medium=feed_medium,
                     ),
-                    "sample_1": SampleVolumeChange(
+                    "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
                         is_controlled=False,

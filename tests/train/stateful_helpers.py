@@ -9,10 +9,10 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -33,20 +33,30 @@ from bp_train.physical_solve import solve_physical_states
 from bp_train.wrapper import HybridOdeWrapper
 
 
-def default_stateful_scale_kwargs(n_controlled_fvcs: int = 1):
+def default_stateful_scale_kwargs(
+    *,
+    n_rmcs: int = 1,
+    n_modeled_inflows: int = 0,
+    n_modeled_outflows: int = 0,
+    n_controlled_inflows: int = 1,
+    n_controlled_outflows: int = 0,
+    n_controlled_pvs: int = 0,
+):
     return {
-        "SCALE_modeled_RMCs": jnp.ones(1),
+        "SCALE_modeled_RMCs": jnp.ones(n_rmcs),
         "SCALE_V_in_cumulative": jnp.asarray(1.0),
-        "SCALE_modeled_FVCs_cumulative": jnp.zeros(0),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_fvcs),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_fvcs),
-        "SCALE_controlled_FVCs_Cin": jnp.ones(
-            (n_controlled_fvcs, 1)
-        ),
-        "SCALE_controlled_PVs": jnp.zeros(0),
-        "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 1)),
+        "SCALE_modeled_Inflows_cumulative": jnp.ones(n_modeled_inflows),
+        "SCALE_modeled_Outflows_cumulative": jnp.ones(n_modeled_outflows),
+        "SCALE_controlled_Inflows_cumulative": jnp.ones(n_controlled_inflows),
+        "SCALE_controlled_Inflows_rates": jnp.ones(n_controlled_inflows),
+        "SCALE_controlled_Inflows_Cin": jnp.ones((n_controlled_inflows, n_rmcs)),
+        "SCALE_controlled_Outflows_cumulative": jnp.ones(n_controlled_outflows),
+        "SCALE_controlled_Outflows_rates": jnp.ones(n_controlled_outflows),
+        "SCALE_controlled_PVs": jnp.ones(n_controlled_pvs),
+        "SCALE_modeled_Inflows_Cin": jnp.ones((n_modeled_inflows, n_rmcs)),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
-        "SCALE_modeled_FVCs_rates": jnp.zeros(0),
+        "SCALE_modeled_Inflows_rates": jnp.ones(n_modeled_inflows),
+        "SCALE_modeled_Outflows_rates": jnp.ones(n_modeled_outflows),
     }
 
 
@@ -61,7 +71,8 @@ class ZeroLatentDerivativeModule(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
-            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
         )
 
@@ -81,7 +92,8 @@ class TrainableH0Module(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
-            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_latent_derivative=inputs.SCL_latent,
         )
 
@@ -120,7 +132,7 @@ def make_process(*, feed_rate: float = 0.0, jump: bool = False) -> BioProcess:
                 )
             },
         )
-        volume_changes["feed_A"] = FeedVolumeChange(
+        volume_changes["feed_A"] = Inflow(
             name="feed_A",
             unit="L",
             is_controlled=True,
@@ -145,14 +157,14 @@ def make_process(*, feed_rate: float = 0.0, jump: bool = False) -> BioProcess:
                 )
             },
         )
-        volume_changes["sample_1"] = SampleVolumeChange(
+        volume_changes["sample_1"] = Outflow(
             name="sample_1",
             unit="L",
             is_controlled=False,
             is_continuous=False,
             values=TimeSeries(times=jnp.asarray([1.0]), values=jnp.asarray([-0.2])),
         )
-        volume_changes["bolus_A"] = FeedVolumeChange(
+        volume_changes["bolus_A"] = Inflow(
             name="bolus_A",
             unit="L",
             is_controlled=True,
@@ -203,10 +215,8 @@ def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
         f"sized to {module.n_modeled_BiologicalOde_rates}, not the rhs count {n_rates}"
     )
     scale_kwargs = {
-        **default_stateful_scale_kwargs(n_controlled_fvcs),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(
-            len(rhs.name_modeled_rates)
-        ),
+        **default_stateful_scale_kwargs(n_controlled_inflows=n_controlled_fvcs),
+        "SCALE_modeled_BiologicalOde_rates": jnp.ones(len(rhs.name_modeled_rates)),
         "SCALE_latent": jnp.ones(n_latent),
     }
     module = eqx.tree_at(

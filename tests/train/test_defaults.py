@@ -9,15 +9,22 @@ import pytest
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import build_rhs_ode
 from bp_train.defaults import DefaultReactionModule, default_build_reaction_module
+from bp_train.model_api import ReactionInputs
 from test_harness import _make_collection, _make_multi_process_collection
 
 
-def _reaction_module(*, key, depth=2, width_size=None, n_in=2, n_out=1):
+def _reaction_module(
+    *, key, depth=2, width_size=None, n_in=2, n_out=1, n_inflows=1, n_outflows=2
+):
     return DefaultReactionModule(
         key=key,
         depth=depth,
         width_size=width_size,
         SCALE_modeled_RMCs=jnp.ones(n_in),
+        SCALE_modeled_Inflows_cumulative=jnp.ones(n_inflows),
+        SCALE_modeled_Outflows_cumulative=jnp.ones(n_outflows),
+        SCALE_modeled_Inflows_rates=jnp.ones(n_inflows),
+        SCALE_modeled_Outflows_rates=jnp.ones(n_outflows),
         SCALE_modeled_BiologicalOde_rates=jnp.ones(n_out),
     )
 
@@ -43,6 +50,30 @@ def test_shallow_default_reaction_module_uses_tanh_and_glorot():
     )
     assert jnp.array_equal(output.weight, expected_output)
     assert jnp.count_nonzero(output.bias) == 0
+
+
+def test_stateless_default_emits_zero_rates_on_distinct_flow_axes():
+    module = _reaction_module(key=jax.random.key(31))
+    inputs = ReactionInputs(
+        SCL_modeled_RMCs=jnp.ones(2),
+        SCL_modeled_V=jnp.asarray(1.0),
+        SCL_modeled_Inflows_cumulative=jnp.ones(1),
+        SCL_modeled_Outflows_cumulative=jnp.ones(2),
+        SCL_controlled_Inflows_cumulative=jnp.zeros(0),
+        SCL_controlled_Inflows_rates=jnp.zeros(0),
+        SCL_controlled_Inflows_Cin=jnp.zeros((0, 2)),
+        SCL_controlled_Outflows_cumulative=jnp.zeros(0),
+        SCL_controlled_Outflows_rates=jnp.zeros(0),
+        RAW_controlled_Outflows_retention=jnp.zeros((0, 2)),
+        SCL_controlled_PVs=jnp.zeros(0),
+        SCL_modeled_Inflows_Cin=jnp.ones((1, 2)),
+        RAW_modeled_Outflows_retention=jnp.ones((2, 2)),
+    )
+
+    outputs = module(jnp.asarray(0.0), inputs)
+
+    assert jnp.array_equal(outputs.SCL_modeled_Inflows_rates, jnp.zeros(1))
+    assert jnp.array_equal(outputs.SCL_modeled_Outflows_rates, jnp.zeros(2))
 
 
 def test_deep_default_reaction_module_uses_requested_width_silu_and_he():
@@ -180,7 +211,7 @@ def test_default_reaction_module_rejects_disagreeing_training_parents():
     p2.biological_ode.rates = {"q_other": (None, None)}
     p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
 
-    with pytest.raises(ValueError, match="biological_ode mismatch across processes"):
+    with pytest.raises(ValueError, match="biological_ode_equivalence"):
         default_build_reaction_module(
             target_names=["biomass"],
             process_names=list(collection.processes),

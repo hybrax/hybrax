@@ -45,7 +45,8 @@ class _TagPartitionModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -92,7 +93,8 @@ class _UntaggedArrayModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
-            SCL_modeled_VC_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -109,7 +111,8 @@ class _MixedTagsModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
-            SCL_modeled_VC_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -158,7 +161,8 @@ class _OuterFrozenParent(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
-            SCL_modeled_VC_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -173,7 +177,8 @@ class _OuterTrainableParent(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
-            SCL_modeled_VC_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -188,7 +193,8 @@ class _OuterUntaggedParent(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
-            SCL_modeled_VC_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -313,22 +319,31 @@ def test_reaction_inputs_default_to_zero_width_latent():
     inputs = ReactionInputs(
         SCL_modeled_RMCs=jnp.ones(2),
         SCL_modeled_V=jnp.asarray(1.0),
-        SCL_modeled_FVCs_cumulative=jnp.zeros(1),
-        SCL_controlled_FVCs_cumulative=jnp.zeros(0),
-        SCL_controlled_FVCs_rates=jnp.zeros(0),
-        SCL_controlled_FVCs_Cin=jnp.zeros((0, 2)),
+        SCL_modeled_Inflows_cumulative=jnp.zeros(1),
+        SCL_modeled_Outflows_cumulative=jnp.zeros(2),
+        SCL_controlled_Inflows_cumulative=jnp.zeros(3),
+        SCL_controlled_Inflows_rates=jnp.zeros(3),
+        SCL_controlled_Inflows_Cin=jnp.zeros((3, 2)),
+        SCL_controlled_Outflows_cumulative=jnp.zeros(4),
+        SCL_controlled_Outflows_rates=jnp.zeros(4),
+        RAW_controlled_Outflows_retention=jnp.zeros((4, 2)),
         SCL_controlled_PVs=jnp.zeros(0),
-        SCL_modeled_FVCs_Cin=jnp.zeros((1, 2)),
+        SCL_modeled_Inflows_Cin=jnp.zeros((1, 2)),
+        RAW_modeled_Outflows_retention=jnp.zeros((2, 2)),
     )
 
     assert inputs.SCL_latent.shape == (0,)
     assert inputs.SCL_latent.dtype == jnp.float64
+    assert inputs.SCL_controlled_Inflows_Cin.shape == (3, 2)
+    assert inputs.RAW_controlled_Outflows_retention.shape == (4, 2)
+    assert inputs.RAW_modeled_Outflows_retention.shape == (2, 2)
 
 
 def test_reaction_outputs_default_to_zero_width_latent_derivative():
     outputs = ReactionOutputs(
         SCL_modeled_BiologicalOde_rates=jnp.zeros(2),
-        SCL_modeled_FVCs_rates=jnp.zeros(1),
+        SCL_modeled_Inflows_rates=jnp.zeros(1),
+        SCL_modeled_Outflows_rates=jnp.zeros(2),
     )
 
     assert outputs.SCL_latent_derivative.shape == (0,)
@@ -340,7 +355,8 @@ class _LatentScaleModule(UserReactionModule):
         super().__init__(
             SCALE_modeled_RMCs=jnp.asarray([2.0, 4.0]),
             SCALE_V_in_cumulative=jnp.asarray(10.0),
-            SCALE_modeled_FVCs_cumulative=jnp.asarray([5.0]),
+            SCALE_modeled_Inflows_cumulative=jnp.asarray([5.0]),
+            SCALE_modeled_Outflows_cumulative=jnp.asarray([7.0, 8.0]),
             SCALE_latent=jnp.asarray([3.0, 6.0]),
         )
 
@@ -348,7 +364,8 @@ class _LatentScaleModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(0),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -356,10 +373,12 @@ def test_user_reaction_module_latent_scales_are_separate_from_state_scales():
     module = _LatentScaleModule()
 
     assert module.n_latent == 2
-    assert jnp.array_equal(module.SCALE_state.scale, jnp.asarray([2.0, 4.0, 10.0, 5.0]))
+    assert jnp.array_equal(
+        module.SCALE_state.scale, jnp.asarray([2.0, 4.0, 10.0, 5.0, 7.0, 8.0])
+    )
     assert jnp.array_equal(
         module.SCALE_integrated_state.scale,
-        jnp.asarray([2.0, 4.0, 10.0, 5.0, 3.0, 6.0]),
+        jnp.asarray([2.0, 4.0, 10.0, 5.0, 7.0, 8.0, 3.0, 6.0]),
     )
 
 
@@ -541,19 +560,32 @@ def test_rate_helpers_use_derivative_semantics():
             return self
 
     module = UserReactionModule(
-        SCALE_controlled_FVCs_rates=DivergentRateScaler(),
+        SCALE_controlled_Inflows_rates=DivergentRateScaler(),
+        SCALE_controlled_Outflows_rates=DivergentRateScaler(),
         SCALE_modeled_BiologicalOde_rates=DivergentRateScaler(),
-        SCALE_modeled_FVCs_rates=DivergentRateScaler(),
+        SCALE_modeled_Inflows_rates=DivergentRateScaler(),
+        SCALE_modeled_Outflows_rates=DivergentRateScaler(),
     )
     raw = jnp.asarray([6.0])
     scl = jnp.asarray([2.0])
     helpers = (
-        (module.scale_controlled_FVCs_rates, module.unscale_controlled_FVCs_rates),
+        (
+            module.scale_controlled_Inflows_rates,
+            module.unscale_controlled_Inflows_rates,
+        ),
+        (
+            module.scale_controlled_Outflows_rates,
+            module.unscale_controlled_Outflows_rates,
+        ),
         (
             module.scale_modeled_BiologicalOde_rates,
             module.unscale_modeled_BiologicalOde_rates,
         ),
-        (module.scale_modeled_FVCs_rates, module.unscale_modeled_FVCs_rates),
+        (module.scale_modeled_Inflows_rates, module.unscale_modeled_Inflows_rates),
+        (
+            module.scale_modeled_Outflows_rates,
+            module.unscale_modeled_Outflows_rates,
+        ),
     )
 
     for scale, unscale in helpers:
@@ -854,7 +886,8 @@ def test_integrated_state_preserves_discarded_zero_offset_dtype():
         ),
         SCALE_modeled_PVs=LinearScaler(jnp.zeros(0, dtype=jnp.float32)),
         SCALE_V_in_cumulative=LinearScaler(jnp.asarray(3.0, dtype=jnp.float32)),
-        SCALE_modeled_FVCs_cumulative=LinearScaler(jnp.zeros(0, dtype=jnp.float32)),
+        SCALE_modeled_Inflows_cumulative=LinearScaler(jnp.zeros(0, dtype=jnp.float32)),
+        SCALE_modeled_Outflows_cumulative=LinearScaler(jnp.zeros(0, dtype=jnp.float32)),
         SCALE_latent=AffineScaler(
             jnp.asarray([4.0], dtype=jnp.float32),
             jnp.asarray([5.0], dtype=jnp.float32),
