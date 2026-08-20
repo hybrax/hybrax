@@ -44,6 +44,7 @@ from bp_train.harness import (
     _ensure_process_names,
     _resolve_estimated_scales,
     _target_state_indices,
+    compute_dense_exports,
     prepare_training_from_runtime_artifact,
     _validate_batching_config,
     train_from_collection,
@@ -65,6 +66,7 @@ from bp_train.model_api import (
     frozen_field,
     trainable_field,
 )
+from bp_train.trainer import simulate_measurement_states
 from bp_train.training_data import TrainingDataStore
 
 
@@ -97,14 +99,18 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     # override these.
     "SCALE_modeled_RMCs": jnp.ones(1),
     "SCALE_V_in_cumulative": jnp.asarray(1.0),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_modeled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_rates": jnp.ones(0),
+    "SCALE_controlled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Outflows_rates": jnp.ones(0),
+    "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_controlled_PVs": jnp.ones(0),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0),
+    "SCALE_modeled_Inflows_rates": jnp.ones(0),
+    "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
@@ -121,7 +127,8 @@ class _StatefulHarnessModule(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
         )
 
@@ -144,7 +151,8 @@ class _LinearReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -153,21 +161,27 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
     rhs_ode = build_rhs_ode(collection.processes[process_name])
     controls = ControlsStore.from_collection(collection).get_controls(process_name)
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
-    n_FVCs = len(rhs_ode.name_modeled_FVCs)
+    n_Inflows = len(rhs_ode.name_modeled_Inflows)
+    n_Outflows = len(rhs_ode.name_modeled_Outflows)
     n_rates = len(rhs_ode.name_modeled_rates)
-    n_FVC = len(controls.name_controlled_FVCs)
+    n_Inflow = len(controls.name_controlled_Inflows)
+    n_Outflow = len(controls.name_controlled_Outflows)
     n_PV = len(controls.name_controlled_PVs)
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_RMCs),
         "SCALE_V_in_cumulative": jnp.asarray(1.0),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs)),
+        "SCALE_modeled_Inflows_cumulative": jnp.ones(n_Inflows),
+        "SCALE_modeled_Outflows_cumulative": jnp.ones(n_Outflows),
+        "SCALE_controlled_Inflows_cumulative": jnp.ones(n_Inflow),
+        "SCALE_controlled_Inflows_rates": jnp.ones(n_Inflow),
+        "SCALE_controlled_Outflows_cumulative": jnp.ones(n_Outflow),
+        "SCALE_controlled_Outflows_rates": jnp.ones(n_Outflow),
+        "SCALE_controlled_Inflows_Cin": jnp.ones((n_Inflow, n_RMCs)),
         "SCALE_controlled_PVs": jnp.ones(n_PV),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs)),
+        "SCALE_modeled_Inflows_Cin": jnp.ones((n_Inflows, n_RMCs)),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs),
+        "SCALE_modeled_Inflows_rates": jnp.ones(n_Inflows),
+        "SCALE_modeled_Outflows_rates": jnp.ones(n_Outflows),
     }
 
 
@@ -389,9 +403,13 @@ def _make_multi_process_collection(n: int) -> BioProcessCollection:
 
 
 def _make_feed_mismatch_collection() -> BioProcessCollection:
-    """Two processes with different feed compositions (Cin values differ)."""
+    """Two processes with different Inflow and Outflow matrices."""
 
-    def _make_process(name: str, feed_biomass_concentration: float) -> BioProcess:
+    def _make_process(
+        name: str,
+        feed_biomass_concentration: float,
+        biomass_retention: float,
+    ) -> BioProcess:
         feed_medium = FeedMedium(
             name="feed",
             density=1.0,
@@ -428,6 +446,17 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                         ),
                         feed_medium=feed_medium,
                     ),
+                    "bleed": Outflow(
+                        name="bleed",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=TimeSeries(
+                            times=jnp.asarray([0.0, 2.0]),
+                            values=jnp.asarray([0.0, -0.2]),
+                        ),
+                        retention={"biomass": biomass_retention},
+                    ),
                     "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
@@ -460,8 +489,8 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
 
     return BioProcessCollection(
         processes={
-            "p1": _make_process("p1", 0.0),
-            "p2": _make_process("p2", 1.0),
+            "p1": _make_process("p1", 0.0, 0.25),
+            "p2": _make_process("p2", 1.0, 0.75),
         },
         metadata={},
     )
@@ -668,7 +697,7 @@ def test_store_retains_batched_cin_without_retaining_collection():
     collection = _make_feed_mismatch_collection()
     expected = jnp.stack(
         [
-            build_rhs_ode(collection.processes[name]).Cin_controlled_FVCs
+            build_rhs_ode(collection.processes[name]).Cin_controlled_Inflows
             for name in ("p1", "p2")
         ]
     )
@@ -684,7 +713,7 @@ def test_store_retains_batched_cin_without_retaining_collection():
 
     assert collection_ref() is None
     assert store.rhs_ode.name_modeled_RMCs == ("biomass",)
-    assert jnp.array_equal(store.Cin_controlled_FVCs, expected)
+    assert jnp.array_equal(store.Cin_controlled_Inflows, expected)
 
 
 def test_subset_wrapper_uses_selected_process_cin_and_controls():
@@ -710,12 +739,12 @@ def test_subset_wrapper_uses_selected_process_cin_and_controls():
 
     assert result.trained_wrapper.controls.process_name == "p2"
     assert jnp.array_equal(
-        result.trained_wrapper.rhs_ode.Cin_controlled_FVCs,
-        store.Cin_controlled_FVCs[1],
+        result.trained_wrapper.rhs_ode.Cin_controlled_Inflows,
+        store.Cin_controlled_Inflows[1],
     )
     assert jnp.array_equal(
-        result.trained_wrapper.rhs_ode.Cin_modeled_FVCs,
-        store.Cin_modeled_FVCs[1],
+        result.trained_wrapper.rhs_ode.Cin_modeled_Inflows,
+        store.Cin_modeled_Inflows[1],
     )
 
 
@@ -776,14 +805,27 @@ def test_train_collection_cycles_batches_across_multiple_batches_per_epoch():
     assert all(batches == per_epoch_batches[0] for batches in per_epoch_batches)
 
 
-def test_train_collection_with_different_cin_per_process():
-    """Processes with different feed compositions should train without error."""
+def test_train_collection_with_different_flow_matrices_per_process():
+    """Process-aligned composition and retention rows train without error."""
     collection = _make_feed_mismatch_collection()
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
+    assert jnp.array_equal(
+        store.Cin_controlled_Inflows[:, 0, 0], jnp.asarray([0.0, 1.0])
+    )
+    assert jnp.array_equal(
+        store.retention_controlled_Outflows[:, 0, 0],
+        jnp.asarray([0.25, 0.75]),
+    )
+    selected = store.select_processes(
+        ("p2",),
+        BioProcessCollection(processes={"p2": collection.processes["p2"]}),
+    )
+    assert selected.rhs_ode.retention_controlled_Outflows[0, 0] == 0.75
+
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(
@@ -801,6 +843,31 @@ def test_train_collection_with_different_cin_per_process():
 
     assert len(result.mean_loss_by_step) == 4
     assert all(jnp.isfinite(jnp.asarray(result.mean_loss_by_step)))
+
+    _, _, dense_exports = compute_dense_exports(
+        result.trained_wrapper,
+        store,
+        ("p2", "p1"),
+        solver_max_steps=10_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+        solver_use_jump_ts=False,
+        prediction_grid_n=8,
+    )
+    for process_name in ("p2", "p1"):
+        process_data = store.get_process(process_name)
+        direct_states = np.asarray(
+            simulate_measurement_states(result.trained_wrapper, process_data)
+        )
+        dense = dense_exports[process_name]
+        for time_index, time in enumerate(np.asarray(process_data.active_t_measured)):
+            dense_index = int(np.flatnonzero(np.isclose(dense.t, time))[0])
+            assert dense.c_species[dense_index, 0] == pytest.approx(
+                direct_states[time_index, 0], rel=1e-5, abs=1e-7
+            )
+            assert dense.v_real[dense_index] == pytest.approx(
+                direct_states[time_index, 1], rel=1e-5, abs=1e-7
+            )
 
 
 def test_train_collection_rejects_unknown_process_selection():

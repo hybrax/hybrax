@@ -49,6 +49,7 @@ from .logging import RunLogger, StepRecord
 from .training_data import (
     TARGET_SOURCE_AUTO,
     TrainingDataStore,
+    replace_rhs_ode_process_matrices,
 )
 from .run_config import RunConfig
 from .runtime_artifact import RuntimeArtifact
@@ -122,8 +123,8 @@ def _iter_batched_loss_outputs(
         outputs = _BATCHED_LOSS_FN_JIT(
             trained_wrapper,
             batch,
-            store.Cin_controlled_FVCs,
-            store.Cin_modeled_FVCs,
+            store.Cin_controlled_Inflows,
+            store.Cin_modeled_Inflows,
             jump_ts_rows,
             max_solver_steps=int(solver_max_steps),
             solver_rtol=float(solver_rtol),
@@ -626,13 +627,14 @@ def _build_reaction_module(
 
 
 def _loss_target_labels(store: TrainingDataStore) -> list[str]:
-    """Canonical loss target-column labels: measured species + cumulative feeds.
+    """Canonical labels for measured species and modeled cumulative flows.
 
     These name the columns of ``SCL_target_pred`` (``target_state_indices``),
     so ``DefaultLossModule`` emits exactly one term per label.
     """
     return list(store.name_measured) + [
-        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
+        f"B_{name}_cum"
+        for name in (store.name_modeled_Inflows + store.name_modeled_Outflows)
     ]
 
 
@@ -670,8 +672,10 @@ def _resolve_estimated_scales(
         defaults = _default_scale_kwargs(
             n_RMCs=len(store.rhs_ode.name_modeled_RMCs),
             n_rates=len(store.rhs_ode.name_modeled_rates),
-            n_modeled_FVCs=len(store.rhs_ode.name_modeled_FVCs),
-            n_controlled_FVCs=len(store.rhs_ode.name_controlled_FVCs),
+            n_modeled_Inflows=len(store.rhs_ode.name_modeled_Inflows),
+            n_controlled_Inflows=len(store.rhs_ode.name_controlled_Inflows),
+            n_modeled_Outflows=len(store.rhs_ode.name_modeled_Outflows),
+            n_controlled_Outflows=len(store.rhs_ode.name_controlled_Outflows),
             rhs_ode=store.rhs_ode,
         )
         defaults.pop("SCALE_latent")
@@ -766,9 +770,9 @@ def _target_state_indices(store: TrainingDataStore, rhs_ode: RhsOde) -> jax.Arra
     for name in store.name_measured_PVs:
         indices.append(n_RMCs + rhs_ode.name_modeled_PVs.index(name))
 
-    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
-    feed_start = n_RMCs + n_PVs + 1
-    indices.extend(range(feed_start, feed_start + n_modeled_feeds))
+    n_modeled_flows = len(store.name_modeled_Inflows) + len(store.name_modeled_Outflows)
+    flow_start = n_RMCs + n_PVs + 1
+    indices.extend(range(flow_start, flow_start + n_modeled_flows))
     return jnp.asarray(indices, dtype=jnp.int32)
 
 
@@ -862,16 +866,12 @@ def _build_template_wrapper(
         raise ValueError("selected_processes must be non-empty")
 
     reference_index = store.process_order.index(selected_processes[0])
-    reference_rhs_ode = eqx.tree_at(
-        lambda rhs_ode: (
-            rhs_ode.Cin_controlled_FVCs,
-            rhs_ode.Cin_modeled_FVCs,
-        ),
+    reference_rhs_ode = replace_rhs_ode_process_matrices(
         store.rhs_ode,
-        (
-            store.Cin_controlled_FVCs[reference_index],
-            store.Cin_modeled_FVCs[reference_index],
-        ),
+        store.Cin_controlled_Inflows[reference_index],
+        store.Cin_modeled_Inflows[reference_index],
+        store.retention_controlled_Outflows[reference_index],
+        store.retention_modeled_Outflows[reference_index],
     )
     target_state_indices = _target_state_indices(store, reference_rhs_ode)
     return HybridOdeWrapper.from_rhs_ode(
@@ -904,8 +904,8 @@ class ForwardResult:
     store: TrainingDataStore
     process_names: tuple[str, ...]
     target_names: tuple[str, ...]
-    name_modeled_FVCs: tuple[str, ...]
-    name_modeled_SVCs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    name_modeled_Outflows: tuple[str, ...]
     training_process_names: tuple[str, ...]
     per_process_total_loss: dict[str, float]
     per_process_per_target_loss: dict[str, tuple[float, ...]]
@@ -1127,8 +1127,8 @@ def evaluate_trained_wrapper(
         store=store,
         process_names=eval_processes,
         target_names=target_names,
-        name_modeled_FVCs=tuple(store.name_modeled_FVCs),
-        name_modeled_SVCs=tuple(store.name_modeled_SVCs),
+        name_modeled_Inflows=tuple(store.name_modeled_Inflows),
+        name_modeled_Outflows=tuple(store.name_modeled_Outflows),
         training_process_names=tuple(training_process_names),
         per_process_total_loss=per_process_total,
         per_process_per_target_loss=per_process_per_target,
@@ -1195,8 +1195,8 @@ def train_collection(
         selected_processes=selected_processes,
         loss_module=loss_module,
     )
-    batched_Cin = store.Cin_controlled_FVCs
-    batched_Cin_modeled = store.Cin_modeled_FVCs
+    batched_Cin = store.Cin_controlled_Inflows
+    batched_Cin_modeled = store.Cin_modeled_Inflows
 
     # Partition the WHOLE wrapper so the loss module's trainable_field() leaves
     # are optimized alongside the reaction module's. Untagged leaves (controls,
@@ -1333,9 +1333,26 @@ def train_collection(
             jax.pmap,
             axis_name="bp_dev",
             devices=devices,
-            in_axes=(None, 0, 0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None), None),
+            in_axes=(
+                None,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                (0 if use_jump else None),
+                None,
+            ),
         )
-        def _pgrad(params, controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+        def _pgrad(
+            params, controls, tm, ym, mk, nm, y0, cin, cinm, ret, retm, wt, jt, step
+        ):
             def _local(p):
                 wrapper = eqx.combine(p, trainable_static)
                 module = wrapper.reaction_module
@@ -1345,7 +1362,19 @@ def train_collection(
                 SCL_ym = ym / scale_targets[None, None, :]
                 tmc = clamp_padded_time_rows(tm, nm)
 
-                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                def _one(
+                    pidx,
+                    t_row,
+                    scl_ym,
+                    mask,
+                    n_meas,
+                    raw_y0,
+                    ci,
+                    cim,
+                    retention,
+                    retention_modeled,
+                    jts,
+                ):
                     return evaluate_one_sample_loss(
                         wrapper,
                         controls,
@@ -1357,6 +1386,8 @@ def train_collection(
                         raw_y0,
                         ci,
                         cim,
+                        retention,
+                        retention_modeled,
                         jts,
                         max_solver_steps=max_steps,
                         solver_rtol=rtol,
@@ -1365,7 +1396,20 @@ def train_collection(
                     )
 
                 totl, pert, faild = jax.vmap(
-                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                    _one,
+                    in_axes=(
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        (0 if use_jump else None),
+                    ),
                 )(
                     jnp.arange(tm.shape[0], dtype=jnp.int32),
                     tmc,
@@ -1375,6 +1419,8 @@ def train_collection(
                     y0,
                     cin,
                     cinm,
+                    ret,
+                    retm,
                     jt,
                 )
                 return jnp.sum(totl * wt), (pert, totl, faild)
@@ -1419,6 +1465,8 @@ def train_collection(
                     current_batch.y0_measured,
                     cin,
                     cinm,
+                    current_batch.retention_controlled_Outflows,
+                    current_batch.retention_modeled_Outflows,
                 )
             ]
             controls = jtu.tree_map(_shard, jtu.tree_map(_pad, current_batch.controls))
@@ -1433,6 +1481,8 @@ def train_collection(
                 ins[4],
                 ins[5],
                 ins[6],
+                ins[7],
+                ins[8],
                 weight_sharded,
                 jt,
                 step,
@@ -1507,15 +1557,32 @@ def train_collection(
 
         @eqx.filter_jit
         def _full_step(
-            params, opt_state, controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step
+            params,
+            opt_state,
+            controls,
+            tm,
+            ym,
+            mk,
+            nm,
+            y0,
+            cin,
+            cinm,
+            ret,
+            retm,
+            wt,
+            jt,
+            step,
         ):
             # Inside-jit sharding constraints (per the equinox autoparallelism
             # tutorial): emits jax.lax.with_sharding_constraint so XLA keeps
             # params/opt replicated and the batch axis sharded *through* the
             # computation, rather than replicating it.
             params, opt_state = eqx.filter_shard((params, opt_state), S_repl)
-            controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
-                (controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
+            controls, tm, ym, mk, nm, y0, cin, cinm, ret, retm, wt, jt = (
+                eqx.filter_shard(
+                    (controls, tm, ym, mk, nm, y0, cin, cinm, ret, retm, wt, jt),
+                    S_batch,
+                )
             )
 
             def _local(p):
@@ -1527,7 +1594,19 @@ def train_collection(
                 SCL_ym = ym / scale_targets[None, None, :]
                 tmc = clamp_padded_time_rows(tm, nm)
 
-                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                def _one(
+                    pidx,
+                    t_row,
+                    scl_ym,
+                    mask,
+                    n_meas,
+                    raw_y0,
+                    ci,
+                    cim,
+                    retention,
+                    retention_modeled,
+                    jts,
+                ):
                     return evaluate_one_sample_loss(
                         wrapper,
                         controls,
@@ -1539,6 +1618,8 @@ def train_collection(
                         raw_y0,
                         ci,
                         cim,
+                        retention,
+                        retention_modeled,
                         jts,
                         max_solver_steps=max_steps,
                         solver_rtol=rtol,
@@ -1547,7 +1628,20 @@ def train_collection(
                     )
 
                 totl, pert, faild = jax.vmap(
-                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                    _one,
+                    in_axes=(
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        (0 if use_jump else None),
+                    ),
                 )(
                     jnp.arange(tm.shape[0], dtype=jnp.int32),
                     tmc,
@@ -1557,6 +1651,8 @@ def train_collection(
                     y0,
                     cin,
                     cinm,
+                    ret,
+                    retm,
                     jt,
                 )
                 # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
@@ -1618,6 +1714,8 @@ def train_collection(
                         current_batch.y0_measured,
                         cin,
                         cinm,
+                        current_batch.retention_controlled_Outflows,
+                        current_batch.retention_modeled_Outflows,
                     )
                 ]
                 controls = jtu.tree_map(
@@ -1651,6 +1749,8 @@ def train_collection(
                     sharded[4],
                     sharded[5],
                     sharded[6],
+                    sharded[7],
+                    sharded[8],
                     wt,
                     jt,
                     step_r,

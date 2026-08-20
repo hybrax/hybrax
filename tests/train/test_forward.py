@@ -30,7 +30,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -70,8 +70,8 @@ def test_select_prediction_processes_rejects_unknown_scope():
 def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypatch):
     store = SimpleNamespace(
         process_order=("train", "holdout"),
-        name_modeled_FVCs=("F",),
-        name_modeled_SVCs=("S",),
+        name_modeled_Inflows=("F",),
+        name_modeled_Outflows=("S",),
     )
     wrapper = object()
 
@@ -111,10 +111,12 @@ def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypat
 def test_evaluate_trained_wrapper_skips_dense_solve_for_no_predictions(monkeypatch):
     store = SimpleNamespace(
         process_order=("p1",),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
-        Cin_controlled_FVCs=jnp.zeros((1, 0, 1)),
-        Cin_modeled_FVCs=jnp.zeros((1, 0, 1)),
+        name_modeled_Inflows=(),
+        name_modeled_Outflows=(),
+        Cin_controlled_Inflows=jnp.zeros((1, 0, 1)),
+        Cin_modeled_Inflows=jnp.zeros((1, 0, 1)),
+        retention_controlled_Outflows=jnp.zeros((1, 0, 1)),
+        retention_modeled_Outflows=jnp.zeros((1, 0, 1)),
         gather_batch=lambda indices: SimpleNamespace(process_indices=indices),
     )
     monkeypatch.setattr(
@@ -159,10 +161,12 @@ def test_evaluate_trained_wrapper_loss_only_batches_exclude_padding(monkeypatch)
 
     class _Store:
         process_order = process_names
-        name_modeled_FVCs = ()
-        name_modeled_SVCs = ()
-        Cin_controlled_FVCs = jnp.zeros((35, 0, 1))
-        Cin_modeled_FVCs = jnp.zeros((35, 0, 1))
+        name_modeled_Inflows = ()
+        name_modeled_Outflows = ()
+        Cin_controlled_Inflows = jnp.zeros((35, 0, 1))
+        Cin_modeled_Inflows = jnp.zeros((35, 0, 1))
+        retention_controlled_Outflows = jnp.zeros((35, 0, 1))
+        retention_modeled_Outflows = jnp.zeros((35, 0, 1))
 
         @staticmethod
         def validate_control_support(process_names):
@@ -268,8 +272,8 @@ def _make_forward_result(
         store=None,
         process_names=tuple(process_names),
         target_names=tuple(target_names),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
+        name_modeled_Inflows=(),
+        name_modeled_Outflows=(),
         training_process_names=tuple(training_process_names),
         per_process_total_loss=per_process_total,
         per_process_per_target_loss=per_process_per_target,
@@ -395,8 +399,8 @@ def _stub_forward_result(**kwargs) -> ForwardResult:
         store=_DummyStore(),
         process_names=("p1", "p2"),
         target_names=("X", "S"),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
+        name_modeled_Inflows=(),
+        name_modeled_Outflows=(),
         training_process_names=("p1", "p2"),
         per_process_total_loss={"p1": 0.1, "p2": 0.2},
         per_process_per_target_loss={"p1": (0.05, 0.15), "p2": (0.1, 0.3)},
@@ -443,14 +447,18 @@ def _make_forward_run_dir(
 _FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_RMCs": jnp.ones(1),
     "SCALE_V_in_cumulative": jnp.asarray(1.0),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_modeled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_rates": jnp.ones(0),
+    "SCALE_controlled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Outflows_rates": jnp.ones(0),
+    "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_controlled_PVs": jnp.ones(0),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0),
+    "SCALE_modeled_Inflows_rates": jnp.ones(0),
+    "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
@@ -475,7 +483,8 @@ class _ConstantReactionModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
-            SCL_modeled_FVCs_rates=self.SCL_feed_rates,
+            SCL_modeled_Inflows_rates=self.SCL_feed_rates,
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             auxiliary=self.aux,
         )
 
@@ -496,7 +505,7 @@ def _make_one_species_process(
             initial_volume=initial_volume,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -934,7 +943,8 @@ def test_export_predictions_csv_header_only_for_empty_selection(
     class _Wrapper:
         modeled_RMC_names = ("X", "S")
         modeled_PV_names = ()
-        modeled_FVC_names = ("F",)
+        modeled_Inflow_names = ("F",)
+        modeled_Outflow_names = ()
         rhs_ode = _RhsOde()
 
     ts_path = tmp_path / "timeseries.csv"
@@ -964,8 +974,10 @@ def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count)
 
     class _Store:
         process_order = process_names
-        Cin_controlled_FVCs = jnp.zeros((process_count, 0, 1))
-        Cin_modeled_FVCs = jnp.zeros((process_count, 0, 1))
+        Cin_controlled_Inflows = jnp.zeros((process_count, 0, 1))
+        Cin_modeled_Inflows = jnp.zeros((process_count, 0, 1))
+        retention_controlled_Outflows = jnp.zeros((process_count, 0, 1))
+        retention_modeled_Outflows = jnp.zeros((process_count, 0, 1))
 
         @staticmethod
         def validate_control_support(process_names):
@@ -1220,7 +1232,8 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(tmp_path: P
     class _Wrapper:
         modeled_RMC_names = ("biomass",)
         modeled_PV_names = ()
-        modeled_FVC_names = ()
+        modeled_Inflow_names = ()
+        modeled_Outflow_names = ()
         rhs_ode = _RhsOde()
 
     with pytest.raises(

@@ -24,11 +24,13 @@ SPLINE_SCALE_SAMPLE_COUNT = 200
 class ControlScaleEvidence:
     """Raw-first control observations used by producer-side scale hooks."""
 
-    cumulative_FVCs: tuple[np.ndarray, ...]
-    FVC_rates: tuple[np.ndarray, ...]
+    cumulative_Inflows: tuple[np.ndarray, ...]
+    Inflow_rates: tuple[np.ndarray, ...]
+    cumulative_Outflows: tuple[np.ndarray, ...]
+    Outflow_rates: tuple[np.ndarray, ...]
     PVs: tuple[np.ndarray, ...]
-    controlled_FVC_Cin: np.ndarray
-    modeled_FVC_Cin: np.ndarray
+    controlled_Inflow_Cin: np.ndarray
+    modeled_Inflow_Cin: np.ndarray
 
 
 def select_parent_collection(
@@ -137,7 +139,7 @@ class ProducerCollectionData:
         rhs_ode = training_data.rhs_ode
         state_names = rhs_ode.name_modeled_RMCs + rhs_ode.name_modeled_PVs
         volume_change_names = (
-            training_data.name_modeled_FVCs + training_data.name_modeled_SVCs
+            training_data.name_modeled_Inflows + training_data.name_modeled_Outflows
         )
         parents: list[str | None] = []
         time_bounds: list[tuple[float, float]] = []
@@ -246,18 +248,37 @@ class RuntimeDataContext:
             return self._control_scale_evidence
         collection = self.training_parent_collection
         controls = self.controls_store
-        cumulative = [[] for _ in controls.name_controlled_FVCs]
-        rates = [[] for _ in controls.name_controlled_FVCs]
+        cumulative_Inflows = [[] for _ in controls.name_controlled_Inflows]
+        Inflow_rates = [[] for _ in controls.name_controlled_Inflows]
+        cumulative_Outflows = [[] for _ in controls.name_controlled_Outflows]
+        Outflow_rates = [[] for _ in controls.name_controlled_Outflows]
         pvs = [[] for _ in controls.name_controlled_PVs]
 
         for process in collection.processes.values():
-            for index, name in enumerate(controls.name_controlled_FVCs):
-                values, derivatives = _series_scale_evidence(
-                    process.volume.volume_changes[name].values,
-                    derivative=True,
-                )
-                cumulative[index].append(values)
-                rates[index].append(derivatives)
+            for names, cumulative, rates, use_magnitude in (
+                (
+                    controls.name_controlled_Inflows,
+                    cumulative_Inflows,
+                    Inflow_rates,
+                    False,
+                ),
+                (
+                    controls.name_controlled_Outflows,
+                    cumulative_Outflows,
+                    Outflow_rates,
+                    True,
+                ),
+            ):
+                for index, name in enumerate(names):
+                    values, derivatives = _series_scale_evidence(
+                        process.volume.volume_changes[name].values,
+                        derivative=True,
+                    )
+                    if use_magnitude:
+                        values = np.abs(values)
+                        derivatives = np.abs(derivatives)
+                    cumulative[index].append(values)
+                    rates[index].append(derivatives)
             for index, name in enumerate(controls.name_controlled_PVs):
                 series = process.process_variables[name].values
                 if isinstance(series, StaticVariable):
@@ -270,14 +291,16 @@ class RuntimeDataContext:
             return tuple(np.concatenate(values) for values in traces)
 
         return ControlScaleEvidence(
-            cumulative_FVCs=concatenate(cumulative),
-            FVC_rates=concatenate(rates),
+            cumulative_Inflows=concatenate(cumulative_Inflows),
+            Inflow_rates=concatenate(Inflow_rates),
+            cumulative_Outflows=concatenate(cumulative_Outflows),
+            Outflow_rates=concatenate(Outflow_rates),
             PVs=concatenate(pvs),
-            controlled_FVC_Cin=np.asarray(
-                self.training_data.Cin_controlled_FVCs, dtype=float
+            controlled_Inflow_Cin=np.asarray(
+                self.training_data.Cin_controlled_Inflows, dtype=float
             ),
-            modeled_FVC_Cin=np.asarray(
-                self.training_data.Cin_modeled_FVCs, dtype=float
+            modeled_Inflow_Cin=np.asarray(
+                self.training_data.Cin_modeled_Inflows, dtype=float
             ),
         )
 
@@ -314,7 +337,8 @@ class RuntimeDataContext:
     def modeled_volume_change_trace(self, process_index: int, name: str) -> RawTrace:
         """Return one exact modeled cumulative volume-change trace."""
         names = (
-            self.training_data.name_modeled_FVCs + self.training_data.name_modeled_SVCs
+            self.training_data.name_modeled_Inflows
+            + self.training_data.name_modeled_Outflows
         )
         try:
             column = names.index(name)
@@ -380,7 +404,7 @@ def _raw_state_trace(process, name: str, start: float, end: float) -> RawTrace:
 
 def _sample_volume_events(process, process_name: str) -> RawTrace:
     traces = tuple(
-        _trace(change.values, process_name, f"sample volume change {name!r}")
+        _trace(change.values, process_name, f"discrete Outflow {name!r}")
         for name, change in process.volume.volume_changes.items()
         if isinstance(change, Outflow) and not change.is_continuous
     )

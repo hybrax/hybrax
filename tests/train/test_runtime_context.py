@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 from copy import deepcopy
-from pathlib import Path
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -15,18 +14,16 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-
-from bp_format.serialization import load_process_collection
 
 from bp_train.harness import _resolve_estimated_scales
 from bp_train.model_api import EstimatedScales
@@ -38,9 +35,6 @@ from bp_train.runtime_context import (
     original_parent_processes,
 )
 from bp_train.training_data import TrainingDataStore
-
-
-_KITTLER = Path("examples/01_kittler_2022/prepared/prepared.json")
 
 
 def _process(
@@ -60,7 +54,7 @@ def _process(
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed": FeedVolumeChange(
+                "feed": Inflow(
                     name="feed",
                     unit="L",
                     is_controlled=True,
@@ -79,7 +73,15 @@ def _process(
                             )
                         },
                     ),
-                )
+                ),
+                "bleed": Outflow(
+                    name="bleed",
+                    unit="L",
+                    is_controlled=True,
+                    is_continuous=True,
+                    values=TimeSeries(times=[0.0, 1.0], values=[0.0, -feed_end / 10.0]),
+                    retention={"biomass": 0.5},
+                ),
             },
         ),
         reactor_medium=ReactorMedium(
@@ -179,15 +181,23 @@ def test_selected_parent_context_is_closed_and_parent_aligned():
     assert selected.training_data.t_measured.shape[0] == 2
     assert selected.controls_store.control_values.shape[0] == 2
     np.testing.assert_allclose(
-        selected.training_data.Cin_controlled_FVCs[:, 0, 0], [10, 20]
+        selected.training_data.Cin_controlled_Inflows[:, 0, 0], [10, 20]
     )
     np.testing.assert_allclose(
-        selected.rhs_ode.Cin_controlled_FVCs,
-        selected.training_data.Cin_controlled_FVCs[0],
+        selected.rhs_ode.Cin_controlled_Inflows,
+        selected.training_data.Cin_controlled_Inflows[0],
     )
     np.testing.assert_allclose(
-        selected.rhs_ode.Cin_modeled_FVCs,
-        selected.training_data.Cin_modeled_FVCs[0],
+        selected.rhs_ode.Cin_modeled_Inflows,
+        selected.training_data.Cin_modeled_Inflows[0],
+    )
+    np.testing.assert_allclose(
+        selected.rhs_ode.retention_controlled_Outflows,
+        selected.training_data.retention_controlled_Outflows[0],
+    )
+    np.testing.assert_allclose(
+        selected.rhs_ode.retention_modeled_Outflows,
+        selected.training_data.retention_modeled_Outflows[0],
     )
     np.testing.assert_allclose(
         selected.controls_store.min_V,
@@ -248,7 +258,7 @@ def test_selected_scale_context_exposes_only_deep_copied_parents():
         is not (collection.metadata["bp-train"]["trusted_setting"])
     )
     assert parent_collection.metadata["other"] == original_metadata["other"]
-    assert selected.control_scale_evidence().cumulative_FVCs
+    assert selected.control_scale_evidence().cumulative_Inflows
     assert collection.metadata == original_metadata
 
 
@@ -277,8 +287,10 @@ def test_selected_stores_gather_every_process_aligned_array():
     source_indices = np.asarray([0, 2])
 
     expected_training_fields = {
-        "Cin_controlled_FVCs",
-        "Cin_modeled_FVCs",
+        "Cin_controlled_Inflows",
+        "Cin_modeled_Inflows",
+        "retention_controlled_Outflows",
+        "retention_modeled_Outflows",
         "t_measured",
         "y_measured",
         "mask_measured",
@@ -383,12 +395,18 @@ def test_control_scale_evidence_excludes_children_and_held_out_parents():
     selected = runtime_data.select_training_parents(collection, ("P0_aug", "P1"))
     evidence = selected.control_scale_evidence()
 
-    np.testing.assert_allclose(evidence.cumulative_FVCs[0], [0.0, 1.0, 0.0, 5.0])
-    np.testing.assert_allclose(evidence.FVC_rates[0], [1.0, 5.0])
+    np.testing.assert_allclose(evidence.cumulative_Inflows[0], [0.0, 1.0, 0.0, 5.0])
+    np.testing.assert_allclose(evidence.Inflow_rates[0], [1.0, 5.0])
+    np.testing.assert_allclose(evidence.cumulative_Outflows[0], [0.0, 0.1, 0.0, 0.5])
+    np.testing.assert_allclose(evidence.Outflow_rates[0], [0.1, 0.5])
+    outflow_rate_scale = max(
+        np.max(np.abs(values)) for values in evidence.Outflow_rates
+    )
+    assert outflow_rate_scale == pytest.approx(0.5)
     np.testing.assert_allclose(evidence.PVs[0], [300.0, 310.0])
-    np.testing.assert_allclose(evidence.controlled_FVC_Cin[:, 0, 0], [10.0, 20.0])
-    assert np.max(evidence.cumulative_FVCs[0]) < 1000.0
-    assert np.max(evidence.controlled_FVC_Cin) < 1000.0
+    np.testing.assert_allclose(evidence.controlled_Inflow_Cin[:, 0, 0], [10.0, 20.0])
+    assert np.max(evidence.cumulative_Inflows[0]) < 1000.0
+    assert np.max(evidence.controlled_Inflow_Cin) < 1000.0
 
 
 def test_unselected_mutations_do_not_change_scale_evidence_but_selected_ones_do():
@@ -405,8 +423,10 @@ def test_unselected_mutations_do_not_change_scale_evidence_but_selected_ones_do(
 
     for unselected_changed in (child_changed, held_out_changed):
         for baseline_traces, changed_traces in (
-            (baseline.cumulative_FVCs, unselected_changed.cumulative_FVCs),
-            (baseline.FVC_rates, unselected_changed.FVC_rates),
+            (baseline.cumulative_Inflows, unselected_changed.cumulative_Inflows),
+            (baseline.Inflow_rates, unselected_changed.Inflow_rates),
+            (baseline.cumulative_Outflows, unselected_changed.cumulative_Outflows),
+            (baseline.Outflow_rates, unselected_changed.Outflow_rates),
             (baseline.PVs, unselected_changed.PVs),
         ):
             for baseline_trace, changed_trace in zip(
@@ -414,13 +434,13 @@ def test_unselected_mutations_do_not_change_scale_evidence_but_selected_ones_do(
             ):
                 np.testing.assert_allclose(baseline_trace, changed_trace)
         np.testing.assert_allclose(
-            baseline.controlled_FVC_Cin, unselected_changed.controlled_FVC_Cin
+            baseline.controlled_Inflow_Cin, unselected_changed.controlled_Inflow_Cin
         )
     assert not np.array_equal(
-        baseline.cumulative_FVCs[0], selected_changed.cumulative_FVCs[0]
+        baseline.cumulative_Inflows[0], selected_changed.cumulative_Inflows[0]
     )
     assert not np.array_equal(
-        baseline.controlled_FVC_Cin, selected_changed.controlled_FVC_Cin
+        baseline.controlled_Inflow_Cin, selected_changed.controlled_Inflow_Cin
     )
 
 
@@ -433,17 +453,19 @@ def test_equivalent_training_selections_produce_identical_scale_evidence():
     parent_evidence = from_parent.control_scale_evidence()
     child_evidence = from_child.control_scale_evidence()
     for parent_traces, child_traces in (
-        (parent_evidence.cumulative_FVCs, child_evidence.cumulative_FVCs),
-        (parent_evidence.FVC_rates, child_evidence.FVC_rates),
+        (parent_evidence.cumulative_Inflows, child_evidence.cumulative_Inflows),
+        (parent_evidence.Inflow_rates, child_evidence.Inflow_rates),
+        (parent_evidence.cumulative_Outflows, child_evidence.cumulative_Outflows),
+        (parent_evidence.Outflow_rates, child_evidence.Outflow_rates),
         (parent_evidence.PVs, child_evidence.PVs),
     ):
         for parent_trace, child_trace in zip(parent_traces, child_traces, strict=True):
             np.testing.assert_allclose(parent_trace, child_trace)
     np.testing.assert_allclose(
-        parent_evidence.controlled_FVC_Cin, child_evidence.controlled_FVC_Cin
+        parent_evidence.controlled_Inflow_Cin, child_evidence.controlled_Inflow_Cin
     )
     np.testing.assert_allclose(
-        parent_evidence.modeled_FVC_Cin, child_evidence.modeled_FVC_Cin
+        parent_evidence.modeled_Inflow_Cin, child_evidence.modeled_Inflow_Cin
     )
 
 
@@ -495,13 +517,15 @@ def _resolve_rich_scales(
         for times, values in data.sample_volume_event_traces:
             signature += float(np.sum(times) + np.sum(values))
         for traces in (
-            evidence.cumulative_FVCs,
-            evidence.FVC_rates,
+            evidence.cumulative_Inflows,
+            evidence.Inflow_rates,
+            evidence.cumulative_Outflows,
+            evidence.Outflow_rates,
             evidence.PVs,
         ):
             signature += sum(float(np.sum(trace)) for trace in traces)
-        signature += float(np.sum(evidence.controlled_FVC_Cin))
-        signature += float(np.sum(evidence.modeled_FVC_Cin))
+        signature += float(np.sum(evidence.controlled_Inflow_Cin))
+        signature += float(np.sum(evidence.modeled_Inflow_Cin))
         scale = np.asarray([signature])
         return EstimatedScales(
             **{field.name: scale for field in dataclasses.fields(EstimatedScales)}
@@ -588,23 +612,27 @@ def test_scale_series_uses_raw_samples_before_spline_and_samples_splines_at_200(
 def test_overlapping_sample_streams_merge_into_one_ordered_trace():
     """Two sample streams on one process share a timestamp without being dropped.
 
-    `_sample_volume_events` concatenates every `SampleVolumeChange` series and
+    `_sample_volume_events` concatenates every `Outflow` series and
     stable-sorts them, so equal timestamps are legal here even though every other
     producer time axis is strictly increasing.
     """
-    collection = load_process_collection(_KITTLER)
-    process = next(iter(collection.processes.values()))
-    name, sample = next(
-        (name, change)
-        for name, change in process.volume.volume_changes.items()
-        if isinstance(change, SampleVolumeChange)
-    )
-    duplicate = replace(sample, name=f"{name}_overlap")
-    process.volume.volume_changes[duplicate.name] = duplicate
-
+    collection, _ = _runtime_data()
     store = TrainingDataStore.from_collection(
         collection, target_source="reactor_components"
     )
+    process = collection.processes["P0"]
+    sample = Outflow(
+        name="sample",
+        unit="L",
+        is_controlled=True,
+        is_continuous=False,
+        values=TimeSeries(times=[0.25, 0.75], values=[-0.1, -0.2]),
+        retention={},
+    )
+    process.volume.volume_changes[sample.name] = sample
+    duplicate = replace(sample, name="sample_overlap")
+    process.volume.volume_changes[duplicate.name] = duplicate
+
     times, values = ProducerCollectionData.from_collection(
         store, collection
     ).sample_volume_event_traces[0]

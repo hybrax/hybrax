@@ -10,7 +10,11 @@ import jax.tree_util as jtu
 from .controls_store import BatchControls
 from .model_api import LossInputs
 from .physical_solve import within_fail_time
-from .training_data import BatchTrainingData, PerProcessTrainingData
+from .training_data import (
+    BatchTrainingData,
+    PerProcessTrainingData,
+    replace_rhs_ode_process_matrices,
+)
 from .wrapper import HybridOdeWrapper, SaveOutputs
 
 
@@ -112,7 +116,7 @@ def simulate_measurement_states(
     wrapper at ``process_data``'s per-process controls and integrates from
     ``process_data.y0_measured`` with the discrete-jump callbacks solve
     (:func:`physical_solve.solve_physical_states`). Returns the RAW physical state
-    ``[modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative]`` at each (padded)
+    ``[modeled_RMCs | V | modeled cumulative flows]`` at each padded
     measurement time. (Replaces the pre-callbacks single-solve of the same name;
     no ``jump_ts`` argument — the callbacks solve lands segment ends on the events.)
 
@@ -126,20 +130,19 @@ def simulate_measurement_states(
     if ts.size == 0:
         raise ValueError("process has no active measurement timestamps")
     process_data.controls.validate_support(float(ts[0]), float(ts[-1]))
-    # The wrapper's baked `Cin` is the template reference process's, so the feed
-    # composition has to be substituted with this process's alongside controls.
+    # The wrapper's baked flow matrices belong to its template process, so all
+    # four process-specific matrices are substituted alongside controls.
+    rhs_ode = replace_rhs_ode_process_matrices(
+        wrapper.rhs_ode,
+        process_data.Cin_controlled_Inflows,
+        process_data.Cin_modeled_Inflows,
+        process_data.retention_controlled_Outflows,
+        process_data.retention_modeled_Outflows,
+    )
     sample_wrapper = eqx.tree_at(
-        lambda w: (
-            w.controls,
-            w.rhs_ode.Cin_controlled_FVCs,
-            w.rhs_ode.Cin_modeled_FVCs,
-        ),
+        lambda w: (w.controls, w.rhs_ode),
         wrapper,
-        (
-            process_data.controls,
-            process_data.Cin_controlled_FVCs,
-            process_data.Cin_modeled_FVCs,
-        ),
+        (process_data.controls, rhs_ode),
     )
     return solve_physical_states(
         sample_wrapper,
@@ -162,18 +165,23 @@ class _BatchIndexedControls(eqx.Module):
     batch_controls: BatchControls
     row_idx: jax.Array
 
-    def eval_controlled_FVCs_cumulative(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_FVCs_cumulative(
+    def eval_controlled_Inflows_cumulative(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_Inflows_cumulative(
             self.row_idx, t_arr, states
         )
 
-    def eval_controlled_FVCs_rates(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_FVCs_rates(
+    def eval_controlled_Inflows_rates(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_Inflows_rates(
             self.row_idx, t_arr, states
         )
 
-    def eval_controlled_SVCs_rates(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_SVCs_rates(
+    def eval_controlled_Outflows_cumulative(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_Outflows_cumulative(
+            self.row_idx, t_arr, states
+        )
+
+    def eval_controlled_Outflows_rates(self, t_arr, states) -> jax.Array:
+        return self.batch_controls.eval_controlled_Outflows_rates(
             self.row_idx, t_arr, states
         )
 
@@ -260,7 +268,8 @@ def evaluate_sample_with_loss_module(
         caller using ``target_state_indices``)."""
         SCL_states = save_outputs.SCL_states
         RAW_rates = save_outputs.RAW_modeled_BiologicalOde_rates
-        RAW_fvc_rates = save_outputs.RAW_modeled_FVCs_rates
+        RAW_Inflow_rates = save_outputs.RAW_modeled_Inflows_rates
+        RAW_Outflow_rates = save_outputs.RAW_modeled_Outflows_rates
         RAW_V = save_outputs.RAW_V
         return {
             "SCL_states": SCL_states,
@@ -269,8 +278,14 @@ def evaluate_sample_with_loss_module(
                 RAW_rates
             ),
             "RAW_modeled_BiologicalOde_rates": RAW_rates,
-            "SCL_modeled_FVCs_rates": module.scale_modeled_FVCs_rates(RAW_fvc_rates),
-            "RAW_modeled_FVCs_rates": RAW_fvc_rates,
+            "SCL_modeled_Inflows_rates": module.scale_modeled_Inflows_rates(
+                RAW_Inflow_rates
+            ),
+            "RAW_modeled_Inflows_rates": RAW_Inflow_rates,
+            "SCL_modeled_Outflows_rates": module.scale_modeled_Outflows_rates(
+                RAW_Outflow_rates
+            ),
+            "RAW_modeled_Outflows_rates": RAW_Outflow_rates,
             "SCL_V": module.scale_modeled_V(RAW_V),
             "RAW_V": RAW_V,
             "RAW_V_unclamped": save_outputs.RAW_V_export,
@@ -376,8 +391,7 @@ def evaluate_sample_with_loss_module(
             )
 
     SCL_states = meas_views["SCL_states"]
-    # State layout: [modeled_RMCs | V_in_cumulative | modeled_FVCs_cumulative].
-    # target_state_indices selects modeled_RMCs + modeled_FVCs_cumulative.
+    # target_state_indices selects measured states and modeled cumulative flows.
     SCL_target_pred = SCL_states[:, wrapper.target_state_indices]
 
     # Drop measurement points past a segment failure: the loss-facing solve replaced
@@ -404,8 +418,10 @@ def evaluate_sample_with_loss_module(
         RAW_states=meas_views["RAW_states"],
         SCL_modeled_BiologicalOde_rates=meas_views["SCL_modeled_BiologicalOde_rates"],
         RAW_modeled_BiologicalOde_rates=meas_views["RAW_modeled_BiologicalOde_rates"],
-        SCL_modeled_FVCs_rates=meas_views["SCL_modeled_FVCs_rates"],
-        RAW_modeled_FVCs_rates=meas_views["RAW_modeled_FVCs_rates"],
+        SCL_modeled_Inflows_rates=meas_views["SCL_modeled_Inflows_rates"],
+        RAW_modeled_Inflows_rates=meas_views["RAW_modeled_Inflows_rates"],
+        SCL_modeled_Outflows_rates=meas_views["SCL_modeled_Outflows_rates"],
+        RAW_modeled_Outflows_rates=meas_views["RAW_modeled_Outflows_rates"],
         SCL_V=meas_views["SCL_V"],
         RAW_V=meas_views["RAW_V"],
         RAW_V_unclamped=meas_views["RAW_V_unclamped"],
@@ -428,8 +444,10 @@ def evaluate_sample_with_loss_module(
         dense_RAW_modeled_BiologicalOde_rates=dense_views[
             "RAW_modeled_BiologicalOde_rates"
         ],
-        dense_SCL_modeled_FVCs_rates=dense_views["SCL_modeled_FVCs_rates"],
-        dense_RAW_modeled_FVCs_rates=dense_views["RAW_modeled_FVCs_rates"],
+        dense_SCL_modeled_Inflows_rates=dense_views["SCL_modeled_Inflows_rates"],
+        dense_RAW_modeled_Inflows_rates=dense_views["RAW_modeled_Inflows_rates"],
+        dense_SCL_modeled_Outflows_rates=dense_views["SCL_modeled_Outflows_rates"],
+        dense_RAW_modeled_Outflows_rates=dense_views["RAW_modeled_Outflows_rates"],
         dense_SCL_V=dense_views["SCL_V"],
         dense_RAW_V=dense_views["RAW_V"],
         dense_RAW_V_unclamped=dense_views["RAW_V_unclamped"],
@@ -464,6 +482,8 @@ def evaluate_one_sample_loss(
     RAW_y0_measured: jax.Array,
     cin: jax.Array,
     cin_modeled: jax.Array,
+    retention: jax.Array,
+    retention_modeled: jax.Array,
     jump_ts: jax.Array | None,
     *,
     max_solver_steps: int,
@@ -479,14 +499,17 @@ def evaluate_one_sample_loss(
         batch_controls=batch_controls,
         row_idx=row_idx,
     )
+    rhs_ode = replace_rhs_ode_process_matrices(
+        wrapper.rhs_ode,
+        cin,
+        cin_modeled,
+        retention,
+        retention_modeled,
+    )
     sample_wrapper = eqx.tree_at(
-        lambda w: (
-            w.controls,
-            w.rhs_ode.Cin_controlled_FVCs,
-            w.rhs_ode.Cin_modeled_FVCs,
-        ),
+        lambda w: (w.controls, w.rhs_ode),
         wrapper,
-        (controls, cin, cin_modeled),
+        (controls, rhs_ode),
     )
     result = evaluate_sample_with_loss_module(
         sample_wrapper,
@@ -546,20 +569,25 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             RAW_y0_measured: jax.Array,
             cin: jax.Array,
             cin_modeled: jax.Array,
+            retention: jax.Array,
+            retention_modeled: jax.Array,
             jump_ts: jax.Array | None,
         ) -> tuple:
             controls = _BatchIndexedControls(
                 batch_controls=batch.controls,
                 row_idx=row_idx,
             )
+            rhs_ode = replace_rhs_ode_process_matrices(
+                wrapper.rhs_ode,
+                cin,
+                cin_modeled,
+                retention,
+                retention_modeled,
+            )
             sample_wrapper = eqx.tree_at(
-                lambda w: (
-                    w.controls,
-                    w.rhs_ode.Cin_controlled_FVCs,
-                    w.rhs_ode.Cin_modeled_FVCs,
-                ),
+                lambda w: (w.controls, w.rhs_ode),
                 wrapper,
-                (controls, cin, cin_modeled),
+                (controls, rhs_ode),
             )
             result = evaluate_sample_with_loss_module(
                 sample_wrapper,
@@ -593,7 +621,19 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             _sample_loss,
             # when `jump_ts_rows` is `None` we also have to pass `None` to vmap so that
             # it's not iterated over
-            in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None if jump_ts_rows is None else 0),
+            in_axes=(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                None if jump_ts_rows is None else 0,
+            ),
         )(
             jnp.arange(batch.process_indices.shape[0], dtype=jnp.int32),
             batch_t_meas,
@@ -603,6 +643,8 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             batch.y0_measured,
             batched_Cin[batch.process_indices],
             batched_Cin_modeled[batch.process_indices],
+            batch.retention_controlled_Outflows,
+            batch.retention_modeled_Outflows,
             jump_ts_rows,
         )
         mean_total = jnp.mean(per_sample_total)

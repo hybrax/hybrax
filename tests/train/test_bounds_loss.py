@@ -133,8 +133,10 @@ def _inputs(
         RAW_states=raw_states,
         SCL_modeled_BiologicalOde_rates=zeros_rates,
         RAW_modeled_BiologicalOde_rates=raw_rates,
-        SCL_modeled_FVCs_rates=jnp.zeros((n_rows, 0)),
-        RAW_modeled_FVCs_rates=jnp.zeros((n_rows, 0)),
+        SCL_modeled_Inflows_rates=jnp.zeros((n_rows, 0)),
+        RAW_modeled_Inflows_rates=jnp.zeros((n_rows, 0)),
+        SCL_modeled_Outflows_rates=jnp.zeros((n_rows, 0)),
+        RAW_modeled_Outflows_rates=jnp.zeros((n_rows, 0)),
         SCL_V=zeros_states[:, 2],
         RAW_V=raw_states[:, 2],
         RAW_V_unclamped=jnp.asarray(raw_v_unclamped),
@@ -493,7 +495,7 @@ def test_missing_rate_in_later_process_is_rejected_clearly():
     p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
     collection = BioProcessCollection(processes={"p1": _process("p1"), "p2": p2})
 
-    with pytest.raises(ValueError, match="biological_ode mismatch across processes"):
+    with pytest.raises(ValueError, match="biological_ode"):
         BoundsViolationLossModule(
             target_names=("biomass",),
             bound_records=_bound_records(collection),

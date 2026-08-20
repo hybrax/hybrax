@@ -85,14 +85,17 @@ def dense_exports_from_save_outputs(
     Pure reshaping (no ODE solve): the leading axis of every leaf is the process
     batch (aligned with ``process_names``); un-scale ``SCL_states`` to physical
     and pick the canonical export columns (``c_*``, ``V_real``,
-    cumulative modeled feeds, ``q_*`` rates, and per-key ``auxiliary``).
+    cumulative modeled Inflows and Outflows, ``q_*`` rates, and per-key
+    ``auxiliary``).
     """
     module = trained_wrapper.reaction_module
     # "species" export columns = the [RMCs | PVs] leading state block.
     n_species = len(trained_wrapper.modeled_RMC_names) + len(
         trained_wrapper.modeled_PV_names
     )
-    n_modeled = len(trained_wrapper.modeled_FVC_names)
+    n_modeled = len(trained_wrapper.modeled_Inflow_names) + len(
+        trained_wrapper.modeled_Outflow_names
+    )
     # Un-scale [N, n_pred, state] → physical in one vmapped pass, then to numpy.
     RAW_states = np.asarray(
         jax.vmap(jax.vmap(module.unscale_state))(prediction_save_outputs.SCL_states)
@@ -132,7 +135,8 @@ def dense_exports_from_save_outputs(
 def _predictions_csv_header(
     modeled_RMC_names: tuple[str, ...],
     modeled_PV_names: tuple[str, ...],
-    modeled_FVC_names: tuple[str, ...],
+    modeled_Inflow_names: tuple[str, ...],
+    modeled_Outflow_names: tuple[str, ...],
     rate_names: tuple[str, ...],
     auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
@@ -148,7 +152,8 @@ def _predictions_csv_header(
         + [f"c_{name}" for name in modeled_RMC_names]
         + [f"c_{name}" for name in modeled_PV_names]
         + ["V_real"]
-        + [f"B_{name}_cum" for name in modeled_FVC_names]
+        + [f"B_{name}_cum" for name in modeled_Inflow_names]
+        + [f"B_{name}_cum" for name in modeled_Outflow_names]
         + list(rate_names)
         + list(auxiliary_columns)
     )
@@ -424,11 +429,12 @@ def export_predictions_csv(
 
     modeled_RMC_names = trained_wrapper.modeled_RMC_names
     modeled_PV_names = trained_wrapper.modeled_PV_names
-    modeled_FVC_names = trained_wrapper.modeled_FVC_names
+    modeled_Inflow_names = trained_wrapper.modeled_Inflow_names
+    modeled_Outflow_names = trained_wrapper.modeled_Outflow_names
     rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
     # Leading state block written as ``c_*`` columns = modeled RMCs then PVs.
     n_species = len(modeled_RMC_names) + len(modeled_PV_names)
-    n_modeled = len(modeled_FVC_names)
+    n_modeled = len(modeled_Inflow_names) + len(modeled_Outflow_names)
     n_rates = len(rate_names)
 
     if process_names is None:
@@ -445,7 +451,8 @@ def export_predictions_csv(
         header = _predictions_csv_header(
             modeled_RMC_names=modeled_RMC_names,
             modeled_PV_names=modeled_PV_names,
-            modeled_FVC_names=modeled_FVC_names,
+            modeled_Inflow_names=modeled_Inflow_names,
+            modeled_Outflow_names=modeled_Outflow_names,
             rate_names=rate_names,
         )
         pd.DataFrame(columns=header).to_csv(output_path, index=False)
@@ -458,7 +465,8 @@ def export_predictions_csv(
     header = _predictions_csv_header(
         modeled_RMC_names=modeled_RMC_names,
         modeled_PV_names=modeled_PV_names,
-        modeled_FVC_names=modeled_FVC_names,
+        modeled_Inflow_names=modeled_Inflow_names,
+        modeled_Outflow_names=modeled_Outflow_names,
         rate_names=rate_names,
         auxiliary_columns=auxiliary_columns,
     )

@@ -11,10 +11,10 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -70,7 +70,8 @@ class _LinearReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -84,7 +85,8 @@ class _RawDependentReactionModule(UserReactionModule):
         rate = -0.2 * RAW_modeled_RMCs[0]
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([rate]),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=rate.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=rate.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -97,7 +99,8 @@ class _AuxReactionModule(UserReactionModule):
         rate = jnp.asarray([0.0], dtype=SCL_modeled_RMCs.dtype)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=rate,
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             auxiliary={
                 "mu_raw": t,
                 "latent_pair": jnp.asarray(
@@ -123,7 +126,8 @@ class _BlowUpReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -135,7 +139,7 @@ def _make_two_process_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -171,7 +175,7 @@ def _make_two_process_collection() -> BioProcessCollection:
             initial_volume=1.1,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -205,21 +209,27 @@ def _make_two_process_collection() -> BioProcessCollection:
 
 def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
-    n_FVCs = len(rhs_ode.name_modeled_FVCs)
+    n_Inflows = len(rhs_ode.name_modeled_Inflows)
+    n_Outflows = len(rhs_ode.name_modeled_Outflows)
     n_rates = len(rhs_ode.name_modeled_rates)
-    n_FVC = len(controls.name_controlled_FVCs)
+    n_Inflow = len(controls.name_controlled_Inflows)
+    n_Outflow = len(controls.name_controlled_Outflows)
     n_PV = len(controls.name_controlled_PVs)
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_RMCs),
         "SCALE_V_in_cumulative": jnp.asarray(1.0),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs)),
+        "SCALE_modeled_Inflows_cumulative": jnp.ones(n_Inflows),
+        "SCALE_modeled_Outflows_cumulative": jnp.ones(n_Outflows),
+        "SCALE_controlled_Inflows_cumulative": jnp.ones(n_Inflow),
+        "SCALE_controlled_Inflows_rates": jnp.ones(n_Inflow),
+        "SCALE_controlled_Outflows_cumulative": jnp.ones(n_Outflow),
+        "SCALE_controlled_Outflows_rates": jnp.ones(n_Outflow),
+        "SCALE_controlled_Inflows_Cin": jnp.ones((n_Inflow, n_RMCs)),
         "SCALE_controlled_PVs": jnp.ones(n_PV),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs)),
+        "SCALE_modeled_Inflows_Cin": jnp.ones((n_Inflows, n_RMCs)),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs),
+        "SCALE_modeled_Inflows_rates": jnp.ones(n_Inflows),
+        "SCALE_modeled_Outflows_rates": jnp.ones(n_Outflows),
     }
 
 
@@ -347,8 +357,12 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
                 (n_rows, len(wrapper_arg.modeled_RMC_names)),
                 dtype=states.dtype,
             ),
-            RAW_modeled_FVCs_rates=jnp.zeros(
-                (n_rows, len(wrapper_arg.modeled_FVC_names)),
+            RAW_modeled_Inflows_rates=jnp.zeros(
+                (n_rows, len(wrapper_arg.modeled_Inflow_names)),
+                dtype=states.dtype,
+            ),
+            RAW_modeled_Outflows_rates=jnp.zeros(
+                (n_rows, len(wrapper_arg.modeled_Outflow_names)),
                 dtype=states.dtype,
             ),
             auxiliary=None,
@@ -585,9 +599,11 @@ def _build_batched_setup(
     rhs_by_process = [
         build_rhs_ode(collection.processes[name]) for name in store.process_order
     ]
-    batched_cin = jnp.stack([rhs.Cin_controlled_FVCs for rhs in rhs_by_process], axis=0)
+    batched_cin = jnp.stack(
+        [rhs.Cin_controlled_Inflows for rhs in rhs_by_process], axis=0
+    )
     batched_cin_modeled = jnp.stack(
-        [rhs.Cin_modeled_FVCs for rhs in rhs_by_process], axis=0
+        [rhs.Cin_modeled_Inflows for rhs in rhs_by_process], axis=0
     )
     return wrapper, batch, batch_controls, batched_cin, batched_cin_modeled
 
@@ -670,7 +686,7 @@ def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypa
     def _fake_evaluate(sample_wrapper, **_kwargs):
         signal = (
             sample_wrapper.controls.sample_event_volumes[0]
-            + sample_wrapper.rhs_ode.Cin_controlled_FVCs.reshape(-1)[0]
+            + sample_wrapper.rhs_ode.Cin_controlled_Inflows.reshape(-1)[0]
         )
         return type(
             "Result",
@@ -756,6 +772,8 @@ def test_evaluate_one_sample_loss_returns_fail_time():
         batch.y0_measured[0],
         batched_cin[pidx],
         batched_cin_modeled[pidx],
+        batch.retention_controlled_Outflows[0],
+        batch.retention_modeled_Outflows[0],
         None,
         max_solver_steps=512,
         solver_rtol=1e-5,
@@ -1341,7 +1359,7 @@ def _make_feed_cin_collection(*, cin_lo: float, cin_hi: float) -> BioProcessColl
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "feed_A": FeedVolumeChange(
+                    "feed_A": Inflow(
                         name="feed_A",
                         unit="L",
                         is_controlled=True,
@@ -1405,7 +1423,7 @@ def test_simulate_measurement_states_uses_the_simulated_processs_own_Cin():
     )
     # The two processes differ only in their feed concentration.
     np.testing.assert_allclose(
-        np.asarray(store.Cin_controlled_FVCs), [[[2.0]], [[4.0]]]
+        np.asarray(store.Cin_controlled_Inflows), [[[2.0]], [[4.0]]]
     )
 
     def template(reference: str) -> HybridOdeWrapper:

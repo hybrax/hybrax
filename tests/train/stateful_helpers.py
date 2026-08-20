@@ -204,7 +204,7 @@ def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     rhs = build_rhs_ode(process)
-    n_controlled_fvcs = len(controls.name_controlled_FVCs)
+    n_controlled_inflows = len(controls.name_controlled_Inflows)
     n_latent = module.h0.shape[0] if hasattr(module, "h0") else module.n_latent
     # A module that already sized a rate head (e.g. DefaultStatefulReactionModule)
     # must have been built with the rhs rate count; otherwise the overridden scale
@@ -215,7 +215,7 @@ def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
         f"sized to {module.n_modeled_BiologicalOde_rates}, not the rhs count {n_rates}"
     )
     scale_kwargs = {
-        **default_stateful_scale_kwargs(n_controlled_inflows=n_controlled_fvcs),
+        **default_stateful_scale_kwargs(n_controlled_inflows=n_controlled_inflows),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(len(rhs.name_modeled_rates)),
         "SCALE_latent": jnp.ones(n_latent),
     }

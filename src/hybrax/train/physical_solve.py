@@ -147,9 +147,10 @@ def solve_physical_states(
     """
     n_RMCs = len(wrapper.modeled_RMC_names)
     n_PVs = len(wrapper.modeled_PV_names)
-    n_FVCs = len(wrapper.modeled_FVC_names)
+    n_Inflows = len(wrapper.modeled_Inflow_names)
+    n_Outflows = len(wrapper.modeled_Outflow_names)
     n_latent = wrapper.reaction_module.n_latent
-    n_state = n_RMCs + n_PVs + 1 + n_FVCs + n_latent
+    n_state = n_RMCs + n_PVs + 1 + n_Inflows + n_Outflows + n_latent
     dtype = RAW_y0.dtype
     controls = wrapper.controls
     min_V = jnp.asarray(controls.min_V, dtype=dtype)
@@ -205,8 +206,9 @@ def solve_physical_states(
         # don't touch them.
         PVs = y[n_RMCs : n_RMCs + n_PVs]
         V = y[n_RMCs + n_PVs]
-        cum = y[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_FVCs]
-        h = y[n_RMCs + n_PVs + 1 + n_FVCs :]
+        n_cumulative = n_Inflows + n_Outflows
+        cum = y[n_RMCs + n_PVs + 1 : n_RMCs + n_PVs + 1 + n_cumulative]
+        h = y[n_RMCs + n_PVs + 1 + n_cumulative :]
         s_on = (st == t_node) & smask
         sample_dv = jnp.sum(jnp.where(s_on, sv, 0.0))
         b_on = (bt == t_node) & bmask

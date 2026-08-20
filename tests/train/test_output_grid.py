@@ -30,11 +30,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ProcessVariable,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -59,7 +59,7 @@ def _process(name: str, *, n_sample: int, n_bolus: int, n_extra_meas: int = 0):
     )
     volume_changes = {}
     if n_sample:
-        volume_changes["sampling"] = SampleVolumeChange(
+        volume_changes["sampling"] = Outflow(
             name="sampling",
             unit="L",
             is_controlled=False,
@@ -70,7 +70,7 @@ def _process(name: str, *, n_sample: int, n_bolus: int, n_extra_meas: int = 0):
             ),
         )
     if n_bolus:
-        volume_changes["bolus"] = FeedVolumeChange(
+        volume_changes["bolus"] = Inflow(
             name="bolus",
             unit="L",
             is_controlled=True,
@@ -122,7 +122,9 @@ def _wrapper(process):
     from bp_train.defaults import DefaultStatefulReactionModule
 
     module = DefaultStatefulReactionModule(
-        key=jax.random.key(0), n_latent=1, **default_stateful_scale_kwargs(0)
+        key=jax.random.key(0),
+        n_latent=1,
+        **default_stateful_scale_kwargs(n_controlled_inflows=0),
     )
     return build_stateful_wrapper(process, module)
 
@@ -230,7 +232,9 @@ def test_solve_raises_when_the_grid_violates_the_window_precondition():
 
 @pytest.mark.parametrize("n_sample", [0, 1, 2, 5, 25])
 @pytest.mark.parametrize("n_bolus", [0, 3])
-@pytest.mark.parametrize("n_dense,n_prediction", [(0, 30), (0, 200), (30, 0), (30, 200)])
+@pytest.mark.parametrize(
+    "n_dense,n_prediction", [(0, 30), (0, 200), (30, 0), (30, 200)]
+)
 def test_output_window_bound_covers_every_gap(n_sample, n_bolus, n_dense, n_prediction):
     """Brute-force the true per-gap point count and check the derived window covers it.
 
@@ -249,7 +253,10 @@ def test_output_window_bound_covers_every_gap(n_sample, n_bolus, n_dense, n_pred
     layouts = []
     for name in processes:
         _, meas = _process(
-            name, n_sample=n_sample, n_bolus=n_bolus, n_extra_meas=7 if name == "b" else 0
+            name,
+            n_sample=n_sample,
+            n_bolus=n_bolus,
+            n_extra_meas=7 if name == "b" else 0,
         )
         layouts.append(np.asarray(meas))
         padded_width = max(padded_width, meas.shape[0])

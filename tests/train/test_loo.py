@@ -19,7 +19,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -63,7 +63,7 @@ def _make_process(name: str, biomass_values=(1.0, 0.8, 0.64)) -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
