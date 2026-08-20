@@ -881,7 +881,7 @@ class TestValidateProcess:
         all_valid, results = validate_process(process)
 
         assert all_valid is False
-        ok_biomass, _ = _find(results, "TimeSeries 'biomass' —")
+        ok_biomass, _ = _find(results, "TimeSeries 'biomass':")
         assert ok_biomass is True
         ok_vol, _ = _find(results, "TimeSeries 'measured total volume'")
         assert ok_vol is False

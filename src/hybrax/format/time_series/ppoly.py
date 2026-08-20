@@ -103,6 +103,7 @@ class PPoly(eqx.Module):
         return a + dt * (b + dt * (c + dt * d))
 
     def derivative(self, order: int = 1) -> "PPoly":
+        """Return the piecewise-polynomial derivative of the given order."""
         order = int(order)
         if order < 0:
             raise ValueError("order must be >= 0")

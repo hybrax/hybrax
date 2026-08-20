@@ -13,6 +13,7 @@ VALID_SIDES = ("left", "right")
 
 
 def validate_side(side: str, *, name: str = "side") -> None:
+    """Raise ``ValueError`` unless ``side`` is ``'left'`` or ``'right'``."""
     if side not in VALID_SIDES:
         raise ValueError(f"{name} must be 'left' or 'right'")
 
@@ -91,6 +92,7 @@ def rebase_to_breaks(
 
 
 def merge_breaks(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
+    """Return the sorted union of two breakpoint arrays, deduplicated."""
     merged = np.unique(np.concatenate([np.asarray(a), np.asarray(b)]))
     return jnp.asarray(merged, dtype=jnp.float64)
 
@@ -140,6 +142,7 @@ def has_near_zero_piece_value(
 
 
 def derivative_coeffs(coeffs: jnp.ndarray, order: int = 1) -> jnp.ndarray:
+    """Return power-basis coeffs for the derivative of the given order."""
     if order < 0:
         raise ValueError("order must be >= 0")
     out = np.asarray(coeffs, dtype=np.float64)
@@ -158,6 +161,7 @@ def integrate_definite(
     a: float,
     b: float,
 ) -> float:
+    """Integrate a piecewise cubic spline from ``a`` to ``b``, clipped to its support."""
     if a == b:
         return 0.0
     sign = 1.0
@@ -206,6 +210,7 @@ def merge_segment_starts(
     starts_b: jnp.ndarray,
     merged_breaks: jnp.ndarray,
 ) -> jnp.ndarray:
+    """Remap two operands' segment-start piece indices onto their merged breaks."""
     start_times = [float(np.asarray(breaks_a)[int(i)]) for i in np.asarray(starts_a)]
     start_times.extend(
         [float(np.asarray(breaks_b)[int(i)]) for i in np.asarray(starts_b)]

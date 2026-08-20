@@ -31,6 +31,7 @@ class _EOFCheckingStream:
         self.sentinel_sent = False
 
     def read(self, size: int = -1) -> bytes | str:
+        """Read from the wrapped stream, appending the EOF sentinel once it runs dry."""
         chunk = self._stream.read(size)
         if size == 0 or chunk or self.sentinel_sent:
             return chunk
@@ -41,12 +42,14 @@ class _EOFCheckingStream:
 
 
 def _unsupported_comments() -> RuntimeError:
+    """Build the error raised when the active ijson backend can't parse comments."""
     return RuntimeError("The active ijson backend does not support allow_comments=True")
 
 
 def _validated_events(
     iterator: Iterator[tuple[str, str, Any]], source: str | Path
 ) -> Iterator[tuple[str, str, Any]]:
+    """Pass through parser events while enforcing single-value, no-duplicate-key input."""
     root_count = 0
     top_level_keys = set()
     pending_sentinel = False
@@ -116,6 +119,7 @@ def _kvitems(
 
 
 def _load_stream(stream: BinaryIO | TextIO, *, source: str | Path = "<stream>") -> Any:
+    """Decode the single top-level JSON value from ``stream``."""
     values = list(_items(stream, "", source=source))
     if not values:
         raise JSONParseError(f"{source}: expected a JSON value")

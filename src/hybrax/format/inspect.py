@@ -90,7 +90,7 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
             print(f"Volume Changes: {list(process.volume.volume_changes.keys())}")
 
     elif verbosity == 2:
-        # Level 2: names, controlled status, data type/size – no units or value ranges
+        # Level 2: names, controlled status, data type/size, no units or value ranges
         print(f"Process Name: {process_name}")
         print(f"Process Type: {process_type}")
         if process_notes:
@@ -844,7 +844,7 @@ def plot_collection(
 
     All unique variables are discovered across every process first.  Each
     variable gets its own subplot and all processes are overlaid using
-    distinct colours.  TimeSeries with ≤ 30 points are drawn with markers;
+    distinct colours.  TimeSeries with ≤ 50 points are drawn with markers;
     longer series are lines only.
 
     Args:
@@ -945,7 +945,7 @@ def plot_collection(
         ax.grid(True, alpha=0.3)
 
         # Pad y-axis if all overlaid data for this panel is practically constant
-        # Skip bar-rendered panels (discrete events) — let matplotlib auto-scale
+        # Skip bar-rendered panels (discrete events). Let matplotlib auto-scale
         has_bar = any(d.get("render") == "bar" for d in panel_meta["data"])
         if not has_bar:
             all_y = []
@@ -1021,7 +1021,7 @@ def plot_process(
     """
     Plot all dynamic and static variables of a BioProcess in a two-column figure.
 
-    Each variable gets its own subplot.  TimeSeries with ≤ 30 points are drawn
+    Each variable gets its own subplot.  TimeSeries with ≤ 50 points are drawn
     with markers; longer series are drawn as lines only.  StaticVariable values
     are shown as horizontal dashed lines spanning the process time range.
 
@@ -1099,6 +1099,7 @@ def plot_process(
 
 
 def plot_timeseries(ts: TimeSeries, figsize=(6, 4), save_path=None, show=True):
+    """Plot one TimeSeries's discrete samples as a line."""
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=figsize)
@@ -1225,9 +1226,10 @@ def _format_rmc_flow(
 
 
 def _discrete_volume_changes(process: BioProcess):
-    """Return ``(discrete_Inflows, discrete_Outflows)`` — names of discrete (bolus
-    / discrete-sample) volume changes. ``ProcessOrdering`` only enumerates
-    continuous volume changes, so the discrete ones are recovered here.
+    """Return the names of discrete (bolus or sample) Inflow and Outflow volume changes.
+
+    ``ProcessOrdering`` only enumerates continuous volume changes, so the
+    discrete ones are recovered here.
     """
     disc_inflow = sorted(
         n
@@ -1313,7 +1315,7 @@ def print_rhs_ode(
     Accepts a :class:`BioProcess` or a
     :class:`BioProcessCollection`. For multi-process containers,
     :func:`bp_format.validate.validate_biological_ode_equivalence` is
-    invoked first and the title represents the whole container — the
+    invoked first and the title represents the whole container. The
     individual process picked to render is not exposed.
 
     The Derivatives sub-table separates the *Biological* expression
@@ -1363,7 +1365,7 @@ def print_rhs_ode(
             rate_rows.append([n, _fmt_bound(lo), _fmt_bound(hi)])
         sections.append(
             (
-                "Rates (declaration order — this is `name_modeled_rates`)",
+                "Rates (declaration order: this is `name_modeled_rates`)",
                 ["Name", "Lower", "Upper"],
                 rate_rows,
                 ["l", "r", "r"],

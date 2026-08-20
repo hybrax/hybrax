@@ -1,46 +1,13 @@
-"""
-Mechanistic API for bp-format.
+"""Mechanistic API for bp-format.
 
 JAX/Equinox-compatible modules for building continuous-time control functions
 and ODE right-hand sides directly from a :class:`~bp_format.BioProcess`. All
 modules are fully JAX-jittable via ``equinox.filter_jit``.
 
-Public API
-----------
-get_process_ordering(process) -> ProcessOrdering
-    Single source of truth for canonical name ordering across all derived
-    modules (states, controls, rates, algebraic, Inflows, Outflows).
-
-get_control_splines(process, ordering=None) -> ControlSplines
-    ``ControlSplines.__call__(t)`` evaluates all controlled signals at *t*.
-    The output layout is
-    ``[Inflow_flows | Outflow_flows | PV_values]``: the first
-    ``len(Inflows)+len(Outflows)`` entries are flow rates (spline derivatives), the
-    remaining ``len(PVs)`` entries are direct values. Outflow flow rates carry
-    the storage sign (negative cumulative volume → negative flow rate); the
-    feed-dilution machinery interprets them as signed quantities.
-
-build_rhs_ode(process, ordering=None) -> RhsOde
-    Build the :class:`RhsOde` for a process. ``BiologicalOde`` is required
-    (auto-generated in ``BioProcess.__post_init__`` when not user-supplied).
-    Call signature::
-
-        dc_dt = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
-
-    where ``u`` is the full control vector (output of ``ControlSplines``)
-    and ``f_modeled_*`` are uncontrolled (modeled) flow vectors.
-
-extract_discrete_events(process, ordering) -> list[dict]
-    Extract sampling and bolus-feed events. ``Cin`` arrays are aligned with
-    ``ordering.name_modeled_RMCs``.
-
-build_state_splines(process, ordering) -> dict
-    Spline callables for every non-volume state. Pseudobatch-transformed
-    reactor components return a backtransform spline.
-
-build_algebraic_func(process) -> Callable
-    Returns ``f(state_values, ctrl_pv_values, rates) -> {name: scalar}`` for
-    inspecting algebraic quantities (e.g. ``X_active``).
+Public API: :func:`get_process_ordering`, :func:`get_control_splines`,
+:func:`build_rhs_ode`, :func:`extract_discrete_events`,
+:func:`build_state_splines`, :func:`build_algebraic_func`. See each
+function's own docstring for its call signature and output layout.
 
 Forward integration of the process lives in ``bp-train``; this module does
 not integrate. Rate inversion (recovering rate values from state splines)
@@ -154,13 +121,13 @@ def _apply_feed_dilution(
 
     Standard well-mixed reactor mass balance: a species leaving with an
     outflow at the reactor's own bulk concentration does not, by itself,
-    change that concentration — only feeding (which adds material at a
+    change that concentration. Only feeding (which adds material at a
     *different* concentration, ``Cin``) does. So an unretained outflow
     (retention sigma=0, the default) contributes no dilution term of its
     own; it only shrinks ``V``, which concentrates whatever is left. Each
     Outflow's per-component ``retention`` (sigma in [0, 1]) inverts this:
     the retained fraction of a component does *not* leave with the flow,
-    so as volume drops around it, its concentration rises — sigma=1 means
+    so as volume drops around it, its concentration rises. Sigma=1 means
     that component is fully retained (e.g. cells in perfusion; solutes in
     evaporation) and concentrates exactly in step with the volume loss.
 
@@ -169,7 +136,7 @@ def _apply_feed_dilution(
     - Outflows contribute a dilution term only through what they *retain*
       (``+retained_q/V·c``); an outflow with sigma=0 everywhere has no
       effect on ``dilution`` at all. They push ``dV`` downward regardless
-      of retention — retention changes what leaves with the flow, not how
+      of retention: retention changes what leaves with the flow, not how
       much volume the flow removes.
     """
     V = _require_reactor_volume_above_threshold(V, context="ODE state", V_min=V_min)
@@ -211,7 +178,7 @@ def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
 
     Uses a small Python wrapper around :func:`sympy.lambdify` so each call
     site passes a single array (whose contents we build by concatenation)
-    rather than unpacking it positionally — `*array` does not work under
+    rather than unpacking it positionally: `*array` does not work under
     ``jax.jit`` when the array is traced.
     """
     import sympy
@@ -308,10 +275,10 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     - All names across every group must be unique (no shared names between
       states, rates, algebraic, controlled PVs, Inflows, Outflows).
     """
-    # ---- Reactor components (RMCs) — alphabetical
+    # ---- Reactor components (RMCs), alphabetical
     name_modeled_RMCs = tuple(sorted(process.reactor_medium.components.keys()))
 
-    # ---- Process variables — partition into controlled vs modeled, alphabetical
+    # ---- Process variables: partition into controlled vs modeled, alphabetical
     name_modeled_PVs = tuple(
         sorted(n for n, pv in process.process_variables.items() if not pv.is_controlled)
     )
@@ -387,7 +354,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     if retention_errors:
         raise ValueError("\n".join(retention_errors))
 
-    # ---- Biological ODE — rates (insertion order) and algebraic (topo-sorted)
+    # ---- Biological ODE: rates (insertion order) and algebraic (topo-sorted)
     bo = process.biological_ode
     if bo is None:
         name_modeled_rates: Tuple[str, ...] = ()
@@ -395,7 +362,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     else:
         name_modeled_rates = tuple(bo.rates.keys())
         # Need parsed algebraic expressions for topo-sort. Build a minimal
-        # allowed-symbol set that lets sympify recognise every name — the
+        # allowed-symbol set that lets sympify recognise every name. The
         # full validation is done by validate_biological_ode.
         allowed = (
             set(name_modeled_RMCs)
@@ -473,6 +440,7 @@ class ControlSplines(eqx.Module):
     _splines: tuple[PPoly, ...]
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
+        """Evaluate all controlled signals at ``t``; see the class docstring for layout."""
         if not self._splines:
             return jnp.zeros(jnp.shape(t) + (0,))
         n_flows = len(self.name_controlled_Inflows) + len(self.name_controlled_Outflows)
@@ -558,7 +526,7 @@ def _build_retention(
 
     Each row is the per-component retention fraction (sigma in [0, 1]) of
     the corresponding ``Outflow.retention``. Unlike ``_build_cin``,
-    a missing entry here is deliberately left at 0 (not an error) — an
+    a missing entry here is deliberately left at 0 (not an error). An
     empty/partial ``retention`` is the ordinary, correct state for
     the overwhelming majority of processes (no perfusion/evaporation
     modeling), not a data gap standing in for something unknown.
@@ -666,6 +634,7 @@ class RhsOde(eqx.Module):
         f_modeled_Outflows: jnp.ndarray,
         V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
     ) -> jnp.ndarray:
+        """Evaluate ``dc/dt``; see the class docstring for the call signature."""
         n_RMCs = len(self.name_modeled_RMCs)
         n_PVs = len(self.name_modeled_PVs)
         n_inflow_ctrl = len(self.name_controlled_Inflows)
@@ -740,7 +709,7 @@ def build_rhs_ode(
     if ordering is None:
         ordering = get_process_ordering(process)
 
-    # Canonical args order — every lambdified expression consumes a single
+    # Canonical args order: every lambdified expression consumes a single
     # flat array indexed in this exact order. Must match the concatenation
     # order in RhsOde.__call__.
     args_order: Tuple[str, ...] = (
@@ -883,7 +852,7 @@ def extract_discrete_events(
                         f"Inflow {vc_name!r} has a positive discrete (bolus) "
                         "event but no feed_medium defined. There's no "
                         "reasonable way to fabricate an entire medium's "
-                        "identity from nothing — define feed_medium explicitly."
+                        "identity from nothing. Define feed_medium explicitly."
                     )
                 Cin_event = _build_cin(process, (vc_name,), ordering.name_modeled_RMCs)[0]
                 events.append(

@@ -20,7 +20,7 @@ Design goals:
 Scope: pseudobatch normalization only supports Inflow and discrete Outflow
 (sampling) volume changes. Its exact closed-form ADF construction assumes
 reactor volume only grows from Inflows; a continuous Outflow (perfusion,
-continuous harvest/bleed — retention or not) makes the required ADF
+continuous harvest/bleed, retention or not) makes the required ADF
 growth-rate ODE non-polynomial (it needs 1/V(t) where V(t) is a genuine
 cubic once volume can also shrink continuously), so it cannot be represented
 exactly. ``build_pseudobatch_transform``/``build_pseudobatch_inputs`` raise
@@ -208,15 +208,11 @@ def _timeseries_jump_values(series: TimeSeries) -> jnp.ndarray:
 def detect_discrete_state_events(process: BioProcess) -> DiscreteEvents:
     """Detect discrete event times from non-continuous VolumeChanges.
 
-    Parameters
-    ----------
-    process:
-        A BioProcess whose ``volume.volume_changes`` may contain discrete
-        (``is_continuous=False``) entries.
+    Args:
+        process: A BioProcess whose ``volume.volume_changes`` may contain
+            discrete (``is_continuous=False``) entries.
 
-    Returns
-    -------
-    DiscreteEvents
+    Returns:
         Sorted, unique event times and optional labels.
     """
     times: list = []
@@ -1097,9 +1093,12 @@ def make_cubic_ppoly(t: jnp.ndarray, y: jnp.ndarray, bc_type: str = "natural") -
 
 
 def _reject_continuous_outflow(process: BioProcess) -> None:
-    """Pseudobatch's ADF is only exact when reactor volume grows from Inflows
-    alone; a continuous Outflow (retention or not) breaks that assumption —
-    see this module's docstring for why."""
+    """Raise ``NotImplementedError`` if the process has a continuous Outflow.
+
+    Pseudobatch's ADF is only exact when reactor volume grows from Inflows
+    alone; a continuous Outflow (retention or not) breaks that assumption.
+    See this module's docstring for why.
+    """
     for vc_name, vc in process.volume.volume_changes.items():
         if isinstance(vc, Outflow) and vc.is_continuous:
             raise NotImplementedError(

@@ -27,8 +27,8 @@ def _as_float_array(name: str, value: Any, dtype: Any, *, ndim: int) -> jnp.ndar
     arr_in = jnp.asarray(value)
     if jnp.issubdtype(arr_in.dtype, jnp.floating) and arr_in.dtype != dtype:
         raise TypeError(
-            f"TimeSeries: {name} has dtype {arr_in.dtype}; pass float64 "
-            f"(x64 is enabled package-wide) — narrower floats lose precision"
+            f"TimeSeries: {name} has dtype {arr_in.dtype}. Pass float64 instead: "
+            f"x64 is enabled package-wide, and narrower floats lose precision."
         )
     arr = jnp.asarray(value, dtype=dtype)
     if arr.ndim != ndim:
@@ -99,6 +99,14 @@ class TimeSeries(eqx.Module):
         continuity_side: str = "right",
         metadata: Any | None = None,
     ) -> None:
+        """Construct from discrete samples, a spline representation, or both.
+
+        Provide ``times``/``values`` (both or neither), and/or a spline via
+        ``poly`` or via ``breaks``/``coeffs``/``segment_start_piece_idx`` (all
+        three together). ``poly`` is shorthand for the latter three and must
+        agree with them when both are given. At least one representation is
+        required.
+        """
         # All floating-point fields are float64 (x64 enabled package-wide).
         dtype_resolved = jnp.dtype(jnp.float64)
 
@@ -259,6 +267,7 @@ class TimeSeries(eqx.Module):
         return timeseries_to_dict(self)
 
     def to_pd_series(self):
+        """Convert the discrete samples to a ``pandas.Series`` indexed by time."""
         if self.times is None or self.values is None:
             raise ValueError("to_pd_series requires discrete samples")
         return pd.Series(data=np.asarray(self.values), index=np.asarray(self.times))
@@ -271,17 +280,20 @@ class TimeSeries(eqx.Module):
         return PPoly(self.breaks, self.coeffs, continuity_side=self.continuity_side)
     
     def lin_interp(self, t):
+        """Linearly interpolate the discrete samples at time ``t``."""
         if self.times is None or self.values is None:
             raise ValueError("lin_interp requires discrete samples")
         return grid_utils.linear_interpolate_samples(self.times, self.values, t)
 
     def evaluate(self, t, *, side=None):
+        """Evaluate the spline representation at time ``t``."""
         poly = self.poly
         if poly is None:
             raise ValueError("spline representation required for evaluation")
         return poly(t, side=side)
 
     def evaluate_many(self, ts, *, side=None):
+        """Evaluate the spline representation at a 1D array of times ``ts``."""
         poly = self.poly
         if poly is None:
             raise ValueError("spline representation required for evaluation")
@@ -291,6 +303,7 @@ class TimeSeries(eqx.Module):
         return poly(ts_arr, side=side)
 
     def deriv(self, order: int = 1):
+        """Return a derived TimeSeries holding the spline derivative of the given order."""
         order = int(order)
         poly = self.poly
         if poly is None:
@@ -307,6 +320,7 @@ class TimeSeries(eqx.Module):
         )
 
     def integrate(self, a, b):
+        """Integrate the spline representation from ``a`` to ``b``."""
         if self.breaks is None or self.coeffs is None:
             raise ValueError("spline representation required for integration")
         return spline_ops.integrate_definite(self.breaks, self.coeffs, a, b)
@@ -318,6 +332,7 @@ class TimeSeries(eqx.Module):
         return self.times is not None and self.values is not None
 
     def __add__(self, other):
+        """Add another TimeSeries, spline-exact if both carry a spline."""
         if not isinstance(other, TimeSeries):
             return NotImplemented
         if not (self._has_spline() and other._has_spline()):
@@ -325,6 +340,7 @@ class TimeSeries(eqx.Module):
         return self._binary_exact(other, op="add")
 
     def __sub__(self, other):
+        """Subtract another TimeSeries, spline-exact if both carry a spline."""
         if not isinstance(other, TimeSeries):
             return NotImplemented
         if not (self._has_spline() and other._has_spline()):
@@ -332,6 +348,7 @@ class TimeSeries(eqx.Module):
         return self._binary_exact(other, op="sub")
 
     def __mul__(self, other):
+        """Multiply by a scalar, or by another TimeSeries via spline refit."""
         if isinstance(other, TimeSeries):
             if not (self._has_spline() and other._has_spline()):
                 return self._binary_discrete(other, op="mul")
@@ -365,6 +382,7 @@ class TimeSeries(eqx.Module):
         )
 
     def __truediv__(self, other):
+        """Divide by a scalar, or by another TimeSeries via spline refit."""
         if isinstance(other, TimeSeries):
             if not (self._has_spline() and other._has_spline()):
                 return self._binary_discrete(other, op="div")
@@ -400,6 +418,7 @@ class TimeSeries(eqx.Module):
         )
 
     def _binary_discrete(self, other: "TimeSeries", op: str) -> "TimeSeries":
+        """Combine via linear interpolation on a merged time grid; drops any spline."""
         if self.dtype != other.dtype:
             raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
         if not self._has_discrete() or not other._has_discrete():
@@ -452,6 +471,11 @@ class TimeSeries(eqx.Module):
         )
 
     def _binary_exact(self, other: "TimeSeries", op: str) -> "TimeSeries":
+        """Add or subtract two splines exactly on a merged breakpoint grid.
+
+        Add and subtract are linear in the power-basis coefficients, so this
+        needs no refit, unlike ``_binary_approx``.
+        """
         if self.dtype != other.dtype:
             raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
         if self.breaks is None or self.coeffs is None:
@@ -512,6 +536,12 @@ class TimeSeries(eqx.Module):
         )
 
     def _binary_approx(self, other: "TimeSeries", op: str) -> "TimeSeries":
+        """Multiply or divide two splines by refitting a new spline to the result.
+
+        Multiply and divide are not closed under the power-basis
+        representation, so this evaluates both operands on a merged grid and
+        refits, unlike ``_binary_exact``.
+        """
         if self.dtype != other.dtype:
             raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
         if self.breaks is None or self.coeffs is None:
@@ -600,6 +630,11 @@ class TimeSeries(eqx.Module):
         x: np.ndarray,
         y_true: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Refit a cubic spline to ``(x, y_true)``.
+
+        Relaxes smoothing progressively until the mean relative error meets
+        ``APPROX_REL_ERR_TARGET``, or raises once attempts run out.
+        """
         x_arr = np.asarray(x, dtype=np.dtype(self.dtype))
         y_arr = np.asarray(y_true, dtype=np.dtype(self.dtype))
         if x_arr.shape[0] < 2:

@@ -101,6 +101,7 @@ def _extract_jump_times(
     detected_jumps: Mapping[str, Any],
     variable: str,
 ) -> list[float]:
+    """Extract one variable's jump times from a ``detected_jumps`` mapping."""
     raw = detected_jumps.get(variable, [])
     out: list[float] = []
     for item in raw:

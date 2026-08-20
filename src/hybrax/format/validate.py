@@ -34,7 +34,7 @@ def _check_result(verdict: _Verdict, check_name: str, detail: str) -> Tuple[bool
 
     ``ok`` is derived from ``verdict`` rather than passed separately, so the
     boolean and the message text can never disagree. ``SKIP`` counts as
-    ``ok=True`` — skipping a check that doesn't apply isn't a failure.
+    ``ok=True``: skipping a check that doesn't apply isn't a failure.
     """
     ok = verdict != "FAIL"
     return ok, f"{verdict} {check_name}: {detail}"
@@ -81,7 +81,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     if bo is None:
         return _check_result(
             "SKIP", "biological_ode",
-            "process.biological_ode is None — structural checks skipped",
+            "process.biological_ode is None: structural checks skipped",
         )
 
     import sympy
@@ -265,7 +265,7 @@ def validate_biological_ode_equivalence(
     if len(procs) <= 1:
         return _check_result(
             "PASS", "biological_ode_equivalence",
-            f"{len(procs)} process(es) — trivially equivalent",
+            f"{len(procs)} process(es): trivially equivalent",
         )
 
     first_name, first_proc = procs[0]
@@ -380,7 +380,7 @@ def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
     the actual scalar (``StaticVariable``) or ``TimeSeries.values`` array
     against ``(lo, hi)`` and reports how many datapoints violate the bound.
 
-    Out of scope: ``BiologicalOde.rates`` bounds — no rate-inversion
+    Out of scope: ``BiologicalOde.rates`` bounds. No rate-inversion
     machinery exists to compute a measured rate value to check against them
     (see ``validate_biological_ode``'s tuple-only sanity check on rates).
     """
@@ -448,7 +448,7 @@ def validate_timeseries_shape(
     if not _is_dynamic_series(ts):
         return _check_result(
             "FAIL", "timeseries_shape",
-            f"TimeSeries {label} — missing discrete times/values arrays",
+            f"TimeSeries {label}: missing discrete times/values arrays",
         )
 
     tp = jnp.asarray(ts.times)
@@ -474,11 +474,11 @@ def validate_timeseries_shape(
 
     if errors:
         return _check_result(
-            "FAIL", "timeseries_shape", f"TimeSeries {label} — " + _join_details(errors)
+            "FAIL", "timeseries_shape", f"TimeSeries {label}: " + _join_details(errors)
         )
     return _check_result(
         "PASS", "timeseries_shape",
-        f"TimeSeries {label} — 1-D, equal-length, strictly increasing times",
+        f"TimeSeries {label}: 1-D, equal-length, strictly increasing times",
     )
 
 
@@ -488,7 +488,7 @@ def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
     if events is None:
         return _check_result(
             "SKIP", "discrete_events",
-            "process.discrete_events is None — timing/label checks skipped",
+            "process.discrete_events is None: timing/label checks skipped",
         )
 
     times = jnp.asarray(events.times)
@@ -539,7 +539,7 @@ def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
     axis_ok, _ = validate_time_axis(process)
     if not axis_ok:
         return _check_result(
-            "SKIP", "timestamp_bounds", "time_axis is invalid — bounds check skipped"
+            "SKIP", "timestamp_bounds", "time_axis is invalid: bounds check skipped"
         )
 
     series = []
@@ -711,7 +711,7 @@ def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
     For every Outflow's ``retention``, every key must be a declared
     reactor-medium component name, every value must satisfy
     ``0.0 <= sigma <= 1.0``, and a non-empty ``retention`` is only allowed
-    on a continuous Outflow — the RHS mechanistic model only ever consults
+    on a continuous Outflow. The RHS mechanistic model only ever consults
     retention for continuous flows (see ``_build_retention`` in
     ``mechanistic.py``), so retention set on a discrete Outflow would
     otherwise be silently ignored rather than doing anything.
@@ -753,7 +753,7 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
     if not process.reactor_medium or not process.reactor_medium.components:
         return _check_result(
             "FAIL", "biomass_in_reactor_medium",
-            "reactor medium has no components — cannot verify biomass presence",
+            "reactor medium has no components: cannot verify biomass presence",
         )
 
     biomass_keys = [
@@ -775,7 +775,7 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
 def validate_initial_state_alignment(process: BioProcess) -> Tuple[bool, str]:
     """Every dynamic reactor-medium component and process variable must have a
     measurement at ``process.time_axis.start``, matching where
-    ``volume.initial_volume`` is anchored — otherwise the ODE's initial state
+    ``volume.initial_volume`` is anchored. Otherwise the ODE's initial state
     and initial volume come from different points in time.
     """
     t0 = process.time_axis.start
@@ -952,7 +952,7 @@ def validate_measurement_sampling_alignment(
 
     When a concentration measurement is taken just *after* a sampling event
     (e.g. 0.0003 h later), it's ambiguous which side of the (discontinuous)
-    event it belongs to — the accumulated dilution factor (ADF) in the
+    event it belongs to. The accumulated dilution factor (ADF) in the
     pseudobatch transform may use the wrong reactor volume, corrupting the
     normalisation and downstream spline calculations.
 
@@ -1119,7 +1119,7 @@ def validate_cross_process_consistency(
 
     Collections with zero or one process trivially pass.
 
-    Returns ``(is_valid, results)`` — ``results`` always contains at least
+    Returns ``(is_valid, results)``. ``results`` always contains at least
     one ``(check_ok, message)`` entry: one per mismatch found, or a single
     ``PASS`` entry when consistent.
     """
@@ -1128,7 +1128,7 @@ def validate_cross_process_consistency(
         return True, [
             _check_result(
                 "PASS", "cross_process_consistency",
-                f"{len(processes)} process(es) — trivially consistent",
+                f"{len(processes)} process(es): trivially consistent",
             )
         ]
 
@@ -1210,8 +1210,8 @@ def validate_for_publication(
     """
     Validate a collection for storage/publication as a coherent case study.
 
-    This is bp-format's own concern — is this collection well-formed and
-    internally coherent — distinct from bp-train's training-readiness
+    This is bp-format's own concern (is this collection well-formed and
+    internally coherent), distinct from bp-train's training-readiness
     concern (``bp_train.validate.validate_for_training``). Runs
     :func:`validate_process` for every process, then
     :func:`validate_cross_process_consistency` and
@@ -1227,7 +1227,7 @@ def validate_for_publication(
         process name to its list of ``(check_ok, message)`` results.
         Cross-process consistency results are stored under the key
         ``"__consistency__"``, augmented-parent findings under the key
-        ``"__augmented__"`` — both always non-empty.
+        ``"__augmented__"``. Both are always non-empty.
 
     Raises:
         TypeError: If ``collection`` is not a :class:`BioProcessCollection`.
