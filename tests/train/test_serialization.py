@@ -301,7 +301,11 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
         data=DataConfig(prepared=prepared, targets=("biomass",)),
         train=TrainConfig(allow_stateful_models=True),
     )
-    document = {}
+    # The shared reconstruction path requires the recorded input hash before it
+    # invokes any hook, so a stub run record has to carry it too.
+    document = {
+        "inputs": {"prepared_input": {"content_hash": content_hash(collection)}}
+    }
     seen = {}
 
     monkeypatch.setattr(
@@ -314,6 +318,11 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(harness, "_build_reaction_module", fake_build_reaction_module)
     monkeypatch.setattr(harness, "_build_loss_module", lambda **_kwargs: object())
+    # The stub modules are not real pytrees; the template wrapper is not the
+    # subject here.
+    monkeypatch.setattr(
+        harness, "_build_template_wrapper", lambda *_args, **_kwargs: object()
+    )
 
     reconstruct_run(tmp_path, config, document)
 

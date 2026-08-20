@@ -767,6 +767,27 @@ def _fold_harness_config(effective_cfg: RunConfig, fold: Fold, fold_dir: Path):
     )
 
 
+def _fold_inputs(
+    effective_cfg: RunConfig, prepared_content_hash: str
+) -> dict[str, Any]:
+    """The fold's ``inputs`` block, mirroring a normal training run's.
+
+    Every loadable model record must pin the input it was trained on: the shared
+    reconstruction path requires ``inputs.prepared_input.content_hash`` and refuses
+    to build hooks without it. A fold's ``data.prepared`` is the self-contained
+    prepared copy at the LOO run root, and the hash is the producer-validated one,
+    so a fold model loads exactly like a ``train`` run's.
+    """
+    return {
+        "inputs": {
+            "prepared_input": {
+                "path": str(effective_cfg.data.prepared),
+                "content_hash": prepared_content_hash,
+            }
+        }
+    }
+
+
 def _fold_runtime_metadata(identity: str, fold_idx: int) -> dict[str, Any]:
     return {
         "loo_runtime": {
@@ -812,6 +833,9 @@ def prepare_single_fold_from_runtime_artifact(
         {
             "status": "running",
             "config": run_config_to_jsonable(effective_cfg),
+            **_fold_inputs(
+                effective_cfg, metadata.identity_inputs["prepared_content_hash"]
+            ),
             **_fold_runtime_metadata(metadata.identity, record.idx),
         },
     )
@@ -862,7 +886,11 @@ def prepare_single_fold(
     config_json = fold_dir / "config.json"
     write_json(
         config_json,
-        {"status": "running", "config": run_config_to_jsonable(effective_cfg)},
+        {
+            "status": "running",
+            "config": run_config_to_jsonable(effective_cfg),
+            **_fold_inputs(effective_cfg, content_hash(collection)),
+        },
     )
     harness_cfg = _fold_harness_config(effective_cfg, fold, fold_dir)
     logger.info(

@@ -343,6 +343,12 @@ class PerProcessTrainingData(eqx.Module):
     mask_measured: jax.Array
     # Full physical initial state `[all_RMCs..., all_PVs..., V, modeled_cum...]`.
     y0_measured: jax.Array
+    # This process's feed compositions `[n_FVCs, n_modeled_RMCs]`, the rows of
+    # the store's stacked `Cin_*` tensors. A wrapper's baked `Cin` belongs to
+    # whichever process supplied its template, so any single-process solve has
+    # to substitute these alongside ``controls``.
+    Cin_controlled_FVCs: jax.Array
+    Cin_modeled_FVCs: jax.Array
     # Per-process controls view from ControlsStore.
     controls: PerProcessControls
 
@@ -810,6 +816,8 @@ class TrainingDataStore(eqx.Module):
             y_measured=self.y_measured[process_index],
             mask_measured=self.mask_measured[process_index],
             y0_measured=self.y0_measured[process_index],
+            Cin_controlled_FVCs=self.Cin_controlled_FVCs[process_index],
+            Cin_modeled_FVCs=self.Cin_modeled_FVCs[process_index],
             controls=self.controls_store.get_controls(process_name),
         )
 

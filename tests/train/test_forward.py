@@ -16,6 +16,7 @@ available. It is marked ``integration`` so it can be skipped in fast suites.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -660,17 +661,21 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     assert ((rows["process"] == "p1") & (rows["split"] == "train")).any()
 
 
-def test_forward_cli_training_processes_fall_back_to_full_prepared_order(
-    monkeypatch, tmp_path: Path
+def test_forward_cli_never_guesses_an_unrecorded_training_selection(
+    monkeypatch, tmp_path: Path, caplog
 ):
-    """A run that recorded no data.processes was trained on every process.
+    """A run that recorded no data.processes gets no CLI-invented substitute.
 
-    The evaluation selection must not stand in for the training selection: it
-    drives the constructor-hook process_names (so the hook template must match
-    training) as well as the train/holdout split in the loss table.
+    The evaluation selection must not stand in for the training selection (it
+    drives the constructor-hook process_names and the loss table's train/holdout
+    split), and neither may the evaluation collection's own process order: with a
+    shared prepared input that is a different dataset. The CLI passes None, and
+    forward resolves the selection from the model's own hash-verified input.
     """
     captured: dict[str, object] = {}
     run_dir = _make_forward_run_dir(tmp_path, processes=None, targets=("X", "S"))
+    prepared = tmp_path / "shared.json"
+    prepared.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
         cli, "load_process_collection", lambda p: _make_fake_collection()
     )
@@ -685,16 +690,26 @@ def test_forward_cli_training_processes_fall_back_to_full_prepared_order(
 
     output_dir = tmp_path / "fwd"
     output_dir.mkdir()
-    fwd_config = _write_forward_config(tmp_path, [run_dir], processes=("p1",))
-    assert (
-        cli.main(
-            ["forward", "--config", str(fwd_config), "--output-dir", str(output_dir)]
-        )
-        == 0
+    fwd_config = _write_forward_config(
+        tmp_path, [run_dir], processes=("p1",), prepared=prepared
     )
+    with caplog.at_level(logging.WARNING):
+        assert (
+            cli.main(
+                [
+                    "forward",
+                    "--config",
+                    str(fwd_config),
+                    "--output-dir",
+                    str(output_dir),
+                ]
+            )
+            == 0
+        )
 
     assert captured["config"].process_names == ("p1",)
-    assert captured["training_process_names"] == ("p1", "p2", "p3")
+    assert captured["training_process_names"] is None
+    assert "assuming it trained on all" not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -891,10 +906,11 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
         cli, "load_process_collection", lambda p: _make_fake_collection()
     )
 
-    captured_tpn: dict[str, object] = {}
+    captured_eval: dict[str, object] = {}
 
     def fake_forward(collection, **kwargs):
-        captured_tpn["tpn"] = kwargs["training_process_names"]
+        captured_eval["tpn"] = kwargs["training_process_names"]
+        captured_eval["processes"] = kwargs["config"].process_names
         return _stub_forward_result(training_process_names=())
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
@@ -904,7 +920,9 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
     cli.main(
         ["forward", "--config", str(fwd_config), "--output-dir", str(tmp_path / "fwd")]
     )
-    assert captured_tpn["tpn"] == ("p1", "p2", "p3")
+    assert captured_eval["processes"] == ("p1", "p2", "p3")
+    # Unrecorded stays unrecorded: forward resolves it from the model's own input.
+    assert captured_eval["tpn"] is None
 
 
 def test_export_predictions_csv_header_only_for_empty_selection(

@@ -15,7 +15,7 @@ state/rate indices.
 **Trainable-partition-only persistence.** `save_model` writes *only* the
 trainable partition (`params.eqx`). The static half (controls store, `RhsOde`,
 indices, `SCALE_*`) is **always rebuilt** from `prepared.json` + `custom.py` at
-load time via the single `reconstruct_run` path that training itself uses. This
+load time via the single `reconstruct_training` path that training itself uses. This
 keeps checkpoints small, sidesteps controls-store shape mismatches, and is
 forward-compatible with trainable controls. Every checkpoint dir is
 self-contained (it bundles `prepared.json.gz` and `custom.py`). See
@@ -43,6 +43,8 @@ model_load(path) -> (trained_wrapper, config)
 model_reload(path, trained_wrapper) -> (trained_wrapper, config)
 model_predict(trained_wrapper, config, collection, *, process_names=None, grid_n=200)
     -> {process_name: DenseProcessExport}
+reconstruct_training(run_dir, config=None, document=None, *, custom_module=None,
+                     custom_py=None, training_process_names=None) -> ReconstructedTraining
 reconstruct_run(run_dir, config, document=None) -> (reaction_module, loss_module, store, collection)
 ```
 
@@ -83,10 +85,20 @@ to the run's final weights.
   where the ODE initial condition comes from), and the target set must match
   `config.data.targets`.
 
-- `reconstruct_run` is THE single reconstruction path (forward, resume,
-  `model_load` all call it): it verifies the prepared `content_hash` against
-  `config.json`, then rebuilds `(reaction_module, loss_module, store,
-  collection)` exactly as training did.
+- `reconstruct_training` is THE single reconstruction path — `model_load`,
+  standalone and ensemble `forward`, and notebooks all go through it. It loads the
+  run's **own** prepared collection, **requires** and verifies its recorded
+  `inputs.prepared_input.content_hash` *before* invoking any hook, narrows the
+  hook-visible data to the run's recorded training process selection, and rebuilds
+  the reaction module, loss module and deserialisation template exactly as training
+  did. A missing, tampered, or stale hash is an error: there is no optional bypass
+  and no forward-only variant. Every loadable run record carries that hash —
+  `train` writes it, and each LOO fold config inherits the producer-validated one.
+  `reconstruct_run` is a thin caller returning only
+  `(reaction_module, loss_module, store, collection)`.
+
+  `model_reload` is deliberately **not** on this path: it reuses the caller's
+  wrapper structure and never reads a collection at all (see the danger note).
 
 ### Danger: `model_reload` keeps the static half
 
@@ -103,10 +115,9 @@ standing warning. **Only use `model_reload` to move between checkpoints of the s
 run.** When in doubt, pay for `model_load`.
 
 The same mechanism is why `model_predict` takes an already-loaded wrapper rather
-than rebuilding one: it reuses the trained `SCALE_*` as-is. By contrast
-`forward_from_collection` re-runs `estimate_all_scales` against whatever collection
-it is given, so feeding it a collection other than the training one re-scales the
-model without saying so.
+than rebuilding one: it reuses the trained `SCALE_*` as-is. `forward_from_collection`
+does rebuild them, but always from the model's own recorded training input, so the
+collection you hand it is evaluation data only and never re-scales the model.
 
 ### Provenance
 

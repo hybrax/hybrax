@@ -126,7 +126,21 @@ def simulate_measurement_states(
     if ts.size == 0:
         raise ValueError("process has no active measurement timestamps")
     process_data.controls.validate_support(float(ts[0]), float(ts[-1]))
-    sample_wrapper = eqx.tree_at(lambda w: w.controls, wrapper, process_data.controls)
+    # The wrapper's baked `Cin` is the template reference process's, so the feed
+    # composition has to be substituted with this process's alongside controls.
+    sample_wrapper = eqx.tree_at(
+        lambda w: (
+            w.controls,
+            w.rhs_ode.Cin_controlled_FVCs,
+            w.rhs_ode.Cin_modeled_FVCs,
+        ),
+        wrapper,
+        (
+            process_data.controls,
+            process_data.Cin_controlled_FVCs,
+            process_data.Cin_modeled_FVCs,
+        ),
+    )
     return solve_physical_states(
         sample_wrapper,
         t_eval=ts,

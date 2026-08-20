@@ -84,7 +84,7 @@ per update, `updates_completed`, and timing (`compile_warmup_seconds`,
 
 ```python
 forward_from_collection(collection, *, model_path, config=None, custom_py=None,
-                       runtime_config=None, training_process_names=None,
+                       training_process_names=None,
                        prediction_process_names=None, run_config=None,
                        custom_module=None,
                        prediction_grid_n=200) -> ForwardResult
@@ -122,9 +122,16 @@ path — it takes its solver settings from `config` and returns the same
 `{process_name: DenseProcessExport}` mapping. See
 [06_serialization_inspect.md](06_serialization_inspect.md#reconstruction).
 
-`forward_from_collection` re-runs `estimate_all_scales` against whatever
-collection it is given, so it re-scales the model if that is not the training
-collection. `model_predict` reuses the trained scales as-is.
+`collection` is **evaluation data only**. The model itself is rebuilt from the
+prepared collection *it* trained on, resolved from `model_path`'s run directory and
+hash-verified before any hook runs
+([`reconstruct_training`](06_serialization_inspect.md#reconstruction)) — so
+`estimate_all_scales` never sees the evaluation data, and `training_process_names`
+defaults to the selection the run recorded rather than anything derived from what
+you pass in. The evaluation collection may hold entirely different processes, but it
+must be compatible with the training data (same measured/modeled variables in the
+same order) or the call fails with an explicit error. `model_predict` skips
+reconstruction altogether and reuses the trained scales as-is.
 
 ## Leave-one/some-process-out cross-validation
 

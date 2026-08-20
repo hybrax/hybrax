@@ -51,7 +51,7 @@ from .training_data import (
     TrainingDataStore,
 )
 from .run_config import RunConfig
-from .runtime_artifact import RuntimeArtifact
+from .runtime_artifact import RhsNames, RuntimeArtifact
 from .runtime_context import (
     ProducerCollectionData,
     RuntimeDataContext,
@@ -236,10 +236,9 @@ def model_predict(
 
     .. note::
        This reuses ``trained_wrapper``'s ``SCALE_*`` as-is and never rebuilds the
-       reaction module, which is what makes it safe on a collection other than the
-       training one. :func:`forward_from_collection` takes the opposite route — it
-       re-runs ``estimate_all_scales`` against whatever collection it is given, so
-       feeding it foreign data silently re-scales the model.
+       reaction module. :func:`forward_from_collection` rebuilds them, but always
+       from the model's *own* recorded training input, so it does not re-scale the
+       model against the collection it is asked to evaluate either.
     """
     store = TrainingDataStore.from_collection(
         collection,
@@ -752,6 +751,53 @@ def _target_state_indices(store: TrainingDataStore, rhs_ode: RhsOde) -> jax.Arra
     return jnp.asarray(indices, dtype=jnp.int32)
 
 
+_EVALUATION_COMPATIBILITY_FIELDS = (
+    "name_measured",
+    "name_measured_RMCs",
+    "name_measured_PVs",
+    "name_modeled_FVCs",
+    "name_modeled_SVCs",
+)
+
+
+def _require_evaluation_compatibility(
+    training_store: TrainingDataStore, evaluation_store: TrainingDataStore
+) -> None:
+    """Reject evaluation data the trained wrapper cannot score.
+
+    A template wrapper's ``target_state_indices`` and every ``SCALE_*`` axis are
+    fixed by the *training* store's measured/modeled variable names **and their
+    order**. An evaluation collection whose variables differ would be scored
+    against the wrong columns — or blow up deep inside a JIT trace — so name the
+    difference here instead.
+    """
+    differences: list[str] = []
+    for field in _EVALUATION_COMPATIBILITY_FIELDS:
+        trained = tuple(getattr(training_store, field))
+        evaluated = tuple(getattr(evaluation_store, field))
+        if trained != evaluated:
+            differences.append(
+                f"{field}: model trained on {list(trained)}, "
+                f"evaluation data has {list(evaluated)}"
+            )
+    trained_axes = RhsNames.from_rhs_ode(training_store.rhs_ode)
+    evaluated_axes = RhsNames.from_rhs_ode(evaluation_store.rhs_ode)
+    for axis in dataclasses.fields(RhsNames):
+        trained = getattr(trained_axes, axis.name)
+        evaluated = getattr(evaluated_axes, axis.name)
+        if trained != evaluated:
+            differences.append(
+                f"{axis.name}: model trained on {list(trained)}, "
+                f"evaluation data has {list(evaluated)}"
+            )
+    if differences:
+        raise ValueError(
+            "forward: the evaluation collection is incompatible with the data this "
+            "model was trained on, so the trained wrapper cannot evaluate it:\n  - "
+            + "\n  - ".join(differences)
+        )
+
+
 def _validate_batched_loss_outputs(
     total_loss,
     per_target_loss,
@@ -855,97 +901,102 @@ def forward_from_collection(
     model_path: str | Path,
     config: ForwardConfig | None = None,
     custom_py: str | Path | None = None,
-    runtime_config: dict[str, Any] | None = None,
     training_process_names: tuple[str, ...] | None = None,
     run_config: RunConfig | None = None,
     custom_module: Any | None = None,
     prediction_process_names: tuple[str, ...] | None = None,
     prediction_grid_n: int = 200,
 ) -> ForwardResult:
-    """Load a trained wrapper and run one forward pass per selected process.
+    """Run one forward pass per selected process of ``collection``.
 
-    Mirrors the setup portion of :func:`train_from_collection` — builds the
-    TrainingDataStore, reaction module, and scaling exactly as training did —
-    so that ``eqx.tree_deserialise_leaves`` has a structurally identical
-    template to deserialise into.
+    ``collection`` is **evaluation data only**. The model itself is rebuilt from
+    the prepared collection *it* trained on: that input is resolved from
+    ``model_path``'s run directory and its recorded
+    ``inputs.prepared_input.content_hash`` is verified before any hook runs (see
+    :func:`~bp_train.serialization.reconstruct_training`). So the reaction module,
+    the loss module, every ``SCALE_*`` and the deserialisation template are exactly
+    training's, and evaluation data never reaches a constructor hook.
+
+    A separate store is built from ``collection`` for the solves. It must be
+    compatible with the training data — same measured/modeled variables in the
+    same order — or the call fails with an explicit error.
     """
-    from .serialization import load_trained_wrapper
+    from .serialization import (
+        _resolve_run_dir,
+        _resolve_weights_file,
+        content_hash,
+        load_trained_wrapper,
+        read_run_config_json,
+        reconstruct_training,
+    )
 
     cfg = config or ForwardConfig()
-    if custom_module is None:
-        custom_module = load_custom_module(custom_py)
-    if run_config is not None:
-        # When the RunConfig was reconstructed from config.json, custom is a raw
-        # dict; re-wrap it so hooks get the typed object (config.custom.X).
-        from .run_config import reresolve_custom
-
-        run_config = reresolve_custom(run_config, custom_module)
-    custom_cfg = (
-        run_config
-        if run_config is not None
-        else resolve_config(custom_module, runtime_config)
-    )
-    config_targets = None
-    if run_config is not None and run_config.data is not None:
-        config_targets = run_config.data.targets
-    elif isinstance(custom_cfg, dict):
-        config_targets = custom_cfg.get("target_variable_order")
-    if cfg.target_variable_order is not None:
-        effective_target_order = cfg.target_variable_order
-    elif config_targets:
-        effective_target_order = tuple(config_targets)
-    else:
-        effective_target_order = None
-
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=effective_target_order,
-        target_source=cfg.target_source,
-    )
-    # Use ALL processes in the store for template construction so the pytree
-    # matches training even if the caller selects a holdout subset below.
-    template_processes = tuple(store.process_order)
-
-    # Build a throwaway TrainHarnessConfig for hook-reuse only (build_reaction_module
-    # needs a config object with .seed).
-    hook_process_names = (
-        tuple(training_process_names)
-        if training_process_names is not None
-        else template_processes
-    )
-    train_like_cfg = TrainHarnessConfig(
-        process_names=hook_process_names,
-        target_variable_order=effective_target_order,
-        target_source=cfg.target_source,
-        seed=run_config.train.seed if run_config is not None else 0,
-        allow_stateful_models=bool(
-            run_config is not None and run_config.train.allow_stateful_models
-        ),
-    )
-    reaction_module, loss_module = _build_runtime_modules(
-        store=store,
-        collection=collection,
-        config=train_like_cfg,
+    # Resolve (and existence-check) the weights before the reconstruction: it
+    # costs seconds on a real input, and failing afterwards reports a path the
+    # caller never wrote.
+    model_path = _resolve_weights_file(Path(model_path))
+    run_dir = _resolve_run_dir(model_path)
+    if run_dir is None:
+        raise FileNotFoundError(
+            f"forward: no config.json at or above {model_path}; a model can only be "
+            "evaluated from a run dir that records the input it trained on"
+        )
+    document: dict[str, Any] | None = None
+    if run_config is None:
+        run_config, document = read_run_config_json(run_dir / "config.json")
+    rebuilt = reconstruct_training(
+        run_dir,
+        run_config,
+        document,
         custom_module=custom_module,
-        custom_config=custom_cfg,
+        custom_py=custom_py,
+        training_process_names=training_process_names,
     )
-    assert loss_module is not None
 
-    template_wrapper = _build_template_wrapper(
-        store,
-        reaction_module=reaction_module,
-        selected_processes=template_processes,
-        loss_module=loss_module,
+    recorded_targets = (
+        tuple(rebuilt.config.data.targets)
+        if rebuilt.config.data is not None and rebuilt.config.data.targets
+        else None
     )
-    loss_names = tuple(loss_module.loss_names)
+    recorded_source = (
+        rebuilt.config.data.target_source
+        if rebuilt.config.data is not None
+        else TARGET_SOURCE_AUTO
+    )
+    effective_target_order = (
+        cfg.target_variable_order
+        if cfg.target_variable_order is not None
+        else recorded_targets
+    )
 
-    trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
+    # The evaluation store is a separate object built from the caller's data. The
+    # one exception is a byte-for-byte identity: when the evaluation collection IS
+    # the model's verified training input under the same target layout, building a
+    # second identical store would only cost time.
+    same_input = (
+        effective_target_order == recorded_targets
+        and cfg.target_source == recorded_source
+        and content_hash(collection) == rebuilt.prepared_content_hash
+    )
+    if same_input:
+        evaluation_store = rebuilt.store
+    else:
+        evaluation_store = TrainingDataStore.from_collection(
+            collection,
+            target_variable_order=effective_target_order,
+            target_source=cfg.target_source,
+        )
+        _require_evaluation_compatibility(rebuilt.store, evaluation_store)
+
+    trained_wrapper = load_trained_wrapper(
+        model_path, template=rebuilt.template_wrapper
+    )
     return evaluate_trained_wrapper(
         trained_wrapper,
-        store,
+        evaluation_store,
         config=cfg,
-        target_names=loss_names,
-        training_process_names=training_process_names or (),
+        target_names=tuple(rebuilt.loss_module.loss_names),
+        training_process_names=rebuilt.training_process_names,
         prediction_process_names=prediction_process_names,
         prediction_grid_n=prediction_grid_n,
     )

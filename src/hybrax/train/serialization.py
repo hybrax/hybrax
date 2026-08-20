@@ -12,8 +12,10 @@ Mirrors ``bp_format/serialization.py``. This module owns:
 - ``save_opt_state`` / ``load_opt_state`` — optimizer state twins.
 - ``content_hash`` / ``file_hash`` — stable data integrity hashing.
 - ``write_run_config_json`` / ``read_run_config_json`` — the run-dir ``config.json``.
-- ``reconstruct_run`` — the single model-reconstruction path shared by forward
-  and notebooks.
+- ``reconstruct_training`` — the single model-reconstruction path shared by
+  model loading, forward, ensembles, and notebooks. It rebuilds a model from the
+  data *it* trained on, with that input's recorded ``content_hash`` verified
+  before any hook runs. ``reconstruct_run`` is a thin caller of it.
 - ``model_load`` / ``model_reload`` — the user-facing loaders. Both return
   ``(trained_wrapper, config)``; ``model_reload`` skips the collection and only
   swaps trainable leaves.
@@ -22,6 +24,7 @@ Mirrors ``bp_format/serialization.py``. This module owns:
 from __future__ import annotations
 
 from contextlib import suppress
+from dataclasses import dataclass
 import hashlib
 import json
 import logging
@@ -306,54 +309,108 @@ def _resolve_prepared(run_dir: Path, config: RunConfig) -> Path:
     )
 
 
-def _check_content_hash(
+def _recorded_prepared_content_hash(document: dict[str, Any]) -> str | None:
+    """The ``inputs.prepared_input.content_hash`` a run recorded, if any."""
+    inputs = document.get("inputs") if isinstance(document, dict) else None
+    prepared_input = inputs.get("prepared_input") if isinstance(inputs, dict) else None
+    if not isinstance(prepared_input, dict):
+        return None
+    recorded = prepared_input.get("content_hash")
+    return recorded if isinstance(recorded, str) and recorded else None
+
+
+def _require_content_hash(
     collection: BioProcessCollection, document: dict[str, Any], *, where: Path
-) -> None:
-    """Hard-error if the prepared collection's content_hash disagrees with the
-    value recorded in ``config.json`` (skips silently if none was recorded)."""
-    recorded = document.get("inputs", {}).get("prepared_input", {}).get("content_hash")
-    if not recorded:
-        return
+) -> str:
+    """Verify a run's recorded prepared ``content_hash`` — before any hook runs.
+
+    On the shared reconstruction path a *missing* record is an error too: a model
+    whose training input is not pinned cannot be shown to be rebuilt from the data
+    it was trained on, and constructing hooks from unverified data is exactly the
+    silent-mismatch failure this path exists to prevent.
+    """
+    recorded = _recorded_prepared_content_hash(document)
+    if recorded is None:
+        raise ValueError(
+            f"run {where} records no inputs.prepared_input.content_hash; its model "
+            "cannot be reconstructed from unverified training input"
+        )
     actual = content_hash(collection)
     if actual != recorded:
         raise ValueError(
             f"prepared.json data for run {where} differs from the run's record: "
             f"recorded {recorded}, got {actual}"
         )
+    return actual
 
 
-def reconstruct_run(
+@dataclass(frozen=True)
+class ReconstructedTraining:
+    """One model's training-time construction, rebuilt from its own input.
+
+    ``collection`` / ``store`` are the model's **training** data — never
+    evaluation or novel data. ``training_process_names`` is the selection the run
+    recorded; the hooks and ``template_wrapper`` were built from exactly it.
+    """
+
+    config: RunConfig
+    custom_module: Any | None
+    collection: BioProcessCollection
+    store: TrainingDataStore
+    reaction_module: UserReactionModule
+    loss_module: UserLossModule
+    training_process_names: tuple[str, ...]
+    template_wrapper: HybridOdeWrapper
+    prepared_path: Path
+    prepared_content_hash: str
+
+
+def reconstruct_training(
     run_dir: str | Path,
-    config: RunConfig,
+    config: RunConfig | None = None,
     document: dict[str, Any] | None = None,
-) -> tuple[UserReactionModule, UserLossModule, TrainingDataStore, BioProcessCollection]:
-    """THE single reconstruction path — forward, resume, and model_load all use it.
+    *,
+    custom_module: Any | None = None,
+    custom_py: str | Path | None = None,
+    training_process_names: tuple[str, ...] | None = None,
+) -> ReconstructedTraining:
+    """THE shared reconstruction path — model loading, forward, and ensembles.
 
-    Verifies the prepared ``content_hash`` against ``config.json`` first, then
-    rebuilds ``(reaction_module, loss_module, store, collection)`` exactly as
-    training did. Returns those four; callers build the template wrapper.
+    Loads the run's **own** prepared collection, requires and verifies its
+    recorded ``inputs.prepared_input.content_hash`` *before* invoking any hook,
+    restricts the hook-visible data to the recorded training process names, and
+    rebuilds ``(reaction_module, loss_module, template_wrapper)`` exactly as
+    training did. Evaluation data plays no part here: callers that evaluate novel
+    data build a separate store for their solves.
     """
     # Lazy import to avoid an import cycle (harness imports this module's twins).
-    from .harness import TrainHarnessConfig, _build_runtime_modules
+    from .harness import (
+        TrainHarnessConfig,
+        _build_runtime_modules,
+        _build_template_wrapper,
+    )
+    from .run_config import reresolve_custom
     from .training_data import TrainingDataStore
     from .utils import load_custom_module
 
     run_dir = Path(run_dir)
-    if document is None:
-        _, document = read_run_config_json(run_dir / "config.json")
+    if config is None or document is None:
+        parsed_config, parsed_document = read_run_config_json(run_dir / "config.json")
+        config = parsed_config if config is None else config
+        document = parsed_document if document is None else document
 
     prepared = _resolve_prepared(run_dir, config)
     collection = load_process_collection(prepared)
-    _check_content_hash(collection, document, where=run_dir)
+    verified_hash = _require_content_hash(collection, document, where=run_dir)
 
-    bundled_custom = run_dir / "custom.py"
-    custom_module = (
-        load_custom_module(bundled_custom) if bundled_custom.is_file() else None
-    )
+    if custom_module is None:
+        bundled_custom = run_dir / "custom.py"
+        if custom_py is not None:
+            custom_module = load_custom_module(custom_py)
+        elif bundled_custom.is_file():
+            custom_module = load_custom_module(bundled_custom)
     # config.custom comes back from config.json as a raw dict; re-wrap it in the
     # typed object the hooks expect (mirrors a fresh run's get_custom_config).
-    from .run_config import reresolve_custom
-
     config = reresolve_custom(config, custom_module)
 
     targets = config.data.targets if config.data is not None else None
@@ -364,12 +421,15 @@ def reconstruct_run(
         target_source=target_source,
     )
 
+    if training_process_names is not None:
+        selected = tuple(training_process_names)
+    elif config.data is not None and config.data.processes is not None:
+        selected = tuple(config.data.processes)
+    else:
+        selected = tuple(store.process_order)
+
     train_like_cfg = TrainHarnessConfig(
-        process_names=(
-            config.data.processes
-            if config.data is not None and config.data.processes is not None
-            else tuple(store.process_order)
-        ),
+        process_names=selected,
         target_variable_order=targets,
         target_source=target_source,
         seed=int(config.train.seed),
@@ -383,7 +443,44 @@ def reconstruct_run(
         custom_config=config,
     )
     assert loss_module is not None
-    return reaction_module, loss_module, store, collection
+    template_wrapper = _build_template_wrapper(
+        store,
+        reaction_module=reaction_module,
+        selected_processes=selected,
+        loss_module=loss_module,
+    )
+    return ReconstructedTraining(
+        config=config,
+        custom_module=custom_module,
+        collection=collection,
+        store=store,
+        reaction_module=reaction_module,
+        loss_module=loss_module,
+        training_process_names=selected,
+        template_wrapper=template_wrapper,
+        prepared_path=prepared,
+        prepared_content_hash=verified_hash,
+    )
+
+
+def reconstruct_run(
+    run_dir: str | Path,
+    config: RunConfig,
+    document: dict[str, Any] | None = None,
+) -> tuple[UserReactionModule, UserLossModule, TrainingDataStore, BioProcessCollection]:
+    """The four training-time objects, from :func:`reconstruct_training`.
+
+    A thin caller of the shared path, kept for callers that only want
+    ``(reaction_module, loss_module, store, collection)`` and build their own
+    wrapper.
+    """
+    rebuilt = reconstruct_training(run_dir, config, document)
+    return (
+        rebuilt.reaction_module,
+        rebuilt.loss_module,
+        rebuilt.store,
+        rebuilt.collection,
+    )
 
 
 def _resolve_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
@@ -396,6 +493,36 @@ def _resolve_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
             break
         current = current.parent
     return None
+
+
+def _resolve_weights_file(path: Path) -> Path:
+    """Resolve a model reference to an existing weights file, permissively.
+
+    Forward deliberately accepts more than :func:`_resolve_model_path` does: any
+    existing *file* is taken verbatim, so fold ``trained_wrapper.eqx`` files and
+    notebook checkpoints keep loading. A *directory* resolves through the same
+    ordered pass :func:`_resolve_model_path` uses. Anything else raises here,
+    naming the path the caller actually gave — equinox would otherwise append
+    ``.eqx`` and report a file nobody ever wrote.
+    """
+    if path.is_file():
+        return path
+    if path.is_dir():
+        for candidate in (
+            path / "params.eqx",
+            path / "model" / "params.eqx",
+            path / "checkpoints" / "latest" / "params.eqx",
+        ):
+            if candidate.is_file():
+                return candidate
+        raise FileNotFoundError(
+            f"no model weights in directory {path}; expected params.eqx, "
+            "model/params.eqx or checkpoints/latest/params.eqx"
+        )
+    raise FileNotFoundError(
+        f"model path does not exist: {path}; pass a run directory, a checkpoint "
+        "directory, or a weights file such as <run>/model/params.eqx"
+    )
 
 
 def _resolve_model_path(path: str | Path) -> tuple[Path, Path]:
@@ -445,34 +572,21 @@ def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     see :func:`_resolve_model_path` for the ordered rule. Address a specific
     checkpoint by its path, e.g. ``model_load(run_dir / "checkpoints" / "step_00300")``.
 
-    The run's own prepared collection is loaded to rebuild the **static** half of
-    the wrapper (``rhs_ode``, ``controls``, every ``SCALE_*``, the index arrays);
-    only the trainable leaves come from ``params.eqx``. That reconstruction is the
-    expensive part of the call — use :func:`model_reload` to swap in a newer
-    checkpoint of the *same* run without paying it again.
+    The run's own prepared collection is loaded — with its recorded
+    ``inputs.prepared_input.content_hash`` verified before any hook runs — to
+    rebuild the **static** half of the wrapper (``rhs_ode``, ``controls``, every
+    ``SCALE_*``, the index arrays); only the trainable leaves come from
+    ``params.eqx``. That reconstruction is the expensive part of the call — use
+    :func:`model_reload` to swap in a newer checkpoint of the *same* run without
+    paying it again.
 
     Returns ``(trained_wrapper, config)``. ``config.solver`` carries the solver
     settings the model was fitted under; pass it to :func:`~bp_train.model_predict`.
     """
-    from .harness import _build_template_wrapper
-
     run_dir, params_path = _resolve_model_path(path)
     config, document = read_run_config_json(run_dir / "config.json")
-    reaction_module, loss_module, store, _collection = reconstruct_run(
-        run_dir, config, document
-    )
-    selected_processes = (
-        config.data.processes
-        if config.data is not None and config.data.processes is not None
-        else tuple(store.process_order)
-    )
-    template = _build_template_wrapper(
-        store,
-        reaction_module=reaction_module,
-        selected_processes=selected_processes,
-        loss_module=loss_module,
-    )
-    return load_trained_wrapper(params_path, template=template), config
+    rebuilt = reconstruct_training(run_dir, config, document)
+    return load_trained_wrapper(params_path, template=rebuilt.template_wrapper), config
 
 
 def model_reload(

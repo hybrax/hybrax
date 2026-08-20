@@ -590,6 +590,12 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert effective.output.dir == result.fold_dir.resolve()
     document = json.loads((result.fold_dir / "config.json").read_text())
     assert document["status"] == "complete"
+    # Every fold config pins the input its model trained on: the shared
+    # reconstruction path refuses to rebuild a model without it.
+    assert document["inputs"]["prepared_input"] == {
+        "path": str(cfg.data.prepared),
+        "content_hash": serialization.content_hash(collection),
+    }
     assert document["updates_completed"] == 0
     assert document["final_mean_loss"] == 0.5
     bundled = document["config"]
@@ -1236,9 +1242,12 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
     assert prepared.fold_seed == 901
     assert prepared.effective_cfg.train.seed == 901
     assert captured["harness_seed"] == 901
-    assert (
-        json.loads(prepared.config_json.read_text())["config"]["train"]["seed"] == 901
-    )
+    fold_document = json.loads(prepared.config_json.read_text())
+    assert fold_document["config"]["train"]["seed"] == 901
+    # The fold inherits the producer-validated prepared hash, so the fold model is
+    # loadable on the shared reconstruction path.
+    recorded_hash = fold_document["inputs"]["prepared_input"]["content_hash"]
+    assert recorded_hash == metadata.identity_inputs["prepared_content_hash"]
 
     monkeypatch.setattr(
         loo_mod, "train_collection", lambda *_args, **_kwargs: _stub_train_result()

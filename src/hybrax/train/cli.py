@@ -762,31 +762,15 @@ def _handle_forward(args: argparse.Namespace) -> int:
         model_source = (
             model_cfg.data.target_source if model_cfg.data is not None else "auto"
         )
-        recorded_processes = (
+        # A run that recorded no data.processes trained on every process of its
+        # own prepared input, which forward_from_collection resolves from the run
+        # dir and hash-verifies. The CLI must not guess it from the evaluation
+        # collection: with a shared prepared input that is a different dataset.
+        training_processes = (
             tuple(model_cfg.data.processes)
             if model_cfg.data is not None and model_cfg.data.processes
-            else ()
+            else None
         )
-        if recorded_processes:
-            training_processes = recorded_processes
-        else:
-            # A run that recorded no data.processes trained on every process of
-            # its own prepared input. This value becomes the constructor-hook
-            # process_names, so the module shape it implies must match training;
-            # the evaluation selection would imply a different shape whenever it
-            # is a subset. Without a shared prepared input `collection` IS the
-            # model's own prepared input, so the full order is exact. With one it
-            # is a guess, because the CLI never reconciles the model's own
-            # prepared input; verifying the recorded content hash is Phase 5.
-            training_processes = tuple(collection.processes)
-            if shared_prepared is not None:
-                log.warning(
-                    "forward: model %s recorded no data.processes; assuming it "
-                    "trained on all %d processes of the shared prepared input. "
-                    "Constructor-hook shapes may not match training.",
-                    ref.path,
-                    len(collection.processes),
-                )
         fwd_cfg = ForwardConfig(
             process_names=eval_processes,
             target_variable_order=model_targets,

@@ -9,9 +9,13 @@ from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    FeedMedium,
+    FeedMediumComponent,
+    FeedVolumeChange,
     ReactorMedium,
     ReactorMediumComponent,
     SampleVolumeChange,
+    StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -1324,3 +1328,109 @@ def test_affine_offset_cancels_from_gradient_through_solve():
     assert jnp.allclose(affine_grad, linear_grad, rtol=1e-6, atol=1e-8), (
         "a non-zero affine offset leaked into a derivative"
     )
+
+
+def _make_feed_cin_collection(*, cin_lo: float, cin_hi: float) -> BioProcessCollection:
+    """Two processes identical except for their controlled feed's composition."""
+
+    def _process(name: str, feed_biomass: float) -> BioProcess:
+        return BioProcess(
+            metadata=BioProcessMetadata(name=name, process_type="fed_batch"),
+            time_axis=TimeAxis(unit="h", start=0.0, end=2.0, time_reference="start"),
+            volume=Volume(
+                initial_volume=1.0,
+                unit="L",
+                volume_changes={
+                    "feed_A": FeedVolumeChange(
+                        name="feed_A",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0, 2.0]),
+                            values=jnp.asarray([0.0, 0.2, 0.4]),
+                        ),
+                        feed_medium=FeedMedium(
+                            name="feed",
+                            density=1.0,
+                            density_unit="kg/L",
+                            components={
+                                "biomass": FeedMediumComponent(
+                                    name="biomass",
+                                    unit="g/L",
+                                    concentration=StaticVariable(feed_biomass),
+                                    is_controlled=False,
+                                )
+                            },
+                        ),
+                    ),
+                },
+            ),
+            reactor_medium=ReactorMedium(
+                name="rm",
+                density=1.0,
+                density_unit="kg/L",
+                components={
+                    "biomass": ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0, 2.0]),
+                            values=jnp.asarray([1.0, 0.8, 0.64]),
+                        ),
+                    ),
+                },
+            ),
+            process_variables={},
+        )
+
+    return BioProcessCollection(
+        processes={"p_lo": _process("p_lo", cin_lo), "p_hi": _process("p_hi", cin_hi)},
+        metadata={},
+    )
+
+
+def test_simulate_measurement_states_uses_the_simulated_processs_own_Cin():
+    """The template's baked ``Cin`` belongs to its reference process, not to the
+    process being simulated. ``simulate_measurement_states`` must substitute the
+    per-process feed composition alongside the per-process controls, or it
+    silently solves ``p_hi`` with ``p_lo``'s feed."""
+    from bp_train.harness import _build_template_wrapper
+
+    collection = _make_feed_cin_collection(cin_lo=2.0, cin_hi=4.0)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    # The two processes differ only in their feed concentration.
+    np.testing.assert_allclose(
+        np.asarray(store.Cin_controlled_FVCs), [[[2.0]], [[4.0]]]
+    )
+
+    def template(reference: str) -> HybridOdeWrapper:
+        rhs_ode = build_rhs_ode(collection.processes[reference])
+        controls = store.get_process(reference).controls
+        return _build_template_wrapper(
+            store,
+            reaction_module=_LinearReactionModule(
+                **_unit_scale_kwargs_for(rhs_ode, controls)
+            ),
+            selected_processes=(reference,),
+            loss_module=DefaultLossModule(target_names=["biomass"]),
+        )
+
+    p_hi = store.get_process("p_hi")
+    from_lo_template = np.asarray(simulate_measurement_states(template("p_lo"), p_hi))
+    from_hi_template = np.asarray(simulate_measurement_states(template("p_hi"), p_hi))
+
+    # Simulating p_hi must not depend on which process supplied the template.
+    np.testing.assert_allclose(from_lo_template, from_hi_template, rtol=1e-9, atol=1e-9)
+
+    # Teeth: with everything but Cin held equal, the feed composition really does
+    # move the biomass trajectory, so the equality above is not vacuous.
+    p_lo = store.get_process("p_lo")
+    lo_states = np.asarray(simulate_measurement_states(template("p_lo"), p_lo))
+    biomass_hi = from_hi_template[-1, 0]
+    biomass_lo = lo_states[-1, 0]
+    assert abs(biomass_hi - biomass_lo) / abs(biomass_lo) > 0.01
