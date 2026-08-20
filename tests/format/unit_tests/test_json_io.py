@@ -3,8 +3,8 @@ import io
 
 import pytest
 
-import bp_format.json_io as json_io
-from bp_format.json_io import (
+import hybrax.format.json_io as json_io
+from hybrax.format.json_io import (
     JSONParseError,
     has_top_level_key,
     load_json,

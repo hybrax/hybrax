@@ -16,7 +16,7 @@ for path in (REPO_ROOT, EXAMPLE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-import bp_format as bp  # noqa: E402
+import hybrax.format as bp  # noqa: E402
 from load_utils import parse_all_processes  # noqa: E402
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"

@@ -1,6 +1,6 @@
 """Tests for TimeSeries float64 dtype and dtype-governed casting behaviour.
 
-The whole pipeline is float64: JAX x64 is enabled in ``bp_format/__init__``.
+The whole pipeline is float64: JAX x64 is enabled in ``hybrax.format/__init__``.
 """
 
 import warnings
@@ -8,8 +8,8 @@ import warnings
 import jax.numpy as jnp
 import pytest
 
-from bp_format.time_series.timeseries import TimeSeries
-from bp_format.splines import fit_timeseries_spline
+from hybrax.format.time_series.timeseries import TimeSeries
+from hybrax.format.splines import fit_timeseries_spline
 
 
 # ---------------------------------------------------------------------------

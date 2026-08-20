@@ -7,7 +7,7 @@ from pathlib import Path
 
 import jax.numpy as jnp
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
@@ -21,9 +21,9 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.inspect import print_process_structure
-from bp_format.mechanistic import get_control_splines
-from bp_format.splines import build_pseudobatch_inputs
+from hybrax.format.inspect import print_process_structure
+from hybrax.format.mechanistic import get_control_splines
+from hybrax.format.splines import build_pseudobatch_inputs
 
 
 def _legacy_timepoints_usages(path: Path) -> list[str]:
@@ -74,10 +74,10 @@ def _legacy_timepoints_usages(path: Path) -> list[str]:
 def test_runtime_modules_use_canonical_times_api() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     runtime_files = [
-        repo_root / "bp_format" / "validate.py",
-        repo_root / "bp_format" / "splines.py",
-        repo_root / "bp_format" / "mechanistic.py",
-        repo_root / "bp_format" / "inspect.py",
+        repo_root / "hybrax.format" / "validate.py",
+        repo_root / "hybrax.format" / "splines.py",
+        repo_root / "hybrax.format" / "mechanistic.py",
+        repo_root / "hybrax.format" / "inspect.py",
     ]
 
     for path in runtime_files:

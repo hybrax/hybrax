@@ -1,4 +1,4 @@
-"""Load sim 1 simulation CSVs into bp-format collections."""
+"""Load sim 1 simulation CSVs into hybrax.format collections."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 import jax.numpy as jnp
 
-import bp_format as bp  # noqa: E402
+import hybrax.format as bp  # noqa: E402
 
 from .simulation import (  # noqa: E402
     FEED_GLUCOSE,
@@ -122,7 +122,7 @@ def _load_single_process(
     ):
         measurement_rows = offline_rows
     else:
-        # bp-format concentration series must start at the process start.
+        # hybrax.format concentration series must start at the process start.
         # If there is no sample at t=0, use the simulator's initial state.
         measurement_rows = [initial_row, *offline_rows]
     t_measure = _times(measurement_rows)

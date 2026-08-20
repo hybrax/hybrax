@@ -1,4 +1,4 @@
-"""Tests for bp_format.serialization functionality."""
+"""Tests for hybrax.format.serialization functionality."""
 
 import gzip
 import json
@@ -9,10 +9,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import bp_format.serialization as serialization
-from bp_format.json_io import JSONParseError
+import hybrax.format.serialization as serialization
+from hybrax.format.json_io import JSONParseError
 
-from bp_format import (
+from hybrax.format import (
     BiologicalOde,
     BioProcessCollection,
     BioProcess,
@@ -29,7 +29,7 @@ from bp_format import (
     Outflow,
     Volume,
 )
-from bp_format.serialization import (
+from hybrax.format.serialization import (
     save_process_collection,
     load_process_collection,
 )

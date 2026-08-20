@@ -182,7 +182,7 @@ and reports how many datapoints violate the bound, with the observed min/max.
 `ReactorMediumComponent.bounds` defaults to `(0.0, None)` even when never set
 explicitly, so this check catches negative concentrations by default, not just
 on RMCs with an explicit bound. Out of scope: `BiologicalOde.rates` bounds — no
-rate-inversion machinery exists in bp-format to compute a measured rate value
+rate-inversion machinery exists in hybrax.format to compute a measured rate value
 to check those against.
 
 `PASS bounds_against_data: all measured datapoints with declared bounds fall within them`
@@ -311,7 +311,7 @@ argument you have to supply).
 ### `validate_for_publication(collection) -> (bool, dict[str, list[tuple[bool, str]]])`
 
 `validate_process` on every process, plus `validate_cross_process_consistency`
-and `validate_augmented_parent_refs`. This is bp-format's own concern — is this
+and `validate_augmented_parent_refs`. This is hybrax.format's own concern — is this
 collection well-formed and internally coherent enough to store or publish as a
 case study — distinct from bp-train's training-readiness concern
 (`bp_train.validate.validate_for_training`, which composes the same

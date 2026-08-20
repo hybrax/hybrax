@@ -42,7 +42,7 @@ def _format_bounds(bounds: Bounds) -> str:
 # Auto-assumption notices
 # ============================================================
 #
-# bp-format fills a small number of required-but-unspecified values with a
+# hybrax.format fills a small number of required-but-unspecified values with a
 # documented default (e.g. a feed medium's missing reactor-component
 # concentration) instead of erroring. Every such fill is announced through
 # `_announce_assumption` so it is never silent. Use `silence_assumptions()`
@@ -59,7 +59,7 @@ def _announce_assumption(message: str) -> None:
 
 @contextlib.contextmanager
 def silence_assumptions():
-    """Temporarily suppress bp-format's auto-assumption notices.
+    """Temporarily suppress hybrax.format's auto-assumption notices.
 
     Useful when constructing or loading many ``BioProcess`` objects in a
     loop (e.g. building a ``BioProcessCollection``), where a per-process
@@ -79,7 +79,7 @@ class ProcessOrdering:
     """Canonical name ordering across all derived mechanistic modules.
 
     Built once from a :class:`BioProcess` via
-    :func:`bp_format.mechanistic.get_process_ordering`. ``RhsOde``,
+    :func:`hybrax.format.mechanistic.get_process_ordering`. ``RhsOde``,
     ``ControlSplines``, and the spline/event helpers all consume this object
     so the layout of every state/control/rate vector is determined in exactly
     one place.
@@ -340,7 +340,7 @@ class BiologicalOde:
 
     Describes only the *biological* part of ``dc/dt``. Physical contributions
     (feed inflow, dilution, sample outflow, volume dynamics) continue to be
-    added by bp-format from the existing :class:`VolumeChange` machinery and
+    added by hybrax.format from the existing :class:`VolumeChange` machinery and
     are not part of this block.
 
     Attributes:

@@ -1,11 +1,11 @@
 # Design Rationale
 
-Why bp-format looks the way it does. The other pages describe *what* the code
+Why hybrax.format looks the way it does. The other pages describe *what* the code
 does; this one explains the choices behind it.
 
 ## 1. JAX-first, but only where it matters
 
-The numerical objects in bp-format are built on
+The numerical objects in hybrax.format are built on
 [JAX](https://github.com/google/jax) and
 [Equinox](https://github.com/patrick-kidger/equinox) so that downstream training
 code can differentiate straight through them:
@@ -162,7 +162,7 @@ problems are always the same: sign confusion on feeds, a missing biomass
 component, mismatched array lengths, a feed medium that forgets a species,
 measurement timestamps nudged past a sampling event.
 
-bp-format uses **two** mechanisms, deliberately:
+hybrax.format uses **two** mechanisms, deliberately:
 
 **Validators return `(bool, str)`.** Everything in `bp_format/validate.py` reports
 rather than raises, so one pass collects every problem into a readable report

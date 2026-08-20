@@ -1,13 +1,14 @@
-# bp-format Documentation
+# hybrax.format Documentation
 
-bp-format is a **data model for bioprocess experiments**. It gives fermentation
+hybrax.format is a **data model for bioprocess experiments**. It gives fermentation
 and cell-culture runs one shape: a Python object hierarchy that describes what
 was in the reactor, what was fed, what was sampled, and what was measured — plus
 the tools to check that description, save it to JSON, and turn it into a
 differentiable ODE right-hand side.
 
 It does not train models and it does not integrate ODEs. That is
-[bp-train](../../bp-train/documentation/README.md), which builds on bp-format.
+`hybrax.train`, which builds on `hybrax.format` (not yet part of this repo —
+still a separate `bp-train` repo pending its own migration into hybrax).
 
 ## Getting Started
 
@@ -30,14 +31,14 @@ Building models? Continue with:
 
 | Module | Source | Docs | What it does |
 |--------|--------|------|--------------|
-| Data model | `bp_format/dataclasses.py` | [02](02_data_model.md) | The dataclass hierarchy: `BioProcessCollection` → `BioProcess` → components |
-| TimeSeries | `bp_format/time_series/` | [06](06_time_series.md) | Measurements + optional fitted spline, as a JAX pytree |
-| Splines | `bp_format/splines.py` | [07](07_splines.md) | Pseudobatch transform, segmented spline fitting, backtransform |
-| Mechanistic | `bp_format/mechanistic.py` | [08](08_mechanistic.md) | `ProcessOrdering`, `ControlSplines`, `RhsOde` |
-| Serialization | `bp_format/serialization.py` | [03](03_serialization.md) | JSON save/load for the whole hierarchy |
-| Validation | `bp_format/validate.py` | [04](04_validation.md) | 20 validators |
-| Inspection | `bp_format/inspect.py` | [05](05_inspection.md) | Text summaries and matplotlib plots |
-| Simulation | `bp_format/simulation.py` | [09](09_simulation.md) | Event bookkeeping for synthetic datasets |
+| Data model | `src/hybrax/format/dataclasses.py` | [02](02_data_model.md) | The dataclass hierarchy: `BioProcessCollection` → `BioProcess` → components |
+| TimeSeries | `src/hybrax/format/time_series/` | [06](06_time_series.md) | Measurements + optional fitted spline, as a JAX pytree |
+| Splines | `src/hybrax/format/splines.py` | [07](07_splines.md) | Pseudobatch transform, segmented spline fitting, backtransform |
+| Mechanistic | `src/hybrax/format/mechanistic.py` | [08](08_mechanistic.md) | `ProcessOrdering`, `ControlSplines`, `RhsOde` |
+| Serialization | `src/hybrax/format/serialization.py` | [03](03_serialization.md) | JSON save/load for the whole hierarchy |
+| Validation | `src/hybrax/format/validate.py` | [04](04_validation.md) | 20 validators |
+| Inspection | `src/hybrax/format/inspect.py` | [05](05_inspection.md) | Text summaries and matplotlib plots |
+| Simulation | `src/hybrax/format/simulation.py` | [09](09_simulation.md) | Event bookkeeping for synthetic datasets |
 
 ## Data Structure
 
@@ -74,7 +75,7 @@ Full field lists are in the [Data Model](02_data_model.md).
 ## A typical workflow
 
 ```python
-import bp_format as bp
+import hybrax.format as bp
 
 # 1. load
 collection = bp.serialization.load_process_collection("data.json")
@@ -91,7 +92,7 @@ bp.print_rhs_ode(collection)
 #    Outflow sampling only — raises NotImplementedError for a continuous Outflow)
 process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
 
-# 5. build the ODE pieces — bp-train integrates them
+# 5. build the ODE pieces — hybrax.train integrates them
 ordering = bp.mechanistic.get_process_ordering(process)
 rhs_ode  = bp.mechanistic.build_rhs_ode(process, ordering)
 controls = bp.mechanistic.get_control_splines(process, ordering)
@@ -99,7 +100,5 @@ controls = bp.mechanistic.get_control_splines(process, ordering)
 
 ## See also
 
-- [bp-train documentation](../../bp-train/documentation/README.md) — trains
-  hybrid ODE models on bp-format collections.
-- [specs/](../specs/README.md) — proposals, roadmaps, and design notes. Not a
-  description of current behaviour.
+- `hybrax.train` — trains hybrid ODE models on `hybrax.format` collections.
+  Not yet part of this repo (see note above).

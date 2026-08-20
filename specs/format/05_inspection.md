@@ -36,7 +36,7 @@ box, with sub-tables for:
   `name_modeled_rates`, the layout of the rate vector you must supply)
 - **Derivatives** — per state: unit, the biological expression verbatim from
   `biological_ode.derivatives`, and separately the `+ feed(...)`,
-  `− dilution(...)`, and `+ retention(...)` terms bp-format adds on top
+  `− dilution(...)`, and `+ retention(...)` terms hybrax.format adds on top
 - **Volume** — additions from feeds, removals from samples
 
 Accepts a `BioProcess` or a `BioProcessCollection`. For a container it first

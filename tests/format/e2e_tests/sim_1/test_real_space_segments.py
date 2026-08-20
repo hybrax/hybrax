@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import bp_format as bp
+import hybrax.format as bp
 
 from .real_space_segments import (
     EXPECTED_PROCESS_IDS,

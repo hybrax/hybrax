@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -32,9 +32,9 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.inspect import _collect_process_panels
-from bp_format.serialization import load_process_collection, save_process_collection
-from bp_format.splines import build_backtransform_spline, build_pseudobatch_transform
+from hybrax.format.inspect import _collect_process_panels
+from hybrax.format.serialization import load_process_collection, save_process_collection
+from hybrax.format.splines import build_backtransform_spline, build_pseudobatch_transform
 
 
 def _ts(times, values):

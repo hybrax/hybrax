@@ -1,5 +1,5 @@
 """
-Tests for bp_format.splines: spline fitting, serialization, evaluation,
+Tests for hybrax.format.splines: spline fitting, serialization, evaluation,
 and pseudobatch transform pipeline.
 """
 
@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from scipy import interpolate
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -29,7 +29,7 @@ from bp_format import (
     DiscreteEvents,
     PseudobatchTransform,
 )
-from bp_format.splines import (
+from hybrax.format.splines import (
     detect_discrete_state_events,
     make_segment_boundaries,
     split_timeseries,
@@ -48,11 +48,11 @@ from bp_format.splines import (
     _inverse_pseudobatch_concentration,
     _inverse_pseudobatch_derivative,
 )
-from bp_format.serialization import (
+from hybrax.format.serialization import (
     save_process_collection,
     load_process_collection,
 )
-from bp_format.time_series import PPoly
+from hybrax.format.time_series import PPoly
 
 
 # ---------------------------------------------------------------------------

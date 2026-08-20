@@ -9,7 +9,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import pytest
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -22,7 +22,7 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import (
+from hybrax.format.serialization import (
     _timeseries_to_dict_payload,
     load_process_collection,
     save_process_collection,

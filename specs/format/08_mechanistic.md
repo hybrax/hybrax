@@ -10,12 +10,12 @@ Turn a `BioProcess` into the pieces of an ODE:
   vector.
 - **`ControlSplines`** — all controlled inputs as one function of time.
 - **`RhsOde`** — `dc/dt`, combining the biology you wrote with the physics
-  bp-format adds.
+  hybrax.format adds.
 - Helpers for discrete events, state trajectories, and algebraic observables.
 
 Everything here is `eqx.Module` and JIT-safe.
 
-**bp-format does not integrate.** It builds the right-hand side; running a
+**hybrax.format does not integrate.** It builds the right-hand side; running a
 solver over it is [bp-train](../../bp-train/documentation/README.md)'s job.
 
 ## `ProcessOrdering` — one layout, decided once
@@ -137,7 +137,7 @@ below, rather than dividing by nearly zero.
 
 This split is the core contract of the module.
 
-| You write | bp-format adds |
+| You write | hybrax.format adds |
 |-----------|----------------|
 | `biological_ode.derivatives`, `algebraic`, `rates` | feed inflow, dilution, sample outflow, `dV/dt` |
 

@@ -1,12 +1,12 @@
 """
-Tests for bp_format.inspect utility functions.
+Tests for hybrax.format.inspect utility functions.
 """
 
 import pytest
 import jax.numpy as jnp
 import numpy as np
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -28,7 +28,7 @@ from bp_format import (
     plot_process,
     plot_collection,
 )
-from bp_format.splines import build_pseudobatch_transform
+from hybrax.format.splines import build_pseudobatch_transform
 
 
 # ---------------------------------------------------------------------------
@@ -517,7 +517,7 @@ def test_plot_process_simple(simple_process):
 
 def test_plot_process_empty(monkeypatch):
     """A process with no plottable variables should still return a figure."""
-    monkeypatch.setattr("bp_format.inspect._collect_process_panels", lambda _: [])
+    monkeypatch.setattr("hybrax.format.inspect._collect_process_panels", lambda _: [])
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -539,7 +539,7 @@ def test_plot_process_empty_show_false_saves_closes_and_returns_none(
     monkeypatch, tmp_path
 ):
     matplotlib = pytest.importorskip("matplotlib")
-    monkeypatch.setattr("bp_format.inspect._collect_process_panels", lambda _: [])
+    monkeypatch.setattr("hybrax.format.inspect._collect_process_panels", lambda _: [])
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 

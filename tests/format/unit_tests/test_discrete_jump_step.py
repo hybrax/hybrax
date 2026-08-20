@@ -6,7 +6,7 @@ during the pseudo-batch backtransform via transformed TimeSeries carriers.
 import jax.numpy as jnp
 import pytest
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
@@ -20,7 +20,7 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.splines import (
+from hybrax.format.splines import (
     build_pseudobatch_transform,
     build_backtransform_spline,
 )

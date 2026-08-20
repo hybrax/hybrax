@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from bp_format import Simulation, SimulationEvent, SimulationResult
-from bp_format.simulation import (
+from hybrax.format import Simulation, SimulationEvent, SimulationResult
+from hybrax.format.simulation import (
     EVENT_TYPE_BOLUS,
     EVENT_TYPE_FERMENTATION_END,
     EVENT_TYPE_SAMPLE,

@@ -15,7 +15,7 @@ import os
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 import numpy as np  # noqa: E402
-from bp_format.serialization import save_process_collection  # noqa: E402
+from hybrax.format.serialization import save_process_collection  # noqa: E402
 
 from .load_utils import parse_all_processes  # noqa: E402
 from .real_space_segments import SIM_RESULTS_DIR  # noqa: E402

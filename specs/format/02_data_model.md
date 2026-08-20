@@ -259,7 +259,7 @@ class BiologicalOde:
 ```
 
 This block describes **only the biological part** of `dc/dt`. Feed inflow,
-dilution, sample outflow, and `dV/dt` are added on top by bp-format from the
+dilution, sample outflow, and `dV/dt` are added on top by hybrax.format from the
 `Volume` machinery — you never write them yourself.
 
 - **`algebraic`** — intermediate quantities recomputed every RHS call, e.g.
@@ -356,7 +356,7 @@ Rules:
 In JSON, augmented processes carry `"__type__": "AugmentedBioProcess"` plus
 `parent_process`.
 
-> No code in bp-format produces `AugmentedBioProcess` objects — the shape is
+> No code in hybrax.format produces `AugmentedBioProcess` objects — the shape is
 > fixed so that consumers (bp-train's augmentation and LOO orchestrator) can
 > rely on it.
 

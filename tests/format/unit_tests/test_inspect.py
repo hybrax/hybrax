@@ -1,10 +1,10 @@
-"""Tests for bp_format.inspect display helpers."""
+"""Tests for hybrax.format.inspect display helpers."""
 
 import re
 
 import jax.numpy as jnp
 
-from bp_format import (
+from hybrax.format import (
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
@@ -18,8 +18,8 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.inspect import _format_rmc_flow
-from bp_format.mechanistic import _build_retention, get_process_ordering
+from hybrax.format.inspect import _format_rmc_flow
+from hybrax.format.mechanistic import _build_retention, get_process_ordering
 
 
 def _ts(t, v):

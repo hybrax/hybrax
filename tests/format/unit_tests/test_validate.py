@@ -1,5 +1,5 @@
 """
-Tests for bp_format.validate validation functions
+Tests for hybrax.format.validate validation functions
 """
 
 from types import SimpleNamespace
@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 import jax.numpy as jnp
 
-from bp_format import (
+from hybrax.format import (
     BiologicalOde,
     DiscreteEvents,
     TimeSeries,

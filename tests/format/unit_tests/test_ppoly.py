@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.interpolate import CubicSpline
 
-from bp_format.time_series import PPoly, TimeSeries
+from hybrax.format.time_series import PPoly, TimeSeries
 
 
 def test_ppoly_scalar_side_extrapolation_and_derivative() -> None:

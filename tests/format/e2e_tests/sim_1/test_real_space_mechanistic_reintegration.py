@@ -6,17 +6,17 @@ import diffrax  # noqa: E402
 import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
-from bp_format.dataclasses import BioProcess  # noqa: E402
-from bp_format.dataclasses import ProcessOrdering  # noqa: E402
-from bp_format.mechanistic import ControlSplines  # noqa: E402
-from bp_format.mechanistic import RhsOde  # noqa: E402
-from bp_format.mechanistic import _timeseries_to_ppoly  # noqa: E402
-from bp_format.mechanistic import build_rhs_ode  # noqa: E402
-from bp_format.mechanistic import get_control_splines  # noqa: E402
-from bp_format.mechanistic import get_process_ordering  # noqa: E402
-from bp_format.serialization import load_process_collection  # noqa: E402
-from bp_format.splines import make_cubic_ppoly  # noqa: E402
-from bp_format.time_series import PPoly  # noqa: E402
+from hybrax.format.dataclasses import BioProcess  # noqa: E402
+from hybrax.format.dataclasses import ProcessOrdering  # noqa: E402
+from hybrax.format.mechanistic import ControlSplines  # noqa: E402
+from hybrax.format.mechanistic import RhsOde  # noqa: E402
+from hybrax.format.mechanistic import _timeseries_to_ppoly  # noqa: E402
+from hybrax.format.mechanistic import build_rhs_ode  # noqa: E402
+from hybrax.format.mechanistic import get_control_splines  # noqa: E402
+from hybrax.format.mechanistic import get_process_ordering  # noqa: E402
+from hybrax.format.serialization import load_process_collection  # noqa: E402
+from hybrax.format.splines import make_cubic_ppoly  # noqa: E402
+from hybrax.format.time_series import PPoly  # noqa: E402
 
 from .real_space_segments import EXPECTED_PROCESS_IDS  # noqa: E402
 from .real_space_segments import SIMULATION_DENSE_OUTPUT  # noqa: E402

@@ -1314,13 +1314,13 @@ def print_rhs_ode(
 
     Accepts a :class:`BioProcess` or a
     :class:`BioProcessCollection`. For multi-process containers,
-    :func:`bp_format.validate.validate_biological_ode_equivalence` is
+    :func:`hybrax.format.validate.validate_biological_ode_equivalence` is
     invoked first and the title represents the whole container. The
     individual process picked to render is not exposed.
 
     The Derivatives sub-table separates the *Biological* expression
     (verbatim from ``biological_ode.derivatives``) from the physical flow
-    contributions that bp-format adds on top. Inflows contribute
+    contributions that hybrax.format adds on top. Inflows contribute
     ``+ feed(...)`` and ``− dilution(...)``. Retained material contributes
     ``+ retention(<Outflow>=<fraction>)`` for each affected RMC; unretained
     Outflows have no concentration contribution. The Volume sub-table lists

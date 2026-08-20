@@ -27,9 +27,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from bp_format.simulation import Simulation, SimulationEvent, SimulationResult  # noqa: E402
-from bp_format.simulation import EVENT_TYPE_BOLUS, EVENT_TYPE_SAMPLE  # noqa: E402
-from bp_format.simulation import EVENT_TYPE_FERMENTATION_END  # noqa: E402
+from hybrax.format.simulation import Simulation, SimulationEvent, SimulationResult  # noqa: E402
+from hybrax.format.simulation import EVENT_TYPE_BOLUS, EVENT_TYPE_SAMPLE  # noqa: E402
+from hybrax.format.simulation import EVENT_TYPE_FERMENTATION_END  # noqa: E402
 
 PROCESS_ID = "sim_1_run_1"
 T_END = 120.0
@@ -110,7 +110,7 @@ CONTROL_INDEX = {name: index for index, name in enumerate(CONTROL_NAMES)}
 # whose pseudobatch c* is constant by construction), not real biology. They are full
 # reactor-medium species (see REACTOR_MEDIUM_NAMES below) but have no rate model, so
 # they stay out of KINETIC_REACTOR_NAMES and get a "0" biological_ode derivative on the
-# parser side. Vestigial now that bp-format's pseudobatch machinery and the dense c*
+# parser side. Vestigial now that hybrax.format's pseudobatch machinery and the dense c*
 # oracle test that consumed them have been removed; left in place pending a dedicated
 # fixture-regeneration pass (removing them means regenerating the checked-in
 # sim_results/ fixture and updating every test that hardcodes their names).

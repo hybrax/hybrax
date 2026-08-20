@@ -20,7 +20,7 @@ _ROOT_END_EVENTS = frozenset(
 
 
 class JSONParseError(ValueError):
-    """Invalid bp-format JSON with source context."""
+    """Invalid hybrax.format JSON with source context."""
 
 
 class _EOFCheckingStream:

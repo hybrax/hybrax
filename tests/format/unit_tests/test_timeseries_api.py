@@ -1,12 +1,12 @@
-"""Stable API tests for bp_format TimeSeries behavior."""
+"""Stable API tests for hybrax.format TimeSeries behavior."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-import bp_format
-from bp_format.time_series import TimeSeries
+import hybrax.format
+from hybrax.format.time_series import TimeSeries
 
 
 def test_model_requires_representation_and_matching_discrete_fields() -> None:
@@ -129,28 +129,28 @@ def test_exact_add_matches_pointwise_eval() -> None:
     assert added.values is not None
 
 
-def test_public_bp_format_timeseries_rejects_legacy_timepoints_constructor() -> None:
-    assert bp_format.TimeSeries is TimeSeries
+def test_public_hybrax.format_timeseries_rejects_legacy_timepoints_constructor() -> None:
+    assert hybrax.format.TimeSeries is TimeSeries
     with pytest.raises(TypeError):
-        bp_format.TimeSeries(
+        hybrax.format.TimeSeries(
             timepoints=np.array([0.0, 1.0]), values=np.array([1.0, 2.0])
         )
 
 
 def test_canonical_times_mode_keeps_strict_invariants() -> None:
     with pytest.raises(ValueError, match="times and values must have the same length"):
-        bp_format.TimeSeries(
+        hybrax.format.TimeSeries(
             times=np.array([0.0, 1.0, 2.0]),
             values=np.array([1.0, 2.0]),
         )
     with pytest.raises(ValueError, match="times must be strictly increasing"):
-        bp_format.TimeSeries(
+        hybrax.format.TimeSeries(
             times=np.array([0.0, 0.0, 1.0]),
             values=np.array([1.0, 2.0, 3.0]),
         )
 
 
 def test_timepoints_property_is_removed() -> None:
-    ts = bp_format.TimeSeries(times=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
+    ts = hybrax.format.TimeSeries(times=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
     with pytest.raises(AttributeError):
         _ = ts.timepoints

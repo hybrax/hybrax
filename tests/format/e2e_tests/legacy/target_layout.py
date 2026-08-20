@@ -14,8 +14,8 @@ from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
-from bp_format.serialization import load_process_collection
-from tests.e2e_tests.legacy.loader_helpers import load_module
+from hybrax.format.serialization import load_process_collection
+from tests.format.e2e_tests.legacy.loader_helpers import load_module
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "ex14_fixture"
 SIMULATION_DIR = FIXTURE_ROOT / "00_simulation"

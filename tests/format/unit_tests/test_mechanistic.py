@@ -1,4 +1,4 @@
-"""Tests for bp_format.mechanistic post-P3 refactor.
+"""Tests for hybrax.format.mechanistic post-P3 refactor.
 
 Covers ``get_process_ordering``, ``get_control_splines``, ``build_rhs_ode``,
 ``extract_discrete_events``, ``build_state_splines``, and
@@ -15,7 +15,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import pytest
 
-from bp_format import (
+from hybrax.format import (
     BiologicalOde,
     BioProcess,
     BioProcessMetadata,
@@ -32,7 +32,7 @@ from bp_format import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import (
+from hybrax.format.mechanistic import (
     ControlSplines,
     RhsOde,
     build_algebraic_func,
@@ -42,8 +42,8 @@ from bp_format.mechanistic import (
     get_control_splines,
     get_process_ordering,
 )
-from bp_format.splines import build_pseudobatch_transform
-from bp_format.time_series import PPoly
+from hybrax.format.splines import build_pseudobatch_transform
+from hybrax.format.time_series import PPoly
 
 
 # ---------------------------------------------------------------------------

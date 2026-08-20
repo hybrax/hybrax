@@ -128,7 +128,7 @@ class TimeSeries(eqx.Module):
 
         if poly is not None:
             if not isinstance(poly, PPoly):
-                raise TypeError("poly must be a bp_format.time_series.PPoly")
+                raise TypeError("poly must be a hybrax.format.time_series.PPoly")
             if poly.continuity_side != continuity_side:
                 raise ValueError("poly continuity_side must match continuity_side")
             if poly.coeffs.ndim != 2:

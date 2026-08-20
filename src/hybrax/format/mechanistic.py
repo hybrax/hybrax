@@ -1,7 +1,7 @@
-"""Mechanistic API for bp-format.
+"""Mechanistic API for hybrax.format.
 
 JAX/Equinox-compatible modules for building continuous-time control functions
-and ODE right-hand sides directly from a :class:`~bp_format.BioProcess`. All
+and ODE right-hand sides directly from a :class:`~hybrax.format.BioProcess`. All
 modules are fully JAX-jittable via ``equinox.filter_jit``.
 
 Public API: :func:`get_process_ordering`, :func:`get_control_splines`,
@@ -59,7 +59,7 @@ def _require_reactor_volume_above_threshold(
 
 
 def _timeseries_to_ppoly(series: TimeSeries) -> PPoly:
-    """Return a bp_format PPoly for a TimeSeries carrier.
+    """Return a hybrax.format PPoly for a TimeSeries carrier.
 
     When the carrier already stores spline state, return that PPoly directly
     (no copy, no refit) so mechanistic consumers use the same canonical
@@ -82,7 +82,7 @@ def _value_to_ppoly(
     t_start: float,
     t_end: float,
 ) -> PPoly:
-    """Return a bp_format PPoly for a dynamic or static state carrier."""
+    """Return a hybrax.format PPoly for a dynamic or static state carrier."""
     if isinstance(value, TimeSeries):
         return _timeseries_to_ppoly(value)
     v = float(value.value)
@@ -581,7 +581,7 @@ class RhsOde(eqx.Module):
     Built by :func:`build_rhs_ode` from ``process.biological_ode``
     (auto-generated in :meth:`BioProcess.__post_init__` when not
     user-supplied). The biological ``dc/dt`` per state comes from
-    user-written expression strings; bp-format adds the physical
+    user-written expression strings; hybrax.format adds the physical
     contributions (feed, dilution, dV) on top.
 
     Call signature::

@@ -1,5 +1,5 @@
 """
-Tests for bp-format data structures (current architecture).
+Tests for hybrax.format data structures (current architecture).
 """
 
 import logging
@@ -7,8 +7,8 @@ import logging
 import pytest
 import jax.numpy as jnp
 
-import bp_format.dataclasses as dataclasses
-from bp_format import (
+import hybrax.format.dataclasses as dataclasses
+from hybrax.format import (
     TimeAxis,
     TimeSeries,
     StaticVariable,
@@ -26,9 +26,9 @@ from bp_format import (
     BioProcessCollection,
     silence_assumptions,
 )
-from bp_format.dataclasses import _format_biological_ode_lines
-from bp_format.mechanistic import get_process_ordering
-from bp_format.serialization import (
+from hybrax.format.dataclasses import _format_biological_ode_lines
+from hybrax.format.mechanistic import get_process_ordering
+from hybrax.format.serialization import (
     save_process_collection,
     load_process_collection,
 )
@@ -406,7 +406,7 @@ def _process_with_incomplete_feed(silence=False):
 
 
 def test_missing_inflow_concentrations_remain_sparse_and_are_announced(caplog):
-    with caplog.at_level(logging.INFO, logger="bp_format"):
+    with caplog.at_level(logging.INFO, logger="hybrax.format"):
         process, fm = _process_with_incomplete_feed()
     assert set(fm.components) == {"glucose"}
     messages = [r.message for r in caplog.records]
@@ -491,7 +491,7 @@ def test_fully_specified_feed_produces_no_assumption_print(caplog):
         feed_medium=fm,
         values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
     )
-    with caplog.at_level(logging.INFO, logger="bp_format"):
+    with caplog.at_level(logging.INFO, logger="hybrax.format"):
         BioProcess(
             metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
             time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
@@ -534,10 +534,10 @@ def test_missing_feed_medium_entirely_is_not_filled():
 
 
 def test_silence_assumptions_suppresses_inflow_notice(caplog):
-    with caplog.at_level(logging.INFO, logger="bp_format"):
+    with caplog.at_level(logging.INFO, logger="hybrax.format"):
         process, fm = _process_with_incomplete_feed(silence=True)
     assert set(fm.components) == {"glucose"}
-    assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
+    assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 
 
 def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
@@ -553,7 +553,7 @@ def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
             ),
         },
     )
-    with caplog.at_level(logging.INFO, logger="bp_format"):
+    with caplog.at_level(logging.INFO, logger="hybrax.format"):
         with silence_assumptions():
             BioProcess(
                 metadata=BioProcessMetadata(name="p", process_type="batch"),
@@ -563,7 +563,7 @@ def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
                 volume=Volume(initial_volume=1.0, unit="L"),
                 reactor_medium=rm,
             )
-    assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
+    assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 
 
 def test_silence_assumptions_restores_state_after_exception():
@@ -578,14 +578,14 @@ def test_density_defaults_are_silent(caplog):
     unlike omitted Inflow concentrations, this default never affects
     computed results (mechanistic.py never reads it), so there's nothing
     for a notice to usefully warn about."""
-    with caplog.at_level(logging.INFO, logger="bp_format"):
+    with caplog.at_level(logging.INFO, logger="hybrax.format"):
         fm = FeedMedium(name="f")
         rm = ReactorMedium(name="medium")
     assert fm.density == 1.0
     assert fm.density_unit == "kg/L"
     assert rm.density == 1.0
     assert rm.density_unit == "kg/L"
-    assert [r for r in caplog.records if r.name.startswith("bp_format")] == []
+    assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 
 
 def test_format_biological_ode_lines_direct():

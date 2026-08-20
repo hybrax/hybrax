@@ -4,7 +4,7 @@ Source: `bp_format/serialization.py`, `bp_format/json_io.py`
 
 ## Purpose
 
-Save and load the whole bp-format hierarchy as JSON, including JAX arrays and
+Save and load the whole hybrax.format hierarchy as JSON, including JAX arrays and
 fitted spline state. Plain `.json` and gzipped `.json.gz` are both supported.
 
 ## Why JSON

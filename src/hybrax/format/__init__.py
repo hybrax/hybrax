@@ -5,7 +5,7 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any
 
-# bp-format requires float64 throughout. Configure future JAX imports without
+# hybrax.format requires float64 throughout. Configure future JAX imports without
 # importing JAX just to initialize this package.
 os.environ["JAX_ENABLE_X64"] = "true"
 if "jax" in sys.modules:
