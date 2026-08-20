@@ -16,11 +16,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -84,7 +84,7 @@ def _make_feed_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed_A": FeedVolumeChange(
+                "feed_A": Inflow(
                     name="feed_A",
                     unit="L",
                     is_controlled=True,
@@ -174,7 +174,7 @@ def _make_explicit_ode_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed_A": FeedVolumeChange(
+                "feed_A": Inflow(
                     name="feed_A",
                     unit="L",
                     is_controlled=True,
@@ -320,8 +320,8 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "    process.volume.volume_changes['feed_A']"
                 ".feed_medium.components = {}",
                 "    process.volume.volume_changes['feed_A']"
-                ".feed_medium.components['biomass'] = FeedMediumComponent(",
-                "        name='biomass',",
+                ".feed_medium.components['unknown'] = FeedMediumComponent(",
+                "        name='unknown',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.0),",
                 "        is_controlled=False,",
@@ -343,7 +343,7 @@ def _make_invalid_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -387,7 +387,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "sample_1": SampleVolumeChange(
+                    "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
                         is_controlled=False,
@@ -507,7 +507,7 @@ def test_prepare_artifact_rejects_invalid_stale_biological_ode_after_transform(
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="biological_ode invalid"):
+    with pytest.raises(ValueError, match="FAIL biological_ode"):
         _prepare_from_collection(
             collection,
             tmp_path,
@@ -790,7 +790,7 @@ def test_prepare_artifact_builds_sample_acc_amount_correctly(tmp_path):
     controls = store.get_controls("invalid")
     end_t = _make_invalid_collection().processes["invalid"].time_axis.end
     # V_real cumulative sampled volume at end == sum of sample-event volumes
-    # (absolute SampleVolumeChange deltas) at/under end_t.
+    # (positive removal magnitudes converted from signed Outflow deltas).
     sample_times = np.asarray(controls.sample_event_times)[
         np.asarray(controls.sample_event_mask)
     ]
@@ -822,8 +822,8 @@ def test_prepare_artifact_persists_feed_metadata(tmp_path):
     feed_md = process_md["control_metadata"]["feed_A"]
     semantics = metadata["semantics_provenance"]["processes"]["p1"]
 
-    assert process_md["name_controlled_FVCs"] == ["feed_A"]
-    assert feed_md["signal_family"] == "feed"
+    assert process_md["name_controlled_Inflows"] == ["feed_A"]
+    assert feed_md["signal_family"] == "inflow"
     assert feed_md["source_kind"] == "control"
     assert feed_md["inlet_feed_medium"]["components"]["glucose"]["unit"] == "g/L"
     assert "biomass" in feed_md["inlet_feed_medium"]["components"]
@@ -846,16 +846,13 @@ def test_prepare_artifact_fails_without_required_medium_enrichment(tmp_path):
         )
 
 
-def test_prepare_artifact_fails_strict_post_transform_bp_format_validation(tmp_path):
+def test_invalid_feed_component_fails_at_producer_boundary(tmp_path):
     custom_py = tmp_path / "custom-incomplete-feed.py"
     _write_feed_semantics_incomplete_custom_py(custom_py)
 
     with (
         pytest.warns(UserWarning),
-        pytest.raises(
-            ValueError,
-            match="bp_format validation failed",
-        ),
+        pytest.raises(ValueError, match="unknown reactor component"),
     ):
         _prepare_from_collection(
             _make_feed_collection(),
@@ -981,9 +978,8 @@ def test_resolve_prepared_path_dir_vs_file(tmp_path):
     assert resolve_prepared_path(prepared_file) == prepared_file
 
 
-def test_select_control_sources_handles_null_feed_medium():
-    """select_control_sources must not crash with AttributeError when
-    feed_medium is None; semantic validation handles the clear error."""
+def test_select_control_sources_uses_upstream_feed_medium_validation():
+    """Producer construction reuses bp-format's feed-medium validation."""
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
         time_axis=TimeAxis(unit="h", start=0.0, end=1.0, time_reference="start"),
@@ -991,7 +987,7 @@ def test_select_control_sources_handles_null_feed_medium():
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed_A": FeedVolumeChange(
+                "feed_A": Inflow(
                     name="feed_A",
                     unit="L",
                     is_controlled=True,
@@ -1000,10 +996,6 @@ def test_select_control_sources_handles_null_feed_medium():
                         times=jnp.asarray([0.0, 1.0]),
                         values=jnp.asarray([0.0, 0.1]),
                     ),
-                    # feed_medium=None is allowed at runtime even though the
-                    # type annotation forbids it; dataclasses do not enforce
-                    # field types, so None can reach this code path when data
-                    # is incomplete before semantic validation runs.
                     feed_medium=None,  # type: ignore[arg-type]
                 )
             },
@@ -1021,9 +1013,5 @@ def test_select_control_sources_handles_null_feed_medium():
             ),
         },
     )
-    bundle = select_control_sources(process)
-    sources = bundle.all_sources
-    assert len(sources) == 1
-    assert sources[0].name == "feed_A"
-    assert sources[0].metadata["inlet_feed_medium"] is None
-    assert bundle.name_controlled_FVCs == ("feed_A",)
+    with pytest.raises(ValueError, match="feed_medium"):
+        select_control_sources(process)

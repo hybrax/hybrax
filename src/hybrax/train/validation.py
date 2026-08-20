@@ -32,7 +32,7 @@ def validate_for_training(
 
     for process_name, process in collection.processes.items():
         ok, messages = validate_process(process)
-        process_messages = list(messages)
+        process_messages = [message for _, message in messages]
         if require_biological_ode and process.biological_ode is None:
             ok = False
             process_messages.append(
@@ -48,7 +48,7 @@ def validate_for_training(
     )
     report["__consistency__"] = {
         "ok": consistency_ok,
-        "messages": consistency_messages
+        "messages": [message for _, message in consistency_messages]
         if consistency_messages
         else ["Cross-process structure is consistent — OK"],
     }

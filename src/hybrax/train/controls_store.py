@@ -168,8 +168,8 @@ class ControlPartition:
     genuine disagreement.
     """
 
-    name_controlled_FVCs: tuple[str, ...]
-    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
     spline_indices: tuple[int, ...]
     linear_indices: tuple[int, ...]
@@ -187,8 +187,8 @@ def _control_partition(
     for process_name in process_order:
         bundle = process_bundles[process_name]
         categorised = (
-            bundle.name_controlled_FVCs,
-            bundle.name_controlled_SVCs,
+            bundle.name_controlled_Inflows,
+            bundle.name_controlled_Outflows,
             bundle.name_controlled_PVs,
         )
         if reference_categorised is None:
@@ -203,12 +203,12 @@ def _control_partition(
         raise ValueError("process collection is empty")
 
     (
-        name_controlled_FVCs,
-        name_controlled_SVCs,
+        name_controlled_Inflows,
+        name_controlled_Outflows,
         name_controlled_PVs,
     ) = reference_categorised
     canonical_names = list(
-        name_controlled_FVCs + name_controlled_SVCs + name_controlled_PVs
+        name_controlled_Inflows + name_controlled_Outflows + name_controlled_PVs
     )
 
     spline_names: list[str] = []
@@ -267,8 +267,8 @@ def _control_partition(
     spline_name_set = set(spline_names)
     canonical_index = {name: index for index, name in enumerate(canonical_names)}
     return ControlPartition(
-        name_controlled_FVCs=name_controlled_FVCs,
-        name_controlled_SVCs=name_controlled_SVCs,
+        name_controlled_Inflows=name_controlled_Inflows,
+        name_controlled_Outflows=name_controlled_Outflows,
         name_controlled_PVs=name_controlled_PVs,
         spline_indices=tuple(canonical_index[name] for name in spline_names),
         linear_indices=tuple(
@@ -456,7 +456,7 @@ class PerProcessControls(eqx.Module):
     """Per-process hybrid runtime view over direct and linear controls.
 
     Column axis follows
-    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]``
+    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
     matching bp-format ``ControlSplines``. All columns are consumed by
     ``eval_u(t)`` to build RhsOde's ``u`` argument. Discrete bolus/sample events
     are NOT controls here — they are applied as state jumps by the callbacks
@@ -469,8 +469,8 @@ class PerProcessControls(eqx.Module):
 
     process_name: str = eqx.field(static=True)
     process_index: int = eqx.field(static=True)
-    name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
-    name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_Inflows: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_Outflows: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
     spline_breaks: jax.Array
     spline_coeffs: jax.Array
@@ -501,8 +501,8 @@ class PerProcessControls(eqx.Module):
     @property
     def n_u(self) -> int:
         return (
-            len(self.name_controlled_FVCs)
-            + len(self.name_controlled_SVCs)
+            len(self.name_controlled_Inflows)
+            + len(self.name_controlled_Outflows)
             + len(self.name_controlled_PVs)
         )
 
@@ -523,9 +523,11 @@ class PerProcessControls(eqx.Module):
         return self.control_derivatives[: self.grid_length]
 
     def _eval_values(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Interpolate all control VALUES at one or more times, in canonical
-        column order ``[FVCs_cum | SVCs_cum | PVs]``. Private — public access is
-        via the per-axis ``eval_controlled_*`` accessors."""
+        """Interpolate all control values in canonical flow/PV column order.
+
+        Private; public access is through the per-axis ``eval_controlled_*``
+        methods.
+        """
         query = jnp.asarray(ts, dtype=self.linear_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
@@ -587,31 +589,37 @@ class PerProcessControls(eqx.Module):
             )
         )
 
-    def eval_controlled_FVCs_cumulative(self, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        return self._eval_values(t_arr)[..., :n_fvc]
+    def eval_controlled_Inflows_cumulative(self, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        return self._eval_values(t_arr)[..., :n_inflows]
 
-    def eval_controlled_FVCs_rates(self, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        return self._eval_derivatives(t_arr)[..., :n_fvc]
+    def eval_controlled_Inflows_rates(self, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        return self._eval_derivatives(t_arr)[..., :n_inflows]
 
-    def eval_controlled_SVCs_rates(self, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        n_svc = len(self.name_controlled_SVCs)
-        return self._eval_derivatives(t_arr)[..., n_fvc : n_fvc + n_svc]
+    def eval_controlled_Outflows_cumulative(self, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        n_outflows = len(self.name_controlled_Outflows)
+        return self._eval_values(t_arr)[..., n_inflows : n_inflows + n_outflows]
+
+    def eval_controlled_Outflows_rates(self, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        n_outflows = len(self.name_controlled_Outflows)
+        return self._eval_derivatives(t_arr)[..., n_inflows : n_inflows + n_outflows]
 
     def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        n_svc = len(self.name_controlled_SVCs)
-        n_pv = len(self.name_controlled_PVs)
-        return self._eval_values(t_arr)[..., n_fvc + n_svc : n_fvc + n_svc + n_pv]
+        n_inflows = len(self.name_controlled_Inflows)
+        n_outflows = len(self.name_controlled_Outflows)
+        n_pvs = len(self.name_controlled_PVs)
+        start = n_inflows + n_outflows
+        return self._eval_values(t_arr)[..., start : start + n_pvs]
 
 
 class BatchControls(eqx.Module):
     """Batch-row controls evaluator with index-based runtime lookup.
 
     Column axis follows the same canonical
-    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]``
+    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
     order as :class:`PerProcessControls`.
     """
 
@@ -626,8 +634,8 @@ class BatchControls(eqx.Module):
     spline_indices: tuple[int, ...] = eqx.field(static=True)
     linear_indices: tuple[int, ...] = eqx.field(static=True)
     continuity_side: str = eqx.field(static=True)
-    name_controlled_FVCs: tuple[str, ...] = eqx.field(static=True)
-    name_controlled_SVCs: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_Inflows: tuple[str, ...] = eqx.field(static=True)
+    name_controlled_Outflows: tuple[str, ...] = eqx.field(static=True)
     name_controlled_PVs: tuple[str, ...] = eqx.field(static=True)
     min_V: jax.Array
     sample_event_times: jax.Array
@@ -692,33 +700,41 @@ class BatchControls(eqx.Module):
 
     # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
     # placeholder for future state-dependent controls and is currently unused.
-    def eval_controlled_FVCs_cumulative(self, row_idx, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        return self._eval_values(row_idx, t_arr)[..., :n_fvc]
+    def eval_controlled_Inflows_cumulative(self, row_idx, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        return self._eval_values(row_idx, t_arr)[..., :n_inflows]
 
-    def eval_controlled_FVCs_rates(self, row_idx, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        return self._eval_derivatives(row_idx, t_arr)[..., :n_fvc]
+    def eval_controlled_Inflows_rates(self, row_idx, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        return self._eval_derivatives(row_idx, t_arr)[..., :n_inflows]
 
-    def eval_controlled_SVCs_rates(self, row_idx, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        n_svc = len(self.name_controlled_SVCs)
-        return self._eval_derivatives(row_idx, t_arr)[..., n_fvc : n_fvc + n_svc]
+    def eval_controlled_Outflows_cumulative(self, row_idx, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        n_outflows = len(self.name_controlled_Outflows)
+        return self._eval_values(row_idx, t_arr)[
+            ..., n_inflows : n_inflows + n_outflows
+        ]
+
+    def eval_controlled_Outflows_rates(self, row_idx, t_arr, states) -> jax.Array:
+        n_inflows = len(self.name_controlled_Inflows)
+        n_outflows = len(self.name_controlled_Outflows)
+        return self._eval_derivatives(row_idx, t_arr)[
+            ..., n_inflows : n_inflows + n_outflows
+        ]
 
     def eval_controlled_PVs(self, row_idx, t_arr, states) -> jax.Array:
-        n_fvc = len(self.name_controlled_FVCs)
-        n_svc = len(self.name_controlled_SVCs)
-        n_pv = len(self.name_controlled_PVs)
-        return self._eval_values(row_idx, t_arr)[
-            ..., n_fvc + n_svc : n_fvc + n_svc + n_pv
-        ]
+        n_inflows = len(self.name_controlled_Inflows)
+        n_outflows = len(self.name_controlled_Outflows)
+        n_pvs = len(self.name_controlled_PVs)
+        start = n_inflows + n_outflows
+        return self._eval_values(row_idx, t_arr)[..., start : start + n_pvs]
 
 
 class ControlsStore(eqx.Module):
     """Collection-level loader and index for prepared, padded JAX control tensors.
 
     Column axis follows
-    ``[name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]``
+    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
     consistently across every process; the wrapper consumes the full
     u-block via :meth:`PerProcessControls.eval_u`.
     """
@@ -726,8 +742,8 @@ class ControlsStore(eqx.Module):
     # Canonical prepared process keys in stable collection order.
     process_order: list[str]
     # Categorised name tuples (must be identical across processes).
-    name_controlled_FVCs: tuple[str, ...]
-    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
     # Padded max shapes. No runtime consumer today (only tests assert on it);
     # kept because it may be wanted again. Static so that a pytree traversal of
@@ -775,8 +791,8 @@ class ControlsStore(eqx.Module):
         `int` partitioning the canonical column range, `continuity_side` must be a
         known value, and each dispatch payload must be as wide as the index tuple
         addressing it. Motivating bug class: a cardinality-preserving error leaves
-        every array shape unchanged, and for single-control collections the FVC and
-        PV axes are both width 1, so nothing downstream notices.
+        every array shape unchanged, and for single-control collections the flow
+        and PV axes are both width 1, so nothing downstream notices.
 
         **Structural only** — it cannot tell that a split is the one
         `prepared.json` implies. A paired swap (moving a spline to another column
@@ -787,8 +803,8 @@ class ControlsStore(eqx.Module):
         this validation themselves.
         """
         n_columns = (
-            len(self.name_controlled_FVCs)
-            + len(self.name_controlled_SVCs)
+            len(self.name_controlled_Inflows)
+            + len(self.name_controlled_Outflows)
             + len(self.name_controlled_PVs)
         )
         for name, indices in (
@@ -854,8 +870,8 @@ class ControlsStore(eqx.Module):
         if not process_md:
             return
         for key, expected in (
-            ("name_controlled_FVCs", bundle.name_controlled_FVCs),
-            ("name_controlled_SVCs", bundle.name_controlled_SVCs),
+            ("name_controlled_Inflows", bundle.name_controlled_Inflows),
+            ("name_controlled_Outflows", bundle.name_controlled_Outflows),
             ("name_controlled_PVs", bundle.name_controlled_PVs),
         ):
             if key not in process_md:
@@ -918,11 +934,11 @@ class ControlsStore(eqx.Module):
             }
 
         partition = _control_partition(tuple(process_order), process_bundles)
-        name_controlled_FVCs = partition.name_controlled_FVCs
-        name_controlled_SVCs = partition.name_controlled_SVCs
+        name_controlled_Inflows = partition.name_controlled_Inflows
+        name_controlled_Outflows = partition.name_controlled_Outflows
         name_controlled_PVs = partition.name_controlled_PVs
         canonical_names: list[str] = list(
-            name_controlled_FVCs + name_controlled_SVCs + name_controlled_PVs
+            name_controlled_Inflows + name_controlled_Outflows + name_controlled_PVs
         )
         spline_indices = partition.spline_indices
         linear_indices = partition.linear_indices
@@ -1046,8 +1062,8 @@ class ControlsStore(eqx.Module):
             bolus_event_mask_rows[process_index, :n_bolus] = True
 
             processes_metadata[process_name] = {
-                "name_controlled_FVCs": list(name_controlled_FVCs),
-                "name_controlled_SVCs": list(name_controlled_SVCs),
+                "name_controlled_Inflows": list(name_controlled_Inflows),
+                "name_controlled_Outflows": list(name_controlled_Outflows),
                 "name_controlled_PVs": list(name_controlled_PVs),
                 "control_metadata": process_control_metadata[process_name],
                 "control_supports": {
@@ -1075,8 +1091,8 @@ class ControlsStore(eqx.Module):
 
         return cls(
             process_order=process_order,
-            name_controlled_FVCs=name_controlled_FVCs,
-            name_controlled_SVCs=name_controlled_SVCs,
+            name_controlled_Inflows=name_controlled_Inflows,
+            name_controlled_Outflows=name_controlled_Outflows,
             name_controlled_PVs=name_controlled_PVs,
             shape_metadata=shape_metadata,
             spline_indices=spline_indices,
@@ -1168,8 +1184,8 @@ class ControlsStore(eqx.Module):
         }
         return ControlsStore(
             process_order=list(process_names),
-            name_controlled_FVCs=self.name_controlled_FVCs,
-            name_controlled_SVCs=self.name_controlled_SVCs,
+            name_controlled_Inflows=self.name_controlled_Inflows,
+            name_controlled_Outflows=self.name_controlled_Outflows,
             name_controlled_PVs=self.name_controlled_PVs,
             shape_metadata=shape_metadata,
             spline_indices=self.spline_indices,
@@ -1236,8 +1252,8 @@ class ControlsStore(eqx.Module):
         return PerProcessControls(
             process_name=process_name,
             process_index=process_index,
-            name_controlled_FVCs=self.name_controlled_FVCs,
-            name_controlled_SVCs=self.name_controlled_SVCs,
+            name_controlled_Inflows=self.name_controlled_Inflows,
+            name_controlled_Outflows=self.name_controlled_Outflows,
             name_controlled_PVs=self.name_controlled_PVs,
             spline_breaks=self.spline_breaks[process_index],
             spline_coeffs=self.spline_coeffs[process_index],
@@ -1295,8 +1311,8 @@ class ControlsStore(eqx.Module):
             spline_indices=self.spline_indices,
             linear_indices=self.linear_indices,
             continuity_side=self.continuity_side,
-            name_controlled_FVCs=self.name_controlled_FVCs,
-            name_controlled_SVCs=self.name_controlled_SVCs,
+            name_controlled_Inflows=self.name_controlled_Inflows,
+            name_controlled_Outflows=self.name_controlled_Outflows,
             name_controlled_PVs=self.name_controlled_PVs,
             min_V=self.min_V[indices],
             sample_event_times=self.sample_event_times[indices],

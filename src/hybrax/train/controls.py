@@ -14,6 +14,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
+from bp_format.mechanistic import extract_discrete_events, get_process_ordering
 from bp_format.time_series.spline_ops import rebase_to_breaks
 
 
@@ -219,18 +220,63 @@ def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
     }
 
 
-def _make_source_from_volume_change(name: str, volume_change: Inflow) -> SignalSource:
-    metadata = {
+def _validate_cumulative_direction(
+    name: str,
+    volume_change: Inflow | Outflow,
+    process: BioProcess,
+) -> None:
+    """Validate the cumulative-flow derivative over the closed solve interval."""
+    values = volume_change.values
+    if values.breaks is None:
+        slopes = np.diff(_as_numpy(values.values)) / np.diff(_as_numpy(values.times))
+    else:
+        breaks = _as_numpy(values.breaks)
+        coeffs = _as_numpy(values.coeffs)
+        rates: list[float] = []
+        for index, (left, right) in enumerate(
+            zip(breaks[:-1], breaks[1:], strict=True)
+        ):
+            clipped_left = max(float(left), float(process.time_axis.start))
+            clipped_right = min(float(right), float(process.time_axis.end))
+            if clipped_left > clipped_right:
+                continue
+            rate_coeffs = np.polynomial.polynomial.polyder(coeffs[index])
+            candidates = [clipped_left - left, clipped_right - left]
+            acceleration_coeffs = np.polynomial.polynomial.polyder(rate_coeffs)
+            for root in np.polynomial.polynomial.polyroots(acceleration_coeffs):
+                if np.isreal(root):
+                    root = float(np.real(root))
+                    if candidates[0] <= root <= candidates[1]:
+                        candidates.append(root)
+            rates.extend(np.polynomial.polynomial.polyval(candidates, rate_coeffs))
+        slopes = np.asarray(rates)
+
+    direction = 1.0 if isinstance(volume_change, Inflow) else -1.0
+    if np.any(direction * slopes < 0.0):
+        expected = "nonnegative" if direction > 0.0 else "nonpositive"
+        raise ValueError(
+            f"Continuous {type(volume_change).__name__} {name!r} must have "
+            f"{expected} cumulative derivatives."
+        )
+
+
+def _make_source_from_volume_change(
+    process: BioProcess,
+    name: str,
+    volume_change: Inflow | Outflow,
+) -> SignalSource:
+    metadata: dict[str, Any] = {
         "source": "timeseries",
         "source_kind": "control",
-        "signal_family": "feed",
-        "feed_name": name,
-        "inlet_feed_medium": (
-            _serialize_feed_medium(volume_change.feed_medium)
-            if volume_change.feed_medium is not None
-            else None
-        ),
+        "signal_family": ("inflow" if isinstance(volume_change, Inflow) else "outflow"),
     }
+    if isinstance(volume_change, Inflow):
+        metadata["inlet_feed_medium"] = _serialize_feed_medium(
+            volume_change.feed_medium
+        )
+    else:
+        metadata["retention"] = dict(volume_change.retention)
+
     if volume_change.values.breaks is not None:
         return _make_source_from_spline(
             name=name,
@@ -248,99 +294,31 @@ def _make_source_from_volume_change(name: str, volume_change: Inflow) -> SignalS
     )
 
 
-def _feed_medium_cin_row(
-    feed_medium: FeedMedium | None,
-    species_names: tuple[str, ...],
-    *,
-    feed_name: str,
-) -> list[float]:
-    if feed_medium is None:
-        raise ValueError(f"Inflow {feed_name!r} must define feed_medium for transport.")
-    row: list[float] = []
-    for species_name in species_names:
-        component = feed_medium.components.get(species_name)
-        if component is None:
-            row.append(0.0)
-            continue
-        concentration = component.concentration
-        if not isinstance(concentration, StaticVariable):
-            raise NotImplementedError(
-                "TimeSeries feed concentrations are not supported for pseudobatch "
-                f"event transport. Found species {species_name!r} "
-                f"in feed {feed_name!r}."
-            )
-        row.append(float(concentration.value))
-    return row
-
-
 def collect_discrete_event_metadata(
     process: BioProcess,
     species_names: tuple[str, ...],
 ) -> dict[str, Any]:
-    """Collect true sample/bolus events for pseudobatch algebraic forcing."""
-    t_start = float(process.time_axis.start)
+    """Collect true sample/bolus events for pseudobatch algebraic forcing.
+
+    bp-format owns event validation and species alignment. Signed Outflow deltas
+    become positive removal magnitudes exactly once at this solver boundary.
+    """
     t_end = float(process.time_axis.end)
     sample_events: list[tuple[float, float]] = []
     bolus_events: list[tuple[float, float, list[float]]] = []
+    ordering = get_process_ordering(process)
+    if tuple(ordering.name_modeled_RMCs) != species_names:
+        raise ValueError("species_names must match bp-format's modeled RMC order")
 
-    for name, volume_change in process.volume.volume_changes.items():
-        times = _as_numpy(volume_change.values.times)
-        values = _as_numpy(volume_change.values.values)
-        if times.size != values.size:
-            raise ValueError(f"{name}: volume-change times and values differ in size")
-
-        if isinstance(volume_change, Outflow):
-            if volume_change.is_continuous:
-                continue
-            for event_time, delta_v in zip(
-                times.tolist(), values.tolist(), strict=False
-            ):
-                event_time = float(event_time)
-                delta_v = float(delta_v)
-                if delta_v == 0.0:
-                    continue
-                if delta_v > 0.0:
-                    raise ValueError(
-                        f"Sample {name!r} has positive delta_v at "
-                        f"t={event_time}: {delta_v}. Samples must remove volume."
-                    )
-                sample_v = abs(delta_v)
-                if event_time < t_start:
-                    raise ValueError(
-                        f"Sample {name!r} timestamp {event_time} before "
-                        f"process start {t_start}."
-                    )
-                if event_time > t_end:
-                    continue
-                sample_events.append((event_time, sample_v))
+    for event in extract_discrete_events(process, ordering):
+        if event["t"] > t_end:
             continue
-
-        if not isinstance(volume_change, Inflow):
-            continue
-        if volume_change.is_continuous or not volume_change.is_controlled:
-            continue
-
-        cin_row = _feed_medium_cin_row(
-            volume_change.feed_medium,
-            species_names,
-            feed_name=name,
-        )
-        for event_time, delta_v in zip(times.tolist(), values.tolist(), strict=False):
-            event_time = float(event_time)
-            delta_v = float(delta_v)
-            if delta_v == 0.0:
-                continue
-            if delta_v < 0.0:
-                raise ValueError(
-                    f"Bolus feed {name!r} has negative delta_v at "
-                    f"t={event_time}: {delta_v}. Boluses must add volume."
-                )
-            if event_time < t_start or event_time >= t_end:
-                raise ValueError(
-                    f"Bolus feed {name!r} timestamp {event_time} outside "
-                    f"[{t_start}, {t_end})."
-                )
-            bolus_events.append((event_time, delta_v, cin_row))
+        if event["kind"] == "sample":
+            sample_events.append((event["t"], -event["dV"]))
+        else:
+            bolus_events.append(
+                (event["t"], event["dV"], np.asarray(event["Cin"]).tolist())
+            )
 
     sample_by_time: dict[float, float] = {}
     for event_time, sample_v in sample_events:
@@ -364,19 +342,19 @@ class ControlSourceBundle:
     RHS integrates via RhsOde's ``u`` argument. Discrete bolus/sample events are
     NOT controls here; they are applied as state jumps by the callbacks solve:
 
-        [name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]
+        [name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]
     """
 
-    name_controlled_FVCs: tuple[str, ...]
-    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
     sources_by_name: dict[str, SignalSource]
 
     @property
     def all_names(self) -> tuple[str, ...]:
         return (
-            self.name_controlled_FVCs
-            + self.name_controlled_SVCs
+            self.name_controlled_Inflows
+            + self.name_controlled_Outflows
             + self.name_controlled_PVs
         )
 
@@ -386,39 +364,42 @@ class ControlSourceBundle:
 
 
 def select_control_sources(process: BioProcess) -> ControlSourceBundle:
-    fvc_continuous: dict[str, SignalSource] = {}
-    pv_controlled: dict[str, SignalSource] = {}
+    ordering = get_process_ordering(process)
+    volume_changes = process.volume.volume_changes
+    for name, volume_change in volume_changes.items():
+        if volume_change.is_continuous:
+            _validate_cumulative_direction(name, volume_change, process)
 
-    for name, volume_change in process.volume.volume_changes.items():
-        if not isinstance(volume_change, Inflow):
-            continue
-        if not volume_change.is_controlled:
-            continue
-        if not volume_change.is_continuous:
-            continue
-        fvc_continuous[name] = _make_source_from_volume_change(name, volume_change)
-
-    for name, process_variable in process.process_variables.items():
-        if not process_variable.is_controlled:
-            continue
-        pv_controlled[name] = _make_source_from_process_variable(
+    controlled_inflows = {
+        name: _make_source_from_volume_change(process, name, volume_changes[name])
+        for name in ordering.name_controlled_Inflows
+    }
+    controlled_outflows = {
+        name: _make_source_from_volume_change(process, name, volume_changes[name])
+        for name in ordering.name_controlled_Outflows
+    }
+    controlled_pvs = {
+        name: _make_source_from_process_variable(
             process=process,
             name=name,
-            process_variable=process_variable,
+            process_variable=process.process_variables[name],
         )
+        for name in ordering.name_controlled_PVs
+    }
 
-    name_controlled_FVCs = tuple(sorted(fvc_continuous))
-    name_controlled_SVCs: tuple[str, ...] = ()
-    name_controlled_PVs = tuple(sorted(pv_controlled))
+    name_controlled_Inflows = tuple(controlled_inflows)
+    name_controlled_Outflows = tuple(controlled_outflows)
+    name_controlled_PVs = tuple(controlled_pvs)
 
     sources_by_name: dict[str, SignalSource] = {
-        **fvc_continuous,
-        **pv_controlled,
+        **controlled_inflows,
+        **controlled_outflows,
+        **controlled_pvs,
     }
 
     return ControlSourceBundle(
-        name_controlled_FVCs=name_controlled_FVCs,
-        name_controlled_SVCs=name_controlled_SVCs,
+        name_controlled_Inflows=name_controlled_Inflows,
+        name_controlled_Outflows=name_controlled_Outflows,
         name_controlled_PVs=name_controlled_PVs,
         sources_by_name=sources_by_name,
     )

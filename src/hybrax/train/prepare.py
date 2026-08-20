@@ -204,8 +204,8 @@ def _validate_prepared_control_contract(
 
         if require_consistent_controls:
             categorised = (
-                bundle.name_controlled_FVCs,
-                bundle.name_controlled_SVCs,
+                bundle.name_controlled_Inflows,
+                bundle.name_controlled_Outflows,
                 bundle.name_controlled_PVs,
             )
             if reference_categorised is None:
@@ -314,7 +314,7 @@ def prepare_artifact(
     if not augmented_parents_ok:
         raise ValueError(
             "augmented parent validation failed:\n"
-            + "\n".join(augmented_parent_messages)
+            + "\n".join(message for _, message in augmented_parent_messages)
         )
     prepared_validation_report = validate_for_training(
         collection,
@@ -394,8 +394,8 @@ def prepare_artifact(
     for process_name, process in collection.processes.items():
         bundle = process_bundles[process_name]
         bp_train_metadata["processes"][process_name] = {
-            "name_controlled_FVCs": list(bundle.name_controlled_FVCs),
-            "name_controlled_SVCs": list(bundle.name_controlled_SVCs),
+            "name_controlled_Inflows": list(bundle.name_controlled_Inflows),
+            "name_controlled_Outflows": list(bundle.name_controlled_Outflows),
             "name_controlled_PVs": list(bundle.name_controlled_PVs),
             "control_metadata": {
                 source.name: source.metadata for source in bundle.all_sources
