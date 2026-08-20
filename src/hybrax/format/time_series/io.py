@@ -117,7 +117,7 @@ def timeseries_from_process_state(
     process_state: Mapping[str, Any],
     variable: str,
 ) -> Any:
-    """Build one TimeSeries from metadata.hybrax.process_state for a variable."""
+    """Build one TimeSeries from metadata.hybrax-format.process_state for a variable."""
     spline_results = process_state["spline_results"][variable]
     detected_jumps = process_state.get("detected_jumps", {})
     jumps = _extract_jump_times(detected_jumps, variable)
@@ -136,7 +136,7 @@ def timeseries_from_process_state(
         breaks, coeffs, segment_start_piece_idx = _convert_bspline_segments(segments)
 
     metadata = {
-        "source": "metadata.hybrax.process_state",
+        "source": "metadata.hybrax-format.process_state",
         "variable": variable,
         "k": spline_results.get("k"),
         "s": spline_results.get("s"),
@@ -162,5 +162,5 @@ def timeseries_from_input_dict(
     variable: str,
 ) -> Any:
     """Build one TimeSeries from full input.json-like data."""
-    process_state = input_data["metadata"]["hybrax"]["process_state"][process_key]
+    process_state = input_data["metadata"]["hybrax-format"]["process_state"][process_key]
     return timeseries_from_process_state(cls, process_state, variable)
