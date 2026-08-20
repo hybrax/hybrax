@@ -14,7 +14,7 @@ kernelspec:
 # 1. Import your Data
 
 
-> **In one sentence.** Turn a CSV of experimental measurements into a bp-format
+> Turn a CSV of experimental measurements into a bp-format
 > `BioProcessCollection` you can save, share and train on.
 
 

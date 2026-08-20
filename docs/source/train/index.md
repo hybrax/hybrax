@@ -6,11 +6,25 @@
 
 ## The pipeline
 
-<img class="theme-diagram diagram-light" src="../_static/diagram_train_pipeline_light.svg" alt="data.json, through bp-train prepare, becomes prepared/; through bp-train train, becomes a run/ directory; bp-train forward and bp-train loo both consume a run/ directory.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_train_pipeline_dark.svg" alt="data.json, through bp-train prepare, becomes prepared/; through bp-train train, becomes a run/ directory; bp-train forward and bp-train loo both consume a run/ directory.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train and hybrax forward to produce predictions, rates and metrics, with measured data, transformed and augmented processes, the reaction module, loss module, scales, optimizer, learning rate and new controls feeding into each stage. An alternative route, hybrax loo then hybrax forward (ensemble), produces its own ensemble predictions, rates and metrics.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train and hybrax forward to produce predictions, rates and metrics, with measured data, transformed and augmented processes, the reaction module, loss module, scales, optimizer, learning rate and new controls feeding into each stage. An alternative route, hybrax loo then hybrax forward (ensemble), produces its own ensemble predictions, rates and metrics.">
 
 Four commands. Everything you customise happens through one optional `custom.py`, and
 every hook in it has a working default.
+
+Each command's real output, on disk:
+
+```
+prepared/               prepare's output: the training problem
+run/                     train's output
+└── forward/             forward's output, written inside it
+loo_run/                 loo's output
+└── folds/<slug>/        one full run/ directory per fold
+```
+
+Full listings are on each stage's own page: [Prepare](prepare.md#what-it-writes),
+[Saving, loading and predicting](save_load_predict.md#what-is-on-disk),
+[Forward](forward.md#what-it-produces), [Cross-validation](loo.md#what-it-produces).
 
 ## What is actually being fitted
 

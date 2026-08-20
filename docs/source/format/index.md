@@ -9,19 +9,17 @@ kernelspec:
   language: python
   name: python3
 ---
+<!-- LOCK -->
+# Overview
 
-# bp-format guide
+> `hybrax-format` collects your bioprocess data in a single `BioProcessCollection` object and validates it for storing, sharing, and model training.
 
-> bp-format describes a bioprocess run as data, checks that description, and turns it
-> into a differentiable ODE right-hand side.
+<!-- UNLOCK -->
 
-bp-format does **not** train models and does **not** integrate ODEs. It owns the
-description and the physics; solving is [bp-train](../train/index.md)'s job.
+## Under the hood
 
-## What it gives you
-
-<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your description (reactor medium, volume and feeds, process variables, biological ODE) feeds into what bp-format derives: ProcessOrdering, ControlSplines, RhsOde, pseudobatch.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your description (reactor medium, volume and feeds, process variables, biological ODE) feeds into what bp-format derives: ProcessOrdering, ControlSplines, RhsOde, pseudobatch.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 
 You write the left column once. The right column is generated, and is the single source
 of truth for layout everywhere downstream: bp-train never re-derives it.
@@ -90,3 +88,5 @@ an amount balance. When something looks wrong, check the volume first.
 - [Concepts and vocabulary](../start/concepts.md), if any term above was unfamiliar.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): the same material as a walkthrough.
 - [API reference](../autoapi/bp_format/index): every signature.
+- [bp-train](../train/index.md) Training a model on your imported data.
+

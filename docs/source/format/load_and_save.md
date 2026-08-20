@@ -98,11 +98,12 @@ Rejected outright:
 - a `volume_changes` entry with no `"type"`: feed and sample cannot be guessed;
 - a partially written `pseudobatch_transform`;
 - legacy payloads that no longer exist, such as a stray `interpolator` sibling;
-- a component whose concentration is already the pseudobatch-transformed `c*`: the
-  loader will not accept a transformed carrier where a raw one belongs.
+- a component whose concentration is already the transformed `pseudobatch_concentration`:
+  the loader will not accept a transformed carrier where a raw one belongs.
 
-That last one is the fail-fast design principle in action: silently accepting `c*` as if
-it were a measured concentration would corrupt every downstream fit with no error.
+That last one is the fail-fast design principle in action: silently accepting
+`pseudobatch_concentration` as if it were a measured concentration would corrupt every
+downstream fit with no error.
 
 ## The smallest valid file
 

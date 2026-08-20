@@ -1,14 +1,14 @@
-# Concepts and vocabulary
+# Concepts and Vocabulary
 
 > Every term these docs use, defined once, in the order you meet them: useful if a page
 > used a word like *RMC*, *controlled*, *SCL* or *ADF* without explaining it. Worth one
 > read even if you already know the words: a few mean something narrower here than in
 > general usage.
 
-## The shape of the whole thing
+## The User Experience
 
-<img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="Your CSVs become a bp-format BioProcess, which build_rhs_ode() turns into RhsOde. A reaction module you supply feeds rates directly into RhsOde; a loss module you supply reaches bp-train via custom.py, which drives prepare, train, forward and loo, producing predictions, rates and metrics.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="Your CSVs become a bp-format BioProcess, which build_rhs_ode() turns into RhsOde. A reaction module you supply feeds rates directly into RhsOde; a loss module you supply reaches bp-train via custom.py, which drives prepare, train, forward and loo, producing predictions, rates and metrics.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train and hybrax forward to produce predictions, rates and metrics, with measured data, transformed and augmented processes, the reaction module, loss module, scales, optimizer, learning rate and new controls feeding into each stage. An alternative route, hybrax loo then hybrax forward (ensemble), produces its own ensemble predictions, rates and metrics.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train and hybrax forward to produce predictions, rates and metrics, with measured data, transformed and augmented processes, the reaction module, loss module, scales, optimizer, learning rate and new controls feeding into each stage. An alternative route, hybrax loo then hybrax forward (ensemble), produces its own ensemble predictions, rates and metrics.">
 
 The single most useful thing to internalise: **bp-format owns the transport, you own the
 biology.** Dilution, feed inflow, sample outflow and volume dynamics are already written.
@@ -112,18 +112,18 @@ to be specific *to* otherwise. See [the Bioprocess ODE](../format/bioprocess_ode
 - **Event ordering at a shared timestamp**: **sample first, then bolus.** The offline
   measurement represents the pre-feed reactor state; the bolus then dilutes what is left.
 
-## Pseudobatch, ADF and `c*`
+## Pseudobatch, ADF and `pseudobatch_concentration`
 
 In a fed-batch run, a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The **pseudobatch transform** removes the second one.
 
 - **ADF**: accumulated dilution factor, `V(t) / V(0)`.
-- **`c*`**: the pseudo-concentration, what the concentration *would have been* in a batch
-  run with identical biology. Stored per component as `pseudobatch_concentration`.
+- **`pseudobatch_concentration`**: what the concentration *would have been* in a batch
+  run with identical biology. Stored per component under that name.
 
-`c*` curves are smoother, so they spline better, and they make batch and fed-batch runs
-directly comparable. A good sanity check: a `c*` trace should **not** jump at a pure
-sampling event. If it does, the volume accounting is wrong.
+`pseudobatch_concentration` curves are smoother, so they spline better, and they make
+batch and fed-batch runs directly comparable. A good sanity check: this trace should
+**not** jump at a pure sampling event. If it does, the volume accounting is wrong.
 
 ## bp-train vocabulary
 

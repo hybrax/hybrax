@@ -127,11 +127,11 @@ basis evaluation requires recursive knot-vector lookups that are harder to vecto
 Fed-batch processes change volume over time, so observed concentrations are affected by
 dilution in addition to biological activity. The **pseudobatch transform**
 (Hesselberg-Thomsen et al., 2024) converts measured concentrations `c(t)` to
-pseudo-concentrations `c*(t)`: what concentrations *would have been* in a batch process
+`pseudobatch_concentration(t)`: what concentrations *would have been* in a batch process
 with the same biological activity:
 
 ```
-c*(t) = c(t) * ADF(t) - feed_correction(t)
+pseudobatch_concentration(t) = c(t) * ADF(t) - feed_correction(t)
 ```
 
 where `ADF(t)` is the accumulative dilution factor (current / initial volume) and

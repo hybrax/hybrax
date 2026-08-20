@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# The data model
+# The Data Model
 
 > Which object holds which measurement, and why the split is where it is.
 

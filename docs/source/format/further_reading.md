@@ -42,8 +42,8 @@ something is the way it is: never for behaviour.
 
 ## Background
 
-- **Pseudobatch transform**: Hesselberg-Thomsen et al. (2024). The method behind `c*`
-  and the accumulated dilution factor.
+- **Pseudobatch transform**: Hesselberg-Thomsen et al. (2024). The method behind
+  `pseudobatch_concentration` and the accumulated dilution factor.
 - **JAX** and **Equinox**: the array and module libraries everything is built on.
   Worth twenty minutes if you are going to write a reaction module.
 

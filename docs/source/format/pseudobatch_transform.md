@@ -18,7 +18,7 @@ In a fed-batch run a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The pseudobatch transform removes the second.
 
 ```
-c*(t) = c(t) · ADF(t) − feed_correction(t)
+pseudobatch_concentration(t) = c(t) · ADF(t) − feed_correction(t)
 ```
 
 where **ADF** is the accumulated dilution factor `V(t)/V(0)` and the feed correction
@@ -37,14 +37,15 @@ bundle = build_pseudobatch_transform(process)
 process.pseudobatch_transform = bundle        # <- you must assign it yourself
 
 glucose = process.reactor_medium.components["glucose"]
-print("t       :", np.asarray(glucose.concentration.times)[:6])
-print("measured:", np.round(np.asarray(glucose.concentration.values)[:6], 2))
-print("c*      :", np.round(np.asarray(glucose.pseudobatch_concentration.values)[:6], 2))
+print("t                        :", np.asarray(glucose.concentration.times)[:6])
+print("measured                 :", np.round(np.asarray(glucose.concentration.values)[:6], 2))
+print("pseudobatch_concentration:",
+      np.round(np.asarray(glucose.pseudobatch_concentration.values)[:6], 2))
 ```
 
 Read those last two rows across. They agree until the feed starts at t = 6 h, and diverge
-afterwards: the measured glucose is propped up by feeding, while `c*` keeps falling
-because that is what the cells are actually doing to it.
+afterwards: the measured glucose is propped up by feeding, while `pseudobatch_concentration`
+keeps falling because that is what the cells are actually doing to it.
 
 Three uses:
 
@@ -71,9 +72,9 @@ a hundredfold difference in wall time.
 ## Going back
 
 `build_backtransform_spline(process, species)` returns a `BacktransformSpline` that maps
-`c*` back to real concentration (including the derivative, via the quotient rule) and
-is JIT-safe, so a model can be trained in pseudobatch space and evaluated in physical
-space.
+`pseudobatch_concentration` back to real concentration (including the derivative, via
+the quotient rule) and is JIT-safe, so a model can be trained in pseudobatch space and
+evaluated in physical space.
 
 ## The step-interpolation rule
 
@@ -84,11 +85,13 @@ does this correctly; it matters if you build your own.
 
 ## Gotchas
 
-- **Re-running the transform is safe**, but feeding an already-transformed `c*` back in
-  raises. Same principle as the loader rejecting `c*` carriers.
-- **A `c*` trace that jumps at a pure sampling event means your volume accounting is
-  wrong.** Sampling is a well-mixed removal, so the dilution-corrected trace should be
-  smooth through it. This is one of the best diagnostics in the package.
+- **Re-running the transform is safe**, but feeding an already-transformed
+  `pseudobatch_concentration` back in raises. Same principle as the loader rejecting
+  `pseudobatch_concentration` carriers.
+- **A `pseudobatch_concentration` trace that jumps at a pure sampling event means your
+  volume accounting is wrong.** Sampling is a well-mixed removal, so the
+  dilution-corrected trace should be smooth through it. This is one of the best
+  diagnostics in the package.
 - **Scoped to `Inflow` and discrete `Outflow`.** A continuous `Outflow` (e.g. perfusion)
   raises `NotImplementedError`: exact ADF requires volume to only grow via inflows. See
   [Limits and gotchas](limits_and_gotchas.md).

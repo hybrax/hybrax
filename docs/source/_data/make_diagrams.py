@@ -70,209 +70,159 @@ def arrow(ax, p0, p1, c, *, style="-|>", lw=1.6, connectionstyle="arc3,rad=0"):
 # ---------------------------------------------------------------------------
 def make_format_diagram(theme):
     c = THEMES[theme]
-    fig, ax = plt.subplots(figsize=(9.2, 3.6))
-    ax.set_xlim(0, 9.2)
-    ax.set_ylim(0, 3.6)
+    fig, ax = plt.subplots(figsize=(9.6, 4.0))
+    ax.set_xlim(0, 9.6)
+    ax.set_ylim(0, 4.0)
     ax.axis("off")
 
-    ax.text(0.15, 3.35, "your description", fontsize=11.5, weight="bold", color=c["ink"])
-    ax.text(4.55, 3.35, "what bp-format derives from it", fontsize=11.5, weight="bold",
-            color=c["ink"])
+    # Outer frame: everything in both columns is hybrax-format's; bp-train never
+    # re-derives any of it (see the prose right below this figure).
+    ax.add_patch(FancyBboxPatch(
+        (0.1, 0.1), 9.4, 3.65,
+        boxstyle="round,pad=0.02,rounding_size=0.12",
+        linewidth=1.2, edgecolor=c["muted"], facecolor="none", linestyle="--",
+    ))
+    ax.text(0.3, 3.58, "hybrax-format", fontsize=9.5, weight="bold", color=c["muted"],
+            fontproperties=MONO)
 
-    left_items = ["reactor medium", "volume + feeds", "process variables", "biological ODE"]
-    ys = [2.55, 1.85, 1.15, 0.45]
-    for label, y in zip(left_items, ys):
-        box(ax, (0.15, y), 2.55, 0.55, label, c, fontsize=10)
+    ax.text(0.3, 3.2, "your input", fontsize=11.5, weight="bold", color=c["ink"])
+    ax.text(4.75, 3.2, "derived objects", fontsize=11.5, weight="bold", color=c["ink"])
 
-    # brace-like merge: four short lines from each left box converge to one point,
-    # then one arrow continues to the right column.
-    merge_x = 3.15
-    merge_y = 1.7
-    for y in ys:
-        ax.plot([2.70, merge_x], [y + 0.275, merge_y], color=c["accent"], lw=1.3,
-                solid_capstyle="round")
-    arrow(ax, (merge_x, merge_y), (4.15, merge_y), c, lw=2.0)
-
+    # Two plain text-stack columns, same style, same row spacing, no boxes and no
+    # connecting lines: the four inputs together produce the four derived objects,
+    # not a one-to-one pairing an arrow would misleadingly imply.
+    left = [
+        ("ReactorMediumComponent", "experimental concentrations of each species"),
+        ("Volume, Inflow, Outflow", "feeds, boluses, sample draws"),
+        ("ProcessVariable", "pH, DO, temperature, ..."),
+        ("BiologicalOde", "your rate expressions"),
+    ]
     right = [
         ("ProcessOrdering", "canonical name / index layout"),
         ("ControlSplines", "controlled inputs, evaluable at any t"),
         ("RhsOde", "dc/dt = biology + transport"),
-        ("pseudobatch", "dilution-corrected concentrations c*"),
+        ("PseudobatchTransform", "dilution-corrected concentrations"),
     ]
     ry0 = 2.85
-    for i, (name, desc) in enumerate(right):
+    for i, ((lname, ldesc), (rname, rdesc)) in enumerate(zip(left, right)):
         y = ry0 - i * 0.72
-        ax.text(4.25, y, name, fontsize=10.5, weight="bold", color=c["accent"],
+        ax.text(0.3, y, lname, fontsize=10.5, weight="bold", color=c["accent"],
                 fontproperties=MONO, va="center")
-        ax.text(4.25, y - 0.30, desc, fontsize=9, color=c["muted"], va="center")
+        ax.text(0.3, y - 0.30, ldesc, fontsize=9, color=c["muted"], va="center")
+        ax.text(4.75, y, rname, fontsize=10.5, weight="bold", color=c["accent"],
+                fontproperties=MONO, va="center")
+        ax.text(4.75, y - 0.30, rdesc, fontsize=9, color=c["muted"], va="center")
 
     fig.tight_layout()
     _save(fig, "diagram_format_pipeline", theme)
 
 
 # ---------------------------------------------------------------------------
-# Diagram 2: train/index.md — the prepare -> train -> forward/loo pipeline
-# ---------------------------------------------------------------------------
-def make_train_diagram(theme):
-    c = THEMES[theme]
-    fig, ax = plt.subplots(figsize=(9.2, 7.4))
-    ax.set_xlim(0, 9.2)
-    ax.set_ylim(0, 7.4)
-    ax.axis("off")
-
-    stage_w = 3.0
-    stage_x = 0.25
-
-    box(ax, (stage_x, 6.65), stage_w, 0.55,
-        "data.json", c, fontsize=11, weight="bold", mono=True)
-    ax.text(stage_x + stage_w + 0.35, 6.925,
-            "a bp-format BioProcessCollection",
-            fontsize=9, color=c["muted"], va="center")
-
-    arrow(ax, (stage_x + stage_w / 2, 6.65), (stage_x + stage_w / 2, 5.95), c)
-    ax.text(stage_x + stage_w + 0.35, 6.30, "bp-train prepare", fontsize=10,
-            weight="bold", color=c["accent"], va="center", fontproperties=MONO)
-    ax.text(stage_x + stage_w + 0.35, 6.00,
-            "+ custom.py: transform_process_collection\n"
-            "             augment_state_values",
-            fontsize=8.7, color=c["muted"], va="center", fontproperties=MONO)
-
-    box(ax, (stage_x, 5.10), stage_w, 0.55, "prepared/", c, fontsize=11,
-        weight="bold", mono=True)
-    ax.text(stage_x + stage_w + 0.35, 5.375,
-            "the training problem: layouts,\ncontrol splines, targets",
-            fontsize=9, color=c["muted"], va="center")
-
-    arrow(ax, (stage_x + stage_w / 2, 5.10), (stage_x + stage_w / 2, 4.30), c)
-    ax.text(stage_x + stage_w + 0.35, 4.75, "bp-train train", fontsize=10,
-            weight="bold", color=c["accent"], va="center", fontproperties=MONO)
-    ax.text(stage_x + stage_w + 0.35, 4.30,
-            "+ custom.py: estimate_all_scales\n"
-            "             build_reaction_module\n"
-            "             build_loss_module\n"
-            "             build_learning_rate\n"
-            "             build_optimizer",
-            fontsize=8.7, color=c["muted"], va="center", fontproperties=MONO)
-
-    box(ax, (stage_x, 3.05), stage_w, 1.25, "", c)
-    ax.text(stage_x + 0.20, 4.02, "run/", fontsize=11, weight="bold", color=c["ink"],
-            fontproperties=MONO)
-    ax.text(stage_x + 0.35, 3.58,
-            "model/params.eqx\nmetrics.csv\npredictions.csv\n<process>.png",
-            fontsize=8.5, color=c["muted"], va="center", fontproperties=MONO,
-            linespacing=1.6)
-
-    # two branches down to forward / loo
-    branch_y_top = 3.05
-    branch_y_mid = 2.55
-    cx = stage_x + stage_w / 2
-    ax.plot([cx, cx], [branch_y_top, branch_y_mid], color=c["accent"], lw=1.6)
-    left_x, right_x = cx - 1.05, cx + 1.05
-    ax.plot([left_x, right_x], [branch_y_mid, branch_y_mid], color=c["accent"], lw=1.6)
-    arrow(ax, (left_x, branch_y_mid), (left_x, 1.95), c)
-    arrow(ax, (right_x, branch_y_mid), (right_x, 1.95), c)
-
-    box_w = 2.0
-    box(ax, (left_x - box_w / 2, 1.35), box_w, 0.55, "forward", c, fontsize=10.5,
-        weight="bold", mono=True)
-    ax.text(left_x - box_w / 2, 1.05, "re-simulate, export dense\ntrajectories, ensemble",
-            fontsize=8.5, color=c["muted"], va="top")
-
-    box(ax, (right_x - box_w / 2, 1.35), box_w, 0.55, "loo", c, fontsize=10.5,
-        weight="bold", mono=True)
-    ax.text(right_x - box_w / 2, 1.05, "cross-validate (wraps\ntrain + forward per fold)",
-            fontsize=8.5, color=c["muted"], va="top")
-
-    fig.tight_layout()
-    _save(fig, "diagram_train_pipeline", theme)
-
-
-# ---------------------------------------------------------------------------
-# Diagram 3: start/concepts.md — "the shape of the whole thing"
+# Diagram 2: start/concepts.md and train/index.md — "the shape of the whole
+# thing". Shared by both pages: the same pipeline, viewed from either side.
 # ---------------------------------------------------------------------------
 def make_shape_diagram(theme):
     c = THEMES[theme]
-    fig, ax = plt.subplots(figsize=(9.6, 5.3))
-    ax.set_xlim(0, 9.6)
-    ax.set_ylim(1.25, 6.6)
+    fig, ax = plt.subplots(figsize=(8.05, 6.1))
+    ax.set_xlim(-0.45, 8.4)
+    ax.set_ylim(3.3, 8.95)
     ax.axis("off")
 
-    stage_x, stage_w = 0.2, 2.7
-    cx = stage_x + stage_w / 2
-    label_x = stage_x + stage_w + 0.3
+    stage_w, stage_h = 1.95, 0.6
+    gap = 0.45
+    row_pitch = stage_h + gap
+    ARROW_LEN = 0.55   # every simple connector arrow in this diagram is this long
 
-    ax.text(cx, 6.35, "your CSVs / exports", ha="center", va="center",
-            fontsize=10.5, style="italic", color=c["muted"])
+    main_x = 2.75
+    main_cx = main_x + stage_w / 2
+    ys = [8.15 - i * row_pitch for i in range(4)]   # box bottoms, top to bottom
 
-    arrow(ax, (cx, 6.18), (cx, 5.65), c)
-    ax.text(label_x, 5.915, "you write this part once\n(Tutorial 1)",
-            fontsize=9, color=c["muted"], va="center")
+    main_labels = ["hybrax-format\ndata", "hybrax\nprepare", "hybrax\ntrain",
+                   "hybrax\nforward"]
+    for y, label in zip(ys, main_labels):
+        box(ax, (main_x, y), stage_w, stage_h, label, c, fontsize=9.5,
+            weight="bold", mono=True)
+    for y0, y1 in zip(ys[:3], ys[1:]):
+        arrow(ax, (main_cx, y0), (main_cx, y1 + stage_h), c, lw=1.8)
+    ax.text(main_cx + 0.15, ys[0] - (ys[0] - ys[1] - stage_h) / 2, "data.json",
+            fontsize=7.8, color=c["muted"], fontproperties=MONO, va="center")
+    arrow(ax, (main_cx, ys[3]), (main_cx, ys[3] - ARROW_LEN), c, lw=1.8)
+    ax.text(main_cx, ys[3] - ARROW_LEN - 0.3, "predictions,\nrates, metrics",
+            ha="center", va="top", fontsize=10, color=c["ink"])
 
-    box(ax, (stage_x, 4.95), stage_w, 0.65, "", c)
-    ax.text(cx, 5.395, "bp-format", ha="center", va="center", fontsize=10.5,
-            color=c["ink"], fontproperties=MONO)
-    ax.text(cx, 5.105, "data model", ha="center", va="center", fontsize=10.5,
-            color=c["ink"])
-    ax.text(label_x, 5.375, "BioProcess", fontsize=9.2, color=c["muted"],
-            va="center", fontproperties=MONO)
-    ax.text(label_x, 5.15, "medium, volume, feeds,\nsamples, measurements",
-            fontsize=9, color=c["muted"], va="center")
+    # Alternative route: prepare -> loo -> forward (ensemble), beside train and
+    # forward respectively (each a stand-in for the stage level with it). Its
+    # own output stays separate from the main route's, never merging into it.
+    branch_x = main_x + stage_w + 1.55
+    branch_cx = branch_x + stage_w / 2
+    loo_y, fwd_ens_y = ys[2], ys[3]
 
-    arrow(ax, (cx, 4.95), (cx, 4.40), c)
-    ax.text(label_x, 4.775, "build_rhs_ode()", fontsize=9.2, color=c["muted"],
-            va="center", fontproperties=MONO)
-    ax.text(label_x, 4.575, "bp-format assembles the physics",
-            fontsize=9, color=c["muted"], va="center")
+    prep_cy = ys[1] + stage_h / 2
+    ax.plot([main_x + stage_w, branch_cx], [prep_cy, prep_cy], color=c["accent"],
+            lw=1.6, solid_capstyle="round")
+    arrow(ax, (branch_cx, prep_cy), (branch_cx, loo_y + stage_h), c, lw=1.6)
 
-    rhs_y = 3.75
-    rhs_cy = rhs_y + 0.325
-    box(ax, (stage_x, rhs_y), stage_w, 0.65, "RhsOde", c, fontsize=10.5, weight="bold",
-        mono=True)
-    ax.text(label_x, rhs_cy, "dc/dt = biology(rates)\n+ transport(feeds, dilution, samples)",
-            fontsize=8.8, color=c["muted"], va="center", fontproperties=MONO)
+    box(ax, (branch_x, loo_y), stage_w, stage_h, "hybrax\nloo", c, fontsize=9.5,
+        weight="bold", mono=True)
+    arrow(ax, (branch_cx, loo_y), (branch_cx, fwd_ens_y + stage_h), c, lw=1.8)
+    box(ax, (branch_x, fwd_ens_y), stage_w, stage_h, "hybrax forward\n(ensemble)", c,
+        fontsize=9, weight="bold", mono=True)
+    arrow(ax, (branch_cx, fwd_ens_y), (branch_cx, fwd_ens_y - ARROW_LEN), c, lw=1.8)
+    ax.text(branch_cx, fwd_ens_y - ARROW_LEN - 0.3, "ensemble predictions,\nrates, metrics",
+            ha="center", va="top", fontsize=10, color=c["ink"])
 
-    arrow(ax, (cx, rhs_y), (cx, 3.20), c)
+    # What you supply, in plain language, feeding in from the left of each
+    # main-pipeline stage. Every arrow here is exactly ARROW_LEN long.
+    inputs = [
+        (ys[0], ["Measured Data"]),
+        (ys[1], ["Transformed Processes", "Augmented Processes"]),
+        (ys[2], ["Reaction Module, Loss Module", "Scales, Optimizer, Learning Rate"]),
+        (ys[3], ["New Controls"]),
+    ]
+    arrow_right = main_x - 0.05
+    arrow_left = arrow_right - ARROW_LEN
+    text_x = arrow_left - 0.15
+    line_gap = 0.34
 
-    train_y = 2.35
-    train_h = 0.85
-    train_cy = train_y + train_h / 2
-    box(ax, (stage_x, train_y), stage_w, train_h,
-        "bp-train\nprepare\N{RIGHTWARDS ARROW}train\n\N{RIGHTWARDS ARROW}forward/loo",
-        c, fontsize=10.5, mono=True)
+    def group_span(y, lines):
+        cy = y + stage_h / 2
+        half = (len(lines) - 1) / 2 * line_gap
+        return cy + half, cy - half   # top, bottom
 
-    arrow(ax, (cx, train_y), (cx, 1.80), c)
-    ax.text(cx, 1.55, "predictions, rates, metrics", ha="center", va="center",
-            fontsize=10, color=c["ink"])
+    for y, lines in inputs:
+        cy = y + stage_h / 2
+        n = len(lines)
+        for i, line in enumerate(lines):
+            ty = cy + (n - 1) / 2 * line_gap - i * line_gap
+            ax.text(text_x, ty, line, ha="right", va="center", fontsize=8.5,
+                    color=c["muted"])
+        arrow(ax, (arrow_left, cy), (arrow_right, cy), c, lw=1.4)
 
-    # Right column: the two things you supply. The reaction module aligns
-    # with RhsOde (it feeds rates straight into the ODE); the loss module
-    # aligns with bp-train and reaches it via custom.py, mirroring how
-    # every hook is actually wired in (see train/index.md).
-    right_x, right_w = 6.1, 2.2
+    # A second layer: the real file each input group actually lives in.
+    # prepare's and train's hooks are both just custom.py, so one dashed box
+    # spans both groups rather than repeating the label.
+    def file_box(y_top, y_bottom, width, label):
+        pad_v, pad_h = 0.2, 0.18
+        x0 = text_x - width - pad_h
+        x1 = arrow_left + 0.05
+        box_top = y_top + pad_v
+        ax.add_patch(FancyBboxPatch(
+            (x0, y_bottom - pad_v), x1 - x0, box_top - (y_bottom - pad_v),
+            boxstyle="round,pad=0.02,rounding_size=0.08",
+            linewidth=1.1, edgecolor=c["muted"], facecolor="none", linestyle="--",
+        ))
+        ax.text(x0 + 0.1, box_top + 0.06, label, fontsize=7.8,
+                color=c["muted"], fontproperties=MONO, va="bottom")
 
-    ax.text(right_x, rhs_y + 0.65 + 0.28, "you supply this part", fontsize=9.5,
-            weight="bold", style="italic", color=c["accent"], va="center")
+    md_top, md_bottom = group_span(ys[0], inputs[0][1])
+    file_box(md_top, md_bottom, 1.6, "data.csv, data.xlsx")
 
-    rm_h = 0.6
-    rm_y = rhs_cy - rm_h / 2
-    box(ax, (right_x, rm_y), right_w, rm_h, "reaction\nmodule", c, fontsize=10)
-    ax.text(right_x + right_w / 2, rm_y - 0.24, "predicts the rates",
-            fontsize=8.7, color=c["muted"], ha="center", va="center")
-    arrow(ax, (right_x, rhs_cy), (stage_x + stage_w, rhs_cy), c, lw=1.4)
+    prep_top, _ = group_span(ys[1], inputs[1][1])
+    _, train_bottom = group_span(ys[2], inputs[2][1])
+    file_box(prep_top, train_bottom, 2.2, "custom.py")
 
-    lm_h = 0.6
-    lm_y = train_cy - lm_h / 2
-    box(ax, (right_x, lm_y), right_w, lm_h, "loss\nmodule", c, fontsize=10)
-    ax.text(right_x + right_w / 2, lm_y - 0.24, "scores the trajectory",
-            fontsize=8.7, color=c["muted"], ha="center", va="center")
-
-    # loss module -> custom.py -> bp-train, all at bp-train's row height.
-    cpy_w, cpy_h = 1.45, 0.42
-    cpy_x = stage_x + stage_w + 0.75
-    cpy_y = train_cy - cpy_h / 2
-    arrow(ax, (right_x, train_cy), (cpy_x + cpy_w, train_cy), c, lw=1.4)
-    box(ax, (cpy_x, cpy_y), cpy_w, cpy_h, "custom.py", c, fontsize=9.5, mono=True)
-    arrow(ax, (cpy_x, train_cy), (stage_x + stage_w, train_cy), c, lw=1.6)
+    nc_top, nc_bottom = group_span(ys[3], inputs[3][1])
+    file_box(nc_top, nc_bottom, 1.05, "new_data.json")
 
     fig.tight_layout()
     _save(fig, "diagram_concepts_shape", theme)
@@ -282,5 +232,4 @@ if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     for theme in ("light", "dark"):
         make_format_diagram(theme)
-        make_train_diagram(theme)
         make_shape_diagram(theme)

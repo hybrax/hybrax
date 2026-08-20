@@ -84,8 +84,9 @@ recovered = np.asarray(back(dense_t))
 
 `build_pseudobatch_transform` removes the physical jump before fitting a spline to it;
 `build_backtransform_spline` then wraps that fit so evaluating it returns real
-concentration, not the intermediate `c*`. The result is a single spline, valid on both
-sides of the jump, that `back` maps to real concentration wherever you evaluate it.
+concentration, not the intermediate `pseudobatch_concentration`. The result is a single
+spline, valid on both sides of the jump, that `back` maps to real concentration wherever
+you evaluate it.
 
 ## Recovered curve versus ground truth
 

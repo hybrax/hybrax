@@ -151,9 +151,9 @@ volume you actually measured localises the error to one stream immediately.
 
 The strongest test available, and it costs nothing: set every biological rate to zero and
 integrate. With no biology, concentrations may only change through feed composition,
-dilution and sampling. If something moves that shouldn't (or a `c*` trace jumps at a pure
-sampling event) the volume accounting is wrong, and you have found it before fitting
-anything.
+dilution and sampling. If something moves that shouldn't (or a `pseudobatch_concentration`
+trace jumps at a pure sampling event) the volume accounting is wrong, and you have found
+it before fitting anything.
 
 ## Gotchas
 
