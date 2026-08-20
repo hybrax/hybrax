@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
+import tempfile
 from copy import deepcopy
 from dataclasses import replace
 from functools import cache
-import hashlib
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import AugmentedBioProcess
+from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from bp_format.mechanistic import build_rhs_ode
 from bp_format.serialization import load_process_collection, save_process_collection
 
@@ -38,16 +39,28 @@ from bp_train.runtime_context import (
     select_parent_collection,
 )
 from bp_train.training_data import TrainingDataStore
-from bp_train.utils import load_custom_module
+from test_wrapper import _make_mixed_flow_process
 
 
 _KITTLER = Path("examples/01_kittler_2022/prepared/prepared.json")
-_CUSTOM = Path("examples/01_kittler_2022/structured/custom.py")
+
+
+def _load_unmigrated_example(path: Path):
+    """Load a still-unmigrated example without changing Phase 5 sources."""
+    payload = (
+        path.read_text()
+        .replace('"FeedVolumeChange"', '"Inflow"')
+        .replace('"SampleVolumeChange"', '"Outflow"')
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as file:
+        file.write(payload)
+        file.flush()
+        return load_process_collection(file.name)
 
 
 @cache
 def _source_collection():
-    return load_process_collection(_KITTLER)
+    return _load_unmigrated_example(_KITTLER)
 
 
 def write_runtime_artifact(
@@ -89,6 +102,11 @@ def _write_manifest(artifact: Path, manifest: dict) -> None:
     )
 
 
+def _read_array(artifact: Path, name: str) -> np.ndarray:
+    manifest = json.loads((artifact / "manifest.json").read_text())
+    return np.load(artifact / manifest["arrays"][name]["file"], allow_pickle=False)
+
+
 def _rewrite_array(artifact: Path, name: str, array: np.ndarray) -> None:
     manifest = json.loads((artifact / "manifest.json").read_text())
     record = manifest["arrays"][name]
@@ -114,7 +132,7 @@ def _rewrite_parent_collection(artifact: Path, collection) -> None:
 
 @pytest.fixture(scope="module")
 def producer_data() -> ProducerCollectionData:
-    collection = load_process_collection(_KITTLER)
+    collection = _source_collection()
     store = TrainingDataStore.from_collection(
         collection, target_source="reactor_components"
     )
@@ -123,15 +141,13 @@ def producer_data() -> ProducerCollectionData:
 
 @pytest.fixture(scope="module")
 def scales(producer_data: ProducerCollectionData) -> EstimatedScales:
-    collection = load_process_collection(_KITTLER)
+    collection = _source_collection()
     return _resolve_estimated_scales(
-        custom_module=load_custom_module(_CUSTOM),
+        custom_module=SimpleNamespace(),
         runtime_data=producer_data.select_training_parents(
             collection, producer_data.training_data.process_order
         ),
-        custom_cfg=SimpleNamespace(
-            custom=SimpleNamespace(ratios_softmax_temp=2.0, Y_XS=0.627, Y_PS=0.652)
-        ),
+        custom_cfg={},
     )
 
 
@@ -267,7 +283,7 @@ def test_round_trip_affine_scales_and_selected_fold(
     # Train on a parent whose feed composition differs from the canonical row 0,
     # so the loader substituting the training parent's own Cin instead of row 0
     # would show up below rather than being masked by equal rows.
-    canonical_cin = np.asarray(producer_data.training_data.Cin_controlled_FVCs)
+    canonical_cin = np.asarray(producer_data.training_data.Cin_controlled_Inflows)
     other = next(
         index
         for index in range(1, len(process_order))
@@ -304,16 +320,18 @@ def test_round_trip_affine_scales_and_selected_fold(
     np.testing.assert_array_equal(np.asarray(scaler.scale), [5.0, 6.0, 7.0])
     np.testing.assert_array_equal(np.asarray(scaler.offset), [2.0, 2.0, 2.0])
 
-    # Cin comes back from the canonical store arrays, whose row 0 is the reference
-    # process the producer's own `rhs_ode` was built from.
-    np.testing.assert_array_equal(
-        np.asarray(loaded.training_data.rhs_ode.Cin_controlled_FVCs),
-        np.asarray(producer_data.training_data.Cin_controlled_FVCs[0]),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(loaded.training_data.rhs_ode.Cin_modeled_FVCs),
-        np.asarray(producer_data.training_data.Cin_modeled_FVCs[0]),
-    )
+    # The reconstructed RHS uses the selected parent's verified matrix rows.
+    selected_row = process_order.index(folds[1].train[0])
+    for name in (
+        "Cin_controlled_Inflows",
+        "Cin_modeled_Inflows",
+        "retention_controlled_Outflows",
+        "retention_modeled_Outflows",
+    ):
+        np.testing.assert_array_equal(
+            np.asarray(getattr(loaded.training_data.rhs_ode, name)),
+            np.asarray(getattr(producer_data.training_data, name)[selected_row]),
+        )
 
 
 def test_metadata_inspection_never_parses_parent_collection_or_reads_arrays(
@@ -794,7 +812,7 @@ def test_rejects_invalid_loaded_scaler_values(
 
     scale_name = "fold.1.scale.SCALE_modeled_RMCs.scale"
     offset_name = "fold.1.scale.SCALE_modeled_RMCs.offset"
-    for invalid in (0.0, np.nan, np.inf):
+    for invalid in (-1.0, 0.0, np.nan, np.inf):
         corrupted = np.ones(3)
         corrupted[0] = invalid
         _rewrite_array(artifact, scale_name, corrupted)
@@ -814,6 +832,7 @@ def test_rejects_invalid_in_memory_scalers(producer_data, scales, rhs_names, tmp
     process_order = tuple(producer_data.training_data.process_order)
     fold = RuntimeArtifactFold(1, (process_order[0],), (process_order[1],), "one", 1)
     invalid_scalers = (
+        AffineScaler(jnp.array([-1.0, 1.0, 1.0]), jnp.zeros(3)),
         AffineScaler(jnp.array([0.0, 1.0, 1.0]), jnp.zeros(3)),
         AffineScaler(jnp.ones(3), jnp.array([jnp.inf, 0.0, 0.0])),
     )
@@ -1142,7 +1161,7 @@ def test_rejects_unsupported_artifact_format(
     )
     manifest_path = artifact / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    manifest["format_version"] = 2
+    manifest["format_version"] = 3
     _write_manifest(artifact, manifest)
 
     with pytest.raises(ValueError, match="unsupported runtime artifact format"):
@@ -1186,7 +1205,7 @@ def _piecewise_collection():
     artifact never serializes the expression at all: bp-format rebuilds it from
     the parents, so an expression bp-train could not have parsed still works.
     """
-    collection = load_process_collection(_E2E_SIM)
+    collection = _load_unmigrated_example(_E2E_SIM)
     for process in collection.processes.values():
         process.biological_ode.algebraic["X_active"] = (
             "Piecewise((biomass - product_intracellular, biomass > 1), (0.0, True))"
@@ -1194,10 +1213,20 @@ def _piecewise_collection():
     return collection
 
 
-def _artifact_from_collection(path, collection, holdout, train):
+def _artifact_from_collection(
+    path, collection, holdout, train, *, corrupt_augmented_matrix=False
+):
     store = TrainingDataStore.from_collection(
         collection, target_source="reactor_components"
     )
+    if corrupt_augmented_matrix:
+        augmented_row = store.process_order.index("p2_aug")
+        store = dataclasses.replace(
+            store,
+            Cin_controlled_Inflows=store.Cin_controlled_Inflows.at[
+                augmented_row, 0, 0
+            ].add(0.25),
+        )
     producer = ProducerCollectionData.from_collection(store, collection)
     process_order = tuple(store.process_order)
     scales = _resolve_estimated_scales(
@@ -1219,6 +1248,158 @@ def _artifact_from_collection(path, collection, holdout, train):
     return store
 
 
+def _differing_parent_augmented_collection():
+    p1 = _make_mixed_flow_process()
+    p1.metadata.name = "p1"
+    p2 = deepcopy(p1)
+    p2.metadata.name = "p2"
+    p2.volume.volume_changes["feed_A"].feed_medium.components[
+        "biomass"
+    ].concentration.value = 3.0
+    p2.volume.volume_changes["perfusion"].retention["biomass"] = 0.75
+    augmented = AugmentedBioProcess(
+        metadata=deepcopy(p2.metadata),
+        time_axis=deepcopy(p2.time_axis),
+        volume=deepcopy(p2.volume),
+        reactor_medium=deepcopy(p2.reactor_medium),
+        process_variables=deepcopy(p2.process_variables),
+        discrete_events=deepcopy(p2.discrete_events),
+        biological_ode=deepcopy(p2.biological_ode),
+        pseudobatch_transform=deepcopy(p2.pseudobatch_transform),
+        parent_process="p2",
+    )
+    augmented.metadata.name = "p2_aug"
+    return BioProcessCollection(
+        processes={"p1": p1, "p2": p2, "p2_aug": augmented}, metadata={}
+    )
+
+
+def test_runtime_artifact_writer_rejects_noncanonical_augmented_matrix(tmp_path):
+    with pytest.raises(ValueError, match="cached process matrices"):
+        _artifact_from_collection(
+            tmp_path / "artifact",
+            _differing_parent_augmented_collection(),
+            ("p1",),
+            ("p2",),
+            corrupt_augmented_matrix=True,
+        )
+
+
+def test_differing_parent_and_augmented_process_matrices_are_verified(tmp_path):
+    collection = _differing_parent_augmented_collection()
+    artifact = tmp_path / "artifact"
+    store = _artifact_from_collection(artifact, collection, ("p1",), ("p2",))
+
+    p1_row = store.process_order.index("p1")
+    p2_row = store.process_order.index("p2")
+    augmented_row = store.process_order.index("p2_aug")
+    assert not np.array_equal(
+        store.Cin_controlled_Inflows[p1_row], store.Cin_controlled_Inflows[p2_row]
+    )
+    assert not np.array_equal(
+        store.retention_modeled_Outflows[p1_row],
+        store.retention_modeled_Outflows[p2_row],
+    )
+    loaded_rhs = load_runtime_artifact(artifact, fold_id=0).training_data.rhs_ode
+    for name in runtime_artifact._PROCESS_MATRIX_NAMES:
+        np.testing.assert_array_equal(
+            getattr(store, name)[augmented_row], getattr(store, name)[p2_row]
+        )
+        np.testing.assert_array_equal(
+            getattr(loaded_rhs, name), getattr(store, name)[p2_row]
+        )
+
+    corrupted = np.asarray(store.Cin_controlled_Inflows).copy()
+    corrupted[augmented_row, 0, 0] += 0.25
+    _rewrite_array(artifact, "shared.store.Cin_controlled_Inflows", corrupted)
+    with pytest.raises(ValueError, match="cached process matrices"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+@pytest.mark.parametrize(
+    ("name", "invalid", "message"),
+    [
+        ("Cin_controlled_Inflows", np.nan, "non-finite values"),
+        ("retention_controlled_Outflows", np.inf, "non-finite values"),
+        ("retention_controlled_Outflows", -0.1, "within \\[0, 1\\]"),
+        ("retention_modeled_Outflows", 1.1, "within \\[0, 1\\]"),
+    ],
+)
+def test_runtime_artifact_rejects_invalid_process_matrices(
+    tmp_path, name, invalid, message
+):
+    artifact = tmp_path / "artifact"
+    store = _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    corrupted = np.asarray(getattr(store, name)).copy()
+    corrupted.reshape(-1)[0] = invalid
+    _rewrite_array(artifact, f"shared.store.{name}", corrupted)
+    with pytest.raises(ValueError, match=message):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+@pytest.mark.parametrize("name", ["control_values", "control_derivatives"])
+def test_runtime_artifact_rejects_sign_invalid_controlled_flows(tmp_path, name):
+    artifact = tmp_path / "artifact"
+    _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    key = f"shared.controls.{name}"
+    corrupted = _read_array(artifact, key).copy()
+    corrupted[0, 0, 0] = -1.0
+    _rewrite_array(artifact, key, corrupted)
+    with pytest.raises(ValueError, match="sign-invalid flows"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+@pytest.mark.parametrize("name", ["y_measured", "y0_measured"])
+def test_runtime_artifact_rejects_sign_invalid_modeled_outflows(tmp_path, name):
+    artifact = tmp_path / "artifact"
+    store = _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    key = f"shared.store.{name}"
+    corrupted = _read_array(artifact, key).copy()
+    modeled_outflow_column = (
+        len(store.name_measured_RMCs)
+        + len(store.name_measured_PVs)
+        + len(store.name_modeled_Inflows)
+        if name == "y_measured"
+        else corrupted.shape[-1] - len(store.name_modeled_Outflows)
+    )
+    if name == "y_measured":
+        corrupted[0, 0, modeled_outflow_column] = 0.1
+    else:
+        corrupted[0, modeled_outflow_column] = 0.1
+    _rewrite_array(artifact, key, corrupted)
+    with pytest.raises(ValueError, match="sign-invalid flows"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+def test_runtime_artifact_rejects_negative_plain_scale(tmp_path):
+    artifact = tmp_path / "artifact"
+    _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    key = "fold.0.scale.SCALE_V_in_cumulative.scale"
+    _rewrite_array(artifact, key, np.asarray(-1.0))
+    with pytest.raises(ValueError, match="invalid semantic scale values"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
 def test_reconstructed_rhs_matches_direct_build_including_piecewise(tmp_path):
     collection = _piecewise_collection()
     names = tuple(collection.processes)
@@ -1227,7 +1408,8 @@ def test_reconstructed_rhs_matches_direct_build_including_piecewise(tmp_path):
 
     loaded = load_runtime_artifact(artifact, fold_id=0)
     reconstructed = loaded.training_data.rhs_ode
-    direct = build_rhs_ode(collection.processes[names[0]])
+    selected_row = store.process_order.index(names[1])
+    direct = build_rhs_ode(collection.processes[names[1]])
 
     for field in dataclasses.fields(RhsNames):
         assert getattr(reconstructed, field.name) == getattr(direct, field.name)
@@ -1236,12 +1418,12 @@ def test_reconstructed_rhs_matches_direct_build_including_piecewise(tmp_path):
         len(direct.name_modeled_RMCs)
         + len(direct.name_modeled_PVs)
         + 1
-        + len(direct.name_modeled_FVCs)
-        + len(direct.name_modeled_SVCs)
+        + len(direct.name_modeled_Inflows)
+        + len(direct.name_modeled_Outflows)
     )
     n_u = (
-        len(direct.name_controlled_FVCs)
-        + len(direct.name_controlled_SVCs)
+        len(direct.name_controlled_Inflows)
+        + len(direct.name_controlled_Outflows)
         + len(direct.name_controlled_PVs)
     )
     # Straddle the Piecewise branch point (biomass > 1) so both arms are exercised.
@@ -1249,16 +1431,23 @@ def test_reconstructed_rhs_matches_direct_build_including_piecewise(tmp_path):
         c = jnp.full(n_state, 2.0).at[1].set(biomass)
         rates = jnp.linspace(0.1, 0.9, len(direct.name_modeled_rates))
         u = jnp.full(n_u, 0.25)
-        f_fvc = jnp.full(len(direct.name_modeled_FVCs), 0.1)
-        f_svc = jnp.full(len(direct.name_modeled_SVCs), 0.1)
+        f_inflow = jnp.full(len(direct.name_modeled_Inflows), 0.1)
+        f_outflow = jnp.full(len(direct.name_modeled_Outflows), -0.1)
         np.testing.assert_allclose(
-            np.asarray(reconstructed(c, rates, u, f_fvc, f_svc)),
+            np.asarray(reconstructed(c, rates, u, f_inflow, f_outflow)),
             np.asarray(
                 dataclasses.replace(
                     direct,
-                    Cin_controlled_FVCs=store.Cin_controlled_FVCs[0],
-                    Cin_modeled_FVCs=store.Cin_modeled_FVCs[0],
-                )(c, rates, u, f_fvc, f_svc)
+                    **{
+                        name: getattr(store, name)[selected_row]
+                        for name in (
+                            "Cin_controlled_Inflows",
+                            "Cin_modeled_Inflows",
+                            "retention_controlled_Outflows",
+                            "retention_modeled_Outflows",
+                        )
+                    },
+                )(c, rates, u, f_inflow, f_outflow)
             ),
         )
 
@@ -1370,6 +1559,23 @@ def test_loader_rejects_parent_derived_control_partition_mismatch(
 
         with pytest.raises(ValueError, match=message):
             load_runtime_artifact(artifact, fold_id=1)
+
+
+def test_loader_rejects_parent_with_different_biological_expression(tmp_path):
+    collection = _piecewise_collection()
+    names = tuple(collection.processes)
+    artifact = tmp_path / "artifact"
+    _artifact_from_collection(artifact, collection, names[:1], names[1:])
+
+    tampered = load_process_collection(artifact / "training-parents.json")
+    process = tuple(tampered.processes.values())[1]
+    derivative = next(iter(process.biological_ode.derivatives))
+    expression = process.biological_ode.derivatives[derivative]
+    process.biological_ode.derivatives[derivative] = f"({expression}) + 1.0"
+    _rewrite_parent_collection(artifact, tampered)
+
+    with pytest.raises(ValueError, match="biological_ode.derivatives differs"):
+        load_runtime_artifact(artifact, fold_id=0)
 
 
 def test_loader_rejects_parent_collection_with_different_rhs_axes(tmp_path):

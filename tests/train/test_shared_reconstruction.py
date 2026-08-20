@@ -28,7 +28,8 @@ from bp_format.dataclasses import (
     BioProcessCollection,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     ProcessVariable,
     ReactorMediumComponent,
     StaticVariable,
@@ -42,9 +43,35 @@ from bp_train.cli import main
 from bp_train.harness import ForwardConfig, forward_from_collection
 from bp_train.serialization import content_hash, reconstruct_training
 from bp_train.training_data import TARGET_SOURCE_AUTO
+from stateful_helpers import make_process
 
-# The tiny single-process collection every serialization test shares.
-from test_serialization import _collection
+
+def _collection(
+    biomass_values=(1.0, 0.8, 0.64), *, n_processes: int = 1
+) -> BioProcessCollection:
+    p1 = make_process()
+    p1.reactor_medium.components["biomass"].concentration = TimeSeries(
+        times=jnp.asarray([0.0, 1.0, 2.0]),
+        values=jnp.asarray(list(biomass_values)),
+    )
+    p1.volume.volume_changes["sample_1"] = Outflow(
+        name="sample_1",
+        unit="L",
+        is_controlled=False,
+        is_continuous=False,
+        values=TimeSeries(
+            times=jnp.asarray([1.0]),
+            values=jnp.asarray([-0.1]),
+        ),
+    )
+    return BioProcessCollection(
+        processes={
+            f"p{i}": replace(p1, metadata=replace(p1.metadata, name=f"p{i}"))
+            for i in range(1, n_processes + 1)
+        },
+        metadata={},
+    )
+
 
 # `estimate_all_scales` = max-abs over the *training parents* only, so
 # SCALE_modeled_RMCs is a readable fingerprint of the reconstruction inputs.
@@ -69,18 +96,22 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray(scale),
         SCALE_modeled_PVs=jnp.ones(len(rhs_ode.name_modeled_PVs)),
         SCALE_V_in_cumulative=jnp.asarray(1.0),
-        SCALE_modeled_FVCs_cumulative=jnp.ones(len(rhs_ode.name_modeled_FVCs)),
-        SCALE_controlled_FVCs_cumulative=jnp.ones(len(rhs_ode.name_controlled_FVCs)),
-        SCALE_controlled_FVCs_rates=jnp.ones(len(rhs_ode.name_controlled_FVCs)),
-        SCALE_controlled_FVCs_Cin=jnp.ones(
-            (len(rhs_ode.name_controlled_FVCs), len(rhs_ode.name_modeled_RMCs))
+        SCALE_modeled_Inflows_cumulative=jnp.ones(len(rhs_ode.name_modeled_Inflows)),
+        SCALE_modeled_Outflows_cumulative=jnp.ones(len(rhs_ode.name_modeled_Outflows)),
+        SCALE_controlled_Inflows_cumulative=jnp.ones(len(rhs_ode.name_controlled_Inflows)),
+        SCALE_controlled_Outflows_cumulative=jnp.ones(len(rhs_ode.name_controlled_Outflows)),
+        SCALE_controlled_Inflows_rates=jnp.ones(len(rhs_ode.name_controlled_Inflows)),
+        SCALE_controlled_Outflows_rates=jnp.ones(len(rhs_ode.name_controlled_Outflows)),
+        SCALE_controlled_Inflows_Cin=jnp.ones(
+            (len(rhs_ode.name_controlled_Inflows), len(rhs_ode.name_modeled_RMCs))
         ),
         SCALE_controlled_PVs=jnp.ones(len(rhs_ode.name_controlled_PVs)),
-        SCALE_modeled_FVCs_Cin=jnp.ones(
-            (len(rhs_ode.name_modeled_FVCs), len(rhs_ode.name_modeled_RMCs))
+        SCALE_modeled_Inflows_Cin=jnp.ones(
+            (len(rhs_ode.name_modeled_Inflows), len(rhs_ode.name_modeled_RMCs))
         ),
         SCALE_modeled_BiologicalOde_rates=jnp.ones(len(rhs_ode.name_modeled_rates)),
-        SCALE_modeled_FVCs_rates=jnp.ones(len(rhs_ode.name_modeled_FVCs)),
+        SCALE_modeled_Inflows_rates=jnp.ones(len(rhs_ode.name_modeled_Inflows)),
+        SCALE_modeled_Outflows_rates=jnp.ones(len(rhs_ode.name_modeled_Outflows)),
     )
 """
 
@@ -90,14 +121,14 @@ def estimate_all_scales(runtime_data, target_names, config):
 # ---------------------------------------------------------------------------
 
 
-def _controlled_feed(cin: float, final_amount: float = 0.1) -> FeedVolumeChange:
+def _controlled_feed(cin: float, final_amount: float = 0.1) -> Inflow:
     """A controlled continuous feed carrying biomass at ``cin`` g/L.
 
     A feed is what makes the reference-process choice observable: the
     deserialisation template bakes ONE process's ``Cin`` row and controls, and
     without a feed every reference is indistinguishable.
     """
-    return FeedVolumeChange(
+    return Inflow(
         name="feed_A",
         unit="L",
         is_controlled=True,
@@ -341,13 +372,13 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
     rebuilt = reconstruct_training(run_dir)
     # The store carries both rows; the template must bake p1's, not p2's.
     np.testing.assert_allclose(
-        np.asarray(rebuilt.store.Cin_controlled_FVCs), [[[3.0]], [[40.0]]]
+        np.asarray(rebuilt.store.Cin_controlled_Inflows), [[[3.0]], [[40.0]]]
     )
     np.testing.assert_allclose(
-        np.asarray(rebuilt.template_wrapper.rhs_ode.Cin_controlled_FVCs), [[3.0]]
+        np.asarray(rebuilt.template_wrapper.rhs_ode.Cin_controlled_Inflows), [[3.0]]
     )
     np.testing.assert_allclose(
-        rebuilt.template_wrapper.controls.eval_controlled_FVCs_cumulative(
+        rebuilt.template_wrapper.controls.eval_controlled_Inflows_cumulative(
             jnp.asarray(2.0), None
         ),
         [0.1],
@@ -360,11 +391,11 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
         run_dir, training_process_names=("p2", "p1")
     )
     np.testing.assert_allclose(
-        np.asarray(reversed_selection.template_wrapper.rhs_ode.Cin_controlled_FVCs),
+        np.asarray(reversed_selection.template_wrapper.rhs_ode.Cin_controlled_Inflows),
         [[40.0]],
     )
     np.testing.assert_allclose(
-        reversed_selection.template_wrapper.controls.eval_controlled_FVCs_cumulative(
+        reversed_selection.template_wrapper.controls.eval_controlled_Inflows_cumulative(
             jnp.asarray(2.0), None
         ),
         [0.8],
@@ -372,9 +403,11 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
 
     # Both loaders resolve the same reference process from the same record.
     loaded, _config = bp_train.model_load(run_dir)
-    np.testing.assert_allclose(np.asarray(loaded.rhs_ode.Cin_controlled_FVCs), [[3.0]])
     np.testing.assert_allclose(
-        loaded.controls.eval_controlled_FVCs_cumulative(jnp.asarray(2.0), None),
+        np.asarray(loaded.rhs_ode.Cin_controlled_Inflows), [[3.0]]
+    )
+    np.testing.assert_allclose(
+        loaded.controls.eval_controlled_Inflows_cumulative(jnp.asarray(2.0), None),
         [0.1],
     )
     result = forward_from_collection(
@@ -386,10 +419,10 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
     )
     assert result.training_process_names == ("p1", "p2")
     np.testing.assert_allclose(
-        np.asarray(result.trained_wrapper.rhs_ode.Cin_controlled_FVCs), [[3.0]]
+        np.asarray(result.trained_wrapper.rhs_ode.Cin_controlled_Inflows), [[3.0]]
     )
     np.testing.assert_allclose(
-        result.trained_wrapper.controls.eval_controlled_FVCs_cumulative(
+        result.trained_wrapper.controls.eval_controlled_Inflows_cumulative(
             jnp.asarray(2.0), None
         ),
         [0.1],

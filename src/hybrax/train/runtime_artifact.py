@@ -18,7 +18,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
-from bp_format.mechanistic import RhsOde
+from bp_format.mechanistic import RhsOde, build_rhs_ode
+from bp_format.validate import validate_biological_ode_equivalence
 from bp_format.serialization import load_process_collection, save_process_collection
 
 from .controls_store import ControlsStore, derive_control_partition
@@ -26,12 +27,11 @@ from .model_api import AffineScaler, EstimatedScales, LinearScaler, Scaler
 from .runtime_context import (
     canonical_training_parents,
     original_parent_processes,
-    rhs_ode_from_training_parents,
     select_parent_collection,
 )
 from .training_data import TrainingDataStore
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 _CONTROL_ARRAYS = (
     "spline_breaks",
     "spline_coeffs",
@@ -50,9 +50,14 @@ _CONTROL_ARRAYS = (
     "bolus_event_Cin",
     "bolus_event_mask",
 )
+_PROCESS_MATRIX_NAMES = (
+    "Cin_controlled_Inflows",
+    "Cin_modeled_Inflows",
+    "retention_controlled_Outflows",
+    "retention_modeled_Outflows",
+)
 _STORE_ARRAYS = (
-    "Cin_controlled_FVCs",
-    "Cin_modeled_FVCs",
+    *_PROCESS_MATRIX_NAMES,
     "t_measured",
     "y_measured",
     "mask_measured",
@@ -75,11 +80,11 @@ class RhsNames:
     name_modeled_algebraic: tuple[str, ...]
     name_modeled_RMCs: tuple[str, ...]
     name_modeled_PVs: tuple[str, ...]
-    name_modeled_FVCs: tuple[str, ...]
-    name_modeled_SVCs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    name_modeled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
-    name_controlled_FVCs: tuple[str, ...]
-    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
 
     @classmethod
     def from_rhs_ode(cls, rhs_ode) -> RhsNames:
@@ -243,8 +248,8 @@ def _base_metadata(
                 "process_order": store.process_order,
                 "name_measured_RMCs": store.name_measured_RMCs,
                 "name_measured_PVs": store.name_measured_PVs,
-                "name_modeled_FVCs": store.name_modeled_FVCs,
-                "name_modeled_SVCs": store.name_modeled_SVCs,
+                "name_modeled_Inflows": store.name_modeled_Inflows,
+                "name_modeled_Outflows": store.name_modeled_Outflows,
             }
         ),
         "controls": _json_value(
@@ -252,8 +257,8 @@ def _base_metadata(
                 name: getattr(controls, name)
                 for name in (
                     "process_order",
-                    "name_controlled_FVCs",
-                    "name_controlled_SVCs",
+                    "name_controlled_Inflows",
+                    "name_controlled_Outflows",
                     "name_controlled_PVs",
                     "shape_metadata",
                     "spline_indices",
@@ -392,6 +397,16 @@ def write_runtime_artifact(
     )
     _validate_training_parent_collection_identity(
         parent_collection, expected_parent_names
+    )
+    _validate_process_matrices(
+        {
+            name: np.asarray(getattr(training_data, name))
+            for name in _PROCESS_MATRIX_NAMES
+        },
+        parent_collection,
+        process_order,
+        augmentation_parents,
+        rhs_names,
     )
     for fold, scales in folds:
         _validate_fold(fold, process_order, augmentation_parents)
@@ -542,7 +557,6 @@ def _load_training_parent_collection(
     *,
     process_order: tuple[str, ...],
     augmentation_parents: tuple[str | None, ...],
-    selected_processes: tuple[str, ...],
 ) -> BioProcessCollection:
     try:
         collection = load_process_collection(path)
@@ -551,10 +565,7 @@ def _load_training_parent_collection(
     _validate_training_parent_collection_identity(
         collection, original_parent_processes(process_order, augmentation_parents)
     )
-    selected_parent_names = canonical_training_parents(
-        process_order, augmentation_parents, selected_processes
-    )
-    return select_parent_collection(collection, selected_parent_names)
+    return collection
 
 
 def _array_filename(name: str, record: Any) -> str:
@@ -611,30 +622,70 @@ def _validate_exact_file_inventory(root: Path, expected_files: set[str]) -> None
         raise ValueError("runtime artifact has missing or extra files")
 
 
+def _rhs_process_matrices(rhs_ode: RhsOde) -> tuple[np.ndarray, ...]:
+    return tuple(np.asarray(getattr(rhs_ode, name)) for name in _PROCESS_MATRIX_NAMES)
+
+
+def _validate_process_matrices(
+    matrix_rows: dict[str, np.ndarray],
+    parent_collection: BioProcessCollection,
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+    rhs_names: RhsNames,
+) -> None:
+    equivalent, message = validate_biological_ode_equivalence(parent_collection)
+    if not equivalent:
+        raise ValueError(message)
+
+    parent_rhs: dict[str, RhsOde] = {}
+    for process_name in original_parent_processes(process_order, augmentation_parents):
+        rhs_ode = build_rhs_ode(parent_collection.processes[process_name])
+        if RhsNames.from_rhs_ode(rhs_ode) != rhs_names:
+            raise ValueError(
+                f"{process_name}: reconstructed RhsOde axes differ from the runtime "
+                "artifact"
+            )
+        parent_rhs[process_name] = rhs_ode
+
+    for row, (process_name, parent_name) in enumerate(
+        zip(process_order, augmentation_parents, strict=True)
+    ):
+        expected = _rhs_process_matrices(
+            parent_rhs[process_name if parent_name is None else parent_name]
+        )
+        actual = tuple(matrix_rows[name][row] for name in _PROCESS_MATRIX_NAMES)
+        if any(
+            not np.array_equal(got, want)
+            for got, want in zip(actual, expected, strict=True)
+        ):
+            raise ValueError(
+                f"{process_name}: cached process matrices differ from its canonical "
+                "parent RhsOde"
+            )
+
+
 def _reconstruct_rhs_ode(
     parent_collection: BioProcessCollection,
     rhs_names: RhsNames,
     arrays: dict[str, np.ndarray],
+    process_row: int,
 ) -> RhsOde:
-    """Recover callable RHS equations from the parents, not from the manifest.
-
-    bp-format owns the equations; the artifact only declares semantic axes, so
-    the reconstructed axes must agree with what the stored arrays were shaped
-    against. Feed compositions come back from the canonical store arrays, whose
-    row 0 is the reference process `TrainingDataStore` itself uses.
-    """
-    rhs_ode = rhs_ode_from_training_parents(
-        parent_collection,
-        empty_message="runtime artifact requires a non-empty parent collection",
-    )
+    """Build equations from the selected canonical parent and cached matrices."""
+    try:
+        process = next(iter(parent_collection.processes.values()))
+    except StopIteration as error:
+        raise ValueError(
+            "runtime artifact requires a non-empty parent collection"
+        ) from error
+    rhs_ode = build_rhs_ode(process)
     if RhsNames.from_rhs_ode(rhs_ode) != rhs_names:
         raise ValueError("reconstructed RhsOde axes differ from the runtime artifact")
     return eqx.tree_at(
-        lambda rhs: (rhs.Cin_controlled_FVCs, rhs.Cin_modeled_FVCs),
+        lambda rhs: tuple(getattr(rhs, name) for name in _PROCESS_MATRIX_NAMES),
         rhs_ode,
-        (
-            jnp.asarray(arrays["shared.store.Cin_controlled_FVCs"][0]),
-            jnp.asarray(arrays["shared.store.Cin_modeled_FVCs"][0]),
+        tuple(
+            jnp.asarray(arrays[f"shared.store.{name}"][process_row])
+            for name in _PROCESS_MATRIX_NAMES
         ),
     )
 
@@ -650,15 +701,15 @@ def _validate_control_partition(
     """
     partition = derive_control_partition(parent_collection)
     stored = (
-        tuple(controls["name_controlled_FVCs"]),
-        tuple(controls["name_controlled_SVCs"]),
+        tuple(controls["name_controlled_Inflows"]),
+        tuple(controls["name_controlled_Outflows"]),
         tuple(controls["name_controlled_PVs"]),
         tuple(controls["spline_indices"]),
         tuple(controls["linear_indices"]),
     )
     derived = (
-        partition.name_controlled_FVCs,
-        partition.name_controlled_SVCs,
+        partition.name_controlled_Inflows,
+        partition.name_controlled_Outflows,
         partition.name_controlled_PVs,
         partition.spline_indices,
         partition.linear_indices,
@@ -700,8 +751,8 @@ def _validate_base_metadata(
         "process_order",
         "name_measured_RMCs",
         "name_measured_PVs",
-        "name_modeled_FVCs",
-        "name_modeled_SVCs",
+        "name_modeled_Inflows",
+        "name_modeled_Outflows",
     }:
         raise ValueError("invalid runtime store metadata")
     process_order = store["process_order"]
@@ -721,8 +772,8 @@ def _validate_base_metadata(
             raise ValueError(f"invalid runtime store metadata {key}")
     if not isinstance(controls, dict) or set(controls) != {
         "process_order",
-        "name_controlled_FVCs",
-        "name_controlled_SVCs",
+        "name_controlled_Inflows",
+        "name_controlled_Outflows",
         "name_controlled_PVs",
         "shape_metadata",
         "spline_indices",
@@ -736,8 +787,8 @@ def _validate_base_metadata(
     if controls["process_order"] != process_order:
         raise ValueError("runtime control process order mismatch")
     for key in (
-        "name_controlled_FVCs",
-        "name_controlled_SVCs",
+        "name_controlled_Inflows",
+        "name_controlled_Outflows",
         "name_controlled_PVs",
     ):
         values = controls[key]
@@ -766,13 +817,13 @@ def _validate_base_metadata(
     ):
         raise ValueError("invalid runtime controls metadata")
     control_name_keys = (
-        "name_controlled_FVCs",
-        "name_controlled_SVCs",
+        "name_controlled_Inflows",
+        "name_controlled_Outflows",
         "name_controlled_PVs",
     )
     canonical_control_names = set(
-        controls["name_controlled_FVCs"]
-        + controls["name_controlled_SVCs"]
+        controls["name_controlled_Inflows"]
+        + controls["name_controlled_Outflows"]
         + controls["name_controlled_PVs"]
     )
     for process_name in process_order:
@@ -917,6 +968,60 @@ def _outside_time_window(
     return bool(below_start or above_end)
 
 
+def _polynomial_has_wrong_sign(
+    coeffs: np.ndarray, width: float, *, positive: bool
+) -> bool:
+    candidates = [0.0, width]
+    for root in np.polynomial.polynomial.polyroots(
+        np.polynomial.polynomial.polyder(coeffs)
+    ):
+        if np.isreal(root) and 0.0 <= float(np.real(root)) <= width:
+            candidates.append(float(np.real(root)))
+    values = np.polynomial.polynomial.polyval(candidates, coeffs)
+    return bool(np.any(values < 0 if positive else values > 0))
+
+
+def _validate_flow_control_signs(
+    controls: dict[str, Any],
+    arrays: dict[str, np.ndarray],
+    *,
+    n_inflows: int,
+    n_outflows: int,
+) -> None:
+    flow_end = n_inflows + n_outflows
+    grid_lengths = np.asarray(arrays["shared.controls.grid_lengths"])
+    values = np.asarray(arrays["shared.controls.control_values"])
+    derivatives = np.asarray(arrays["shared.controls.control_derivatives"])
+    for column, control_index in enumerate(controls["linear_indices"]):
+        if control_index >= flow_end:
+            continue
+        positive = control_index < n_inflows
+        for row, length in enumerate(grid_lengths):
+            active = slice(0, int(length))
+            for data in (values[row, active, column], derivatives[row, active, column]):
+                if np.any(data < 0 if positive else data > 0):
+                    raise ValueError("runtime controls contain sign-invalid flows")
+
+    breaks = np.asarray(arrays["shared.controls.spline_breaks"])
+    coeffs = np.asarray(arrays["shared.controls.spline_coeffs"])
+    for column, control_index in enumerate(controls["spline_indices"]):
+        if control_index >= flow_end:
+            continue
+        positive = control_index < n_inflows
+        for row, row_breaks in enumerate(breaks):
+            finite = row_breaks[np.isfinite(row_breaks)]
+            for segment, width in enumerate(np.diff(finite)):
+                polynomial = coeffs[row, segment, column]
+                if _polynomial_has_wrong_sign(
+                    polynomial, float(width), positive=positive
+                ) or _polynomial_has_wrong_sign(
+                    np.polynomial.polynomial.polyder(polynomial),
+                    float(width),
+                    positive=positive,
+                ):
+                    raise ValueError("runtime controls contain sign-invalid flows")
+
+
 def _valid_json_metadata(value: Any) -> bool:
     if value is None or isinstance(value, (str, bool)):
         return True
@@ -959,22 +1064,24 @@ def _validate_semantic_arrays(
     n_processes = len(store["process_order"])
     n_rmc = len(descriptor.name_modeled_RMCs)
     n_pv = len(descriptor.name_modeled_PVs)
-    n_modeled_fvc = len(descriptor.name_modeled_FVCs)
-    n_modeled_svc = len(descriptor.name_modeled_SVCs)
-    n_controlled_fvc = len(descriptor.name_controlled_FVCs)
-    n_controlled_svc = len(descriptor.name_controlled_SVCs)
+    n_modeled_inflow = len(descriptor.name_modeled_Inflows)
+    n_modeled_outflow = len(descriptor.name_modeled_Outflows)
+    n_controlled_inflow = len(descriptor.name_controlled_Inflows)
+    n_controlled_outflow = len(descriptor.name_controlled_Outflows)
     n_controlled_pv = len(descriptor.name_controlled_PVs)
-    n_controls = n_controlled_fvc + n_controlled_svc + n_controlled_pv
+    n_controls = n_controlled_inflow + n_controlled_outflow + n_controlled_pv
     n_targets = len(store["name_measured_RMCs"]) + len(store["name_measured_PVs"])
-    n_y = n_targets + n_modeled_fvc + n_modeled_svc
+    n_y = n_targets + n_modeled_inflow + n_modeled_outflow
 
     if (
         not set(store["name_measured_RMCs"]) <= set(descriptor.name_modeled_RMCs)
         or not set(store["name_measured_PVs"]) <= set(descriptor.name_modeled_PVs)
-        or tuple(store["name_modeled_FVCs"]) != descriptor.name_modeled_FVCs
-        or tuple(store["name_modeled_SVCs"]) != descriptor.name_modeled_SVCs
-        or tuple(controls["name_controlled_FVCs"]) != descriptor.name_controlled_FVCs
-        or tuple(controls["name_controlled_SVCs"]) != descriptor.name_controlled_SVCs
+        or tuple(store["name_modeled_Inflows"]) != descriptor.name_modeled_Inflows
+        or tuple(store["name_modeled_Outflows"]) != descriptor.name_modeled_Outflows
+        or tuple(controls["name_controlled_Inflows"])
+        != descriptor.name_controlled_Inflows
+        or tuple(controls["name_controlled_Outflows"])
+        != descriptor.name_controlled_Outflows
         or tuple(controls["name_controlled_PVs"]) != descriptor.name_controlled_PVs
     ):
         raise ValueError("runtime metadata differs from RhsOde descriptor")
@@ -1127,19 +1234,34 @@ def _validate_semantic_arrays(
 
     _expect_array(
         arrays,
-        "shared.store.Cin_controlled_FVCs",
-        (n_processes, n_controlled_fvc, n_rmc),
+        "shared.store.Cin_controlled_Inflows",
+        (n_processes, n_controlled_inflow, n_rmc),
         "f",
     )
     _expect_array(
         arrays,
-        "shared.store.Cin_modeled_FVCs",
-        (n_processes, n_modeled_fvc, n_rmc),
+        "shared.store.Cin_modeled_Inflows",
+        (n_processes, n_modeled_inflow, n_rmc),
         "f",
     )
-    for name in ("Cin_controlled_FVCs", "Cin_modeled_FVCs"):
-        if not np.all(np.isfinite(arrays[f"shared.store.{name}"])):
+    _expect_array(
+        arrays,
+        "shared.store.retention_controlled_Outflows",
+        (n_processes, n_controlled_outflow, n_rmc),
+        "f",
+    )
+    _expect_array(
+        arrays,
+        "shared.store.retention_modeled_Outflows",
+        (n_processes, n_modeled_outflow, n_rmc),
+        "f",
+    )
+    for name in _PROCESS_MATRIX_NAMES:
+        values = np.asarray(arrays[f"shared.store.{name}"])
+        if not np.all(np.isfinite(values)):
             raise ValueError(f"shared.store.{name}: non-finite values")
+        if name.startswith("retention_") and (np.any(values < 0) or np.any(values > 1)):
+            raise ValueError(f"shared.store.{name}: values must be within [0, 1]")
     measured_times = np.asarray(arrays["shared.store.t_measured"])
     if measured_times.ndim != 2 or measured_times.shape[0] != n_processes:
         raise ValueError("shared.store.t_measured: invalid semantic dtype or shape")
@@ -1163,7 +1285,7 @@ def _validate_semantic_arrays(
     y0 = _expect_array(
         arrays,
         "shared.store.y0_measured",
-        (n_processes, n_rmc + n_pv + 1 + n_modeled_fvc + n_modeled_svc),
+        (n_processes, n_rmc + n_pv + 1 + n_modeled_inflow + n_modeled_outflow),
         "f",
     )
     if not np.all(np.isfinite(measured_times)) or not np.all(
@@ -1172,6 +1294,25 @@ def _validate_semantic_arrays(
         raise ValueError("runtime measurements contain non-finite values")
     if not np.all(np.isfinite(y0)):
         raise ValueError("shared.store.y0_measured: non-finite values")
+    y_measured = np.asarray(arrays["shared.store.y_measured"])
+    inflow_slice = slice(n_targets, n_targets + n_modeled_inflow)
+    outflow_slice = slice(n_targets + n_modeled_inflow, n_y)
+    y0_flow_start = n_rmc + n_pv + 1
+    y0_inflow_slice = slice(y0_flow_start, y0_flow_start + n_modeled_inflow)
+    y0_outflow_slice = slice(y0_flow_start + n_modeled_inflow, y0.shape[1])
+    if (
+        np.any(y_measured[..., inflow_slice] < 0)
+        or np.any(y_measured[..., outflow_slice] > 0)
+        or np.any(y0[..., y0_inflow_slice] < 0)
+        or np.any(y0[..., y0_outflow_slice] > 0)
+    ):
+        raise ValueError("runtime measurements contain sign-invalid flows")
+    _validate_flow_control_signs(
+        controls,
+        arrays,
+        n_inflows=n_controlled_inflow,
+        n_outflows=n_controlled_outflow,
+    )
     mask_measured = np.asarray(arrays["shared.store.mask_measured"])
     for row, length in enumerate(n_measured):
         active_times = measured_times[row, : int(length)]
@@ -1188,24 +1329,33 @@ def _validate_scale_arrays(
     descriptor: RhsNames,
     scales: dict[str, tuple[np.ndarray, np.ndarray | None]],
 ) -> None:
+    n_rmc = len(descriptor.name_modeled_RMCs)
     shapes = {
-        "SCALE_modeled_RMCs": (len(descriptor.name_modeled_RMCs),),
-        "SCALE_modeled_PVs": (len(descriptor.name_modeled_PVs),),
+        "SCALE_modeled_RMCs": (n_rmc,),
         "SCALE_V_in_cumulative": (),
-        "SCALE_modeled_FVCs_cumulative": (len(descriptor.name_modeled_FVCs),),
-        "SCALE_controlled_FVCs_cumulative": (len(descriptor.name_controlled_FVCs),),
-        "SCALE_controlled_FVCs_rates": (len(descriptor.name_controlled_FVCs),),
-        "SCALE_controlled_FVCs_Cin": (
-            len(descriptor.name_controlled_FVCs),
-            len(descriptor.name_modeled_RMCs),
+        "SCALE_modeled_Inflows_cumulative": (len(descriptor.name_modeled_Inflows),),
+        "SCALE_modeled_Outflows_cumulative": (len(descriptor.name_modeled_Outflows),),
+        "SCALE_controlled_Inflows_cumulative": (
+            len(descriptor.name_controlled_Inflows),
+        ),
+        "SCALE_controlled_Outflows_cumulative": (
+            len(descriptor.name_controlled_Outflows),
+        ),
+        "SCALE_controlled_Inflows_rates": (len(descriptor.name_controlled_Inflows),),
+        "SCALE_controlled_Outflows_rates": (len(descriptor.name_controlled_Outflows),),
+        "SCALE_controlled_Inflows_Cin": (
+            len(descriptor.name_controlled_Inflows),
+            n_rmc,
         ),
         "SCALE_controlled_PVs": (len(descriptor.name_controlled_PVs),),
-        "SCALE_modeled_FVCs_Cin": (
-            len(descriptor.name_modeled_FVCs),
-            len(descriptor.name_modeled_RMCs),
+        "SCALE_modeled_Inflows_Cin": (
+            len(descriptor.name_modeled_Inflows),
+            n_rmc,
         ),
         "SCALE_modeled_BiologicalOde_rates": (len(descriptor.name_modeled_rates),),
-        "SCALE_modeled_FVCs_rates": (len(descriptor.name_modeled_FVCs),),
+        "SCALE_modeled_Inflows_rates": (len(descriptor.name_modeled_Inflows),),
+        "SCALE_modeled_Outflows_rates": (len(descriptor.name_modeled_Outflows),),
+        "SCALE_modeled_PVs": (len(descriptor.name_modeled_PVs),),
     }
     if set(scales) != set(_SCALE_NAMES) or set(shapes) != set(_SCALE_NAMES):
         raise ValueError("invalid scale arrays")
@@ -1216,7 +1366,7 @@ def _validate_scale_arrays(
             scale_array.dtype.kind != "f"
             or scale_array.shape != shapes[name]
             or not np.all(np.isfinite(scale_array))
-            or np.any(scale_array == 0)
+            or np.any(scale_array <= 0)
             or (
                 offset_array is not None
                 and (
@@ -1285,11 +1435,10 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
             *filenames.values(),
         },
     )
-    training_parent_collection = _load_training_parent_collection(
+    full_parent_collection = _load_training_parent_collection(
         parent_collection_path,
         process_order=process_order,
         augmentation_parents=augmentation_parents,
-        selected_processes=fold.train,
     )
     # Fold isolation is intentional: validate every declaration and filename,
     # but open and checksum only shared arrays plus the selected fold's scales.
@@ -1297,9 +1446,25 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
         name for name in expected_all if name.startswith("shared.")
     } | selected_scale_keys
     arrays = {name: _read_array(root, name, records[name]) for name in required}
+    _validate_control_partition(full_parent_collection, base["controls"])
     _validate_semantic_arrays(base, arrays)
-    _validate_control_partition(training_parent_collection, base["controls"])
     rhs_names = _rhs_names_from_payload(base["rhs"])
+    _validate_process_matrices(
+        {
+            name: np.asarray(arrays[f"shared.store.{name}"])
+            for name in _PROCESS_MATRIX_NAMES
+        },
+        full_parent_collection,
+        process_order,
+        augmentation_parents,
+        rhs_names,
+    )
+    selected_parent_names = canonical_training_parents(
+        process_order, augmentation_parents, fold.train
+    )
+    training_parent_collection = select_parent_collection(
+        full_parent_collection, selected_parent_names
+    )
     _validate_scale_arrays(
         rhs_names,
         {
@@ -1323,7 +1488,12 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     store = TrainingDataStore(
         **store_metadata,
         controls_store=controls,
-        rhs_ode=_reconstruct_rhs_ode(training_parent_collection, rhs_names, arrays),
+        rhs_ode=_reconstruct_rhs_ode(
+            training_parent_collection,
+            rhs_names,
+            arrays,
+            process_order.index(fold.train[0]),
+        ),
         **{name: jnp.asarray(arrays[f"shared.store.{name}"]) for name in _STORE_ARRAYS},
     )
     scales = {}
