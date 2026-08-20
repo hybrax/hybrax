@@ -129,7 +129,7 @@ def test_exact_add_matches_pointwise_eval() -> None:
     assert added.values is not None
 
 
-def test_public_hybrax.format_timeseries_rejects_legacy_timepoints_constructor() -> None:
+def test_public_hybrax_format_timeseries_rejects_legacy_timepoints_constructor() -> None:
     assert hybrax.format.TimeSeries is TimeSeries
     with pytest.raises(TypeError):
         hybrax.format.TimeSeries(

@@ -72,12 +72,12 @@ def _legacy_timepoints_usages(path: Path) -> list[str]:
 
 
 def test_runtime_modules_use_canonical_times_api() -> None:
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[3]
     runtime_files = [
-        repo_root / "hybrax.format" / "validate.py",
-        repo_root / "hybrax.format" / "splines.py",
-        repo_root / "hybrax.format" / "mechanistic.py",
-        repo_root / "hybrax.format" / "inspect.py",
+        repo_root / "src" / "hybrax" / "format" / "validate.py",
+        repo_root / "src" / "hybrax" / "format" / "splines.py",
+        repo_root / "src" / "hybrax" / "format" / "mechanistic.py",
+        repo_root / "src" / "hybrax" / "format" / "inspect.py",
     ]
 
     for path in runtime_files:

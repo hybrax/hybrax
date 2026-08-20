@@ -9,10 +9,10 @@ from pathlib import Path
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = EXAMPLE_ROOT.parents[3]
+REPO_ROOT = EXAMPLE_ROOT.parents[4]
 SIM_DIR = EXAMPLE_ROOT / "00_simulation"
 
-for path in (REPO_ROOT, EXAMPLE_ROOT):
+for path in (REPO_ROOT / "src", EXAMPLE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

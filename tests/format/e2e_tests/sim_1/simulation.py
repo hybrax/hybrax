@@ -23,9 +23,9 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from hybrax.format.simulation import Simulation, SimulationEvent, SimulationResult  # noqa: E402
 from hybrax.format.simulation import EVENT_TYPE_BOLUS, EVENT_TYPE_SAMPLE  # noqa: E402
