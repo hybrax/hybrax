@@ -7,7 +7,7 @@ from bp_format import validate_cross_process_consistency, validate_process
 from bp_format.dataclasses import (
     BioProcessCollection,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMediumComponent,
     StaticVariable,
     TimeSeries,
@@ -43,7 +43,9 @@ def validate_for_training(
             "messages": process_messages,
         }
 
-    consistency_ok, consistency_messages = validate_cross_process_consistency(collection)
+    consistency_ok, consistency_messages = validate_cross_process_consistency(
+        collection
+    )
     report["__consistency__"] = {
         "ok": consistency_ok,
         "messages": consistency_messages
@@ -124,7 +126,7 @@ def summarize_process_semantics(process) -> dict[str, object]:
     positive_feed_changes: list[str] = []
 
     for change_name, volume_change in process.volume.volume_changes.items():
-        if not isinstance(volume_change, FeedVolumeChange):
+        if not isinstance(volume_change, Inflow):
             continue
 
         all_feed_changes.append(change_name)

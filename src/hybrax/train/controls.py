@@ -6,11 +6,11 @@ from typing import Any, Callable
 import numpy as np
 from bp_format.dataclasses import (
     BioProcess,
-    FeedVolumeChange,
     FeedMedium,
     FeedMediumComponent,
+    Inflow,
+    Outflow,
     ProcessVariable,
-    SampleVolumeChange,
     StaticVariable,
     TimeSeries,
 )
@@ -219,9 +219,7 @@ def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
     }
 
 
-def _make_source_from_volume_change(
-    name: str, volume_change: FeedVolumeChange
-) -> SignalSource:
+def _make_source_from_volume_change(name: str, volume_change: Inflow) -> SignalSource:
     metadata = {
         "source": "timeseries",
         "source_kind": "control",
@@ -257,9 +255,7 @@ def _feed_medium_cin_row(
     feed_name: str,
 ) -> list[float]:
     if feed_medium is None:
-        raise ValueError(
-            f"FeedVolumeChange {feed_name!r} must define feed_medium for transport."
-        )
+        raise ValueError(f"Inflow {feed_name!r} must define feed_medium for transport.")
     row: list[float] = []
     for species_name in species_names:
         component = feed_medium.components.get(species_name)
@@ -293,7 +289,9 @@ def collect_discrete_event_metadata(
         if times.size != values.size:
             raise ValueError(f"{name}: volume-change times and values differ in size")
 
-        if isinstance(volume_change, SampleVolumeChange):
+        if isinstance(volume_change, Outflow):
+            if volume_change.is_continuous:
+                continue
             for event_time, delta_v in zip(
                 times.tolist(), values.tolist(), strict=False
             ):
@@ -317,7 +315,7 @@ def collect_discrete_event_metadata(
                 sample_events.append((event_time, sample_v))
             continue
 
-        if not isinstance(volume_change, FeedVolumeChange):
+        if not isinstance(volume_change, Inflow):
             continue
         if volume_change.is_continuous or not volume_change.is_controlled:
             continue
@@ -392,7 +390,7 @@ def select_control_sources(process: BioProcess) -> ControlSourceBundle:
     pv_controlled: dict[str, SignalSource] = {}
 
     for name, volume_change in process.volume.volume_changes.items():
-        if not isinstance(volume_change, FeedVolumeChange):
+        if not isinstance(volume_change, Inflow):
             continue
         if not volume_change.is_controlled:
             continue

@@ -11,7 +11,7 @@ from bp_format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeSeries,
 )
@@ -124,7 +124,7 @@ def _sampling_times(process) -> tuple[float, ...]:
     return tuple(
         float(t)
         for change in process.volume.volume_changes.values()
-        if isinstance(change, SampleVolumeChange)
+        if isinstance(change, Outflow) and not change.is_continuous
         for t in change.values.times
     )
 

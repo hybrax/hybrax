@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 from bp_format.dataclasses import (
     BioProcessCollection,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
 )
 from bp_format.mechanistic import build_rhs_ode
@@ -382,7 +382,7 @@ def _sample_volume_events(process, process_name: str) -> RawTrace:
     traces = tuple(
         _trace(change.values, process_name, f"sample volume change {name!r}")
         for name, change in process.volume.volume_changes.items()
-        if isinstance(change, SampleVolumeChange)
+        if isinstance(change, Outflow) and not change.is_continuous
     )
     if not traces:
         return _readonly_trace([], [])
