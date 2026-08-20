@@ -64,11 +64,11 @@ A file that is not named `params.eqx` raises rather than silently falling throug
 to the run's final weights.
 
 Standalone `forward` shares that directory precedence and run-directory lookup,
-but deliberately accepts any existing weights filename, including historical
-fold and notebook checkpoints. When a referenced subdirectory has no weights,
-`forward` may fall back to the owning run's weights; direct model loading does
-not. These distinct file contracts are implemented by one shared resolver in
-`serialization.py`.
+but deliberately accepts any existing weights filename, including current LOO
+fold outputs named `trained_wrapper.eqx` and notebook checkpoints. When a
+referenced subdirectory has no weights, `forward` may fall back to the owning
+run's weights; direct model loading does not. These distinct file contracts are
+implemented by one shared resolver in `serialization.py`.
 
 - `model_load` reconstructs a trained model from a run directory **alone**. It
   loads the run's prepared collection to rebuild the **static** half of the wrapper

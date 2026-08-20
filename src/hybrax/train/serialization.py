@@ -534,7 +534,7 @@ def _resolve_model_reference(
 def resolve_forward_model_path(path: str | Path) -> tuple[Path, Path]:
     """Resolve permissive forward weights and their owning run directory.
 
-    Forward accepts any existing file, including historical fold
+    Forward accepts any existing file, including current LOO fold
     ``trained_wrapper.eqx`` files and notebook checkpoints. Direct model loading
     uses :func:`resolve_model_path`, which deliberately accepts only files named
     ``params.eqx``. Directory references share one weight precedence in both
@@ -554,7 +554,7 @@ def resolve_model_path(path: str | Path) -> tuple[Path, Path]:
     directory resolves its weights in one ordered pass — ``<dir>/params.eqx``,
     ``<dir>/model/params.eqx``, ``<dir>/checkpoints/latest/params.eqx`` — so a run
     that has not finished (no ``model/`` yet) still loads from its latest
-    checkpoint. A file must be named ``params.eqx``: a legacy
+    checkpoint. A file must be named ``params.eqx``: a current LOO output named
     ``trained_wrapper.eqx`` raises instead of silently falling through to the run's
     final weights.
     """

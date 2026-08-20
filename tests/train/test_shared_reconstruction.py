@@ -29,6 +29,7 @@ from bp_format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     FeedVolumeChange,
+    ProcessVariable,
     ReactorMediumComponent,
     StaticVariable,
     TimeSeries,
@@ -40,6 +41,7 @@ import bp_train.harness as harness
 from bp_train.cli import main
 from bp_train.harness import ForwardConfig, forward_from_collection
 from bp_train.serialization import content_hash, reconstruct_training
+from bp_train.training_data import TARGET_SOURCE_AUTO
 
 # The tiny single-process collection every serialization test shares.
 from test_serialization import _collection
@@ -65,6 +67,7 @@ def estimate_all_scales(runtime_data, target_names, config):
         scale[i] = max(peak, 1e-6)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray(scale),
+        SCALE_modeled_PVs=jnp.ones(len(rhs_ode.name_modeled_PVs)),
         SCALE_V_in_cumulative=jnp.asarray(1.0),
         SCALE_modeled_FVCs_cumulative=jnp.ones(len(rhs_ode.name_modeled_FVCs)),
         SCALE_controlled_FVCs_cumulative=jnp.ones(len(rhs_ode.name_controlled_FVCs)),
@@ -182,6 +185,8 @@ def _train(
     name: str,
     prepared: Path,
     processes: tuple[str, ...] | None = None,
+    targets: tuple[str, ...] = ("biomass",),
+    target_source: str = "reactor_components",
 ) -> Path:
     """Run the real ``train`` CLI and return its run dir."""
     run_dir = tmp_path / name
@@ -189,8 +194,8 @@ def _train(
     custom_py.write_text(_CUSTOM_PY, encoding="utf-8")
     data: dict = {
         "prepared": str(prepared),
-        "targets": ["biomass"],
-        "target_source": "reactor_components",
+        "targets": list(targets),
+        "target_source": target_source,
     }
     if processes is not None:
         data["processes"] = list(processes)
@@ -244,6 +249,50 @@ def _mkdir(path: Path) -> Path:
 # one shared path: model loading and forward agree, and both use the recorded
 # training selection rather than the data in front of them
 # ---------------------------------------------------------------------------
+
+
+def test_forward_omission_inherits_recorded_target_source(tmp_path: Path):
+    collection = _collection_with({"p1": (1.0, 0.8, 0.64)})
+    process = collection.processes["p1"]
+    collection.processes["p1"] = replace(
+        process,
+        process_variables={
+            "ratio": ProcessVariable(
+                name="ratio",
+                unit="-",
+                is_controlled=False,
+                values=TimeSeries(
+                    times=jnp.asarray([0.0, 1.0, 2.0]),
+                    values=jnp.asarray([0.0, 0.5, 1.0]),
+                ),
+            )
+        },
+    )
+    prepared = tmp_path / "prepared.json"
+    save_process_collection(collection, prepared)
+    run_dir = _train(
+        tmp_path,
+        name="combined",
+        prepared=prepared,
+        targets=("biomass", "ratio"),
+        target_source="combined",
+    )
+
+    inherited = forward_from_collection(
+        collection,
+        model_path=_params(run_dir),
+        prediction_process_names=(),
+    )
+    assert inherited.store.name_measured_RMCs == ("biomass",)
+    assert inherited.store.name_measured_PVs == ("ratio",)
+
+    with pytest.raises(ValueError, match="target_source='auto' could not resolve"):
+        forward_from_collection(
+            collection,
+            model_path=_params(run_dir),
+            config=ForwardConfig(target_source=TARGET_SOURCE_AUTO),
+            prediction_process_names=(),
+        )
 
 
 def test_model_load_and_forward_share_selected_training_reconstruction(two_level_run):

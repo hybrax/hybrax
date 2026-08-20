@@ -889,7 +889,7 @@ class ForwardConfig:
 
     process_names: tuple[str, ...] | None = None
     target_variable_order: tuple[str, ...] | None = None
-    target_source: str = TARGET_SOURCE_AUTO
+    target_source: str | None = None
     solver_max_steps: int = 4096
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
@@ -982,6 +982,9 @@ def forward_from_collection(
         if cfg.target_variable_order is not None
         else recorded_targets
     )
+    effective_target_source = (
+        cfg.target_source if cfg.target_source is not None else recorded_source
+    )
 
     # The evaluation store is a separate object built from the caller's data. The
     # one exception is a byte-for-byte identity: when the evaluation collection IS
@@ -989,7 +992,7 @@ def forward_from_collection(
     # second identical store would only cost time.
     same_input = (
         effective_target_order == recorded_targets
-        and cfg.target_source == recorded_source
+        and effective_target_source == recorded_source
         and content_hash(collection) == rebuilt.prepared_content_hash
     )
     if same_input:
@@ -998,7 +1001,7 @@ def forward_from_collection(
         evaluation_store = TrainingDataStore.from_collection(
             collection,
             target_variable_order=effective_target_order,
-            target_source=cfg.target_source,
+            target_source=effective_target_source,
         )
         _require_evaluation_compatibility(rebuilt.store, evaluation_store)
 

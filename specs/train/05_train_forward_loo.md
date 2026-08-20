@@ -98,7 +98,9 @@ ensemble) plus optional `data` and `output` blocks.
 
 - [`ForwardConfig`](../bp_train/harness.py) / [`ForwardResult`](../bp_train/harness.py)
   carry the per-process losses and selected dense exports. Losses still cover
-  every evaluated process.
+  every evaluated process. An omitted `ForwardConfig.target_source` inherits the
+  model run's recorded training source; explicitly passing `"auto"` requests
+  automatic resolution against the evaluation collection.
 - `compute_dense_exports(trained_wrapper, store, process_names, *,
   solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts,
   prediction_grid_n=200)` runs one batched solve and returns per-process
