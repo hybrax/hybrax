@@ -12,12 +12,9 @@ kernelspec:
 
 # The Bioprocess ODE
 
-> **In one sentence.** What bp-format assembles from your description, how to read it,
-> and how to replace the biological half with your own equations.
->
-> **You need this if** the default dynamics are not what you mean, or you want to know
-> exactly what is being solved. **You can skip it if** the auto-generated ODE is right
-> for your process, but read the first two sections anyway.
+> What bp-format assembles from your description, how to read it, and how to replace
+> the biological half with your own equations. Read the first two sections even if the
+> auto-generated ODE is already right for your process.
 
 ## The split
 
@@ -125,19 +122,19 @@ Everything downstream needs to agree on which array index is which species.
 from bp_format.mechanistic import get_process_ordering
 
 ordering = get_process_ordering(process)
-print("modeled RMCs   :", ordering.name_modeled_RMCs)
-print("modeled rates  :", ordering.name_modeled_rates)
-print("controlled FVCs:", ordering.name_controlled_FVCs)
-print("controlled SVCs:", ordering.name_controlled_SVCs)
-print("controlled PVs :", ordering.name_controlled_PVs)
+print("modeled RMCs     :", ordering.name_modeled_RMCs)
+print("modeled rates    :", ordering.name_modeled_rates)
+print("controlled Inflows :", ordering.name_controlled_Inflows)
+print("controlled Outflows:", ordering.name_controlled_Outflows)
+print("controlled PVs   :", ordering.name_controlled_PVs)
 ```
 
 ```
 state   c = [ modeled RMCs | modeled PVs | V ]
-control u = [ controlled FVCs | controlled SVCs | controlled PVs ]
+control u = [ controlled Inflows | controlled Outflows | controlled PVs ]
 ```
 
-The first `len(FVCs) + len(SVCs)` entries of `u` are **flow rates** (spline derivatives);
+The first `len(Inflows) + len(Outflows)` entries of `u` are **flow rates** (spline derivatives);
 the rest are direct values.
 
 Ordering rules: rates keep your insertion order, so a rate vector you build matches the
@@ -155,7 +152,7 @@ from bp_format.mechanistic import build_rhs_ode
 rhs = build_rhs_ode(process)
 print(type(rhs).__name__)
 print("rate names:", rhs.name_modeled_rates)
-print("feed composition matrix:", rhs.Cin_controlled_FVCs.shape,
+print("feed composition matrix:", rhs.Cin_controlled_Inflows.shape,
       "(feeds x species)")
 ```
 

@@ -1,7 +1,7 @@
 # Installation
 
-> **In one sentence.** Clone both repos side by side, install them editable into one
-> Python ≥ 3.12 environment, and check that `bp-train --help` runs.
+> Clone both repos side by side, install them editable into one Python ≥ 3.12
+> environment, and check that `bp-train --help` runs.
 
 ## Requirements
 

@@ -1,11 +1,8 @@
 # Limits and gotchas
 
-> **In one sentence.** What bp-format deliberately does not do, and the sharp edges in
-> what it does.
->
-> **You need this if** something you expected to work does not. **You can skip it if**
-> nothing is surprising you yet, but the first section is worth knowing before you
-> design a dataset around an assumption that does not hold.
+> What bp-format deliberately does not do, and the sharp edges in what it does. Worth
+> reading the first section before you design a dataset around an assumption that does
+> not hold.
 
 ## Not implemented
 
@@ -17,6 +14,7 @@ them, you need to know now rather than halfway through.
 | **Time-varying feed composition** | A `FeedMediumComponent` concentration may be a `TimeSeries` in the schema, but `build_rhs_ode` raises `NotImplementedError`. Use `StaticVariable`; split genuinely changing feeds into separate streams. |
 | **Perfusion / cell retention** | The vessel model is a well-mixed CSTR. There is no mechanism for retaining cells while removing liquid. A perfusion process cannot be described correctly. |
 | **Evaporation with solute retention** | Same reason: removing solvent while keeping solutes is not representable. |
+| **Pseudobatch on a continuous `Outflow`** | `build_pseudobatch_transform` raises `NotImplementedError` for any continuous `Outflow` (perfusion, continuous harvest), retention or not. Its closed-form ADF assumes volume only grows from `Inflow`s. Only `Inflow` and discrete `Outflow` (sampling) are supported. See [The pseudobatch transform](pseudobatch_transform.md). |
 | **Rate inversion** | There is no facility for computing rates analytically from measured concentrations. Rates come from a model. |
 | **Unit conversion** | Units are free-form strings. Nothing is parsed and nothing is converted. |
 
@@ -41,7 +39,7 @@ alternative.
 
 - A **`StaticVariable` process variable with `is_controlled=False`**: a state with no
   time axis cannot be integrated.
-- A **`FeedVolumeChange` with no `feed_medium`**.
+- An **`Inflow` with no `feed_medium`**.
 - A **feed naming a species not in `reactor_medium.components`**.
 - **Name collisions across groups**: the same name used as both a state and a rate.
 - **Cyclic `algebraic` dependencies.**
@@ -58,7 +56,8 @@ The dangerous category. None of these produce an error; all of them produce wron
 numbers.
 
 - **`build_pseudobatch_transform` does not set `process.pseudobatch_transform`.** It
-  writes `c_star_concentration` onto each component in place and *returns* the bundle. If
+  writes `pseudobatch_concentration` onto each component in place and *returns* the
+  bundle. If
   you ignore the return value, the components look transformed but the process has no
   transform attached.
 - **Feed composition omitting a species.** Only a validator catches it, and only if you

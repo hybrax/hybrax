@@ -1,7 +1,6 @@
 # Further reading
 
-> **In one sentence.** Where the exhaustive reference lives, now that you have the
-> human-sized version.
+> Where the exhaustive reference lives, now that you have the human-sized version.
 
 These docs are deliberately not exhaustive. They cover concepts, runnable examples and
 gotchas, and stop before the field-by-field tables, because those rot, and because two
@@ -40,20 +39,6 @@ The `specs/` directory in the repository says so itself. It contains plans, some
 built, several predating the current API. Mine it for *rationale* if you are curious why
 something is the way it is: never for behaviour.
 :::
-
-## Worked examples in the repository
-
-`bp-format/examples/` has around thirty notebooks, mostly in `01_load_single_process` /
-`02_load_all_processes` pairs, one set per published dataset. They are the real-data
-counterpart to [Tutorial 1](../tutorials/01_your_first_dataset.md).
-
-Good starting points:
-
-- **`15_biogas/`**: the smallest and clearest, a single batch process, hand-written
-  `biological_ode`, full validate → plot → save → reload cycle.
-- **`13_volume_integration/`**: the fed-batch counterpart, with real volume events.
-- **`01_kittler_2022/`, `02_gotsmy_2023/`, `05`–`10_martens_2025_*`**: real published
-  data, including the messy preprocessing step that precedes bp-format.
 
 ## Background
 

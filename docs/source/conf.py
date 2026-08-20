@@ -62,6 +62,7 @@ pygments_dark_style = "monokai"
 html_title = "Bioprocess Modeling with Hybrax"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_js_files = ["custom.js"]
 html_logo = "_static/hybrax_logo.png"
 html_favicon = "_static/favicon.png"
 html_theme_options = {

@@ -1,10 +1,8 @@
 # The loss module
 
-> **In one sentence.** Turns one solved trajectory into a dict of **named** scalar losses,
-> whose **mean** is what gets differentiated.
->
-> **You need this if** plain MSE on every target is not what you want: weighting,
-> penalties, physical constraints. **You can skip it if** it is.
+> Turns one solved trajectory into a dict of **named** scalar losses, whose **mean** is
+> what gets differentiated. Needed as soon as plain MSE on every target is not what you
+> want: weighting, penalties, physical constraints.
 
 ## What it is
 

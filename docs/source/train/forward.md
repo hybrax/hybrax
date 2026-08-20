@@ -1,10 +1,7 @@
 # Forward
 
-> **In one sentence.** Re-simulate with a trained model and export dense trajectories,
-> rates and per-target losses: optionally averaging several models.
->
-> **You need this if** you have a run directory and want something to plot or publish.
-> **You can skip it if** the training plots were enough.
+> Re-simulate with a trained model and export dense trajectories, rates and per-target
+> losses: optionally averaging several models.
 
 ```bash
 bp-train forward --config forward-config.json [--output-dir DIR] [--overwrite]

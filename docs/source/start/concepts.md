@@ -1,11 +1,8 @@
 # Concepts and vocabulary
 
-> **In one sentence.** Every term these docs use, defined once, in the order you meet
-> them.
->
-> **You need this if** a page used a word like *RMC*, *controlled*, *SCL* or *ADF*
-> without explaining it. **You can skip it if** you already speak this dialect, but it
-> is worth one read, because a few of these words mean something narrower here than in
+> Every term these docs use, defined once, in the order you meet them: useful if a page
+> used a word like *RMC*, *controlled*, *SCL* or *ADF* without explaining it. Worth one
+> read even if you already know the words: a few mean something narrower here than in
 > general usage.
 
 ## The shape of the whole thing
@@ -22,7 +19,7 @@ What you supply is how fast the cells do things, and how you want to be scored.
 One file on disk is one container.
 
 ```
-BioProcessCollection      case_id, organism, citation — all optional
+BioProcessCollection      case_id, organism, citation (all optional)
   └── processes: {name: BioProcess}
 
 BioProcess                ONE experimental run
@@ -77,8 +74,8 @@ These four appear constantly, especially in bp-train, and are rarely spelled out
 |---|---|---|
 | **RMC** | Reactor Medium Component | A concentration in the vessel: biomass, glucose, product. |
 | **PV** | Process Variable | Anything measured that is not a concentration in the medium: pH, temperature, DO, off-gas. |
-| **FVC** | Feed Volume Change | Something going *in*: a continuous feed or a bolus. Carries a feed medium. |
-| **SVC** | Sample Volume Change | Something coming *out*: a sample draw. No feed medium. |
+| **FVC** | Feed Volume Change | bp-train's abbreviation for an `Inflow`: something going *in*, a continuous feed or a bolus. Carries a feed medium. |
+| **SVC** | Sample Volume Change | bp-train's abbreviation for an `Outflow`: something coming *out*, a sample draw. No feed medium. |
 
 Sign convention is fixed by the type: **feeds are non-negative, samples are
 non-positive.** Getting this backwards is the classic import bug, and a validator checks
@@ -122,7 +119,7 @@ something, and the volume changed. The **pseudobatch transform** removes the sec
 
 - **ADF**: accumulated dilution factor, `V(t) / V(0)`.
 - **`c*`**: the pseudo-concentration, what the concentration *would have been* in a batch
-  run with identical biology. Stored per component as `c_star_concentration`.
+  run with identical biology. Stored per component as `pseudobatch_concentration`.
 
 `c*` curves are smoother, so they spline better, and they make batch and fed-batch runs
 directly comparable. A good sanity check: a `c*` trace should **not** jump at a pure

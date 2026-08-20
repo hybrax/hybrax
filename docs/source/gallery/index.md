@@ -1,11 +1,11 @@
 # Gallery
 
-> **In one sentence.** Worked examples of the things the tutorials deliberately left out.
+> Worked examples of the things the tutorials deliberately left out.
 
 The tutorials use one small batch dataset and stop early on purpose: the point there is
 the shape of the pipeline, not the ceiling of what it can do. This is where the ceiling
-lives. Each entry is a self-contained, executed example built on the fed-batch demo
-dataset or an extended version of the batch one.
+lives. Each entry is a self-contained, executed example, most built on the fed-batch
+demo dataset or an extended version of the batch one.
 
 Every entry's `.md` file is itself a real, executable notebook (MyST Markdown via
 myst-nb), living in `source/gallery/` with its runnable `custom.py` alongside it in
@@ -28,27 +28,9 @@ each page runs top to bottom exactly as shown here, no rendering required.
 | [A KAN model](kan.md) | Learnable univariate functions on edges, summed at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve read out directly after training. |
 | [OptFed](optfed.md) | A real, published non-competitive-inhibition Michaelis-Menten rate law with Eyring-equation temperature dependence, `temperature` feeding straight into the kinetics as a controlled process variable. |
 | [Glutamine decay](glutamine_decay.md) | One declared rate feeding two coupled derivatives at once, a sink in one, a source in the other, recovered from data as a single shared number. |
+| [Pseudobatch splines](pseudobatch_splines.md) | Recovering a smooth curve through a discrete feed jump from just 5 measurements, checked against a known ground truth. |
 
 ## See also
 
 - [Tutorials](../tutorials/01_your_first_dataset.md): start here if you have not yet.
 - [Which page do I need?](../start/find.md): the full feature routing table.
-
-```{toctree}
-:maxdepth: 1
-:hidden:
-fed_batch
-mechanistic_rates
-dense_loss
-stateful
-freezing
-loo
-augmentation
-gaussian_process
-knowledge_transfer
-fba_hyb
-pls_dfba
-kan
-optfed
-glutamine_decay
-```

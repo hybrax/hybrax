@@ -1,9 +1,7 @@
 # Errors
 
-> **In one sentence.** Error message → what it means → what to do.
->
-> **You need this if** something raised. If something did **not** raise but the answer is
-> wrong, you want [Silent failures](silent_failures.md) instead.
+> Error message → what it means → what to do. If nothing raised but the answer is wrong,
+> see [Silent failures](silent_failures.md) instead.
 
 Both packages prefer failing loudly to falling back quietly, so most of what you meet
 here is the design working. Search this page for a fragment of your message.
@@ -47,7 +45,7 @@ claims to be a dynamic state with nothing to be dynamic over.
 **Fix.** Mark it `is_controlled=True` if it is a known input, or give it a real
 `TimeSeries`.
 
-### A `FeedVolumeChange` has no `feed_medium` / names an unknown species
+### An `Inflow` has no `feed_medium` / names an unknown species
 
 **Why.** A feed is litres *of something*; and bp-format will not invent a reactor state
 for a species that only appears in a feed.

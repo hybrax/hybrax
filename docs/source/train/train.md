@@ -1,10 +1,7 @@
 # Training
 
-> **In one sentence.** The loop, the optimizer, the two hooks that shape it, and how to
-> use more than one core.
->
-> **You need this if** you are tuning a run rather than just launching one. **You can
-> skip it if** the defaults are converging.
+> The loop, the optimizer, the two hooks that shape it, and how to use more than one
+> core.
 
 ```bash
 bp-train train --config train-config.json [--overwrite] [--epochs N]

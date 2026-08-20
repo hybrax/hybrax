@@ -1,10 +1,7 @@
 # The reaction module
 
-> **In one sentence.** The object that predicts biological rates inside the ODE solve: 
-> the half of the model that is actually yours.
->
-> **You need this if** the default MLP is not what you want, which on real data it is not.
-> **You can skip it if** you are still exploring with defaults.
+> The object that predicts biological rates inside the ODE solve: the half of the model
+> that is actually yours. On real data, the default MLP is rarely what you want.
 
 ## What it is
 

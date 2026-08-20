@@ -1,6 +1,6 @@
 # Further reading
 
-> **In one sentence.** Where the exhaustive reference and the real example projects live.
+> Where the exhaustive reference and the real example projects live.
 
 These docs cover concepts, runnable examples and gotchas, and stop before the
 field-by-field tables, because those change, and two places to look is one too many.

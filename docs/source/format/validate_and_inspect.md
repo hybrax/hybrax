@@ -12,11 +12,8 @@ kernelspec:
 
 # Validating and inspecting
 
-> **In one sentence.** Make the package report what it understood, before you spend a day
-> training against a misdescribed dataset.
->
-> **You need this if** you have data. **You can skip it if**: you can't. This is the
-> cheapest page in the guide.
+> Make the package report what it understood, before you spend a day training against a
+> misdescribed dataset. The cheapest page in the guide to read.
 
 ## Validation is non-raising and exhaustive
 
@@ -129,9 +126,9 @@ appear twice.
 
 ## Gotchas
 
-- **`bp.inspect` is not a module handle.** `bp.inspect.plot_process` raises
-  `AttributeError` on a fresh import (it starts working only after some other access has
-  pulled the submodule in). Always use `bp.plot_process(...)` on the root.
+- **`bp.inspect` is not a module handle**, so `bp.inspect.plot_process` raises on a
+  fresh import. Always use `bp.plot_process(...)` on the root; see [Limits and
+  gotchas](limits_and_gotchas.md) for why.
 - **`plot_timeseries` is not root-exported**: import it as
   `from bp_format.inspect import plot_timeseries`.
 - **`validate_process` raises `TypeError`** if handed something that is not a

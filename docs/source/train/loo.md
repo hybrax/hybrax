@@ -1,10 +1,7 @@
 # Cross-validation (LOO)
 
-> **In one sentence.** Train one model per fold with some processes held out, then
-> aggregate how well each held-out run was predicted.
->
-> **You need this if** you want to claim your model generalises. **You can skip it if**
-> you are still getting a single run to fit.
+> Train one model per fold with some processes held out, then aggregate how well each
+> held-out run was predicted.
 
 ```bash
 bp-train loo --config loo-config.json [--output-dir DIR] [--overwrite]

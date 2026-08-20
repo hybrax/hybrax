@@ -1,10 +1,7 @@
 # `custom.py` at a glance
 
-> **In one sentence.** Every hook bp-train looks for, what it does, when it fires, and
-> what happens if you omit it.
->
-> **You need this if** you are writing or reading a `custom.py`. **You can skip it if**
-> you are running on defaults.
+> Every hook bp-train looks for, what it does, when it fires, and what happens if you
+> omit it.
 
 ## How discovery works
 

@@ -47,3 +47,30 @@ body[data-theme="dark"] .sidebar-logo-container {
     padding: 0.35rem;
   }
 }
+
+/* --- collapsible sidebar captions -----------------------------------------
+   Furo only makes individual pages collapsible when the toctree nests them;
+   with a flat toctree (this site's structure) no caption is ever collapsible.
+   custom.js turns each top-level caption ("BP-FORMAT GUIDE", "GALLERY", ...)
+   into the toggle itself, expanded by default only for the section holding
+   the current page. */
+.sidebar-tree p.caption {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.sidebar-tree p.caption .caption-toggle-icon svg {
+  color: var(--color-foreground-muted);
+  transition: transform 0.2s ease-in-out;
+}
+.sidebar-tree p.caption.collapsed .caption-toggle-icon svg {
+  transform: rotate(-90deg);
+}
+.sidebar-tree p.caption + ul {
+  overflow: hidden;
+}
+.sidebar-tree p.caption.collapsed + ul {
+  display: none;
+}

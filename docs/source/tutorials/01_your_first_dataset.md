@@ -11,7 +11,7 @@ kernelspec:
 ---
 
 <!-- LOCK -->
-# Tutorial 1: Import your Data
+# 1. Import your Data
 
 
 > **In one sentence.** Turn a CSV of experimental measurements into a bp-format
@@ -24,11 +24,11 @@ Here, we build a simple **batch** run with three measured species and no volume
 changes. However, the `Hybrax` data format is designed to accomodate a diverse set of bioprocess conditions, for example
 * [feeds, boluses and sampling volume changes](../gallery/fed_batch.md),
 <!-- UNLOCK -->
-* [chemical decay rates](../gallery/<placeholder! please fix once the glu lands>), and
+* [chemical decay rates](../gallery/glutamine_decay.md), and
 * [modeled process variables](../gallery/<placeholder! please fix once the glu lands>).
 
 
-## Example data
+## 1.1 Example data
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -55,7 +55,7 @@ run_1 = (
 print(len(run_1), "samples from", run_1["time"].iloc[0], "to", run_1["time"].iloc[-1], "h")
 ```
 
-## Measurements become `TimeSeries`
+## 1.2 Measurements become `TimeSeries`
 
 Every time-varying quantity in bp-format is a `TimeSeries` which pairs `times` and `values`.
 
@@ -79,7 +79,7 @@ biomass
 :::
 
 
-## Concentrations become `ReactorMediumComponents`
+## 1.3 Concentrations become `ReactorMediumComponents`
 <!-- UNLOCK -->
 
 The **reactor medium** is what is in the vessel. Each component carries its own unit,
@@ -115,7 +115,7 @@ list(reactor_medium.components)
 - The units are explicitly required. This avoids ambiguity and enables validation downstream.
 :::
 
-## The clock and the vessel
+## 1.4 The clock and the vessel
 
 ```{code-cell} ipython3
 time_axis = bp.TimeAxis(
@@ -139,7 +139,7 @@ your real world data contains volume changes, see
 [Volume, feeds and events](../format/volume_feeds_events.md).
 <!-- UNLOCK -->
 
-## Assemble the ``BioProcess``
+## 1.5 Assemble the ``BioProcess``
 
 ```{code-cell} ipython3
 process = bp.BioProcess(
@@ -173,7 +173,7 @@ immediately. If your data has no biomass, or you want different dynamics, write
 `biological_ode` yourself: [The Bioprocess ODE](../format/bioprocess_ode.md).
 :::
 
-## Collect and save
+## 1.6 Collect and save
 
 Setting `case_id`/`organism`/`citation` on a `BioProcessCollection` marks it as a full
 case study, one publication or campaign. `case_id` is also the natural grouping for
@@ -201,7 +201,7 @@ print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 Note the import path: the save/load functions live on `bp.serialization`, not on the
 package root.
 
-## Check the round trip
+## 1.7 Check the round trip
 
 ```{code-cell} ipython3
 reloaded = bp.serialization.load_process_collection(out / "data.json")

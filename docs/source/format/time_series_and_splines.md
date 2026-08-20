@@ -12,11 +12,7 @@ kernelspec:
 
 # Time series and splines
 
-> **In one sentence.** How a measurement becomes something evaluable at any `t`, and how
-> fed-batch dilution is removed before you fit to it.
->
-> **You need this if** you need continuous interpolation or your process has feeds.
-> **You can skip it if** you only ever touch measured values at measured times.
+> How a measurement becomes something evaluable at any `t`.
 
 ## `TimeSeries` holds up to two things
 
@@ -40,8 +36,9 @@ The two halves have different jobs, and keeping both is the point:
   whatever `t` it lands on, and re-interpolating at every step would be both slow and
   non-differentiable in the way JAX needs.
 
-A `TimeSeries` may be spline-only, that happens in pseudobatch workflows where the
-original samples no longer mean anything on their own.
+A `TimeSeries` may be spline-only, that happens in [pseudobatch
+workflows](pseudobatch_transform.md) where the original samples no longer mean anything
+on their own.
 
 ### Evaluating
 
@@ -85,89 +82,16 @@ So splines are fitted **per segment**, with boundaries at discrete events. The h
 those boundaries from the process's own volume changes, and `fit_timeseries_spline`
 accepts them via `boundaries=`.
 
-## The pseudobatch transform
-
-In a fed-batch run a measured concentration moves for two reasons: the cells did
-something, and the volume changed. The pseudobatch transform removes the second.
-
-```
-c*(t) = c(t) · ADF(t) − feed_correction(t)
-```
-
-where **ADF** is the accumulated dilution factor `V(t)/V(0)` and the feed correction
-accounts for mass the feed added. The result is what the concentration *would have been*
-in a batch run with identical biology.
-
-```{code-cell} ipython3
-from bp_format.splines import build_pseudobatch_transform
-
-cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
-process = cs.processes["fedbatch_1"]
-
-bundle = build_pseudobatch_transform(process)
-process.pseudobatch_transform = bundle        # <- you must assign it yourself
-
-glucose = process.reactor_medium.components["glucose"]
-print("t       :", np.asarray(glucose.concentration.times)[:6])
-print("measured:", np.round(np.asarray(glucose.concentration.values)[:6], 2))
-print("c*      :", np.round(np.asarray(glucose.c_star_concentration.values)[:6], 2))
-```
-
-Read those last two rows across. They agree until the feed starts at t = 6 h, and diverge
-afterwards: the measured glucose is propped up by feeding, while `c*` keeps falling
-because that is what the cells are actually doing to it.
-
-Three uses:
-
-1. **Smoother curves**, so cubic splines fit better.
-2. **Comparability**: batch and fed-batch runs become directly comparable.
-3. **Segmentation** at bolus discontinuities becomes meaningful.
-
-:::{admonition} The transform mutates, and also returns
-:class: warning
-`build_pseudobatch_transform(process)` writes `c_star_concentration` onto every component
-in place, **but does not set `process.pseudobatch_transform`**. You have to assign the
-returned bundle yourself, as above. It also fills `volume.total_volume` only when that is
-currently `None`.
-:::
-
-:::{admonition} Fit control splines *before* transforming
-:class: important
-If the continuous-feed `TimeSeries` have no spline yet, the transform falls back to one
-polynomial piece per raw sample. On a densely logged online trace that means tens of
-thousands of pieces and seconds per species. Fitting the control splines first is roughly
-a hundredfold difference in wall time.
-:::
-
-### Going back
-
-`build_backtransform_spline(process, species)` returns a `BacktransformSpline` that maps
-`c*` back to real concentration (including the derivative, via the quotient rule) and
-is JIT-safe, so a model can be trained in pseudobatch space and evaluated in physical
-space.
-
-### The step-interpolation rule
-
-ADF and the feed correction are **piecewise constant**, and must be evaluated with step
-(nearest-neighbour) interpolation, not linear. Interpolating them linearly smears each
-discontinuity across the interval and breaks the backtransform near events. bp-format
-does this correctly; it matters if you build your own.
-
 ## Gotchas
 
 - **`PPoly` is not root-exported.** `from bp_format.time_series import PPoly`.
-- **Re-running the transform is safe**, but feeding an already-transformed `c*` back in
-  raises. Same principle as the loader rejecting `c*` carriers.
-- **A `c*` trace that jumps at a pure sampling event means your volume accounting is
-  wrong.** Sampling is a well-mixed removal, so the dilution-corrected trace should be
-  smooth through it. This is one of the best diagnostics in the package.
 - **`TimeSeries` arithmetic exists** (`ts_a - ts_b`) with exact and approximate paths
   depending on whether the operands share breaks. Useful, but read the API reference
   before relying on the approximate path.
 
 ## See also
 
+- [The pseudobatch transform](pseudobatch_transform.md): fed-batch dilution correction,
+  built on the spline machinery above.
 - [Volume, feeds and events](volume_feeds_events.md): where the dilution comes from.
-- [Gallery: fed-batch](../gallery/fed_batch.md): the transform on a real process.
 - [API reference](../autoapi/bp_format/splines/index).
-- Hesselberg-Thomsen et al. (2024) for the pseudobatch method itself.

@@ -1,10 +1,6 @@
 # Configuration
 
-> **In one sentence.** JSON files that are strict about typos, relative to themselves, and
-> mostly optional.
->
-> **You need this if** you are running bp-train at all. **You can skip it if** you drive
-> everything from Python.
+> JSON files that are strict about typos, relative to themselves, and mostly optional.
 
 ## The commands
 

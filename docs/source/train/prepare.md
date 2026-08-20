@@ -1,10 +1,7 @@
 # Prepare
 
-> **In one sentence.** The step where a dataset stops being data and becomes a training
-> problem: done once, reused by every model you fit against it.
->
-> **You need this if** you are training. **You can skip it if** you already have a
-> `prepared/` directory that someone else built.
+> The step where a dataset stops being data and becomes a training problem: done once,
+> reused by every model you fit against it.
 
 ```bash
 bp-train prepare --config prepare-config.json --output-dir prepared

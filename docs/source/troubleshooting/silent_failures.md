@@ -1,10 +1,7 @@
 # Silent failures
 
-> **In one sentence.** The handful of ways to get a confident, plausible, wrong answer
-> with no exception anywhere.
->
-> **You need this if** something ran fine and the result is off. **You can skip it if**
-> you got an error, that is [Errors](errors.md), and it is the better outcome.
+> The handful of ways to get a confident, plausible, wrong answer with no exception
+> anywhere. Got an error instead? That's the better outcome: see [Errors](errors.md).
 
 Both packages are built on "fail fast over silent fallbacks", and mostly they do. What
 follows is the residue: the cases that cannot or do not raise. They are worth knowing

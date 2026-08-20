@@ -11,14 +11,11 @@ kernelspec:
 ---
 
 <!-- LOCK -->
-# Tutorial 5: Predict Processes
+# 5. Predict Processes
 <!-- UNLOCK -->
 
-> **In one sentence.** Use a trained model: from the command line for exports, and from
-> Python when you want the arrays.
->
-> **You need this if** you have a run directory. **You can skip it if** the training
-> plots were all you wanted.
+> Use a trained model: from the command line for exports, and from Python when you want
+> the arrays.
 >
 > Last tutorial. After this, the [gallery](../gallery/index.md).
 

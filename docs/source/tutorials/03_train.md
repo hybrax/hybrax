@@ -11,15 +11,11 @@ kernelspec:
 ---
 
 <!-- LOCK -->
-# Tutorial 3: Train a Model
+# 3. Train a Model
 <!-- UNLOCK -->
 
-> **In one sentence.** Fit a hybrid ODE to the dataset using every default, and learn to
+> Fit a hybrid ODE to the dataset using every default, and learn to
 > read what came out.
->
-> **You need this if** you have a validated dataset. **You can skip it if** you did the
-> [quickstart](../start/quickstart.md) and only want the custom parts: go to
-> [Tutorial 4](04_your_first_custom_py.md).
 
 The quickstart ran these commands. This tutorial explains them.
 
@@ -66,7 +62,7 @@ Training adjusts the first half so the integrated trajectory matches your measur
 For `demo_batch` the second half is nearly empty (a batch run has no feeds) so
 everything the model does is visible in three specific rates.
 
-## Step 1: prepare
+## 3.1 The `prepare` command
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -102,7 +98,7 @@ prep = json.loads((WORK / "prepared/prepared.json").read_text())
 print("top-level keys:", sorted(prep)[:8])
 ```
 
-## Step 2: train
+## 3.2 The `train` command
 
 ```json
 {
@@ -143,7 +139,7 @@ Everything not named in that config is a default, and each one is replaceable:
 | optimizer | Adam, lr 1e-3, gradient clipping at norm 1000 | [`build_optimizer`](../train/train.md) |
 | batching | Full batch, shuffled | `train.batch_size` |
 
-## Step 3: read the output
+## 3.3 Read the output
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -206,7 +202,7 @@ size is not what you think it is, and that is usually a scaling problem, which i
 [Tutorial 4](04_your_first_custom_py.md).
 :::
 
-## Second runs
+## 3.4 Second runs
 
 `--overwrite` is required to reuse an output directory. You will hit this immediately on
 your second run; it is deliberate, so a long training run cannot be silently destroyed.

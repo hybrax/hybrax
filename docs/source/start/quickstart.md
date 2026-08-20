@@ -12,11 +12,8 @@ kernelspec:
 
 # Quickstart
 
-> **In one sentence.** Three commands, two small config files, no Python: train a
-> hybrid model on a dataset that ships with these docs and look at what came out.
->
-> **You need this if** you have never run bp-train. **You can skip it if** you already
-> have a run directory you understand.
+> Three commands, two small config files, no Python: train a hybrid model on a dataset
+> that ships with these docs and look at what came out.
 
 This takes about ten minutes, and you write no code. The point is to see the whole loop
 once, end to end, before learning any of the parts. Loading *your own* data comes next,

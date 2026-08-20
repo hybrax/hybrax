@@ -12,11 +12,7 @@ kernelspec:
 
 # The data model
 
-> **In one sentence.** Which object holds which measurement, and why the split is where
-> it is.
->
-> **You need this if** you are building a dataset and unsure where something goes.
-> **You can skip it if** your data is already in bp-format.
+> Which object holds which measurement, and why the split is where it is.
 
 Exhaustive field lists live in the [API reference](../autoapi/bp_format/dataclasses/index).
 This page is about the *decisions*: the ones that are hard to reverse later.

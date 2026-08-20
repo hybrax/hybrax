@@ -92,9 +92,9 @@ its own category because:
 - **It interacts with the ODE differently:** each feed stream `k` contributes a dilution
   term `(f_k / V) * (C_in[k,i] - c_i)` for every species `i`, and volume itself evolves
   as `dV/dt = sum(f_k)`.
-- **It carries composition metadata:** each `FeedVolumeChange` references a `FeedMedium`
-  defining what enters the reactor; `SampleVolumeChange` removes reactor contents at
-  current concentrations.
+- **It carries composition metadata:** each `Inflow` references a `FeedMedium`
+  defining what enters the reactor; `Outflow` removes reactor contents at current
+  concentrations.
 
 The `Volume` dataclass aggregates `initial_volume` and a dict of `VolumeChange` entries.
 Sign conventions are enforced: feeds are non-negative, samples are non-positive.

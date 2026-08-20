@@ -1,6 +1,6 @@
 """Generate the demo datasets the documentation is written against.
 
-Five datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
+Eight datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
 ``demo_batch``/``demo_fedbatch`` are the site's two-organism spine: one
 bacterial, one mammalian, so every page can pick the shape (batch / fed-batch)
 and flavor (fast, simple / slow, byproduct-forming) that fits what it needs to
@@ -51,14 +51,24 @@ point neither spine shape can carry.
     feeds two coupled derivatives at once: it drains Gln and, in the same
     equation, produces NH4. For ``gallery/glutamine_decay.md``.
 
-All five are simulated on **amounts** and converted to concentrations at the
-end, so volume changes can never silently corrupt a mass balance.
-``demo_glutamine_decay`` is, like ``demo_batch``, a true batch with no volume
-changes at all, so it is simulated directly on concentrations instead.
+``demo_spline_jump``
+    One species, first-order decay, one feed bolus part-way through that jumps
+    mass and volume together. Both phases (before and after the bolus) are
+    closed-form exponential decay at constant volume, so this is the one
+    dataset simulated analytically rather than by RK4: ``ground_truth.json``'s
+    parameters reconstruct the exact dense curve, not an approximation of it.
+    For ``gallery/pseudobatch_splines.md``, which takes 5 measurements
+    straddling the jump and recovers the underlying curve from them.
+
+All datasets but the last are simulated on **amounts** and converted to
+concentrations at the end, so volume changes can never silently corrupt a mass
+balance. ``demo_glutamine_decay`` is, like ``demo_batch``, a true batch with no
+volume changes at all, so it is simulated directly on concentrations instead.
 Substrate uptake is gated by the same Monod term as growth (``demo_batch``/
 ``demo_fedbatch``/``demo_products``) or the surrogate's own glucose-uptake
 term (``demo_ecoli_fba``/``demo_ecoli_blend``), so it tapers at depletion
-rather than being clipped afterwards.
+rather than being clipped afterwards. ``demo_spline_jump`` needs neither: its
+whole point is a closed-form ground truth to fit against.
 
 Run directly to regenerate::
 
@@ -376,18 +386,18 @@ def build_demo_fedbatch() -> None:
     v_in_online = np.interp(online_t, t_grid, sim["v_in"])
 
     volume_changes = {
-        "glucose_feed": bp.FeedVolumeChange(
+        "glucose_feed": bp.Inflow(
             name="glucose_feed", unit="L", is_controlled=True, is_continuous=True,
             values=TimeSeries(times=online_t, values=v_in_online),
             feed_medium=feed_medium,
         ),
-        "glucose_bolus": bp.FeedVolumeChange(
+        "glucose_bolus": bp.Inflow(
             name="glucose_bolus", unit="L", is_controlled=True, is_continuous=False,
             values=TimeSeries(times=FB_BOLUS_TIMES.astype(float),
                               values=np.full(FB_BOLUS_TIMES.shape, FB_BOLUS_VOLUME)),
             feed_medium=feed_medium,
         ),
-        "sampling": bp.SampleVolumeChange(
+        "sampling": bp.Outflow(
             name="sampling", unit="L", is_controlled=True, is_continuous=False,
             # samples are negative by convention; t=0 is not a draw
             values=TimeSeries(times=FB_SAMPLE_TIMES[1:].astype(float),
@@ -932,7 +942,7 @@ def build_demo_optfed() -> None:
 
         v_in_online = np.interp(OPTFED_SAMPLE_TIMES, t_grid, sim["v_in"])
         volume_changes = {
-            "glucose_feed": bp.FeedVolumeChange(
+            "glucose_feed": bp.Inflow(
                 name="glucose_feed", unit="L", is_controlled=True, is_continuous=True,
                 values=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
                                   values=v_in_online.astype(float)),
@@ -1123,6 +1133,120 @@ def build_demo_glutamine_decay() -> None:
     }, indent=2))
 
 
+# ===========================================================================
+# demo_spline_jump
+# ===========================================================================
+# One species, first-order decay (a physical/chemical rate, not growth-linked,
+# so no biomass is needed: biological_ode is supplied explicitly). One feed
+# bolus part-way through jumps mass and volume together. Both phases are
+# closed-form exponential decay at constant volume, so the dense ground truth
+# below is exact, not an RK4 approximation. It is the one dataset in this file
+# built that way, since its whole point is a ground truth to fit against.
+
+SJ_K = 0.15              # 1/h, first-order decay rate
+SJ_V0 = 1.0              # L
+SJ_C0 = 5.0              # g/L
+SJ_T_END = 17.0          # h, matches the last measurement, no unobserved tail
+SJ_T_JUMP = 10.0         # h, when the bolus lands
+SJ_DELTA_V_BOLUS = 0.15  # L
+SJ_C_FEED = 40.0         # g/L
+SJ_SAMPLE_TIMES = np.array([0.0, 4.0, 9.0, 11.0, 17.0])
+
+
+def spline_jump_truth(t) -> np.ndarray:
+    """Exact concentration at time(s) ``t``: closed-form on both sides of the
+    bolus at ``SJ_T_JUMP``. Shared with ``gallery/pseudobatch_splines.md``,
+    which imports this function directly rather than re-deriving the formula.
+    """
+    t = np.asarray(t, dtype=float)
+    m_at_jump = SJ_C0 * SJ_V0 * np.exp(-SJ_K * SJ_T_JUMP)
+    v_after = SJ_V0 + SJ_DELTA_V_BOLUS
+    m_after = m_at_jump + SJ_DELTA_V_BOLUS * SJ_C_FEED
+    pre = SJ_C0 * np.exp(-SJ_K * t)
+    post = (m_after / v_after) * np.exp(-SJ_K * (t - SJ_T_JUMP))
+    return np.where(t < SJ_T_JUMP, pre, post)
+
+
+def build_demo_spline_jump() -> None:
+    out = OUT / "demo_spline_jump"
+    out.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(20260820)
+
+    truth = spline_jump_truth(SJ_SAMPLE_TIMES)
+    meas = _noisy(rng, truth, 0.0)
+    meas[0] = truth[0]   # t=0 measured exactly
+
+    feed_medium = bp.FeedMedium(
+        name="solute_feed", density=1.0, density_unit="kg/L",
+        components={
+            "solute": bp.FeedMediumComponent(
+                name="solute", unit="g/L", concentration=bp.StaticVariable(SJ_C_FEED)),
+            "biomass": bp.FeedMediumComponent(
+                name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
+        },
+    )
+
+    process = bp.BioProcess(
+        metadata=bp.BioProcessMetadata(
+            name="run_1", process_type="fed_batch",
+            notes="Simulated single-species first-order decay with one feed "
+                  "bolus (documentation demo, pseudobatch splines gallery page).",
+        ),
+        time_axis=bp.TimeAxis(unit="h", start=0.0, end=SJ_T_END,
+                              time_reference="inoculation"),
+        volume=bp.Volume(
+            initial_volume=SJ_V0, unit="L",
+            volume_changes={
+                "solute_bolus": bp.Inflow(
+                    name="solute_bolus", unit="L", is_controlled=True,
+                    is_continuous=False,
+                    values=TimeSeries(times=np.array([SJ_T_JUMP]),
+                                      values=np.array([SJ_DELTA_V_BOLUS])),
+                    feed_medium=feed_medium,
+                ),
+            },
+        ),
+        reactor_medium=bp.ReactorMedium(
+            name="defined_medium", density=1.0, density_unit="kg/L",
+            components={
+                "solute": bp.ReactorMediumComponent(
+                    name="solute", unit="g/L",
+                    concentration=TimeSeries(times=SJ_SAMPLE_TIMES.astype(float),
+                                             values=meas.astype(float)),
+                    bounds=(0.0, None),
+                ),
+                # A flat, non-dynamic placeholder: bp-format's biomass check
+                # expects a 'biomass' component on every process, even one like
+                # this with no growth at all. It plays no role in the demo.
+                "biomass": bp.ReactorMediumComponent(
+                    name="biomass", unit="g/L",
+                    concentration=TimeSeries(
+                        times=SJ_SAMPLE_TIMES.astype(float),
+                        values=np.full(SJ_SAMPLE_TIMES.shape, 1.0)),
+                    bounds=(0.0, None),
+                ),
+            },
+        ),
+        biological_ode=bp.BiologicalOde(
+            rates={"k_solute": (0.0, None)},
+            derivatives={"solute": "-k_solute * solute", "biomass": "0"},
+        ),
+    )
+
+    collection = bp.BioProcessCollection(
+        case_id="demo_spline_jump",
+        organism="None (a physical decay process, not a cell culture)",
+        citation="Simulated data, bp-docs demo, not a real experiment.",
+        processes={"run_1": process},
+    )
+    bp.serialization.save_process_collection(collection, out / "data.json")
+
+    (out / "ground_truth.json").write_text(json.dumps({
+        "k_solute": SJ_K, "v0": SJ_V0, "c0": SJ_C0, "t_end": SJ_T_END,
+        "t_jump": SJ_T_JUMP, "delta_v_bolus": SJ_DELTA_V_BOLUS, "c_feed": SJ_C_FEED,
+    }, indent=2) + "\n")
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     build_demo_batch()
@@ -1132,6 +1256,7 @@ def main() -> None:
     build_demo_ecoli_blend()
     build_demo_optfed()
     build_demo_glutamine_decay()
+    build_demo_spline_jump()
     print(f"demo datasets written to {OUT}")
 
 

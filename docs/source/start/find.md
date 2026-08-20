@@ -1,10 +1,6 @@
 # Which page do I need?
 
-> **In one sentence.** Every feature in both packages, indexed by the thing you are
-> trying to do.
->
-> **You need this if** you know what you want but not where it lives. **You can skip it
-> if** you are reading the tutorials in order: they cover the common path already.
+> Every feature in both packages, indexed by the thing you are trying to do.
 
 This page is deliberately a lookup table, not a reading order. Nothing here needs to be
 learned; scan for your row.

@@ -11,14 +11,11 @@ kernelspec:
 ---
 
 <!-- LOCK -->
-# Tutorial 2: View your Dataset
+# 2. View your Dataset
 <!-- UNLOCK -->
 
-> **In one sentence.** Before modeling anything, make the package tell you what it
+> Before modeling anything, make the package tell you what it
 > understood from your data.
->
-> **You need this if** you just built a dataset. **You can skip it if** you enjoy
-> debugging a training run instead.
 
 Most bad models come from data that was described slightly wrong, not from a bad
 network. This tutorial is four function calls that catch that early.
@@ -36,7 +33,7 @@ collection = bp.serialization.load_process_collection("../_data/out/demo_batch/d
 process = collection.processes["run_1"]
 ```
 
-## 1. Validate
+## 2.1 Validate
 
 `validate_process` returns `(ok, messages)` and (importantly) **collects every issue
 in one pass** rather than raising on the first one. You get a full report, not a
@@ -68,7 +65,7 @@ The checks that catch real bugs most often:
 | biomass present | Auto-generated dynamics need a biomass component. |
 | additive unit consistency | `biomass - product` where one is `g/L` and the other `mg/L`. |
 
-## 2. Print the structure
+## 2.2 Print the structure
 
 ```{code-cell} ipython3
 bp.print_process_structure(process, verbosity=2)
@@ -76,7 +73,7 @@ bp.print_process_structure(process, verbosity=2)
 
 Raise `verbosity` to 3 for every value; drop to 1 for a one-line-per-object summary.
 
-## 3. Plot it
+## 2.3 Plot a process
 
 ```{code-cell} ipython3
 fig = bp.plot_process(process)
@@ -86,7 +83,7 @@ This needs the plotting extra (`pip install -e "./bp-format[plotting]"`). Look f
 things that are hard to see in a table: a species that never moves, a trace that jumps
 where nothing happened, a run that starts before inoculation.
 
-## 4. See the ODE that was assembled
+## 2.4 Print the ODE
 
 This is the one most people do not know exists, and it is the fastest way to check that
 your description means what you think.

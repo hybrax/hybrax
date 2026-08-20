@@ -12,12 +12,8 @@ kernelspec:
 
 # bp-format guide
 
-> **In one sentence.** bp-format describes a bioprocess run as data, checks that
-> description, and turns it into a differentiable ODE right-hand side.
->
-> **You need this if** you are getting data in, or want to know what the package derived
-> from it. **You can skip it if** you only ever consume datasets someone else built, 
-> though [Validating and inspecting](validate_and_inspect.md) is still worth ten minutes.
+> bp-format describes a bioprocess run as data, checks that description, and turns it
+> into a differentiable ODE right-hand side.
 
 bp-format does **not** train models and does **not** integrate ODEs. It owns the
 description and the physics; solving is [bp-train](../train/index.md)'s job.
@@ -38,7 +34,8 @@ of truth for layout everywhere downstream: bp-train never re-derives it.
 | [Loading and saving](load_and_save.md) | You need the on-disk format, or someone sent you a file. |
 | [Validating and inspecting](validate_and_inspect.md) | Always. Before modeling anything. |
 | [Volume, feeds and events](volume_feeds_events.md) | Your process is not a pure batch. |
-| [Time series and splines](time_series_and_splines.md) | You need continuous interpolation, or fed-batch dilution correction. |
+| [Time series and splines](time_series_and_splines.md) | You need continuous interpolation of a measurement. |
+| [The pseudobatch transform](pseudobatch_transform.md) | Your process has feeds and you need to remove dilution before fitting. |
 | [The Bioprocess ODE](bioprocess_ode.md) | You want to see or change the assembled equations. |
 | [Limits and gotchas](limits_and_gotchas.md) | Something you expected to work does not. |
 | [Further reading](further_reading.md) | You want the exhaustive reference. |
@@ -93,16 +90,3 @@ an amount balance. When something looks wrong, check the volume first.
 - [Concepts and vocabulary](../start/concepts.md), if any term above was unfamiliar.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): the same material as a walkthrough.
 - [API reference](../autoapi/bp_format/index): every signature.
-
-```{toctree}
-:maxdepth: 1
-:hidden:
-data_model
-load_and_save
-validate_and_inspect
-volume_feeds_events
-time_series_and_splines
-bioprocess_ode
-limits_and_gotchas
-further_reading
-```

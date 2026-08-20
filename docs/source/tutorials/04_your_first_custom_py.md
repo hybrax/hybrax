@@ -11,14 +11,11 @@ kernelspec:
 ---
 
 <!-- LOCK -->
-# Tutorial 4: Custom Models
+# 4. Custom Models
 <!-- UNLOCK -->
 
-> **In one sentence.** Replace the two defaults that matter most (the network that
-> predicts rates, and the scaling) and measure what it bought you.
->
-> **You need this if** you want to control the model. **You can skip it if** you are only
-> ever going to use the defaults, which on real data you are not.
+> Replace the two defaults that matter most (the network that predicts rates, and the
+> scaling) and measure what it bought you.
 
 Everything you customise in bp-train lives in one optional file, `custom.py`. bp-train
 looks in it for functions with specific names; anything it does not find falls back to a

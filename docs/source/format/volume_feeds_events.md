@@ -12,11 +12,8 @@ kernelspec:
 
 # Volume, feeds and events
 
-> **In one sentence.** Everything that moves liquid, and why volume is its own category
-> rather than a state or a control.
->
-> **You need this if** your process is not a pure batch. **You can skip it if** nothing
-> entered or left the vessel, but read the last section anyway, because sampling counts.
+> Everything that moves liquid, and why volume is its own category rather than a state
+> or a control. Read the last section even for a pure batch: sampling counts too.
 
 This is where most real datasets go wrong, and where bp-format saves you the most work.
 
@@ -49,9 +46,9 @@ for name, vc in process.volume.volume_changes.items():
 
 | | Type | `is_continuous` | Values are |
 |---|---|---|---|
-| Pump running | `FeedVolumeChange` | `True` | a **cumulative volume** trace |
-| Bolus | `FeedVolumeChange` | `False` | one **signed delta per event** |
-| Sample draw | `SampleVolumeChange` | `False` | one **negative delta per event** |
+| Pump running | `Inflow` | `True` | a **cumulative volume** trace |
+| Bolus | `Inflow` | `False` | one **signed delta per event** |
+| Sample draw | `Outflow` | `False` | one **negative delta per event** |
 
 Two rules that catch most import bugs:
 
@@ -77,7 +74,7 @@ print("sample deltas:", np.asarray(sampling.values.values)[:3], "...")
 
 ## Feed composition
 
-Every `FeedVolumeChange` carries a `FeedMedium`. This is chemistry, not decoration: it is
+Every `Inflow` carries a `FeedMedium`. This is chemistry, not decoration: it is
 what makes the difference between "add 100 mL" and "add 100 mL containing 40 g glucose".
 
 ```{code-cell} ipython3
@@ -162,7 +159,7 @@ anything.
 
 - **Continuous feed values must be cumulative and non-decreasing.** A trace that dips
   implies negative flow.
-- **A `FeedVolumeChange` with no `feed_medium`** raises when the process ordering is
+- **An `Inflow` with no `feed_medium`** raises when the process ordering is
   built.
 - **A feed naming a species that is not in `reactor_medium.components`** also raises: 
   bp-format will not invent a state for it.

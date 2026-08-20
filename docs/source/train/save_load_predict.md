@@ -1,11 +1,7 @@
 # Saving, loading and predicting
 
-> **In one sentence.** Only the trainable parameters are saved; everything else is rebuilt
->, which is what makes run directories portable, and what makes one loading function
-> dangerous.
->
-> **You need this if** you are reloading models, resuming runs, or moving results between
-> machines. **You can skip it if** you only ever look at the plots.
+> Only the trainable parameters are saved; everything else is rebuilt, which is what
+> makes run directories portable, and what makes one loading function dangerous.
 
 ## What is on disk
 

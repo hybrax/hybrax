@@ -1,12 +1,8 @@
 # Scaling
 
-> **In one sentence.** One number per semantic axis that makes every quantity in the
-> solve roughly 1, which is the difference between a model that trains and one that
-> thrashes.
->
-> **You need this if** you are training on real data. **You can skip it if**: you should
-> not. This hook is optional and silent, and it is the most consequential thing you can
-> add.
+> One number per semantic axis that makes every quantity in the solve roughly 1, which
+> is the difference between a model that trains and one that thrashes. This hook is
+> optional and silent, and it is the most consequential thing you can add.
 
 ## The problem
 

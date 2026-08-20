@@ -1,10 +1,8 @@
 # bp-train guide
 
-> **In one sentence.** bp-train takes a bp-format dataset, lets you plug in a model for
-> the biology, and fits it by differentiating through an ODE solve.
->
-> **You need this if** you want to fit anything. **You can skip it if** you only handle
-> data, that is [bp-format](../format/index.md).
+> bp-train takes a bp-format dataset, lets you plug in a model for the biology, and fits
+> it by differentiating through an ODE solve. For the data side, see
+> [bp-format](../format/index.md).
 
 ## The pipeline
 

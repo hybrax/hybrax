@@ -12,11 +12,7 @@ kernelspec:
 
 # Loading and saving
 
-> **In one sentence.** Two functions, one JSON format that mirrors the dataclasses
-> exactly.
->
-> **You need this if** you are reading or writing dataset files. **You can skip it if**
-> you build processes in memory and never persist them.
+> Two functions, one JSON format that mirrors the dataclasses exactly.
 
 ## The two functions
 
@@ -31,7 +27,7 @@ print(collection.case_id, "-", list(collection.processes))
 
 `save_process_collection(coll, path)` / `load_process_collection(path)` are the whole
 API: one container, `BioProcessCollection`. `case_id` / `organism` / `citation` are
-optional fields on it, not a separate stricter type — set all three (non-empty) and
+optional fields on it, not a separate stricter type. Set all three (non-empty) and
 it's a full case study; leave them `None` (the default) for raw or intermediate data.
 Both shapes round-trip through the same two functions.
 
@@ -65,7 +61,7 @@ print(json.dumps({k: (v if k != "values" else "...") for k, v in ts.items()},
 ```
 
 **Unions carry a `type` discriminator.** `"type": "TimeSeries"` vs `"StaticVariable"`,
-and `"FeedVolumeChange"` vs `"SampleVolumeChange"`:
+and `"Inflow"` vs `"Outflow"`:
 
 ```{code-cell} ipython3
 :tags: [remove-input]
