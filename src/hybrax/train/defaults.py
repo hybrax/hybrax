@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from bp_format.dataclasses import BioProcess, BioProcessCollection
+from bp_format.mechanistic import RhsOde
 
 from .model_api import (
     LinearScaler,
@@ -18,6 +18,7 @@ from .model_api import (
     trainable_field,
 )
 from .run_config import RunConfig
+from .runtime_context import rhs_ode_from_training_parents
 
 
 def default_transform_process_collection(collection, config: RunConfig):
@@ -30,7 +31,7 @@ def default_transform_process_collection(collection, config: RunConfig):
     if not isinstance(rename_map, dict):
         raise TypeError("process_rename_map must be a dict from old name to new name")
 
-    renamed_processes: dict[str, Any] = {}
+    renamed_processes: dict[str, BioProcess] = {}
     for process_name, process in collection.processes.items():
         new_name = process_name
         if process_name in rename_map:
@@ -54,7 +55,8 @@ class DefaultStatefulReactionModule(UserReactionModule):
 
     gru_cell: eqx.nn.GRUCell = trainable_field()
     rate_head: eqx.nn.Linear = trainable_field()
-    feed_head: eqx.nn.Linear | None = trainable_field()
+    inflow_head: eqx.nn.Linear | None = trainable_field()
+    outflow_head: eqx.nn.Linear | None = trainable_field()
 
     def __init__(self, *, key: jax.Array, n_latent: int, **scale_kwargs):
         if n_latent <= 0:
@@ -68,17 +70,21 @@ class DefaultStatefulReactionModule(UserReactionModule):
             "SCALE_latent": jnp.ones(n_latent, dtype=jnp.float64),
         }
         super().__init__(**scale_kwargs)
-        key_gru, key_rate, key_feed = jax.random.split(key, 3)
+        key_gru, key_rate, key_inflow, key_outflow = jax.random.split(key, 4)
         gru_key, gru_init_key = jax.random.split(key_gru)
         rate_key, rate_init_key = jax.random.split(key_rate)
-        feed_key, feed_init_key = jax.random.split(key_feed)
+        inflow_key, inflow_init_key = jax.random.split(key_inflow)
+        outflow_key, outflow_init_key = jax.random.split(key_outflow)
         n_input = (
             self.n_modeled_RMCs
             + self.n_modeled_PVs
             + 1  # V
-            + self.n_modeled_FVCs
-            + self.n_controlled_FVCs  # controlled-FVC cumulatives
-            + self.n_controlled_FVCs  # controlled-FVC rates
+            + self.n_modeled_Inflows
+            + self.n_modeled_Outflows
+            + self.n_controlled_Inflows  # controlled-Inflow cumulatives
+            + self.n_controlled_Inflows  # controlled-Inflow rates
+            + self.n_controlled_Outflows  # controlled-Outflow cumulatives
+            + self.n_controlled_Outflows  # controlled-Outflow rates
             + self.n_controlled_PVs
         )
         self.gru_cell = eqx.nn.GRUCell(
@@ -129,28 +135,51 @@ class DefaultStatefulReactionModule(UserReactionModule):
             self.rate_head,
             (rate_weight, jnp.zeros_like(self.rate_head.bias)),
         )
-        self.feed_head = (
+        self.inflow_head = (
             eqx.nn.Linear(
                 in_features=n_readout,
-                out_features=self.n_modeled_FVCs,
-                key=feed_key,
+                out_features=self.n_modeled_Inflows,
+                key=inflow_key,
             )
-            if self.n_modeled_FVCs
+            if self.n_modeled_Inflows
             else None
         )
-        if self.feed_head is not None:
-            feed_weight = 0.01 * glorot_init(
-                feed_init_key,
-                self.feed_head.weight.shape,
-                self.feed_head.weight.dtype,
+        if self.inflow_head is not None:
+            inflow_weight = 0.01 * glorot_init(
+                inflow_init_key,
+                self.inflow_head.weight.shape,
+                self.inflow_head.weight.dtype,
             )
-            feed_bias = jnp.zeros_like(self.feed_head.bias) + jnp.log(
-                jnp.expm1(jnp.asarray(0.01, dtype=self.feed_head.bias.dtype))
+            inflow_bias = jnp.zeros_like(self.inflow_head.bias) + jnp.log(
+                jnp.expm1(jnp.asarray(0.01, dtype=self.inflow_head.bias.dtype))
             )
-            self.feed_head = eqx.tree_at(
+            self.inflow_head = eqx.tree_at(
                 lambda head: (head.weight, head.bias),
-                self.feed_head,
-                (feed_weight, feed_bias),
+                self.inflow_head,
+                (inflow_weight, inflow_bias),
+            )
+        self.outflow_head = (
+            eqx.nn.Linear(
+                in_features=n_readout,
+                out_features=self.n_modeled_Outflows,
+                key=outflow_key,
+            )
+            if self.n_modeled_Outflows
+            else None
+        )
+        if self.outflow_head is not None:
+            outflow_weight = 0.01 * glorot_init(
+                outflow_init_key,
+                self.outflow_head.weight.shape,
+                self.outflow_head.weight.dtype,
+            )
+            outflow_bias = jnp.zeros_like(self.outflow_head.bias) + jnp.log(
+                jnp.expm1(jnp.asarray(0.01, dtype=self.outflow_head.bias.dtype))
+            )
+            self.outflow_head = eqx.tree_at(
+                lambda head: (head.weight, head.bias),
+                self.outflow_head,
+                (outflow_weight, outflow_bias),
             )
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
@@ -161,22 +190,30 @@ class DefaultStatefulReactionModule(UserReactionModule):
                 inputs.SCL_modeled_RMCs,
                 inputs.SCL_modeled_PVs,
                 jnp.atleast_1d(inputs.SCL_modeled_V),
-                inputs.SCL_modeled_FVCs_cumulative,
-                inputs.SCL_controlled_FVCs_cumulative,
-                inputs.SCL_controlled_FVCs_rates,
+                inputs.SCL_modeled_Inflows_cumulative,
+                inputs.SCL_modeled_Outflows_cumulative,
+                inputs.SCL_controlled_Inflows_cumulative,
+                inputs.SCL_controlled_Inflows_rates,
+                inputs.SCL_controlled_Outflows_cumulative,
+                inputs.SCL_controlled_Outflows_rates,
                 inputs.SCL_controlled_PVs,
             ]
         )
         dh_dt = self.gru_cell(cell_input, h) - h
         readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
         bio_rates = jnp.asarray(self.rate_head(readout), dtype=h.dtype)
-        if self.feed_head is None:
-            feed_rates = jnp.zeros((0,), dtype=h.dtype)
+        if self.inflow_head is None:
+            inflow_rates = jnp.zeros((0,), dtype=h.dtype)
         else:
-            feed_rates = jax.nn.softplus(self.feed_head(readout)).astype(h.dtype)
+            inflow_rates = jax.nn.softplus(self.inflow_head(readout)).astype(h.dtype)
+        if self.outflow_head is None:
+            outflow_rates = jnp.zeros((0,), dtype=h.dtype)
+        else:
+            outflow_rates = -jax.nn.softplus(self.outflow_head(readout)).astype(h.dtype)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=bio_rates,
-            SCL_modeled_FVCs_rates=feed_rates,
+            SCL_modeled_Inflows_rates=inflow_rates,
+            SCL_modeled_Outflows_rates=outflow_rates,
             SCL_latent_derivative=dh_dt,
         )
 
@@ -186,8 +223,8 @@ class DefaultReactionModule(UserReactionModule):
 
     Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_<pv>``
     PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
-    zero-valued modeled VC rates. Uses tanh/Glorot through three hidden layers,
-    or SiLU/He for deeper networks. The rate head starts near zero.
+    zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
+    networks and SiLU/He for deeper networks. The rate head starts near zero.
     """
 
     model: eqx.nn.MLP = trainable_field()
@@ -253,7 +290,10 @@ class DefaultReactionModule(UserReactionModule):
         )
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=SCL_modeled_BiologicalOde_rates,
-            SCL_modeled_FVCs_rates=jnp.zeros((self.n_modeled_FVCs,), dtype=dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((self.n_modeled_Inflows,), dtype=dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(
+                (self.n_modeled_Outflows,), dtype=dtype
+            ),
         )
 
 
@@ -263,8 +303,8 @@ def default_build_reaction_module(
     process_names: list[str],
     config: RunConfig,
     seed: int,
-    runtime_context: Any,
-    **scale_kwargs: Any,
+    training_parent_collection: BioProcessCollection,
+    **scale_kwargs: Scaler,
 ) -> UserReactionModule:
     """Default train hook for reaction-module construction.
 
@@ -279,13 +319,18 @@ def default_build_reaction_module(
     del config, target_names
     if not process_names:
         raise ValueError("default_build_reaction_module requires at least one process")
-    rhs_ode = runtime_context.training_data.rhs_ode
+    rhs_ode = rhs_ode_from_training_parents(
+        training_parent_collection,
+        empty_message=("default_build_reaction_module requires a training parent"),
+    )
     # Scales are sized by the modeled RMC state slice, not by measured targets:
     # combined/PV target sets have their own SCALE_modeled_PVs axis.
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_rates = len(rhs_ode.name_modeled_rates)
-    n_modeled_FVCs = len(rhs_ode.name_modeled_FVCs)
-    n_controlled_FVCs = len(rhs_ode.name_controlled_FVCs)
+    n_modeled_Inflows = len(rhs_ode.name_modeled_Inflows)
+    n_modeled_Outflows = len(rhs_ode.name_modeled_Outflows)
+    n_controlled_Inflows = len(rhs_ode.name_controlled_Inflows)
+    n_controlled_Outflows = len(rhs_ode.name_controlled_Outflows)
 
     # If no scales provided, fall back to unit scales so the wrapper constructor
     # (which validates shapes) still accepts the module.
@@ -293,8 +338,10 @@ def default_build_reaction_module(
         scale_kwargs = _default_scale_kwargs(
             n_RMCs=n_RMCs,
             n_rates=n_rates,
-            n_modeled_FVCs=n_modeled_FVCs,
-            n_controlled_FVCs=n_controlled_FVCs,
+            n_modeled_Inflows=n_modeled_Inflows,
+            n_modeled_Outflows=n_modeled_Outflows,
+            n_controlled_Inflows=n_controlled_Inflows,
+            n_controlled_Outflows=n_controlled_Outflows,
             rhs_ode=rhs_ode,
         )
 
@@ -350,10 +397,10 @@ def default_build_loss_module(
     process_names: list[str],
     config: RunConfig,
     seed: int,
-    runtime_context: Any,
+    training_parent_collection: BioProcessCollection,
 ) -> UserLossModule:
     """Default train hook for loss-module construction (per-target MSE)."""
-    del process_names, config, seed, runtime_context
+    del process_names, config, seed, training_parent_collection
     return DefaultLossModule(target_names=list(target_names))
 
 
@@ -361,9 +408,11 @@ def _default_scale_kwargs(
     *,
     n_RMCs: int,
     n_rates: int,
-    n_modeled_FVCs: int,
-    n_controlled_FVCs: int,
-    rhs_ode: Any,
+    n_modeled_Inflows: int,
+    n_modeled_Outflows: int,
+    n_controlled_Inflows: int,
+    n_controlled_Outflows: int,
+    rhs_ode: RhsOde,
 ) -> dict[str, Scaler]:
     """All-ones defaults for every SCALE_* axis, as ``LinearScaler``.
 
@@ -377,29 +426,41 @@ def _default_scale_kwargs(
             jnp.ones(len(rhs_ode.name_modeled_PVs), dtype=jnp.float64)
         ),
         "SCALE_V_in_cumulative": LinearScaler(one),
-        "SCALE_modeled_FVCs_cumulative": LinearScaler(
-            jnp.ones(n_modeled_FVCs, dtype=jnp.float64)
+        "SCALE_modeled_Inflows_cumulative": LinearScaler(
+            jnp.ones(n_modeled_Inflows, dtype=jnp.float64)
         ),
-        "SCALE_controlled_FVCs_cumulative": LinearScaler(
-            jnp.ones(n_controlled_FVCs, dtype=jnp.float64)
+        "SCALE_modeled_Outflows_cumulative": LinearScaler(
+            jnp.ones(n_modeled_Outflows, dtype=jnp.float64)
         ),
-        "SCALE_controlled_FVCs_rates": LinearScaler(
-            jnp.ones(n_controlled_FVCs, dtype=jnp.float64)
+        "SCALE_controlled_Inflows_cumulative": LinearScaler(
+            jnp.ones(n_controlled_Inflows, dtype=jnp.float64)
         ),
-        "SCALE_controlled_FVCs_Cin": LinearScaler(
-            jnp.ones((n_controlled_FVCs, n_RMCs), dtype=jnp.float64)
+        "SCALE_controlled_Inflows_rates": LinearScaler(
+            jnp.ones(n_controlled_Inflows, dtype=jnp.float64)
+        ),
+        "SCALE_controlled_Inflows_Cin": LinearScaler(
+            jnp.ones((n_controlled_Inflows, n_RMCs), dtype=jnp.float64)
+        ),
+        "SCALE_controlled_Outflows_cumulative": LinearScaler(
+            jnp.ones(n_controlled_Outflows, dtype=jnp.float64)
+        ),
+        "SCALE_controlled_Outflows_rates": LinearScaler(
+            jnp.ones(n_controlled_Outflows, dtype=jnp.float64)
         ),
         "SCALE_controlled_PVs": LinearScaler(
             jnp.ones(len(rhs_ode.name_controlled_PVs), dtype=jnp.float64)
         ),
-        "SCALE_modeled_FVCs_Cin": LinearScaler(
-            jnp.ones((n_modeled_FVCs, n_RMCs), dtype=jnp.float64)
+        "SCALE_modeled_Inflows_Cin": LinearScaler(
+            jnp.ones((n_modeled_Inflows, n_RMCs), dtype=jnp.float64)
         ),
         "SCALE_modeled_BiologicalOde_rates": LinearScaler(
             jnp.ones(n_rates, dtype=jnp.float64)
         ),
-        "SCALE_modeled_FVCs_rates": LinearScaler(
-            jnp.ones(n_modeled_FVCs, dtype=jnp.float64)
+        "SCALE_modeled_Inflows_rates": LinearScaler(
+            jnp.ones(n_modeled_Inflows, dtype=jnp.float64)
+        ),
+        "SCALE_modeled_Outflows_rates": LinearScaler(
+            jnp.ones(n_modeled_Outflows, dtype=jnp.float64)
         ),
         "SCALE_latent": LinearScaler(jnp.zeros(0, dtype=jnp.float64)),
     }

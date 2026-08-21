@@ -58,14 +58,15 @@ adapter is invoked separately before the hooks. Full per-hook write-ups
 | [`transform_process_collection`](02_cli_and_config.md#transform_process_collection) | prepare | `(collection, config) -> collection` | rename map |
 | [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(*, parent_name, child_name, state_name, times, base_values, augmented_values, config) -> ndarray` | none |
 | [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(runtime_data, target_names, config) -> EstimatedScales` | none (ones) |
-| [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, runtime_context, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
-| [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, runtime_context) -> UserLossModule` | `DefaultLossModule` |
+| [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, training_parent_collection, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
+| [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, training_parent_collection) -> UserLossModule` | `DefaultLossModule` |
 | [`build_learning_rate`](02_cli_and_config.md#build_learning_rate) | train | `(custom_cfg, train_cfg, total_updates) -> float \| optax.Schedule` | none |
 | [`build_optimizer`](02_cli_and_config.md#build_optimizer) | train | `(custom_cfg, train_cfg) -> optax.GradientTransformation` | none |
 
 `runtime_data` is a collection-free `RuntimeDataContext` containing the prepared
-training and control stores plus the numeric source traces needed by shipped
-scale hooks. `runtime_context` adds the resolved `EstimatedScales`.
+training and control stores plus the numeric source traces needed by scale hooks.
+Constructor hooks receive only the ordered original parents represented by the
+selected training processes.
 
 The two base classes the `build_*_module` hooks return are documented in
 [04_reaction_and_loss.md](04_reaction_and_loss.md): `UserReactionModule.__call__(t,
@@ -82,26 +83,29 @@ and returns scaled rates. Layout (see
 
 ```
 SCL_state (physical)
- ├─ modeled_RMCs              # species concentrations            SCALE_modeled_RMCs
- ├─ modeled_PVs              # dynamic process-variable states    SCALE_modeled_PVs
- ├─ V_in_cumulative          # scalar cumulative inflow volume    SCALE_V_in_cumulative
- └─ modeled_FVCs_cumulative  # per modeled feed                   SCALE_modeled_FVCs_cumulative
+ ├─ modeled_RMCs                 # species concentrations
+ ├─ modeled_PVs                  # dynamic process-variable states
+ ├─ V_in_cumulative              # scalar cumulative inflow volume
+ ├─ modeled_Inflows_cumulative   # non-negative cumulative inflow
+ └─ modeled_Outflows_cumulative  # non-positive cumulative outflow
 
 SCL_integrated_state (solver)
  ├─ SCL_state
- └─ SCL_latent               # optional module state              SCALE_latent
+ └─ SCL_latent                   # optional module state
 
 SCL_controls (continuous, evaluated at t)
- ├─ controlled_FVCs: cumulative | rates | Cin                     SCALE_controlled_FVCs_*
- ├─ controlled_PVs           # pH, DO, T, …                       SCALE_controlled_PVs
- └─ modeled_FVCs_Cin         # modeled-feed composition           SCALE_modeled_FVCs_Cin
+ ├─ controlled Inflows: cumulative | rates | Cin (feed-media composition)
+ ├─ controlled Outflows: cumulative | rates | raw retention (0 = removed,
+ │  1 = retained)
+ └─ controlled PVs: pH, DO, T, …
 
 SCL reaction outputs
- ├─ modeled_BiologicalOde_rates                                   SCALE_modeled_BiologicalOde_rates
- ├─ modeled_FVCs_rates (≥ 0)                                      SCALE_modeled_FVCs_rates
- └─ latent_derivative                                               SCL_latent_derivative
+ ├─ modeled_BiologicalOde_rates
+ ├─ modeled_Inflows_rates (≥ 0)
+ ├─ modeled_Outflows_rates (≤ 0)
+ └─ latent_derivative
 
-discrete events (applied as state jumps during the solve — not read by the module)
+Discrete events (applied as state jumps during the solve — not read by module)
  └─ controlled boluses & samples # mass-balance jumps at known event times
 ```
 

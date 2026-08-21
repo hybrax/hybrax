@@ -14,10 +14,12 @@ from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    FeedMedium,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -679,7 +681,7 @@ def test_augmentation_passes_sampling_times_to_child_grid_retry():
     assert augmentation is not None
     first = augmentation_module._child_grid(augmentation, "p1", 0, 0.0, 4.0)
     sampling_time = first[10] - 2e-4
-    collection.processes["p1"].volume.volume_changes["sample"] = SampleVolumeChange(
+    collection.processes["p1"].volume.volume_changes["sample"] = Outflow(
         name="sample",
         unit="L",
         is_controlled=False,
@@ -790,12 +792,28 @@ def test_late_child_failure_leaves_collection_unchanged(monkeypatch):
 def test_children_preserve_physical_structure_without_sharing_objects():
     collection = _collection()
     parent = collection.processes["p1"]
-    parent.volume.volume_changes["sample"] = SampleVolumeChange(
+    parent.volume.volume_changes["sample"] = Outflow(
         name="sample",
         unit="L",
         is_controlled=False,
         is_continuous=False,
         values=TimeSeries(times=[2.0], values=[-0.1]),
+    )
+    parent.volume.volume_changes["harvest"] = Outflow(
+        name="harvest",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 4.0], values=[0.0, -0.1]),
+        retention={"biomass": 0.25},
+    )
+    parent.volume.volume_changes["feed"] = Inflow(
+        name="feed",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 4.0], values=[0.0, 0.2]),
+        feed_medium=FeedMedium(name="feed", density=1.0, density_unit="kg/L"),
     )
     parent_biomass = np.asarray(_state_series(parent, "biomass").values).copy()
 
@@ -810,6 +828,8 @@ def test_children_preserve_physical_structure_without_sharing_objects():
             child.volume.volume_changes["sample"].values.values,
             parent.volume.volume_changes["sample"].values.values,
         )
+        assert child.volume.volume_changes["harvest"].retention == {"biomass": 0.25}
+        assert child.volume.volume_changes["feed"].feed_medium.name == "feed"
         assert (
             child.process_variables["temperature"]
             is not (parent.process_variables["temperature"])

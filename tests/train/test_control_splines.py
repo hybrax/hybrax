@@ -1,4 +1,4 @@
-"""Direct JAX spline controls, dense fallbacks, and prepare diagnostics."""
+"""Direct JAX spline controls, linear controls, and prepare diagnostics."""
 
 from __future__ import annotations
 
@@ -76,6 +76,13 @@ def test_raw_control_keeps_linear_path():
     assert src.metadata.get("source") == "timeseries"
 
 
+def test_continuous_control_rejects_single_point_timeseries():
+    process = _process_with_ph(TimeSeries(times=[0.0], values=[7.0]))
+
+    with pytest.raises(ValueError, match="must contain at least two points"):
+        select_control_sources(process)
+
+
 def test_spline_control_builds_store_and_evaluates():
     fitted = fit_timeseries_spline(_noisy_ph(), smoothing_s=0.5)
     store = ControlsStore.from_collection(
@@ -138,7 +145,7 @@ def test_direct_splines_rebase_different_grids_and_match_bp_format():
     ts = jnp.asarray([-0.2, 0.0, 0.4, 0.7, 1.0, 1.2])
 
     assert controls.spline_indices == (0, 1)
-    assert controls.fallback_indices == ()
+    assert controls.linear_indices == ()
     finite_breaks = np.asarray(controls.spline_breaks)
     np.testing.assert_array_equal(
         finite_breaks[np.isfinite(finite_breaks)], [0.0, 0.4, 0.7, 1.0]
@@ -184,7 +191,7 @@ def test_mixed_direct_raw_static_controls_preserve_order_and_batch_rows():
     controls = store.get_controls("p2")
 
     assert controls.spline_indices == (0,)
-    assert controls.fallback_indices == (1, 2)
+    assert controls.linear_indices == (1, 2)
     assert store.spline_coeffs.shape[2] == 1
     assert store.control_values.shape[2] == 2
     np.testing.assert_allclose(
@@ -212,7 +219,7 @@ def test_mixed_direct_raw_static_controls_preserve_order_and_batch_rows():
     )
 
 
-def test_control_is_direct_only_when_spline_backed_in_every_process():
+def test_control_rejects_mixed_spline_availability_across_processes():
     p1 = _process_with_controls(
         "p1", {"u": ProcessVariable("u", "-", True, _global_cubic([0.0, 1.0]))}
     )
@@ -224,14 +231,200 @@ def test_control_is_direct_only_when_spline_backed_in_every_process():
             )
         },
     )
-    store = ControlsStore.from_collection(
-        BioProcessCollection(processes={"p1": p1, "p2": p2})
+
+    with pytest.raises(
+        ValueError,
+        match="'u' must be spline-backed in every process or no process",
+    ) as exc_info:
+        ControlsStore.from_collection(
+            BioProcessCollection(processes={"p1": p1, "p2": p2})
+        )
+
+    assert "spline-backed in ['p1'], but not ['p2']" in str(exc_info.value)
+
+
+def test_control_rejects_mixed_raw_and_spline_continuity_sides():
+    process = _process_with_controls(
+        "p1",
+        {
+            "raw": ProcessVariable(
+                "raw",
+                "-",
+                True,
+                TimeSeries(
+                    times=[0.0, 1.0],
+                    values=[0.0, 1.0],
+                    continuity_side="left",
+                ),
+            ),
+            "spline": ProcessVariable(
+                "spline",
+                "-",
+                True,
+                _global_cubic([0.0, 1.0], side="right"),
+            ),
+        },
     )
 
-    assert store.spline_indices == ()
-    assert store.fallback_indices == (0,)
-    assert store.spline_coeffs.shape == (2, 0, 0, 4)
-    assert store.control_values.shape[-1] == 1
+    with pytest.raises(
+        ValueError,
+        match="all time-varying controls must use one continuity side",
+    ):
+        ControlsStore.from_collection(BioProcessCollection(processes={"p1": process}))
+
+
+def test_control_rejects_mixed_spline_continuity_across_processes():
+    processes = {
+        name: _process_with_controls(
+            name,
+            {
+                "u": ProcessVariable(
+                    "u", "-", True, _global_cubic([0.0, 1.0], side=side)
+                )
+            },
+        )
+        for name, side in (("p1", "left"), ("p2", "right"))
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="all time-varying controls must use one continuity side",
+    ) as exc_info:
+        ControlsStore.from_collection(BioProcessCollection(processes=processes))
+
+    assert "'u': {'left': 'p1', 'right': 'p2'}" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("side", "expected_rates"),
+    [("left", [1.0, 1.0, 2.0]), ("right", [1.0, 2.0, 2.0])],
+)
+def test_raw_control_values_and_rates_at_knot_follow_continuity_side(
+    side, expected_rates
+):
+    process = _process_with_ph(
+        TimeSeries(
+            times=[0.0, 1.0, 2.0],
+            values=[0.0, 1.0, 3.0],
+            continuity_side=side,
+        )
+    )
+    process.time_axis.end = 2.0
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+    ts = jnp.asarray([0.5, 1.0, 1.5])
+
+    np.testing.assert_allclose(
+        controls.eval_controlled_PVs(ts, None)[:, 0], [0.5, 1.0, 2.0]
+    )
+    np.testing.assert_allclose(controls._eval_derivatives(ts)[:, 0], expected_rates)
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_raw_control_rate_uses_in_domain_interval_at_support_endpoints(side):
+    process = _process_with_ph(
+        TimeSeries(
+            times=[2.0, 5.0, 8.0],
+            values=[0.0, 3.0, 9.0],
+            continuity_side=side,
+        )
+    )
+    process.time_axis.end = 10.0
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+
+    controls.validate_support(2.0, 8.0)
+    np.testing.assert_allclose(
+        controls._eval_derivatives(jnp.asarray([2.0, 8.0]))[:, 0],
+        [1.0, 2.0],
+    )
+
+
+def test_linear_control_padding_does_not_change_active_process():
+    short = _process_with_controls(
+        "short",
+        {
+            "u": ProcessVariable(
+                "u",
+                "-",
+                True,
+                TimeSeries(times=[0.0, 1.0, 2.0], values=[0.0, 1.0, 3.0]),
+            )
+        },
+    )
+    short.time_axis.end = 2.0
+    long = _process_with_controls(
+        "long",
+        {
+            "u": ProcessVariable(
+                "u",
+                "-",
+                True,
+                TimeSeries(
+                    times=[0.0, 0.25, 0.5, 1.0, 1.5, 2.0],
+                    values=[0.0, 0.25, 0.5, 1.0, 2.0, 3.0],
+                ),
+            )
+        },
+    )
+    long.time_axis.end = 2.0
+    alone = ControlsStore.from_collection(
+        BioProcessCollection(processes={"short": short})
+    ).get_controls("short")
+    padded_store = ControlsStore.from_collection(
+        BioProcessCollection(processes={"short": short, "long": long})
+    )
+    padded = padded_store.gather_batch(jnp.asarray([0]))
+    ts = jnp.asarray([0.5, 1.0, 1.5, 2.0])
+
+    np.testing.assert_allclose(
+        padded.eval_controlled_PVs(0, ts, None),
+        alone.eval_controlled_PVs(ts, None),
+    )
+    np.testing.assert_allclose(
+        padded._eval_derivatives(0, ts),
+        alone._eval_derivatives(ts),
+    )
+
+
+def test_static_control_is_unbounded_and_has_zero_rate():
+    process = _process_with_ph(StaticVariable(7.0))
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+    ts = jnp.asarray([-1.0e6, 0.5, 1.0e6])
+
+    controls.validate_support(-1.0e6, 1.0e6)
+    assert controls.control_supports == {"pH": (-np.inf, np.inf)}
+    np.testing.assert_allclose(controls.eval_controlled_PVs(ts, None)[:, 0], 7.0)
+    np.testing.assert_allclose(controls._eval_derivatives(ts)[:, 0], 0.0)
+
+
+def test_control_support_validation_allows_float32_endpoint_roundoff():
+    rounded_end = float(np.float32(1000.1))
+    process = _process_with_ph(
+        TimeSeries(
+            times=np.asarray([1000.0, rounded_end], dtype=np.float64),
+            values=[6.9, 7.1],
+        )
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+
+    controls.validate_support(1000.0, 1000.1)
+    with pytest.raises(
+        ValueError,
+        match=r"representation='raw'.*violated_side='left'",
+    ):
+        controls.validate_support(999.9, 1000.1)
+    with pytest.raises(
+        ValueError,
+        match=r"representation='raw'.*violated_side='right'",
+    ):
+        controls.validate_support(1000.0, 1000.11)
 
 
 def test_no_spline_store_has_zero_width_direct_payload():
@@ -263,28 +456,11 @@ def test_direct_spline_continuity_side_and_extrapolation():
         rates = controls._eval_derivatives(jnp.asarray([-0.5, 0.5, 1.5]))
         np.testing.assert_allclose(values[:, 0], [-0.5, expected_at_knot[0], 12.0])
         np.testing.assert_allclose(rates[:, 0], [1.0, expected_at_knot[1], 2.0])
-
-
-def test_direct_spline_ignores_dense_refinement_config():
-    process = _process_with_controls(
-        "p1", {"u": ProcessVariable("u", "-", True, _global_cubic([0.0, 1.0]))}
-    )
-    collection = BioProcessCollection(processes={"p1": process})
-    coarse = ControlsStore.from_collection(collection)
-    collection.metadata = {
-        "bp-train": {
-            "runtime_controls_config": {
-                "initial_grid_points": 100,
-                "max_rel_error": 1e-12,
-                "max_refinement_rounds": 20,
-            }
-        }
-    }
-    refined = ControlsStore.from_collection(collection)
-
-    np.testing.assert_array_equal(coarse.spline_breaks, refined.spline_breaks)
-    np.testing.assert_array_equal(coarse.spline_coeffs, refined.spline_coeffs)
-    assert coarse.control_values.shape[-1] == refined.control_values.shape[-1] == 0
+        with pytest.raises(
+            ValueError,
+            match=r"representation='spline'.*violated_side='right'",
+        ):
+            controls.validate_support(0.0, 1.1)
 
 
 def test_render_control_diagnostics_writes_png(tmp_path: Path):

@@ -19,7 +19,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -63,7 +63,7 @@ def _make_process(name: str, biomass_values=(1.0, 0.8, 0.64)) -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -515,7 +515,7 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            parent_process_names=("p1", "p2", "p3"),
+            prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
     def fake_evaluate(
@@ -559,6 +559,9 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     collection = _three_parent_collection()
     captured = _patch_worker_internals(monkeypatch)
     cfg = _run_config(seed=10)
+    cfg = cfg.model_copy(
+        update={"output": cfg.output.model_copy(update={"predictions": "parents"})}
+    )
     custom_py = tmp_path / "shared-custom.py"
     custom_py.write_text("VALUE = 1\n")
 
@@ -575,7 +578,7 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert result.fold.test == ("p2",)
     assert captured["process_names"] == ("p1", "p3")
     assert captured["holdout"] == ("p2",)
-    assert captured["prediction_process_names"] == ()
+    assert captured["prediction_process_names"] == ("p1", "p3", "p2")
     assert captured["evaluation_wrapper"] is captured["reloaded_wrapper"]
     assert result.train_result.trained_wrapper is captured["reloaded_wrapper"]
     assert captured["reload_template"] is not result.train_result.trained_wrapper
@@ -587,6 +590,12 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert effective.output.dir == result.fold_dir.resolve()
     document = json.loads((result.fold_dir / "config.json").read_text())
     assert document["status"] == "complete"
+    # Every fold config pins the input its model trained on: the shared
+    # reconstruction path refuses to rebuild a model without it.
+    assert document["inputs"]["prepared_input"] == {
+        "path": str(cfg.data.prepared),
+        "content_hash": serialization.content_hash(collection),
+    }
     assert document["updates_completed"] == 0
     assert document["final_mean_loss"] == 0.5
     bundled = document["config"]
@@ -664,7 +673,7 @@ def test_run_single_fold_respects_data_processes_restriction(monkeypatch, tmp_pa
         )
 
 
-def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
+def test_prepare_single_fold_preserves_prediction_parent_names(monkeypatch, tmp_path):
     def fake_prepare(*_args, config, **_kwargs):
         return PreparedTraining(
             store=object(),
@@ -672,7 +681,7 @@ def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            parent_process_names=("p1", "p2", "p3"),
+            prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
     monkeypatch.setattr(loo_mod, "prepare_training", fake_prepare)
@@ -684,7 +693,7 @@ def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
         fold_idx=1,
     )
 
-    assert prepared.training.parent_process_names == ("p1", "p2", "p3")
+    assert prepared.training.prediction_parent_process_names == ("p1", "p2", "p3")
 
 
 # ---------------------------------------------------------------------------
@@ -694,26 +703,57 @@ def test_prepare_single_fold_preserves_all_parent_names(monkeypatch, tmp_path):
 
 def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path):
     collection = _three_parent_collection()
-    store = object()
-    runtime_data = object()
+    store = SimpleNamespace(rhs_ode=object())
+
+    selected_scale_processes = []
+    validation_calls = []
+
+    class _ProducerData:
+        process_order = ("p1", "p2", "p3")
+        augmentation_parents = (None, None, None)
+
+        def select_training_parents(self, _collection, process_names):
+            selected_scale_processes.append(tuple(process_names))
+            validation_calls.append(("scale", tuple(process_names)))
+            return self
+
+    producer_data = _ProducerData()
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "bp_format.serialization.load_process_collection", lambda _path: collection
     )
+    monkeypatch.setattr(
+        loo_mod,
+        "ensure_prepared_training_semantics",
+        lambda candidate: validation_calls.append(("semantics", candidate)),
+    )
+
+    def validate_parents(candidate):
+        validation_calls.append(("parents", candidate))
+        return True, ()
+
+    monkeypatch.setattr(loo_mod, "validate_augmented_parent_refs", validate_parents)
+
+    def validate_training(candidate, **kwargs):
+        validation_calls.append(("training", candidate, kwargs))
+
+    monkeypatch.setattr(loo_mod, "validate_for_training", validate_training)
     monkeypatch.setattr(
         loo_mod.TrainingDataStore,
         "from_collection",
         lambda *_args, **_kwargs: store,
     )
     monkeypatch.setattr(
-        loo_mod.RuntimeDataContext,
+        loo_mod.ProducerCollectionData,
         "from_collection",
-        lambda *_args: runtime_data,
+        lambda *_args: producer_data,
     )
     monkeypatch.setattr(
         loo_mod, "_resolve_estimated_scales", lambda **_kwargs: object()
     )
-    monkeypatch.setattr(loo_mod, "_rhs_descriptor", lambda *_args: object())
+    monkeypatch.setattr(
+        loo_mod.RhsNames, "from_rhs_ode", classmethod(lambda _cls, _rhs: object())
+    )
     monkeypatch.setattr(loo_mod, "content_hash", lambda _collection: "sha256:data")
 
     def fake_write(path, **kwargs):
@@ -739,11 +779,31 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     )
 
     assert identity == "sha256:artifact"
+    assert validation_calls[0] == ("parents", collection)
+    assert validation_calls[1][0] == "semantics"
+    assert validation_calls[2] == (
+        "training",
+        validation_calls[1][1],
+        {"strict": True, "require_biological_ode": True},
+    )
+    assert [call[0] for call in validation_calls] == [
+        "parents",
+        "semantics",
+        "training",
+        "scale",
+        "scale",
+    ]
+    validated_parent_collection = validation_calls[1][1]
+    assert validated_parent_collection is captured["parent_collection"]
+    assert validated_parent_collection is not collection
+    assert tuple(validated_parent_collection.processes) == ("p1", "p2", "p3")
     folds = tuple(record for record, _scales in captured["folds"])
     assert [(fold.test, fold.train, fold.seed) for fold in folds] == [
         (("p1",), ("p2",), 37),
         (("p2",), ("p1",), 38),
     ]
+    assert selected_scale_processes == [("p2",), ("p1",)]
+    assert tuple(captured["parent_collection"].processes) == ("p1", "p2", "p3")
 
     cfg = cfg.model_copy(
         update={"loo": LooConfig(per_fold_holdout_sets=(HoldoutSet(test=("p3",)),))}
@@ -751,6 +811,30 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="excluded by data.processes"):
         loo_mod.produce_runtime_artifact(
             cfg=cfg,
+            custom_module=None,
+            output_dir=tmp_path,
+            bundle_path=bundle,
+        )
+
+
+def test_produce_runtime_artifact_validates_augmented_parent_refs(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "bp_format.serialization.load_process_collection",
+        lambda _path: _three_parent_collection(),
+    )
+    monkeypatch.setattr(
+        loo_mod,
+        "validate_augmented_parent_refs",
+        lambda _collection: (False, ("bad parent",)),
+    )
+    bundle = tmp_path / "loo-config.json"
+    bundle.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="bad parent"):
+        loo_mod.produce_runtime_artifact(
+            cfg=_run_config(),
             custom_module=None,
             output_dir=tmp_path,
             bundle_path=bundle,
@@ -1125,12 +1209,15 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
         lambda *_args, **_kwargs: SimpleNamespace(
             identity=metadata.identity,
             fold=record,
-            context=object(),
+            training_data=object(),
+            scales=object(),
+            training_parent_collection=object(),
+            augmentation_parents=(None, None, None),
         ),
     )
     captured = {}
 
-    def fake_prepare(_context, *, config, **_kwargs):
+    def fake_prepare(_artifact, *, config, **_kwargs):
         captured["harness_seed"] = config.seed
         return PreparedTraining(
             store=object(),
@@ -1138,10 +1225,10 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
             loss_module=SimpleNamespace(loss_names=("X",)),
             config=config,
             optimizer=object(),
-            parent_process_names=("p1", "p2", "p3"),
+            prediction_parent_process_names=("p1", "p2", "p3"),
         )
 
-    monkeypatch.setattr(loo_mod, "prepare_training_from_runtime_context", fake_prepare)
+    monkeypatch.setattr(loo_mod, "prepare_training_from_runtime_artifact", fake_prepare)
     prepared = loo_mod.prepare_single_fold_from_runtime_artifact(
         cfg=_run_config(seed=10),
         custom_module=None,
@@ -1155,9 +1242,12 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
     assert prepared.fold_seed == 901
     assert prepared.effective_cfg.train.seed == 901
     assert captured["harness_seed"] == 901
-    assert (
-        json.loads(prepared.config_json.read_text())["config"]["train"]["seed"] == 901
-    )
+    fold_document = json.loads(prepared.config_json.read_text())
+    assert fold_document["config"]["train"]["seed"] == 901
+    # The fold inherits the producer-validated prepared hash, so the fold model is
+    # loadable on the shared reconstruction path.
+    recorded_hash = fold_document["inputs"]["prepared_input"]["content_hash"]
+    assert recorded_hash == metadata.identity_inputs["prepared_content_hash"]
 
     monkeypatch.setattr(
         loo_mod, "train_collection", lambda *_args, **_kwargs: _stub_train_result()

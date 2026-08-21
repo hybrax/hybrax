@@ -1,8 +1,7 @@
-"""Strict, collection-free runtime artifact format."""
+"""Strict runtime artifact format."""
 
 from __future__ import annotations
 
-import ast
 import errno
 import hashlib
 import json
@@ -14,21 +13,29 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+import equinox as eqx
+import jax
 import jax.numpy as jnp
 import numpy as np
-import sympy
-from bp_format.mechanistic import RhsOde
+from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
+from bp_format.mechanistic import RhsOde, build_rhs_ode
+from bp_format.validate import validate_biological_ode_equivalence
+from bp_format.serialization import load_process_collection, save_process_collection
 
-from .controls_store import ControlsStore
+from .controls_store import ControlsStore, derive_control_partition
 from .model_api import AffineScaler, EstimatedScales, LinearScaler, Scaler
-from .runtime_context import RuntimeContext, RuntimeDataContext
+from .runtime_context import (
+    canonical_training_parents,
+    original_parent_processes,
+    select_parent_collection,
+)
 from .training_data import TrainingDataStore
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 4
 _CONTROL_ARRAYS = (
     "spline_breaks",
     "spline_coeffs",
-    "dense_grid",
+    "linear_grid",
     "control_values",
     "control_derivatives",
     "jump_ts",
@@ -43,10 +50,14 @@ _CONTROL_ARRAYS = (
     "bolus_event_Cin",
     "bolus_event_mask",
 )
-_RHS_ARRAYS = ("Cin_controlled_FVCs", "Cin_modeled_FVCs")
+_PROCESS_MATRIX_NAMES = (
+    "Cin_controlled_Inflows",
+    "Cin_modeled_Inflows",
+    "retention_controlled_Outflows",
+    "retention_modeled_Outflows",
+)
 _STORE_ARRAYS = (
-    "Cin_controlled_FVCs",
-    "Cin_modeled_FVCs",
+    *_PROCESS_MATRIX_NAMES,
     "t_measured",
     "y_measured",
     "mask_measured",
@@ -54,43 +65,32 @@ _STORE_ARRAYS = (
     "y0_measured",
 )
 _SCALE_NAMES = tuple(field.name for field in fields(EstimatedScales))
-_ALLOWED_FUNCTIONS = {
-    name: getattr(sympy, name)
-    for name in (
-        "Abs",
-        "Max",
-        "Min",
-        "cos",
-        "cosh",
-        "exp",
-        "log",
-        "sign",
-        "sin",
-        "sinh",
-        "sqrt",
-        "tan",
-        "tanh",
-    )
-}
-_VARIADIC_FUNCTIONS = {"Max", "Min"}
-_ALLOWED_BINARY_OPERATORS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)
-_ALLOWED_UNARY_OPERATORS = (ast.UAdd, ast.USub)
 _SLUG_CHARACTERS = frozenset("+-._")
 
 
 @dataclass(frozen=True)
-class RhsOdeDescriptor:
+class RhsNames:
+    """Semantic RHS axes: enough to validate array shapes, never the equations.
+
+    The equations come back from bp-format's `build_rhs_ode()` on a training
+    parent, so no biological expression is ever serialized.
+    """
+
     name_modeled_rates: tuple[str, ...]
     name_modeled_algebraic: tuple[str, ...]
     name_modeled_RMCs: tuple[str, ...]
     name_modeled_PVs: tuple[str, ...]
-    name_modeled_FVCs: tuple[str, ...]
-    name_modeled_SVCs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    name_modeled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
-    name_controlled_FVCs: tuple[str, ...]
-    name_controlled_SVCs: tuple[str, ...]
-    algebraic_expressions: tuple[str, ...]
-    derivative_expressions: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
+
+    @classmethod
+    def from_rhs_ode(cls, rhs_ode) -> RhsNames:
+        return cls(
+            **{field.name: tuple(getattr(rhs_ode, field.name)) for field in fields(cls)}
+        )
 
 
 @dataclass(frozen=True)
@@ -104,9 +104,20 @@ class RuntimeArtifactFold:
 
 @dataclass(frozen=True)
 class RuntimeArtifact:
+    """One fold's loaded runtime inputs.
+
+    `training_parent_collection` is already filtered to the parents represented
+    by `fold.train`; `augmentation_parents` is the canonical full mapping, kept
+    so consumers can re-derive that selection independently instead of trusting
+    the filtered collection's own keys.
+    """
+
     identity: str
-    context: RuntimeContext
+    training_data: TrainingDataStore
+    scales: EstimatedScales
     fold: RuntimeArtifactFold
+    training_parent_collection: BioProcessCollection
+    augmentation_parents: tuple[str | None, ...]
 
 
 @dataclass(frozen=True)
@@ -118,16 +129,6 @@ class RuntimeArtifactMetadata:
     folds: tuple[RuntimeArtifactFold, ...]
 
 
-@dataclass(frozen=True)
-class _ExpressionFunction:
-    """Adapter from SymPy's positional callable to RhsOde's vector callable."""
-
-    function: Any
-
-    def __call__(self, values):
-        return self.function(*values)
-
-
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -136,6 +137,11 @@ def _canonical_json(value: Any) -> bytes:
 
 def _digest(value: bytes) -> str:
     return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _file_digest(path: Path) -> str:
+    with path.open("rb") as file:
+        return "sha256:" + hashlib.file_digest(file, "sha256").hexdigest()
 
 
 def _json_value(value: Any) -> Any:
@@ -154,7 +160,7 @@ def _json_value(value: Any) -> Any:
     raise TypeError(f"manifest metadata has unsupported type {type(value).__name__}")
 
 
-def _array_record(root: Path, name: str, value: Any) -> dict[str, Any]:
+def _array_record(root: Path, name: str, value: jax.Array) -> dict[str, Any]:
     array = np.asarray(value)
     if array.dtype.hasobject or array.dtype.kind not in "biuf?":
         raise TypeError(f"{name}: unsupported dtype {array.dtype}")
@@ -166,11 +172,11 @@ def _array_record(root: Path, name: str, value: Any) -> dict[str, Any]:
         "file": filename,
         "dtype": array.dtype.str,
         "shape": list(array.shape),
-        "sha256": _digest(path.read_bytes()),
+        "sha256": _file_digest(path),
     }
 
 
-def _scaler(value: Scaler, name: str, arrays: dict[str, Any]) -> dict[str, str]:
+def _scaler(value: Scaler, name: str, arrays: dict[str, jax.Array]) -> dict[str, str]:
     if type(value) is LinearScaler:
         arrays[f"scale.{name}.scale"] = value.scale
         return {"kind": "linear", "scale": f"scale.{name}.scale"}
@@ -185,148 +191,65 @@ def _scaler(value: Scaler, name: str, arrays: dict[str, Any]) -> dict[str, str]:
     raise TypeError(f"{name}: unsupported scaler {type(value).__name__}")
 
 
-def _context_arrays(data: RuntimeDataContext) -> dict[str, Any]:
-    store = data.training_data
+def _shared_arrays(store: TrainingDataStore) -> dict[str, jax.Array]:
+    """Every canonical array the artifact stores once for all folds."""
     arrays = {
         f"controls.{name}": getattr(store.controls_store, name)
         for name in _CONTROL_ARRAYS
     }
-    arrays.update({f"rhs.{name}": getattr(store.rhs_ode, name) for name in _RHS_ARRAYS})
     arrays.update({f"store.{name}": getattr(store, name) for name in _STORE_ARRAYS})
-    for kind, rows in (
-        ("modeled", data.modeled_volume_change_traces),
-        ("state", data.raw_state_traces),
-    ):
-        for row, traces in enumerate(rows):
-            for column, (times, values) in enumerate(traces):
-                arrays[f"trace.{kind}.{row}.{column}.times"] = times
-                arrays[f"trace.{kind}.{row}.{column}.values"] = values
-    for row, (times, values) in enumerate(data.sample_volume_event_traces):
-        arrays[f"trace.sample.{row}.times"] = times
-        arrays[f"trace.sample.{row}.values"] = values
     return arrays
 
 
-def _validate_descriptor(descriptor: RhsOdeDescriptor) -> None:
-    groups = tuple(
-        getattr(descriptor, field.name)
-        for field in fields(descriptor)
-        if field.name.startswith("name_")
-    )
+def _validate_rhs_names(names: RhsNames) -> None:
+    groups = tuple(getattr(names, field.name) for field in fields(names))
     if any(
-        not all(isinstance(name, str) and name for name in group) for group in groups
+        not isinstance(group, tuple)
+        or not all(isinstance(name, str) and name for name in group)
+        for group in groups
     ):
         raise ValueError("RhsOde names must be non-empty strings")
-    names = tuple(name for group in groups for name in group)
-    if len(names) != len(set(names)):
+    flat = tuple(name for group in groups for name in group)
+    if len(flat) != len(set(flat)):
         raise ValueError("RhsOde names must be unique")
-    if len(descriptor.algebraic_expressions) != len(descriptor.name_modeled_algebraic):
-        raise ValueError("RhsOde algebraic expression count differs from names")
-    states = descriptor.name_modeled_RMCs + descriptor.name_modeled_PVs
-    if len(descriptor.derivative_expressions) != len(states):
-        raise ValueError("RhsOde derivative expression count differs from states")
-    base = states + descriptor.name_controlled_PVs
-    for index, expression in enumerate(descriptor.algebraic_expressions):
-        _parse_expression(
-            expression,
-            base
-            + descriptor.name_modeled_algebraic[:index]
-            + descriptor.name_modeled_rates,
-        )
-    all_symbols = (
-        base + descriptor.name_modeled_algebraic + descriptor.name_modeled_rates
-    )
-    for expression in descriptor.derivative_expressions:
-        _parse_expression(expression, all_symbols)
 
 
-def _parse_expression(expression: str, names: tuple[str, ...]) -> sympy.Expr:
-    if not isinstance(expression, str):
-        raise ValueError("RhsOde expression must be a string")
-    try:
-        tree = ast.parse(expression, mode="eval")
-    except SyntaxError as error:
-        raise ValueError("invalid RhsOde expression") from error
+def _rhs_names_payload(names: RhsNames) -> dict[str, list[str]]:
+    _validate_rhs_names(names)
+    return {field.name: list(getattr(names, field.name)) for field in fields(names)}
 
-    def validate(node: ast.AST) -> None:
-        if isinstance(node, ast.Expression):
-            validate(node.body)
-        elif isinstance(node, ast.BinOp) and isinstance(
-            node.op, _ALLOWED_BINARY_OPERATORS
-        ):
-            validate(node.left)
-            validate(node.right)
-        elif isinstance(node, ast.UnaryOp) and isinstance(
-            node.op, _ALLOWED_UNARY_OPERATORS
-        ):
-            validate(node.operand)
-        elif isinstance(node, ast.Name):
-            if node.id not in names:
-                raise ValueError("RhsOde expression uses an unknown symbol")
-        elif isinstance(node, ast.Constant):
-            if type(node.value) not in (int, float) or not np.isfinite(node.value):
-                raise ValueError("RhsOde expression has an invalid constant")
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in _ALLOWED_FUNCTIONS
-            and not node.keywords
-        ):
-            if (
-                node.func.id in _VARIADIC_FUNCTIONS
-                and not node.args
-                or node.func.id not in _VARIADIC_FUNCTIONS
-                and len(node.args) != 1
-            ):
-                raise ValueError("RhsOde expression uses an invalid function arity")
-            for argument in node.args:
-                validate(argument)
-        else:
-            raise ValueError("RhsOde expression uses unsupported syntax")
 
-    validate(tree)
-    symbols = {name: sympy.Symbol(name) for name in names}
-    try:
-        parsed = sympy.sympify(
-            expression,
-            locals={**_ALLOWED_FUNCTIONS, **symbols},
-        )
-    except Exception as error:
-        raise ValueError("invalid RhsOde expression") from error
-    if not isinstance(parsed, sympy.Expr) or parsed.free_symbols - set(
-        symbols.values()
+def _rhs_names_from_payload(raw: Any) -> RhsNames:
+    expected = {field.name for field in fields(RhsNames)}
+    if (
+        not isinstance(raw, dict)
+        or set(raw) != expected
+        or any(not isinstance(value, list) for value in raw.values())
     ):
-        raise ValueError("RhsOde expression uses an unknown symbol")
-    if parsed.has(sympy.nan, sympy.oo, -sympy.oo, sympy.zoo, sympy.I):
-        raise ValueError("RhsOde expression must be finite and real")
-    return parsed
-
-
-def _descriptor_payload(descriptor: RhsOdeDescriptor) -> dict[str, list[str]]:
-    _validate_descriptor(descriptor)
-    return {
-        field.name: list(getattr(descriptor, field.name))
-        for field in fields(descriptor)
-    }
+        raise ValueError("invalid RhsOde names")
+    names = RhsNames(**{name: tuple(value) for name, value in raw.items()})
+    _validate_rhs_names(names)
+    return names
 
 
 def _base_metadata(
-    data: RuntimeDataContext,
-    descriptor: RhsOdeDescriptor,
+    store: TrainingDataStore,
+    rhs_names: RhsNames,
+    augmentation_parents: tuple[str | None, ...],
     identity_inputs: dict[str, str],
 ) -> dict[str, Any]:
-    store = data.training_data
     controls = store.controls_store
     return {
         "identity_inputs": _json_value(identity_inputs),
-        "rhs": _descriptor_payload(descriptor),
+        "augmentation_parents": _json_value(augmentation_parents),
+        "rhs": _rhs_names_payload(rhs_names),
         "store": _json_value(
             {
                 "process_order": store.process_order,
                 "name_measured_RMCs": store.name_measured_RMCs,
                 "name_measured_PVs": store.name_measured_PVs,
-                "name_modeled_FVCs": store.name_modeled_FVCs,
-                "name_modeled_SVCs": store.name_modeled_SVCs,
+                "name_modeled_Inflows": store.name_modeled_Inflows,
+                "name_modeled_Outflows": store.name_modeled_Outflows,
             }
         ),
         "controls": _json_value(
@@ -334,28 +257,17 @@ def _base_metadata(
                 name: getattr(controls, name)
                 for name in (
                     "process_order",
-                    "name_controlled_FVCs",
-                    "name_controlled_SVCs",
+                    "name_controlled_Inflows",
+                    "name_controlled_Outflows",
                     "name_controlled_PVs",
                     "shape_metadata",
                     "spline_indices",
-                    "fallback_indices",
-                    "spline_side",
+                    "linear_indices",
+                    "continuity_side",
                     "max_event_gap_fraction",
                     "max_measurements_per_event_gap",
                     "_process_md_by_name",
                 )
-            }
-        ),
-        "runtime": _json_value(
-            {
-                "augmentation_parents": data.augmentation_parents,
-                "process_time_bounds": data.process_time_bounds,
-                "bound_snapshots": data.bound_snapshots,
-                "modeled_trace_widths": [
-                    len(row) for row in data.modeled_volume_change_traces
-                ],
-                "state_trace_widths": [len(row) for row in data.raw_state_traces],
             }
         ),
     }
@@ -400,32 +312,30 @@ def _validate_fold(
         raise ValueError("fold train/test sets leak an augmentation group")
 
 
-def _validate_runtime_data(
-    data: RuntimeDataContext,
-    descriptor: RhsOdeDescriptor,
+def _validate_shared_payload(
+    store: TrainingDataStore,
+    rhs_names: RhsNames,
+    augmentation_parents: tuple[str | None, ...],
 ) -> None:
-    _validate_descriptor(descriptor)
-    rhs = data.training_data.rhs_ode
-    for field in fields(descriptor):
-        if field.name.startswith("name_") and tuple(
-            getattr(rhs, field.name)
-        ) != getattr(descriptor, field.name):
-            raise ValueError(
-                f"RhsOde descriptor {field.name} differs from runtime data"
-            )
-    base = _base_metadata(data, descriptor, {})
-    arrays = {
-        f"shared.{name}": np.asarray(value)
-        for name, value in _context_arrays(data).items()
-    }
-    _validate_semantic_arrays(base, arrays)
+    _validate_rhs_names(rhs_names)
+    if RhsNames.from_rhs_ode(store.rhs_ode) != rhs_names:
+        raise ValueError("RhsOde names differ from the training store")
+    base = _base_metadata(store, rhs_names, augmentation_parents, {})
+    _validate_base_metadata(base)
+    _validate_semantic_arrays(
+        base,
+        {
+            f"shared.{name}": np.asarray(value)
+            for name, value in _shared_arrays(store).items()
+        },
+    )
 
 
-def _validate_scales(scales: EstimatedScales, descriptor: RhsOdeDescriptor) -> None:
+def _validate_scales(scales: EstimatedScales, rhs_names: RhsNames) -> None:
     if not isinstance(scales, EstimatedScales):
         raise TypeError("fold scales must be EstimatedScales")
     _validate_scale_arrays(
-        descriptor,
+        rhs_names,
         {
             name: (
                 np.asarray(getattr(scales, name).scale),
@@ -453,14 +363,18 @@ def _publish_directory(source: Path, destination: Path) -> None:
 def write_runtime_artifact(
     path: str | Path,
     *,
-    runtime_data: RuntimeDataContext,
+    training_data: TrainingDataStore,
+    parent_collection: BioProcessCollection,
+    augmentation_parents: tuple[str | None, ...],
     folds: tuple[tuple[RuntimeArtifactFold, EstimatedScales], ...],
-    rhs_descriptor: RhsOdeDescriptor,
+    rhs_names: RhsNames,
     identity_inputs: dict[str, str] | None = None,
 ) -> str:
     """Atomically write shared runtime data and independently loadable scales."""
-    if not isinstance(runtime_data, RuntimeDataContext):
-        raise TypeError("runtime_data must be a RuntimeDataContext")
+    if not isinstance(training_data, TrainingDataStore):
+        raise TypeError("training_data must be a TrainingDataStore")
+    if not isinstance(rhs_names, RhsNames):
+        raise TypeError("rhs_names must be an RhsNames")
     if not folds:
         raise ValueError("folds must be non-empty")
     if not all(
@@ -475,14 +389,28 @@ def write_runtime_artifact(
         for key, value in identity_inputs.items()
     ):
         raise TypeError("identity_inputs must contain string keys and values")
-    _validate_runtime_data(runtime_data, rhs_descriptor)
+    process_order = tuple(training_data.process_order)
+    augmentation_parents = tuple(augmentation_parents)
+    _validate_shared_payload(training_data, rhs_names, augmentation_parents)
+    expected_parent_names = original_parent_processes(
+        process_order, augmentation_parents
+    )
+    _validate_training_parent_collection_identity(
+        parent_collection, expected_parent_names
+    )
+    _validate_process_matrices(
+        {
+            name: np.asarray(getattr(training_data, name))
+            for name in _PROCESS_MATRIX_NAMES
+        },
+        parent_collection,
+        process_order,
+        augmentation_parents,
+        rhs_names,
+    )
     for fold, scales in folds:
-        _validate_fold(
-            fold,
-            runtime_data.process_order,
-            runtime_data.augmentation_parents,
-        )
-        _validate_scales(scales, rhs_descriptor)
+        _validate_fold(fold, process_order, augmentation_parents)
+        _validate_scales(scales, rhs_names)
     if len({fold.idx for fold in fold_metadata}) != len(fold_metadata) or len(
         {fold.slug for fold in fold_metadata}
     ) != len(fold_metadata):
@@ -493,14 +421,13 @@ def write_runtime_artifact(
     temporary = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
     temporary.mkdir(parents=True)
     try:
-        shared = _context_arrays(runtime_data)
         records = {
             f"shared.{name}": _array_record(temporary, f"shared/{name}", value)
-            for name, value in sorted(shared.items())
+            for name, value in sorted(_shared_arrays(training_data).items())
         }
         fold_records = []
         for fold, estimated_scales in folds:
-            scale_arrays: dict[str, Any] = {}
+            scale_arrays: dict[str, jax.Array] = {}
             scales = {
                 name: _scaler(getattr(estimated_scales, name), name, scale_arrays)
                 for name in _SCALE_NAMES
@@ -514,11 +441,20 @@ def write_runtime_artifact(
                 }
             )
             fold_records.append({"fold": _json_value(fold.__dict__), "scales": scales})
-        base = _base_metadata(runtime_data, rhs_descriptor, identity_inputs)
+        base = _base_metadata(
+            training_data, rhs_names, augmentation_parents, identity_inputs
+        )
+        parent_collection_path = temporary / "training-parents.json"
+        save_process_collection(parent_collection, parent_collection_path)
+        parent_collection_record = {
+            "file": parent_collection_path.name,
+            "sha256": _file_digest(parent_collection_path),
+        }
         manifest = {
             "format_version": FORMAT_VERSION,
             "base": base,
             "arrays": records,
+            "training_parent_collection": parent_collection_record,
             "folds": fold_records,
         }
         manifest["identity"] = _digest(_canonical_json(manifest))
@@ -539,6 +475,7 @@ def _read_manifest(root: Path) -> dict[str, Any]:
         "format_version",
         "base",
         "arrays",
+        "training_parent_collection",
         "folds",
         "identity",
     }:
@@ -550,6 +487,85 @@ def _read_manifest(root: Path) -> dict[str, Any]:
         raise ValueError("runtime artifact identity mismatch")
     manifest["identity"] = identity
     return manifest
+
+
+def _verified_parent_collection_path(root: Path, record: Any) -> Path:
+    if not isinstance(record, dict) or set(record) != {"file", "sha256"}:
+        raise ValueError(
+            "training parent collection record must contain exactly file and sha256"
+        )
+    if record["file"] != "training-parents.json":
+        raise ValueError(
+            "training parent collection record must use file training-parents.json"
+        )
+    digest = record["sha256"]
+    if (
+        not isinstance(digest, str)
+        or not digest.startswith("sha256:")
+        or len(digest) != 71
+        or any(character not in "0123456789abcdef" for character in digest[7:])
+    ):
+        raise ValueError("training parent collection record has invalid digest")
+    path = root / record["file"]
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or _file_digest(path) != record["sha256"]
+    ):
+        raise ValueError("training parent collection checksum mismatch")
+    return path
+
+
+def _validate_training_parent_collection_identity(
+    collection: BioProcessCollection,
+    required_parent_names: tuple[str, ...],
+) -> None:
+    if tuple(collection.processes) != required_parent_names:
+        raise ValueError(
+            "training parent collection must contain exactly all original parents "
+            "in canonical order"
+        )
+    if any(
+        isinstance(process, AugmentedBioProcess)
+        for process in collection.processes.values()
+    ):
+        raise ValueError("training parent collection contains an augmented process")
+
+    bp_train_metadata = (collection.metadata or {}).get("bp-train")
+    if bp_train_metadata is None:
+        return
+    if not isinstance(bp_train_metadata, dict):
+        raise ValueError("invalid training parent collection structural metadata")
+    if "process_order" in bp_train_metadata:
+        process_order = bp_train_metadata["process_order"]
+        if (
+            not isinstance(process_order, list)
+            or tuple(process_order) != required_parent_names
+        ):
+            raise ValueError("invalid training parent collection structural metadata")
+    if "processes" in bp_train_metadata:
+        process_metadata = bp_train_metadata["processes"]
+        if (
+            not isinstance(process_metadata, dict)
+            or tuple(process_metadata) != required_parent_names
+        ):
+            raise ValueError("invalid training parent collection structural metadata")
+
+
+def _load_training_parent_collection(
+    path: Path,
+    *,
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+) -> BioProcessCollection:
+    try:
+        collection = load_process_collection(path)
+    except Exception as error:
+        raise ValueError("invalid training parent collection") from error
+    _validate_training_parent_collection_identity(
+        collection, original_parent_processes(process_order, augmentation_parents)
+    )
+    return collection
 
 
 def _array_filename(name: str, record: Any) -> str:
@@ -586,7 +602,7 @@ def _array_filename(name: str, record: Any) -> str:
 def _read_array(root: Path, name: str, record: Any) -> np.ndarray:
     filename = _array_filename(name, record)
     path = root / filename
-    if not path.is_file() or _digest(path.read_bytes()) != record["sha256"]:
+    if not path.is_file() or _file_digest(path) != record["sha256"]:
         raise ValueError(f"{name}: checksum mismatch")
     try:
         array = np.load(path, allow_pickle=False)
@@ -598,80 +614,129 @@ def _read_array(root: Path, name: str, record: Any) -> np.ndarray:
     return array
 
 
-def _descriptor_from_payload(raw: Any) -> RhsOdeDescriptor:
-    names = {field.name for field in fields(RhsOdeDescriptor)}
-    if (
-        not isinstance(raw, dict)
-        or set(raw) != names
-        or any(not isinstance(value, list) for value in raw.values())
+def _validate_exact_file_inventory(root: Path, expected_files: set[str]) -> None:
+    actual_files = {
+        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
+    }
+    if actual_files != expected_files:
+        raise ValueError("runtime artifact has missing or extra files")
+
+
+def _rhs_process_matrices(rhs_ode: RhsOde) -> tuple[np.ndarray, ...]:
+    return tuple(np.asarray(getattr(rhs_ode, name)) for name in _PROCESS_MATRIX_NAMES)
+
+
+def _validate_process_matrices(
+    matrix_rows: dict[str, np.ndarray],
+    parent_collection: BioProcessCollection,
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+    rhs_names: RhsNames,
+) -> None:
+    equivalent, message = validate_biological_ode_equivalence(parent_collection)
+    if not equivalent:
+        raise ValueError(message)
+
+    parent_rhs: dict[str, RhsOde] = {}
+    for process_name in original_parent_processes(process_order, augmentation_parents):
+        rhs_ode = build_rhs_ode(parent_collection.processes[process_name])
+        if RhsNames.from_rhs_ode(rhs_ode) != rhs_names:
+            raise ValueError(
+                f"{process_name}: reconstructed RhsOde axes differ from the runtime "
+                "artifact"
+            )
+        parent_rhs[process_name] = rhs_ode
+
+    for row, (process_name, parent_name) in enumerate(
+        zip(process_order, augmentation_parents, strict=True)
     ):
-        raise ValueError("invalid RhsOde descriptor")
-    descriptor = RhsOdeDescriptor(**{name: tuple(value) for name, value in raw.items()})
-    _validate_descriptor(descriptor)
-    return descriptor
+        expected = _rhs_process_matrices(
+            parent_rhs[process_name if parent_name is None else parent_name]
+        )
+        actual = tuple(matrix_rows[name][row] for name in _PROCESS_MATRIX_NAMES)
+        if any(
+            not np.array_equal(got, want)
+            for got, want in zip(actual, expected, strict=True)
+        ):
+            raise ValueError(
+                f"{process_name}: cached process matrices differ from its canonical "
+                "parent RhsOde"
+            )
 
 
-def _rhs(raw: Any, arrays: dict[str, np.ndarray]) -> RhsOde:
-    descriptor = (
-        raw if isinstance(raw, RhsOdeDescriptor) else _descriptor_from_payload(raw)
+def _reconstruct_rhs_ode(
+    parent_collection: BioProcessCollection,
+    rhs_names: RhsNames,
+    arrays: dict[str, np.ndarray],
+    process_row: int,
+) -> RhsOde:
+    """Build equations from the selected canonical parent and cached matrices."""
+    try:
+        process = next(iter(parent_collection.processes.values()))
+    except StopIteration as error:
+        raise ValueError(
+            "runtime artifact requires a non-empty parent collection"
+        ) from error
+    rhs_ode = build_rhs_ode(process)
+    if RhsNames.from_rhs_ode(rhs_ode) != rhs_names:
+        raise ValueError("reconstructed RhsOde axes differ from the runtime artifact")
+    return eqx.tree_at(
+        lambda rhs: tuple(getattr(rhs, name) for name in _PROCESS_MATRIX_NAMES),
+        rhs_ode,
+        tuple(
+            jnp.asarray(arrays[f"shared.store.{name}"][process_row])
+            for name in _PROCESS_MATRIX_NAMES
+        ),
     )
-    _validate_descriptor(descriptor)
-    base = (
-        descriptor.name_modeled_RMCs
-        + descriptor.name_modeled_PVs
-        + descriptor.name_controlled_PVs
+
+
+def _validate_control_partition(
+    parent_collection: BioProcessCollection,
+    controls: dict[str, Any],
+) -> None:
+    """Re-derive the control layout from the parents and reject a stored mismatch.
+
+    Loading `.npy` arrays straight into `ControlsStore` bypasses its
+    `__post_init__`, so these statics are otherwise taken on trust.
+    """
+    partition = derive_control_partition(parent_collection)
+    stored = (
+        tuple(controls["name_controlled_Inflows"]),
+        tuple(controls["name_controlled_Outflows"]),
+        tuple(controls["name_controlled_PVs"]),
+        tuple(controls["spline_indices"]),
+        tuple(controls["linear_indices"]),
     )
-    symbols = base + descriptor.name_modeled_algebraic + descriptor.name_modeled_rates
-    algebraic = tuple(
-        _ExpressionFunction(
-            sympy.lambdify(
-                tuple(sympy.Symbol(name) for name in symbols),
-                _parse_expression(
-                    expr,
-                    base
-                    + descriptor.name_modeled_algebraic[:i]
-                    + descriptor.name_modeled_rates,
-                ),
-                modules="jax",
-            )
+    derived = (
+        partition.name_controlled_Inflows,
+        partition.name_controlled_Outflows,
+        partition.name_controlled_PVs,
+        partition.spline_indices,
+        partition.linear_indices,
+    )
+    if stored != derived:
+        raise ValueError(
+            "runtime artifact control partition differs from its parent collection"
         )
-        for i, expr in enumerate(descriptor.algebraic_expressions)
-    )
-    derivatives = tuple(
-        _ExpressionFunction(
-            sympy.lambdify(
-                tuple(sympy.Symbol(name) for name in symbols),
-                _parse_expression(expr, symbols),
-                modules="jax",
-            )
+    if (
+        partition.continuity_side is not None
+        and partition.continuity_side != controls["continuity_side"]
+    ):
+        raise ValueError(
+            "runtime artifact continuity side differs from its parent collection"
         )
-        for expr in descriptor.derivative_expressions
-    )
-    controlled = arrays["shared.rhs.Cin_controlled_FVCs"]
-    modeled = arrays["shared.rhs.Cin_modeled_FVCs"]
-    n_rmc = len(descriptor.name_modeled_RMCs)
-    if controlled.shape != (
-        len(descriptor.name_controlled_FVCs),
-        n_rmc,
-    ) or modeled.shape != (len(descriptor.name_modeled_FVCs), n_rmc):
-        raise ValueError("RhsOde Cin array shape mismatch")
-    return RhsOde(
-        *[
-            getattr(descriptor, field.name)
-            for field in fields(descriptor)
-            if field.name.startswith("name_")
-        ],
-        algebraic,
-        derivatives,
-        jnp.asarray(controlled),
-        jnp.asarray(modeled),
-    )
 
 
 def _validate_base_metadata(
     base: Any,
 ) -> tuple[tuple[str, ...], tuple[str | None, ...]]:
-    required_base_keys = {"identity_inputs", "rhs", "store", "controls", "runtime"}
+    required_base_keys = {
+        "identity_inputs",
+        "augmentation_parents",
+        "rhs",
+        "store",
+        "controls",
+    }
     if not isinstance(base, dict) or set(base) != required_base_keys:
         raise ValueError("invalid runtime artifact schema")
     if not isinstance(base["identity_inputs"], dict) or not all(
@@ -679,16 +744,15 @@ def _validate_base_metadata(
         for key, value in base["identity_inputs"].items()
     ):
         raise ValueError("invalid runtime artifact identity inputs")
-    _descriptor_from_payload(base["rhs"])
+    _rhs_names_from_payload(base["rhs"])
     store = base["store"]
     controls = base["controls"]
-    runtime = base["runtime"]
     if not isinstance(store, dict) or set(store) != {
         "process_order",
         "name_measured_RMCs",
         "name_measured_PVs",
-        "name_modeled_FVCs",
-        "name_modeled_SVCs",
+        "name_modeled_Inflows",
+        "name_modeled_Outflows",
     }:
         raise ValueError("invalid runtime store metadata")
     process_order = store["process_order"]
@@ -708,13 +772,13 @@ def _validate_base_metadata(
             raise ValueError(f"invalid runtime store metadata {key}")
     if not isinstance(controls, dict) or set(controls) != {
         "process_order",
-        "name_controlled_FVCs",
-        "name_controlled_SVCs",
+        "name_controlled_Inflows",
+        "name_controlled_Outflows",
         "name_controlled_PVs",
         "shape_metadata",
         "spline_indices",
-        "fallback_indices",
-        "spline_side",
+        "linear_indices",
+        "continuity_side",
         "max_event_gap_fraction",
         "max_measurements_per_event_gap",
         "_process_md_by_name",
@@ -723,8 +787,8 @@ def _validate_base_metadata(
     if controls["process_order"] != process_order:
         raise ValueError("runtime control process order mismatch")
     for key in (
-        "name_controlled_FVCs",
-        "name_controlled_SVCs",
+        "name_controlled_Inflows",
+        "name_controlled_Outflows",
         "name_controlled_PVs",
     ):
         values = controls[key]
@@ -737,12 +801,12 @@ def _validate_base_metadata(
     if (
         not isinstance(controls["shape_metadata"], dict)
         or not isinstance(controls["spline_indices"], list)
-        or not isinstance(controls["fallback_indices"], list)
+        or not isinstance(controls["linear_indices"], list)
         or any(
             type(index) is not int
-            for index in controls["spline_indices"] + controls["fallback_indices"]
+            for index in controls["spline_indices"] + controls["linear_indices"]
         )
-        or controls["spline_side"] not in {"left", "right"}
+        or controls["continuity_side"] not in {"left", "right"}
         or type(controls["max_measurements_per_event_gap"]) is not int
         or not isinstance(controls["max_event_gap_fraction"], (int, float))
         or not np.isfinite(controls["max_event_gap_fraction"])
@@ -753,48 +817,49 @@ def _validate_base_metadata(
     ):
         raise ValueError("invalid runtime controls metadata")
     control_name_keys = (
-        "name_controlled_FVCs",
-        "name_controlled_SVCs",
+        "name_controlled_Inflows",
+        "name_controlled_Outflows",
         "name_controlled_PVs",
     )
     canonical_control_names = set(
-        controls["name_controlled_FVCs"]
-        + controls["name_controlled_SVCs"]
+        controls["name_controlled_Inflows"]
+        + controls["name_controlled_Outflows"]
         + controls["name_controlled_PVs"]
     )
     for process_name in process_order:
         process_metadata = controls["_process_md_by_name"][process_name]
         if (
             not isinstance(process_metadata, dict)
-            or set(process_metadata) != {*control_name_keys, "control_metadata"}
+            or set(process_metadata)
+            != {*control_name_keys, "control_metadata", "control_supports"}
             or any(process_metadata[key] != controls[key] for key in control_name_keys)
             or not isinstance(process_metadata["control_metadata"], dict)
             or set(process_metadata["control_metadata"]) != canonical_control_names
             or not _valid_json_metadata(process_metadata["control_metadata"])
+            or not isinstance(process_metadata["control_supports"], dict)
+            or set(process_metadata["control_supports"]) != canonical_control_names
         ):
             raise ValueError("invalid per-process control metadata")
-    if not isinstance(runtime, dict) or set(runtime) != {
-        "augmentation_parents",
-        "process_time_bounds",
-        "bound_snapshots",
-        "modeled_trace_widths",
-        "state_trace_widths",
-    }:
-        raise ValueError("invalid runtime context metadata")
-    n_processes = len(process_order)
-    parents = runtime["augmentation_parents"]
-    row_metadata = (
-        parents,
-        runtime["process_time_bounds"],
-        runtime["bound_snapshots"],
-        runtime["modeled_trace_widths"],
-        runtime["state_trace_widths"],
-    )
-    if any(
-        not isinstance(value, list) or len(value) != n_processes
-        for value in row_metadata
-    ):
-        raise ValueError("runtime metadata process count mismatch")
+        for support in process_metadata["control_supports"].values():
+            if (
+                not isinstance(support, list)
+                or len(support) != 2
+                or any(
+                    bound is not None
+                    and (not isinstance(bound, (int, float)) or not np.isfinite(bound))
+                    for bound in support
+                )
+                or (support[0] is None) != (support[1] is None)
+                or (
+                    support[0] is not None
+                    and support[1] is not None
+                    and support[0] > support[1]
+                )
+            ):
+                raise ValueError("invalid per-process control metadata")
+    parents = base["augmentation_parents"]
+    if not isinstance(parents, list) or len(parents) != len(process_order):
+        raise ValueError("augmentation parent count differs from process order")
     if any(
         parent is not None
         and (not isinstance(parent, str) or parent not in process_order)
@@ -807,21 +872,6 @@ def _validate_base_metadata(
         for name, parent in parent_by_name.items()
     ):
         raise ValueError("invalid augmentation parent")
-    for bounds in runtime["process_time_bounds"]:
-        if (
-            not isinstance(bounds, list)
-            or len(bounds) != 2
-            or any(not isinstance(value, (int, float)) for value in bounds)
-            or not all(np.isfinite(value) for value in bounds)
-            or bounds[0] > bounds[1]
-        ):
-            raise ValueError("invalid process time bounds")
-    for widths in (
-        runtime["modeled_trace_widths"],
-        runtime["state_trace_widths"],
-    ):
-        if any(type(width) is not int or width < 0 for width in widths):
-            raise ValueError("invalid runtime trace width")
     return tuple(process_order), tuple(parents)
 
 
@@ -918,6 +968,60 @@ def _outside_time_window(
     return bool(below_start or above_end)
 
 
+def _polynomial_has_wrong_sign(
+    coeffs: np.ndarray, width: float, *, positive: bool
+) -> bool:
+    candidates = [0.0, width]
+    for root in np.polynomial.polynomial.polyroots(
+        np.polynomial.polynomial.polyder(coeffs)
+    ):
+        if np.isreal(root) and 0.0 <= float(np.real(root)) <= width:
+            candidates.append(float(np.real(root)))
+    values = np.polynomial.polynomial.polyval(candidates, coeffs)
+    return bool(np.any(values < 0 if positive else values > 0))
+
+
+def _validate_flow_control_signs(
+    controls: dict[str, Any],
+    arrays: dict[str, np.ndarray],
+    *,
+    n_inflows: int,
+    n_outflows: int,
+) -> None:
+    flow_end = n_inflows + n_outflows
+    grid_lengths = np.asarray(arrays["shared.controls.grid_lengths"])
+    values = np.asarray(arrays["shared.controls.control_values"])
+    derivatives = np.asarray(arrays["shared.controls.control_derivatives"])
+    for column, control_index in enumerate(controls["linear_indices"]):
+        if control_index >= flow_end:
+            continue
+        positive = control_index < n_inflows
+        for row, length in enumerate(grid_lengths):
+            active = slice(0, int(length))
+            for data in (values[row, active, column], derivatives[row, active, column]):
+                if np.any(data < 0 if positive else data > 0):
+                    raise ValueError("runtime controls contain sign-invalid flows")
+
+    breaks = np.asarray(arrays["shared.controls.spline_breaks"])
+    coeffs = np.asarray(arrays["shared.controls.spline_coeffs"])
+    for column, control_index in enumerate(controls["spline_indices"]):
+        if control_index >= flow_end:
+            continue
+        positive = control_index < n_inflows
+        for row, row_breaks in enumerate(breaks):
+            finite = row_breaks[np.isfinite(row_breaks)]
+            for segment, width in enumerate(np.diff(finite)):
+                polynomial = coeffs[row, segment, column]
+                if _polynomial_has_wrong_sign(
+                    polynomial, float(width), positive=positive
+                ) or _polynomial_has_wrong_sign(
+                    np.polynomial.polynomial.polyder(polynomial),
+                    float(width),
+                    positive=positive,
+                ):
+                    raise ValueError("runtime controls contain sign-invalid flows")
+
+
 def _valid_json_metadata(value: Any) -> bool:
     if value is None or isinstance(value, (str, bool)):
         return True
@@ -954,41 +1058,41 @@ def _validate_semantic_arrays(
     base: dict[str, Any],
     arrays: dict[str, np.ndarray],
 ) -> None:
-    descriptor = _descriptor_from_payload(base["rhs"])
+    descriptor = _rhs_names_from_payload(base["rhs"])
     store = base["store"]
     controls = base["controls"]
-    runtime = base["runtime"]
     n_processes = len(store["process_order"])
     n_rmc = len(descriptor.name_modeled_RMCs)
     n_pv = len(descriptor.name_modeled_PVs)
-    n_rates = len(descriptor.name_modeled_rates)
-    n_modeled_fvc = len(descriptor.name_modeled_FVCs)
-    n_modeled_svc = len(descriptor.name_modeled_SVCs)
-    n_controlled_fvc = len(descriptor.name_controlled_FVCs)
-    n_controlled_svc = len(descriptor.name_controlled_SVCs)
+    n_modeled_inflow = len(descriptor.name_modeled_Inflows)
+    n_modeled_outflow = len(descriptor.name_modeled_Outflows)
+    n_controlled_inflow = len(descriptor.name_controlled_Inflows)
+    n_controlled_outflow = len(descriptor.name_controlled_Outflows)
     n_controlled_pv = len(descriptor.name_controlled_PVs)
-    n_controls = n_controlled_fvc + n_controlled_svc + n_controlled_pv
+    n_controls = n_controlled_inflow + n_controlled_outflow + n_controlled_pv
     n_targets = len(store["name_measured_RMCs"]) + len(store["name_measured_PVs"])
-    n_y = n_targets + n_modeled_fvc + n_modeled_svc
+    n_y = n_targets + n_modeled_inflow + n_modeled_outflow
 
     if (
         not set(store["name_measured_RMCs"]) <= set(descriptor.name_modeled_RMCs)
         or not set(store["name_measured_PVs"]) <= set(descriptor.name_modeled_PVs)
-        or tuple(store["name_modeled_FVCs"]) != descriptor.name_modeled_FVCs
-        or tuple(store["name_modeled_SVCs"]) != descriptor.name_modeled_SVCs
-        or tuple(controls["name_controlled_FVCs"]) != descriptor.name_controlled_FVCs
-        or tuple(controls["name_controlled_SVCs"]) != descriptor.name_controlled_SVCs
+        or tuple(store["name_modeled_Inflows"]) != descriptor.name_modeled_Inflows
+        or tuple(store["name_modeled_Outflows"]) != descriptor.name_modeled_Outflows
+        or tuple(controls["name_controlled_Inflows"])
+        != descriptor.name_controlled_Inflows
+        or tuple(controls["name_controlled_Outflows"])
+        != descriptor.name_controlled_Outflows
         or tuple(controls["name_controlled_PVs"]) != descriptor.name_controlled_PVs
     ):
         raise ValueError("runtime metadata differs from RhsOde descriptor")
 
     spline_indices = tuple(controls["spline_indices"])
-    fallback_indices = tuple(controls["fallback_indices"])
-    if sorted(spline_indices + fallback_indices) != list(range(n_controls)):
+    linear_indices = tuple(controls["linear_indices"])
+    if sorted(spline_indices + linear_indices) != list(range(n_controls)):
         raise ValueError("invalid runtime control indices")
 
     spline_breaks = np.asarray(arrays["shared.controls.spline_breaks"])
-    dense_grid = np.asarray(arrays["shared.controls.dense_grid"])
+    linear_grid = np.asarray(arrays["shared.controls.linear_grid"])
     jump_ts = np.asarray(arrays["shared.controls.jump_ts"])
     sample_times = np.asarray(arrays["shared.controls.sample_event_times"])
     bolus_times = np.asarray(arrays["shared.controls.bolus_event_times"])
@@ -996,7 +1100,7 @@ def _validate_semantic_arrays(
         array.ndim != 2 or array.shape[0] != n_processes
         for array in (
             spline_breaks,
-            dense_grid,
+            linear_grid,
             jump_ts,
             sample_times,
             bolus_times,
@@ -1004,7 +1108,7 @@ def _validate_semantic_arrays(
     ):
         raise ValueError("invalid runtime control process axes")
     n_spline_breaks = spline_breaks.shape[1]
-    n_grid = dense_grid.shape[1]
+    n_grid = linear_grid.shape[1]
     n_jump = jump_ts.shape[1]
     n_sample = sample_times.shape[1]
     n_bolus = bolus_times.shape[1]
@@ -1028,9 +1132,9 @@ def _validate_semantic_arrays(
             len(spline_indices),
             4,
         ),
-        "dense_grid": (n_processes, n_grid),
-        "control_values": (n_processes, n_grid, len(fallback_indices)),
-        "control_derivatives": (n_processes, n_grid, len(fallback_indices)),
+        "linear_grid": (n_processes, n_grid),
+        "control_values": (n_processes, n_grid, len(linear_indices)),
+        "control_derivatives": (n_processes, n_grid, len(linear_indices)),
         "jump_ts": (n_processes, n_jump),
         "min_V": (n_processes,),
         "sample_event_times": (n_processes, n_sample),
@@ -1085,14 +1189,22 @@ def _validate_semantic_arrays(
         if not np.array_equal(mask, expected):
             raise ValueError(f"shared.controls.{name}: mask must be an active prefix")
 
-    process_bounds = runtime["process_time_bounds"]
+    # Each process's solve window is not stored: the linear grid is built from the
+    # process start/end plus that process's own raw knots, so its active endpoints
+    # are the window. Deriving it here keeps every other time axis checked against
+    # data the artifact already had to get right, with nothing extra to trust.
+    process_bounds = [
+        (
+            float(linear_grid[row, 0]),
+            float(linear_grid[row, int(grid_lengths[row]) - 1]),
+        )
+        for row in range(n_processes)
+    ]
     for row, (start, end) in enumerate(process_bounds):
-        active_grid = dense_grid[row, : int(grid_lengths[row])]
+        active_grid = linear_grid[row, : int(grid_lengths[row])]
         active_jumps = jump_ts[row, : int(jump_lengths[row])]
-        if not _strictly_increasing(active_grid) or _outside_time_window(
-            active_grid, start, end
-        ):
-            raise ValueError("shared.controls.dense_grid: invalid active time axis")
+        if not _strictly_increasing(active_grid):
+            raise ValueError("shared.controls.linear_grid: invalid active time axis")
         if not _strictly_increasing(active_jumps) or _outside_time_window(
             active_jumps, start, end
         ):
@@ -1107,12 +1219,11 @@ def _validate_semantic_arrays(
             ordered = (
                 _strictly_increasing(active_times)
                 if kind == "sample"
-                else active_times.size < 2 or bool(np.all(np.diff(active_times) >= 0))
+                else _nondecreasing(active_times)
             )
-            outside = _outside_time_window(
+            if not ordered or _outside_time_window(
                 active_times, start, end, include_end=not strict_end
-            )
-            if not ordered or outside:
+            ):
                 raise ValueError(
                     f"shared.controls.{kind}_event_times: invalid active time axis"
                 )
@@ -1123,34 +1234,34 @@ def _validate_semantic_arrays(
 
     _expect_array(
         arrays,
-        "shared.rhs.Cin_controlled_FVCs",
-        (n_controlled_fvc, n_rmc),
+        "shared.store.Cin_controlled_Inflows",
+        (n_processes, n_controlled_inflow, n_rmc),
         "f",
     )
     _expect_array(
         arrays,
-        "shared.rhs.Cin_modeled_FVCs",
-        (n_modeled_fvc, n_rmc),
-        "f",
-    )
-    for name in _RHS_ARRAYS:
-        if not np.all(np.isfinite(arrays[f"shared.rhs.{name}"])):
-            raise ValueError(f"shared.rhs.{name}: non-finite values")
-    _expect_array(
-        arrays,
-        "shared.store.Cin_controlled_FVCs",
-        (n_processes, n_controlled_fvc, n_rmc),
+        "shared.store.Cin_modeled_Inflows",
+        (n_processes, n_modeled_inflow, n_rmc),
         "f",
     )
     _expect_array(
         arrays,
-        "shared.store.Cin_modeled_FVCs",
-        (n_processes, n_modeled_fvc, n_rmc),
+        "shared.store.retention_controlled_Outflows",
+        (n_processes, n_controlled_outflow, n_rmc),
         "f",
     )
-    for name in ("Cin_controlled_FVCs", "Cin_modeled_FVCs"):
-        if not np.all(np.isfinite(arrays[f"shared.store.{name}"])):
+    _expect_array(
+        arrays,
+        "shared.store.retention_modeled_Outflows",
+        (n_processes, n_modeled_outflow, n_rmc),
+        "f",
+    )
+    for name in _PROCESS_MATRIX_NAMES:
+        values = np.asarray(arrays[f"shared.store.{name}"])
+        if not np.all(np.isfinite(values)):
             raise ValueError(f"shared.store.{name}: non-finite values")
+        if name.startswith("retention_") and (np.any(values < 0) or np.any(values > 1)):
+            raise ValueError(f"shared.store.{name}: values must be within [0, 1]")
     measured_times = np.asarray(arrays["shared.store.t_measured"])
     if measured_times.ndim != 2 or measured_times.shape[0] != n_processes:
         raise ValueError("shared.store.t_measured: invalid semantic dtype or shape")
@@ -1174,7 +1285,7 @@ def _validate_semantic_arrays(
     y0 = _expect_array(
         arrays,
         "shared.store.y0_measured",
-        (n_processes, n_rmc + n_pv + 1 + n_modeled_fvc + n_modeled_svc),
+        (n_processes, n_rmc + n_pv + 1 + n_modeled_inflow + n_modeled_outflow),
         "f",
     )
     if not np.all(np.isfinite(measured_times)) or not np.all(
@@ -1183,6 +1294,25 @@ def _validate_semantic_arrays(
         raise ValueError("runtime measurements contain non-finite values")
     if not np.all(np.isfinite(y0)):
         raise ValueError("shared.store.y0_measured: non-finite values")
+    y_measured = np.asarray(arrays["shared.store.y_measured"])
+    inflow_slice = slice(n_targets, n_targets + n_modeled_inflow)
+    outflow_slice = slice(n_targets + n_modeled_inflow, n_y)
+    y0_flow_start = n_rmc + n_pv + 1
+    y0_inflow_slice = slice(y0_flow_start, y0_flow_start + n_modeled_inflow)
+    y0_outflow_slice = slice(y0_flow_start + n_modeled_inflow, y0.shape[1])
+    if (
+        np.any(y_measured[..., inflow_slice] < 0)
+        or np.any(y_measured[..., outflow_slice] > 0)
+        or np.any(y0[..., y0_inflow_slice] < 0)
+        or np.any(y0[..., y0_outflow_slice] > 0)
+    ):
+        raise ValueError("runtime measurements contain sign-invalid flows")
+    _validate_flow_control_signs(
+        controls,
+        arrays,
+        n_inflows=n_controlled_inflow,
+        n_outflows=n_controlled_outflow,
+    )
     mask_measured = np.asarray(arrays["shared.store.mask_measured"])
     for row, length in enumerate(n_measured):
         active_times = measured_times[row, : int(length)]
@@ -1194,102 +1324,38 @@ def _validate_semantic_arrays(
         if np.any(mask_measured[row, int(length) :]):
             raise ValueError("shared.store.mask_measured: active values after row end")
 
-    expected_widths = {
-        "modeled": n_modeled_fvc + n_modeled_svc,
-        "state": n_rmc + n_pv,
-    }
-    for kind, expected_width in expected_widths.items():
-        widths = runtime[f"{kind}_trace_widths"]
-        if widths != [expected_width] * n_processes:
-            raise ValueError(f"invalid {kind} trace widths")
-        for row in range(n_processes):
-            for column in range(expected_width):
-                times = _expect_array(
-                    arrays,
-                    f"shared.trace.{kind}.{row}.{column}.times",
-                    np.asarray(
-                        arrays[f"shared.trace.{kind}.{row}.{column}.times"]
-                    ).shape,
-                    "f",
-                )
-                if times.ndim != 1:
-                    raise ValueError(f"invalid {kind} trace shape")
-                values = _expect_array(
-                    arrays,
-                    f"shared.trace.{kind}.{row}.{column}.values",
-                    times.shape,
-                    "f",
-                )
-                if not np.all(np.isfinite(times)) or not np.all(np.isfinite(values)):
-                    raise ValueError(f"invalid {kind} trace values")
-                if not _strictly_increasing(times):
-                    raise ValueError(f"invalid {kind} trace time axis")
-    for row in range(n_processes):
-        times = np.asarray(arrays[f"shared.trace.sample.{row}.times"])
-        if times.ndim != 1 or times.dtype.kind != "f":
-            raise ValueError("invalid sample trace shape")
-        values = _expect_array(
-            arrays,
-            f"shared.trace.sample.{row}.values",
-            times.shape,
-            "f",
-        )
-        if not np.all(np.isfinite(times)) or not np.all(np.isfinite(values)):
-            raise ValueError("invalid sample trace values")
-        if not _nondecreasing(times):
-            raise ValueError("invalid sample trace time axis")
-
-    for snapshots in runtime["bound_snapshots"]:
-        for record in snapshots:
-            if (
-                not isinstance(record, list)
-                or len(record) != 5
-                or not isinstance(record[0], str)
-                or record[1] not in {"state", "volume", "rate"}
-                or type(record[2]) is not int
-                or any(
-                    value is not None
-                    and (not isinstance(value, (int, float)) or not np.isfinite(value))
-                    for value in record[3:]
-                )
-            ):
-                raise ValueError("invalid runtime bounds snapshot")
-            limits = {"state": n_rmc + n_pv, "volume": 1, "rate": n_rates}
-            expected_axis = n_rmc + n_pv if record[1] == "volume" else record[2]
-            if record[1] == "volume":
-                valid_axis = record[2] == expected_axis
-            else:
-                valid_axis = 0 <= record[2] < limits[record[1]]
-            if not valid_axis or (
-                record[3] is not None
-                and record[4] is not None
-                and record[3] > record[4]
-            ):
-                raise ValueError("invalid runtime bounds snapshot")
-
 
 def _validate_scale_arrays(
-    descriptor: RhsOdeDescriptor,
+    descriptor: RhsNames,
     scales: dict[str, tuple[np.ndarray, np.ndarray | None]],
 ) -> None:
+    n_rmc = len(descriptor.name_modeled_RMCs)
     shapes = {
-        "SCALE_modeled_RMCs": (len(descriptor.name_modeled_RMCs),),
-        "SCALE_modeled_PVs": (len(descriptor.name_modeled_PVs),),
+        "SCALE_modeled_RMCs": (n_rmc,),
         "SCALE_V_in_cumulative": (),
-        "SCALE_modeled_FVCs_cumulative": (len(descriptor.name_modeled_FVCs),),
-        "SCALE_controlled_FVCs_cumulative": (len(descriptor.name_controlled_FVCs),),
-        "SCALE_controlled_FVCs_rates": (len(descriptor.name_controlled_FVCs),),
-        "SCALE_controlled_FVCs_Cin": (
-            len(descriptor.name_controlled_FVCs),
-            len(descriptor.name_modeled_RMCs),
+        "SCALE_modeled_Inflows_cumulative": (len(descriptor.name_modeled_Inflows),),
+        "SCALE_modeled_Outflows_cumulative": (len(descriptor.name_modeled_Outflows),),
+        "SCALE_controlled_Inflows_cumulative": (
+            len(descriptor.name_controlled_Inflows),
+        ),
+        "SCALE_controlled_Outflows_cumulative": (
+            len(descriptor.name_controlled_Outflows),
+        ),
+        "SCALE_controlled_Inflows_rates": (len(descriptor.name_controlled_Inflows),),
+        "SCALE_controlled_Outflows_rates": (len(descriptor.name_controlled_Outflows),),
+        "SCALE_controlled_Inflows_Cin": (
+            len(descriptor.name_controlled_Inflows),
+            n_rmc,
         ),
         "SCALE_controlled_PVs": (len(descriptor.name_controlled_PVs),),
-        "SCALE_modeled_FVCs_Cin": (
-            len(descriptor.name_modeled_FVCs),
-            len(descriptor.name_modeled_RMCs),
+        "SCALE_modeled_Inflows_Cin": (
+            len(descriptor.name_modeled_Inflows),
+            n_rmc,
         ),
         "SCALE_modeled_BiologicalOde_rates": (len(descriptor.name_modeled_rates),),
-        "SCALE_modeled_FVCs_rates": (len(descriptor.name_modeled_FVCs),),
+        "SCALE_modeled_Inflows_rates": (len(descriptor.name_modeled_Inflows),),
+        "SCALE_modeled_Outflows_rates": (len(descriptor.name_modeled_Outflows),),
+        "SCALE_modeled_PVs": (len(descriptor.name_modeled_PVs),),
     }
     if set(scales) != set(_SCALE_NAMES) or set(shapes) != set(_SCALE_NAMES):
         raise ValueError("invalid scale arrays")
@@ -1300,7 +1366,7 @@ def _validate_scale_arrays(
             scale_array.dtype.kind != "f"
             or scale_array.shape != shapes[name]
             or not np.all(np.isfinite(scale_array))
-            or np.any(scale_array == 0)
+            or np.any(scale_array <= 0)
             or (
                 offset_array is not None
                 and (
@@ -1349,7 +1415,7 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     fold, scales_raw = selected
     selected_scale_keys = _scale_array_keys(scales_raw, fold_id)
     expected_all = {
-        f"shared.{name}" for name in _context_arrays_placeholder(base)
+        f"shared.{name}" for name in _shared_array_names()
     } | expected_scale_keys
     if set(records) != expected_all:
         raise ValueError("runtime artifact has missing or extra arrays")
@@ -1358,20 +1424,49 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     }
     if len(set(filenames.values())) != len(filenames):
         raise ValueError("runtime artifact arrays must use distinct files")
-    expected_files = {"manifest.json", *filenames.values()}
-    actual_files = {
-        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
-    }
-    if actual_files != expected_files:
-        raise ValueError("runtime artifact has missing or extra files")
+    parent_collection_path = _verified_parent_collection_path(
+        root, manifest["training_parent_collection"]
+    )
+    _validate_exact_file_inventory(
+        root,
+        {
+            "manifest.json",
+            parent_collection_path.name,
+            *filenames.values(),
+        },
+    )
+    full_parent_collection = _load_training_parent_collection(
+        parent_collection_path,
+        process_order=process_order,
+        augmentation_parents=augmentation_parents,
+    )
+    # Fold isolation is intentional: validate every declaration and filename,
+    # but open and checksum only shared arrays plus the selected fold's scales.
     required = {
         name for name in expected_all if name.startswith("shared.")
     } | selected_scale_keys
     arrays = {name: _read_array(root, name, records[name]) for name in required}
+    _validate_control_partition(full_parent_collection, base["controls"])
     _validate_semantic_arrays(base, arrays)
-    descriptor = _descriptor_from_payload(base["rhs"])
+    rhs_names = _rhs_names_from_payload(base["rhs"])
+    _validate_process_matrices(
+        {
+            name: np.asarray(arrays[f"shared.store.{name}"])
+            for name in _PROCESS_MATRIX_NAMES
+        },
+        full_parent_collection,
+        process_order,
+        augmentation_parents,
+        rhs_names,
+    )
+    selected_parent_names = canonical_training_parents(
+        process_order, augmentation_parents, fold.train
+    )
+    training_parent_collection = select_parent_collection(
+        full_parent_collection, selected_parent_names
+    )
     _validate_scale_arrays(
-        descriptor,
+        rhs_names,
         {
             name: (
                 arrays[f"fold.{fold_id}.{value['scale']}"],
@@ -1382,7 +1477,6 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
             for name, value in scales_raw.items()
         },
     )
-    runtime = base["runtime"]
     controls = ControlsStore(
         **_tuple_metadata(base["controls"]),
         **{
@@ -1394,7 +1488,12 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     store = TrainingDataStore(
         **store_metadata,
         controls_store=controls,
-        rhs_ode=_rhs(base["rhs"], arrays),
+        rhs_ode=_reconstruct_rhs_ode(
+            training_parent_collection,
+            rhs_names,
+            arrays,
+            process_order.index(fold.train[0]),
+        ),
         **{name: jnp.asarray(arrays[f"shared.store.{name}"]) for name in _STORE_ARRAYS},
     )
     scales = {}
@@ -1407,52 +1506,13 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
                 scale, jnp.asarray(arrays[f"fold.{fold_id}.{value['offset']}"])
             )
         )
-    try:
-        modeled = tuple(
-            tuple(
-                (
-                    arrays[f"shared.trace.modeled.{i}.{j}.times"],
-                    arrays[f"shared.trace.modeled.{i}.{j}.values"],
-                )
-                for j in range(width)
-            )
-            for i, width in enumerate(runtime["modeled_trace_widths"])
-        )
-        states = tuple(
-            tuple(
-                (
-                    arrays[f"shared.trace.state.{i}.{j}.times"],
-                    arrays[f"shared.trace.state.{i}.{j}.values"],
-                )
-                for j in range(width)
-            )
-            for i, width in enumerate(runtime["state_trace_widths"])
-        )
-        samples = tuple(
-            (
-                arrays[f"shared.trace.sample.{i}.times"],
-                arrays[f"shared.trace.sample.{i}.values"],
-            )
-            for i in range(len(store.process_order))
-        )
-        data = RuntimeDataContext(
-            store,
-            tuple(runtime["augmentation_parents"]),
-            tuple(tuple(value) for value in runtime["process_time_bounds"]),
-            modeled,
-            states,
-            samples,
-            tuple(
-                tuple(tuple(value) for value in row)
-                for row in runtime["bound_snapshots"]
-            ),
-        )
-    except (KeyError, TypeError) as error:
-        raise ValueError("invalid runtime trace metadata") from error
     return RuntimeArtifact(
         manifest["identity"],
-        RuntimeContext(data, EstimatedScales(**scales)),
+        store,
+        EstimatedScales(**scales),
         fold,
+        training_parent_collection,
+        augmentation_parents,
     )
 
 
@@ -1478,9 +1538,7 @@ def read_runtime_artifact_metadata(path: str | Path) -> RuntimeArtifactMetadata:
         {fold.slug for fold in parsed}
     ) != len(parsed):
         raise ValueError("fold IDs and slugs must be unique")
-    expected = {
-        f"shared.{name}" for name in _context_arrays_placeholder(manifest["base"])
-    } | scale_keys
+    expected = {f"shared.{name}" for name in _shared_array_names()} | scale_keys
     if set(records) != expected:
         raise ValueError("runtime artifact has missing or extra arrays")
     filenames = {
@@ -1488,11 +1546,17 @@ def read_runtime_artifact_metadata(path: str | Path) -> RuntimeArtifactMetadata:
     }
     if len(set(filenames.values())) != len(filenames):
         raise ValueError("runtime artifact arrays must use distinct files")
-    actual_files = {
-        item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file()
-    }
-    if actual_files != {"manifest.json", *filenames.values()}:
-        raise ValueError("runtime artifact has missing or extra files")
+    parent_collection_path = _verified_parent_collection_path(
+        root, manifest["training_parent_collection"]
+    )
+    _validate_exact_file_inventory(
+        root,
+        {
+            "manifest.json",
+            parent_collection_path.name,
+            *filenames.values(),
+        },
+    )
     return RuntimeArtifactMetadata(
         manifest["identity"],
         MappingProxyType(dict(manifest["base"]["identity_inputs"])),
@@ -1500,29 +1564,8 @@ def read_runtime_artifact_metadata(path: str | Path) -> RuntimeArtifactMetadata:
     )
 
 
-def _context_arrays_placeholder(base: dict[str, Any]) -> set[str]:
-    """Expected shared names, derived solely from strict runtime metadata."""
-    names = (
-        {f"controls.{name}" for name in _CONTROL_ARRAYS}
-        | {f"rhs.{name}" for name in _RHS_ARRAYS}
-        | {f"store.{name}" for name in _STORE_ARRAYS}
-    )
-    runtime = base["runtime"]
-    try:
-        for kind, widths in (
-            ("modeled", runtime["modeled_trace_widths"]),
-            ("state", runtime["state_trace_widths"]),
-        ):
-            for row, width in enumerate(widths):
-                if type(width) is not int or width < 0:
-                    raise ValueError
-                for column in range(width):
-                    names |= {
-                        f"trace.{kind}.{row}.{column}.times",
-                        f"trace.{kind}.{row}.{column}.values",
-                    }
-        for row in range(len(base["store"]["process_order"])):
-            names |= {f"trace.sample.{row}.times", f"trace.sample.{row}.values"}
-    except (KeyError, TypeError, ValueError) as error:
-        raise ValueError("invalid runtime trace metadata") from error
-    return names
+def _shared_array_names() -> set[str]:
+    """Expected shared names; the canonical set is fixed by the store's fields."""
+    return {f"controls.{name}" for name in _CONTROL_ARRAYS} | {
+        f"store.{name}" for name in _STORE_ARRAYS
+    }

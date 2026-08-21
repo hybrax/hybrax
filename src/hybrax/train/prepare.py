@@ -12,6 +12,7 @@ import warnings
 import numpy as np
 from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import (
+    BioProcess,
     BioProcessCollection,
     StaticVariable,
     TimeSeries,
@@ -24,9 +25,9 @@ from bp_format.serialization import (
 from .augmentation import augment_process_collection
 from .augmentation_plot import AUGMENTATION_PLOT_FILENAME, render_augmentation_plot
 from .constants import METADATA_NAMESPACE
-from .controls import select_control_sources
+from .controls import ControlSourceBundle, select_control_sources
 from .defaults import default_transform_process_collection
-from .run_config import LoadedRunConfig, PrepareConfig
+from .run_config import LoadedRunConfig
 from .serialization import content_hash, environment_versions, write_json
 from .utils import get_hook, split_hooks_by_customization
 from .validation import (
@@ -186,7 +187,7 @@ def _build_semantics_provenance(
 
 
 def _validate_prepared_control_contract(
-    process_bundles: dict[str, Any],
+    process_bundles: dict[str, ControlSourceBundle],
     *,
     require_consistent_controls: bool,
 ) -> None:
@@ -203,8 +204,8 @@ def _validate_prepared_control_contract(
 
         if require_consistent_controls:
             categorised = (
-                bundle.name_controlled_FVCs,
-                bundle.name_controlled_SVCs,
+                bundle.name_controlled_Inflows,
+                bundle.name_controlled_Outflows,
                 bundle.name_controlled_PVs,
             )
             if reference_categorised is None:
@@ -215,15 +216,6 @@ def _validate_prepared_control_contract(
                     "processes; either make hooks consistent or disable "
                     "require_consistent_controls"
                 )
-
-
-def _runtime_controls_config(prepare: PrepareConfig) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
-        "initial_grid_points": prepare.initial_grid_points,
-        "max_rel_error": prepare.max_rel_error,
-        "max_refinement_rounds": prepare.max_refinement_rounds,
-    }
-    return cfg
 
 
 def prepare_artifact(
@@ -322,7 +314,7 @@ def prepare_artifact(
     if not augmented_parents_ok:
         raise ValueError(
             "augmented parent validation failed:\n"
-            + "\n".join(augmented_parent_messages)
+            + "\n".join(message for _, message in augmented_parent_messages)
         )
     prepared_validation_report = validate_for_training(
         collection,
@@ -336,7 +328,7 @@ def prepare_artifact(
         augmentation_created_names=augmentation_created_names,
     )
 
-    process_bundles: dict[str, Any] = {}
+    process_bundles: dict[str, ControlSourceBundle] = {}
 
     required_control_names = prepare.required_control_names
     if isinstance(required_control_names, dict):
@@ -366,7 +358,6 @@ def prepare_artifact(
 
     source_hash = _sha256_hex(_read_bytes(input_path))
 
-    controls_config = _runtime_controls_config(prepare)
     existing_metadata = dict(collection.metadata or {})
     transform_hooks = {
         "transform_process_collection": getattr(
@@ -397,20 +388,14 @@ def prepare_artifact(
             "processes": semantics_provenance,
         },
         "process_order": process_order,
-        "runtime_controls_config": {
-            "initial_grid_points": int(controls_config["initial_grid_points"]),
-            "max_rel_error": float(controls_config["max_rel_error"]),
-            "max_refinement_rounds": int(controls_config["max_refinement_rounds"]),
-            "require_consistent_controls": bool(prepare.require_consistent_controls),
-        },
         "processes": {},
     }
 
     for process_name, process in collection.processes.items():
         bundle = process_bundles[process_name]
         bp_train_metadata["processes"][process_name] = {
-            "name_controlled_FVCs": list(bundle.name_controlled_FVCs),
-            "name_controlled_SVCs": list(bundle.name_controlled_SVCs),
+            "name_controlled_Inflows": list(bundle.name_controlled_Inflows),
+            "name_controlled_Outflows": list(bundle.name_controlled_Outflows),
             "name_controlled_PVs": list(bundle.name_controlled_PVs),
             "control_metadata": {
                 source.name: source.metadata for source in bundle.all_sources
@@ -462,7 +447,9 @@ def prepare_artifact(
     return collection
 
 
-def _raw_control_samples(process: Any, name: str) -> tuple[np.ndarray, np.ndarray]:
+def _raw_control_samples(
+    process: BioProcess, name: str
+) -> tuple[np.ndarray, np.ndarray]:
     """Raw measured samples for a control (TimeSeries knots or a static level)."""
     if name in process.process_variables:
         value = process.process_variables[name].values
@@ -478,7 +465,7 @@ def _raw_control_samples(process: Any, name: str) -> tuple[np.ndarray, np.ndarra
     return np.asarray([]), np.asarray([])
 
 
-def _control_unit(process: Any, name: str) -> str:
+def _control_unit(process: BioProcess, name: str) -> str:
     if name in process.process_variables:
         return str(getattr(process.process_variables[name], "unit", ""))
     vc = process.volume.volume_changes.get(name)
@@ -487,7 +474,7 @@ def _control_unit(process: Any, name: str) -> str:
 
 def _render_control_diagnostics(
     collection: BioProcessCollection,
-    process_bundles: dict[str, Any],
+    process_bundles: dict[str, ControlSourceBundle],
     output_dir: Path,
 ) -> None:
     """Build per-process control diagnostics and render them (prepare is one-shot)."""
@@ -514,7 +501,7 @@ def _render_control_diagnostics(
             np.concatenate(
                 [
                     spline_grid[np.isfinite(spline_grid)],
-                    np.asarray(per.active_dense_grid, dtype=float),
+                    np.asarray(per.active_linear_grid, dtype=float),
                 ]
             )
         )

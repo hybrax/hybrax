@@ -6,9 +6,11 @@ import gzip
 import shutil
 import time
 from pathlib import Path
-from typing import Any
+
+import optax
 
 from .serialization import save_model, save_opt_state, write_json
+from .wrapper import HybridOdeWrapper
 
 
 def _bundle_prepared_gz(src: Path, dst: Path) -> None:
@@ -35,8 +37,8 @@ class CheckpointWriter:
         *,
         step: int,
         samples_seen: int,
-        wrapper: Any,
-        opt_state: Any,
+        wrapper: HybridOdeWrapper,
+        opt_state: optax.OptState,
         mean_loss: float,
         holdout_loss: float | None,
     ) -> Path:

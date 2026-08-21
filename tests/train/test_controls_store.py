@@ -13,11 +13,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -51,8 +51,8 @@ def _prepare_from_collection(
 def _column_index(controls, name: str) -> int:
     """Return the canonical column index of a named control."""
     canonical = (
-        controls.name_controlled_FVCs
-        + controls.name_controlled_SVCs
+        controls.name_controlled_Inflows
+        + controls.name_controlled_Outflows
         + controls.name_controlled_PVs
     )
     return canonical.index(name)
@@ -68,7 +68,7 @@ def _make_two_process_collection() -> BioProcessCollection:
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "sample_1": SampleVolumeChange(
+                    "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
                         is_controlled=False,
@@ -144,7 +144,7 @@ def test_select_control_sources_consumes_spline_process_variable_control():
 def test_select_control_sources_consumes_spline_feed_control():
     collection = _make_two_process_collection()
     process = collection.processes["p1"]
-    process.volume.volume_changes["feed_A"] = FeedVolumeChange(
+    process.volume.volume_changes["feed_A"] = Inflow(
         name="feed_A",
         unit="L",
         is_controlled=True,
@@ -156,6 +156,116 @@ def test_select_control_sources_consumes_spline_feed_control():
     src = select_control_sources(process).sources_by_name["feed_A"]
     assert src.metadata.get("source") == "spline"
     assert float(src.evaluator(np.asarray([0.5]))[0]) == pytest.approx(0.5, abs=1e-4)
+
+
+def _continuous_flow(
+    flow_type: type[Inflow] | type[Outflow],
+    name: str,
+    values: TimeSeries,
+) -> Inflow | Outflow:
+    common = {
+        "name": name,
+        "unit": "L",
+        "is_controlled": True,
+        "is_continuous": True,
+        "values": values,
+    }
+    if flow_type is Inflow:
+        return Inflow(
+            **common,
+            feed_medium=FeedMedium(name="feed", density=1.0, density_unit="kg/L"),
+        )
+    return Outflow(**common, retention={"biomass": 0.25})
+
+
+def test_select_control_sources_orders_and_preserves_signed_flow_controls():
+    process = _make_two_process_collection().processes["p1"]
+    process.volume.volume_changes["z_feed"] = _continuous_flow(
+        Inflow,
+        "z_feed",
+        TimeSeries(times=[0.0, 1.0], values=[0.0, 0.3]),
+    )
+    process.volume.volume_changes["a_harvest"] = _continuous_flow(
+        Outflow,
+        "a_harvest",
+        TimeSeries(
+            times=[0.0, 1.0],
+            values=[0.0, -0.2],
+            breaks=[0.0, 1.0],
+            coeffs=[[0.0, -0.2, 0.0, 0.0]],
+            segment_start_piece_idx=[0],
+        ),
+    )
+
+    bundle = select_control_sources(process)
+
+    assert bundle.all_names == ("z_feed", "a_harvest", "CF", "T")
+    outflow = bundle.sources_by_name["a_harvest"]
+    np.testing.assert_allclose(outflow.evaluator(1.0), [-0.2])
+    np.testing.assert_allclose(outflow.derivative(0.5), [-0.2])
+    assert outflow.metadata["retention"] == {"biomass": 0.25}
+    assert bundle.sources_by_name["z_feed"].metadata["signal_family"] == "inflow"
+
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+    assert controls.eval_controlled_Inflows_cumulative(1.0, None) == pytest.approx(
+        [0.3]
+    )
+    assert controls.eval_controlled_Inflows_rates(0.5, None) == pytest.approx([0.3])
+    assert controls.eval_controlled_Outflows_cumulative(1.0, None) == pytest.approx(
+        [-0.2]
+    )
+    assert controls.eval_controlled_Outflows_rates(0.5, None) == pytest.approx([-0.2])
+
+
+@pytest.mark.parametrize(
+    ("flow_type", "values", "is_controlled"),
+    [(Inflow, [0.0, -0.1], True), (Outflow, [0.0, 0.1], False)],
+)
+def test_select_control_sources_rejects_wrong_linear_flow_direction(
+    flow_type, values, is_controlled
+):
+    process = _make_two_process_collection().processes["p1"]
+    process.volume.volume_changes["flow"] = _continuous_flow(
+        flow_type,
+        "flow",
+        TimeSeries(times=[0.0, 1.0], values=values),
+    )
+    process.volume.volume_changes["flow"].is_controlled = is_controlled
+
+    with pytest.raises(ValueError, match="cumulative derivatives"):
+        select_control_sources(process)
+
+
+@pytest.mark.parametrize("flow_type, direction", [(Inflow, 1.0), (Outflow, -1.0)])
+def test_select_control_sources_rejects_spline_with_interior_rate_reversal(
+    flow_type, direction
+):
+    process = _make_two_process_collection().processes["p1"]
+    # Knot values have the correct cumulative direction, but the rate is
+    # negative only within 0.001 of t=0.5. A 200-point scale grid misses it.
+    epsilon = 1e-6
+    values = TimeSeries(
+        times=jnp.asarray([0.0, 1.0]),
+        values=jnp.asarray([0.0, direction * (1.0 / 12.0 - epsilon)]),
+        breaks=jnp.asarray([0.0, 1.0]),
+        coeffs=jnp.asarray(
+            [
+                [
+                    0.0,
+                    direction * (0.25 - epsilon),
+                    direction * -0.5,
+                    direction / 3.0,
+                ]
+            ]
+        ),
+        segment_start_piece_idx=jnp.asarray([0], dtype=jnp.int32),
+    )
+    process.volume.volume_changes["flow"] = _continuous_flow(flow_type, "flow", values)
+
+    with pytest.raises(ValueError, match="cumulative derivatives"):
+        select_control_sources(process)
 
 
 def _write_control_custom_py(path: Path) -> None:
@@ -233,11 +343,11 @@ def test_controls_store_loads_by_process_name_and_index(tmp_path):
     assert store.process_order == ["p1", "p2"]
     assert by_name.process_name == "p1"
     assert by_index.process_name == "p1"
-    assert by_name.name_controlled_FVCs == ()
-    assert by_name.name_controlled_SVCs == ()
+    assert by_name.name_controlled_Inflows == ()
+    assert by_name.name_controlled_Outflows == ()
     assert by_name.name_controlled_PVs == ("CF", "T")
     assert np.array_equal(
-        np.asarray(by_name.dense_grid), np.asarray(by_index.dense_grid)
+        np.asarray(by_name.linear_grid), np.asarray(by_index.linear_grid)
     )
     assert _column_index(by_name, "CF") == 0
     assert _column_index(by_name, "T") == 1
@@ -258,7 +368,7 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     store = ControlsStore.from_json(prepared_json)
     controls = store.get_controls("p1")
 
-    # CF and T are the two controlled PVs (this fixture has no controlled FVCs).
+    # CF and T are the two controlled PVs (this fixture has no controlled flows).
     pvs0 = controls.eval_controlled_PVs(0.25, None)
     assert pvs0.shape == (2,)
     assert pvs0[0] == pytest.approx(1.025)  # CF
@@ -270,13 +380,13 @@ def test_controls_store_eval_matches_prepared_linear_payload(tmp_path):
     assert pvs.shape == (3, 2)
     assert pvs[:, 0] == pytest.approx([1.025, 1.05, 1.1])  # CF
     assert pvs[:, 1] == pytest.approx([30.25, 30.5, 31.0])  # T
-    # No controlled FVCs/SVCs in this fixture → the rate accessors are empty.
-    assert controls.eval_controlled_FVCs_rates(ts, None).shape == (3, 0)
-    assert controls.eval_controlled_SVCs_rates(ts, None).shape == (3, 0)
+    # No controlled flows in this fixture, so all flow accessors are empty.
+    assert controls.eval_controlled_Inflows_rates(ts, None).shape == (3, 0)
+    assert controls.eval_controlled_Outflows_rates(ts, None).shape == (3, 0)
 
 
 def _partial_split_store() -> ControlsStore:
-    """A store with a real split: spline at column 0, fallbacks at columns 1-2."""
+    """A store with a real split: spline at column 0, linear controls at columns 1-2."""
     collection = _make_two_process_collection()
     for process in collection.processes.values():
         process.process_variables["CF"].values = _spline_control_values()
@@ -292,13 +402,13 @@ def _partial_split_store() -> ControlsStore:
     return ControlsStore.from_collection(collection)
 
 
-def test_controls_store_preserves_partial_spline_fallback_column_order():
+def test_controls_store_preserves_partial_spline_linear_column_order():
     store = _partial_split_store()
     controls = store.get_controls("p1")
 
     assert controls.name_controlled_PVs == ("CF", "T", "Z")
     assert controls.spline_indices == (0,)
-    assert controls.fallback_indices == (1, 2)
+    assert controls.linear_indices == (1, 2)
     np.testing.assert_allclose(
         np.asarray(controls.active_control_values)[[0, -1]],
         [[30.0, 100.0], [31.0, 200.0]],
@@ -315,16 +425,16 @@ def test_controls_store_preserves_partial_spline_fallback_column_order():
         # A float or bool index compares equal to an int and would otherwise
         # fail far away, at JAX indexing time.
         ({"spline_indices": (0.0,)}, "exact ints"),
-        ({"fallback_indices": (True, 2)}, "exact ints"),
+        ({"linear_indices": (True, 2)}, "exact ints"),
         # A permutation keeps the partition intact but decouples the indices
         # from the column order their arrays were built in.
-        ({"fallback_indices": (2, 1)}, "ascending"),
-        ({"spline_side": "middle"}, "spline_side"),
-        ({"fallback_indices": (1,)}, "partition"),
+        ({"linear_indices": (2, 1)}, "ascending"),
+        ({"continuity_side": "middle"}, "continuity_side"),
+        ({"linear_indices": (1,)}, "partition"),
         # A list is mutable, so it could be edited after construction; it also
         # changes the treedef, and mixing list with tuple fails obscurely later.
         ({"spline_indices": [0]}, "must be a tuple"),
-        ({"fallback_indices": [1, 2]}, "must be a tuple"),
+        ({"linear_indices": [1, 2]}, "must be a tuple"),
     ],
 )
 def test_controls_store_rejects_corrupt_dispatch_split(overrides, match):
@@ -342,7 +452,7 @@ def test_controls_store_rejects_payload_width_disagreeing_with_indices(field_nam
     # a static-metadata/array desync is what a non-deriving construction path
     # (a future deserializer) would plausibly get wrong.
     store = _partial_split_store()
-    # Slice the addressed axis to width 0: the fixture has 1 spline and 2 fallback
+    # Slice the addressed axis to width 0: the fixture has 1 spline and 2 linear
     # columns, so a narrower-but-nonzero slice would not move the spline width.
     array = getattr(store, field_name)
     narrowed = array[..., :0, :] if field_name == "spline_coeffs" else array[..., :0]
@@ -356,8 +466,8 @@ def test_controls_store_dispatch_validation_accepts_a_valid_store():
     store = _partial_split_store()
     rebuilt = dataclasses.replace(store)
     assert rebuilt.spline_indices == store.spline_indices
-    assert rebuilt.fallback_indices == store.fallback_indices
-    assert rebuilt.spline_side == store.spline_side
+    assert rebuilt.linear_indices == store.linear_indices
+    assert rebuilt.continuity_side == store.continuity_side
 
 
 def test_controls_store_exposes_discrete_event_metadata():
@@ -381,7 +491,7 @@ def test_controls_store_exposes_discrete_event_metadata():
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_a": SampleVolumeChange(
+                "sample_a": Outflow(
                     name="sample_a",
                     unit="L",
                     is_controlled=False,
@@ -391,17 +501,17 @@ def test_controls_store_exposes_discrete_event_metadata():
                         values=jnp.asarray([-0.1]),
                     ),
                 ),
-                "sample_b": SampleVolumeChange(
+                "sample_b": Outflow(
                     name="sample_b",
                     unit="L",
-                    is_controlled=False,
+                    is_controlled=True,
                     is_continuous=False,
                     values=TimeSeries(
-                        times=jnp.asarray([2.0]),
+                        times=jnp.asarray([2.5]),
                         values=jnp.asarray([-0.2]),
                     ),
                 ),
-                "sample_after_end": SampleVolumeChange(
+                "sample_after_end": Outflow(
                     name="sample_after_end",
                     unit="L",
                     is_controlled=False,
@@ -411,10 +521,10 @@ def test_controls_store_exposes_discrete_event_metadata():
                         values=jnp.asarray([-0.1]),
                     ),
                 ),
-                "bolus_feed": FeedVolumeChange(
+                "bolus_feed": Inflow(
                     name="bolus_feed",
                     unit="L",
-                    is_controlled=True,
+                    is_controlled=False,
                     is_continuous=False,
                     values=TimeSeries(
                         times=jnp.asarray([3.0]),
@@ -443,9 +553,12 @@ def test_controls_store_exposes_discrete_event_metadata():
     )
     controls = store.get_controls("p1")
 
-    assert np.asarray(controls.sample_event_mask).tolist() == [True]
-    assert np.asarray(controls.sample_event_times).tolist() == pytest.approx([2.0])
-    assert np.asarray(controls.sample_event_volumes).tolist() == pytest.approx([0.3])
+    assert float(controls.min_V) == pytest.approx(0.001)
+    assert np.asarray(controls.sample_event_mask).tolist() == [True, True]
+    assert np.asarray(controls.sample_event_times).tolist() == pytest.approx([2.0, 2.5])
+    assert np.asarray(controls.sample_event_volumes).tolist() == pytest.approx(
+        [0.1, 0.2]
+    )
     assert np.asarray(controls.bolus_event_mask).tolist() == [True]
     assert np.asarray(controls.bolus_event_times).tolist() == pytest.approx([3.0])
     assert np.asarray(controls.bolus_event_volumes).tolist() == pytest.approx([0.4])
@@ -492,7 +605,7 @@ def test_controls_store_rejects_different_control_order(tmp_path):
         ControlsStore.from_json(prepared_json)
 
 
-def test_controls_store_eval_clamps_outside_dense_grid(tmp_path):
+def test_controls_store_eval_clamps_outside_linear_grid(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
     store = ControlsStore.from_json(prepared_json)
     controls = store.get_controls("p1")
@@ -515,7 +628,7 @@ def test_dense_control_grid_excludes_source_times_outside_process():
     store = ControlsStore.from_collection(collection)
 
     for process_name in collection.processes:
-        grid = np.asarray(store.get_controls(process_name).active_dense_grid)
+        grid = np.asarray(store.get_controls(process_name).active_linear_grid)
         assert grid[[0, -1]] == pytest.approx([0.0, 1.0])
 
 
@@ -525,8 +638,8 @@ def test_controls_store_rejects_not_consistent_controls_at_init():
     p1 = _make_two_process_collection().processes["p1"]
     p2_collection = _make_two_process_collection()
     p2 = p2_collection.processes["p2"]
-    # Add a controlled FVC to p1 only — disagrees with p2 on name_controlled_FVCs.
-    p1.volume.volume_changes["feed_A"] = FeedVolumeChange(
+    # Add a controlled Inflow to p1 only, making the partitions disagree.
+    p1.volume.volume_changes["feed_A"] = Inflow(
         name="feed_A",
         unit="L",
         is_controlled=True,
@@ -588,7 +701,7 @@ def test_per_process_controls_roundtrip_across_processes(tmp_path):
     assert loaded.process_name == template.process_name
     assert loaded.process_index == template.process_index
     # Dynamic arrays carry the saved process's values.
-    assert np.array_equal(np.asarray(loaded.dense_grid), np.asarray(saved.dense_grid))
+    assert np.array_equal(np.asarray(loaded.linear_grid), np.asarray(saved.linear_grid))
     assert np.array_equal(
         np.asarray(loaded.control_values), np.asarray(saved.control_values)
     )
@@ -606,7 +719,7 @@ def test_controls_store_gather_batch_preserves_order_duplicates_and_events():
         values=jnp.asarray([-0.2]),
     )
     for index, process in enumerate(collection.processes.values(), start=1):
-        process.volume.volume_changes["bolus"] = FeedVolumeChange(
+        process.volume.volume_changes["bolus"] = Inflow(
             name="bolus",
             unit="L",
             is_controlled=True,
@@ -637,7 +750,7 @@ def test_controls_store_gather_batch_preserves_order_duplicates_and_events():
     for field in (
         "spline_breaks",
         "spline_coeffs",
-        "dense_grid",
+        "linear_grid",
         "control_values",
         "control_derivatives",
         "sample_event_times",
@@ -669,7 +782,7 @@ def test_controls_store_batch_controls_eval_by_index():
     store = ControlsStore.from_collection(collection)
     batch_controls = store.gather_batch(jnp.asarray([0, 1], dtype=jnp.int32))
 
-    assert store.grid_lengths.tolist() == [16, 17]
+    assert store.grid_lengths.tolist() == [2, 3]
 
     ts = jnp.asarray([0.25, 1.5])
     pvs = batch_controls.eval_controlled_PVs(0, ts, None)
@@ -685,6 +798,6 @@ def test_controls_store_batch_controls_rejects_out_of_range_row(tmp_path):
     batch_controls = store.gather_batch(jnp.asarray([0, 1], dtype=jnp.int32))
 
     with pytest.raises(IndexError, match="out of range"):
-        batch_controls.eval_controlled_FVCs_cumulative(2, jnp.asarray(0.25), None)
+        batch_controls.eval_controlled_Inflows_cumulative(2, jnp.asarray(0.25), None)
     with pytest.raises(IndexError, match="out of range"):
-        batch_controls.eval_controlled_FVCs_cumulative(999, jnp.asarray(0.25), None)
+        batch_controls.eval_controlled_Inflows_cumulative(999, jnp.asarray(0.25), None)

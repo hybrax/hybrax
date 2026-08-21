@@ -13,7 +13,7 @@ from bp_format.dataclasses import (
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -51,7 +51,7 @@ def _make_two_process_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -113,7 +113,7 @@ def _make_two_process_collection() -> BioProcessCollection:
             initial_volume=1.5,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -210,7 +210,7 @@ def _make_reactor_target_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -264,7 +264,7 @@ def _make_reactor_target_collection() -> BioProcessCollection:
             initial_volume=1.2,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -325,8 +325,8 @@ def test_training_data_store_builds_padded_measurement_arrays(tmp_path):
     assert store.name_measured_PVs == ("X",)
     assert store.name_measured == ("X",)
     assert tuple(store.t_measured.shape) == (2, 3)
-    # y_measured has n_targets + n_modeled_feeds columns. The fixture has no
-    # FeedVolumeChange so n_modeled_feeds == 0 and y_measured has just 1 column.
+    # y_measured has n_targets + n_modeled_flows columns. The fixture has no
+    # Inflow so n_modeled_flows == 0 and y_measured has just 1 column.
     assert tuple(store.y_measured.shape) == (2, 3, 1)
     # Per-cell mask: (n_processes, max_n_meas, n_y_cols).
     assert tuple(store.mask_measured.shape) == (2, 3, 1)
@@ -436,12 +436,53 @@ def test_training_data_store_supports_reactor_component_targets():
     # Reactor-component targets land in name_measured_RMCs.
     assert store.name_measured_RMCs == ("biomass", "product")
     assert store.name_measured_PVs == ()
-    # y_measured has n_targets + n_modeled_feeds columns. The fixture has no
-    # FeedVolumeChange so n_modeled_feeds == 0.
+    # y_measured has n_targets + n_modeled_flows columns. The fixture has no
+    # Inflow so n_modeled_flows == 0.
     assert tuple(store.y_measured.shape) == (2, 3, 2)
     # y0_measured = [biomass(0), product(0), V_cont(0)]
     assert np.asarray(store.y0_measured[0]).tolist() == pytest.approx([0.2, 0.0, 1.0])
     assert np.asarray(store.y0_measured[1]).tolist() == pytest.approx([0.25, 0.02, 1.2])
+
+
+def test_control_support_validation_only_checks_selected_processes():
+    collection = _make_reactor_target_collection()
+    collection.processes["p2"].process_variables["temperature"].values = TimeSeries(
+        times=jnp.asarray([0.0, 0.5]),
+        values=jnp.asarray([299.0, 300.0]),
+    )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass", "product"],
+        target_source="reactor_components",
+    )
+
+    store.validate_control_support(("p1",))
+    with pytest.raises(ValueError, match=r"process='p2'.*control='temperature'"):
+        store.validate_control_support(("p2",))
+
+
+def test_control_support_validation_aggregates_process_failures():
+    collection = _make_reactor_target_collection()
+    for process in collection.processes.values():
+        process.process_variables["temperature"].values = TimeSeries(
+            times=jnp.asarray([0.0, 0.5]),
+            values=jnp.asarray([299.0, 300.0]),
+        )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass", "product"],
+        target_source="reactor_components",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        store.validate_control_support(("p1", "p2"))
+
+    message = str(exc_info.value)
+    assert "process='p1'" in message
+    assert "process='p2'" in message
+    assert "control='temperature'" in message
+    assert "representation='raw'" in message
+    assert "violated_side='right'" in message
 
 
 def test_training_data_store_auto_falls_back_to_reactor_components():
@@ -489,7 +530,7 @@ def test_training_data_store_gather_batch_by_process_indices(tmp_path):
 
     assert np.asarray(batch.process_indices).tolist() == [1, 0, 1]
     assert tuple(batch.t_measured.shape) == (3, 3)
-    # y_measured has n_targets + n_modeled_feeds = 1 columns (no FeedVolumeChange)
+    # y_measured has n_targets + n_modeled_flows = 1 columns (no Inflow)
     assert tuple(batch.y_measured.shape) == (3, 3, 1)
     assert tuple(batch.mask_measured.shape) == (3, 3, 1)
     assert np.asarray(batch.n_measured).tolist() == [2, 3, 2]
@@ -518,7 +559,7 @@ def _make_sparse_target_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -613,7 +654,7 @@ def test_training_data_store_rejects_target_missing_t0():
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -700,6 +741,36 @@ def _make_combined_collection() -> BioProcessCollection:
     return BioProcessCollection(
         processes={"p1": _proc("p1", 1.0), "p2": _proc("p2", 1.2)}
     )
+
+
+def test_selected_rows_keep_modeled_outflow_cumulative_state_zero():
+    collection = _make_combined_collection()
+    for process in collection.processes.values():
+        process.volume.volume_changes["modeled_bleed"] = Outflow(
+            name="modeled_bleed",
+            unit="L",
+            is_controlled=False,
+            is_continuous=True,
+            values=TimeSeries(times=[0.0, 4.0], values=[-0.3, -0.7]),
+            retention={"biomass": 0.5},
+        )
+
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_source="combined",
+    ).select_processes(
+        ("p2", "p1"),
+        BioProcessCollection(
+            processes={
+                "p2": collection.processes["p2"],
+                "p1": collection.processes["p1"],
+            }
+        ),
+    )
+
+    # Modeled cumulative states are integration states and always start at zero,
+    # even when the source cumulative trace has a nonzero selected-row offset.
+    np.testing.assert_array_equal(np.asarray(store.y0_measured[:, -1]), [0.0, 0.0])
 
 
 def test_training_data_combined_fits_rmcs_and_pvs(tmp_path):

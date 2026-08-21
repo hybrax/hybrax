@@ -23,7 +23,8 @@ class _LatentAuxModule(UserReactionModule):
         mu = inputs.SCL_latent[0] + inputs.SCL_modeled_RMCs[0]
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=mu.dtype),
-            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=mu.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=mu.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
             auxiliary={"mu": mu},
         )
@@ -44,7 +45,8 @@ class _MissingAuxiliaryModule(_RaisingLatentObserveModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
-            SCL_modeled_FVCs_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
         )
 
@@ -64,9 +66,7 @@ def test_save_outputs_requires_declared_latent_observables_in_auxiliary():
     )
 
     with pytest.raises(ValueError, match="missing: \\['mu'\\]"):
-        wrapper.physical_save_outputs(
-            0.0, jnp.asarray([1.0, 1.0, 2.0])
-        )
+        wrapper.physical_save_outputs(0.0, jnp.asarray([1.0, 1.0, 2.0]))
 
 
 def test_latent_observable_uses_auxiliary_and_posthoc_observe_raises():
@@ -75,9 +75,7 @@ def test_latent_observable_uses_auxiliary_and_posthoc_observe_raises():
         _RaisingLatentObserveModule(jnp.asarray([2.0])),
     )
 
-    save_outputs = wrapper.physical_save_outputs(
-        0.0, jnp.asarray([1.0, 1.0, 2.0])
-    )
+    save_outputs = wrapper.physical_save_outputs(0.0, jnp.asarray([1.0, 1.0, 2.0]))
 
     assert save_outputs.auxiliary is not None
     assert jnp.allclose(save_outputs.auxiliary["mu"], 3.0)

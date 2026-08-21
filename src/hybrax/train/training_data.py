@@ -313,6 +313,31 @@ def _timeseries_numpy(
     return ts, ys
 
 
+def replace_rhs_ode_process_matrices(
+    rhs_ode: RhsOde,
+    Cin_controlled_Inflows: jax.Array,
+    Cin_modeled_Inflows: jax.Array,
+    retention_controlled_Outflows: jax.Array,
+    retention_modeled_Outflows: jax.Array,
+) -> RhsOde:
+    """Replace all process-specific physical matrices on an ODE template."""
+    return eqx.tree_at(
+        lambda rhs: (
+            rhs.Cin_controlled_Inflows,
+            rhs.Cin_modeled_Inflows,
+            rhs.retention_controlled_Outflows,
+            rhs.retention_modeled_Outflows,
+        ),
+        rhs_ode,
+        (
+            Cin_controlled_Inflows,
+            Cin_modeled_Inflows,
+            retention_controlled_Outflows,
+            retention_modeled_Outflows,
+        ),
+    )
+
+
 class PerProcessTrainingData(eqx.Module):
     """Per-process active view over padded training-data tensors."""
 
@@ -326,15 +351,15 @@ class PerProcessTrainingData(eqx.Module):
     name_measured_PVs: tuple[str, ...]
     # Modeled volume-change names (mirrored from store for JIT-friendly
     # per-process access).
-    name_modeled_FVCs: tuple[str, ...]
-    name_modeled_SVCs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    name_modeled_Outflows: tuple[str, ...]
     # Number of active measurement rows for this process.
     n_measured: int
     # Padded measurement times for this process.
     t_measured: jax.Array
     # Padded measurement values for this process, columns follow
     # ``name_measured`` (RMC targets, PV targets, or both) then the cumulative
-    # volume tail for ``name_modeled_FVCs + name_modeled_SVCs``.
+    # volume tail for ``name_modeled_Inflows + name_modeled_Outflows``.
     y_measured: jax.Array
     # Padded per-cell boolean mask `[max_n_meas, n_y_cols]`. True iff the
     # corresponding (timestamp, target) pair is a real measurement; False
@@ -343,6 +368,13 @@ class PerProcessTrainingData(eqx.Module):
     mask_measured: jax.Array
     # Full physical initial state `[all_RMCs..., all_PVs..., V, modeled_cum...]`.
     y0_measured: jax.Array
+    # This process's flow matrices. A wrapper's baked matrices belong to
+    # whichever process supplied its template, so every solve substitutes all
+    # four alongside ``controls``.
+    Cin_controlled_Inflows: jax.Array
+    Cin_modeled_Inflows: jax.Array
+    retention_controlled_Outflows: jax.Array
+    retention_modeled_Outflows: jax.Array
     # Per-process controls view from ControlsStore.
     controls: PerProcessControls
 
@@ -383,21 +415,23 @@ class BatchTrainingData(eqx.Module):
     mask_measured: jax.Array
     # Gathered active measurement counts `[batch_size]`.
     n_measured: jax.Array
-    # Gathered full physical initial state vectors
-    # `[batch_size, n_RMC + n_PV + 1 + n_modeled_feeds]`.
+    # Gathered full physical initial state vectors.
     y0_measured: jax.Array
+    # Process-aligned Outflow retention matrices.
+    retention_controlled_Outflows: jax.Array
+    retention_modeled_Outflows: jax.Array
 
 
 class TrainingDataStore(eqx.Module):
     """Collection-level training-data store built from a prepared collection.
 
-    The y_measured columns are ``[targets..., B_modeled_cum_per_modeled_feed...]``
-    where targets may be RMCs, PVs, or both. V is in the ODE state but not in
-    the loss targets.
+    The y_measured columns are ``[targets..., modeled Inflow cumulative...,
+    modeled Outflow cumulative...]``, where targets may be RMCs, PVs, or both.
+    V is in the ODE state but not in the loss targets.
 
-    The y0 vector has layout
-    ``[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`` matching
-    the physical ODE state shape that the wrapper expects.
+    The y0 vector has layout ``[all RMCs..., all PVs..., V(0), modeled Inflow
+    cumulative..., modeled Outflow cumulative...]``, matching the physical ODE
+    state order expected by the wrapper.
     """
 
     # Stable process order across all stacked arrays.
@@ -406,33 +440,34 @@ class TrainingDataStore(eqx.Module):
     # non-empty; ``name_measured`` returns the loss/target column labels.
     name_measured_RMCs: tuple[str, ...]
     name_measured_PVs: tuple[str, ...]
-    # Ordered modeled-FVC names (shared across processes). Each contributes
+    # Ordered modeled-Inflow names (shared across processes). Each contributes
     # one cumulative-volume column to y_measured.
-    name_modeled_FVCs: tuple[str, ...]
-    # Ordered modeled-SVC names. Future-proof placeholder; always ``()`` today
-    # (the wrapper rejects continuous modeled SVCs). When populated, each name
-    # contributes one cumulative-volume column to y_measured after the
-    # FVC block, mirroring ``RhsOde.name_modeled_SVCs`` ordering.
-    name_modeled_SVCs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    # Ordered modeled-Outflow names. Each contributes one cumulative-volume
+    # column to y_measured after the Inflow block, mirroring
+    # ``RhsOde.name_modeled_Outflows`` ordering.
+    name_modeled_Outflows: tuple[str, ...]
     # Shared controls store for this prepared artifact.
     controls_store: ControlsStore
-    # Canonical ODE structure plus process-aligned feed-composition arrays.
+    # Canonical ODE structure plus process-aligned flow matrices.
     rhs_ode: RhsOde
-    Cin_controlled_FVCs: jax.Array
-    Cin_modeled_FVCs: jax.Array
+    Cin_controlled_Inflows: jax.Array
+    Cin_modeled_Inflows: jax.Array
+    retention_controlled_Outflows: jax.Array
+    retention_modeled_Outflows: jax.Array
     # Padded measurement times `[n_processes, max_n_meas]`.
     t_measured: jax.Array
     # Padded measurement values
-    # `[n_processes, max_n_meas, n_targets + n_modeled_feeds]`.
+    # `[n_processes, max_n_meas, n_targets + n_modeled_flows]`.
     y_measured: jax.Array
     # Padded per-cell measurement mask `[n_processes, max_n_meas, n_y_cols]`.
     # True iff the corresponding (timestamp, target) pair is a real
-    # measurement. The modeled-feed cumulative columns are dense by
+    # measurement. The modeled-flow cumulative columns are dense by
     # construction (mask=True throughout).
     mask_measured: jax.Array
     # Active measurement counts per process.
     n_measured: jax.Array
-    # Initial state matrix `[n_processes, n_RMC + n_PV + 1 + n_modeled_feeds]`
+    # Initial state matrix `[n_processes, n_RMC + n_PV + 1 + n_modeled_flows]`
     # where layout is `[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.
     y0_measured: jax.Array
 
@@ -544,9 +579,9 @@ class TrainingDataStore(eqx.Module):
                 f"{TARGET_SOURCE_COMBINED!r}, got {resolved_target_source!r}"
             )
 
-        name_modeled_FVCs = tuple(ref_rhs_ode.name_modeled_FVCs)
-        name_modeled_SVCs = tuple(ref_rhs_ode.name_modeled_SVCs)
-        n_modeled = len(name_modeled_FVCs) + len(name_modeled_SVCs)
+        name_modeled_Inflows = tuple(ref_rhs_ode.name_modeled_Inflows)
+        name_modeled_Outflows = tuple(ref_rhs_ode.name_modeled_Outflows)
+        n_modeled = len(name_modeled_Inflows) + len(name_modeled_Outflows)
 
         per_process_times: list[np.ndarray] = []
         per_process_values: list[np.ndarray] = []
@@ -555,10 +590,8 @@ class TrainingDataStore(eqx.Module):
         n_meas_list: list[int] = []
         max_n_meas = 0
         n_targets = len(reference_targets)
-        # y_measured columns = [species targets..., B_modeled_cum per FVC...,
-        # B_modeled_cum per SVC...]. SVC columns are absent today (no example
-        # uses modeled SVCs and the wrapper rejects them) but the layout is
-        # there for future use.
+        # y_measured columns = [species targets..., B_modeled_cum per Inflow...,
+        # B_modeled_cum per Outflow...].
         n_y_cols = n_targets + n_modeled
 
         for process_name, process_rhs_ode in zip(process_order, rhs_odes, strict=True):
@@ -621,9 +654,9 @@ class TrainingDataStore(eqx.Module):
             # Modeled-VC cumulative columns: dense by construction, fill the
             # value via linear interpolation of the cumulative volume trace
             # and mark mask True throughout. Layout matches y_measured's
-            # column order: FVCs first, then SVCs.
+            # column order: Inflows first, then Outflows.
             v0 = float(process.volume.initial_volume)
-            for k, fn in enumerate(name_modeled_FVCs + name_modeled_SVCs):
+            for k, fn in enumerate(name_modeled_Inflows + name_modeled_Outflows):
                 col_idx = n_targets + k
                 vc = process.volume.volume_changes[fn]
                 vc_t = np.asarray(vc.values.times, dtype=float)
@@ -703,15 +736,21 @@ class TrainingDataStore(eqx.Module):
             process_order=process_order,
             name_measured_RMCs=name_measured_RMCs,
             name_measured_PVs=name_measured_PVs,
-            name_modeled_FVCs=name_modeled_FVCs,
-            name_modeled_SVCs=name_modeled_SVCs,
+            name_modeled_Inflows=name_modeled_Inflows,
+            name_modeled_Outflows=name_modeled_Outflows,
             controls_store=controls_store,
             rhs_ode=ref_rhs_ode,
-            Cin_controlled_FVCs=jnp.stack(
-                [rhs_ode.Cin_controlled_FVCs for rhs_ode in rhs_odes]
+            Cin_controlled_Inflows=jnp.stack(
+                [rhs_ode.Cin_controlled_Inflows for rhs_ode in rhs_odes]
             ),
-            Cin_modeled_FVCs=jnp.stack(
-                [rhs_ode.Cin_modeled_FVCs for rhs_ode in rhs_odes]
+            Cin_modeled_Inflows=jnp.stack(
+                [rhs_ode.Cin_modeled_Inflows for rhs_ode in rhs_odes]
+            ),
+            retention_controlled_Outflows=jnp.stack(
+                [rhs_ode.retention_controlled_Outflows for rhs_ode in rhs_odes]
+            ),
+            retention_modeled_Outflows=jnp.stack(
+                [rhs_ode.retention_modeled_Outflows for rhs_ode in rhs_odes]
             ),
             t_measured=jnp.asarray(t_measured),
             y_measured=jnp.asarray(y_measured),
@@ -736,6 +775,73 @@ class TrainingDataStore(eqx.Module):
             target_source=target_source,
         )
 
+    def select_processes(
+        self,
+        process_names: tuple[str, ...],
+        collection: BioProcessCollection,
+    ) -> TrainingDataStore:
+        """Return a closed parent-aligned row selection in the requested order."""
+        if not process_names:
+            raise ValueError("selected training store must be non-empty")
+        if tuple(collection.processes) != process_names:
+            raise ValueError("selected collection order must match process_names")
+        try:
+            indices = jnp.asarray(
+                [self.process_order.index(name) for name in process_names],
+                dtype=jnp.int32,
+            )
+        except ValueError as error:
+            raise KeyError(f"unknown selected process: {error.args[0]}") from error
+
+        def rows(array):
+            return array[indices]
+
+        controlled_cin = rows(self.Cin_controlled_Inflows)
+        modeled_cin = rows(self.Cin_modeled_Inflows)
+        controlled_retention = rows(self.retention_controlled_Outflows)
+        modeled_retention = rows(self.retention_modeled_Outflows)
+        n_measured = rows(self.n_measured)
+        max_measurements = int(np.max(np.asarray(n_measured)))
+        rhs_ode = replace_rhs_ode_process_matrices(
+            self.rhs_ode,
+            controlled_cin[0],
+            modeled_cin[0],
+            controlled_retention[0],
+            modeled_retention[0],
+        )
+        return TrainingDataStore(
+            process_order=list(process_names),
+            name_measured_RMCs=self.name_measured_RMCs,
+            name_measured_PVs=self.name_measured_PVs,
+            name_modeled_Inflows=self.name_modeled_Inflows,
+            name_modeled_Outflows=self.name_modeled_Outflows,
+            rhs_ode=rhs_ode,
+            controls_store=self.controls_store.select_processes(
+                process_names,
+                collection,
+                modeled_rmc_names=tuple(self.rhs_ode.name_modeled_RMCs),
+            ),
+            Cin_controlled_Inflows=controlled_cin,
+            Cin_modeled_Inflows=modeled_cin,
+            retention_controlled_Outflows=controlled_retention,
+            retention_modeled_Outflows=modeled_retention,
+            t_measured=rows(self.t_measured)[:, :max_measurements],
+            y_measured=rows(self.y_measured)[:, :max_measurements],
+            mask_measured=rows(self.mask_measured)[:, :max_measurements],
+            n_measured=n_measured,
+            y0_measured=rows(self.y0_measured),
+        )
+
+    def validate_control_support(self, process_names: tuple[str, ...]) -> None:
+        """Validate measured solve spans for the processes about to be solved."""
+        spans = {}
+        for process_name in process_names:
+            _, process_index = _coerce_process_index(process_name, self.process_order)
+            n_measured = int(np.asarray(self.n_measured[process_index]))
+            active_ts = np.asarray(self.t_measured[process_index, :n_measured])
+            spans[process_name] = (float(active_ts[0]), float(active_ts[-1]))
+        self.controls_store.validate_supports(spans)
+
     def get_process(self, process: str | int) -> PerProcessTrainingData:
         """Return per-process training data by canonical name or integer index."""
         process_name, process_index = _coerce_process_index(process, self.process_order)
@@ -744,13 +850,19 @@ class TrainingDataStore(eqx.Module):
             process_index=process_index,
             name_measured_RMCs=self.name_measured_RMCs,
             name_measured_PVs=self.name_measured_PVs,
-            name_modeled_FVCs=self.name_modeled_FVCs,
-            name_modeled_SVCs=self.name_modeled_SVCs,
+            name_modeled_Inflows=self.name_modeled_Inflows,
+            name_modeled_Outflows=self.name_modeled_Outflows,
             n_measured=int(self.n_measured[process_index]),
             t_measured=self.t_measured[process_index],
             y_measured=self.y_measured[process_index],
             mask_measured=self.mask_measured[process_index],
             y0_measured=self.y0_measured[process_index],
+            Cin_controlled_Inflows=self.Cin_controlled_Inflows[process_index],
+            Cin_modeled_Inflows=self.Cin_modeled_Inflows[process_index],
+            retention_controlled_Outflows=self.retention_controlled_Outflows[
+                process_index
+            ],
+            retention_modeled_Outflows=self.retention_modeled_Outflows[process_index],
             controls=self.controls_store.get_controls(process_name),
         )
 
@@ -776,4 +888,6 @@ class TrainingDataStore(eqx.Module):
             mask_measured=self.mask_measured[indices],
             n_measured=self.n_measured[indices],
             y0_measured=self.y0_measured[indices],
+            retention_controlled_Outflows=self.retention_controlled_Outflows[indices],
+            retention_modeled_Outflows=self.retention_modeled_Outflows[indices],
         )

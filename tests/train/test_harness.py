@@ -22,11 +22,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -44,13 +44,19 @@ from bp_train.harness import (
     _ensure_process_names,
     _resolve_estimated_scales,
     _target_state_indices,
-    prepare_training_from_runtime_context,
+    compute_dense_exports,
+    prepare_training_from_runtime_artifact,
     _validate_batching_config,
     train_from_collection,
     train_collection,
 )
 from bp_train.defaults import DefaultLossModule, default_build_reaction_module
-from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
+from bp_train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
+from bp_train.runtime_context import (
+    ProducerCollectionData,
+    RuntimeDataContext,
+    select_parent_collection,
+)
 from bp_train.model_api import (
     AffineScaler,
     EstimatedScales,
@@ -60,15 +66,26 @@ from bp_train.model_api import (
     frozen_field,
     trainable_field,
 )
+from bp_train.trainer import simulate_measurement_states
 from bp_train.training_data import TrainingDataStore
 
 
-def _runtime_context(store) -> RuntimeContext:
-    return RuntimeContext(
-        RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
-        ),
+def _runtime_artifact(
+    store,
+    collection,
+    parent_names,
+    augmentation_parents=None,
+) -> RuntimeArtifact:
+    """A loaded artifact standing in for one produced by `write_runtime_artifact`."""
+    return RuntimeArtifact(
+        "sha256:" + "0" * 64,
+        store,
         EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+        RuntimeArtifactFold(0, ("holdout",), tuple(store.process_order), "fold-0", 0),
+        select_parent_collection(collection, parent_names),
+        augmentation_parents
+        if augmentation_parents is not None
+        else (None,) * len(store.process_order),
     )
 
 
@@ -82,14 +99,18 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     # override these.
     "SCALE_modeled_RMCs": jnp.ones(1),
     "SCALE_V_in_cumulative": jnp.asarray(1.0),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_modeled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_rates": jnp.ones(0),
+    "SCALE_controlled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Outflows_rates": jnp.ones(0),
+    "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_controlled_PVs": jnp.ones(0),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0),
+    "SCALE_modeled_Inflows_rates": jnp.ones(0),
+    "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
@@ -106,7 +127,8 @@ class _StatefulHarnessModule(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
         )
 
@@ -129,7 +151,8 @@ class _LinearReactionModule(UserReactionModule):
             SCL_modeled_BiologicalOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -138,30 +161,42 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
     rhs_ode = build_rhs_ode(collection.processes[process_name])
     controls = ControlsStore.from_collection(collection).get_controls(process_name)
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
-    n_FVCs = len(rhs_ode.name_modeled_FVCs)
+    n_Inflows = len(rhs_ode.name_modeled_Inflows)
+    n_Outflows = len(rhs_ode.name_modeled_Outflows)
     n_rates = len(rhs_ode.name_modeled_rates)
-    n_FVC = len(controls.name_controlled_FVCs)
+    n_Inflow = len(controls.name_controlled_Inflows)
+    n_Outflow = len(controls.name_controlled_Outflows)
     n_PV = len(controls.name_controlled_PVs)
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_RMCs),
         "SCALE_V_in_cumulative": jnp.asarray(1.0),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_FVCs),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_FVC),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_FVC),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_FVC, n_RMCs)),
+        "SCALE_modeled_Inflows_cumulative": jnp.ones(n_Inflows),
+        "SCALE_modeled_Outflows_cumulative": jnp.ones(n_Outflows),
+        "SCALE_controlled_Inflows_cumulative": jnp.ones(n_Inflow),
+        "SCALE_controlled_Inflows_rates": jnp.ones(n_Inflow),
+        "SCALE_controlled_Outflows_cumulative": jnp.ones(n_Outflow),
+        "SCALE_controlled_Outflows_rates": jnp.ones(n_Outflow),
+        "SCALE_controlled_Inflows_Cin": jnp.ones((n_Inflow, n_RMCs)),
         "SCALE_controlled_PVs": jnp.ones(n_PV),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_FVCs, n_RMCs)),
+        "SCALE_modeled_Inflows_Cin": jnp.ones((n_Inflows, n_RMCs)),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_FVCs),
+        "SCALE_modeled_Inflows_rates": jnp.ones(n_Inflows),
+        "SCALE_modeled_Outflows_rates": jnp.ones(n_Outflows),
     }
 
 
 class _StatefulCustomModule:
     @staticmethod
     def build_reaction_module(
-        *, target_names, process_names, config, seed, runtime_context, **scale_kwargs
+        *,
+        target_names,
+        process_names,
+        config,
+        seed,
+        training_parent_collection,
+        **scale_kwargs,
     ):
-        del target_names, process_names, config, seed, runtime_context
+        del target_names, process_names, config, seed, training_parent_collection
         return _StatefulHarnessModule(**scale_kwargs)
 
 
@@ -178,7 +213,9 @@ def test_build_reaction_module_rejects_stateful_without_opt_in():
             config=TrainHarnessConfig(),
             custom_module=_StatefulCustomModule,
             custom_config={},
-            runtime_context=_runtime_context(store),
+            store=store,
+            scales=EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+            training_parent_collection=collection,
         )
 
 
@@ -194,7 +231,9 @@ def test_build_reaction_module_accepts_stateful_with_opt_in():
         config=TrainHarnessConfig(allow_stateful_models=True),
         custom_module=_StatefulCustomModule,
         custom_config={},
-        runtime_context=_runtime_context(store),
+        store=store,
+        scales=EstimatedScales(**_DEFAULT_LINEAR_SCALES),
+        training_parent_collection=collection,
     )
 
     assert module.n_latent == 1
@@ -248,7 +287,7 @@ def _make_collection() -> BioProcessCollection:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -284,7 +323,7 @@ def _make_collection() -> BioProcessCollection:
             initial_volume=1.1,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -331,7 +370,7 @@ def _make_multi_process_collection(n: int) -> BioProcessCollection:
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "sample_1": SampleVolumeChange(
+                    "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
                         is_controlled=False,
@@ -364,9 +403,13 @@ def _make_multi_process_collection(n: int) -> BioProcessCollection:
 
 
 def _make_feed_mismatch_collection() -> BioProcessCollection:
-    """Two processes with different feed compositions (Cin values differ)."""
+    """Two processes with different Inflow and Outflow matrices."""
 
-    def _make_process(name: str, feed_biomass_concentration: float) -> BioProcess:
+    def _make_process(
+        name: str,
+        feed_biomass_concentration: float,
+        biomass_retention: float,
+    ) -> BioProcess:
         feed_medium = FeedMedium(
             name="feed",
             density=1.0,
@@ -392,7 +435,7 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                 initial_volume=1.0,
                 unit="L",
                 volume_changes={
-                    "feed_A": FeedVolumeChange(
+                    "feed_A": Inflow(
                         name="feed_A",
                         unit="L",
                         is_controlled=True,
@@ -403,7 +446,18 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
                         ),
                         feed_medium=feed_medium,
                     ),
-                    "sample_1": SampleVolumeChange(
+                    "bleed": Outflow(
+                        name="bleed",
+                        unit="L",
+                        is_controlled=True,
+                        is_continuous=True,
+                        values=TimeSeries(
+                            times=jnp.asarray([0.0, 2.0]),
+                            values=jnp.asarray([0.0, -0.2]),
+                        ),
+                        retention={"biomass": biomass_retention},
+                    ),
+                    "sample_1": Outflow(
                         name="sample_1",
                         unit="L",
                         is_controlled=False,
@@ -435,8 +489,8 @@ def _make_feed_mismatch_collection() -> BioProcessCollection:
 
     return BioProcessCollection(
         processes={
-            "p1": _make_process("p1", 0.0),
-            "p2": _make_process("p2", 1.0),
+            "p1": _make_process("p1", 0.0, 0.25),
+            "p2": _make_process("p2", 1.0, 0.75),
         },
         metadata={},
     )
@@ -492,14 +546,13 @@ def test_target_state_indices_map_pv_only_targets_to_pv_state_column():
 
 def test_default_reaction_module_scales_rmc_axis_not_combined_targets():
     collection = _make_combined_target_collection()
-    store = TrainingDataStore.from_collection(collection, target_source="combined")
 
     module = default_build_reaction_module(
         target_names=["biomass", "ratio"],
         process_names=["p1"],
         config=TrainHarnessConfig(),
         seed=0,
-        runtime_context=_runtime_context(store),
+        training_parent_collection=collection,
     )
 
     assert module.SCALE_modeled_RMCs.shape == (1,)
@@ -517,7 +570,7 @@ def test_train_collection_process_variable_target_uses_full_initial_state():
         process_names=list(store.process_order),
         config=TrainHarnessConfig(),
         seed=0,
-        runtime_context=_runtime_context(store),
+        training_parent_collection=collection,
     )
 
     result = train_collection(
@@ -644,7 +697,7 @@ def test_store_retains_batched_cin_without_retaining_collection():
     collection = _make_feed_mismatch_collection()
     expected = jnp.stack(
         [
-            build_rhs_ode(collection.processes[name]).Cin_controlled_FVCs
+            build_rhs_ode(collection.processes[name]).Cin_controlled_Inflows
             for name in ("p1", "p2")
         ]
     )
@@ -660,7 +713,7 @@ def test_store_retains_batched_cin_without_retaining_collection():
 
     assert collection_ref() is None
     assert store.rhs_ode.name_modeled_RMCs == ("biomass",)
-    assert jnp.array_equal(store.Cin_controlled_FVCs, expected)
+    assert jnp.array_equal(store.Cin_controlled_Inflows, expected)
 
 
 def test_subset_wrapper_uses_selected_process_cin_and_controls():
@@ -686,12 +739,12 @@ def test_subset_wrapper_uses_selected_process_cin_and_controls():
 
     assert result.trained_wrapper.controls.process_name == "p2"
     assert jnp.array_equal(
-        result.trained_wrapper.rhs_ode.Cin_controlled_FVCs,
-        store.Cin_controlled_FVCs[1],
+        result.trained_wrapper.rhs_ode.Cin_controlled_Inflows,
+        store.Cin_controlled_Inflows[1],
     )
     assert jnp.array_equal(
-        result.trained_wrapper.rhs_ode.Cin_modeled_FVCs,
-        store.Cin_modeled_FVCs[1],
+        result.trained_wrapper.rhs_ode.Cin_modeled_Inflows,
+        store.Cin_modeled_Inflows[1],
     )
 
 
@@ -752,14 +805,27 @@ def test_train_collection_cycles_batches_across_multiple_batches_per_epoch():
     assert all(batches == per_epoch_batches[0] for batches in per_epoch_batches)
 
 
-def test_train_collection_with_different_cin_per_process():
-    """Processes with different feed compositions should train without error."""
+def test_train_collection_with_different_flow_matrices_per_process():
+    """Process-aligned composition and retention rows train without error."""
     collection = _make_feed_mismatch_collection()
     store = TrainingDataStore.from_collection(
         collection,
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
+    assert jnp.array_equal(
+        store.Cin_controlled_Inflows[:, 0, 0], jnp.asarray([0.0, 1.0])
+    )
+    assert jnp.array_equal(
+        store.retention_controlled_Outflows[:, 0, 0],
+        jnp.asarray([0.25, 0.75]),
+    )
+    selected = store.select_processes(
+        ("p2",),
+        BioProcessCollection(processes={"p2": collection.processes["p2"]}),
+    )
+    assert selected.rhs_ode.retention_controlled_Outflows[0, 0] == 0.75
+
     result = train_collection(
         store,
         reaction_module=_LinearReactionModule(
@@ -777,6 +843,31 @@ def test_train_collection_with_different_cin_per_process():
 
     assert len(result.mean_loss_by_step) == 4
     assert all(jnp.isfinite(jnp.asarray(result.mean_loss_by_step)))
+
+    _, _, dense_exports = compute_dense_exports(
+        result.trained_wrapper,
+        store,
+        ("p2", "p1"),
+        solver_max_steps=10_000,
+        solver_rtol=1e-5,
+        solver_atol=1e-7,
+        solver_use_jump_ts=False,
+        prediction_grid_n=8,
+    )
+    for process_name in ("p2", "p1"):
+        process_data = store.get_process(process_name)
+        direct_states = np.asarray(
+            simulate_measurement_states(result.trained_wrapper, process_data)
+        )
+        dense = dense_exports[process_name]
+        for time_index, time in enumerate(np.asarray(process_data.active_t_measured)):
+            dense_index = int(np.flatnonzero(np.isclose(dense.t, time))[0])
+            assert dense.c_species[dense_index, 0] == pytest.approx(
+                direct_states[time_index, 0], rel=1e-5, abs=1e-7
+            )
+            assert dense.v_real[dense_index] == pytest.approx(
+                direct_states[time_index, 1], rel=1e-5, abs=1e-7
+            )
 
 
 def test_train_collection_rejects_unknown_process_selection():
@@ -1177,9 +1268,20 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda store, _collection: ProducerCollectionData(
+            store, (None,) * len(store.process_order), (), (), (), ()
+        ),
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        lambda self, collection, *_args: RuntimeDataContext(
+            self.training_data,
+            select_parent_collection(collection, ("p1",)),
+            (),
+            (),
+            (),
+            (),
         ),
     )
     monkeypatch.setattr(
@@ -1243,9 +1345,20 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda store, _collection: ProducerCollectionData(
+            store, (None,) * len(store.process_order), (), (), (), ()
+        ),
+    )
+    monkeypatch.setattr(
+        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        lambda self, collection, *_args: RuntimeDataContext(
+            self.training_data,
+            select_parent_collection(collection, ("p1",)),
+            (),
+            (),
+            (),
+            (),
         ),
     )
     monkeypatch.setattr(
@@ -1303,10 +1416,26 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
         "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
-        lambda store, _collection: RuntimeDataContext(
-            store, (None,) * len(store.process_order), (), (), (), (), ()
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda store, _collection: ProducerCollectionData(
+            store, (None,) * len(store.process_order), (), (), (), ()
         ),
+    )
+
+    def select_training_parents(runtime_data, collection, process_names):
+        captured["scale_process_names"] = tuple(process_names)
+        return RuntimeDataContext(
+            runtime_data.training_data,
+            select_parent_collection(collection, tuple(process_names)),
+            (),
+            (),
+            (),
+            (),
+        )
+
+    monkeypatch.setattr(
+        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        select_training_parents,
     )
     monkeypatch.setattr(
         "bp_train.harness._resolve_estimated_scales",
@@ -1347,6 +1476,7 @@ def test_train_from_collection_wires_build_optimizer_hook(monkeypatch):
     )
 
     assert result == "train-result"
+    assert captured["scale_process_names"] == ("p1",)
     assert captured["optimizer"] is sentinel
 
 
@@ -1418,9 +1548,14 @@ def test_build_loss_module_discovers_custom_hook():
     class _CustomModule:
         @staticmethod
         def build_loss_module(
-            *, target_names, process_names, config, seed, runtime_context
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
         ):
-            del process_names, config, seed, runtime_context
+            del process_names, config, seed, training_parent_collection
             seen["target_names"] = tuple(target_names)
             return sentinel
 
@@ -1428,7 +1563,8 @@ def test_build_loss_module_discovers_custom_hook():
         config=TrainHarnessConfig(epochs=1),
         custom_module=_CustomModule(),
         custom_config={},
-        runtime_context=_runtime_context(store),
+        store=store,
+        training_parent_collection=collection,
     )
     assert module is sentinel
     assert seen["target_names"] == ("biomass",)
@@ -1447,13 +1583,14 @@ def test_build_loss_module_defaults_when_no_hook():
         config=TrainHarnessConfig(epochs=1),
         custom_module=None,
         custom_config={},
-        runtime_context=_runtime_context(store),
+        store=store,
+        training_parent_collection=collection,
     )
     assert isinstance(module, DefaultLossModule)
     assert tuple(module.loss_names) == ("biomass",)
 
 
-def test_prepare_training_from_runtime_context_never_constructs_or_scales(
+def test_prepare_training_from_runtime_artifact_never_constructs_or_scales(
     monkeypatch, caplog
 ):
     collection = _make_collection()
@@ -1464,7 +1601,7 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
     )
 
     monkeypatch.setattr(
-        "bp_train.harness.RuntimeDataContext.from_collection",
+        "bp_train.harness.ProducerCollectionData.from_collection",
         lambda *_args, **_kwargs: pytest.fail("constructed runtime data"),
     )
     monkeypatch.setattr(
@@ -1473,8 +1610,8 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
     )
 
     caplog.set_level(logging.INFO, logger="bp_train.harness")
-    prepared = prepare_training_from_runtime_context(
-        _runtime_context(store),
+    prepared = prepare_training_from_runtime_artifact(
+        _runtime_artifact(store, collection, ("p1",)),
         config=TrainHarnessConfig(process_names=("p1",), epochs=1),
         custom_module=None,
         custom_cfg={},
@@ -1489,6 +1626,299 @@ def test_prepare_training_from_runtime_context_never_constructs_or_scales(
     )
 
 
+def test_prepare_training_preserves_all_original_prediction_parents():
+    collection = _make_multi_process_collection(3)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    artifact = _runtime_artifact(
+        store, collection, ("p1",), augmentation_parents=(None, None, "p1")
+    )
+
+    prepared = prepare_training_from_runtime_artifact(
+        artifact,
+        config=TrainHarnessConfig(process_names=("p3",), epochs=1),
+        custom_module=None,
+        custom_cfg={},
+    )
+
+    assert prepared.config.process_names == ("p3",)
+    assert prepared.prediction_parent_process_names == ("p1", "p2")
+
+
+def test_constructor_hooks_receive_selected_processes_and_represented_parents():
+    collection = _make_multi_process_collection(3)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    artifact = _runtime_artifact(
+        store, collection, ("p1", "p2"), augmentation_parents=(None, None, "p1")
+    )
+    seen = []
+
+    class CustomModule:
+        @staticmethod
+        def build_reaction_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+            **scale_kwargs,
+        ):
+            seen.append(
+                (
+                    "reaction",
+                    tuple(process_names),
+                    tuple(training_parent_collection.processes),
+                )
+            )
+            return default_build_reaction_module(
+                target_names=target_names,
+                process_names=process_names,
+                config=config,
+                seed=seed,
+                training_parent_collection=training_parent_collection,
+                **scale_kwargs,
+            )
+
+        @staticmethod
+        def build_loss_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+        ):
+            del config, seed
+            seen.append(
+                (
+                    "loss",
+                    tuple(process_names),
+                    tuple(training_parent_collection.processes),
+                )
+            )
+            return DefaultLossModule(target_names=target_names)
+
+    prepare_training_from_runtime_artifact(
+        artifact,
+        config=TrainHarnessConfig(process_names=("p3", "p2"), epochs=1),
+        custom_module=CustomModule,
+        custom_cfg={},
+    )
+
+    # process_names keeps the caller's order and its augmented child; the parents
+    # are deduplicated into canonical order, so the two tuples differ in order as
+    # well as in content.
+    assert seen == [
+        ("reaction", ("p3", "p2"), ("p1", "p2")),
+        ("loss", ("p3", "p2"), ("p1", "p2")),
+    ]
+
+
+def test_parent_collection_mismatch_fails_before_constructor_hooks():
+    collection = _make_multi_process_collection(2)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    class CustomModule:
+        @staticmethod
+        def build_reaction_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+            **scale_kwargs,
+        ):
+            pytest.fail("reaction hook called")
+
+        @staticmethod
+        def build_loss_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+        ):
+            pytest.fail("loss hook called")
+
+    with pytest.raises(ValueError, match="keys differ from represented parents"):
+        prepare_training_from_runtime_artifact(
+            _runtime_artifact(store, collection, ("p2",)),
+            config=TrainHarnessConfig(process_names=("p1",), epochs=1),
+            custom_module=CustomModule,
+            custom_cfg={},
+        )
+
+
+@pytest.mark.parametrize("construction_path", ["runtime", "artifact"])
+def test_reaction_hook_mutating_parent_collection_fails_before_loss_hook(
+    construction_path,
+):
+    collection = _make_multi_process_collection(2)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    class CustomModule:
+        @staticmethod
+        def build_reaction_module(
+            *,
+            target_names,
+            process_names,
+            config,
+            seed,
+            training_parent_collection,
+            **scale_kwargs,
+        ):
+            module = default_build_reaction_module(
+                target_names=target_names,
+                process_names=process_names,
+                config=config,
+                seed=seed,
+                training_parent_collection=training_parent_collection,
+                **scale_kwargs,
+            )
+            training_parent_collection.processes.pop("p2")
+            return module
+
+        @staticmethod
+        def build_loss_module(**kwargs):
+            pytest.fail("loss hook called")
+
+    config = TrainHarnessConfig(process_names=("p1", "p2"), epochs=1)
+    with pytest.raises(ValueError, match="keys differ from represented parents"):
+        if construction_path == "runtime":
+            harness_module._build_runtime_modules(
+                store=store,
+                collection=collection,
+                config=config,
+                custom_module=CustomModule,
+                custom_config={},
+            )
+        else:
+            prepare_training_from_runtime_artifact(
+                _runtime_artifact(store, collection, ("p1", "p2")),
+                config=config,
+                custom_module=CustomModule,
+                custom_cfg={},
+            )
+
+
+def test_build_runtime_modules_selects_scale_processes(monkeypatch):
+    collection = _make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    runtime_data = ProducerCollectionData.from_collection(store, collection)
+    seen = {}
+    select_training_parents = ProducerCollectionData.select_training_parents
+
+    def select(self, received_collection, process_names):
+        seen["selection"] = (received_collection, process_names)
+        return select_training_parents(self, received_collection, process_names)
+
+    monkeypatch.setattr(
+        "bp_train.harness.ProducerCollectionData.from_collection",
+        lambda *_args: runtime_data,
+    )
+    monkeypatch.setattr(ProducerCollectionData, "select_training_parents", select)
+    scales = EstimatedScales(**_DEFAULT_LINEAR_SCALES)
+
+    def resolve_scales(**kwargs):
+        seen["scale_data"] = kwargs["runtime_data"]
+        return scales
+
+    monkeypatch.setattr("bp_train.harness._resolve_estimated_scales", resolve_scales)
+    sentinel = object()
+
+    def build_reaction_module(**kwargs):
+        seen["scales"] = kwargs["scales"]
+        seen["training_parent_collection"] = kwargs["training_parent_collection"]
+        return sentinel
+
+    monkeypatch.setattr(
+        "bp_train.harness._build_reaction_module", build_reaction_module
+    )
+
+    reaction_module, loss_module = harness_module._build_runtime_modules(
+        store=store,
+        collection=collection,
+        config=TrainHarnessConfig(process_names=("p1",), epochs=1),
+        custom_module=None,
+        custom_config={},
+        build_loss=False,
+    )
+
+    assert reaction_module is sentinel
+    assert loss_module is None
+    assert seen["selection"] == (collection, ("p1",))
+    assert seen["scale_data"].process_order == ("p1",)
+    assert seen["scales"] is scales
+    assert tuple(seen["training_parent_collection"].processes) == ("p1",)
+
+
+def test_scale_hook_mutating_parent_collection_fails_before_constructor_hooks():
+    """The guard in `_build_runtime_modules` exists for exactly this case.
+
+    `estimate_all_scales` runs before the constructor hooks and is handed the same
+    mutable parent collection, so it can desynchronize the collection from the
+    process order the scales were selected for. `TrainingDataStore.select_processes`
+    has already run by then, so nothing else catches it.
+    """
+    collection = _make_multi_process_collection(2)
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    class CustomModule:
+        @staticmethod
+        def estimate_all_scales(data, target_names, config):
+            del target_names, config
+            data.training_parent_collection.processes.pop("p2")
+            return EstimatedScales(
+                **{
+                    field.name: jnp.zeros(())
+                    for field in dataclasses.fields(EstimatedScales)
+                }
+            )
+
+        @staticmethod
+        def build_reaction_module(**kwargs):
+            pytest.fail("reaction hook called")
+
+        @staticmethod
+        def build_loss_module(**kwargs):
+            pytest.fail("loss hook called")
+
+    with pytest.raises(ValueError, match="keys differ from represented parents"):
+        harness_module._build_runtime_modules(
+            store=store,
+            collection=collection,
+            config=TrainHarnessConfig(process_names=("p1", "p2"), epochs=1),
+            custom_module=CustomModule,
+            custom_config={},
+        )
+
+
 def test_resolve_estimated_scales_receives_runtime_data():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -1497,7 +1927,7 @@ def test_resolve_estimated_scales_receives_runtime_data():
         target_source="reactor_components",
     )
     runtime_data = RuntimeDataContext(
-        store, (None,) * len(store.process_order), (), (), (), (), ()
+        store, select_parent_collection(collection, ("p1",)), (), (), (), ()
     )
     scales = EstimatedScales(
         **{field.name: jnp.zeros(()) for field in dataclasses.fields(EstimatedScales)}

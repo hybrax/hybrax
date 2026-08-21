@@ -84,7 +84,7 @@ per update, `updates_completed`, and timing (`compile_warmup_seconds`,
 
 ```python
 forward_from_collection(collection, *, model_path, config=None, custom_py=None,
-                       runtime_config=None, training_process_names=None,
+                       training_process_names=None,
                        prediction_process_names=None, run_config=None,
                        custom_module=None,
                        prediction_grid_n=200) -> ForwardResult
@@ -98,14 +98,17 @@ ensemble) plus optional `data` and `output` blocks.
 
 - [`ForwardConfig`](../bp_train/harness.py) / [`ForwardResult`](../bp_train/harness.py)
   carry the per-process losses and selected dense exports. Losses still cover
-  every evaluated process.
+  every evaluated process. An omitted `ForwardConfig.target_source` inherits the
+  model run's recorded training source; explicitly passing `"auto"` requests
+  automatic resolution against the evaluation collection.
 - `compute_dense_exports(trained_wrapper, store, process_names, *,
   solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts,
   prediction_grid_n=200)` runs one batched solve and returns per-process
-  [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories
-  (time, species, volume, rates, auxiliary). It is *the* single source of dense
-  predictions for forward evaluation and final training exports, so exported
-  predictions always match the training solve.
+  [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories: time,
+  species, volume, cumulative modeled Inflows/Outflows, biological rates,
+  separate physical modeled Inflow/Outflow rates, and auxiliary values.
+  It is *the* single source of dense predictions for forward evaluation and
+  final training exports, so exported predictions always match the training solve.
 - All forward artifacts are contained in `<output-dir>/forward-results/`.
   For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
   into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
@@ -119,6 +122,10 @@ ensemble) plus optional `data` and `output` blocks.
   `<output-dir>/forward-results/plots/<process>.png` for every exported process.
   Plotting requires `output.predictions` to be `parents` or `all` and is
   best-effort: rendering failures are logged without failing forward.
+  Modeled flow columns use `B_<name>_cum` for cumulative values and
+  `B_<name>_rate` for physical rates. Per-model and ensemble-mean Inflow
+  values/rates remain non-negative; Outflow values/rates remain non-positive.
+  `predictions_std.csv` contains non-negative standard deviations.
 
 ### Programmatic forward
 
@@ -127,9 +134,16 @@ path — it takes its solver settings from `config` and returns the same
 `{process_name: DenseProcessExport}` mapping. See
 [06_serialization_inspect.md](06_serialization_inspect.md#reconstruction).
 
-`forward_from_collection` re-runs `estimate_all_scales` against whatever
-collection it is given, so it re-scales the model if that is not the training
-collection. `model_predict` reuses the trained scales as-is.
+`collection` is **evaluation data only**. The model itself is rebuilt from the
+prepared collection *it* trained on, resolved from `model_path`'s run directory and
+hash-verified before any hook runs
+([`reconstruct_training`](06_serialization_inspect.md#reconstruction)) — so
+`estimate_all_scales` never sees the evaluation data, and `training_process_names`
+defaults to the selection the run recorded rather than anything derived from what
+you pass in. The evaluation collection may hold entirely different processes, but it
+must be compatible with the training data (same measured/modeled variables in the
+same order) or the call fails with an explicit error. `model_predict` skips
+reconstruction altogether and reuses the trained scales as-is.
 
 ## Leave-one/some-process-out cross-validation
 

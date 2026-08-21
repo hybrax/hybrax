@@ -30,9 +30,9 @@ import pandas as pd
 from bp_format.dataclasses import (
     BioProcess,
     BioProcessCollection,
-    FeedVolumeChange,
+    Inflow,
+    Outflow,
     ReactorMediumComponent,
-    SampleVolumeChange,
     StaticVariable,
     TimeSeries,
 )
@@ -165,7 +165,7 @@ def _extract_volume_change_measurements(
     if process.volume is None or not process.volume.volume_changes:
         return out
     for name, vc in process.volume.volume_changes.items():
-        if not isinstance(vc, (FeedVolumeChange, SampleVolumeChange)):
+        if not isinstance(vc, (Inflow, Outflow)):
             continue
         values = vc.values
         if values is None:

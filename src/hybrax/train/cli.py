@@ -18,6 +18,7 @@ from .forward_plotting import plot_forward_predictions
 from .harness import (
     ForwardConfig,
     ForwardResult,
+    TrainHarnessResult,
     evaluate_trained_wrapper,
     forward_from_collection,
     prepare_training,
@@ -35,9 +36,11 @@ from .loo import (
     train_prepared_fold,
 )
 from .runtime_artifact import FORMAT_VERSION
+from .runtime_context import original_parent_processes
 from .postprocessing import aggregate_dense_exports, export_predictions_csv
 from .prepare import prepare_artifact
 from .run_config import (
+    ModelRef,
     PredictionScope,
     RunConfig,
     load_forward_config,
@@ -50,10 +53,13 @@ from .serialization import (
     content_hash,
     environment_versions as _environment_versions,
     read_run_config_json,
+    resolve_forward_model_path,
+    resolve_run_dir,
     run_config_to_jsonable,
     update_json,
     write_json,
 )
+from .training_data import TARGET_SOURCE_AUTO
 
 
 def _now_iso() -> str:
@@ -374,7 +380,9 @@ def _clear_output_dir_for_overwrite(
             child.unlink()
 
 
-def _finalize_run_dir(run_dir: Path, result: Any, config_json: Path) -> None:
+def _finalize_run_dir(
+    run_dir: Path, result: TrainHarnessResult, config_json: Path
+) -> None:
     """Copy the mandatory latest checkpoint to model/, then mark complete."""
     model_dir = run_dir / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -489,7 +497,7 @@ def _handle_train(args: argparse.Namespace) -> int:
         prediction_processes = _select_prediction_processes(
             cfg.output.predictions,
             eval_processes,
-            prepared.parent_process_names,
+            prepared.prediction_parent_process_names,
         )
         forward_result = evaluate_trained_wrapper(
             result.trained_wrapper,
@@ -632,42 +640,15 @@ def _write_loss_csv(rows: list[list[str]], path: Path) -> None:
     pd.DataFrame(data, columns=headers).to_csv(path, index=False)
 
 
-def _resolve_forward_run_dir(path: Path, *, max_levels: int = 4) -> Path | None:
-    """Return the nearest directory at/above ``path`` that holds config.json."""
-    cur = path if path.is_dir() else path.parent
-    for _ in range(max_levels + 1):
-        if (cur / "config.json").is_file():
-            return cur
-        if cur.parent == cur:
-            break
-        cur = cur.parent
-    return None
-
-
 def _resolve_model_bundle(
     path: Path,
 ) -> tuple[Path, Path, RunConfig, Path | None]:
     """Resolve a model reference to its config, parameters, and data."""
-    path = Path(path)
-    if not path.exists():
-        raise SystemExit(f"forward: model path does not exist: {path}")
-    run_dir = _resolve_forward_run_dir(path)
-    if run_dir is None:
-        raise SystemExit(
-            f"forward: no config.json at or above {path}; pass a trained run "
-            "directory or a self-contained checkpoint dir."
-        )
+    try:
+        run_dir, params = resolve_forward_model_path(path)
+    except FileNotFoundError as exc:
+        raise SystemExit(f"forward: {exc}") from exc
     model_cfg, _document = read_run_config_json(run_dir / "config.json")
-    if path.is_file() and path.name == "params.eqx":
-        params = path
-    elif path.is_dir() and (path / "params.eqx").is_file():
-        params = path / "params.eqx"
-    elif (run_dir / "model" / "params.eqx").is_file():
-        params = run_dir / "model" / "params.eqx"
-    elif (run_dir / "params.eqx").is_file():
-        params = run_dir / "params.eqx"
-    else:
-        raise SystemExit(f"forward: no params.eqx found for model {path}")
     if (run_dir / "prepared.json.gz").is_file():
         own_prepared: Path | None = run_dir / "prepared.json.gz"
     elif (run_dir / "prepared.json").is_file():
@@ -679,14 +660,14 @@ def _resolve_model_bundle(
     return run_dir, params, model_cfg, own_prepared
 
 
-def _resolve_model_names(models: tuple[Any, ...]) -> list[str]:
+def _resolve_model_names(models: tuple[ModelRef, ...]) -> list[str]:
     """Return unique, filename-safe names for per-model output directories."""
     raw: list[str] = []
     for ref in models:
         if ref.name:
             raw.append(str(ref.name))
             continue
-        run_dir = _resolve_forward_run_dir(Path(ref.path))
+        run_dir = resolve_run_dir(ref.path)
         nm: str | None = None
         if run_dir is not None:
             try:
@@ -794,7 +775,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Forward each model on its data ---
-    per_model: list[tuple[str, Any]] = []  # (name, ForwardResult)
+    per_model: list[tuple[str, ForwardResult]] = []
     prediction_processes: tuple[str, ...] = ()
     plot_collection = None
     for name, _run_dir, params_path, model_cfg, prepared, custom_py in bundles:
@@ -818,12 +799,18 @@ def _handle_forward(args: argparse.Namespace) -> int:
             return 1
         model_targets = model_cfg.data.targets if model_cfg.data is not None else None
         model_source = (
-            model_cfg.data.target_source if model_cfg.data is not None else "auto"
+            model_cfg.data.target_source
+            if model_cfg.data is not None
+            else TARGET_SOURCE_AUTO
         )
+        # A run that recorded no data.processes trained on every process of its
+        # own prepared input, which forward_from_collection resolves from the run
+        # dir and hash-verifies. The CLI must not guess it from the evaluation
+        # collection: with a shared prepared input that is a different dataset.
         training_processes = (
             tuple(model_cfg.data.processes)
             if model_cfg.data is not None and model_cfg.data.processes
-            else eval_processes
+            else None
         )
         fwd_cfg = ForwardConfig(
             process_names=eval_processes,
@@ -834,11 +821,12 @@ def _handle_forward(args: argparse.Namespace) -> int:
             solver_atol=float(model_cfg.solver.atol),
             solver_use_jump_ts=bool(model_cfg.solver.jump_ts),
         )
-        parent_processes = tuple(
-            process_name
-            for process_name in eval_processes
-            if getattr(collection.processes[process_name], "parent_process", None)
-            is None
+        parent_processes = original_parent_processes(
+            tuple(collection.processes),
+            tuple(
+                getattr(process, "parent_process", None)
+                for process in collection.processes.values()
+            ),
         )
         prediction_processes = _select_prediction_processes(
             fcfg.output.predictions, eval_processes, parent_processes

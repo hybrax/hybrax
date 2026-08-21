@@ -218,23 +218,27 @@ def _reaction_schema_rows(
     list[tuple[str, str, tuple[str, ...]]],
     list[tuple[str, tuple[str, ...], tuple[str, ...]]],
 ]:
-    """Build the (inputs, outputs, cin_followups) row collections.
+    """Build the (inputs, outputs, matrix_followups) row collections.
 
-    `cin_followups` carries (axis_name, row_names, col_names) for each
+    `matrix_followups` carries (axis_name, row_names, col_names) for each
     2-D Cin matrix so the renderer can emit indented "rows:"/"cols:"
     lines underneath the table row.
     """
     name_RMCs = tuple(rhs_ode.name_modeled_RMCs)
     name_modeled_PVs = tuple(rhs_ode.name_modeled_PVs)
-    name_modeled_FVCs = tuple(rhs_ode.name_modeled_FVCs)
-    name_controlled_FVCs = tuple(rhs_ode.name_controlled_FVCs)
+    name_modeled_Inflows = tuple(rhs_ode.name_modeled_Inflows)
+    name_controlled_Inflows = tuple(rhs_ode.name_controlled_Inflows)
+    name_modeled_Outflows = tuple(rhs_ode.name_modeled_Outflows)
+    name_controlled_Outflows = tuple(rhs_ode.name_controlled_Outflows)
     name_controlled_PVs = tuple(rhs_ode.name_controlled_PVs)
     name_modeled_rates = tuple(rhs_ode.name_modeled_rates)
 
     n_RMCs = len(name_RMCs)
     n_modeled_PVs = len(name_modeled_PVs)
-    n_modeled_FVCs = len(name_modeled_FVCs)
-    n_controlled_FVCs = len(name_controlled_FVCs)
+    n_modeled_Inflows = len(name_modeled_Inflows)
+    n_controlled_Inflows = len(name_controlled_Inflows)
+    n_modeled_Outflows = len(name_modeled_Outflows)
+    n_controlled_Outflows = len(name_controlled_Outflows)
     n_controlled_PVs = len(name_controlled_PVs)
     n_modeled_rates = len(name_modeled_rates)
 
@@ -243,24 +247,49 @@ def _reaction_schema_rows(
         ("SCL_modeled_PVs", _shape_tuple_str(n_modeled_PVs), name_modeled_PVs),
         ("SCL_modeled_V", "()", ("V_real",)),
         (
-            "SCL_modeled_FVCs_cumulative",
-            _shape_tuple_str(n_modeled_FVCs),
-            name_modeled_FVCs,
+            "SCL_modeled_Inflows_cumulative",
+            _shape_tuple_str(n_modeled_Inflows),
+            name_modeled_Inflows,
         ),
         (
-            "SCL_controlled_FVCs_cumulative",
-            _shape_tuple_str(n_controlled_FVCs),
-            name_controlled_FVCs,
+            "SCL_modeled_Outflows_cumulative",
+            _shape_tuple_str(n_modeled_Outflows),
+            name_modeled_Outflows,
         ),
         (
-            "SCL_controlled_FVCs_rates",
-            _shape_tuple_str(n_controlled_FVCs),
-            name_controlled_FVCs,
+            "SCL_controlled_Inflows_cumulative",
+            _shape_tuple_str(n_controlled_Inflows),
+            name_controlled_Inflows,
         ),
         (
-            "SCL_controlled_FVCs_Cin",
-            _shape_tuple_str(n_controlled_FVCs, n_RMCs),
+            "SCL_controlled_Inflows_rates",
+            _shape_tuple_str(n_controlled_Inflows),
+            name_controlled_Inflows,
+        ),
+        (
+            "SCL_controlled_Inflows_Cin",
+            _shape_tuple_str(n_controlled_Inflows, n_RMCs),
             (),  # 2-D: detail rendered as follow-up lines
+        ),
+        (
+            "SCL_controlled_Outflows_cumulative",
+            _shape_tuple_str(n_controlled_Outflows),
+            name_controlled_Outflows,
+        ),
+        (
+            "SCL_controlled_Outflows_rates",
+            _shape_tuple_str(n_controlled_Outflows),
+            name_controlled_Outflows,
+        ),
+        (
+            "RAW_controlled_Outflows_retention",
+            _shape_tuple_str(n_controlled_Outflows, n_RMCs),
+            (),
+        ),
+        (
+            "RAW_modeled_Outflows_retention",
+            _shape_tuple_str(n_modeled_Outflows, n_RMCs),
+            (),
         ),
         (
             "SCL_controlled_PVs",
@@ -268,8 +297,8 @@ def _reaction_schema_rows(
             name_controlled_PVs,
         ),
         (
-            "SCL_modeled_FVCs_Cin",
-            _shape_tuple_str(n_modeled_FVCs, n_RMCs),
+            "SCL_modeled_Inflows_Cin",
+            _shape_tuple_str(n_modeled_Inflows, n_RMCs),
             (),
         ),
     ]
@@ -281,24 +310,35 @@ def _reaction_schema_rows(
             name_modeled_rates,
         ),
         (
-            "SCL_modeled_FVCs_rates",
-            _shape_tuple_str(n_modeled_FVCs),
-            name_modeled_FVCs,
+            "SCL_modeled_Inflows_rates",
+            _shape_tuple_str(n_modeled_Inflows),
+            name_modeled_Inflows,
+        ),
+        (
+            "SCL_modeled_Outflows_rates",
+            _shape_tuple_str(n_modeled_Outflows),
+            name_modeled_Outflows,
         ),
     ]
 
-    cin_followups: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [
-        ("SCL_controlled_FVCs_Cin", name_controlled_FVCs, name_RMCs),
-        ("SCL_modeled_FVCs_Cin", name_modeled_FVCs, name_RMCs),
+    matrix_followups: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [
+        ("SCL_controlled_Inflows_Cin", name_controlled_Inflows, name_RMCs),
+        ("SCL_modeled_Inflows_Cin", name_modeled_Inflows, name_RMCs),
+        (
+            "RAW_controlled_Outflows_retention",
+            name_controlled_Outflows,
+            name_RMCs,
+        ),
+        ("RAW_modeled_Outflows_retention", name_modeled_Outflows, name_RMCs),
     ]
 
-    return inputs, outputs, cin_followups
+    return inputs, outputs, matrix_followups
 
 
 def _render_schema_table(
     title: str,
     rows: list[tuple[str, str, tuple[str, ...]]],
-    cin_followups_by_name: dict[str, tuple[tuple[str, ...], tuple[str, ...]]],
+    matrix_followups_by_name: dict[str, tuple[tuple[str, ...], tuple[str, ...]]],
 ) -> str:
     """Render a bordered schema table matching the ``RhsOde Structure`` style.
 
@@ -313,7 +353,7 @@ def _render_schema_table(
     pre_lines: list[list[str]] = []
     for axis, shape, names in rows:
         cell_lines = _names_cell_lines(
-            names, cin_followups_by_name.get(axis), _NAMES_CELL_WIDTH
+            names, matrix_followups_by_name.get(axis), _NAMES_CELL_WIDTH
         )
         pre_lines.append(cell_lines)
 
@@ -362,11 +402,15 @@ def format_reaction_schema(
     row with shape ``(n_rows, n_cols)`` followed by indented
     ``rows:``/``cols:`` lines naming the matrix axes.
     """
-    inputs_rows, outputs_rows, cin_followups = _reaction_schema_rows(rhs_ode, controls)
-    cin_followups_by_name = {name: (rows, cols) for name, rows, cols in cin_followups}
+    inputs_rows, outputs_rows, matrix_followups = _reaction_schema_rows(
+        rhs_ode, controls
+    )
+    matrix_followups_by_name = {
+        name: (rows, cols) for name, rows, cols in matrix_followups
+    }
 
     inputs_table = _render_schema_table(
-        "ReactionInputs Schema", inputs_rows, cin_followups_by_name
+        "ReactionInputs Schema", inputs_rows, matrix_followups_by_name
     )
     outputs_table = _render_schema_table("ReactionOutputs Schema", outputs_rows, {})
     return inputs_table + "\n\n" + outputs_table

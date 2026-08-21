@@ -24,9 +24,10 @@ logger = logging.getLogger(__name__)
 class DenseProcessExport:
     """Dense, human-facing per-process export arrays in physical units.
 
-    ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modelled
-    rate vector), not with ``modeled_RMC_names``. Under a user-defined
-    ``BiologicalOde`` these orderings differ.
+    ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled
+    biological rate vector), not with ``modeled_RMC_names``. Under a
+    user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and
+    Outflow rates remain separate physical arrays with their storage signs.
     """
 
     t: np.ndarray
@@ -34,6 +35,8 @@ class DenseProcessExport:
     v_real: np.ndarray
     b_modeled_cum: np.ndarray
     q_rates: np.ndarray
+    modeled_Inflow_rates: np.ndarray
+    modeled_Outflow_rates: np.ndarray
     auxiliary: dict[str, np.ndarray] | None = None
 
 
@@ -66,6 +69,8 @@ def aggregate_dense_exports(
         v_m, v_s = _mean_std("v_real")
         b_m, b_s = _mean_std("b_modeled_cum")
         q_m, q_s = _mean_std("q_rates")
+        inflow_m, inflow_s = _mean_std("modeled_Inflow_rates")
+        outflow_m, outflow_s = _mean_std("modeled_Outflow_rates")
         aux_keys = list(exports[0].auxiliary or {})
         aux_m = {
             k: np.stack([e.auxiliary[k] for e in exports]).mean(0) for k in aux_keys
@@ -73,8 +78,26 @@ def aggregate_dense_exports(
         aux_s = {
             k: np.stack([e.auxiliary[k] for e in exports]).std(0) for k in aux_keys
         } or None
-        mean_out[proc] = DenseProcessExport(t, c_m, v_m, b_m, q_m, aux_m)
-        std_out[proc] = DenseProcessExport(t, c_s, v_s, b_s, q_s, aux_s)
+        mean_out[proc] = DenseProcessExport(
+            t=t,
+            c_species=c_m,
+            v_real=v_m,
+            b_modeled_cum=b_m,
+            q_rates=q_m,
+            modeled_Inflow_rates=inflow_m,
+            modeled_Outflow_rates=outflow_m,
+            auxiliary=aux_m,
+        )
+        std_out[proc] = DenseProcessExport(
+            t=t,
+            c_species=c_s,
+            v_real=v_s,
+            b_modeled_cum=b_s,
+            q_rates=q_s,
+            modeled_Inflow_rates=inflow_s,
+            modeled_Outflow_rates=outflow_s,
+            auxiliary=aux_s,
+        )
     return mean_out, std_out
 
 
@@ -88,15 +111,18 @@ def dense_exports_from_save_outputs(
 
     Pure reshaping (no ODE solve): the leading axis of every leaf is the process
     batch (aligned with ``process_names``); un-scale ``SCL_states`` to physical
-    and pick the canonical export columns (``c_*``, ``V_real``,
-    cumulative modeled feeds, ``q_*`` rates, and per-key ``auxiliary``).
+    and pick the canonical export columns (``c_*``, ``V_real``, cumulative
+    modeled Inflows and Outflows, biological ``q_*`` rates, separate modeled
+    Inflow/Outflow rates, and per-key ``auxiliary``).
     """
     module = trained_wrapper.reaction_module
     # "species" export columns = the [RMCs | PVs] leading state block.
     n_species = len(trained_wrapper.modeled_RMC_names) + len(
         trained_wrapper.modeled_PV_names
     )
-    n_modeled = len(trained_wrapper.modeled_FVC_names)
+    n_modeled = len(trained_wrapper.modeled_Inflow_names) + len(
+        trained_wrapper.modeled_Outflow_names
+    )
     # Un-scale [N, n_pred, state] → physical in one vmapped pass, then to numpy.
     RAW_states = np.asarray(
         jax.vmap(jax.vmap(module.unscale_state))(prediction_save_outputs.SCL_states)
@@ -104,6 +130,8 @@ def dense_exports_from_save_outputs(
     t_np = np.asarray(prediction_t)
     v_real_np = np.asarray(prediction_save_outputs.RAW_V_export)
     q_np = np.asarray(prediction_save_outputs.RAW_modeled_BiologicalOde_rates)
+    inflow_rates_np = np.asarray(prediction_save_outputs.RAW_modeled_Inflows_rates)
+    outflow_rates_np = np.asarray(prediction_save_outputs.RAW_modeled_Outflows_rates)
     auxiliary = prediction_save_outputs.auxiliary
 
     exports: dict[str, DenseProcessExport] = {}
@@ -128,6 +156,8 @@ def dense_exports_from_save_outputs(
             v_real=v_real_np[i][sel],
             b_modeled_cum=RAW_states[i, sel, n_species + 1 : n_species + 1 + n_modeled],
             q_rates=q_np[i][sel],
+            modeled_Inflow_rates=inflow_rates_np[i][sel],
+            modeled_Outflow_rates=outflow_rates_np[i][sel],
             auxiliary=aux_i,
         )
     return exports
@@ -136,7 +166,8 @@ def dense_exports_from_save_outputs(
 def _predictions_csv_header(
     modeled_RMC_names: tuple[str, ...],
     modeled_PV_names: tuple[str, ...],
-    modeled_FVC_names: tuple[str, ...],
+    modeled_Inflow_names: tuple[str, ...],
+    modeled_Outflow_names: tuple[str, ...],
     rate_names: tuple[str, ...],
     auxiliary_columns: Sequence[str] = (),
 ) -> list[str]:
@@ -152,8 +183,11 @@ def _predictions_csv_header(
         + [f"c_{name}" for name in modeled_RMC_names]
         + [f"c_{name}" for name in modeled_PV_names]
         + ["V_real"]
-        + [f"B_{name}_cum" for name in modeled_FVC_names]
+        + [f"B_{name}_cum" for name in modeled_Inflow_names]
+        + [f"B_{name}_cum" for name in modeled_Outflow_names]
         + list(rate_names)
+        + [f"B_{name}_rate" for name in modeled_Inflow_names]
+        + [f"B_{name}_rate" for name in modeled_Outflow_names]
         + list(auxiliary_columns)
     )
 
@@ -459,12 +493,15 @@ def export_predictions_csv(
 
     modeled_RMC_names = trained_wrapper.modeled_RMC_names
     modeled_PV_names = trained_wrapper.modeled_PV_names
-    modeled_FVC_names = trained_wrapper.modeled_FVC_names
+    modeled_Inflow_names = trained_wrapper.modeled_Inflow_names
+    modeled_Outflow_names = trained_wrapper.modeled_Outflow_names
     rate_names = tuple(trained_wrapper.rhs_ode.name_modeled_rates)
     # Leading state block written as ``c_*`` columns = modeled RMCs then PVs.
     n_species = len(modeled_RMC_names) + len(modeled_PV_names)
-    n_modeled = len(modeled_FVC_names)
+    n_modeled = len(modeled_Inflow_names) + len(modeled_Outflow_names)
     n_rates = len(rate_names)
+    n_modeled_Inflows = len(modeled_Inflow_names)
+    n_modeled_Outflows = len(modeled_Outflow_names)
 
     if process_names is None:
         selected_processes = tuple(dense_exports.keys())
@@ -480,7 +517,8 @@ def export_predictions_csv(
         header = _predictions_csv_header(
             modeled_RMC_names=modeled_RMC_names,
             modeled_PV_names=modeled_PV_names,
-            modeled_FVC_names=modeled_FVC_names,
+            modeled_Inflow_names=modeled_Inflow_names,
+            modeled_Outflow_names=modeled_Outflow_names,
             rate_names=rate_names,
         )
         pd.DataFrame(columns=header).to_csv(output_path, index=False)
@@ -493,7 +531,8 @@ def export_predictions_csv(
     header = _predictions_csv_header(
         modeled_RMC_names=modeled_RMC_names,
         modeled_PV_names=modeled_PV_names,
-        modeled_FVC_names=modeled_FVC_names,
+        modeled_Inflow_names=modeled_Inflow_names,
+        modeled_Outflow_names=modeled_Outflow_names,
         rate_names=rate_names,
         auxiliary_columns=auxiliary_columns,
     )
@@ -525,6 +564,14 @@ def export_predictions_csv(
                 + [float(dense_export.v_real[i_t])]
                 + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
                 + [float(dense_export.q_rates[i_t, j]) for j in range(n_rates)]
+                + [
+                    float(dense_export.modeled_Inflow_rates[i_t, j])
+                    for j in range(n_modeled_Inflows)
+                ]
+                + [
+                    float(dense_export.modeled_Outflow_rates[i_t, j])
+                    for j in range(n_modeled_Outflows)
+                ]
                 + aux_cells
             )
             ts_rows.append(row)

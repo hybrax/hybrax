@@ -12,6 +12,7 @@ These tests exercise the pieces that do not require a real trained model:
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,7 +27,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -42,7 +43,7 @@ from bp_train.forward_plotting import plot_forward_predictions
 from bp_train.harness import compute_dense_exports, evaluate_trained_wrapper
 from bp_train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
 from bp_train.training_data import TrainingDataStore
-from bp_train.wrapper import HybridOdeWrapper
+from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
 
 
 @pytest.mark.parametrize(
@@ -68,8 +69,8 @@ def test_select_prediction_processes_rejects_unknown_scope():
 def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypatch):
     store = SimpleNamespace(
         process_order=("train", "holdout"),
-        name_modeled_FVCs=("F",),
-        name_modeled_SVCs=("S",),
+        name_modeled_Inflows=("F",),
+        name_modeled_Outflows=("S",),
     )
     wrapper = object()
 
@@ -109,10 +110,12 @@ def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypat
 def test_evaluate_trained_wrapper_skips_dense_solve_for_no_predictions(monkeypatch):
     store = SimpleNamespace(
         process_order=("p1",),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
-        Cin_controlled_FVCs=jnp.zeros((1, 0, 1)),
-        Cin_modeled_FVCs=jnp.zeros((1, 0, 1)),
+        name_modeled_Inflows=(),
+        name_modeled_Outflows=(),
+        Cin_controlled_Inflows=jnp.zeros((1, 0, 1)),
+        Cin_modeled_Inflows=jnp.zeros((1, 0, 1)),
+        retention_controlled_Outflows=jnp.zeros((1, 0, 1)),
+        retention_modeled_Outflows=jnp.zeros((1, 0, 1)),
         gather_batch=lambda indices: SimpleNamespace(process_indices=indices),
     )
     monkeypatch.setattr(
@@ -157,10 +160,16 @@ def test_evaluate_trained_wrapper_loss_only_batches_exclude_padding(monkeypatch)
 
     class _Store:
         process_order = process_names
-        name_modeled_FVCs = ()
-        name_modeled_SVCs = ()
-        Cin_controlled_FVCs = jnp.zeros((35, 0, 1))
-        Cin_modeled_FVCs = jnp.zeros((35, 0, 1))
+        name_modeled_Inflows = ()
+        name_modeled_Outflows = ()
+        Cin_controlled_Inflows = jnp.zeros((35, 0, 1))
+        Cin_modeled_Inflows = jnp.zeros((35, 0, 1))
+        retention_controlled_Outflows = jnp.zeros((35, 0, 1))
+        retention_modeled_Outflows = jnp.zeros((35, 0, 1))
+
+        @staticmethod
+        def validate_control_support(process_names):
+            del process_names
 
         @staticmethod
         def gather_batch(indices):
@@ -262,8 +271,8 @@ def _make_forward_result(
         store=None,
         process_names=tuple(process_names),
         target_names=tuple(target_names),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
+        name_modeled_Inflows=(),
+        name_modeled_Outflows=(),
         training_process_names=tuple(training_process_names),
         per_process_total_loss=per_process_total,
         per_process_per_target_loss=per_process_per_target,
@@ -389,8 +398,8 @@ def _stub_forward_result(**kwargs) -> ForwardResult:
         store=_DummyStore(),
         process_names=("p1", "p2"),
         target_names=("X", "S"),
-        name_modeled_FVCs=(),
-        name_modeled_SVCs=(),
+        name_modeled_Inflows=(),
+        name_modeled_Outflows=(),
         training_process_names=("p1", "p2"),
         per_process_total_loss={"p1": 0.1, "p2": 0.2},
         per_process_per_target_loss={"p1": (0.05, 0.15), "p2": (0.1, 0.3)},
@@ -437,39 +446,44 @@ def _make_forward_run_dir(
 _FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_RMCs": jnp.ones(1),
     "SCALE_V_in_cumulative": jnp.asarray(1.0),
-    "SCALE_modeled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_cumulative": jnp.ones(0),
-    "SCALE_controlled_FVCs_rates": jnp.ones(0),
-    "SCALE_controlled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_modeled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Inflows_rates": jnp.ones(0),
+    "SCALE_controlled_Outflows_cumulative": jnp.ones(0),
+    "SCALE_controlled_Outflows_rates": jnp.ones(0),
+    "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_controlled_PVs": jnp.ones(0),
-    "SCALE_modeled_FVCs_Cin": jnp.ones((0, 1)),
+    "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
-    "SCALE_modeled_FVCs_rates": jnp.ones(0),
+    "SCALE_modeled_Inflows_rates": jnp.ones(0),
+    "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
 class _ConstantReactionModule(UserReactionModule):
     SCL_specific_rates: jnp.ndarray
-    SCL_feed_rates: jnp.ndarray
+    SCL_Inflow_rates: jnp.ndarray
     aux: dict[str, jnp.ndarray] | None
 
     def __init__(
         self,
         specific_rates: jnp.ndarray,
-        modeled_feed_rates: jnp.ndarray,
+        modeled_Inflows_rates: jnp.ndarray,
         auxiliary: dict[str, jnp.ndarray] | None = None,
         **scale_kwargs,
     ):
         super().__init__(**{**_FORWARD_DEFAULT_SCALES, **scale_kwargs})
         self.SCL_specific_rates = specific_rates
-        self.SCL_feed_rates = modeled_feed_rates
+        self.SCL_Inflow_rates = modeled_Inflows_rates
         self.aux = auxiliary
 
     def __call__(self, t, inputs):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
-            SCL_modeled_FVCs_rates=self.SCL_feed_rates,
+            SCL_modeled_Inflows_rates=self.SCL_Inflow_rates,
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             auxiliary=self.aux,
         )
 
@@ -490,7 +504,7 @@ def _make_one_species_process(
             initial_volume=initial_volume,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -549,7 +563,7 @@ def _build_single_process_runtime(
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=_ConstantReactionModule(
             specific_rates=jnp.asarray([q_scaled]),
-            modeled_feed_rates=jnp.zeros((0,)),
+            modeled_Inflows_rates=jnp.zeros((0,)),
             auxiliary=auxiliary,
             **scale_kwargs,
         ),
@@ -1114,6 +1128,57 @@ def test_forward_cli_plot_failure_is_nonfatal(monkeypatch, tmp_path: Path):
     assert (output_dir / "forward-results" / "losses.csv").is_file()
 
 
+def test_forward_cli_never_guesses_an_unrecorded_training_selection(
+    monkeypatch, tmp_path: Path, caplog
+):
+    """A run that recorded no data.processes gets no CLI-invented substitute.
+
+    The evaluation selection must not stand in for the training selection (it
+    drives the constructor-hook process_names and the loss table's train/holdout
+    split), and neither may the evaluation collection's own process order: with a
+    shared prepared input that is a different dataset. The CLI passes None, and
+    forward resolves the selection from the model's own hash-verified input.
+    """
+    captured: dict[str, object] = {}
+    run_dir = _make_forward_run_dir(tmp_path, processes=None, targets=("X", "S"))
+    prepared = tmp_path / "shared.json"
+    prepared.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        cli, "load_process_collection", lambda p: _make_fake_collection()
+    )
+    monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
+
+    def fake_forward(collection, **kwargs):
+        captured["training_process_names"] = kwargs["training_process_names"]
+        captured["config"] = kwargs["config"]
+        return _stub_forward_result()
+
+    monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
+
+    output_dir = tmp_path / "fwd"
+    output_dir.mkdir()
+    fwd_config = _write_forward_config(
+        tmp_path, [run_dir], processes=("p1",), prepared=prepared
+    )
+    with caplog.at_level(logging.WARNING):
+        assert (
+            cli.main(
+                [
+                    "forward",
+                    "--config",
+                    str(fwd_config),
+                    "--output-dir",
+                    str(output_dir),
+                ]
+            )
+            == 0
+        )
+
+    assert captured["config"].process_names == ("p1",)
+    assert captured["training_process_names"] is None
+    assert "assuming it trained on all" not in caplog.text
+
+
 @pytest.mark.parametrize(
     ("mode", "expected_processes"),
     [
@@ -1302,10 +1367,11 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
         cli, "load_process_collection", lambda p: _make_fake_collection()
     )
 
-    captured_tpn: dict[str, object] = {}
+    captured_eval: dict[str, object] = {}
 
     def fake_forward(collection, **kwargs):
-        captured_tpn["tpn"] = kwargs["training_process_names"]
+        captured_eval["tpn"] = kwargs["training_process_names"]
+        captured_eval["processes"] = kwargs["config"].process_names
         return _stub_forward_result(training_process_names=())
 
     monkeypatch.setattr(cli, "forward_from_collection", fake_forward)
@@ -1315,7 +1381,9 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
     cli.main(
         ["forward", "--config", str(fwd_config), "--output-dir", str(tmp_path / "fwd")]
     )
-    assert captured_tpn["tpn"] == ("p1", "p2", "p3")
+    assert captured_eval["processes"] == ("p1", "p2", "p3")
+    # Unrecorded stays unrecorded: forward resolves it from the model's own input.
+    assert captured_eval["tpn"] is None
 
 
 def test_export_predictions_csv_header_only_for_empty_selection(
@@ -1327,7 +1395,8 @@ def test_export_predictions_csv_header_only_for_empty_selection(
     class _Wrapper:
         modeled_RMC_names = ("X", "S")
         modeled_PV_names = ()
-        modeled_FVC_names = ("F",)
+        modeled_Inflow_names = ("F",)
+        modeled_Outflow_names = ()
         rhs_ode = _RhsOde()
 
     ts_path = tmp_path / "timeseries.csv"
@@ -1347,6 +1416,7 @@ def test_export_predictions_csv_header_only_for_empty_selection(
         "B_F_cum",
         "q_X",
         "q_S",
+        "B_F_rate",
     ]
     assert rows.empty
 
@@ -1357,8 +1427,14 @@ def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count)
 
     class _Store:
         process_order = process_names
-        Cin_controlled_FVCs = jnp.zeros((process_count, 0, 1))
-        Cin_modeled_FVCs = jnp.zeros((process_count, 0, 1))
+        Cin_controlled_Inflows = jnp.zeros((process_count, 0, 1))
+        Cin_modeled_Inflows = jnp.zeros((process_count, 0, 1))
+        retention_controlled_Outflows = jnp.zeros((process_count, 0, 1))
+        retention_modeled_Outflows = jnp.zeros((process_count, 0, 1))
+
+        @staticmethod
+        def validate_control_support(process_names):
+            del process_names
 
         @staticmethod
         def gather_batch(indices):
@@ -1484,11 +1560,14 @@ def test_plot_forward_predictions_plots_every_rate(monkeypatch, tmp_path: Path):
         v_real=export.v_real,
         b_modeled_cum=export.b_modeled_cum,
         q_rates=rate_values,
+        modeled_Inflow_rates=export.modeled_Inflow_rates,
+        modeled_Outflow_rates=export.modeled_Outflow_rates,
     )
     plot_wrapper = SimpleNamespace(
         modeled_RMC_names=wrapper.modeled_RMC_names,
         modeled_PV_names=wrapper.modeled_PV_names,
-        modeled_FVC_names=wrapper.modeled_FVC_names,
+        modeled_Inflow_names=wrapper.modeled_Inflow_names,
+        modeled_Outflow_names=wrapper.modeled_Outflow_names,
         rhs_ode=SimpleNamespace(name_modeled_rates=("r1", "r2", "r3")),
     )
     plotted = []
@@ -1754,6 +1833,67 @@ def test_loo_scored_value_equals_training_framework_solve():
     assert abs(ramp_val - train_val) > 0.01 * abs(train_val)
 
 
+def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
+    wrapper = SimpleNamespace(
+        modeled_RMC_names=(),
+        modeled_PV_names=(),
+        modeled_Inflow_names=("feed",),
+        modeled_Outflow_names=("perfusion",),
+        rhs_ode=SimpleNamespace(name_modeled_rates=()),
+        reaction_module=SimpleNamespace(unscale_state=lambda values: values),
+    )
+
+    def exports(cumulative, inflow_rates, outflow_rates):
+        save_outputs = SaveOutputs(
+            SCL_states=jnp.asarray([[[1.0, 0.0, 0.0], [0.9, *cumulative]]]),
+            RAW_V_export=jnp.asarray([[1.0, 0.9]]),
+            RAW_V=jnp.asarray([[1.0, 0.9]]),
+            RAW_modeled_BiologicalOde_rates=jnp.empty((1, 2, 0)),
+            RAW_modeled_Inflows_rates=jnp.asarray(inflow_rates)[None, :, None],
+            RAW_modeled_Outflows_rates=jnp.asarray(outflow_rates)[None, :, None],
+            auxiliary=None,
+        )
+        return postprocessing.dense_exports_from_save_outputs(
+            jnp.asarray([[0.0, 1.0]]), save_outputs, wrapper, ("p1",)
+        )
+
+    mean_exports, std_exports = postprocessing.aggregate_dense_exports(
+        [
+            exports((0.2, -0.3), (0.1, 0.2), (-0.1, -0.3)),
+            exports((0.6, -0.7), (0.5, 0.6), (-0.3, -0.7)),
+        ]
+    )
+    header = [
+        "process",
+        "t",
+        "V_real",
+        "B_feed_cum",
+        "B_perfusion_cum",
+        "B_feed_rate",
+        "B_perfusion_rate",
+    ]
+    columns = header[3:]
+    mean_path = tmp_path / "predictions.csv"
+    std_path = tmp_path / "predictions_std.csv"
+
+    postprocessing.export_predictions_csv(wrapper, mean_exports, mean_path, ("p1",))
+    postprocessing.export_predictions_csv(wrapper, std_exports, std_path, ("p1",))
+
+    mean_rows = pd.read_csv(mean_path)
+    std_rows = pd.read_csv(std_path)
+    assert mean_rows.columns.tolist() == header
+    assert std_rows.columns.tolist() == header
+    np.testing.assert_allclose(
+        np.vstack((mean_rows[columns], std_rows[columns])),
+        [
+            [0.0, 0.0, 0.3, -0.2],
+            [0.4, -0.5, 0.4, -0.5],
+            [0.0, 0.0, 0.2, 0.1],
+            [0.2, 0.2, 0.2, 0.2],
+        ],
+    )
+
+
 def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
     collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
@@ -1802,6 +1942,8 @@ def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
             q_rates=np.asarray([[0.0], [0.0]], dtype=float),
+            modeled_Inflow_rates=np.zeros((2, 0), dtype=float),
+            modeled_Outflow_rates=np.zeros((2, 0), dtype=float),
             auxiliary={"mu_raw": np.asarray([-1.0, -1.0], dtype=float)},
         ),
         "p2": postprocessing.DenseProcessExport(
@@ -1810,6 +1952,8 @@ def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
             q_rates=np.asarray([[0.0], [0.0]], dtype=float),
+            modeled_Inflow_rates=np.zeros((2, 0), dtype=float),
+            modeled_Outflow_rates=np.zeros((2, 0), dtype=float),
             auxiliary={"latent_pair": np.asarray([[1.0, 2.0], [1.0, 2.0]])},
         ),
     }
@@ -1824,6 +1968,8 @@ def test_aggregate_dense_exports_rejects_mismatched_time_grids():
             v_real=np.zeros(rows),
             b_modeled_cum=np.zeros((rows, 0)),
             q_rates=np.zeros((rows, 1)),
+            modeled_Inflow_rates=np.zeros((rows, 0)),
+            modeled_Outflow_rates=np.zeros((rows, 0)),
         )
 
     with pytest.raises(ValueError, match="different time grids for process 'p1'"):
@@ -1839,7 +1985,8 @@ def test_export_predictions_csv_rejects_mismatched_auxiliary_columns(tmp_path: P
     class _Wrapper:
         modeled_RMC_names = ("biomass",)
         modeled_PV_names = ()
-        modeled_FVC_names = ()
+        modeled_Inflow_names = ()
+        modeled_Outflow_names = ()
         rhs_ode = _RhsOde()
 
     with pytest.raises(

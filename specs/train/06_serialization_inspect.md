@@ -15,7 +15,7 @@ state/rate indices.
 **Trainable-partition-only persistence.** `save_model` writes *only* the
 trainable partition (`params.eqx`). The static half (controls store, `RhsOde`,
 indices, `SCALE_*`) is **always rebuilt** from `prepared.json` + `custom.py` at
-load time via the single `reconstruct_run` path that training itself uses. This
+load time via the single `reconstruct_training` path that training itself uses. This
 keeps checkpoints small, sidesteps controls-store shape mismatches, and is
 forward-compatible with trainable controls. Every checkpoint dir is
 self-contained (it bundles `prepared.json.gz` and `custom.py`). See
@@ -43,11 +43,13 @@ model_load(path) -> (trained_wrapper, config)
 model_reload(path, trained_wrapper) -> (trained_wrapper, config)
 model_predict(trained_wrapper, config, collection, *, process_names=None, grid_n=200)
     -> {process_name: DenseProcessExport}
-reconstruct_run(run_dir, config, document=None) -> (reaction_module, loss_module, store, collection)
+reconstruct_training(run_dir, config=None, document=None, *, custom_module=None,
+                     custom_py=None, training_process_names=None) -> ReconstructedTraining
 ```
 
-**Addressing a model.** All three take a **path**, not a run dir plus a selector
-string. `path` may be a run directory, a checkpoint directory, or a `params.eqx`.
+**Addressing a model.** `model_load` and `model_reload` take a **path**, not a
+run dir plus a selector string. `path` may be a run directory, a checkpoint
+directory, or a `params.eqx`.
 A directory resolves its weights in one ordered pass:
 
 ```
@@ -60,6 +62,13 @@ checkpoint. Name a specific checkpoint by its path —
 checkpoint dir bundles its own `config.json`, `custom.py` and `prepared.json.gz`.
 A file that is not named `params.eqx` raises rather than silently falling through
 to the run's final weights.
+
+Standalone `forward` shares that directory precedence and run-directory lookup,
+but deliberately accepts any existing weights filename, including current LOO
+fold outputs named `trained_wrapper.eqx` and notebook checkpoints. When a
+referenced subdirectory has no weights, `forward` may fall back to the owning
+run's weights; direct model loading does not. These distinct file contracts are
+implemented by one shared resolver in `serialization.py`.
 
 - `model_load` reconstructs a trained model from a run directory **alone**. It
   loads the run's prepared collection to rebuild the **static** half of the wrapper
@@ -83,10 +92,17 @@ to the run's final weights.
   where the ODE initial condition comes from), and the target set must match
   `config.data.targets`.
 
-- `reconstruct_run` is THE single reconstruction path (forward, resume,
-  `model_load` all call it): it verifies the prepared `content_hash` against
-  `config.json`, then rebuilds `(reaction_module, loss_module, store,
-  collection)` exactly as training did.
+- `reconstruct_training` is THE single reconstruction path — `model_load`,
+  standalone and ensemble `forward`, and notebooks all go through it. It loads the
+  run's **own** prepared collection, **requires** and verifies its recorded
+  `inputs.prepared_input.content_hash` *before* invoking any hook, narrows the
+  hook-visible data to the run's recorded training process selection, and rebuilds
+  the reaction module, loss module and deserialisation template exactly as training
+  did. A missing, tampered, or stale hash is an error: there is no optional bypass
+  and no forward-only variant. Every loadable run record carries that hash —
+  `train` writes it, and each LOO fold config inherits the producer-validated one.
+  `model_reload` is deliberately **not** on this path: it reuses the caller's
+  wrapper structure and never reads a collection at all (see the danger note).
 
 ### Danger: `model_reload` keeps the static half
 
@@ -103,10 +119,9 @@ standing warning. **Only use `model_reload` to move between checkpoints of the s
 run.** When in doubt, pay for `model_load`.
 
 The same mechanism is why `model_predict` takes an already-loaded wrapper rather
-than rebuilding one: it reuses the trained `SCALE_*` as-is. By contrast
-`forward_from_collection` re-runs `estimate_all_scales` against whatever collection
-it is given, so feeding it a collection other than the training one re-scales the
-model without saying so.
+than rebuilding one: it reuses the trained `SCALE_*` as-is. `forward_from_collection`
+does rebuild them, but always from the model's own recorded training input, so the
+collection you hand it is evaluation data only and never re-scales the model.
 
 ### Provenance
 
@@ -118,6 +133,21 @@ environment_versions() -> dict[str, str]   # JAX / Diffrax / bp-format / … ver
 
 These are recorded in the run's `config.json` and the prepared artifact so a
 reload can detect a data/code mismatch and fail fast.
+
+### Runtime artifacts
+
+Distributed workers consume runtime artifact format 4. Its shared arrays store
+all four process-aligned transport matrices: controlled and modeled Inflow
+composition, plus controlled and modeled Outflow retention. The loader rebuilds
+canonical parent RHS objects through bp-format, verifies biological-expression
+agreement and every cached parent/augmented row, then applies the selected
+process row before hooks or dynamics run. Format 3 is rejected rather than
+compatibility-mapped.
+
+Only the selected fold's numeric scale payload is read. Integrity checks cover
+identity, inventory, checksums, axes, shapes, dtypes, finite values, positive
+scales, retention in `[0, 1]`, non-negative Inflow values/rates, and
+non-positive Outflow values/rates. The worker context remains collection-free.
 
 ## Introspection
 

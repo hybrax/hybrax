@@ -36,30 +36,38 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from bp_format import validate_augmented_parent_refs
 from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from bp_format.json_io import load_json
 
 from .harness import (
     ForwardConfig,
+    ForwardResult,
     PreparedTraining,
+    TrainHarnessConfig,
+    TrainHarnessResult,
     _resolve_estimated_scales,
     evaluate_trained_wrapper,
     prepare_training,
-    prepare_training_from_runtime_context,
+    prepare_training_from_runtime_artifact,
     train_collection,
     train_harness_config_from_run_config,
 )
 from .postprocessing import save_model_metadata
 from .runtime_artifact import (
     FORMAT_VERSION,
-    RhsOdeDescriptor,
+    RhsNames,
     RuntimeArtifactFold,
     RuntimeArtifactMetadata,
     load_runtime_artifact,
     read_runtime_artifact_metadata,
     write_runtime_artifact,
 )
-from .runtime_context import RuntimeDataContext
+from .runtime_context import (
+    ProducerCollectionData,
+    original_parent_processes,
+    select_parent_collection,
+)
 from .run_config import LooConfig, PredictionScope, RunConfig
 from .serialization import (
     content_hash,
@@ -69,6 +77,7 @@ from .serialization import (
     update_json,
     write_json,
 )
+from .validation import ensure_prepared_training_semantics, validate_for_training
 from .training_data import TrainingDataStore
 
 logger = logging.getLogger(__name__)
@@ -103,8 +112,8 @@ class FoldResult:
 
     fold: Fold
     fold_seed: int
-    train_result: Any
-    forward_result: Any
+    train_result: TrainHarnessResult
+    forward_result: ForwardResult
     fold_dir: Path
 
 
@@ -657,12 +666,12 @@ class TrainedFold:
     fold_seed: int
     fold_dir: Path
     config_json: Path
-    config: Any
-    store: Any
+    config: TrainHarnessConfig
+    store: TrainingDataStore
     target_names: tuple[str, ...]
-    parent_process_names: tuple[str, ...]
+    prediction_parent_process_names: tuple[str, ...]
     output_predictions: PredictionScope
-    train_result: Any
+    train_result: TrainHarnessResult
 
 
 def _effective_fold_config(
@@ -681,34 +690,6 @@ def _effective_fold_config(
     return effective_cfg, fold_dir, fold_custom
 
 
-def _rhs_descriptor(
-    collection: BioProcessCollection, store: TrainingDataStore
-) -> RhsOdeDescriptor:
-    process = next(iter(collection.processes.values()))
-    ode = process.biological_ode
-    if ode is None:
-        raise ValueError("runtime artifact requires a biological_ode")
-    rhs = store.rhs_ode
-    return RhsOdeDescriptor(
-        name_modeled_rates=tuple(rhs.name_modeled_rates),
-        name_modeled_algebraic=tuple(rhs.name_modeled_algebraic),
-        name_modeled_RMCs=tuple(rhs.name_modeled_RMCs),
-        name_modeled_PVs=tuple(rhs.name_modeled_PVs),
-        name_modeled_FVCs=tuple(rhs.name_modeled_FVCs),
-        name_modeled_SVCs=tuple(rhs.name_modeled_SVCs),
-        name_controlled_PVs=tuple(rhs.name_controlled_PVs),
-        name_controlled_FVCs=tuple(rhs.name_controlled_FVCs),
-        name_controlled_SVCs=tuple(rhs.name_controlled_SVCs),
-        algebraic_expressions=tuple(
-            ode.algebraic[name] for name in rhs.name_modeled_algebraic
-        ),
-        derivative_expressions=tuple(
-            ode.derivatives[name]
-            for name in (*rhs.name_modeled_RMCs, *rhs.name_modeled_PVs)
-        ),
-    )
-
-
 def produce_runtime_artifact(
     *, cfg: RunConfig, custom_module: Any, output_dir: Path, bundle_path: Path
 ) -> str:
@@ -718,6 +699,14 @@ def produce_runtime_artifact(
     from bp_format.serialization import load_process_collection
 
     collection = load_process_collection(cfg.data.prepared)
+    augmented_parents_ok, augmented_parent_messages = validate_augmented_parent_refs(
+        collection
+    )
+    if not augmented_parents_ok:
+        raise ValueError(
+            "augmented parent validation failed:\n"
+            + "\n".join(augmented_parent_messages)
+        )
     folds = resolve_folds(
         collection,
         cfg.loo,
@@ -729,21 +718,36 @@ def produce_runtime_artifact(
         target_variable_order=cfg.data.targets,
         target_source=cfg.data.target_source,
     )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
+    producer_data = ProducerCollectionData.from_collection(store, collection)
+    parent_names = original_parent_processes(
+        producer_data.process_order, producer_data.augmentation_parents
+    )
+    training_parent_collection = select_parent_collection(collection, parent_names)
+    ensure_prepared_training_semantics(training_parent_collection)
+    validate_for_training(
+        training_parent_collection,
+        strict=True,
+        require_biological_ode=True,
+    )
     records = []
     for fold in folds:
         effective, _dir, _custom = _effective_fold_config(
             cfg, fold, output_dir, cfg.custom_py
         )
+        scale_data = producer_data.select_training_parents(collection, fold.train)
         scales = _resolve_estimated_scales(
-            custom_module=custom_module, runtime_data=runtime_data, custom_cfg=effective
+            custom_module=custom_module,
+            runtime_data=scale_data,
+            custom_cfg=effective,
         )
         records.append((_fold_record(fold), scales))
     return write_runtime_artifact(
         output_dir / _RUNTIME_ARTIFACT_NAME,
-        runtime_data=runtime_data,
+        training_data=store,
+        parent_collection=training_parent_collection,
+        augmentation_parents=producer_data.augmentation_parents,
         folds=tuple(records),
-        rhs_descriptor=_rhs_descriptor(collection, store),
+        rhs_names=RhsNames.from_rhs_ode(store.rhs_ode),
         identity_inputs={
             "run_fingerprint": _fingerprint(bundle_path, cfg.custom_py),
             "prepared_content_hash": content_hash(collection),
@@ -761,6 +765,27 @@ def _fold_harness_config(effective_cfg: RunConfig, fold: Fold, fold_dir: Path):
         holdout_processes=fold.test,
         holdout_label="holdout",
     )
+
+
+def _fold_inputs(
+    effective_cfg: RunConfig, prepared_content_hash: str
+) -> dict[str, Any]:
+    """The fold's ``inputs`` block, mirroring a normal training run's.
+
+    Every loadable model record must pin the input it was trained on: the shared
+    reconstruction path requires ``inputs.prepared_input.content_hash`` and refuses
+    to build hooks without it. A fold's ``data.prepared`` is the self-contained
+    prepared copy at the LOO run root, and the hash is the producer-validated one,
+    so a fold model loads exactly like a ``train`` run's.
+    """
+    return {
+        "inputs": {
+            "prepared_input": {
+                "path": str(effective_cfg.data.prepared),
+                "content_hash": prepared_content_hash,
+            }
+        }
+    }
 
 
 def _fold_runtime_metadata(identity: str, fold_idx: int) -> dict[str, Any]:
@@ -808,6 +833,9 @@ def prepare_single_fold_from_runtime_artifact(
         {
             "status": "running",
             "config": run_config_to_jsonable(effective_cfg),
+            **_fold_inputs(
+                effective_cfg, metadata.identity_inputs["prepared_content_hash"]
+            ),
             **_fold_runtime_metadata(metadata.identity, record.idx),
         },
     )
@@ -818,8 +846,8 @@ def prepare_single_fold_from_runtime_artifact(
         fold_custom=fold_custom,
         config_json=config_json,
         effective_cfg=effective_cfg,
-        training=prepare_training_from_runtime_context(
-            artifact.context,
+        training=prepare_training_from_runtime_artifact(
+            artifact,
             config=_fold_harness_config(effective_cfg, fold, fold_dir),
             custom_module=custom_module,
             custom_cfg=effective_cfg,
@@ -858,7 +886,11 @@ def prepare_single_fold(
     config_json = fold_dir / "config.json"
     write_json(
         config_json,
-        {"status": "running", "config": run_config_to_jsonable(effective_cfg)},
+        {
+            "status": "running",
+            "config": run_config_to_jsonable(effective_cfg),
+            **_fold_inputs(effective_cfg, content_hash(collection)),
+        },
     )
     harness_cfg = _fold_harness_config(effective_cfg, fold, fold_dir)
     logger.info(
@@ -947,7 +979,9 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
         config=harness_cfg,
         store=store,
         target_names=target_names,
-        parent_process_names=prepared.training.parent_process_names,
+        prediction_parent_process_names=(
+            prepared.training.prediction_parent_process_names
+        ),
         output_predictions=prepared.effective_cfg.output.predictions,
         train_result=train_result,
     )
@@ -963,7 +997,7 @@ def execute_trained_fold(trained: TrainedFold) -> FoldResult:
     prediction_processes = _select_prediction_processes(
         trained.output_predictions,
         eval_processes,
-        trained.parent_process_names,
+        trained.prediction_parent_process_names,
     )
     forward_result = evaluate_trained_wrapper(
         trained.train_result.trained_wrapper,

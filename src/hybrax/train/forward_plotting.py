@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
-from bp_format import BioProcess, BioProcessCollection, FeedVolumeChange
+from bp_format import BioProcess, BioProcessCollection, Inflow, Outflow
 
 from .postprocessing import DenseProcessExport
 from .wrapper import HybridOdeWrapper
@@ -62,9 +62,9 @@ def _plot_process(
     total_loss, named_losses = losses
     state_names = wrapper.modeled_RMC_names + wrapper.modeled_PV_names
     rate_names = tuple(wrapper.rhs_ode.name_modeled_rates)
-    feed_names = wrapper.modeled_FVC_names
+    flow_names = wrapper.modeled_Inflow_names + wrapper.modeled_Outflow_names
     state_rate_rows = max(len(state_names), len(rate_names), 1)
-    n_rows = state_rate_rows + 1 + len(feed_names)
+    n_rows = state_rate_rows + 1 + len(flow_names)
     fig, axes = plt.subplots(
         n_rows,
         2,
@@ -108,9 +108,9 @@ def _plot_process(
         _plot_volume(axes[volume_row, 0], process, t, mean, std)
         _plot_volume_changes(axes[volume_row, 1], process, t)
 
-        for index, feed_name in enumerate(feed_names):
+        for index, flow_name in enumerate(flow_names):
             row = volume_row + 1 + index
-            measured = _modeled_feed_series(process, feed_name, t)
+            measured = _modeled_flow_series(process, flow_name, t)
             r_squared = _plot_prediction(
                 axes[row, 0],
                 t,
@@ -119,11 +119,11 @@ def _plot_process(
                 measured,
                 measured_as_line=True,
             )
-            loss_name = f"B_{feed_name}_cum"
+            loss_name = f"B_{flow_name}_cum"
             axes[row, 0].set_title(
                 _fit_title(loss_name, named_losses.get(loss_name), r_squared)
             )
-            axes[row, 0].set_ylabel(process.volume.volume_changes[feed_name].unit)
+            axes[row, 0].set_ylabel(process.volume.volume_changes[flow_name].unit)
             axes[row, 1].set_visible(False)
 
         for axis in axes.flat:
@@ -136,7 +136,7 @@ def _plot_process(
             f"{name}={value:.3g}"
             for name, value in named_losses.items()
             if name not in state_names
-            and name not in {f"B_{feed_name}_cum" for feed_name in feed_names}
+            and name not in {f"B_{flow_name}_cum" for flow_name in flow_names}
         ]
         if extra_losses:
             title += "\n" + "  ".join(extra_losses)
@@ -210,11 +210,11 @@ def _state_unit(process: BioProcess, name: str) -> str:
     return process.process_variables[name].unit
 
 
-def _modeled_feed_series(
+def _modeled_flow_series(
     process: BioProcess, name: str, t: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray] | None:
     change = process.volume.volume_changes.get(name)
-    if not isinstance(change, FeedVolumeChange):
+    if not isinstance(change, (Inflow, Outflow)):
         return None
     return t, _volume_change_cumulative(change, t, process.time_axis.start)
 
@@ -315,10 +315,10 @@ def _plot_volume_changes(axis, process: BioProcess, t: np.ndarray) -> None:
     width = max((process.time_axis.end - process.time_axis.start) * 0.008, 0.001)
     for name, change in process.volume.volume_changes.items():
         times, values = _time_series_samples(change)
-        if isinstance(change, FeedVolumeChange):
-            kind = "feed" if change.is_continuous else "bolus"
+        if isinstance(change, Inflow):
+            kind = "inflow" if change.is_continuous else "bolus"
         else:
-            kind = "sampling"
+            kind = "outflow" if change.is_continuous else "sampling"
         if change.is_continuous:
             if change.values.breaks is not None:
                 times, values = t, _continuous_volume_values(change, t)

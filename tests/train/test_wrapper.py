@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -10,11 +12,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -41,45 +43,57 @@ def _unit_scale_kwargs(
     *,
     n_species: int,
     n_rates: int,
-    n_modeled_VCs: int,
+    n_modeled_Inflows: int,
+    n_modeled_Outflows: int = 0,
     n_modeled_PVs: int = 0,
     controls: ControlsStore | None = None,
-    n_controlled_FVCs: int | None = None,
+    n_controlled_Inflows: int | None = None,
+    n_controlled_Outflows: int = 0,
     n_controlled_PVs: int | None = None,
 ) -> dict[str, jnp.ndarray]:
     """All-ones SCALE_* kwargs sized to a layout. Pass either ``controls`` or
     explicit per-axis sizes."""
     if controls is not None:
-        n_controlled_FVCs = len(controls.name_controlled_FVCs)
+        n_controlled_Inflows = len(controls.name_controlled_Inflows)
+        n_controlled_Outflows = len(controls.name_controlled_Outflows)
         n_controlled_PVs = len(controls.name_controlled_PVs)
-    assert n_controlled_FVCs is not None
+    assert n_controlled_Inflows is not None
+    assert n_controlled_Outflows is not None
     assert n_controlled_PVs is not None
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_species),
         "SCALE_modeled_PVs": jnp.ones(n_modeled_PVs),
         "SCALE_V_in_cumulative": jnp.asarray(1.0),
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(n_modeled_VCs),
-        "SCALE_controlled_FVCs_cumulative": jnp.ones(n_controlled_FVCs),
-        "SCALE_controlled_FVCs_rates": jnp.ones(n_controlled_FVCs),
-        "SCALE_controlled_FVCs_Cin": jnp.ones((n_controlled_FVCs, n_species)),
+        "SCALE_modeled_Inflows_cumulative": jnp.ones(n_modeled_Inflows),
+        "SCALE_modeled_Outflows_cumulative": jnp.ones(n_modeled_Outflows),
+        "SCALE_controlled_Inflows_cumulative": jnp.ones(n_controlled_Inflows),
+        "SCALE_controlled_Inflows_rates": jnp.ones(n_controlled_Inflows),
+        "SCALE_controlled_Outflows_cumulative": jnp.ones(n_controlled_Outflows),
+        "SCALE_controlled_Outflows_rates": jnp.ones(n_controlled_Outflows),
+        "SCALE_controlled_Inflows_Cin": jnp.ones((n_controlled_Inflows, n_species)),
         "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((n_modeled_VCs, n_species)),
+        "SCALE_modeled_Inflows_Cin": jnp.ones((n_modeled_Inflows, n_species)),
         "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
-        "SCALE_modeled_FVCs_rates": jnp.ones(n_modeled_VCs),
+        "SCALE_modeled_Inflows_rates": jnp.ones(n_modeled_Inflows),
+        "SCALE_modeled_Outflows_rates": jnp.ones(n_modeled_Outflows),
     }
 
 
 _PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_modeled_RMCs": jnp.zeros(0),
     "SCALE_V_in_cumulative": jnp.asarray(1.0),
-    "SCALE_modeled_FVCs_cumulative": jnp.zeros(0),
-    "SCALE_controlled_FVCs_cumulative": jnp.zeros(0),
-    "SCALE_controlled_FVCs_rates": jnp.zeros(0),
-    "SCALE_controlled_FVCs_Cin": jnp.zeros((0, 0)),
+    "SCALE_modeled_Inflows_cumulative": jnp.zeros(0),
+    "SCALE_modeled_Outflows_cumulative": jnp.zeros(0),
+    "SCALE_controlled_Inflows_cumulative": jnp.zeros(0),
+    "SCALE_controlled_Inflows_rates": jnp.zeros(0),
+    "SCALE_controlled_Outflows_cumulative": jnp.zeros(0),
+    "SCALE_controlled_Outflows_rates": jnp.zeros(0),
+    "SCALE_controlled_Inflows_Cin": jnp.zeros((0, 0)),
     "SCALE_controlled_PVs": jnp.zeros(0),
-    "SCALE_modeled_FVCs_Cin": jnp.zeros((0, 0)),
+    "SCALE_modeled_Inflows_Cin": jnp.zeros((0, 0)),
     "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0),
-    "SCALE_modeled_FVCs_rates": jnp.zeros(0),
+    "SCALE_modeled_Inflows_rates": jnp.zeros(0),
+    "SCALE_modeled_Outflows_rates": jnp.zeros(0),
     "SCALE_latent": jnp.zeros(0),
 }
 
@@ -93,27 +107,33 @@ class ConstantReactionModule(UserReactionModule):
     """
 
     SCL_specific_rates: jnp.ndarray
-    SCL_feed_rates: jnp.ndarray
+    SCL_Inflow_rates: jnp.ndarray
+    SCL_outflow_rates: jnp.ndarray
     aux: dict[str, jnp.ndarray] | None
 
     def __init__(
         self,
         specific_rates: jnp.ndarray,
-        modeled_feed_rates: jnp.ndarray,
+        modeled_Inflows_rates: jnp.ndarray,
+        modeled_outflow_rates: jnp.ndarray | None = None,
         auxiliary: dict[str, jnp.ndarray] | None = None,
         **scale_kwargs,
     ):
         scale_kwargs = {**_PLACEHOLDER_SCALES, **scale_kwargs}
         super().__init__(**scale_kwargs)
         self.SCL_specific_rates = specific_rates
-        self.SCL_feed_rates = modeled_feed_rates
+        self.SCL_Inflow_rates = modeled_Inflows_rates
+        self.SCL_outflow_rates = (
+            jnp.zeros(0) if modeled_outflow_rates is None else modeled_outflow_rates
+        )
         self.aux = auxiliary
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
-            SCL_modeled_FVCs_rates=self.SCL_feed_rates,
+            SCL_modeled_Inflows_rates=self.SCL_Inflow_rates,
+            SCL_modeled_Outflows_rates=self.SCL_outflow_rates,
             auxiliary=self.aux,
         )
 
@@ -142,7 +162,8 @@ class InvalidReactionShapeModule(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.biological_rates,
-            SCL_modeled_FVCs_rates=self.feed_rates,
+            SCL_modeled_Inflows_rates=self.feed_rates,
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=self.latent_derivative,
         )
 
@@ -159,7 +180,8 @@ class LatentEchoReactionModule(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=inputs.SCL_latent
             + jnp.asarray([1.0, 2.0], dtype=inputs.SCL_latent.dtype),
             auxiliary={"SCL_latent": inputs.SCL_latent},
@@ -187,7 +209,8 @@ class VolumeFeatureEchoReactionModule(UserReactionModule):
         v_feature = jnp.asarray(inputs.SCL_modeled_V)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.full((self.n_species,), v_feature),
-            SCL_modeled_FVCs_rates=jnp.zeros((self.n_modeled,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((self.n_modeled,)),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
@@ -217,7 +240,7 @@ def _make_single_species_process(
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed_A": FeedVolumeChange(
+                "feed_A": Inflow(
                     name="feed_A",
                     unit="L",
                     is_controlled=True,
@@ -228,7 +251,7 @@ def _make_single_species_process(
                     ),
                     feed_medium=feed_medium,
                 ),
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -262,6 +285,42 @@ def _make_single_species_process(
 def _make_single_species_collection(**kwargs) -> BioProcessCollection:
     process = _make_single_species_process(**kwargs)
     return BioProcessCollection(processes={"p1": process}, metadata={})
+
+
+def _make_mixed_flow_process() -> BioProcess:
+    process = _make_single_species_process(feed_rate=0.2)
+    controlled_feed = process.volume.volume_changes["feed_A"]
+    process.volume.volume_changes["modeled_feed"] = replace(
+        controlled_feed,
+        name="modeled_feed",
+        is_controlled=False,
+        values=TimeSeries(times=[0.0, 2.0], values=[0.0, 0.8]),
+    )
+    process.volume.volume_changes["harvest"] = Outflow(
+        name="harvest",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 2.0], values=[0.0, -0.2]),
+        retention={"biomass": 0.0},
+    )
+    process.volume.volume_changes["perfusion"] = Outflow(
+        name="perfusion",
+        unit="L",
+        is_controlled=False,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 2.0], values=[0.0, -0.4]),
+        retention={"biomass": 0.5},
+    )
+    process.volume.volume_changes["evaporation"] = Outflow(
+        name="evaporation",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 2.0], values=[0.0, -0.6]),
+        retention={"biomass": 1.0},
+    )
+    return process
 
 
 def _make_two_species_two_feed_process() -> BioProcess:
@@ -312,7 +371,7 @@ def _make_two_species_two_feed_process() -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed_A": FeedVolumeChange(
+                "feed_A": Inflow(
                     name="feed_A",
                     unit="L",
                     is_controlled=True,
@@ -323,7 +382,7 @@ def _make_two_species_two_feed_process() -> BioProcess:
                     ),
                     feed_medium=feed_a,
                 ),
-                "feed_B": FeedVolumeChange(
+                "feed_B": Inflow(
                     name="feed_B",
                     unit="L",
                     is_controlled=True,
@@ -334,7 +393,7 @@ def _make_two_species_two_feed_process() -> BioProcess:
                     ),
                     feed_medium=feed_b,
                 ),
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -379,7 +438,8 @@ def _derive_unit_scale_kwargs(process, controls) -> dict[str, jnp.ndarray]:
     return _unit_scale_kwargs(
         n_species=len(rhs_ode.name_modeled_RMCs),
         n_rates=len(rhs_ode.name_modeled_rates),
-        n_modeled_VCs=len(rhs_ode.name_modeled_FVCs),
+        n_modeled_Inflows=len(rhs_ode.name_modeled_Inflows),
+        n_modeled_Outflows=len(rhs_ode.name_modeled_Outflows),
         n_modeled_PVs=len(rhs_ode.name_modeled_PVs),
         controls=controls,
     )
@@ -426,7 +486,7 @@ def _build_wrapper(process, controls, reaction_module, **kwargs):
             "physical_rhs",
             (1,),
         ),
-        ("SCL_modeled_FVCs_rates", True, 0, "physical_rhs", (1,)),
+        ("SCL_modeled_Inflows_rates", True, 0, "physical_rhs", (1,)),
         ("SCL_latent_derivative", False, 2, "physical_rhs", (2,)),
         (
             "SCL_modeled_BiologicalOde_rates",
@@ -458,7 +518,7 @@ def test_wrapper_rejects_broadcastable_scalar_reaction_output(
     }
     output_names = {
         "SCL_modeled_BiologicalOde_rates": "biological_rates",
-        "SCL_modeled_FVCs_rates": "feed_rates",
+        "SCL_modeled_Inflows_rates": "feed_rates",
         "SCL_latent_derivative": "latent_derivative",
     }
     outputs[output_names[field]] = jnp.asarray(0.0)
@@ -480,9 +540,9 @@ def test_wrapper_rejects_broadcastable_scalar_reaction_output(
 @pytest.mark.parametrize(
     ("rate_field", "modeled_feed"),
     [
-        ("SCALE_controlled_FVCs_rates", False),
+        ("SCALE_controlled_Inflows_rates", False),
         ("SCALE_modeled_BiologicalOde_rates", False),
-        ("SCALE_modeled_FVCs_rates", True),
+        ("SCALE_modeled_Inflows_rates", True),
     ],
 )
 def test_wrapper_rejects_nonzero_rate_offset_for_direct_module(
@@ -498,7 +558,7 @@ def test_wrapper_rejects_nonzero_rate_offset_for_direct_module(
     n_modeled_feeds = 1 if modeled_feed else 0
     module = ConstantReactionModule(
         specific_rates=jnp.zeros(1),
-        modeled_feed_rates=jnp.zeros(n_modeled_feeds),
+        modeled_Inflows_rates=jnp.zeros(n_modeled_feeds),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales[rate_field] = AffineScaler(
@@ -548,7 +608,7 @@ def test_physical_rhs_uses_custom_rate_derivative_semantics():
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.asarray([2.0]),
-        modeled_feed_rates=jnp.zeros(0),
+        modeled_Inflows_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales["SCALE_modeled_BiologicalOde_rates"] = DivergentRateScaler()
@@ -597,7 +657,7 @@ def test_wrapper_accepts_custom_offset_free_rate_scaler_without_offset_metadata(
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.zeros(1),
-        modeled_feed_rates=jnp.zeros(0),
+        modeled_Inflows_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
     scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(jnp.ones(1))
@@ -641,7 +701,7 @@ def _make_bolus_ramp_process(*, bolus_time: float = 10.0) -> BioProcess:
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "bolus_feed": FeedVolumeChange(
+                "bolus_feed": Inflow(
                     name="bolus_feed",
                     unit="L",
                     is_controlled=True,
@@ -740,7 +800,7 @@ def test_physical_rhs_passes_process_minimum_volume_to_bp_format():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -757,7 +817,7 @@ def test_solve_rejects_initial_volume_at_or_below_minimum(initial_volume):
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -798,7 +858,7 @@ def test_solve_rejects_sample_volume_at_or_below_minimum(sample_volume, event_ti
         ),
     )
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -832,7 +892,7 @@ def test_valid_sample_is_not_speculatively_reapplied(batched):
         (jnp.asarray([1.0]), jnp.asarray([0.998]), jnp.asarray([True])),
     )
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -864,7 +924,7 @@ def test_vmap_masks_preset_affect_for_lane_without_trigger():
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -923,7 +983,7 @@ def test_start_time_sample_and_bolus_are_applied_once():
         ),
     )
     module = ConstantReactionModule(
-        specific_rates=jnp.zeros((1,)), modeled_feed_rates=jnp.zeros((0,))
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -939,6 +999,87 @@ def test_start_time_sample_and_bolus_are_applied_once():
 
     assert jnp.allclose(states[:2], jnp.asarray([[1.0, 0.8], [1.0, 0.8]]))
     assert jnp.allclose(states[2], jnp.asarray([1.1 / 0.9, 0.9]), atol=1e-5)
+
+
+def test_rhs_compatibility_checks_outflow_retention_shapes():
+    rhs_ode = build_rhs_ode(_make_mixed_flow_process())
+    mismatched = eqx.tree_at(
+        lambda rhs: rhs.retention_modeled_Outflows,
+        rhs_ode,
+        jnp.zeros((2, 1)),
+    )
+
+    with pytest.raises(ValueError, match="retention_modeled_Outflows shapes differ"):
+        validate_rhs_ode_compatibility("reference", rhs_ode, "candidate", mismatched)
+
+
+def test_mixed_flow_rhs_matches_direct_rhs_and_hand_mass_balance():
+    process = _make_mixed_flow_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros(1),
+        modeled_Inflows_rates=jnp.asarray([0.4]),
+        modeled_outflow_rates=jnp.asarray([-0.2]),
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    # [biomass, V, modeled Inflow cumulative, modeled Outflow cumulative]
+    state = jnp.asarray([10.0, 2.0, 0.0, 0.0])
+    derivative = wrapper.physical_rhs(0.0, state)
+
+    direct_rhs = build_rhs_ode(process)
+    controlled_outflow_rates = {
+        "harvest": -0.1,
+        "evaporation": -0.3,
+    }
+    direct_controls = jnp.asarray(
+        [0.2]
+        + [
+            controlled_outflow_rates[name]
+            for name in direct_rhs.name_controlled_Outflows
+        ]
+    )
+    direct_derivative = direct_rhs(
+        state[:2],
+        jnp.zeros(1),
+        direct_controls,
+        jnp.asarray([0.4]),
+        jnp.asarray([-0.2]),
+        controls.min_V,
+    )
+    assert jnp.allclose(derivative[:2], direct_derivative)
+
+    # Component-mass removal by harvest/perfusion/evaporation at retention
+    # 0/0.5/1 is -(1-retention) * removal_rate * concentration.
+    mass_derivatives = jnp.asarray(
+        [-(1.0 - 0.0) * 0.1 * 10.0, -(1.0 - 0.5) * 0.2 * 10.0, 0.0]
+    )
+    expected_mass_derivative = jnp.sum(mass_derivatives)
+    expected_volume_derivative = 0.2 + 0.4 - 0.1 - 0.2 - 0.3
+    expected_concentration_derivative = (
+        expected_mass_derivative - 10.0 * expected_volume_derivative
+    ) / 2.0
+    assert jnp.allclose(mass_derivatives, jnp.asarray([-1.0, -1.0, 0.0]))
+    assert expected_mass_derivative == -2.0
+    assert expected_volume_derivative == pytest.approx(0.0)
+    assert expected_concentration_derivative == pytest.approx(-1.0)
+    assert jnp.allclose(derivative, jnp.asarray([-1.0, 0.0, 0.4, -0.2]))
+
+    assert jnp.array_equal(wrapper.rhs_ode.Cin_controlled_Inflows, jnp.asarray([[0.0]]))
+    assert jnp.array_equal(wrapper.rhs_ode.Cin_modeled_Inflows, jnp.asarray([[0.0]]))
+    controlled_retention = dict(
+        zip(
+            wrapper.rhs_ode.name_controlled_Outflows,
+            wrapper.rhs_ode.retention_controlled_Outflows[:, 0].tolist(),
+            strict=True,
+        )
+    )
+    assert controlled_retention == {"harvest": 0.0, "evaporation": 1.0}
+    assert jnp.array_equal(
+        wrapper.rhs_ode.retention_modeled_Outflows, jnp.asarray([[0.5]])
+    )
 
 
 def test_continuous_feed_transport_volume_and_dilution():
@@ -978,7 +1119,7 @@ def test_continuous_feed_transport_volume_and_dilution():
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "feed_A": FeedVolumeChange(
+                "feed_A": Inflow(
                     name="feed_A",
                     unit="L",
                     is_controlled=True,
@@ -988,7 +1129,7 @@ def test_continuous_feed_transport_volume_and_dilution():
                     ),
                     feed_medium=feed_medium,
                 ),
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -1019,7 +1160,7 @@ def test_continuous_feed_transport_volume_and_dilution():
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     module = ConstantReactionModule(
         specific_rates=jnp.zeros((1,)),  # zero reaction
-        modeled_feed_rates=jnp.zeros((0,)),
+        modeled_Inflows_rates=jnp.zeros((0,)),
     )
     wrapper = _build_wrapper(process, controls, module)
 
@@ -1119,7 +1260,7 @@ def test_wrapper_supports_modeled_pv():
     # q_biomass = 0 (biomass constant); r_ratio = 0.5 (PV grows 0.5 / h).
     module = ConstantReactionModule(
         specific_rates=jnp.asarray([0.0, 0.5]),
-        modeled_feed_rates=jnp.zeros((0,)),
+        modeled_Inflows_rates=jnp.zeros((0,)),
     )
     wrapper = _build_wrapper(process, controls, module)  # must NOT raise
     assert wrapper.modeled_PV_names == ("ratio",)
@@ -1129,7 +1270,8 @@ def test_wrapper_supports_modeled_pv():
         len(rhs_ode.name_modeled_RMCs)
         + len(rhs_ode.name_modeled_PVs)
         + 1
-        + len(rhs_ode.name_modeled_FVCs)
+        + len(rhs_ode.name_modeled_Inflows)
+        + len(rhs_ode.name_modeled_Outflows)
     )
     assert n_state == 3
     y0 = jnp.asarray([1.0, 0.0, 1.0])  # biomass, ratio, V

@@ -28,8 +28,10 @@ def _mock_rhs_ode_and_controls():
     rhs_ode = SimpleNamespace(
         name_modeled_RMCs=("biomass", "glucose", "acetate"),
         name_modeled_PVs=("ratio",),
-        name_modeled_FVCs=("feed_glc",),
-        name_controlled_FVCs=("base", "antifoam"),
+        name_modeled_Inflows=("feed_glc",),
+        name_controlled_Inflows=("base", "antifoam"),
+        name_modeled_Outflows=("perfusion",),
+        name_controlled_Outflows=("bleed",),
         name_controlled_PVs=("pH", "DO", "T"),
         name_modeled_rates=("q_biomass", "q_glucose", "q_acetate"),
     )
@@ -45,14 +47,20 @@ def test_format_reaction_schema_contains_all_axis_names():
         "SCL_modeled_RMCs",
         "SCL_modeled_PVs",
         "SCL_modeled_V",
-        "SCL_modeled_FVCs_cumulative",
-        "SCL_controlled_FVCs_cumulative",
-        "SCL_controlled_FVCs_rates",
-        "SCL_controlled_FVCs_Cin",
+        "SCL_modeled_Inflows_cumulative",
+        "SCL_modeled_Outflows_cumulative",
+        "SCL_controlled_Inflows_cumulative",
+        "SCL_controlled_Inflows_rates",
+        "SCL_controlled_Outflows_cumulative",
+        "SCL_controlled_Outflows_rates",
+        "SCL_controlled_Inflows_Cin",
         "SCL_controlled_PVs",
-        "SCL_modeled_FVCs_Cin",
+        "SCL_modeled_Inflows_Cin",
         "SCL_modeled_BiologicalOde_rates",
-        "SCL_modeled_FVCs_rates",
+        "SCL_modeled_Inflows_rates",
+        "SCL_modeled_Outflows_rates",
+        "RAW_controlled_Outflows_retention",
+        "RAW_modeled_Outflows_retention",
     ):
         assert axis in text, f"axis {axis} missing from rendered schema"
 
@@ -63,19 +71,19 @@ def test_format_reaction_schema_renders_bp_format_names():
 
     for species in ("biomass", "glucose", "acetate"):
         assert species in text
-    for fvc in ("base", "antifoam", "feed_glc"):
-        assert fvc in text
+    for flow in ("base", "antifoam", "feed_glc", "bleed", "perfusion"):
+        assert flow in text
     for pv in ("pH", "DO", "T"):
         assert pv in text
     for rate in ("q_biomass", "q_glucose", "q_acetate"):
         assert rate in text
-    # Bolus FVCs are applied as discrete state jumps, not reaction-module inputs,
+    # Bolus Inflows are applied as discrete state jumps, not reaction-module inputs,
     # so neither the bolus name nor the wrapper-internal V_sample_acc surfaces here.
     assert "inducer_bolus" not in text
     assert "V_sample_acc" not in text
 
 
-def test_format_reaction_schema_cin_followups_render_rows_cols():
+def test_format_reaction_schema_matrix_followups_render_rows_cols():
     rhs_ode, controls = _mock_rhs_ode_and_controls()
     text = format_reaction_schema(rhs_ode, controls)
 
@@ -89,8 +97,10 @@ def test_format_reaction_schema_handles_empty_axes():
     rhs_ode = SimpleNamespace(
         name_modeled_RMCs=("biomass",),
         name_modeled_PVs=(),
-        name_modeled_FVCs=(),
-        name_controlled_FVCs=(),
+        name_modeled_Inflows=(),
+        name_controlled_Inflows=(),
+        name_modeled_Outflows=(),
+        name_controlled_Outflows=(),
         name_controlled_PVs=(),
         name_modeled_rates=("q_biomass",),
     )
@@ -122,7 +132,8 @@ class _MixedTagsFixture(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros((0,)),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -147,7 +158,8 @@ class _DictFieldFixture(UserReactionModule):
         del t, inputs
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.zeros((0,)),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,)),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,)),
+            SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
@@ -165,17 +177,17 @@ def test_format_trainable_structure_reveals_dict_valued_trainable_fields():
 
 def test_format_trainable_structure_omits_none_valued_optional_field():
     # A trainable_field() declared as `X | None` and currently unset (e.g.
-    # feed_head when n_modeled_FVCs == 0) has zero children under JAX's
+    # inflow_head when n_modeled_Inflows == 0) has zero children under JAX's
     # pytree flattening, so it produces no row -- concise by design, not a
     # bug: nothing about a None field could ever be an array leaf.
     module = DefaultStatefulReactionModule(
         key=jax.random.key(0),
         n_latent=2,
-        **default_stateful_scale_kwargs(n_controlled_fvcs=0),
+        **default_stateful_scale_kwargs(n_controlled_inflows=0),
     )
-    assert module.feed_head is None
+    assert module.inflow_head is None
     text = format_trainable_structure(module)
 
-    assert "feed_head" not in text
+    assert "inflow_head" not in text
     assert "gru_cell.weight_ih" in text
     assert "rate_head.weight" in text

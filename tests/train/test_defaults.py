@@ -6,35 +6,25 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from bp_format.dataclasses import BioProcessCollection
 from bp_format.mechanistic import build_rhs_ode
 from bp_train.defaults import DefaultReactionModule, default_build_reaction_module
-from bp_train.harness import _resolve_estimated_scales
-from bp_train.runtime_context import RuntimeContext, RuntimeDataContext
-from bp_train.training_data import TrainingDataStore
-from test_harness import _make_collection
+from bp_train.model_api import ReactionInputs
+from test_harness import _make_collection, _make_multi_process_collection
 
 
-def _runtime_context(collection):
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=["biomass"],
-        target_source="reactor_components",
-    )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
-    scales = _resolve_estimated_scales(
-        custom_module=None,
-        runtime_data=runtime_data,
-        custom_cfg=None,
-    )
-    return RuntimeContext(runtime_data, scales)
-
-
-def _reaction_module(*, key, depth=2, width_size=None, n_in=2, n_out=1):
+def _reaction_module(
+    *, key, depth=2, width_size=None, n_in=2, n_out=1, n_inflows=1, n_outflows=2
+):
     return DefaultReactionModule(
         key=key,
         depth=depth,
         width_size=width_size,
         SCALE_modeled_RMCs=jnp.ones(n_in),
+        SCALE_modeled_Inflows_cumulative=jnp.ones(n_inflows),
+        SCALE_modeled_Outflows_cumulative=jnp.ones(n_outflows),
+        SCALE_modeled_Inflows_rates=jnp.ones(n_inflows),
+        SCALE_modeled_Outflows_rates=jnp.ones(n_outflows),
         SCALE_modeled_BiologicalOde_rates=jnp.ones(n_out),
     )
 
@@ -60,6 +50,30 @@ def test_shallow_default_reaction_module_uses_tanh_and_glorot():
     )
     assert jnp.array_equal(output.weight, expected_output)
     assert jnp.count_nonzero(output.bias) == 0
+
+
+def test_stateless_default_emits_zero_rates_on_distinct_flow_axes():
+    module = _reaction_module(key=jax.random.key(31))
+    inputs = ReactionInputs(
+        SCL_modeled_RMCs=jnp.ones(2),
+        SCL_modeled_V=jnp.asarray(1.0),
+        SCL_modeled_Inflows_cumulative=jnp.ones(1),
+        SCL_modeled_Outflows_cumulative=jnp.ones(2),
+        SCL_controlled_Inflows_cumulative=jnp.zeros(0),
+        SCL_controlled_Inflows_rates=jnp.zeros(0),
+        SCL_controlled_Inflows_Cin=jnp.zeros((0, 2)),
+        SCL_controlled_Outflows_cumulative=jnp.zeros(0),
+        SCL_controlled_Outflows_rates=jnp.zeros(0),
+        RAW_controlled_Outflows_retention=jnp.zeros((0, 2)),
+        SCL_controlled_PVs=jnp.zeros(0),
+        SCL_modeled_Inflows_Cin=jnp.ones((1, 2)),
+        RAW_modeled_Outflows_retention=jnp.ones((2, 2)),
+    )
+
+    outputs = module(jnp.asarray(0.0), inputs)
+
+    assert jnp.array_equal(outputs.SCL_modeled_Inflows_rates, jnp.zeros(1))
+    assert jnp.array_equal(outputs.SCL_modeled_Outflows_rates, jnp.zeros(2))
 
 
 def test_deep_default_reaction_module_uses_requested_width_silu_and_he():
@@ -156,7 +170,7 @@ def test_default_reaction_module_scale_follows_modeled_state_not_targets():
         process_names=list(collection.processes),
         config=None,
         seed=0,
-        runtime_context=_runtime_context(collection),
+        training_parent_collection=collection,
     )
 
     assert module.SCALE_modeled_RMCs.shape[0] == n_rmc
@@ -174,7 +188,7 @@ def test_default_reaction_module_scale_independent_of_target_count():
             process_names=list(collection.processes),
             config=None,
             seed=0,
-            runtime_context=_runtime_context(collection),
+            training_parent_collection=collection,
         ).SCALE_modeled_RMCs.shape[0]
         for targets in (
             ["biomass"],
@@ -184,3 +198,35 @@ def test_default_reaction_module_scale_independent_of_target_count():
     }
 
     assert shapes == {n_rmc}
+
+
+def test_default_reaction_module_rejects_disagreeing_training_parents():
+    """The default builder speaks for all parents via the first one's RhsOde.
+
+    That is only sound if every parent declares an equivalent BiologicalOde, so
+    disagreement must be rejected rather than silently resolved by ordering.
+    """
+    collection = _make_multi_process_collection(2)
+    p2 = collection.processes["p2"]
+    p2.biological_ode.rates = {"q_other": (None, None)}
+    p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
+
+    with pytest.raises(ValueError, match="biological_ode_equivalence"):
+        default_build_reaction_module(
+            target_names=["biomass"],
+            process_names=list(collection.processes),
+            config=None,
+            seed=0,
+            training_parent_collection=collection,
+        )
+
+
+def test_default_reaction_module_requires_a_training_parent():
+    with pytest.raises(ValueError, match="requires a training parent"):
+        default_build_reaction_module(
+            target_names=["biomass"],
+            process_names=["p1"],
+            config=None,
+            seed=0,
+            training_parent_collection=BioProcessCollection(processes={}),
+        )

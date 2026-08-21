@@ -25,7 +25,7 @@ import jax
 import jax.numpy as jnp
 from test_harness import _make_collection, _LinearReactionModule, _biomass_loss
 from bp_format.dataclasses import (
-    FeedMedium, FeedMediumComponent, FeedVolumeChange, StaticVariable, TimeSeries
+    FeedMedium, FeedMediumComponent, Inflow, StaticVariable, TimeSeries
 )
 from bp_train.training_data import TrainingDataStore
 from bp_train.harness import train_collection, TrainHarnessConfig
@@ -37,7 +37,7 @@ def with_events(process, name, sample_value, bolus_concentration):
         sample,
         values=dataclasses.replace(sample.values, values=jnp.asarray([sample_value])),
     )
-    bolus = FeedVolumeChange(
+    bolus = Inflow(
         name="bolus",
         unit="L",
         is_controlled=True,
@@ -111,7 +111,8 @@ class P2OnlyBlowUp(_LinearReactionModule):
         rate = jnp.where((t > 1.0) & is_p2, 1.0e4 * state, 0.0)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=jnp.asarray([rate], dtype=state.dtype),
-            SCL_modeled_FVCs_rates=jnp.zeros((0,), dtype=state.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=state.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 collection = _make_collection()

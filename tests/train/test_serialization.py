@@ -16,7 +16,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     ReactorMedium,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -36,7 +36,10 @@ from bp_train.serialization import (
     content_hash,
     load_opt_state,
     load_trained_wrapper,
-    reconstruct_run,
+    reconstruct_training,
+    resolve_forward_model_path,
+    resolve_model_path,
+    resolve_run_dir,
     save_model,
     save_opt_state,
 )
@@ -44,6 +47,31 @@ from bp_train.training_data import TrainingDataStore
 
 # Reuse the tiny single-process reaction module + collection fixtures.
 from test_checkpointing import _LinearReactionModule
+
+
+def test_shared_model_resolvers_preserve_forward_and_load_file_contracts(tmp_path):
+    run_dir = tmp_path / "run"
+    model_dir = run_dir / "model"
+    checkpoint_dir = run_dir / "checkpoints" / "step_1"
+    model_dir.mkdir(parents=True)
+    checkpoint_dir.mkdir(parents=True)
+    (run_dir / "config.json").write_text("{}", encoding="utf-8")
+    final_weights = model_dir / "params.eqx"
+    final_weights.write_bytes(b"final")
+    notebook_weights = checkpoint_dir / "notebook.eqx"
+    notebook_weights.write_bytes(b"notebook")
+
+    assert resolve_run_dir(checkpoint_dir) == run_dir
+    assert resolve_model_path(run_dir) == (run_dir, final_weights)
+    assert resolve_forward_model_path(notebook_weights) == (
+        run_dir,
+        notebook_weights,
+    )
+    assert resolve_forward_model_path(checkpoint_dir) == (run_dir, final_weights)
+    with pytest.raises(FileNotFoundError, match="must be a params.eqx"):
+        resolve_model_path(notebook_weights)
+    with pytest.raises(FileNotFoundError, match="no params.eqx"):
+        resolve_model_path(checkpoint_dir)
 
 
 def _collection(
@@ -56,7 +84,7 @@ def _collection(
             initial_volume=1.0,
             unit="L",
             volume_changes={
-                "sample_1": SampleVolumeChange(
+                "sample_1": Outflow(
                     name="sample_1",
                     unit="L",
                     is_controlled=False,
@@ -110,11 +138,11 @@ def _build_wrapper(collection: BioProcessCollection):
 
 def _grow_controls(wrapper):
     """Return a copy whose controls store has a STRUCTURALLY DIFFERENT (longer)
-    dense_grid leaf — simulating a controls store "initialized differently"
+    linear_grid leaf — simulating a controls store "initialized differently"
     (e.g. trainable DoE values / different grid padding)."""
-    grid = wrapper.controls.dense_grid
+    grid = wrapper.controls.linear_grid
     grown = jnp.concatenate([grid, jnp.zeros((3,), dtype=grid.dtype)])
-    return eqx.tree_at(lambda m: m.controls.dense_grid, wrapper, grown)
+    return eqx.tree_at(lambda m: m.controls.linear_grid, wrapper, grown)
 
 
 def _trainable_arrays(module):
@@ -293,7 +321,7 @@ def test_run_config_rejects_bare_nonfinite_tokens(tmp_path: Path, token: str):
         load_train_config(source_path)
 
 
-def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
+def test_reconstruct_training_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
     collection = _collection()
     prepared = tmp_path / "prepared.json"
     prepared.write_text("{}", encoding="utf-8")
@@ -301,7 +329,11 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
         data=DataConfig(prepared=prepared, targets=("biomass",)),
         train=TrainConfig(allow_stateful_models=True),
     )
-    document = {}
+    # The shared reconstruction path requires the recorded input hash before it
+    # invokes any hook, so a stub run record has to carry it too.
+    document = {
+        "inputs": {"prepared_input": {"content_hash": content_hash(collection)}}
+    }
     seen = {}
 
     monkeypatch.setattr(
@@ -314,8 +346,13 @@ def test_reconstruct_run_preserves_stateful_opt_in(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(harness, "_build_reaction_module", fake_build_reaction_module)
     monkeypatch.setattr(harness, "_build_loss_module", lambda **_kwargs: object())
+    # The stub modules are not real pytrees; the template wrapper is not the
+    # subject here.
+    monkeypatch.setattr(
+        harness, "_build_template_wrapper", lambda *_args, **_kwargs: object()
+    )
 
-    reconstruct_run(tmp_path, config, document)
+    reconstruct_training(tmp_path, config, document)
 
     assert seen["allow_stateful_models"] is True
 
@@ -359,7 +396,8 @@ def test_load_into_structurally_different_controls_template(tmp_path: Path):
     save_model(wrapper, path)
     loaded = load_trained_wrapper(path, template=different_template)
     assert (
-        loaded.controls.dense_grid.shape == different_template.controls.dense_grid.shape
+        loaded.controls.linear_grid.shape
+        == different_template.controls.linear_grid.shape
     )
     src = _trainable_arrays(wrapper)
     dst = _trainable_arrays(loaded)

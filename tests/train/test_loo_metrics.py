@@ -24,7 +24,7 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ReactorMediumComponent,
     StaticVariable,
@@ -78,7 +78,7 @@ def _make_process(
     }
     volume_changes = {}
     if include_feed:
-        volume_changes["base_feed"] = FeedVolumeChange(
+        volume_changes["base_feed"] = Inflow(
             name="base_feed",
             unit="L",
             is_controlled=False,

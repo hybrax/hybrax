@@ -30,11 +30,11 @@ from bp_format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
-    FeedVolumeChange,
+    Inflow,
     ReactorMedium,
     ProcessVariable,
     ReactorMediumComponent,
-    SampleVolumeChange,
+    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -42,9 +42,11 @@ from bp_format.dataclasses import (
 )
 from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
 
+import bp_train.controls_store as controls_store_module
 from bp_train.controls_store import ControlsStore, _output_window_bounds
 from bp_train.dense import build_union_time_grid
 from bp_train.physical_solve import _output_window, solve_physical_states
+from bp_train.training_data import TrainingDataStore
 
 from stateful_helpers import build_stateful_wrapper, default_stateful_scale_kwargs
 
@@ -59,7 +61,7 @@ def _process(name: str, *, n_sample: int, n_bolus: int, n_extra_meas: int = 0):
     )
     volume_changes = {}
     if n_sample:
-        volume_changes["sampling"] = SampleVolumeChange(
+        volume_changes["sampling"] = Outflow(
             name="sampling",
             unit="L",
             is_controlled=False,
@@ -70,7 +72,7 @@ def _process(name: str, *, n_sample: int, n_bolus: int, n_extra_meas: int = 0):
             ),
         )
     if n_bolus:
-        volume_changes["bolus"] = FeedVolumeChange(
+        volume_changes["bolus"] = Inflow(
             name="bolus",
             unit="L",
             is_controlled=True,
@@ -122,7 +124,9 @@ def _wrapper(process):
     from bp_train.defaults import DefaultStatefulReactionModule
 
     module = DefaultStatefulReactionModule(
-        key=jax.random.key(0), n_latent=1, **default_stateful_scale_kwargs(0)
+        key=jax.random.key(0),
+        n_latent=1,
+        **default_stateful_scale_kwargs(n_controlled_inflows=0),
     )
     return build_stateful_wrapper(process, module)
 
@@ -228,9 +232,73 @@ def test_solve_raises_when_the_grid_violates_the_window_precondition():
 # --------------------------------------------------------------------------------
 
 
+def test_controls_store_reuses_rhs_names_for_output_bounds(monkeypatch):
+    processes = {
+        "a": _process("a", n_sample=2, n_bolus=1)[0],
+        "b": _process("b", n_sample=3, n_bolus=2, n_extra_meas=4)[0],
+    }
+    collection = BioProcessCollection(processes=processes, metadata={})
+    expected_bounds = _output_window_bounds(collection, list(processes))
+    build_calls = []
+    original_build_rhs_ode = controls_store_module.build_rhs_ode
+
+    def counted_build_rhs_ode(process):
+        build_calls.append(process.metadata.name)
+        return original_build_rhs_ode(process)
+
+    monkeypatch.setattr(controls_store_module, "build_rhs_ode", counted_build_rhs_ode)
+    store = ControlsStore.from_collection(collection)
+
+    assert build_calls == list(processes)
+    assert (
+        store.max_event_gap_fraction,
+        store.max_measurements_per_event_gap,
+    ) == expected_bounds
+
+
+def test_training_selection_reuses_rhs_names_for_output_bounds(monkeypatch):
+    processes = {
+        "a": _process("a", n_sample=2, n_bolus=1)[0],
+        "b": _process("b", n_sample=3, n_bolus=2, n_extra_meas=4)[0],
+    }
+    collection = BioProcessCollection(processes=processes, metadata={})
+    store = TrainingDataStore.from_collection(
+        collection, target_source="reactor_components"
+    )
+    selected_collection = BioProcessCollection(
+        processes={"b": processes["b"]}, metadata={}
+    )
+    expected_bounds = _output_window_bounds(selected_collection, ["b"])
+    build_calls = []
+    original_build_rhs_ode = controls_store_module.build_rhs_ode
+
+    def counted_build_rhs_ode(process):
+        build_calls.append(process.metadata.name)
+        return original_build_rhs_ode(process)
+
+    monkeypatch.setattr(controls_store_module, "build_rhs_ode", counted_build_rhs_ode)
+
+    standalone = store.controls_store.select_processes(("b",), selected_collection)
+    assert build_calls == ["b"]
+    assert (
+        standalone.max_event_gap_fraction,
+        standalone.max_measurements_per_event_gap,
+    ) == expected_bounds
+
+    build_calls.clear()
+    selected = store.select_processes(("b",), selected_collection)
+    assert build_calls == []
+    assert (
+        selected.controls_store.max_event_gap_fraction,
+        selected.controls_store.max_measurements_per_event_gap,
+    ) == expected_bounds
+
+
 @pytest.mark.parametrize("n_sample", [0, 1, 2, 5, 25])
 @pytest.mark.parametrize("n_bolus", [0, 3])
-@pytest.mark.parametrize("n_dense,n_prediction", [(0, 30), (0, 200), (30, 0), (30, 200)])
+@pytest.mark.parametrize(
+    "n_dense,n_prediction", [(0, 30), (0, 200), (30, 0), (30, 200)]
+)
 def test_output_window_bound_covers_every_gap(n_sample, n_bolus, n_dense, n_prediction):
     """Brute-force the true per-gap point count and check the derived window covers it.
 
@@ -249,7 +317,10 @@ def test_output_window_bound_covers_every_gap(n_sample, n_bolus, n_dense, n_pred
     layouts = []
     for name in processes:
         _, meas = _process(
-            name, n_sample=n_sample, n_bolus=n_bolus, n_extra_meas=7 if name == "b" else 0
+            name,
+            n_sample=n_sample,
+            n_bolus=n_bolus,
+            n_extra_meas=7 if name == "b" else 0,
         )
         layouts.append(np.asarray(meas))
         padded_width = max(padded_width, meas.shape[0])

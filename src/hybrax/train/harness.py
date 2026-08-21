@@ -22,6 +22,7 @@ import numpy as np
 import optax
 from bp_format.dataclasses import BioProcessCollection
 from bp_format.inspect import print_rhs_ode
+from bp_format.mechanistic import RhsOde
 from bp_format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
@@ -48,9 +49,16 @@ from .logging import RunLogger, StepRecord
 from .training_data import (
     TARGET_SOURCE_AUTO,
     TrainingDataStore,
+    replace_rhs_ode_process_matrices,
 )
 from .run_config import RunConfig
-from .runtime_context import RuntimeContext, RuntimeDataContext
+from .runtime_artifact import RuntimeArtifact
+from .runtime_context import (
+    ProducerCollectionData,
+    RuntimeDataContext,
+    canonical_training_parents,
+    original_parent_processes,
+)
 from .utils import (
     get_hook,
     load_custom_module,
@@ -99,6 +107,7 @@ def _iter_batched_loss_outputs(
     duplicates = [name for name, count in Counter(process_names).items() if count > 1]
     if duplicates:
         raise ValueError(f"duplicate process names: {duplicates}")
+    store.validate_control_support(process_names)
 
     batch_size = _EVALUATION_BATCH_SIZE
     for start in range(0, len(process_names), batch_size):
@@ -115,8 +124,8 @@ def _iter_batched_loss_outputs(
         outputs = _BATCHED_LOSS_FN_JIT(
             trained_wrapper,
             batch,
-            store.Cin_controlled_FVCs,
-            store.Cin_modeled_FVCs,
+            store.Cin_controlled_Inflows,
+            store.Cin_modeled_Inflows,
             jump_ts_rows,
             max_solver_steps=int(solver_max_steps),
             solver_rtol=float(solver_rtol),
@@ -229,10 +238,9 @@ def model_predict(
 
     .. note::
        This reuses ``trained_wrapper``'s ``SCALE_*`` as-is and never rebuilds the
-       reaction module, which is what makes it safe on a collection other than the
-       training one. :func:`forward_from_collection` takes the opposite route — it
-       re-runs ``estimate_all_scales`` against whatever collection it is given, so
-       feeding it foreign data silently re-scales the model.
+       reaction module. :func:`forward_from_collection` rebuilds them, but always
+       from the model's *own* recorded training input, so it does not re-scale the
+       model against the collection it is asked to evaluate either.
     """
     store = TrainingDataStore.from_collection(
         collection,
@@ -293,7 +301,7 @@ class TrainHarnessConfig:
     shuffle_batches: bool = True
     batch_seed: int | None = None
     optimizer_name: str = "adam"
-    learning_rate: Any = 1e-3
+    learning_rate: float | optax.Schedule = 1e-3
     grad_clip_norm: float = 1000.0
     seed: int = 0
     solver_max_steps: int = 2048
@@ -323,7 +331,7 @@ class TrainHarnessConfig:
 class TrainHarnessResult:
     """Summary object returned by the training harness."""
 
-    trained_wrapper: Any
+    trained_wrapper: HybridOdeWrapper
     mean_loss_by_step: tuple[float, ...]
     batch_process_names_by_step: tuple[tuple[str, ...], ...]
     per_process_loss_by_step: tuple[tuple[float, ...], ...]
@@ -574,14 +582,27 @@ def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> No
         )
 
 
+def _validate_training_parent_collection(
+    collection: BioProcessCollection,
+    expected_parent_names: tuple[str, ...],
+) -> None:
+    actual_parent_names = tuple(collection.processes)
+    if actual_parent_names != expected_parent_names:
+        raise ValueError(
+            "training parent collection keys differ from represented parents: "
+            f"expected {expected_parent_names!r}, got {actual_parent_names!r}"
+        )
+
+
 def _build_reaction_module(
     *,
     config: TrainHarnessConfig,
     custom_module,
     custom_config: Any,
-    runtime_context: RuntimeContext,
+    store: TrainingDataStore,
+    scales: EstimatedScales,
+    training_parent_collection: BioProcessCollection,
 ) -> UserReactionModule:
-    store = runtime_context.training_data
     hook = get_hook(
         custom_module,
         "build_reaction_module",
@@ -589,12 +610,12 @@ def _build_reaction_module(
     )
     module = hook(
         target_names=list(store.name_measured),
-        process_names=list(store.process_order),
+        process_names=list(_ensure_process_names(store, config.process_names)),
         config=custom_config,
         seed=int(config.seed),
-        runtime_context=runtime_context,
+        training_parent_collection=training_parent_collection,
         **{
-            field.name: getattr(runtime_context.scales, field.name)
+            field.name: getattr(scales, field.name)
             for field in dataclasses.fields(EstimatedScales)
         },
     )
@@ -607,13 +628,14 @@ def _build_reaction_module(
 
 
 def _loss_target_labels(store: TrainingDataStore) -> list[str]:
-    """Canonical loss target-column labels: measured species + cumulative feeds.
+    """Canonical labels for measured species and modeled cumulative flows.
 
     These name the columns of ``SCL_target_pred`` (``target_state_indices``),
     so ``DefaultLossModule`` emits exactly one term per label.
     """
     return list(store.name_measured) + [
-        f"B_{name}_cum" for name in (store.name_modeled_FVCs + store.name_modeled_SVCs)
+        f"B_{name}_cum"
+        for name in (store.name_modeled_Inflows + store.name_modeled_Outflows)
     ]
 
 
@@ -622,16 +644,16 @@ def _build_loss_module(
     config: TrainHarnessConfig,
     custom_module,
     custom_config: Any,
-    runtime_context: RuntimeContext,
+    store: TrainingDataStore,
+    training_parent_collection: BioProcessCollection,
 ) -> UserLossModule:
-    store = runtime_context.training_data
     hook = get_hook(custom_module, "build_loss_module", default_build_loss_module)
     module = hook(
         target_names=_loss_target_labels(store),
-        process_names=list(store.process_order),
+        process_names=list(_ensure_process_names(store, config.process_names)),
         config=custom_config,
         seed=int(config.seed),
-        runtime_context=runtime_context,
+        training_parent_collection=training_parent_collection,
     )
     if not isinstance(module, UserLossModule):
         raise TypeError("build_loss_module(...) must return a UserLossModule instance")
@@ -651,8 +673,10 @@ def _resolve_estimated_scales(
         defaults = _default_scale_kwargs(
             n_RMCs=len(store.rhs_ode.name_modeled_RMCs),
             n_rates=len(store.rhs_ode.name_modeled_rates),
-            n_modeled_FVCs=len(store.rhs_ode.name_modeled_FVCs),
-            n_controlled_FVCs=len(store.rhs_ode.name_controlled_FVCs),
+            n_modeled_Inflows=len(store.rhs_ode.name_modeled_Inflows),
+            n_controlled_Inflows=len(store.rhs_ode.name_controlled_Inflows),
+            n_modeled_Outflows=len(store.rhs_ode.name_modeled_Outflows),
+            n_controlled_Outflows=len(store.rhs_ode.name_controlled_Outflows),
             rhs_ode=store.rhs_ode,
         )
         defaults.pop("SCALE_latent")
@@ -671,6 +695,40 @@ def _resolve_estimated_scales(
     return EstimatedScales(**resolved)
 
 
+def _build_modules_from_selected_parents(
+    *,
+    store: TrainingDataStore,
+    scales: EstimatedScales,
+    training_parent_collection: BioProcessCollection,
+    expected_parents: tuple[str, ...],
+    config: TrainHarnessConfig,
+    custom_module: Any,
+    custom_config: Any,
+    build_loss: bool,
+) -> tuple[UserReactionModule, UserLossModule | None]:
+    """Build reaction and loss modules behind the same parent-key guards."""
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
+    reaction_module = _build_reaction_module(
+        config=config,
+        custom_module=custom_module,
+        custom_config=custom_config,
+        store=store,
+        scales=scales,
+        training_parent_collection=training_parent_collection,
+    )
+    if not build_loss:
+        return reaction_module, None
+    _validate_training_parent_collection(training_parent_collection, expected_parents)
+    loss_module = _build_loss_module(
+        config=config,
+        custom_module=custom_module,
+        custom_config=custom_config,
+        store=store,
+        training_parent_collection=training_parent_collection,
+    )
+    return reaction_module, loss_module
+
+
 def _build_runtime_modules(
     *,
     store: TrainingDataStore,
@@ -680,36 +738,30 @@ def _build_runtime_modules(
     custom_config: Any,
     build_loss: bool = True,
 ) -> tuple[UserReactionModule, UserLossModule | None]:
-    """Build collection-free runtime hook modules once."""
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
-    runtime_context = RuntimeContext(
-        runtime_data,
-        _resolve_estimated_scales(
-            custom_module=custom_module,
-            runtime_data=runtime_data,
-            custom_cfg=custom_config,
-        ),
+    """Build runtime hook modules once from parent-selected scale evidence."""
+    scale_data = ProducerCollectionData.from_collection(
+        store, collection
+    ).select_training_parents(
+        collection, _ensure_process_names(store, config.process_names)
     )
-    reaction_module = _build_reaction_module(
+    scales = _resolve_estimated_scales(
+        custom_module=custom_module,
+        runtime_data=scale_data,
+        custom_cfg=custom_config,
+    )
+    return _build_modules_from_selected_parents(
+        store=store,
+        scales=scales,
+        training_parent_collection=scale_data.training_parent_collection,
+        expected_parents=tuple(scale_data.process_order),
         config=config,
         custom_module=custom_module,
         custom_config=custom_config,
-        runtime_context=runtime_context,
+        build_loss=build_loss,
     )
-    loss_module = (
-        _build_loss_module(
-            config=config,
-            custom_module=custom_module,
-            custom_config=custom_config,
-            runtime_context=runtime_context,
-        )
-        if build_loss
-        else None
-    )
-    return reaction_module, loss_module
 
 
-def _target_state_indices(store: TrainingDataStore, rhs_ode: Any) -> jax.Array:
+def _target_state_indices(store: TrainingDataStore, rhs_ode: RhsOde) -> jax.Array:
     """Map measured target columns to physical state columns."""
     n_RMCs = len(rhs_ode.name_modeled_RMCs)
     n_PVs = len(rhs_ode.name_modeled_PVs)
@@ -719,10 +771,57 @@ def _target_state_indices(store: TrainingDataStore, rhs_ode: Any) -> jax.Array:
     for name in store.name_measured_PVs:
         indices.append(n_RMCs + rhs_ode.name_modeled_PVs.index(name))
 
-    n_modeled_feeds = len(store.name_modeled_FVCs) + len(store.name_modeled_SVCs)
-    feed_start = n_RMCs + n_PVs + 1
-    indices.extend(range(feed_start, feed_start + n_modeled_feeds))
+    n_modeled_flows = len(store.name_modeled_Inflows) + len(store.name_modeled_Outflows)
+    flow_start = n_RMCs + n_PVs + 1
+    indices.extend(range(flow_start, flow_start + n_modeled_flows))
     return jnp.asarray(indices, dtype=jnp.int32)
+
+
+_EVALUATION_COMPATIBILITY_FIELDS = (
+    "name_measured",
+    "name_measured_RMCs",
+    "name_measured_PVs",
+)
+
+
+def _require_evaluation_compatibility(
+    training_store: TrainingDataStore, evaluation_store: TrainingDataStore
+) -> None:
+    """Reject evaluation data the trained wrapper cannot score.
+
+    A template wrapper's ``target_state_indices`` and every ``SCALE_*`` axis are
+    fixed by the *training* store's measured/modeled variable names **and their
+    order**. An evaluation collection whose variables differ would be scored
+    against the wrong columns — or blow up deep inside a JIT trace — so name the
+    difference here instead.
+    """
+    differences: list[str] = []
+    for field in _EVALUATION_COMPATIBILITY_FIELDS:
+        trained = tuple(getattr(training_store, field))
+        evaluated = tuple(getattr(evaluation_store, field))
+        if trained != evaluated:
+            differences.append(
+                f"{field}: model trained on {list(trained)}, "
+                f"evaluation data has {list(evaluated)}"
+            )
+    if differences:
+        raise ValueError(
+            "forward: the evaluation collection is incompatible with the data this "
+            "model was trained on, so the trained wrapper cannot evaluate it:\n  - "
+            + "\n  - ".join(differences)
+        )
+    try:
+        validate_rhs_ode_compatibility(
+            "training data",
+            training_store.rhs_ode,
+            "evaluation data",
+            evaluation_store.rhs_ode,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "forward: the evaluation collection is incompatible with the data this "
+            f"model was trained on: {exc}"
+        ) from exc
 
 
 def _validate_batched_loss_outputs(
@@ -768,16 +867,12 @@ def _build_template_wrapper(
         raise ValueError("selected_processes must be non-empty")
 
     reference_index = store.process_order.index(selected_processes[0])
-    reference_rhs_ode = eqx.tree_at(
-        lambda rhs_ode: (
-            rhs_ode.Cin_controlled_FVCs,
-            rhs_ode.Cin_modeled_FVCs,
-        ),
+    reference_rhs_ode = replace_rhs_ode_process_matrices(
         store.rhs_ode,
-        (
-            store.Cin_controlled_FVCs[reference_index],
-            store.Cin_modeled_FVCs[reference_index],
-        ),
+        store.Cin_controlled_Inflows[reference_index],
+        store.Cin_modeled_Inflows[reference_index],
+        store.retention_controlled_Outflows[reference_index],
+        store.retention_modeled_Outflows[reference_index],
     )
     target_state_indices = _target_state_indices(store, reference_rhs_ode)
     return HybridOdeWrapper.from_rhs_ode(
@@ -795,7 +890,7 @@ class ForwardConfig:
 
     process_names: tuple[str, ...] | None = None
     target_variable_order: tuple[str, ...] | None = None
-    target_source: str = TARGET_SOURCE_AUTO
+    target_source: str | None = None
     solver_max_steps: int = 4096
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
@@ -810,8 +905,8 @@ class ForwardResult:
     store: TrainingDataStore
     process_names: tuple[str, ...]
     target_names: tuple[str, ...]
-    name_modeled_FVCs: tuple[str, ...]
-    name_modeled_SVCs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    name_modeled_Outflows: tuple[str, ...]
     training_process_names: tuple[str, ...]
     per_process_total_loss: dict[str, float]
     per_process_per_target_loss: dict[str, tuple[float, ...]]
@@ -828,97 +923,98 @@ def forward_from_collection(
     model_path: str | Path,
     config: ForwardConfig | None = None,
     custom_py: str | Path | None = None,
-    runtime_config: dict[str, Any] | None = None,
     training_process_names: tuple[str, ...] | None = None,
     run_config: RunConfig | None = None,
     custom_module: Any | None = None,
     prediction_process_names: tuple[str, ...] | None = None,
     prediction_grid_n: int = 200,
 ) -> ForwardResult:
-    """Load a trained wrapper and run one forward pass per selected process.
+    """Run one forward pass per selected process of ``collection``.
 
-    Mirrors the setup portion of :func:`train_from_collection` — builds the
-    TrainingDataStore, reaction module, and scaling exactly as training did —
-    so that ``eqx.tree_deserialise_leaves`` has a structurally identical
-    template to deserialise into.
+    ``collection`` is **evaluation data only**. The model itself is rebuilt from
+    the prepared collection *it* trained on: that input is resolved from
+    ``model_path``'s run directory and its recorded
+    ``inputs.prepared_input.content_hash`` is verified before any hook runs (see
+    :func:`~bp_train.serialization.reconstruct_training`). So the reaction module,
+    the loss module, every ``SCALE_*`` and the deserialisation template are exactly
+    training's, and evaluation data never reaches a constructor hook.
+
+    A separate store is built from ``collection`` for the solves. It must be
+    compatible with the training data — same measured/modeled variables in the
+    same order — or the call fails with an explicit error.
     """
-    from .serialization import load_trained_wrapper
+    from .serialization import (
+        content_hash,
+        load_trained_wrapper,
+        read_run_config_json,
+        reconstruct_training,
+        resolve_forward_model_path,
+    )
 
     cfg = config or ForwardConfig()
-    if custom_module is None:
-        custom_module = load_custom_module(custom_py)
-    if run_config is not None:
-        # When the RunConfig was reconstructed from config.json, custom is a raw
-        # dict; re-wrap it so hooks get the typed object (config.custom.X).
-        from .run_config import reresolve_custom
-
-        run_config = reresolve_custom(run_config, custom_module)
-    custom_cfg = (
-        run_config
-        if run_config is not None
-        else resolve_config(custom_module, runtime_config)
-    )
-    config_targets = None
-    if run_config is not None and run_config.data is not None:
-        config_targets = run_config.data.targets
-    elif isinstance(custom_cfg, dict):
-        config_targets = custom_cfg.get("target_variable_order")
-    if cfg.target_variable_order is not None:
-        effective_target_order = cfg.target_variable_order
-    elif config_targets:
-        effective_target_order = tuple(config_targets)
-    else:
-        effective_target_order = None
-
-    store = TrainingDataStore.from_collection(
-        collection,
-        target_variable_order=effective_target_order,
-        target_source=cfg.target_source,
-    )
-    # Use ALL processes in the store for template construction so the pytree
-    # matches training even if the caller selects a holdout subset below.
-    template_processes = tuple(store.process_order)
-
-    # Build a throwaway TrainHarnessConfig for hook-reuse only (build_reaction_module
-    # needs a config object with .seed).
-    hook_process_names = (
-        tuple(training_process_names)
-        if training_process_names is not None
-        else template_processes
-    )
-    train_like_cfg = TrainHarnessConfig(
-        process_names=hook_process_names,
-        target_variable_order=effective_target_order,
-        target_source=cfg.target_source,
-        seed=run_config.train.seed if run_config is not None else 0,
-        allow_stateful_models=bool(
-            run_config is not None and run_config.train.allow_stateful_models
-        ),
-    )
-    reaction_module, loss_module = _build_runtime_modules(
-        store=store,
-        collection=collection,
-        config=train_like_cfg,
+    # Resolve (and existence-check) the weights before the reconstruction: it
+    # costs seconds on a real input, and failing afterwards reports a path the
+    # caller never wrote.
+    run_dir, model_path = resolve_forward_model_path(model_path)
+    document: dict[str, Any] | None = None
+    if run_config is None:
+        run_config, document = read_run_config_json(run_dir / "config.json")
+    rebuilt = reconstruct_training(
+        run_dir,
+        run_config,
+        document,
         custom_module=custom_module,
-        custom_config=custom_cfg,
+        custom_py=custom_py,
+        training_process_names=training_process_names,
     )
-    assert loss_module is not None
 
-    template_wrapper = _build_template_wrapper(
-        store,
-        reaction_module=reaction_module,
-        selected_processes=template_processes,
-        loss_module=loss_module,
+    recorded_targets = (
+        tuple(rebuilt.config.data.targets)
+        if rebuilt.config.data is not None and rebuilt.config.data.targets
+        else None
     )
-    loss_names = tuple(loss_module.loss_names)
+    recorded_source = (
+        rebuilt.config.data.target_source
+        if rebuilt.config.data is not None
+        else TARGET_SOURCE_AUTO
+    )
+    effective_target_order = (
+        cfg.target_variable_order
+        if cfg.target_variable_order is not None
+        else recorded_targets
+    )
+    effective_target_source = (
+        cfg.target_source if cfg.target_source is not None else recorded_source
+    )
 
-    trained_wrapper = load_trained_wrapper(model_path, template=template_wrapper)
+    # The evaluation store is a separate object built from the caller's data. The
+    # one exception is a byte-for-byte identity: when the evaluation collection IS
+    # the model's verified training input under the same target layout, building a
+    # second identical store would only cost time.
+    same_input = (
+        effective_target_order == recorded_targets
+        and effective_target_source == recorded_source
+        and content_hash(collection) == rebuilt.prepared_content_hash
+    )
+    if same_input:
+        evaluation_store = rebuilt.store
+    else:
+        evaluation_store = TrainingDataStore.from_collection(
+            collection,
+            target_variable_order=effective_target_order,
+            target_source=effective_target_source,
+        )
+        _require_evaluation_compatibility(rebuilt.store, evaluation_store)
+
+    trained_wrapper = load_trained_wrapper(
+        model_path, template=rebuilt.template_wrapper
+    )
     return evaluate_trained_wrapper(
         trained_wrapper,
-        store,
+        evaluation_store,
         config=cfg,
-        target_names=loss_names,
-        training_process_names=training_process_names or (),
+        target_names=tuple(rebuilt.loss_module.loss_names),
+        training_process_names=rebuilt.training_process_names,
         prediction_process_names=prediction_process_names,
         prediction_grid_n=prediction_grid_n,
     )
@@ -1032,8 +1128,8 @@ def evaluate_trained_wrapper(
         store=store,
         process_names=eval_processes,
         target_names=target_names,
-        name_modeled_FVCs=tuple(store.name_modeled_FVCs),
-        name_modeled_SVCs=tuple(store.name_modeled_SVCs),
+        name_modeled_Inflows=tuple(store.name_modeled_Inflows),
+        name_modeled_Outflows=tuple(store.name_modeled_Outflows),
         training_process_names=tuple(training_process_names),
         per_process_total_loss=per_process_total,
         per_process_per_target_loss=per_process_per_target,
@@ -1064,6 +1160,7 @@ def train_collection(
         loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
     effective_batched_loss_fn = _BATCHED_LOSS_FN
     selected_processes = _ensure_process_names(store, cfg.process_names)
+    store.validate_control_support(selected_processes)
 
     effective_batch_size, batches_per_epoch, total_updates = derive_update_budget(
         cfg, selected_process_count=len(selected_processes)
@@ -1099,8 +1196,8 @@ def train_collection(
         selected_processes=selected_processes,
         loss_module=loss_module,
     )
-    batched_Cin = store.Cin_controlled_FVCs
-    batched_Cin_modeled = store.Cin_modeled_FVCs
+    batched_Cin = store.Cin_controlled_Inflows
+    batched_Cin_modeled = store.Cin_modeled_Inflows
 
     # Partition the WHOLE wrapper so the loss module's trainable_field() leaves
     # are optimized alongside the reaction module's. Untagged leaves (controls,
@@ -1127,8 +1224,8 @@ def train_collection(
     def _make_batched_step():
         def _step_fn(
             current_wrapper: HybridOdeWrapper,
-            current_trainable_params: Any,
-            current_optimizer_state: Any,
+            current_trainable_params: eqx.Module,
+            current_optimizer_state: optax.OptState,
             current_batch,
             step: jax.Array,
         ):
@@ -1141,7 +1238,7 @@ def train_collection(
 
             del current_wrapper  # whole-wrapper partition: combine reconstructs it
 
-            def _loss_fn(trainable_params: Any) -> jax.Array:
+            def _loss_fn(trainable_params: eqx.Module) -> jax.Array:
                 candidate_wrapper = eqx.combine(trainable_params, trainable_static)
                 # `*_pred` swallows the prediction outputs (unused in training);
                 # the trailing element is the per-sample fail_time (see
@@ -1237,9 +1334,26 @@ def train_collection(
             jax.pmap,
             axis_name="bp_dev",
             devices=devices,
-            in_axes=(None, 0, 0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None), None),
+            in_axes=(
+                None,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                (0 if use_jump else None),
+                None,
+            ),
         )
-        def _pgrad(params, controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step):
+        def _pgrad(
+            params, controls, tm, ym, mk, nm, y0, cin, cinm, ret, retm, wt, jt, step
+        ):
             def _local(p):
                 wrapper = eqx.combine(p, trainable_static)
                 module = wrapper.reaction_module
@@ -1249,7 +1363,19 @@ def train_collection(
                 SCL_ym = ym / scale_targets[None, None, :]
                 tmc = clamp_padded_time_rows(tm, nm)
 
-                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                def _one(
+                    pidx,
+                    t_row,
+                    scl_ym,
+                    mask,
+                    n_meas,
+                    raw_y0,
+                    ci,
+                    cim,
+                    retention,
+                    retention_modeled,
+                    jts,
+                ):
                     return evaluate_one_sample_loss(
                         wrapper,
                         controls,
@@ -1261,6 +1387,8 @@ def train_collection(
                         raw_y0,
                         ci,
                         cim,
+                        retention,
+                        retention_modeled,
                         jts,
                         max_solver_steps=max_steps,
                         solver_rtol=rtol,
@@ -1269,7 +1397,20 @@ def train_collection(
                     )
 
                 totl, pert, faild = jax.vmap(
-                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                    _one,
+                    in_axes=(
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        (0 if use_jump else None),
+                    ),
                 )(
                     jnp.arange(tm.shape[0], dtype=jnp.int32),
                     tmc,
@@ -1279,6 +1420,8 @@ def train_collection(
                     y0,
                     cin,
                     cinm,
+                    ret,
+                    retm,
                     jt,
                 )
                 return jnp.sum(totl * wt), (pert, totl, faild)
@@ -1323,6 +1466,8 @@ def train_collection(
                     current_batch.y0_measured,
                     cin,
                     cinm,
+                    current_batch.retention_controlled_Outflows,
+                    current_batch.retention_modeled_Outflows,
                 )
             ]
             controls = jtu.tree_map(_shard, jtu.tree_map(_pad, current_batch.controls))
@@ -1337,6 +1482,8 @@ def train_collection(
                 ins[4],
                 ins[5],
                 ins[6],
+                ins[7],
+                ins[8],
                 weight_sharded,
                 jt,
                 step,
@@ -1411,15 +1558,32 @@ def train_collection(
 
         @eqx.filter_jit
         def _full_step(
-            params, opt_state, controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt, step
+            params,
+            opt_state,
+            controls,
+            tm,
+            ym,
+            mk,
+            nm,
+            y0,
+            cin,
+            cinm,
+            ret,
+            retm,
+            wt,
+            jt,
+            step,
         ):
             # Inside-jit sharding constraints (per the equinox autoparallelism
             # tutorial): emits jax.lax.with_sharding_constraint so XLA keeps
             # params/opt replicated and the batch axis sharded *through* the
             # computation, rather than replicating it.
             params, opt_state = eqx.filter_shard((params, opt_state), S_repl)
-            controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt = eqx.filter_shard(
-                (controls, tm, ym, mk, nm, y0, cin, cinm, wt, jt), S_batch
+            controls, tm, ym, mk, nm, y0, cin, cinm, ret, retm, wt, jt = (
+                eqx.filter_shard(
+                    (controls, tm, ym, mk, nm, y0, cin, cinm, ret, retm, wt, jt),
+                    S_batch,
+                )
             )
 
             def _local(p):
@@ -1431,7 +1595,19 @@ def train_collection(
                 SCL_ym = ym / scale_targets[None, None, :]
                 tmc = clamp_padded_time_rows(tm, nm)
 
-                def _one(pidx, t_row, scl_ym, mask, n_meas, raw_y0, ci, cim, jts):
+                def _one(
+                    pidx,
+                    t_row,
+                    scl_ym,
+                    mask,
+                    n_meas,
+                    raw_y0,
+                    ci,
+                    cim,
+                    retention,
+                    retention_modeled,
+                    jts,
+                ):
                     return evaluate_one_sample_loss(
                         wrapper,
                         controls,
@@ -1443,6 +1619,8 @@ def train_collection(
                         raw_y0,
                         ci,
                         cim,
+                        retention,
+                        retention_modeled,
                         jts,
                         max_solver_steps=max_steps,
                         solver_rtol=rtol,
@@ -1451,7 +1629,20 @@ def train_collection(
                     )
 
                 totl, pert, faild = jax.vmap(
-                    _one, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, (0 if use_jump else None))
+                    _one,
+                    in_axes=(
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        (0 if use_jump else None),
+                    ),
                 )(
                     jnp.arange(tm.shape[0], dtype=jnp.int32),
                     tmc,
@@ -1461,6 +1652,8 @@ def train_collection(
                     y0,
                     cin,
                     cinm,
+                    ret,
+                    retm,
                     jt,
                 )
                 # Constrain the per-sample (batch-axis) results to stay sharded. NOTE:
@@ -1522,6 +1715,8 @@ def train_collection(
                         current_batch.y0_measured,
                         cin,
                         cinm,
+                        current_batch.retention_controlled_Outflows,
+                        current_batch.retention_modeled_Outflows,
                     )
                 ]
                 controls = jtu.tree_map(
@@ -1555,6 +1750,8 @@ def train_collection(
                     sharded[4],
                     sharded[5],
                     sharded[6],
+                    sharded[7],
+                    sharded[8],
                     wt,
                     jt,
                     step_r,
@@ -1884,7 +2081,7 @@ class PreparedTraining:
     loss_module: UserLossModule
     config: TrainHarnessConfig
     optimizer: optax.GradientTransformation
-    parent_process_names: tuple[str, ...] = ()
+    prediction_parent_process_names: tuple[str, ...] = ()
 
 
 _TRAIN_HOOK_NAMES = (
@@ -1904,32 +2101,35 @@ def _log_train_hooks(custom_module: Any) -> None:
     logger.info("train hooks default: %s", ", ".join(default_hooks) or "none")
 
 
-def prepare_training_from_runtime_context(
-    runtime_context: RuntimeContext,
+def _prepare_training_from_selected_parents(
     *,
+    store: TrainingDataStore,
+    scales: EstimatedScales,
+    augmentation_parents: tuple[str | None, ...],
+    training_parent_collection: BioProcessCollection,
     config: TrainHarnessConfig,
     custom_module: Any,
     custom_cfg: Any,
 ) -> PreparedTraining:
-    """Prepare training solely from an already-loaded runtime context."""
-    if not isinstance(runtime_context, RuntimeContext):
-        raise TypeError("runtime_context must be a RuntimeContext")
+    """Build every hook-visible object from one selected training-parent set."""
     _log_train_hooks(custom_module)
-    store = runtime_context.training_data
+    process_order = tuple(store.process_order)
     selected_processes = _ensure_process_names(store, config.process_names)
     train_cfg = dataclasses.replace(config, process_names=selected_processes)
-    reaction_module = _build_reaction_module(
+    expected_parents = canonical_training_parents(
+        process_order, augmentation_parents, selected_processes
+    )
+    reaction_module, loss_module = _build_modules_from_selected_parents(
+        store=store,
+        scales=scales,
+        training_parent_collection=training_parent_collection,
+        expected_parents=expected_parents,
         config=train_cfg,
         custom_module=custom_module,
         custom_config=custom_cfg,
-        runtime_context=runtime_context,
+        build_loss=True,
     )
-    loss_module = _build_loss_module(
-        config=train_cfg,
-        custom_module=custom_module,
-        custom_config=custom_cfg,
-        runtime_context=runtime_context,
-    )
+    assert loss_module is not None
     _, _, total_updates = derive_update_budget(
         train_cfg, selected_process_count=len(selected_processes)
     )
@@ -1945,9 +2145,30 @@ def prepare_training_from_runtime_context(
         loss_module=loss_module,
         config=train_cfg,
         optimizer=optimizer,
-        parent_process_names=tuple(
-            store.process_order[index] for index in runtime_context.data.parent_indices
+        prediction_parent_process_names=original_parent_processes(
+            process_order, augmentation_parents
         ),
+    )
+
+
+def prepare_training_from_runtime_artifact(
+    artifact: RuntimeArtifact,
+    *,
+    config: TrainHarnessConfig,
+    custom_module: Any,
+    custom_cfg: Any,
+) -> PreparedTraining:
+    """Prepare training solely from an already-loaded runtime artifact."""
+    if not isinstance(artifact, RuntimeArtifact):
+        raise TypeError("artifact must be a RuntimeArtifact")
+    return _prepare_training_from_selected_parents(
+        store=artifact.training_data,
+        scales=artifact.scales,
+        augmentation_parents=artifact.augmentation_parents,
+        training_parent_collection=artifact.training_parent_collection,
+        config=config,
+        custom_module=custom_module,
+        custom_cfg=custom_cfg,
     )
 
 
@@ -2009,17 +2230,17 @@ def prepare_training(
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
-    runtime_data = RuntimeDataContext.from_collection(store, collection)
-    runtime_context = RuntimeContext(
-        runtime_data,
-        _resolve_estimated_scales(
+    producer_data = ProducerCollectionData.from_collection(store, collection)
+    scale_data = producer_data.select_training_parents(collection, selected_processes)
+    return _prepare_training_from_selected_parents(
+        store=store,
+        scales=_resolve_estimated_scales(
             custom_module=custom_module,
-            runtime_data=runtime_data,
+            runtime_data=scale_data,
             custom_cfg=custom_cfg,
         ),
-    )
-    return prepare_training_from_runtime_context(
-        runtime_context,
+        augmentation_parents=producer_data.augmentation_parents,
+        training_parent_collection=scale_data.training_parent_collection,
         config=train_cfg,
         custom_module=custom_module,
         custom_cfg=custom_cfg,

@@ -9,37 +9,54 @@ from bp_train.model_api import ReactionInputs, partition_trainable
 from stateful_helpers import TrainableH0DefaultStateful, default_stateful_scale_kwargs
 
 
-_SCALE_KWARGS = default_stateful_scale_kwargs(n_controlled_fvcs=0)
+_SCALE_KWARGS = default_stateful_scale_kwargs(
+    n_controlled_inflows=0, n_controlled_outflows=0
+)
 
 
-def _inputs(h):
+def _inputs(h, *, n_modeled_inflows=0, n_modeled_outflows=0):
     return ReactionInputs(
         SCL_modeled_RMCs=jnp.asarray([1.0], dtype=h.dtype),
         SCL_modeled_V=jnp.asarray(1.0, dtype=h.dtype),
-        SCL_modeled_FVCs_cumulative=jnp.zeros(0, dtype=h.dtype),
-        SCL_controlled_FVCs_cumulative=jnp.zeros(0, dtype=h.dtype),
-        SCL_controlled_FVCs_rates=jnp.zeros(0, dtype=h.dtype),
-        SCL_controlled_FVCs_Cin=jnp.zeros((0, 1), dtype=h.dtype),
+        SCL_modeled_Inflows_cumulative=jnp.zeros(n_modeled_inflows, dtype=h.dtype),
+        SCL_modeled_Outflows_cumulative=jnp.zeros(n_modeled_outflows, dtype=h.dtype),
+        SCL_controlled_Inflows_cumulative=jnp.zeros(0, dtype=h.dtype),
+        SCL_controlled_Inflows_rates=jnp.zeros(0, dtype=h.dtype),
+        SCL_controlled_Inflows_Cin=jnp.zeros((0, 1), dtype=h.dtype),
+        SCL_controlled_Outflows_cumulative=jnp.zeros(0, dtype=h.dtype),
+        SCL_controlled_Outflows_rates=jnp.zeros(0, dtype=h.dtype),
+        RAW_controlled_Outflows_retention=jnp.zeros((0, 1), dtype=h.dtype),
         SCL_controlled_PVs=jnp.zeros(0, dtype=h.dtype),
-        SCL_modeled_FVCs_Cin=jnp.zeros((0, 1), dtype=h.dtype),
+        SCL_modeled_Inflows_Cin=jnp.zeros((n_modeled_inflows, 1), dtype=h.dtype),
+        RAW_modeled_Outflows_retention=jnp.zeros(
+            (n_modeled_outflows, 1), dtype=h.dtype
+        ),
         SCL_latent=h,
     )
 
 
 def _initialization_keys(key):
-    key_gru, key_rate, key_feed = jax.random.split(key, 3)
+    key_gru, key_rate, key_inflow, key_outflow = jax.random.split(key, 4)
     _, gru_init_key = jax.random.split(key_gru)
     _, rate_init_key = jax.random.split(key_rate)
-    _, feed_init_key = jax.random.split(key_feed)
-    return jax.random.split(gru_init_key, 6), rate_init_key, feed_init_key
+    _, inflow_init_key = jax.random.split(key_inflow)
+    _, outflow_init_key = jax.random.split(key_outflow)
+    return (
+        jax.random.split(gru_init_key, 6),
+        rate_init_key,
+        inflow_init_key,
+        outflow_init_key,
+    )
 
 
-def _feed_scale_kwargs():
+def _flow_scale_kwargs():
     return {
         **_SCALE_KWARGS,
-        "SCALE_modeled_FVCs_cumulative": jnp.ones(1),
-        "SCALE_modeled_FVCs_rates": jnp.ones(1),
-        "SCALE_modeled_FVCs_Cin": jnp.ones((1, 1)),
+        "SCALE_modeled_Inflows_cumulative": jnp.ones(1),
+        "SCALE_modeled_Outflows_cumulative": jnp.ones(1),
+        "SCALE_modeled_Inflows_rates": jnp.ones(1),
+        "SCALE_modeled_Outflows_rates": jnp.ones(1),
+        "SCALE_modeled_Inflows_Cin": jnp.ones((1, 1)),
     }
 
 
@@ -56,8 +73,10 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
         module.n_modeled_RMCs
         + module.n_modeled_PVs
         + 1
-        + module.n_modeled_FVCs
-        + 2 * module.n_controlled_FVCs
+        + module.n_modeled_Inflows
+        + module.n_modeled_Outflows
+        + 2 * module.n_controlled_Inflows
+        + 2 * module.n_controlled_Outflows
         + module.n_controlled_PVs
     )
     assert module.n_latent == 2
@@ -67,13 +86,35 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
         outputs.SCL_latent_derivative, module.gru_cell(cell_input, h) - h
     )
     assert outputs.SCL_modeled_BiologicalOde_rates.shape == (1,)
-    assert outputs.SCL_modeled_FVCs_rates.shape == (0,)
+    assert outputs.SCL_modeled_Inflows_rates.shape == (0,)
+    assert outputs.SCL_modeled_Outflows_rates.shape == (0,)
+
+
+def test_default_stateful_mixed_flow_axes_size_the_gru_input():
+    module = DefaultStatefulReactionModule(
+        key=jax.random.key(19),
+        n_latent=2,
+        **default_stateful_scale_kwargs(
+            n_rmcs=2,
+            n_modeled_inflows=1,
+            n_modeled_outflows=2,
+            n_controlled_inflows=3,
+            n_controlled_outflows=4,
+            n_controlled_pvs=5,
+        ),
+    )
+
+    assert module.n_modeled_Inflows == 1
+    assert module.n_modeled_Outflows == 2
+    assert module.n_controlled_Inflows == 3
+    assert module.n_controlled_Outflows == 4
+    assert module.gru_cell.weight_ih.shape[1] == 25
 
 
 def test_default_stateful_gru_initialization_is_per_gate_and_trainable():
     key = jax.random.key(17)
     module = DefaultStatefulReactionModule(key=key, n_latent=3, **_SCALE_KWARGS)
-    gru_keys, rate_init_key, _ = _initialization_keys(key)
+    gru_keys, rate_init_key, _, _ = _initialization_keys(key)
     glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
     orthogonal_init = jax.nn.initializers.orthogonal()
 
@@ -135,38 +176,62 @@ def test_default_stateful_empty_rate_head_skips_glorot(monkeypatch):
     assert module.rate_head.bias.size == 0
 
 
-def test_default_stateful_feed_head_is_calibrated_and_differentiable():
+def test_default_stateful_flow_heads_are_calibrated_and_signed():
     key = jax.random.key(23)
-    module = DefaultStatefulReactionModule(key=key, n_latent=3, **_feed_scale_kwargs())
-    _, _, feed_init_key = _initialization_keys(key)
-    feed_head = module.feed_head
-    assert feed_head is not None
+    module = DefaultStatefulReactionModule(key=key, n_latent=3, **_flow_scale_kwargs())
+    _, _, inflow_init_key, outflow_init_key = _initialization_keys(key)
     glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
-    expected_weight = 0.01 * glorot_init(
-        feed_init_key, feed_head.weight.shape, feed_head.weight.dtype
-    )
-    expected_bias = jnp.zeros_like(feed_head.bias) + jnp.log(
-        jnp.expm1(jnp.asarray(0.01, dtype=feed_head.bias.dtype))
-    )
-    assert jnp.array_equal(feed_head.weight, expected_weight)
-    assert jnp.array_equal(feed_head.bias, expected_bias)
 
-    zero_readout = jnp.zeros(feed_head.in_features, dtype=feed_head.weight.dtype)
-    assert jnp.allclose(jax.nn.softplus(feed_head(zero_readout)), 0.01, atol=1e-7)
-    direct_sensitivity = jax.grad(lambda bias: jax.nn.softplus(bias)[0])(
-        feed_head.bias
-    )[0]
-    expected_sensitivity = -jnp.expm1(jnp.asarray(-0.01, dtype=feed_head.bias.dtype))
-    assert jnp.allclose(direct_sensitivity, expected_sensitivity, atol=1e-7)
+    for head, init_key in (
+        (module.inflow_head, inflow_init_key),
+        (module.outflow_head, outflow_init_key),
+    ):
+        assert head is not None
+        expected_weight = 0.01 * glorot_init(
+            init_key, head.weight.shape, head.weight.dtype
+        )
+        expected_bias = jnp.zeros_like(head.bias) + jnp.log(
+            jnp.expm1(jnp.asarray(0.01, dtype=head.bias.dtype))
+        )
+        assert jnp.array_equal(head.weight, expected_weight)
+        assert jnp.array_equal(head.bias, expected_bias)
 
-    nonzero_readout = jnp.ones(feed_head.in_features, dtype=feed_head.weight.dtype)
-    gradient = eqx.filter_grad(lambda head: jax.nn.softplus(head(nonzero_readout))[0])(
-        feed_head
+        zero_readout = jnp.zeros(head.in_features, dtype=head.weight.dtype)
+        assert jnp.allclose(jax.nn.softplus(head(zero_readout)), 0.01, atol=1e-7)
+        direct_sensitivity = jax.grad(lambda bias: jax.nn.softplus(bias)[0])(head.bias)[
+            0
+        ]
+        expected_sensitivity = -jnp.expm1(jnp.asarray(-0.01, dtype=head.bias.dtype))
+        assert jnp.allclose(direct_sensitivity, expected_sensitivity, atol=1e-7)
+
+        nonzero_readout = jnp.ones(head.in_features, dtype=head.weight.dtype)
+        gradient = eqx.filter_grad(
+            lambda candidate: jax.nn.softplus(candidate(nonzero_readout))[0]
+        )(head)
+        assert jnp.all(jnp.isfinite(gradient.weight))
+        assert jnp.all(jnp.isfinite(gradient.bias))
+        assert jnp.all(gradient.weight != 0)
+        assert jnp.all(gradient.bias != 0)
+
+    inputs = _inputs(jnp.zeros(3), n_modeled_inflows=1, n_modeled_outflows=1)
+    outputs = module(jnp.asarray(0.0), inputs)
+    assert jnp.all(outputs.SCL_modeled_Inflows_rates > 0)
+    assert jnp.all(outputs.SCL_modeled_Outflows_rates < 0)
+
+    modified = eqx.tree_at(
+        lambda candidate: candidate.outflow_head.bias,
+        module,
+        jnp.full_like(module.outflow_head.bias, 10.0),
     )
-    assert jnp.all(jnp.isfinite(gradient.weight))
-    assert jnp.all(jnp.isfinite(gradient.bias))
-    assert jnp.all(gradient.weight != 0)
-    assert jnp.all(gradient.bias != 0)
+    modified_outputs = modified(jnp.asarray(0.0), inputs)
+    assert jnp.array_equal(
+        modified_outputs.SCL_modeled_Inflows_rates,
+        outputs.SCL_modeled_Inflows_rates,
+    )
+    assert not jnp.array_equal(
+        modified_outputs.SCL_modeled_Outflows_rates,
+        outputs.SCL_modeled_Outflows_rates,
+    )
 
 
 def test_default_stateful_initialization_is_deterministic_per_key():
@@ -208,7 +273,12 @@ def test_default_stateful_module_call_is_pure_for_identical_inputs():
         first.SCL_modeled_BiologicalOde_rates,
         second.SCL_modeled_BiologicalOde_rates,
     )
-    assert jnp.array_equal(first.SCL_modeled_FVCs_rates, second.SCL_modeled_FVCs_rates)
+    assert jnp.array_equal(
+        first.SCL_modeled_Inflows_rates, second.SCL_modeled_Inflows_rates
+    )
+    assert jnp.array_equal(
+        first.SCL_modeled_Outflows_rates, second.SCL_modeled_Outflows_rates
+    )
 
 
 def test_stateful_module_can_override_trainable_initial_latent():

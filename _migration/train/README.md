@@ -50,6 +50,12 @@ A `custom.py` next to the config supplies the hooks (`build_reaction_module`,
 MLP reaction module with per-target MSE loss. See
 [examples/00_e2e_sim/](examples/00_e2e_sim).
 
+Flow values follow the bp-format sign contract: Inflow cumulative values and
+rates are non-negative; Outflow cumulative values and rates are non-positive.
+Continuous controls are ordered `[controlled Inflows | controlled Outflows |
+controlled PVs]`. Inflow composition comes from feed media. Outflow retention
+is raw in `[0, 1]`, where `0` is fully removed and `1` is fully retained.
+
 ### Programmatic
 
 ```python

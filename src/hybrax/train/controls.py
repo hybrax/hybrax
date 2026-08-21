@@ -6,14 +6,15 @@ from typing import Any, Callable
 import numpy as np
 from bp_format.dataclasses import (
     BioProcess,
-    FeedVolumeChange,
     FeedMedium,
     FeedMediumComponent,
+    Inflow,
+    Outflow,
     ProcessVariable,
-    SampleVolumeChange,
     StaticVariable,
     TimeSeries,
 )
+from bp_format.mechanistic import extract_discrete_events, get_process_ordering
 from bp_format.time_series.spline_ops import rebase_to_breaks
 
 
@@ -29,6 +30,14 @@ class SignalSource:
     spline_breaks: np.ndarray | None = None
     spline_coeffs: np.ndarray | None = None
     continuity_side: str | None = None
+    is_static: bool = False
+
+    @property
+    def support(self) -> tuple[float, float]:
+        """Closed source support; static controls are unbounded."""
+        if self.is_static:
+            return (-float("inf"), float("inf"))
+        return (float(self.times[0]), float(self.times[-1]))
 
 
 def _as_numpy(values: Any) -> np.ndarray:
@@ -42,15 +51,14 @@ def _safe_interp(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.ndarray:
 
 
 def _piecewise_linear_derivative(
-    x: np.ndarray, xp: np.ndarray, fp: np.ndarray
+    x: np.ndarray, xp: np.ndarray, fp: np.ndarray, side: str
 ) -> np.ndarray:
-    if xp.size <= 1:
-        return np.zeros_like(x, dtype=float)
-
     dx = np.diff(xp)
     slopes = np.divide(np.diff(fp), dx, out=np.zeros_like(dx), where=dx != 0)
-    indices = np.searchsorted(xp[1:], x, side="right")
+    indices = np.searchsorted(xp, x, side=side) - 1
     indices = np.clip(indices, 0, slopes.size - 1)
+    # Validated solves cannot query outside support; clamping preserves the only
+    # in-domain interval rate at each closed support endpoint.
     return slopes[indices]
 
 
@@ -60,7 +68,7 @@ def _make_source_from_xy(
     times: np.ndarray,
     values: np.ndarray,
     metadata: dict[str, Any] | None = None,
-    fallback_end: float | None = None,
+    continuity_side: str = "right",
 ) -> SignalSource:
     times = _as_numpy(times)
     values = _as_numpy(values)
@@ -72,15 +80,9 @@ def _make_source_from_xy(
     if times.size == 0:
         raise ValueError(f"{name}: empty time series")
     if times.size == 1:
-        end = (
-            times[0] + 1.0
-            if fallback_end is None
-            else max(float(fallback_end), float(times[0]))
+        raise ValueError(
+            f"{name}: continuous-control TimeSeries must contain at least two points"
         )
-        if end == times[0]:
-            end = float(times[0]) + 1.0
-        times = np.asarray([times[0], end], dtype=float)
-        values = np.asarray([values[0], values[0]], dtype=float)
 
     return SignalSource(
         name=name,
@@ -89,9 +91,10 @@ def _make_source_from_xy(
         values=values,
         evaluator=lambda ts: _safe_interp(_as_numpy(ts), times, values),
         derivative=lambda ts: _piecewise_linear_derivative(
-            _as_numpy(ts), times, values
+            _as_numpy(ts), times, values, continuity_side
         ),
         metadata=dict(metadata or {}),
+        continuity_side=continuity_side,
     )
 
 
@@ -102,7 +105,7 @@ def _eval_ppoly_numpy(
 
     Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with
     ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. This
-    NumPy evaluator is used during preparation and by dense-fallback splines.
+    NumPy evaluator is used during preparation and scale estimation.
     """
     ts_arr = np.atleast_1d(_as_numpy(ts))
     idx = np.clip(np.searchsorted(breaks, ts_arr, side=side) - 1, 0, len(breaks) - 2)
@@ -166,24 +169,20 @@ def _make_source_from_process_variable(
             times=process_variable.values.times,
             values=process_variable.values.values,
             metadata={"source": "timeseries"},
-            fallback_end=float(process.time_axis.end),
+            continuity_side=str(process_variable.values.continuity_side),
         )
 
     if isinstance(process_variable.values, StaticVariable):
-        t_start = float(process.time_axis.start)
-        t_end = float(process.time_axis.end)
-        return _make_source_from_xy(
+        value = float(process_variable.values.value)
+        return SignalSource(
             name=name,
             kind="process_variable",
-            times=np.asarray([t_start, t_end], dtype=float),
-            values=np.asarray(
-                [
-                    float(process_variable.values.value),
-                    float(process_variable.values.value),
-                ],
-                dtype=float,
-            ),
+            times=np.asarray([-np.inf, np.inf]),
+            values=np.asarray([value, value]),
+            evaluator=lambda ts: np.full_like(_as_numpy(ts), value, dtype=float),
+            derivative=lambda ts: np.zeros_like(_as_numpy(ts), dtype=float),
             metadata={"source": "static"},
+            is_static=True,
         )
 
     raise TypeError(f"Unsupported process-variable value type for {name}")
@@ -221,20 +220,63 @@ def _serialize_feed_medium(feed_medium: FeedMedium) -> dict[str, Any]:
     }
 
 
+def _validate_cumulative_direction(
+    name: str,
+    volume_change: Inflow | Outflow,
+    process: BioProcess,
+) -> None:
+    """Validate the cumulative-flow derivative over the closed solve interval."""
+    values = volume_change.values
+    if values.breaks is None:
+        slopes = np.diff(_as_numpy(values.values)) / np.diff(_as_numpy(values.times))
+    else:
+        breaks = _as_numpy(values.breaks)
+        coeffs = _as_numpy(values.coeffs)
+        rates: list[float] = []
+        for index, (left, right) in enumerate(
+            zip(breaks[:-1], breaks[1:], strict=True)
+        ):
+            clipped_left = max(float(left), float(process.time_axis.start))
+            clipped_right = min(float(right), float(process.time_axis.end))
+            if clipped_left > clipped_right:
+                continue
+            rate_coeffs = np.polynomial.polynomial.polyder(coeffs[index])
+            candidates = [clipped_left - left, clipped_right - left]
+            acceleration_coeffs = np.polynomial.polynomial.polyder(rate_coeffs)
+            for root in np.polynomial.polynomial.polyroots(acceleration_coeffs):
+                if np.isreal(root):
+                    root = float(np.real(root))
+                    if candidates[0] <= root <= candidates[1]:
+                        candidates.append(root)
+            rates.extend(np.polynomial.polynomial.polyval(candidates, rate_coeffs))
+        slopes = np.asarray(rates)
+
+    direction = 1.0 if isinstance(volume_change, Inflow) else -1.0
+    if np.any(direction * slopes < 0.0):
+        expected = "nonnegative" if direction > 0.0 else "nonpositive"
+        raise ValueError(
+            f"Continuous {type(volume_change).__name__} {name!r} must have "
+            f"{expected} cumulative derivatives."
+        )
+
+
 def _make_source_from_volume_change(
-    name: str, volume_change: FeedVolumeChange
+    process: BioProcess,
+    name: str,
+    volume_change: Inflow | Outflow,
 ) -> SignalSource:
-    metadata = {
+    metadata: dict[str, Any] = {
         "source": "timeseries",
         "source_kind": "control",
-        "signal_family": "feed",
-        "feed_name": name,
-        "inlet_feed_medium": (
-            _serialize_feed_medium(volume_change.feed_medium)
-            if volume_change.feed_medium is not None
-            else None
-        ),
+        "signal_family": ("inflow" if isinstance(volume_change, Inflow) else "outflow"),
     }
+    if isinstance(volume_change, Inflow):
+        metadata["inlet_feed_medium"] = _serialize_feed_medium(
+            volume_change.feed_medium
+        )
+    else:
+        metadata["retention"] = dict(volume_change.retention)
+
     if volume_change.values.breaks is not None:
         return _make_source_from_spline(
             name=name,
@@ -248,102 +290,35 @@ def _make_source_from_volume_change(
         times=volume_change.values.times,
         values=volume_change.values.values,
         metadata=metadata,
+        continuity_side=str(volume_change.values.continuity_side),
     )
-
-
-def _feed_medium_cin_row(
-    feed_medium: FeedMedium | None,
-    species_names: tuple[str, ...],
-    *,
-    feed_name: str,
-) -> list[float]:
-    if feed_medium is None:
-        raise ValueError(
-            f"FeedVolumeChange {feed_name!r} must define feed_medium for transport."
-        )
-    row: list[float] = []
-    for species_name in species_names:
-        component = feed_medium.components.get(species_name)
-        if component is None:
-            row.append(0.0)
-            continue
-        concentration = component.concentration
-        if not isinstance(concentration, StaticVariable):
-            raise NotImplementedError(
-                "TimeSeries feed concentrations are not supported for pseudobatch "
-                f"event transport. Found species {species_name!r} "
-                f"in feed {feed_name!r}."
-            )
-        row.append(float(concentration.value))
-    return row
 
 
 def collect_discrete_event_metadata(
     process: BioProcess,
     species_names: tuple[str, ...],
 ) -> dict[str, Any]:
-    """Collect true sample/bolus events for pseudobatch algebraic forcing."""
-    t_start = float(process.time_axis.start)
+    """Collect true sample/bolus events for pseudobatch algebraic forcing.
+
+    bp-format owns event validation and species alignment. Signed Outflow deltas
+    become positive removal magnitudes exactly once at this solver boundary.
+    """
     t_end = float(process.time_axis.end)
     sample_events: list[tuple[float, float]] = []
     bolus_events: list[tuple[float, float, list[float]]] = []
+    ordering = get_process_ordering(process)
+    if tuple(ordering.name_modeled_RMCs) != species_names:
+        raise ValueError("species_names must match bp-format's modeled RMC order")
 
-    for name, volume_change in process.volume.volume_changes.items():
-        times = _as_numpy(volume_change.values.times)
-        values = _as_numpy(volume_change.values.values)
-        if times.size != values.size:
-            raise ValueError(f"{name}: volume-change times and values differ in size")
-
-        if isinstance(volume_change, SampleVolumeChange):
-            for event_time, delta_v in zip(
-                times.tolist(), values.tolist(), strict=False
-            ):
-                event_time = float(event_time)
-                delta_v = float(delta_v)
-                if delta_v == 0.0:
-                    continue
-                if delta_v > 0.0:
-                    raise ValueError(
-                        f"Sample {name!r} has positive delta_v at "
-                        f"t={event_time}: {delta_v}. Samples must remove volume."
-                    )
-                sample_v = abs(delta_v)
-                if event_time < t_start:
-                    raise ValueError(
-                        f"Sample {name!r} timestamp {event_time} before "
-                        f"process start {t_start}."
-                    )
-                if event_time > t_end:
-                    continue
-                sample_events.append((event_time, sample_v))
+    for event in extract_discrete_events(process, ordering):
+        if event["t"] > t_end:
             continue
-
-        if not isinstance(volume_change, FeedVolumeChange):
-            continue
-        if volume_change.is_continuous or not volume_change.is_controlled:
-            continue
-
-        cin_row = _feed_medium_cin_row(
-            volume_change.feed_medium,
-            species_names,
-            feed_name=name,
-        )
-        for event_time, delta_v in zip(times.tolist(), values.tolist(), strict=False):
-            event_time = float(event_time)
-            delta_v = float(delta_v)
-            if delta_v == 0.0:
-                continue
-            if delta_v < 0.0:
-                raise ValueError(
-                    f"Bolus feed {name!r} has negative delta_v at "
-                    f"t={event_time}: {delta_v}. Boluses must add volume."
-                )
-            if event_time < t_start or event_time >= t_end:
-                raise ValueError(
-                    f"Bolus feed {name!r} timestamp {event_time} outside "
-                    f"[{t_start}, {t_end})."
-                )
-            bolus_events.append((event_time, delta_v, cin_row))
+        if event["kind"] == "sample":
+            sample_events.append((event["t"], -event["dV"]))
+        else:
+            bolus_events.append(
+                (event["t"], event["dV"], np.asarray(event["Cin"]).tolist())
+            )
 
     sample_by_time: dict[float, float] = {}
     for event_time, sample_v in sample_events:
@@ -367,19 +342,19 @@ class ControlSourceBundle:
     RHS integrates via RhsOde's ``u`` argument. Discrete bolus/sample events are
     NOT controls here; they are applied as state jumps by the callbacks solve:
 
-        [name_controlled_FVCs | name_controlled_SVCs | name_controlled_PVs]
+        [name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]
     """
 
-    name_controlled_FVCs: tuple[str, ...]
-    name_controlled_SVCs: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
     sources_by_name: dict[str, SignalSource]
 
     @property
     def all_names(self) -> tuple[str, ...]:
         return (
-            self.name_controlled_FVCs
-            + self.name_controlled_SVCs
+            self.name_controlled_Inflows
+            + self.name_controlled_Outflows
             + self.name_controlled_PVs
         )
 
@@ -389,71 +364,45 @@ class ControlSourceBundle:
 
 
 def select_control_sources(process: BioProcess) -> ControlSourceBundle:
-    fvc_continuous: dict[str, SignalSource] = {}
-    pv_controlled: dict[str, SignalSource] = {}
+    ordering = get_process_ordering(process)
+    volume_changes = process.volume.volume_changes
+    for name, volume_change in volume_changes.items():
+        if volume_change.is_continuous:
+            _validate_cumulative_direction(name, volume_change, process)
 
-    for name, volume_change in process.volume.volume_changes.items():
-        if not isinstance(volume_change, FeedVolumeChange):
-            continue
-        if not volume_change.is_controlled:
-            continue
-        if not volume_change.is_continuous:
-            continue
-        fvc_continuous[name] = _make_source_from_volume_change(name, volume_change)
-
-    for name, process_variable in process.process_variables.items():
-        if not process_variable.is_controlled:
-            continue
-        pv_controlled[name] = _make_source_from_process_variable(
+    controlled_inflows = {
+        name: _make_source_from_volume_change(process, name, volume_changes[name])
+        for name in ordering.name_controlled_Inflows
+    }
+    controlled_outflows = {
+        name: _make_source_from_volume_change(process, name, volume_changes[name])
+        for name in ordering.name_controlled_Outflows
+    }
+    controlled_pvs = {
+        name: _make_source_from_process_variable(
             process=process,
             name=name,
-            process_variable=process_variable,
+            process_variable=process.process_variables[name],
         )
+        for name in ordering.name_controlled_PVs
+    }
 
-    name_controlled_FVCs = tuple(sorted(fvc_continuous))
-    name_controlled_SVCs: tuple[str, ...] = ()
-    name_controlled_PVs = tuple(sorted(pv_controlled))
+    name_controlled_Inflows = tuple(controlled_inflows)
+    name_controlled_Outflows = tuple(controlled_outflows)
+    name_controlled_PVs = tuple(controlled_pvs)
 
     sources_by_name: dict[str, SignalSource] = {
-        **fvc_continuous,
-        **pv_controlled,
+        **controlled_inflows,
+        **controlled_outflows,
+        **controlled_pvs,
     }
 
     return ControlSourceBundle(
-        name_controlled_FVCs=name_controlled_FVCs,
-        name_controlled_SVCs=name_controlled_SVCs,
+        name_controlled_Inflows=name_controlled_Inflows,
+        name_controlled_Outflows=name_controlled_Outflows,
         name_controlled_PVs=name_controlled_PVs,
         sources_by_name=sources_by_name,
     )
-
-
-def compute_signal_spreads(
-    process_sources: dict[str, list[SignalSource]],
-) -> dict[str, float]:
-    values_by_name: dict[str, list[float]] = {}
-
-    for sources in process_sources.values():
-        for source in sources:
-            values_by_name.setdefault(source.name, []).extend(source.values.tolist())
-
-    spreads: dict[str, float] = {}
-    for name, values in values_by_name.items():
-        arr = np.asarray(values, dtype=float)
-        spread = float(np.max(arr) - np.min(arr)) if arr.size else 0.0
-        spreads[name] = spread if spread > 0 else 1.0
-    return spreads
-
-
-def _linear_interp_from_grid(
-    ts: np.ndarray, grid: np.ndarray, values: np.ndarray
-) -> np.ndarray:
-    if values.ndim == 1:
-        return _safe_interp(ts, grid, values)
-
-    out = np.empty((ts.size, values.shape[1]), dtype=float)
-    for idx in range(values.shape[1]):
-        out[:, idx] = _safe_interp(ts, grid, values[:, idx])
-    return out
 
 
 def build_spline_payload(sources: list[SignalSource]) -> dict[str, Any]:
@@ -486,67 +435,39 @@ def build_spline_payload(sources: list[SignalSource]) -> dict[str, Any]:
     return {"breaks": breaks.tolist(), "coeffs": coeffs.tolist()}
 
 
-def build_dense_payload(
+def build_linear_payload(
     process: BioProcess,
     sources: list[SignalSource],
-    spreads: dict[str, float],
-    config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Build an exact process-local payload for raw and static controls."""
     start = float(process.time_axis.start)
     end = float(process.time_axis.end)
-    initial_grid_points = int(config.get("initial_grid_points", 16))
-    max_rel_error = float(config.get("max_rel_error", 1e-4))
-    max_refinement_rounds = int(config.get("max_refinement_rounds", 8))
-
-    source_knots: list[float] = []
-    for source in sources:
-        source_knots.extend(
-            time for time in source.times.tolist() if start <= time <= end
-        )
-
-    grid = np.unique(
-        np.concatenate(
-            [
-                np.asarray(source_knots, dtype=float),
-                np.linspace(start, end, num=max(initial_grid_points, 2), dtype=float),
-            ]
-        )
-    )
+    raw_knots = [
+        time
+        for source in sources
+        if not source.is_static
+        for time in source.times.tolist()
+        if start <= time <= end
+    ]
+    grid = np.unique(np.asarray([start, end, *raw_knots], dtype=float))
 
     if not sources:
-        # A process with no continuous control sources (e.g. driven only by
-        # discrete bolus/sample events handled in the callbacks solve). Emit a
-        # zero-width control payload on the base grid — there is nothing to
-        # refine and ``np.column_stack`` would reject the empty source list.
         return {
             "grid": grid.tolist(),
             "values": [[] for _ in range(grid.size)],
             "derivatives": [[] for _ in range(grid.size)],
         }
 
-    for _ in range(max_refinement_rounds):
-        mids = 0.5 * (grid[:-1] + grid[1:])
-        if mids.size == 0:
-            break
-
-        source_values = np.column_stack([source.evaluator(mids) for source in sources])
-        grid_values = np.column_stack([source.evaluator(grid) for source in sources])
-        interp_values = _linear_interp_from_grid(mids, grid, grid_values)
-
-        rel_errors = np.zeros_like(source_values)
-        for idx, source in enumerate(sources):
-            denom = spreads.get(source.name, 1.0)
-            rel_errors[:, idx] = (
-                np.abs(source_values[:, idx] - interp_values[:, idx]) / denom
-            )
-
-        failing = np.any(rel_errors > max_rel_error, axis=1)
-        if not np.any(failing):
-            break
-        grid = np.unique(np.concatenate([grid, mids[failing]]))
-
     values = np.column_stack([source.evaluator(grid) for source in sources])
-    derivatives = np.column_stack([source.derivative(grid) for source in sources])
+    if grid.size > 1:
+        interval_midpoints = 0.5 * (grid[:-1] + grid[1:])
+        interval_rates = np.column_stack(
+            [source.derivative(interval_midpoints) for source in sources]
+        )
+        # BatchControls may index padded grid tails, so repeat the final interval rate.
+        derivatives = np.concatenate([interval_rates, interval_rates[-1:]], axis=0)
+    else:
+        derivatives = np.zeros_like(values)
 
     return {
         "grid": grid.tolist(),
