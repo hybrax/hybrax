@@ -36,7 +36,7 @@ from hybrax.train.controls_store import ControlsStore
 from hybrax.train.prepare import load_raw_collection, prepare_artifact
 from hybrax.train.run_config import load_prepare_config, resolve_prepared_path
 
-INPUT_JSON = Path(__file__).resolve().parent.parent / "input.json"
+INPUT_JSON = Path(__file__).resolve().parent / "input.json"
 
 
 def _prepare_from_collection(

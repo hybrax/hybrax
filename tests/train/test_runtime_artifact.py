@@ -1332,20 +1332,16 @@ def test_rejects_manifest_schema_changes(tmp_path, producer_data, scales, rhs_na
         load_runtime_artifact(artifact, fold_id=1)
 
 
-_E2E_SIM = Path("examples/00_e2e_sim/prepared/prepared.json")
-
-
 def _piecewise_collection():
-    """A small real collection whose algebraic law needs a `Piecewise` branch.
+    """A small collection whose algebraic law needs a `Piecewise` branch.
 
-    Kittler carries no `Piecewise`, and the point of this fixture is that the
-    artifact never serializes the expression at all: bp-format rebuilds it from
-    the parents, so an expression bp-train could not have parsed still works.
+    The artifact never serializes the expression: hybrax.format rebuilds it from
+    the parents, so an expression hybrax.train could not have parsed still works.
     """
-    collection = load_process_collection(_E2E_SIM)
+    collection = _differing_parent_augmented_collection()
     for process in collection.processes.values():
         process.biological_ode.algebraic["X_active"] = (
-            "Piecewise((biomass - product_intracellular, biomass > 1), (0.0, True))"
+            "Piecewise((biomass, biomass > 1), (0.0, True))"
         )
     return collection
 
@@ -1605,9 +1601,10 @@ def test_reconstructed_rhs_matches_direct_build_including_piecewise(tmp_path):
         + len(direct.name_controlled_Outflows)
         + len(direct.name_controlled_PVs)
     )
+    biomass_index = direct.name_modeled_RMCs.index("biomass")
     # Straddle the Piecewise branch point (biomass > 1) so both arms are exercised.
     for biomass in (0.5, 5.0):
-        c = jnp.full(n_state, 2.0).at[1].set(biomass)
+        c = jnp.full(n_state, 2.0).at[biomass_index].set(biomass)
         rates = jnp.linspace(0.1, 0.9, len(direct.name_modeled_rates))
         u = jnp.full(n_u, 0.25)
         f_inflow = jnp.full(len(direct.name_modeled_Inflows), 0.1)
