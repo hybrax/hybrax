@@ -44,16 +44,20 @@ def _save(fig, name, theme):
     print("wrote", path)
 
 
-def box(ax, xy, w, h, text, c, *, fontsize=10.5, weight="normal", mono=False):
+def box(ax, xy, w, h, text, c, *, fontsize=10.5, weight="normal", mono=False,
+        dashed=False):
     x, y = xy
     ax.add_patch(FancyBboxPatch(
         (x, y), w, h,
         boxstyle="round,pad=0.02,rounding_size=0.08",
-        linewidth=1.3, edgecolor=c["box_edge"], facecolor=c["box_fill"],
+        linewidth=1.1 if dashed else 1.3,
+        edgecolor=c["muted"] if dashed else c["box_edge"],
+        facecolor="none" if dashed else c["box_fill"],
+        linestyle="--" if dashed else "-",
     ))
     ax.text(x + w / 2, y + h / 2, text, ha="center", va="center",
-            fontsize=fontsize, color=c["ink"], weight=weight,
-            fontproperties=MONO if mono else None,
+            fontsize=fontsize, color=c["muted"] if dashed else c["ink"],
+            weight=weight, fontproperties=MONO if mono else None,
             linespacing=1.5)
 
 
@@ -119,16 +123,24 @@ def make_format_diagram(theme):
 
 # ---------------------------------------------------------------------------
 # Diagram 2: start/concepts.md and train/index.md — "the shape of the whole
-# thing". Shared by both pages: the same pipeline, viewed from either side.
+# thing". Shared shape, two detail levels: train/index.md additionally shows
+# the real file each arrow and input actually is; concepts.md stays plain.
 # ---------------------------------------------------------------------------
-def make_shape_diagram(theme):
+def make_shape_diagram(theme, annotate_files):
     c = THEMES[theme]
-    fig, ax = plt.subplots(figsize=(8.05, 6.1))
-    ax.set_xlim(-0.45, 8.4)
+    if annotate_files:
+        fig, ax = plt.subplots(figsize=(8.05, 6.1))
+        ax.set_xlim(-0.45, 8.4)
+    else:
+        fig, ax = plt.subplots(figsize=(7.6, 6.1))
+        ax.set_xlim(0, 8.4)
     ax.set_ylim(3.3, 8.95)
     ax.axis("off")
 
-    stage_w, stage_h = 1.95, 0.6
+    # One width for every cell in the diagram, solid or dashed: the main
+    # pipeline boxes, the left-side input-file boxes, and (annotate_files
+    # only) the right-side config-file boxes.
+    stage_w, stage_h = 2.2, 0.6
     gap = 0.45
     row_pitch = stage_h + gap
     ARROW_LEN = 0.55   # every simple connector arrow in this diagram is this long
@@ -137,47 +149,57 @@ def make_shape_diagram(theme):
     main_cx = main_x + stage_w / 2
     ys = [8.15 - i * row_pitch for i in range(4)]   # box bottoms, top to bottom
 
-    main_labels = ["hybrax-format\ndata", "hybrax\nprepare", "hybrax\ntrain",
+    # loo folds into train/loo: both just mean "produce a trained model", the
+    # only difference is whether it's held out and scored per fold. The
+    # ensemble-vs-single distinction lives in prose elsewhere, not here.
+    main_labels = ["hybrax-format", "hybrax\nprepare", "hybrax\ntrain / loo",
                    "hybrax\nforward"]
     for y, label in zip(ys, main_labels):
         box(ax, (main_x, y), stage_w, stage_h, label, c, fontsize=9.5,
             weight="bold", mono=True)
     for y0, y1 in zip(ys[:3], ys[1:]):
         arrow(ax, (main_cx, y0), (main_cx, y1 + stage_h), c, lw=1.8)
-    ax.text(main_cx + 0.15, ys[0] - (ys[0] - ys[1] - stage_h) / 2, "data.json",
-            fontsize=7.8, color=c["muted"], fontproperties=MONO, va="center")
-    arrow(ax, (main_cx, ys[3]), (main_cx, ys[3] - ARROW_LEN), c, lw=1.8)
-    ax.text(main_cx, ys[3] - ARROW_LEN - 0.3, "predictions,\nrates, metrics",
+    if annotate_files:
+        # What actually flows on each main-pipeline arrow, real names only:
+        # prepared.json is the one artifact prepare writes that training reads
+        # (prepare.md#what-it-writes); run/ is what forward actually consumes
+        # ({"models": ["run"]}, forward.md) since params.eqx alone "is not a
+        # model" (save_load_predict.md#gotchas) — the rest is rebuilt from the
+        # rest of run/.
+        for i, label in zip(range(3), ["data.json", "prepared.json", "run/"]):
+            mid_y = ys[i] - (ys[i] - ys[i + 1] - stage_h) / 2
+            ax.text(main_cx + 0.15, mid_y, label, fontsize=7.8, color=c["muted"],
+                    fontproperties=MONO, va="center")
+    # Same vertical rhythm as every inter-stage arrow above (gap, not
+    # ARROW_LEN): the last box's own bottom edge already sets that spacing.
+    arrow(ax, (main_cx, ys[3]), (main_cx, ys[3] - gap), c, lw=1.8)
+    ax.text(main_cx, ys[3] - gap - 0.05, "predictions,\nrates, metrics",
             ha="center", va="top", fontsize=10, color=c["ink"])
 
-    # Alternative route: prepare -> loo -> forward (ensemble), beside train and
-    # forward respectively (each a stand-in for the stage level with it). Its
-    # own output stays separate from the main route's, never merging into it.
-    branch_x = main_x + stage_w + 1.55
-    branch_cx = branch_x + stage_w / 2
-    loo_y, fwd_ens_y = ys[2], ys[3]
-
-    prep_cy = ys[1] + stage_h / 2
-    ax.plot([main_x + stage_w, branch_cx], [prep_cy, prep_cy], color=c["accent"],
-            lw=1.6, solid_capstyle="round")
-    arrow(ax, (branch_cx, prep_cy), (branch_cx, loo_y + stage_h), c, lw=1.6)
-
-    box(ax, (branch_x, loo_y), stage_w, stage_h, "hybrax\nloo", c, fontsize=9.5,
-        weight="bold", mono=True)
-    arrow(ax, (branch_cx, loo_y), (branch_cx, fwd_ens_y + stage_h), c, lw=1.8)
-    box(ax, (branch_x, fwd_ens_y), stage_w, stage_h, "hybrax forward\n(ensemble)", c,
-        fontsize=9, weight="bold", mono=True)
-    arrow(ax, (branch_cx, fwd_ens_y), (branch_cx, fwd_ens_y - ARROW_LEN), c, lw=1.8)
-    ax.text(branch_cx, fwd_ens_y - ARROW_LEN - 0.3, "ensemble predictions,\nrates, metrics",
-            ha="center", va="top", fontsize=10, color=c["ink"])
+    # Right side, train/index.md only: each stage's own config file. A config
+    # file is an input (--config), same as everything on the left, so the
+    # arrow points into the stage box, not out of it.
+    if annotate_files:
+        config_x = main_x + stage_w + ARROW_LEN
+        configs = [
+            (ys[0], "import.py"),
+            (ys[1], "prepare-\nconfig.json"),
+            (ys[2], "train-config.json,\nloo-config.json"),
+            (ys[3], "forward-\nconfig.json"),
+        ]
+        for y, label in configs:
+            cy = y + stage_h / 2
+            arrow(ax, (config_x, cy), (main_x + stage_w, cy), c, lw=1.4)
+            box(ax, (config_x, y), stage_w, stage_h, label, c, fontsize=7.8,
+                mono=True, dashed=True)
 
     # What you supply, in plain language, feeding in from the left of each
     # main-pipeline stage. Every arrow here is exactly ARROW_LEN long.
     inputs = [
         (ys[0], ["Measured Data"]),
-        (ys[1], ["Transformed Processes", "Augmented Processes"]),
+        (ys[1], ["Process Transformation", "Process Augmentation"]),
         (ys[2], ["Reaction Module, Loss Module", "Scales, Optimizer, Learning Rate"]),
-        (ys[3], ["New Controls"]),
+        (ys[3], ["Old/New Controls"]),
     ]
     arrow_right = main_x - 0.05
     arrow_left = arrow_right - ARROW_LEN
@@ -198,38 +220,41 @@ def make_shape_diagram(theme):
                     color=c["muted"])
         arrow(ax, (arrow_left, cy), (arrow_right, cy), c, lw=1.4)
 
-    # A second layer: the real file each input group actually lives in.
-    # prepare's and train's hooks are both just custom.py, so one dashed box
-    # spans both groups rather than repeating the label.
-    def file_box(y_top, y_bottom, width, label):
-        pad_v, pad_h = 0.2, 0.18
-        x0 = text_x - width - pad_h
-        x1 = arrow_left + 0.05
-        box_top = y_top + pad_v
-        ax.add_patch(FancyBboxPatch(
-            (x0, y_bottom - pad_v), x1 - x0, box_top - (y_bottom - pad_v),
-            boxstyle="round,pad=0.02,rounding_size=0.08",
-            linewidth=1.1, edgecolor=c["muted"], facecolor="none", linestyle="--",
-        ))
-        ax.text(x0 + 0.1, box_top + 0.06, label, fontsize=7.8,
-                color=c["muted"], fontproperties=MONO, va="bottom")
+    # A second layer, train/index.md only: the real file each input group
+    # actually lives in. prepare's and train's hooks are both just custom.py,
+    # so one dashed box spans both groups rather than repeating the label.
+    if annotate_files:
+        def file_box(y_top, y_bottom, width, label):
+            pad_v, pad_h = 0.2, 0.18
+            x0 = text_x - width - pad_h
+            x1 = arrow_left + 0.05
+            box_top = y_top + pad_v
+            ax.add_patch(FancyBboxPatch(
+                (x0, y_bottom - pad_v), x1 - x0, box_top - (y_bottom - pad_v),
+                boxstyle="round,pad=0.02,rounding_size=0.08",
+                linewidth=1.1, edgecolor=c["muted"], facecolor="none", linestyle="--",
+            ))
+            ax.text(x0 + 0.1, box_top + 0.06, label, fontsize=7.8,
+                    color=c["muted"], fontproperties=MONO, va="bottom")
 
-    md_top, md_bottom = group_span(ys[0], inputs[0][1])
-    file_box(md_top, md_bottom, 1.6, "data.csv, data.xlsx")
+        md_top, md_bottom = group_span(ys[0], inputs[0][1])
+        file_box(md_top, md_bottom, stage_w, "data.csv, data.xlsx")
 
-    prep_top, _ = group_span(ys[1], inputs[1][1])
-    _, train_bottom = group_span(ys[2], inputs[2][1])
-    file_box(prep_top, train_bottom, 2.2, "custom.py")
+        prep_top, _ = group_span(ys[1], inputs[1][1])
+        _, train_bottom = group_span(ys[2], inputs[2][1])
+        file_box(prep_top, train_bottom, stage_w, "custom.py")
 
-    nc_top, nc_bottom = group_span(ys[3], inputs[3][1])
-    file_box(nc_top, nc_bottom, 1.05, "new_data.json")
+        nc_top, nc_bottom = group_span(ys[3], inputs[3][1])
+        file_box(nc_top, nc_bottom, stage_w, "data.json, new_data.json")
 
     fig.tight_layout()
-    _save(fig, "diagram_concepts_shape", theme)
+    _save(fig, "diagram_train_pipeline" if annotate_files else "diagram_concepts_shape",
+          theme)
 
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     for theme in ("light", "dark"):
         make_format_diagram(theme)
-        make_shape_diagram(theme)
+        make_shape_diagram(theme, annotate_files=False)
+        make_shape_diagram(theme, annotate_files=True)

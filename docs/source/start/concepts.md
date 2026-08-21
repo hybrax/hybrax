@@ -7,8 +7,8 @@
 
 ## The User Experience
 
-<img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train and hybrax forward to produce predictions, rates and metrics, with measured data, transformed and augmented processes, the reaction module, loss module, scales, optimizer, learning rate and new controls feeding into each stage. An alternative route, hybrax loo then hybrax forward (ensemble), produces its own ensemble predictions, rates and metrics.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train and hybrax forward to produce predictions, rates and metrics, with measured data, transformed and augmented processes, the reaction module, loss module, scales, optimizer, learning rate and new controls feeding into each stage. An alternative route, hybrax loo then hybrax forward (ensemble), produces its own ensemble predictions, rates and metrics.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train or loo, and hybrax forward to produce predictions, rates and metrics, with measured data, process transformation and augmentation, the reaction module, loss module, scales, optimizer, learning rate and old or new controls feeding into each stage.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train or loo, and hybrax forward to produce predictions, rates and metrics, with measured data, process transformation and augmentation, the reaction module, loss module, scales, optimizer, learning rate and old or new controls feeding into each stage.">
 
 The single most useful thing to internalise: **bp-format owns the transport, you own the
 biology.** Dilution, feed inflow, sample outflow and volume dynamics are already written.
