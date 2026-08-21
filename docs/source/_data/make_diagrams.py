@@ -74,27 +74,14 @@ def arrow(ax, p0, p1, c, *, style="-|>", lw=1.6, connectionstyle="arc3,rad=0"):
 # ---------------------------------------------------------------------------
 def make_format_diagram(theme):
     c = THEMES[theme]
-    fig, ax = plt.subplots(figsize=(9.6, 4.0))
-    ax.set_xlim(0, 9.6)
+    fig, ax = plt.subplots(figsize=(7.2, 4.0))
+    ax.set_xlim(0, 7.2)
     ax.set_ylim(0, 4.0)
     ax.axis("off")
 
-    # Outer frame: everything in both columns is hybrax-format's; bp-train never
-    # re-derives any of it (see the prose right below this figure).
-    ax.add_patch(FancyBboxPatch(
-        (0.1, 0.1), 9.4, 3.65,
-        boxstyle="round,pad=0.02,rounding_size=0.12",
-        linewidth=1.2, edgecolor=c["muted"], facecolor="none", linestyle="--",
-    ))
-    ax.text(0.3, 3.58, "hybrax-format", fontsize=9.5, weight="bold", color=c["muted"],
-            fontproperties=MONO)
-
-    ax.text(0.3, 3.2, "your input", fontsize=11.5, weight="bold", color=c["ink"])
-    ax.text(4.75, 3.2, "derived objects", fontsize=11.5, weight="bold", color=c["ink"])
-
-    # Two plain text-stack columns, same style, same row spacing, no boxes and no
-    # connecting lines: the four inputs together produce the four derived objects,
-    # not a one-to-one pairing an arrow would misleadingly imply.
+    # Two plain text-stack columns, same style, same row spacing, no arrows
+    # between them: the four inputs together produce the four derived
+    # objects, not a one-to-one pairing an arrow would misleadingly imply.
     left = [
         ("ReactorMediumComponent", "experimental concentrations of each species"),
         ("Volume, Inflow, Outflow", "feeds, boluses, sample draws"),
@@ -107,15 +94,31 @@ def make_format_diagram(theme):
         ("RhsOde", "dc/dt = biology + transport"),
         ("PseudobatchTransform", "dilution-corrected concentrations"),
     ]
+    left_x, right_x = 0.3, 3.92
     ry0 = 2.85
     for i, ((lname, ldesc), (rname, rdesc)) in enumerate(zip(left, right)):
         y = ry0 - i * 0.72
-        ax.text(0.3, y, lname, fontsize=10.5, weight="bold", color=c["accent"],
+        ax.text(left_x, y, lname, fontsize=10.5, weight="bold", color=c["accent"],
                 fontproperties=MONO, va="center")
-        ax.text(0.3, y - 0.30, ldesc, fontsize=9, color=c["muted"], va="center")
-        ax.text(4.75, y, rname, fontsize=10.5, weight="bold", color=c["accent"],
+        ax.text(left_x, y - 0.30, ldesc, fontsize=9, color=c["muted"], va="center")
+        ax.text(right_x, y, rname, fontsize=10.5, weight="bold", color=c["accent"],
                 fontproperties=MONO, va="center")
-        ax.text(4.75, y - 0.30, rdesc, fontsize=9, color=c["muted"], va="center")
+        ax.text(right_x, y - 0.30, rdesc, fontsize=9, color=c["muted"], va="center")
+
+    # One dashed cell per column, both the same width (the wider column's
+    # own content width), with the column's title sitting on top of its own
+    # outline rather than floating above both.
+    box_top, box_bottom = 3.15, 0.14
+    cell_w = 2.87
+    for x, title in ((left_x, "your input"), (right_x, "derived objects")):
+        x0, x1 = x - 0.2, x + cell_w + 0.2
+        ax.add_patch(FancyBboxPatch(
+            (x0, box_bottom), x1 - x0, box_top - box_bottom,
+            boxstyle="round,pad=0.02,rounding_size=0.1",
+            linewidth=1.2, edgecolor=c["muted"], facecolor="none", linestyle="--",
+        ))
+        ax.text(x, box_top + 0.1, title, fontsize=11.5, weight="bold", color=c["ink"],
+                va="bottom")
 
     fig.tight_layout()
     _save(fig, "diagram_format_pipeline", theme)

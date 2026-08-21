@@ -14,100 +14,104 @@ kernelspec:
 
 > Which object holds which measurement, and why the split is where it is.
 
-Exhaustive field lists live in the [API reference](../autoapi/bp_format/dataclasses/index).
-This page is about the *decisions*: the ones that are hard to reverse later.
+This page gives an overview of the `hybrax-format` data structure and the *decision* you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the [API reference](../autoapi/bp_format/dataclasses/index).
 
-## The one question that decides everything
-
-**What physical role does this measurement play?** Not what instrument produced it, not
-whether it is dense or sparse: its role in the vessel.
-
-| Your measurement | Goes in | Why |
-|---|---|---|
-| A concentration of something in the broth | `reactor_medium.components` | It participates in the mass balance and gets diluted. |
-| Something that moved liquid in or out | `volume.volume_changes` | It *causes* dilution. |
-| Anything else measured | `process_variables` | pH, temperature, DO, off-gas, optical signals. |
-
-Biomass, glucose, product, acetate, ammonium → reactor medium. Feed pump, boluses,
-sample draws → volume. pH, DO, temperature, off-gas CO₂ → process variables.
-
-The distinction that matters: a **reactor medium component is subject to dilution**. Add
-half a litre of feed and its concentration drops even if the cells did nothing. A process
-variable is not treated that way. If you put pH in the reactor medium, bp-format will
-faithfully dilute your pH, which is nonsense.
-
-## The nesting
+## The Data Structure
 
 ```
-BioProcessCollection(case_id, organism, citation, metadata)
-  └── processes: {name: BioProcess}
+BioProcessCollection
+  ├── case_id              Optional[str] = None
+  ├── organism             Optional[str] = None
+  ├── citation             Optional[str] = None
+  ├── metadata             Optional[dict] = None
+  └── processes            {name: BioProcess}
 
 BioProcess
-  ├── metadata          BioProcessMetadata(name, process_type, notes)
-  ├── time_axis         TimeAxis(unit, start, end, time_reference)     ← required
-  ├── volume            Volume(initial_volume, unit, volume_changes)   ← required
-  ├── reactor_medium    ReactorMedium(name, density, …, components)    ← required
-  ├── process_variables {name: ProcessVariable}                          optional
-  ├── biological_ode    BiologicalOde(algebraic, rates, derivatives)     auto-generated
-  ├── discrete_events   DiscreteEvents                                   optional
-  └── pseudobatch_transform                                              built later
+  ├── metadata              Optional[BioProcessMetadata(name, process_type, notes)]
+  ├── time_axis             TimeAxis(unit, start, end, time_reference)
+  ├── volume                Volume(initial_volume, unit, volume_changes)
+  ├── reactor_medium        ReactorMedium(name, density, …, components)
+  ├── process_variables     {name: ProcessVariable} = {}
+  ├── discrete_events       Optional[DiscreteEvents] = None
+  ├── biological_ode        Optional[BiologicalOde(algebraic, rates, derivatives)] = None
+  └── pseudobatch_transform Optional[PseudobatchTransform] = None
 ```
 
-Four positional arguments are required on `BioProcess`: `metadata` (may be `None`),
-`time_axis`, `volume`, `reactor_medium`. Everything else has a default.
+`BioProcess` has four arguments with no default: `metadata`, `time_axis`, `volume`,
+`reactor_medium`. You must supply all four, but `metadata` accepts `None` as its value:
+"required" here means *you must pass something*, not *it must be non-null*. Everything
+else on `BioProcess` has a real default. `BioProcessCollection.metadata` above is a
+different field entirely: a free-form dict for provenance, unrelated to
+`BioProcess.metadata`.
 
-:::{admonition} Why dicts keyed by name, not lists
+## Where Goes What?
+
+Every time series you import gets asked the same three questions, in order: what is it
+(its role), how is it shaped (a real time series or a fixed value), and who drives it
+(read from data, or produced by the ODE).
+
+<!-- LOCK -->
+### The Physical Role
+
+The `hybrax-format` data format categorizes your measured process data depending on its physical role in the bioreactor. There are three major roles:
+
+| Measurement | Role | Why | Examples |
+|---|---|---|---|
+| a concentration in the reactor | `reactor_medium.components` | affected by the [ODE](bioprocess_ode) *and* volume change effects | biomass, substrate, product |
+| feed and sampling volumes | `volume.volume_changes` | *cause* volume change (and dilution) | (bolus) substrate feed, sampling
+| Anything else measured | `process_variables` | affected by the [ODE](bioprocess_ode) but *independent* of volume change | pH, temperature, DO, product quality |
+
+:::{admonition} The role you assign changes the physics
 :class: note
-`reactor_medium.components["glucose"]` is O(1), produces readable JSON, and keeps the
-biological name attached to the data. The cost is that names are load-bearing: see the
-collision rules in [The Bioprocess ODE](bioprocess_ode.md).
+A reactor medium component is diluted by every feed addition. A biomass
+concentration assigned this way correctly drops when a liter of feed goes in.
+A process variable is not diluted. Assign something like product quality as a
+reactor medium component by mistake, and the same feed addition dilutes it
+too, even though product quality is not a real concentration in the medium.
+Register it as a process variable instead.
 :::
 
-### Case study identity: optional, not a separate type
+<!-- UNLOCK -->
 
-There is one container, `BioProcessCollection`, not two. `case_id`, `organism` and
-`citation` are optional fields on it (all default `None`):
-
-- Set all three (non-empty) to mark a finished dataset: one publication, one campaign.
-  `case_id` is the natural grouping for cross-validation.
-- Leave them unset for raw or intermediate data that is not a case study yet.
-
-Both shapes are the same type, so nothing needs converting at an API boundary like
-`model_predict`:
-
-```{code-cell} ipython3
-import bp_format as bp
-
-collection = bp.serialization.load_process_collection("../_data/out/demo_batch/data.json")
-print(type(collection).__name__, "with", len(collection.processes), "processes")
-print("case_id:", collection.case_id)
-```
-
-## Values: `TimeSeries` or `StaticVariable`
+### Static or Time-Dependent
 
 Anywhere a value could be constant, both are accepted.
 
 ```{code-cell} ipython3
 import numpy as np
+import bp_format as bp
 
-measured = bp.TimeSeries(times=np.array([0.0, 1.0, 2.0]),
-                         values=np.array([0.1, 0.4, 1.1]))
-known    = bp.StaticVariable(400.0)      # e.g. a feed concentration
+c_reactor = bp.TimeSeries(times=np.array([0.0, 1.0, 2.0]),
+                          values=np.array([0.1, 0.4, 1.1]))
+c_feed    = bp.StaticVariable(400.0)
 ```
 
-`TimeSeries` invariants, all enforced at construction:
+`StaticVariable` means constant *within one process*, not across the whole collection.
+Two processes in the same `BioProcessCollection` can carry different `StaticVariable`
+values for the same field: two different feed concentrations, or two different fixed
+temperatures, are both ordinary uses, not an inconsistency.
 
+These rules are checked every time a `TimeSeries` is constructed:
 - `times` strictly increasing.
-- `times` and `values` supplied **together** or not at all.
-- At least one of {samples, spline} must be present: an empty `TimeSeries` is an error.
-- float64. Importing `bp_format` turns on JAX's x64 mode; float32 input raises rather
-  than silently upcasting.
+- `times` and `values` arrays have the same length.
+- `times` and `values` require `float64` arrays.
 
-More on the spline half in [Time series and splines](time_series_and_splines.md).
+:::{admonition} A length-1 `TimeSeries` is not a `StaticVariable`
+:class: note
+If you know only the initial point value of a quantity, use `TimeSeries`, not `StaticVariable`, so it can still be marked
+`is_controlled=False` and modeled. A custom reaction module, like the one in
+[FBA-Hyb](../gallery/fba_hyb.md), can still predict a real trajectory for it.
+:::
 
-## `is_controlled`: the modeled/controlled switch
 
-Every `ProcessVariable` and every `VolumeChange` carries it.
+The `TimeSeries` is a powerful dataclass that has even more to offer. You can find all details in [Time series and splines](time_series_and_splines.md).
+
+### Controlled or Modeled
+
+Every `ProcessVariable` and every `VolumeChange` carries `is_controlled = Bool` field. 
+During training a quantity set to `is_controlled=True` means it is *read from the data* and *input to the bioprocess model*. Conversly `is_controlled = False` means *it is an model output*, i.e., the model must
+produce a derivative for it.
+
 
 ```{code-cell} ipython3
 temperature = bp.ProcessVariable(
@@ -117,8 +121,17 @@ temperature = bp.ProcessVariable(
 )
 ```
 
-`is_controlled=True` means *read this from the data*; `False` means *the model must
-produce a derivative for it*. A modeled quantity therefore needs a time axis:
+
+:::{admonition} A `ReactorMediumComponent` is never controlled
+:class: note
+`ReactorMediumComponent` has no such field at all. Nothing in the medium is a true
+control input: you cannot hold a biomass or glucose concentration fixed and have the
+bioreactor obey. Every reactor medium component is dynamic, governed by the ODE. The
+only real control input into the reactor's contents crosses its boundary: an `Inflow`
+or an `Outflow`. That is why `is_controlled` lives on `VolumeChange` and
+`ProcessVariable`, never on a medium component.
+:::
+
 
 :::{admonition} A `StaticVariable` cannot be modeled
 :class: warning
@@ -135,30 +148,29 @@ meaning unbounded.
 ```{code-cell} ipython3
 component = bp.ReactorMediumComponent(
     name="glucose", unit="g/L",
-    concentration=measured,
+    concentration=c_reactor,
     bounds=(0.0, None),
 )
 ```
 
 **Bounds are metadata.** Nothing in bp-format enforces them, and no solver clips to them.
-They exist so downstream consumers (bp-train's loss module in particular) can build
+They exist so downstream consumers (`hybrax-train`'s loss module in particular) can build
 soft penalties from a declaration you made once, in the data, instead of duplicating it
 in every training config.
 
 ## Units
 
-Units are **free-form strings**. There is no unit engine, no parsing and no conversion.
+Units are *free-form strings* which we require for data completeness. There is no unit engine, no parsing and no conversion.
 
 They are used for exactly two things: checking that quantities you *add together* in a
 `biological_ode` expression share a unit, and checking that processes in one case study
 agree with each other. `"g/L"` and `"g/l"` are different strings and will be reported as
 a mismatch. Pick a spelling and stay with it.
 
-## Where the biology goes
+## Where the Biology Goes
 
-There are no biological flags on components. There is no `is_intracellular` switch. If a
-species behaves unusually, you write it out in `biological_ode`: including the algebraic
-relationships:
+`hybrax-format` guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn't cover, you write it out yourself in `biological_ode`, algebraic relationships included:
+
 
 ```python
 BiologicalOde(
@@ -168,22 +180,37 @@ BiologicalOde(
 )
 ```
 
-This is deliberate: one place to look for what the model does, rather than behaviour
-scattered across boolean fields. See [The Bioprocess ODE](bioprocess_ode.md).
+See [The Bioprocess ODE](bioprocess_ode.md) page for more details.
+
+## The Rest of the Fields
+
+The remaining `BioProcess` fields, straightforward enough that they don't need their own
+section:
+
+- **`metadata`** (`BioProcessMetadata`): `name`, `process_type`
+  (`"batch"`/`"fed_batch"`/`"continuous"`), optional `notes`. A static description of the
+  run, not a measurement. No dedicated page. Field list is in the
+  [API reference](../autoapi/bp_format/dataclasses/index).
+- **`time_axis`** (`TimeAxis`): `unit`, `start`, `end`, `time_reference` (e.g.
+  `"inoculation"`, `"first_feed"`, `"operator_defined"`): what `t=0` means for this
+  process. Also no dedicated page.
+- **`discrete_events`** (`DiscreteEvents`): a convenience mirror, not the source of truth.
+  The real events are always the `volume.volume_changes` entries with
+  `is_continuous=False`. See [Volume, feeds and events](volume_feeds_events.md).
+- **`pseudobatch_transform`**: not something you construct. `hybrax-format` builds it from
+  `reactor_medium` and `volume` once you run the transform. See
+  [The pseudobatch transform](pseudobatch_transform.md).
 
 ## Gotchas
 
 - **`AugmentedBioProcess` exists but nothing in bp-format produces one.** It is a fixed
   shape so bp-train's augmentation and LOO grouping can rely on it. Ignore it unless you
   are using augmentation.
-- **`DiscreteEvents` is a convenience mirror.** The authoritative source of events is
-  always `volume.volume_changes` entries with `is_continuous=False`.
-- **`metadata` on `BioProcess` may be `None`**, but it is positional: you must pass
-  something.
 
 ## See also
 
 - [Volume, feeds and events](volume_feeds_events.md): the part with the most sharp edges.
+- [The pseudobatch transform](pseudobatch_transform.md): what pseudobatch_transform is built from, and why.
 - [The Bioprocess ODE](bioprocess_ode.md): what gets derived from all of this.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): building one step by step.
 - [API reference](../autoapi/bp_format/dataclasses/index): every field.

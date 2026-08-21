@@ -25,6 +25,12 @@ where **ADF** is the accumulated dilution factor `V(t)/V(0)` and the feed correc
 accounts for mass the feed added. The result is what the concentration *would have been*
 in a batch run with identical biology.
 
+This is a direct implementation of Hesselberg-Thomsen et al. 2024
+<a href="#ref-pseudobatch">[1]</a>, *"Pseudo batch transformation: A novel method to
+correct for mass removal through sample withdrawal of fed-batch fermentations,"* whose
+accumulated-dilution-factor and feed-correction formulas `build_pseudobatch_transform`
+reproduces exactly.
+
 ```{code-cell} ipython3
 import numpy as np
 import bp_format as bp
@@ -105,4 +111,11 @@ does this correctly; it matters if you build your own.
   through a jump from just 5 measurements, checked against a known ground truth.
 - [Gallery: fed-batch](../gallery/fed_batch.md): the transform on a real process.
 - [API reference](../autoapi/bp_format/splines/index).
-- Hesselberg-Thomsen et al. (2024) for the pseudobatch method itself.
+
+## References
+
+1. <a id="ref-pseudobatch"></a>Hesselberg-Thomsen, V., Groves, T., McCubbin, T.,
+   Martínez-Monge, I., de Mas, I. M., & Nielsen, L. K. (2024). Pseudo batch
+   transformation: A novel method to correct for mass removal through sample
+   withdrawal of fed-batch fermentations. *bioRxiv*.
+   [https://doi.org/10.1101/2024.05.27.596043](https://doi.org/10.1101/2024.05.27.596043)

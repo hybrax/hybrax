@@ -37,8 +37,8 @@ A path may be a **file or a directory**. Given a directory, the loader looks for
 `data.json`, then `data.json.gz`.
 
 ```python
-bp.serialization.load_process_collection("datasets/kittler_2022")        # → .../data.json
-bp.serialization.load_process_collection("datasets/kittler_2022/data.json.gz")
+bp.serialization.load_process_collection("datasets/ecoli_study")        # → .../data.json
+bp.serialization.load_process_collection("datasets/ecoli_study/data.json.gz")
 ```
 
 Gzip is decided by the `.gz` suffix. For anything above a few megabytes it is worth it: 
