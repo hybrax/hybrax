@@ -6,7 +6,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -19,11 +19,11 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import save_process_collection
+from hybrax.format.serialization import save_process_collection
 
-from bp_train.prepare import prepare_artifact
-from bp_train.run_config import load_prepare_config
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.prepare import prepare_artifact
+from hybrax.train.run_config import load_prepare_config
+from hybrax.train.training_data import TrainingDataStore
 
 
 def _prepare_from_collection(
@@ -371,7 +371,7 @@ def test_training_data_store_builds_y0_with_vcont_last(tmp_path):
 
 def test_prepare_rejects_inconsistent_process_variable_set(tmp_path):
     """A process-variable mismatch between processes is now caught by
-    prepare_artifact's cross-process consistency check (bp_format's
+    prepare_artifact's cross-process consistency check (hybrax.format's
     validate_cross_process_consistency, wired into validate_for_training)
     before TrainingDataStore is ever constructed — earlier and with more
     detail than TrainingDataStore's own narrower target-only check."""

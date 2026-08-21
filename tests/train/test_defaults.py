@@ -1,4 +1,4 @@
-"""Regression tests for :func:`bp_train.defaults.default_build_reaction_module`."""
+"""Regression tests for :func:`hybrax.train.defaults.default_build_reaction_module`."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from bp_format.dataclasses import BioProcessCollection
-from bp_format.mechanistic import build_rhs_ode
-from bp_train.defaults import DefaultReactionModule, default_build_reaction_module
-from bp_train.model_api import ReactionInputs
+from hybrax.format.dataclasses import BioProcessCollection
+from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.train.defaults import DefaultReactionModule, default_build_reaction_module
+from hybrax.train.model_api import ReactionInputs
 from test_harness import _make_collection, _make_multi_process_collection
 
 

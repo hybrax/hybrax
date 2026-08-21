@@ -18,10 +18,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.serialization import load_process_collection, save_process_collection
+from hybrax.format.serialization import load_process_collection, save_process_collection
 
-import bp_train
-from bp_train.cli import main
+import hybrax.train
+from hybrax.train.cli import main
 
 # Tiny single-process collection fixture, shared with the serialization tests.
 from test_serialization import _collection
@@ -70,7 +70,7 @@ def trained_run(tmp_path: Path):
 
 
 def _trainable_leaves(module):
-    trainable, _ = bp_train.partition_trainable(module)
+    trainable, _ = hybrax.train.partition_trainable(module)
     return [
         leaf
         for leaf in jax.tree_util.tree_leaves(trainable)
@@ -118,7 +118,7 @@ def _assert_prediction_grid(t: np.ndarray, *, grid_n: int) -> None:
 def test_model_load_returns_wrapper_and_the_runs_own_solver(trained_run):
     run_dir, _prepared = trained_run
 
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
 
     assert wrapper is not None
     # The whole point: the solver settings arrive with the model, and they are
@@ -137,9 +137,9 @@ def test_model_load_accepts_run_dir_checkpoint_dir_and_params_file(trained_run):
     run_dir, _prepared = trained_run
     latest = run_dir / "checkpoints" / "latest"
 
-    from_run, _ = bp_train.model_load(run_dir)
-    from_ckpt, _ = bp_train.model_load(latest)
-    from_file, _ = bp_train.model_load(run_dir / "model" / "params.eqx")
+    from_run, _ = hybrax.train.model_load(run_dir)
+    from_ckpt, _ = hybrax.train.model_load(latest)
+    from_file, _ = hybrax.train.model_load(run_dir / "model" / "params.eqx")
 
     # model/params.eqx is a copy of checkpoints/latest/params.eqx, so a completed
     # run yields identical weights through all three addressing forms.
@@ -155,10 +155,10 @@ def test_model_load_falls_through_to_latest_checkpoint_when_model_dir_absent(
 ):
     """An in-progress run has no model/ yet; it must still load."""
     run_dir, _prepared = trained_run
-    expected, _ = bp_train.model_load(run_dir / "checkpoints" / "latest")
+    expected, _ = hybrax.train.model_load(run_dir / "checkpoints" / "latest")
     shutil.rmtree(run_dir / "model")
 
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
 
     assert config.solver.max_steps == 3072
     for a, b in zip(
@@ -175,24 +175,24 @@ def test_model_load_rejects_a_file_that_is_not_params_eqx(trained_run):
     shutil.copyfile(run_dir / "model" / "params.eqx", legacy)
 
     with pytest.raises(FileNotFoundError, match="must be a params.eqx"):
-        bp_train.model_load(legacy)
+        hybrax.train.model_load(legacy)
 
 
 def test_model_load_errors_are_specific(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="does not exist"):
-        bp_train.model_load(tmp_path / "nope")
+        hybrax.train.model_load(tmp_path / "nope")
 
     bare = tmp_path / "bare"
     bare.mkdir()
     with pytest.raises(FileNotFoundError, match="no params.eqx"):
-        bp_train.model_load(bare)
+        hybrax.train.model_load(bare)
 
     # params.eqx present but no config.json at or above it.
     orphan = tmp_path / "orphan"
     orphan.mkdir()
     (orphan / "params.eqx").write_bytes(b"")
     with pytest.raises(FileNotFoundError, match="config.json"):
-        bp_train.model_load(orphan)
+        hybrax.train.model_load(orphan)
 
 
 # ---------------------------------------------------------------------------
@@ -203,10 +203,10 @@ def test_model_load_errors_are_specific(tmp_path: Path):
 def test_model_predict_matches_the_runs_own_predictions(trained_run):
     """The forward path reproduces what training itself exported."""
     run_dir, prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
     collection = load_process_collection(prepared)
 
-    dense = bp_train.model_predict(wrapper, config, collection)
+    dense = hybrax.train.model_predict(wrapper, config, collection)
 
     assert set(dense) == set(collection.processes)
     import pandas as pd
@@ -227,7 +227,7 @@ def test_model_predict_on_an_unseen_process_preserves_trained_scales(trained_run
     """A process the model never trained on works, and the wrapper's SCALE_* are
     untouched — this is the regression guard for silent scale re-estimation."""
     run_dir, _prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
     scales_before = _scale_leaves(wrapper)
 
     # A collection the model has never seen: one differently-named process whose
@@ -243,7 +243,7 @@ def test_model_predict_on_an_unseen_process_preserves_trained_scales(trained_run
         },
     )
 
-    dense = bp_train.model_predict(wrapper, config, unseen, grid_n=64)
+    dense = hybrax.train.model_predict(wrapper, config, unseen, grid_n=64)
 
     assert set(dense) == {"unseen_1"}
     _assert_prediction_grid(dense["unseen_1"].t, grid_n=64)
@@ -257,10 +257,10 @@ def test_model_predict_on_an_unseen_process_preserves_trained_scales(trained_run
 
 def test_model_predict_selects_processes_and_grid(trained_run):
     run_dir, prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
     collection = load_process_collection(prepared)
 
-    dense = bp_train.model_predict(
+    dense = hybrax.train.model_predict(
         wrapper, config, collection, process_names=("p2",), grid_n=32
     )
 
@@ -268,14 +268,14 @@ def test_model_predict_selects_processes_and_grid(trained_run):
     _assert_prediction_grid(dense["p2"].t, grid_n=32)
 
     with pytest.raises(ValueError, match="unknown process names"):
-        bp_train.model_predict(wrapper, config, collection, process_names=("nope",))
+        hybrax.train.model_predict(wrapper, config, collection, process_names=("nope",))
 
 
 def test_model_predict_fails_fast_on_incompatible_layout(trained_run):
     """A collection whose RhsOde axes differ must raise, not integrate the wrong
     axes silently."""
     run_dir, prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
     collection = load_process_collection(prepared)
 
     # Rename the modeled component so the RhsOde name ordering no longer matches.
@@ -291,7 +291,7 @@ def test_model_predict_fails_fast_on_incompatible_layout(trained_run):
     foreign = replace(collection, processes={"p1": renamed})
 
     with pytest.raises(ValueError):
-        bp_train.model_predict(wrapper, config, foreign)
+        hybrax.train.model_predict(wrapper, config, foreign)
 
 
 # ---------------------------------------------------------------------------
@@ -303,12 +303,12 @@ def test_model_reload_returns_the_same_pair_as_model_load_and_always_warns(
     trained_run, caplog
 ):
     run_dir, _prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
 
-    with caplog.at_level(logging.WARNING, logger="bp_train.serialization"):
-        reloaded, reloaded_config = bp_train.model_reload(run_dir, wrapper)
+    with caplog.at_level(logging.WARNING, logger="hybrax.train.serialization"):
+        reloaded, reloaded_config = hybrax.train.model_reload(run_dir, wrapper)
         first = len([r for r in caplog.records if "model_reload" in r.message])
-        bp_train.model_reload(run_dir, wrapper)
+        hybrax.train.model_reload(run_dir, wrapper)
         second = len([r for r in caplog.records if "model_reload" in r.message])
 
     # Warned on EVERY call, not deduplicated.
@@ -324,19 +324,19 @@ def test_model_reload_returns_the_same_pair_as_model_load_and_always_warns(
 
 def test_model_reload_swaps_weights_but_keeps_the_static_half(trained_run):
     run_dir, _prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
 
     # Perturb the trainable leaves, then reload them back from disk.
     perturbed = eqx.apply_updates(
         wrapper,
         jax.tree_util.tree_map(
             lambda leaf: jnp.ones_like(leaf) if eqx.is_inexact_array(leaf) else None,
-            bp_train.partition_trainable(wrapper)[0],
+            hybrax.train.partition_trainable(wrapper)[0],
         ),
     )
     scales_before = _scale_leaves(perturbed)
 
-    restored, _ = bp_train.model_reload(run_dir, perturbed)
+    restored, _ = hybrax.train.model_reload(run_dir, perturbed)
 
     for a, b in zip(
         _trainable_leaves(wrapper), _trainable_leaves(restored), strict=True
@@ -350,14 +350,14 @@ def test_model_reload_swaps_weights_but_keeps_the_static_half(trained_run):
 def test_model_reload_predicts_identically_to_model_load(trained_run):
     """The documented use: reload a checkpoint of the SAME run, then predict."""
     run_dir, prepared = trained_run
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
     collection = load_process_collection(prepared)
 
-    reloaded, reloaded_config = bp_train.model_reload(
+    reloaded, reloaded_config = hybrax.train.model_reload(
         run_dir / "checkpoints" / "latest", wrapper
     )
 
-    a = bp_train.model_predict(wrapper, config, collection, grid_n=32)
-    b = bp_train.model_predict(reloaded, reloaded_config, collection, grid_n=32)
+    a = hybrax.train.model_predict(wrapper, config, collection, grid_n=32)
+    b = hybrax.train.model_predict(reloaded, reloaded_config, collection, grid_n=32)
     for name in a:
         np.testing.assert_array_equal(a[name].c_species, b[name].c_species)

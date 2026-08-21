@@ -3,7 +3,7 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -18,19 +18,19 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import build_rhs_ode
+from hybrax.format.mechanistic import build_rhs_ode
 
-from bp_train.controls_store import ControlsStore
-from bp_train.defaults import DefaultStatefulReactionModule
-from bp_train.model_api import (
+from hybrax.train.controls_store import ControlsStore
+from hybrax.train.defaults import DefaultStatefulReactionModule
+from hybrax.train.model_api import (
     LinearScaler,
     ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
     trainable_field,
 )
-from bp_train.physical_solve import solve_physical_states
-from bp_train.wrapper import HybridOdeWrapper
+from hybrax.train.physical_solve import solve_physical_states
+from hybrax.train.wrapper import HybridOdeWrapper
 
 
 def default_stateful_scale_kwargs(

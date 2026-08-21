@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
@@ -29,32 +29,32 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import build_rhs_ode
-from bp_format.serialization import load_process_collection, save_process_collection
-from bp_format.time_series import PPoly
+from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.format.serialization import load_process_collection, save_process_collection
+from hybrax.format.time_series import PPoly
 
-import bp_train.runtime_artifact as runtime_artifact
-from bp_train.defaults import default_build_reaction_module
-from bp_train.harness import (
+import hybrax.train.runtime_artifact as runtime_artifact
+from hybrax.train.defaults import default_build_reaction_module
+from hybrax.train.harness import (
     TrainHarnessConfig,
     _resolve_estimated_scales,
     prepare_training_from_runtime_artifact,
 )
-from bp_train.model_api import AffineScaler, EstimatedScales
-from bp_train.runtime_artifact import (
+from hybrax.train.model_api import AffineScaler, EstimatedScales
+from hybrax.train.runtime_artifact import (
     RhsNames,
     RuntimeArtifactFold,
     load_runtime_artifact,
     read_runtime_artifact_metadata,
     write_runtime_artifact as _write_runtime_artifact,
 )
-from bp_train.runtime_context import (
+from hybrax.train.runtime_context import (
     ProducerCollectionData,
     canonical_training_parents,
     original_parent_processes,
     select_parent_collection,
 )
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.training_data import TrainingDataStore
 from test_wrapper import _make_mixed_flow_process
 
 

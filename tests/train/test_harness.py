@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -32,11 +32,11 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import build_rhs_ode
+from hybrax.format.mechanistic import build_rhs_ode
 
-import bp_train.harness as harness_module
-from bp_train.controls_store import ControlsStore
-from bp_train.harness import (
+import hybrax.train.harness as harness_module
+from hybrax.train.controls_store import ControlsStore
+from hybrax.train.harness import (
     TrainHarnessConfig,
     _build_batch_index_stream,
     _build_optimizer,
@@ -50,14 +50,14 @@ from bp_train.harness import (
     train_from_collection,
     train_collection,
 )
-from bp_train.defaults import DefaultLossModule, default_build_reaction_module
-from bp_train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
-from bp_train.runtime_context import (
+from hybrax.train.defaults import DefaultLossModule, default_build_reaction_module
+from hybrax.train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
+from hybrax.train.runtime_context import (
     ProducerCollectionData,
     RuntimeDataContext,
     select_parent_collection,
 )
-from bp_train.model_api import (
+from hybrax.train.model_api import (
     AffineScaler,
     EstimatedScales,
     LinearScaler,
@@ -66,8 +66,8 @@ from bp_train.model_api import (
     frozen_field,
     trainable_field,
 )
-from bp_train.trainer import simulate_measurement_states
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.trainer import simulate_measurement_states
+from hybrax.train.training_data import TrainingDataStore
 
 
 def _runtime_artifact(
@@ -1109,7 +1109,7 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    caplog.set_level(logging.INFO, logger="hybrax.train.harness")
     train_collection(
         store,
         reaction_module=_LinearReactionModule(),
@@ -1259,22 +1259,22 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
         return _DummyStore()
 
     monkeypatch.setattr(
-        "bp_train.harness.TrainingDataStore.from_collection",
+        "hybrax.train.harness.TrainingDataStore.from_collection",
         fake_from_collection,
     )
-    monkeypatch.setattr("bp_train.harness.load_custom_module", lambda _p: object())
-    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr("hybrax.train.harness.load_custom_module", lambda _p: object())
+    monkeypatch.setattr("hybrax.train.harness.resolve_config", lambda _m, _r: {})
     monkeypatch.setattr(
-        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+        "hybrax.train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.from_collection",
+        "hybrax.train.harness.ProducerCollectionData.from_collection",
         lambda store, _collection: ProducerCollectionData(
             store, (None,) * len(store.process_order), (), (), (), ()
         ),
     )
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        "hybrax.train.harness.ProducerCollectionData.select_training_parents",
         lambda self, collection, *_args: RuntimeDataContext(
             self.training_data,
             select_parent_collection(collection, ("p1",)),
@@ -1285,19 +1285,21 @@ def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, 
         ),
     )
     monkeypatch.setattr(
-        "bp_train.harness._resolve_estimated_scales",
+        "hybrax.train.harness._resolve_estimated_scales",
         lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
     monkeypatch.setattr(
-        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+        "hybrax.train.harness._build_reaction_module", lambda **_kw: object()
     )
-    monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
     monkeypatch.setattr(
-        "bp_train.harness.train_collection",
+        "hybrax.train.harness._build_loss_module", lambda **_kw: object()
+    )
+    monkeypatch.setattr(
+        "hybrax.train.harness.train_collection",
         lambda *args, **kwargs: "train-result",
     )
 
-    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    caplog.set_level(logging.INFO, logger="hybrax.train.harness")
     with pytest.warns(UserWarning, match="No training targets specified"):
         result = train_from_collection(
             collection,
@@ -1333,25 +1335,25 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         return _DummyStore()
 
     monkeypatch.setattr(
-        "bp_train.harness.TrainingDataStore.from_collection",
+        "hybrax.train.harness.TrainingDataStore.from_collection",
         fake_from_collection,
     )
-    monkeypatch.setattr("bp_train.harness.load_custom_module", lambda _p: object())
+    monkeypatch.setattr("hybrax.train.harness.load_custom_module", lambda _p: object())
     monkeypatch.setattr(
-        "bp_train.harness.resolve_config",
+        "hybrax.train.harness.resolve_config",
         lambda _m, _r: {"target_variable_order": ["cfg_biomass"]},
     )
     monkeypatch.setattr(
-        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+        "hybrax.train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.from_collection",
+        "hybrax.train.harness.ProducerCollectionData.from_collection",
         lambda store, _collection: ProducerCollectionData(
             store, (None,) * len(store.process_order), (), (), (), ()
         ),
     )
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        "hybrax.train.harness.ProducerCollectionData.select_training_parents",
         lambda self, collection, *_args: RuntimeDataContext(
             self.training_data,
             select_parent_collection(collection, ("p1",)),
@@ -1362,19 +1364,21 @@ def test_train_from_collection_uses_custom_config_targets_without_warning(
         ),
     )
     monkeypatch.setattr(
-        "bp_train.harness._resolve_estimated_scales",
+        "hybrax.train.harness._resolve_estimated_scales",
         lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
     monkeypatch.setattr(
-        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+        "hybrax.train.harness._build_reaction_module", lambda **_kw: object()
     )
-    monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
     monkeypatch.setattr(
-        "bp_train.harness.train_collection",
+        "hybrax.train.harness._build_loss_module", lambda **_kw: object()
+    )
+    monkeypatch.setattr(
+        "hybrax.train.harness.train_collection",
         lambda *args, **kwargs: "train-result",
     )
 
-    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    caplog.set_level(logging.INFO, logger="hybrax.train.harness")
     with warnings.catch_warnings(record=True) as warns:
         warnings.simplefilter("always")
         result = train_from_collection(
@@ -1404,19 +1408,19 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
         return _DummyStore()
 
     monkeypatch.setattr(
-        "bp_train.harness.TrainingDataStore.from_collection",
+        "hybrax.train.harness.TrainingDataStore.from_collection",
         fake_from_collection,
     )
     monkeypatch.setattr(
-        "bp_train.harness.load_custom_module",
+        "hybrax.train.harness.load_custom_module",
         lambda _p: custom_module,
     )
-    monkeypatch.setattr("bp_train.harness.resolve_config", lambda _m, _r: {})
+    monkeypatch.setattr("hybrax.train.harness.resolve_config", lambda _m, _r: {})
     monkeypatch.setattr(
-        "bp_train.harness._ensure_process_names", lambda _s, _n: ("p1",)
+        "hybrax.train.harness._ensure_process_names", lambda _s, _n: ("p1",)
     )
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.from_collection",
+        "hybrax.train.harness.ProducerCollectionData.from_collection",
         lambda store, _collection: ProducerCollectionData(
             store, (None,) * len(store.process_order), (), (), (), ()
         ),
@@ -1434,17 +1438,19 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
         )
 
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.select_training_parents",
+        "hybrax.train.harness.ProducerCollectionData.select_training_parents",
         select_training_parents,
     )
     monkeypatch.setattr(
-        "bp_train.harness._resolve_estimated_scales",
+        "hybrax.train.harness._resolve_estimated_scales",
         lambda **_kw: EstimatedScales(**_DEFAULT_LINEAR_SCALES),
     )
     monkeypatch.setattr(
-        "bp_train.harness._build_reaction_module", lambda **_kw: object()
+        "hybrax.train.harness._build_reaction_module", lambda **_kw: object()
     )
-    monkeypatch.setattr("bp_train.harness._build_loss_module", lambda **_kw: object())
+    monkeypatch.setattr(
+        "hybrax.train.harness._build_loss_module", lambda **_kw: object()
+    )
 
     def fake_train_collection(*args, **kwargs):
         del args
@@ -1452,7 +1458,7 @@ def _patch_train_from_collection_deps(monkeypatch, custom_module, captured):
         captured["loss_module"] = kwargs.get("loss_module")
         return "train-result"
 
-    monkeypatch.setattr("bp_train.harness.train_collection", fake_train_collection)
+    monkeypatch.setattr("hybrax.train.harness.train_collection", fake_train_collection)
 
 
 def test_train_from_collection_wires_build_optimizer_hook(monkeypatch):
@@ -1494,7 +1500,8 @@ def test_learning_rate_hook_receives_derived_update_budget(monkeypatch):
 
     _patch_train_from_collection_deps(monkeypatch, _CustomModule(), captured)
     monkeypatch.setattr(
-        "bp_train.harness._ensure_process_names", lambda _store, _names: ("p1", "p2")
+        "hybrax.train.harness._ensure_process_names",
+        lambda _store, _names: ("p1", "p2"),
     )
 
     train_from_collection(
@@ -1534,7 +1541,7 @@ def test_train_from_collection_uses_default_optimizer_when_no_hook(monkeypatch):
 
 
 def test_build_loss_module_discovers_custom_hook():
-    from bp_train.harness import _build_loss_module
+    from hybrax.train.harness import _build_loss_module
 
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -1571,7 +1578,7 @@ def test_build_loss_module_discovers_custom_hook():
 
 
 def test_build_loss_module_defaults_when_no_hook():
-    from bp_train.harness import _build_loss_module
+    from hybrax.train.harness import _build_loss_module
 
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -1601,15 +1608,15 @@ def test_prepare_training_from_runtime_artifact_never_constructs_or_scales(
     )
 
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.from_collection",
+        "hybrax.train.harness.ProducerCollectionData.from_collection",
         lambda *_args, **_kwargs: pytest.fail("constructed runtime data"),
     )
     monkeypatch.setattr(
-        "bp_train.harness._resolve_estimated_scales",
+        "hybrax.train.harness._resolve_estimated_scales",
         lambda **_kwargs: pytest.fail("estimated scales"),
     )
 
-    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    caplog.set_level(logging.INFO, logger="hybrax.train.harness")
     prepared = prepare_training_from_runtime_artifact(
         _runtime_artifact(store, collection, ("p1",)),
         config=TrainHarnessConfig(process_names=("p1",), epochs=1),
@@ -1835,7 +1842,7 @@ def test_build_runtime_modules_selects_scale_processes(monkeypatch):
         return select_training_parents(self, received_collection, process_names)
 
     monkeypatch.setattr(
-        "bp_train.harness.ProducerCollectionData.from_collection",
+        "hybrax.train.harness.ProducerCollectionData.from_collection",
         lambda *_args: runtime_data,
     )
     monkeypatch.setattr(ProducerCollectionData, "select_training_parents", select)
@@ -1845,7 +1852,9 @@ def test_build_runtime_modules_selects_scale_processes(monkeypatch):
         seen["scale_data"] = kwargs["runtime_data"]
         return scales
 
-    monkeypatch.setattr("bp_train.harness._resolve_estimated_scales", resolve_scales)
+    monkeypatch.setattr(
+        "hybrax.train.harness._resolve_estimated_scales", resolve_scales
+    )
     sentinel = object()
 
     def build_reaction_module(**kwargs):
@@ -1854,7 +1863,7 @@ def test_build_runtime_modules_selects_scale_processes(monkeypatch):
         return sentinel
 
     monkeypatch.setattr(
-        "bp_train.harness._build_reaction_module", build_reaction_module
+        "hybrax.train.harness._build_reaction_module", build_reaction_module
     )
 
     reaction_module, loss_module = harness_module._build_runtime_modules(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
+from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
 from .augmentation import (
     _initial_value_source,

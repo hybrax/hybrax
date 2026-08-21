@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Iterable
 
 import numpy as np
-from bp_format import validate_cross_process_consistency, validate_process
-from bp_format.dataclasses import (
+from hybrax.format import validate_cross_process_consistency, validate_process
+from hybrax.format.dataclasses import (
     BioProcessCollection,
     FeedMediumComponent,
     Inflow,
@@ -60,7 +60,7 @@ def validate_for_training(
             if not entry["ok"]
         ]
         if errors:
-            raise ValueError("bp_format validation failed:\n" + "\n".join(errors))
+            raise ValueError("hybrax.format validation failed:\n" + "\n".join(errors))
 
     return report
 

@@ -10,8 +10,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from bp_format.json_io import load_json
-from bp_format.serialization import load_process_collection
+from hybrax.format.json_io import load_json
+from hybrax.format.serialization import load_process_collection
 import pandas as pd
 
 from .forward_plotting import plot_forward_predictions
@@ -67,13 +67,13 @@ def _now_iso() -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="bp-train")
+    parser = argparse.ArgumentParser(prog="hybrax")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # ---- prepare ----
     prepare_parser = subparsers.add_parser(
         "prepare",
-        help="Transform a raw bp_format process collection into a prepared artifact.",
+        help="Transform a raw hybrax.format process collection into a prepared artifact.",
     )
     prepare_parser.add_argument(
         "--config",

@@ -35,7 +35,10 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
+from hybrax.train.diffrax_callbacks import (
+    PresetTimeCallback,
+    diffeqsolve_with_callbacks,
+)
 from .wrapper import HybridOdeWrapper
 
 # Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first

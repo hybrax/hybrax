@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import numpy as np
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     FeedMedium,
     FeedMediumComponent,
@@ -14,8 +14,8 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from bp_format.mechanistic import extract_discrete_events, get_process_ordering
-from bp_format.time_series.spline_ops import rebase_to_breaks
+from hybrax.format.mechanistic import extract_discrete_events, get_process_ordering
+from hybrax.format.time_series.spline_ops import rebase_to_breaks
 
 
 @dataclass

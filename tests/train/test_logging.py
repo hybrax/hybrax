@@ -7,7 +7,7 @@ from dataclasses import replace
 import pandas as pd
 import pytest
 
-from bp_train.logging import RunLogger, StepRecord, _ConsoleTableFormatter
+from hybrax.train.logging import RunLogger, StepRecord, _ConsoleTableFormatter
 
 
 def _record(
@@ -64,7 +64,7 @@ def test_formatter_alignment_and_target_count_validation():
 
 
 def test_runlogger_persists_batch_and_epoch_fields(tmp_path, caplog):
-    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    caplog.set_level(logging.INFO, logger="hybrax.train.harness")
     csv_path = tmp_path / "metrics.csv"
     jsonl_path = tmp_path / "metrics.jsonl"
     with RunLogger(metrics_csv=csv_path, metrics_jsonl=jsonl_path) as run:
@@ -244,7 +244,7 @@ def test_runlogger_record_rebuild_and_start_guard(caplog):
     run = RunLogger()
     with pytest.raises(RuntimeError, match="start"):
         run.record_step(_record(1))
-    caplog.set_level(logging.WARNING, logger="bp_train.harness")
+    caplog.set_level(logging.WARNING, logger="hybrax.train.harness")
     with run:
         run.start(
             target_names=("biomass",),

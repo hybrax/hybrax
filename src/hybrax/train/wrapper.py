@@ -5,8 +5,8 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.dataclasses import BioProcess
-from bp_format.mechanistic import RhsOde, build_rhs_ode
+from hybrax.format.dataclasses import BioProcess
+from hybrax.format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
 from .model_api import (

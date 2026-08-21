@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import diffrax
 import pytest
 
-from diffrax_callbacks import (
+from hybrax.train.diffrax_callbacks import (
     ContinuousCallback,
     DiscreteCallback,
     PresetTimeCallback,

@@ -24,7 +24,7 @@ import jax.tree_util as jtu
 from .model_api import _resolve_effective_tag
 
 if TYPE_CHECKING:
-    from bp_format.mechanistic import RhsOde
+    from hybrax.format.mechanistic import RhsOde
 
     from .controls_store import PerProcessControls
     from .wrapper import HybridOdeWrapper

@@ -24,11 +24,11 @@ sys.path.insert(0, {tests_dir!r})
 import jax
 import jax.numpy as jnp
 from test_harness import _make_collection, _LinearReactionModule, _biomass_loss
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     FeedMedium, FeedMediumComponent, Inflow, StaticVariable, TimeSeries
 )
-from bp_train.training_data import TrainingDataStore
-from bp_train.harness import train_collection, TrainHarnessConfig
+from hybrax.train.training_data import TrainingDataStore
+from hybrax.train.harness import train_collection, TrainHarnessConfig
 
 def with_events(process, name, sample_value, bolus_concentration):
     process = copy.deepcopy(process)
@@ -100,9 +100,9 @@ sys.path.insert(0, {tests_dir!r})
 import jax
 import jax.numpy as jnp
 from test_harness import _make_collection, _LinearReactionModule, _biomass_loss
-from bp_train.harness import train_collection, TrainHarnessConfig
-from bp_train.model_api import ReactionOutputs
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.harness import train_collection, TrainHarnessConfig
+from hybrax.train.model_api import ReactionOutputs
+from hybrax.train.training_data import TrainingDataStore
 
 class P2OnlyBlowUp(_LinearReactionModule):
     def __call__(self, t, inputs):
@@ -231,7 +231,7 @@ def test_device_count_capped_at_cpu_count():
         [
             sys.executable,
             "-c",
-            "import bp_train, jax, os; "
+            "import hybrax.train, jax, os; "
             "print('CAP', jax.device_count(), os.cpu_count())",
         ],
         env=env,

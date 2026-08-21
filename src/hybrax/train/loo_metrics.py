@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 import pandas as pd
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     Inflow,
@@ -36,8 +36,8 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from bp_format.json_io import load_json
-from bp_format.serialization import load_process_collection
+from hybrax.format.json_io import load_json
+from hybrax.format.serialization import load_process_collection
 
 from .serialization import write_json
 
@@ -881,11 +881,11 @@ def _gather_paired_arrays(
 def _is_augmented_process(proc: Any) -> bool:
     """Detect AugmentedBioProcess without forcing the import at module top.
 
-    bp_format ships AugmentedBioProcess as a BioProcess subclass with a
+    hybrax.format ships AugmentedBioProcess as a BioProcess subclass with a
     ``parent_process`` attribute; we only need the structural test.
     """
     try:
-        from bp_format.dataclasses import AugmentedBioProcess
+        from hybrax.format.dataclasses import AugmentedBioProcess
     except ImportError:
         return False
     return isinstance(proc, AugmentedBioProcess)

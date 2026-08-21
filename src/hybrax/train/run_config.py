@@ -10,8 +10,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bp_format.json_io import load_json
-from bp_train.utils import load_custom_module
+from hybrax.format.json_io import load_json
+from hybrax.train.utils import load_custom_module
 
 _FROZEN = ConfigDict(extra="forbid", frozen=True)
 _ALLOWED_TOP_LEVEL = {
@@ -162,7 +162,7 @@ class HoldoutSet(ConfigBase):
     processes to train on. ``train=None`` means "every process not in ``test``"
     (augmentation-corrected: holding out any member of an augmentation group
     excludes the whole group — parent + all children — from train; see
-    :func:`bp_train.loo.resolve_folds`). ``name`` (optional) labels the fold's
+    :func:`hybrax.train.loo.resolve_folds`). ``name`` (optional) labels the fold's
     output directory and summary row; without it the directory is derived from
     the test process names.
     """

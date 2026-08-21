@@ -24,7 +24,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -40,13 +40,16 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
+from hybrax.train.diffrax_callbacks import (
+    PresetTimeCallback,
+    diffeqsolve_with_callbacks,
+)
 
-import bp_train.controls_store as controls_store_module
-from bp_train.controls_store import ControlsStore, _output_window_bounds
-from bp_train.dense import build_union_time_grid
-from bp_train.physical_solve import _output_window, solve_physical_states
-from bp_train.training_data import TrainingDataStore
+import hybrax.train.controls_store as controls_store_module
+from hybrax.train.controls_store import ControlsStore, _output_window_bounds
+from hybrax.train.dense import build_union_time_grid
+from hybrax.train.physical_solve import _output_window, solve_physical_states
+from hybrax.train.training_data import TrainingDataStore
 
 from stateful_helpers import build_stateful_wrapper, default_stateful_scale_kwargs
 
@@ -121,7 +124,7 @@ def _process(name: str, *, n_sample: int, n_bolus: int, n_extra_meas: int = 0):
 
 
 def _wrapper(process):
-    from bp_train.defaults import DefaultStatefulReactionModule
+    from hybrax.train.defaults import DefaultStatefulReactionModule
 
     module = DefaultStatefulReactionModule(
         key=jax.random.key(0),

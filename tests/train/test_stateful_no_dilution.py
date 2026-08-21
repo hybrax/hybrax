@@ -3,7 +3,7 @@ from __future__ import annotations
 import equinox as eqx
 import jax.numpy as jnp
 
-from bp_train.model_api import AffineScaler
+from hybrax.train.model_api import AffineScaler
 
 from stateful_helpers import (
     TrainableH0Module,

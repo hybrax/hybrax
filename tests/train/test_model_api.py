@@ -9,9 +9,9 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import optax
 
-import bp_train.model_api as model_api
-from bp_train.inspect import format_trainable_structure
-from bp_train.model_api import (
+import hybrax.train.model_api as model_api
+from hybrax.train.inspect import format_trainable_structure
+from hybrax.train.model_api import (
     TRAINABLE_METADATA_KEY,
     AffineScaler,
     LinearScaler,

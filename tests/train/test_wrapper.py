@@ -6,7 +6,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -22,10 +22,10 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import build_rhs_ode
+from hybrax.format.mechanistic import build_rhs_ode
 
-from bp_train.controls_store import ControlsStore
-from bp_train.model_api import (
+from hybrax.train.controls_store import ControlsStore
+from hybrax.train.model_api import (
     AffineScaler,
     LinearScaler,
     ReactionInputs,
@@ -33,7 +33,7 @@ from bp_train.model_api import (
     ReactionOutputs,
     UserReactionModule,
 )
-from bp_train.wrapper import (
+from hybrax.train.wrapper import (
     HybridOdeWrapper,
     validate_rhs_ode_compatibility,
 )
@@ -810,7 +810,7 @@ def test_physical_rhs_passes_process_minimum_volume_to_bp_format():
 
 @pytest.mark.parametrize("initial_volume", [0.001, 0.0005])
 def test_solve_rejects_initial_volume_at_or_below_minimum(initial_volume):
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     process = _make_single_species_process()
     controls = ControlsStore.from_collection(
@@ -836,7 +836,7 @@ def test_solve_rejects_initial_volume_at_or_below_minimum(initial_volume):
 @pytest.mark.parametrize("event_time", [0.0, 1.0])
 @pytest.mark.parametrize("sample_volume", [0.999, 1.0])
 def test_solve_rejects_sample_volume_at_or_below_minimum(sample_volume, event_time):
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     process = _make_single_species_process(feed_rate=0.0)
     controls = ControlsStore.from_collection(
@@ -876,7 +876,7 @@ def test_solve_rejects_sample_volume_at_or_below_minimum(sample_volume, event_ti
 
 @pytest.mark.parametrize("batched", [False, True])
 def test_valid_sample_is_not_speculatively_reapplied(batched):
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     process = _make_single_species_process(feed_rate=0.0)
     controls = ControlsStore.from_collection(
@@ -917,7 +917,7 @@ def test_valid_sample_is_not_speculatively_reapplied(batched):
 
 
 def test_vmap_masks_preset_affect_for_lane_without_trigger():
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     process = _make_single_species_process(feed_rate=0.0)
     controls = ControlsStore.from_collection(
@@ -955,7 +955,7 @@ def test_vmap_masks_preset_affect_for_lane_without_trigger():
 
 
 def test_start_time_sample_and_bolus_are_applied_once():
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     process = _make_single_species_process(feed_rate=0.0)
     controls = ControlsStore.from_collection(
@@ -1094,7 +1094,7 @@ def test_continuous_feed_transport_volume_and_dilution():
       * a duplicated-t0 grid (the measurement/dense/prediction union can carry t0 at
         several indices) returns y0 at *every* t0 row (V0 dense-export boundary fix).
     """
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     # Biomass-free continuous feed stored as CUMULATIVE volume (0 -> 0.4 over [0, 2] =
     # 0.2 L/h) plus a 0.1 L sample at t=1; built inline so the feed is a real flow (a
@@ -1246,7 +1246,7 @@ def _make_modeled_pv_process() -> BioProcess:
 
 
 def test_wrapper_supports_modeled_pv():
-    from bp_train.physical_solve import solve_physical_states
+    from hybrax.train.physical_solve import solve_physical_states
 
     process = _make_modeled_pv_process()
     rhs_ode = build_rhs_ode(process)

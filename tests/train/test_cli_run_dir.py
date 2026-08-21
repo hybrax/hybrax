@@ -7,10 +7,10 @@ from types import SimpleNamespace
 import weakref
 
 import pytest
-from bp_format.serialization import save_process_collection
+from hybrax.format.serialization import save_process_collection
 
-import bp_train
-from bp_train.cli import main
+import hybrax.train
+from hybrax.train.cli import main
 
 # Tiny single-process collection fixture (parametrizable biomass values).
 from test_serialization import _collection
@@ -71,16 +71,16 @@ def test_train_cli_releases_collection_before_executor(tmp_path: Path, monkeypat
             mean_loss_by_step=(1.0,), updates_completed=1, trained_wrapper=object()
         )
 
-    monkeypatch.setattr("bp_train.cli.load_process_collection", load_collection)
-    monkeypatch.setattr("bp_train.cli.train_collection", execute)
+    monkeypatch.setattr("hybrax.train.cli.load_process_collection", load_collection)
+    monkeypatch.setattr("hybrax.train.cli.train_collection", execute)
 
     def evaluate(*_args, **kwargs):
         assert kwargs["prediction_process_names"] == ()
         return SimpleNamespace()
 
-    monkeypatch.setattr("bp_train.cli.evaluate_trained_wrapper", evaluate)
-    monkeypatch.setattr("bp_train.cli._write_train_results", lambda **_kwargs: None)
-    monkeypatch.setattr("bp_train.cli._finalize_run_dir", lambda *_args: None)
+    monkeypatch.setattr("hybrax.train.cli.evaluate_trained_wrapper", evaluate)
+    monkeypatch.setattr("hybrax.train.cli._write_train_results", lambda **_kwargs: None)
+    monkeypatch.setattr("hybrax.train.cli._finalize_run_dir", lambda *_args: None)
 
     assert main(["train", "--config", str(config)]) == 0
 
@@ -111,12 +111,12 @@ def test_train_cli_produces_fair_run_dir_and_model_load(tmp_path: Path):
     assert "jax" in doc["environment"]
 
     # model_load reconstructs from the run dir alone (prepared.json via recorded path).
-    wrapper, config = bp_train.model_load(run_dir)
+    wrapper, config = hybrax.train.model_load(run_dir)
     assert wrapper is not None
     assert config.train.epochs == 4
     # A re-prepared (byte-different but identical) prepared.json still loads.
     _write_prepared(prepared)
-    bp_train.model_load(run_dir)
+    hybrax.train.model_load(run_dir)
 
 
 def test_train_cli_rerun_guard_and_overwrite(tmp_path: Path):
@@ -187,7 +187,7 @@ def test_train_cli_epochs_override_takes_effect(tmp_path: Path):
     doc = json.loads((run_dir / "config.json").read_text())
     assert doc["updates_completed"] == 2
 
-    _wrapper, config = bp_train.model_load(run_dir)
+    _wrapper, config = hybrax.train.model_load(run_dir)
     assert config.train.epochs == 2
 
 
@@ -197,21 +197,21 @@ def test_model_reload_refreshes_without_reading_prepared(tmp_path: Path, monkeyp
     config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir)
     assert main(["train", "--config", str(config)]) == 0
 
-    wrapper, _config = bp_train.model_load(run_dir)
+    wrapper, _config = hybrax.train.model_load(run_dir)
 
     # model_reload is the lightweight path: it must NOT re-read the dataset.
-    import bp_train.serialization as S
+    import hybrax.train.serialization as S
 
     def _boom(*_a, **_k):
         raise AssertionError("model_reload must not load the collection")
 
     monkeypatch.setattr(S, "load_process_collection", _boom)
-    refreshed, config = bp_train.model_reload(run_dir, wrapper)
+    refreshed, config = hybrax.train.model_reload(run_dir, wrapper)
     assert refreshed is not None
     # Same 2-tuple shape as model_load, so the two are interchangeable.
     assert config.train.epochs == 4
     # A named checkpoint is addressed by its path, not a selector string.
-    bp_train.model_reload(run_dir / "checkpoints" / "latest", wrapper)
+    hybrax.train.model_reload(run_dir / "checkpoints" / "latest", wrapper)
 
 
 def test_model_load_integrity_guard_on_content_change(tmp_path: Path):
@@ -223,4 +223,4 @@ def test_model_load_integrity_guard_on_content_change(tmp_path: Path):
     # Tamper the prepared.json *content* → content_hash mismatch → hard error.
     _write_prepared(prepared, biomass_values=(2.0, 1.5, 1.0))
     with pytest.raises(ValueError, match="differs"):
-        bp_train.model_load(run_dir)
+        hybrax.train.model_load(run_dir)

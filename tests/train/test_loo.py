@@ -12,7 +12,7 @@ from typing import Any
 import jax.numpy as jnp
 import pandas as pd
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
@@ -25,11 +25,11 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-from bp_train import cli
-from bp_train.harness import PreparedTraining, TrainHarnessResult
-from bp_train import loo as loo_mod
-import bp_train.serialization as serialization
-from bp_train.loo import (
+from hybrax.train import cli
+from hybrax.train.harness import PreparedTraining, TrainHarnessResult
+from hybrax.train import loo as loo_mod
+import hybrax.train.serialization as serialization
+from hybrax.train.loo import (
     Fold,
     FoldResult,
     LOOResult,
@@ -41,7 +41,7 @@ from bp_train.loo import (
     run_single_fold,
     _write_summary_and_aggregate,
 )
-from bp_train.run_config import (
+from hybrax.train.run_config import (
     DataConfig,
     HoldoutSet,
     LooConfig,
@@ -536,12 +536,12 @@ def _patch_worker_internals(monkeypatch) -> dict[str, Any]:
     def fake_write(*, output_dir, **_kw):
         captured["fold_dir"] = Path(output_dir)
 
-    monkeypatch.setattr("bp_train.loo.prepare_training", fake_prepare)
+    monkeypatch.setattr("hybrax.train.loo.prepare_training", fake_prepare)
     monkeypatch.setattr(
-        "bp_train.loo.train_collection", lambda *_a, **_k: _stub_train_result()
+        "hybrax.train.loo.train_collection", lambda *_a, **_k: _stub_train_result()
     )
-    monkeypatch.setattr("bp_train.loo.evaluate_trained_wrapper", fake_evaluate)
-    monkeypatch.setattr("bp_train.cli._write_train_results", fake_write)
+    monkeypatch.setattr("hybrax.train.loo.evaluate_trained_wrapper", fake_evaluate)
+    monkeypatch.setattr("hybrax.train.cli._write_train_results", fake_write)
     monkeypatch.setattr(loo_mod, "save_model", lambda *_a, **_k: None)
     monkeypatch.setattr(
         loo_mod,
@@ -720,7 +720,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     producer_data = _ProducerData()
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
-        "bp_format.serialization.load_process_collection", lambda _path: collection
+        "hybrax.format.serialization.load_process_collection", lambda _path: collection
     )
     monkeypatch.setattr(
         loo_mod,
@@ -821,7 +821,7 @@ def test_produce_runtime_artifact_validates_augmented_parent_refs(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(
-        "bp_format.serialization.load_process_collection",
+        "hybrax.format.serialization.load_process_collection",
         lambda _path: _three_parent_collection(),
     )
     monkeypatch.setattr(
@@ -1291,7 +1291,7 @@ def test_loo_survives_cross_fold_loss_plot_failure(monkeypatch, tmp_path, caplog
         raise OSError("disk full")
 
     monkeypatch.setattr(
-        "bp_train.postprocessing.plot_cross_fold_loss_curves", fail_plot
+        "hybrax.train.postprocessing.plot_cross_fold_loss_curves", fail_plot
     )
 
     loo_mod._plot_cross_fold_losses(folds=(fold,), output_dir=tmp_path)

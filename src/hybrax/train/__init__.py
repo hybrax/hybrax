@@ -12,8 +12,8 @@ import gzip as _gzip
 import os as _os
 import sys as _sys
 
-from bp_format.json_io import load_json as _load_json
-from bp_format.json_io import loads_json as _loads_json
+from hybrax.format.json_io import load_json as _load_json
+from hybrax.format.json_io import loads_json as _loads_json
 
 
 def _bp_load_config():
@@ -149,7 +149,7 @@ if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""
         _bp_cap = _os.cpu_count() or 1
         if _bp_devices > _bp_cap:
             _sys.stderr.write(
-                f"[bp_train] requested devices {_bp_devices} exceeds {_bp_cap} "
+                f"[hybrax.train] requested devices {_bp_devices} exceeds {_bp_cap} "
                 f"CPU cores; capping to {_bp_cap} (more devices than cores can "
                 f"only deadlock the pmap collective, never speed it up).\n"
             )

@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.figure import Figure
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -33,17 +33,17 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-from bp_train import cli, postprocessing
-import bp_train.forward_plotting as forward_plotting
-import bp_train.harness as harness_module
-from bp_train.controls_store import ControlsStore
-from bp_train.harness import ForwardConfig, ForwardResult
-from bp_train.defaults import DefaultLossModule
-from bp_train.forward_plotting import plot_forward_predictions
-from bp_train.harness import compute_dense_exports, evaluate_trained_wrapper
-from bp_train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
-from bp_train.training_data import TrainingDataStore
-from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
+from hybrax.train import cli, postprocessing
+import hybrax.train.forward_plotting as forward_plotting
+import hybrax.train.harness as harness_module
+from hybrax.train.controls_store import ControlsStore
+from hybrax.train.harness import ForwardConfig, ForwardResult
+from hybrax.train.defaults import DefaultLossModule
+from hybrax.train.forward_plotting import plot_forward_predictions
+from hybrax.train.harness import compute_dense_exports, evaluate_trained_wrapper
+from hybrax.train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
+from hybrax.train.training_data import TrainingDataStore
+from hybrax.train.wrapper import HybridOdeWrapper, SaveOutputs
 
 
 @pytest.mark.parametrize(
@@ -85,7 +85,7 @@ def test_evaluate_trained_wrapper_preserves_requested_order_and_labels(monkeypat
             {"holdout": object(), "train": object()},
         )
 
-    monkeypatch.setattr("bp_train.harness.compute_dense_exports", fake_dense)
+    monkeypatch.setattr("hybrax.train.harness.compute_dense_exports", fake_dense)
     result = evaluate_trained_wrapper(
         wrapper,
         store,
@@ -418,8 +418,8 @@ def _make_forward_run_dir(
 ) -> Path:
     """Build a minimal FAIR run dir (config.json + model/params.eqx) for the
     run-dir forward path. The collection load + forward sim are monkeypatched."""
-    from bp_train.run_config import RunConfig
-    from bp_train.serialization import run_config_to_jsonable
+    from hybrax.train.run_config import RunConfig
+    from hybrax.train.serialization import run_config_to_jsonable
 
     solver = solver or {"max_steps": 2048, "rtol": 1e-5, "atol": 1e-7, "jump_ts": True}
     run_dir = tmp_path / "run"
@@ -1778,7 +1778,7 @@ def test_dense_export_returns_physical_q_values():
 def test_dense_export_grid_includes_measurement_times():
     """Measurement times must be exact nodes in the exported grid.
 
-    The holdout scorers (``bp_train.loo_metrics``, ``bp_bench.metrics``) evaluate
+    The holdout scorers (``hybrax.train.loo_metrics``, ``bp_bench.metrics``) evaluate
     predictions by ``np.interp(meas_t, pred_t, pred_y)``. If a measurement falls
     between two uniform grid points that straddle a bolus/feed discontinuity, the
     interpolant is a straight ramp across the jump. Splicing the measurement grid
@@ -1822,7 +1822,7 @@ def test_loo_scored_value_equals_training_framework_solve():
     # training-framework value == the exact solve at the measurement time; the
     # export now carries it as a node (same sample-grid value the loss module uses).
     train_val = float(c[node_mask][0])
-    # LOO-metric value == np.interp over the exported grid (what bp_train.loo_metrics
+    # LOO-metric value == np.interp over the exported grid (what hybrax.train.loo_metrics
     # and bp_bench.metrics do). Identical, because the measurement is now a node.
     loo_val = float(np.interp(0.7, export.t, c))
     assert loo_val == pytest.approx(train_val, rel=1e-6)

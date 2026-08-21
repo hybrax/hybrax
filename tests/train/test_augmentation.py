@@ -8,8 +8,8 @@ import warnings
 
 import numpy as np
 import pytest
-from bp_format import validate_measurement_sampling_alignment
-from bp_format.dataclasses import (
+from hybrax.format import validate_measurement_sampling_alignment
+from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
@@ -24,25 +24,25 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.splines import fit_timeseries_spline
-from bp_format.serialization import load_process_collection, save_process_collection
+from hybrax.format.splines import fit_timeseries_spline
+from hybrax.format.serialization import load_process_collection, save_process_collection
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from pydantic import ValidationError
 
-import bp_train.augmentation as augmentation_module
-import bp_train.augmentation_plot as augmentation_plot_module
-import bp_train.prepare as prepare_module
-from bp_train.augmentation import augment_process_collection
-from bp_train.loo import _build_fold_groups
-from bp_train.prepare import prepare_artifact
-from bp_train.run_config import (
+import hybrax.train.augmentation as augmentation_module
+import hybrax.train.augmentation_plot as augmentation_plot_module
+import hybrax.train.prepare as prepare_module
+from hybrax.train.augmentation import augment_process_collection
+from hybrax.train.loo import _build_fold_groups
+from hybrax.train.prepare import prepare_artifact
+from hybrax.train.run_config import (
     AugmentationConfig,
     PrepareConfig,
     RunConfig,
     load_prepare_config,
 )
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.training_data import TrainingDataStore
 
 
 def _spline(values: list[float], *, smoothing_s: float = 0.08) -> TimeSeries:
@@ -1230,7 +1230,7 @@ def test_transform_created_augmented_process_is_attributed_to_transform(tmp_path
         tmp_path,
         "add-augmented-process",
         "from copy import deepcopy",
-        "from bp_format.dataclasses import AugmentedBioProcess",
+        "from hybrax.format.dataclasses import AugmentedBioProcess",
         "",
         "def transform_process_collection(collection, config):",
         "    parent = collection.processes['p1']",
@@ -1281,7 +1281,7 @@ def test_prepare_rejects_invalid_augmented_parent_reference(tmp_path):
     custom_py = _write_custom_module(
         tmp_path,
         "invalid-parent",
-        "from bp_format.dataclasses import AugmentedBioProcess",
+        "from hybrax.format.dataclasses import AugmentedBioProcess",
         "",
         "def transform_process_collection(collection, config):",
         "    process = collection.processes.pop('p1')",

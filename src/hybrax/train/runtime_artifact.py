@@ -17,10 +17,10 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
-from bp_format.mechanistic import RhsOde, build_rhs_ode
-from bp_format.validate import validate_biological_ode_equivalence
-from bp_format.serialization import load_process_collection, save_process_collection
+from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
+from hybrax.format.mechanistic import RhsOde, build_rhs_ode
+from hybrax.format.validate import validate_biological_ode_equivalence
+from hybrax.format.serialization import load_process_collection, save_process_collection
 
 from .controls_store import ControlsStore, derive_control_partition
 from .model_api import AffineScaler, EstimatedScales, LinearScaler, Scaler

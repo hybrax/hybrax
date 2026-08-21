@@ -10,7 +10,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -22,17 +22,17 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-import bp_train.harness as harness
-import bp_train.serialization as serialization
-from bp_train.harness import _build_optimizer, _build_template_wrapper
-from bp_train.model_api import partition_trainable
-from bp_train.run_config import (
+import hybrax.train.harness as harness
+import hybrax.train.serialization as serialization
+from hybrax.train.harness import _build_optimizer, _build_template_wrapper
+from hybrax.train.model_api import partition_trainable
+from hybrax.train.run_config import (
     DataConfig,
     RunConfig,
     TrainConfig,
     load_train_config,
 )
-from bp_train.serialization import (
+from hybrax.train.serialization import (
     content_hash,
     load_opt_state,
     load_trained_wrapper,
@@ -43,7 +43,7 @@ from bp_train.serialization import (
     save_model,
     save_opt_state,
 )
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.training_data import TrainingDataStore
 
 # Reuse the tiny single-process reaction module + collection fixtures.
 from test_checkpointing import _LinearReactionModule

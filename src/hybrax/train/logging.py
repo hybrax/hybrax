@@ -189,7 +189,7 @@ class RunLogger:
         metrics_csv: str | Path | None = None,
         metrics_jsonl: str | Path | None = None,
         log_decimals: int = 4,
-        logger_name: str = "bp_train.harness",
+        logger_name: str = "hybrax.train.harness",
     ) -> None:
         self._log_process_losses = bool(log_process_losses)
         self._metrics_csv_path = Path(metrics_csv) if metrics_csv is not None else None

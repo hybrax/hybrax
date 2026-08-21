@@ -7,7 +7,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -23,12 +23,12 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import save_process_collection
+from hybrax.format.serialization import save_process_collection
 
-from bp_train.controls import select_control_sources
-from bp_train.controls_store import ControlsStore
-from bp_train.prepare import prepare_artifact
-from bp_train.run_config import load_prepare_config
+from hybrax.train.controls import select_control_sources
+from hybrax.train.controls_store import ControlsStore
+from hybrax.train.prepare import prepare_artifact
+from hybrax.train.run_config import load_prepare_config
 
 
 def _prepare_from_collection(

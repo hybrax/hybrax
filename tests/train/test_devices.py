@@ -3,8 +3,8 @@
 
 The device count is fixed at import time (before JAX initialises) by scanning
 ``sys.argv`` for ``--config`` (see ``_bp_load_config`` / ``_bp_resolve_devices``
-in ``bp_train/__init__.py``), so we exercise it in fresh subprocesses: each
-child sets ``sys.argv`` *before* ``import bp_train`` and reports
+in ``hybrax/train/__init__.py``), so we exercise it in fresh subprocesses: each
+child sets ``sys.argv`` *before* ``import hybrax.train`` and reports
 ``jax.device_count()``.
 """
 
@@ -22,11 +22,11 @@ _needs_2 = pytest.mark.skipif(
     _CPU < 2, reason="needs >= 2 CPU cores to expose 2 devices"
 )
 
-# Sets argv before importing bp_train so the bootstrap reads it pre-JAX.
+# Sets argv before importing hybrax.train so the bootstrap reads it pre-JAX.
 _SCRIPT = """
 import json, sys
 sys.argv = {argv!r}
-import bp_train  # runs the pre-JAX device bootstrap (reads --config)
+import hybrax.train  # runs the pre-JAX device bootstrap (reads --config)
 import jax
 print("RESULT_JSON " + json.dumps({{"devices": int(jax.device_count())}}))
 """

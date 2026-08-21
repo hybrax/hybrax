@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -20,11 +20,11 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.mechanistic import build_rhs_ode
+from hybrax.format.mechanistic import build_rhs_ode
 
-import bp_train.trainer as trainer_module
-from bp_train.physical_solve import solve_physical_states
-from bp_train.model_api import (
+import hybrax.train.trainer as trainer_module
+from hybrax.train.physical_solve import solve_physical_states
+from hybrax.train.model_api import (
     AffineScaler,
     LossInputs,
     LossOutputs,
@@ -34,17 +34,17 @@ from bp_train.model_api import (
     partition_trainable,
     trainable_field,
 )
-from bp_train.defaults import DefaultLossModule
-from bp_train.harness import summarize_train_step_input_signature
-from bp_train.trainer import (
+from hybrax.train.defaults import DefaultLossModule
+from hybrax.train.harness import summarize_train_step_input_signature
+from hybrax.train.trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
     evaluate_one_sample_loss,
     evaluate_sample_with_loss_module,
     simulate_measurement_states,
 )
-from bp_train.training_data import TrainingDataStore
-from bp_train.wrapper import HybridOdeWrapper, SaveOutputs
+from hybrax.train.training_data import TrainingDataStore
+from hybrax.train.wrapper import HybridOdeWrapper, SaveOutputs
 
 
 def _measurement_loss(wrapper, **kwargs):
@@ -234,7 +234,7 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
 
 
 def _build_wrapper_and_process(module_cls=_LinearReactionModule, process_name="p2"):
-    from bp_format.mechanistic import build_rhs_ode as _build_rhs_ode
+    from hybrax.format.mechanistic import build_rhs_ode as _build_rhs_ode
 
     collection = _make_two_process_collection()
     store = TrainingDataStore.from_collection(
@@ -786,12 +786,12 @@ def test_evaluate_one_sample_loss_returns_fail_time():
 
 
 # ---------------------------------------------------------------------------
-# Dense-grid helpers (bp_train/dense.py)
+# Dense-grid helpers (hybrax/train/dense.py)
 # ---------------------------------------------------------------------------
 
 
 def test_build_union_time_grid_sorts_and_indexes_correctly():
-    from bp_train.dense import build_union_time_grid
+    from hybrax.train.dense import build_union_time_grid
 
     t_meas = jnp.asarray([0.0, 1.0, 4.0])
     t_eval, sample_idx, dense_t, dense_idx, _pred_t, _pred_idx = build_union_time_grid(
@@ -808,7 +808,7 @@ def test_build_union_time_grid_sorts_and_indexes_correctly():
 
 
 def test_dense_point_mask_handles_jump_ts_and_none():
-    from bp_train.dense import dense_point_mask_away_from_jumps
+    from hybrax.train.dense import dense_point_mask_away_from_jumps
 
     dense_t = jnp.linspace(0.0, 10.0, 11)
     # No jumps: every point kept.
@@ -822,7 +822,7 @@ def test_dense_point_mask_handles_jump_ts_and_none():
 
 
 def test_dense_triple_mask_excludes_triples_straddling_a_jump():
-    from bp_train.dense import dense_triple_mask_away_from_jumps
+    from hybrax.train.dense import dense_triple_mask_away_from_jumps
 
     dense_t = jnp.linspace(0.0, 10.0, 11)
     # No jumps: every triple kept.
@@ -842,7 +842,7 @@ def test_dense_triple_mask_excludes_triples_straddling_a_jump():
 
 
 def test_all_triple_reduces_point_mask_to_triple_stencil():
-    from bp_train.dense import all_triple
+    from hybrax.train.dense import all_triple
 
     # Length n -> n-2; a triple (i-1,i,i+1) is True iff all three points are True.
     point = jnp.asarray([True, True, False, True, True])
@@ -1413,7 +1413,7 @@ def test_simulate_measurement_states_uses_the_simulated_processs_own_Cin():
     process being simulated. ``simulate_measurement_states`` must substitute the
     per-process feed composition alongside the per-process controls, or it
     silently solves ``p_hi`` with ``p_lo``'s feed."""
-    from bp_train.harness import _build_template_wrapper
+    from hybrax.train.harness import _build_template_wrapper
 
     collection = _make_feed_cin_collection(cin_lo=2.0, cin_hi=4.0)
     store = TrainingDataStore.from_collection(

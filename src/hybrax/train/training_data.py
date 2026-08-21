@@ -6,10 +6,10 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bp_format.dataclasses import BioProcessCollection
-from bp_format.mechanistic import RhsOde, build_rhs_ode
-from bp_format.serialization import load_process_collection
-from bp_format.validate import validate_biological_ode_equivalence
+from hybrax.format.dataclasses import BioProcessCollection
+from hybrax.format.mechanistic import RhsOde, build_rhs_ode
+from hybrax.format.serialization import load_process_collection
+from hybrax.format.validate import validate_biological_ode_equivalence
 
 from .controls_store import BatchControls, ControlsStore, PerProcessControls
 from .wrapper import validate_rhs_ode_compatibility

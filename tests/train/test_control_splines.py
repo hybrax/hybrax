@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -20,10 +20,10 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.splines import fit_timeseries_spline
+from hybrax.format.splines import fit_timeseries_spline
 
-from bp_train.controls import select_control_sources
-from bp_train.controls_store import ControlsStore
+from hybrax.train.controls import select_control_sources
+from hybrax.train.controls_store import ControlsStore
 
 
 def _noisy_ph() -> TimeSeries:
@@ -464,7 +464,7 @@ def test_direct_spline_continuity_side_and_extrapolation():
 
 
 def test_render_control_diagnostics_writes_png(tmp_path: Path):
-    from bp_train.postprocessing import (
+    from hybrax.train.postprocessing import (
         ControlDiagnostic,
         ProcessControlDiagnostics,
         render_control_diagnostics,

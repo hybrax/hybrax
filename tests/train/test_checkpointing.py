@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import optax
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -21,18 +21,18 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-from bp_train.checkpointing import CheckpointWriter
-from bp_train.harness import TrainHarnessConfig, train_collection
-from bp_train.model_api import (
+from hybrax.train.checkpointing import CheckpointWriter
+from hybrax.train.harness import TrainHarnessConfig, train_collection
+from hybrax.train.model_api import (
     ReactionOutputs,
     UserReactionModule,
     frozen_field,
     partition_trainable,
     trainable_field,
 )
-from bp_train.postprocessing import plot_grad_norm_curve, plot_loss_curve
-from bp_train.serialization import load_trained_wrapper
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.postprocessing import plot_grad_norm_curve, plot_loss_curve
+from hybrax.train.serialization import load_trained_wrapper
+from hybrax.train.training_data import TrainingDataStore
 
 
 # --------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def _opt_state_for(module: eqx.Module):
 
 
 def test_fractional_checkpoint_boundaries_are_exact_and_distinct():
-    from bp_train.harness import _checkpoint_update_boundaries
+    from hybrax.train.harness import _checkpoint_update_boundaries
 
     assert _checkpoint_update_boundaries(
         0.25, batches_per_epoch=10, total_updates=10
@@ -113,7 +113,7 @@ def test_fractional_checkpoint_boundaries_are_exact_and_distinct():
 
 
 def test_automatic_checkpoint_cadence_uses_at_least_five_epochs_and_at_most_20():
-    from bp_train.harness import _checkpoint_update_boundaries
+    from hybrax.train.harness import _checkpoint_update_boundaries
 
     assert _checkpoint_update_boundaries(
         None, batches_per_epoch=3, total_updates=30
@@ -340,7 +340,7 @@ def test_training_survives_final_plot_failure(
     def fail_plot(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(f"bp_train.harness.{plotter}", fail_plot)
+    monkeypatch.setattr(f"hybrax.train.harness.{plotter}", fail_plot)
 
     result = _run_train(
         checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=1
@@ -351,7 +351,7 @@ def test_training_survives_final_plot_failure(
 
 
 def test_automatic_checkpoint_cadence_is_logged(tmp_path: Path, caplog):
-    caplog.set_level(logging.INFO, logger="bp_train.harness")
+    caplog.set_level(logging.INFO, logger="hybrax.train.harness")
 
     _run_train(
         checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=None, epochs=10

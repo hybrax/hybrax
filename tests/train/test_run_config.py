@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from bp_train.run_config import (
+from hybrax.train.run_config import (
     DefaultCustomConfig,
     ForwardRunConfig,
     RunConfig,
@@ -210,7 +210,7 @@ def test_reresolve_custom_rewraps_dict_for_attribute_access():
     reresolve_custom re-wraps it so hooks can use attribute access (the
     resume/load_run/forward path that crashed with
     'dict object has no attribute target_loss_weights')."""
-    from bp_train.run_config import RunConfig, reresolve_custom
+    from hybrax.train.run_config import RunConfig, reresolve_custom
 
     cfg = RunConfig.model_validate(
         {

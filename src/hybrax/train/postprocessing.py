@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from bp_format.json_io import load_json
+from hybrax.format.json_io import load_json
 
 from .serialization import write_json
 from .wrapper import HybridOdeWrapper, SaveOutputs
@@ -485,7 +485,7 @@ def export_predictions_csv(
 ) -> None:
     """Write dense predictions.csv from precomputed per-process exports (no solve).
 
-    ``dense_exports`` comes from :func:`bp_train.harness.compute_dense_exports`
+    ``dense_exports`` comes from :func:`hybrax.train.harness.compute_dense_exports`
     (the single batched solve). This function only formats and writes rows.
     """
     output_path = Path(output_path)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from bp_train.defaults import DefaultStatefulReactionModule
+from hybrax.train.defaults import DefaultStatefulReactionModule
 from stateful_helpers import (
     build_stateful_wrapper,
     default_stateful_scale_kwargs,

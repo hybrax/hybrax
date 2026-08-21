@@ -12,7 +12,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -26,8 +26,8 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-from bp_train.controls_store import ControlsStore, _discrete_event_jump_ts
-from bp_train.trainer import clamp_padded_time_rows
+from hybrax.train.controls_store import ControlsStore, _discrete_event_jump_ts
+from hybrax.train.trainer import clamp_padded_time_rows
 
 
 def _process(discrete_events: DiscreteEvents | None) -> BioProcess:

@@ -21,7 +21,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
+from hybrax.train.diffrax_callbacks import (
+    PresetTimeCallback,
+    diffeqsolve_with_callbacks,
+)
 
 jax.config.update("jax_enable_x64", True)
 

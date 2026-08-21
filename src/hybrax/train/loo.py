@@ -1,7 +1,7 @@
 """Leave-one/some-process-out cross-validation for ``bp-train``.
 
 Config-driven, mirroring ``train``: a ``loo`` section in the run config defines
-the folds (:class:`~bp_train.run_config.HoldoutSet` entries in
+the folds (:class:`~hybrax.train.run_config.HoldoutSet` entries in
 ``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the
 fold-level parallelism.
 
@@ -36,9 +36,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from bp_format import validate_augmented_parent_refs
-from bp_format.dataclasses import AugmentedBioProcess, BioProcessCollection
-from bp_format.json_io import load_json
+from hybrax.format import validate_augmented_parent_refs
+from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
+from hybrax.format.json_io import load_json
 
 from .harness import (
     ForwardConfig,
@@ -212,8 +212,8 @@ FoldGroup = tuple[str, tuple[str, ...]]
 def _build_fold_groups(collection: BioProcessCollection) -> tuple[FoldGroup, ...]:
     """Return ``(parent_name, group_member_names)`` tuples in canonical order.
 
-    Each non-augmented :class:`~bp_format.dataclasses.BioProcess` becomes a fold
-    group; every :class:`~bp_format.dataclasses.AugmentedBioProcess` is appended
+    Each non-augmented :class:`~hybrax.format.dataclasses.BioProcess` becomes a fold
+    group; every :class:`~hybrax.format.dataclasses.AugmentedBioProcess` is appended
     to its parent's group. Augmented processes never form their own fold — they
     always travel with their parent.
     """
@@ -537,7 +537,7 @@ def _producer_cmd(config_path: Path, output_dir: Path) -> list[str]:
     return [
         sys.executable,
         "-m",
-        "bp_train.cli",
+        "hybrax.train.cli",
         "loo",
         "--config",
         str(config_path),
@@ -553,7 +553,7 @@ def _worker_cmd(
     return [
         sys.executable,
         "-m",
-        "bp_train.cli",
+        "hybrax.train.cli",
         "loo",
         "--config",
         str(config_path),
@@ -696,7 +696,7 @@ def produce_runtime_artifact(
     """Collection-owning, short-lived producer for all fold runtime inputs."""
     if cfg.data is None:
         raise ValueError("LOO requires data")
-    from bp_format.serialization import load_process_collection
+    from hybrax.format.serialization import load_process_collection
 
     collection = load_process_collection(cfg.data.prepared)
     augmented_parents_ok, augmented_parent_messages = validate_augmented_parent_refs(

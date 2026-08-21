@@ -20,10 +20,10 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 import optax
-from bp_format.dataclasses import BioProcessCollection
-from bp_format.inspect import print_rhs_ode
-from bp_format.mechanistic import RhsOde
-from bp_format.serialization import load_process_collection
+from hybrax.format.dataclasses import BioProcessCollection
+from hybrax.format.inspect import print_rhs_ode
+from hybrax.format.mechanistic import RhsOde
+from hybrax.format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
 from .defaults import (
@@ -205,14 +205,14 @@ def model_predict(
 ) -> dict[str, DenseProcessExport]:
     """Forward-solve a trained model over ``collection`` in one batched solve.
 
-    The companion to :func:`~bp_train.model_load`: pass the pair it returned plus
+    The companion to :func:`~hybrax.train.model_load`: pass the pair it returned plus
     the collection you want predictions for. Solver settings come from
     ``config.solver`` — the values the model was actually fitted under — so there
     is nothing to re-decide here.
 
     ``collection`` may hold processes the model never trained on. Every process in
     a collection shares one ``RhsOde`` layout; only controls and events differ, and
-    a mismatch fails fast via :func:`~bp_train.validate_rhs_ode_compatibility`.
+    a mismatch fails fast via :func:`~hybrax.train.validate_rhs_ode_compatibility`.
 
     To predict a subset, pass ``process_names`` — do **not** slice
     ``collection.processes``. The bp-train metadata block carries its own
@@ -935,7 +935,7 @@ def forward_from_collection(
     the prepared collection *it* trained on: that input is resolved from
     ``model_path``'s run directory and its recorded
     ``inputs.prepared_input.content_hash`` is verified before any hook runs (see
-    :func:`~bp_train.serialization.reconstruct_training`). So the reaction module,
+    :func:`~hybrax.train.serialization.reconstruct_training`). So the reaction module,
     the loss module, every ``SCALE_*`` and the deserialisation template are exactly
     training's, and evaluation data never reaches a constructor hook.
 

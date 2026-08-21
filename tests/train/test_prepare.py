@@ -8,8 +8,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import bp_format.json_io as json_io
-from bp_format.dataclasses import (
+import hybrax.format.json_io as json_io
+from hybrax.format.dataclasses import (
     BiologicalOde,
     BioProcess,
     BioProcessCollection,
@@ -26,15 +26,15 @@ from bp_format.dataclasses import (
     TimeSeries,
     Volume,
 )
-from bp_format.serialization import (
+from hybrax.format.serialization import (
     load_process_collection,
     save_process_collection,
 )
 
-from bp_train.controls import select_control_sources
-from bp_train.controls_store import ControlsStore
-from bp_train.prepare import load_raw_collection, prepare_artifact
-from bp_train.run_config import load_prepare_config, resolve_prepared_path
+from hybrax.train.controls import select_control_sources
+from hybrax.train.controls_store import ControlsStore
+from hybrax.train.prepare import load_raw_collection, prepare_artifact
+from hybrax.train.run_config import load_prepare_config, resolve_prepared_path
 
 INPUT_JSON = Path(__file__).resolve().parent.parent / "input.json"
 
@@ -226,7 +226,7 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bp_format.dataclasses import ReactorMediumComponent, TimeSeries",
+                "from hybrax.format.dataclasses import ReactorMediumComponent, TimeSeries",
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
@@ -253,7 +253,7 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bp_format.dataclasses import ("
+                "from hybrax.format.dataclasses import ("
                 "FeedMediumComponent, ReactorMediumComponent, "
                 "StaticVariable, TimeSeries)",
                 "import jax.numpy as jnp",
@@ -295,7 +295,7 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from bp_format.dataclasses import ("
+                "from hybrax.format.dataclasses import ("
                 "FeedMediumComponent, ReactorMediumComponent, "
                 "StaticVariable, TimeSeries)",
                 "import jax.numpy as jnp",
@@ -554,7 +554,9 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     output_dir = tmp_path / "prepared"
     custom_py = tmp_path / "custom.py"
     _write_sample_semantics_custom_py(custom_py)
-    with pytest.warns(UserWarning, match="bp_format validation reported non-OK status"):
+    with pytest.warns(
+        UserWarning, match="hybrax.format validation reported non-OK status"
+    ):
         _prepare_from_collection(
             _make_invalid_collection(), tmp_path, output_dir, custom_py=custom_py
         )
@@ -748,7 +750,7 @@ def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
 
 def test_prepare_artifact_logs_default_hooks_by_default(tmp_path, caplog):
     output_dir = tmp_path / "prepared-hooks-default"
-    with caplog.at_level(logging.INFO, logger="bp_train.prepare"):
+    with caplog.at_level(logging.INFO, logger="hybrax.train.prepare"):
         _prepare_from_collection(_make_two_process_collection(), tmp_path, output_dir)
     assert "prepare hooks detected: none" in caplog.text
     assert (
@@ -769,7 +771,7 @@ def test_prepare_artifact_logs_custom_hooks_when_supplied(tmp_path, caplog):
         encoding="utf-8",
     )
     output_dir = tmp_path / "prepared-hooks-custom"
-    with caplog.at_level(logging.INFO, logger="bp_train.prepare"):
+    with caplog.at_level(logging.INFO, logger="hybrax.train.prepare"):
         _prepare_from_collection(
             _make_two_process_collection(), tmp_path, output_dir, custom_py=custom_py
         )

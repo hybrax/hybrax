@@ -1,4 +1,4 @@
-"""Tests for the post-hoc CV-metric API in ``bp_train.loo_metrics``.
+"""Tests for the post-hoc CV-metric API in ``hybrax.train.loo_metrics``.
 
 These tests synthesise tiny LOO output dirs on disk (sidecars +
 predictions.csv files) and a matching prepared collection, then call the
@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
@@ -33,7 +33,7 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-from bp_train.loo_metrics import (
+from hybrax.train.loo_metrics import (
     DEFAULT_METRICS,
     _read_fold_sidecar,
     compute_aggregated_metrics,
@@ -288,7 +288,7 @@ def test_compute_loo_metrics_parent_scope_skips_augmented_holdout(tmp_path, capl
         ],
     )
 
-    with caplog.at_level(logging.WARNING, logger="bp_train.loo_metrics"):
+    with caplog.at_level(logging.WARNING, logger="hybrax.train.loo_metrics"):
         result = compute_loo_metrics(out_dir, collection, write_outputs=False)
 
     assert set(result.per_fold_target["holdout_process"]) == {"p1"}
@@ -342,7 +342,7 @@ def test_public_metrics_parent_scope_skips_augmented_holdout(tmp_path, caplog):
         ],
     )
 
-    with caplog.at_level(logging.WARNING, logger="bp_train.loo_metrics"):
+    with caplog.at_level(logging.WARNING, logger="hybrax.train.loo_metrics"):
         result = compute_per_process_metrics(out_dir, collection)
 
     assert set(result["holdout_process"]) == {"p1"}
@@ -610,7 +610,7 @@ def test_user_metric_error_yields_nan_with_warning(tmp_path, caplog):
     def boom(yt, yp):
         raise RuntimeError("intentional")
 
-    with caplog.at_level(logging.WARNING, logger="bp_train.loo_metrics"):
+    with caplog.at_level(logging.WARNING, logger="hybrax.train.loo_metrics"):
         df = compute_per_process_metrics(
             out_dir, collection, extra_metrics={"boom": boom}
         )
@@ -640,7 +640,7 @@ def test_incomplete_loo_attrs_and_warning(tmp_path, caplog):
     ]
     out_dir = _build_loo_dir(tmp_path, folds=folds)
 
-    with caplog.at_level(logging.WARNING, logger="bp_train.loo_metrics"):
+    with caplog.at_level(logging.WARNING, logger="hybrax.train.loo_metrics"):
         df = compute_per_process_metrics(out_dir, collection)
 
     assert df.attrs["all_runs_complete"] is False
@@ -757,7 +757,7 @@ def test_require_measurement_nodes_fail_fast():
     """The scorer must refuse to silently interpolate: a measurement time that is
     not an exact node of the prediction grid raises (guards the jump-blind bug).
     """
-    from bp_train.loo_metrics import _require_measurement_nodes
+    from hybrax.train.loo_metrics import _require_measurement_nodes
 
     uniform = np.linspace(0.0, 2.0, 11)  # no node at 0.7
     with pytest.raises(ValueError, match="no grid node"):

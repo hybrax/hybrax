@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from bp_train import cli
-from bp_train.harness import ForwardResult, TrainHarnessResult
+from hybrax.train import cli
+from hybrax.train.harness import ForwardResult, TrainHarnessResult
 
 
 class _DummyCollection:
@@ -86,8 +86,8 @@ def test_train_harness_config_from_run_config_maps_sections():
     (Config drives everything now — the old per-flag CLI mapping is gone; the
     full FAIR run-dir behavior is covered in tests/test_cli_run_dir.py.)
     """
-    from bp_train.harness import train_harness_config_from_run_config
-    from bp_train.run_config import RunConfig
+    from hybrax.train.harness import train_harness_config_from_run_config
+    from hybrax.train.run_config import RunConfig
 
     cfg = RunConfig.model_validate(
         {

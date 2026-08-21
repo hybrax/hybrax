@@ -9,13 +9,13 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
 )
-from bp_format.mechanistic import build_rhs_ode
-from bp_format.serialization import load_process_collection
-from bp_format.time_series.spline_ops import rebase_piece
+from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.format.serialization import load_process_collection
+from hybrax.format.time_series.spline_ops import rebase_piece
 
 from .constants import METADATA_NAMESPACE
 from .controls import (
@@ -861,8 +861,8 @@ class ControlsStore(eqx.Module):
         metadata: dict[str, Any],
         metadata_namespace: str,
     ) -> list[str]:
-        bp_train = metadata.get(metadata_namespace, {})
-        process_order = bp_train.get("process_order")
+        train_metadata = metadata.get(metadata_namespace, {})
+        process_order = train_metadata.get("process_order")
         if process_order is None:
             return list(collection.processes.keys())
         return list(process_order)
@@ -919,8 +919,8 @@ class ControlsStore(eqx.Module):
         """Build a JAX-backed runtime store from a prepared `BioProcessCollection`."""
         metadata = dict(collection.metadata or {})
         process_order = cls._process_order(collection, metadata, METADATA_NAMESPACE)
-        bp_train = dict(metadata.get(METADATA_NAMESPACE, {}))
-        prepared_process_md = dict(bp_train.get("processes", {}))
+        train_metadata = dict(metadata.get(METADATA_NAMESPACE, {}))
+        prepared_process_md = dict(train_metadata.get("processes", {}))
 
         process_bundles: dict[str, ControlSourceBundle] = {}
         process_control_metadata: dict[str, dict[str, Any]] = {}

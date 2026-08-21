@@ -4,14 +4,14 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 
 import numpy as np
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcessCollection,
     Outflow,
     StaticVariable,
 )
-from bp_format.mechanistic import build_rhs_ode
-from bp_format.time_series.timeseries import TimeSeries
-from bp_format.validate import validate_biological_ode_equivalence
+from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.format.time_series.timeseries import TimeSeries
+from hybrax.format.validate import validate_biological_ode_equivalence
 
 from .training_data import TrainingDataStore
 

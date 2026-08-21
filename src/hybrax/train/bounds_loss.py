@@ -6,7 +6,7 @@ from numbers import Integral
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.dataclasses import BioProcessCollection
+from hybrax.format.dataclasses import BioProcessCollection
 
 from .defaults import DefaultLossModule
 from .model_api import LossInputs, LossOutputs

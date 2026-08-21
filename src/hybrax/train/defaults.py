@@ -3,8 +3,8 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from bp_format.dataclasses import BioProcess, BioProcessCollection
-from bp_format.mechanistic import RhsOde
+from hybrax.format.dataclasses import BioProcess, BioProcessCollection
+from hybrax.format.mechanistic import RhsOde
 
 from .model_api import (
     LinearScaler,

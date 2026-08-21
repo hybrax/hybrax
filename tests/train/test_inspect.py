@@ -5,12 +5,12 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
-from bp_train.defaults import DefaultStatefulReactionModule
-from bp_train.inspect import (
+from hybrax.train.defaults import DefaultStatefulReactionModule
+from hybrax.train.inspect import (
     format_reaction_schema,
     format_trainable_structure,
 )
-from bp_train.model_api import (
+from hybrax.train.model_api import (
     ReactionOutputs,
     UserReactionModule,
     frozen_field,

@@ -447,7 +447,7 @@ def diffeqsolve_with_callbacks(
         # NB: this inf is a forward-side diagnostic marker only, and makes NO promise
         # about the reverse-mode gradient of a failed lane (that is slot/loss-dependent
         # and unstable). The EXPLICIT, stable failure signal for callers is
-        # ``fail_time``: ``bp_train`` uses it to drop post-failure measurement/dense
+        # ``fail_time``: ``hybrax.train`` uses it to drop post-failure measurement/dense
         # points from the loss AND to replace their predicted states with a finite
         # fallback, so no inf reaches a loss (see
         # ``physical_solve.solve_physical_states`` and

@@ -2,7 +2,7 @@
 
 ``model_load``, ``forward_from_collection`` (standalone and per ensemble member),
 and artifact-backed LOO folds all go through
-:func:`bp_train.serialization.reconstruct_training`, which
+:func:`hybrax.train.serialization.reconstruct_training`, which
 
 - loads the prepared collection the model was trained on (never the evaluation
   collection),
@@ -24,7 +24,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcessCollection,
     FeedMedium,
     FeedMediumComponent,
@@ -35,14 +35,14 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from bp_format.serialization import load_process_collection, save_process_collection
+from hybrax.format.serialization import load_process_collection, save_process_collection
 
-import bp_train
-import bp_train.harness as harness
-from bp_train.cli import main
-from bp_train.harness import ForwardConfig, forward_from_collection
-from bp_train.serialization import content_hash, reconstruct_training
-from bp_train.training_data import TARGET_SOURCE_AUTO
+import hybrax.train
+import hybrax.train.harness as harness
+from hybrax.train.cli import main
+from hybrax.train.harness import ForwardConfig, forward_from_collection
+from hybrax.train.serialization import content_hash, reconstruct_training
+from hybrax.train.training_data import TARGET_SOURCE_AUTO
 from stateful_helpers import make_process
 
 
@@ -79,7 +79,7 @@ _CUSTOM_PY = """
 import jax.numpy as jnp
 import numpy as np
 
-from bp_train.model_api import EstimatedScales
+from hybrax.train.model_api import EstimatedScales
 
 
 def estimate_all_scales(runtime_data, target_names, config):
@@ -330,7 +330,7 @@ def test_model_load_and_forward_share_selected_training_reconstruction(two_level
     run_dir, prepared = two_level_run
     evaluation = load_process_collection(prepared)
 
-    loaded, _config = bp_train.model_load(run_dir)
+    loaded, _config = hybrax.train.model_load(run_dir)
     result = forward_from_collection(
         evaluation,
         model_path=_params(run_dir),
@@ -402,7 +402,7 @@ def test_template_bakes_the_first_recorded_training_processs_feed(tmp_path: Path
     )
 
     # Both loaders resolve the same reference process from the same record.
-    loaded, _config = bp_train.model_load(run_dir)
+    loaded, _config = hybrax.train.model_load(run_dir)
     np.testing.assert_allclose(
         np.asarray(loaded.rhs_ode.Cin_controlled_Inflows), [[3.0]]
     )
@@ -557,7 +557,7 @@ def test_loo_fold_models_load_through_the_shared_path(tmp_path: Path):
         document = json.loads((fold_dir / "config.json").read_text())
         assert document["inputs"]["prepared_input"]["content_hash"] == expected_hash
         for target in (fold_dir, fold_dir / "checkpoints" / "latest"):
-            wrapper, config = bp_train.model_load(target)
+            wrapper, config = hybrax.train.model_load(target)
             assert config.data.processes == trained_on
             np.testing.assert_allclose(_rmc_scale(wrapper), [scale])
 
@@ -602,7 +602,7 @@ def test_forward_rejects_an_unusable_model_path_before_reconstructing(
     and must name the path the caller gave rather than one equinox invented by
     appending ``.eqx``."""
     run_dir, _prepared = two_level_run
-    from bp_train import serialization
+    from hybrax.train import serialization
 
     monkeypatch.setattr(
         serialization,
@@ -633,8 +633,8 @@ def _record_only_run_dir(tmp_path: Path) -> tuple[Path, Path]:
     The hash gate must fire before the hooks and before the weights are read, so a
     model that could not possibly deserialise is exactly the right subject.
     """
-    from bp_train.run_config import RunConfig
-    from bp_train.serialization import run_config_to_jsonable
+    from hybrax.train.run_config import RunConfig
+    from hybrax.train.serialization import run_config_to_jsonable
 
     run_dir = tmp_path / "record"
     (run_dir / "model").mkdir(parents=True)
@@ -711,7 +711,7 @@ def test_loading_a_model_without_verified_input_fails_before_any_hook(
     )
 
     with pytest.raises(ValueError, match=message):
-        bp_train.model_load(run_dir)
+        hybrax.train.model_load(run_dir)
 
     with pytest.raises(ValueError, match=message):
         forward_from_collection(

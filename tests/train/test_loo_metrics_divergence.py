@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from bp_train.loo_metrics import (
+from hybrax.train.loo_metrics import (
     _evaluate_predictions_for_process,
     _prediction_unscoreable,
 )

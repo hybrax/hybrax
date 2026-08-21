@@ -130,7 +130,7 @@ class PresetTimeCallback(eqx.Module):
             neither is guaranteed bit-identical to the value in ``times``. Matching
             on ``times[preset_index]`` is exact by construction. Matching on ``t``
             with a tolerance instead makes any other node within that tolerance
-            re-trigger this preset — see ``bp_train.physical_solve.affect_fn``,
+            re-trigger this preset — see ``hybrax.train.physical_solve.affect_fn``,
             which used to need a parking guard for exactly that reason.
 
     Example:

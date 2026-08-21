@@ -4,8 +4,8 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from bp_train.defaults import DefaultStatefulReactionModule
-from bp_train.model_api import ReactionInputs, partition_trainable
+from hybrax.train.defaults import DefaultStatefulReactionModule
+from hybrax.train.model_api import ReactionInputs, partition_trainable
 from stateful_helpers import TrainableH0DefaultStateful, default_stateful_scale_kwargs
 
 

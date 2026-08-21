@@ -7,7 +7,7 @@ import warnings
 from typing import Any
 
 import numpy as np
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
@@ -15,7 +15,7 @@ from bp_format.dataclasses import (
     StaticVariable,
     TimeSeries,
 )
-from bp_format.mechanistic import get_process_ordering
+from hybrax.format.mechanistic import get_process_ordering
 
 from .run_config import AugmentationConfig, InitialValueSource, RunConfig
 
@@ -28,7 +28,7 @@ _MOSTLY_NONNEGATIVE_FRACTION = 0.5
 # timestamp step by several ULP, or the grid cannot meaningfully honor it.
 _MIN_SPACING_REL_TOL = 1e-6
 _MIN_SPACING_MIN_ULPS = 4
-# Matches bp_format.validate_measurement_sampling_alignment's default.
+# Matches hybrax.format.validate_measurement_sampling_alignment's default.
 _SAMPLING_NEAR_MISS_REL_THRESHOLD = 1e-4
 _MAX_GRID_ATTEMPTS = 100
 

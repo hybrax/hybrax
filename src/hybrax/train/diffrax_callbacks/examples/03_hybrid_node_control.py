@@ -20,7 +20,10 @@ import equinox as eqx
 import diffrax
 import optax
 
-from diffrax_callbacks import ContinuousCallback, diffeqsolve_with_callbacks
+from hybrax.train.diffrax_callbacks import (
+    ContinuousCallback,
+    diffeqsolve_with_callbacks,
+)
 
 jax.config.update("jax_enable_x64", True)
 

@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 import diffrax
 
-from diffrax_callbacks import (
+from hybrax.train.diffrax_callbacks import (
     ContinuousCallback,
     PresetTimeCallback,
     PeriodicCallback,

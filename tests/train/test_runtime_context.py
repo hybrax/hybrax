@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
@@ -25,17 +25,17 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-import bp_train.runtime_context as runtime_context
-from bp_train.harness import _resolve_estimated_scales
-from bp_train.model_api import EstimatedScales
-from bp_train.runtime_context import (
+import hybrax.train.runtime_context as runtime_context
+from hybrax.train.harness import _resolve_estimated_scales
+from hybrax.train.model_api import EstimatedScales
+from hybrax.train.runtime_context import (
     SPLINE_SCALE_SAMPLE_COUNT,
     ProducerCollectionData,
     _series_scale_evidence,
     canonical_training_parents,
     original_parent_processes,
 )
-from bp_train.training_data import TrainingDataStore
+from hybrax.train.training_data import TrainingDataStore
 
 
 def _process(

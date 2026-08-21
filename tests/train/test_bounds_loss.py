@@ -4,7 +4,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
-from bp_format.dataclasses import (
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -18,9 +18,9 @@ from bp_format.dataclasses import (
     Volume,
 )
 
-from bp_train import BoundsViolationLossModule, DefaultLossModule
-from bp_train.model_api import AffineScaler, LinearScaler, LossInputs
-from bp_train.bounds_loss import bound_records_from_collection
+from hybrax.train import BoundsViolationLossModule, DefaultLossModule
+from hybrax.train.model_api import AffineScaler, LinearScaler, LossInputs
+from hybrax.train.bounds_loss import bound_records_from_collection
 
 
 NO_BOUNDS = (None, None)

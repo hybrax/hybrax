@@ -1,6 +1,6 @@
 """All model + run-state (de)serialisation in one place.
 
-Mirrors ``bp_format/serialization.py``. This module owns:
+Mirrors ``hybrax.format/serialization.py``. This module owns:
 
 - ``save_model`` / ``load_trained_wrapper`` — **trainable-partition-only** model
   serialisation. The frozen/derived half of the wrapper (controls store,
@@ -26,21 +26,24 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass
 import hashlib
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
 import json
 import logging
 import math
 import os
 from numbers import Integral, Real
 from pathlib import Path
+import platform
 import secrets
 import stat
 from typing import Any
 
 import equinox as eqx
 import optax
-from bp_format.dataclasses import BioProcessCollection
-from bp_format.json_io import load_json
-from bp_format.serialization import (
+from hybrax.format.dataclasses import BioProcessCollection
+from hybrax.format.json_io import load_json
+from hybrax.format.serialization import (
     NumpyEncoder,
     _process_collection_to_dict,
     load_process_collection,
@@ -113,14 +116,9 @@ def file_hash(path: str | Path) -> str:
 
 def environment_versions() -> dict[str, str]:
     """Best-effort package versions for a run / prepare provenance block."""
-    import platform
-    from importlib.metadata import PackageNotFoundError
-    from importlib.metadata import version as _version
-
     versions: dict[str, str] = {"python": platform.python_version()}
     for pkg in (
-        "bp_train",
-        "bp_format",
+        "hybrax",
         "jax",
         "optax",
         "equinox",
@@ -581,7 +579,7 @@ def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     paying it again.
 
     Returns ``(trained_wrapper, config)``. ``config.solver`` carries the solver
-    settings the model was fitted under; pass it to :func:`~bp_train.model_predict`.
+    settings the model was fitted under; pass it to :func:`~hybrax.train.model_predict`.
     """
     run_dir, params_path = resolve_model_path(path)
     config, document = read_run_config_json(run_dir / "config.json")

@@ -10,14 +10,14 @@ from typing import Any
 import warnings
 
 import numpy as np
-from bp_format import validate_augmented_parent_refs
-from bp_format.dataclasses import (
+from hybrax.format import validate_augmented_parent_refs
+from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     StaticVariable,
     TimeSeries,
 )
-from bp_format.serialization import (
+from hybrax.format.serialization import (
     load_process_collection,
     save_process_collection,
 )
@@ -82,7 +82,7 @@ def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) 
     failed = [name for name, entry in validation_report.items() if not entry["ok"]]
     if failed:
         warnings.warn(
-            "bp_format validation reported non-OK status for "
+            "hybrax.format validation reported non-OK status for "
             f"{len(failed)} process(es); "
             f"see metadata[{METADATA_NAMESPACE!r}]['bp_format_validation_raw'] "
             "for details",
@@ -434,7 +434,7 @@ def prepare_artifact(
 
     save_process_collection(collection, output_path)
     # Standalone, inspectable record of how this prepare ran (clash-free with
-    # train's config.json) — the bp_train provenance/metadata block, without the
+    # train's config.json) — the hybrax.train provenance/metadata block, without the
     # bulk collection.
     write_json(output_dir / "prepare_config.json", bp_train_metadata, default=str)
 
