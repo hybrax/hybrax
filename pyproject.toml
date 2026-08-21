@@ -71,6 +71,9 @@ target-version = ["py312"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: end-to-end tests that exercise the training pipeline",
+]
 filterwarnings = [
     "ignore:jax.core.mapped_aval is deprecated:DeprecationWarning",
     "ignore:jax.core.unmapped_aval is deprecated:DeprecationWarning",
