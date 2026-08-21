@@ -10,6 +10,7 @@ kernelspec:
   name: python3
 ---
 
+<!-- LOCK -->
 # The Data Model
 
 > Which object holds which measurement, and why the split is where it is.
@@ -50,7 +51,6 @@ Every time series you import gets asked the same three questions, in order: what
 (its role), how is it shaped (a real time series or a fixed value), and who drives it
 (read from data, or produced by the ODE).
 
-<!-- LOCK -->
 ### The Physical Role
 
 The `hybrax-format` data format categorizes your measured process data depending on its physical role in the bioreactor. There are three major roles:
@@ -182,30 +182,37 @@ BiologicalOde(
 
 See [The Bioprocess ODE](bioprocess_ode.md) page for more details.
 
-## The Rest of the Fields
+## Everything Else
 
-The remaining `BioProcess` fields, straightforward enough that they don't need their own
-section:
+### `metadata`
 
-- **`metadata`** (`BioProcessMetadata`): `name`, `process_type`
-  (`"batch"`/`"fed_batch"`/`"continuous"`), optional `notes`. A static description of the
-  run, not a measurement. No dedicated page. Field list is in the
-  [API reference](../autoapi/bp_format/dataclasses/index).
-- **`time_axis`** (`TimeAxis`): `unit`, `start`, `end`, `time_reference` (e.g.
-  `"inoculation"`, `"first_feed"`, `"operator_defined"`): what `t=0` means for this
-  process. Also no dedicated page.
-- **`discrete_events`** (`DiscreteEvents`): a convenience mirror, not the source of truth.
-  The real events are always the `volume.volume_changes` entries with
-  `is_continuous=False`. See [Volume, feeds and events](volume_feeds_events.md).
-- **`pseudobatch_transform`**: not something you construct. `hybrax-format` builds it from
-  `reactor_medium` and `volume` once you run the transform. See
-  [The pseudobatch transform](pseudobatch_transform.md).
+`BioProcessMetadata` holds a static description of the run itself: `name`, `process_type`,
+and an optional `notes` string. Every field is listed in the
+[API reference](../autoapi/bp_format/dataclasses/index).
 
-## Gotchas
+### `time_axis`
 
-- **`AugmentedBioProcess` exists but nothing in bp-format produces one.** It is a fixed
-  shape so bp-train's augmentation and LOO grouping can rely on it. Ignore it unless you
-  are using augmentation.
+`TimeAxis` fixes what `t=0` means for this process, via `unit`, `start`, `end`, and
+`time_reference` (e.g. `"inoculation"`, `"first_feed"`, `"operator_defined"`). Every field
+is listed in the [API reference](../autoapi/bp_format/dataclasses/index).
+
+### `discrete_events`
+
+`DiscreteEvents` mirrors the bolus, sample and volume-jump times you already gave
+`volume.volume_changes`, as a convenience, not a second source of truth. See
+[Volume, feeds and events](volume_feeds_events.md) for where those events actually live.
+
+### `pseudobatch_transform`
+
+`hybrax-format` builds this for you from `reactor_medium` and `volume` once you run the
+transform; you never construct it yourself. See
+[The pseudobatch transform](pseudobatch_transform.md) for what it contains.
+
+### `AugmentedBioProcess`
+
+A separate type, not a `BioProcess` field: a fixed shape that `hybrax-train`'s
+augmentation and LOO grouping rely on, though nothing in `hybrax-format` produces one
+directly. See [Augmentation](../gallery/augmentation.md) if you are using it.
 
 ## See also
 
